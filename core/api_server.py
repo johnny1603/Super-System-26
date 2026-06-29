@@ -1,4 +1,7 @@
 import os
+from agents.keys_agent import inject_all_keys, validate_keys
+inject_all_keys()
+validate_keys()
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
