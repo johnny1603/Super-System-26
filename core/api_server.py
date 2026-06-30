@@ -1,19 +1,24 @@
 import os
-from agents.keys_agent import inject_all_keys, validate_keys
-inject_all_keys()
-validate_keys()
+import json
+import sqlite3
+from datetime import datetime
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import sys, os, json, sqlite3
-from datetime import datetime
 
-sys.path.append('/home/johnosaki94/super-system')
+from agents.keys_agent import inject_all_keys, validate_keys
+inject_all_keys()
+validate_keys()
+
 from agents.onboarding_agent import run_full_onboarding
 from agents.master_agent import review_output
 from agents.monitor_agent import run_deep_scan
 from core.email_service import send_client_report, send_admin_alert
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "core", "leads.db")
 
 app = FastAPI()
 
@@ -24,11 +29,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/chat", StaticFiles(directory="/home/johnosaki94/super-system/dashboard/onboarding", html=True), name="chat")
+app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 
 # DB
 def init_db():
-    conn = sqlite3.connect('/home/johnosaki94/super-system/core/leads.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.execute('''CREATE TABLE IF NOT EXISTS leads (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT,
@@ -58,7 +63,7 @@ async def onboarding(req: OnboardingRequest):
         review_output("proposal", proposal, req.answers)
 
         # שמירה ב-DB
-        conn = sqlite3.connect('/home/johnosaki94/super-system/core/leads.db')
+        conn = sqlite3.connect(DB_PATH)
         conn.execute('''INSERT INTO leads 
             (created_at, client_email, client_name, answers, proposal, approved, setup_fee, monthly_fee)
             VALUES (?,?,?,?,?,?,?,?)''',
@@ -82,7 +87,7 @@ async def onboarding(req: OnboardingRequest):
 
 @app.get("/api/leads")
 async def get_leads():
-    conn = sqlite3.connect('/home/johnosaki94/super-system/core/leads.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.execute('SELECT * FROM leads ORDER BY created_at DESC')
     leads = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
     conn.close()

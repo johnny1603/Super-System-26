@@ -1,0 +1,8 @@
+anthropic
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+supabase
+google-cloud-pubsub
+pydantic
