@@ -1,12 +1,11 @@
 import os
-import json
-import sqlite3
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from supabase import create_client, Client
 
 from agents.keys_agent import inject_all_keys, validate_keys
 inject_all_keys()
@@ -18,7 +17,11 @@ from agents.monitor_agent import run_deep_scan
 from core.email_service import send_client_report, send_admin_alert
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "core", "leads.db")
+
+db: Client = create_client(
+    os.environ["SUPABASE_URL"],
+    os.environ["SUPABASE_SERVICE_KEY"],
+)
 
 app = FastAPI()
 
@@ -30,25 +33,6 @@ app.add_middleware(
 )
 
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
-
-# DB
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('''CREATE TABLE IF NOT EXISTS leads (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        created_at TEXT,
-        client_email TEXT,
-        client_name TEXT,
-        answers TEXT,
-        proposal TEXT,
-        approved INTEGER,
-        setup_fee INTEGER,
-        monthly_fee INTEGER
-    )''')
-    conn.commit()
-    conn.close()
-
-init_db()
 
 class OnboardingRequest(BaseModel):
     answers: dict
@@ -63,18 +47,16 @@ async def onboarding(req: OnboardingRequest):
         review_output("proposal", proposal, req.answers)
 
         # שמירה ב-DB
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute('''INSERT INTO leads 
-            (created_at, client_email, client_name, answers, proposal, approved, setup_fee, monthly_fee)
-            VALUES (?,?,?,?,?,?,?,?)''',
-            (datetime.now().isoformat(), req.client_email, req.client_name,
-             json.dumps(req.answers, ensure_ascii=False),
-             json.dumps(proposal, ensure_ascii=False),
-             1 if proposal.get('approved') else 0,
-             proposal.get('setup_fee_total', 0),
-             proposal.get('monthly_management_total', 0)))
-        conn.commit()
-        conn.close()
+        db.table("leads").insert({
+            "created_at": datetime.now().isoformat(),
+            "client_email": req.client_email,
+            "client_name": req.client_name,
+            "answers": req.answers,
+            "proposal": proposal,
+            "approved": bool(proposal.get("approved")),
+            "setup_fee": proposal.get("setup_fee_total", 0),
+            "monthly_fee": proposal.get("monthly_management_total", 0),
+        }).execute()
 
         # שליחת מיילים
         send_admin_alert(req.answers, proposal)
@@ -87,11 +69,8 @@ async def onboarding(req: OnboardingRequest):
 
 @app.get("/api/leads")
 async def get_leads():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.execute('SELECT * FROM leads ORDER BY created_at DESC')
-    leads = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
-    conn.close()
-    return {"leads": leads}
+    result = db.table("leads").select("*").order("created_at", desc=True).execute()
+    return {"leads": result.data}
 
 @app.get("/api/monitor/scan")
 async def monitor_scan():

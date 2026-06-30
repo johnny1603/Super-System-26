@@ -1,17 +1,17 @@
 import json
 import os
-import sqlite3
 from datetime import datetime
 
 from anthropic import Anthropic
 from google.cloud import pubsub_v1
+from supabase import create_client
 
 from config.settings import PROJECT_ID
 
 client = Anthropic()
+db = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "core", "leads.db")
 ALERT_HISTORY_PATH = os.path.join(BASE_DIR, "data", "alert_history.json")
 MONITOR_MEMORY_PATH = os.path.join(BASE_DIR, "data", "monitor_memory.json")
 SUBSCRIPTION_ID = "alerts-sub"
@@ -99,14 +99,8 @@ def listen_for_critical_alerts():
 # ─── PART 2: Scheduled deep scan ─────────────────────────────────────────────
 
 def _read_leads() -> list[dict]:
-    if not os.path.exists(DB_PATH):
-        return []
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.execute("SELECT * FROM leads ORDER BY created_at DESC")
-    cols = [c[0] for c in cursor.description]
-    leads = [dict(zip(cols, row)) for row in cursor.fetchall()]
-    conn.close()
-    return leads
+    result = db.table("leads").select("*").order("created_at", desc=True).execute()
+    return result.data or []
 
 
 def run_deep_scan() -> dict:
@@ -132,7 +126,7 @@ def run_deep_scan() -> dict:
 
     for lead in leads:
         try:
-            answers = json.loads(lead.get("answers") or "{}")
+            answers = lead.get("answers") or {}
             btype = (answers.get("business_type") or answers.get("intro", ""))[:80]
             budget = answers.get("marketing_budget") or answers.get("budget", "unknown")
             business_types.append(btype)
@@ -153,7 +147,7 @@ def run_deep_scan() -> dict:
     fee_mismatches = 0
     for lead in leads:
         try:
-            proposal = json.loads(lead.get("proposal") or "{}")
+            proposal = lead.get("proposal") or {}
             monthly = int(proposal.get("monthly_management_total") or 0)
             benefit = int(proposal.get("benefit_value") or 0)
             if monthly > 0 and benefit != monthly * 2:
