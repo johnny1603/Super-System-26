@@ -12,6 +12,7 @@ from datetime import datetime
 sys.path.append('/home/johnosaki94/super-system')
 from agents.onboarding_agent import run_full_onboarding
 from agents.master_agent import review_output
+from agents.monitor_agent import run_deep_scan
 from core.email_service import send_client_report, send_admin_alert
 
 app = FastAPI()
@@ -86,6 +87,14 @@ async def get_leads():
     leads = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
     conn.close()
     return {"leads": leads}
+
+@app.get("/api/monitor/scan")
+async def monitor_scan():
+    try:
+        report = run_deep_scan()
+        return {"success": True, "data": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
