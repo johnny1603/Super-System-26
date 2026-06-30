@@ -11,6 +11,7 @@ from datetime import datetime
 
 sys.path.append('/home/johnosaki94/super-system')
 from agents.onboarding_agent import run_full_onboarding
+from agents.master_agent import review_output
 from core.email_service import send_client_report, send_admin_alert
 
 app = FastAPI()
@@ -53,6 +54,7 @@ async def onboarding(req: OnboardingRequest):
     try:
         result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
+        review_output("proposal", proposal, req.answers)
 
         # שמירה ב-DB
         conn = sqlite3.connect('/home/johnosaki94/super-system/core/leads.db')
