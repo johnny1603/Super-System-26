@@ -14,6 +14,9 @@ validate_keys()
 from agents.onboarding_agent import run_full_onboarding
 from agents.master_agent import review_output
 from agents.monitor_agent import run_deep_scan
+from agents.architect_agent import (
+    is_agent_active, create_new_agent, suspend_agent, propose_agent_deletion
+)
 from core.email_service import send_client_report, send_admin_alert
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -44,7 +47,8 @@ async def onboarding(req: OnboardingRequest):
     try:
         result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
-        review_output("proposal", proposal, req.answers)
+        if is_agent_active("master_agent"):
+            review_output("proposal", proposal, req.answers)
 
         # שמירה ב-DB
         db.table("leads").insert({
@@ -74,11 +78,43 @@ async def get_leads():
 
 @app.get("/api/monitor/scan")
 async def monitor_scan():
+    if not is_agent_active("monitor_agent"):
+        return {"success": False, "skipped": True, "reason": "monitor_agent is suspended"}
     try:
         report = run_deep_scan()
         return {"success": True, "data": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreateAgentRequest(BaseModel):
+    need_description: str
+
+class SuspendAgentRequest(BaseModel):
+    agent_name: str
+    reason: str
+
+class ProposeDeleteRequest(BaseModel):
+    agent_name: str
+    reason: str
+
+@app.post("/api/architect/create")
+async def architect_create(req: CreateAgentRequest):
+    try:
+        result = create_new_agent(req.need_description)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/architect/suspend")
+async def architect_suspend(req: SuspendAgentRequest):
+    result = suspend_agent(req.agent_name, req.reason)
+    return {"success": True, "data": result}
+
+@app.post("/api/architect/propose-deletion")
+async def architect_propose_deletion(req: ProposeDeleteRequest):
+    result = propose_agent_deletion(req.agent_name, req.reason)
+    return {"success": True, "data": result}
 
 @app.get("/health")
 async def health():
