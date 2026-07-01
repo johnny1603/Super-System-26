@@ -17,6 +17,13 @@ from agents.monitor_agent import run_deep_scan
 from agents.architect_agent import (
     is_agent_active, create_new_agent, suspend_agent, propose_agent_deletion
 )
+from agents.client_agent import (
+    create_client, get_client, list_clients, update_client_status, complete_onboarding,
+    add_account, get_accounts,
+    assign_agent, get_client_agents, update_agent_status,
+    log_activity, get_activity,
+    log_communication, get_communications,
+)
 from core.email_service import send_client_report, send_admin_alert
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -115,6 +122,140 @@ async def architect_suspend(req: SuspendAgentRequest):
 async def architect_propose_deletion(req: ProposeDeleteRequest):
     result = propose_agent_deletion(req.agent_name, req.reason)
     return {"success": True, "data": result}
+
+# ─── Clients ──────────────────────────────────────────────────────────────────
+
+class CreateClientRequest(BaseModel):
+    name: str
+    email: str = ""
+    phone: str = ""
+    package: str = ""
+
+class UpdateStatusRequest(BaseModel):
+    status: str
+
+class AddAccountRequest(BaseModel):
+    platform: str
+    account_id: str = ""
+    access_token: str = ""
+    status: str = "active"
+
+class AssignAgentRequest(BaseModel):
+    agent_name: str
+
+class UpdateAgentStatusRequest(BaseModel):
+    agent_name: str
+    status: str
+
+class LogActivityRequest(BaseModel):
+    agent_name: str
+    action_type: str
+    details: dict = {}
+    result: dict = {}
+
+class LogCommunicationRequest(BaseModel):
+    direction: str
+    channel: str
+    content: str
+
+@app.post("/api/clients")
+async def api_create_client(req: CreateClientRequest):
+    try:
+        client = create_client(req.name, req.email, req.phone, req.package)
+        return {"success": True, "data": client}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients")
+async def api_list_clients(status: str = None):
+    try:
+        return {"success": True, "data": list_clients(status)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}")
+async def api_get_client(client_id: int):
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True, "data": client}
+
+@app.patch("/api/clients/{client_id}/status")
+async def api_update_client_status(client_id: int, req: UpdateStatusRequest):
+    try:
+        return {"success": True, "data": update_client_status(client_id, req.status)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clients/{client_id}/complete-onboarding")
+async def api_complete_onboarding(client_id: int):
+    try:
+        return {"success": True, "data": complete_onboarding(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clients/{client_id}/accounts")
+async def api_add_account(client_id: int, req: AddAccountRequest):
+    try:
+        return {"success": True, "data": add_account(client_id, req.platform, req.account_id, req.access_token, req.status)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}/accounts")
+async def api_get_accounts(client_id: int):
+    try:
+        return {"success": True, "data": get_accounts(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clients/{client_id}/agents")
+async def api_assign_agent(client_id: int, req: AssignAgentRequest):
+    try:
+        return {"success": True, "data": assign_agent(client_id, req.agent_name)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}/agents")
+async def api_get_client_agents(client_id: int):
+    try:
+        return {"success": True, "data": get_client_agents(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/clients/{client_id}/agents/status")
+async def api_update_agent_status(client_id: int, req: UpdateAgentStatusRequest):
+    try:
+        return {"success": True, "data": update_agent_status(client_id, req.agent_name, req.status)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clients/{client_id}/activity")
+async def api_log_activity(client_id: int, req: LogActivityRequest):
+    try:
+        return {"success": True, "data": log_activity(client_id, req.agent_name, req.action_type, req.details, req.result)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}/activity")
+async def api_get_activity(client_id: int, limit: int = 50):
+    try:
+        return {"success": True, "data": get_activity(client_id, limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clients/{client_id}/communications")
+async def api_log_communication(client_id: int, req: LogCommunicationRequest):
+    try:
+        return {"success": True, "data": log_communication(client_id, req.direction, req.channel, req.content)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}/communications")
+async def api_get_communications(client_id: int, limit: int = 50):
+    try:
+        return {"success": True, "data": get_communications(client_id, limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
