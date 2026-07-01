@@ -40,12 +40,27 @@ Return JSON only:
     raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
     return json.loads(raw).get("questions", [])
 
-def build_proposal(answers, api_key):
+def build_proposal(answers, api_key, empathy_analysis=None):
     client = anthropic.Anthropic(api_key=api_key)
     pricing_str = json.dumps(PRICING)
+
+    empathy_block = ""
+    if empathy_analysis:
+        empathy_block = f"""
+SALES INTELLIGENCE (use this to shape tone, not pricing):
+- Client profile: {empathy_analysis.get('client_profile', '')}
+- Sales approach: {empathy_analysis.get('sales_approach', '')}
+- Pricing framing: {empathy_analysis.get('pricing_framing', '')}
+
+Apply this intelligence to:
+- business_summary: match the tone and emphasis to this specific client
+- honest_note: address their actual fears and drivers, not a generic disclaimer
+- self_help_tips: relevant to their exact situation and sophistication level
+"""
+
     system = f"""You are a pricing manager for uallak, an Israeli marketing system for small and medium businesses.
 Pricing structure: {pricing_str}
-
+{empathy_block}
 CRITICAL RULES:
 - If budget is below 1000 NIS: set approved=false
 - benefit_value MUST equal monthly_management_total x 2 (two free months)
@@ -84,25 +99,35 @@ Return JSON only with this exact structure:
     return json.loads(raw)
 
 def run_full_onboarding(client_answers):
+    from agents.empathy_agent import analyze_client
+
     api_key = get_api_key()
-    
-    print("Generating dynamic questions...")
     intro = client_answers.get("intro", "")
+
+    print("Empathy read 1 - client intro...")
+    empathy_early = analyze_client({"intro": intro})
+
+    print("Generating dynamic questions...")
     dynamic_questions = get_dynamic_questions(intro, client_answers, api_key)
-    
+
+    print("Empathy read 2 - full conversation...")
+    empathy_final = analyze_client(client_answers)
+
     print("Building proposal...")
-    proposal = build_proposal(client_answers, api_key)
-    
+    proposal = build_proposal(client_answers, api_key, empathy_analysis=empathy_final)
+
     print("Running QA check 1 - numbers...")
     from agents.qa_agent import qa_check
     proposal = qa_check(proposal, client_answers)
-    
+
     print("Running QA check 2 - content...")
     from agents.qa_agent_content import qa_check_content
     proposal = qa_check_content(proposal, client_answers)
-    
+
     print("Done!")
     return {
         "dynamic_questions": dynamic_questions,
+        "empathy_early": empathy_early,
+        "empathy_final": empathy_final,
         "proposal": proposal
     }
