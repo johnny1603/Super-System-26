@@ -78,6 +78,8 @@ async def onboarding(req: OnboardingRequest):
 
         return {"success": True, "data": result}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/leads")
