@@ -110,6 +110,9 @@ let currentQ = 0;
 let answers = {};
 let multiSelected = [];
 let dynamicQsAdded = false;
+let proposalData = null;
+let checkoutStep = null;
+let checkoutName = null;
 
 function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
   const msgs = document.getElementById('messages');
@@ -177,6 +180,16 @@ function showTyping() {
 function hideTyping() { const t = document.getElementById('typing'); if(t) t.remove(); }
 
 function selectOption(opt, btn, grid) {
+  if (opt === "כן, מוכן להתחיל!") {
+    grid.querySelectorAll('.option-btn').forEach(b => { b.disabled=true; b.style.cursor='default'; });
+    addMessage(opt, 'user');
+    setTimeout(() => {
+      addMessage("מעולה! רק שני פרטים קצרים לפני שממשיכים 😊\n\nמה השם שלך?", 'bot');
+      checkoutStep = 'name';
+      document.getElementById('userInput').focus();
+    }, 600);
+    return;
+  }
   grid.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   setTimeout(() => {
@@ -207,6 +220,21 @@ function sendText() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+
+  if (checkoutStep === 'name') {
+    checkoutName = text;
+    addMessage(text, 'user');
+    checkoutStep = 'email';
+    setTimeout(() => { addMessage("ומה כתובת האימייל שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    return;
+  }
+  if (checkoutStep === 'email') {
+    addMessage(text, 'user');
+    checkoutStep = null;
+    startCheckout(checkoutName, text);
+    return;
+  }
+
   addMessage(text, 'user');
   answers[questions[currentQ].id] = text;
   currentQ++;
@@ -302,6 +330,7 @@ async function fetchProposal(answers) {
 }
 
 function displayProposal(data) {
+  proposalData = data;
   const p = data.proposal;
   if (!p.approved) {
     addMessage(`תודה שפנית אלינו 🙏\n\n${p.rejection_reason}\n\nאנחנו ממליצים לחזור אלינו כשהתנאים ישתנו — נשמח לעזור!`, 'bot');
@@ -311,6 +340,31 @@ function displayProposal(data) {
   const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}\n\n⚠️ רמת סיכון: ${risk}\n\n💰 עלות הקמה: ₪${p.setup_fee_total}\n📅 דמי ניהול חודשיים: ₪${p.monthly_management_total}\n🎁 ערך ההטבה שלך: ₪${p.benefit_value} (2 חודשי ניהול חינם!)\n\n🎯 יעדים ל-90 יום:\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
   addMessage(msg, 'bot');
   setTimeout(() => addMessage("רוצה להתקדם? לחץ כאן לתשלום והתחלת התהליך 🚀", 'bot', ["כן, מוכן להתחיל!", "יש לי עוד שאלות"]), 1500);
+}
+
+async function startCheckout(name, email) {
+  addMessage("רגע אחד, מכין את קישור התשלום שלך... 💳", 'bot');
+  try {
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        client_name: name,
+        client_email: email,
+        setup_fee_total: proposalData.proposal.setup_fee_total,
+        monthly_management_total: proposalData.proposal.monthly_management_total,
+      })
+    });
+    const data = await res.json();
+    if (data.success && data.data.approve_url) {
+      addMessage("הקישור מוכן! מעביר אותך לדף האישור של PayPal 🚀", 'bot');
+      setTimeout(() => { window.location.href = data.data.approve_url; }, 1200);
+    } else {
+      addMessage("אירעה שגיאה בהכנת התשלום — צור קשר בוואטסאפ 💬", 'bot');
+    }
+  } catch(e) {
+    addMessage("אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬", 'bot');
+  }
 }
 
 window.onload = () => setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);

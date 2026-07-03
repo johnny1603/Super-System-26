@@ -25,6 +25,7 @@ from agents.client_agent import (
     log_communication, get_communications,
 )
 from core.email_service import send_client_report, send_admin_alert
+from core.paypal_service import create_subscription
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -124,6 +125,42 @@ async def architect_suspend(req: SuspendAgentRequest):
 async def architect_propose_deletion(req: ProposeDeleteRequest):
     result = propose_agent_deletion(req.agent_name, req.reason)
     return {"success": True, "data": result}
+
+# ─── Checkout ─────────────────────────────────────────────────────────────────
+
+class CheckoutRequest(BaseModel):
+    client_name: str
+    client_email: str = ""
+    setup_fee_total: int = 0
+    monthly_management_total: int = 0
+
+@app.post("/api/checkout")
+async def checkout(req: CheckoutRequest):
+    try:
+        client = create_client(req.client_name, req.client_email)
+        client_id = client["id"]
+        update_client_status(client_id, "pending_payment")
+
+        subscription = create_subscription(
+            client_id=client_id,
+            plan_name="uallak ניהול חודשי",
+            amount=req.monthly_management_total,
+            currency="ILS",
+        )
+
+        log_activity(client_id, "paypal_service", "subscription_created", {
+            "setup_fee_total": req.setup_fee_total,
+            "monthly_management_total": req.monthly_management_total,
+        }, subscription)
+
+        return {"success": True, "data": {
+            "client_id": client_id,
+            "approve_url": subscription["approve_url"],
+            "subscription_id": subscription["subscription_id"],
+        }}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
