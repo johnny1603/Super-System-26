@@ -164,6 +164,8 @@ async def checkout(req: CheckoutRequest):
             "subscription_id": subscription["subscription_id"],
         }}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
