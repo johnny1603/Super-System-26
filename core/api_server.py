@@ -45,7 +45,6 @@ app.add_middleware(
 
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
-app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")
 
 class OnboardingRequest(BaseModel):
     answers: dict
@@ -339,3 +338,6 @@ async def filter_questions_endpoint(req: FilterRequest):
         print(f"Filter error: {e}")
         traceback.print_exc()
         return {"skip_ids": []}
+
+# Must be last — catch-all for the landing page
+app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")
