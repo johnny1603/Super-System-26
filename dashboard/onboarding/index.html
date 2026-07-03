@@ -135,7 +135,9 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
       const btn = document.createElement('button');
       btn.className = 'option-btn';
       btn.textContent = opt;
-      btn.onclick = () => selectOption(opt, btn, grid);
+      btn.onclick = () => (opt === 'אחר' || opt.startsWith('אחר'))
+        ? showOtherInput(btn, grid)
+        : selectOption(opt, btn, grid);
       grid.appendChild(btn);
     });
     bubble.appendChild(grid);
@@ -340,6 +342,48 @@ function displayProposal(data) {
   const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}\n\n⚠️ רמת סיכון: ${risk}\n\n💰 עלות הקמה: ₪${p.setup_fee_total}\n📅 דמי ניהול חודשיים: ₪${p.monthly_management_total}\n🎁 ערך ההטבה שלך: ₪${p.benefit_value} (2 חודשי ניהול חינם!)\n\n🎯 יעדים ל-90 יום:\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
   addMessage(msg, 'bot');
   setTimeout(() => addMessage("רוצה להתקדם? לחץ כאן לתשלום והתחלת התהליך 🚀", 'bot', ["כן, מוכן להתחיל!", "יש לי עוד שאלות"]), 1500);
+}
+
+function showOtherInput(btn, grid) {
+  grid.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; b.style.cursor = 'default'; });
+  btn.classList.add('selected');
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;width:100%;';
+
+  const label = document.createElement('span');
+  label.textContent = 'אחר:';
+  label.style.cssText = 'font-size:14px;color:#666;white-space:nowrap;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'chat-input';
+  input.style.cssText = 'flex:1;padding:8px 14px;font-size:14px;';
+  input.placeholder = 'הקלד את תשובתך...';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'send-btn';
+  confirmBtn.style.cssText = 'width:36px;height:36px;flex-shrink:0;';
+  confirmBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  const submit = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    wrapper.remove();
+    addMessage(text, 'user');
+    answers[questions[currentQ].id] = text;
+    currentQ++;
+    setTimeout(() => nextQuestion(), 700);
+  };
+
+  confirmBtn.onclick = submit;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+
+  wrapper.appendChild(label);
+  wrapper.appendChild(input);
+  wrapper.appendChild(confirmBtn);
+  grid.parentElement.appendChild(wrapper);
+  input.focus();
 }
 
 async function startCheckout(name, email) {

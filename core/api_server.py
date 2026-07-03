@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from supabase import create_client, Client
+from supabase import create_client as _supabase_create_client, Client
 
 from agents.keys_agent import inject_all_keys, validate_keys
 inject_all_keys()
@@ -29,10 +29,14 @@ from core.paypal_service import create_subscription
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-db: Client = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_SERVICE_KEY"],
-)
+try:
+    db: Client = _supabase_create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_SERVICE_KEY"],
+    )
+except Exception as _e:
+    print(f"FATAL: Supabase failed to initialize — {_e}")
+    raise
 
 app = FastAPI()
 
