@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uallak — העסק שלך יכול יותר</title>
+<meta name="description" content="מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7. איפיון חינם, בלי מחויבות, תוך 3 דקות.">
+<meta property="og:title" content="uallak — העסק שלך יכול יותר">
+<meta property="og:description" content="מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7. איפיון חינם, בלי מחויבות, תוך 3 דקות.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="he_IL">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="uallak — העסק שלך יכול יותר">
+<meta name="twitter:description" content="מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+
+:root {
+  --bg: #F7F4EF;
+  --ink: #1A1A1A;
+  --accent: #FF4C1F;
+  --yellow: #FFC93C;
+  --green: #00C96E;
+  --card: #FFFFFF;
+  --border: rgba(0,0,0,0.08);
+  --gray: #8A8A8A;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Heebo', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+
+/* ---------- NAV ---------- */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 6%;
+  background: rgba(247,244,239,0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-logo { font-size: 24px; font-weight: 900; letter-spacing: -1px; }
+.nav-logo span { color: var(--accent); }
+.nav-cta {
+  background: var(--ink);
+  color: var(--accent);
+  border: none;
+  padding: 12px 26px;
+  border-radius: 100px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.nav-cta:hover { background: var(--accent); color: white; transform: translateY(-2px); }
+
+/* ---------- HERO ---------- */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 100px 6% 60px;
+  overflow: hidden;
+}
+.orb-wrap { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+  animation: float 14s ease-in-out infinite;
+}
+.orb1 { width: 420px; height: 420px; background: var(--accent); top: -120px; right: -100px; animation-delay: 0s; }
+.orb2 { width: 340px; height: 340px; background: var(--yellow); bottom: -80px; left: -80px; animation-delay: -4s; }
+.orb3 { width: 280px; height: 280px; background: var(--green); top: 40%; left: 60%; animation-delay: -8s; }
+@keyframes float {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33% { transform: translate(-30px, 40px) scale(1.08); }
+  66% { transform: translate(30px, -30px) scale(0.95); }
+}
+.hero-content { position: relative; z-index: 2; max-width: 780px; }
+.hero h1 {
+  font-size: clamp(42px, 7vw, 78px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 24px;
+}
+.hero h1 .accent-line { color: var(--accent); }
+.hero p {
+  font-size: clamp(17px, 2vw, 21px);
+  color: #4a4a4a;
+  font-weight: 400;
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+.scroll-hint {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+}
+.scroll-line {
+  width: 1px;
+  height: 50px;
+  background: linear-gradient(to bottom, transparent, var(--ink));
+  animation: grow 2s ease-in-out infinite;
+  transform-origin: top;
+}
+.scroll-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce-dot 2s ease-in-out infinite;
+}
+@keyframes grow { 0%,100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+@keyframes bounce-dot { 0%,100% { transform: translateY(0); } 50% { transform: translateY(10px); } }
+
+/* ---------- REVEAL ---------- */
+.reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.8s ease, transform 0.8s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ---------- SECTION SHELL ---------- */
+section { padding: 110px 6%; }
+.section-head { text-align: center; max-width: 640px; margin: 0 auto 60px; }
+.eyebrow {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(255,76,31,0.1);
+  padding: 6px 16px;
+  border-radius: 100px;
+  margin-bottom: 18px;
+}
+.section-head h2 { font-size: clamp(30px, 4vw, 46px); font-weight: 900; letter-spacing: -1px; line-height: 1.15; }
+.section-head p { margin-top: 16px; color: #5a5a5a; font-size: 17px; line-height: 1.6; }
+
+/* ---------- PAIN POINTS ---------- */
+.pain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.pain-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px 26px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.pain-card:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.06); }
+.pain-emoji { font-size: 34px; margin-bottom: 18px; display: block; }
+.pain-card h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
+.pain-card p { font-size: 14.5px; color: #666; line-height: 1.6; margin-bottom: 16px; }
+.pain-tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 100px;
+}
+.tag-red { background: #FFE5E0; color: #C0341B; }
+.tag-amber { background: #FFF3D6; color: #A87200; }
+.tag-blue { background: #E3EEFF; color: #1E4FA0; }
+.tag-green { background: #DFF7EA; color: #0A8A50; }
+
+/* ---------- BEFORE/AFTER ---------- */
+.ba-wrap { background: var(--ink); border-radius: 32px; padding: 70px 6%; max-width: 1140px; margin: 0 auto; }
+.ba-wrap .section-head h2 { color: white; }
+.ba-wrap .section-head p { color: var(--accent); font-weight: 500; }
+.ba-flex { display: flex; align-items: center; gap: 48px; }
+.ba-text { flex: 0 0 320px; }
+.ba-text .section-head { margin: 0; max-width: none; text-align: right; }
+.ba-visual { flex: 1; min-width: 0; }
+@media (max-width: 760px) {
+  .ba-flex { flex-direction: column; gap: 32px; }
+  .ba-text { flex: none; width: 100%; }
+  .ba-text .section-head { text-align: center; }
+}
+.ba-slider {
+  position: relative;
+  width: 100%;
+  border-radius: 20px;
+  overflow: hidden;
+  user-select: none;
+  height: 440px;
+  cursor: ew-resize;
+}
+@media (max-width: 600px) {
+  .ba-slider { height: 500px; }
+}
+.ba-panel {
+  position: absolute; inset: 0;
+  padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+.ba-green { background: linear-gradient(135deg, #0a3d24, #052314); clip-path: inset(0 70% 0 0); }
+.ba-red { background: linear-gradient(135deg, #4a0d0d, #2b0505); clip-path: inset(0 0 0 30%); }
+.ba-label { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.ba-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35; color: rgba(255,255,255,0.92); padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.ba-row:last-child { border-bottom: none; }
+.ba-icon { width: 16px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+.ba-handle {
+  position: absolute; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--yellow);
+  box-shadow: 0 0 20px var(--yellow), 0 0 40px rgba(255,201,60,0.5);
+  left: 15%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ba-grip {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 44px; height: 44px;
+  background: var(--yellow);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+}
+.ba-hint { text-align: center; color: var(--accent); font-weight: 500; font-size: 13px; margin-top: 20px; }
+
+/* ---------- AUTOMATIONS ---------- */
+.auto-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  max-width: 1140px;
+  margin: 0 auto;
+}
+@media (max-width: 900px) { .auto-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .auto-grid { grid-template-columns: 1fr; } }
+.auto-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 26px 22px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.auto-card:hover { transform: translateY(-5px); box-shadow: 0 16px 32px rgba(0,0,0,0.06); }
+.auto-icon { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.auto-card h4 { font-size: 15.5px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
+.auto-card p { font-size: 13px; color: #6a6a6a; line-height: 1.55; }
+
+/* ---------- WHO FITS ---------- */
+.fit-wrap { background: var(--ink); border-radius: 32px; padding: 80px 6%; }
+.fit-wrap .section-head h2 { color: white; }
+.fit-wrap .section-head p { color: rgba(255,255,255,0.6); }
+.fit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  max-width: 1140px;
+  margin: 0 auto;
+}
+.fit-card {
+  border-radius: 20px;
+  padding: 30px 26px;
+  position: relative;
+  overflow: hidden;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.fit-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0.9;
+}
+.fit-1::before { background: linear-gradient(155deg, #3b1f6b, #1c0d38); }
+.fit-2::before { background: linear-gradient(155deg, #0d2a52, #061529); }
+.fit-3::before { background: linear-gradient(155deg, #5c1414, #2e0808); }
+.fit-4::before { background: linear-gradient(155deg, #0f4a2e, #062617); }
+.fit-5::before { background: linear-gradient(155deg, #5c1440, #2e0821); }
+.fit-6::before { background: linear-gradient(155deg, #1a3a5c, #0b1c2e); }
+.fit-emoji { font-size: 38px; position: relative; z-index: 1; margin-bottom: 14px; }
+.fit-card h3 { position: relative; z-index: 1; font-size: 19px; font-weight: 700; color: white; margin-bottom: 8px; }
+.fit-card p { position: relative; z-index: 1; font-size: 13.5px; color: rgba(255,255,255,0.7); line-height: 1.5; margin-bottom: 14px; }
+.fit-tags { position: relative; z-index: 1; display: flex; gap: 8px; flex-wrap: wrap; }
+.fit-tag { font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.12); padding: 4px 12px; border-radius: 100px; }
+
+/* ---------- COMMITMENT ---------- */
+.commit-box {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--accent);
+  border-radius: 32px;
+  padding: 70px 6%;
+  text-align: center;
+  color: white;
+}
+.commit-box h2 { font-size: clamp(26px, 3.6vw, 40px); font-weight: 900; line-height: 1.3; max-width: 640px; margin: 0 auto 40px; }
+.commit-stats { display: flex; justify-content: center; gap: 60px; flex-wrap: wrap; }
+.commit-stat-num { font-size: 42px; font-weight: 900; }
+.commit-stat-label { font-size: 13px; font-weight: 500; opacity: 0.85; margin-top: 4px; }
+
+/* ---------- FINAL CTA ---------- */
+.final-cta { text-align: center; padding-top: 40px; }
+.final-cta h2 { font-size: clamp(34px, 5vw, 56px); font-weight: 900; letter-spacing: -1px; line-height: 1.15; margin-bottom: 40px; }
+.final-cta h2 .accent-line { color: var(--accent); }
+.scarcity-box {
+  background: var(--ink);
+  color: white;
+  max-width: 480px;
+  margin: 0 auto 36px;
+  border-radius: 16px;
+  padding: 16px 24px;
+  font-size: 14.5px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.scarcity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); animation: bounce-dot 1.4s ease-in-out infinite; flex-shrink:0; }
+.scarcity-highlight { color: var(--accent); font-weight: 700; }
+
+/* ---------- FAQ ---------- */
+.faq-wrap { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.faq-item { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px 26px; }
+.faq-item h4 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
+.faq-item p { font-size: 14.5px; color: #666; line-height: 1.65; }
+.cta-time-hint { margin-top: 24px; font-size: 14px; color: var(--gray); }
+
+/* ---------- HOW IT WORKS ---------- */
+.steps-wrap { max-width: 680px; margin: 0 auto; position: relative; }
+.steps-wrap::before { content: ''; position: absolute; top: 22px; bottom: 22px; right: 21px; width: 2px; background: var(--border); }
+.step { position: relative; display: flex; gap: 20px; padding-bottom: 34px; }
+.step:last-child { padding-bottom: 0; }
+.step-num { position: relative; z-index: 1; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; flex-shrink: 0; }
+.step-content { flex: 1; padding-top: 6px; }
+.step-content h4 { font-size: 17px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.step-content p { font-size: 14.5px; color: #5a5a5a; line-height: 1.65; }
+.cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.btn-primary {
+  background: var(--ink);
+  color: white;
+  border: none;
+  padding: 18px 40px;
+  border-radius: 100px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+  animation: pulse-cta 2.6s ease-in-out infinite;
+}
+.btn-primary:hover { background: var(--accent); transform: translateY(-3px); box-shadow: 0 14px 28px rgba(255,76,31,0.3); animation: none; }
+@keyframes pulse-cta {
+  0%,100% { box-shadow: 0 0 0 0 rgba(255,76,31,0.28); }
+  50% { box-shadow: 0 0 0 12px rgba(255,76,31,0); }
+}
+.btn-whatsapp {
+  background: var(--green);
+  color: white;
+  border: none;
+  padding: 18px 34px;
+  border-radius: 100px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.25s;
+}
+.btn-whatsapp:hover { transform: translateY(-3px); box-shadow: 0 14px 28px rgba(0,201,110,0.3); }
+
+/* ---------- WHATSAPP FLOAT ---------- */
+.wa-float {
+  position: fixed;
+  bottom: 26px; left: 26px;
+  width: 58px; height: 58px;
+  background: var(--green);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 24px rgba(0,201,110,0.4);
+  cursor: pointer;
+  z-index: 200;
+  animation: pulse-wa 2.4s ease-in-out infinite;
+  text-decoration: none;
+}
+.scroll-float {
+  position: fixed;
+  bottom: 26px; right: 26px;
+  width: 50px; height: 50px;
+  background: var(--ink);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+  cursor: pointer;
+  z-index: 200;
+  border: none;
+  transition: background 0.25s;
+}
+.scroll-float:hover { background: var(--accent); }
+@keyframes pulse-wa {
+  0%,100% { box-shadow: 0 8px 24px rgba(0,201,110,0.4); }
+  50% { box-shadow: 0 8px 24px rgba(0,201,110,0.7), 0 0 0 8px rgba(0,201,110,0.12); }
+}
+
+/* ---------- ABOUT ---------- */
+.about-wrap { max-width: 760px; margin: 0 auto; text-align: center; }
+.about-wrap p.about-lead { font-size: 18px; line-height: 1.85; color: #3a3a3a; margin-bottom: 28px; }
+.about-wrap p.about-lead strong { color: var(--ink); }
+.honesty-box {
+  position: relative;
+  text-align: right;
+  border-radius: 20px;
+  padding: 2px;
+  margin-bottom: 44px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.honesty-box::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(from 0deg, var(--accent), var(--yellow), var(--green), var(--accent));
+  animation: spin-border 5s linear infinite;
+  z-index: -1;
+}
+.honesty-inner {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 26px 30px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+@keyframes spin-border { to { transform: rotate(360deg); } }
+.honesty-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--yellow));
+  display: flex; align-items: center; justify-content: center;
+  animation: sparkle-pulse 2.2s ease-in-out infinite;
+}
+@keyframes sparkle-pulse {
+  0%,100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.12) rotate(8deg); }
+}
+.honesty-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.honesty-title { font-size: 16.5px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.honesty-text { font-size: 14.5px; line-height: 1.65; color: #555; }
+.about-pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 760px; margin: 0 auto; }
+@media (max-width: 640px) { .about-pillars { grid-template-columns: 1fr; } }
+.pillar { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px 20px; }
+.pillar-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,76,31,0.1); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+.pillar h4 { font-size: 15.5px; font-weight: 700; margin-bottom: 8px; }
+.pillar p { font-size: 13.5px; color: #6a6a6a; line-height: 1.55; }
+
+footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-size: 13.5px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">u<span>allak</span></div>
+  <button class="nav-cta" onclick="location.href='/login'">התחברות</button>
+</nav>
+
+<section class="hero">
+  <div class="orb-wrap" id="orbWrap1"><div class="orb orb1"></div></div>
+  <div class="orb-wrap" id="orbWrap2"><div class="orb orb2"></div></div>
+  <div class="orb-wrap" id="orbWrap3"><div class="orb orb3"></div></div>
+  <div class="hero-content">
+    <h1>העסק שלך<br><span class="accent-line">יכול יותר.</span></h1>
+    <p>מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.</p>
+  </div>
+  <div class="scroll-hint">
+    <div class="scroll-line"></div>
+    <div class="scroll-dot"></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">מוכר לך?</div>
+    <h2>אנחנו מבינים את הקושי שלך</h2>
+    <p>עסקים קטנים ובינוניים נתקלים באותם קירות, שוב ושוב</p>
+  </div>
+  <div class="pain-grid">
+    <div class="pain-card reveal">
+      <span class="pain-emoji">🌱</span>
+      <h3>עסק שרק התחיל</h3>
+      <p>יש מוצר או שירות טוב, אבל אף אחד לא יודע שהעסק קיים. אין תקציב לטעויות.</p>
+      <span class="pain-tag tag-blue">התחלה</span>
+    </div>
+    <div class="pain-card reveal">
+      <span class="pain-emoji">📉</span>
+      <h3>עסק שמדשדש</h3>
+      <p>היה טוב, ועכשיו התנועה יורדת. לא תמיד ברור מה השתנה ואיך לתקן.</p>
+      <span class="pain-tag tag-amber">קיים</span>
+    </div>
+    <div class="pain-card reveal">
+      <span class="pain-emoji">💸</span>
+      <h3>משלם ולא מקבל</h3>
+      <p>כבר היה ניסיון עם משרד פרסום או פרילנסר. שולם כסף, והתוצאה האמיתית לא הגיעה.</p>
+      <span class="pain-tag tag-red">נכווה בעבר</span>
+    </div>
+    <div class="pain-card reveal">
+      <span class="pain-emoji">📦</span>
+      <h3>מוצר טוב בלי לקוחות</h3>
+      <p>ברור שמה שנמכר כאן שווה — אבל השיווק פשוט לא קורה.</p>
+      <span class="pain-tag tag-green">פוטנציאל</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="ba-wrap reveal">
+    <div class="ba-flex">
+      <div class="ba-text">
+        <div class="section-head">
+          <div class="eyebrow">השינוי</div>
+          <h2>לפני ואחרי uallak</h2>
+          <p>גרור את הקו ותראה את ההבדל</p>
+        </div>
+      </div>
+      <div class="ba-visual">
+        <div class="ba-slider" id="baSlider">
+          <div class="ba-panel ba-green">
+            <div class="ba-label">אחרי</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>נוכחות פעילה ועקבית</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>עלות ליד מדודה ומותאמת</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>תגובה ללידים תוך דקות</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>תוכן שמתפרסם כל חודש</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>קמפיינים שמתכווננים לבד</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>נראות דיגיטלית חזקה</div>
+            <div class="ba-row"><span class="ba-icon">✓</span>דוח שקוף כל שבוע</div>
+          </div>
+          <div class="ba-panel ba-red">
+            <div class="ba-label">לפני</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>רשתות חברתיות שקטות</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>עלות ליד גבוהה ולא ברורה</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>תגובה ללידים תוך ימים</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>אין תוכן חודשי קבוע</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>קמפיינים שלא מתעדכנים</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>נראות דיגיטלית חלשה</div>
+            <div class="ba-row"><span class="ba-icon">✕</span>אין מעקב או נתונים</div>
+          </div>
+          <div class="ba-handle" id="baHandle" style="left:30%">
+            <div class="ba-grip">⇔</div>
+          </div>
+        </div>
+        <div class="ba-hint">גרור ימינה כדי לראות מה אפשרי →</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">איך זה עובד</div>
+    <h2>מהרגע שנרשמים ועד שהעסק מתקדם</h2>
+  </div>
+  <div class="steps-wrap">
+    <div class="step reveal">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>איפיון מעמיק</h4>
+        <p>צ'אט דינמי לחלוטין, שמכיר לעומק את העסק ואת מי שמאחוריו — ובונה הצעה מדויקת עם יעדים ברורים ש-uallak מתחייבת אליהם.</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>בחירת מסלול</h4>
+        <p>בוחרים את המסלול שהכי מתאים לצרכים החשובים ל-3 החודשים הקרובים, והמערכת מציבה יעדים ברורים שהיא אמורה להגיע אליהם עד תום התקופה.</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>הרשאות ראשוניות</h4>
+        <p>לאחר ההרשמה יושבים עם המערכת בפעם הראשונה, כדי לתת לה את ההרשאות הנדרשות מול המערכות השונות כדי שתוכל לפעול עצמאית.</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <h4>המערכת פועלת — בשקיפות מלאה</h4>
+        <p>מהרגע הזה המערכת רצה, ואתם רואים הכל — כל פעולה, כל תוצאה — בזמן אמת דרך הדשבורד.</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <h4>תקשורת שוטפת</h4>
+        <p>צ'אט קבוע לתקשורת מול הצוות שמקדם את העסק, ותמיכה מהירה בוואטסאפ לכל שאלה שעולה בדרך.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">מה קורה מאחורי הקלעים</div>
+    <h2>המערכת עובדת בשבילך 24/7</h2>
+    <p>צבא של אוטומציות שרצות ברקע ודואגות לעסק שלך — כמו עובד נוסף שלא ישן ולא לוקח חופש</p>
+  </div>
+  <div class="auto-grid">
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#FF4C1F,#FF8A5C)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <h4>תגובה ללידים</h4>
+      <p>וואטסאפ, אינסטגרם, טופס באתר — כל פנייה מקבלת מענה תוך דקות, גם ב-3 בלילה.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#FFC93C,#FFE08A)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <h4>תוכן שמתפרסם לבד</h4>
+      <p>פוסטים, רילסים, סטוריז, כתבות ותוכן לטיקטוק — הכל נכתב, מתוזמן ומתפרסם לבד.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#00C96E,#5CE0A0)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 3v18h18M18 9l-5 5-4-4-4 4"/></svg>
+      </div>
+      <h4>קמפיינים שמתכווננים</h4>
+      <p>בגוגל, מטא וטיקטוק — תקציב, קהלים ומודעות מתעדכנים אוטומטית לפי מה שבאמת עובד.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#378ADD,#7FB8F5)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+      </div>
+      <h4>דוח שבועי</h4>
+      <p>לידים, עלויות, המרות והשוואה לשבוע שעבר — סיכום ברור, בלי ז'רגון שאין צורך להבין.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#D4537E,#F0A0C0)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <h4>התראות בזמן אמת</h4>
+      <p>ליד חם, תקציב שנגמר, ביקורת שדורשת מענה — הידיעה מגיעה מיד, לא בעוד שבוע.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#7F77DD,#B0AAF0)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
+      </div>
+      <h4>אתר שמתעדכן</h4>
+      <p>עמודים חדשים, תוכן עונתי, קישורים שבורים שמתוקנים — בלי לגעת בקוד בכלל.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#639922,#A0CC66)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 22c6-3 9-7 9-13V5l-9-3-9 3v4c0 6 3 10 9 13z"/></svg>
+      </div>
+      <h4>תוכן אורגני ו-SEO</h4>
+      <p>מילות מפתח, בלוג ו-Google Business שבונים נראות אמיתית, בלי לשלם על כל קליק.</p>
+    </div>
+    <div class="auto-card reveal">
+      <div class="auto-icon" style="background:linear-gradient(135deg,#1D9E75,#5DCAA5)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      </div>
+      <h4>אוטומציות בין מערכות</h4>
+      <p>CRM, וואטסאפ, מייל ויומן — כל הכלים מדברים אחד עם השני, בלי עבודה ידנית.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="fit-wrap reveal">
+    <div class="section-head">
+      <div class="eyebrow">למי זה מתאים</div>
+      <h2>עובדים עם כל סוג עסק</h2>
+      <p>המערכת מתאימה את עצמה לתחום שלך</p>
+    </div>
+    <div class="fit-grid">
+      <div class="fit-card fit-1">
+        <span class="fit-emoji">👗</span>
+        <h3>חנויות אופנה</h3>
+        <p>קמפיינים ויזואליים שהופכים גלילה לרכישה, וקטלוג שממשיך למכור גם כשישנים.</p>
+        <div class="fit-tags"><span class="fit-tag">קטלוג</span><span class="fit-tag">אינסטגרם</span><span class="fit-tag">מכירות אונליין</span></div>
+      </div>
+      <div class="fit-card fit-2">
+        <span class="fit-emoji">⚖️</span>
+        <h3>עורכי דין</h3>
+        <p>נוכחות שמשדרת רצינות עוד לפני הפגישה הראשונה, וטופס לידים שמסנן פניות רציניות.</p>
+        <div class="fit-tags"><span class="fit-tag">אמינות</span><span class="fit-tag">SEO</span><span class="fit-tag">לידים איכותיים</span></div>
+      </div>
+      <div class="fit-card fit-3">
+        <span class="fit-emoji">🍝</span>
+        <h3>מסעדות</h3>
+        <p>תוכן שגורם לרצות להגיע, ומערכת הזמנות ששומרת על שולחנות מלאים כל ערב.</p>
+        <div class="fit-tags"><span class="fit-tag">לוקאלי</span><span class="fit-tag">תוכן</span><span class="fit-tag">Google Business</span></div>
+      </div>
+      <div class="fit-card fit-4">
+        <span class="fit-emoji">🛒</span>
+        <h3>מסחר ומכירות</h3>
+        <p>קמפיינים ממוקדי המרה שמדברים בשפת המספרים, לא בשפת הלייקים.</p>
+        <div class="fit-tags"><span class="fit-tag">המרות</span><span class="fit-tag">Google Ads</span><span class="fit-tag">רימרקטינג</span></div>
+      </div>
+      <div class="fit-card fit-5">
+        <span class="fit-emoji">💅</span>
+        <h3>יופי וטיפוח</h3>
+        <p>ויזואליה שממלאת יומן תורים, ותזכורות אוטומטיות שמונעות ביטולים ברגע האחרון.</p>
+        <div class="fit-tags"><span class="fit-tag">ויזואל</span><span class="fit-tag">לידים</span><span class="fit-tag">ניהול תורים</span></div>
+      </div>
+      <div class="fit-card fit-6">
+        <span class="fit-emoji">🛠️</span>
+        <h3>נותני שירותים</h3>
+        <p>מיתוג שהופך מומחיות לעסק שמוצאים ובוחרים, גם בלי המלצה אישית.</p>
+        <div class="fit-tags"><span class="fit-tag">מיתוג</span><span class="fit-tag">אורגני</span><span class="fit-tag">תדמית מקצועית</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">מי אנחנו</div>
+    <h2>הבית לעסקים קטנים ובינוניים</h2>
+  </div>
+  <div class="about-wrap reveal">
+    <p class="about-lead">
+      uallak לא נולדה כדי להיות עוד משרד פרסום. היא נולדה מתוך אמונה אחת פשוטה —
+      <strong>שלכל עסק, קטן כגדול, מגיע שיווק ומעטפת ברמה של חברה גדולה</strong>, בלי המחירים המנופחים ובלי להרגיש כמו לקוח מספר 47 בתור.
+      אנחנו בונים את המערכת הזו כדי להיות בדיוק זה — הבית שבו מבינים את העסק שלך לעומק, דואגים לו כאילו הוא שלנו, ונמצאים לצידך גם בימים הטובים וגם בפחות טובים.
+      <br><small style="font-size:12.5px; color:#999;">(כן, גם בלי הבירוקרטיה.)</small>
+    </p>
+    <div class="honesty-box reveal">
+      <div class="honesty-inner">
+        <span class="honesty-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 2l2.4 7.2H22l-6 4.4 2.4 7.2L12 16.4 5.6 20.8 8 13.6 2 9.2h7.6z"/></svg>
+        </span>
+        <div>
+          <span class="honesty-badge">✦ הזדמנות</span>
+          <p class="honesty-title">הזמן הכי טוב להצטרף הוא עכשיו</p>
+          <p class="honesty-text">uallak בנויה על הטכנולוגיה העדכנית ביותר שקיימת היום. עסקים שמצטרפים בשלב הזה נהנים מהטבות והזדמנויות שלא בטוח שיחזרו בהמשך.</p>
+        </div>
+      </div>
+    </div>
+    <div class="about-pillars">
+      <div class="pillar">
+        <div class="pillar-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <h4>שקיפות מלאה</h4>
+        <p>תמיד ברור מה קורה, למה, ומה זה עושה לעסק.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <h4>ליווי אישי</h4>
+        <p>תמיד יש עם מי לדבר, גם כשמשהו לא הולך כמתוכנן.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h4>טכנולוגיה שעובדת בשבילך</h4>
+        <p>מערכת שרצה ברקע ומביאה תוצאות, לא רק הבטחות.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-bottom:40px;">
+  <div class="commit-box reveal">
+    <h2>אם לא הגענו ליעד — אין תשלום דמי ניהול. נקודה.</h2>
+    <div class="commit-stats">
+      <div><div class="commit-stat-num">72h</div><div class="commit-stat-label">זמן תגובה ראשוני</div></div>
+      <div><div class="commit-stat-num">24/7</div><div class="commit-stat-label">המערכת פעילה</div></div>
+      <div><div class="commit-stat-num">100%</div><div class="commit-stat-label">שקיפות בדוחות</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">שאלות שכדאי לענות עליהן</div>
+    <h2>לפני שמתחילים</h2>
+  </div>
+  <div class="faq-wrap">
+    <div class="faq-item reveal">
+      <h4>כמה זמן לוקח לראות תוצאות?</h4>
+      <p>איפיון ראשוני עם תכנית עבודה מותאמת מוכן תוך 72 שעות. תוצאות בשטח תלויות בתחום ובתקציב, ונדבר על זה בכנות כבר בשיחה הראשונה.</p>
+    </div>
+    <div class="faq-item reveal">
+      <h4>אני לא מבין כלום בשיווק דיגיטלי — זו בעיה?</h4>
+      <p>ממש לא. זו בדיוק הסיבה שuallak קיימת. המערכת מסבירה הכל בשפה פשוטה, ולא מצפים שתדע מונחים או תבין קמפיינים.</p>
+    </div>
+    <div class="faq-item reveal">
+      <h4>מה אם זה לא יעבוד לי?</h4>
+      <p>אם לא הגענו ליעד שסיכמנו — אין תשלום דמי ניהול. זו לא סיסמת שיווק, זו התחייבות אמיתית.</p>
+    </div>
+    <div class="faq-item reveal">
+      <h4>נותנים גישה לחשבונות שלי — זה בטוח?</h4>
+      <p>ההרשאות מוגבלות בדיוק למה שנדרש כדי לעבוד, אפשר לבטל אותן בכל רגע, וכל פעולה שקורה נגישה לצפייה בדשבורד — בלי הפתעות.</p>
+    </div>
+    <div class="faq-item reveal">
+      <h4>יש התחייבות לתקופה ארוכה?</h4>
+      <p>לא. המטרה שתישאר כי זה עובד, לא כי חתמת על משהו שקשה לצאת ממנו.</p>
+    </div>
+  </div>
+</section>
+
+<section class="final-cta">
+  <h2>אז למה עוד<br><span class="accent-line">מחכה?</span></h2>
+  <div class="scarcity-box reveal">
+    <span class="scarcity-dot"></span>
+    <span>הטבה בלעדית לנרשמים מהאתר — <span class="scarcity-highlight">מוגבל ל-20 עסקים בחודש</span></span>
+  </div>
+  <div class="cta-buttons reveal">
+    <button class="btn-primary" onclick="location.href='/chat/'">להתחלת איפיון מקצועי לעסק שלך</button>
+    <a class="btn-whatsapp" href="https://wa.me/972504493725" target="_blank">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3zM12 19.5a7.4 7.4 0 0 1-3.8-1l-.3-.2-2.5.9.9-2.4-.2-.3A7.5 7.5 0 1 1 12 19.5zm4.1-5.6c-.2-.1-1.3-.6-1.5-.7s-.4-.1-.5.1-.5.7-.7.8-.3.2-.5.1a6.1 6.1 0 0 1-1.8-1.1 6.7 6.7 0 0 1-1.2-1.5c-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4a.5.5 0 0 0 0-.5c0-.1-.5-1.2-.7-1.7s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.6 10.6 0 0 0 4 3.6c1.4.6 1.9.6 2.6.5a2.2 2.2 0 0 0 1.5-1 1.8 1.8 0 0 0 .1-1c-.1-.2-.2-.2-.4-.3z"/></svg>
+      דבר איתנו בוואטסאפ
+    </a>
+  </div>
+</section>
+
+<footer>© uallak — כל הזכויות שמורות &nbsp;·&nbsp; <a href="/terms" style="color:inherit; text-decoration:underline;">תקנון uallak</a></footer>
+
+<a class="wa-float" href="https://wa.me/972504493725" target="_blank" aria-label="WhatsApp">
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3zM12 19.5a7.4 7.4 0 0 1-3.8-1l-.3-.2-2.5.9.9-2.4-.2-.3A7.5 7.5 0 1 1 12 19.5zm4.1-5.6c-.2-.1-1.3-.6-1.5-.7s-.4-.1-.5.1-.5.7-.7.8-.3.2-.5.1a6.1 6.1 0 0 1-1.8-1.1 6.7 6.7 0 0 1-1.2-1.5c-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4a.5.5 0 0 0 0-.5c0-.1-.5-1.2-.7-1.7s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.6 10.6 0 0 0 4 3.6c1.4.6 1.9.6 2.6.5a2.2 2.2 0 0 0 1.5-1 1.8 1.8 0 0 0 .1-1c-.1-.2-.2-.2-.4-.3z"/></svg>
+</a>
+
+<button class="scroll-float" id="scrollFloat" aria-label="גלילה">
+  <svg id="scrollFloatIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+</button>
+
+<script>
+// Hero orbs — mouse/finger-follow parallax, scoped only to the hero section
+(function() {
+  const heroEl = document.querySelector('.hero');
+  const orbWraps = [
+    { el: document.getElementById('orbWrap1'), factor: 55 },
+    { el: document.getElementById('orbWrap2'), factor: 38 },
+    { el: document.getElementById('orbWrap3'), factor: 85 }
+  ];
+  let targetX = 0, targetY = 0, curX = 0, curY = 0;
+
+  function setTarget(clientX, clientY) {
+    const rect = heroEl.getBoundingClientRect();
+    targetX = ((clientX - rect.left) / rect.width - 0.5) * 2;
+    targetY = ((clientY - rect.top) / rect.height - 0.5) * 2;
+  }
+  function reset() { targetX = 0; targetY = 0; }
+
+  heroEl.addEventListener('mousemove', (e) => setTarget(e.clientX, e.clientY));
+  heroEl.addEventListener('mouseleave', reset);
+  heroEl.addEventListener('touchmove', (e) => {
+    if (e.touches[0]) setTarget(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  heroEl.addEventListener('touchend', reset);
+
+  function animateOrbs() {
+    curX += (targetX - curX) * 0.07;
+    curY += (targetY - curY) * 0.07;
+    orbWraps.forEach(o => {
+      o.el.style.transform = `translate(${curX * o.factor}px, ${curY * o.factor}px)`;
+    });
+    requestAnimationFrame(animateOrbs);
+  }
+  animateOrbs();
+})();
+
+// Reveal on scroll
+const revealEls = document.querySelectorAll('.reveal');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15 });
+revealEls.forEach(el => io.observe(el));
+
+// Before/After drag slider
+const slider = document.getElementById('baSlider');
+const handle = document.getElementById('baHandle');
+const greenPanel = document.querySelector('.ba-green');
+const redPanel = document.querySelector('.ba-red');
+let dragging = false;
+
+function setPosition(clientX) {
+  const rect = slider.getBoundingClientRect();
+  let pct = ((clientX - rect.left) / rect.width) * 100;
+  pct = Math.max(4, Math.min(96, pct));
+  greenPanel.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
+  redPanel.style.clipPath = `inset(0 0 0 ${pct}%)`;
+  handle.style.left = pct + '%';
+}
+
+slider.addEventListener('mousedown', (e) => { dragging = true; setPosition(e.clientX); });
+window.addEventListener('mousemove', (e) => { if (dragging) setPosition(e.clientX); });
+window.addEventListener('mouseup', () => dragging = false);
+
+slider.addEventListener('touchstart', (e) => { dragging = true; setPosition(e.touches[0].clientX); });
+window.addEventListener('touchmove', (e) => { if (dragging) setPosition(e.touches[0].clientX); });
+window.addEventListener('touchend', () => dragging = false);
+
+// Scroll float button — toggles between "go to bottom" and "back to top"
+const scrollBtn = document.getElementById('scrollFloat');
+const scrollIcon = document.getElementById('scrollFloatIcon');
+const DOWN_ICON = '<path d="M12 5v14M19 12l-7 7-7-7"/>';
+const UP_ICON = '<path d="M12 19V5M5 12l7-7 7 7"/>';
+
+function updateScrollFloat() {
+  const scrolled = window.scrollY;
+  const max = document.body.scrollHeight - window.innerHeight;
+  const isPastHalf = max > 0 && scrolled > max * 0.5;
+  scrollBtn.dataset.mode = isPastHalf ? 'up' : 'down';
+  scrollIcon.innerHTML = isPastHalf ? UP_ICON : DOWN_ICON;
+}
+
+scrollBtn.addEventListener('click', () => {
+  if (scrollBtn.dataset.mode === 'up') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }
+});
+
+window.addEventListener('scroll', updateScrollFloat);
+updateScrollFloat();
+
+</script>
+
+</body>
+</html>
