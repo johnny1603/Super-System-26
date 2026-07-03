@@ -27,13 +27,20 @@ Be specific to THIS client's actual words, not generic sales advice.
 }"""
 
 
+_FALLBACK = {"client_profile": "", "sales_approach": "", "pricing_framing": ""}
+
 def analyze_client(conversation_so_far: dict) -> dict:
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1000,
+        max_tokens=2000,
         system=SYSTEM,
         messages=[{"role": "user", "content":
             f"Everything the client has said so far:\n{json.dumps(conversation_so_far, ensure_ascii=False, indent=2)}"}]
     )
     raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    print(f"[empathy_agent] raw response: {raw}")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"[empathy_agent] JSON parse failed ({e}) — using fallback")
+        return _FALLBACK
