@@ -1,9 +1,6 @@
 import json
-import os
 
-from anthropic import Anthropic
-
-client = Anthropic()
+from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
 SYSTEM = """You are a sales intelligence analyst for uallak, an Israeli marketing agency.
 Your job is NOT therapy. Your job is to read a client's words and tell the sales team
@@ -20,27 +17,23 @@ Study everything the client has said. Read between the lines:
 Return JSON only with these three keys. All values are free-text — no fixed categories.
 Be specific to THIS client's actual words, not generic sales advice.
 
+STRICT LENGTH LIMIT: each value must be 2-4 sentences MAX. Actionable instructions only —
+no analysis paragraphs, no restating context, no hedging. Get straight to what the sales
+team should do or say.
+
 {
-  "client_profile": "Who is this person — their situation, what drives them, what worries them, how they see themselves and their business. Reference specific things they said.",
-  "sales_approach": "Concrete instructions for how to approach this specific client to close the deal. What to lead with. What tone. What to avoid. What will make them feel safe signing.",
-  "pricing_framing": "Exactly how to present the price to THIS client. What angle (ROI? risk reduction? comparison? investment?). What to emphasize. What NOT to say. What number to anchor on first."
+  "client_profile": "2-4 sentences: who this person is, what drives them, what worries them. Reference specific things they said.",
+  "sales_approach": "2-4 sentences: concrete instructions for how to approach this client. What to lead with, what tone, what to avoid.",
+  "pricing_framing": "2-4 sentences: exactly how to present the price. What angle, what to emphasize, what number to anchor on first."
 }"""
 
 
 _FALLBACK = {"client_profile": "", "sales_approach": "", "pricing_framing": ""}
 
 def analyze_client(conversation_so_far: dict) -> dict:
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system=SYSTEM,
-        messages=[{"role": "user", "content":
-            f"Everything the client has said so far:\n{json.dumps(conversation_so_far, ensure_ascii=False, indent=2)}"}]
-    )
-    raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    print(f"[empathy_agent] raw response: {raw}")
+    user_message = f"Everything the client has said so far:\n{json.dumps(conversation_so_far, ensure_ascii=False, indent=2)}"
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"[empathy_agent] JSON parse failed ({e}) — using fallback")
+        return safe_claude_json_call(SYSTEM, user_message, max_tokens=600)
+    except ClaudeJSONError as e:
+        print(f"[empathy_agent] {e} — using fallback")
         return _FALLBACK

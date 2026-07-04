@@ -1,10 +1,8 @@
-import anthropic
 import json
-import os
+
+from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
 def qa_check_content(proposal, answers):
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-    
     system = """You are a content QA agent for uallak marketing system.
 Check the proposal for quality issues and return the corrected version.
 Rules:
@@ -16,25 +14,12 @@ Rules:
 
 IMPORTANT: Return ONLY a valid JSON object. No markdown, no backticks, no explanation. Just the JSON."""
 
+    user_message = f"Check and fix this proposal. Return JSON only:\n{json.dumps(proposal)}\n\nClient budget: {answers.get('marketing_budget')}, goal: {answers.get('main_goal')}"
+
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
-            system=system,
-            messages=[{"role": "user", "content": f"Check and fix this proposal. Return JSON only:\n{json.dumps(proposal)}\n\nClient budget: {answers.get('marketing_budget')}, goal: {answers.get('main_goal')}"}]
-        )
-        raw = response.content[0].text.strip()
-        
-        # נקה את הטקסט
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-        
-        corrected = json.loads(raw)
+        corrected = safe_claude_json_call(system, user_message, max_tokens=2000)
         print("QA Agent 2: Content verified")
         return corrected
-    except Exception as e:
+    except ClaudeJSONError as e:
         print(f"QA Agent 2: Minor issue ({e}), returning original")
         return proposal

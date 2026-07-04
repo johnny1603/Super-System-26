@@ -1,6 +1,8 @@
-import anthropic
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
+
+from core.claude_json import safe_claude_json_call
 
 PRICING = {
     "google": {"setup": 300, "monthly_management": 250, "high_budget_pct": 0.05, "high_budget_threshold": 15000},
@@ -19,7 +21,6 @@ def get_api_key():
     return os.environ.get("ANTHROPIC_API_KEY", "")
 
 def get_dynamic_questions(client_intro, answers, api_key):
-    client = anthropic.Anthropic(api_key=api_key)
     system = """You are a business profiling expert for uallak marketing system.
 Based on what the client described, generate 2-3 dynamic follow-up questions in Hebrew.
 Rules:
@@ -31,17 +32,11 @@ Rules:
 Return JSON only:
 {"questions": [{"id": "dynamic_1", "text": "question in Hebrew", "type": "choice", "options": ["option1", "option2", "משהו אחר - ספר לי"]}]}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1000,
-        system=system,
-        messages=[{"role": "user", "content": f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers)}"}]
-    )
-    raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw).get("questions", [])
+    user_message = f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers)}"
+    result = safe_claude_json_call(system, user_message, max_tokens=1000, api_key=api_key)
+    return result.get("questions", [])
 
 def build_proposal(answers, api_key, empathy_analysis=None):
-    client = anthropic.Anthropic(api_key=api_key)
     pricing_str = json.dumps(PRICING)
 
     empathy_block = ""
@@ -89,14 +84,8 @@ Return JSON only with this exact structure:
   "benefit_value": 0
 }}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": f"Client data: {json.dumps(answers)}"}]
-    )
-    raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    user_message = f"Client data: {json.dumps(answers)}"
+    return safe_claude_json_call(system, user_message, max_tokens=2000, api_key=api_key)
 
 def run_full_onboarding(client_answers):
     from agents.empathy_agent import analyze_client
@@ -104,11 +93,12 @@ def run_full_onboarding(client_answers):
     api_key = get_api_key()
     intro = client_answers.get("intro", "")
 
-    print("Empathy read 1 - client intro...")
-    empathy_early = analyze_client({"intro": intro})
-
-    print("Generating dynamic questions...")
-    dynamic_questions = get_dynamic_questions(intro, client_answers, api_key)
+    print("Empathy read 1 + dynamic questions (parallel)...")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        empathy_early_future = executor.submit(analyze_client, {"intro": intro})
+        dynamic_questions_future = executor.submit(get_dynamic_questions, intro, client_answers, api_key)
+        empathy_early = empathy_early_future.result()
+        dynamic_questions = dynamic_questions_future.result()
 
     print("Empathy read 2 - full conversation...")
     empathy_final = analyze_client(client_answers)
