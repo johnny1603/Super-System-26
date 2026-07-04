@@ -12,7 +12,7 @@ inject_all_keys()
 validate_keys()
 
 from agents.onboarding_agent import run_full_onboarding
-from agents.master_agent import review_output
+from agents.master_agent import alert
 from agents.monitor_agent import run_deep_scan
 from agents.architect_agent import (
     is_agent_active, create_new_agent, suspend_agent, propose_agent_deletion
@@ -60,8 +60,9 @@ async def onboarding(req: OnboardingRequest):
     try:
         result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
-        if is_agent_active("master_agent"):
-            review_output("proposal", proposal, req.answers)
+        review = result.get("review", {})
+        if is_agent_active("master_agent") and not review.get("approved", True):
+            alert("proposal", review.get("issues", []))
 
         # שמירה ב-DB
         db.table("leads").insert({

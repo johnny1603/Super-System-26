@@ -13,6 +13,7 @@ PRICING = {
     "automation": {"setup": 500, "monthly_management": 0},
     "website": {"setup_min": 700, "setup_max": 2000, "profit_margin": 0.35},
     "raffle": {"setup_and_management": 250},
+    "base_onboarding_fee": 300,
     "min_budget": 1000,
     "benefit_months": 2
 }
@@ -65,6 +66,14 @@ CRITICAL RULES:
 - SEO takes 6+ months for results - always mention this
 - self_help_tips must be SPECIFIC to the business type
 - All response text must be in Hebrew
+- setup_fee_total must NEVER be 0, even for the simplest package with only setup=0 services.
+  Every proposal includes the base_onboarding_fee ({PRICING['base_onboarding_fee']} NIS) as a
+  baseline onboarding/setup charge — include it in setup_fee_breakdown (e.g. key "onboarding_setup")
+  on top of any per-service setup fees, and add it into setup_fee_total
+- If recommended_services includes "google" or "meta" (paid advertising), honest_note MUST clearly
+  explain that the client's actual ad spend/budget (the money spent on ads/credits with Google/Meta)
+  is an ADDITIONAL monthly cost on top of monthly_management_total, separate from our management fee,
+  and that it will be fully trackable and transparent in their dashboard
 
 Return JSON only with this exact structure:
 {{
@@ -110,14 +119,19 @@ def run_full_onboarding(client_answers):
     from agents.qa_agent import qa_check
     proposal = qa_check(proposal, client_answers)
 
-    print("Running QA check 2 - content...")
-    from agents.qa_agent_content import qa_check_content
-    proposal = qa_check_content(proposal, client_answers)
+    print("Running QA check 2 - content + master review...")
+    from agents.qa_agent_content import review_and_fix_proposal
+    review_result = review_and_fix_proposal(proposal, client_answers)
+    proposal = review_result["proposal"]
 
     print("Done!")
     return {
         "dynamic_questions": dynamic_questions,
         "empathy_early": empathy_early,
         "empathy_final": empathy_final,
-        "proposal": proposal
+        "proposal": proposal,
+        "review": {
+            "approved": review_result["review_approved"],
+            "issues": review_result["issues"],
+        },
     }

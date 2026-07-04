@@ -39,6 +39,7 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
 .option-btn.selected { background:var(--ink); color:white; border-color:var(--ink); }
 .option-btn.multi.selected { background:var(--accent); border-color:var(--accent); color:white; }
 .option-btn:disabled { cursor:default; opacity:0.6; }
+.free-text-hint { font-size:12px; color:var(--gray); margin-top:8px; }
 .typing { display:flex; align-items:center; gap:5px; padding:14px 18px; }
 .typing span { width:7px; height:7px; background:var(--gray); border-radius:50%; animation:bounce 1.2s infinite; }
 .typing span:nth-child(2){animation-delay:0.2s;}
@@ -141,6 +142,10 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
       grid.appendChild(btn);
     });
     bubble.appendChild(grid);
+    const hint = document.createElement('div');
+    hint.className = 'free-text-hint';
+    hint.textContent = 'או כתוב תשובה משלך למטה 👇';
+    bubble.appendChild(hint);
   }
 
   if (multiOptions) {
@@ -161,6 +166,10 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
     confirmBtn.onclick = () => confirmMulti(grid);
     grid.appendChild(confirmBtn);
     bubble.appendChild(grid);
+    const hint = document.createElement('div');
+    hint.className = 'free-text-hint';
+    hint.textContent = 'או כתוב תשובה משלך למטה 👇';
+    bubble.appendChild(hint);
   }
 
   div.appendChild(avatar);
