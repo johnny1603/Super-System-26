@@ -1,4 +1,5 @@
 import base64
+import os
 from datetime import datetime
 
 import httpx
@@ -6,6 +7,7 @@ import httpx
 from agents.keys_agent import get_key
 
 BASE_URL = "https://api-m.sandbox.paypal.com"
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
 TIMEOUT = 15
 
 
@@ -36,8 +38,11 @@ def _headers() -> dict:
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
-def create_subscription(client_id: int, plan_name: str, amount: float, currency: str = "ILS") -> dict:
+def create_subscription(client_id: int, plan_name: str, amount: float, currency: str = "ILS",
+                         return_url: str = None, cancel_url: str = None) -> dict:
     headers = _headers()
+    return_url = return_url or f"{PUBLIC_APP_URL}/api/payment-success?client_id={client_id}"
+    cancel_url = cancel_url or f"{PUBLIC_APP_URL}/chat/"
 
     # Step 1 — create a product
     product_res = httpx.post(
@@ -82,7 +87,15 @@ def create_subscription(client_id: int, plan_name: str, amount: float, currency:
     sub_res = httpx.post(
         f"{BASE_URL}/v1/billing/subscriptions",
         headers=headers,
-        json={"plan_id": plan_id, "custom_id": str(client_id)},
+        json={
+            "plan_id": plan_id,
+            "custom_id": str(client_id),
+            "application_context": {
+                "return_url": return_url,
+                "cancel_url": cancel_url,
+                "user_action": "SUBSCRIBE_NOW",
+            },
+        },
         timeout=TIMEOUT,
     )
     sub_res.raise_for_status()

@@ -8,6 +8,17 @@ ADMIN_EMAIL = "johnny_support@uallak.com"
 
 def send_client_report(client_email: str, client_name: str, proposal: dict):
     p = proposal
+    packages = p.get('packages', [])
+    packages_html = ''.join([f"""
+        <div style="background:#252525;border-radius:10px;padding:20px;margin-bottom:12px;">
+          <h4 style="margin:0 0 6px;color:#FFD166;">{pkg.get('name','')}</h4>
+          <p style="color:rgba(255,255,255,0.75);margin:0 0 10px;font-size:14px;">{pkg.get('description','')}</p>
+          <p style="margin:0;">עלות הקמה: <strong style="color:#FFD166;">₪{pkg.get('setup_fee_total',0)}</strong> · דמי ניהול חודשיים: <strong style="color:#FFD166;">₪{pkg.get('monthly_management_total',0)}</strong></p>
+          <p style="color:#00C96E;margin:6px 0 0;">🎁 הטבה: 2 חודשי ניהול חינם — שווי ₪{pkg.get('benefit_value',0)}</p>
+        </div>
+    """ for pkg in packages])
+    scarcity_html = f'<p style="text-align:center;color:#FF4C1F;font-weight:700;margin:0 0 20px;">🔥 {p.get("scarcity_note")}</p>' if p.get('scarcity_note') else ''
+
     html = f"""
     <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
       <div style="text-align:center;margin-bottom:32px;">
@@ -27,11 +38,10 @@ def send_client_report(client_email: str, client_name: str, proposal: dict):
         {''.join([f'<p style="margin:8px 0;">✅ {g}</p>' for g in p.get('goals_90_days',[])])}
       </div>
       <div style="background:#1A1A1A;border-radius:12px;padding:28px;margin-bottom:20px;color:white;">
-        <h3 style="margin:0 0 16px;">💰 הצעת המחיר שלך</h3>
-        <p>עלות הקמה חד-פעמית: <strong style="color:#FFD166;">₪{p.get('setup_fee_total',0)}</strong></p>
-        <p>דמי ניהול חודשיים: <strong style="color:#FFD166;">₪{p.get('monthly_management_total',0)}</strong></p>
-        <p style="color:#00C96E;">🎁 הטבה: 2 חודשי ניהול חינם — שווי ₪{p.get('benefit_value',0)}</p>
+        <h3 style="margin:0 0 16px;">💰 המסלולים שלך לבחירה</h3>
+        {packages_html}
       </div>
+      {scarcity_html}
       <div style="background:#FF4C1F;border-radius:12px;padding:28px;text-align:center;">
         <h3 style="color:white;margin:0 0 16px;">מוכן להתחיל?</h3>
         <a href="https://uallak.com/payment" style="background:white;color:#FF4C1F;padding:14px 36px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">התחל עכשיו →</a>
@@ -46,8 +56,42 @@ def send_client_report(client_email: str, client_name: str, proposal: dict):
     msg.attach(MIMEText(html, 'html'))
     _send(msg, client_email)
 
+
+def send_payment_confirmation(client_email: str, client_name: str, client_id: int):
+    html = f"""
+    <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+      </div>
+      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
+        <h2 style="margin:0 0 16px;">תודה {client_name}! 🎉</h2>
+        <p style="color:#3D3D3D;line-height:1.7;">התשלום התקבל בהצלחה ואנחנו כבר מתחילים לעבוד על התכנית שלך.</p>
+      </div>
+      <div style="background:#1A1A1A;border-radius:12px;padding:28px;margin-bottom:20px;color:white;">
+        <h3 style="margin:0 0 12px;">🔑 גישה לדשבורד האישי שלך</h3>
+        <p style="color:rgba(255,255,255,0.8);line-height:1.7;">
+          מספר הלקוח שלך: <strong style="color:#FFD166;">#{client_id}</strong><br><br>
+          הדשבורד האישי שבו תוכל לעקוב בזמן אמת אחרי כל הפעילות, ההוצאות ותקציבי הפרסום שלך —
+          נמצא כרגע בבנייה. נשלח לך פרטי התחברות ברגע שהוא מוכן.<br><br>
+          בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬
+        </p>
+      </div>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = "uallak — התשלום התקבל, מתחילים! 🚀"
+    msg['From'] = GMAIL_USER
+    msg['To'] = client_email
+    msg.attach(MIMEText(html, 'html'))
+    _send(msg, client_email)
+
 def send_admin_alert(answers: dict, proposal: dict):
     p = proposal
+    packages = p.get('packages', [])
+    packages_html = ''.join([
+        f"<p>📦 <strong>{pkg.get('name','')}:</strong> הקמה ₪{pkg.get('setup_fee_total',0)} + ניהול ₪{pkg.get('monthly_management_total',0)}/חודש</p>"
+        for pkg in packages
+    ]) or "<p>אין חבילות (לא אושר)</p>"
     html = f"""
     <div style="font-family:Arial,sans-serif;padding:20px;">
       <h2>🔔 ליד חדש — uallak</h2>
@@ -56,7 +100,7 @@ def send_admin_alert(answers: dict, proposal: dict):
       <p><strong>מצב פיננסי:</strong> {answers.get('financial_status','')}</p>
       <p><strong>מטרה:</strong> {answers.get('main_goal','')}</p>
       <hr>
-      <p><strong>הצעת מחיר:</strong> הקמה ₪{p.get('setup_fee_total',0)} + ניהול ₪{p.get('monthly_management_total',0)}/חודש</p>
+      {packages_html}
       <p><strong>רמת סיכון:</strong> {p.get('risk_level','')}</p>
       <p><strong>מאושר:</strong> {'✅ כן' if p.get('approved') else '❌ לא'}</p>
     </div>

@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from supabase import create_client as _supabase_create_client, Client
 
@@ -24,7 +25,7 @@ from agents.client_agent import (
     log_activity, get_activity,
     log_communication, get_communications,
 )
-from core.email_service import send_client_report, send_admin_alert
+from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation
 from core.paypal_service import create_subscription
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,7 +65,9 @@ async def onboarding(req: OnboardingRequest):
         if is_agent_active("master_agent") and not review.get("approved", True):
             alert("proposal", review.get("issues", []))
 
-        # שמירה ב-DB
+        # שמירה ב-DB — נשמור את המסלול הזול ביותר כבסיס להשוואה בטבלה
+        packages = proposal.get("packages", [])
+        cheapest = min(packages, key=lambda pkg: pkg.get("monthly_management_total", 0)) if packages else {}
         db.table("leads").insert({
             "created_at": datetime.now().isoformat(),
             "client_email": req.client_email,
@@ -72,8 +75,8 @@ async def onboarding(req: OnboardingRequest):
             "answers": req.answers,
             "proposal": proposal,
             "approved": bool(proposal.get("approved")),
-            "setup_fee": proposal.get("setup_fee_total", 0),
-            "monthly_fee": proposal.get("monthly_management_total", 0),
+            "setup_fee": cheapest.get("setup_fee_total", 0),
+            "monthly_fee": cheapest.get("monthly_management_total", 0),
         }).execute()
 
         # שליחת מיילים
@@ -137,24 +140,29 @@ async def architect_propose_deletion(req: ProposeDeleteRequest):
 class CheckoutRequest(BaseModel):
     client_name: str
     client_email: str = ""
+    package_id: str = ""
+    package_name: str = ""
     setup_fee_total: int = 0
     monthly_management_total: int = 0
 
 @app.post("/api/checkout")
 async def checkout(req: CheckoutRequest):
     try:
-        client = create_client(req.client_name, req.client_email)
+        client = create_client(req.client_name, req.client_email, package=req.package_name)
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
 
+        plan_name = f"uallak ניהול חודשי — {req.package_name}" if req.package_name else "uallak ניהול חודשי"
         subscription = create_subscription(
             client_id=client_id,
-            plan_name="uallak ניהול חודשי",
+            plan_name=plan_name,
             amount=req.monthly_management_total,
             currency="ILS",
         )
 
         log_activity(client_id, "paypal_service", "subscription_created", {
+            "package_id": req.package_id,
+            "package_name": req.package_name,
             "setup_fee_total": req.setup_fee_total,
             "monthly_management_total": req.monthly_management_total,
         }, subscription)
@@ -168,6 +176,37 @@ async def checkout(req: CheckoutRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/payment-success")
+async def payment_success(client_id: int, subscription_id: str = None):
+    try:
+        client = get_client(client_id)
+        update_client_status(client_id, "active")
+        log_activity(client_id, "paypal_service", "payment_confirmed", {"subscription_id": subscription_id}, {})
+        if client and client.get("email"):
+            send_payment_confirmation(client["email"], client.get("name", ""), client_id)
+        return RedirectResponse(url="/chat/?payment=success")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/chat/?payment=error")
+
+class ObjectionRequest(BaseModel):
+    text: str
+    answers: dict = {}
+    empathy_final: dict = {}
+    packages: list = []
+
+@app.post("/api/handle-objection")
+async def handle_objection_endpoint(req: ObjectionRequest):
+    try:
+        from agents.onboarding_agent import handle_objection, get_api_key
+        reply = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
+        return {"success": True, "reply": reply}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "reply": "מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏"}
 
 
 # ─── Clients ──────────────────────────────────────────────────────────────────

@@ -114,6 +114,8 @@ let dynamicQsAdded = false;
 let proposalData = null;
 let checkoutStep = null;
 let checkoutName = null;
+let inPackageSelection = false;
+let selectedPackage = null;
 
 function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
   const msgs = document.getElementById('messages');
@@ -191,16 +193,6 @@ function showTyping() {
 function hideTyping() { const t = document.getElementById('typing'); if(t) t.remove(); }
 
 function selectOption(opt, btn, grid) {
-  if (opt === "כן, מוכן להתחיל!") {
-    grid.querySelectorAll('.option-btn').forEach(b => { b.disabled=true; b.style.cursor='default'; });
-    addMessage(opt, 'user');
-    setTimeout(() => {
-      addMessage("מעולה! רק שני פרטים קצרים לפני שממשיכים 😊\n\nמה השם שלך?", 'bot');
-      checkoutStep = 'name';
-      document.getElementById('userInput').focus();
-    }, 600);
-    return;
-  }
   grid.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   setTimeout(() => {
@@ -255,6 +247,12 @@ function sendText() {
     }
     checkoutStep = null;
     startCheckout(checkoutName, text);
+    return;
+  }
+
+  if (inPackageSelection) {
+    addMessage(text, 'user');
+    handleObjection(text);
     return;
   }
 
@@ -360,9 +358,88 @@ function displayProposal(data) {
     return;
   }
   const risk = p.risk_level==='high'?'גבוהה':p.risk_level==='medium'?'בינונית':'נמוכה';
-  const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}\n\n⚠️ רמת סיכון: ${risk}\n\n💰 עלות הקמה: ₪${p.setup_fee_total}\n📅 דמי ניהול חודשיים: ₪${p.monthly_management_total}\n🎁 ערך ההטבה שלך: ₪${p.benefit_value} (2 חודשי ניהול חינם!)\n\n🎯 יעדים ל-90 יום:\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
+  const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}\n\n⚠️ רמת סיכון: ${risk}\n\n🎯 יעדים ל-90 יום:\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
   addMessage(msg, 'bot');
-  setTimeout(() => addMessage("רוצה להתקדם? לחץ כאן לתשלום והתחלת התהליך 🚀", 'bot', ["כן, מוכן להתחיל!", "יש לי עוד שאלות"]), 1500);
+  setTimeout(() => {
+    if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');
+    setTimeout(() => showPackageOptions(p.packages || []), p.scarcity_note ? 1300 : 200);
+  }, 1500);
+}
+
+function showPackageOptions(packages) {
+  inPackageSelection = true;
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = 'U';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  const textDiv = document.createElement('div');
+  textDiv.style.whiteSpace = 'pre-line';
+  textDiv.textContent = 'הנה כמה אפשרויות שמתאימות לך — אין כאן תשובה "לא נכונה", תבחר את מה שמרגיש הכי נכון 👇';
+  bubble.appendChild(textDiv);
+
+  const grid = document.createElement('div');
+  grid.className = 'options-grid';
+  grid.style.flexDirection = 'column';
+  packages.forEach(pkg => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.style.cssText = 'width:100%;text-align:right;padding:14px 18px;';
+    btn.innerHTML = `<strong>${pkg.name}</strong><br><span style="font-size:13px;color:var(--gray);">${pkg.description||''}</span><br><span style="font-size:13px;">הקמה ₪${pkg.setup_fee_total} · ניהול חודשי ₪${pkg.monthly_management_total}</span>`;
+    btn.onclick = () => selectPackage(pkg, btn, grid);
+    grid.appendChild(btn);
+  });
+  bubble.appendChild(grid);
+
+  const hint = document.createElement('div');
+  hint.className = 'free-text-hint';
+  hint.textContent = 'יש לך שאלה או משהו שמטריד אותך? אפשר גם פשוט לכתוב את זה למטה 👇';
+  bubble.appendChild(hint);
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function selectPackage(pkg, btn, grid) {
+  grid.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; b.style.cursor = 'default'; });
+  btn.classList.add('selected');
+  inPackageSelection = false;
+  selectedPackage = pkg;
+  addMessage(pkg.name, 'user');
+  setTimeout(() => {
+    addMessage(`בחירה מעולה! "${pkg.name}" 😊\n\nרק שני פרטים קצרים לפני שממשיכים לתשלום — מה השם שלך?`, 'bot');
+    checkoutStep = 'name';
+    document.getElementById('userInput').focus();
+  }, 600);
+}
+
+async function handleObjection(text) {
+  showTyping();
+  try {
+    const res = await fetch('/api/handle-objection', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text,
+        answers,
+        empathy_final: (proposalData && proposalData.empathy_final) || {},
+        packages: (proposalData && proposalData.proposal && proposalData.proposal.packages) || [],
+      })
+    });
+    const data = await res.json();
+    hideTyping();
+    addMessage(data.reply || "אפשר לספר לי קצת יותר על מה שמטריד אותך?", 'bot');
+    setTimeout(() => showPackageOptions((proposalData.proposal && proposalData.proposal.packages) || []), 900);
+  } catch(e) {
+    hideTyping();
+    addMessage("מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏", 'bot');
+    setTimeout(() => showPackageOptions((proposalData.proposal && proposalData.proposal.packages) || []), 900);
+  }
 }
 
 function showOtherInput(btn, grid) {
@@ -416,8 +493,10 @@ async function startCheckout(name, email) {
       body: JSON.stringify({
         client_name: name,
         client_email: email,
-        setup_fee_total: proposalData.proposal.setup_fee_total,
-        monthly_management_total: proposalData.proposal.monthly_management_total,
+        package_id: selectedPackage ? selectedPackage.id : '',
+        package_name: selectedPackage ? selectedPackage.name : '',
+        setup_fee_total: selectedPackage ? selectedPackage.setup_fee_total : 0,
+        monthly_management_total: selectedPackage ? selectedPackage.monthly_management_total : 0,
       })
     });
     const data = await res.json();
@@ -432,7 +511,19 @@ async function startCheckout(name, email) {
   }
 }
 
-window.onload = () => setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);
+window.onload = () => {
+  const params = new URLSearchParams(window.location.search);
+  const payment = params.get('payment');
+  if (payment === 'success') {
+    setTimeout(() => addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים, כולל מספר הלקוח שלך.\n\nהדשבורד האישי שלך נמצא בבנייה ויגיע בקרוב — בינתיים הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot'), 500);
+    return;
+  }
+  if (payment === 'error') {
+    setTimeout(() => addMessage("נראה שהייתה בעיה באישור התשלום 😕\n\nאפשר לנסות שוב או לפנות אלינו בוואטסאפ ונשלים את זה ביחד 💬", 'bot'), 500);
+    return;
+  }
+  setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);
+};
 </script>
 </body>
 </html>
