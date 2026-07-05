@@ -100,10 +100,22 @@ const BASE_QUESTIONS = [
   { id:"intro", type:"free_text", text:"שלום! אני המערכת של uallak 👋\n\nלפני שנבנה לך תכנית עבודה מותאמת אישית — ספר לי על העסק שלך ועל המצב הנוכחי. כמה משפטים חופשיים, בלי מגבלות." },
   { id:"business_age", type:"choice", text:"כמה זמן העסק קיים?", options:["פחות משנה","1-3 שנים","3-7 שנים","יותר מ-7 שנים"] },
   { id:"financial_status", type:"choice", text:"מה המצב הפיננסי הנוכחי?", options:["ברווח טוב","מכסה הוצאות בקושי","בהפסד","עסק חדש — עדיין לא ניתן לדעת"] },
-  { id:"marketing_budget", type:"choice", text:"כמה אתה יכול להעמיד לשיווק בחודש?\n(לא כולל דמי הניהול שלנו)", options:["עד ₪1,000","₪1,000-3,000","₪3,000-8,000","₪8,000-15,000","₪15,000+"] },
+  { id:"revenue_trend", type:"choice", text:"איך נראה המחזור החודשי שלך ב-3 החודשים האחרונים?", options:["צמיחה קטנה","מדשדש במקום","בהפסד"] },
+  { id:"recent_revenue", type:"free_text", text:"זה עוזר למערכת לקבוע יעדים מדויקים ולהבין את נקודת הפתיחה האמיתית שלך — מה היה המחזור החודשי הממוצע של העסק ב-3 החודשים האחרונים? (אפשר מספר משוער או טווח)" },
+  { id:"marketing_budget", type:"choice", text:"כמה אתה יכול להעמיד לשיווק בחודש?\n(לא כולל דמי הניהול שלנו)", options:["עד ₪1,000","₪1,000-3,000","₪3,000-5,000","₪10,000+","₪15,000+"] },
   { id:"existing_digital", type:"multi", text:"מה יש לך כרגע דיגיטלית? (אפשר לבחור כמה)", options:["אתר אינטרנט","אינסטגרם פעיל","פייסבוק פעיל","TikTok","גוגל My Business","דיוור / ניוזלטר","כלום"] },
+  { id:"newsletter_status", type:"choice", text:"יש לך היום רשימת דיוור/מיילים ללקוחות?", options:["כן, פעיל ושולח באופן קבוע","יש לי רשימה אבל לא שולח","אין לי בכלל"] },
   { id:"main_goal", type:"choice", text:"מה המטרה הכי חשובה לך ב-3 חודשים הקרובים?", options:["יותר לידים ולקוחות חדשים","נראות מקצועית ומיתוג","קידום אורגני בגוגל","הגדלת מכירות אונליין","הכל — רוצה מעטפת מלאה"] },
-  { id:"biggest_fear", type:"choice", text:"מה הכי מפחיד אותך בלנסות שירות שיווק חדש?", options:["לבזבז כסף ולא לראות תוצאות","אין לי זמן לנהל עוד דבר","ניסיתי בעבר ולא עבד","לא בטוח שהעסק מוכן","לא מפחיד — מוכן לנסות"] }
+  { id:"biggest_fear", type:"choice", text:"מה הכי מפחיד אותך בלנסות שירות שיווק חדש?", options:["לבזבז כסף ולא לראות תוצאות","אין לי זמן לנהל עוד דבר","ניסיתי בעבר ולא עבד","לא בטוח שהעסק מוכן","לא מפחיד — מוכן לנסות"] },
+  { id:"media_management", type:"choice", text:"מי מנהל היום את הנוכחות הדיגיטלית שלך בשוטף?", options:["אני בעצמי","עובד שלי","משרד פרסום חיצוני","פרילנסר","אף אחד כרגע - מוזנח"] },
+  { id:"camera_comfort", type:"choice", text:"אם המערכת תיתן לך תסריט מוכן - תהיה מוכן להצטלם בעצמך או לבקש מהעובדים לשתף פעולה?", options:["כן בשמחה","רק אני","רק העובדים","מעדיף בלי מצלמה"] },
+  { id:"media_assets", type:"choice", text:"איך אתה מתנהל היום מבחינת חומרי מדיה ועיצוב?", options:["יש לי מעצב/צלם קבוע","עובד עם משרד חיצוני","עושה הכל לבד","אין לי כלום היום"] },
+  { id:"media_assets_info", type:"info", text:"בעזרת כלי AI מתקדמים ניצור עבורך תמונות שיווקיות מקצועיות מתוך תמונות הבסיס שתשלח לנו — הכל כלול בדמי הניהול. בנוסף, נקים לך תיקיית Drive מסודרת שבה תוכל לעיין ולאשר את כל החומרים לפני הפרסום 📁" },
+  { id:"content_creator_collab", type:"choice", text:"האם היית מעוניין בשיתופי פעולה עם יוצרי תוכן — מוצר מתנה תמורת ביקורת, או תשלום עבור סרטון שגם משמש אותנו וגם עולה אצלם — בתקציב נפרד?", options:["כן","לא","אולי בהמשך"] },
+  { id:"organic_history", type:"choice", text:"האם העסק היום מקודם או קודם בעבר אורגנית בגוגל?", options:["כן, מקודם היום","קודם בעבר אבל לא היום","אף פעם לא"] },
+  { id:"organic_info", type:"info", text:"קידום אורגני זה כמו לבנות נכס דיגיטלי - בניגוד לפרסום ממומן שנעצר ברגע שמפסיקים לשלם, קידום אורגני ממשיך להביא לקוחות גם בטווח הארוך, ובונה אמון וסמכות לעסק שלך בגוגל לאורך זמן." },
+  { id:"organic_interest", type:"choice", text:"היית רוצה להגיע למקומות הראשונים בגוגל, וגם שהבינה המלאכותית של גוגל תמליץ על העסק שלך כשאנשים מחפשים שירות דומה?", options:["כן, מעוניין","לא כרגע"] },
+  { id:"organic_followup_info", type:"info", text:"תקבל דוח חודשי שקוף על ההתקדמות. חשוב לדעת שתוצאות משמעותיות בקידום אורגני לוקחות בממוצע כ-6 חודשים להבשיל - ולכן קריטי לא לעצור באמצע התהליך, כדי לא לאבד את המומנטום שנבנה." }
 ];
 
 let questions = [...BASE_QUESTIONS];
@@ -198,10 +210,34 @@ function selectOption(opt, btn, grid) {
   setTimeout(() => {
     grid.querySelectorAll('.option-btn').forEach(b => { b.disabled=true; b.style.cursor='default'; });
     addMessage(opt, 'user');
-    answers[questions[currentQ].id] = opt;
+    const questionId = questions[currentQ].id;
+    answers[questionId] = opt;
+    applyConditionalLogic(questionId, opt);
     currentQ++;
     setTimeout(() => nextQuestion(), 700);
   }, 300);
+}
+
+// שאלות/הודעות שמוכנסות דינמית לתוך questions[] בהתאם לתשובות קודמות - אותו דפוס
+// כמו הוספת השאלות הדינמיות מה-API, רק מבוסס על תשובות שכבר ניתנו במקום קריאת שרת
+function applyConditionalLogic(questionId, answerValue) {
+  if (questionId === 'media_management'
+      && answerValue === 'אני בעצמי'
+      && answers['marketing_budget'] && answers['marketing_budget'] !== 'עד ₪1,000') {
+    questions.splice(currentQ + 1, 0, {
+      id: 'self_managed_excitement_info',
+      type: 'info',
+      text: 'וואו, מכבד את זה שאתה עושה הכל לבד! 💪 שווה שתדע - כחלק מהחבילה שלנו תקבל גם אוטומציות חכמות שעובדות בשבילך מאחורי הקלעים, כמו מענה אוטומטי ומיידי ללידים חדשים - כדי שאף פנייה לא תיפול בין הכיסאות בזמן שאתה עסוק בלנהל את הכל.'
+    });
+  }
+
+  if (questionId === 'organic_interest' && answerValue === 'כן, מעוניין') {
+    questions.splice(currentQ + 1, 0, {
+      id: 'organic_budget',
+      type: 'free_text',
+      text: 'מעולה! כמה תקציב חודשי היית מוכן להעמיד ספציפית לקידום האורגני?\n\nחשוב לדעת - זה תקציב נפרד לגמרי מתקציב הפרסום הממומן שציינת קודם. התקציב הזה מכסה את הניהול שלנו ואת מנוי הכלי המקצועי (SEOptimer / SEMrush / Ahrefs, בהתאם לרמה המתאימה לך), ומתחיל מ-₪1,000 לחודש ומעלה.'
+    });
+  }
 }
 
 function toggleMulti(opt, btn) {
@@ -315,6 +351,11 @@ function nextQuestion() {
     const q = questions[currentQ];
     if (q.type==='choice') addMessage(q.text, 'bot', q.options);
     else if (q.type==='multi') addMessage(q.text, 'bot', null, q.options);
+    else if (q.type==='info') {
+      addMessage(q.text, 'bot');
+      currentQ++;
+      setTimeout(() => nextQuestion(), 1200);
+    }
     else { addMessage(q.text, 'bot'); document.getElementById('userInput').focus(); }
   }, 900);
 }
