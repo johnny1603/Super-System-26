@@ -5,15 +5,15 @@ from concurrent.futures import ThreadPoolExecutor
 from core.claude_json import safe_claude_json_call
 
 PRICING = {
-    "google": {"setup": 300, "monthly_management": 250, "high_budget_pct": 0.05, "high_budget_threshold": 15000},
-    "meta": {"setup": 0, "monthly_management": 250},
+    "google": {"monthly_management": 250, "high_budget_pct": 0.05, "high_budget_threshold": 15000},
+    "meta": {"monthly_management": 250},
     "social": {"setup": 700, "monthly_management": 250},
-    "seo": {"setup": 0, "monthly_management": 250},
-    "email": {"setup": 0, "monthly_management": 50},
+    "seo": {"monthly_management": 250},
+    "email": {"monthly_management": 50},
     "automation": {"setup": 500, "monthly_management": 0},
     "website": {"setup_min": 700, "setup_max": 2000, "profit_margin": 0.35},
     "raffle": {"setup_and_management": 250},
-    "base_onboarding_fee": 300,
+    "min_setup_fee": 1500,
     "min_budget": 1000,
     "benefit_months": 2
 }
@@ -69,6 +69,27 @@ Apply this intelligence to:
     system = f"""You are a pricing manager for uallak, an Israeli marketing system for small and medium businesses.
 Pricing structure: {pricing_str}
 {empathy_block}
+EVERY PACKAGE'S SETUP FEE COVERS THIS STANDARD ONE-TIME PACKAGE, regardless of which services are
+otherwise chosen:
+- Landing page
+- Connecting all relevant systems/accounts (Google, Meta, TikTok, website)
+- Initial professional market research (competitor + keyword research)
+- Full audit of the client's existing marketing presence (a professional situation report for the client)
+- Launching (not ongoing management of) a new Google campaign + a new Meta campaign
+- One professionally produced/promoted TikTok video
+- An initial batch of 10 articles for the website (also usable as posts with a link back to the site)
+
+EVERY PACKAGE'S MONTHLY MANAGEMENT FEE COVERS THIS ONGOING WORK — none of this belongs in setup:
+- Ongoing management of the Google + Meta campaigns launched during setup
+- 3 weekly posts + 2 monthly link-back articles as ongoing content
+- Optional sponsored article promotion (Taboola/Outbrain-style), only if the client's budget allows
+  it — paid via the client's OWN ad account/card, exactly like Google/Meta ad spend, never part of
+  our management fee
+- Weekly "homework" prompts to the client (things only they can provide, at no cost to us) — reflect
+  this as an ongoing expectation in goals_90_days or self_help_tips, never as a one-time setup item
+- Dashboard access — this is a platform feature, not a per-client cost. NEVER add it as a line item
+  in setup_fee_breakdown or monthly_breakdown
+
 CRITICAL RULES:
 - If budget is below 1000 NIS: set approved=false and return an empty "packages" list
 - Otherwise, build 1-3 clearly distinct packages (tiers) — e.g. a lighter/essentials option and a
@@ -82,14 +103,20 @@ CRITICAL RULES:
 - SEO takes 6+ months for results - always mention this if any package recommends SEO
 - self_help_tips must be SPECIFIC to the business type (shared advice, applies across packages)
 - All response text must be in Hebrew
-- Every package's setup_fee_total must NEVER be 0, even for the simplest package with only setup=0
-  services. Every package includes the base_onboarding_fee ({PRICING['base_onboarding_fee']} NIS) as
-  a baseline onboarding/setup charge — include it in that package's setup_fee_breakdown (e.g. key
-  "onboarding_setup") on top of any per-service setup fees, and add it into setup_fee_total
-- If a package's recommended_services includes "google" or "meta" (paid advertising), honest_note
-  MUST clearly explain that the client's actual ad spend/budget (the money spent on ads/credits with
-  Google/Meta) is an ADDITIONAL monthly cost on top of monthly_management_total, separate from our
+- Every package's setup_fee_total must NEVER be below {PRICING['min_setup_fee']} NIS — this is a hard
+  floor that covers the standard setup package listed above, regardless of which services are chosen.
+  Reflect it as its own line item (e.g. "חבילת הקמה בסיסית") worth at least {PRICING['min_setup_fee']}
+  NIS in setup_fee_breakdown. Any extra bespoke setup work beyond the standard package (e.g. a full
+  multi-page website build beyond the included landing page) stacks on top of this floor as additional
+  line items
+- If a package's recommended_services includes "google" or "meta" (paid advertising), or includes
+  optional sponsored article promotion, honest_note MUST clearly explain that the client's actual ad
+  spend/budget (money spent on ads/credits with Google/Meta/Taboola/Outbrain) is an ADDITIONAL monthly
+  cost on top of monthly_management_total, paid via the client's own account, separate from our
   management fee, and that it will be fully trackable and transparent in their dashboard
+- honest_note must also briefly cover the payment timeline in 1-2 clear sentences, no more: month 1
+  the client pays the setup fee (which replaces that month's management fee), month 2's management fee
+  is free (the benefit), and from month 3 onward full billing per the chosen package applies
 - scarcity_note must tell the client, honestly and warmly (not pushy), that they are one of 20
   businesses selected this month for the current 2-free-months management fee benefit
 
