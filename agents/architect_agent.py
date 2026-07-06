@@ -49,12 +49,24 @@ def _generate_agent_code(need_description: str) -> tuple[str, str]:
     system = """You are an expert Python developer building agents for uallak, an Israeli marketing system.
 Write a complete, working Python agent file based on the need description.
 
-Requirements:
-- Use the Anthropic client pattern: from anthropic import Anthropic; client = Anthropic()
+The agent MUST follow the uallak house blueprint (the same structure as agents/_template_agent.py):
+- Any Claude call that expects JSON back goes through the shared helper — never a raw
+  anthropic client call plus manual json.loads:
+    from core.claude_json import ClaudeJSONError, safe_claude_json_call
+    result = safe_claude_json_call(system_prompt, user_message, max_tokens=1000)
+- Define AGENT_NAME = "<the filename>" as a module constant
+- Log every meaningful step in the standard format:
+    from core.agent_base import log_step, timed_step
+    log_step(AGENT_NAME, "step_name", "details")
+- On failures a human should hear about, alert and return a safe fallback instead of raising:
+    from core.agent_base import agent_alert
+    agent_alert(AGENT_NAME, ["what went wrong"])
 - One clear main callable function as the primary entry point
-- All user-facing strings in Hebrew
-- Proper error handling with try/except
+- Module level holds only imports, constants, and prompt strings — never create network or
+  DB clients at import time
 - No hardcoded secrets — read from os.environ
+- Never persist state to local files — the production filesystem is ephemeral
+- All client-facing strings in Hebrew; code, logs, and prompts in English
 - Choose a descriptive snake_case filename ending in _agent
 
 Return JSON only:
@@ -81,8 +93,10 @@ Generate exactly 30 test cases for the agent below as a standalone unittest scri
 
 Rules:
 - Import the agent as: from agents.{tmp_module} import *
-- Mock ALL Anthropic API calls using unittest.mock.patch("anthropic.Anthropic")
-  so tests never make real network calls
+- The agent calls Claude through a helper imported as safe_claude_json_call — mock it with
+  unittest.mock.patch("agents.{tmp_module}.safe_claude_json_call") returning plain dicts.
+  Also patch("anthropic.Anthropic") for any direct client usage, so tests never make real
+  network calls
 - Cover: happy path, empty inputs, None inputs, malformed inputs, boundary values,
   wrong types, large inputs, expected return types and keys
 - Use self.assert* methods — no bare assert statements

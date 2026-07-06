@@ -3,9 +3,11 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-GMAIL_USER = "johnny_support@uallak.com"
-GMAIL_APP_PASSWORD = "gabg fbdq yxil uumt"
-ADMIN_EMAIL = "johnny_support@uallak.com"
+# The app password previously hardcoded here leaked into git history — it must be
+# rotated in the Google account and supplied via the GMAIL_APP_PASSWORD env var.
+GMAIL_USER = os.environ.get("GMAIL_USER", "johnny_support@uallak.com")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", GMAIL_USER)
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
 
 def send_client_report(client_email: str, client_name: str, proposal: dict):
@@ -149,6 +151,9 @@ def send_admin_alert(answers: dict, proposal: dict):
     _send(msg, ADMIN_EMAIL)
 
 def _send(msg, to_email):
+    if not GMAIL_APP_PASSWORD:
+        print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")
+        return
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
