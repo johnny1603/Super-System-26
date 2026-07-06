@@ -6,7 +6,17 @@ from datetime import datetime
 
 from anthropic import Anthropic
 
-client = Anthropic()
+from core.claude_json import safe_claude_json_call
+
+# Created lazily — no network clients at import time (api_server imports this at startup)
+_anthropic = None
+
+
+def _client() -> Anthropic:
+    global _anthropic
+    if _anthropic is None:
+        _anthropic = Anthropic()
+    return _anthropic
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENTS_DIR = os.path.join(BASE_DIR, "agents")
@@ -75,14 +85,9 @@ Return JSON only:
   "code": "full Python source as a string"
 }"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4000,
-        system=system,
-        messages=[{"role": "user", "content": f"Build an agent for this need:\n{need_description}"}]
+    result = safe_claude_json_call(
+        system, f"Build an agent for this need:\n{need_description}", max_tokens=4000
     )
-    raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    result = json.loads(raw)
     return result["filename"], result["code"]
 
 
@@ -105,7 +110,7 @@ Rules:
 
 Return only valid Python code. No markdown, no explanation."""
 
-    response = client.messages.create(
+    response = _client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=6000,
         system=system,
@@ -166,7 +171,7 @@ Do not modify the test code — only fix the agent.
 
 Return only the corrected Python source code. No markdown, no JSON wrapper."""
 
-    response = client.messages.create(
+    response = _client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4000,
         system=system,
@@ -184,7 +189,7 @@ def _generate_summary(need_description: str, agent_filename: str, agent_code: st
 Cover: what it does, its main function signature and return value, and any notable design decisions.
 Do NOT include source code. Write in English."""
 
-    response = client.messages.create(
+    response = _client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=400,
         system=system,

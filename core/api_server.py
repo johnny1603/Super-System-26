@@ -158,6 +158,25 @@ async def checkout(req: CheckoutRequest):
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
 
+        # The lead row was created at proposal time, before the client gave their name/email —
+        # backfill the newest contactless lead now that we finally know who they are. (Newest-first
+        # match is good enough at current volume; a chat-session id would make this exact.)
+        try:
+            recent_lead = (
+                db.table("leads").select("id")
+                .eq("client_email", "")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if recent_lead.data:
+                db.table("leads").update({
+                    "client_email": req.client_email,
+                    "client_name": req.client_name,
+                }).eq("id", recent_lead.data[0]["id"]).execute()
+        except Exception as backfill_err:
+            print(f"[checkout] lead backfill failed (non-fatal): {backfill_err}")
+
         plan_name = f"uallak ניהול חודשי — {req.package_name}" if req.package_name else "uallak ניהול חודשי"
         subscription = create_subscription(
             client_id=client_id,
@@ -544,19 +563,8 @@ class FilterRequest(BaseModel):
 @app.post("/api/filter-questions")
 async def filter_questions_endpoint(req: FilterRequest):
     try:
-        from agents.question_filter import filter_questions
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        BASE_Q_IDS = ["business_age","financial_status","marketing_budget","existing_digital","main_goal","biggest_fear"]
-        answers_with_intro = {"intro": req.intro, **req.answers}
-        skip_ids = []
-        import anthropic, json
-        client = anthropic.Anthropic(api_key=api_key)
-        system = "You are a question filter. Given a client opening message, return JSON with skip_ids array containing question IDs already answered. IDs: business_age, financial_status, marketing_budget, existing_digital, main_goal, biggest_fear. Return JSON only: {skip_ids: []}"
-        response = client.messages.create(model="claude-sonnet-4-6", max_tokens=200, system=system, messages=[{"role":"user","content":f"Client said: {req.intro}"}])
-        raw = response.content[0].text.replace("```json","").replace("```","").strip()
-        skip_ids = json.loads(raw).get("skip_ids", [])
-        print(f"Filter skip_ids: {skip_ids}")
-        return {"skip_ids": skip_ids}
+        from agents.question_filter import get_skip_ids
+        return {"skip_ids": get_skip_ids(req.intro)}
     except Exception as e:
         import traceback
         print(f"Filter error: {e}")

@@ -1,8 +1,8 @@
-anthropic
-fastapi
-uvicorn[standard]
-httpx
-python-dotenv
-supabase
-google-cloud-pubsub
-pydantic
+anthropic==0.116.0
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
+httpx==0.28.1
+python-dotenv==1.2.2
+supabase==2.31.0
+google-cloud-pubsub==2.39.0
+pydantic==2.13.4

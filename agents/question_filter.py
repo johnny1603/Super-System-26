@@ -1,47 +1,56 @@
-import anthropic
-import json
-import os
+"""question_filter agent — decides which base chat questions were already answered
+in the client's free-text intro, so the chat can skip them instead of asking twice.
 
-def filter_questions(base_questions: list, answers: dict, api_key: str) -> list:
-    """
-    בודק אילו שאלות כבר נענו בפתיחה החופשית ומסנן אותן
-    """
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    intro = answers.get("intro", "")
-    if not intro:
-        return base_questions
-    
-    questions_list = [{"id": q["id"], "text": q["text"]} for q in base_questions]
-    
-    system = """You are a smart question filter for an onboarding chatbot.
+The chat page holds the question list client-side and does the actual filtering;
+this agent only returns the IDs to skip.
+"""
+from core.agent_base import log_step
+from core.claude_json import ClaudeJSONError, safe_claude_json_call
+
+AGENT_NAME = "question_filter"
+
+BASE_QUESTION_IDS = [
+    "business_age",
+    "financial_status",
+    "marketing_budget",
+    "existing_digital",
+    "main_goal",
+    "biggest_fear",
+]
+
+SYSTEM = """You are a smart question filter for an onboarding chatbot.
 The client already wrote an opening message describing their business.
 Your job is to identify which follow-up questions are already answered in that opening message.
 
+Question IDs and what answers them:
+- business_age — how long the business has existed
+- financial_status — the financial situation (profit/loss)
+- marketing_budget — their monthly marketing budget
+- existing_digital — their existing digital presence (website, social accounts)
+- main_goal — their main goal for the coming months
+- biggest_fear — their biggest fear/hesitation about trying a marketing service
+
 Rules:
-- If the client mentioned how long the business exists -> skip 'business_age'
-- If the client mentioned financial situation (profit/loss) -> skip 'financial_status'  
-- If the client mentioned their marketing budget -> skip 'marketing_budget'
-- If the client mentioned their digital presence -> skip 'existing_digital'
-- If the client clearly stated their main goal -> skip 'main_goal'
-- Only skip if you are VERY confident the answer is clear
-- When in doubt, keep the question
+- Only include an ID if you are VERY confident the answer is clearly present
+- When in doubt, keep the question (do not include its ID)
 
 Return JSON only:
 {"skip_ids": ["id1", "id2"]}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=200,
-        system=system,
-        messages=[{"role": "user", "content": f"Client opening message: {intro}\n\nQuestions to check: {json.dumps(questions_list)}"}]
-    )
-    
-    raw = response.content[0].text.replace("```json","").replace("```","").strip()
-    skip_ids = json.loads(raw).get("skip_ids", [])
-    
-    if skip_ids:
-        print(f"Question filter: skipping {skip_ids}")
-    
-    filtered = [q for q in base_questions if q["id"] not in skip_ids]
-    return filtered
+
+def get_skip_ids(intro: str, api_key: str = None) -> list:
+    """Return the base-question IDs already answered by the intro. Never raises —
+    a filter failure just means no questions get skipped."""
+    if not intro:
+        return []
+    try:
+        result = safe_claude_json_call(
+            SYSTEM, f"Client opening message: {intro}", max_tokens=200, api_key=api_key
+        )
+        skip_ids = [i for i in result.get("skip_ids", []) if i in BASE_QUESTION_IDS]
+        if skip_ids:
+            log_step(AGENT_NAME, "filter", f"skipping {skip_ids}")
+        return skip_ids
+    except ClaudeJSONError as e:
+        log_step(AGENT_NAME, "filter_failed", f"{e} — keeping all questions")
+        return []

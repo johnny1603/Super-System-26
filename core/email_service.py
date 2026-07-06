@@ -48,7 +48,7 @@ def send_client_report(client_email: str, client_name: str, proposal: dict):
       {scarcity_html}
       <div style="background:#FF4C1F;border-radius:12px;padding:28px;text-align:center;">
         <h3 style="color:white;margin:0 0 16px;">מוכן להתחיל?</h3>
-        <a href="https://uallak.com/payment" style="background:white;color:#FF4C1F;padding:14px 36px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">התחל עכשיו →</a>
+        <a href="{PUBLIC_APP_URL}/chat/" style="background:white;color:#FF4C1F;padding:14px 36px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">התחל עכשיו →</a>
       </div>
       <p style="text-align:center;color:#8A8A8A;font-size:12px;margin-top:24px;">* {p.get('honest_note','')}</p>
     </div>

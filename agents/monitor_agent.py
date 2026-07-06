@@ -2,14 +2,21 @@ import json
 import os
 from datetime import datetime
 
-from anthropic import Anthropic
 from google.cloud import pubsub_v1
 from supabase import create_client
 
 from config.settings import PROJECT_ID
+from core.claude_json import safe_claude_json_call
 
-client = Anthropic()
-db = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+# Created lazily — no network/DB clients at import time (api_server imports this at startup)
+_db = None
+
+
+def _get_db():
+    global _db
+    if _db is None:
+        _db = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    return _db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALERT_HISTORY_PATH = os.path.join(BASE_DIR, "data", "alert_history.json")
@@ -99,7 +106,7 @@ def listen_for_critical_alerts():
 # ─── PART 2: Scheduled deep scan ─────────────────────────────────────────────
 
 def _read_leads() -> list[dict]:
-    result = db.table("leads").select("*").order("created_at", desc=True).execute()
+    result = _get_db().table("leads").select("*").order("created_at", desc=True).execute()
     return result.data or []
 
 
@@ -170,14 +177,11 @@ def run_deep_scan() -> dict:
         "previously_reported_issue_ids": memory.get("reported_issues", []),
     }
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    report = safe_claude_json_call(
+        DEEP_SCAN_SYSTEM,
+        f"System snapshot:\n{json.dumps(data_summary, ensure_ascii=False, indent=2)}",
         max_tokens=2000,
-        system=DEEP_SCAN_SYSTEM,
-        messages=[{"role": "user", "content": f"System snapshot:\n{json.dumps(data_summary, ensure_ascii=False, indent=2)}"}]
     )
-    raw = response.content[0].text.replace("```json", "").replace("```", "").strip()
-    report = json.loads(raw)
 
     # Persist newly reported issue_ids so they're not repeated next scan
     new_ids = [f["issue_id"] for f in report.get("urgent", []) + report.get("insights", [])]

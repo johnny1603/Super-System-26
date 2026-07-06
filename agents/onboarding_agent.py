@@ -321,7 +321,9 @@ def run_full_onboarding(client_answers):
 
     def _parallel_step():
         with ThreadPoolExecutor(max_workers=2) as executor:
-            empathy_future = executor.submit(analyze_client, {"intro": intro})
+            # Full answers, not just the intro — by proposal time the whole conversation is
+            # available and the sales intelligence is much sharper with it, at no extra latency
+            empathy_future = executor.submit(analyze_client, client_answers)
             dynamic_questions_future = executor.submit(get_dynamic_questions, intro, client_answers, api_key)
             return empathy_future.result(), dynamic_questions_future.result()
 
