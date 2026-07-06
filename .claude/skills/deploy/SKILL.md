@@ -8,8 +8,14 @@ description: How to commit, push, and deploy uallak's Super-System-26 to Cloud R
 ## The one rule
 
 This Windows machine has **no git, no gcloud, and no usable Python** on PATH (only the
-Microsoft Store stub). Never run `git`, `gcloud`, `py`, or `python` locally — it will fail.
+Microsoft Store stub). Never run `gcloud`, `py`, or `python` locally — it will fail.
 Don't rediscover this by trial and error.
+
+**Git exception:** GitHub Desktop's bundled git works, credentials included:
+`C:\Users\johni\AppData\Local\GitHubDesktop\app-3.6.2\resources\app\git\cmd\git.exe`
+(the `app-*` version segment changes on GitHub Desktop updates — glob for it if that path 404s).
+Default remains user-reviewed commit/push via GitHub Desktop; only commit/push directly with
+the bundled git when the user explicitly asks for it.
 
 ## Workflow — three hops, two of them done by the user
 
