@@ -1,6 +1,8 @@
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 from core.claude_json import safe_claude_json_call
 
@@ -139,10 +141,15 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      campaigns/ads — describe the scope as "one campaign plus additional optimization actions scaled
      to whatever budget allows"
 
-3) SUPPORT MODEL TRANSPARENCY:
-   - honest_note must state ONCE, plainly, as a stated fact (not a disclaimer, not repeated
-     elsewhere): the system autonomously handles about 80% of ongoing support/work, with the
-     remaining ~20% backed by a human team for anything the system can't fully handle
+3) SUPPORT MODEL — STATE AS PLAIN FACT, NOT MARKETING COPY:
+   - honest_note must include, once, a plain and neutral description of how support actually works:
+     an automated system handles the large majority of day-to-day work, and a human team member
+     steps in for anything the system can't fully resolve. Phrase it like a factual description of
+     how the service operates — e.g. "רוב העבודה השוטפת מתבצעת אוטומטית על ידי המערכת, וצוות אנושי
+     נכנס לתמונה במקרים שהיא לא יכולה לטפל בהם באופן מלא" — NOT as a benefit, achievement, or
+     reassurance. Do not frame it as reassuring marketing copy: avoid superlatives, avoid making it
+     sound impressive, and avoid leading with a percentage as the headline of the sentence (a rough
+     number like "כ-80%" is fine only as incidental detail, never as the main selling point)
 
 4) ORGANIC SEO — 3-TIER BUDGET PYRAMID (approximate anchors, not rigid cutoffs):
    - Client's stated monthly marketing budget under ~{PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS:
@@ -192,10 +199,11 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
 
 CRITICAL RULES:
 - If budget is below 1000 NIS: set approved=false and return an empty "packages" list
-- Otherwise, build 1-3 clearly distinct packages (tiers) using the BUDGET PYRAMID above — e.g. a
-  lighter/single-service option and a fuller option — that would each genuinely serve this client.
-  Present them as neutral choices: do NOT push the client toward one specific package. Each must be
-  a legitimate fit for a real priority/budget level this client could reasonably have, not a "decoy"
+- Otherwise, build exactly 1-2 clearly distinct packages (tiers) using the BUDGET PYRAMID above — e.g.
+  a lighter/single-service option and a fuller option — that would each genuinely serve this client.
+  NEVER more than 2. Present them as neutral choices: do NOT push the client toward one specific
+  package. Each must be a legitimate fit for a real priority/budget level this client could
+  reasonably have, not a "decoy"
 - Every package's benefit_value MUST equal that package's monthly_management_total x 2 (two free months)
 - Always round DOWN to clean numbers (2580 -> 2500)
 - Minimum 35% profit margin on websites
@@ -203,6 +211,13 @@ CRITICAL RULES:
 - SEO takes 6+ months for results - always mention this if any package recommends organic SEO
 - self_help_tips must be SPECIFIC to the business type (shared advice, applies across packages)
 - All response text must be in Hebrew
+- OUTPUT LENGTH LIMITS (hard limits — keep the response compact, this directly affects generation
+  time and cost, not just a token ceiling):
+  - business_summary: max 2-3 sentences
+  - each item in goals_90_days: max 1 sentence
+  - self_help_tips: max 4 items, 1 sentence each
+  - honest_note: max 3-4 sentences total (covering all three points below)
+  - each package's description: max 1-2 sentences
 - setup_fee_total floor per package type: {PRICING['min_setup_fee']} NIS for a standard package,
   {PRICING['single_service_setup_fee']} NIS for a single-service package (see BUDGET PYRAMID #2), or
   — for the non-flagged portions of a package with requires_manual_followup=true (BUDGET PYRAMID
@@ -250,41 +265,54 @@ Return JSON only with this exact structure:
 }}"""
 
     user_message = f"Client data: {json.dumps(answers)}"
-    return safe_claude_json_call(system, user_message, max_tokens=3500, api_key=api_key)
+    return safe_claude_json_call(system, user_message, max_tokens=6000, api_key=api_key)
+
+def _timed_step(label, fn):
+    start_dt = datetime.now()
+    t0 = time.perf_counter()
+    print(f"[timing] {label}: starting at {start_dt.isoformat()}")
+    result = fn()
+    duration = time.perf_counter() - t0
+    print(f"[timing] {label}: finished at {datetime.now().isoformat()} (took {duration:.1f}s)")
+    return result
 
 def run_full_onboarding(client_answers):
     from agents.empathy_agent import analyze_client
 
     api_key = get_api_key()
     intro = client_answers.get("intro", "")
+    overall_start = time.perf_counter()
 
-    print("Empathy read 1 + dynamic questions (parallel)...")
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        empathy_early_future = executor.submit(analyze_client, {"intro": intro})
-        dynamic_questions_future = executor.submit(get_dynamic_questions, intro, client_answers, api_key)
-        empathy_early = empathy_early_future.result()
-        dynamic_questions = dynamic_questions_future.result()
+    def _parallel_step():
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            empathy_future = executor.submit(analyze_client, {"intro": intro})
+            dynamic_questions_future = executor.submit(get_dynamic_questions, intro, client_answers, api_key)
+            return empathy_future.result(), dynamic_questions_future.result()
 
-    print("Empathy read 2 - full conversation...")
-    empathy_final = analyze_client(client_answers)
+    # One empathy read, reused for build_proposal below - no second full-conversation
+    # analysis call, that was a redundant sequential round-trip
+    empathy_analysis, dynamic_questions = _timed_step("empathy + dynamic_questions (parallel)", _parallel_step)
 
-    print("Building proposal...")
-    proposal = build_proposal(client_answers, api_key, empathy_analysis=empathy_final)
+    proposal = _timed_step(
+        "build_proposal",
+        lambda: build_proposal(client_answers, api_key, empathy_analysis=empathy_analysis)
+    )
 
-    print("Running QA check 1 - numbers...")
     from agents.qa_agent import qa_check
-    proposal = qa_check(proposal, client_answers)
+    proposal = _timed_step("qa_check (numeric)", lambda: qa_check(proposal, client_answers))
 
-    print("Running QA check 2 - content + master review...")
     from agents.qa_agent_content import review_and_fix_proposal
-    review_result = review_and_fix_proposal(proposal, client_answers)
+    review_result = _timed_step(
+        "review_and_fix_proposal (merged QA + master review)",
+        lambda: review_and_fix_proposal(proposal, client_answers)
+    )
     proposal = review_result["proposal"]
 
-    print("Done!")
+    print(f"[timing] run_full_onboarding TOTAL: {time.perf_counter() - overall_start:.1f}s")
     return {
         "dynamic_questions": dynamic_questions,
-        "empathy_early": empathy_early,
-        "empathy_final": empathy_final,
+        "empathy_early": empathy_analysis,
+        "empathy_final": empathy_analysis,
         "proposal": proposal,
         "review": {
             "approved": review_result["review_approved"],
@@ -299,7 +327,7 @@ def handle_objection(text, packages, answers, empathy_final, api_key):
     address the SPECIFIC thing they said, then steer back toward picking a package
     rather than dead-ending the conversation."""
     system = """You are a skilled, warm, creative closer for uallak, an Israeli marketing agency.
-A client was just shown 1-3 package options and, instead of picking one, wrote free text — an
+A client was just shown 1-2 package options and, instead of picking one, wrote free text — an
 objection, a question, hesitation, or something else entirely. Your job is to keep the conversation
 moving toward a decision, never to dead-end it.
 
@@ -332,3 +360,31 @@ Instead of picking a package, the client just wrote:
 """
     result = safe_claude_json_call(system, user_message, max_tokens=700, api_key=api_key)
     return result.get("reply", "")
+
+def get_reaction(question_text, answer_text, api_key):
+    """Short, lightweight reactive bot message shown after a meaningful answer, to make the
+    chat feel like a conversation rather than a rapid-fire form. Plain text (not JSON) with a
+    small max_tokens, so it stays fast and doesn't add noticeable latency to the flow."""
+    from anthropic import Anthropic
+
+    system = """You are a warm, human conversational partner for uallak, an Israeli marketing agency,
+mid-way through an onboarding chat with a small business owner. You just saw one specific thing they
+said. Write ONE short, natural reaction to it - encouragement, a brief genuine compliment, or a
+follow-up comment tied to what they SPECIFICALLY said. 1 sentence, occasionally 2 max. Warm and
+human, never generic filler like just "מעניין!" - be specific to their actual answer.
+Respond in Hebrew, plain text only - no JSON, no quotes, no markdown, just the sentence itself."""
+
+    user_message = f"Question asked: {question_text}\nClient's answer: {answer_text}"
+
+    try:
+        client = Anthropic(api_key=api_key) if api_key else Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=150,
+            system=system,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"[get_reaction] failed ({e}), skipping reaction")
+        return ""

@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 from datetime import datetime
 
@@ -112,6 +113,36 @@ def create_subscription(client_id: int, plan_name: str, amount: float, currency:
         "plan_id": plan_id,
         "approve_url": approve_url,
     }
+
+
+# ─── Webhooks ─────────────────────────────────────────────────────────────────
+
+def verify_webhook_signature(headers: dict, body: bytes, webhook_id: str) -> bool:
+    """Verify a PayPal webhook event's signature via PayPal's own verification API.
+    Returns False (never raises) on any failure, so a misconfigured/unreachable
+    verification call fails closed rather than crashing the webhook handler."""
+    headers = {k.lower(): v for k, v in headers.items()}
+    try:
+        payload = {
+            "auth_algo": headers.get("paypal-auth-algo"),
+            "cert_url": headers.get("paypal-cert-url"),
+            "transmission_id": headers.get("paypal-transmission-id"),
+            "transmission_sig": headers.get("paypal-transmission-sig"),
+            "transmission_time": headers.get("paypal-transmission-time"),
+            "webhook_id": webhook_id,
+            "webhook_event": json.loads(body),
+        }
+        response = httpx.post(
+            f"{BASE_URL}/v1/notifications/verify-webhook-signature",
+            headers=_headers(),
+            json=payload,
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json().get("verification_status") == "SUCCESS"
+    except Exception as e:
+        print(f"[paypal_service] webhook signature verification error: {e}")
+        return False
 
 
 def cancel_subscription(subscription_id: str) -> dict:

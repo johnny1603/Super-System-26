@@ -3,7 +3,7 @@ import json
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
 SYSTEM = """You are the quality reviewer and content fixer for uallak, an Israeli marketing agency.
-You receive a marketing proposal (which contains a "packages" list of 1-3 pricing tiers) and the
+You receive a marketing proposal (which contains a "packages" list of 1-2 pricing tiers) and the
 client's original answers. Evaluate the proposal against these criteria, then return a corrected
 version that fixes anything that fails:
 
@@ -49,7 +49,7 @@ def review_and_fix_proposal(proposal: dict, answers: dict) -> dict:
     )
 
     try:
-        result = safe_claude_json_call(SYSTEM, user_message, max_tokens=4000)
+        result = safe_claude_json_call(SYSTEM, user_message, max_tokens=7000)
         print(f"QA/Review: approved={result.get('review_approved')} issues={result.get('issues', [])}")
         return {
             "proposal": result.get("proposal") or proposal,

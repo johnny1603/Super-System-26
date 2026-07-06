@@ -1,7 +1,8 @@
+import json
 import os
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -26,7 +27,7 @@ from agents.client_agent import (
     log_communication, get_communications,
 )
 from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation
-from core.paypal_service import create_subscription
+from core.paypal_service import create_subscription, verify_webhook_signature
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -177,19 +178,72 @@ async def checkout(req: CheckoutRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: str = "unknown"):
+    """Flip a client to active and send the payment confirmation email - idempotent, so it's
+    safe to call from both the browser redirect (/api/payment-success, immediate but not
+    verifiable) and the PayPal webhook (authoritative once signature verification is set up),
+    without sending the client a duplicate email."""
+    client = get_client(client_id)
+    if not client:
+        print(f"[{source}] client {client_id} not found")
+        return
+    if client.get("status") == "active":
+        print(f"[{source}] client {client_id} already active - skipping duplicate notification")
+        return
+    update_client_status(client_id, "active")
+    log_activity(client_id, "paypal_service", "payment_confirmed", {"subscription_id": subscription_id, "source": source}, {})
+    if client.get("email"):
+        send_payment_confirmation(client["email"], client.get("name", ""), client_id)
+    print(f"[{source}] client {client_id} marked active, confirmation email sent")
+
 @app.get("/api/payment-success")
 async def payment_success(client_id: int, subscription_id: str = None):
     try:
-        client = get_client(client_id)
-        update_client_status(client_id, "active")
-        log_activity(client_id, "paypal_service", "payment_confirmed", {"subscription_id": subscription_id}, {})
-        if client and client.get("email"):
-            send_payment_confirmation(client["email"], client.get("name", ""), client_id)
+        _mark_paid_and_notify(client_id, subscription_id, source="payment_success_redirect")
         return RedirectResponse(url="/chat/?payment=success")
     except Exception as e:
         import traceback
         traceback.print_exc()
         return RedirectResponse(url="/chat/?payment=error")
+
+@app.post("/api/paypal/webhook")
+async def paypal_webhook(request: Request):
+    body = await request.body()
+    try:
+        event = json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID", "")
+    if webhook_id:
+        if not verify_webhook_signature(dict(request.headers), body, webhook_id):
+            print("[paypal webhook] signature verification FAILED - rejecting event")
+            raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    else:
+        print("[paypal webhook] PAYPAL_WEBHOOK_ID not set - skipping signature verification "
+              "(register the webhook in the PayPal dashboard, then set this env var)")
+
+    event_type = event.get("event_type", "")
+    resource = event.get("resource", {})
+    print(f"[paypal webhook] received event_type={event_type}")
+
+    ACTIVATION_EVENTS = {
+        "BILLING.SUBSCRIPTION.ACTIVATED",
+        "BILLING.SUBSCRIPTION.RE-ACTIVATED",
+        "PAYMENT.SALE.COMPLETED",
+    }
+    if event_type in ACTIVATION_EVENTS:
+        client_id_raw = resource.get("custom_id") or resource.get("custom")
+        if client_id_raw:
+            try:
+                client_id = int(client_id_raw)
+                _mark_paid_and_notify(client_id, resource.get("id"), source="paypal_webhook")
+            except (TypeError, ValueError):
+                print(f"[paypal webhook] could not parse client_id from custom_id={client_id_raw}")
+        else:
+            print(f"[paypal webhook] event {event_type} had no custom_id on resource - skipping")
+
+    return {"success": True}
 
 class ObjectionRequest(BaseModel):
     text: str
@@ -207,6 +261,21 @@ async def handle_objection_endpoint(req: ObjectionRequest):
         import traceback
         traceback.print_exc()
         return {"success": False, "reply": "מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏"}
+
+class ReactionRequest(BaseModel):
+    question_text: str = ""
+    answer_text: str = ""
+
+@app.post("/api/reaction")
+async def reaction_endpoint(req: ReactionRequest):
+    try:
+        from agents.onboarding_agent import get_reaction, get_api_key
+        reaction = get_reaction(req.question_text, req.answer_text, get_api_key())
+        return {"success": True, "reaction": reaction}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "reaction": ""}
 
 
 # ─── Clients ──────────────────────────────────────────────────────────────────

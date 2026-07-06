@@ -62,19 +62,24 @@ def send_payment_confirmation(client_email: str, client_name: str, client_id: in
     <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
       <div style="text-align:center;margin-bottom:32px;">
         <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+        <p style="color:#8A8A8A;margin:4px 0 0;">הבית לעסקים קטנים ובינוניים</p>
       </div>
-      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
-        <h2 style="margin:0 0 16px;">תודה {client_name}! 🎉</h2>
-        <p style="color:#3D3D3D;line-height:1.7;">התשלום התקבל בהצלחה ואנחנו כבר מתחילים לעבוד על התכנית שלך.</p>
+      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;border-top:4px solid #FF4C1F;">
+        <h2 style="margin:0 0 16px;color:#1A1A1A;">תודה {client_name}! 🎉</h2>
+        <p style="color:#3D3D3D;line-height:1.7;">התשלום שלך התקבל בהצלחה ואנחנו כבר מתחילים לעבוד על התכנית שלך. בקרוב תקבל עדכון ראשון על ההתקדמות.</p>
       </div>
       <div style="background:#1A1A1A;border-radius:12px;padding:28px;margin-bottom:20px;color:white;">
-        <h3 style="margin:0 0 12px;">🔑 גישה לדשבורד האישי שלך</h3>
-        <p style="color:rgba(255,255,255,0.8);line-height:1.7;">
-          מספר הלקוח שלך: <strong style="color:#FFD166;">#{client_id}</strong><br><br>
-          הדשבורד האישי שבו תוכל לעקוב בזמן אמת אחרי כל הפעילות, ההוצאות ותקציבי הפרסום שלך —
-          נמצא כרגע בבנייה. נשלח לך פרטי התחברות ברגע שהוא מוכן.<br><br>
-          בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬
+        <h3 style="margin:0 0 12px;color:#FF4C1F;">🔑 גישה לדשבורד האישי שלך</h3>
+        <p style="color:rgba(255,255,255,0.85);line-height:1.7;margin:0;">
+          מספר הלקוח שלך: <strong style="color:#FFD166;">#{client_id}</strong>
         </p>
+        <p style="color:rgba(255,255,255,0.75);line-height:1.7;margin:12px 0 0;">
+          הדשבורד האישי שבו תוכל לעקוב בזמן אמת אחרי כל הפעילות, ההוצאות ותקציבי הפרסום שלך —
+          נמצא כרגע בבנייה. נשלח לך פרטי התחברות ברגע שהוא מוכן.
+        </p>
+      </div>
+      <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
+        <p style="color:#3D3D3D;margin:0;">בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬</p>
       </div>
     </div>
     """
