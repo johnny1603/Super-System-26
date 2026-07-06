@@ -7,10 +7,16 @@ from datetime import datetime
 from core.claude_json import safe_claude_json_call
 
 PRICING = {
-    # Flat monthly management fee — replaces old per-service fees. Covers ongoing management of
-    # every service in the package (ads, SEO, social, email, etc.) plus managed ad spend up to the
-    # threshold below. No per-service line items in monthly_breakdown anymore.
-    "monthly_management_base": 350,
+    # Per-platform monthly management fees - summed when a package includes multiple platform
+    # groups (e.g. Meta + Google = 700 NIS/month management, not one flat fee covering both).
+    "platform_management_fees": {
+        "meta": 350,     # Facebook + Instagram bundled together as ONE group
+        "google": 350,
+        "tiktok": 350,   # priced separately - requires significantly more media/content production work
+    },
+    # Floor used when a package includes NONE of the platform groups above (e.g. organic-only,
+    # automation-only, or a single-service non-ad package) - every package still has SOME monthly fee
+    "monthly_management_minimum": 350,
     "monthly_ad_spend_surcharge_threshold": 10000,
     "monthly_ad_spend_surcharge_pct": 0.05,
 
@@ -115,18 +121,30 @@ EVERY PACKAGE'S MONTHLY MANAGEMENT FEE COVERS THIS ONGOING WORK — none of this
 BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise per-client)
 ═══════════════════════════════════════════════════════════════════════════
 
-1) MONTHLY MANAGEMENT FEE — FLAT FORMULA (applies to every package, no exceptions):
-   - monthly_management_total = {PRICING['monthly_management_base']} NIS flat, covering ongoing
-     management of every service in the package plus managed ad spend up to
-     {PRICING['monthly_ad_spend_surcharge_threshold']} NIS/month
+1) MONTHLY MANAGEMENT FEE — PER-PLATFORM-GROUP FORMULA (applies to every package):
+   - There are three platform groups, each priced independently at
+     {PRICING['platform_management_fees']['meta']} NIS/month: "meta" (Facebook + Instagram bundled
+     together as ONE group), "google", and "tiktok" (priced separately because it requires
+     significantly more media/content production work than the other two)
+   - monthly_management_total = the SUM of {PRICING['platform_management_fees']['meta']} NIS for
+     EACH platform group actually included in that package. Example: a package with both Meta and
+     Google included is {PRICING['platform_management_fees']['meta']} + {PRICING['platform_management_fees']['google']}
+     = {PRICING['platform_management_fees']['meta'] + PRICING['platform_management_fees']['google']}
+     NIS/month management — NEVER a flat fee covering multiple platform groups for one price
+   - If a package includes NONE of meta/google/tiktok (e.g. an organic-only, automation-only, or
+     single-service non-ad package), monthly_management_total falls back to the
+     {PRICING['monthly_management_minimum']} NIS minimum instead - every package still has SOME
+     monthly management fee, never zero
+   - monthly_breakdown must show ONE line item per included platform group at its fee (e.g.
+     "ניהול מטא": 350, "ניהול גוגל": 350), plus the minimum-floor line only when no platform group is
+     included, plus the ad-spend surcharge line below if it applies. Do NOT add separate monthly line
+     items for non-platform services (SEO, email, organic social, automation) - those are covered by
+     whichever platform-group fee(s) or the minimum floor already present, not billed again
    - If the recommended/actual ad spend budget for a package exceeds
      {PRICING['monthly_ad_spend_surcharge_threshold']} NIS/month, add
      {PRICING['monthly_ad_spend_surcharge_pct'] * 100:.0f}% of the amount ABOVE that threshold as a
-     surcharge on top of the flat base (extra oversight larger budgets require) — show it as its own
-     line item in monthly_breakdown (e.g. "תוספת פיקוח על תקציב גבוה")
-   - monthly_breakdown must NEVER be itemized per individual service (no "google: 250, meta: 250"
-     style) — it is the flat base (+ surcharge line if applicable) only. The whole point of this fee
-     is that it does not scale with the number of services managed
+     surcharge on top of the summed platform fees (extra oversight larger budgets require) — show it
+     as its own line item in monthly_breakdown (e.g. "תוספת פיקוח על תקציב גבוה")
 
 2) SINGLE-SERVICE CLIENTS:
    - If the client explicitly indicates they want ONLY ONE isolated service (e.g. only Google ads,
@@ -163,6 +181,16 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      platform (SEOptimer / SEMrush / Ahrefs) — same pattern as ad spend, never folded into
      monthly_management_total. We operate/manage the tool on their behalf. Mention this alongside the
      ad-spend disclosure in honest_note whenever SEO is recommended
+   - HARD REQUIREMENT — check the client's answers for "organic_interest" and "organic_budget"
+     (a separate budget from marketing_budget, specifically for organic SEO). If organic_interest is
+     affirmative (e.g. "כן, מעוניין"), the proposal MUST address organic SEO in some way - NEVER
+     silently drop it just because it doesn't fit neatly into a package:
+     - If organic_budget meets the ~{PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS
+       threshold: recommend the matching tier (SEOptimer/SEMrush/Ahrefs per the ranges above) in at
+       least one package
+     - If organic_budget is below that threshold: do not fabricate a tier - instead honest_note must
+       explicitly say their stated organic budget is below the recommended minimum and state what
+       that minimum actually is ({PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS/month)
 
 5) EXISTING WEBSITE — FIX VS REBUILD:
    - If the client already has a website, a package may offer "improve/fix the existing site" as an
@@ -216,7 +244,8 @@ CRITICAL RULES:
   - business_summary: max 2-3 sentences
   - each item in goals_90_days: max 1 sentence
   - self_help_tips: max 4 items, 1 sentence each
-  - honest_note: max 3-4 sentences total (covering all three points below)
+  - honest_note: max 4-5 sentences total (covering the points below - only include the organic SEO
+    shortfall point when it actually applies)
   - each package's description: max 1-2 sentences
 - setup_fee_total floor per package type: {PRICING['min_setup_fee']} NIS for a standard package,
   {PRICING['single_service_setup_fee']} NIS for a single-service package (see BUDGET PYRAMID #2), or
@@ -231,10 +260,17 @@ CRITICAL RULES:
   account, trackable in their dashboard; (b) the payment timeline in 1-2 sentences: month 1 the
   client pays the setup fee (which replaces that month's management fee), month 2's management fee
   is free (the benefit), and from month 3 onward full billing per the chosen package applies; (c) the
-  support model transparency fact from BUDGET PYRAMID #3, stated once. Combine these naturally into
-  one coherent note, not three separate disclaimers
+  support model transparency fact from BUDGET PYRAMID #3, stated once; (d) if applicable, the organic
+  SEO budget-shortfall disclosure from BUDGET PYRAMID #4. Combine these naturally into one coherent
+  note, not a list of disclaimers
+- honest_note vs scarcity_note — STRICT SEPARATION: honest_note contains ONLY factual/operational
+  disclosures (the four points above) - NEVER any promotional, incentive, or urgency language (no
+  "free month", no "1 of 20 businesses", no limited-time framing, no selling language of any kind).
+  All promotional/incentive language belongs EXCLUSIVELY in scarcity_note. If you catch yourself
+  writing something persuasive or urgency-driven in honest_note, move it to scarcity_note instead
 - scarcity_note must tell the client, honestly and warmly (not pushy), that they are one of 20
-  businesses selected this month for the current 2-free-months management fee benefit
+  businesses selected this month for the current 2-free-months management fee benefit. This is the
+  ONLY field where this kind of promotional/incentive framing belongs
 
 Return JSON only with this exact structure:
 {{

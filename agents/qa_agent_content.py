@@ -25,6 +25,23 @@ version that fixes anything that fails:
 9. If ANY package's recommended_services includes "google" or "meta" (paid advertising), honest_note
    must clearly state that the client's actual ad spend/budget is an ADDITIONAL monthly cost on top
    of monthly_management_total, and that it will be trackable in their dashboard
+10. ORGANIC SEO MUST NOT BE SILENTLY DROPPED — check the client's answers for "organic_interest" and
+    "organic_budget". If organic_interest is affirmative, the proposal must address organic SEO
+    somewhere: either a package recommends a tier (SEOptimer/SEMrush/Ahrefs) when organic_budget
+    meets the ~3,000 NIS/month threshold, OR honest_note explicitly explains their organic budget is
+    below the recommended minimum and states what that minimum is. If neither is present, this is a
+    failure — fix it by adding the missing tier recommendation or the missing honest_note disclosure
+11. RECOMMENDED_SERVICES CONSISTENCY — every service/cost item that appears in a package's
+    setup_fee_breakdown or monthly_breakdown must also appear (or be clearly represented) in that
+    package's recommended_services, and vice versa: every service in recommended_services must have
+    a corresponding cost line. Flag and fix any mismatch (e.g. a TikTok video or articles billed in
+    setup_fee_breakdown but "tiktok"/content isn't listed in recommended_services)
+12. HONEST_NOTE VS SCARCITY_NOTE SEPARATION — honest_note must contain ONLY factual/operational
+    disclosures (ad spend/SEO tool cost transparency, payment timeline, support model, organic SEO
+    shortfall). It must NEVER contain promotional or incentive language (e.g. "free month", "1 of 20
+    businesses", limited-time framing, or any selling language) — that belongs exclusively in
+    scarcity_note. If honest_note contains promotional language, move it to scarcity_note and rewrite
+    honest_note to keep only the factual disclosures
 
 Do not change the proposal's own "approved" field (business eligibility) — that is unrelated to
 this quality review. Only touch it if it is clearly inconsistent with the rest of the proposal.

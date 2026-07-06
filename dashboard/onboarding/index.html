@@ -428,11 +428,11 @@ function displayProposal(data) {
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');
-    setTimeout(() => showPackageOptions(p.packages || []), p.scarcity_note ? 1300 : 200);
+    setTimeout(() => showPackageOptions(p.packages || [], p.scarcity_note), p.scarcity_note ? 1300 : 200);
   }, 1500);
 }
 
-function showPackageOptions(packages) {
+function showPackageOptions(packages, scarcityNote) {
   inPackageSelection = true;
   const msgs = document.getElementById('messages');
   const div = document.createElement('div');
@@ -450,11 +450,14 @@ function showPackageOptions(packages) {
   const grid = document.createElement('div');
   grid.className = 'options-grid';
   grid.style.flexDirection = 'column';
+  const badgeHtml = scarcityNote
+    ? `<span style="display:inline-block;margin-top:8px;padding:3px 10px;background:rgba(255,76,31,0.1);color:var(--accent);border-radius:100px;font-size:12px;font-weight:700;">🔥 1 מתוך 20 החודש</span>`
+    : '';
   packages.forEach(pkg => {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
     btn.style.cssText = 'width:100%;text-align:right;padding:14px 18px;';
-    btn.innerHTML = `<strong>${pkg.name}</strong><br><span style="font-size:13px;color:var(--gray);">${pkg.description||''}</span><br><span style="font-size:13px;">הקמה ₪${pkg.setup_fee_total} · ניהול חודשי ₪${pkg.monthly_management_total}</span>`;
+    btn.innerHTML = `<strong>${pkg.name}</strong><br><span style="font-size:13px;color:var(--gray);">${pkg.description||''}</span><br><span style="font-size:13px;">הקמה ₪${pkg.setup_fee_total} · ניהול חודשי ₪${pkg.monthly_management_total}</span><br>${badgeHtml}`;
     btn.onclick = () => selectPackage(pkg, btn, grid);
     grid.appendChild(btn);
   });
@@ -500,11 +503,17 @@ async function handleObjection(text) {
     const data = await res.json();
     hideTyping();
     addMessage(data.reply || "אפשר לספר לי קצת יותר על מה שמטריד אותך?", 'bot');
-    setTimeout(() => showPackageOptions((proposalData.proposal && proposalData.proposal.packages) || []), 900);
+    setTimeout(() => showPackageOptions(
+      (proposalData.proposal && proposalData.proposal.packages) || [],
+      proposalData.proposal && proposalData.proposal.scarcity_note
+    ), 900);
   } catch(e) {
     hideTyping();
     addMessage("מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏", 'bot');
-    setTimeout(() => showPackageOptions((proposalData.proposal && proposalData.proposal.packages) || []), 900);
+    setTimeout(() => showPackageOptions(
+      (proposalData.proposal && proposalData.proposal.packages) || [],
+      proposalData.proposal && proposalData.proposal.scarcity_note
+    ), 900);
   }
 }
 
