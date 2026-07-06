@@ -1,8 +1,9 @@
 import json
 import os
-from datetime import datetime
+import random
+from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -20,14 +21,16 @@ from agents.architect_agent import (
     is_agent_active, create_new_agent, suspend_agent, propose_agent_deletion
 )
 from agents.client_agent import (
-    create_client, get_client, list_clients, update_client_status, complete_onboarding,
+    create_client, get_client, get_client_by_email, list_clients, update_client_status, complete_onboarding,
     add_account, get_accounts,
     assign_agent, get_client_agents, update_agent_status,
     log_activity, get_activity,
     log_communication, get_communications,
+    create_login_code, get_active_login_code, mark_login_code_used,
 )
-from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation
+from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation, send_login_code
 from core.paypal_service import create_subscription, verify_webhook_signature, get_subscription_status
+from core.session import create_session_token, verify_session_token
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -52,6 +55,7 @@ app.add_middleware(
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
 app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
+app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
 
 class OnboardingRequest(BaseModel):
     answers: dict
@@ -201,7 +205,7 @@ def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: s
 async def payment_success(client_id: int, subscription_id: str = None):
     try:
         _mark_paid_and_notify(client_id, subscription_id, source="payment_success_redirect")
-        return RedirectResponse(url=f"/chat/?payment=success&client_id={client_id}")
+        return RedirectResponse(url="/chat/?payment=success")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -336,11 +340,72 @@ async def api_get_client(client_id: int):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True, "data": client}
 
-@app.get("/api/dashboard/{client_id}")
-async def dashboard_data(client_id: int):
+# ─── Client login (email + one-time code, no passwords) ──────────────────────
+
+class LoginRequestCodeRequest(BaseModel):
+    email: str
+
+@app.post("/api/login/request-code")
+async def login_request_code(req: LoginRequestCodeRequest):
+    try:
+        client = get_client_by_email(req.email.strip())
+        if client:
+            code = f"{random.randint(0, 999999):06d}"
+            expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+            create_login_code(client["id"], code, expires_at)
+            send_login_code(client["email"], client.get("name", ""), code)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+    # Always a generic response - never reveal whether the email exists
+    return {"success": True, "message": "אם קיים חשבון עם המייל הזה, שלחנו אליו קוד התחברות"}
+
+class LoginVerifyCodeRequest(BaseModel):
+    email: str
+    code: str
+
+@app.post("/api/login/verify-code")
+async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
+    invalid = HTTPException(status_code=401, detail="קוד שגוי או שפג תוקפו")
+
+    client = get_client_by_email(req.email.strip())
+    if not client:
+        raise invalid
+
+    login_code = get_active_login_code(client["id"], req.code.strip())
+    if not login_code:
+        raise invalid
+
+    expires_at = login_code["expires_at"].replace("Z", "+00:00")
+    if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+        raise invalid
+
+    mark_login_code_used(login_code["id"])
+
+    token = create_session_token(client["id"])
+    response.set_cookie(
+        key="session",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=30 * 24 * 60 * 60,
+        path="/",
+    )
+    return {"success": True}
+
+def _require_session(request: Request) -> int:
+    client_id = verify_session_token(request.cookies.get("session"))
+    if not client_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return client_id
+
+@app.get("/api/dashboard")
+async def dashboard_data(request: Request):
+    client_id = _require_session(request)
     client = get_client(client_id)
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     accounts = get_accounts(client_id)
     activity = get_activity(client_id, limit=100)

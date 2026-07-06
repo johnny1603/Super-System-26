@@ -379,14 +379,12 @@ function showFullPageMessage(text) {
 }
 
 async function loadDashboard() {
-  const params = new URLSearchParams(window.location.search);
-  const clientId = params.get('client_id');
-  if (!clientId) {
-    showFullPageMessage('חסר מזהה לקוח בקישור. אם קיבלת קישור לדשבורד ממייל, נסה ללחוץ עליו שוב או פנה אלינו בוואטסאפ.');
-    return;
-  }
   try {
-    const res = await fetch(`/api/dashboard/${clientId}`);
+    const res = await fetch('/api/dashboard', { credentials: 'same-origin' });
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
     if (!res.ok) throw new Error('request failed');
     const json = await res.json();
     if (!json.success) throw new Error('not found');

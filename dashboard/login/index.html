@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uallak — כניסה לדשבורד</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+
+:root {
+  --bg: #0D0D0D;
+  --panel: #171717;
+  --panel-2: #1F1F1F;
+  --accent: #FF4C1F;
+  --accent-dim: rgba(255,76,31,0.12);
+  --white: #F7F4EF;
+  --gray: #8A8A85;
+  --border: rgba(255,255,255,0.08);
+  --green: #00C96E;
+  --red: #FF5C5C;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Heebo', sans-serif;
+  background: var(--bg);
+  color: var(--white);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 32px;
+}
+.logo { text-align: center; font-size: 26px; font-weight: 900; letter-spacing: -1px; margin-bottom: 6px; }
+.logo span { color: var(--accent); }
+.subtitle { text-align: center; color: var(--gray); font-size: 14px; margin-bottom: 28px; }
+.field-label { font-size: 13.5px; font-weight: 500; color: var(--gray); margin-bottom: 8px; display: block; }
+.field-input {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: var(--white);
+  font-family: 'Heebo', sans-serif;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+  margin-bottom: 18px;
+}
+.field-input:focus { border-color: var(--accent); }
+.field-input.code-input { letter-spacing: 6px; font-size: 20px; text-align: center; font-weight: 700; }
+.btn {
+  width: 100%;
+  padding: 13px;
+  border-radius: 10px;
+  border: none;
+  font-family: 'Heebo', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--accent);
+  color: white;
+  transition: background 0.15s;
+}
+.btn:hover { background: #e0431a; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-link {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--gray);
+  font-family: 'Heebo', sans-serif;
+  font-size: 13.5px;
+  cursor: pointer;
+  margin-top: 14px;
+  text-decoration: underline;
+}
+.msg { font-size: 13.5px; text-align: center; margin-bottom: 16px; line-height: 1.6; }
+.msg.error { color: var(--red); }
+.msg.success { color: var(--green); }
+.step { display: none; }
+.step.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">u<span>allak</span></div>
+  <div class="subtitle">כניסה לדשבורד האישי שלך</div>
+
+  <div class="step active" id="stepEmail">
+    <label class="field-label" for="emailInput">כתובת המייל שלך</label>
+    <input class="field-input" id="emailInput" type="email" placeholder="you@example.com" autocomplete="email">
+    <div class="msg" id="emailMsg"></div>
+    <button class="btn" id="sendCodeBtn" onclick="requestCode()">שלח קוד התחברות</button>
+  </div>
+
+  <div class="step" id="stepCode">
+    <div class="msg" style="color:var(--white);" id="codeSentMsg"></div>
+    <label class="field-label" for="codeInput">קוד בן 6 ספרות</label>
+    <input class="field-input code-input" id="codeInput" type="text" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="one-time-code">
+    <div class="msg" id="codeMsg"></div>
+    <button class="btn" id="verifyBtn" onclick="verifyCode()">כניסה</button>
+    <button class="btn-link" onclick="backToEmail()">שלח לי קוד אחר / שנה מייל</button>
+  </div>
+</div>
+
+<script>
+let currentEmail = '';
+
+function setMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.className = 'msg' + (type ? ' ' + type : '');
+}
+
+async function requestCode() {
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email) { setMsg('emailMsg', 'נא להזין כתובת מייל', 'error'); return; }
+
+  const btn = document.getElementById('sendCodeBtn');
+  btn.disabled = true;
+  setMsg('emailMsg', '', '');
+
+  try {
+    await fetch('/api/login/request-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    currentEmail = email;
+    document.getElementById('codeSentMsg').textContent = `אם קיים חשבון עבור ${email}, שלחנו אליו קוד בן 6 ספרות. הקוד בתוקף ל-10 דקות.`;
+    document.getElementById('stepEmail').classList.remove('active');
+    document.getElementById('stepCode').classList.add('active');
+    document.getElementById('codeInput').focus();
+  } catch (e) {
+    setMsg('emailMsg', 'משהו השתבש - נסה שוב', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function verifyCode() {
+  const code = document.getElementById('codeInput').value.trim();
+  if (!code) { setMsg('codeMsg', 'נא להזין את הקוד שקיבלת', 'error'); return; }
+
+  const btn = document.getElementById('verifyBtn');
+  btn.disabled = true;
+  setMsg('codeMsg', '', '');
+
+  try {
+    const res = await fetch('/api/login/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: currentEmail, code })
+    });
+    if (res.ok) {
+      setMsg('codeMsg', 'התחברת בהצלחה, מעביר אותך לדשבורד...', 'success');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 700);
+    } else {
+      setMsg('codeMsg', 'קוד שגוי או שפג תוקפו - נסה שוב', 'error');
+    }
+  } catch (e) {
+    setMsg('codeMsg', 'משהו השתבש - נסה שוב', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function backToEmail() {
+  document.getElementById('stepCode').classList.remove('active');
+  document.getElementById('stepEmail').classList.add('active');
+  document.getElementById('codeInput').value = '';
+  setMsg('codeMsg', '', '');
+}
+
+document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
+document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') verifyCode(); });
+</script>
+</body>
+</html>

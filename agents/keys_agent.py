@@ -6,6 +6,7 @@ KEYS = {
     "SUPABASE_SERVICE_KEY": os.environ.get("SUPABASE_SERVICE_KEY", ""),
     "PAYPAL_CLIENT_ID": os.environ.get("PAYPAL_CLIENT_ID", ""),
     "PAYPAL_CLIENT_SECRET": os.environ.get("PAYPAL_CLIENT_SECRET", ""),
+    "SESSION_SECRET_KEY": os.environ.get("SESSION_SECRET_KEY", ""),
 }
 
 def get_key(name):

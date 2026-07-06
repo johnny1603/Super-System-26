@@ -587,7 +587,7 @@ async function startCheckout(name, email) {
   }
 }
 
-function showDashboardLinkButton(clientId) {
+function showDashboardLinkButton() {
   const msgs = document.getElementById('messages');
   const div = document.createElement('div');
   div.className = 'msg bot';
@@ -601,8 +601,8 @@ function showDashboardLinkButton(clientId) {
   const btn = document.createElement('button');
   btn.className = 'option-btn';
   btn.style.cssText = 'background:#1A1A1A;color:white;';
-  btn.textContent = 'לדשבורד שלי →';
-  btn.onclick = () => { window.location.href = `/dashboard?client_id=${clientId}`; };
+  btn.textContent = 'כניסה לדשבורד שלי →';
+  btn.onclick = () => { window.location.href = '/login'; };
   grid.appendChild(btn);
   bubble.appendChild(grid);
   div.appendChild(avatar);
@@ -615,10 +615,9 @@ window.onload = () => {
   const params = new URLSearchParams(window.location.search);
   const payment = params.get('payment');
   if (payment === 'success') {
-    const clientId = params.get('client_id');
     setTimeout(() => {
-      addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים, כולל מספר הלקוח שלך.\n\nהדשבורד האישי שלך מוכן — תוכל לעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot');
-      if (clientId) setTimeout(() => showDashboardLinkButton(clientId), 900);
+      addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים.\n\nהדשבורד האישי שלך מוכן — תוכל להתחבר אליו עם קוד חד-פעמי שנשלח למייל שלך, ולעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot');
+      setTimeout(() => showDashboardLinkButton(), 900);
     }, 500);
     return;
   }

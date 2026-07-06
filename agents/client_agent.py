@@ -26,6 +26,11 @@ def get_client(client_id: int) -> dict:
     return result.data[0] if result.data else {}
 
 
+def get_client_by_email(email: str) -> dict:
+    result = db.table("clients").select("*").eq("email", email).limit(1).execute()
+    return result.data[0] if result.data else {}
+
+
 def list_clients(status: str = None) -> list:
     query = db.table("clients").select("*").order("created_at", desc=True)
     if status:
@@ -138,3 +143,34 @@ def get_communications(client_id: int, limit: int = 50) -> list:
         .execute()
         .data or []
     )
+
+
+# ─── Login codes (email + one-time code auth) ─────────────────────────────────
+
+def create_login_code(client_id: int, code: str, expires_at: str) -> dict:
+    result = db.table("login_codes").insert({
+        "client_id": client_id,
+        "code": code,
+        "expires_at": expires_at,
+        "used": False,
+    }).execute()
+    return result.data[0] if result.data else {}
+
+
+def get_active_login_code(client_id: int, code: str) -> dict:
+    result = (
+        db.table("login_codes")
+        .select("*")
+        .eq("client_id", client_id)
+        .eq("code", code)
+        .eq("used", False)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else {}
+
+
+def mark_login_code_used(login_code_id) -> dict:
+    result = db.table("login_codes").update({"used": True}).eq("id", login_code_id).execute()
+    return result.data[0] if result.data else {}
