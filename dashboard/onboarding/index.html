@@ -587,11 +587,39 @@ async function startCheckout(name, email) {
   }
 }
 
+function showDashboardLinkButton(clientId) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = 'U';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  const grid = document.createElement('div');
+  grid.className = 'options-grid';
+  const btn = document.createElement('button');
+  btn.className = 'option-btn';
+  btn.style.cssText = 'background:#1A1A1A;color:white;';
+  btn.textContent = 'לדשבורד שלי →';
+  btn.onclick = () => { window.location.href = `/dashboard?client_id=${clientId}`; };
+  grid.appendChild(btn);
+  bubble.appendChild(grid);
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 window.onload = () => {
   const params = new URLSearchParams(window.location.search);
   const payment = params.get('payment');
   if (payment === 'success') {
-    setTimeout(() => addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים, כולל מספר הלקוח שלך.\n\nהדשבורד האישי שלך נמצא בבנייה ויגיע בקרוב — בינתיים הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot'), 500);
+    const clientId = params.get('client_id');
+    setTimeout(() => {
+      addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים, כולל מספר הלקוח שלך.\n\nהדשבורד האישי שלך מוכן — תוכל לעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot');
+      if (clientId) setTimeout(() => showDashboardLinkButton(clientId), 900);
+    }, 500);
     return;
   }
   if (payment === 'error') {

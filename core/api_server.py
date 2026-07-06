@@ -27,7 +27,7 @@ from agents.client_agent import (
     log_communication, get_communications,
 )
 from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation
-from core.paypal_service import create_subscription, verify_webhook_signature
+from core.paypal_service import create_subscription, verify_webhook_signature, get_subscription_status
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,6 +51,7 @@ app.add_middleware(
 
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
+app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
 
 class OnboardingRequest(BaseModel):
     answers: dict
@@ -200,7 +201,7 @@ def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: s
 async def payment_success(client_id: int, subscription_id: str = None):
     try:
         _mark_paid_and_notify(client_id, subscription_id, source="payment_success_redirect")
-        return RedirectResponse(url="/chat/?payment=success")
+        return RedirectResponse(url=f"/chat/?payment=success&client_id={client_id}")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -334,6 +335,47 @@ async def api_get_client(client_id: int):
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True, "data": client}
+
+@app.get("/api/dashboard/{client_id}")
+async def dashboard_data(client_id: int):
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    accounts = get_accounts(client_id)
+    activity = get_activity(client_id, limit=100)
+
+    # Derive monthly_fee + subscription_id from the checkout activity log - there's no
+    # dedicated billing table yet, this is what was actually recorded at checkout time
+    monthly_fee = None
+    subscription_id = None
+    for entry in activity:
+        if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_created":
+            details = entry.get("details") or {}
+            monthly_fee = details.get("monthly_management_total")
+            subscription_id = (entry.get("result") or {}).get("subscription_id")
+            break  # activity is newest-first, so the first match is the most recent checkout
+
+    next_billing_date = None
+    if subscription_id:
+        try:
+            sub_status = get_subscription_status(subscription_id)
+            next_billing_date = sub_status.get("next_billing_time")
+        except Exception as e:
+            print(f"[dashboard] could not fetch live subscription status: {e}")
+
+    return {"success": True, "data": {
+        "client": {
+            "id": client.get("id"),
+            "name": client.get("name"),
+            "package": client.get("package"),
+            "status": client.get("status"),
+        },
+        "monthly_fee": monthly_fee,
+        "next_billing_date": next_billing_date,
+        "connections": accounts,
+        "activity": activity[:10],
+    }}
 
 @app.patch("/api/clients/{client_id}/status")
 async def api_update_client_status(client_id: int, req: UpdateStatusRequest):

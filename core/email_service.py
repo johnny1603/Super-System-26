@@ -1,3 +1,4 @@
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -5,6 +6,7 @@ from email.mime.text import MIMEText
 GMAIL_USER = "johnny_support@uallak.com"
 GMAIL_APP_PASSWORD = "gabg fbdq yxil uumt"
 ADMIN_EMAIL = "johnny_support@uallak.com"
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
 
 def send_client_report(client_email: str, client_name: str, proposal: dict):
     p = proposal
@@ -74,9 +76,9 @@ def send_payment_confirmation(client_email: str, client_name: str, client_id: in
           מספר הלקוח שלך: <strong style="color:#FFD166;">#{client_id}</strong>
         </p>
         <p style="color:rgba(255,255,255,0.75);line-height:1.7;margin:12px 0 0;">
-          הדשבורד האישי שבו תוכל לעקוב בזמן אמת אחרי כל הפעילות, ההוצאות ותקציבי הפרסום שלך —
-          נמצא כרגע בבנייה. נשלח לך פרטי התחברות ברגע שהוא מוכן.
+          תוכל לעקוב בזמן אמת אחרי הפעילות, החיבורים ופרטי המנוי שלך בדשבורד האישי:
         </p>
+        <a href="{PUBLIC_APP_URL}/dashboard?client_id={client_id}" style="display:inline-block;margin-top:14px;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">לדשבורד שלי →</a>
       </div>
       <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
         <p style="color:#3D3D3D;margin:0;">בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬</p>
