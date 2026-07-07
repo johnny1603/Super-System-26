@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from core.claude_json import safe_claude_json_call
@@ -316,20 +315,11 @@ def run_full_onboarding(client_answers):
     from agents.empathy_agent import analyze_client
 
     api_key = get_api_key()
-    intro = client_answers.get("intro", "")
     overall_start = time.perf_counter()
-
-    def _parallel_step():
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            # Full answers, not just the intro — by proposal time the whole conversation is
-            # available and the sales intelligence is much sharper with it, at no extra latency
-            empathy_future = executor.submit(analyze_client, client_answers)
-            dynamic_questions_future = executor.submit(get_dynamic_questions, intro, client_answers, api_key)
-            return empathy_future.result(), dynamic_questions_future.result()
 
     # One empathy read, reused for build_proposal below - no second full-conversation
     # analysis call, that was a redundant sequential round-trip
-    empathy_analysis, dynamic_questions = _timed_step("empathy + dynamic_questions (parallel)", _parallel_step)
+    empathy_analysis = _timed_step("empathy", lambda: analyze_client(client_answers))
 
     proposal = _timed_step(
         "build_proposal",
@@ -348,7 +338,6 @@ def run_full_onboarding(client_answers):
 
     print(f"[timing] run_full_onboarding TOTAL: {time.perf_counter() - overall_start:.1f}s")
     return {
-        "dynamic_questions": dynamic_questions,
         "empathy_early": empathy_analysis,
         "empathy_final": empathy_analysis,
         "proposal": proposal,

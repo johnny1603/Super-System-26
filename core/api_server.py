@@ -63,7 +63,7 @@ class OnboardingRequest(BaseModel):
     client_name: str = ""
 
 @app.post("/api/onboarding")
-async def onboarding(req: OnboardingRequest):
+def onboarding(req: OnboardingRequest):
     try:
         result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
@@ -102,7 +102,7 @@ async def get_leads():
     return {"leads": result.data}
 
 @app.get("/api/monitor/scan")
-async def monitor_scan():
+def monitor_scan():
     if not is_agent_active("monitor_agent"):
         return {"success": False, "skipped": True, "reason": "monitor_agent is suspended"}
     try:
@@ -124,7 +124,7 @@ class ProposeDeleteRequest(BaseModel):
     reason: str
 
 @app.post("/api/architect/create")
-async def architect_create(req: CreateAgentRequest):
+def architect_create(req: CreateAgentRequest):
     try:
         result = create_new_agent(req.need_description)
         return {"success": True, "data": result}
@@ -276,7 +276,7 @@ class ObjectionRequest(BaseModel):
     packages: list = []
 
 @app.post("/api/handle-objection")
-async def handle_objection_endpoint(req: ObjectionRequest):
+def handle_objection_endpoint(req: ObjectionRequest):
     try:
         from agents.onboarding_agent import handle_objection, get_api_key
         reply = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
@@ -291,7 +291,7 @@ class ReactionRequest(BaseModel):
     answer_text: str = ""
 
 @app.post("/api/reaction")
-async def reaction_endpoint(req: ReactionRequest):
+def reaction_endpoint(req: ReactionRequest):
     try:
         from agents.onboarding_agent import get_reaction, get_api_key
         reaction = get_reaction(req.question_text, req.answer_text, get_api_key())
@@ -547,7 +547,7 @@ class DynamicQRequest(BaseModel):
     answers: dict
 
 @app.post("/api/dynamic-questions")
-async def dynamic_questions(req: DynamicQRequest):
+def dynamic_questions(req: DynamicQRequest):
     try:
         from agents.onboarding_agent import get_dynamic_questions, get_api_key
         api_key = os.environ.get("ANTHROPIC_API_KEY", "") or get_api_key()
@@ -561,7 +561,7 @@ class FilterRequest(BaseModel):
     answers: dict
 
 @app.post("/api/filter-questions")
-async def filter_questions_endpoint(req: FilterRequest):
+def filter_questions_endpoint(req: FilterRequest):
     try:
         from agents.question_filter import get_skip_ids
         return {"skip_ids": get_skip_ids(req.intro)}
