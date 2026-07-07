@@ -8,6 +8,7 @@ KEYS = {
     "PAYPAL_CLIENT_SECRET": os.environ.get("PAYPAL_CLIENT_SECRET", ""),
     "SESSION_SECRET_KEY": os.environ.get("SESSION_SECRET_KEY", ""),
     "GMAIL_APP_PASSWORD": os.environ.get("GMAIL_APP_PASSWORD", ""),
+    "ADMIN_KEY": os.environ.get("ADMIN_KEY", ""),
 }
 
 def get_key(name):

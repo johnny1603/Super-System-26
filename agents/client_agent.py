@@ -160,18 +160,26 @@ def create_login_code(client_id: int, code: str, expires_at: str) -> dict:
     return result.data[0] if result.data else {}
 
 
-def get_active_login_code(client_id: int, code: str) -> dict:
+def get_active_login_code(client_id: int) -> dict:
+    """The client's most recent unused login code, regardless of what code value
+    was submitted - callers compare the code themselves so a wrong guess can be
+    counted as a failed attempt against this same row."""
     result = (
         _db().table("login_codes")
         .select("*")
         .eq("client_id", client_id)
-        .eq("code", code)
         .eq("used", False)
         .order("created_at", desc=True)
         .limit(1)
         .execute()
     )
     return result.data[0] if result.data else {}
+
+
+def increment_login_code_attempts(login_code_id, current_attempts: int) -> int:
+    new_count = current_attempts + 1
+    _db().table("login_codes").update({"failed_attempts": new_count}).eq("id", login_code_id).execute()
+    return new_count
 
 
 def mark_login_code_used(login_code_id) -> dict:

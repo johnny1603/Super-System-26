@@ -625,6 +625,10 @@ window.onload = () => {
     setTimeout(() => addMessage("נראה שהייתה בעיה באישור התשלום 😕\n\nאפשר לנסות שוב או לפנות אלינו בוואטסאפ ונשלים את זה ביחד 💬", 'bot'), 500);
     return;
   }
+  if (payment === 'pending') {
+    setTimeout(() => addMessage("קיבלנו את הפעולה שלך והתשלום עדיין באימות מול PayPal ⏳\n\nברגע שהוא יאושר סופית נשלח לך מייל עם כל הפרטים וגישה לדשבורד. אם זה נמשך יותר מכמה דקות, אפשר לפנות אלינו בוואטסאפ 💬", 'bot'), 500);
+    return;
+  }
   setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);
 };
 </script>

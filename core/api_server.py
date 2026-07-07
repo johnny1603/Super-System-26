@@ -1,9 +1,9 @@
 import json
 import os
-import random
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -26,7 +26,7 @@ from agents.client_agent import (
     assign_agent, get_client_agents, update_agent_status,
     log_activity, get_activity,
     log_communication, get_communications,
-    create_login_code, get_active_login_code, mark_login_code_used,
+    create_login_code, get_active_login_code, increment_login_code_attempts, mark_login_code_used,
 )
 from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation, send_login_code
 from core.paypal_service import create_subscription, verify_webhook_signature, get_subscription_status
@@ -56,6 +56,16 @@ app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "on
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
 app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
+
+def _require_admin_key(request: Request):
+    """Guards internal/admin endpoints - everything that isn't part of the public
+    sales chat, login, PayPal callback flow, or a client's own session-gated
+    dashboard/chat. Fails closed if ADMIN_KEY isn't set."""
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    if not admin_key or request.headers.get("X-Admin-Key") != admin_key:
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+_admin_only = [Depends(_require_admin_key)]
 
 class OnboardingRequest(BaseModel):
     answers: dict
@@ -96,12 +106,12 @@ def onboarding(req: OnboardingRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/leads")
+@app.get("/api/leads", dependencies=_admin_only)
 async def get_leads():
     result = db.table("leads").select("*").order("created_at", desc=True).execute()
     return {"leads": result.data}
 
-@app.get("/api/monitor/scan")
+@app.get("/api/monitor/scan", dependencies=_admin_only)
 def monitor_scan():
     if not is_agent_active("monitor_agent"):
         return {"success": False, "skipped": True, "reason": "monitor_agent is suspended"}
@@ -123,7 +133,7 @@ class ProposeDeleteRequest(BaseModel):
     agent_name: str
     reason: str
 
-@app.post("/api/architect/create")
+@app.post("/api/architect/create", dependencies=_admin_only)
 def architect_create(req: CreateAgentRequest):
     try:
         result = create_new_agent(req.need_description)
@@ -131,12 +141,12 @@ def architect_create(req: CreateAgentRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/architect/suspend")
+@app.post("/api/architect/suspend", dependencies=_admin_only)
 async def architect_suspend(req: SuspendAgentRequest):
     result = suspend_agent(req.agent_name, req.reason)
     return {"success": True, "data": result}
 
-@app.post("/api/architect/propose-deletion")
+@app.post("/api/architect/propose-deletion", dependencies=_admin_only)
 async def architect_propose_deletion(req: ProposeDeleteRequest):
     result = propose_agent_deletion(req.agent_name, req.reason)
     return {"success": True, "data": result}
@@ -221,8 +231,18 @@ def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: s
     print(f"[{source}] client {client_id} marked active, confirmation email sent")
 
 @app.get("/api/payment-success")
-async def payment_success(client_id: int, subscription_id: str = None):
+def payment_success(client_id: int, subscription_id: str = None):
     try:
+        if not subscription_id:
+            print(f"[payment_success] client {client_id}: no subscription_id in redirect - not activating")
+            return RedirectResponse(url="/chat/?payment=pending")
+
+        sub_status = get_subscription_status(subscription_id)
+        if sub_status.get("status") != "ACTIVE":
+            print(f"[payment_success] client {client_id}: subscription {subscription_id} "
+                  f"status={sub_status.get('status')} - not activating yet")
+            return RedirectResponse(url="/chat/?payment=pending")
+
         _mark_paid_and_notify(client_id, subscription_id, source="payment_success_redirect")
         return RedirectResponse(url="/chat/?payment=success")
     except Exception as e:
@@ -337,7 +357,7 @@ class LogCommunicationRequest(BaseModel):
     channel: str
     content: str
 
-@app.post("/api/clients")
+@app.post("/api/clients", dependencies=_admin_only)
 async def api_create_client(req: CreateClientRequest):
     try:
         client = create_client(req.name, req.email, req.phone, req.package)
@@ -345,14 +365,14 @@ async def api_create_client(req: CreateClientRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients")
+@app.get("/api/clients", dependencies=_admin_only)
 async def api_list_clients(status: str = None):
     try:
         return {"success": True, "data": list_clients(status)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients/{client_id}")
+@app.get("/api/clients/{client_id}", dependencies=_admin_only)
 async def api_get_client(client_id: int):
     client = get_client(client_id)
     if not client:
@@ -369,7 +389,7 @@ async def login_request_code(req: LoginRequestCodeRequest):
     try:
         client = get_client_by_email(req.email.strip())
         if client:
-            code = f"{random.randint(0, 999999):06d}"
+            code = f"{secrets.randbelow(1_000_000):06d}"
             expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
             create_login_code(client["id"], code, expires_at)
             send_login_code(client["email"], client.get("name", ""), code)
@@ -383,6 +403,8 @@ class LoginVerifyCodeRequest(BaseModel):
     email: str
     code: str
 
+MAX_LOGIN_CODE_ATTEMPTS = 5
+
 @app.post("/api/login/verify-code")
 async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
     invalid = HTTPException(status_code=401, detail="קוד שגוי או שפג תוקפו")
@@ -391,12 +413,21 @@ async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
     if not client:
         raise invalid
 
-    login_code = get_active_login_code(client["id"], req.code.strip())
+    login_code = get_active_login_code(client["id"])
     if not login_code:
+        raise invalid
+
+    if login_code.get("failed_attempts", 0) >= MAX_LOGIN_CODE_ATTEMPTS:
         raise invalid
 
     expires_at = login_code["expires_at"].replace("Z", "+00:00")
     if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+        raise invalid
+
+    if login_code["code"] != req.code.strip():
+        new_count = increment_login_code_attempts(login_code["id"], login_code.get("failed_attempts", 0))
+        if new_count >= MAX_LOGIN_CODE_ATTEMPTS:
+            mark_login_code_used(login_code["id"])  # invalidate after too many wrong guesses
         raise invalid
 
     mark_login_code_used(login_code["id"])
@@ -461,77 +492,77 @@ async def dashboard_data(request: Request):
         "activity": activity[:10],
     }}
 
-@app.patch("/api/clients/{client_id}/status")
+@app.patch("/api/clients/{client_id}/status", dependencies=_admin_only)
 async def api_update_client_status(client_id: int, req: UpdateStatusRequest):
     try:
         return {"success": True, "data": update_client_status(client_id, req.status)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/clients/{client_id}/complete-onboarding")
+@app.post("/api/clients/{client_id}/complete-onboarding", dependencies=_admin_only)
 async def api_complete_onboarding(client_id: int):
     try:
         return {"success": True, "data": complete_onboarding(client_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/clients/{client_id}/accounts")
+@app.post("/api/clients/{client_id}/accounts", dependencies=_admin_only)
 async def api_add_account(client_id: int, req: AddAccountRequest):
     try:
         return {"success": True, "data": add_account(client_id, req.platform, req.account_id, req.access_token, req.status)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients/{client_id}/accounts")
+@app.get("/api/clients/{client_id}/accounts", dependencies=_admin_only)
 async def api_get_accounts(client_id: int):
     try:
         return {"success": True, "data": get_accounts(client_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/clients/{client_id}/agents")
+@app.post("/api/clients/{client_id}/agents", dependencies=_admin_only)
 async def api_assign_agent(client_id: int, req: AssignAgentRequest):
     try:
         return {"success": True, "data": assign_agent(client_id, req.agent_name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients/{client_id}/agents")
+@app.get("/api/clients/{client_id}/agents", dependencies=_admin_only)
 async def api_get_client_agents(client_id: int):
     try:
         return {"success": True, "data": get_client_agents(client_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/api/clients/{client_id}/agents/status")
+@app.patch("/api/clients/{client_id}/agents/status", dependencies=_admin_only)
 async def api_update_agent_status(client_id: int, req: UpdateAgentStatusRequest):
     try:
         return {"success": True, "data": update_agent_status(client_id, req.agent_name, req.status)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/clients/{client_id}/activity")
+@app.post("/api/clients/{client_id}/activity", dependencies=_admin_only)
 async def api_log_activity(client_id: int, req: LogActivityRequest):
     try:
         return {"success": True, "data": log_activity(client_id, req.agent_name, req.action_type, req.details, req.result)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients/{client_id}/activity")
+@app.get("/api/clients/{client_id}/activity", dependencies=_admin_only)
 async def api_get_activity(client_id: int, limit: int = 50):
     try:
         return {"success": True, "data": get_activity(client_id, limit)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/clients/{client_id}/communications")
+@app.post("/api/clients/{client_id}/communications", dependencies=_admin_only)
 async def api_log_communication(client_id: int, req: LogCommunicationRequest):
     try:
         return {"success": True, "data": log_communication(client_id, req.direction, req.channel, req.content)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clients/{client_id}/communications")
+@app.get("/api/clients/{client_id}/communications", dependencies=_admin_only)
 async def api_get_communications(client_id: int, limit: int = 50):
     try:
         return {"success": True, "data": get_communications(client_id, limit)}
