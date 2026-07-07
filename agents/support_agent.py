@@ -1,0 +1,116 @@
+"""uallak's client-facing support chat agent.
+
+Answers questions from already-paying clients in their dashboard chat panel,
+grounded in their own package/proposal data and recent account activity.
+This is not the sales chat (agents/onboarding_agent.py) - these clients
+already paid and are asking about their account.
+"""
+import json
+import os
+
+from supabase import create_client as _supabase_client
+
+from agents.client_agent import get_client, get_activity
+from core.agent_base import agent_alert, log_step, timed_step
+from core.claude_json import ClaudeJSONError, safe_claude_json_call
+
+AGENT_NAME = "support_agent"
+
+# Created lazily - no DB client at import time (api_server imports every agent at startup)
+_db_instance = None
+
+
+def _db():
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = _supabase_client(
+            os.environ["SUPABASE_URL"],
+            os.environ["SUPABASE_SERVICE_KEY"],
+        )
+    return _db_instance
+
+
+def consult_platform_agent(platform: str, question: str) -> str:
+    """Forward-looking hook: once real Google/Meta/TikTok execution agents exist,
+    this will fetch live campaign data to answer platform-specific questions.
+    For now there is nothing to connect to."""
+    return f"אין עדיין חיבור לנתונים בזמן אמת של {platform} - זה יתווסף בקרוב"
+
+
+def _latest_proposal(email: str) -> dict:
+    """The client's actual proposal (packages, pricing) lives on their lead row,
+    matched by email - clients/leads aren't linked by id."""
+    if not email:
+        return {}
+    result = (
+        _db().table("leads")
+        .select("proposal")
+        .eq("client_email", email)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return (result.data[0].get("proposal") or {}) if result.data else {}
+
+
+SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
+already-paying client inside their private dashboard. You are presented as "the uallak
+team" - never say you are an AI or a bot.
+
+Answer questions about their package, pricing, and how the system works, using ONLY the
+client data given to you in the user message (their package/proposal details and recent
+account activity). Never invent numbers, features, or activity not present in that data.
+
+There is no real-time connection yet to platform-specific data (Google Ads, Meta, TikTok
+campaign performance). A stub function consult_platform_agent(platform, question) exists
+for this but always returns "not connected yet" today. If the client asks something that
+would need live platform data you don't have, say so honestly and warmly instead of
+guessing or inventing numbers, and mention it's coming soon.
+
+If the question is genuinely unclear, unrelated to their account, or something you can't
+answer confidently from the given data (this is different from "no platform data yet") -
+say so honestly, tell the client a team member will follow up personally, and set
+needs_human_followup to true.
+
+Keep replies short: 2-4 sentences max. Hebrew only.
+
+Return JSON only:
+{"reply": "Hebrew text", "needs_human_followup": true/false}"""
+
+_FALLBACK = {
+    "reply": "מצטערים, הייתה תקלה קטנה מהצד שלנו - צוות uallak יחזור אליך בהקדם 🙏",
+    "needs_human_followup": True,
+}
+
+
+def answer_support_question(client_id: int, message: str) -> dict:
+    log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
+
+    client = get_client(client_id)
+    payload = {
+        "client": {
+            "name": client.get("name"),
+            "package": client.get("package"),
+            "status": client.get("status"),
+        },
+        "proposal": _latest_proposal(client.get("email", "")),
+        "recent_activity": get_activity(client_id, limit=15),
+        "client_message": message,
+    }
+    user_message = json.dumps(payload, ensure_ascii=False)
+
+    try:
+        result = timed_step(
+            AGENT_NAME, "llm_call",
+            lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800),
+        )
+    except ClaudeJSONError as e:
+        agent_alert(AGENT_NAME, [f"answer_support_question failed for client {client_id}: {e}"])
+        return _FALLBACK
+
+    reply = result.get("reply", "")
+    needs_human_followup = bool(result.get("needs_human_followup", False))
+    if needs_human_followup:
+        agent_alert(AGENT_NAME, [f'client {client_id} needs human follow-up: "{message}"'])
+
+    return {"reply": reply, "needs_human_followup": needs_human_followup}

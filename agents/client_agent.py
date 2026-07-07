@@ -141,16 +141,11 @@ def log_communication(client_id: int, direction: str, channel: str, content: str
     return result.data[0] if result.data else {}
 
 
-def get_communications(client_id: int, limit: int = 50) -> list:
-    return (
-        _db().table("client_communications")
-        .select("*")
-        .eq("client_id", client_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-        .data or []
-    )
+def get_communications(client_id: int, limit: int = 50, channel: str = None) -> list:
+    query = _db().table("client_communications").select("*").eq("client_id", client_id)
+    if channel:
+        query = query.eq("channel", channel)
+    return query.order("created_at", desc=True).limit(limit).execute().data or []
 
 
 # ─── Login codes (email + one-time code auth) ─────────────────────────────────

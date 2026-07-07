@@ -182,7 +182,7 @@ body {
 .activity-row:last-child { border-bottom: none; }
 .activity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .activity-text { flex: 1; font-size: 14px; }
-.activity-time { font-size: 12.5px; color: var(--gray); white-space: nowrap; }
+.activity-time { font-size: 12.5px; color: var(--gray); }
 
 /* ---------- AFFILIATE NOTE ---------- */
 .affiliate-note {
@@ -199,11 +199,122 @@ body {
 }
 .affiliate-icon { color: var(--accent); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
 
-/* ---------- FULL-PAGE MESSAGE (missing/invalid client) ---------- */
-.full-page-msg {
+/* ---------- TIMELINE ---------- */
+.timeline-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 32px;
+}
+.timeline-top { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.timeline-label { font-size: 14px; font-weight: 700; }
+.timeline-pct { font-size: 14px; font-weight: 900; color: var(--accent); }
+.timeline-track { height: 8px; background: var(--panel-2); border-radius: 100px; overflow: hidden; margin-bottom: 10px; }
+.timeline-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #ff8a5c); border-radius: 100px; }
+.timeline-note { font-size: 12.5px; color: var(--gray); }
+
+/* ---------- PENDING APPROVAL ---------- */
+.pending-badge {
+  background: var(--accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 13px;
+  border-radius: 100px;
+}
+.pending-thumb {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: var(--panel-2);
   display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; text-align: center; padding: 24px;
-  color: var(--gray); font-size: 15px; line-height: 1.7;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* ---------- SUPPORT CHAT ---------- */
+.support-fab {
+  position: fixed;
+  bottom: 26px; left: 26px;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(255,76,31,0.4);
+  z-index: 200;
+  border: none;
+  transition: transform 0.15s;
+}
+.support-fab:hover { transform: scale(1.06); }
+.support-fab svg { width: 24px; height: 24px; }
+
+.support-panel {
+  position: fixed;
+  bottom: 96px; left: 26px;
+  width: 360px;
+  height: 480px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  z-index: 199;
+  opacity: 0;
+  transform: translateY(16px) scale(0.97);
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+.support-panel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+
+.support-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(180deg, #1c1c1c, var(--panel));
+}
+.support-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.support-head-text { flex: 1; }
+.support-head-title { font-size: 14px; font-weight: 700; }
+.support-head-sub { font-size: 11.5px; color: var(--green); display: flex; align-items: center; gap: 5px; }
+.support-head-sub::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+.support-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.support-msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
+.support-msg.bot { background: var(--panel-2); align-self: flex-start; border-radius: 4px 14px 14px 14px; }
+.support-msg.user { background: var(--accent); color: white; align-self: flex-end; border-radius: 14px 4px 14px 14px; }
+.support-msg.escalated { background: rgba(255,76,31,0.1); border: 1px solid rgba(255,76,31,0.25); align-self: flex-start; border-radius: 4px 14px 14px 14px; font-size: 12px; color: var(--accent); }
+
+.support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+.support-input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 10px 16px;
+  color: white;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+.support-input:focus { border-color: var(--accent); }
+.support-send {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 </style>
 </head>
@@ -212,8 +323,8 @@ body {
 <div class="topbar">
   <div class="logo">u<span>allak</span></div>
   <div class="topbar-right">
-    <span class="package-badge" id="packageBadge">טוען...</span>
-    <div class="avatar" id="avatarLetter">·</div>
+    <span class="package-badge">חבילה מלאה — Meta + Google</span>
+    <div class="avatar">מ</div>
   </div>
 </div>
 
@@ -223,29 +334,58 @@ body {
     <div class="nav-item"><span class="nav-icon">⚭</span> חיבורים</div>
     <div class="nav-item"><span class="nav-icon">≡</span> פעילות</div>
     <div class="nav-item"><span class="nav-icon">₪</span> חיובים</div>
-    <div class="nav-item"><span class="nav-icon">✉</span> תמיכה</div>
+    <div class="nav-item" onclick="toggleSupportChat()"><span class="nav-icon">✉</span> תמיכה</div>
   </div>
 
   <div class="main">
-    <div class="greeting">שלום, <span id="greetingName">...</span> 👋</div>
+    <div class="greeting">שלום, מיכל 👋</div>
     <div class="greeting-sub">הנה מה שקורה בעסק שלך היום</div>
 
     <div class="stat-grid">
       <div class="stat-card">
         <div class="stat-label">חבילה נוכחית</div>
-        <div class="stat-value" id="statPackage">—</div>
+        <div class="stat-value">Meta + Google</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">דמי ניהול חודשיים</div>
-        <div class="stat-value accent" id="statMonthlyFee">—</div>
+        <div class="stat-value accent">₪700</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">חיוב הבא</div>
-        <div class="stat-value" id="statNextBilling">—</div>
+        <div class="stat-value">5 באוגוסט</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">פעולות שנרשמו</div>
-        <div class="stat-value" id="statActions">—</div>
+        <div class="stat-label">פעולות החודש</div>
+        <div class="stat-value">18</div>
+      </div>
+    </div>
+
+    <div class="timeline-card">
+      <div class="timeline-top">
+        <span class="timeline-label">חודש 2 מתוך 6 — תוכנית צמיחה</span>
+        <span class="timeline-pct">33%</span>
+      </div>
+      <div class="timeline-track"><div class="timeline-fill" style="width:33%"></div></div>
+      <div class="timeline-note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <div class="section-title">ממתין לאישור שלך</div>
+        <div class="section-sub">חומרים שהמערכת הכינה — צריך את האור הירוק שלך</div>
+      </div>
+      <span class="pending-badge">2 ממתינים</span>
+    </div>
+    <div class="activity-list" style="margin-bottom:36px;">
+      <div class="activity-row">
+        <div class="pending-thumb">🖼️</div>
+        <div class="activity-text">3 תמונות פוסט למחר — קולקציית קיץ</div>
+        <button class="conn-btn primary" style="width:auto; padding:8px 18px;">לאישור</button>
+      </div>
+      <div class="activity-row">
+        <div class="pending-thumb">🎬</div>
+        <div class="activity-text">סרטון קצר לטיקטוק — סקירת עבודה אחרונה</div>
+        <button class="conn-btn primary" style="width:auto; padding:8px 18px;">לאישור</button>
       </div>
     </div>
 
@@ -255,7 +395,116 @@ body {
         <div class="section-sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
       </div>
     </div>
-    <div class="conn-grid" id="connGrid"></div>
+    <div class="conn-grid">
+
+      <div class="conn-card unlocked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#3B5998;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="10" r="2"/><path d="M20 16l-4.5-4.5L9 18"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">Meta — פייסבוק + אינסטגרם</div>
+            <div class="conn-status connected">מחובר</div>
+          </div>
+        </div>
+        <button class="conn-btn connected-btn">מחובר ✓</button>
+      </div>
+
+      <div class="conn-card unlocked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#EA4335;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">Google Ads</div>
+            <div class="conn-status">לא מחובר</div>
+          </div>
+        </div>
+        <button class="conn-btn primary">חבר עכשיו</button>
+      </div>
+
+      <div class="conn-card locked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#2A2A2A;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><path d="M9 18V6l8 6-8 6z"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">TikTok</div>
+            <div class="conn-status">נעול</div>
+          </div>
+        </div>
+        <button class="conn-btn locked-btn" disabled>נעול</button>
+        <div class="lock-note">שדרג חבילה כדי לפתוח</div>
+      </div>
+
+      <div class="conn-card unlocked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#464646;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">האתר שלך</div>
+            <div class="conn-status connected">מחובר</div>
+          </div>
+        </div>
+        <button class="conn-btn connected-btn">מחובר ✓</button>
+      </div>
+
+      <div class="conn-card locked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#2A2A2A;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">כלי SEO אורגני</div>
+            <div class="conn-status">נעול</div>
+          </div>
+        </div>
+        <button class="conn-btn locked-btn" disabled>נעול</button>
+        <div class="lock-note">לא כלול בחבילה הנוכחית</div>
+      </div>
+
+      <div class="conn-card unlocked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#464646;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">דיוור / מיילים</div>
+            <div class="conn-status">לא מחובר</div>
+          </div>
+        </div>
+        <button class="conn-btn primary">חבר עכשיו</button>
+      </div>
+
+      <div class="conn-card unlocked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#0FBE64;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/><path d="M9 10a1 1 0 0 0 1 1h1l1 2 2 1a1 1 0 0 0 1-1v-1"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">וואטסאפ עסקי (Green API)</div>
+            <div class="conn-status connected">מחובר</div>
+          </div>
+        </div>
+        <button class="conn-btn connected-btn">מחובר ✓</button>
+      </div>
+
+      <div class="conn-card locked">
+        <div class="conn-top">
+          <div class="conn-icon" style="background:#2A2A2A;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10h.01M15 10h.01M9 15c1 1 5 1 6 0"/></svg>
+          </div>
+          <div>
+            <div class="conn-name">בוט אוטומטי (ManyChat)</div>
+            <div class="conn-status">נעול</div>
+          </div>
+        </div>
+        <button class="conn-btn locked-btn" disabled>נעול</button>
+        <div class="lock-note">שדרג חבילה כדי לפתוח</div>
+      </div>
+
+    </div>
 
     <div class="section-head">
       <div>
@@ -263,7 +512,23 @@ body {
         <div class="section-sub">מה שהמערכת עשתה בשבילך</div>
       </div>
     </div>
-    <div class="activity-list" id="activityList"></div>
+    <div class="activity-list">
+      <div class="activity-row">
+        <div class="activity-dot"></div>
+        <div class="activity-text">קמפיין Meta חדש הופעל — קהל יעד אונליין</div>
+        <div class="activity-time">היום, 09:14</div>
+      </div>
+      <div class="activity-row">
+        <div class="activity-dot"></div>
+        <div class="activity-text">פוסט שבועי פורסם באינסטגרם</div>
+        <div class="activity-time">אתמול, 18:30</div>
+      </div>
+      <div class="activity-row">
+        <div class="activity-dot"></div>
+        <div class="activity-text">דוח ביצועים שבועי נשלח למייל</div>
+        <div class="activity-time">לפני 3 ימים</div>
+      </div>
+    </div>
 
     <div class="affiliate-note">
       <span class="affiliate-icon">ⓘ</span>
@@ -273,128 +538,92 @@ body {
   </div>
 </div>
 
+<button class="support-fab" onclick="toggleSupportChat()" aria-label="תמיכה">
+  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
+
+<div class="support-panel" id="supportPanel">
+  <div class="support-head">
+    <div class="support-avatar">🤖</div>
+    <div class="support-head-text">
+      <div class="support-head-title">צוות uallak</div>
+      <div class="support-head-sub">זמין עכשיו</div>
+    </div>
+  </div>
+  <div class="support-messages" id="supportMessages">
+    <div class="support-msg bot">היי מיכל! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
+  </div>
+  <div class="support-input-area">
+    <input class="support-input" id="supportInput" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
+    <button class="support-send" onclick="sendSupportMsg()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
-const PLATFORM_META = {
-  meta:       { name: 'Meta — פייסבוק + אינסטגרם', color: '#3B5998', icon: '<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="10" r="2"/><path d="M20 16l-4.5-4.5L9 18"/>' },
-  google:     { name: 'Google Ads', color: '#EA4335', icon: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>' },
-  tiktok:     { name: 'TikTok', color: '#2A2A2A', icon: '<path d="M9 18V6l8 6-8 6z"/>' },
-  website:    { name: 'האתר שלך', color: '#464646', icon: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>' },
-  seo:        { name: 'כלי SEO אורגני', color: '#2A2A2A', icon: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>' },
-  email:      { name: 'דיוור / מיילים', color: '#464646', icon: '<path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/>' },
-  whatsapp:   { name: 'וואטסאפ עסקי (Green API)', color: '#0FBE64', icon: '<path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/><path d="M9 10a1 1 0 0 0 1 1h1l1 2 2 1a1 1 0 0 0 1-1v-1"/>' },
-  automation: { name: 'בוט אוטומטי (ManyChat)', color: '#2A2A2A', icon: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10h.01M15 10h.01M9 15c1 1 5 1 6 0"/>' },
-};
+let supportHistoryLoaded = false;
 
-const ACTIVITY_LABELS = {
-  subscription_created: 'המנוי נוצר',
-  payment_confirmed: 'התשלום אושר',
-  webhook_payment_confirmed: 'התשלום אושר',
-};
-
-function packageIncludesAny(pkg, keywords) {
-  const p = (pkg || '').toLowerCase();
-  return keywords.some(k => p.includes(k));
+function appendSupportMsg(text, cls) {
+  const box = document.getElementById('supportMessages');
+  const msg = document.createElement('div');
+  msg.className = `support-msg ${cls}`;
+  msg.textContent = text;
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+  return msg;
 }
 
-// לא כלול בחבילה הנוכחית - התאמה בסיסית לפי שם החבילה (טקסט חופשי), עד שיהיה מבנה נתונים מסודר יותר
-function isLocked(platformKey, packageName) {
-  if (platformKey === 'meta') return !packageIncludesAny(packageName, ['meta', 'פייסבוק', 'אינסטגרם']);
-  if (platformKey === 'google') return !packageIncludesAny(packageName, ['google', 'גוגל']);
-  if (platformKey === 'tiktok') return !packageIncludesAny(packageName, ['tiktok', 'טיקטוק']);
-  if (platformKey === 'seo') return !packageIncludesAny(packageName, ['seo', 'seoptimer', 'semrush', 'ahrefs', 'אורגני']);
-  return false; // website / email / whatsapp / automation - add-ons, not gated by platform tier
-}
-
-function formatActivity(entry) {
-  return ACTIVITY_LABELS[entry.action_type] || `${entry.agent_name || ''} · ${entry.action_type || ''}`;
-}
-
-function formatDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long' }) + ', ' +
-         d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-}
-
-function render(data) {
-  const c = data.client || {};
-  const name = c.name || 'לקוח יקר';
-  document.getElementById('greetingName').textContent = name;
-  document.getElementById('avatarLetter').textContent = name.trim().charAt(0) || 'ל';
-  document.getElementById('packageBadge').textContent = c.package || 'החבילה שלך';
-
-  document.getElementById('statPackage').textContent = c.package || '—';
-  document.getElementById('statMonthlyFee').textContent = (data.monthly_fee != null) ? `₪${data.monthly_fee}` : '—';
-  document.getElementById('statNextBilling').textContent = data.next_billing_date ? formatDate(data.next_billing_date) : 'טרם נקבע';
-  document.getElementById('statActions').textContent = (data.activity || []).length;
-
-  const connGrid = document.getElementById('connGrid');
-  connGrid.innerHTML = '';
-  const connectedPlatforms = new Set(
-    (data.connections || []).filter(a => a.status === 'active').map(a => (a.platform || '').toLowerCase())
-  );
-  Object.keys(PLATFORM_META).forEach(key => {
-    const meta = PLATFORM_META[key];
-    const connected = connectedPlatforms.has(key);
-    const locked = !connected && isLocked(key, c.package);
-    const card = document.createElement('div');
-    card.className = `conn-card ${locked ? 'locked' : 'unlocked'}`;
-    card.innerHTML = `
-      <div class="conn-top">
-        <div class="conn-icon" style="background:${meta.color};">
-          <svg viewBox="0 0 24 24" fill="none" stroke="${locked ? '#8A8A85' : 'white'}" stroke-width="2">${meta.icon}</svg>
-        </div>
-        <div>
-          <div class="conn-name">${meta.name}</div>
-          <div class="conn-status ${connected ? 'connected' : ''}">${locked ? 'נעול' : (connected ? 'מחובר' : 'לא מחובר')}</div>
-        </div>
-      </div>
-      ${locked
-        ? `<button class="conn-btn locked-btn" disabled>נעול</button><div class="lock-note">לא כלול בחבילה הנוכחית</div>`
-        : (connected
-          ? `<button class="conn-btn connected-btn">מחובר ✓</button>`
-          : `<button class="conn-btn primary">חבר עכשיו</button>`)}
-    `;
-    connGrid.appendChild(card);
-  });
-
-  const activityList = document.getElementById('activityList');
-  const activity = data.activity || [];
-  if (activity.length === 0) {
-    activityList.innerHTML = `<div class="activity-row"><div class="activity-text" style="color:var(--gray);">עוד אין פעילות רשומה — נעדכן אותך כאן ברגע שהמערכת מתחילה לעבוד</div></div>`;
-  } else {
-    activityList.innerHTML = activity.map(entry => `
-      <div class="activity-row">
-        <div class="activity-dot"></div>
-        <div class="activity-text">${formatActivity(entry)}</div>
-        <div class="activity-time">${formatDate(entry.created_at)}</div>
-      </div>
-    `).join('');
-  }
-}
-
-function showFullPageMessage(text) {
-  document.body.innerHTML = `<div class="full-page-msg">${text}</div>`;
-}
-
-async function loadDashboard() {
+async function loadSupportHistory() {
+  supportHistoryLoaded = true;
   try {
-    const res = await fetch('/api/dashboard', { credentials: 'same-origin' });
-    if (res.status === 401) {
-      window.location.href = '/login';
-      return;
+    const res = await fetch('/api/client-chat/history', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!data.success) return;
+    for (const entry of data.history) {
+      appendSupportMsg(entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
     }
-    if (!res.ok) throw new Error('request failed');
-    const json = await res.json();
-    if (!json.success) throw new Error('not found');
-    render(json.data);
   } catch (e) {
-    showFullPageMessage('לא הצלחנו לטעון את הדשבורד שלך כרגע.<br>נסה שוב מאוחר יותר או פנה אלינו בוואטסאפ.');
+    console.error('failed to load support chat history', e);
   }
 }
 
-loadDashboard();
+function toggleSupportChat() {
+  const panel = document.getElementById('supportPanel');
+  panel.classList.toggle('open');
+  document.getElementById('supportInput').focus();
+  if (panel.classList.contains('open') && !supportHistoryLoaded) {
+    loadSupportHistory();
+  }
+}
+
+async function sendSupportMsg() {
+  const input = document.getElementById('supportInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  appendSupportMsg(text, 'user');
+  input.value = '';
+
+  try {
+    const res = await fetch('/api/client-chat', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      appendSupportMsg(data.reply, data.needs_human_followup ? 'escalated' : 'bot');
+    } else {
+      appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
+    }
+  } catch (e) {
+    console.error('support chat request failed', e);
+    appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
+  }
+}
 </script>
+
 </body>
 </html>

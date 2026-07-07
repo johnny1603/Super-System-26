@@ -538,6 +538,29 @@ async def api_get_communications(client_id: int, limit: int = 50):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class ClientChatRequest(BaseModel):
+    message: str
+
+@app.post("/api/client-chat")
+def client_chat(req: ClientChatRequest, request: Request):
+    client_id = _require_session(request)
+    try:
+        from agents.support_agent import answer_support_question
+        log_communication(client_id, "inbound", "dashboard_chat", req.message)
+        result = answer_support_question(client_id, req.message)
+        log_communication(client_id, "outbound", "dashboard_chat", result["reply"])
+        return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/client-chat/history")
+async def client_chat_history(request: Request):
+    client_id = _require_session(request)
+    history = get_communications(client_id, limit=50, channel="dashboard_chat")
+    return {"success": True, "history": list(reversed(history))}
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "uallak-super-system"}
