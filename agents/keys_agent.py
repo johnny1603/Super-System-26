@@ -9,6 +9,8 @@ KEYS = {
     "SESSION_SECRET_KEY": os.environ.get("SESSION_SECRET_KEY", ""),
     "GMAIL_APP_PASSWORD": os.environ.get("GMAIL_APP_PASSWORD", ""),
     "ADMIN_KEY": os.environ.get("ADMIN_KEY", ""),
+    "GOOGLE_ADS_DEVELOPER_TOKEN": os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+    "GOOGLE_ADS_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_ADS_SERVICE_ACCOUNT_JSON", ""),
 }
 
 def get_key(name):
