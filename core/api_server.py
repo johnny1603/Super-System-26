@@ -642,6 +642,44 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
+# ─── Google Ads execution (admin/scheduler only) ─────────────────────────────
+
+class CreateCampaignRequest(BaseModel):
+    client_id: int
+    name: str
+    daily_budget_ils: float
+    final_url: str
+    keywords: list
+    headlines: list
+    descriptions: list
+    locations: list = []
+    languages: list = []
+
+@app.post("/api/google-ads/create-campaign", dependencies=_admin_only)
+def google_ads_create_campaign(req: CreateCampaignRequest):
+    from agents.google_ads_agent import create_search_campaign
+    spec = req.model_dump(exclude={"client_id"})
+    result = create_search_campaign(req.client_id, spec)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/google-ads/scan", dependencies=_admin_only)
+def google_ads_scan():
+    from agents.google_ads_agent import run_health_scan
+    try:
+        return {"success": True, "data": run_health_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/google-ads/weekly-report", dependencies=_admin_only)
+def google_ads_weekly_report():
+    from agents.google_ads_agent import run_weekly_report
+    try:
+        return {"success": True, "data": run_weekly_report()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "uallak-super-system"}

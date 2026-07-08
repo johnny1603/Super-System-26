@@ -169,6 +169,23 @@ def search(refresh_token: str, customer_id: str, gaql: str) -> list:
     return response.json().get("results", [])
 
 
+def atomic_mutate(refresh_token: str, customer_id: str, mutate_operations: list) -> dict:
+    """googleAds:mutate — several resources created/updated in ONE atomic call.
+    Operations may reference each other through temporary resource IDs (negative
+    numbers, e.g. customers/{cid}/campaignBudgets/-1). All-or-nothing: a failure
+    anywhere rolls back everything, so we never strand a half-built campaign."""
+    _count_operation()
+    response = httpx.post(
+        f"{ADS_BASE_URL}/customers/{customer_id}/googleAds:mutate",
+        headers=_headers(refresh_token),
+        json={"mutateOperations": mutate_operations},
+        timeout=TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"atomic mutate failed - {_ads_error_message(response)}")
+    return response.json()
+
+
 def set_campaign_status(refresh_token: str, customer_id: str, campaign_id: str, status: str) -> dict:
     """status must be 'PAUSED' or 'ENABLED'."""
     if status not in ("PAUSED", "ENABLED"):

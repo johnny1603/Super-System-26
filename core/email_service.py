@@ -150,6 +150,77 @@ def send_admin_alert(answers: dict, proposal: dict):
     msg.attach(MIMEText(html, 'html'))
     _send(msg, ADMIN_EMAIL)
 
+def send_google_ads_weekly_report(report: dict):
+    """Weekly Google Ads performance digest for the team (not clients)."""
+    def _fmt_change(pct):
+        if pct is None:
+            return ""
+        arrow = "▲" if pct > 0 else "▼"
+        return f' <span style="color:{"#FF4C1F" if pct > 0 else "#00C96E"};font-size:12px;">({arrow}{abs(pct)}%)</span>'
+
+    clients_html = ""
+    for c in report.get("clients", []):
+        last, prev = c["totals_last7"], c["totals_prev7"]
+        rows = "".join([f"""
+            <tr>
+              <td style="padding:6px 10px;border-bottom:1px solid #eee;">{camp['name']} <span style="color:#8A8A8A;font-size:11px;">({camp['status']})</span></td>
+              <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">₪{camp['last7']['cost']}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{camp['last7']['clicks']}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{camp['last7']['impressions']}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{camp['last7']['conversions']}</td>
+            </tr>""" for camp in c.get("campaigns", [])]) or '<tr><td colspan="5" style="padding:10px;color:#8A8A8A;">אין קמפיינים עם נתונים השבוע</td></tr>'
+        clients_html += f"""
+        <div style="background:white;border-radius:12px;padding:24px;margin-bottom:16px;">
+          <h3 style="margin:0 0 4px;">{c['client_name']} <span style="color:#8A8A8A;font-size:13px;font-weight:400;">(חשבון {c['customer_id']})</span></h3>
+          <p style="margin:0 0 14px;color:#3D3D3D;">
+            הוצאה שבועית: <strong>₪{last['cost']}</strong>{_fmt_change(c.get('cost_change_pct'))}
+            · קליקים: <strong>{last['clicks']}</strong> (שבוע קודם: {prev['clicks']})
+            · המרות: <strong>{last['conversions']}</strong> (שבוע קודם: {prev['conversions']})
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tr style="background:#F7F4EF;">
+              <th style="padding:6px 10px;text-align:right;">קמפיין</th>
+              <th style="padding:6px 10px;">עלות</th>
+              <th style="padding:6px 10px;">קליקים</th>
+              <th style="padding:6px 10px;">חשיפות</th>
+              <th style="padding:6px 10px;">המרות</th>
+            </tr>
+            {rows}
+          </table>
+        </div>"""
+
+    if not clients_html:
+        clients_html = '<div style="background:white;border-radius:12px;padding:24px;"><p style="margin:0;color:#8A8A8A;">אין עדיין חשבונות Google Ads מחוברים.</p></div>'
+
+    def _bullets(items):
+        return "".join([f'<p style="margin:6px 0;">• {item}</p>' for item in items])
+
+    insights_html = ""
+    if report.get("highlights") or report.get("recommendations"):
+        insights_html = f"""
+        <div style="background:#1A1A1A;border-radius:12px;padding:24px;margin-bottom:16px;color:white;">
+          {f'<h3 style="margin:0 0 10px;color:#FFD166;">✨ עיקרי השבוע</h3>{_bullets(report.get("highlights", []))}' if report.get("highlights") else ''}
+          {f'<h3 style="margin:16px 0 10px;color:#FF4C1F;">🎯 המלצות</h3>{_bullets(report.get("recommendations", []))}' if report.get("recommendations") else ''}
+        </div>"""
+
+    html = f"""
+    <div dir="rtl" style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <h1 style="font-size:28px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+        <p style="color:#8A8A8A;margin:4px 0 0;">דוח Google Ads שבועי — 7 ימים אחרונים מול השבוע שקדם</p>
+      </div>
+      {insights_html}
+      {clients_html}
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = "📊 uallak — דוח Google Ads שבועי"
+    msg['From'] = GMAIL_USER
+    msg['To'] = ADMIN_EMAIL
+    msg.attach(MIMEText(html, 'html'))
+    _send(msg, ADMIN_EMAIL)
+
+
 def _send(msg, to_email):
     if not GMAIL_APP_PASSWORD:
         print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")
