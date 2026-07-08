@@ -417,10 +417,10 @@ body {
           </div>
           <div>
             <div class="conn-name">Google Ads</div>
-            <div class="conn-status">לא מחובר</div>
+            <div class="conn-status" id="gadsStatus">לא מחובר</div>
           </div>
         </div>
-        <button class="conn-btn primary">חבר עכשיו</button>
+        <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()">חבר עכשיו</button>
       </div>
 
       <div class="conn-card locked">
@@ -562,6 +562,42 @@ body {
 </div>
 
 <script>
+function connectGoogleAds() {
+  window.location.href = '/api/oauth/google-ads/start';
+}
+
+function markGoogleAdsConnected() {
+  const status = document.getElementById('gadsStatus');
+  status.textContent = 'מחובר';
+  status.classList.add('connected');
+  const btn = document.getElementById('gadsBtn');
+  btn.textContent = 'מחובר ✓';
+  btn.className = 'conn-btn connected-btn';
+  btn.onclick = null;
+}
+
+// Reflect OAuth redirect results, then sync the card with what's actually
+// stored server-side (the page is otherwise static demo content)
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('connected') === 'google_ads') {
+    markGoogleAdsConnected();
+    history.replaceState(null, '', window.location.pathname);
+  } else if (params.get('connect_error')) {
+    document.getElementById('gadsStatus').textContent = 'החיבור נכשל — נסה שוב';
+    history.replaceState(null, '', window.location.pathname);
+  }
+  fetch('/api/dashboard', { credentials: 'same-origin' })
+    .then(res => res.json())
+    .then(data => {
+      const connections = (data.data && data.data.connections) || [];
+      if (connections.some(c => c.platform === 'google_ads' && c.status === 'active')) {
+        markGoogleAdsConnected();
+      }
+    })
+    .catch(() => {});
+})();
+
 let supportHistoryLoaded = false;
 
 function appendSupportMsg(text, cls) {

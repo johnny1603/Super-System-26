@@ -11,6 +11,8 @@ KEYS = {
     "ADMIN_KEY": os.environ.get("ADMIN_KEY", ""),
     "GOOGLE_ADS_DEVELOPER_TOKEN": os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
     "GOOGLE_ADS_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_ADS_SERVICE_ACCOUNT_JSON", ""),
+    "GOOGLE_OAUTH_CLIENT_ID": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
+    "GOOGLE_OAUTH_CLIENT_SECRET": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 }
 
 def get_key(name):

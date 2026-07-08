@@ -22,7 +22,7 @@ from agents.architect_agent import (
 )
 from agents.client_agent import (
     create_client, get_client, get_client_by_email, list_clients, update_client_status, complete_onboarding,
-    add_account, get_accounts,
+    add_account, get_accounts, upsert_account,
     assign_agent, get_client_agents, update_agent_status,
     log_activity, get_activity,
     log_communication, get_communications,
@@ -30,7 +30,11 @@ from agents.client_agent import (
 )
 from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation, send_login_code
 from core.paypal_service import create_subscription, verify_webhook_signature, get_subscription_status
-from core.session import create_session_token, verify_session_token
+from core.session import (
+    create_session_token, verify_session_token,
+    create_oauth_state_token, verify_oauth_state_token,
+)
+from core import google_ads_service
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -591,6 +595,52 @@ async def client_chat_history(request: Request):
     client_id = _require_session(request)
     history = get_communications(client_id, limit=50, channel="dashboard_chat")
     return {"success": True, "history": list(reversed(history))}
+
+# ─── Google Ads OAuth (client connects their own ad account) ─────────────────
+
+@app.get("/api/oauth/google-ads/start")
+async def google_ads_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    return RedirectResponse(url=google_ads_service.build_consent_url(state))
+
+@app.get("/api/oauth/google-ads/callback")
+def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    # Identity comes from the signed state token, not the session cookie - the
+    # browser arrives here from Google's domain and the state also blocks CSRF
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=google_ads")
+    if error or not code:
+        print(f"[google_ads oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=google_ads")
+
+    try:
+        tokens = google_ads_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print(f"[google_ads oauth] client {client_id}: token exchange returned no refresh_token")
+            return RedirectResponse(url="/dashboard/?connect_error=google_ads")
+
+        customer_ids = google_ads_service.list_accessible_customers(refresh_token)
+        if not customer_ids:
+            print(f"[google_ads oauth] client {client_id}: authorized user has no accessible Ads accounts")
+            return RedirectResponse(url="/dashboard/?connect_error=no_ads_account")
+
+        # MVP: first accessible account. Clients with several accounts (or an
+        # MCC) need an account-picker step - flagged as a known limitation.
+        customer_id = customer_ids[0]
+        if len(customer_ids) > 1:
+            print(f"[google_ads oauth] client {client_id}: {len(customer_ids)} accessible accounts, using {customer_id}")
+
+        upsert_account(client_id, "google_ads", customer_id, refresh_token, "active")
+        log_activity(client_id, "google_ads_agent", "account_connected",
+                     {"customer_id": customer_id, "accessible_accounts": len(customer_ids)}, {})
+        return RedirectResponse(url="/dashboard/?connected=google_ads")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
 @app.get("/health")
 async def health():

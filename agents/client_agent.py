@@ -74,6 +74,23 @@ def get_accounts(client_id: int) -> list:
     return _db().table("client_accounts").select("*").eq("client_id", client_id).execute().data or []
 
 
+def upsert_account(client_id: int, platform: str, account_id: str = "",
+                   access_token: str = "", status: str = "active") -> dict:
+    """Reconnecting a platform must replace the stored credentials, not pile up
+    duplicate rows (get-connection queries assume one live row per platform)."""
+    existing = (
+        _db().table("client_accounts").select("id")
+        .eq("client_id", client_id).eq("platform", platform)
+        .limit(1).execute()
+    )
+    values = {"account_id": account_id, "access_token": access_token, "status": status}
+    if existing.data:
+        result = _db().table("client_accounts").update(values).eq("id", existing.data[0]["id"]).execute()
+    else:
+        result = _db().table("client_accounts").insert({"client_id": client_id, "platform": platform, **values}).execute()
+    return result.data[0] if result.data else {}
+
+
 # ─── Client agents ────────────────────────────────────────────────────────────
 
 def assign_agent(client_id: int, agent_name: str) -> dict:
