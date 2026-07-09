@@ -120,7 +120,8 @@ def answer_support_question(client_id: int, message: str) -> dict:
     try:
         result = timed_step(
             AGENT_NAME, "llm_call",
-            lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800),
+            lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800,
+                                          client_id=client_id, cost_category="claude_support"),
         )
     except ClaudeJSONError as e:
         agent_alert(AGENT_NAME, [f"answer_support_question failed for client {client_id}: {e}"])

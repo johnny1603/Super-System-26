@@ -31,7 +31,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   master review) run after `build_proposal`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
-  terms `/terms/`, login `/login`, client dashboard `/dashboard`.
+  terms `/terms/`, login `/login`, client dashboard `/dashboard`, admin dashboard `/admin`
+  (ADMIN_PASSWORD login → signed admin_session cookie; separate from the X-Admin-Key
+  header that guards server-to-server /api endpoints).
 
 ## Conventions
 
@@ -43,7 +45,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - Prompts must state hard output-length limits — response length is the main latency driver.
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
-  `client_communications`, `leads`, `login_codes`.
+  `client_communications`, `leads`, `login_codes`, `alerts`, `client_costs`,
+  `app_settings`, `weekly_reports`.
 
 ## Known traps
 

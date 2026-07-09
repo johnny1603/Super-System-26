@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uallak — ניהול</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+
+:root {
+  --bg: #0D0D0D;
+  --panel: #171717;
+  --panel-2: #1F1F1F;
+  --accent: #FF4C1F;
+  --accent-dim: rgba(255,76,31,0.12);
+  --white: #F7F4EF;
+  --gray: #8A8A85;
+  --border: rgba(255,255,255,0.08);
+  --green: #00C96E;
+  --yellow: #FFB020;
+  --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--white); min-height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #141414, #0D0D0D);
+}
+.logo { font-size: 20px; font-weight: 900; letter-spacing: -1px; display:flex; align-items:center; gap:10px; }
+.logo span { color: var(--accent); }
+.admin-tag { background: var(--panel-2); border:1px solid var(--border); font-size:11px; padding:4px 10px; border-radius:100px; color:var(--gray); font-weight:600; letter-spacing:0.5px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.logout-btn { background:none; border:1px solid var(--border); color:var(--gray); font-family:'Heebo',sans-serif; font-size:12px; padding:6px 14px; border-radius:100px; cursor:pointer; }
+.logout-btn:hover { color:var(--white); }
+
+.layout { display: flex; min-height: calc(100vh - 64px); }
+.sidebar { width: 210px; border-left: 1px solid var(--border); padding: 22px 12px; flex-shrink: 0; }
+.nav-item { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--gray); cursor: pointer; margin-bottom: 3px; }
+.nav-item:hover { background: var(--panel-2); color: var(--white); }
+.nav-item.active { background: var(--accent); color: white; }
+.nav-item-left { display:flex; align-items:center; gap:9px; }
+.nav-count { background: rgba(255,255,255,0.15); font-size:11px; padding:2px 7px; border-radius:100px; font-weight:700; }
+.nav-item.active .nav-count { background: rgba(0,0,0,0.2); }
+
+.main { flex: 1; padding: 28px 36px; }
+.page-title { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+.page-sub { color: var(--gray); font-size: 13.5px; margin-bottom: 24px; }
+
+.stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+.stat-card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:6px; }
+.stat-card .label { font-size:12px; color:var(--gray); font-weight:600; }
+.stat-card .value { font-size:26px; font-weight:900; }
+.stat-card .note { font-size:11.5px; color:var(--gray); }
+
+.alert-card {
+  background: rgba(255,59,59,0.06);
+  border: 1px solid rgba(255,59,59,0.25);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 10px;
+}
+.alert-card.warn { background: rgba(255,176,32,0.06); border-color: rgba(255,176,32,0.25); }
+.alert-card.resolved { opacity: 0.5; background: rgba(255,255,255,0.02); border-color: var(--border); }
+.alert-icon { width:34px; height:34px; border-radius:10px; background: rgba(255,59,59,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:16px; }
+.alert-card.warn .alert-icon { background: rgba(255,176,32,0.15); }
+.alert-card.resolved .alert-icon { background: rgba(0,201,110,0.15); }
+.alert-body { flex: 1; min-width: 0; }
+.alert-title { font-size: 13.5px; font-weight: 700; margin-bottom: 2px; word-break: break-word; }
+.alert-sub { font-size: 12px; color: var(--gray); }
+.alert-btn { background: var(--panel-2); border:1px solid var(--border); color:white; font-family:'Heebo',sans-serif; font-size:12.5px; font-weight:700; padding:8px 16px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+.alert-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+.table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.panel-pad { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 24px; }
+.client-row {
+  display: grid;
+  grid-template-columns: 2fr 1.1fr 1fr 1.3fr 0.9fr 0.9fr 90px 40px;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.client-row.head { color: var(--gray); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 12px 20px; }
+.client-row:last-child { border-bottom: none; }
+.client-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.client-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12.5px; flex-shrink: 0; }
+.client-name { font-weight: 700; }
+.client-email { font-size: 11.5px; color: var(--gray); }
+
+.status-pill { display: inline-flex; align-items:center; gap:5px; font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 100px; }
+.status-pill.active { background: rgba(0,201,110,0.12); color: var(--green); }
+.status-pill.pending { background: rgba(255,176,32,0.12); color: var(--yellow); }
+.status-pill.other { background: rgba(255,255,255,0.08); color: var(--gray); }
+.status-pill::before { content:''; width:6px; height:6px; border-radius:50%; background: currentColor; }
+
+.platform-tag { display:inline-block; background:var(--panel-2); border:1px solid var(--border); font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:6px; margin-left:4px; color:var(--gray); }
+
+.manage-btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); font-family:'Heebo',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+.manage-btn:hover { background: var(--accent); border-color: var(--accent); }
+.wa-quick-btn { width: 32px; height: 32px; border-radius: 50%; background: rgba(37,211,102,0.12); border: 1px solid rgba(37,211,102,0.3); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+.wa-quick-btn:hover { background: rgba(37,211,102,0.22); }
+.wa-quick-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.cost-figure { font-weight: 700; }
+.cost-figure .margin { color: var(--green); font-size: 11px; display: block; }
+
+.empty-state { padding: 28px; text-align: center; color: var(--gray); font-size: 13.5px; }
+
+.drawer-stat-row { display:flex; justify-content:space-between; gap:12px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.drawer-stat-row:last-child { border-bottom: none; }
+.drawer-stat-label { color: var(--gray); }
+.drawer-label { font-size: 11.5px; color: var(--gray); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
+
+/* DRAWER */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.overlay.open { opacity: 1; pointer-events: all; }
+.drawer {
+  position: fixed; top: 0; left: 0; height: 100vh; width: 420px; max-width: 92vw;
+  background: var(--panel); border-left: 1px solid var(--border);
+  z-index: 301; padding: 26px 26px;
+  transform: translateX(-100%); transition: transform 0.25s ease;
+  overflow-y: auto;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-close { position: absolute; top: 22px; left: 22px; width:30px; height:30px; border-radius:50%; background: var(--panel-2); border:none; color:var(--gray); cursor:pointer; font-size:16px; }
+.drawer-head { display:flex; align-items:center; gap: 14px; margin-bottom: 24px; margin-top: 6px; }
+.drawer-avatar { width: 50px; height: 50px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+.drawer-name { font-size: 18px; font-weight: 800; }
+.drawer-email { font-size: 12.5px; color: var(--gray); }
+.drawer-section { margin-bottom: 22px; }
+.drawer-action-btn { width: 100%; background: var(--accent); border: none; color: white; font-family:'Heebo',sans-serif; font-weight: 700; font-size: 13.5px; padding: 12px; border-radius: 10px; cursor: pointer; margin-bottom: 8px; }
+.drawer-action-btn.secondary { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); }
+.drawer-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.chat-send-row { display:flex; gap:8px; }
+.chat-send-row textarea {
+  flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+  color:white; font-family:'Heebo',sans-serif; font-size:13px; padding:10px 12px; resize:vertical; min-height:44px; outline:none;
+}
+.chat-send-row textarea:focus { border-color: var(--accent); }
+
+/* SETTINGS */
+.settings-row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+.settings-row:last-child { border-bottom:none; }
+.settings-row input {
+  background:var(--panel-2); border:1px solid var(--border); border-radius:8px; color:white;
+  font-family:'Heebo',sans-serif; font-size:13px; padding:8px 12px; width:220px; outline:none; text-align:left; direction:ltr;
+}
+.settings-row input:focus { border-color: var(--accent); }
+.save-btn { background:var(--accent); border:none; color:white; font-family:'Heebo',sans-serif; font-weight:700; font-size:13.5px; padding:11px 26px; border-radius:10px; cursor:pointer; margin-top:16px; }
+
+/* REPORT DETAILS */
+details.report-item { border-bottom:1px solid var(--border); }
+details.report-item:last-child { border-bottom:none; }
+details.report-item summary { padding:14px 20px; cursor:pointer; font-size:13.5px; display:flex; justify-content:space-between; list-style:none; }
+details.report-item summary::-webkit-details-marker { display:none; }
+details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:var(--gray); }
+
+/* LOGIN */
+.login-overlay {
+  position: fixed; inset: 0; background: var(--bg); z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+}
+.login-box { background: var(--panel); border:1px solid var(--border); border-radius:16px; padding:36px; width:340px; text-align:center; }
+.login-box h1 { font-size:26px; font-weight:900; margin-bottom:4px; }
+.login-box h1 span { color: var(--accent); }
+.login-box p { color:var(--gray); font-size:13px; margin-bottom:22px; }
+.login-box input {
+  width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+  color:white; font-family:'Heebo',sans-serif; font-size:14px; padding:12px 14px; outline:none; margin-bottom:12px;
+}
+.login-box input:focus { border-color: var(--accent); }
+.login-box button { width:100%; background:var(--accent); border:none; color:white; font-family:'Heebo',sans-serif; font-weight:700; font-size:14px; padding:12px; border-radius:10px; cursor:pointer; }
+.login-error { color:var(--red); font-size:12.5px; margin-top:10px; min-height:16px; }
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay" style="display:none;">
+  <div class="login-box">
+    <h1>u<span>allak</span></h1>
+    <p>כניסת מנהל</p>
+    <input type="password" id="adminPassword" placeholder="סיסמת מנהל" onkeydown="if(event.key==='Enter') adminLogin()">
+    <button onclick="adminLogin()">כניסה</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="logo">u<span>allak</span> <span class="admin-tag">ADMIN</span></div>
+  <div class="topbar-right">
+    <button class="logout-btn" onclick="adminLogout()">התנתק</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="nav-item active" data-tab="overview" onclick="showTab('overview', this)">
+      <div class="nav-item-left"><span>📈</span> סקירה כללית</div>
+    </div>
+    <div class="nav-item" data-tab="clients" onclick="showTab('clients', this)">
+      <div class="nav-item-left"><span>👥</span> לקוחות</div>
+      <span class="nav-count" id="clientsCount" style="display:none;"></span>
+    </div>
+    <div class="nav-item" data-tab="alerts" onclick="showTab('alerts', this)">
+      <div class="nav-item-left"><span>🚨</span> התראות</div>
+      <span class="nav-count" id="alertsCount" style="display:none;"></span>
+    </div>
+    <div class="nav-item" data-tab="reports" onclick="showTab('reports', this)"><div class="nav-item-left"><span>📊</span> דוחות שבועיים</div></div>
+    <div class="nav-item" data-tab="settings" onclick="showTab('settings', this)"><div class="nav-item-left"><span>⚙</span> הגדרות</div></div>
+  </div>
+
+  <div class="main">
+    <div id="tab-overview">
+      <div class="page-title">סקירה כללית</div>
+      <div class="page-sub" id="overviewSub">טוען נתונים…</div>
+      <div id="overviewContent"></div>
+    </div>
+
+    <div id="tab-clients" style="display:none;">
+      <div class="page-title">לקוחות</div>
+      <div class="page-sub" id="clientsSub"></div>
+      <div id="openAlertsBanner"></div>
+      <div class="table-wrap" id="clientsTable"></div>
+    </div>
+
+    <div id="tab-alerts" style="display:none;">
+      <div class="page-title">התראות</div>
+      <div class="page-sub">כל ההתראות מכל הסוכנים — פתוחות ומטופלות</div>
+      <div id="alertsList"></div>
+    </div>
+
+    <div id="tab-reports" style="display:none;">
+      <div class="page-title">דוחות שבועיים</div>
+      <div class="page-sub">דוחות Google Ads שנשלחו אוטומטית לצוות</div>
+      <div class="table-wrap" id="reportsList"></div>
+    </div>
+
+    <div id="tab-settings" style="display:none;">
+      <div class="page-title">הגדרות</div>
+      <div class="page-sub">הגדרות מערכת כלליות</div>
+      <div class="panel-pad" id="settingsPanel"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer"></div>
+
+<script>
+// ─── helpers ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); }
+  catch (e) { return iso; }
+}
+function initial(name) { return (name || '?').trim().charAt(0) || '?'; }
+function waLink(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  return 'https://wa.me/' + (digits.startsWith('0') ? '972' + digits.slice(1) : digits);
+}
+async function api(path, options) {
+  const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, options || {}));
+  if (res.status === 401) { showLogin(); throw new Error('unauthenticated'); }
+  return res.json();
+}
+
+// ─── auth ────────────────────────────────────────────────────────────────────
+function showLogin() { document.getElementById('loginOverlay').style.display = 'flex'; }
+async function adminLogin() {
+  const password = document.getElementById('adminPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) { errEl.textContent = 'סיסמה שגויה'; return; }
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('adminPassword').value = '';
+    loadAll();
+  } catch (e) { errEl.textContent = 'שגיאה — נסה שוב'; }
+}
+async function adminLogout() {
+  await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+  showLogin();
+}
+
+// ─── tabs ────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  ['overview','clients','alerts','reports','settings'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  if (name === 'reports') loadReports();
+  if (name === 'settings') loadSettings();
+}
+
+// ─── overview ────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  const res = await api('/api/admin/overview');
+  const d = res.data;
+  document.getElementById('overviewSub').textContent =
+    'תמונת מצב עסקית — ' + new Date().toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+
+  const catLabels = {
+    claude_api: 'קריאות Claude (הצעות, צ׳אט מכירה)',
+    claude_support: 'קריאות Claude — תמיכה',
+    claude_analysis: 'קריאות Claude — ניתוח ודוחות',
+  };
+  const catRows = Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(catLabels[cat] || cat)}</span><span>${ils(amount)}</span></div>`
+  ).join('') || '<div class="empty-state">אין עדיין נתוני עלות החודש</div>';
+
+  const trendRows = (d.trend || []).map((t, i, arr) =>
+    `<div class="drawer-stat-row" ${i === arr.length - 1 ? 'style="border:none;"' : ''}>
+       <span class="drawer-stat-label" ${i === arr.length - 1 ? 'style="color:var(--white);font-weight:700;"' : ''}>${esc(t.month)}</span>
+       <span ${i === arr.length - 1 ? 'style="color:var(--green);font-weight:700;"' : ''}>${t.clients} לקוחות · ${ils(t.mrr)} MRR</span>
+     </div>`
+  ).join('');
+
+  const lowMarginRows = (d.low_margin_clients || []).map(c =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(c.name)}</span>
+     <span style="color:var(--yellow);font-weight:700;">${c.margin_pct}% מרווח (עלות ${ils(c.cost)})</span></div>`
+  ).join('') || `<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין לקוחות מתחת לסף (${d.low_margin_threshold_pct}%) — מבוסס על עלויות שנרשמו בלבד</div>`;
+
+  document.getElementById('overviewContent').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="label">הכנסה חוזרת חודשית (MRR)</span>
+        <span class="value">${ils(d.mrr)}</span>
+        <span class="note" style="color:var(--green);">${d.active_clients} לקוחות פעילים</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">דמי הקמה שנרשמו החודש</span>
+        <span class="value">${ils(d.setup_fees_month)}</span>
+        <span class="note">${d.new_clients_month} לקוחות חדשים · נרשם, לא נגבה אוטומטית</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">עלות תפעול פנימית (משוער)</span>
+        <span class="value" style="color:var(--accent);">${ils(d.cost_month)}</span>
+        <span class="note">לפי עלויות שנרשמו במערכת</span>
+      </div>
+      <div class="stat-card" style="border-color:rgba(0,201,110,0.25);">
+        <span class="label">מרווח החודש (משוער)</span>
+        <span class="value" style="color:var(--green);">${ils(d.margin_month)}</span>
+        <span class="note" style="color:var(--green);">${d.margin_pct == null ? 'אין עדיין הכנסות' : d.margin_pct + '% מרווח'}</span>
+      </div>
+    </div>
+
+    <div class="panel-pad">
+      <div class="drawer-label">פילוח עלות תפעול לפי קטגוריה — החודש</div>
+      ${catRows}
+    </div>
+
+    <div class="panel-pad">
+      <div class="drawer-label">מגמה — 3 חודשים אחרונים (משוער לפי לקוחות פעילים כיום)</div>
+      ${trendRows}
+    </div>
+
+    <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);">
+      <div class="stat-card">
+        <span class="label">עזיבות החודש (Churn)</span>
+        <span class="value">${d.churn_month == null ? '—' : d.churn_month}</span>
+        <span class="note">${d.churn_month == null ? 'אין עדיין מעקב עזיבות במערכת' : ''}</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">תחזית MRR בעוד 3 חודשים</span>
+        <span class="value">${d.projection_mrr_3m == null ? '—' : ils(d.projection_mrr_3m)}</span>
+        <span class="note">${d.projection_mrr_3m == null ? 'אין מספיק נתונים לתחזית' : 'הערכה לינארית לפי המגמה'}</span>
+      </div>
+    </div>
+
+    <div class="panel-pad" style="margin-bottom:0;">
+      <div class="drawer-label">⚠️ לקוחות עם מרווח נמוך (מתחת ל-${d.low_margin_threshold_pct}%)</div>
+      ${lowMarginRows}
+    </div>`;
+}
+
+// ─── clients ─────────────────────────────────────────────────────────────────
+let clientsCache = [];
+async function loadClients() {
+  const res = await api('/api/admin/clients');
+  clientsCache = res.data || [];
+  const countEl = document.getElementById('clientsCount');
+  countEl.textContent = clientsCache.length;
+  countEl.style.display = clientsCache.length ? 'inline' : 'none';
+  document.getElementById('clientsSub').textContent = clientsCache.length
+    ? `${clientsCache.filter(c => c.status === 'active').length} פעילים מתוך ${clientsCache.length}`
+    : '';
+
+  const platformNames = { google_ads: 'Google', meta: 'Meta', tiktok: 'TikTok' };
+  const statusPill = s =>
+    s === 'active' ? '<span class="status-pill active">פעיל</span>'
+    : s === 'pending_payment' ? '<span class="status-pill pending">ממתין לתשלום</span>'
+    : `<span class="status-pill other">${esc(s || '—')}</span>`;
+
+  const rows = clientsCache.map(c => {
+    const wa = waLink(c.phone);
+    const cost = c.cost_month > 0
+      ? `${ils(c.cost_month)}${c.margin_pct != null ? `<span class="margin">${c.margin_pct}% מרווח</span>` : ''}`
+      : '<span style="color:var(--gray);">—</span>';
+    const platforms = (c.platforms || []).map(p => `<span class="platform-tag">${esc(platformNames[p] || p)}</span>`).join('')
+      || '<span style="color:var(--gray);font-size:12px;">אין חיבורים</span>';
+    return `<div class="client-row">
+      <div class="client-name-cell">
+        <div class="client-avatar">${esc(initial(c.name))}</div>
+        <div><div class="client-name">${esc(c.name)}</div><div class="client-email">${esc(c.email || '—')}</div></div>
+      </div>
+      <div style="font-size:12.5px;">${esc(c.package || '—')}</div>
+      <div>${statusPill(c.status)}</div>
+      <div>${platforms}</div>
+      <div style="color:var(--gray);font-size:12.5px;">${fmtDate(c.last_activity)}</div>
+      <div class="cost-figure">${cost}</div>
+      <div>${wa
+        ? `<button class="wa-quick-btn" onclick="window.open('${wa}','_blank');event.stopPropagation();">💬</button>`
+        : '<button class="wa-quick-btn" disabled title="אין מספר טלפון">💬</button>'}</div>
+      <div><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('clientsTable').innerHTML = clientsCache.length
+    ? `<div class="client-row head">
+        <div>לקוח</div><div>חבילה</div><div>סטטוס</div><div>חיבורים</div>
+        <div>פעילות אחרונה</div><div>עלות/מרווח</div><div></div><div></div>
+      </div>${rows}`
+    : '<div class="empty-state">אין עדיין לקוחות במערכת</div>';
+}
+
+// ─── alerts ──────────────────────────────────────────────────────────────────
+function renderAlertCard(a, withResolve) {
+  const issues = (a.issues || []).map(i => esc(i)).join('<br>');
+  const resolved = a.status === 'resolved';
+  return `<div class="alert-card ${resolved ? 'resolved' : 'warn'}">
+    <div class="alert-icon">${resolved ? '✓' : '⚠️'}</div>
+    <div class="alert-body">
+      <div class="alert-title">${issues || '(ללא פירוט)'}</div>
+      <div class="alert-sub">${esc(a.source || '')} · ${fmtDate(a.created_at)}${resolved ? ' · טופל ' + fmtDate(a.resolved_at) : ''}</div>
+    </div>
+    ${!resolved && withResolve ? `<button class="alert-btn" onclick="resolveAlert(${a.id})">סמן כמטופל</button>` : ''}
+  </div>`;
+}
+
+async function loadAlerts() {
+  const res = await api('/api/admin/alerts');
+  const alerts = res.data || [];
+  const open = alerts.filter(a => a.status === 'open');
+
+  const countEl = document.getElementById('alertsCount');
+  countEl.textContent = open.length;
+  countEl.style.display = open.length ? 'inline' : 'none';
+
+  document.getElementById('alertsList').innerHTML = alerts.length
+    ? alerts.map(a => renderAlertCard(a, true)).join('')
+    : '<div class="panel-pad"><div class="empty-state">אין התראות — הטבלה תתמלא מהתראות הסוכנים החדשות</div></div>';
+
+  document.getElementById('openAlertsBanner').innerHTML =
+    open.slice(0, 3).map(a => renderAlertCard(a, true)).join('');
+}
+
+async function resolveAlert(id) {
+  await api(`/api/admin/alerts/${id}/resolve`, { method: 'POST' });
+  loadAlerts();
+}
+
+// ─── reports ─────────────────────────────────────────────────────────────────
+async function loadReports() {
+  const res = await api('/api/admin/reports');
+  const reports = res.data || [];
+  document.getElementById('reportsList').innerHTML = reports.length
+    ? reports.map(r => {
+        const rep = r.report || {};
+        const clients = rep.clients || [];
+        const bullets = [...(rep.highlights || []), ...(rep.recommendations || [])];
+        return `<details class="report-item">
+          <summary>
+            <span>דוח ${fmtDate(r.created_at)}</span>
+            <span style="color:var(--gray);">${clients.length} לקוחות</span>
+          </summary>
+          <div class="report-body">
+            ${clients.map(c => `<div class="drawer-stat-row">
+                <span class="drawer-stat-label">${esc(c.client_name)}</span>
+                <span>${ils((c.totals_last7 || {}).cost)} · ${(c.totals_last7 || {}).clicks || 0} קליקים · ${(c.totals_last7 || {}).conversions || 0} המרות</span>
+              </div>`).join('') || '<p>אין נתוני לקוחות בדוח</p>'}
+            ${bullets.length ? '<div style="margin-top:10px;">' + bullets.map(b => `<p style="margin:4px 0;">• ${esc(b)}</p>`).join('') + '</div>' : ''}
+          </div>
+        </details>`;
+      }).join('')
+    : '<div class="empty-state">אין עדיין דוחות שבועיים — הם יופיעו כאן אחרי הריצה המתוזמנת הראשונה</div>';
+}
+
+// ─── settings ────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  const res = await api('/api/admin/settings');
+  const s = res.data || {};
+  document.getElementById('settingsPanel').innerHTML = `
+    <div class="settings-row">
+      <span class="drawer-stat-label">מספר וואטסאפ (קישורי צ׳אט מהדשבורד)</span>
+      <input id="set-whatsapp" value="${esc(s.whatsapp_number || '')}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">אימייל להתראות ודוחות</span>
+      <input id="set-email" value="${esc(s.alert_email || '')}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">סף מרווח נמוך להתראה (%)</span>
+      <input id="set-threshold" type="number" value="${esc(s.low_margin_threshold_pct)}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
+      <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
+    </div>
+    <button class="save-btn" onclick="saveSettings()">שמור הגדרות</button>
+    <span id="settingsSaved" style="color:var(--green);font-size:12.5px;margin-right:12px;"></span>`;
+}
+
+async function saveSettings() {
+  await api('/api/admin/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      whatsapp_number: document.getElementById('set-whatsapp').value.trim(),
+      alert_email: document.getElementById('set-email').value.trim(),
+      low_margin_threshold_pct: Number(document.getElementById('set-threshold').value) || 70,
+    }),
+  });
+  document.getElementById('settingsSaved').textContent = 'נשמר ✓';
+  setTimeout(() => { document.getElementById('settingsSaved').textContent = ''; }, 2500);
+}
+
+// ─── client drawer ───────────────────────────────────────────────────────────
+async function openDrawer(clientId) {
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = '<div class="empty-state">טוען…</div>';
+  drawer.classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+
+  const res = await api(`/api/admin/clients/${clientId}`);
+  const d = res.data, c = d.client;
+  const wa = waLink(c.phone);
+  const catLabels = { claude_api: 'קריאות Claude', claude_support: 'Claude — תמיכה', claude_analysis: 'Claude — ניתוח' };
+  const costRows = Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(catLabels[cat] || cat)}</span><span>${ils(amount)}</span></div>`
+  ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין עלויות שנרשמו החודש</div>';
+
+  const activityRows = (d.activity || []).slice(0, 8).map(a =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(a.agent_name)} · ${esc(a.action_type)}</span>
+     <span style="color:var(--gray);font-size:11.5px;">${fmtDate(a.created_at)}</span></div>`
+  ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין פעילות רשומה</div>';
+
+  drawer.innerHTML = `
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    <div class="drawer-head">
+      <div class="drawer-avatar">${esc(initial(c.name))}</div>
+      <div>
+        <div class="drawer-name">${esc(c.name)}</div>
+        <div class="drawer-email">${esc(c.email || 'אין אימייל')}</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">פרטי חשבון</div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">חבילה</span><span>${esc(c.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + '/חודש' : ''}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">סטטוס</span><span>${esc(c.status)}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">הצטרף</span><span>${fmtDate(c.created_at)}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">חיוב הבא</span><span>${d.next_billing ? fmtDate(d.next_billing) : '—'}</span></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">פעולות</div>
+      ${d.google_ads_customer_id
+        ? `<button class="drawer-action-btn" onclick="window.open('https://ads.google.com','_blank')">Google Ads — חשבון ${esc(d.google_ads_customer_id)}</button>`
+        : '<button class="drawer-action-btn" disabled>Google Ads לא מחובר</button>'}
+      ${wa
+        ? `<button class="drawer-action-btn secondary" onclick="window.open('${wa}','_blank')">💬 שלח הודעה בוואטסאפ</button>`
+        : '<button class="drawer-action-btn secondary" disabled>💬 אין מספר טלפון לוואטסאפ</button>'}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">הודעה בצ׳אט התמיכה שלו</div>
+      <div class="chat-send-row">
+        <textarea id="adminChatMsg" placeholder="הלקוח יראה את ההודעה בצ׳אט בדשבורד שלו"></textarea>
+        <button class="alert-btn" onclick="sendAdminChat(${c.id})">שלח</button>
+      </div>
+      <span id="chatSent-${c.id}" style="color:var(--green);font-size:12px;"></span>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">עלויות שנרשמו — החודש (משוער)</div>
+      ${costRows}
+      <div class="drawer-stat-row" style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px;">
+        <span class="drawer-stat-label" style="font-weight:700;color:var(--white);">סה״כ עלות פנימית</span>
+        <span style="font-weight:800;color:var(--accent);">${ils(d.cost_month)}</span>
+      </div>
+      ${d.margin_month != null ? `<div class="drawer-stat-row"><span class="drawer-stat-label">מרווח החודש</span>
+        <span style="color:var(--green);font-weight:700;">${ils(d.margin_month)}${d.margin_pct != null ? ' (' + d.margin_pct + '%)' : ''}</span></div>` : ''}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">פעילות אחרונה</div>
+      ${activityRows}
+    </div>`;
+}
+
+async function sendAdminChat(clientId) {
+  const el = document.getElementById('adminChatMsg');
+  const text = el.value.trim();
+  if (!text) return;
+  await api(`/api/admin/clients/${clientId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  el.value = '';
+  document.getElementById(`chatSent-${clientId}`).textContent = 'נשלח ✓ — יופיע בצ׳אט של הלקוח';
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+// ─── boot ────────────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    await Promise.all([loadOverview(), loadClients(), loadAlerts()]);
+  } catch (e) {
+    if (e.message !== 'unauthenticated') console.error(e);
+  }
+}
+loadAll();
+</script>
+
+</body>
+</html>

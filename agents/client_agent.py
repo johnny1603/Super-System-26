@@ -51,6 +51,11 @@ def update_client_status(client_id: int, status: str) -> dict:
     return result.data[0] if result.data else {}
 
 
+def update_client_package(client_id: int, package: str) -> dict:
+    result = _db().table("clients").update({"package": package}).eq("id", client_id).execute()
+    return result.data[0] if result.data else {}
+
+
 def complete_onboarding(client_id: int) -> dict:
     result = _db().table("clients").update({"onboarding_completed": True}).eq("id", client_id).execute()
     return result.data[0] if result.data else {}

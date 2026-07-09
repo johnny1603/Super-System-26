@@ -42,6 +42,43 @@ PRICING = {
     "benefit_months": 2
 }
 
+
+def get_upgrade_tiers() -> list:
+    """The package ladder shown in the dashboard's upgrade panel, priced from
+    PRICING (the single source of truth) - never hardcode these numbers
+    elsewhere. Ordered cheapest-first; the dashboard offers only tiers priced
+    above the client's current monthly fee."""
+    fees = PRICING["platform_management_fees"]
+    meta_google = fees["meta"] + fees["google"]
+    full = meta_google + fees["tiktok"]
+    return [
+        {
+            "id": "meta_google",
+            "name": "Meta + Google",
+            "monthly_fee": meta_google,
+            "setup_fee_addition": 0,
+            "description": "ניהול שוטף במטא וגוגל, קמפיינים ממוקדים, דוח שבועי",
+            "note": "",
+        },
+        {
+            "id": "meta_google_tiktok",
+            "name": "Meta + Google + TikTok",
+            "monthly_fee": full,
+            "setup_fee_addition": PRICING["single_service_setup_fee"],
+            "description": "כל מה שיש היום, בתוספת ניהול וייצור תוכן שוטף לטיקטוק",
+            "note": f"+ ₪{PRICING['single_service_setup_fee']} עלות הקמה חד-פעמית",
+        },
+        {
+            "id": "full_seo",
+            "name": "חבילה מקיפה + קידום אורגני",
+            "monthly_fee": full + PRICING["monthly_management_minimum"],
+            "setup_fee_addition": 0,
+            "description": "הכל כלול, בתוספת ניהול קידום אורגני מקצועי",
+            "note": "+ תשלום נפרד לכלי ה-SEO (לפי התקציב)",
+        },
+    ]
+
+
 def get_api_key():
     return os.environ.get("ANTHROPIC_API_KEY", "")
 

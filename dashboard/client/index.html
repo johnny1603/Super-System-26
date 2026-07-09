@@ -37,7 +37,7 @@ body {
 }
 .logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; }
 .logo span { color: var(--accent); }
-.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
 .package-badge {
   background: var(--accent-dim);
   color: var(--accent);
@@ -47,6 +47,18 @@ body {
   border-radius: 100px;
   border: 1px solid rgba(255,76,31,0.3);
 }
+.upgrade-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--white);
+  font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 100px;
+  cursor: pointer; font-family: 'Heebo', sans-serif;
+}
+.upgrade-btn:hover { border-color: var(--accent); color: var(--accent); }
+.help-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--gray);
+  font-weight: 700; font-size: 14px; cursor: pointer; font-family: 'Heebo', sans-serif;
+}
+.help-btn:hover { color: var(--white); }
 .avatar {
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -56,30 +68,16 @@ body {
   font-weight: 700; font-size: 13px;
 }
 
-/* ---------- LAYOUT ---------- */
-.layout { display: flex; min-height: calc(100vh - 68px); }
-.sidebar {
-  width: 220px;
-  border-left: 1px solid var(--border);
-  padding: 24px 14px;
-  flex-shrink: 0;
-}
-.nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  font-size: 14.5px;
-  font-weight: 500;
-  color: var(--gray);
-  cursor: pointer;
-  margin-bottom: 4px;
-  transition: all 0.15s;
-}
-.nav-item:hover { background: var(--panel-2); color: var(--white); }
-.nav-item.active { background: var(--accent); color: white; }
-.nav-icon { width: 18px; text-align: center; font-size: 15px; }
+/* ---------- LAYOUT (single page, no sidebar) ---------- */
+.main { flex: 1; padding: 32px 40px; max-width: 960px; margin: 0 auto; width: 100%; }
 
-.main { flex: 1; padding: 32px 40px; }
+/* ---------- NOTICE BANNER ---------- */
+.notice-banner {
+  border-radius: 12px; padding: 13px 18px; margin-bottom: 20px;
+  font-size: 13.5px; font-weight: 600; display: none;
+}
+.notice-banner.success { display: block; background: rgba(0,201,110,0.1); border: 1px solid rgba(0,201,110,0.3); color: var(--green); }
+.notice-banner.warn { display: block; background: var(--accent-dim); border: 1px solid rgba(255,76,31,0.3); color: var(--accent); }
 
 /* ---------- OVERVIEW CARDS ---------- */
 .greeting { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
@@ -108,7 +106,7 @@ body {
   border-radius: 0 0 0 60px;
 }
 .stat-label { font-size: 12.5px; color: var(--gray); margin-bottom: 8px; font-weight: 500; }
-.stat-value { font-size: 26px; font-weight: 900; }
+.stat-value { font-size: 24px; font-weight: 900; }
 .stat-value.accent { color: var(--accent); }
 
 /* ---------- SECTION HEAD ---------- */
@@ -183,6 +181,19 @@ body {
 .activity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .activity-text { flex: 1; font-size: 14px; }
 .activity-time { font-size: 12.5px; color: var(--gray); }
+.empty-row { padding: 22px 20px; color: var(--gray); font-size: 13.5px; text-align: center; }
+
+/* ---------- BILLING ---------- */
+.billing-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; margin-bottom: 36px;
+}
+.billing-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.billing-row:last-child { border-bottom: none; }
+.billing-label { color: var(--gray); }
 
 /* ---------- AFFILIATE NOTE ---------- */
 .affiliate-note {
@@ -216,20 +227,13 @@ body {
 
 /* ---------- PENDING APPROVAL ---------- */
 .pending-badge {
-  background: var(--accent);
-  color: white;
+  background: var(--panel-2);
+  color: var(--gray);
   font-size: 12px;
   font-weight: 700;
   padding: 5px 13px;
   border-radius: 100px;
-}
-.pending-thumb {
-  width: 40px; height: 40px;
-  border-radius: 10px;
-  background: var(--panel-2);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
+  border: 1px solid var(--border);
 }
 
 /* ---------- SUPPORT CHAT ---------- */
@@ -316,229 +320,356 @@ body {
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* ---------- WELCOME TOUR ---------- */
+.welcome-overlay {
+  position: fixed; top: 0; right: 0; left: 0;
+  z-index: 500;
+  background: linear-gradient(180deg, #141414 0%, #141414 92%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  display: none;
+}
+.welcome-overlay.visible { display: block; }
+.welcome-modal {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.welcome-step { display: none; width: 100%; align-items: center; gap: 22px; }
+.welcome-step.active { display: flex; animation: fadeIn 0.25s ease; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+
+.welcome-icon { width: 46px; height: 46px; border-radius: 13px; background: var(--accent-dim); display:flex; align-items:center; justify-content:center; font-size: 21px; flex-shrink: 0; }
+.welcome-body { flex: 1; min-width: 0; }
+.welcome-title { font-size: 15.5px; font-weight: 800; margin-bottom: 3px; }
+.welcome-text { font-size: 13px; color: var(--gray); line-height: 1.5; }
+.welcome-time-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent-dim); color: var(--accent);
+  font-size: 11.5px; font-weight: 700;
+  padding: 5px 12px; border-radius: 100px;
+  margin-top: 6px;
+}
+.welcome-dots { display: flex; gap: 5px; flex-shrink: 0; }
+.welcome-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--panel-2); transition: all 0.2s; }
+.welcome-dot.active { background: var(--accent); width: 15px; }
+
+.welcome-btn-row { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.welcome-btn { padding: 10px 18px; border-radius: 10px; font-family: 'Heebo', sans-serif; font-weight: 700; font-size: 13px; cursor: pointer; border: none; white-space: nowrap; }
+.welcome-btn.primary { background: var(--accent); color: white; }
+.welcome-btn.primary:hover { background: #e0431a; }
+.welcome-btn.skip { background: transparent; color: var(--gray); font-size: 12px; }
+.welcome-btn.skip:hover { color: var(--white); }
+
+/* tour spotlight — glow ring on the real dashboard section being explained */
+.tour-highlight {
+  position: relative;
+  z-index: 100;
+  border-radius: 16px;
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow: 0 0 45px 6px rgba(255,76,31,0.45);
+  animation: tourPulse 1.6s ease-in-out infinite;
+  scroll-margin-top: 110px;
+}
+@keyframes tourPulse {
+  0%, 100% { box-shadow: 0 0 30px 4px rgba(255,76,31,0.35); }
+  50% { box-shadow: 0 0 55px 10px rgba(255,76,31,0.6); }
+}
+
+/* ---------- UPGRADE PANEL ---------- */
+.overlay-dim { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 400; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.overlay-dim.open { opacity: 1; pointer-events: all; }
+.upgrade-panel {
+  position: fixed; top: 0; left: 0; height: 100vh; width: 380px; max-width: 92vw;
+  background: var(--panel); border-left: 1px solid var(--border);
+  z-index: 401; padding: 28px 24px;
+  transform: translateX(-100%); transition: transform 0.25s ease;
+  overflow-y: auto;
+}
+.upgrade-panel.open { transform: translateX(0); }
+.upgrade-close { position: absolute; top: 20px; left: 20px; width: 30px; height: 30px; border-radius: 50%; background: var(--panel-2); border: none; color: var(--gray); cursor: pointer; font-size: 15px; }
+.tier-card {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px; margin-bottom: 12px;
+}
+.tier-card.current { border: 2px solid var(--accent); }
+.tier-card.selectable { cursor: pointer; }
+.tier-card.selectable:hover { border-color: rgba(255,76,31,0.5); }
+.tier-card.selected { border: 2px solid var(--accent); }
+.tier-name { font-weight: 800; font-size: 14.5px; }
+.tier-tag { background: var(--accent); color: white; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 100px; }
+.tier-desc { font-size: 12.5px; color: var(--gray); line-height: 1.6; margin-top: 6px; }
+.tier-price { font-size: 18px; font-weight: 900; margin-top: 10px; }
+.tier-price span { font-size: 12px; color: var(--gray); font-weight: 400; }
+.tier-note { font-size: 11.5px; color: var(--accent); margin-top: 4px; font-weight: 700; }
+.confirm-upgrade-btn {
+  width: 100%; font-weight: 700; font-size: 13.5px; padding: 13px;
+  border-radius: 12px; font-family: 'Heebo', sans-serif; margin-top: 8px;
+  background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed;
+}
+.confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
 </style>
 </head>
 <body>
 
+<!-- ---------- WELCOME TOUR (shown once per client, reopenable via ?) ---------- -->
+<div class="welcome-overlay" id="welcomeOverlay">
+  <div class="welcome-modal">
+
+    <div class="welcome-step active" data-step="1">
+      <div class="welcome-icon">👋</div>
+      <div class="welcome-body">
+        <div class="welcome-title" id="tourGreeting">ברוכים הבאים!</div>
+        <div class="welcome-text">כאן רואים את החבילה שלך, דמי הניהול, ומתי החיוב הבא. הכל שקוף ומעודכן.</div>
+      </div>
+      <div class="welcome-dots">
+        <div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
+      </div>
+      <div class="welcome-btn-row">
+        <button class="welcome-btn primary" onclick="welcomeStep(2)">בואו נתחיל</button>
+      </div>
+    </div>
+
+    <div class="welcome-step" data-step="2">
+      <div class="welcome-icon">🖼️</div>
+      <div class="welcome-body">
+        <div class="welcome-title">אזור אישורים</div>
+        <div class="welcome-text">כשהמערכת תכין חומרים (תמונות, סרטונים, פוסטים) — הם יחכו כאן לאישור שלך לפני שהם עולים.</div>
+      </div>
+      <div class="welcome-dots">
+        <div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
+      </div>
+      <div class="welcome-btn-row">
+        <button class="welcome-btn skip" onclick="welcomeStep(1)">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(3)">הבנתי, המשך</button>
+      </div>
+    </div>
+
+    <div class="welcome-step" data-step="3">
+      <div class="welcome-icon">🔌</div>
+      <div class="welcome-body">
+        <div class="welcome-title">הצעד הראשון: חיבור חשבונות</div>
+        <div class="welcome-text">בהתאם לחבילה שלך — לוחצים "חבר עכשיו" בכל כרטיס, ומאשרים.</div>
+        <div class="welcome-time-badge" id="tourTimeBadge">⏱ כ-5 דקות</div>
+      </div>
+      <div class="welcome-dots">
+        <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
+      </div>
+      <div class="welcome-btn-row">
+        <button class="welcome-btn skip" onclick="welcomeStep(2)">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(4)">המשך</button>
+      </div>
+    </div>
+
+    <div class="welcome-step" data-step="4">
+      <div class="welcome-icon">📋</div>
+      <div class="welcome-body">
+        <div class="welcome-title">כאן תראו הכל</div>
+        <div class="welcome-text">כל פעולה שהמערכת עושה בשבילך תופיע כאן, בזמן אמת.</div>
+      </div>
+      <div class="welcome-dots">
+        <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div>
+      </div>
+      <div class="welcome-btn-row">
+        <button class="welcome-btn skip" onclick="welcomeStep(3)">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(5)">המשך</button>
+      </div>
+    </div>
+
+    <div class="welcome-step" data-step="5">
+      <div class="welcome-icon">✉</div>
+      <div class="welcome-body">
+        <div class="welcome-title">יש לך תמיכה, תמיד</div>
+        <div class="welcome-text">הכפתור הכתום למטה בפינה — שאלה, בקשה, כל דבר. זמין 24/7.</div>
+      </div>
+      <div class="welcome-dots">
+        <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div>
+      </div>
+      <div class="welcome-btn-row">
+        <button class="welcome-btn primary" onclick="closeWelcome()">קדימה, לדשבורד שלי</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <div class="topbar">
   <div class="logo">u<span>allak</span></div>
   <div class="topbar-right">
-    <span class="package-badge">חבילה מלאה — Meta + Google</span>
-    <div class="avatar">מ</div>
+    <span class="package-badge" id="packageBadge">טוען…</span>
+    <button class="upgrade-btn" onclick="toggleUpgradePanel()">⬆ שדרוג חבילה</button>
+    <button class="help-btn" onclick="openWelcome(false)" title="סיור היכרות">?</button>
+    <div class="avatar" id="avatarInitial">·</div>
   </div>
 </div>
 
-<div class="layout">
-  <div class="sidebar">
-    <div class="nav-item active"><span class="nav-icon">◆</span> סקירה כללית</div>
-    <div class="nav-item"><span class="nav-icon">⚭</span> חיבורים</div>
-    <div class="nav-item"><span class="nav-icon">≡</span> פעילות</div>
-    <div class="nav-item"><span class="nav-icon">₪</span> חיובים</div>
-    <div class="nav-item" onclick="toggleSupportChat()"><span class="nav-icon">✉</span> תמיכה</div>
+<div class="main">
+  <div class="notice-banner" id="noticeBanner"></div>
+
+  <div class="greeting" id="greeting">שלום 👋</div>
+  <div class="greeting-sub">הנה מה שקורה בעסק שלך היום</div>
+
+  <div class="stat-grid" id="statGridMain">
+    <div class="stat-card">
+      <div class="stat-label">חבילה נוכחית</div>
+      <div class="stat-value" id="statPackage">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">דמי ניהול חודשיים</div>
+      <div class="stat-value accent" id="statFee">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">חיוב הבא</div>
+      <div class="stat-value" id="statNextBilling" style="font-size:19px;">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">פעולות החודש</div>
+      <div class="stat-value" id="statActions">—</div>
+    </div>
   </div>
 
-  <div class="main">
-    <div class="greeting">שלום, מיכל 👋</div>
-    <div class="greeting-sub">הנה מה שקורה בעסק שלך היום</div>
+  <div class="timeline-card" id="timelineCard" style="display:none;">
+    <div class="timeline-top">
+      <span class="timeline-label" id="timelineLabel"></span>
+      <span class="timeline-pct" id="timelinePct"></span>
+    </div>
+    <div class="timeline-track"><div class="timeline-fill" id="timelineFill" style="width:0%"></div></div>
+    <div class="timeline-note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
+  </div>
 
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">חבילה נוכחית</div>
-        <div class="stat-value">Meta + Google</div>
+  <div class="section-head">
+    <div>
+      <div class="section-title">ממתין לאישור שלך</div>
+      <div class="section-sub">חומרים שהמערכת מכינה יחכו כאן לאור ירוק ממך</div>
+    </div>
+    <span class="pending-badge" id="pendingBadge">0 ממתינים</span>
+  </div>
+  <div class="activity-list" id="pendingApprovalList" style="margin-bottom:36px;">
+    <div class="empty-row">אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן</div>
+  </div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title">חיבורים</div>
+      <div class="section-sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
+    </div>
+  </div>
+  <div class="conn-grid" id="connGrid">
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#EA4335;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">Google Ads</div>
+          <div class="conn-status" id="gadsStatus">לא מחובר</div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">דמי ניהול חודשיים</div>
-        <div class="stat-value accent">₪700</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">חיוב הבא</div>
-        <div class="stat-value">5 באוגוסט</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">פעולות החודש</div>
-        <div class="stat-value">18</div>
-      </div>
+      <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()">חבר עכשיו</button>
     </div>
 
-    <div class="timeline-card">
-      <div class="timeline-top">
-        <span class="timeline-label">חודש 2 מתוך 6 — תוכנית צמיחה</span>
-        <span class="timeline-pct">33%</span>
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#3B5998;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="10" r="2"/><path d="M20 16l-4.5-4.5L9 18"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">Meta — פייסבוק + אינסטגרם</div>
+          <div class="conn-status">חיבור יתווסף בקרוב</div>
+        </div>
       </div>
-      <div class="timeline-track"><div class="timeline-fill" style="width:33%"></div></div>
-      <div class="timeline-note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
+      <button class="conn-btn locked-btn" disabled>בקרוב</button>
     </div>
 
-    <div class="section-head">
-      <div>
-        <div class="section-title">ממתין לאישור שלך</div>
-        <div class="section-sub">חומרים שהמערכת הכינה — צריך את האור הירוק שלך</div>
+    <div class="conn-card locked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#2A2A2A;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><path d="M9 18V6l8 6-8 6z"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">TikTok</div>
+          <div class="conn-status">נעול</div>
+        </div>
       </div>
-      <span class="pending-badge">2 ממתינים</span>
-    </div>
-    <div class="activity-list" style="margin-bottom:36px;">
-      <div class="activity-row">
-        <div class="pending-thumb">🖼️</div>
-        <div class="activity-text">3 תמונות פוסט למחר — קולקציית קיץ</div>
-        <button class="conn-btn primary" style="width:auto; padding:8px 18px;">לאישור</button>
-      </div>
-      <div class="activity-row">
-        <div class="pending-thumb">🎬</div>
-        <div class="activity-text">סרטון קצר לטיקטוק — סקירת עבודה אחרונה</div>
-        <button class="conn-btn primary" style="width:auto; padding:8px 18px;">לאישור</button>
-      </div>
+      <button class="conn-btn locked-btn" disabled>נעול</button>
+      <div class="lock-note">שדרג חבילה כדי לפתוח</div>
     </div>
 
-    <div class="section-head">
-      <div>
-        <div class="section-title">חיבורים</div>
-        <div class="section-sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
-      </div>
-    </div>
-    <div class="conn-grid">
-
-      <div class="conn-card unlocked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#3B5998;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="10" r="2"/><path d="M20 16l-4.5-4.5L9 18"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">Meta — פייסבוק + אינסטגרם</div>
-            <div class="conn-status connected">מחובר</div>
-          </div>
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#464646;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
         </div>
-        <button class="conn-btn connected-btn">מחובר ✓</button>
-      </div>
-
-      <div class="conn-card unlocked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#EA4335;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">Google Ads</div>
-            <div class="conn-status" id="gadsStatus">לא מחובר</div>
-          </div>
+        <div>
+          <div class="conn-name">האתר שלך</div>
+          <div class="conn-status">חיבור יתווסף בקרוב</div>
         </div>
-        <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()">חבר עכשיו</button>
       </div>
-
-      <div class="conn-card locked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#2A2A2A;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><path d="M9 18V6l8 6-8 6z"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">TikTok</div>
-            <div class="conn-status">נעול</div>
-          </div>
-        </div>
-        <button class="conn-btn locked-btn" disabled>נעול</button>
-        <div class="lock-note">שדרג חבילה כדי לפתוח</div>
-      </div>
-
-      <div class="conn-card unlocked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#464646;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">האתר שלך</div>
-            <div class="conn-status connected">מחובר</div>
-          </div>
-        </div>
-        <button class="conn-btn connected-btn">מחובר ✓</button>
-      </div>
-
-      <div class="conn-card locked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#2A2A2A;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">כלי SEO אורגני</div>
-            <div class="conn-status">נעול</div>
-          </div>
-        </div>
-        <button class="conn-btn locked-btn" disabled>נעול</button>
-        <div class="lock-note">לא כלול בחבילה הנוכחית</div>
-      </div>
-
-      <div class="conn-card unlocked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#464646;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">דיוור / מיילים</div>
-            <div class="conn-status">לא מחובר</div>
-          </div>
-        </div>
-        <button class="conn-btn primary">חבר עכשיו</button>
-      </div>
-
-      <div class="conn-card unlocked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#0FBE64;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/><path d="M9 10a1 1 0 0 0 1 1h1l1 2 2 1a1 1 0 0 0 1-1v-1"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">וואטסאפ עסקי (Green API)</div>
-            <div class="conn-status connected">מחובר</div>
-          </div>
-        </div>
-        <button class="conn-btn connected-btn">מחובר ✓</button>
-      </div>
-
-      <div class="conn-card locked">
-        <div class="conn-top">
-          <div class="conn-icon" style="background:#2A2A2A;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10h.01M15 10h.01M9 15c1 1 5 1 6 0"/></svg>
-          </div>
-          <div>
-            <div class="conn-name">בוט אוטומטי (ManyChat)</div>
-            <div class="conn-status">נעול</div>
-          </div>
-        </div>
-        <button class="conn-btn locked-btn" disabled>נעול</button>
-        <div class="lock-note">שדרג חבילה כדי לפתוח</div>
-      </div>
-
+      <button class="conn-btn locked-btn" disabled>בקרוב</button>
     </div>
 
-    <div class="section-head">
-      <div>
-        <div class="section-title">פעילות אחרונה</div>
-        <div class="section-sub">מה שהמערכת עשתה בשבילך</div>
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#464646;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">דיוור / מיילים</div>
+          <div class="conn-status">חיבור יתווסף בקרוב</div>
+        </div>
       </div>
-    </div>
-    <div class="activity-list">
-      <div class="activity-row">
-        <div class="activity-dot"></div>
-        <div class="activity-text">קמפיין Meta חדש הופעל — קהל יעד אונליין</div>
-        <div class="activity-time">היום, 09:14</div>
-      </div>
-      <div class="activity-row">
-        <div class="activity-dot"></div>
-        <div class="activity-text">פוסט שבועי פורסם באינסטגרם</div>
-        <div class="activity-time">אתמול, 18:30</div>
-      </div>
-      <div class="activity-row">
-        <div class="activity-dot"></div>
-        <div class="activity-text">דוח ביצועים שבועי נשלח למייל</div>
-        <div class="activity-time">לפני 3 ימים</div>
-      </div>
+      <button class="conn-btn locked-btn" disabled>בקרוב</button>
     </div>
 
-    <div class="affiliate-note">
-      <span class="affiliate-icon">ⓘ</span>
-      <span>הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.</span>
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#0FBE64;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/><path d="M9 10a1 1 0 0 0 1 1h1l1 2 2 1a1 1 0 0 0 1-1v-1"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">וואטסאפ עסקי</div>
+          <div class="conn-status">חיבור יתווסף בקרוב</div>
+        </div>
+      </div>
+      <button class="conn-btn locked-btn" disabled>בקרוב</button>
     </div>
 
   </div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title">פעילות אחרונה</div>
+      <div class="section-sub">מה שהמערכת עשתה בשבילך</div>
+    </div>
+  </div>
+  <div class="activity-list" id="activityListMain">
+    <div class="empty-row">טוען…</div>
+  </div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title">חיובים</div>
+      <div class="section-sub">היסטוריית תשלומים והחבילה הנוכחית שלך</div>
+    </div>
+  </div>
+  <div class="billing-card" id="billingSection">
+    <div class="empty-row">טוען…</div>
+  </div>
+
+  <div class="affiliate-note">
+    <span class="affiliate-icon">ⓘ</span>
+    <span>הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.</span>
+  </div>
+
 </div>
 
-<button class="support-fab" onclick="toggleSupportChat()" aria-label="תמיכה">
+<button class="support-fab" id="supportFabBtn" onclick="toggleSupportChat()" aria-label="תמיכה">
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 </button>
 
@@ -551,7 +682,7 @@ body {
     </div>
   </div>
   <div class="support-messages" id="supportMessages">
-    <div class="support-msg bot">היי מיכל! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
+    <div class="support-msg bot">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
   </div>
   <div class="support-input-area">
     <input class="support-input" id="supportInput" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
@@ -561,7 +692,271 @@ body {
   </div>
 </div>
 
+<!-- ---------- UPGRADE PANEL ---------- -->
+<div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
+<div class="upgrade-panel" id="upgradePanel">
+  <button class="upgrade-close" onclick="toggleUpgradePanel()">✕</button>
+  <div style="font-size:18px; font-weight:800; margin:6px 0 4px 0;">שדרוג חבילה</div>
+  <div style="font-size:12.5px; color:var(--gray); margin-bottom:22px;">השדרוג ייכנס לתוקף מהחיוב הבא — מאשרים פעם אחת ב-PayPal וזהו</div>
+  <div id="upgradeTiers"><div class="empty-row">טוען…</div></div>
+  <button class="confirm-upgrade-btn" id="confirmUpgradeBtn" disabled onclick="confirmUpgrade()">בחרו חבילה כדי להמשיך</button>
+</div>
+
 <script>
+// ─── shared state ────────────────────────────────────────────────────────────
+let dashboardData = null;
+let selectedTierId = null;
+let upgradeOptionsLoaded = false;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' }); }
+  catch (e) { return '—'; }
+}
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); }
+  catch (e) { return ''; }
+}
+
+// ─── notice banner (?connected / ?upgrade query params) ─────────────────────
+function showNotice(text, kind) {
+  const banner = document.getElementById('noticeBanner');
+  banner.textContent = text;
+  banner.className = 'notice-banner ' + kind;
+}
+
+// ─── welcome tour ────────────────────────────────────────────────────────────
+const tourTargets = { 1: 'statGridMain', 2: 'pendingApprovalList', 3: 'connGrid', 4: 'activityListMain', 5: 'supportFabBtn' };
+let tourWasAutoOpened = false;
+
+function clearTourHighlights() {
+  document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+}
+
+function welcomeStep(n) {
+  document.querySelectorAll('.welcome-step').forEach(s => s.classList.remove('active'));
+  document.querySelector('.welcome-step[data-step="' + n + '"]').classList.add('active');
+  document.querySelectorAll('.welcome-dot').forEach((d, i) => d.classList.toggle('active', (i % 5) === n - 1));
+  clearTourHighlights();
+  const el = document.getElementById(tourTargets[n]);
+  if (el) {
+    el.classList.add('tour-highlight');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function openWelcome(isAuto) {
+  tourWasAutoOpened = !!isAuto;
+  const overlay = document.getElementById('welcomeOverlay');
+  overlay.classList.add('visible');
+  document.body.style.paddingTop = overlay.offsetHeight + 'px';
+  welcomeStep(1);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function closeWelcome() {
+  document.getElementById('welcomeOverlay').classList.remove('visible');
+  document.body.style.paddingTop = '0';
+  clearTourHighlights();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Persist only the automatic first-visit run - reopening via "?" is free
+  if (tourWasAutoOpened) {
+    fetch('/api/client/tour-completed', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    tourWasAutoOpened = false;
+  }
+}
+
+window.addEventListener('resize', () => {
+  const overlay = document.getElementById('welcomeOverlay');
+  if (overlay.classList.contains('visible')) {
+    document.body.style.paddingTop = overlay.offsetHeight + 'px';
+  }
+});
+
+function platformsInPackage(pkg) {
+  const p = (pkg || '').toLowerCase();
+  let count = 0;
+  ['meta', 'google', 'tiktok'].forEach(name => { if (p.includes(name)) count++; });
+  return Math.max(count, 1);
+}
+
+// ─── dashboard data ──────────────────────────────────────────────────────────
+const ACTIVITY_LABELS = {
+  'account_connected': 'חשבון Google Ads חובר בהצלחה',
+  'campaign_created': 'קמפיין חדש נוצר וממתין להפעלה',
+  'campaign_paused': 'קמפיין הושהה',
+  'campaign_resumed': 'קמפיין הופעל מחדש',
+  'subscription_created': 'המנוי הופעל',
+  'payment_confirmed': 'התשלום אושר',
+  'upgrade_requested': 'בקשת שדרוג חבילה נשלחה',
+  'ads_issue_detected': 'זוהתה בעיה בקמפיין — הצוות מטפל',
+};
+
+async function loadDashboard() {
+  try {
+    const res = await fetch('/api/dashboard', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    const body = await res.json();
+    if (!body.success) return;
+    dashboardData = body.data;
+    const d = dashboardData;
+
+    const name = (d.client && d.client.name) || '';
+    document.getElementById('greeting').textContent = name ? `שלום, ${name} 👋` : 'שלום 👋';
+    document.getElementById('tourGreeting').textContent = name ? `ברוכים הבאים, ${name}!` : 'ברוכים הבאים!';
+    document.getElementById('avatarInitial').textContent = name ? name.trim().charAt(0) : '·';
+
+    const pkg = (d.client && d.client.package) || '';
+    document.getElementById('packageBadge').textContent = pkg || 'חבילה';
+    document.getElementById('statPackage').textContent = pkg || '—';
+    document.getElementById('statFee').textContent = d.monthly_fee ? ils(d.monthly_fee) : '—';
+    document.getElementById('statNextBilling').textContent = d.next_billing_date ? fmtDate(d.next_billing_date) : '—';
+    document.getElementById('statActions').textContent = d.activity_month_count != null ? d.activity_month_count : '—';
+
+    // Growth-plan timeline derived from join date (month 1-6)
+    const createdAt = d.client && d.client.created_at;
+    if (createdAt) {
+      const months = Math.max(1, Math.min(6, Math.floor((Date.now() - new Date(createdAt).getTime()) / (30 * 24 * 3600 * 1000)) + 1));
+      document.getElementById('timelineCard').style.display = 'block';
+      document.getElementById('timelineLabel').textContent = `חודש ${months} מתוך 6 — תוכנית צמיחה`;
+      document.getElementById('timelinePct').textContent = Math.round(months / 6 * 100) + '%';
+      document.getElementById('timelineFill').style.width = Math.round(months / 6 * 100) + '%';
+    }
+
+    // Dynamic tour time estimate: ~5 minutes per platform in the package
+    const minutes = platformsInPackage(pkg) * 5;
+    document.getElementById('tourTimeBadge').textContent = `⏱ כ-${minutes} דקות`;
+
+    // Real activity feed
+    const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed');
+    document.getElementById('activityListMain').innerHTML = feed.length
+      ? feed.map(a => `<div class="activity-row">
+          <div class="activity-dot"></div>
+          <div class="activity-text">${esc(ACTIVITY_LABELS[a.action_type] || (a.agent_name + ' — ' + a.action_type))}</div>
+          <div class="activity-time">${fmtDateTime(a.created_at)}</div>
+        </div>`).join('')
+      : '<div class="empty-row">עדיין אין פעילות — ברגע שהמערכת תתחיל לעבוד בשבילך, הכל יופיע כאן</div>';
+
+    // Google Ads connection state
+    if ((d.connections || []).some(c => c.platform === 'google_ads' && c.status === 'active')) {
+      markGoogleAdsConnected();
+    }
+
+    // First visit → auto-run the tour
+    if (!d.tour_completed) openWelcome(true);
+  } catch (e) {
+    console.error('dashboard load failed', e);
+  }
+}
+
+async function loadBilling() {
+  try {
+    const res = await fetch('/api/client/billing', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) return;
+    const d = body.data;
+    const statusLabel = s => s === 'COMPLETED' ? '<span style="color:var(--green);">שולם</span>' : esc(s || '');
+    const txRows = (d.transactions || []).map(t => `
+      <div class="billing-row">
+        <span class="billing-label">${fmtDateTime(t.date)}</span>
+        <span>ניהול חודשי — ${t.currency === 'ILS' ? ils(t.amount) : esc(t.amount + ' ' + (t.currency || ''))} ${statusLabel(t.status)}</span>
+      </div>`).join('');
+    document.getElementById('billingSection').innerHTML = `
+      <div class="billing-row">
+        <span class="billing-label">חבילה נוכחית</span>
+        <span style="font-weight:700;">${esc(d.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + '/חודש' : ''}</span>
+      </div>
+      ${d.next_billing ? `<div class="billing-row"><span class="billing-label">החיוב הבא</span><span>${fmtDateTime(d.next_billing)}</span></div>` : ''}
+      ${txRows || '<div class="billing-row"><span class="billing-label">היסטוריית חיובים</span><span style="color:var(--gray);">עדיין לא בוצעו חיובים במנוי 🎁</span></div>'}`;
+  } catch (e) {
+    console.error('billing load failed', e);
+  }
+}
+
+// ─── upgrade panel ───────────────────────────────────────────────────────────
+function toggleUpgradePanel() {
+  const panel = document.getElementById('upgradePanel');
+  const overlay = document.getElementById('upgradeOverlay');
+  const opening = !panel.classList.contains('open');
+  panel.classList.toggle('open');
+  overlay.classList.toggle('open');
+  if (opening && !upgradeOptionsLoaded) loadUpgradeOptions();
+}
+
+async function loadUpgradeOptions() {
+  upgradeOptionsLoaded = true;
+  const box = document.getElementById('upgradeTiers');
+  try {
+    const res = await fetch('/api/client/upgrade-options', { credentials: 'same-origin' });
+    const body = await res.json();
+    const d = body.data || {};
+    if (!d.available) {
+      box.innerHTML = `<div class="empty-row">${esc(d.reason || 'אתם כבר בחבילה הגבוהה ביותר 🎉')}</div>`;
+      return;
+    }
+    const current = d.current || {};
+    box.innerHTML = `
+      <div class="tier-card current">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="tier-name">${esc(current.package || 'החבילה שלך')}</span>
+          <span class="tier-tag">נוכחית</span>
+        </div>
+        <div class="tier-price">${ils(current.monthly_fee)}<span>/חודש</span></div>
+      </div>
+      ${(d.tiers || []).map(t => `
+        <div class="tier-card selectable" data-tier="${esc(t.id)}" onclick="selectTier('${esc(t.id)}', this)">
+          <div class="tier-name">${esc(t.name)}</div>
+          <div class="tier-desc">${esc(t.description)}</div>
+          <div class="tier-price">${ils(t.monthly_fee)}<span>/חודש</span></div>
+          ${t.note ? `<div class="tier-note">${esc(t.note)}</div>` : ''}
+        </div>`).join('')}`;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-row">שגיאה בטעינת החבילות — נסו שוב</div>';
+    upgradeOptionsLoaded = false;
+  }
+}
+
+function selectTier(tierId, el) {
+  selectedTierId = tierId;
+  document.querySelectorAll('.tier-card.selectable').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const btn = document.getElementById('confirmUpgradeBtn');
+  btn.disabled = false;
+  btn.classList.add('ready');
+  btn.textContent = 'שדרגו עכשיו — לאישור ב-PayPal';
+}
+
+async function confirmUpgrade() {
+  if (!selectedTierId) return;
+  const btn = document.getElementById('confirmUpgradeBtn');
+  btn.disabled = true;
+  btn.textContent = 'רגע, מכינים את השדרוג…';
+  try {
+    const res = await fetch('/api/client/upgrade', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier_id: selectedTierId }),
+    });
+    const body = await res.json();
+    if (res.ok && body.approve_url) {
+      window.location.href = body.approve_url;
+    } else {
+      btn.textContent = (body.detail || 'שגיאה — נסו שוב');
+      btn.disabled = false;
+    }
+  } catch (e) {
+    btn.textContent = 'שגיאה — נסו שוב';
+    btn.disabled = false;
+  }
+}
+
+// ─── google ads connect ──────────────────────────────────────────────────────
 function connectGoogleAds() {
   window.location.href = '/api/oauth/google-ads/start';
 }
@@ -576,28 +971,7 @@ function markGoogleAdsConnected() {
   btn.onclick = null;
 }
 
-// Reflect OAuth redirect results, then sync the card with what's actually
-// stored server-side (the page is otherwise static demo content)
-(function () {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('connected') === 'google_ads') {
-    markGoogleAdsConnected();
-    history.replaceState(null, '', window.location.pathname);
-  } else if (params.get('connect_error')) {
-    document.getElementById('gadsStatus').textContent = 'החיבור נכשל — נסה שוב';
-    history.replaceState(null, '', window.location.pathname);
-  }
-  fetch('/api/dashboard', { credentials: 'same-origin' })
-    .then(res => res.json())
-    .then(data => {
-      const connections = (data.data && data.data.connections) || [];
-      if (connections.some(c => c.platform === 'google_ads' && c.status === 'active')) {
-        markGoogleAdsConnected();
-      }
-    })
-    .catch(() => {});
-})();
-
+// ─── support chat ────────────────────────────────────────────────────────────
 let supportHistoryLoaded = false;
 
 function appendSupportMsg(text, cls) {
@@ -659,6 +1033,27 @@ async function sendSupportMsg() {
     appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
   }
 }
+
+// ─── boot ────────────────────────────────────────────────────────────────────
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('connected') === 'google_ads') {
+    markGoogleAdsConnected();
+    showNotice('חשבון Google Ads חובר בהצלחה ✓', 'success');
+  } else if (params.get('connect_error')) {
+    showNotice('חיבור Google Ads נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', 'warn');
+  } else if (params.get('upgrade') === 'success') {
+    showNotice('השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', 'success');
+  } else if (params.get('upgrade') === 'pending') {
+    showNotice('השדרוג עדיין באימות מול PayPal — נעדכן ברגע שיאושר', 'warn');
+  } else if (params.get('upgrade') === 'error') {
+    showNotice('הייתה בעיה באישור השדרוג — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+  }
+  if ([...params.keys()].length) history.replaceState(null, '', window.location.pathname);
+
+  loadDashboard();
+  loadBilling();
+})();
 </script>
 
 </body>

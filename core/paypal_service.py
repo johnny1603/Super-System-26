@@ -39,26 +39,13 @@ def _headers() -> dict:
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
-def create_subscription(client_id: int, plan_name: str, amount: float, currency: str = "ILS",
-                         return_url: str = None, cancel_url: str = None) -> dict:
-    headers = _headers()
-    return_url = return_url or f"{PUBLIC_APP_URL}/api/payment-success?client_id={client_id}"
-    cancel_url = cancel_url or f"{PUBLIC_APP_URL}/chat/"
-
-    # Step 1 — create a product
-    product_res = httpx.post(
-        f"{BASE_URL}/v1/catalogs/products",
-        headers=headers,
-        json={"name": plan_name, "type": "SERVICE", "category": "SOFTWARE"},
-        timeout=TIMEOUT,
-    )
-    product_res.raise_for_status()
-    product_id = product_res.json()["id"]
-
-    # Step 2 — create a monthly billing plan on that product
+def create_plan(product_id: str, plan_name: str, amount: float, currency: str = "ILS") -> str:
+    """A monthly billing plan on an existing product. Used at checkout and again
+    when a client upgrades (the upgraded plan must live under the SAME product
+    as the original, or the subscription revision is rejected)."""
     plan_res = httpx.post(
         f"{BASE_URL}/v1/billing/plans",
-        headers=headers,
+        headers=_headers(),
         json={
             "product_id": product_id,
             "name": plan_name,
@@ -82,7 +69,27 @@ def create_subscription(client_id: int, plan_name: str, amount: float, currency:
         timeout=TIMEOUT,
     )
     plan_res.raise_for_status()
-    plan_id = plan_res.json()["id"]
+    return plan_res.json()["id"]
+
+
+def create_subscription(client_id: int, plan_name: str, amount: float, currency: str = "ILS",
+                         return_url: str = None, cancel_url: str = None) -> dict:
+    headers = _headers()
+    return_url = return_url or f"{PUBLIC_APP_URL}/api/payment-success?client_id={client_id}"
+    cancel_url = cancel_url or f"{PUBLIC_APP_URL}/chat/"
+
+    # Step 1 — create a product
+    product_res = httpx.post(
+        f"{BASE_URL}/v1/catalogs/products",
+        headers=headers,
+        json={"name": plan_name, "type": "SERVICE", "category": "SOFTWARE"},
+        timeout=TIMEOUT,
+    )
+    product_res.raise_for_status()
+    product_id = product_res.json()["id"]
+
+    # Step 2 — create a monthly billing plan on that product
+    plan_id = create_plan(product_id, plan_name, amount, currency)
 
     # Step 3 — create the subscription
     sub_res = httpx.post(
@@ -174,6 +181,66 @@ def get_subscription_status(subscription_id: str) -> dict:
         "start_time": data.get("start_time"),
         "next_billing_time": data.get("billing_info", {}).get("next_billing_time"),
     }
+
+
+def get_plan(plan_id: str) -> dict:
+    response = httpx.get(
+        f"{BASE_URL}/v1/billing/plans/{plan_id}",
+        headers=_headers(),
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return {"plan_id": plan_id, "product_id": data.get("product_id"), "name": data.get("name")}
+
+
+def revise_subscription_plan(subscription_id: str, new_plan_id: str, return_url: str, cancel_url: str) -> dict:
+    """Upgrade path: revise the live subscription onto a new plan. The
+    subscriber must approve the price change via the returned approve_url;
+    the new price takes effect from the NEXT billing cycle (no proration) -
+    which is exactly the product behavior we promise in the upgrade panel."""
+    response = httpx.post(
+        f"{BASE_URL}/v1/billing/subscriptions/{subscription_id}/revise",
+        headers=_headers(),
+        json={
+            "plan_id": new_plan_id,
+            "application_context": {
+                "return_url": return_url,
+                "cancel_url": cancel_url,
+            },
+        },
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    data = response.json()
+    approve_url = next(
+        (link["href"] for link in data.get("links", []) if link["rel"] == "approve"),
+        None,
+    )
+    return {"subscription_id": subscription_id, "new_plan_id": new_plan_id, "approve_url": approve_url}
+
+
+def list_subscription_transactions(subscription_id: str, start_time: str, end_time: str) -> list:
+    """Completed/attempted charges on a subscription - PayPal is the source of
+    truth for what a client actually paid; we deliberately don't keep a
+    parallel payments table."""
+    response = httpx.get(
+        f"{BASE_URL}/v1/billing/subscriptions/{subscription_id}/transactions",
+        headers=_headers(),
+        params={"start_time": start_time, "end_time": end_time},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    transactions = []
+    for t in response.json().get("transactions", []):
+        gross = (t.get("amount_with_breakdown") or {}).get("gross_amount") or {}
+        transactions.append({
+            "date": t.get("time"),
+            "amount": gross.get("value"),
+            "currency": gross.get("currency_code"),
+            "status": t.get("status"),
+        })
+    return transactions
 
 
 # ─── Invoices ─────────────────────────────────────────────────────────────────

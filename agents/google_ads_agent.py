@@ -623,6 +623,7 @@ def run_weekly_report(send_email: bool = True) -> dict:
                     WEEKLY_REPORT_SYSTEM,
                     json.dumps(clients_data, ensure_ascii=False),
                     max_tokens=1000,
+                    cost_category="claude_analysis",
                 ),
             )
             report["highlights"] = summary.get("highlights", [])[:5]
@@ -630,6 +631,12 @@ def run_weekly_report(send_email: bool = True) -> dict:
         except ClaudeJSONError as e:
             # Tables still go out - the LLM garnish is optional
             agent_alert(AGENT_NAME, [f"weekly report LLM summary failed: {e}"])
+
+    # Durable copy for the admin dashboard's reports tab - non-fatal on failure
+    try:
+        _db().table("weekly_reports").insert({"report": report}).execute()
+    except Exception as e:
+        print(f"[google_ads_agent] could not persist weekly report (non-fatal): {e}")
 
     if send_email:
         from core.email_service import send_google_ads_weekly_report

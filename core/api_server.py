@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -21,7 +22,8 @@ from agents.architect_agent import (
     is_agent_active, create_new_agent, suspend_agent, propose_agent_deletion
 )
 from agents.client_agent import (
-    create_client, get_client, get_client_by_email, list_clients, update_client_status, complete_onboarding,
+    create_client, get_client, get_client_by_email, list_clients, update_client_status, update_client_package,
+    complete_onboarding,
     add_account, get_accounts, upsert_account,
     assign_agent, get_client_agents, update_agent_status,
     log_activity, get_activity,
@@ -29,12 +31,17 @@ from agents.client_agent import (
     create_login_code, get_active_login_code, increment_login_code_attempts, mark_login_code_used,
 )
 from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation, send_login_code
-from core.paypal_service import create_subscription, verify_webhook_signature, get_subscription_status
+from core.paypal_service import (
+    create_subscription, verify_webhook_signature, get_subscription_status,
+    get_plan, create_plan, revise_subscription_plan, list_subscription_transactions,
+)
 from core.session import (
     create_session_token, verify_session_token,
     create_oauth_state_token, verify_oauth_state_token,
+    create_admin_session_token, verify_admin_session_token,
 )
 from core import google_ads_service
+from core import admin_service
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -60,6 +67,7 @@ app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "on
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
 app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
+app.mount("/admin", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "admin"), html=True), name="admin")
 
 def _require_admin_key(request: Request):
     """Guards internal/admin endpoints - everything that isn't part of the public
@@ -483,17 +491,24 @@ async def dashboard_data(request: Request):
         except Exception as e:
             print(f"[dashboard] could not fetch live subscription status: {e}")
 
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    activity_month_count = sum(1 for e in activity if (e.get("created_at") or "") >= month_start)
+    tour_completed = any(e.get("action_type") == "welcome_tour_completed" for e in activity)
+
     return {"success": True, "data": {
         "client": {
             "id": client.get("id"),
             "name": client.get("name"),
             "package": client.get("package"),
             "status": client.get("status"),
+            "created_at": client.get("created_at"),
         },
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
         "connections": accounts,
         "activity": activity[:10],
+        "activity_month_count": activity_month_count,
+        "tour_completed": tour_completed,
     }}
 
 @app.patch("/api/clients/{client_id}/status", dependencies=_admin_only)
@@ -596,6 +611,142 @@ async def client_chat_history(request: Request):
     history = get_communications(client_id, limit=50, channel="dashboard_chat")
     return {"success": True, "history": list(reversed(history))}
 
+# ─── Package upgrade + billing (client-facing, session-gated) ────────────────
+
+def _client_subscription_info(client_id: int) -> dict:
+    """monthly_fee + subscription_id from the newest checkout activity row -
+    the same derivation /api/dashboard uses (no dedicated billing table yet)."""
+    for entry in get_activity(client_id, limit=100):
+        if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_created":
+            details = entry.get("details") or {}
+            return {
+                "monthly_fee": details.get("monthly_management_total") or 0,
+                "subscription_id": (entry.get("result") or {}).get("subscription_id"),
+                "checkout_at": entry.get("created_at"),
+            }
+    return {"monthly_fee": 0, "subscription_id": None, "checkout_at": None}
+
+@app.get("/api/client/upgrade-options")
+def client_upgrade_options(request: Request):
+    from agents.onboarding_agent import get_upgrade_tiers
+    client_id = _require_session(request)
+    client = get_client(client_id)
+    sub = _client_subscription_info(client_id)
+    if not sub["subscription_id"]:
+        return {"success": True, "data": {"available": False, "reason": "אין מנוי פעיל לשדרוג"}}
+    tiers = [t for t in get_upgrade_tiers() if t["monthly_fee"] > sub["monthly_fee"]]
+    return {"success": True, "data": {
+        "available": bool(tiers),
+        "current": {"package": client.get("package", ""), "monthly_fee": sub["monthly_fee"]},
+        "tiers": tiers,
+    }}
+
+class UpgradeRequest(BaseModel):
+    tier_id: str
+
+@app.post("/api/client/upgrade")
+def client_upgrade(req: UpgradeRequest, request: Request):
+    from agents.onboarding_agent import get_upgrade_tiers
+    client_id = _require_session(request)
+    sub = _client_subscription_info(client_id)
+    if not sub["subscription_id"]:
+        raise HTTPException(status_code=400, detail="אין מנוי פעיל לשדרוג")
+
+    tier = next((t for t in get_upgrade_tiers() if t["id"] == req.tier_id), None)
+    if not tier or tier["monthly_fee"] <= sub["monthly_fee"]:
+        raise HTTPException(status_code=400, detail="חבילה לא זמינה לשדרוג")
+
+    try:
+        # The upgraded plan must live under the same PayPal product as the
+        # original - recover the product through the live subscription, since
+        # checkout never stored the product id
+        current_plan_id = get_subscription_status(sub["subscription_id"]).get("plan_id")
+        product_id = get_plan(current_plan_id).get("product_id")
+        new_plan_id = create_plan(product_id, f"uallak ניהול חודשי — {tier['name']}", tier["monthly_fee"])
+
+        public_url = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+        revision = revise_subscription_plan(
+            sub["subscription_id"], new_plan_id,
+            return_url=(f"{public_url}/api/upgrade-success?client_id={client_id}"
+                        f"&subscription_id={sub['subscription_id']}&plan_id={new_plan_id}&tier_id={tier['id']}"),
+            cancel_url=f"{public_url}/dashboard/",
+        )
+        if not revision.get("approve_url"):
+            raise RuntimeError("PayPal revision returned no approve link")
+
+        log_activity(client_id, "paypal_service", "upgrade_requested",
+                     {"tier_id": tier["id"], "tier_name": tier["name"],
+                      "monthly_fee": tier["monthly_fee"], "new_plan_id": new_plan_id},
+                     {"subscription_id": sub["subscription_id"]})
+        return {"success": True, "approve_url": revision["approve_url"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="שגיאה בהכנת השדרוג — נסה שוב או פנה אלינו בצ'אט")
+
+@app.get("/api/upgrade-success")
+def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = "", tier_id: str = ""):
+    from agents.onboarding_agent import get_upgrade_tiers
+    try:
+        # Unauthenticated redirect from PayPal - only act if PayPal itself
+        # confirms the subscription now sits on the plan we created
+        if not (subscription_id and plan_id):
+            return RedirectResponse(url="/dashboard/?upgrade=pending")
+        live = get_subscription_status(subscription_id)
+        if live.get("plan_id") != plan_id or live.get("status") != "ACTIVE":
+            print(f"[upgrade_success] client {client_id}: live plan {live.get('plan_id')} != expected {plan_id}")
+            return RedirectResponse(url="/dashboard/?upgrade=pending")
+
+        tier = next((t for t in get_upgrade_tiers() if t["id"] == tier_id), None)
+        if tier:
+            update_client_package(client_id, tier["name"])
+            # Logged as subscription_created so the fee derivations (dashboard
+            # + admin MRR) pick up the new amount - they read the newest row
+            log_activity(client_id, "paypal_service", "subscription_created",
+                         {"package_name": tier["name"], "monthly_management_total": tier["monthly_fee"],
+                          "setup_fee_total": tier["setup_fee_addition"], "upgrade": True},
+                         {"subscription_id": subscription_id})
+        return RedirectResponse(url="/dashboard/?upgrade=success")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?upgrade=error")
+
+@app.get("/api/client/billing")
+def client_billing(request: Request):
+    client_id = _require_session(request)
+    client = get_client(client_id)
+    sub = _client_subscription_info(client_id)
+
+    transactions, next_billing = [], None
+    if sub["subscription_id"]:
+        try:
+            next_billing = get_subscription_status(sub["subscription_id"]).get("next_billing_time")
+        except Exception as e:
+            print(f"[billing] subscription status failed for client {client_id}: {e}")
+        try:
+            start = sub["checkout_at"] or (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+            transactions = list_subscription_transactions(
+                sub["subscription_id"], start, datetime.now(timezone.utc).isoformat()
+            )
+        except Exception as e:
+            print(f"[billing] transactions fetch failed for client {client_id}: {e}")
+
+    return {"success": True, "data": {
+        "package": client.get("package", ""),
+        "monthly_fee": sub["monthly_fee"],
+        "next_billing": next_billing,
+        "transactions": transactions,
+    }}
+
+@app.post("/api/client/tour-completed")
+def client_tour_completed(request: Request):
+    client_id = _require_session(request)
+    log_activity(client_id, "dashboard", "welcome_tour_completed", {}, {})
+    return {"success": True}
+
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
 @app.get("/api/oauth/google-ads/start")
@@ -679,6 +830,91 @@ def google_ads_weekly_report():
         return {"success": True, "data": run_weekly_report()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Admin dashboard (browser session, separate from X-Admin-Key) ────────────
+
+def _require_admin(request: Request):
+    if not verify_admin_session_token(request.cookies.get("admin_session")):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+@app.post("/api/admin/login")
+def admin_login(req: AdminLoginRequest, response: Response):
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password or not secrets.compare_digest(req.password.encode(), admin_password.encode()):
+        time.sleep(1)  # cheap brute-force damper (runs in the threadpool, not the event loop)
+        raise HTTPException(status_code=401, detail="סיסמה שגויה")
+    response.set_cookie(
+        key="admin_session",
+        value=create_admin_session_token(),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
+    )
+    return {"success": True}
+
+@app.post("/api/admin/logout")
+async def admin_logout(response: Response):
+    response.delete_cookie("admin_session", path="/")
+    return {"success": True}
+
+@app.get("/api/admin/overview")
+def admin_overview(request: Request):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.get_overview()}
+
+@app.get("/api/admin/clients")
+def admin_clients(request: Request):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.list_clients_admin()}
+
+@app.get("/api/admin/clients/{client_id}")
+def admin_client_detail(client_id: int, request: Request):
+    _require_admin(request)
+    data = admin_service.get_client_admin(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True, "data": data}
+
+class AdminMessageRequest(BaseModel):
+    text: str
+
+@app.post("/api/admin/clients/{client_id}/message")
+def admin_send_chat_message(client_id: int, req: AdminMessageRequest, request: Request):
+    _require_admin(request)
+    # Lands in the client's dashboard support-chat history (same channel the
+    # support agent writes to), so they see it next time they open the chat
+    entry = log_communication(client_id, "outbound", "dashboard_chat", req.text)
+    return {"success": True, "data": entry}
+
+@app.get("/api/admin/alerts")
+def admin_alerts(request: Request, status: str = None):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.list_alerts(status)}
+
+@app.post("/api/admin/alerts/{alert_id}/resolve")
+def admin_resolve_alert(alert_id: int, request: Request):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.resolve_alert(alert_id)}
+
+@app.get("/api/admin/reports")
+def admin_reports(request: Request):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.list_weekly_reports()}
+
+@app.get("/api/admin/settings")
+def admin_get_settings(request: Request):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.get_settings()}
+
+@app.put("/api/admin/settings")
+def admin_update_settings(request: Request, changes: dict):
+    _require_admin(request)
+    return {"success": True, "data": admin_service.update_settings(changes)}
 
 @app.get("/health")
 async def health():

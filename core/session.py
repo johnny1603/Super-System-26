@@ -8,6 +8,7 @@ from agents.keys_agent import get_key
 
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60  # 30 days
 OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
+ADMIN_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # 7 days - shorter than client sessions on purpose
 
 
 def _sign(payload_b64: bytes) -> str:
@@ -19,6 +20,13 @@ def _sign_oauth_state(payload_b64: bytes) -> str:
     # Derived secret, NOT the raw session secret — an OAuth state parameter is
     # visible in URLs/logs and must never verify as a session cookie (or vice versa)
     secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":oauth-state").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def _sign_admin(payload_b64: bytes) -> str:
+    # Derived secret again: a client session cookie must never verify as an
+    # admin session, even though both are signed with the same base secret
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":admin-session").digest()
     return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
 
 
@@ -38,7 +46,8 @@ def create_session_token(client_id: int) -> str:
 def verify_session_token(token: str):
     """Returns the client_id if the token is well-formed, correctly signed, and
     not expired - otherwise None. Never raises on malformed/tampered input."""
-    return _verify(token, _sign)
+    payload = _verify(token, _sign)
+    return payload.get("client_id") if payload else None
 
 
 def create_oauth_state_token(client_id: int) -> str:
@@ -55,10 +64,29 @@ def create_oauth_state_token(client_id: int) -> str:
 
 def verify_oauth_state_token(token: str):
     """Returns the client_id from a valid, unexpired OAuth state token - otherwise None."""
-    return _verify(token, _sign_oauth_state)
+    payload = _verify(token, _sign_oauth_state)
+    return payload.get("client_id") if payload else None
+
+
+def create_admin_session_token() -> str:
+    """Session for the admin dashboard - authenticated by ADMIN_PASSWORD at
+    login, then carried in an 'admin_session' cookie."""
+    payload = json.dumps({
+        "admin": True,
+        "exp": int(time.time()) + ADMIN_SESSION_MAX_AGE_SECONDS,
+    }).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_admin(payload_b64)}"
+
+
+def verify_admin_session_token(token: str) -> bool:
+    payload = _verify(token, _sign_admin)
+    return bool(payload and payload.get("admin") is True)
 
 
 def _verify(token: str, sign_fn):
+    """Returns the decoded payload dict for a well-signed, unexpired token -
+    otherwise None. Never raises on malformed/tampered input."""
     if not token or "." not in token:
         return None
     try:
@@ -70,6 +98,6 @@ def _verify(token: str, sign_fn):
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
         if payload.get("exp", 0) < time.time():
             return None
-        return payload.get("client_id")
+        return payload
     except Exception:
         return None
