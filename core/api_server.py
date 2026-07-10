@@ -205,6 +205,7 @@ async def checkout(req: CheckoutRequest):
             plan_name=plan_name,
             amount=req.monthly_management_total,
             currency="ILS",
+            setup_fee=req.setup_fee_total,
         )
 
         log_activity(client_id, "paypal_service", "subscription_created", {
@@ -621,10 +622,11 @@ def _client_subscription_info(client_id: int) -> dict:
             details = entry.get("details") or {}
             return {
                 "monthly_fee": details.get("monthly_management_total") or 0,
+                "setup_fee": details.get("setup_fee_total") or 0,
                 "subscription_id": (entry.get("result") or {}).get("subscription_id"),
                 "checkout_at": entry.get("created_at"),
             }
-    return {"monthly_fee": 0, "subscription_id": None, "checkout_at": None}
+    return {"monthly_fee": 0, "setup_fee": 0, "subscription_id": None, "checkout_at": None}
 
 @app.get("/api/client/upgrade-options")
 def client_upgrade_options(request: Request):
@@ -737,6 +739,12 @@ def client_billing(request: Request):
     return {"success": True, "data": {
         "package": client.get("package", ""),
         "monthly_fee": sub["monthly_fee"],
+        "setup_fee": sub["setup_fee"],
+        # The setup fee rides PayPal's native payment_preferences.setup_fee on the
+        # plan (setup_fee_failure_action=CANCEL) - it's charged in the same approval
+        # as the first payment, so once the subscription is live (client status
+        # flips to "active" in _mark_paid_and_notify) the setup fee was collected too.
+        "setup_fee_charged": bool(sub["setup_fee"]) and client.get("status") == "active",
         "next_billing": next_billing,
         "transactions": transactions,
     }}

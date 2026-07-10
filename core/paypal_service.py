@@ -39,10 +39,25 @@ def _headers() -> dict:
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
-def create_plan(product_id: str, plan_name: str, amount: float, currency: str = "ILS") -> str:
+def create_plan(product_id: str, plan_name: str, amount: float, currency: str = "ILS",
+                 setup_fee: float = 0) -> str:
     """A monthly billing plan on an existing product. Used at checkout and again
     when a client upgrades (the upgraded plan must live under the SAME product
-    as the original, or the subscription revision is rejected)."""
+    as the original, or the subscription revision is rejected).
+
+    setup_fee (checkout only, not upgrades) rides PayPal's native
+    payment_preferences.setup_fee - charged upfront in the same approval flow
+    as the first subscription payment, no separate invoice/redirect needed.
+    setup_fee_failure_action=CANCEL so we never end up servicing a client whose
+    setup fee didn't actually collect."""
+    payment_preferences = {
+        "auto_bill_outstanding": True,
+        "payment_failure_threshold": 3,
+    }
+    if setup_fee:
+        payment_preferences["setup_fee"] = {"value": str(setup_fee), "currency_code": currency}
+        payment_preferences["setup_fee_failure_action"] = "CANCEL"
+
     plan_res = httpx.post(
         f"{BASE_URL}/v1/billing/plans",
         headers=_headers(),
@@ -61,10 +76,7 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
                     },
                 }
             ],
-            "payment_preferences": {
-                "auto_bill_outstanding": True,
-                "payment_failure_threshold": 3,
-            },
+            "payment_preferences": payment_preferences,
         },
         timeout=TIMEOUT,
     )
@@ -73,7 +85,7 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
 
 
 def create_subscription(client_id: int, plan_name: str, amount: float, currency: str = "ILS",
-                         return_url: str = None, cancel_url: str = None) -> dict:
+                         setup_fee: float = 0, return_url: str = None, cancel_url: str = None) -> dict:
     headers = _headers()
     return_url = return_url or f"{PUBLIC_APP_URL}/api/payment-success?client_id={client_id}"
     cancel_url = cancel_url or f"{PUBLIC_APP_URL}/chat/"
@@ -88,8 +100,9 @@ def create_subscription(client_id: int, plan_name: str, amount: float, currency:
     product_res.raise_for_status()
     product_id = product_res.json()["id"]
 
-    # Step 2 — create a monthly billing plan on that product
-    plan_id = create_plan(product_id, plan_name, amount, currency)
+    # Step 2 — create a monthly billing plan on that product, with the setup
+    # fee attached so it's charged in the same approval as the first payment
+    plan_id = create_plan(product_id, plan_name, amount, currency, setup_fee)
 
     # Step 3 — create the subscription
     sub_res = httpx.post(
@@ -119,6 +132,7 @@ def create_subscription(client_id: int, plan_name: str, amount: float, currency:
         "status": sub.get("status"),
         "plan_id": plan_id,
         "approve_url": approve_url,
+        "setup_fee": setup_fee,
     }
 
 

@@ -872,6 +872,7 @@ async function loadBilling() {
         <span class="billing-label">חבילה נוכחית</span>
         <span style="font-weight:700;">${esc(d.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + '/חודש' : ''}</span>
       </div>
+      ${d.setup_fee ? `<div class="billing-row"><span class="billing-label">דמי הקמה</span><span>${ils(d.setup_fee)} ${d.setup_fee_charged ? '<span style="color:var(--green);">שולם</span>' : '<span style="color:var(--gray);">ממתין לתשלום</span>'}</span></div>` : ''}
       ${d.next_billing ? `<div class="billing-row"><span class="billing-label">החיוב הבא</span><span>${fmtDateTime(d.next_billing)}</span></div>` : ''}
       ${txRows || '<div class="billing-row"><span class="billing-label">היסטוריית חיובים</span><span style="color:var(--gray);">עדיין לא בוצעו חיובים במנוי 🎁</span></div>'}`;
   } catch (e) {
