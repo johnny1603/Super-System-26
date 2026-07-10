@@ -152,11 +152,36 @@ def send_admin_alert(answers: dict, proposal: dict):
 
 def send_google_ads_weekly_report(report: dict):
     """Weekly Google Ads performance digest for the team (not clients)."""
+    _send_weekly_platform_report(report, "Google Ads")
+
+def send_meta_weekly_report(report: dict):
+    """Weekly Meta (Facebook + Instagram, paid + organic) digest for the team."""
+    _send_weekly_platform_report(report, "Meta")
+
+def _send_weekly_platform_report(report: dict, platform_label: str):
     def _fmt_change(pct):
         if pct is None:
             return ""
         arrow = "▲" if pct > 0 else "▼"
         return f' <span style="color:{"#FF4C1F" if pct > 0 else "#00C96E"};font-size:12px;">({arrow}{abs(pct)}%)</span>'
+
+    def _engagement_line(c):
+        # Meta reports carry organic engagement next to the paid numbers -
+        # Google reports never set this field, so the line simply doesn't render
+        engagement = c.get("engagement") or {}
+        parts = []
+        fb = engagement.get("facebook")
+        if fb:
+            parts.append(f"פייסבוק: {fb.get('posts', 0)} פוסטים · {fb.get('likes', 0)} לייקים · "
+                         f"{fb.get('comments', 0)} תגובות · {fb.get('shares', 0)} שיתופים")
+        ig = engagement.get("instagram")
+        if ig:
+            parts.append(f"אינסטגרם: {ig.get('posts', 0)} פוסטים · {ig.get('likes', 0)} לייקים · "
+                         f"{ig.get('comments', 0)} תגובות")
+        if not parts:
+            return ""
+        return ('<p style="margin:0 0 14px;color:#3D3D3D;font-size:13px;">🌱 אורגני (7 ימים): '
+                + " | ".join(parts) + '</p>')
 
     clients_html = ""
     for c in report.get("clients", []):
@@ -177,6 +202,7 @@ def send_google_ads_weekly_report(report: dict):
             · קליקים: <strong>{last['clicks']}</strong> (שבוע קודם: {prev['clicks']})
             · המרות: <strong>{last['conversions']}</strong> (שבוע קודם: {prev['conversions']})
           </p>
+          {_engagement_line(c)}
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <tr style="background:#F7F4EF;">
               <th style="padding:6px 10px;text-align:right;">קמפיין</th>
@@ -190,7 +216,7 @@ def send_google_ads_weekly_report(report: dict):
         </div>"""
 
     if not clients_html:
-        clients_html = '<div style="background:white;border-radius:12px;padding:24px;"><p style="margin:0;color:#8A8A8A;">אין עדיין חשבונות Google Ads מחוברים.</p></div>'
+        clients_html = f'<div style="background:white;border-radius:12px;padding:24px;"><p style="margin:0;color:#8A8A8A;">אין עדיין חשבונות {platform_label} מחוברים.</p></div>'
 
     def _bullets(items):
         return "".join([f'<p style="margin:6px 0;">• {item}</p>' for item in items])
@@ -207,14 +233,14 @@ def send_google_ads_weekly_report(report: dict):
     <div dir="rtl" style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
       <div style="text-align:center;margin-bottom:24px;">
         <h1 style="font-size:28px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
-        <p style="color:#8A8A8A;margin:4px 0 0;">דוח Google Ads שבועי — 7 ימים אחרונים מול השבוע שקדם</p>
+        <p style="color:#8A8A8A;margin:4px 0 0;">דוח {platform_label} שבועי — 7 ימים אחרונים מול השבוע שקדם</p>
       </div>
       {insights_html}
       {clients_html}
     </div>
     """
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = "📊 uallak — דוח Google Ads שבועי"
+    msg['Subject'] = f"📊 uallak — דוח {platform_label} שבועי"
     msg['From'] = GMAIL_USER
     msg['To'] = ADMIN_EMAIL
     msg.attach(MIMEText(html, 'html'))

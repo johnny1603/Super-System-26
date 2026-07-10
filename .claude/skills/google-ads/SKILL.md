@@ -112,4 +112,5 @@ Auto-creating campaigns from `build_proposal` output (proposal lacks keywords/ad
 copy — needs a generation step first), account-picker for multi-account users,
 refresh-token encryption at rest (plaintext in Supabase — flagged, accepted for
 MVP), conversion-tracking setup, budget/bidding changes on live campaigns,
-Meta/TikTok equivalents (copy this skill's auth pattern when building those).
+TikTok equivalent (copy this skill's auth pattern when building it; the Meta
+equivalent is built — see the `meta` skill).

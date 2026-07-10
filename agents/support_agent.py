@@ -31,15 +31,21 @@ def _db():
 
 
 def consult_platform_agent(client_id: int, platform: str, question: str):
-    """Platform-specific live data for support answers. Google Ads is real now
-    (via the account the client connected in the dashboard); Meta/TikTok still
-    pending their execution agents."""
+    """Platform-specific live data for support answers. Google Ads and Meta are
+    real now (via the accounts the client connected in the dashboard); TikTok
+    still pending its execution agent."""
     if platform in ("google", "google_ads"):
         from agents.google_ads_agent import get_campaign_performance
         performance = get_campaign_performance(client_id)
         if performance.get("connected"):
             return performance
         return "חשבון Google Ads עדיין לא מחובר - אפשר לחבר אותו בלחיצה על 'חבר עכשיו' בדשבורד"
+    if platform in ("meta", "meta_ads", "facebook", "instagram"):
+        from agents.meta_ads_agent import get_campaign_performance
+        performance = get_campaign_performance(client_id)
+        if performance.get("connected"):
+            return performance
+        return "חשבון Meta עדיין לא מחובר - אפשר לחבר אותו בלחיצה על 'חבר עכשיו' בדשבורד"
     return f"אין עדיין חיבור לנתונים בזמן אמת של {platform} - זה יתווסף בקרוב"
 
 
@@ -67,14 +73,16 @@ Answer questions about their package, pricing, and how the system works, using O
 client data given to you in the user message (their package/proposal details and recent
 account activity). Never invent numbers, features, or activity not present in that data.
 
-Platform data: if the user message includes a "google_ads_performance" field, that is REAL
-live data from the client's own Google Ads account (last 30 days; "cost" values are in the
-account's currency, ILS for our clients) - use it to answer campaign questions concretely,
-citing the actual numbers. If it contains an "error" field, say there was a temporary issue
-reading their campaign data and the team is on it. If it is absent and the question needs
-Google Ads data, the account isn't connected yet - warmly point them to the "חבר עכשיו"
-button in the dashboard. Meta and TikTok have no live connection yet; if asked about those,
-say so honestly and mention it's coming soon. Never invent campaign numbers.
+Platform data: if the user message includes a "google_ads_performance" or
+"meta_ads_performance" field, that is REAL live data from the client's own ad account
+(last 30 days; "cost" values are in the account's currency, ILS for our clients;
+meta_ads_performance covers Facebook + Instagram combined) - use it to answer campaign
+questions concretely, citing the actual numbers. If it contains an "error" field, say there
+was a temporary issue reading their campaign data and the team is on it. If a platform's
+field is absent and the question needs that platform's data, that account isn't connected
+yet - warmly point them to the "חבר עכשיו" button in the dashboard. TikTok has no live
+connection yet; if asked about it, say so honestly and mention it's coming soon. Never
+invent campaign numbers.
 
 If the question is genuinely unclear, unrelated to their account, or something you can't
 answer confidently from the given data (this is different from "no platform data yet") -
@@ -107,13 +115,16 @@ def answer_support_question(client_id: int, message: str) -> dict:
         "client_message": message,
     }
 
-    # Real campaign data when the client has connected Google Ads. Cheap enough
-    # to always include: the agent caches results for 5 minutes, and it means
-    # "how are my campaigns doing?" gets actual numbers, not a canned line.
-    from agents.google_ads_agent import get_campaign_performance
-    performance = get_campaign_performance(client_id)
-    if performance.get("connected"):
-        payload["google_ads_performance"] = performance
+    # Real campaign data when the client has connected an ad platform. Cheap
+    # enough to always include: the agents cache results for 5 minutes, and it
+    # means "how are my campaigns doing?" gets actual numbers, not a canned line.
+    from agents.google_ads_agent import get_campaign_performance as google_performance
+    from agents.meta_ads_agent import get_campaign_performance as meta_performance
+    for field, fetch in (("google_ads_performance", google_performance),
+                         ("meta_ads_performance", meta_performance)):
+        performance = fetch(client_id)
+        if performance.get("connected"):
+            payload[field] = performance
 
     user_message = json.dumps(payload, ensure_ascii=False)
 

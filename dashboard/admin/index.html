@@ -483,9 +483,10 @@ async function loadReports() {
         const rep = r.report || {};
         const clients = rep.clients || [];
         const bullets = [...(rep.highlights || []), ...(rep.recommendations || [])];
+        const platformLabel = rep.platform === 'meta' ? 'Meta' : 'Google Ads';
         return `<details class="report-item">
           <summary>
-            <span>דוח ${fmtDate(r.created_at)}</span>
+            <span>דוח ${platformLabel} · ${fmtDate(r.created_at)}</span>
             <span style="color:var(--gray);">${clients.length} לקוחות</span>
           </summary>
           <div class="report-body">

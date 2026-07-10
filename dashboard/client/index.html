@@ -581,10 +581,10 @@ body {
         </div>
         <div>
           <div class="conn-name">Meta — פייסבוק + אינסטגרם</div>
-          <div class="conn-status">חיבור יתווסף בקרוב</div>
+          <div class="conn-status" id="metaStatus">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled>בקרוב</button>
+      <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()">חבר עכשיו</button>
     </div>
 
     <div class="conn-card locked">
@@ -788,7 +788,7 @@ function platformsInPackage(pkg) {
 
 // ─── dashboard data ──────────────────────────────────────────────────────────
 const ACTIVITY_LABELS = {
-  'account_connected': 'חשבון Google Ads חובר בהצלחה',
+  'account_connected': 'חשבון פרסום חובר בהצלחה',
   'campaign_created': 'קמפיין חדש נוצר וממתין להפעלה',
   'campaign_paused': 'קמפיין הושהה',
   'campaign_resumed': 'קמפיין הופעל מחדש',
@@ -796,6 +796,9 @@ const ACTIVITY_LABELS = {
   'payment_confirmed': 'התשלום אושר',
   'upgrade_requested': 'בקשת שדרוג חבילה נשלחה',
   'ads_issue_detected': 'זוהתה בעיה בקמפיין — הצוות מטפל',
+  'content_published': 'פוסט חדש פורסם ברשתות החברתיות',
+  'comment_replied': 'הצוות הגיב לתגובה בעמוד שלך',
+  'content_inbox_surfaced': 'התקבלו תגובות/הודעות חדשות — הצוות עודכן',
 };
 
 async function loadDashboard() {
@@ -843,9 +846,14 @@ async function loadDashboard() {
         </div>`).join('')
       : '<div class="empty-row">עדיין אין פעילות — ברגע שהמערכת תתחיל לעבוד בשבילך, הכל יופיע כאן</div>';
 
-    // Google Ads connection state
-    if ((d.connections || []).some(c => c.platform === 'google_ads' && c.status === 'active')) {
+    // Platform connection state
+    const conns = d.connections || [];
+    if (conns.some(c => c.platform === 'google_ads' && c.status === 'active')) {
       markGoogleAdsConnected();
+    }
+    // One Meta consent may connect the ad account, the Page, or both
+    if (conns.some(c => ['meta_ads', 'meta_page'].includes(c.platform) && c.status === 'active')) {
+      markMetaConnected();
     }
 
     // First visit → auto-run the tour
@@ -957,20 +965,27 @@ async function confirmUpgrade() {
   }
 }
 
-// ─── google ads connect ──────────────────────────────────────────────────────
+// ─── platform connect ────────────────────────────────────────────────────────
 function connectGoogleAds() {
   window.location.href = '/api/oauth/google-ads/start';
 }
 
-function markGoogleAdsConnected() {
-  const status = document.getElementById('gadsStatus');
+function connectMeta() {
+  window.location.href = '/api/oauth/meta/start';
+}
+
+function markPlatformConnected(statusId, btnId) {
+  const status = document.getElementById(statusId);
   status.textContent = 'מחובר';
   status.classList.add('connected');
-  const btn = document.getElementById('gadsBtn');
+  const btn = document.getElementById(btnId);
   btn.textContent = 'מחובר ✓';
   btn.className = 'conn-btn connected-btn';
   btn.onclick = null;
 }
+
+function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn'); }
+function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn'); }
 
 // ─── support chat ────────────────────────────────────────────────────────────
 let supportHistoryLoaded = false;
@@ -1041,8 +1056,12 @@ async function sendSupportMsg() {
   if (params.get('connected') === 'google_ads') {
     markGoogleAdsConnected();
     showNotice('חשבון Google Ads חובר בהצלחה ✓', 'success');
+  } else if (params.get('connected') === 'meta') {
+    markMetaConnected();
+    showNotice('חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', 'success');
   } else if (params.get('connect_error')) {
-    showNotice('חיבור Google Ads נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', 'warn');
+    const errLabel = (params.get('connect_error') || '').includes('meta') ? 'Meta' : 'Google Ads';
+    showNotice(`חיבור ${errLabel} נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט`, 'warn');
   } else if (params.get('upgrade') === 'success') {
     showNotice('השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', 'success');
   } else if (params.get('upgrade') === 'pending') {

@@ -41,6 +41,7 @@ from core.session import (
     create_admin_session_token, verify_admin_session_token,
 )
 from core import google_ads_service
+from core import meta_service
 from core import admin_service
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -836,6 +837,159 @@ def google_ads_weekly_report():
     from agents.google_ads_agent import run_weekly_report
     try:
         return {"success": True, "data": run_weekly_report()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Meta OAuth (client connects their own ad account + Facebook Page) ───────
+
+@app.get("/api/oauth/meta/start")
+async def meta_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    return RedirectResponse(url=meta_service.build_consent_url(state))
+
+@app.get("/api/oauth/meta/callback")
+def meta_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    # Identity comes from the signed state token, not the session cookie - the
+    # browser arrives here from Meta's domain and the state also blocks CSRF
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=meta")
+    if error or not code:
+        print(f"[meta oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=meta")
+
+    try:
+        short_token = meta_service.exchange_code(code)["access_token"]
+        # Never store the short-lived token - swap it for the ~60-day one now
+        user_token = meta_service.exchange_long_lived(short_token)["access_token"]
+
+        ad_accounts = meta_service.get_ad_accounts(user_token)
+        pages = meta_service.get_pages(user_token)
+        if not ad_accounts and not pages:
+            print(f"[meta oauth] client {client_id}: authorized user has no ad accounts or Pages")
+            return RedirectResponse(url="/dashboard/?connect_error=no_meta_assets")
+
+        # One consent connects every asset the user has: ad account for the ads
+        # agent, Page (+ linked Instagram) for the content agent. MVP: first of
+        # each - multi-asset clients need a picker step (same known limitation
+        # as Google Ads).
+        connected = {}
+        if ad_accounts:
+            account = ad_accounts[0]
+            if len(ad_accounts) > 1:
+                print(f"[meta oauth] client {client_id}: {len(ad_accounts)} ad accounts, using {account['id']}")
+            upsert_account(client_id, "meta_ads", account["id"], user_token, "active")
+            connected["ad_account"] = account["id"]
+        if pages:
+            page = pages[0]
+            if len(pages) > 1:
+                print(f"[meta oauth] client {client_id}: {len(pages)} Pages, using {page['id']}")
+            page_token = page.get("access_token") or user_token
+            upsert_account(client_id, "meta_page", page["id"], page_token, "active")
+            connected["page"] = page["id"]
+            instagram_id = (page.get("instagram_business_account") or {}).get("id")
+            if instagram_id:
+                upsert_account(client_id, "meta_instagram", instagram_id, page_token, "active")
+                connected["instagram"] = instagram_id
+
+        log_activity(client_id, "meta_ads_agent", "account_connected", connected, {})
+        return RedirectResponse(url="/dashboard/?connected=meta")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=meta")
+
+# ─── Meta execution (admin/scheduler only) ───────────────────────────────────
+
+class MetaCreateCampaignRequest(BaseModel):
+    client_id: int
+    name: str
+    daily_budget_ils: float
+    final_url: str
+    primary_text: str
+    headline: str
+    description: str = ""
+    image_url: str = ""
+    countries: list = []
+
+@app.post("/api/meta-ads/create-campaign", dependencies=_admin_only)
+def meta_ads_create_campaign(req: MetaCreateCampaignRequest):
+    from agents.meta_ads_agent import create_link_campaign
+    spec = req.model_dump(exclude={"client_id"})
+    result = create_link_campaign(req.client_id, spec)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/meta-ads/scan", dependencies=_admin_only)
+def meta_ads_scan():
+    from agents.meta_ads_agent import run_health_scan
+    try:
+        return {"success": True, "data": run_health_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/meta-ads/weekly-report", dependencies=_admin_only)
+def meta_ads_weekly_report():
+    from agents.meta_ads_agent import run_weekly_report
+    try:
+        return {"success": True, "data": run_weekly_report()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MetaPublishRequest(BaseModel):
+    client_id: int
+    target: str            # facebook | instagram
+    kind: str              # facebook: text|link|photo|video, instagram: photo|reel|story
+    message: str = ""      # post text / caption
+    media_url: str = ""    # PUBLIC http(s) URL - Meta fetches it server-side
+    link: str = ""         # for facebook 'link' kind
+
+@app.post("/api/meta-content/publish", dependencies=_admin_only)
+def meta_content_publish(req: MetaPublishRequest):
+    from agents.meta_content_agent import publish
+    spec = req.model_dump(exclude={"client_id"})
+    result = publish(req.client_id, spec)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class MetaReplyRequest(BaseModel):
+    client_id: int
+    comment_id: str
+    message: str
+    target: str = "facebook"
+
+@app.post("/api/meta-content/reply", dependencies=_admin_only)
+def meta_content_reply(req: MetaReplyRequest):
+    from agents.meta_content_agent import reply_to_comment
+    result = reply_to_comment(req.client_id, req.comment_id, req.message, req.target)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "unknown error"))
+    return {"success": True, "data": result}
+
+@app.get("/api/meta-content/inbox", dependencies=_admin_only)
+def meta_content_inbox(client_id: int):
+    from agents.meta_content_agent import get_inbox
+    try:
+        return {"success": True, "data": get_inbox(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/meta-content/scan", dependencies=_admin_only)
+def meta_content_scan():
+    from agents.meta_content_agent import run_inbox_scan
+    try:
+        return {"success": True, "data": run_inbox_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/meta-content/engagement", dependencies=_admin_only)
+def meta_content_engagement(client_id: int):
+    from agents.meta_content_agent import get_engagement_summary
+    try:
+        return {"success": True, "data": get_engagement_summary(client_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

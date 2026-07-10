@@ -609,6 +609,7 @@ def run_weekly_report(send_email: bool = True) -> dict:
         })
 
     report = {
+        "platform": "google_ads",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "clients": clients_data,
         "highlights": [],
