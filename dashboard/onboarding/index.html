@@ -131,7 +131,7 @@ let selectedPackage = null;
 
 // שאלות "משמעותיות" שאחריהן מציגים תגובה קצרה וחמה, כדי שהצ'אט ירגיש כמו שיחה
 // ולא כמו טופס - לא אחרי כל תשובה, רק בנקודות שבאמת שווה לעצור בהן
-const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_budget']);
+const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_budget', 'new_business_expectations', 'new_business_concern']);
 
 async function maybeReact(questionId, answerText, next) {
   if (!REACTION_QUESTION_IDS.has(questionId)) { setTimeout(next, 700); return; }
@@ -245,6 +245,26 @@ function selectOption(opt, btn, grid) {
 // שאלות/הודעות שמוכנסות דינמית לתוך questions[] בהתאם לתשובות קודמות - אותו דפוס
 // כמו הוספת השאלות הדינמיות מה-API, רק מבוסס על תשובות שכבר ניתנו במקום קריאת שרת
 function applyConditionalLogic(questionId, answerValue) {
+  // עסק שעוד לא באמת פועל — שאלות על העבר (מחזור, ניסיונות קודמים, פחדים היסטוריים)
+  // לא רלוונטיות ומרגישות צורמות. מסירים אותן ושואלים במקומן שאלות שמסתכלות קדימה.
+  if (questionId === 'financial_status' && answerValue.startsWith('עסק חדש')) {
+    const pastOrientedIds = ['revenue_trend', 'recent_revenue', 'biggest_fear'];
+    questions = questions.filter((q, i) => i <= currentQ || !pastOrientedIds.includes(q.id));
+    questions.splice(currentQ + 1, 0,
+      {
+        id: 'new_business_expectations',
+        type: 'free_text',
+        text: 'מרגש! עסק בתחילת הדרך זה בדיוק השלב שבו שיווק נכון עושה את ההבדל.\n\nבוא נסתכל קדימה - מה היית רוצה שיקרה בשלושת החודשים הראשונים? (לקוחות, הכנסות, חשיפה - במילים שלך)'
+      },
+      {
+        id: 'new_business_concern',
+        type: 'choice',
+        text: 'ומה הדבר שהכי מלחיץ אותך בהתחלה הזאת?',
+        options: ['שלא יגיעו מספיק לקוחות', 'שהכסף ייגמר לפני שהעסק יתרומם', 'שאני לא אדע לשווק את עצמי נכון', 'התחרות בתחום שלי', 'לא מלחיץ - אני מוכן לזה']
+      }
+    );
+  }
+
   if (questionId === 'media_management'
       && answerValue === 'אני בעצמי'
       && answers['marketing_budget'] && answers['marketing_budget'] !== 'עד ₪1,000') {
@@ -424,7 +444,8 @@ function displayProposal(data) {
     return;
   }
   const risk = p.risk_level==='high'?'גבוהה':p.risk_level==='medium'?'בינונית':'נמוכה';
-  const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}\n\n⚠️ רמת סיכון: ${risk}\n\n🎯 יעדים ל-90 יום:\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
+  const marketBlock = p.market_reality ? `\n\n📊 תמונת השוק שלך: ${p.market_reality}` : '';
+  const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}${marketBlock}\n\n⚠️ רמת סיכון: ${risk}\n\n🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');

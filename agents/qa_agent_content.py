@@ -42,6 +42,16 @@ version that fixes anything that fails:
     businesses", limited-time framing, or any selling language) — that belongs exclusively in
     scarcity_note. If honest_note contains promotional language, move it to scarcity_note and rewrite
     honest_note to keep only the factual disclosures
+13. GOALS ARE ESTIMATES, NOT COMMITMENTS — every numeric target in goals_90_days and kpis
+    (financial, lead counts, follower counts, search rankings) must read as an estimate or range
+    ("כ-40-55 לידים", "התקרבות לעמוד הראשון"), never as an exact guaranteed number or a promised
+    ranking position. Rewrite any bare exact-number target into a reasonable range around it
+14. MARKET_REALITY SANITY — if the proposal has a market_reality field: its benchmark numbers must
+    be plausible round ranges (not suspicious false precision like "87.3 ש"ח"), any budget-vs-goal
+    math in it must be arithmetically sensible, its tone must be confident and professional (not
+    apologetic, not hedged into vagueness), and goals_90_days/kpis/packages must not contradict it
+    (e.g. market_reality says 300 leads is unrealistic while a goal still promises 300 leads).
+    Keep the field in the returned proposal — never drop it
 
 Do not change the proposal's own "approved" field (business eligibility) — that is unrelated to
 this quality review. Only touch it if it is clearly inconsistent with the rest of the proposal.

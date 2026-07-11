@@ -37,8 +37,13 @@ def send_client_report(client_email: str, client_name: str, proposal: dict):
         <h3 style="color:#FF4C1F;margin:0 0 16px;">📋 תמונת מצב</h3>
         <p style="color:#3D3D3D;line-height:1.7;">{p.get('business_summary','')}</p>
       </div>
+      {f'''<div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
+        <h3 style="color:#FF4C1F;margin:0 0 16px;">📊 תמונת השוק שלך</h3>
+        <p style="color:#3D3D3D;line-height:1.7;">{p.get('market_reality','')}</p>
+      </div>''' if p.get('market_reality') else ''}
       <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
         <h3 style="color:#FF4C1F;margin:0 0 16px;">🎯 היעדים שלנו ל-90 יום</h3>
+        <p style="color:#8A8A8A;font-size:12px;margin:0 0 10px;">הערכות מבוססות ניסיון ונתוני שוק — לא הבטחות מדויקות</p>
         {''.join([f'<p style="margin:8px 0;">✅ {g}</p>' for g in p.get('goals_90_days',[])])}
       </div>
       <div style="background:#1A1A1A;border-radius:12px;padding:28px;margin-bottom:20px;color:white;">
