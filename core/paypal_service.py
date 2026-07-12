@@ -286,28 +286,52 @@ def list_subscription_transactions(subscription_id: str, start_time: str, end_ti
 
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
-def create_invoice(client_id: int, amount: float, description: str) -> dict:
+def create_invoice(client_id: int, amount: float, description: str,
+                    client_name: str = "", client_email: str = "", address: str = "",
+                    business_name: str = "", business_tax_id: str = "") -> dict:
+    """Every client is an Israeli SMB (see CLAUDE.md), so the recipient address is
+    hardcoded to country_code IL rather than asking checkout for a country field."""
     headers = _headers()
     invoice_number = f"INV-{client_id}-{int(datetime.now().timestamp())}"
+
+    billing_info = {}
+    if business_name:
+        billing_info["business_name"] = business_name
+    if client_name:
+        given, _, surname = client_name.strip().partition(" ")
+        billing_info["name"] = {"given_name": given, "surname": surname or given}
+    if client_email:
+        billing_info["email_address"] = client_email
+    if address:
+        billing_info["address"] = {"address_line_1": address, "country_code": "IL"}
+    if business_tax_id:
+        # Invoicing v2's BillingInfo has no dedicated tax-id field for the recipient
+        # (only Invoicer, the merchant side, has one) - additional_info is the
+        # documented free-text slot for extra recipient reference details.
+        billing_info["additional_info"] = f"עוסק מורשה / ח.פ: {business_tax_id}"
+
+    invoice_payload = {
+        "detail": {
+            "invoice_number": invoice_number,
+            "currency_code": "ILS",
+            "note": description,
+        },
+        "items": [
+            {
+                "name": description,
+                "quantity": "1",
+                "unit_amount": {"currency_code": "ILS", "value": str(amount)},
+            }
+        ],
+    }
+    if billing_info:
+        invoice_payload["primary_recipients"] = [{"billing_info": billing_info}]
 
     # Step 1 — create draft invoice
     create_res = httpx.post(
         f"{BASE_URL}/v2/invoicing/invoices",
         headers=headers,
-        json={
-            "detail": {
-                "invoice_number": invoice_number,
-                "currency_code": "ILS",
-                "note": description,
-            },
-            "items": [
-                {
-                    "name": description,
-                    "quantity": "1",
-                    "unit_amount": {"currency_code": "ILS", "value": str(amount)},
-                }
-            ],
-        },
+        json=invoice_payload,
         timeout=TIMEOUT,
     )
     create_res.raise_for_status()

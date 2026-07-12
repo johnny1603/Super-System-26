@@ -34,6 +34,7 @@ from core.email_service import send_client_report, send_admin_alert, send_paymen
 from core.paypal_service import (
     create_subscription, verify_webhook_signature, get_subscription_status,
     get_plan, create_plan, revise_subscription_plan, list_subscription_transactions,
+    create_invoice,
 )
 from core.session import (
     create_session_token, verify_session_token,
@@ -247,6 +248,33 @@ def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: s
     log_activity(client_id, "paypal_service", "payment_confirmed", {"subscription_id": subscription_id, "source": source}, {})
     if client.get("email"):
         send_payment_confirmation(client["email"], client.get("name", ""), client_id)
+
+    # Setup fee amount/package only live on the subscription_created activity row
+    # (see admin_service._fee_map) - there is no dedicated billing table.
+    sub_created = next(
+        (a for a in get_activity(client_id, limit=50) if a.get("action_type") == "subscription_created"),
+        None,
+    )
+    details = (sub_created or {}).get("details", {})
+    setup_fee = details.get("setup_fee_total") or 0
+    package_name = details.get("package_name") or client.get("package", "")
+    if setup_fee:
+        try:
+            invoice = create_invoice(
+                client_id=client_id,
+                amount=setup_fee,
+                description=f"uallak — דמי הקמה{f' ({package_name})' if package_name else ''}",
+                client_name=client.get("name", ""),
+                client_email=client.get("email", ""),
+                address=client.get("address", ""),
+                business_name=client.get("business_name", ""),
+                business_tax_id=client.get("business_tax_id", ""),
+            )
+            log_activity(client_id, "paypal_service", "invoice_sent", {"setup_fee": setup_fee}, invoice)
+        except Exception as invoice_err:
+            print(f"[{source}] invoice creation failed for client {client_id} (non-fatal): {invoice_err}")
+            log_activity(client_id, "paypal_service", "invoice_failed", {"error": str(invoice_err)}, {})
+
     print(f"[{source}] client {client_id} marked active, confirmation email sent")
 
 @app.get("/api/payment-success")
