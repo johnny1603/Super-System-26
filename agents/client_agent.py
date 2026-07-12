@@ -17,12 +17,16 @@ def _db():
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
-def create_client(name: str, email: str = "", phone: str = "", package: str = "") -> dict:
+def create_client(name: str, email: str = "", phone: str = "", package: str = "",
+                   address: str = "", business_name: str = "", business_tax_id: str = "") -> dict:
     result = _db().table("clients").insert({
         "name": name,
         "email": email,
         "phone": phone,
         "package": package,
+        "address": address,
+        "business_name": business_name,
+        "business_tax_id": business_tax_id,
         "status": "active",
         "onboarding_completed": False,
     }).execute()

@@ -193,6 +193,7 @@ def list_clients_admin() -> list:
             "name": c.get("name", ""),
             "email": c.get("email", ""),
             "phone": c.get("phone", ""),
+            "address": c.get("address", ""),
             "package": c.get("package", ""),
             "status": c.get("status", ""),
             "platforms": platforms_by_client.get(c["id"], []),

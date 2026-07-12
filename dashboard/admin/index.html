@@ -78,7 +78,7 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .panel-pad { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 24px; }
 .client-row {
   display: grid;
-  grid-template-columns: 2fr 1.1fr 1fr 1.3fr 0.9fr 0.9fr 90px 40px;
+  grid-template-columns: 2fr 1.3fr 1.1fr 1fr 1.3fr 0.9fr 0.9fr 90px 40px;
   align-items: center;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
@@ -418,6 +418,7 @@ async function loadClients() {
         <div class="client-avatar">${esc(initial(c.name))}</div>
         <div><div class="client-name">${esc(c.name)}</div><div class="client-email">${esc(c.email || '—')}</div></div>
       </div>
+      <div style="font-size:12.5px;color:var(--gray);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.address || '')}">${esc(c.address || '—')}</div>
       <div style="font-size:12.5px;">${esc(c.package || '—')}</div>
       <div>${statusPill(c.status)}</div>
       <div>${platforms}</div>
@@ -432,7 +433,7 @@ async function loadClients() {
 
   document.getElementById('clientsTable').innerHTML = clientsCache.length
     ? `<div class="client-row head">
-        <div>לקוח</div><div>חבילה</div><div>סטטוס</div><div>חיבורים</div>
+        <div>לקוח</div><div>כתובת</div><div>חבילה</div><div>סטטוס</div><div>חיבורים</div>
         <div>פעילות אחרונה</div><div>עלות/מרווח</div><div></div><div></div>
       </div>${rows}`
     : '<div class="empty-state">אין עדיין לקוחות במערכת</div>';
@@ -581,6 +582,13 @@ async function openDrawer(clientId) {
       <div class="drawer-stat-row"><span class="drawer-stat-label">סטטוס</span><span>${esc(c.status)}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">הצטרף</span><span>${fmtDate(c.created_at)}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">חיוב הבא</span><span>${d.next_billing ? fmtDate(d.next_billing) : '—'}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">כתובת</span><span>${esc(c.address || '—')}</span></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">פרטי עסק (לחשבוניות)</div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">שם העסק</span><span>${esc(c.business_name || '—')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">עוסק מורשה / ח.פ</span><span>${esc(c.business_tax_id || '—')}</span></div>
     </div>
 
     <div class="drawer-section">
