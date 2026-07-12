@@ -126,6 +126,8 @@ let dynamicQsAdded = false;
 let proposalData = null;
 let checkoutStep = null;
 let checkoutName = null;
+let checkoutPhone = null;
+let checkoutAddress = null;
 let inPackageSelection = false;
 let selectedPackage = null;
 
@@ -302,6 +304,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isValidEmail(email) {
   return EMAIL_REGEX.test(email);
 }
+function isValidPhone(phone) {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length >= 9 && digits.length <= 13;
+}
 
 function sendText() {
   const input = document.getElementById('userInput');
@@ -311,6 +317,27 @@ function sendText() {
 
   if (checkoutStep === 'name') {
     checkoutName = text;
+    addMessage(text, 'user');
+    checkoutStep = 'phone';
+    setTimeout(() => { addMessage("ומה מספר הטלפון שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    return;
+  }
+  if (checkoutStep === 'phone') {
+    addMessage(text, 'user');
+    if (!isValidPhone(text)) {
+      setTimeout(() => {
+        addMessage("זה לא נראה כמו מספר טלפון תקין 🤔 תוכל לכתוב שוב?", 'bot');
+        document.getElementById('userInput').focus();
+      }, 600);
+      return;
+    }
+    checkoutPhone = text;
+    checkoutStep = 'address';
+    setTimeout(() => { addMessage("ומה הכתובת של העסק (או כתובת לתיאום, אם אין עדיין כתובת עסק קבועה)?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    return;
+  }
+  if (checkoutStep === 'address') {
+    checkoutAddress = text;
     addMessage(text, 'user');
     checkoutStep = 'email';
     setTimeout(() => { addMessage("ומה כתובת האימייל שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
@@ -326,7 +353,7 @@ function sendText() {
       return;
     }
     checkoutStep = null;
-    startCheckout(checkoutName, text);
+    startCheckout(checkoutName, checkoutPhone, checkoutAddress, text);
     return;
   }
 
@@ -484,11 +511,6 @@ function showPackageOptions(packages, scarcityNote) {
   });
   bubble.appendChild(grid);
 
-  const hint = document.createElement('div');
-  hint.className = 'free-text-hint';
-  hint.textContent = 'יש לך שאלה או משהו שמטריד אותך? אפשר גם פשוט לכתוב את זה למטה 👇';
-  bubble.appendChild(hint);
-
   div.appendChild(avatar);
   div.appendChild(bubble);
   msgs.appendChild(div);
@@ -502,7 +524,7 @@ function selectPackage(pkg, btn, grid) {
   selectedPackage = pkg;
   addMessage(pkg.name, 'user');
   setTimeout(() => {
-    addMessage(`בחירה מעולה! "${pkg.name}" 😊\n\nרק שני פרטים קצרים לפני שממשיכים לתשלום — מה השם שלך?`, 'bot');
+    addMessage(`בחירה מעולה! "${pkg.name}" 😊\n\nרק כמה פרטים קצרים לפני שממשיכים לתשלום — מה השם המלא שלך?`, 'bot');
     checkoutStep = 'name';
     document.getElementById('userInput').focus();
   }, 600);
@@ -581,7 +603,7 @@ function showOtherInput(btn, grid) {
   input.focus();
 }
 
-async function startCheckout(name, email) {
+async function startCheckout(name, phone, address, email) {
   addMessage("רגע אחד, מכין את קישור התשלום שלך... 💳", 'bot');
   try {
     const res = await fetch('/api/checkout', {
@@ -589,6 +611,8 @@ async function startCheckout(name, email) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         client_name: name,
+        client_phone: phone,
+        client_address: address,
         client_email: email,
         package_id: selectedPackage ? selectedPackage.id : '',
         package_name: selectedPackage ? selectedPackage.name : '',

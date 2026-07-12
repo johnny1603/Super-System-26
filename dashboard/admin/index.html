@@ -555,8 +555,13 @@ async function openDrawer(clientId) {
     `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(catLabels[cat] || cat)}</span><span>${ils(amount)}</span></div>`
   ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין עלויות שנרשמו החודש</div>';
 
+  const activityDetail = a => {
+    const det = a.details || {};
+    if (a.action_type === 'checkout_details' && det.address) return ` — ${esc(det.address)}`;
+    return '';
+  };
   const activityRows = (d.activity || []).slice(0, 8).map(a =>
-    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(a.agent_name)} · ${esc(a.action_type)}</span>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(a.agent_name)} · ${esc(a.action_type)}${activityDetail(a)}</span>
      <span style="color:var(--gray);font-size:11.5px;">${fmtDate(a.created_at)}</span></div>`
   ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין פעילות רשומה</div>';
 

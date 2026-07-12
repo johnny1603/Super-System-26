@@ -47,9 +47,21 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
 
     setup_fee (checkout only, not upgrades) rides PayPal's native
     payment_preferences.setup_fee - charged upfront in the same approval flow
-    as the first subscription payment, no separate invoice/redirect needed.
-    setup_fee_failure_action=CANCEL so we never end up servicing a client whose
-    setup fee didn't actually collect."""
+    as the first subscription payment. setup_fee_failure_action=CANCEL so we
+    never end up servicing a client whose setup fee didn't actually collect.
+
+    Billing timeline (per the pricing model quoted to the client in every
+    proposal's honest_note - month 1 = setup fee only, month 2 = management
+    fee free, month 3+ = full billing): a checkout plan (setup_fee > 0) gets
+    TWO zero-price TRIAL cycles covering months 1-2 before the REGULAR cycle
+    starts billing the real amount from month 3 onward. Without the trial
+    cycles, PayPal captures the REGULAR cycle's first charge in the SAME
+    approval as the setup fee, so the client would be charged setup fee +
+    month 1 management fee together - not what's promised.
+
+    An upgrade plan (setup_fee=0, see api_server.py's client_upgrade) must
+    NOT repeat the two-free-months offer - it gets a single REGULAR cycle at
+    full price, unchanged from before."""
     payment_preferences = {
         "auto_bill_outstanding": True,
         "payment_failure_threshold": 3,
@@ -58,6 +70,31 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
         payment_preferences["setup_fee"] = {"value": str(setup_fee), "currency_code": currency}
         payment_preferences["setup_fee_failure_action"] = "CANCEL"
 
+    billing_cycles = []
+    next_sequence = 1
+    if setup_fee:
+        for _ in range(2):  # months 1-2: setup fee only / free management fee
+            billing_cycles.append({
+                "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+                "tenure_type": "TRIAL",
+                "sequence": next_sequence,
+                "total_cycles": 1,
+                "pricing_scheme": {
+                    "fixed_price": {"value": "0", "currency_code": currency}
+                },
+            })
+            next_sequence += 1
+
+    billing_cycles.append({
+        "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+        "tenure_type": "REGULAR",
+        "sequence": next_sequence,
+        "total_cycles": 0,  # infinite
+        "pricing_scheme": {
+            "fixed_price": {"value": str(amount), "currency_code": currency}
+        },
+    })
+
     plan_res = httpx.post(
         f"{BASE_URL}/v1/billing/plans",
         headers=_headers(),
@@ -65,17 +102,7 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
             "product_id": product_id,
             "name": plan_name,
             "status": "ACTIVE",
-            "billing_cycles": [
-                {
-                    "frequency": {"interval_unit": "MONTH", "interval_count": 1},
-                    "tenure_type": "REGULAR",
-                    "sequence": 1,
-                    "total_cycles": 0,
-                    "pricing_scheme": {
-                        "fixed_price": {"value": str(amount), "currency_code": currency}
-                    },
-                }
-            ],
+            "billing_cycles": billing_cycles,
             "payment_preferences": payment_preferences,
         },
         timeout=TIMEOUT,

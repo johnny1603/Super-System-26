@@ -169,6 +169,8 @@ async def architect_propose_deletion(req: ProposeDeleteRequest):
 class CheckoutRequest(BaseModel):
     client_name: str
     client_email: str = ""
+    client_phone: str = ""
+    client_address: str = ""
     package_id: str = ""
     package_name: str = ""
     setup_fee_total: int = 0
@@ -177,9 +179,17 @@ class CheckoutRequest(BaseModel):
 @app.post("/api/checkout")
 async def checkout(req: CheckoutRequest):
     try:
-        client = create_client(req.client_name, req.client_email, package=req.package_name)
+        client = create_client(req.client_name, req.client_email, req.client_phone, req.package_name)
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
+
+        # No dedicated "address" column on clients yet - logged to client_activity so
+        # it survives and is visible to the team without risking a schema-dependent
+        # insert failure on the checkout path. Add a real column later if it should
+        # show up as a first-class client field.
+        if req.client_address:
+            log_activity(client_id, "checkout", "checkout_details",
+                         {"address": req.client_address, "phone": req.client_phone}, {})
 
         # The lead row was created at proposal time, before the client gave their name/email —
         # backfill the newest contactless lead now that we finally know who they are. (Newest-first

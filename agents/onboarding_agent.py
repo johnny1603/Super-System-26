@@ -126,7 +126,7 @@ Return JSON only:
 {"questions": [{"id": "dynamic_1", "text": "question in Hebrew", "type": "choice", "options": ["option1", "option2", "משהו אחר - ספר לי"]}]}"""
 
     user_message = f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers)}"
-    result = safe_claude_json_call(system, user_message, max_tokens=1600, api_key=api_key)
+    result = safe_claude_json_call(system, user_message, max_tokens=3000, api_key=api_key)
     return result.get("questions", [])
 
 def build_proposal(answers, api_key, empathy_analysis=None):
