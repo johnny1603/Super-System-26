@@ -107,7 +107,12 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
         },
         timeout=TIMEOUT,
     )
-    plan_res.raise_for_status()
+    if plan_res.status_code >= 400:
+        # raise_for_status() alone only surfaces the status code ("422 Unknown
+        # Error") - PayPal puts the actual validation reason (which field/cycle
+        # is invalid) in the response body, so log and raise with it included.
+        print(f"[paypal_service] create_plan failed ({plan_res.status_code}): {plan_res.text}")
+        raise RuntimeError(f"PayPal create_plan failed ({plan_res.status_code}): {plan_res.text}")
     return plan_res.json()["id"]
 
 
