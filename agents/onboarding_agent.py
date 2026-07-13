@@ -364,6 +364,17 @@ CRITICAL RULES:
   - honest_note: max 4-5 sentences total (covering the points below - only include the organic SEO
     shortfall point when it actually applies)
   - each package's description: max 1-2 sentences
+- recommended_services lists ONLY the ONGOING managed services of the package (the things the
+  monthly fee is computed from: "google", "meta", "tiktok", organic SEO tier, automation, etc.) —
+  never one-time setup deliverables. The standard setup package contents (landing page, market
+  research, audit, campaign launches, the one TikTok video, the initial articles) are covered by
+  the setup floor line item and must NOT appear in recommended_services and should NOT be itemized
+  as separate setup_fee_breakdown lines — itemize a setup line beyond the floor only when it is
+  genuinely billed ABOVE the floor (e.g. a full website build, scaled automation work), and then
+  reflect that same extra work in the package description
+- Every monthly_breakdown platform-management line ("ניהול מטא", "ניהול גוגל", "ניהול טיקטוק") must
+  have its platform present in recommended_services, and vice versa — these two must always agree,
+  since both are derived from the same set of included platform groups
 - setup_fee_total floor per package type: {PRICING['min_setup_fee']} NIS for a standard package,
   {PRICING['single_service_setup_fee']} NIS for a single-service package (see BUDGET PYRAMID #2), or
   — for the non-flagged portions of a package with requires_manual_followup=true (BUDGET PYRAMID
@@ -374,16 +385,21 @@ CRITICAL RULES:
 - honest_note must cover, briefly and without repetition: (a) any external cost the client pays
   directly — ad spend for google/meta/sponsored articles, and/or SEO tool subscription
   (SEOptimer/SEMrush/Ahrefs) — as additional to monthly_management_total, paid via the client's own
-  account, trackable in their dashboard; (b) the payment timeline in 1-2 sentences: month 1 the
-  client pays the setup fee (which replaces that month's management fee), month 2's management fee
-  is free (the benefit), and from month 3 onward full billing per the chosen package applies; (c) the
+  account, trackable in their dashboard; (b) the payment timeline in 1-2 sentences, stated as a
+  NEUTRAL schedule of charges: month 1 the client pays the setup fee (which replaces that month's
+  management fee), month 2 no management fee is charged, and from month 3 onward full billing per
+  the chosen package applies. Phrase month 2 factually — "בחודש השני לא נגבים דמי ניהול" — NEVER
+  with gift/benefit words (no "חינם", "מתנה", "הטבה", "בונוס") and never framed as an offer; the
+  celebratory framing of the same fact lives in scarcity_note only; (c) the
   support model transparency fact from BUDGET PYRAMID #3, stated once; (d) if applicable, the organic
   SEO budget-shortfall disclosure from BUDGET PYRAMID #4. Combine these naturally into one coherent
   note, not a list of disclaimers
 - honest_note vs scarcity_note — STRICT SEPARATION: honest_note contains ONLY factual/operational
   disclosures (the four points above) - NEVER any promotional, incentive, or urgency language (no
-  "free month", no "1 of 20 businesses", no limited-time framing, no selling language of any kind).
-  All promotional/incentive language belongs EXCLUSIVELY in scarcity_note. If you catch yourself
+  gift framing of the free month, no "1 of 20 businesses", no limited-time framing, no selling
+  language of any kind). The payment-timeline FACT that month 2 carries no management fee belongs in
+  honest_note (point b above, neutrally phrased); its PROMOTIONAL framing ("חודשיים מתנה", "הטבה
+  בשווי X") belongs EXCLUSIVELY in scarcity_note. If you catch yourself
   writing something persuasive or urgency-driven in honest_note, move it to scarcity_note instead
 - scarcity_note must tell the client, honestly and warmly (not pushy), that they are one of 20
   businesses selected this month for the current 2-free-months management fee benefit. This is the

@@ -53,11 +53,15 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
     Billing timeline (per the pricing model quoted to the client in every
     proposal's honest_note - month 1 = setup fee only, month 2 = management
     fee free, month 3+ = full billing): a checkout plan (setup_fee > 0) gets
-    TWO zero-price TRIAL cycles covering months 1-2 before the REGULAR cycle
-    starts billing the real amount from month 3 onward. Without the trial
-    cycles, PayPal captures the REGULAR cycle's first charge in the SAME
-    approval as the setup fee, so the client would be charged setup fee +
-    month 1 management fee together - not what's promised.
+    ONE zero-price TRIAL cycle repeated twice (total_cycles=2) covering
+    months 1-2 before the REGULAR cycle starts billing the real amount from
+    month 3 onward. PayPal rejects two separate free TRIAL cycle definitions
+    (MULTIPLE_FREE_TRIAL_BILLING_CYCLE_NOT_SUPPORTED - only one free trial
+    billing cycle is allowed, seen live 2026-07-13), so the two months must
+    ride a single repeated cycle. Without the trial cycle, PayPal captures
+    the REGULAR cycle's first charge in the SAME approval as the setup fee,
+    so the client would be charged setup fee + month 1 management fee
+    together - not what's promised.
 
     An upgrade plan (setup_fee=0, see api_server.py's client_upgrade) must
     NOT repeat the two-free-months offer - it gets a single REGULAR cycle at
@@ -73,17 +77,16 @@ def create_plan(product_id: str, plan_name: str, amount: float, currency: str = 
     billing_cycles = []
     next_sequence = 1
     if setup_fee:
-        for _ in range(2):  # months 1-2: setup fee only / free management fee
-            billing_cycles.append({
-                "frequency": {"interval_unit": "MONTH", "interval_count": 1},
-                "tenure_type": "TRIAL",
-                "sequence": next_sequence,
-                "total_cycles": 1,
-                "pricing_scheme": {
-                    "fixed_price": {"value": "0", "currency_code": currency}
-                },
-            })
-            next_sequence += 1
+        billing_cycles.append({
+            "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+            "tenure_type": "TRIAL",
+            "sequence": next_sequence,
+            "total_cycles": 2,  # months 1-2: setup fee only / free management fee
+            "pricing_scheme": {
+                "fixed_price": {"value": "0", "currency_code": currency}
+            },
+        })
+        next_sequence += 1
 
     billing_cycles.append({
         "frequency": {"interval_unit": "MONTH", "interval_count": 1},
