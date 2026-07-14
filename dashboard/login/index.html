@@ -164,7 +164,7 @@ async function verifyCode() {
     });
     if (res.ok) {
       setMsg('codeMsg', 'התחברת בהצלחה, מעביר אותך לדשבורד...', 'success');
-      setTimeout(() => { window.location.href = '/dashboard'; }, 700);
+      setTimeout(() => { window.location.href = '/dashboard/'; }, 700);
     } else {
       setMsg('codeMsg', 'קוד שגוי או שפג תוקפו - נסה שוב', 'error');
     }

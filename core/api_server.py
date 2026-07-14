@@ -71,6 +71,22 @@ app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard"
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
 app.mount("/admin", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "admin"), html=True), name="admin")
 
+# Starlette's Mount("/login") only matches paths UNDER the mount ("/login/...").
+# The bare "/login" falls through every mount and API route to the root "/"
+# landing mount (registered last), which looks up a "login" file that doesn't
+# exist and 404s - before the router's redirect_slashes fallback ever gets a
+# chance. Same family as the earlier /admin and /terms trailing-slash 404s;
+# fixed here for every mounted page. /login matters most - it's the exact link
+# in the payment-confirmation and welcome emails.
+def _bare_path_redirect(page: str):
+    async def _redirect(request: Request):
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(url=f"{page}/{query}")
+    return _redirect
+
+for _page in ("/chat", "/terms", "/dashboard", "/login", "/admin"):
+    app.get(_page, include_in_schema=False)(_bare_path_redirect(_page))
+
 def _require_admin_key(request: Request):
     """Guards internal/admin endpoints - everything that isn't part of the public
     sales chat, login, PayPal callback flow, or a client's own session-gated

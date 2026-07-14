@@ -86,7 +86,7 @@ def send_payment_confirmation(client_email: str, client_name: str, client_id: in
           תוכל לעקוב בזמן אמת אחרי הפעילות, החיבורים ופרטי המנוי שלך בדשבורד האישי. התחברות מהירה
           עם קוד חד-פעמי שיישלח לכתובת המייל הזו - בלי צורך בסיסמה:
         </p>
-        <a href="{PUBLIC_APP_URL}/login" style="display:inline-block;margin-top:14px;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">כניסה לדשבורד שלי →</a>
+        <a href="{PUBLIC_APP_URL}/login/" style="display:inline-block;margin-top:14px;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">כניסה לדשבורד שלי →</a>
       </div>
       <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
         <p style="color:#3D3D3D;margin:0;">בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬</p>

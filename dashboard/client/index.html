@@ -805,7 +805,7 @@ const ACTIVITY_LABELS = {
 async function loadDashboard() {
   try {
     const res = await fetch('/api/dashboard', { credentials: 'same-origin' });
-    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (res.status === 401) { window.location.href = '/login/'; return; }
     const body = await res.json();
     if (!body.success) return;
     dashboardData = body.data;
