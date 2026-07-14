@@ -42,24 +42,40 @@ TIMEOUT = 30
 
 # One consent asks for everything both agents need — splitting into two consents
 # would double the connect friction for zero security gain (same app, same user).
+#
+# PHASE 1 SCOPE SET (app has Limited/Standard Access only, testing on uallak's
+# own admin-owned assets). When the consent dialog is asked for a scope the app
+# can't use (missing product, missing dependency scope, or needs Business
+# Verification), Meta errors on ITS OWN screen ("Invalid Scopes") and never
+# redirects back to our callback — that broke the whole flow in 2026-07. Every
+# scope below works with Standard Access on assets we admin. Deliberately NOT
+# requested until the Advanced Access / App Review application:
+#   - business_management       — unused by any code path (asset discovery uses
+#                                 me/adaccounts + me/accounts, not Business
+#                                 Manager edges); tends to be rejected without
+#                                 Business Verification
+#   - pages_messaging           — Messenger DM inbox; needs the Messenger
+#                                 product added to the app AND its dependency
+#                                 scope pages_manage_metadata (which we never
+#                                 requested — likely the dialog breaker)
+#   - read_insights             — Page insights; no code calls it yet
+#   - instagram_manage_insights — IG insights; no code calls it yet
+# Re-add pages_messaging (+ pages_manage_metadata) and the two insights scopes
+# in the Advanced Access application when DM inbox + insights features ship.
 OAUTH_SCOPES = [
     # Marketing API (meta_ads_agent)
     "ads_management",
     "ads_read",
-    "business_management",
     # Pages (meta_content_agent)
     "pages_show_list",
     "pages_read_engagement",
     "pages_manage_posts",
     "pages_manage_engagement",
     "pages_read_user_content",
-    "pages_messaging",
-    "read_insights",
     # Instagram (meta_content_agent)
     "instagram_basic",
     "instagram_content_publish",
     "instagram_manage_comments",
-    "instagram_manage_insights",
 ]
 
 

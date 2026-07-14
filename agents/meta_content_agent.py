@@ -319,7 +319,13 @@ def get_inbox(client_id: int, lookback_days: int = INBOX_LOOKBACK_DAYS) -> dict:
     try:
         inbox["messages"] = _page_messages(page)
     except Exception as e:
-        inbox["errors"].append(f"page messages: {e}")
+        # pages_messaging is deliberately absent from Phase 1's OAUTH_SCOPES
+        # (see core/meta_service.py) - a Graph permission error here is the
+        # expected steady state until Advanced Access, not alert-worthy.
+        if isinstance(e, meta.MetaGraphError) and e.code in (10, 200):
+            inbox["messages_note"] = "Page DMs unavailable (pages_messaging not granted in Phase 1)"
+        else:
+            inbox["errors"].append(f"page messages: {e}")
 
     if inbox["errors"]:
         agent_alert(AGENT_NAME, [f"inbox fetch for client {client_id} had errors: "

@@ -126,9 +126,18 @@ gcloud scheduler jobs create http meta-content-scan --schedule="0 8,13,18 * * *"
 
 ## Deferred / not built
 
+**Phase-1 scope cut (2026-07):** `business_management`, `pages_messaging`,
+`read_insights`, `instagram_manage_insights` were REMOVED from `OAUTH_SCOPES` —
+requesting a scope the Limited-Access app can't use makes Meta error on its own
+consent screen ("Invalid Scopes") and never redirect back to the callback.
+Consequence: Page Messenger DMs are NOT surfaced in Phase 1 (`get_inbox`
+returns a `messages_note` instead of alerting); comments still work. Re-add
+those scopes (plus `pages_manage_metadata`, `pages_messaging`'s dependency)
+in the Advanced Access / App Review application.
+
 Facebook Reels publishing (needs the resumable-upload flow; FB `video` kind
-covers regular video posts), IG DM reading/sending (Page Messenger DMs are
-surfaced; IG DMs need `instagram_manage_messages` + platform param), sending
+covers regular video posts), IG DM reading/sending (IG DMs need
+`instagram_manage_messages` + platform param), sending
 DM replies (24-hour messaging-window rules — surface-only for now), autonomous
 LLM comment replies (deliberate: wrong public reply on a client's brand page
 is worse than a slow one), asset picker for users with multiple ad
