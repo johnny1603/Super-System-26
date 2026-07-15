@@ -171,7 +171,16 @@ def answer_support_question(client_id: int, message: str) -> dict:
     for field, fetch in (("google_ads_performance", google_performance),
                          ("meta_ads_performance", meta_performance),
                          ("website_overview", website_overview)):
-        performance = fetch(client_id)
+        # One broken integration must never take down the whole chat - a
+        # failed getter degrades to "no data for that platform" (the prompt
+        # already handles an absent field). The created_at 500 of 2026-07-16
+        # is exactly the failure mode this guards against.
+        try:
+            performance = fetch(client_id)
+        except Exception as e:
+            log_step(AGENT_NAME, "platform_context",
+                     f"client {client_id}: {field} fetch failed (degrading to no data): {e}")
+            continue
         if performance.get("connected"):
             payload[field] = performance
 
