@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 import httpx
 
 from agents.keys_agent import get_key
+from core.api_call_counters import increment_call_counter
 
 # Bump in one place when Google sunsets this version (they release ~3/year,
 # each lives ~a year)
@@ -30,12 +31,12 @@ PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
 REDIRECT_PATH = "/api/oauth/google-ads/callback"
 TIMEOUT = 20
 
-# Explorer Access allows 2,880 operations/day. This in-memory guard resets on
-# every container restart, so it's a best-effort brake, not an exact meter —
-# good enough to keep a runaway loop from burning the developer token's
+# Explorer Access allows 2,880 operations/day. Persisted in Supabase
+# (core/api_call_counters.py) so the count survives Cloud Run restarts —
+# still a best-effort brake (fails open on a DB hiccup), not an exact meter,
+# but good enough to keep a runaway loop from burning the developer token's
 # reputation during the approval period.
 DAILY_OP_LIMIT = 2880
-_op_counter = {"date": "", "count": 0}
 
 # refresh_token -> (access_token, expires_at_epoch). Access tokens live ~1h;
 # in-memory cache is fine (rule 7: no local-file state, memory is allowed).
@@ -43,17 +44,13 @@ _access_token_cache = {}
 
 
 def _count_operation():
-    today = time.strftime("%Y-%m-%d")
-    if _op_counter["date"] != today:
-        _op_counter["date"] = today
-        _op_counter["count"] = 0
-    _op_counter["count"] += 1
-    if _op_counter["count"] > DAILY_OP_LIMIT:
+    count = increment_call_counter("google_ads", window_days=1)
+    if count > DAILY_OP_LIMIT:
         raise RuntimeError(
             f"Google Ads daily operation limit reached ({DAILY_OP_LIMIT}) - refusing call"
         )
-    if _op_counter["count"] > DAILY_OP_LIMIT * 0.8:
-        print(f"[google_ads_service] WARNING: {_op_counter['count']}/{DAILY_OP_LIMIT} daily ops used")
+    if count > DAILY_OP_LIMIT * 0.8:
+        print(f"[google_ads_service] WARNING: {count}/{DAILY_OP_LIMIT} daily ops used")
 
 
 def redirect_uri() -> str:

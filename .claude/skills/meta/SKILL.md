@@ -68,9 +68,10 @@ The callback exchanges code → short-lived token → **long-lived user token
 - **Full Access**: needs App Review + Business Verification, and 500+ Marketing
   API calls in the trailing 15 days just to QUALIFY to apply. Review takes weeks.
 - The code path is identical either way — build/test against uallak's own
-  assets now (this also accumulates the 500-call threshold;
-  `meta_service._count_marketing_call()` logs progress every 25 calls), and
-  client accounts start working the moment Full Access lands. No rework.
+  assets now (this also accumulates the 500-call threshold; persisted in
+  Supabase as a genuine rolling 15-day sum, logged every 25 calls — see the
+  `api-quotas` skill), and client accounts start working the moment Full
+  Access lands. No rework.
 
 ## Gotchas
 

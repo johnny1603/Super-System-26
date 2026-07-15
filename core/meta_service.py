@@ -24,12 +24,12 @@ to graph_get/graph_post/graph_delete so a version bump stays a one-line change h
 """
 import json
 import os
-import time
 from urllib.parse import urlencode
 
 import httpx
 
 from agents.keys_agent import get_key
+from core.api_call_counters import increment_call_counter
 
 # Bump in one place when Meta sunsets this version (they release ~3/year,
 # each lives ~2 years)
@@ -111,21 +111,19 @@ def is_token_error(exc) -> bool:
 
 
 # Full Access to the Marketing API requires 500+ Marketing API calls in the
-# trailing 15 days just to QUALIFY to apply. This in-memory counter (resets on
-# restart, best-effort like the Google op guard) makes the accumulation visible
-# in the logs while we build against our own accounts.
-_marketing_call_counter = {"date": "", "count": 0}
+# trailing 15 days just to QUALIFY to apply. Persisted in Supabase
+# (core/api_call_counters.py) as a genuine rolling 15-day sum — the old
+# in-memory counter reset daily (and on every restart), so it never actually
+# measured the trailing-15-days figure the requirement is based on.
+MARKETING_CALL_ROLLING_WINDOW_DAYS = 15
 
 
 def _count_marketing_call():
-    today = time.strftime("%Y-%m-%d")
-    if _marketing_call_counter["date"] != today:
-        _marketing_call_counter["date"] = today
-        _marketing_call_counter["count"] = 0
-    _marketing_call_counter["count"] += 1
-    if _marketing_call_counter["count"] % 25 == 0:
-        print(f"[meta_service] {_marketing_call_counter['count']} Marketing API calls today "
-              "(500+/15 days needed to qualify for Full Access review)")
+    count = increment_call_counter("meta_marketing", window_days=MARKETING_CALL_ROLLING_WINDOW_DAYS)
+    if count and count % 25 == 0:
+        print(f"[meta_service] {count} Marketing API calls in the trailing "
+              f"{MARKETING_CALL_ROLLING_WINDOW_DAYS} days "
+              "(500+ needed to qualify for Full Access review)")
 
 
 def _raise_graph_error(response: httpx.Response):
