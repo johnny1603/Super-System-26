@@ -46,7 +46,10 @@ The callback exchanges code → short-lived token → **long-lived user token
 
 - App credentials: `META_APP_ID` / `META_APP_SECRET` (in keys_agent `KEYS`) —
   the equivalent of `GOOGLE_OAUTH_CLIENT_ID/SECRET`. No developer-token
-  equivalent — Meta has no third credential.
+  equivalent — Meta has no third credential. Optional `META_LOGIN_CONFIG_ID`
+  (plain env var, not in `KEYS`): the Facebook Login for Business
+  Configuration id — when set, `build_consent_url` sends `config_id=` instead
+  of `scope=` (Meta's recommended param for Business-type apps).
 - Redirect URI must be registered in the Meta App's **Facebook Login → Valid
   OAuth Redirect URIs**: `{PUBLIC_APP_URL}/api/oauth/meta/callback`.
 - The user token EXPIRES (~60 days). The daily ads health scan introspects it
@@ -134,6 +137,23 @@ Consequence: Page Messenger DMs are NOT surfaced in Phase 1 (`get_inbox`
 returns a `messages_note` instead of alerting); comments still work. Re-add
 those scopes (plus `pages_manage_metadata`, `pages_messaging`'s dependency)
 in the Advanced Access / App Review application.
+
+**"Invalid Scopes" follow-up (2026-07-15):** even after the cut, the dialog
+rejected the six content scopes (`pages_manage_posts`, `pages_manage_engagement`,
+`pages_read_user_content`, `instagram_basic`, `instagram_content_publish`,
+`instagram_manage_comments`) and accepted only the app-default four. All six
+are still valid names per Meta's Permissions Reference and all six are used by
+the agents (`instagram_manage_comments` powers `reply_to_comment`'s
+`{comment_id}/replies` edge — it is not leftover). The real cause: Business-type
+apps use **Facebook Login for Business** — a permission is only requestable
+after it's added to the app in the App Dashboard (use case → Customize →
+Permissions, plus the Instagram product), and Meta replaced `scope=` with
+`config_id=`. Fix: add the six permissions in the dashboard, create an FLB
+"User access token" Configuration with all ten scopes, set its id as
+`META_LOGIN_CONFIG_ID` on Cloud Run. Do NOT swap to the `instagram_business_*`
+scopes — those belong to "Instagram API with Instagram Login" (instagram.com
+OAuth, `graph.instagram.com` tokens), a different product from our
+Facebook-Login flow.
 
 Facebook Reels publishing (needs the resumable-upload flow; FB `video` kind
 covers regular video posts), IG DM reading/sending (IG DMs need

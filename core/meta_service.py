@@ -43,36 +43,48 @@ TIMEOUT = 30
 # One consent asks for everything both agents need — splitting into two consents
 # would double the connect friction for zero security gain (same app, same user).
 #
-# PHASE 1 SCOPE SET (app has Limited/Standard Access only, testing on uallak's
-# own admin-owned assets). When the consent dialog is asked for a scope the app
-# can't use (missing product, missing dependency scope, or needs Business
-# Verification), Meta errors on ITS OWN screen ("Invalid Scopes") and never
-# redirects back to our callback — that broke the whole flow in 2026-07. Every
-# scope below works with Standard Access on assets we admin. Deliberately NOT
-# requested until the Advanced Access / App Review application:
-#   - business_management       — unused by any code path (asset discovery uses
-#                                 me/adaccounts + me/accounts, not Business
-#                                 Manager edges); tends to be rejected without
-#                                 Business Verification
-#   - pages_messaging           — Messenger DM inbox; needs the Messenger
-#                                 product added to the app AND its dependency
-#                                 scope pages_manage_metadata (which we never
-#                                 requested — likely the dialog breaker)
+# "Invalid Scopes" DIAGNOSIS (2026-07-15): the dialog rejected pages_manage_posts,
+# pages_manage_engagement, pages_read_user_content, instagram_basic,
+# instagram_content_publish, instagram_manage_comments while accepting
+# ads_management, ads_read, pages_show_list, pages_read_engagement. Per Meta's
+# Permissions Reference all six rejected names are STILL VALID on the
+# Facebook-Login path and every dependency they list is already in this set
+# (the instagram_business_* scopes belong to the separate "Instagram API with
+# Instagram Login" product, which we don't use). "Invalid Scopes" means THIS
+# APP may not request them yet: Business-type apps use Facebook Login for
+# Business, where only permissions added to the app in the dashboard are
+# requestable and `config_id` has officially replaced `scope`. The four that
+# survived are exactly the app's current defaults. Fix is dashboard-side:
+#   1. App Dashboard → app's use case → Customize / Permissions (and add the
+#      Instagram product): click Add on each rejected permission so all ten
+#      scopes below appear under "Permissions and Features".
+#   2. Facebook Login for Business → Configurations → create a "User access
+#      token" configuration containing all ten scopes, then set its id as
+#      META_LOGIN_CONFIG_ID on Cloud Run — build_consent_url then sends
+#      config_id (Meta's recommended param). Without the env var it falls back
+#      to scope=, which also works once step 1 makes the scopes available.
+#
+# Still deliberately NOT requested until the Advanced Access / App Review
+# application (no Phase-1 code path needs them):
+#   - business_management       — asset discovery uses me/adaccounts +
+#                                 me/accounts, not Business Manager edges
+#   - pages_messaging           — Messenger DM inbox; also needs the Messenger
+#                                 product + dependency scope pages_manage_metadata
 #   - read_insights             — Page insights; no code calls it yet
 #   - instagram_manage_insights — IG insights; no code calls it yet
-# Re-add pages_messaging (+ pages_manage_metadata) and the two insights scopes
-# in the Advanced Access application when DM inbox + insights features ship.
 OAUTH_SCOPES = [
     # Marketing API (meta_ads_agent)
     "ads_management",
     "ads_read",
-    # Pages (meta_content_agent)
+    # Pages (meta_content_agent: publish, read user comments, reply)
     "pages_show_list",
     "pages_read_engagement",
     "pages_manage_posts",
     "pages_manage_engagement",
     "pages_read_user_content",
-    # Instagram (meta_content_agent)
+    # Instagram (meta_content_agent: publish + comment inbox; the
+    # {comment_id}/replies edge in reply_to_comment requires
+    # instagram_manage_comments — it is used, not leftover)
     "instagram_basic",
     "instagram_content_publish",
     "instagram_manage_comments",
@@ -184,9 +196,16 @@ def build_consent_url(state: str) -> str:
         "client_id": get_key("META_APP_ID"),
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": ",".join(OAUTH_SCOPES),
         "state": state,
     }
+    # Facebook Login for Business replaced scope= with config_id= (a dashboard
+    # Configuration bundling the permissions). Prefer it when set; the scope
+    # fallback only works for permissions already added to the app.
+    config_id = os.environ.get("META_LOGIN_CONFIG_ID", "")
+    if config_id:
+        params["config_id"] = config_id
+    else:
+        params["scope"] = ",".join(OAUTH_SCOPES)
     return f"{OAUTH_DIALOG_URL}?{urlencode(params)}"
 
 
