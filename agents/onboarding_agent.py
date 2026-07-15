@@ -142,7 +142,7 @@ Return JSON only:
     result = safe_claude_json_call(system, user_message, max_tokens=3000, api_key=api_key)
     return result.get("questions", [])
 
-def build_proposal(answers, api_key, empathy_analysis=None):
+def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None):
     pricing_str = json.dumps(PRICING)
 
     empathy_block = ""
@@ -456,6 +456,32 @@ Return JSON only with this exact structure:
     }}
   ]
 }}"""
+
+    # EXISTING-CLIENT UPGRADE MODE (support chat): same brain, same pricing
+    # rules, different commercial situation - appended after the base prompt so
+    # the onboarding path stays byte-identical when upgrade_context is None.
+    if upgrade_context:
+        system += f"""
+
+═══════════════════════════════════════════════════════════════════════════
+EXISTING-CLIENT UPGRADE MODE — this is NOT a new prospect
+═══════════════════════════════════════════════════════════════════════════
+An existing, PAYING client asked to change or expand their service. Their current state and
+request: {json.dumps(upgrade_context, ensure_ascii=False)}
+
+Overrides for this mode (every other rule above still applies - pricing formulas, market
+reasoning, estimates-not-guarantees, honesty):
+- Build 1-2 packages describing the client's NEW TOTAL configuration after the change (full
+  new monthly_management_total per the per-platform-group formula) - not a diff or delta price
+- setup_fee_total covers ONLY new one-time work this change actually requires (e.g.
+  {PRICING['single_service_setup_fee']} NIS to launch a newly added platform, website work per
+  the website rules, or 0 when nothing new is needed). The standard onboarding setup floor does
+  NOT apply - it was already delivered and paid at signup
+- benefit_value stays monthly_management_total x 2 (system invariant) but do NOT mention free
+  months anywhere in the text - the benefit months applied at their original signup only
+- scarcity_note must be an empty string - no urgency tactics with existing clients
+- honest_note must state the upgrade takes effect from the next billing cycle after they
+  confirm, and that a team member will confirm the final details with them personally"""
 
     user_message = f"Client data: {json.dumps(answers)}"
     return safe_claude_json_call(system, user_message, max_tokens=6000, api_key=api_key)

@@ -673,10 +673,30 @@ def client_chat(req: ClientChatRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/client-chat/history")
-async def client_chat_history(request: Request):
+async def client_chat_history(request: Request, scope: str = "current"):
+    # scope=current -> the active thread only (bounded by clients.chat_started_at,
+    # set by the 'שיחה חדשה' action); scope=all -> full history for browsing
     client_id = _require_session(request)
-    history = get_communications(client_id, limit=50, channel="dashboard_chat")
-    return {"success": True, "history": list(reversed(history))}
+    history = list(reversed(get_communications(client_id, limit=200, channel="dashboard_chat")))
+    boundary = get_client(client_id).get("chat_started_at")
+    current = ([h for h in history if (h.get("created_at") or "") >= boundary]
+               if boundary else history)
+    return {
+        "success": True,
+        "history": history if scope == "all" else current,
+        "chat_started_at": boundary,
+        "has_previous": len(history) > len(current),
+    }
+
+@app.post("/api/client-chat/new")
+async def client_chat_new(request: Request):
+    # Start a fresh conversation thread; past messages stay browsable via
+    # history?scope=all. Requires clients.chat_started_at (timestamptz) column.
+    client_id = _require_session(request)
+    db.table("clients").update(
+        {"chat_started_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", client_id).execute()
+    return {"success": True}
 
 # ─── Package upgrade + billing (client-facing, session-gated) ────────────────
 

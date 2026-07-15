@@ -46,6 +46,14 @@ ownership-checked). **An approval fires `agent_alert` — v1 fulfillment is
 human**; wire approved suggestions into execution agents as those grow.
 Repeat-avoidance: the prompt gets the client's last 10 suggestion titles.
 
+**The support chat OWNS this experience** (2026-07-16): the dashboard greets
+each session with a personalized, gender-aware welcome bubble that surfaces
+the pending count and drives the client to approve; the chat LLM receives
+`pending_suggestions` in its payload and walks clients through the items on
+request; quick-reply chips include "מה ממתין לאישור שלי?" when anything is
+pending. The card feed remains the approval surface — the chat is the voice
+around it, not a duplicate.
+
 ## Daily sales alerts
 
 `run_daily_engagement()` (→ `GET /api/engagement/daily`, morning): yesterday's

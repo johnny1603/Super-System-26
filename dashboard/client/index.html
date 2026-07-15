@@ -337,7 +337,41 @@ body {
 .support-head-sub::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 
 .support-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.support-msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
+.support-msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-line; }
+.support-msg.typing { color: var(--gray); animation: typingPulse 1.2s ease-in-out infinite; }
+@keyframes typingPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+.support-new-chat {
+  background: none; border: 1px solid var(--border); border-radius: 100px;
+  color: var(--gray); font-size: 11px; padding: 4px 10px; cursor: pointer;
+  font-family: 'Heebo', sans-serif; flex-shrink: 0;
+}
+.support-new-chat:hover { border-color: var(--accent); color: var(--accent); }
+
+.chat-load-prev { text-align: center; font-size: 11.5px; color: var(--accent); cursor: pointer; padding: 2px 0 6px; }
+.chat-divider { text-align: center; color: var(--gray); font-size: 11px; margin: 4px 0; }
+
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 10px; }
+.chip {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 100px;
+  padding: 6px 12px; font-size: 12px; cursor: pointer; color: inherit;
+  font-family: 'Heebo', sans-serif;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+
+.chat-greeting {
+  position: fixed; bottom: 96px; left: 26px;
+  max-width: 280px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px 16px 16px 4px;
+  padding: 14px 16px;
+  font-size: 13px; line-height: 1.55; white-space: pre-line;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.45);
+  z-index: 198; cursor: pointer;
+  display: none;
+}
+.chat-greeting.visible { display: block; animation: greetIn 0.25s ease; }
+@keyframes greetIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .support-msg.bot { background: var(--panel-2); align-self: flex-start; border-radius: 4px 14px 14px 14px; }
 .support-msg.user { background: var(--accent); color: white; align-self: flex-end; border-radius: 14px 4px 14px 14px; }
 .support-msg.escalated { background: rgba(255,76,31,0.1); border: 1px solid rgba(255,76,31,0.25); align-self: flex-start; border-radius: 4px 14px 14px 14px; font-size: 12px; color: var(--accent); }
@@ -720,6 +754,8 @@ body {
 
 </div>
 
+<div class="chat-greeting" id="chatGreeting" onclick="greetingClick()"></div>
+
 <button class="support-fab" id="supportFabBtn" onclick="toggleSupportChat()" aria-label="תמיכה">
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 </button>
@@ -731,6 +767,7 @@ body {
       <div class="support-head-title" id="supportTitle">צוות uallak</div>
       <div class="support-head-sub">זמין עכשיו</div>
     </div>
+    <button class="support-new-chat" onclick="startNewChat()">שיחה חדשה</button>
   </div>
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
@@ -744,8 +781,9 @@ body {
     </div>
   </div>
   <div class="support-messages" id="supportMessages">
-    <div class="support-msg bot">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
+    <div class="support-msg bot" id="chatIntroMsg">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
   </div>
+  <div class="chip-row" id="chipRow"></div>
   <div class="support-input-area">
     <input class="support-input" id="supportInput" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
     <button class="support-send" onclick="sendSupportMsg()">
@@ -938,6 +976,14 @@ async function loadDashboard() {
 
     // Chat persona: apply the client's saved choice, or offer the one-time picker
     initPersona(d.client && d.client.owner_gender);
+
+    // Concierge data for the greeting + chips
+    chatData.name = (d.client && d.client.name) || '';
+    chatData.gender = (d.client && d.client.owner_gender) || null;
+    chatData.firstVisit = !d.tour_completed;
+    chatData.conns = conns;
+    chatData.dashReady = true;
+    maybeShowGreeting();
 
     // First visit → auto-run the tour
     if (!d.tour_completed) openWelcome(true);
@@ -1168,6 +1214,9 @@ async function loadSuggestions() {
     renderSuggestions(body.data || []);
   } catch (e) {
     console.error('suggestions load failed', e);
+    // Don't hold the greeting hostage on a failed suggestions fetch
+    chatData.suggReady = true;
+    maybeShowGreeting();
   }
 }
 
@@ -1175,6 +1224,12 @@ function renderSuggestions(items) {
   const badge = document.getElementById('pendingBadge');
   badge.textContent = `${items.length} ממתינים`;
   badge.classList.toggle('has-items', items.length > 0);
+
+  // The chat owns the suggestions experience - keep it in the loop
+  chatData.pendingCount = items.length;
+  chatData.pendingTitles = items.slice(0, 3).map(s => s.title || '');
+  chatData.suggReady = true;
+  maybeShowGreeting();
   const list = document.getElementById('pendingApprovalList');
   if (!items.length) {
     list.innerHTML = '<div class="empty-row">אין חומרים שממתינים לאישור כרגע — הצעות חדשות מגיעות כל שבוע</div>';
@@ -1218,8 +1273,12 @@ async function decideSuggestion(id, decision, btn) {
   showNotice('משהו השתבש — נסו שוב', 'warn');
 }
 
-// ─── support chat ────────────────────────────────────────────────────────────
+// ─── support chat (concierge) ────────────────────────────────────────────────
 let supportHistoryLoaded = false;
+// Everything the concierge experience needs about this client, filled by
+// loadDashboard() + renderSuggestions(); greeting/chips render once both are in
+const chatData = { name: '', gender: null, firstVisit: false, conns: [],
+                   pendingCount: 0, pendingTitles: [], dashReady: false, suggReady: false };
 
 function appendSupportMsg(text, cls) {
   const box = document.getElementById('supportMessages');
@@ -1237,12 +1296,142 @@ async function loadSupportHistory() {
     const res = await fetch('/api/client-chat/history', { credentials: 'same-origin' });
     const data = await res.json();
     if (!data.success) return;
+    if (data.has_previous) {
+      const link = document.createElement('div');
+      link.className = 'chat-load-prev';
+      link.id = 'chatLoadPrev';
+      link.textContent = 'הצג שיחות קודמות';
+      link.onclick = loadPreviousConversations;
+      document.getElementById('supportMessages').prepend(link);
+    }
     for (const entry of data.history) {
       appendSupportMsg(entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
     }
   } catch (e) {
     console.error('failed to load support chat history', e);
   }
+}
+
+async function loadPreviousConversations() {
+  // Older threads render above the current one with a divider - history is
+  // never lost, "שיחה חדשה" just moves the boundary
+  try {
+    const res = await fetch('/api/client-chat/history?scope=all', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!data.success) return;
+    const boundary = data.chat_started_at || '';
+    const previous = data.history.filter(h => (h.created_at || '') < boundary);
+    const box = document.getElementById('supportMessages');
+    const link = document.getElementById('chatLoadPrev');
+    if (link) link.remove();
+    const frag = document.createDocumentFragment();
+    for (const entry of previous) {
+      const msg = document.createElement('div');
+      msg.className = `support-msg ${entry.direction === 'inbound' ? 'user' : 'bot'}`;
+      msg.textContent = entry.content;
+      frag.appendChild(msg);
+    }
+    const divider = document.createElement('div');
+    divider.className = 'chat-divider';
+    divider.textContent = '— שיחה חדשה —';
+    frag.appendChild(divider);
+    box.prepend(frag);
+  } catch (e) {
+    console.error('failed to load previous conversations', e);
+  }
+}
+
+async function startNewChat() {
+  try {
+    const res = await fetch('/api/client-chat/new', { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('new chat failed');
+    const box = document.getElementById('supportMessages');
+    box.innerHTML = '';
+    const intro = document.createElement('div');
+    intro.className = 'support-msg bot';
+    intro.id = 'chatIntroMsg';
+    intro.textContent = greetingText();
+    box.appendChild(intro);
+    const link = document.createElement('div');
+    link.className = 'chat-load-prev';
+    link.id = 'chatLoadPrev';
+    link.textContent = 'הצג שיחות קודמות';
+    link.onclick = loadPreviousConversations;
+    box.prepend(link);
+    supportHistoryLoaded = true;
+  } catch (e) {
+    console.error('start new chat failed', e);
+    showNotice('לא הצלחנו לפתוח שיחה חדשה — נסו שוב', 'warn');
+  }
+}
+
+// ─── concierge greeting + quick-reply chips ──────────────────────────────────
+function greetingText() {
+  const first = (chatData.name || '').trim().split(' ')[0];
+  let hello;
+  if (chatData.gender === 'male') hello = `ברוך שובך${first ? ', ' + first : ''}! 👋`;
+  else if (chatData.gender === 'female') hello = `ברוכה שובך${first ? ', ' + first : ''}! 👋`;
+  else hello = `היי${first ? ' ' + first : ''}, טוב לראות אותך שוב! 👋`;
+
+  if (chatData.firstVisit) {
+    const lines = [`היי${first ? ' ' + first : ''}, ברוכים הבאים ל-uallak! 👋`,
+      'מעכשיו אנחנו הצוות שלך. כל מה שנכין בשבילך — רעיונות, פוסטים, קמפיינים — ' +
+      'יופיע באזור "ממתין לאישור שלך", ואישור שלך הוא מה שמכניס אותנו לפעולה.'];
+    if (chatData.pendingCount > 0) {
+      lines.push(`כבר מחכות לך ${chatData.pendingCount} הצעות ראשונות 🎯`);
+    }
+    lines.push('ואם משהו לא ברור — אני כאן בצ׳אט.');
+    return lines.join('\n');
+  }
+  if (chatData.pendingCount > 0) {
+    const teaser = chatData.pendingTitles.length
+      ? ` (בין השאר: "${chatData.pendingTitles[0]}")` : '';
+    return `${hello}\nיש ${chatData.pendingCount} הצעות חדשות שממתינות לאישור שלך${teaser} 🎯 ` +
+           'שווה להציץ באזור "ממתין לאישור שלך" — ואם רוצים, אפשר לעבור עליהן איתי כאן.';
+  }
+  return `${hello}\nאם צריך משהו — אני כאן.`;
+}
+
+function maybeShowGreeting() {
+  if (!chatData.dashReady || !chatData.suggReady) return;
+  // Personalize the chat's opening message every load...
+  const intro = document.getElementById('chatIntroMsg');
+  if (intro) intro.textContent = greetingText();
+  renderChips();
+  // ...but pop the greeting bubble only once per session, so it welcomes
+  // rather than nags
+  if (sessionStorage.getItem('uallak_greeted')) return;
+  sessionStorage.setItem('uallak_greeted', '1');
+  const bubble = document.getElementById('chatGreeting');
+  bubble.textContent = greetingText();
+  bubble.classList.add('visible');
+  setTimeout(() => bubble.classList.remove('visible'), 15000);
+}
+
+function greetingClick() {
+  document.getElementById('chatGreeting').classList.remove('visible');
+  const panel = document.getElementById('supportPanel');
+  if (!panel.classList.contains('open')) toggleSupportChat();
+}
+
+function renderChips() {
+  const chips = [];
+  if (chatData.pendingCount > 0) chips.push('מה ממתין לאישור שלי?');
+  if (chatData.conns.some(c => ['google_ads', 'meta_ads'].includes(c.platform) && c.status === 'active')) {
+    chips.push('מה המצב בקמפיינים?');
+  } else {
+    chips.push('איך מתחילים?');
+  }
+  chips.push('שדרג אותי');
+  document.getElementById('chipRow').innerHTML = chips.map(t =>
+    `<button class="chip" onclick="sendChip(this.textContent)">${esc(t)}</button>`).join('');
+}
+
+function sendChip(text) {
+  const input = document.getElementById('supportInput');
+  input.value = text;
+  sendSupportMsg();
 }
 
 function toggleSupportChat() {
@@ -1262,6 +1451,10 @@ async function sendSupportMsg() {
   appendSupportMsg(text, 'user');
   input.value = '';
 
+  // Typing indicator - upgrade proposals and web searches can take a while,
+  // the client should see the chat is working, not frozen
+  const typing = appendSupportMsg('כותבים לך תשובה…', 'bot typing');
+
   try {
     const res = await fetch('/api/client-chat', {
       method: 'POST',
@@ -1270,6 +1463,7 @@ async function sendSupportMsg() {
       body: JSON.stringify({ message: text }),
     });
     const data = await res.json();
+    typing.remove();
     if (data.success) {
       appendSupportMsg(data.reply, data.needs_human_followup ? 'escalated' : 'bot');
     } else {
@@ -1277,6 +1471,7 @@ async function sendSupportMsg() {
     }
   } catch (e) {
     console.error('support chat request failed', e);
+    typing.remove();
     appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
   }
 }

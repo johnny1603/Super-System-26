@@ -49,6 +49,16 @@ description: How uallak's sales chat + proposal pipeline works — question flow
   numbering — flow length varies, labels read as broken scripting. This was never hardcoded;
   it was LLM-generated, so the fix lives in the prompt.
 
+## build_proposal has an EXISTING-CLIENT UPGRADE MODE
+
+The support chat (agents/support_agent.py) reuses `build_proposal` for in-chat upgrade
+proposals via the optional `upgrade_context` parameter — it appends an override block to the
+prompt (new TOTAL configuration, setup fee = only genuinely new one-time work, empty
+scarcity_note, next-billing-cycle honest_note). `upgrade_context=None` keeps the onboarding
+path byte-identical. When changing build_proposal's rules, check the upgrade block still
+makes sense; upgrade proposals run numeric `qa_check` but deliberately SKIP the content-QA
+LLM pass (chat latency) and are recorded as lead rows with `_upgrade_request` in answers.
+
 ## Files that must stay in sync (change one → check the others)
 
 - Question IDs: frontend `BASE_QUESTIONS` ↔ `question_filter.BASE_QUESTION_IDS` ↔ any prompt
