@@ -69,8 +69,10 @@ without telling us.
 Client-facing: `POST /api/website/connect` (session cookie).
 Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,
 `POST /api/website/update`, `POST /api/website/alt-text`,
-`POST /api/website/install-seo-plugin`, `POST /api/website/provision`,
-`POST /api/website/populate`, `GET /api/website/overview?client_id=`,
+`POST /api/website/install-seo-plugin`, `POST /api/website/provision`
+(optional `logo_url` + `industry_hint`), `POST /api/website/populate`,
+`GET /api/website/overview?client_id=`, `GET /api/website/standards?client_id=`,
+`POST /api/website/brand` (re-run brand identity when a logo arrives),
 `GET /api/website/scan` (daily).
 
 Scheduler job (same pattern as the other scans):
@@ -79,6 +81,46 @@ Scheduler job (same pattern as the other scans):
 gcloud scheduler jobs create http website-scan --schedule="30 7 * * *" \
   --uri="{SERVICE_URL}/api/website/scan" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}
 ```
+
+## Standing quality rules (every site we build OR edit)
+
+Machine-enforced — don't route around them:
+
+- **Accessible/SEO-valid HTML on every publish/update**:
+  `content_quality_issues()` gates `publish_content` and `update_content` —
+  no `<h1>` in the body (the title IS the H1), hierarchy starts at `<h2>`
+  with no level jumps, non-empty alt on every `<img>`, label/aria-label on
+  every form field, excerpt required on create (core WP's meta-description
+  surface). Content generators must produce HTML that passes; the errors
+  name the violated rule.
+- **Accessibility plugin (Israeli standard 5568)** on every site:
+  `install_accessibility_plugin` tries `pojo-accessibility` then
+  `wp-accessibility-helper` (both free) — same auto-install pattern as Yoast.
+- **Site standards check** (`run_standards_check`, auto-run post-provision +
+  `GET /api/website/standards`): both plugins present (auto-installs),
+  required pages exist (about/services/contact/legal — Hebrew or English
+  slugs/titles; report-only, never auto-creates empty pages), active plugin
+  count within the speed budget (`MAX_ACTIVE_PLUGINS`=8), alt-text sample on
+  recent media.
+- **Images are served as WebP**: `upload_media_from_url` converts JPEG/PNG/BMP/
+  TIFF to WebP (quality 82, Pillow) before uploading; GIF/SVG/video pass
+  through. Conversion failure falls back to the original file — never fail a
+  publish over image format. Keep this rule when adding any new media path.
+- **Brand identity, zero design questionnaire**: `apply_brand_identity` is
+  THE extension point — logo URL present → Pillow extracts the dominant
+  brand colors; no logo → neutral-by-industry palette (`NEUTRAL_PALETTES`),
+  never blocking and NEVER asking the client design questions (industry/tone
+  already live in the sales-chat data). Future logo/media-generation agents
+  call this same function (or `POST /api/website/brand`) with their generated
+  logo — do not build them a parallel path. v1 records the palette
+  (activity log `website_brand_identity`) for content/site work to consume;
+  automated theme re-skinning from the palette is deferred.
+
+Template-time rules (can't be REST-verified — enforced via the master-template
+checklist below): genuinely mobile-first theme (tested on a real phone, not
+just "technically responsive"), true RTL layout with Hebrew-appropriate fonts
+(Heebo/Assistant/Rubik class — not a mechanical LTR flip), minimal preinstalled
+plugins.
 
 ## Cost discipline (the design rule for this agent)
 
@@ -140,9 +182,14 @@ assumes Starter.
 
 **One-time manual setup (required before first provision):**
 
-1. Create the uallak **master template site** in InstaWP: Hebrew/RTL theme,
-   base page skeleton, admin user (default name `uallak`), and an Application
-   Password for that user, created in wp-admin.
+1. Create the uallak **master template site** in InstaWP: a genuinely
+   mobile-first Hebrew/RTL theme (verify on a real phone; Hebrew fonts of the
+   Heebo/Assistant/Rubik class, not a flipped LTR theme), the required page
+   skeleton (בית, אודות, שירותים, צור קשר, תקנון/פרטיות — the standards
+   check verifies these survive cloning), minimal plugins (free Yoast +
+   `pojo-accessibility` preinstalled saves two API installs per site), admin
+   user (default name `uallak`), and an Application Password for that user,
+   created in wp-admin.
 2. Save a template from it; put its slug in `WEBSITE_TEMPLATE_SLUG`.
 3. Env vars on Cloud Run: `INSTAWP_API_KEY` +
    `WEBSITE_TEMPLATE_APP_PASSWORD` (both in keys_agent KEYS),
@@ -175,9 +222,16 @@ directly (honest_note mentions it for new-site packages).
 
 ## Deferred / not built
 
-Custom-domain mapping automation, plan auto-upgrades (Starter → Plus when a
+Automated theme re-skinning from the brand palette (apply_brand_identity
+records it; applying it to theme CSS/customizer is the deferred half),
+custom-domain mapping automation, plan auto-upgrades (Starter → Plus when a
 site outgrows it — watch disk/CPU manually for now), writing Yoast/Rank Math
 meta fields, WooCommerce anything, comment moderation on WP sites,
 site-speed/uptime monitoring beyond the daily credential scan, media library
 cleanup, multi-site (one WP row per client), token encryption at rest (same
 accepted MVP debt as Google/Meta).
+
+NOTE for content generators (populate_site / publish_content callers): every
+item must now carry an `excerpt` and pass `content_quality_issues` (h2-start
+hierarchy, alt text, labeled form fields) — generation prompts must bake
+these rules in, or publishes fail with named rule violations.

@@ -246,6 +246,38 @@ body {
   border-radius: 100px;
   border: 1px solid var(--border);
 }
+.pending-badge.has-items { background: var(--accent); color: white; border-color: var(--accent); }
+
+.sugg-row { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.sugg-row:last-child { border-bottom: none; }
+.sugg-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sugg-kind {
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: rgba(255,76,31,0.12); border-radius: 100px; padding: 3px 10px;
+}
+.sugg-title { font-weight: 700; font-size: 14.5px; }
+.sugg-body { color: var(--gray); font-size: 13px; line-height: 1.6; }
+.sugg-actions { display: flex; gap: 8px; margin-top: 12px; }
+.sugg-btn {
+  border: none; border-radius: 100px; padding: 7px 18px;
+  font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.sugg-btn.approve { background: var(--green); color: white; }
+.sugg-btn.reject { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); }
+.sugg-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* chat persona picker (one-time, inside the chat panel) */
+.persona-pick { padding: 14px; border-bottom: 1px solid var(--border); text-align: center; }
+.persona-pick-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.persona-pick-btns { display: flex; gap: 10px; justify-content: center; }
+.persona-pick-btn {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px 14px; cursor: pointer; font-family: 'Heebo', sans-serif;
+  font-size: 12.5px; font-weight: 700; color: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.persona-pick-btn:hover { border-color: var(--accent); }
+.persona-pick-btn svg { width: 40px; height: 40px; }
 
 /* ---------- SUPPORT CHAT ---------- */
 .support-fab {
@@ -263,6 +295,7 @@ body {
 }
 .support-fab:hover { transform: scale(1.06); }
 .support-fab svg { width: 24px; height: 24px; }
+.support-fab svg.persona { width: 44px; height: 44px; }
 
 .support-panel {
   position: fixed;
@@ -693,10 +726,21 @@ body {
 
 <div class="support-panel" id="supportPanel">
   <div class="support-head">
-    <div class="support-avatar">🤖</div>
+    <div class="support-avatar" id="supportAvatar">🤖</div>
     <div class="support-head-text">
-      <div class="support-head-title">צוות uallak</div>
+      <div class="support-head-title" id="supportTitle">צוות uallak</div>
       <div class="support-head-sub">זמין עכשיו</div>
+    </div>
+  </div>
+  <div class="persona-pick" id="personaPick" style="display:none;">
+    <div class="persona-pick-title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
+    <div class="persona-pick-btns">
+      <button class="persona-pick-btn" onclick="choosePersona('male')">
+        <span id="personaPreviewMale"></span>דניאל
+      </button>
+      <button class="persona-pick-btn" onclick="choosePersona('female')">
+        <span id="personaPreviewFemale"></span>דנה
+      </button>
     </div>
   </div>
   <div class="support-messages" id="supportMessages">
@@ -826,6 +870,11 @@ const ACTIVITY_LABELS = {
   'website_issue_detected': 'זוהתה בעיה באתר — הצוות מטפל',
   'website_provisioned': 'האתר החדש שלך הוקם ועלה לאוויר',
   'website_populated': 'תוכן ראשוני הועלה לאתר החדש שלך',
+  'suggestions_added': 'הצעות חדשות ממתינות לאישור שלך 🎯',
+  'suggestion_approved': 'אישרת הצעה — הצוות מטפל',
+  'suggestion_rejected': 'הצעה נדחתה',
+  'sales_alert_sent': 'נשלח אליך עדכון על המרות חדשות 🎉',
+  'urgent_notification': 'נשלח אליך עדכון דחוף בוואטסאפ',
 };
 
 async function loadDashboard() {
@@ -885,6 +934,9 @@ async function loadDashboard() {
     if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
       markWebsiteConnected();
     }
+
+    // Chat persona: apply the client's saved choice, or offer the one-time picker
+    initPersona(d.client && d.client.owner_gender);
 
     // First visit → auto-run the tour
     if (!d.tour_completed) openWelcome(true);
@@ -1061,6 +1113,110 @@ async function connectWebsite() {
   showNotice('חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', 'warn');
 }
 
+// ─── chat persona (client-chosen, never inferred from name) ──────────────────
+const PERSONA_SVGS = {
+  male: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><rect x="13" y="15" width="22" height="19" rx="7" fill="#F7F4EF"/><path d="M14 20 v-2 a7 7 0 0 1 7-7 h6 a7 7 0 0 1 7 7 v2 z" fill="#1A1A1A"/><circle cx="19" cy="25" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25" r="2.3" fill="#1A1A1A"/><path d="M19.5 29.5c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
+  female: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><path d="M12 34 q-2.5-9 1-16 q3-7 11-7 q8 0 11 7 q3.5 7 1 16 l-3.5-1 v-8 h-17 v8 z" fill="#1A1A1A"/><rect x="13" y="16" width="22" height="18" rx="7" fill="#F7F4EF"/><path d="M14 21 v-1.5 a8 8 0 0 1 8-8 h4 a8 8 0 0 1 8 8 V21 q-5-3.5-10-3.5 T14 21 z" fill="#1A1A1A"/><circle cx="19" cy="25.5" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25.5" r="2.3" fill="#1A1A1A"/><path d="M16.5 22.5 l4-1 M27.5 21.5 l4 1" stroke="#1A1A1A" stroke-width="1.4" stroke-linecap="round"/><path d="M19.5 30c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
+};
+const PERSONA_NAMES = { male: 'דניאל מ-uallak', female: 'דנה מ-uallak' };
+
+function applyPersona(gender) {
+  if (!PERSONA_SVGS[gender]) return;
+  document.getElementById('supportAvatar').innerHTML = PERSONA_SVGS[gender];
+  document.getElementById('supportTitle').textContent = PERSONA_NAMES[gender];
+  document.getElementById('supportFabBtn').innerHTML =
+    PERSONA_SVGS[gender].replace('<svg ', '<svg class="persona" ');
+}
+
+function initPersona(gender) {
+  document.getElementById('personaPreviewMale').innerHTML = PERSONA_SVGS.male;
+  document.getElementById('personaPreviewFemale').innerHTML = PERSONA_SVGS.female;
+  if (gender) {
+    applyPersona(gender);
+  } else {
+    document.getElementById('personaPick').style.display = 'block';
+  }
+}
+
+async function choosePersona(gender) {
+  applyPersona(gender);
+  document.getElementById('personaPick').style.display = 'none';
+  try {
+    await fetch('/api/client/profile', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_gender: gender }),
+    });
+  } catch (e) {
+    console.error('persona save failed', e); // UI already applied; retried on next visit
+  }
+}
+
+// ─── pending suggestions (proactive engagement feed) ─────────────────────────
+const SUGG_KIND_LABELS = {
+  promotion: 'מבצע', content_idea: 'רעיון תוכן',
+  campaign_tweak: 'שיפור קמפיין', homework: 'משימה',
+};
+
+async function loadSuggestions() {
+  try {
+    const res = await fetch('/api/client/suggestions', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) return;
+    renderSuggestions(body.data || []);
+  } catch (e) {
+    console.error('suggestions load failed', e);
+  }
+}
+
+function renderSuggestions(items) {
+  const badge = document.getElementById('pendingBadge');
+  badge.textContent = `${items.length} ממתינים`;
+  badge.classList.toggle('has-items', items.length > 0);
+  const list = document.getElementById('pendingApprovalList');
+  if (!items.length) {
+    list.innerHTML = '<div class="empty-row">אין חומרים שממתינים לאישור כרגע — הצעות חדשות מגיעות כל שבוע</div>';
+    return;
+  }
+  list.innerHTML = items.map(s => `
+    <div class="sugg-row" id="sugg-${s.id}">
+      <div class="sugg-top">
+        <span class="sugg-kind">${esc(SUGG_KIND_LABELS[s.kind] || 'הצעה')}</span>
+        <span class="sugg-title">${esc(s.title)}</span>
+      </div>
+      <div class="sugg-body">${esc(s.body)}</div>
+      <div class="sugg-actions">
+        <button class="sugg-btn approve" onclick="decideSuggestion(${s.id}, 'approved', this)">אישור — קדימה</button>
+        <button class="sugg-btn reject" onclick="decideSuggestion(${s.id}, 'rejected', this)">לא הפעם</button>
+      </div>
+    </div>`).join('');
+}
+
+async function decideSuggestion(id, decision, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/client/suggestions/${id}/decide`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      showNotice(decision === 'approved'
+        ? 'ההצעה אושרה — הצוות מתחיל לעבוד עליה ✓'
+        : 'ההצעה נדחתה — נכין משהו אחר בשבוע הבא', decision === 'approved' ? 'success' : 'warn');
+      loadSuggestions();
+      return;
+    }
+  } catch (e) {
+    console.error('suggestion decide failed', e);
+  }
+  btn.disabled = false;
+  showNotice('משהו השתבש — נסו שוב', 'warn');
+}
+
 // ─── support chat ────────────────────────────────────────────────────────────
 let supportHistoryLoaded = false;
 
@@ -1147,6 +1303,7 @@ async function sendSupportMsg() {
 
   loadDashboard();
   loadBilling();
+  loadSuggestions();
 })();
 </script>
 

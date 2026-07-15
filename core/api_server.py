@@ -553,6 +553,9 @@ async def dashboard_data(request: Request):
             "package": client.get("package"),
             "status": client.get("status"),
             "created_at": client.get("created_at"),
+            # Chat persona choice (male|female|null) - set by the client via
+            # /api/client/profile, never inferred from their name
+            "owner_gender": client.get("owner_gender"),
         },
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
@@ -1122,17 +1125,41 @@ def website_install_seo_plugin(req: WebsiteSeoPluginRequest):
 
 class WebsiteProvisionRequest(BaseModel):
     client_id: int
-    site_name: str = ""  # optional subdomain hint; InstaWP auto-names if empty
+    site_name: str = ""       # optional subdomain hint; InstaWP auto-names if empty
+    logo_url: str = ""        # existing client logo (public URL) - drives brand palette
+    industry_hint: str = ""   # NEUTRAL_PALETTES key fallback when no logo (e.g. "food", "b2b")
 
 @app.post("/api/website/provision", dependencies=_admin_only)
 def website_provision(req: WebsiteProvisionRequest):
     # Creates a BILLABLE hosted site (reserved InstaWP clone) - admin/fulfillment
     # only, never client-facing. Plain `def`: provisioning polls for minutes.
     from agents.website_agent import provision_site
-    result = provision_site(req.client_id, req.site_name)
+    result = provision_site(req.client_id, req.site_name, req.logo_url, req.industry_hint)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
+
+@app.get("/api/website/standards", dependencies=_admin_only)
+def website_standards(client_id: int, auto_install_plugins: bool = True):
+    from agents.website_agent import run_standards_check
+    try:
+        return {"success": True, "data": run_standards_check(client_id, auto_install_plugins)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class WebsiteBrandRequest(BaseModel):
+    client_id: int
+    logo_url: str = ""
+    industry_hint: str = ""
+
+@app.post("/api/website/brand", dependencies=_admin_only)
+def website_brand(req: WebsiteBrandRequest):
+    # Re-runnable: when a client's logo arrives later (or a future
+    # logo-generation agent produces one), call this to swap the neutral
+    # palette for the real brand identity
+    from agents.website_agent import apply_brand_identity
+    return {"success": True,
+            "data": apply_brand_identity(req.client_id, req.logo_url, req.industry_hint)}
 
 class WebsitePopulateRequest(BaseModel):
     client_id: int
@@ -1161,6 +1188,71 @@ def website_scan():
         return {"success": True, "data": run_health_scan()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
+
+@app.get("/api/client/suggestions")
+async def client_suggestions(request: Request):
+    client_id = _require_session(request)
+    from agents.engagement_agent import get_suggestions
+    pending = get_suggestions(client_id, status="pending")
+    return {"success": True, "data": [
+        {"id": s["id"], "kind": s.get("kind"), "title": s.get("title"),
+         "body": s.get("body"), "created_at": s.get("created_at")}
+        for s in pending
+    ]}
+
+class SuggestionDecideRequest(BaseModel):
+    decision: str  # approved | rejected
+
+@app.post("/api/client/suggestions/{suggestion_id}/decide")
+async def client_suggestion_decide(suggestion_id: int, req: SuggestionDecideRequest,
+                                   request: Request):
+    client_id = _require_session(request)
+    from agents.engagement_agent import decide_suggestion
+    result = decide_suggestion(client_id, suggestion_id, req.decision)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "decide failed"))
+    return {"success": True, "data": result}
+
+class ClientProfileRequest(BaseModel):
+    owner_gender: str  # male | female — the client's own one-tap choice in the
+                       # dashboard (never inferred from their name)
+
+@app.post("/api/client/profile")
+async def client_profile(req: ClientProfileRequest, request: Request):
+    client_id = _require_session(request)
+    if req.owner_gender not in ("male", "female"):
+        raise HTTPException(status_code=400, detail="owner_gender must be male|female")
+    db.table("clients").update({"owner_gender": req.owner_gender}).eq("id", client_id).execute()
+    return {"success": True}
+
+@app.get("/api/engagement/weekly", dependencies=_admin_only)
+def engagement_weekly():
+    # Plain `def`: one blocking LLM call per active client
+    from agents.engagement_agent import run_weekly_engagement
+    try:
+        return {"success": True, "data": run_weekly_engagement()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/engagement/daily", dependencies=_admin_only)
+def engagement_daily():
+    from agents.engagement_agent import run_daily_engagement
+    try:
+        return {"success": True, "data": run_daily_engagement()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class WhatsAppNotifyRequest(BaseModel):
+    client_id: int
+    message: str
+
+@app.post("/api/notify/whatsapp", dependencies=_admin_only)
+def notify_whatsapp(req: WhatsAppNotifyRequest):
+    # Manual/automation SOS entry point - same ladder as the health scans use
+    from agents.engagement_agent import notify_client_urgent
+    return {"success": True, "data": notify_client_urgent(req.client_id, req.message)}
 
 # ─── Admin dashboard (browser session, separate from X-Admin-Key) ────────────
 

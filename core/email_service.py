@@ -155,6 +155,46 @@ def send_admin_alert(answers: dict, proposal: dict):
     msg.attach(MIMEText(html, 'html'))
     _send(msg, ADMIN_EMAIL)
 
+def send_sales_alert(client_email: str, client_name: str, conversions: dict):
+    """Same-day celebration email when a client's campaigns produced
+    conversions yesterday (engagement_agent's daily run) — distinct from the
+    weekly report. `conversions` maps a Hebrew platform label to a count,
+    e.g. {"גוגל": 3, "פייסבוק ואינסטגרם": 2}."""
+    total = round(sum(conversions.values()), 1)
+    total_label = int(total) if total == int(total) else total
+    lines_html = "".join([
+        f'<p style="margin:6px 0;color:#3D3D3D;">✅ {label}: <strong>{int(v) if v == int(v) else v}</strong></p>'
+        for label, v in conversions.items() if v
+    ])
+    html = f"""
+    <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+        <p style="color:#8A8A8A;margin:4px 0 0;">הבית לעסקים קטנים ובינוניים</p>
+      </div>
+      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;border-top:4px solid #00C96E;text-align:center;">
+        <h2 style="margin:0 0 10px;color:#1A1A1A;">🎉 {client_name}, יש תוצאות!</h2>
+        <p style="color:#3D3D3D;line-height:1.7;margin:0 0 16px;">
+          הקמפיינים שלך הביאו אתמול <strong style="color:#00C96E;">{total_label}</strong> המרות (לידים/פניות/רכישות):
+        </p>
+        {lines_html}
+        <p style="color:#8A8A8A;font-size:12px;margin:16px 0 0;">
+          המספרים לפי דיווח פלטפורמות הפרסום — פירוט מלא בדשבורד שלך.
+        </p>
+      </div>
+      <div style="text-align:center;">
+        <a href="{PUBLIC_APP_URL}/login/" style="background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">לדשבורד שלי →</a>
+      </div>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = f"🎉 uallak — {total_label} המרות חדשות מהקמפיינים שלך!"
+    msg['From'] = GMAIL_USER
+    msg['To'] = client_email
+    msg.attach(MIMEText(html, 'html'))
+    _send(msg, client_email)
+
+
 def send_google_ads_weekly_report(report: dict):
     """Weekly Google Ads performance digest for the team (not clients)."""
     _send_weekly_platform_report(report, "Google Ads")

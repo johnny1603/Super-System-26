@@ -37,6 +37,11 @@ SEO_PLUGIN_NAMESPACES = {
 # for meta title/description work.
 DEFAULT_SEO_PLUGIN_SLUG = "wordpress-seo"
 
+# Israeli-standard-5568-oriented accessibility plugins, both free on
+# wordpress.org, tried in order (standing rule: every site we build/manage
+# gets one — same auto-install pattern as Yoast).
+ACCESSIBILITY_PLUGIN_SLUGS = ("pojo-accessibility", "wp-accessibility-helper")
+
 
 class WordPressError(RuntimeError):
     """REST error with the HTTP status and WP error code attached, so callers
@@ -204,10 +209,61 @@ def update_media(site_url: str, username: str, app_password: str,
                      username, app_password, data=fields)
 
 
+def list_media(site_url: str, username: str, app_password: str,
+               limit: int = 20) -> list:
+    """Recent media with alt_text — feeds the standards check's
+    missing-alt-text sample."""
+    return rest_get(site_url, "wp/v2/media", username, app_password,
+                    params={"per_page": limit,
+                            "_fields": "id,alt_text,source_url,mime_type"})
+
+
+def fetch_bytes(url: str) -> bytes:
+    """Generic public-URL fetch with the media size cap — used for media
+    uploads and for logo analysis (apply_brand_identity)."""
+    fetched = httpx.get(url, timeout=MEDIA_FETCH_TIMEOUT, follow_redirects=True)
+    if fetched.status_code != 200:
+        raise WordPressError(f"fetch failed: {fetched.status_code} for {url}")
+    if len(fetched.content) > MAX_MEDIA_BYTES:
+        raise WordPressError(f"file too large ({len(fetched.content)} bytes, cap {MAX_MEDIA_BYTES})")
+    return fetched.content
+
+
+# Standing rule: images on sites we build/manage are served as WebP (lightest
+# widely-supported format — page weight is an SEO ranking factor). Only these
+# static raster types get converted; GIFs (animation), SVGs, and video pass
+# through untouched.
+WEBP_CONVERTIBLE_TYPES = ("image/jpeg", "image/png", "image/bmp", "image/tiff")
+WEBP_QUALITY = 82
+
+
+def _to_webp(content: bytes, content_type: str, name: str):
+    """(bytes, content_type, filename) with WebP conversion applied when the
+    input is a convertible raster image. Falls back to the original on ANY
+    failure (missing Pillow, corrupt image) — a slightly heavier image beats
+    a failed publish."""
+    if content_type.split(";")[0].strip().lower() not in WEBP_CONVERTIBLE_TYPES:
+        return content, content_type, name
+    try:
+        import io
+        from PIL import Image
+        image = Image.open(io.BytesIO(content))
+        if image.mode not in ("RGB", "RGBA"):  # palette/CMYK/etc. -> safe modes
+            image = image.convert("RGBA" if "A" in image.mode else "RGB")
+        out = io.BytesIO()
+        image.save(out, format="WEBP", quality=WEBP_QUALITY)
+        stem = name.rsplit(".", 1)[0] or "upload"
+        return out.getvalue(), "image/webp", f"{stem}.webp"
+    except Exception as e:
+        print(f"[wordpress_service] WebP conversion failed, uploading original: {e}")
+        return content, content_type, name
+
+
 def upload_media_from_url(site_url: str, username: str, app_password: str,
                           media_url: str, filename: str = "") -> dict:
     """Fetch a PUBLIC media URL and upload the bytes to the WP media library
-    (WP has no fetch-by-URL endpoint, unlike Meta — we do the fetch)."""
+    (WP has no fetch-by-URL endpoint, unlike Meta — we do the fetch).
+    JPEG/PNG images are converted to WebP on the way (standing site rule)."""
     fetched = httpx.get(media_url, timeout=MEDIA_FETCH_TIMEOUT, follow_redirects=True)
     if fetched.status_code != 200:
         raise WordPressError(f"media fetch failed: {fetched.status_code} for {media_url}")
@@ -216,11 +272,14 @@ def upload_media_from_url(site_url: str, username: str, app_password: str,
             f"media too large ({len(fetched.content)} bytes, cap {MAX_MEDIA_BYTES})")
 
     name = filename or media_url.split("?")[0].rstrip("/").split("/")[-1] or "upload"
+    content, content_type, name = _to_webp(
+        fetched.content, fetched.headers.get("content-type", "application/octet-stream"), name)
+
     headers = _headers(username, app_password)
     headers["Content-Disposition"] = f'attachment; filename="{name}"'
-    headers["Content-Type"] = fetched.headers.get("content-type", "application/octet-stream")
+    headers["Content-Type"] = content_type
     response = httpx.post(f"{site_url}/wp-json/wp/v2/media", headers=headers,
-                          content=fetched.content, timeout=MEDIA_FETCH_TIMEOUT,
+                          content=content, timeout=MEDIA_FETCH_TIMEOUT,
                           follow_redirects=True)
     if response.status_code >= 400:
         _raise_rest_error(response)

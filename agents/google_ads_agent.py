@@ -123,6 +123,29 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     return result
 
 
+_YESTERDAY_CONVERSIONS_GAQL = """
+    SELECT metrics.conversions
+    FROM campaign
+    WHERE segments.date DURING YESTERDAY
+"""
+
+
+def get_conversions_yesterday(client_id: int):
+    """Total conversions across all campaigns for yesterday, for the daily
+    sales-alert email (engagement_agent). None = not connected or fetch
+    failed (caller skips silently — a missing celebration email is not an
+    incident worth alerting on)."""
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return None
+    try:
+        rows = gads.search(conn["access_token"], conn["account_id"], _YESTERDAY_CONVERSIONS_GAQL)
+        return round(sum(float(r.get("metrics", {}).get("conversions", 0)) for r in rows), 1)
+    except Exception as e:
+        log_step(AGENT_NAME, "get_conversions_yesterday", f"client {client_id}: failed ({e})")
+        return None
+
+
 def _set_campaign_status(client_id: int, campaign_id: str, status: str, action: str) -> dict:
     from agents.client_agent import log_activity
 
@@ -520,10 +543,20 @@ def run_health_scan() -> dict:
                 msg = (f"campaign '{broken['name']}' ({cid}) has {broken['ads']} DISAPPROVED ad(s) "
                        f"[policy: {', '.join(sorted(broken['topics'])) or 'unspecified'}] - "
                        f"{'auto-PAUSED' if paused else 'PAUSE FAILED, check manually'}")
-                _raise_issue(client_id, f"disapproved_{cid}", msg, auto_paused=paused)
+                newly_raised = _raise_issue(client_id, f"disapproved_{cid}", msg, auto_paused=paused)
                 summary["issues"].append(msg)
                 if paused:
                     summary["campaigns_paused"].append(cid)
+                    # An auto-paused campaign is an urgent approve/fix decision
+                    # for the CLIENT, not just a team alert -> WhatsApp SOS
+                    # (gated on newly_raised so the 3-day dedup covers it too)
+                    if newly_raised:
+                        from agents.engagement_agent import notify_client_urgent
+                        notify_client_urgent(
+                            client_id,
+                            f"⚠️ עדכון דחוף מ-uallak: הקמפיין '{broken['name']}' בגוגל הושהה "
+                            "אוטומטית בגלל מודעות שנפסלו. הצוות כבר מטפל בזה - "
+                            "פרטים בדשבורד, ואפשר לענות לנו שם בצ'אט.")
 
             # 3. Campaign eligibility problems (alert only - NOT_ELIGIBLE
             # campaigns don't spend, they need fixing rather than pausing)

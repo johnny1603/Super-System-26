@@ -22,6 +22,7 @@ from wordpress.org). Anything with a price tag — hosting, domain, paid
 plugin/theme licenses — is deliberately NOT reachable from here.
 """
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -44,6 +45,88 @@ EDITABLE_FIELDS = ("title", "content", "excerpt", "slug", "status", "featured_me
 OVERVIEW_CACHE_SECONDS = 300  # same 5-min TTL as the ads agents
 RECENT_CONTENT_LIMIT = 5
 ISSUE_DEDUP_DAYS = 3  # don't re-alert the same site problem more than ~2x/week
+
+# ── Standing quality rules (every site we build OR edit — not one-time) ──────
+# Machine-enforced here: accessibility plugin + accessible/SEO-valid HTML on
+# every publish, required page structure, plugin-count budget, alt text, WebP
+# (conversion lives in wordpress_service.upload_media_from_url). Template-time
+# rules that can't be REST-verified (genuinely mobile-first theme, real RTL
+# layout + Hebrew fonts — not a mechanical LTR flip) are enforced as the
+# master-template checklist in the website skill. Design decisions come from
+# sales-chat data + the client's logo when present — NEVER a design
+# questionnaire to the client.
+
+# Required page structure per site: matched loosely against page slug/title
+# (English or Hebrew). Home is WP's front page and always exists.
+REQUIRED_PAGES = {
+    "about":    ("about", "אודות", "מי אנחנו", "עלינו"),
+    "services": ("services", "שירותים", "מה אנחנו עושים"),
+    "contact":  ("contact", "צור קשר", "יצירת קשר", "צרו קשר"),
+    "legal":    ("privacy", "terms", "תקנון", "פרטיות", "מדיניות"),
+}
+# Loading-speed budget: every plugin adds weight; more than this needs a reason
+MAX_ACTIVE_PLUGINS = 8
+MEDIA_ALT_SAMPLE = 20
+
+# Neutral-by-industry palettes for clients with no logo yet (hex: primary,
+# accent, background). Deliberately conservative and professional — the
+# palette is a placeholder a future brand identity replaces, not a design
+# statement.
+NEUTRAL_PALETTES = {
+    "food":     ("#7A3E2E", "#D98E4A", "#FAF6F1"),
+    "beauty":   ("#8A5A6B", "#D4A5B5", "#FBF7F8"),
+    "kids":     ("#2E6E8A", "#F2B84B", "#F9FBFC"),
+    "tourism":  ("#1F6E5C", "#D9A44A", "#F7FAF9"),
+    "b2b":      ("#1F3A5F", "#4A7AB5", "#F7F9FB"),
+    "home":     ("#4A5A3E", "#A5B58A", "#F9FAF7"),
+    "default":  ("#2A3B4C", "#5A8AA8", "#F8F9FA"),
+}
+
+
+def content_quality_issues(html: str, require_excerpt: bool = False,
+                           has_excerpt: bool = False) -> list:
+    """The shared accessibility + technical-SEO gate for EVERY publish/update.
+    Regex heuristics, not a DOM parser — kept deliberately simple; they catch
+    the rules' violations in LLM-generated HTML, which is the only HTML that
+    flows through here.
+
+    Enforced: no <h1> in the body (WP renders the title as the page's single
+    H1), heading hierarchy starts at h2 with no level jumps, alt text on
+    every <img>, a label/aria-label on every form field, and (on create) an
+    excerpt — core WP's meta-description surface."""
+    issues = []
+    body = html or ""
+
+    if re.search(r"<h1[\s>]", body, re.I):
+        issues.append("body contains an <h1> — the page title is the single H1; start body headings at <h2>")
+
+    levels = [int(m) for m in re.findall(r"<h([1-6])[\s>]", body, re.I)]
+    if levels:
+        if levels[0] > 2:
+            issues.append(f"first heading is <h{levels[0]}> — hierarchy must start at <h2>")
+        for previous, current in zip(levels, levels[1:]):
+            if current > previous + 1:
+                issues.append(f"heading jump <h{previous}> → <h{current}> — nest headings without skipping levels")
+                break
+
+    for tag in re.findall(r"<img\b[^>]*>", body, re.I):
+        if not re.search(r"""alt\s*=\s*["'][^"']+["']""", tag, re.I):
+            issues.append("every <img> needs non-empty alt text (accessibility + SEO standing rule)")
+            break
+
+    for tag in re.findall(r"<(?:input|select|textarea)\b[^>]*>", body, re.I):
+        if re.search(r"""type\s*=\s*["'](?:hidden|submit|button)["']""", tag, re.I):
+            continue
+        labeled = re.search(r"aria-label(?:ledby)?\s*=", tag, re.I)
+        id_match = re.search(r"""id\s*=\s*["']([^"']+)["']""", tag, re.I)
+        if not labeled and not (id_match and re.search(
+                rf"""<label\b[^>]*for\s*=\s*["']{re.escape(id_match.group(1))}["']""", body, re.I)):
+            issues.append("every form field needs a <label for=...> or aria-label (accessibility standing rule)")
+            break
+
+    if require_excerpt and not has_excerpt:
+        issues.append("excerpt is required on new content — it is the page's meta-description surface")
+    return issues
 
 _overview_cache = {}  # client_id -> (fetched_at, overview)
 
@@ -187,6 +270,10 @@ def _validate_publish_spec(spec: dict) -> list:
         errors.append("content is required")
     if spec.get("status", "draft") not in VALID_STATUSES:
         errors.append(f"status must be one of {VALID_STATUSES}")
+    # Standing quality rules apply to every piece of content we create
+    errors.extend(content_quality_issues(spec.get("content", ""),
+                                         require_excerpt=True,
+                                         has_excerpt=bool((spec.get("excerpt") or "").strip())))
     return errors
 
 
@@ -236,6 +323,11 @@ def update_content(client_id: int, content_type: str, content_id: int, fields: d
         return {"success": False, "errors": [f"no editable fields given (allowed: {EDITABLE_FIELDS})"]}
     if "status" in allowed and allowed["status"] not in VALID_STATUSES:
         return {"success": False, "errors": [f"status must be one of {VALID_STATUSES}"]}
+    if "content" in allowed:
+        # Edits must meet the same standing quality rules as new content
+        quality = content_quality_issues(allowed["content"])
+        if quality:
+            return {"success": False, "errors": quality}
     connection = _get_connection(client_id)
     if not connection:
         return {"success": False, "errors": ["website not connected"]}
@@ -307,9 +399,172 @@ def install_seo_plugin(client_id: int, slug: str = wp.DEFAULT_SEO_PLUGIN_SLUG) -
             "status": installed.get("status", "")}
 
 
+# ─── Standing quality rules: site-level checks + brand identity ──────────────
+
+def install_accessibility_plugin(client_id: int) -> dict:
+    """Israeli-standard-5568 accessibility plugin on every site — same
+    auto-install pattern as the SEO plugin. Tries the free candidates in
+    order (a slug occasionally disappears from wordpress.org; the second is
+    the fallback, not a choice the client makes)."""
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"success": False, "errors": ["website not connected"]}
+    site_url, username, app_password = _creds(connection)
+
+    try:
+        installed = {p.get("plugin", "") for p in wp.list_plugins(site_url, username, app_password)}
+        for slug in wp.ACCESSIBILITY_PLUGIN_SLUGS:
+            if any(slug in plugin for plugin in installed):
+                return {"success": True, "already_installed": slug}
+    except wp.WordPressError as e:
+        return {"success": False, "errors": [f"could not list plugins: {e}"]}
+
+    errors = []
+    for slug in wp.ACCESSIBILITY_PLUGIN_SLUGS:
+        try:
+            result = timed_step(
+                AGENT_NAME, "install_accessibility_plugin",
+                lambda s=slug: wp.install_plugin(site_url, username, app_password, s))
+            _log_activity(client_id, "website_accessibility_plugin_installed",
+                          {"slug": slug}, {"plugin": result.get("plugin", "")})
+            return {"success": True, "plugin": result.get("plugin", "")}
+        except wp.WordPressError as e:
+            errors.append(f"{slug}: {e}")
+    agent_alert(AGENT_NAME, [f"client {client_id}: accessibility plugin install failed "
+                             f"on {site_url}: {'; '.join(errors)}"])
+    return {"success": False, "errors": errors}
+
+
+def run_standards_check(client_id: int, auto_install_plugins: bool = True) -> dict:
+    """The standing site-level checklist, run after provisioning and on
+    demand: accessibility + SEO plugins present (auto-installed by default),
+    required page structure, plugin-count speed budget, alt-text sample.
+    Report-only for what it can't fix — missing pages are surfaced, never
+    auto-created empty."""
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"connected": False}
+    site_url, username, app_password = _creds(connection)
+    report = {"connected": True, "site_url": site_url, "issues": [], "fixed": []}
+
+    # 1+2. Plugins: accessibility + SEO present; count within the speed budget
+    try:
+        if auto_install_plugins:
+            a11y = install_accessibility_plugin(client_id)
+            if a11y.get("plugin"):
+                report["fixed"].append(f"installed accessibility plugin {a11y['plugin']}")
+            elif not a11y.get("success"):
+                report["issues"].append("accessibility plugin missing and install failed")
+            seo = install_seo_plugin(client_id)
+            if seo.get("plugin"):
+                report["fixed"].append(f"installed SEO plugin {seo['plugin']}")
+            elif not seo.get("success"):
+                report["issues"].append("SEO plugin missing and install failed")
+        active = [p for p in wp.list_plugins(site_url, username, app_password)
+                  if p.get("status") == "active"]
+        if len(active) > MAX_ACTIVE_PLUGINS:
+            report["issues"].append(
+                f"{len(active)} active plugins (speed budget: {MAX_ACTIVE_PLUGINS}) — "
+                "deactivate what isn't earning its weight")
+    except wp.WordPressError as e:
+        report["issues"].append(f"plugin checks failed: {e}")
+
+    # 3. Required page structure (home = WP front page, always exists)
+    try:
+        pages = wp.list_content(site_url, username, app_password, "page", limit=50)
+        haystacks = [f"{(p.get('title') or {}).get('rendered', '')} {p.get('slug', '')}".lower()
+                     for p in pages]
+        for page_key, keywords in REQUIRED_PAGES.items():
+            if not any(k.lower() in haystack for k in keywords for haystack in haystacks):
+                report["issues"].append(f"required page missing: {page_key} "
+                                        f"(expected one of: {', '.join(keywords[:2])}...)")
+    except wp.WordPressError as e:
+        report["issues"].append(f"page-structure check failed: {e}")
+
+    # 4. Alt text on media (sample of recent uploads)
+    try:
+        media = wp.list_media(site_url, username, app_password, limit=MEDIA_ALT_SAMPLE)
+        missing = [m["id"] for m in media
+                   if str(m.get("mime_type", "")).startswith("image/") and not m.get("alt_text")]
+        if missing:
+            report["issues"].append(f"{len(missing)} of last {len(media)} media items "
+                                    f"missing alt text (ids: {missing[:5]}...) — fix via update_alt_text")
+    except wp.WordPressError as e:
+        report["issues"].append(f"media alt-text check failed: {e}")
+
+    _log_activity(client_id, "website_standards_check",
+                  {"issues": report["issues"], "fixed": report["fixed"]})
+    if report["issues"]:
+        agent_alert(AGENT_NAME, [f"client {client_id}: site standards issues on "
+                                 f"{site_url}: {'; '.join(report['issues'])}"])
+    log_step(AGENT_NAME, "standards_check",
+             f"client {client_id}: {len(report['issues'])} issues, {len(report['fixed'])} fixed")
+    return report
+
+
+def _extract_logo_palette(logo_bytes: bytes) -> list:
+    """Dominant brand colors from a logo image: quantize small, drop
+    near-white/near-black (backgrounds and outlines), return up to 3 hex
+    colors by pixel share."""
+    import io
+    from PIL import Image
+    image = Image.open(io.BytesIO(logo_bytes)).convert("RGB").resize((64, 64))
+    counts = {}
+    for count, rgb in image.getcolors(64 * 64):
+        r, g, b = rgb
+        if max(r, g, b) > 245 or max(r, g, b) < 25:  # near-white / near-black
+            continue
+        counts[rgb] = counts.get(rgb, 0) + count
+    # Quantize similar shades together (32-step buckets) so anti-aliasing
+    # doesn't fragment one brand color into dozens of entries. Each bucket
+    # keeps its heaviest exact shade as the representative color.
+    buckets = {}  # bucket key -> [representative rgb, rep count, bucket total]
+    for (r, g, b), count in counts.items():
+        key = (r // 32, g // 32, b // 32)
+        bucket = buckets.setdefault(key, [(r, g, b), count, 0])
+        if count > bucket[1]:
+            bucket[0], bucket[1] = (r, g, b), count
+        bucket[2] += count
+    top = sorted(buckets.values(), key=lambda bucket: -bucket[2])[:3]
+    return ["#{:02X}{:02X}{:02X}".format(*rgb) for rgb, _, _ in top]
+
+
+def apply_brand_identity(client_id: int, logo_url: str = "", industry_hint: str = "") -> dict:
+    """THE brand-identity step for every site build/edit — and the extension
+    point future logo/media-generation agents plug into (they call this same
+    function with their generated logo URL; nothing else changes).
+
+    Logo present → analyze it (dominant colors) and that palette drives the
+    site. No logo → NEVER block and NEVER ask the client design questions
+    (standing rule: zero design questionnaire — industry/tone already live in
+    the sales-chat data): fall back to the neutral-by-industry palette.
+
+    v1 records the decision (activity log + return value) for content/site
+    work to consume; automated theme re-skinning from the palette is the
+    deferred half — see the website skill."""
+    palette, source = None, ""
+    if logo_url:
+        try:
+            palette = _extract_logo_palette(wp.fetch_bytes(logo_url))
+            source = "logo"
+        except Exception as e:
+            log_step(AGENT_NAME, "apply_brand_identity",
+                     f"client {client_id}: logo analysis failed ({e}) — using neutral palette")
+    if not palette:
+        key = (industry_hint or "").strip().lower()
+        palette = list(NEUTRAL_PALETTES.get(key, NEUTRAL_PALETTES["default"]))
+        source = f"neutral_{key or 'default'}"
+
+    _log_activity(client_id, "website_brand_identity",
+                  {"source": source, "palette": palette, "logo_url": logo_url})
+    log_step(AGENT_NAME, "apply_brand_identity", f"client {client_id}: {source} {palette}")
+    return {"success": True, "source": source, "palette": palette}
+
+
 # ─── Phase 2: provision a NEW site (InstaWP, admin-triggered only) ────────────
 
-def provision_site(client_id: int, site_name: str = "") -> dict:
+def provision_site(client_id: int, site_name: str = "",
+                   logo_url: str = "", industry_hint: str = "") -> dict:
     """Spin up a real WordPress site for a client who has none: clone the
     uallak master template on InstaWP (reserved = billable — the hosting cost
     passthrough in PRICING exists because of this call), then rotate the
@@ -373,7 +628,19 @@ def provision_site(client_id: int, site_name: str = "") -> dict:
                   {"site_url": site_url, "provider": "instawp",
                    "site_id": site.get("id")})
     log_step(AGENT_NAME, "provision_site", f"client {client_id}: live at {site_url}")
-    return {"success": True, "site_url": site_url, "site_id": site.get("id")}
+
+    # Standing rules kick in immediately on every new site: plugins + page
+    # structure (verifies the template kept its shape) and brand identity
+    # (logo analysis or the neutral-by-industry fallback). Both are
+    # best-effort here — the site IS provisioned; problems alert, not abort.
+    result = {"success": True, "site_url": site_url, "site_id": site.get("id")}
+    try:
+        result["standards"] = run_standards_check(client_id)
+        result["brand"] = apply_brand_identity(client_id, logo_url, industry_hint)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: post-provision standards/brand "
+                                 f"step failed on {site_url}: {e}"])
+    return result
 
 
 def populate_site(client_id: int, items: list) -> dict:

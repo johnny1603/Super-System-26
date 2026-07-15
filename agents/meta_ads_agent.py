@@ -158,6 +158,22 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     return result
 
 
+def get_conversions_yesterday(client_id: int):
+    """Total conversions (our CONVERSION_ACTION_TYPES sum, FB+IG combined)
+    for yesterday, for the daily sales-alert email (engagement_agent).
+    None = not connected or fetch failed (caller skips silently)."""
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return None
+    try:
+        rows = meta.get_campaign_insights(conn["access_token"], conn["account_id"],
+                                          date_preset="yesterday")
+        return round(sum(_conversions_from_actions(r.get("actions")) for r in rows), 1)
+    except Exception as e:
+        log_step(AGENT_NAME, "get_conversions_yesterday", f"client {client_id}: failed ({e})")
+        return None
+
+
 def _set_campaign_status(client_id: int, campaign_id: str, status: str, action: str) -> dict:
     from agents.client_agent import log_activity
 
@@ -561,10 +577,19 @@ def run_health_scan() -> dict:
                 msg = (f"campaign '{broken['name']}' ({cid}) has {broken['ads']} flagged ad(s) "
                        f"[{', '.join(sorted(broken['statuses']))}] - "
                        f"{'auto-PAUSED' if paused else 'PAUSE FAILED, check manually'}")
-                _raise_issue(client_id, f"meta_disapproved_{cid}", msg, auto_paused=paused)
+                newly_raised = _raise_issue(client_id, f"meta_disapproved_{cid}", msg, auto_paused=paused)
                 summary["issues"].append(msg)
                 if paused:
                     summary["campaigns_paused"].append(cid)
+                    # Urgent approve/fix decision for the CLIENT -> WhatsApp SOS
+                    # (gated on newly_raised so the 3-day dedup covers it too)
+                    if newly_raised:
+                        from agents.engagement_agent import notify_client_urgent
+                        notify_client_urgent(
+                            client_id,
+                            f"⚠️ עדכון דחוף מ-uallak: הקמפיין '{broken['name']}' בפייסבוק/אינסטגרם "
+                            "הושהה אוטומטית בגלל מודעות שסומנו. הצוות כבר מטפל בזה - "
+                            "פרטים בדשבורד, ואפשר לענות לנו שם בצ'אט.")
 
             # 3. Performance problems (alert only)
             campaigns = _fetch_two_window_metrics(conn)

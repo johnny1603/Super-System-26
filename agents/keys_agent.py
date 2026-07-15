@@ -17,6 +17,8 @@ KEYS = {
     "META_APP_ID": os.environ.get("META_APP_ID", ""),
     "META_APP_SECRET": os.environ.get("META_APP_SECRET", ""),
     "INSTAWP_API_KEY": os.environ.get("INSTAWP_API_KEY", ""),
+    "GREEN_API_INSTANCE_ID": os.environ.get("GREEN_API_INSTANCE_ID", ""),
+    "GREEN_API_TOKEN": os.environ.get("GREEN_API_TOKEN", ""),
     # The Application Password baked into the uallak master template site on InstaWP -
     # every provisioned clone inherits it, and provision_site() immediately swaps it
     # for a per-site one (see the website skill)
