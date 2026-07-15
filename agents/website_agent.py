@@ -151,7 +151,9 @@ def _get_connection(client_id: int) -> dict:
         .eq("client_id", client_id)
         .eq("platform", WORDPRESS_PLATFORM)
         .eq("status", "active")
-        .order("created_at", desc=True)
+        # newest row wins; client_accounts has no created_at column, so order
+        # by the auto-incrementing id (same semantics)
+        .order("id", desc=True)
         .limit(1)
         .execute()
     )
