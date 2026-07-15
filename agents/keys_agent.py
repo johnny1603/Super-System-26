@@ -16,6 +16,11 @@ KEYS = {
     "GOOGLE_OAUTH_CLIENT_SECRET": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
     "META_APP_ID": os.environ.get("META_APP_ID", ""),
     "META_APP_SECRET": os.environ.get("META_APP_SECRET", ""),
+    "INSTAWP_API_KEY": os.environ.get("INSTAWP_API_KEY", ""),
+    # The Application Password baked into the uallak master template site on InstaWP -
+    # every provisioned clone inherits it, and provision_site() immediately swaps it
+    # for a per-site one (see the website skill)
+    "WEBSITE_TEMPLATE_APP_PASSWORD": os.environ.get("WEBSITE_TEMPLATE_APP_PASSWORD", ""),
 }
 
 def get_key(name):

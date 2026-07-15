@@ -27,7 +27,20 @@ PRICING = {
         "base_setup_fee": 500,
         "base_covers": "up to 1-2 simple automations/integrations (e.g. one lead-response bot + one basic CRM connection) — more or more complex automations scale the fee up proportionally"
     },
-    "website": {"setup_min": 700, "setup_max": 2000, "profit_margin": 0.35},
+    "website": {
+        "setup_min": 700, "setup_max": 2000, "profit_margin": 0.35,
+        # Phase 2 (decided 2026-07): every NEW client site is WordPress, provisioned on
+        # managed per-site hosting (InstaWP; Starter plan ~$5/mo as the cost basis with
+        # FX buffer). A real recurring cost -> passed through to the client with the same
+        # >=35% website margin as ONE extra monthly_breakdown line on new-build packages
+        # only. The client's domain stays client-paid directly (like ad spend).
+        "new_site_hosting": {
+            "provider": "instawp",
+            "cost_monthly_ils": 25,
+            "client_monthly_ils": 50,
+            "label_he": "אחסון ותשתית אתר",
+        },
+    },
 
     # Organic SEO — client pays the tool subscription directly, we operate it for them
     "seo_tiers": {
@@ -250,7 +263,8 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      "ניהול מטא": 350, "ניהול גוגל": 350), plus the minimum-floor line only when no platform group is
      included, plus the ad-spend surcharge line below if it applies. Do NOT add separate monthly line
      items for non-platform services (SEO, email, organic social, automation) - those are covered by
-     whichever platform-group fee(s) or the minimum floor already present, not billed again
+     whichever platform-group fee(s) or the minimum floor already present, not billed again. The ONLY
+     other monthly line allowed is the new-site hosting line from BUDGET PYRAMID #5, when it applies
    - If the recommended/actual ad spend budget for a package exceeds
      {PRICING['monthly_ad_spend_surcharge_threshold']} NIS/month, add
      {PRICING['monthly_ad_spend_surcharge_pct'] * 100:.0f}% of the amount ABOVE that threshold as a
@@ -303,12 +317,21 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
        explicitly say their stated organic budget is below the recommended minimum and state what
        that minimum actually is ({PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS/month)
 
-5) EXISTING WEBSITE — FIX VS REBUILD:
+5) WEBSITE — FIX EXISTING VS BUILD NEW (both are WordPress):
    - If the client already has a website, a package may offer "improve/fix the existing site" as an
      alternative to "build a new site" when that's the more sensible path for their organic SEO needs
    - Any such website work (new build or fix) relies on automated SEO tooling (SEMrush/Ahrefs-style
      automated audits and fixes), never manual page-by-page human labor — we don't do manual per-page
      work by hand at scale, so never describe deliverables that imply that
+   - NEW-SITE HOSTING PASSTHROUGH: when (and ONLY when) a package includes building a NEW website,
+     add ONE extra monthly_breakdown line —
+     "{PRICING['website']['new_site_hosting']['label_he']}": {PRICING['website']['new_site_hosting']['client_monthly_ils']}
+     — and include it in monthly_management_total. This is the managed WordPress hosting the new
+     site runs on: a real recurring cost we pay per site, passed through with margin, never
+     absorbed. Never add this line for fix-existing-site work or when the client keeps their own
+     hosting. The client's DOMAIN is separate and stays client-paid directly (like ad spend) —
+     when a package includes a new site, honest_note's external-costs point must mention the domain
+     (~80-100 NIS/year, paid by the client directly) alongside ad spend
 
 6) AUTOMATION SETUP SCOPE:
    - The base automation setup fee ({PRICING['automation']['base_setup_fee']} NIS) covers

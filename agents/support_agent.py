@@ -46,6 +46,12 @@ def consult_platform_agent(client_id: int, platform: str, question: str):
         if performance.get("connected"):
             return performance
         return "חשבון Meta עדיין לא מחובר - אפשר לחבר אותו בלחיצה על 'חבר עכשיו' בדשבורד"
+    if platform in ("website", "wordpress", "site"):
+        from agents.website_agent import get_site_overview
+        overview = get_site_overview(client_id)
+        if overview.get("connected"):
+            return overview
+        return "האתר עדיין לא מחובר - אפשר לחבר אותו בכרטיס 'האתר שלך' בדשבורד"
     return f"אין עדיין חיבור לנתונים בזמן אמת של {platform} - זה יתווסף בקרוב"
 
 
@@ -84,6 +90,12 @@ yet - warmly point them to the "חבר עכשיו" button in the dashboard. TikT
 connection yet; if asked about it, say so honestly and mention it's coming soon. Never
 invent campaign numbers.
 
+Website data: a "website_overview" field is REAL live data from the client's connected
+WordPress site (site name, recent posts/pages and their statuses, whether an SEO plugin is
+installed) - use it for "what's happening with my site" questions, citing actual titles and
+statuses only. Same rules as ad platforms: "error" field means a temporary read issue; no
+field means the site isn't connected yet - point them to the "האתר שלך" card in the dashboard.
+
 If the question is genuinely unclear, unrelated to their account, or something you can't
 answer confidently from the given data (this is different from "no platform data yet") -
 say so honestly, tell the client a team member will follow up personally, and set
@@ -120,8 +132,10 @@ def answer_support_question(client_id: int, message: str) -> dict:
     # means "how are my campaigns doing?" gets actual numbers, not a canned line.
     from agents.google_ads_agent import get_campaign_performance as google_performance
     from agents.meta_ads_agent import get_campaign_performance as meta_performance
+    from agents.website_agent import get_site_overview as website_overview
     for field, fetch in (("google_ads_performance", google_performance),
-                         ("meta_ads_performance", meta_performance)):
+                         ("meta_ads_performance", meta_performance),
+                         ("website_overview", website_overview)):
         performance = fetch(client_id)
         if performance.get("connected"):
             payload[field] = performance

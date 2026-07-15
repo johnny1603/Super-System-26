@@ -556,7 +556,10 @@ async def dashboard_data(request: Request):
         },
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
-        "connections": accounts,
+        # Never ship stored credentials to the browser - the dashboard only
+        # needs platform + status to paint the connection cards
+        "connections": [{"platform": a.get("platform"), "status": a.get("status")}
+                        for a in accounts],
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
         "tour_completed": tour_completed,
@@ -1039,6 +1042,123 @@ def meta_content_engagement(client_id: int):
     from agents.meta_content_agent import get_engagement_summary
     try:
         return {"success": True, "data": get_engagement_summary(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Website (client connects their WordPress site — no OAuth, App Password) ─
+
+class WebsiteConnectRequest(BaseModel):
+    site_url: str
+    username: str
+    app_password: str
+
+@app.post("/api/website/connect")
+def website_connect(req: WebsiteConnectRequest, request: Request):
+    # Session-gated like the OAuth starts; plain `def` — validation makes
+    # blocking httpx calls to the client's site
+    client_id = _require_session(request)
+    from agents.website_agent import connect_site
+    result = connect_site(client_id, req.site_url, req.username, req.app_password)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "connection failed"))
+    return {"success": True, "data": result}
+
+# ─── Website execution (admin/scheduler only) ────────────────────────────────
+
+class WebsitePublishRequest(BaseModel):
+    client_id: int
+    kind: str = "post"     # post | page
+    title: str
+    content: str           # HTML body - already generated, this is just the pipe
+    excerpt: str = ""
+    slug: str = ""
+    status: str = "draft"  # draft by default - a human publishes (like PAUSED campaigns)
+
+@app.post("/api/website/publish", dependencies=_admin_only)
+def website_publish(req: WebsitePublishRequest):
+    from agents.website_agent import publish_content
+    result = publish_content(req.client_id, req.model_dump(exclude={"client_id"}))
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class WebsiteUpdateRequest(BaseModel):
+    client_id: int
+    content_type: str = "post"  # post | page
+    content_id: int
+    fields: dict                # whitelisted in the agent (title/content/excerpt/slug/status/featured_media)
+
+@app.post("/api/website/update", dependencies=_admin_only)
+def website_update(req: WebsiteUpdateRequest):
+    from agents.website_agent import update_content
+    result = update_content(req.client_id, req.content_type, req.content_id, req.fields)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class WebsiteAltTextRequest(BaseModel):
+    client_id: int
+    media_id: int
+    alt_text: str
+
+@app.post("/api/website/alt-text", dependencies=_admin_only)
+def website_alt_text(req: WebsiteAltTextRequest):
+    from agents.website_agent import update_alt_text
+    result = update_alt_text(req.client_id, req.media_id, req.alt_text)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class WebsiteSeoPluginRequest(BaseModel):
+    client_id: int
+
+@app.post("/api/website/install-seo-plugin", dependencies=_admin_only)
+def website_install_seo_plugin(req: WebsiteSeoPluginRequest):
+    from agents.website_agent import install_seo_plugin
+    result = install_seo_plugin(req.client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class WebsiteProvisionRequest(BaseModel):
+    client_id: int
+    site_name: str = ""  # optional subdomain hint; InstaWP auto-names if empty
+
+@app.post("/api/website/provision", dependencies=_admin_only)
+def website_provision(req: WebsiteProvisionRequest):
+    # Creates a BILLABLE hosted site (reserved InstaWP clone) - admin/fulfillment
+    # only, never client-facing. Plain `def`: provisioning polls for minutes.
+    from agents.website_agent import provision_site
+    result = provision_site(req.client_id, req.site_name)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class WebsitePopulateRequest(BaseModel):
+    client_id: int
+    items: list  # publish_content specs: [{kind,title,content,excerpt,slug,status}]
+
+@app.post("/api/website/populate", dependencies=_admin_only)
+def website_populate(req: WebsitePopulateRequest):
+    from agents.website_agent import populate_site
+    result = populate_site(req.client_id, req.items)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/website/overview", dependencies=_admin_only)
+def website_overview(client_id: int):
+    from agents.website_agent import get_site_overview
+    try:
+        return {"success": True, "data": get_site_overview(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/website/scan", dependencies=_admin_only)
+def website_scan():
+    from agents.website_agent import run_health_scan
+    try:
+        return {"success": True, "data": run_health_scan()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

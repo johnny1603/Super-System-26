@@ -163,6 +163,17 @@ body {
 .conn-btn.connected-btn { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: default; }
 .conn-btn.locked-btn { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed; }
 .lock-note { font-size: 11.5px; color: var(--accent); margin-top: -6px; }
+.site-input {
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  background: var(--panel);
+  color: inherit;
+}
 
 /* ---------- ACTIVITY FEED ---------- */
 .activity-list {
@@ -607,11 +618,18 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
         </div>
         <div>
-          <div class="conn-name">האתר שלך</div>
-          <div class="conn-status">חיבור יתווסף בקרוב</div>
+          <div class="conn-name">האתר שלך (WordPress)</div>
+          <div class="conn-status" id="siteStatus">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled>בקרוב</button>
+      <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()">חבר עכשיו</button>
+      <div id="siteForm" style="display:none; margin-top:10px;">
+        <input class="site-input" id="siteUrl" dir="ltr" placeholder="כתובת האתר, למשל mysite.co.il">
+        <input class="site-input" id="siteUser" dir="ltr" placeholder="שם משתמש WordPress">
+        <input class="site-input" id="sitePass" dir="ltr" type="password" placeholder="Application Password">
+        <div class="lock-note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
+        <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()">חיבור</button>
+      </div>
     </div>
 
     <div class="conn-card unlocked">
@@ -800,6 +818,14 @@ const ACTIVITY_LABELS = {
   'comment_replied': 'הצוות הגיב לתגובה בעמוד שלך',
   'content_inbox_surfaced': 'התקבלו תגובות/הודעות חדשות — הצוות עודכן',
   'checkout_details': 'פרטי יצירת קשר נשמרו',
+  'website_connected': 'האתר שלך חובר בהצלחה',
+  'website_content_created': 'תוכן חדש נוצר באתר שלך',
+  'website_content_updated': 'תוכן באתר שלך עודכן',
+  'website_seo_updated': 'בוצע שיפור SEO באתר שלך',
+  'website_seo_plugin_installed': 'תוסף SEO הותקן באתר שלך',
+  'website_issue_detected': 'זוהתה בעיה באתר — הצוות מטפל',
+  'website_provisioned': 'האתר החדש שלך הוקם ועלה לאוויר',
+  'website_populated': 'תוכן ראשוני הועלה לאתר החדש שלך',
 };
 
 async function loadDashboard() {
@@ -855,6 +881,9 @@ async function loadDashboard() {
     // One Meta consent may connect the ad account, the Page, or both
     if (conns.some(c => ['meta_ads', 'meta_page'].includes(c.platform) && c.status === 'active')) {
       markMetaConnected();
+    }
+    if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
+      markWebsiteConnected();
     }
 
     // First visit → auto-run the tour
@@ -987,6 +1016,50 @@ function markPlatformConnected(statusId, btnId) {
 
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn'); }
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn'); }
+
+function markWebsiteConnected() {
+  markPlatformConnected('siteStatus', 'siteBtn');
+  document.getElementById('siteForm').style.display = 'none';
+}
+
+function toggleSiteForm() {
+  const form = document.getElementById('siteForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+// WordPress has no OAuth redirect - the client pastes an Application Password
+// (created in wp-admin) and we validate it server-side before storing
+async function connectWebsite() {
+  const site_url = document.getElementById('siteUrl').value.trim();
+  const username = document.getElementById('siteUser').value.trim();
+  const app_password = document.getElementById('sitePass').value.trim();
+  if (!site_url || !username || !app_password) {
+    showNotice('נא למלא את כל שדות החיבור של האתר', 'warn');
+    return;
+  }
+  const btn = document.getElementById('siteSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'מתחבר...';
+  try {
+    const res = await fetch('/api/website/connect', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_url, username, app_password }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      markWebsiteConnected();
+      showNotice('האתר חובר בהצלחה ✓', 'success');
+      return;
+    }
+  } catch (e) {
+    console.error('website connect failed', e);
+  }
+  btn.disabled = false;
+  btn.textContent = 'חיבור';
+  showNotice('חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', 'warn');
+}
 
 // ─── support chat ────────────────────────────────────────────────────────────
 let supportHistoryLoaded = false;

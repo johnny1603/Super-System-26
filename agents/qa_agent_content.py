@@ -44,7 +44,9 @@ version that fixes anything that fails:
     video or articles appear in setup_fee_breakdown; that would wrongly imply an extra 350
     NIS/month management fee. If such standard deliverables are itemized as separate
     setup_fee_breakdown lines beyond the floor line, fold them back into the floor line instead
-    (keeping setup_fee_total unchanged)
+    (keeping setup_fee_total unchanged). SECOND EXEMPTION: a monthly line "אחסון ותשתית אתר"
+    (managed hosting passthrough, only on packages that build a NEW website) is legitimate
+    without any recommended_services entry — never flag, remove, or "match" it
 12. HONEST_NOTE VS SCARCITY_NOTE SEPARATION — honest_note must contain ONLY factual/operational
     disclosures (ad spend/SEO tool cost transparency, payment timeline, support model, organic SEO
     shortfall). The payment timeline legitimately includes the FACT that month 2 carries no

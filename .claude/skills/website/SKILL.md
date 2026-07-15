@@ -1,0 +1,183 @@
+---
+name: website
+description: How uallak's website agent works — WordPress REST integration for editing/publishing on a client's site (Application Password auth, no OAuth), SEO basics, plugin installs, AND Phase-2 provisioning of NEW WordPress sites on InstaWP with hosting cost passthrough in PRICING. Use when touching agents/website_agent.py, core/wordpress_service.py, core/instawp_service.py, any /api/website* endpoint, or the website pricing in onboarding_agent.
+---
+
+# Website agent (existing WordPress sites + new-site provisioning)
+
+## Scope split
+
+- **Phase 1 (BUILT):** control a client's existing WordPress site — publish/edit
+  posts and pages, basic SEO fixes (slug, excerpt, media alt text), install a
+  free SEO plugin, health-scan connections. `agents/website_agent.py` +
+  `core/wordpress_service.py`.
+- **Phase 2 (BUILT, 2026-07 — business decision: WordPress ONLY, no
+  static/Wix/Webflow route):** provision NEW WordPress sites on InstaWP for
+  clients who have none, then reuse every Phase-1 tool to populate them.
+  `core/instawp_service.py` + `provision_site`/`populate_site` in the agent +
+  the hosting passthrough in `PRICING["website"]["new_site_hosting"]`.
+
+## Auth model — Application Password, NOT OAuth
+
+WordPress core (since 5.6) ships **Application Passwords**: a per-app
+24-character password the client creates in wp-admin → Users → Profile →
+Application Passwords. Every request is plain HTTP Basic auth over HTTPS.
+There is no consent redirect, so the dashboard card ("האתר שלך (WordPress)")
+opens an inline form (site URL + WP username + app password) →
+`POST /api/website/connect` (session-gated, plain `def`) →
+`website_agent.connect_site()` validates against the live site
+(`wp/v2/users/me?context=edit` + root index) before storing.
+
+Storage — ONE `client_accounts` row: `platform='wordpress'`,
+`account_id`=normalized site URL (`https://…`, no trailing slash),
+`access_token`=`username:app_password` (WP usernames can't contain `:`, so
+the split is safe). Same plaintext-at-rest MVP debt as Google/Meta tokens.
+
+Application Passwords are revocable in wp-admin at any time — the daily scan
+exists because a client (or their old webmaster) can kill the connection
+without telling us.
+
+## File map
+
+- `core/wordpress_service.py` — HTTP only (mirrors meta_service):
+  `rest_get`/`rest_post` primitives against `{site}/wp-json/…`,
+  `WordPressError` (HTTP status + WP error code, `is_auth_error()`),
+  `normalize_site_url`, site info + SEO-plugin detection (REST namespaces:
+  `yoast/v1` → yoast, `rankmath/v1` → rank_math — free, no extra call),
+  posts/pages CRUD, media alt-text update, `upload_media_from_url` (WP can't
+  fetch a URL itself — we download ≤10 MB and re-upload), plugin
+  list/install/activate (`wp/v2/plugins`, core since WP 5.5).
+- `agents/website_agent.py` — business logic per house blueprint, **no LLM
+  calls** (pipe pattern like meta_content_agent): `connect_site`,
+  `is_connected`, `get_site_overview` (5-min cache; feeds support chat),
+  `publish_content` (**defaults to `status='draft'`** — human reviews and
+  publishes, same principle as campaigns created PAUSED), `update_content`
+  (EDITABLE_FIELDS whitelist: title/content/excerpt/slug/status/featured_media),
+  `update_alt_text`, `install_seo_plugin` (free Yoast from wordpress.org,
+  no-op if any SEO plugin detected), `run_health_scan` (daily; alerts on dead
+  credentials/unreachable sites, 3-day dedup via `website_issue_detected`
+  activity rows).
+- `core/instawp_service.py` — HTTP only, InstaWP control plane (Phase 2):
+  create-from-template, task polling, delete (failure cleanup only).
+- `agents/support_agent.py` — injects `website_overview` into the LLM payload
+  when connected; `consult_platform_agent` answers "website"/"wordpress"/"site".
+- `dashboard/client/index.html` — the connect card + form
+  (`connectWebsite()`), `wordpress` in the connections check, activity labels.
+
+## Endpoints
+
+Client-facing: `POST /api/website/connect` (session cookie).
+Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,
+`POST /api/website/update`, `POST /api/website/alt-text`,
+`POST /api/website/install-seo-plugin`, `POST /api/website/provision`,
+`POST /api/website/populate`, `GET /api/website/overview?client_id=`,
+`GET /api/website/scan` (daily).
+
+Scheduler job (same pattern as the other scans):
+
+```
+gcloud scheduler jobs create http website-scan --schedule="30 7 * * *" \
+  --uri="{SERVICE_URL}/api/website/scan" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}
+```
+
+## Cost discipline (the design rule for this agent)
+
+Everything Phase 1 does is FREE: core WP REST API + free wordpress.org
+plugins. Deliberately unreachable from the code: paid plugin/theme licenses,
+hosting, domains — anything with a price tag is a client-billed decision
+(same principle as ad spend), never an automatic install. `install_plugin`
+only accepts wordpress.org slugs for this reason.
+
+## Gotchas
+
+- **Basic auth requires HTTPS and can be disabled** — some hosts/security
+  plugins block Application Passwords entirely (`connect_site` then fails
+  with 401 even with correct credentials). The client-facing error already
+  hints at this; the fix is a setting on THEIR site/host.
+- **The WP user's role caps what we can do** — an Editor can post but can't
+  install plugins (`install_plugins` capability, admins only; on multisite,
+  super-admin only). `connect_site` records `can_manage_plugins` in the
+  activity log at connect time.
+- **Titles/content come back as objects** — `{"rendered": "…"}` (and
+  `context=edit` adds `raw`). Cast before displaying; overview already does.
+- **Yoast/Rank Math meta fields are NOT writable via core REST** — detection
+  is easy (namespaces) but writing meta title/description needs the plugin's
+  own endpoints or `register_meta` glue. Phase 1 handles core fields only
+  (slug, excerpt, alt text); plugin-meta writing is deferred.
+- **Blocking httpx** → every endpoint touching WP must be plain `def`
+  (threadpool), never `async def` — same rule as Google/Meta.
+- The Supabase JSON-field dedup filter is `details->>issue_key` (same idiom
+  as the ads scans' issue keys).
+
+## Phase 2 — provisioning NEW sites (InstaWP)
+
+Decision (2026-07): WordPress only, on **InstaWP** per-site managed hosting
+(verified current: production plans $5 Starter → $45 Elite /mo, billed daily,
+custom domains + free SSL, API v2 with Bearer token). Cost basis in PRICING
+assumes Starter.
+
+**Flow** (`provision_site(client_id, site_name)` — admin-triggered via
+`POST /api/website/provision`, X-Admin-Key):
+
+1. `POST {api}/sites/template` with `template_slug` +
+   **`is_reserved: true`** (= permanent = BILLABLE from this moment) →
+   returns `wp_url`, `wp_username`, `wp_password`, `s_hash`, and — when not
+   pool-served — `task_id`, polled via `GET tasks/{id}/status`.
+2. **Credential rotation** — the trick that avoids InstaWP's undocumented
+   command API entirely: Application Passwords live in the site DB, so every
+   clone INHERITS the master template's known app password. The agent uses it
+   once to mint a per-site password (`POST wp/v2/users/me/application-passwords`,
+   plaintext returned exactly once), then deletes every other app password on
+   the clone. Stored as the standard Phase-1 row: `platform='wordpress'`,
+   `account_id`=site URL, `access_token`='user:per-site-password'.
+3. Failure at any step → alert + `DELETE sites/{id}` cleanup (a reserved site
+   bills until deleted; if cleanup also fails a second alert says to delete it
+   manually).
+4. `populate_site(client_id, items)` (`POST /api/website/populate`) pipes
+   already-generated initial content (landing/base pages, the 10 setup
+   articles) through Phase-1 `publish_content` — drafts by default, per-item
+   alerting, nothing rebuilt.
+
+**One-time manual setup (required before first provision):**
+
+1. Create the uallak **master template site** in InstaWP: Hebrew/RTL theme,
+   base page skeleton, admin user (default name `uallak`), and an Application
+   Password for that user, created in wp-admin.
+2. Save a template from it; put its slug in `WEBSITE_TEMPLATE_SLUG`.
+3. Env vars on Cloud Run: `INSTAWP_API_KEY` +
+   `WEBSITE_TEMPLATE_APP_PASSWORD` (both in keys_agent KEYS),
+   `WEBSITE_TEMPLATE_SLUG` + `WEBSITE_TEMPLATE_WP_USERNAME` (plain env,
+   username defaults to `uallak`).
+
+**Cost passthrough (PRICING["website"]["new_site_hosting"]):** cost basis
+25 NIS/mo (Starter ~$5 + FX buffer) → client pays **50 NIS/mo** ("אחסון
+ותשתית אתר") as an extra monthly_breakdown line INCLUDED in
+monthly_management_total — only on packages that build a NEW site, never on
+fix-existing work. Encoded in build_proposal's BUDGET PYRAMID #5; the
+monthly-line whitelist in #1 names this as the only allowed non-platform
+line. Because benefit_value = 2×monthly_management_total (numeric QA), the
+two benefit months also waive the hosting line (~50 NIS of real cost
+absorbed per client — accepted). The client's DOMAIN stays client-paid
+directly (honest_note mentions it for new-site packages).
+
+**Phase-2 gotchas:**
+
+- `is_reserved: true` is the money switch — never call provision from a
+  client-facing flow, and never "retry" a timeout without checking the
+  InstaWP dashboard for a half-created site first.
+- provision_site refuses when the client already has an active `wordpress`
+  row (would orphan a paid site) — disconnect deliberately first.
+- InstaWP responses wrap in `{status, message, data}`; the service unwraps
+  `data` and treats `status: false` as an error even on HTTP 200.
+- Custom-domain mapping (client's own domain → provisioned site) is a MANUAL
+  InstaWP-dashboard step for now — clients launch on the `*.instawp.xyz`
+  subdomain until done; automating the mapping API is deferred.
+
+## Deferred / not built
+
+Custom-domain mapping automation, plan auto-upgrades (Starter → Plus when a
+site outgrows it — watch disk/CPU manually for now), writing Yoast/Rank Math
+meta fields, WooCommerce anything, comment moderation on WP sites,
+site-speed/uptime monitoring beyond the daily credential scan, media library
+cleanup, multi-site (one WP row per client), token encryption at rest (same
+accepted MVP debt as Google/Meta).
