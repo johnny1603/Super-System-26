@@ -303,3 +303,39 @@ def notify_client_urgent(client_id: int, message_he: str) -> dict:
     log_activity(client_id, AGENT_NAME, "urgent_notification",
                  {"channel": "whatsapp", "sent": sent}, {"message": message_he[:200]})
     return {"success": True, "whatsapp_sent": sent}
+
+
+PAYMENT_FAILURE_MESSAGE_HE = (
+    "⚠️ עדכון חשוב מ-uallak: ניסיון החיוב האחרון לא עבר (כרטיס או חשבון PayPal). "
+    "כדי שהשירות ימשיך לרוץ בלי הפרעה, כדאי לבדוק את אמצעי התשלום - "
+    "ואם צריך עזרה, אנחנו זמינים בצ'אט בדשבורד."
+)
+
+
+def notify_payment_failure(client_id: int, event_type: str) -> dict:
+    """Failed purchase/checkout charge (PayPal webhook: payment failed /
+    denied / subscription suspended) — a lost-sale moment, so it rides the
+    SOS rung. Deduped per calendar day because PayPal retries failed charges
+    and each retry fires the webhook again.
+
+    Today this covers the only checkout in the system (uallak's own PayPal
+    flow). When client-webshop e-commerce integration exists (WooCommerce —
+    deferred), its failed-checkout events must call THIS function, not grow
+    a parallel notification path."""
+    from agents.client_agent import log_activity
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rows = (_db().table("client_activity").select("id")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "payment_failure_notified")
+            .eq("details->>date", today).limit(1).execute().data)
+    if rows:
+        return {"success": True, "skipped": "already notified today"}
+
+    # The team hears about it too — a failing charge often ends in churn
+    agent_alert(AGENT_NAME, [f"client {client_id}: PayPal payment failure "
+                             f"({event_type}) — lost-sale moment, follow up"])
+    result = notify_client_urgent(client_id, PAYMENT_FAILURE_MESSAGE_HE)
+    log_activity(client_id, AGENT_NAME, "payment_failure_notified",
+                 {"date": today, "event_type": event_type}, {})
+    return result

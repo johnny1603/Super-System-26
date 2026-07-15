@@ -339,12 +339,22 @@ async def paypal_webhook(request: Request):
         "BILLING.SUBSCRIPTION.RE-ACTIVATED",
         "PAYMENT.SALE.COMPLETED",
     }
-    if event_type in ACTIVATION_EVENTS:
+    # A failed charge is a lost-sale moment - SOS ladder, not just a log line
+    PAYMENT_FAILURE_EVENTS = {
+        "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+        "PAYMENT.SALE.DENIED",
+        "BILLING.SUBSCRIPTION.SUSPENDED",  # PayPal suspends after repeated failures
+    }
+    if event_type in ACTIVATION_EVENTS or event_type in PAYMENT_FAILURE_EVENTS:
         client_id_raw = resource.get("custom_id") or resource.get("custom")
         if client_id_raw:
             try:
                 client_id = int(client_id_raw)
-                _mark_paid_and_notify(client_id, resource.get("id"), source="paypal_webhook")
+                if event_type in ACTIVATION_EVENTS:
+                    _mark_paid_and_notify(client_id, resource.get("id"), source="paypal_webhook")
+                else:
+                    from agents.engagement_agent import notify_payment_failure
+                    notify_payment_failure(client_id, event_type)
             except (TypeError, ValueError):
                 print(f"[paypal webhook] could not parse client_id from custom_id={client_id_raw}")
         else:

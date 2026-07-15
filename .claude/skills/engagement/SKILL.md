@@ -67,12 +67,29 @@ in their console; Johnny has an existing account). Optional
 `GREEN_API_BASE_URL` for instances with a dedicated subdomain (shown in the
 console, e.g. `https://1103.api.green-api.com`).
 
+**Instance topology (decided 2026-07-16): ONE Green API instance for
+everything** — production and any testing share it; no separate dev instance
+until the cost is justified. Be careful testing sends: they go out on the
+real business WhatsApp number.
+
 `engagement_agent.notify_client_urgent(client_id, message_he)` is the ONLY
 proper entry point: WhatsApp + always a dashboard-chat fallback copy +
-`agent_alert` when a configured send fails + activity log. Wired today into
-both ads health scans at the auto-pause site (gated on the scans' 3-day issue
-dedup so WhatsApp can't spam), and exposed for manual use as
-`POST /api/notify/whatsapp` (admin).
+`agent_alert` when a configured send fails + activity log. Exposed for manual
+use as `POST /api/notify/whatsapp` (admin).
+
+**SOS triggers wired today** (the full approved list — additions need the
+same one-per-incident dedup discipline):
+1. Campaign auto-paused by an ads health scan (Google/Meta, gated on the
+   scans' 3-day issue dedup).
+2. Failed purchase/checkout charge — PayPal webhook events
+   `BILLING.SUBSCRIPTION.PAYMENT.FAILED` / `PAYMENT.SALE.DENIED` /
+   `BILLING.SUBSCRIPTION.SUSPENDED` → `notify_payment_failure(client_id,
+   event_type)`, deduped per calendar day (PayPal retries re-fire the
+   webhook). This covers the only checkout that exists (uallak's own PayPal
+   flow); when client-webshop e-commerce lands (WooCommerce — deferred), its
+   failed checkouts must call the SAME function, not a parallel path.
+   Requires the failure event types to be subscribed on the webhook in the
+   PayPal developer dashboard (same webhook as activation events).
 
 ## Chat persona
 
