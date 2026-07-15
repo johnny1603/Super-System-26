@@ -20,6 +20,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   last registration in the file** or it swallows `/api/*` (caused a real outage once).
 - `core/claude_json.py` — `safe_claude_json_call()`: the required helper for every LLM call
   that expects JSON (truncation-aware retry, fence stripping, `ClaudeJSONError`).
+  `claude_web_search_call()` is its TEXT-mode sibling for answers that need live web search
+  (server-side web_search tool, pause_turn handling, per-search fee tracked in client_costs) —
+  search + citations don't mix with strict JSON output, hence two paths. Used by the support
+  chat's two-stage flow (JSON call gates → emits web_search_query → text call searches).
 - `core/agent_base.py` — `log_step` / `timed_step` / `agent_alert`: standard logging+alerting.
 - `agents/` — one file per agent. `agents/_template_agent.py` is the canonical structure;
   use the `new-agent` skill when creating or modifying agents.

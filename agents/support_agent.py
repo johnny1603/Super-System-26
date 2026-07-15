@@ -4,6 +4,12 @@ Answers questions from already-paying clients in their dashboard chat panel,
 grounded in their own package/proposal data and recent account activity.
 This is not the sales chat (agents/onboarding_agent.py) - these clients
 already paid and are asking about their account.
+
+Two-stage answering: the main JSON call answers from account/platform context;
+when it decides a business-relevant question genuinely needs CURRENT external
+information, it emits a web_search_query and a second, text-mode call with
+Anthropic's server-side web_search tool produces the final reply (see
+claude_web_search_call in core/claude_json.py for why that's a separate path).
 """
 import json
 import os
@@ -12,7 +18,7 @@ from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity
 from core.agent_base import agent_alert, log_step, timed_step
-from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.claude_json import ClaudeJSONError, claude_web_search_call, safe_claude_json_call
 
 AGENT_NAME = "support_agent"
 
@@ -96,15 +102,44 @@ installed) - use it for "what's happening with my site" questions, citing actual
 statuses only. Same rules as ad platforms: "error" field means a temporary read issue; no
 field means the site isn't connected yet - point them to the "האתר שלך" card in the dashboard.
 
+Web search: for BUSINESS/MARKETING-RELEVANT questions that genuinely need current or
+external information you don't have - e.g. "מה אומר העדכון החדש של גוגל", "כמה עולה בדרך
+כלל X בשוק", an upcoming commercial moment, a competitor/industry fact - set
+"web_search_query" to ONE focused search query (Hebrew or English), and put in "reply" a
+short honest holding line (e.g. "שנייה, בודקים את זה לעומק") that is used only if the
+search fails. Do NOT set web_search_query for: anything answerable from the given account
+data or general knowledge; anything about THEIR campaigns/site/billing (that data is
+already provided or the account isn't connected); or questions unrelated to their business
+and marketing (news, politics, homework) - for those keep the honest behavior above. Most
+questions need no search - leave web_search_query as "".
+
 If the question is genuinely unclear, unrelated to their account, or something you can't
-answer confidently from the given data (this is different from "no platform data yet") -
-say so honestly, tell the client a team member will follow up personally, and set
-needs_human_followup to true.
+answer confidently from the given data (this is different from "no platform data yet" and
+from "needs a web search") - say so honestly, tell the client a team member will follow up
+personally, and set needs_human_followup to true.
 
 Keep replies short: 2-4 sentences max. Hebrew only.
 
 Return JSON only:
-{"reply": "Hebrew text", "needs_human_followup": true/false}"""
+{"reply": "Hebrew text", "needs_human_followup": true/false, "web_search_query": ""}"""
+
+SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
+already-paying client inside their private dashboard. You are presented as "the uallak
+team" - never say you are an AI or a bot.
+
+The client asked something that needs current, real-world information beyond their account
+data. Use web search to find it, then answer them directly.
+
+Rules:
+- Run only the searches needed to answer (1-3 focused searches), then answer from the results.
+- Facts, prices, dates, and claims must come from the search results - never invent them.
+  Phrase numbers as approximations/ranges, the way a professional consultant would.
+- You are a marketing agency: when natural, connect the answer back to the client's own
+  business and marketing (their business context is provided).
+- If the search doesn't produce a reliable answer, say so honestly and that a team member
+  will follow up personally - never bluff.
+- Reply in Hebrew only, 2-5 sentences, PLAIN TEXT (no JSON, no markdown headers, no link
+  lists; mentioning a source naturally inline, like "לפי נתוני...", is fine)."""
 
 _FALLBACK = {
     "reply": "מצטערים, הייתה תקלה קטנה מהצד שלנו - צוות uallak יחזור אליך בהקדם 🙏",
@@ -154,6 +189,37 @@ def answer_support_question(client_id: int, message: str) -> dict:
 
     reply = result.get("reply", "")
     needs_human_followup = bool(result.get("needs_human_followup", False))
+
+    # Stage 2: the JSON model decided this needs live web information (the
+    # prompt gates this to business/marketing-relevant questions only). This
+    # runs on a separate TEXT-mode path - search citations don't mix with
+    # strict JSON output - so the JSON contract above stays untouched.
+    search_query = (result.get("web_search_query") or "").strip()[:200]
+    if search_query:
+        log_step(AGENT_NAME, "web_search", f"client {client_id}: '{search_query}'")
+        search_payload = json.dumps({
+            "client_business": payload["client"],
+            "business_summary": (payload.get("proposal") or {}).get("business_summary", ""),
+            "client_message": message,
+            "search_focus": search_query,
+        }, ensure_ascii=False)
+        try:
+            reply = timed_step(
+                AGENT_NAME, "web_search_call",
+                lambda: claude_web_search_call(SEARCH_SYSTEM, search_payload, max_tokens=1000,
+                                               client_id=client_id,
+                                               cost_category="claude_support_search"),
+            )
+            needs_human_followup = False
+        except Exception as e:
+            # Fall back to stage 1's holding reply; a human should still close
+            # the loop on the question the search was meant to answer
+            log_step(AGENT_NAME, "web_search", f"client {client_id}: search failed ({e})")
+            needs_human_followup = True
+            if not reply:
+                agent_alert(AGENT_NAME, [f"support web search failed for client {client_id}: {e}"])
+                return _FALLBACK
+
     if needs_human_followup:
         agent_alert(AGENT_NAME, [f'client {client_id} needs human follow-up: "{message}"'])
 

@@ -15,6 +15,9 @@ import os
 # conversion rate. Good enough for margin tracking; not an accounting system.
 CLAUDE_INPUT_USD_PER_MTOK = 3.00
 CLAUDE_OUTPUT_USD_PER_MTOK = 15.00
+# Anthropic web search tool list pricing - a per-search fee on top of the
+# token costs (which the caller tracks separately via claude_cost_ils)
+WEB_SEARCH_USD_PER_1000 = 10.00
 USD_TO_ILS = 3.40
 
 # Created lazily - no DB client at import time
@@ -32,6 +35,10 @@ def _db():
 def claude_cost_ils(input_tokens: int, output_tokens: int) -> float:
     usd = (input_tokens * CLAUDE_INPUT_USD_PER_MTOK + output_tokens * CLAUDE_OUTPUT_USD_PER_MTOK) / 1_000_000
     return round(usd * USD_TO_ILS, 4)
+
+
+def web_search_cost_ils(searches: int) -> float:
+    return round(searches * (WEB_SEARCH_USD_PER_1000 / 1000) * USD_TO_ILS, 4)
 
 
 def record_cost(category: str, amount_ils: float, client_id: int = None, details: dict = None):
