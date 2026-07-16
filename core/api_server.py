@@ -24,17 +24,20 @@ from agents.architect_agent import (
 from agents.client_agent import (
     create_client, get_client, get_client_by_email, list_clients, update_client_status, update_client_package,
     complete_onboarding,
-    add_account, get_accounts, upsert_account,
+    add_account, get_accounts, upsert_account, remove_accounts,
     assign_agent, get_client_agents, update_agent_status,
     log_activity, get_activity,
     log_communication, get_communications,
     create_login_code, get_active_login_code, increment_login_code_attempts, mark_login_code_used,
 )
-from core.email_service import send_client_report, send_admin_alert, send_payment_confirmation, send_login_code
+from core.email_service import (
+    send_client_report, send_admin_alert, send_payment_confirmation, send_login_code,
+    send_account_closed, send_account_transferred,
+)
 from core.paypal_service import (
     create_subscription, verify_webhook_signature, get_subscription_status,
     get_plan, create_plan, revise_subscription_plan, list_subscription_transactions,
-    create_invoice,
+    create_invoice, cancel_subscription,
 )
 from core.session import (
     create_session_token, verify_session_token,
@@ -70,6 +73,7 @@ app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "t
 app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
 app.mount("/admin", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "admin"), html=True), name="admin")
+app.mount("/profile", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "profile"), html=True), name="profile")
 
 # Starlette's Mount("/login") only matches paths UNDER the mount ("/login/...").
 # The bare "/login" falls through every mount and API route to the root "/"
@@ -84,7 +88,7 @@ def _bare_path_redirect(page: str):
         return RedirectResponse(url=f"{page}/{query}")
     return _redirect
 
-for _page in ("/chat", "/terms", "/dashboard", "/login", "/admin"):
+for _page in ("/chat", "/terms", "/dashboard", "/login", "/admin", "/profile"):
     app.get(_page, include_in_schema=False)(_bare_path_redirect(_page))
 
 def _require_admin_key(request: Request):
@@ -345,13 +349,33 @@ async def paypal_webhook(request: Request):
         "PAYMENT.SALE.DENIED",
         "BILLING.SUBSCRIPTION.SUSPENDED",  # PayPal suspends after repeated failures
     }
-    if event_type in ACTIVATION_EVENTS or event_type in PAYMENT_FAILURE_EVENTS:
+    # The client can also cancel from paypal.com directly, bypassing our
+    # closure/transfer flows entirely - if we miss that, we keep treating them
+    # as an active paying client (counting them in MRR, running their agents)
+    CANCELLATION_EVENTS = {"BILLING.SUBSCRIPTION.CANCELLED"}
+    if event_type in ACTIVATION_EVENTS | PAYMENT_FAILURE_EVENTS | CANCELLATION_EVENTS:
         client_id_raw = resource.get("custom_id") or resource.get("custom")
         if client_id_raw:
             try:
                 client_id = int(client_id_raw)
                 if event_type in ACTIVATION_EVENTS:
                     _mark_paid_and_notify(client_id, resource.get("id"), source="paypal_webhook")
+                elif event_type in CANCELLATION_EVENTS:
+                    client = get_client(client_id)
+                    # Our own close/transfer flows also trigger this event, but
+                    # they set the status to closed/transferred - if the status
+                    # is anything else, the cancellation came from outside the
+                    # system. (A webhook that races our own flow mid-request may
+                    # slip through and raise a spurious alert - harmless, the
+                    # flow overwrites the status right after.)
+                    if client and client.get("status") not in ("closed", "transferred", "cancelled"):
+                        update_client_status(client_id, "cancelled")
+                        log_activity(client_id, "paypal_service", "subscription_cancelled",
+                                     {"source": "paypal_webhook"}, {"subscription_id": resource.get("id")})
+                        alert("paypal_webhook", [
+                            f"client {client_id} subscription {resource.get('id')} was cancelled on "
+                            f"PayPal's side (outside the dashboard flows) - follow up with the client"
+                        ])
                 else:
                     from agents.engagement_agent import notify_payment_failure
                     notify_payment_failure(client_id, event_type)
@@ -538,6 +562,8 @@ async def dashboard_data(request: Request):
     monthly_fee = None
     subscription_id = None
     for entry in activity:
+        if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_cancelled":
+            break  # closure/transfer cancelled the subscription - nothing live to show
         if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_created":
             details = entry.get("details") or {}
             monthly_fee = details.get("monthly_management_total")
@@ -560,12 +586,16 @@ async def dashboard_data(request: Request):
         "client": {
             "id": client.get("id"),
             "name": client.get("name"),
+            "email": client.get("email"),
             "package": client.get("package"),
             "status": client.get("status"),
             "created_at": client.get("created_at"),
             # Chat persona choice (male|female|null) - set by the client via
             # /api/client/profile, never inferred from their name
             "owner_gender": client.get("owner_gender"),
+            # Client-uploaded data: URL (resized in the browser before upload);
+            # null until they set one. Requires the clients.profile_image column.
+            "profile_image": client.get("profile_image"),
         },
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
@@ -702,8 +732,13 @@ async def client_chat_new(request: Request):
 
 def _client_subscription_info(client_id: int) -> dict:
     """monthly_fee + subscription_id from the newest checkout activity row -
-    the same derivation /api/dashboard uses (no dedicated billing table yet)."""
+    the same derivation /api/dashboard uses (no dedicated billing table yet).
+    A subscription_cancelled row (closure/transfer/webhook) newer than the
+    checkout row means there is no live subscription anymore - stop there, so
+    billing/upgrade flows never operate on a dead subscription."""
     for entry in get_activity(client_id, limit=100):
+        if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_cancelled":
+            break
         if entry.get("agent_name") == "paypal_service" and entry.get("action_type") == "subscription_created":
             details = entry.get("details") or {}
             return {
@@ -840,6 +875,265 @@ def client_tour_completed(request: Request):
     client_id = _require_session(request)
     log_activity(client_id, "dashboard", "welcome_tour_completed", {}, {})
     return {"success": True}
+
+@app.post("/api/logout")
+async def client_logout(response: Response):
+    response.delete_cookie("session", path="/")
+    return {"success": True}
+
+# ─── Platform disconnect (client-facing) ─────────────────────────────────────
+
+# UI platform -> the client_accounts rows that platform's connect flow created.
+# One Meta consent stores up to three rows (ad account, Page, Instagram), and
+# they all die together - the revoke kills the single underlying grant.
+_DISCONNECT_GROUPS = {
+    "google_ads": ["google_ads"],
+    "meta": ["meta_ads", "meta_page", "meta_instagram"],
+    "wordpress": ["wordpress"],
+}
+
+def _disconnect_platform(client_id: int, platform: str) -> dict:
+    """Revoke our access at the provider (best-effort - the grant may already
+    be dead) and DELETE the stored client_accounts rows. Only OUR access is
+    removed; the client's ad accounts / Pages / site are never touched."""
+    rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
+
+    revoked = None
+    if platform == "google_ads":
+        for row in rows:
+            if row.get("access_token"):
+                revoked = google_ads_service.revoke_token(row["access_token"])
+    elif platform == "meta":
+        # Any of the group's tokens traces back to the same user grant; prefer
+        # the user token on the meta_ads row, fall back to whatever exists
+        token_row = (next((r for r in rows if r.get("platform") == "meta_ads" and r.get("access_token")), None)
+                     or next((r for r in rows if r.get("access_token")), None))
+        if token_row:
+            revoked = meta_service.revoke_permissions(token_row["access_token"])
+    # wordpress: nothing to revoke remotely - the Application Password lives in
+    # the client's own wp-admin (we tell them they can delete it there too);
+    # deleting our stored copy of it IS the disconnect.
+
+    removed = remove_accounts(client_id, _DISCONNECT_GROUPS[platform])
+
+    # Drop stale in-memory caches so a reconnect doesn't serve the old account's data
+    from agents import google_ads_agent, meta_ads_agent, website_agent
+    google_ads_agent._perf_cache.pop(client_id, None)
+    meta_ads_agent._perf_cache.pop(client_id, None)
+    website_agent._overview_cache.pop(client_id, None)
+
+    return {"removed": removed, "revoked": revoked}
+
+class DisconnectRequest(BaseModel):
+    platform: str  # google_ads | meta | wordpress
+
+@app.post("/api/client/disconnect")
+def client_disconnect(req: DisconnectRequest, request: Request):
+    # Plain `def`: the revoke is a blocking HTTP call to the provider
+    client_id = _require_session(request)
+    if req.platform not in _DISCONNECT_GROUPS:
+        raise HTTPException(status_code=400, detail="unknown platform")
+    result = _disconnect_platform(client_id, req.platform)
+    if not result["removed"]:
+        raise HTTPException(status_code=404, detail="הפלטפורמה הזו לא מחוברת")
+    log_activity(client_id, "client_agent", "account_disconnected",
+                 {"platform": req.platform, "revoked": result["revoked"]}, {})
+    return {"success": True, "data": result}
+
+# ─── External cost transparency (client-facing) ──────────────────────────────
+
+@app.get("/api/client/external-costs")
+def client_external_costs(request: Request):
+    """What the client pays the ad platforms DIRECTLY (their own card, never
+    through us) - the transparency every proposal's honest_note promises.
+    Same data source the agents already use (get_campaign_performance), no
+    new spend tracking. Plain `def`: blocking calls to both ad APIs."""
+    client_id = _require_session(request)
+    from agents.google_ads_agent import get_campaign_performance as google_perf
+    from agents.meta_ads_agent import get_campaign_performance as meta_perf
+
+    connected = {a.get("platform") for a in get_accounts(client_id) if a.get("status") == "active"}
+    platforms = []
+    for platform, label, fetch in (("google_ads", "Google Ads", google_perf),
+                                   ("meta_ads", "Meta (פייסבוק + אינסטגרם)", meta_perf)):
+        if platform not in connected:
+            continue
+        perf = fetch(client_id)
+        platforms.append({
+            "platform": platform,
+            "label": label,
+            "period": perf.get("period", "last_30_days"),
+            "error": perf.get("error"),
+            "total_spend": (perf.get("totals") or {}).get("cost", 0),
+            "campaigns": [{"name": c.get("name"), "status": c.get("status"), "cost": c.get("cost")}
+                          for c in (perf.get("campaigns") or [])],
+        })
+
+    return {"success": True, "data": {
+        "currency": "ILS",
+        "platforms": platforms,
+        "total_spend": round(sum(p["total_spend"] for p in platforms), 2),
+    }}
+
+# ─── Data export + closure / transfer protocols (client-facing) ──────────────
+
+@app.get("/api/client/data-export")
+def client_data_export(request: Request):
+    """Everything we hold about the client, as a downloadable JSON file - the
+    handoff document for a transfer to another agency, or a personal copy
+    before closure. Plain `def`: hits PayPal + both ad platforms."""
+    client_id = _require_session(request)
+    client = get_client(client_id)
+    sub = _client_subscription_info(client_id)
+
+    transactions = []
+    if sub["subscription_id"]:
+        try:
+            start = sub["checkout_at"] or (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+            transactions = list_subscription_transactions(
+                sub["subscription_id"], start, datetime.now(timezone.utc).isoformat())
+        except Exception as e:
+            print(f"[data_export] transactions fetch failed for client {client_id}: {e}")
+
+    performance = {}
+    connected = {a.get("platform") for a in get_accounts(client_id) if a.get("status") == "active"}
+    if "google_ads" in connected:
+        from agents.google_ads_agent import get_campaign_performance as google_perf
+        performance["google_ads"] = google_perf(client_id)
+    if "meta_ads" in connected:
+        from agents.meta_ads_agent import get_campaign_performance as meta_perf
+        performance["meta_ads"] = meta_perf(client_id)
+
+    export = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "client": {k: client.get(k) for k in
+                   ("id", "name", "email", "phone", "package", "status", "created_at",
+                    "address", "business_name", "business_tax_id")},
+        "subscription": {"monthly_fee": sub["monthly_fee"], "setup_fee": sub["setup_fee"],
+                          "subscription_id": sub["subscription_id"]},
+        "transactions": transactions,
+        # platform + account id only - stored credentials are never exported
+        "connections": [{"platform": a.get("platform"), "account_id": a.get("account_id"),
+                          "status": a.get("status")} for a in get_accounts(client_id)],
+        "campaign_performance_last_30_days": performance,
+        "activity": get_activity(client_id, limit=500),
+        "communications": get_communications(client_id, limit=500),
+    }
+    return Response(
+        content=json.dumps(export, ensure_ascii=False, indent=2, default=str),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="uallak-export-{client_id}.json"'},
+    )
+
+def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
+    """Shared closure/transfer flow. Order matters: billing stops FIRST (the
+    whole point of both protocols is that a leaving client is never charged
+    again), then platform access is revoked, then the record flips. Raises if
+    the PayPal cancel fails - we must never report success while billing might
+    continue. mode: 'closure' -> status 'closed', 'transfer' -> 'transferred'."""
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if client.get("status") in ("closed", "transferred"):
+        return {"status": client["status"], "already_offboarded": True}
+
+    # 1 - stop billing
+    sub = _client_subscription_info(client_id)
+    subscription_cancelled = False
+    if sub["subscription_id"]:
+        cancel_reason = ("Client closed their account" if mode == "closure"
+                         else "Client transferred to another agency")
+        result = cancel_subscription(sub["subscription_id"], reason=cancel_reason)
+        if result.get("cancelled"):
+            subscription_cancelled = True
+        else:
+            # Cancel is only valid on a live subscription - if PayPal says it's
+            # already cancelled/expired, billing is stopped and that's what counts
+            try:
+                live = get_subscription_status(sub["subscription_id"]).get("status")
+            except Exception:
+                live = "UNKNOWN"
+            if live not in ("CANCELLED", "EXPIRED"):
+                alert("client_offboarding", [
+                    f"client {client_id} ({client.get('name')}): PayPal cancel FAILED for "
+                    f"subscription {sub['subscription_id']} (live status: {live}) during {mode} - "
+                    f"CANCEL IT MANUALLY NOW or the client keeps getting billed"
+                ])
+                raise HTTPException(status_code=502, detail=(
+                    "ביטול המנוי ב-PayPal נכשל, ולכן לא השלמנו את הבקשה - "
+                    "הצוות קיבל התראה ויטפל בביטול באופן ידני בהקדם. אפשר גם לפנות אלינו בצ'אט."))
+        log_activity(client_id, "paypal_service", "subscription_cancelled",
+                     {"mode": mode}, {"subscription_id": sub["subscription_id"]})
+
+    # 2 - revoke our access everywhere (the client's accounts are untouched)
+    disconnected = []
+    for platform in _DISCONNECT_GROUPS:
+        try:
+            if _disconnect_platform(client_id, platform)["removed"]:
+                disconnected.append(platform)
+        except Exception as e:
+            # Credentials that failed to delete must not block the offboarding -
+            # but they are exactly what closure promises to remove, so alert
+            alert("client_offboarding",
+                  [f"client {client_id}: disconnect of {platform} failed during {mode}: {e}"])
+
+    # 3 - flip the record. The clients row + activity/communications history are
+    # retained for business/financial records (see retention note in the handoff
+    # report); the credentials in client_accounts are already gone.
+    new_status = "closed" if mode == "closure" else "transferred"
+    update_client_status(client_id, new_status)
+    log_activity(client_id, "client_agent",
+                 "account_closed" if mode == "closure" else "account_transferred",
+                 {"reason": reason, "subscription_cancelled": subscription_cancelled,
+                  "disconnected": disconnected}, {})
+
+    # 4 - written confirmation to the client + a heads-up alert for the team
+    try:
+        if client.get("email"):
+            if mode == "closure":
+                send_account_closed(client["email"], client.get("name", ""))
+            else:
+                send_account_transferred(client["email"], client.get("name", ""))
+    except Exception as e:
+        print(f"[offboarding] confirmation email failed for client {client_id} (non-fatal): {e}")
+    alert("client_offboarding", [
+        f"client {client_id} ({client.get('name')}) completed {mode}: "
+        f"subscription {'cancelled' if subscription_cancelled else 'was not live'}, "
+        f"disconnected: {', '.join(disconnected) or 'nothing was connected'}, "
+        f"reason: {reason or '-'}"
+    ])
+
+    return {"status": new_status, "subscription_cancelled": subscription_cancelled,
+            "disconnected": disconnected}
+
+class OffboardRequest(BaseModel):
+    confirm_phrase: str
+    reason: str = ""
+
+# The exact phrases the client must type - checked server-side too, so a stray
+# API call can never close an account by accident
+CLOSE_CONFIRM_PHRASE = "סגירת חשבון"
+TRANSFER_CONFIRM_PHRASE = "מעבר סוכנות"
+
+@app.post("/api/client/close-account")
+def client_close_account(req: OffboardRequest, request: Request, response: Response):
+    # Plain `def`: PayPal cancel + provider revokes are blocking HTTP calls
+    client_id = _require_session(request)
+    if req.confirm_phrase.strip() != CLOSE_CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail="אישור הסגירה לא תקין")
+    result = _offboard_client(client_id, "closure", req.reason.strip())
+    response.delete_cookie("session", path="/")  # closure ends the session too
+    return {"success": True, "data": result}
+
+@app.post("/api/client/transfer-out")
+def client_transfer_out(req: OffboardRequest, request: Request):
+    # Session survives a transfer on purpose - the client may still want the
+    # data export for their new agency right after confirming
+    client_id = _require_session(request)
+    if req.confirm_phrase.strip() != TRANSFER_CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail="אישור המעבר לא תקין")
+    result = _offboard_client(client_id, "transfer", req.reason.strip())
+    return {"success": True, "data": result}
 
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
@@ -1246,15 +1540,32 @@ async def client_suggestion_decide(suggestion_id: int, req: SuggestionDecideRequ
     return {"success": True, "data": result}
 
 class ClientProfileRequest(BaseModel):
-    owner_gender: str  # male | female — the client's own one-tap choice in the
-                       # dashboard (never inferred from their name)
+    owner_gender: str | None = None   # male | female — the client's own one-tap choice in
+                                      # the dashboard (never inferred from their name)
+    profile_image: str | None = None  # data:image/... URL, resized in the browser before
+                                      # upload; "" removes the picture
+
+# ~200KB of base64 ≈ a 150KB image - far more than the browser-side resize
+# produces, just a hard stop against arbitrary-size uploads into the DB
+MAX_PROFILE_IMAGE_CHARS = 200_000
 
 @app.post("/api/client/profile")
 async def client_profile(req: ClientProfileRequest, request: Request):
     client_id = _require_session(request)
-    if req.owner_gender not in ("male", "female"):
-        raise HTTPException(status_code=400, detail="owner_gender must be male|female")
-    db.table("clients").update({"owner_gender": req.owner_gender}).eq("id", client_id).execute()
+    changes = {}
+    if req.owner_gender is not None:
+        if req.owner_gender not in ("male", "female"):
+            raise HTTPException(status_code=400, detail="owner_gender must be male|female")
+        changes["owner_gender"] = req.owner_gender
+    if req.profile_image is not None:
+        if req.profile_image and not req.profile_image.startswith("data:image/"):
+            raise HTTPException(status_code=400, detail="profile_image must be a data:image/ URL")
+        if len(req.profile_image) > MAX_PROFILE_IMAGE_CHARS:
+            raise HTTPException(status_code=400, detail="profile_image too large")
+        changes["profile_image"] = req.profile_image or None
+    if not changes:
+        raise HTTPException(status_code=400, detail="nothing to update")
+    db.table("clients").update(changes).eq("id", client_id).execute()
     return {"success": True}
 
 @app.get("/api/engagement/weekly", dependencies=_admin_only)

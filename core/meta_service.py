@@ -244,6 +244,22 @@ def exchange_long_lived(user_token: str) -> dict:
     return response.json()
 
 
+def revoke_permissions(user_token: str) -> bool:
+    """DELETE /me/permissions de-authorizes our app for this user entirely —
+    the user token AND every Page token derived from it stop working. This is
+    Meta's supported 'disconnect' (the same thing as the user removing the app
+    in facebook.com/settings/apps); the ad account and Pages themselves are
+    untouched. Never raises: the token may already be expired/revoked, and a
+    disconnect flow must succeed either way."""
+    try:
+        graph_delete("me/permissions", user_token)
+        return True
+    except Exception as e:
+        # An already-dead token errors here - the grant is gone either way
+        print(f"[meta_service] permission revoke failed (grant may already be dead): {e}")
+        return False
+
+
 def debug_token(access_token: str) -> dict:
     """Token introspection via the app access token ('{app_id}|{app_secret}').
     Returns Meta's data dict: is_valid, expires_at (epoch seconds, 0 = never —

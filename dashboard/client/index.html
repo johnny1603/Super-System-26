@@ -66,7 +66,17 @@ body {
   border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 13px;
+  color: var(--white); text-decoration: none;
+  overflow: hidden; cursor: pointer;
 }
+.avatar:hover { border-color: var(--accent); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.disconnect-link {
+  background: none; border: none; color: var(--gray);
+  font-size: 11.5px; text-decoration: underline; cursor: pointer;
+  margin-top: 8px; font-family: 'Heebo', sans-serif; display: block;
+}
+.disconnect-link.arm { color: var(--accent); font-weight: 700; }
 
 /* ---------- LAYOUT (single page, no sidebar) ---------- */
 .main { flex: 1; padding: 32px 40px; max-width: 960px; margin: 0 auto; width: 100%; }
@@ -582,7 +592,7 @@ body {
     <span class="package-badge" id="packageBadge">טוען…</span>
     <button class="upgrade-btn" onclick="toggleUpgradePanel()">⬆ שדרוג חבילה</button>
     <button class="help-btn" onclick="openWelcome(false)" title="סיור היכרות">?</button>
-    <div class="avatar" id="avatarInitial">·</div>
+    <a class="avatar" id="avatarInitial" href="/profile/" title="הפרופיל שלי">·</a>
   </div>
 </div>
 
@@ -914,6 +924,10 @@ const ACTIVITY_LABELS = {
   'sales_alert_sent': 'נשלח אליך עדכון על המרות חדשות 🎉',
   'urgent_notification': 'נשלח אליך עדכון דחוף בוואטסאפ',
   'payment_failure_notified': 'החיוב האחרון לא עבר — שלחנו לך עדכון',
+  'account_disconnected': 'חיבור מערכת נותק לבקשתך',
+  'subscription_cancelled': 'המנוי בוטל — לא יהיו חיובים נוספים',
+  'account_closed': 'החשבון נסגר לבקשתך',
+  'account_transferred': 'הניהול הועבר לגורם אחר לבקשתך',
 };
 
 async function loadDashboard() {
@@ -928,7 +942,23 @@ async function loadDashboard() {
     const name = (d.client && d.client.name) || '';
     document.getElementById('greeting').textContent = name ? `שלום, ${name} 👋` : 'שלום 👋';
     document.getElementById('tourGreeting').textContent = name ? `ברוכים הבאים, ${name}!` : 'ברוכים הבאים!';
-    document.getElementById('avatarInitial').textContent = name ? name.trim().charAt(0) : '·';
+    const avatar = document.getElementById('avatarInitial');
+    if (d.client && d.client.profile_image) {
+      avatar.innerHTML = `<img src="${esc(d.client.profile_image)}" alt="">`;
+    } else {
+      avatar.textContent = name ? name.trim().charAt(0) : '·';
+    }
+
+    // A client that already closed/transferred still sees their history, but
+    // with an honest banner instead of a live-looking dashboard
+    const clientStatus = d.client && d.client.status;
+    if (clientStatus === 'closed') {
+      showNotice('החשבון הזה נסגר — המנוי בוטל וכל החיבורים נותקו. ההיסטוריה נשארת זמינה לצפייה.', 'warn');
+    } else if (clientStatus === 'transferred') {
+      showNotice('הניהול אצלנו הסתיים (מעבר לגורם מנהל אחר) — המנוי בוטל. אפשר להוריד ייצוא נתונים מעמוד הפרופיל.', 'warn');
+    } else if (clientStatus === 'cancelled') {
+      showNotice('המנוי בוטל דרך PayPal. אם זו לא הייתה כוונה — דברו איתנו בצ׳אט ונסדר הכל.', 'warn');
+    }
 
     const pkg = (d.client && d.client.package) || '';
     document.getElementById('packageBadge').textContent = pkg || 'חבילה';
@@ -1103,7 +1133,7 @@ function connectMeta() {
   window.location.href = '/api/oauth/meta/start';
 }
 
-function markPlatformConnected(statusId, btnId) {
+function markPlatformConnected(statusId, btnId, platformKey) {
   const status = document.getElementById(statusId);
   status.textContent = 'מחובר';
   status.classList.add('connected');
@@ -1111,13 +1141,55 @@ function markPlatformConnected(statusId, btnId) {
   btn.textContent = 'מחובר ✓';
   btn.className = 'conn-btn connected-btn';
   btn.onclick = null;
+  // Disconnect action - needed when a connection breaks, permissions change,
+  // or the client switches which account is linked
+  if (platformKey && !document.getElementById('disc-' + platformKey)) {
+    const link = document.createElement('button');
+    link.id = 'disc-' + platformKey;
+    link.className = 'disconnect-link';
+    link.textContent = 'ניתוק חיבור';
+    link.onclick = () => disconnectPlatform(platformKey, link);
+    btn.insertAdjacentElement('afterend', link);
+  }
 }
 
-function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn'); }
-function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn'); }
+// Two-step confirm on the link itself (no blocking dialog): first click arms
+// it, second click within 6s actually disconnects
+async function disconnectPlatform(platformKey, link) {
+  if (!link.classList.contains('arm')) {
+    link.classList.add('arm');
+    link.textContent = 'בטוחים? לחיצה נוספת תנתק';
+    setTimeout(() => { link.classList.remove('arm'); link.textContent = 'ניתוק חיבור'; }, 6000);
+    return;
+  }
+  link.disabled = true;
+  link.textContent = 'מנתק…';
+  try {
+    const res = await fetch('/api/client/disconnect', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: platformKey }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      // Reload so the card returns to its clean "חבר עכשיו" state
+      window.location.reload();
+      return;
+    }
+  } catch (e) {
+    console.error('disconnect failed', e);
+  }
+  link.disabled = false;
+  link.classList.remove('arm');
+  link.textContent = 'ניתוק חיבור';
+  showNotice('הניתוק נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', 'warn');
+}
+
+function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
+function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
 
 function markWebsiteConnected() {
-  markPlatformConnected('siteStatus', 'siteBtn');
+  markPlatformConnected('siteStatus', 'siteBtn', 'wordpress');
   document.getElementById('siteForm').style.display = 'none';
 }
 

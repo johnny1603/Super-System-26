@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uallak — הפרופיל שלי</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+
+:root {
+  --bg: #0D0D0D;
+  --panel: #171717;
+  --panel-2: #1F1F1F;
+  --accent: #FF4C1F;
+  --accent-dim: rgba(255,76,31,0.12);
+  --white: #F7F4EF;
+  --gray: #8A8A85;
+  --border: rgba(255,255,255,0.08);
+  --green: #00C96E;
+  --red: #FF4C4C;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Heebo', sans-serif;
+  background: var(--bg);
+  color: var(--white);
+  min-height: 100vh;
+}
+
+/* ---------- TOP BAR ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #141414, #0D0D0D);
+}
+.logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; }
+.logo span { color: var(--accent); }
+.back-link {
+  color: var(--gray); font-size: 13px; font-weight: 700; text-decoration: none;
+  border: 1px solid var(--border); border-radius: 100px; padding: 7px 16px;
+  background: var(--panel-2);
+}
+.back-link:hover { color: var(--accent); border-color: var(--accent); }
+
+.main { padding: 32px 40px; max-width: 760px; margin: 0 auto; width: 100%; }
+
+.notice-banner {
+  border-radius: 12px; padding: 13px 18px; margin-bottom: 20px;
+  font-size: 13.5px; font-weight: 600; display: none;
+}
+.notice-banner.success { display: block; background: rgba(0,201,110,0.1); border: 1px solid rgba(0,201,110,0.3); color: var(--green); }
+.notice-banner.warn { display: block; background: var(--accent-dim); border: 1px solid rgba(255,76,31,0.3); color: var(--accent); }
+
+.section-head { margin: 34px 0 14px; }
+.section-title { font-size: 17px; font-weight: 700; }
+.section-sub { font-size: 13px; color: var(--gray); margin-top: 2px; }
+
+/* ---------- PROFILE CARD ---------- */
+.profile-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 26px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+}
+.profile-pic {
+  width: 84px; height: 84px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: var(--panel-2); border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 900; color: var(--accent);
+}
+.profile-pic img { width: 100%; height: 100%; object-fit: cover; }
+.profile-info { flex: 1; min-width: 200px; }
+.profile-name { font-size: 20px; font-weight: 800; }
+.profile-email { color: var(--gray); font-size: 13.5px; margin-top: 2px; direction: ltr; text-align: right; }
+.profile-meta { color: var(--gray); font-size: 12.5px; margin-top: 8px; }
+.profile-meta b { color: var(--white); }
+.pic-actions { display: flex; flex-direction: column; gap: 8px; }
+.btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 12.5px; font-weight: 700;
+  padding: 8px 16px; border-radius: 100px; cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.small-link {
+  background: none; border: none; color: var(--gray); text-decoration: underline;
+  font-weight: 400; font-size: 11.5px; padding: 0;
+}
+.btn.small-link:hover { color: var(--accent); }
+
+/* ---------- COSTS ---------- */
+.costs-total-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; margin-bottom: 14px; position: relative; overflow: hidden;
+}
+.costs-total-card::before {
+  content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 60px;
+  background: var(--accent); opacity: 0.08; border-radius: 0 0 0 60px;
+}
+.costs-total-label { font-size: 12.5px; color: var(--gray); margin-bottom: 6px; }
+.costs-total-value { font-size: 28px; font-weight: 900; color: var(--accent); }
+.platform-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 20px; margin-bottom: 12px;
+}
+.platform-head { display: flex; justify-content: space-between; align-items: center; }
+.platform-name { font-weight: 700; font-size: 14.5px; }
+.platform-total { font-weight: 900; font-size: 17px; }
+.campaign-row {
+  display: flex; justify-content: space-between; font-size: 12.5px;
+  color: var(--gray); padding: 7px 0; border-top: 1px solid var(--border); margin-top: 7px;
+}
+.campaign-row:first-of-type { margin-top: 12px; }
+.campaign-row .c-cost { color: var(--white); font-weight: 600; }
+.empty-row {
+  background: var(--panel); border: 1px dashed var(--border); border-radius: 14px;
+  padding: 22px; text-align: center; color: var(--gray); font-size: 13px;
+}
+.honest-note {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; font-size: 12.5px; color: var(--gray); line-height: 1.7; margin-top: 4px;
+}
+.honest-note .icon { color: var(--accent); font-weight: 900; }
+
+/* ---------- ACCOUNT ACTIONS ---------- */
+.actions-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- DANGER ZONE ---------- */
+.danger-zone {
+  border: 1px solid rgba(255,76,76,0.35); border-radius: 16px;
+  padding: 22px; margin-top: 10px;
+}
+.danger-title { color: var(--red); font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.danger-sub { color: var(--gray); font-size: 12.5px; margin-bottom: 18px; line-height: 1.6; }
+.danger-option { border-top: 1px solid var(--border); padding: 16px 0 4px; }
+.danger-option-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.danger-option-title { font-weight: 700; font-size: 13.5px; }
+.danger-option-sub { color: var(--gray); font-size: 12px; margin-top: 2px; line-height: 1.6; }
+.danger-btn {
+  border: 1px solid rgba(255,76,76,0.5); background: none; color: var(--red);
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 700;
+  padding: 7px 16px; border-radius: 100px; cursor: pointer; white-space: nowrap;
+}
+.danger-btn:hover { background: rgba(255,76,76,0.1); }
+.danger-form { display: none; margin-top: 14px; background: var(--panel-2); border-radius: 12px; padding: 16px; }
+.danger-form.open { display: block; }
+.danger-form p { font-size: 12.5px; color: var(--gray); line-height: 1.7; margin-bottom: 12px; }
+.danger-form p b { color: var(--white); }
+.danger-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--white); font-family: 'Heebo', sans-serif; font-size: 13px;
+  padding: 10px 14px; margin-bottom: 10px; outline: none;
+}
+.danger-input:focus { border-color: var(--accent); }
+.danger-confirm-btn {
+  width: 100%; border: none; border-radius: 10px; padding: 12px;
+  font-family: 'Heebo', sans-serif; font-weight: 800; font-size: 13.5px;
+  background: var(--panel); color: var(--gray); cursor: not-allowed;
+}
+.danger-confirm-btn.ready { background: var(--red); color: white; cursor: pointer; }
+
+@media (max-width: 600px) {
+  .main { padding: 24px 18px; }
+  .profile-card { flex-direction: column; text-align: center; }
+  .profile-email { text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">u<span>allak</span></div>
+  <a class="back-link" href="/dashboard/">→ חזרה לדשבורד</a>
+</div>
+
+<div class="main">
+  <div class="notice-banner" id="noticeBanner"></div>
+
+  <!-- ---------- PROFILE ---------- -->
+  <div class="profile-card">
+    <div class="profile-pic" id="profilePic">·</div>
+    <div class="profile-info">
+      <div class="profile-name" id="profileName">טוען…</div>
+      <div class="profile-email" id="profileEmail"></div>
+      <div class="profile-meta" id="profileMeta"></div>
+    </div>
+    <div class="pic-actions">
+      <input type="file" id="picInput" accept="image/*" style="display:none;" onchange="uploadPicture(this)">
+      <button class="btn" onclick="document.getElementById('picInput').click()">החלפת תמונה</button>
+      <button class="btn small-link" id="removePicBtn" style="display:none;" onclick="removePicture()">הסרת התמונה</button>
+    </div>
+  </div>
+
+  <!-- ---------- EXTERNAL COSTS ---------- -->
+  <div class="section-head">
+    <div class="section-title">דוח עלויות חיצוניות — 30 הימים האחרונים</div>
+    <div class="section-sub">כמה שילמת ישירות לפלטפורמות הפרסום (תקציב מדיה) — בנפרד מדמי הניהול שלנו</div>
+  </div>
+  <div id="costsArea"><div class="empty-row">טוען נתונים מהפלטפורמות…</div></div>
+  <div class="honest-note">
+    <span class="icon">ⓘ</span>
+    <span>תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.</span>
+  </div>
+
+  <!-- ---------- ACCOUNT ---------- -->
+  <div class="section-head">
+    <div class="section-title">החשבון שלי</div>
+  </div>
+  <div class="actions-row">
+    <a class="btn" href="/api/client/data-export">⬇ ייצוא הנתונים שלי (JSON)</a>
+    <button class="btn" onclick="logout()">התנתקות</button>
+  </div>
+
+  <!-- ---------- DANGER ZONE ---------- -->
+  <div class="section-head">
+    <div class="section-title">סיום התקשרות</div>
+  </div>
+  <div class="danger-zone" id="dangerZone">
+    <div class="danger-title">אזור רגיש — פעולות בלתי הפיכות</div>
+    <div class="danger-sub">שתי הפעולות כאן מבטלות את המנוי ב-PayPal באופן מיידי (לא יהיו יותר חיובים) ומנתקות את כל חיבורי המערכות. החשבונות שלך ב-Google, Meta והאתר לא נפגעים — הם שלך וממשיכים להתקיים.</div>
+
+    <div class="danger-option">
+      <div class="danger-option-head">
+        <div>
+          <div class="danger-option-title">מעבר לגורם מנהל אחר</div>
+          <div class="danger-option-sub">עוברים לסוכנות אחרת? נבטל את המנוי וננתק את הגישה שלנו — והחשבונות נשארים אצלך, מוכנים למי שממשיך.</div>
+        </div>
+        <button class="danger-btn" onclick="toggleDangerForm('transferForm')">מעבר סוכנות</button>
+      </div>
+      <div class="danger-form" id="transferForm">
+        <p>לפני שממשיכים: מומלץ <b>להוריד עכשיו את ייצוא הנתונים</b> (למעלה) ולהעביר אותו לגורם המנהל החדש — יש שם את היסטוריית הפעילות ונתוני הקמפיינים האחרונים.<br>
+        לאישור, הקלידו: <b>מעבר סוכנות</b></p>
+        <input class="danger-input" id="transferReason" placeholder="לאן עוברים / למה? (לא חובה — עוזר לנו להשתפר)">
+        <input class="danger-input" id="transferPhrase" placeholder="הקלידו כאן: מעבר סוכנות" oninput="checkPhrase('transfer')">
+        <button class="danger-confirm-btn" id="transferBtn" disabled onclick="offboard('transfer')">אישור סופי — סיום ניהול ומעבר</button>
+      </div>
+    </div>
+
+    <div class="danger-option">
+      <div class="danger-option-head">
+        <div>
+          <div class="danger-option-title">סגירת החשבון לצמיתות</div>
+          <div class="danger-option-sub">סוגרים את העסק או מפסיקים לגמרי? נבטל את המנוי, ננתק הכל ונמחק את פרטי הגישה שנשמרו אצלנו.</div>
+        </div>
+        <button class="danger-btn" onclick="toggleDangerForm('closeForm')">סגירת חשבון</button>
+      </div>
+      <div class="danger-form" id="closeForm">
+        <p>הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון. היסטוריית הפעילות והחיובים נשמרת לצרכי תיעוד. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>
+        לאישור, הקלידו: <b>סגירת חשבון</b></p>
+        <input class="danger-input" id="closeReason" placeholder="למה סוגרים? (לא חובה — עוזר לנו להשתפר)">
+        <input class="danger-input" id="closePhrase" placeholder="הקלידו כאן: סגירת חשבון" oninput="checkPhrase('close')">
+        <button class="danger-confirm-btn" id="closeBtn" disabled onclick="offboard('closure')">אישור סופי — סגירת החשבון</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PHRASES = { close: 'סגירת חשבון', transfer: 'מעבר סוכנות' };
+let clientName = '';
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+function showNotice(text, kind) {
+  const banner = document.getElementById('noticeBanner');
+  banner.textContent = text;
+  banner.className = 'notice-banner ' + kind;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── profile info (reuses /api/dashboard - same session, same data) ─────────
+async function loadProfile() {
+  try {
+    const res = await fetch('/api/dashboard', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    if (!body.success) return;
+    const c = body.data.client || {};
+    clientName = c.name || '';
+    document.getElementById('profileName').textContent = c.name || '—';
+    document.getElementById('profileEmail').textContent = c.email || '';
+    const since = c.created_at
+      ? new Date(c.created_at).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }) : '';
+    document.getElementById('profileMeta').innerHTML =
+      `חבילה: <b>${esc(c.package || '—')}</b>${since ? ' · לקוח מאז ' + esc(since) : ''}`;
+    renderPicture(c.profile_image);
+
+    if (c.status === 'closed' || c.status === 'transferred') {
+      showNotice(c.status === 'closed'
+        ? 'החשבון הזה כבר נסגר — המנוי בוטל וכל החיבורים נותקו.'
+        : 'הניהול אצלנו כבר הסתיים — המנוי בוטל. ייצוא הנתונים עדיין זמין למעלה.', 'warn');
+      document.getElementById('dangerZone').style.display = 'none';
+    }
+  } catch (e) {
+    console.error('profile load failed', e);
+  }
+}
+
+function renderPicture(dataUrl) {
+  const pic = document.getElementById('profilePic');
+  if (dataUrl) {
+    pic.innerHTML = `<img src="${esc(dataUrl)}" alt="">`;
+    document.getElementById('removePicBtn').style.display = 'block';
+  } else {
+    pic.textContent = clientName ? clientName.trim().charAt(0) : '·';
+    document.getElementById('removePicBtn').style.display = 'none';
+  }
+}
+
+// ─── profile picture (resized in the browser, stored as a small data URL) ───
+function uploadPicture(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = async () => {
+    URL.revokeObjectURL(img.src);
+    // Center-crop to a 256px square, JPEG ~0.85 - lands well under the
+    // server's size cap and looks sharp in an 84px circle
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const side = Math.min(img.width, img.height);
+    canvas.getContext('2d').drawImage(
+      img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+    await savePicture(canvas.toDataURL('image/jpeg', 0.85));
+  };
+  img.onerror = () => showNotice('לא הצלחנו לקרוא את הקובץ — נסו תמונה אחרת', 'warn');
+  img.src = URL.createObjectURL(file);
+  input.value = '';
+}
+
+async function savePicture(dataUrl) {
+  try {
+    const res = await fetch('/api/client/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_image: dataUrl }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      renderPicture(dataUrl || null);
+      showNotice(dataUrl ? 'התמונה עודכנה ✓' : 'התמונה הוסרה ✓', 'success');
+      return;
+    }
+  } catch (e) {
+    console.error('picture save failed', e);
+  }
+  showNotice('שמירת התמונה נכשלה — נסו שוב', 'warn');
+}
+
+function removePicture() { savePicture(''); }
+
+// ─── external costs ──────────────────────────────────────────────────────────
+async function loadCosts() {
+  const area = document.getElementById('costsArea');
+  try {
+    const res = await fetch('/api/client/external-costs', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    if (!body.success) throw new Error('costs fetch failed');
+    const d = body.data;
+    if (!d.platforms.length) {
+      area.innerHTML = '<div class="empty-row">אין פלטפורמות פרסום מחוברות כרגע — אחרי חיבור Google Ads או Meta בדשבורד, ההוצאות יופיעו כאן</div>';
+      return;
+    }
+    const platformCards = d.platforms.map(p => {
+      if (p.error) {
+        return `<div class="platform-card">
+          <div class="platform-head"><span class="platform-name">${esc(p.label)}</span>
+          <span class="platform-total" style="color:var(--gray);font-size:12.5px;font-weight:400;">לא הצלחנו למשוך נתונים כרגע — נסו לרענן</span></div>
+        </div>`;
+      }
+      const rows = (p.campaigns || []).filter(c => c.cost > 0).map(c => `
+        <div class="campaign-row"><span>${esc(c.name)}</span><span class="c-cost">${ils(c.cost)}</span></div>`).join('');
+      return `<div class="platform-card">
+        <div class="platform-head">
+          <span class="platform-name">${esc(p.label)}</span>
+          <span class="platform-total">${ils(p.total_spend)}</span>
+        </div>
+        ${rows || '<div class="campaign-row"><span>עדיין לא נרשמה הוצאה בתקופה הזו</span><span class="c-cost">₪0</span></div>'}
+      </div>`;
+    }).join('');
+    area.innerHTML = `
+      <div class="costs-total-card">
+        <div class="costs-total-label">סה״כ תקציב פרסום ששולם ישירות לפלטפורמות (30 ימים)</div>
+        <div class="costs-total-value">${ils(d.total_spend)}</div>
+      </div>
+      ${platformCards}`;
+  } catch (e) {
+    console.error('costs load failed', e);
+    area.innerHTML = '<div class="empty-row">שגיאה בטעינת הנתונים — נסו לרענן את העמוד</div>';
+  }
+}
+
+// ─── logout ──────────────────────────────────────────────────────────────────
+async function logout() {
+  try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); }
+  catch (e) { /* cookie may already be gone - proceed either way */ }
+  window.location.href = '/login/';
+}
+
+// ─── closure / transfer ──────────────────────────────────────────────────────
+function toggleDangerForm(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+function checkPhrase(kind) {
+  const typed = document.getElementById(kind + 'Phrase').value.trim();
+  const btn = document.getElementById(kind + 'Btn');
+  const ok = typed === PHRASES[kind];
+  btn.disabled = !ok;
+  btn.classList.toggle('ready', ok);
+}
+
+async function offboard(mode) {
+  const kind = mode === 'closure' ? 'close' : 'transfer';
+  const btn = document.getElementById(kind + 'Btn');
+  btn.disabled = true;
+  btn.textContent = 'מבצע… מבטלים את המנוי ומנתקים חיבורים';
+  try {
+    const res = await fetch(mode === 'closure' ? '/api/client/close-account' : '/api/client/transfer-out', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        confirm_phrase: document.getElementById(kind + 'Phrase').value.trim(),
+        reason: document.getElementById(kind + 'Reason').value.trim(),
+      }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      if (mode === 'closure') {
+        document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+          <div style="max-width:460px;text-align:center;">
+            <div style="font-size:44px;margin-bottom:18px;">🙏</div>
+            <div style="font-size:20px;font-weight:800;margin-bottom:10px;">החשבון נסגר — תודה על הכל</div>
+            <div style="color:#8A8A85;font-size:14px;line-height:1.8;">המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך אישור במייל. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️</div>
+          </div></div>`;
+      } else {
+        showNotice('המעבר הושלם — המנוי בוטל והגישה שלנו נותקה. בהצלחה בהמשך! אל תשכחו להוריד את ייצוא הנתונים.', 'success');
+        document.getElementById('dangerZone').style.display = 'none';
+      }
+      return;
+    }
+    showNotice(body.detail || 'הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+  } catch (e) {
+    console.error('offboard failed', e);
+    showNotice('הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+  }
+  btn.textContent = mode === 'closure' ? 'אישור סופי — סגירת החשבון' : 'אישור סופי — סיום ניהול ומעבר';
+  checkPhrase(kind);
+}
+
+// ─── boot ────────────────────────────────────────────────────────────────────
+loadProfile();
+loadCosts();
+</script>
+
+</body>
+</html>

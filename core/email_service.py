@@ -292,6 +292,68 @@ def _send_weekly_platform_report(report: dict, platform_label: str):
     _send(msg, ADMIN_EMAIL)
 
 
+def _offboarding_email(client_email: str, client_name: str, title: str,
+                        body_lines: list, subject: str):
+    """Shared branded shell for the closure/transfer confirmations - the one
+    email a leaving client must actually receive, because it's their written
+    proof that billing stopped."""
+    paragraphs = "".join(
+        f'<p style="color:#3D3D3D;line-height:1.7;margin:0 0 14px;">{line}</p>'
+        for line in body_lines
+    )
+    html = f"""
+    <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+        <p style="color:#8A8A8A;margin:4px 0 0;">הבית לעסקים קטנים ובינוניים</p>
+      </div>
+      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;border-top:4px solid #FF4C1F;">
+        <h2 style="margin:0 0 16px;color:#1A1A1A;">{title}</h2>
+        {paragraphs}
+      </div>
+      <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
+        <p style="color:#3D3D3D;margin:0;">שאלות על סיום ההתקשרות? אפשר פשוט להשיב למייל הזה 💬</p>
+      </div>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = GMAIL_USER
+    msg['To'] = client_email
+    msg.attach(MIMEText(html, 'html'))
+    _send(msg, client_email)
+
+
+def send_account_closed(client_email: str, client_name: str):
+    _offboarding_email(
+        client_email, client_name,
+        title=f"להתראות{f' {client_name}' if client_name else ''}, ותודה על הכל 🙏",
+        body_lines=[
+            "בקשתך לסגירת החשבון בוצעה.",
+            "<strong>המנוי ב-PayPal בוטל</strong> — לא יהיו יותר חיובים מאיתנו. אם קיים חיוב שכבר נקלט לפני הביטול, הוא האחרון.",
+            "כל חיבורי המערכות (Google Ads, Meta, האתר) נותקו והפרטים שנשמרו אצלנו לצורך החיבור נמחקו. החשבונות עצמם שלך והם ממשיכים להתקיים כרגיל.",
+            "היסטוריית הפעילות והחיובים נשמרת אצלנו לצרכי תיעוד — אפשר לפנות אלינו בכל שלב לקבלת עותק.",
+            "אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב.",
+        ],
+        subject="uallak — החשבון נסגר והמנוי בוטל ✔",
+    )
+
+
+def send_account_transferred(client_email: str, client_name: str):
+    _offboarding_email(
+        client_email, client_name,
+        title=f"בהצלחה בהמשך הדרך{f', {client_name}' if client_name else ''} 🤝",
+        body_lines=[
+            "בקשתך לסיום הניהול אצלנו לקראת מעבר לגורם מנהל אחר בוצעה.",
+            "<strong>המנוי ב-PayPal בוטל</strong> — לא יהיו יותר חיובים מאיתנו.",
+            "ניתקנו את הגישה שלנו לחשבונות הפרסום ולאתר — <strong>החשבונות עצמם לא נפגעו</strong>: הקמפיינים, העמודים והאתר נשארים בדיוק כפי שהם, בבעלותך המלאה, ומי שינהל אותם מעכשיו פשוט יקבל גישה ישירות ממך.",
+            "מומלץ להוריד את קובץ סיכום הנתונים מהדשבורד (אזור הפרופיל ← ייצוא נתונים) ולהעביר אותו לגורם המנהל החדש — יש שם את כל היסטוריית הפעילות ונתוני הקמפיינים האחרונים.",
+            "תודה על התקופה המשותפת — והדלת תמיד פתוחה.",
+        ],
+        subject="uallak — סיום ניהול ומעבר בוצעו, המנוי בוטל ✔",
+    )
+
+
 def _send(msg, to_email):
     if not GMAIL_APP_PASSWORD:
         print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")

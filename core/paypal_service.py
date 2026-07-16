@@ -201,13 +201,19 @@ def verify_webhook_signature(headers: dict, body: bytes, webhook_id: str) -> boo
         return False
 
 
-def cancel_subscription(subscription_id: str) -> dict:
+def cancel_subscription(subscription_id: str, reason: str = "Cancelled by admin") -> dict:
+    """cancelled=True only on PayPal's 204. A cancel on an already-cancelled/
+    expired subscription is rejected (422) - callers that need 'billing is
+    definitely stopped' should treat that case via get_subscription_status."""
     response = httpx.post(
         f"{BASE_URL}/v1/billing/subscriptions/{subscription_id}/cancel",
         headers=_headers(),
-        json={"reason": "Cancelled by admin"},
+        json={"reason": reason},
         timeout=TIMEOUT,
     )
+    if response.status_code != 204:
+        print(f"[paypal_service] cancel_subscription {subscription_id} failed "
+              f"({response.status_code}): {response.text[:300]}")
     return {
         "subscription_id": subscription_id,
         "cancelled": response.status_code == 204,

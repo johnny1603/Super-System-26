@@ -26,6 +26,7 @@ ADS_API_VERSION = "v21"
 ADS_BASE_URL = f"https://googleads.googleapis.com/{ADS_API_VERSION}"
 OAUTH_CONSENT_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
 REDIRECT_PATH = "/api/oauth/google-ads/callback"
@@ -88,6 +89,28 @@ def exchange_code(code: str) -> dict:
     )
     response.raise_for_status()
     return response.json()
+
+
+def revoke_token(refresh_token: str) -> bool:
+    """Revoke the client's OAuth grant at Google, so our stored refresh token
+    stops working even if a copy survives somewhere. Google returns 200 on
+    success and 400 for an already-invalid/revoked token — both mean the grant
+    is dead, so both count as success. Never raises: disconnect flows must not
+    fail because the token was already dead."""
+    try:
+        response = httpx.post(
+            OAUTH_REVOKE_URL,
+            data={"token": refresh_token},
+            timeout=TIMEOUT,
+        )
+        _access_token_cache.pop(refresh_token, None)
+        if response.status_code in (200, 400):
+            return True
+        print(f"[google_ads_service] token revoke returned {response.status_code}: {response.text[:200]}")
+        return False
+    except Exception as e:
+        print(f"[google_ads_service] token revoke failed: {e}")
+        return False
 
 
 def _access_token(refresh_token: str) -> str:

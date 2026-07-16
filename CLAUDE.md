@@ -35,9 +35,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   master review) run after `build_proposal`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
-  terms `/terms/`, login `/login`, client dashboard `/dashboard`, admin dashboard `/admin`
-  (ADMIN_PASSWORD login → signed admin_session cookie; separate from the X-Admin-Key
-  header that guards server-to-server /api endpoints).
+  terms `/terms/`, login `/login`, client dashboard `/dashboard`, client profile `/profile`
+  (picture, external ad-spend transparency report, logout, account closure/transfer),
+  admin dashboard `/admin` (ADMIN_PASSWORD login → signed admin_session cookie; separate
+  from the X-Admin-Key header that guards server-to-server /api endpoints).
 
 ## Conventions
 

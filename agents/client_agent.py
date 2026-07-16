@@ -100,6 +100,18 @@ def upsert_account(client_id: int, platform: str, account_id: str = "",
     return result.data[0] if result.data else {}
 
 
+def remove_accounts(client_id: int, platforms: list = None) -> int:
+    """Delete the stored client_accounts rows (credentials included) for the
+    given platforms — or ALL of the client's platforms when platforms is None.
+    Deleting the row (not just flipping status) is the point: a disconnect must
+    leave no stored credential behind. Returns how many rows were removed."""
+    query = _db().table("client_accounts").delete().eq("client_id", client_id)
+    if platforms:
+        query = query.in_("platform", platforms)
+    result = query.execute()
+    return len(result.data or [])
+
+
 # ─── Client agents ────────────────────────────────────────────────────────────
 
 def assign_agent(client_id: int, agent_name: str) -> dict:
