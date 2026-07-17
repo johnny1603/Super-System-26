@@ -949,14 +949,10 @@ async function loadDashboard() {
       avatar.textContent = name ? name.trim().charAt(0) : '·';
     }
 
-    // A client that already closed/transferred still sees their history, but
-    // with an honest banner instead of a live-looking dashboard
-    const clientStatus = d.client && d.client.status;
-    if (clientStatus === 'closed') {
-      showNotice('החשבון הזה נסגר — המנוי בוטל וכל החיבורים נותקו. ההיסטוריה נשארת זמינה לצפייה.', 'warn');
-    } else if (clientStatus === 'transferred') {
-      showNotice('הניהול אצלנו הסתיים (מעבר לגורם מנהל אחר) — המנוי בוטל. אפשר להוריד ייצוא נתונים מעמוד הפרופיל.', 'warn');
-    } else if (clientStatus === 'cancelled') {
+    // Closed/transferred clients are hard-locked at login and never reach this
+    // page; 'cancelled' (cancelled the subscription on paypal.com directly) is
+    // the one non-live status that can still log in
+    if (d.client && d.client.status === 'cancelled') {
       showNotice('המנוי בוטל דרך PayPal. אם זו לא הייתה כוונה — דברו איתנו בצ׳אט ונסדר הכל.', 'warn');
     }
 

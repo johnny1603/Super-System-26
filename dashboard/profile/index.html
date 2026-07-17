@@ -227,7 +227,7 @@ body {
         <button class="danger-btn" onclick="toggleDangerForm('transferForm')">מעבר סוכנות</button>
       </div>
       <div class="danger-form" id="transferForm">
-        <p>לפני שממשיכים: מומלץ <b>להוריד עכשיו את ייצוא הנתונים</b> (למעלה) ולהעביר אותו לגורם המנהל החדש — יש שם את היסטוריית הפעילות ונתוני הקמפיינים האחרונים.<br>
+        <p>שימו לב: אחרי האישור <b>הגישה לדשבורד נסגרת</b>. קובץ סיכום הנתונים המלא (להעברה לגורם המנהל החדש) יישלח אליכם <b>כקובץ מצורף במייל האישור</b> — ואפשר גם להוריד אותו עכשיו למעלה.<br>
         לאישור, הקלידו: <b>מעבר סוכנות</b></p>
         <input class="danger-input" id="transferReason" placeholder="לאן עוברים / למה? (לא חובה — עוזר לנו להשתפר)">
         <input class="danger-input" id="transferPhrase" placeholder="הקלידו כאן: מעבר סוכנות" oninput="checkPhrase('transfer')">
@@ -244,7 +244,7 @@ body {
         <button class="danger-btn" onclick="toggleDangerForm('closeForm')">סגירת חשבון</button>
       </div>
       <div class="danger-form" id="closeForm">
-        <p>הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון. היסטוריית הפעילות והחיובים נשמרת לצרכי תיעוד. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>
+        <p>הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון — <b>כולל הגישה לדשבורד</b>. עותק מלא של הנתונים שלך יישלח אליך <b>כקובץ מצורף במייל האישור</b>, ועותק ארכיוני נשמר אצלנו לצרכי תיעוד חשבונאי. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>
         לאישור, הקלידו: <b>סגירת חשבון</b></p>
         <input class="danger-input" id="closeReason" placeholder="למה סוגרים? (לא חובה — עוזר לנו להשתפר)">
         <input class="danger-input" id="closePhrase" placeholder="הקלידו כאן: סגירת חשבון" oninput="checkPhrase('close')">
@@ -286,13 +286,6 @@ async function loadProfile() {
     document.getElementById('profileMeta').innerHTML =
       `חבילה: <b>${esc(c.package || '—')}</b>${since ? ' · לקוח מאז ' + esc(since) : ''}`;
     renderPicture(c.profile_image);
-
-    if (c.status === 'closed' || c.status === 'transferred') {
-      showNotice(c.status === 'closed'
-        ? 'החשבון הזה כבר נסגר — המנוי בוטל וכל החיבורים נותקו.'
-        : 'הניהול אצלנו כבר הסתיים — המנוי בוטל. ייצוא הנתונים עדיין זמין למעלה.', 'warn');
-      document.getElementById('dangerZone').style.display = 'none';
-    }
   } catch (e) {
     console.error('profile load failed', e);
   }
@@ -430,17 +423,14 @@ async function offboard(mode) {
     });
     const body = await res.json();
     if (res.ok && body.success) {
-      if (mode === 'closure') {
-        document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
-          <div style="max-width:460px;text-align:center;">
-            <div style="font-size:44px;margin-bottom:18px;">🙏</div>
-            <div style="font-size:20px;font-weight:800;margin-bottom:10px;">החשבון נסגר — תודה על הכל</div>
-            <div style="color:#8A8A85;font-size:14px;line-height:1.8;">המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך אישור במייל. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️</div>
-          </div></div>`;
-      } else {
-        showNotice('המעבר הושלם — המנוי בוטל והגישה שלנו נותקה. בהצלחה בהמשך! אל תשכחו להוריד את ייצוא הנתונים.', 'success');
-        document.getElementById('dangerZone').style.display = 'none';
-      }
+      // Both flows end the session (hard lock) - show a final static screen
+      const isClose = mode === 'closure';
+      document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+        <div style="max-width:460px;text-align:center;">
+          <div style="font-size:44px;margin-bottom:18px;">${isClose ? '🙏' : '🤝'}</div>
+          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">${isClose ? 'החשבון נסגר — תודה על הכל' : 'המעבר הושלם — בהצלחה בהמשך!'}</div>
+          <div style="color:#8A8A85;font-size:14px;line-height:1.8;">המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך מייל אישור עם עותק מלא של הנתונים שלך כקובץ מצורף${isClose ? '. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️' : ' — מומלץ להעביר אותו לגורם המנהל החדש. הדלת תמיד פתוחה ❤️'}</div>
+        </div></div>`;
       return;
     }
     showNotice(body.detail || 'הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', 'warn');

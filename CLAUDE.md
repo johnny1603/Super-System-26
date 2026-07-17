@@ -34,6 +34,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `agents/qa_agent.py` (numeric, no LLM) → `agents/qa_agent_content.py` (merged content +
   master review) run after `build_proposal`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
+- `core/drive_service.py` — Google Drive archive for offboarded clients (service account
+  via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
+  exports the full client record to Drive, then purges the live rows to a PII-stripped
+  tombstone; offboarded clients are hard-locked out of login.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
   terms `/terms/`, login `/login`, client dashboard `/dashboard`, client profile `/profile`
   (picture, external ad-spend transparency report, logout, account closure/transfer),

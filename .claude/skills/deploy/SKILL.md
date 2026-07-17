@@ -42,7 +42,10 @@ the bundled git when the user explicitly asks for it.
 
 `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `PAYPAL_CLIENT_ID`,
 `PAYPAL_CLIENT_SECRET`, `SESSION_SECRET_KEY`, `GMAIL_APP_PASSWORD`
-(optional: `GMAIL_USER`, `ADMIN_EMAIL`, `PAYPAL_WEBHOOK_ID`, `PUBLIC_APP_URL`).
+(optional: `GMAIL_USER`, `ADMIN_EMAIL`, `PAYPAL_WEBHOOK_ID`, `PUBLIC_APP_URL`;
+`GOOGLE_SERVICE_ACCOUNT_JSON` + `DRIVE_ARCHIVE_FOLDER_ID` for the offboarded-client
+Drive archive — without them, closure/transfer still works but records stay in the
+DB and an alert asks for a manual archive retry).
 `validate_keys()` prints a `⚠️ Missing keys` warning at startup — check the Cloud Run logs
 right after a deploy.
 

@@ -1,5 +1,6 @@
 import os
 import smtplib
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -293,10 +294,13 @@ def _send_weekly_platform_report(report: dict, platform_label: str):
 
 
 def _offboarding_email(client_email: str, client_name: str, title: str,
-                        body_lines: list, subject: str):
+                        body_lines: list, subject: str,
+                        attachment_name: str = "", attachment_content: str = ""):
     """Shared branded shell for the closure/transfer confirmations - the one
     email a leaving client must actually receive, because it's their written
-    proof that billing stopped."""
+    proof that billing stopped. The data export rides along as an attachment:
+    offboarded clients are hard-locked out of the dashboard, so this email is
+    their only self-service way to get their data."""
     paragraphs = "".join(
         f'<p style="color:#3D3D3D;line-height:1.7;margin:0 0 14px;">{line}</p>'
         for line in body_lines
@@ -316,15 +320,21 @@ def _offboarding_email(client_email: str, client_name: str, title: str,
       </div>
     </div>
     """
-    msg = MIMEMultipart('alternative')
+    # 'mixed' (not 'alternative') so a real file attachment renders as one
+    msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
     msg['From'] = GMAIL_USER
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))
+    if attachment_name and attachment_content:
+        part = MIMEApplication(attachment_content.encode('utf-8'), _subtype='json')
+        part.add_header('Content-Disposition', 'attachment', filename=attachment_name)
+        msg.attach(part)
     _send(msg, client_email)
 
 
-def send_account_closed(client_email: str, client_name: str):
+def send_account_closed(client_email: str, client_name: str,
+                         export_name: str = "", export_content: str = ""):
     _offboarding_email(
         client_email, client_name,
         title=f"להתראות{f' {client_name}' if client_name else ''}, ותודה על הכל 🙏",
@@ -332,14 +342,16 @@ def send_account_closed(client_email: str, client_name: str):
             "בקשתך לסגירת החשבון בוצעה.",
             "<strong>המנוי ב-PayPal בוטל</strong> — לא יהיו יותר חיובים מאיתנו. אם קיים חיוב שכבר נקלט לפני הביטול, הוא האחרון.",
             "כל חיבורי המערכות (Google Ads, Meta, האתר) נותקו והפרטים שנשמרו אצלנו לצורך החיבור נמחקו. החשבונות עצמם שלך והם ממשיכים להתקיים כרגיל.",
-            "היסטוריית הפעילות והחיובים נשמרת אצלנו לצרכי תיעוד — אפשר לפנות אלינו בכל שלב לקבלת עותק.",
+            "מצורף למייל הזה <strong>עותק מלא של הנתונים שלך</strong> (קובץ JSON) — היסטוריית פעילות, חיובים ונתוני קמפיינים. עותק ארכיוני נשמר אצלנו לצרכי תיעוד חשבונאי, והגישה לדשבורד נסגרת עם החשבון.",
             "אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב.",
         ],
         subject="uallak — החשבון נסגר והמנוי בוטל ✔",
+        attachment_name=export_name, attachment_content=export_content,
     )
 
 
-def send_account_transferred(client_email: str, client_name: str):
+def send_account_transferred(client_email: str, client_name: str,
+                              export_name: str = "", export_content: str = ""):
     _offboarding_email(
         client_email, client_name,
         title=f"בהצלחה בהמשך הדרך{f', {client_name}' if client_name else ''} 🤝",
@@ -347,10 +359,11 @@ def send_account_transferred(client_email: str, client_name: str):
             "בקשתך לסיום הניהול אצלנו לקראת מעבר לגורם מנהל אחר בוצעה.",
             "<strong>המנוי ב-PayPal בוטל</strong> — לא יהיו יותר חיובים מאיתנו.",
             "ניתקנו את הגישה שלנו לחשבונות הפרסום ולאתר — <strong>החשבונות עצמם לא נפגעו</strong>: הקמפיינים, העמודים והאתר נשארים בדיוק כפי שהם, בבעלותך המלאה, ומי שינהל אותם מעכשיו פשוט יקבל גישה ישירות ממך.",
-            "מומלץ להוריד את קובץ סיכום הנתונים מהדשבורד (אזור הפרופיל ← ייצוא נתונים) ולהעביר אותו לגורם המנהל החדש — יש שם את כל היסטוריית הפעילות ונתוני הקמפיינים האחרונים.",
+            "מצורף למייל הזה <strong>קובץ סיכום הנתונים המלא</strong> (JSON) — היסטוריית פעילות ונתוני הקמפיינים האחרונים. מומלץ להעביר אותו לגורם המנהל החדש. שימו לב: הגישה לדשבורד מסתיימת עם המעבר, אז הקובץ הזה הוא העותק שלך.",
             "תודה על התקופה המשותפת — והדלת תמיד פתוחה.",
         ],
         subject="uallak — סיום ניהול ומעבר בוצעו, המנוי בוטל ✔",
+        attachment_name=export_name, attachment_content=export_content,
     )
 
 

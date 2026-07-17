@@ -16,6 +16,10 @@ KEYS = {
     "GOOGLE_OAUTH_CLIENT_SECRET": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
     "META_APP_ID": os.environ.get("META_APP_ID", ""),
     "META_APP_SECRET": os.environ.get("META_APP_SECRET", ""),
+    # Drive archive for offboarded clients (core/drive_service.py): the full
+    # service-account JSON key + the shared archive folder's Drive ID
+    "GOOGLE_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", ""),
+    "DRIVE_ARCHIVE_FOLDER_ID": os.environ.get("DRIVE_ARCHIVE_FOLDER_ID", ""),
     "INSTAWP_API_KEY": os.environ.get("INSTAWP_API_KEY", ""),
     "GREEN_API_INSTANCE_ID": os.environ.get("GREEN_API_INSTANCE_ID", ""),
     "GREEN_API_TOKEN": os.environ.get("GREEN_API_TOKEN", ""),

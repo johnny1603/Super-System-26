@@ -47,6 +47,7 @@ from core.session import (
 from core import google_ads_service
 from core import meta_service
 from core import admin_service
+from core import drive_service
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -481,10 +482,19 @@ async def api_get_client(client_id: int):
 class LoginRequestCodeRequest(BaseModel):
     email: str
 
+# Offboarded clients are hard-locked out of the dashboard (business decision,
+# 2026-07): their archive lives in Google Drive, not behind a login. Their
+# data export was attached to the closure/transfer confirmation email.
+OFFBOARDED_STATUSES = ("closed", "transferred")
+
 @app.post("/api/login/request-code")
 async def login_request_code(req: LoginRequestCodeRequest):
     try:
         client = get_client_by_email(req.email.strip())
+        # Same generic response for an offboarded account as for an unknown
+        # email - no code is sent, and nothing is revealed
+        if client and client.get("status") in OFFBOARDED_STATUSES:
+            client = None
         if client:
             code = f"{secrets.randbelow(1_000_000):06d}"
             expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
@@ -507,7 +517,7 @@ async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
     invalid = HTTPException(status_code=401, detail="קוד שגוי או שפג תוקפו")
 
     client = get_client_by_email(req.email.strip())
-    if not client:
+    if not client or client.get("status") in OFFBOARDED_STATUSES:
         raise invalid
 
     login_code = get_active_login_code(client["id"])
@@ -544,6 +554,13 @@ async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
 def _require_session(request: Request) -> int:
     client_id = verify_session_token(request.cookies.get("session"))
     if not client_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Hard lock: a closed/transferred client is out even with a still-valid
+    # session cookie on another device (cookies live 30 days; the status check
+    # is what actually ends access everywhere). One extra DB read per request -
+    # fine at current volume.
+    client = get_client(client_id)
+    if not client or client.get("status") in OFFBOARDED_STATUSES:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return client_id
 
@@ -977,24 +994,9 @@ def client_external_costs(request: Request):
 
 # ─── Data export + closure / transfer protocols (client-facing) ──────────────
 
-@app.get("/api/client/data-export")
-def client_data_export(request: Request):
-    """Everything we hold about the client, as a downloadable JSON file - the
-    handoff document for a transfer to another agency, or a personal copy
-    before closure. Plain `def`: hits PayPal + both ad platforms."""
-    client_id = _require_session(request)
-    client = get_client(client_id)
-    sub = _client_subscription_info(client_id)
-
-    transactions = []
-    if sub["subscription_id"]:
-        try:
-            start = sub["checkout_at"] or (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
-            transactions = list_subscription_transactions(
-                sub["subscription_id"], start, datetime.now(timezone.utc).isoformat())
-        except Exception as e:
-            print(f"[data_export] transactions fetch failed for client {client_id}: {e}")
-
+def _collect_campaign_performance(client_id: int) -> dict:
+    """Last-30-days snapshot per connected ad platform (never raises - the
+    agents' getters return error dicts instead)."""
     performance = {}
     connected = {a.get("platform") for a in get_accounts(client_id) if a.get("status") == "active"}
     if "google_ads" in connected:
@@ -1003,6 +1005,50 @@ def client_data_export(request: Request):
     if "meta_ads" in connected:
         from agents.meta_ads_agent import get_campaign_performance as meta_perf
         performance["meta_ads"] = meta_perf(client_id)
+    return performance
+
+def _build_client_export(client_id: int, performance_override: dict = None) -> dict:
+    """Everything we hold about the client, as one JSON-able dict. Three
+    consumers: the client's own download (/api/client/data-export), the
+    attachment on the closure/transfer confirmation email, and the Google
+    Drive archive that replaces the live DB rows after offboarding.
+
+    performance_override: the offboarding flow snapshots campaign performance
+    BEFORE disconnecting the platforms and passes it in here - by the time the
+    export is built the accounts are already gone."""
+    client = get_client(client_id)
+
+    # Billing info comes straight from the newest checkout activity row -
+    # deliberately NOT _client_subscription_info, whose cancel-sentinel exists
+    # for live flows: the archive must keep billing history even (especially)
+    # when the subscription was cancelled moments ago.
+    sub = {"monthly_fee": 0, "setup_fee": 0, "subscription_id": None, "checkout_at": None}
+    subscription_cancelled = False
+    for entry in get_activity(client_id, limit=200):
+        if entry.get("agent_name") != "paypal_service":
+            continue
+        if entry.get("action_type") == "subscription_cancelled":
+            subscription_cancelled = True
+        elif entry.get("action_type") == "subscription_created":
+            details = entry.get("details") or {}
+            sub = {"monthly_fee": details.get("monthly_management_total") or 0,
+                   "setup_fee": details.get("setup_fee_total") or 0,
+                   "subscription_id": (entry.get("result") or {}).get("subscription_id"),
+                   "checkout_at": entry.get("created_at")}
+            break
+
+    transactions = []
+    if sub["subscription_id"]:
+        try:
+            # PayPal keeps a cancelled subscription's transaction history readable
+            start = sub["checkout_at"] or (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+            transactions = list_subscription_transactions(
+                sub["subscription_id"], start, datetime.now(timezone.utc).isoformat())
+        except Exception as e:
+            print(f"[data_export] transactions fetch failed for client {client_id}: {e}")
+
+    performance = (performance_override if performance_override is not None
+                   else _collect_campaign_performance(client_id))
 
     export = {
         "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -1010,7 +1056,8 @@ def client_data_export(request: Request):
                    ("id", "name", "email", "phone", "package", "status", "created_at",
                     "address", "business_name", "business_tax_id")},
         "subscription": {"monthly_fee": sub["monthly_fee"], "setup_fee": sub["setup_fee"],
-                          "subscription_id": sub["subscription_id"]},
+                          "subscription_id": sub["subscription_id"],
+                          "cancelled": subscription_cancelled},
         "transactions": transactions,
         # platform + account id only - stored credentials are never exported
         "connections": [{"platform": a.get("platform"), "account_id": a.get("account_id"),
@@ -1019,11 +1066,79 @@ def client_data_export(request: Request):
         "activity": get_activity(client_id, limit=500),
         "communications": get_communications(client_id, limit=500),
     }
+    return export
+
+@app.get("/api/client/data-export")
+def client_data_export(request: Request):
+    # Plain `def`: hits PayPal + both ad platforms
+    client_id = _require_session(request)
+    export = _build_client_export(client_id)
     return Response(
         content=json.dumps(export, ensure_ascii=False, indent=2, default=str),
         media_type="application/json; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="uallak-export-{client_id}.json"'},
     )
+
+# Live tables that get purged once the Drive archive is verified durable.
+# client_accounts is normally already empty (the disconnect step deletes it) -
+# it's listed anyway as a catch-all for stray rows from platforms outside the
+# disconnect groups. Deliberately NOT purged: alerts (system-level history),
+# weekly_reports (aggregate business documents), leads (pre-client sales
+# funnel records).
+_ARCHIVE_PURGE_TABLES = ("client_accounts", "client_agents", "client_activity",
+                          "client_communications", "client_suggestions",
+                          "client_costs", "login_codes")
+
+def _archive_and_purge_client(client_id: int, client: dict, export_json: str) -> dict:
+    """Retention model (business decision, 2026-07): the Drive archive - one
+    subfolder per client under DRIVE_ARCHIVE_FOLDER_ID - is the long-term
+    record for offboarded clients; the live DB keeps only a PII-stripped
+    tombstone row. Purge runs ONLY after Drive confirms a non-empty file:
+    if the archive can't be written, the records stay put and an alert asks
+    for a manual retry (POST /api/admin/clients/{id}/archive)."""
+    if not drive_service.is_configured():
+        alert("client_offboarding", [
+            f"client {client_id}: Drive archive NOT configured (GOOGLE_SERVICE_ACCOUNT_JSON / "
+            f"DRIVE_ARCHIVE_FOLDER_ID missing) - records retained in DB. After setup, run "
+            f"POST /api/admin/clients/{client_id}/archive to archive + purge."])
+        return {"archived": False, "purged": False, "reason": "drive_not_configured"}
+
+    try:
+        folder_name = f"client-{client_id} — {(client.get('name') or 'unnamed').strip()}"
+        folder_id = drive_service.ensure_folder(folder_name, drive_service.archive_root_folder_id())
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+        uploaded = drive_service.upload_json(
+            folder_id, f"uallak-export-{client_id}-{stamp}.json", export_json)
+        if not uploaded.get("id") or int(uploaded.get("size") or 0) <= 0:
+            raise RuntimeError(f"Drive did not confirm a durable file: {uploaded}")
+    except Exception as e:
+        alert("client_offboarding", [
+            f"client {client_id}: Drive archive FAILED ({e}) - records retained in DB. "
+            f"Retry with POST /api/admin/clients/{client_id}/archive."])
+        return {"archived": False, "purged": False, "reason": str(e)}
+
+    purge_errors = []
+    for table in _ARCHIVE_PURGE_TABLES:
+        try:
+            db.table(table).delete().eq("client_id", client_id).execute()
+        except Exception as e:
+            purge_errors.append(f"{table}: {e}")
+    try:
+        # Tombstone: id/name/package/status/created_at stay for the admin list;
+        # every contact/PII field goes. An emptied email also backstops the
+        # login hard-lock - request-code starts from an email lookup.
+        db.table("clients").update({
+            "email": "", "phone": "", "address": "", "business_name": "",
+            "business_tax_id": "", "profile_image": None, "owner_gender": None,
+        }).eq("id", client_id).execute()
+    except Exception as e:
+        purge_errors.append(f"clients tombstone: {e}")
+    if purge_errors:
+        alert("client_offboarding",
+              [f"client {client_id}: archive OK (Drive file {uploaded['id']}) but purge "
+               f"partially failed - clean up manually: {'; '.join(purge_errors)}"])
+
+    return {"archived": True, "purged": not purge_errors, "drive_file_id": uploaded["id"]}
 
 def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
     """Shared closure/transfer flow. Order matters: billing stops FIRST (the
@@ -1065,7 +1180,11 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
         log_activity(client_id, "paypal_service", "subscription_cancelled",
                      {"mode": mode}, {"subscription_id": sub["subscription_id"]})
 
-    # 2 - revoke our access everywhere (the client's accounts are untouched)
+    # 2 - snapshot campaign performance BEFORE the disconnect kills our access;
+    # it goes into the export/archive built at the end of this flow
+    performance_snapshot = _collect_campaign_performance(client_id)
+
+    # 3 - revoke our access everywhere (the client's accounts are untouched)
     disconnected = []
     for platform in _DISCONNECT_GROUPS:
         try:
@@ -1077,9 +1196,8 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
             alert("client_offboarding",
                   [f"client {client_id}: disconnect of {platform} failed during {mode}: {e}"])
 
-    # 3 - flip the record. The clients row + activity/communications history are
-    # retained for business/financial records (see retention note in the handoff
-    # report); the credentials in client_accounts are already gone.
+    # 4 - flip the record; the hard lock in _require_session and the login
+    # endpoints keys off this status
     new_status = "closed" if mode == "closure" else "transferred"
     update_client_status(client_id, new_status)
     log_activity(client_id, "client_agent",
@@ -1087,24 +1205,47 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
                  {"reason": reason, "subscription_cancelled": subscription_cancelled,
                   "disconnected": disconnected}, {})
 
-    # 4 - written confirmation to the client + a heads-up alert for the team
+    # 5 - build the final export NOW (it must capture the offboarding activity
+    # rows just logged, and it must exist before the purge below deletes them)
+    export_json = ""
+    try:
+        export_json = json.dumps(_build_client_export(client_id, performance_snapshot),
+                                 ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        alert("client_offboarding",
+              [f"client {client_id}: export build failed during {mode}: {e}"])
+
+    # 6 - written confirmation to the client, with their data as an attachment
+    # (the hard lock means this email is their only self-service copy)
     try:
         if client.get("email"):
+            export_name = f"uallak-export-{client_id}.json" if export_json else ""
             if mode == "closure":
-                send_account_closed(client["email"], client.get("name", ""))
+                send_account_closed(client["email"], client.get("name", ""),
+                                    export_name, export_json)
             else:
-                send_account_transferred(client["email"], client.get("name", ""))
+                send_account_transferred(client["email"], client.get("name", ""),
+                                         export_name, export_json)
     except Exception as e:
         print(f"[offboarding] confirmation email failed for client {client_id} (non-fatal): {e}")
+
+    # 7 - long-term archive to Drive, then purge the live rows (skipped, with
+    # an alert, if the export could not be built or Drive isn't configured)
+    if export_json:
+        archive = _archive_and_purge_client(client_id, client, export_json)
+    else:
+        archive = {"archived": False, "purged": False, "reason": "export_build_failed"}
+
     alert("client_offboarding", [
         f"client {client_id} ({client.get('name')}) completed {mode}: "
         f"subscription {'cancelled' if subscription_cancelled else 'was not live'}, "
         f"disconnected: {', '.join(disconnected) or 'nothing was connected'}, "
+        f"archive: {'Drive file ' + archive['drive_file_id'] if archive.get('archived') else 'FAILED - ' + str(archive.get('reason'))}, "
         f"reason: {reason or '-'}"
     ])
 
     return {"status": new_status, "subscription_cancelled": subscription_cancelled,
-            "disconnected": disconnected}
+            "disconnected": disconnected, "archive": archive}
 
 class OffboardRequest(BaseModel):
     confirm_phrase: str
@@ -1126,14 +1267,30 @@ def client_close_account(req: OffboardRequest, request: Request, response: Respo
     return {"success": True, "data": result}
 
 @app.post("/api/client/transfer-out")
-def client_transfer_out(req: OffboardRequest, request: Request):
-    # Session survives a transfer on purpose - the client may still want the
-    # data export for their new agency right after confirming
+def client_transfer_out(req: OffboardRequest, request: Request, response: Response):
+    # Hard lock applies to transfers too - the client's copy of their data
+    # rides the confirmation email as an attachment, not the dashboard
     client_id = _require_session(request)
     if req.confirm_phrase.strip() != TRANSFER_CONFIRM_PHRASE:
         raise HTTPException(status_code=400, detail="אישור המעבר לא תקין")
     result = _offboard_client(client_id, "transfer", req.reason.strip())
+    response.delete_cookie("session", path="/")
     return {"success": True, "data": result}
+
+@app.post("/api/admin/clients/{client_id}/archive")
+def admin_archive_client(client_id: int, request: Request):
+    """Manual retry for the Drive archive + purge, for offboardings that ran
+    while Drive was unconfigured/unreachable (the alert names this endpoint).
+    Plain `def`: Drive upload + PayPal/ad-platform reads are blocking."""
+    _require_admin(request)
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.get("status") not in OFFBOARDED_STATUSES:
+        raise HTTPException(status_code=400, detail="Client is not offboarded - archive is for closed/transferred clients only")
+    export_json = json.dumps(_build_client_export(client_id),
+                             ensure_ascii=False, indent=2, default=str)
+    return {"success": True, "data": _archive_and_purge_client(client_id, client, export_json)}
 
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
