@@ -1670,6 +1670,82 @@ def website_scan():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ─── Organic SEO (admin/scheduler only — strategy routes to Johnny) ───────────
+
+class SeoConnectToolRequest(BaseModel):
+    client_id: int
+    tool: str      # seoptimer | semrush | ahrefs (the PRICING seo_tiers ladder)
+    api_key: str
+
+@app.post("/api/seo/connect-tool", dependencies=_admin_only)
+def seo_connect_tool(req: SeoConnectToolRequest):
+    from agents.seo_agent import connect_tool
+    result = connect_tool(req.client_id, req.tool, req.api_key)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/seo/audit", dependencies=_admin_only)
+def seo_audit(client_id: int):
+    # Free own-site audit (WP REST) — no tool units, no LLM
+    from agents.seo_agent import audit_site
+    try:
+        return {"success": True, "data": audit_site(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/seo/research", dependencies=_admin_only)
+def seo_research(client_id: int, force_refresh: bool = False):
+    # Costs real money (client's tool units / web-search fee) — cached 7 days;
+    # force_refresh burns a fresh run
+    from agents.seo_agent import run_market_research
+    result = run_market_research(client_id, force_refresh=force_refresh)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "research failed"))
+    return {"success": True, "data": result}
+
+class SeoStrategyRequest(BaseModel):
+    client_id: int
+
+@app.post("/api/seo/strategy", dependencies=_admin_only)
+def seo_strategy(req: SeoStrategyRequest):
+    from agents.seo_agent import build_strategy
+    result = build_strategy(req.client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "strategy failed"))
+    return {"success": True, "data": result}
+
+class SeoWriteArticleRequest(BaseModel):
+    client_id: int
+    topic: str
+    target_keyword: str = ""
+    notes: str = ""
+
+@app.post("/api/seo/write-article", dependencies=_admin_only)
+def seo_write_article(req: SeoWriteArticleRequest):
+    # Creates a WP DRAFT via website_agent — human publishes. Weekly cap +
+    # quality gate enforced inside the agent (iron rules).
+    from agents.seo_agent import write_article
+    result = write_article(req.client_id, req.topic, req.target_keyword, req.notes)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/seo/promotable", dependencies=_admin_only)
+def seo_promotable(client_id: int, limit: int = 5):
+    # Published articles ready for social cross-promotion (future media agent
+    # calls agents/seo_agent.get_recent_articles_for_promotion directly)
+    from agents.seo_agent import get_recent_articles_for_promotion
+    return {"success": True, "data": get_recent_articles_for_promotion(client_id, limit)}
+
+@app.get("/api/seo/cycle", dependencies=_admin_only)
+def seo_cycle():
+    from agents.seo_agent import run_seo_cycle
+    try:
+        return {"success": True, "data": run_seo_cycle()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
 
 @app.get("/api/client/suggestions")

@@ -182,6 +182,17 @@ def list_content(site_url: str, username: str, app_password: str,
                 "_fields": "id,title,status,link,slug,modified"})
 
 
+def list_content_for_audit(site_url: str, username: str, app_password: str,
+                           content_type: str = "post", limit: int = 30) -> list:
+    """Like list_content but with the body + excerpt included — the SEO
+    agent's content audit needs word counts and excerpt presence, which the
+    slim _fields list deliberately omits for the overview path."""
+    return rest_get(
+        site_url, _collection(content_type), username, app_password,
+        params={"per_page": limit, "status": "publish,draft,pending",
+                "_fields": "id,title,status,link,slug,date,modified,excerpt,content"})
+
+
 def get_content(site_url: str, username: str, app_password: str,
                 content_type: str, content_id: int) -> dict:
     return rest_get(site_url, f"{_collection(content_type)}/{content_id}",
