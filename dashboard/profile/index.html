@@ -169,7 +169,10 @@ body {
 
 <div class="topbar">
   <div class="logo">u<span>allak</span></div>
-  <a class="back-link" href="/dashboard/">→ חזרה לדשבורד</a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="langRow"></span>
+    <a class="back-link" href="/dashboard/" data-i18n="back">→ חזרה לדשבורד</a>
+  </div>
 </div>
 
 <div class="main">
@@ -185,84 +188,139 @@ body {
     </div>
     <div class="pic-actions">
       <input type="file" id="picInput" accept="image/*" style="display:none;" onchange="uploadPicture(this)">
-      <button class="btn" onclick="document.getElementById('picInput').click()">החלפת תמונה</button>
-      <button class="btn small-link" id="removePicBtn" style="display:none;" onclick="removePicture()">הסרת התמונה</button>
+      <button class="btn" onclick="document.getElementById('picInput').click()" data-i18n="pic_change">החלפת תמונה</button>
+      <button class="btn small-link" id="removePicBtn" style="display:none;" onclick="removePicture()" data-i18n="pic_remove">הסרת התמונה</button>
     </div>
   </div>
 
   <!-- ---------- EXTERNAL COSTS ---------- -->
   <div class="section-head">
-    <div class="section-title">דוח עלויות חיצוניות — 30 הימים האחרונים</div>
-    <div class="section-sub">כמה שילמת ישירות לפלטפורמות הפרסום (תקציב מדיה) — בנפרד מדמי הניהול שלנו</div>
+    <div class="section-title" data-i18n="costs_title">דוח עלויות חיצוניות — 30 הימים האחרונים</div>
+    <div class="section-sub" data-i18n="costs_sub">כמה שילמת ישירות לפלטפורמות הפרסום (תקציב מדיה) — בנפרד מדמי הניהול שלנו</div>
   </div>
-  <div id="costsArea"><div class="empty-row">טוען נתונים מהפלטפורמות…</div></div>
+  <div id="costsArea"><div class="empty-row" data-i18n="costs_loading">טוען נתונים מהפלטפורמות…</div></div>
   <div class="honest-note">
     <span class="icon">ⓘ</span>
-    <span>תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.</span>
+    <span data-i18n="honest_note">תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.</span>
   </div>
 
   <!-- ---------- ACCOUNT ---------- -->
   <div class="section-head">
-    <div class="section-title">החשבון שלי</div>
+    <div class="section-title" data-i18n="account_title">החשבון שלי</div>
   </div>
   <div class="actions-row">
-    <a class="btn" href="/api/client/data-export">⬇ ייצוא הנתונים שלי (JSON)</a>
-    <button class="btn" onclick="logout()">התנתקות</button>
+    <a class="btn" href="/api/client/data-export" data-i18n="export_btn">⬇ ייצוא הנתונים שלי (JSON)</a>
+    <button class="btn" onclick="logout()" data-i18n="logout_btn">התנתקות</button>
   </div>
 
   <!-- ---------- DANGER ZONE ---------- -->
   <div class="section-head">
-    <div class="section-title">סיום התקשרות</div>
+    <div class="section-title" data-i18n="end_title">סיום התקשרות</div>
   </div>
   <div class="danger-zone" id="dangerZone">
-    <div class="danger-title">אזור רגיש — פעולות בלתי הפיכות</div>
-    <div class="danger-sub">שתי הפעולות כאן מבטלות את המנוי ב-PayPal באופן מיידי (לא יהיו יותר חיובים) ומנתקות את כל חיבורי המערכות. החשבונות שלך ב-Google, Meta והאתר לא נפגעים — הם שלך וממשיכים להתקיים.</div>
+    <div class="danger-title" data-i18n="danger_title">אזור רגיש — פעולות בלתי הפיכות</div>
+    <div class="danger-sub" data-i18n="danger_sub">שתי הפעולות כאן מבטלות את המנוי ב-PayPal באופן מיידי (לא יהיו יותר חיובים) ומנתקות את כל חיבורי המערכות. החשבונות שלך ב-Google, Meta והאתר לא נפגעים — הם שלך וממשיכים להתקיים.</div>
 
     <div class="danger-option">
       <div class="danger-option-head">
         <div>
-          <div class="danger-option-title">מעבר לגורם מנהל אחר</div>
-          <div class="danger-option-sub">עוברים לסוכנות אחרת? נבטל את המנוי וננתק את הגישה שלנו — והחשבונות נשארים אצלך, מוכנים למי שממשיך.</div>
+          <div class="danger-option-title" data-i18n="transfer_title">מעבר לגורם מנהל אחר</div>
+          <div class="danger-option-sub" data-i18n="transfer_sub">עוברים לסוכנות אחרת? נבטל את המנוי וננתק את הגישה שלנו — והחשבונות נשארים אצלך, מוכנים למי שממשיך.</div>
         </div>
-        <button class="danger-btn" onclick="toggleDangerForm('transferForm')">מעבר סוכנות</button>
+        <button class="danger-btn" onclick="toggleDangerForm('transferForm')" data-i18n="transfer_btn">מעבר סוכנות</button>
       </div>
       <div class="danger-form" id="transferForm">
-        <p>שימו לב: אחרי האישור <b>הגישה לדשבורד נסגרת</b>. קובץ סיכום הנתונים המלא (להעברה לגורם המנהל החדש) יישלח אליכם <b>כקובץ מצורף במייל האישור</b> — ואפשר גם להוריד אותו עכשיו למעלה.<br>
-        לאישור, הקלידו: <b>מעבר סוכנות</b></p>
-        <input class="danger-input" id="transferReason" placeholder="לאן עוברים / למה? (לא חובה — עוזר לנו להשתפר)">
-        <input class="danger-input" id="transferPhrase" placeholder="הקלידו כאן: מעבר סוכנות" oninput="checkPhrase('transfer')">
-        <button class="danger-confirm-btn" id="transferBtn" disabled onclick="offboard('transfer')">אישור סופי — סיום ניהול ומעבר</button>
+        <p data-i18n-html="transfer_note">שימו לב: אחרי האישור <b>הגישה לדשבורד נסגרת</b>. קובץ סיכום הנתונים המלא (להעברה לגורם המנהל החדש) יישלח אליכם <b>כקובץ מצורף במייל האישור</b> — ואפשר גם להוריד אותו עכשיו למעלה.<br>לאישור, הקלידו: <b>מעבר סוכנות</b></p>
+        <input class="danger-input" id="transferReason" data-i18n-placeholder="transfer_reason_ph" placeholder="לאן עוברים / למה? (לא חובה — עוזר לנו להשתפר)">
+        <input class="danger-input" id="transferPhrase" dir="auto" data-i18n-placeholder="transfer_phrase_ph" placeholder="הקלידו כאן: מעבר סוכנות" oninput="checkPhrase('transfer')">
+        <button class="danger-confirm-btn" id="transferBtn" disabled onclick="offboard('transfer')" data-i18n="transfer_confirm">אישור סופי — סיום ניהול ומעבר</button>
       </div>
     </div>
 
     <div class="danger-option">
       <div class="danger-option-head">
         <div>
-          <div class="danger-option-title">סגירת החשבון לצמיתות</div>
-          <div class="danger-option-sub">סוגרים את העסק או מפסיקים לגמרי? נבטל את המנוי, ננתק הכל ונמחק את פרטי הגישה שנשמרו אצלנו.</div>
+          <div class="danger-option-title" data-i18n="close_title">סגירת החשבון לצמיתות</div>
+          <div class="danger-option-sub" data-i18n="close_sub">סוגרים את העסק או מפסיקים לגמרי? נבטל את המנוי, ננתק הכל ונמחק את פרטי הגישה שנשמרו אצלנו.</div>
         </div>
-        <button class="danger-btn" onclick="toggleDangerForm('closeForm')">סגירת חשבון</button>
+        <button class="danger-btn" onclick="toggleDangerForm('closeForm')" data-i18n="close_btn">סגירת חשבון</button>
       </div>
       <div class="danger-form" id="closeForm">
-        <p>הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון — <b>כולל הגישה לדשבורד</b>. עותק מלא של הנתונים שלך יישלח אליך <b>כקובץ מצורף במייל האישור</b>, ועותק ארכיוני נשמר אצלנו לצרכי תיעוד חשבונאי. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>
-        לאישור, הקלידו: <b>סגירת חשבון</b></p>
-        <input class="danger-input" id="closeReason" placeholder="למה סוגרים? (לא חובה — עוזר לנו להשתפר)">
-        <input class="danger-input" id="closePhrase" placeholder="הקלידו כאן: סגירת חשבון" oninput="checkPhrase('close')">
-        <button class="danger-confirm-btn" id="closeBtn" disabled onclick="offboard('closure')">אישור סופי — סגירת החשבון</button>
+        <p data-i18n-html="close_note">הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון — <b>כולל הגישה לדשבורד</b>. עותק מלא של הנתונים שלך יישלח אליך <b>כקובץ מצורף במייל האישור</b>, ועותק ארכיוני נשמר אצלנו לצרכי תיעוד חשבונאי. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>לאישור, הקלידו: <b>סגירת חשבון</b></p>
+        <input class="danger-input" id="closeReason" data-i18n-placeholder="close_reason_ph" placeholder="למה סוגרים? (לא חובה — עוזר לנו להשתפר)">
+        <input class="danger-input" id="closePhrase" dir="auto" data-i18n-placeholder="close_phrase_ph" placeholder="הקלידו כאן: סגירת חשבון" oninput="checkPhrase('close')">
+        <button class="danger-confirm-btn" id="closeBtn" disabled onclick="offboard('closure')" data-i18n="close_confirm">אישור סופי — סגירת החשבון</button>
       </div>
     </div>
   </div>
 </div>
 
+<script src="/assets/i18n.js"></script>
 <script>
-const PHRASES = { close: 'סגירת חשבון', transfer: 'מעבר סוכנות' };
+// Typed confirm phrases per language — the server accepts any of these
+// (CLOSE/TRANSFER_CONFIRM_PHRASES in api_server), the UI shows the current
+// language's one and accepts a match in any supported language.
+const PHRASES = {
+  close: { he:'סגירת חשבון', en:'close account', fr:'fermer le compte', ar:'إغلاق الحساب', ru:'закрыть аккаунт' },
+  transfer: { he:'מעבר סוכנות', en:'transfer agency', fr:"changer d'agence", ar:'نقل الوكالة', ru:'смена агентства' },
+};
+
+const I18N = {
+  _page_title: { he:'uallak — הפרופיל שלי', en:'uallak — My profile', fr:'uallak — Mon profil', ar:'uallak — ملفي الشخصي', ru:'uallak — Мой профиль' },
+  back: { he:'→ חזרה לדשבורד', en:'→ Back to dashboard', fr:'→ Retour au tableau de bord', ar:'→ العودة إلى لوحة التحكم', ru:'→ Назад в кабинет' },
+  pic_change: { he:'החלפת תמונה', en:'Change picture', fr:'Changer la photo', ar:'تغيير الصورة', ru:'Сменить фото' },
+  pic_remove: { he:'הסרת התמונה', en:'Remove picture', fr:'Supprimer la photo', ar:'إزالة الصورة', ru:'Удалить фото' },
+  pkg_label: { he:'חבילה', en:'Package', fr:'Formule', ar:'الباقة', ru:'Пакет' },
+  since_label: { he:'לקוח מאז', en:'Client since', fr:'Client depuis', ar:'عميل منذ', ru:'Клиент с' },
+  costs_title: { he:'דוח עלויות חיצוניות — 30 הימים האחרונים', en:'External costs report — last 30 days', fr:'Rapport des coûts externes — 30 derniers jours', ar:'تقرير التكاليف الخارجية — آخر 30 يومًا', ru:'Отчёт о внешних расходах — за 30 дней' },
+  costs_sub: { he:'כמה שילמת ישירות לפלטפורמות הפרסום (תקציב מדיה) — בנפרד מדמי הניהול שלנו', en:'What you paid the ad platforms directly (media budget) — separate from our management fee', fr:'Ce que vous avez payé directement aux plateformes (budget média) — distinct de nos frais de gestion', ar:'ما دفعته مباشرة لمنصات الإعلان (ميزانية الإعلام) — منفصل عن رسوم إدارتنا', ru:'Сколько вы заплатили рекламным платформам напрямую (медиабюджет) — отдельно от нашей платы за ведение' },
+  costs_loading: { he:'טוען נתונים מהפלטפורמות…', en:'Loading data from the platforms…', fr:'Chargement des données…', ar:'جارٍ تحميل البيانات من المنصات…', ru:'Загружаем данные с платформ…' },
+  costs_empty: { he:'אין פלטפורמות פרסום מחוברות כרגע — אחרי חיבור Google Ads או Meta בדשבורד, ההוצאות יופיעו כאן', en:'No ad platforms connected yet — once Google Ads or Meta is connected in the dashboard, spend will appear here', fr:'Aucune plateforme connectée — dès que Google Ads ou Meta sera connecté dans le tableau de bord, les dépenses apparaîtront ici', ar:'لا توجد منصات إعلان متصلة حاليًا — بعد ربط Google Ads أو Meta في لوحة التحكم ستظهر النفقات هنا', ru:'Рекламные платформы не подключены — после подключения Google Ads или Meta в кабинете расходы появятся здесь' },
+  costs_error: { he:'שגיאה בטעינת הנתונים — נסו לרענן את העמוד', en:'Error loading data — try refreshing the page', fr:'Erreur de chargement — actualisez la page', ar:'خطأ في تحميل البيانات — حاول تحديث الصفحة', ru:'Ошибка загрузки данных — обновите страницу' },
+  platform_error: { he:'לא הצלחנו למשוך נתונים כרגע — נסו לרענן', en:'Couldn\'t fetch data right now — try refreshing', fr:'Impossible de récupérer les données — actualisez', ar:'تعذر جلب البيانات الآن — حاول التحديث', ru:'Не удалось получить данные — обновите страницу' },
+  no_spend_row: { he:'עדיין לא נרשמה הוצאה בתקופה הזו', en:'No spend recorded in this period yet', fr:'Aucune dépense enregistrée sur la période', ar:'لم تُسجل نفقات في هذه الفترة بعد', ru:'Расходов за этот период пока нет' },
+  costs_total_label: { he:'סה״כ תקציב פרסום ששולם ישירות לפלטפורמות (30 ימים)', en:'Total ad budget paid directly to the platforms (30 days)', fr:'Budget publicitaire total payé directement aux plateformes (30 jours)', ar:'إجمالي ميزانية الإعلانات المدفوعة مباشرة للمنصات (30 يومًا)', ru:'Итого рекламный бюджет, уплаченный платформам напрямую (30 дней)' },
+  honest_note: { he:'תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.', en:'Your ad budget is paid by you directly to Google and Meta with your own payment method — it never passes through us and we take no commission on it. Exactly as promised in your proposal: our management fee is separate, and your ad spend is transparent here at any moment. SEO tool subscriptions (if any) are also paid directly to the provider.', fr:'Votre budget publicitaire est payé directement à Google et Meta avec votre propre moyen de paiement — il ne transite jamais par nous et nous ne prenons aucune commission. Comme promis dans votre proposition : nos frais de gestion sont séparés, et vos dépenses publicitaires sont transparentes ici à tout moment. Les abonnements aux outils SEO (le cas échéant) sont également payés directement au fournisseur.', ar:'ميزانية إعلاناتك تُدفع مباشرة إلى Google وMeta بوسيلة الدفع الخاصة بك — لا تمر عبرنا ولا نأخذ عليها أي عمولة. تمامًا كما وعدنا في العرض: رسوم إدارتنا منفصلة، ونفقات إعلاناتك شفافة هنا في أي لحظة. اشتراكات أدوات SEO (إن وجدت) تُدفع أيضًا مباشرة للمزوّد.', ru:'Рекламный бюджет вы платите напрямую Google и Meta со своей карты — эти деньги не проходят через нас, и мы не берём с них комиссию. Ровно как обещано в предложении: наша плата за ведение отдельна, а рекламные расходы прозрачны здесь в любой момент. Подписки на SEO-инструменты (если есть) также оплачиваются напрямую провайдеру.' },
+  account_title: { he:'החשבון שלי', en:'My account', fr:'Mon compte', ar:'حسابي', ru:'Мой аккаунт' },
+  export_btn: { he:'⬇ ייצוא הנתונים שלי (JSON)', en:'⬇ Export my data (JSON)', fr:'⬇ Exporter mes données (JSON)', ar:'⬇ تصدير بياناتي (JSON)', ru:'⬇ Экспорт моих данных (JSON)' },
+  logout_btn: { he:'התנתקות', en:'Log out', fr:'Se déconnecter', ar:'تسجيل الخروج', ru:'Выйти' },
+  end_title: { he:'סיום התקשרות', en:'Ending our engagement', fr:'Fin de collaboration', ar:'إنهاء التعامل', ru:'Завершение сотрудничества' },
+  danger_title: { he:'אזור רגיש — פעולות בלתי הפיכות', en:'Sensitive area — irreversible actions', fr:'Zone sensible — actions irréversibles', ar:'منطقة حساسة — إجراءات لا رجعة فيها', ru:'Важная зона — необратимые действия' },
+  danger_sub: { he:'שתי הפעולות כאן מבטלות את המנוי ב-PayPal באופן מיידי (לא יהיו יותר חיובים) ומנתקות את כל חיבורי המערכות. החשבונות שלך ב-Google, Meta והאתר לא נפגעים — הם שלך וממשיכים להתקיים.', en:'Both actions immediately cancel your PayPal subscription (no further charges) and disconnect all platform connections. Your Google, Meta and website accounts are untouched — they\'re yours and keep existing.', fr:'Ces deux actions annulent immédiatement votre abonnement PayPal (plus aucun prélèvement) et déconnectent toutes les plateformes. Vos comptes Google, Meta et votre site ne sont pas affectés — ils restent à vous.', ar:'كلا الإجراءين يلغيان اشتراك PayPal فورًا (لا مزيد من الرسوم) ويفصلان كل اتصالات المنصات. حساباتك في Google وMeta وموقعك لا تتأثر — تبقى ملكك وتستمر.', ru:'Оба действия немедленно отменяют подписку PayPal (списаний больше не будет) и отключают все подключения платформ. Ваши аккаунты Google, Meta и сайт не затрагиваются — они ваши и продолжают существовать.' },
+  transfer_title: { he:'מעבר לגורם מנהל אחר', en:'Moving to another agency', fr:'Passer à une autre agence', ar:'الانتقال إلى جهة إدارة أخرى', ru:'Переход к другому агентству' },
+  transfer_sub: { he:'עוברים לסוכנות אחרת? נבטל את המנוי וננתק את הגישה שלנו — והחשבונות נשארים אצלך, מוכנים למי שממשיך.', en:'Switching agencies? We\'ll cancel the subscription and remove our access — your accounts stay with you, ready for whoever takes over.', fr:'Vous changez d\'agence ? Nous annulons l\'abonnement et retirons notre accès — vos comptes restent chez vous, prêts pour la suite.', ar:'تنتقل لوكالة أخرى؟ سنلغي الاشتراك ونزيل وصولنا — تبقى الحسابات معك، جاهزة لمن يتابع.', ru:'Переходите в другое агентство? Мы отменим подписку и уберём наш доступ — аккаунты остаются у вас, готовые для преемника.' },
+  transfer_btn: { he:'מעבר סוכנות', en:'Transfer agency', fr:'Changer d\'agence', ar:'نقل الوكالة', ru:'Смена агентства' },
+  transfer_note: { he:'שימו לב: אחרי האישור <b>הגישה לדשבורד נסגרת</b>. קובץ סיכום הנתונים המלא (להעברה לגורם המנהל החדש) יישלח אליכם <b>כקובץ מצורף במייל האישור</b> — ואפשר גם להוריד אותו עכשיו למעלה.<br>לאישור, הקלידו: <b>מעבר סוכנות</b>', en:'Note: after confirming, <b>dashboard access closes</b>. The full data file (for your new agency) will be <b>attached to the confirmation email</b> — you can also download it above right now.<br>To confirm, type: <b>transfer agency</b>', fr:'Attention : après confirmation, <b>l\'accès au tableau de bord se ferme</b>. Le fichier de données complet (pour votre nouvelle agence) sera <b>joint à l\'e-mail de confirmation</b> — vous pouvez aussi le télécharger maintenant ci-dessus.<br>Pour confirmer, tapez : <b>changer d\'agence</b>', ar:'تنبيه: بعد التأكيد <b>يُغلق الوصول إلى لوحة التحكم</b>. سيُرسل ملف البيانات الكامل (لوكالتك الجديدة) <b>مرفقًا برسالة التأكيد</b> — ويمكنك تنزيله الآن بالأعلى أيضًا.<br>للتأكيد اكتب: <b>نقل الوكالة</b>', ru:'Внимание: после подтверждения <b>доступ к кабинету закрывается</b>. Полный файл данных (для нового агентства) будет <b>прикреплён к письму-подтверждению</b> — его также можно скачать выше прямо сейчас.<br>Для подтверждения введите: <b>смена агентства</b>' },
+  transfer_reason_ph: { he:'לאן עוברים / למה? (לא חובה — עוזר לנו להשתפר)', en:'Where to / why? (optional — helps us improve)', fr:'Vers où / pourquoi ? (facultatif — nous aide à progresser)', ar:'إلى أين / لماذا؟ (اختياري — يساعدنا على التحسن)', ru:'Куда / почему? (необязательно — помогает нам стать лучше)' },
+  transfer_phrase_ph: { he:'הקלידו כאן: מעבר סוכנות', en:'Type here: transfer agency', fr:'Tapez ici : changer d\'agence', ar:'اكتب هنا: نقل الوكالة', ru:'Введите здесь: смена агентства' },
+  transfer_confirm: { he:'אישור סופי — סיום ניהול ומעבר', en:'Final confirmation — end management and transfer', fr:'Confirmation finale — fin de gestion et transfert', ar:'تأكيد نهائي — إنهاء الإدارة والنقل', ru:'Окончательное подтверждение — завершить и перейти' },
+  close_title: { he:'סגירת החשבון לצמיתות', en:'Closing the account permanently', fr:'Fermeture définitive du compte', ar:'إغلاق الحساب نهائيًا', ru:'Закрытие аккаунта навсегда' },
+  close_sub: { he:'סוגרים את העסק או מפסיקים לגמרי? נבטל את המנוי, ננתק הכל ונמחק את פרטי הגישה שנשמרו אצלנו.', en:'Closing the business or stopping entirely? We\'ll cancel the subscription, disconnect everything and delete the access credentials we stored.', fr:'Vous fermez ou arrêtez complètement ? Nous annulons l\'abonnement, déconnectons tout et supprimons les identifiants stockés chez nous.', ar:'تغلق النشاط أو تتوقف تمامًا؟ سنلغي الاشتراك ونفصل كل شيء ونحذف بيانات الوصول المخزنة لدينا.', ru:'Закрываете бизнес или прекращаете совсем? Мы отменим подписку, отключим всё и удалим сохранённые у нас данные доступа.' },
+  close_btn: { he:'סגירת חשבון', en:'Close account', fr:'Fermer le compte', ar:'إغلاق الحساب', ru:'Закрыть аккаунт' },
+  close_note: { he:'הפעולה תבטל את המנוי ב-PayPal, תנתק את כל המערכות ותסגור את החשבון — <b>כולל הגישה לדשבורד</b>. עותק מלא של הנתונים שלך יישלח אליך <b>כקובץ מצורף במייל האישור</b>, ועותק ארכיוני נשמר אצלנו לצרכי תיעוד חשבונאי. אם רק רוצים הפסקה — עדיף לדבר איתנו קודם בצ׳אט בדשבורד.<br>לאישור, הקלידו: <b>סגירת חשבון</b>', en:'This cancels the PayPal subscription, disconnects all systems and closes the account — <b>including dashboard access</b>. A full copy of your data will be <b>attached to the confirmation email</b>, and an archival copy is kept for accounting records. If you just need a break — better to talk to us first in the dashboard chat.<br>To confirm, type: <b>close account</b>', fr:'Cette action annule l\'abonnement PayPal, déconnecte tous les systèmes et ferme le compte — <b>y compris l\'accès au tableau de bord</b>. Une copie complète de vos données sera <b>jointe à l\'e-mail de confirmation</b>, et une copie d\'archive est conservée pour la comptabilité. Si vous voulez juste une pause — parlez-nous d\'abord dans le chat.<br>Pour confirmer, tapez : <b>fermer le compte</b>', ar:'سيلغي هذا اشتراك PayPal ويفصل كل الأنظمة ويغلق الحساب — <b>بما في ذلك الوصول إلى لوحة التحكم</b>. سترسل نسخة كاملة من بياناتك <b>مرفقة برسالة التأكيد</b>، وتُحفظ نسخة أرشيفية لأغراض المحاسبة. إن أردت استراحة فقط — الأفضل التحدث معنا أولًا في الدردشة.<br>للتأكيد اكتب: <b>إغلاق الحساب</b>', ru:'Действие отменит подписку PayPal, отключит все системы и закроет аккаунт — <b>включая доступ к кабинету</b>. Полная копия ваших данных будет <b>прикреплена к письму-подтверждению</b>, архивная копия сохраняется для бухгалтерии. Если нужна лишь пауза — лучше сначала написать нам в чат.<br>Для подтверждения введите: <b>закрыть аккаунт</b>' },
+  close_reason_ph: { he:'למה סוגרים? (לא חובה — עוזר לנו להשתפר)', en:'Why closing? (optional — helps us improve)', fr:'Pourquoi fermer ? (facultatif — nous aide à progresser)', ar:'لماذا الإغلاق؟ (اختياري — يساعدنا على التحسن)', ru:'Почему закрываете? (необязательно — помогает нам стать лучше)' },
+  close_phrase_ph: { he:'הקלידו כאן: סגירת חשבון', en:'Type here: close account', fr:'Tapez ici : fermer le compte', ar:'اكتب هنا: إغلاق الحساب', ru:'Введите здесь: закрыть аккаунт' },
+  close_confirm: { he:'אישור סופי — סגירת החשבון', en:'Final confirmation — close the account', fr:'Confirmation finale — fermer le compte', ar:'تأكيد نهائي — إغلاق الحساب', ru:'Окончательное подтверждение — закрыть аккаунт' },
+  pic_read_err: { he:'לא הצלחנו לקרוא את הקובץ — נסו תמונה אחרת', en:'Couldn\'t read the file — try another image', fr:'Fichier illisible — essayez une autre image', ar:'تعذر قراءة الملف — جرّب صورة أخرى', ru:'Не удалось прочитать файл — попробуйте другое изображение' },
+  pic_saved: { he:'התמונה עודכנה ✓', en:'Picture updated ✓', fr:'Photo mise à jour ✓', ar:'تم تحديث الصورة ✓', ru:'Фото обновлено ✓' },
+  pic_removed: { he:'התמונה הוסרה ✓', en:'Picture removed ✓', fr:'Photo supprimée ✓', ar:'تمت إزالة الصورة ✓', ru:'Фото удалено ✓' },
+  pic_save_err: { he:'שמירת התמונה נכשלה — נסו שוב', en:'Saving the picture failed — try again', fr:'Échec de l\'enregistrement — réessayez', ar:'فشل حفظ الصورة — حاول مجددًا', ru:'Не удалось сохранить фото — попробуйте ещё раз' },
+  offboard_working: { he:'מבצע… מבטלים את המנוי ומנתקים חיבורים', en:'Working… cancelling the subscription and disconnecting', fr:'En cours… annulation de l\'abonnement et déconnexion', ar:'جارٍ التنفيذ… نلغي الاشتراك ونفصل الاتصالات', ru:'Выполняем… отменяем подписку и отключаем подключения' },
+  offboard_err: { he:'הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', en:'The action failed — try again or talk to us in the chat', fr:'Échec de l\'action — réessayez ou contactez-nous via le chat', ar:'فشل الإجراء — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Действие не удалось — попробуйте ещё раз или напишите нам в чат' },
+  bye_close_title: { he:'החשבון נסגר — תודה על הכל', en:'Account closed — thank you for everything', fr:'Compte fermé — merci pour tout', ar:'أُغلق الحساب — شكرًا على كل شيء', ru:'Аккаунт закрыт — спасибо за всё' },
+  bye_transfer_title: { he:'המעבר הושלם — בהצלחה בהמשך!', en:'Transfer complete — good luck ahead!', fr:'Transfert terminé — bonne continuation !', ar:'اكتمل النقل — بالتوفيق!', ru:'Переход завершён — удачи в дальнейшем!' },
+  bye_body: { he:'המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך מייל אישור עם עותק מלא של הנתונים שלך כקובץ מצורף', en:'Your PayPal subscription is cancelled — no more charges. We\'ve emailed you a confirmation with a full copy of your data attached', fr:'Votre abonnement PayPal est annulé — plus aucun prélèvement. Un e-mail de confirmation avec une copie complète de vos données vous a été envoyé', ar:'أُلغي اشتراك PayPal ولن تكون هناك رسوم أخرى. أرسلنا لك بريد تأكيد مع نسخة كاملة من بياناتك مرفقة', ru:'Подписка PayPal отменена — списаний больше не будет. Мы отправили письмо-подтверждение с полной копией ваших данных во вложении' },
+  bye_close_tail: { he:'. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️', en:'. If you ever want to come back — we\'d love to have you again ❤️', fr:'. Si vous souhaitez revenir un jour — ce sera avec plaisir ❤️', ar:'. إذا أردت العودة يومًا — يسعدنا استقبالك مجددًا ❤️', ru:'. Если когда-нибудь захотите вернуться — будем рады снова ❤️' },
+  bye_transfer_tail: { he:' — מומלץ להעביר אותו לגורם המנהל החדש. הדלת תמיד פתוחה ❤️', en:' — pass it to your new agency. Our door is always open ❤️', fr:' — transmettez-la à votre nouvelle agence. Notre porte reste ouverte ❤️', ar:' — يُنصح بتمريرها إلى وكالتك الجديدة. بابنا مفتوح دائمًا ❤️', ru:' — передайте её новому агентству. Наши двери всегда открыты ❤️' },
+};
+
 let clientName = '';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g,
     ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
-function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+function ils(n) { return '₪' + Number(n || 0).toLocaleString(uallakI18n.locale()); }
 function showNotice(text, kind) {
   const banner = document.getElementById('noticeBanner');
   banner.textContent = text;
@@ -282,9 +340,9 @@ async function loadProfile() {
     document.getElementById('profileName').textContent = c.name || '—';
     document.getElementById('profileEmail').textContent = c.email || '';
     const since = c.created_at
-      ? new Date(c.created_at).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }) : '';
+      ? new Date(c.created_at).toLocaleDateString(uallakI18n.locale(), { month: 'long', year: 'numeric' }) : '';
     document.getElementById('profileMeta').innerHTML =
-      `חבילה: <b>${esc(c.package || '—')}</b>${since ? ' · לקוח מאז ' + esc(since) : ''}`;
+      `${uallakI18n.t('pkg_label')}: <b>${esc(c.package || '—')}</b>${since ? ' · ' + uallakI18n.t('since_label') + ' ' + esc(since) : ''}`;
     renderPicture(c.profile_image);
   } catch (e) {
     console.error('profile load failed', e);
@@ -319,7 +377,7 @@ function uploadPicture(input) {
       img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
     await savePicture(canvas.toDataURL('image/jpeg', 0.85));
   };
-  img.onerror = () => showNotice('לא הצלחנו לקרוא את הקובץ — נסו תמונה אחרת', 'warn');
+  img.onerror = () => showNotice(uallakI18n.t('pic_read_err'), 'warn');
   img.src = URL.createObjectURL(file);
   input.value = '';
 }
@@ -334,13 +392,13 @@ async function savePicture(dataUrl) {
     const body = await res.json();
     if (res.ok && body.success) {
       renderPicture(dataUrl || null);
-      showNotice(dataUrl ? 'התמונה עודכנה ✓' : 'התמונה הוסרה ✓', 'success');
+      showNotice(uallakI18n.t(dataUrl ? 'pic_saved' : 'pic_removed'), 'success');
       return;
     }
   } catch (e) {
     console.error('picture save failed', e);
   }
-  showNotice('שמירת התמונה נכשלה — נסו שוב', 'warn');
+  showNotice(uallakI18n.t('pic_save_err'), 'warn');
 }
 
 function removePicture() { savePicture(''); }
@@ -355,14 +413,14 @@ async function loadCosts() {
     if (!body.success) throw new Error('costs fetch failed');
     const d = body.data;
     if (!d.platforms.length) {
-      area.innerHTML = '<div class="empty-row">אין פלטפורמות פרסום מחוברות כרגע — אחרי חיבור Google Ads או Meta בדשבורד, ההוצאות יופיעו כאן</div>';
+      area.innerHTML = `<div class="empty-row">${uallakI18n.t('costs_empty')}</div>`;
       return;
     }
     const platformCards = d.platforms.map(p => {
       if (p.error) {
         return `<div class="platform-card">
           <div class="platform-head"><span class="platform-name">${esc(p.label)}</span>
-          <span class="platform-total" style="color:var(--gray);font-size:12.5px;font-weight:400;">לא הצלחנו למשוך נתונים כרגע — נסו לרענן</span></div>
+          <span class="platform-total" style="color:var(--gray);font-size:12.5px;font-weight:400;">${uallakI18n.t('platform_error')}</span></div>
         </div>`;
       }
       const rows = (p.campaigns || []).filter(c => c.cost > 0).map(c => `
@@ -372,18 +430,18 @@ async function loadCosts() {
           <span class="platform-name">${esc(p.label)}</span>
           <span class="platform-total">${ils(p.total_spend)}</span>
         </div>
-        ${rows || '<div class="campaign-row"><span>עדיין לא נרשמה הוצאה בתקופה הזו</span><span class="c-cost">₪0</span></div>'}
+        ${rows || `<div class="campaign-row"><span>${uallakI18n.t('no_spend_row')}</span><span class="c-cost">₪0</span></div>`}
       </div>`;
     }).join('');
     area.innerHTML = `
       <div class="costs-total-card">
-        <div class="costs-total-label">סה״כ תקציב פרסום ששולם ישירות לפלטפורמות (30 ימים)</div>
+        <div class="costs-total-label">${uallakI18n.t('costs_total_label')}</div>
         <div class="costs-total-value">${ils(d.total_spend)}</div>
       </div>
       ${platformCards}`;
   } catch (e) {
     console.error('costs load failed', e);
-    area.innerHTML = '<div class="empty-row">שגיאה בטעינת הנתונים — נסו לרענן את העמוד</div>';
+    area.innerHTML = `<div class="empty-row">${uallakI18n.t('costs_error')}</div>`;
   }
 }
 
@@ -400,9 +458,11 @@ function toggleDangerForm(id) {
 }
 
 function checkPhrase(kind) {
-  const typed = document.getElementById(kind + 'Phrase').value.trim();
+  const typed = document.getElementById(kind + 'Phrase').value.trim().toLowerCase();
   const btn = document.getElementById(kind + 'Btn');
-  const ok = typed === PHRASES[kind];
+  // Any supported language's phrase is accepted (matches the server's set) -
+  // so switching UI language after typing doesn't strand the client
+  const ok = Object.values(PHRASES[kind]).some(p => typed === p.toLowerCase());
   btn.disabled = !ok;
   btn.classList.toggle('ready', ok);
 }
@@ -411,7 +471,7 @@ async function offboard(mode) {
   const kind = mode === 'closure' ? 'close' : 'transfer';
   const btn = document.getElementById(kind + 'Btn');
   btn.disabled = true;
-  btn.textContent = 'מבצע… מבטלים את המנוי ומנתקים חיבורים';
+  btn.textContent = uallakI18n.t('offboard_working');
   try {
     const res = await fetch(mode === 'closure' ? '/api/client/close-account' : '/api/client/transfer-out', {
       method: 'POST', credentials: 'same-origin',
@@ -425,24 +485,30 @@ async function offboard(mode) {
     if (res.ok && body.success) {
       // Both flows end the session (hard lock) - show a final static screen
       const isClose = mode === 'closure';
+      const t = uallakI18n.t;
       document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
         <div style="max-width:460px;text-align:center;">
           <div style="font-size:44px;margin-bottom:18px;">${isClose ? '🙏' : '🤝'}</div>
-          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">${isClose ? 'החשבון נסגר — תודה על הכל' : 'המעבר הושלם — בהצלחה בהמשך!'}</div>
-          <div style="color:#8A8A85;font-size:14px;line-height:1.8;">המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך מייל אישור עם עותק מלא של הנתונים שלך כקובץ מצורף${isClose ? '. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️' : ' — מומלץ להעביר אותו לגורם המנהל החדש. הדלת תמיד פתוחה ❤️'}</div>
+          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">${t(isClose ? 'bye_close_title' : 'bye_transfer_title')}</div>
+          <div style="color:#8A8A85;font-size:14px;line-height:1.8;">${t('bye_body')}${t(isClose ? 'bye_close_tail' : 'bye_transfer_tail')}</div>
         </div></div>`;
       return;
     }
-    showNotice(body.detail || 'הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+    showNotice(body.detail || uallakI18n.t('offboard_err'), 'warn');
   } catch (e) {
     console.error('offboard failed', e);
-    showNotice('הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+    showNotice(uallakI18n.t('offboard_err'), 'warn');
   }
-  btn.textContent = mode === 'closure' ? 'אישור סופי — סגירת החשבון' : 'אישור סופי — סיום ניהול ומעבר';
+  btn.textContent = uallakI18n.t(mode === 'closure' ? 'close_confirm' : 'transfer_confirm');
   checkPhrase(kind);
 }
 
 // ─── boot ────────────────────────────────────────────────────────────────────
+uallakI18n.init(I18N);
+uallakI18n.mountSwitcher(document.getElementById('langRow'));
+// Rebuild the JS-rendered areas in the new language (server data is cached
+// ~5min by the agents, so the refetch is cheap)
+uallakI18n.onChange(() => { loadProfile(); loadCosts(); });
 loadProfile();
 loadCosts();
 </script>

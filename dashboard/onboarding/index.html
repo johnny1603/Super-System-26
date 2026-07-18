@@ -62,20 +62,24 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
 .proc-step { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--gray); opacity:0.3; transition:opacity 0.6s; }
 .proc-step.done { opacity:1; color:#1A1A1A; }
 .proc-step-icon { font-size:18px; }
+.lang-switcher {
+  background:white; color:#666; border:1.5px solid var(--border); border-radius:100px;
+  padding:5px 10px; font-family:'Heebo',sans-serif; font-size:12.5px; cursor:pointer; outline:none;
+}
 </style>
 </head>
 <body>
 <div class="processing" id="processing">
   <div class="proc-logo">u<span>allak</span></div>
   <div class="proc-ring"></div>
-  <div class="proc-text">🏗️ בונים את התכנית שלך...</div>
-  <div class="proc-sub">זה לוקח כ-60 שניות — אנחנו עובדים קשה בשבילך 💪<br>אל תצא מהדף</div>
+  <div class="proc-text" data-i18n="proc_text">🏗️ בונים את התכנית שלך...</div>
+  <div class="proc-sub" data-i18n="proc_sub">זה לוקח כ-60 שניות — אנחנו עובדים קשה בשבילך 💪 אל תצא מהדף</div>
   <div class="proc-steps">
-    <div class="proc-step" id="step1"><span class="proc-step-icon">🔍</span> מנתח את פרופיל העסק שלך</div>
-    <div class="proc-step" id="step2"><span class="proc-step-icon">📊</span> בודק את השוק והמתחרים</div>
-    <div class="proc-step" id="step3"><span class="proc-step-icon">💡</span> בונה תכנית עבודה מותאמת</div>
-    <div class="proc-step" id="step4"><span class="proc-step-icon">💰</span> מחשב הצעת מחיר מדויקת</div>
-    <div class="proc-step" id="step5"><span class="proc-step-icon">🎉</span> התכנית שלך מוכנה!</div>
+    <div class="proc-step" id="step1"><span class="proc-step-icon">🔍</span> <span data-i18n="proc_1">מנתח את פרופיל העסק שלך</span></div>
+    <div class="proc-step" id="step2"><span class="proc-step-icon">📊</span> <span data-i18n="proc_2">בודק את השוק והמתחרים</span></div>
+    <div class="proc-step" id="step3"><span class="proc-step-icon">💡</span> <span data-i18n="proc_3">בונה תכנית עבודה מותאמת</span></div>
+    <div class="proc-step" id="step4"><span class="proc-step-icon">💰</span> <span data-i18n="proc_4">מחשב הצעת מחיר מדויקת</span></div>
+    <div class="proc-step" id="step5"><span class="proc-step-icon">🎉</span> <span data-i18n="proc_5">התכנית שלך מוכנה!</span></div>
   </div>
 </div>
 
@@ -83,19 +87,73 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
   <div class="chat-header">
     <div>
       <div class="chat-logo">u<span>allak</span></div>
-      <div class="chat-status"><span class="status-dot"></span>המערכת פעילה</div>
+      <div class="chat-status"><span class="status-dot"></span><span data-i18n="status_online">המערכת פעילה</span></div>
     </div>
+    <div id="langRow"></div>
   </div>
   <div class="chat-messages" id="messages"></div>
   <div class="chat-input-area">
-    <input class="chat-input" id="userInput" dir="auto" placeholder="כתוב כאן..." onkeydown="if(event.key==='Enter') sendText()" />
+    <input class="chat-input" id="userInput" dir="auto" data-i18n-placeholder="input_ph" placeholder="כתוב כאן..." onkeydown="if(event.key==='Enter') sendText()" />
     <button class="send-btn" onclick="sendText()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
   </div>
 </div>
 
+<script src="/assets/i18n.js"></script>
 <script>
+// ─── i18n: chrome strings (see .claude/skills/i18n/SKILL.md) ─────────────────
+// BASE_QUESTIONS stays the Hebrew source of truth; Q_I18N carries the other
+// languages keyed by question id and is applied by localizeQuestion().
+const CHROME = {
+  _page_title: { he:'uallak — בניית תכנית שיווק', en:'uallak — Build your marketing plan', fr:'uallak — Créez votre plan marketing', ar:'uallak — أنشئ خطتك التسويقية', ru:'uallak — Создайте свой маркетинговый план' },
+  status_online: { he:'המערכת פעילה', en:'System online', fr:'Système en ligne', ar:'النظام متصل', ru:'Система на связи' },
+  input_ph: { he:'כתוב כאן...', en:'Type here…', fr:'Écrivez ici…', ar:'اكتب هنا...', ru:'Пишите здесь…' },
+  free_text_hint: { he:'או כתוב תשובה משלך למטה 👇', en:'Or type your own answer below 👇', fr:'Ou écrivez votre propre réponse ci-dessous 👇', ar:'أو اكتب إجابتك الخاصة بالأسفل 👇', ru:'Или напишите свой ответ ниже 👇' },
+  confirm_multi: { he:'✓ אישור בחירה', en:'✓ Confirm selection', fr:'✓ Valider la sélection', ar:'✓ تأكيد الاختيار', ru:'✓ Подтвердить выбор' },
+  other_label: { he:'אחר:', en:'Other:', fr:'Autre :', ar:'أخرى:', ru:'Другое:' },
+  other_ph: { he:'הקלד את תשובתך...', en:'Type your answer…', fr:'Saisissez votre réponse…', ar:'اكتب إجابتك...', ru:'Введите свой ответ…' },
+  proc_text: { he:'🏗️ בונים את התכנית שלך...', en:'🏗️ Building your plan…', fr:'🏗️ Construction de votre plan…', ar:'🏗️ نبني خطتك...', ru:'🏗️ Строим ваш план…' },
+  proc_sub: { he:'זה לוקח כ-60 שניות — אנחנו עובדים קשה בשבילך 💪 אל תצא מהדף', en:'Takes about 60 seconds — we\'re working hard for you 💪 Please stay on this page', fr:'Environ 60 secondes — on travaille dur pour vous 💪 Restez sur cette page', ar:'يستغرق نحو 60 ثانية — نعمل بجد من أجلك 💪 لا تغادر الصفحة', ru:'Займёт около 60 секунд — мы стараемся для вас 💪 Не покидайте страницу' },
+  proc_1: { he:'מנתח את פרופיל העסק שלך', en:'Analyzing your business profile', fr:'Analyse du profil de votre entreprise', ar:'نحلل ملف عملك', ru:'Анализируем профиль вашего бизнеса' },
+  proc_2: { he:'בודק את השוק והמתחרים', en:'Checking the market and competitors', fr:'Étude du marché et des concurrents', ar:'نفحص السوق والمنافسين', ru:'Изучаем рынок и конкурентов' },
+  proc_3: { he:'בונה תכנית עבודה מותאמת', en:'Building a tailored work plan', fr:'Création d\'un plan de travail sur mesure', ar:'نبني خطة عمل مخصصة', ru:'Составляем индивидуальный план работы' },
+  proc_4: { he:'מחשב הצעת מחיר מדויקת', en:'Calculating an exact quote', fr:'Calcul d\'un devis précis', ar:'نحسب عرض سعر دقيقًا', ru:'Рассчитываем точное предложение' },
+  proc_5: { he:'התכנית שלך מוכנה!', en:'Your plan is ready!', fr:'Votre plan est prêt !', ar:'خطتك جاهزة!', ru:'Ваш план готов!' },
+  processing_msg: { he:'תודה! המערכת עובדת עכשיו על התכנית המותאמת לך 🔄', en:'Thank you! The system is now building your tailored plan 🔄', fr:'Merci ! Le système prépare votre plan personnalisé 🔄', ar:'شكرًا! النظام يعمل الآن على خطتك المخصصة 🔄', ru:'Спасибо! Система готовит ваш персональный план 🔄' },
+  generic_error: { he:'אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬', en:'Something went wrong — try again or reach us on WhatsApp 💬', fr:'Une erreur est survenue — réessayez ou contactez-nous sur WhatsApp 💬', ar:'حدث خطأ — حاول مجددًا أو تواصل معنا عبر واتساب 💬', ru:'Произошла ошибка — попробуйте ещё раз или напишите нам в WhatsApp 💬' },
+  reject_wrap: { he:'תודה שפנית אלינו 🙏\n\n{reason}\n\nאנחנו ממליצים לחזור אלינו כשהתנאים ישתנו — נשמח לעזור!', en:'Thank you for reaching out 🙏\n\n{reason}\n\nWe recommend coming back when things change — we\'d love to help!', fr:'Merci de nous avoir contactés 🙏\n\n{reason}\n\nRevenez quand la situation évoluera — nous serons ravis de vous aider !', ar:'شكرًا لتواصلك معنا 🙏\n\n{reason}\n\nننصح بالعودة إلينا عندما تتغير الظروف — يسعدنا مساعدتك!', ru:'Спасибо за обращение 🙏\n\n{reason}\n\nВозвращайтесь, когда условия изменятся — будем рады помочь!' },
+  risk_high: { he:'גבוהה', en:'High', fr:'Élevé', ar:'مرتفع', ru:'Высокий' },
+  risk_medium: { he:'בינונית', en:'Medium', fr:'Moyen', ar:'متوسط', ru:'Средний' },
+  risk_low: { he:'נמוכה', en:'Low', fr:'Faible', ar:'منخفض', ru:'Низкий' },
+  proposal_market: { he:'📊 תמונת השוק שלך:', en:'📊 Your market picture:', fr:'📊 Votre marché :', ar:'📊 صورة السوق لديك:', ru:'📊 Картина вашего рынка:' },
+  proposal_ready: { he:'✅ התכנית שלך מוכנה!', en:'✅ Your plan is ready!', fr:'✅ Votre plan est prêt !', ar:'✅ خطتك جاهزة!', ru:'✅ Ваш план готов!' },
+  proposal_summary: { he:'📋 סיכום:', en:'📋 Summary:', fr:'📋 Résumé :', ar:'📋 ملخص:', ru:'📋 Резюме:' },
+  proposal_risk: { he:'⚠️ רמת סיכון:', en:'⚠️ Risk level:', fr:'⚠️ Niveau de risque :', ar:'⚠️ مستوى المخاطرة:', ru:'⚠️ Уровень риска:' },
+  proposal_goals: { he:'🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):', en:'🎯 90-day goals (experience-based estimates, not exact promises):', fr:'🎯 Objectifs à 90 jours (estimations fondées sur l\'expérience, pas des promesses) :', ar:'🎯 أهداف 90 يومًا (تقديرات مبنية على الخبرة، وليست وعودًا دقيقة):', ru:'🎯 Цели на 90 дней (оценки на основе опыта, а не точные обещания):' },
+  proposal_tips: { he:'🔧 דברים שאתה יכול לעשות לבד:', en:'🔧 Things you can do yourself:', fr:'🔧 Ce que vous pouvez faire vous-même :', ar:'🔧 أشياء يمكنك القيام بها بنفسك:', ru:'🔧 Что вы можете сделать сами:' },
+  pick_package: { he:'הנה כמה אפשרויות שמתאימות לך — אין כאן תשובה "לא נכונה", תבחר את מה שמרגיש הכי נכון 👇', en:'Here are options that fit you — there\'s no "wrong" answer, pick what feels right 👇', fr:'Voici des options adaptées — il n\'y a pas de « mauvaise » réponse, choisissez ce qui vous convient 👇', ar:'إليك خيارات تناسبك — لا توجد إجابة "خاطئة"، اختر ما تشعر أنه الأنسب 👇', ru:'Вот варианты, которые вам подходят — «неправильного» ответа нет, выбирайте то, что ближе 👇' },
+  pkg_badge: { he:'🔥 1 מתוך 20 החודש', en:'🔥 1 of 20 this month', fr:'🔥 1 sur 20 ce mois-ci', ar:'🔥 1 من 20 هذا الشهر', ru:'🔥 1 из 20 в этом месяце' },
+  pkg_price: { he:'הקמה ₪{setup} · ניהול חודשי ₪{monthly}', en:'Setup ₪{setup} · Monthly management ₪{monthly}', fr:'Mise en place ₪{setup} · Gestion mensuelle ₪{monthly}', ar:'تأسيس ₪{setup} · إدارة شهرية ₪{monthly}', ru:'Запуск ₪{setup} · Ежемесячное ведение ₪{monthly}' },
+  pkg_chosen: { he:'בחירה מעולה! "{name}" 😊\n\nרק כמה פרטים קצרים לפני שממשיכים לתשלום — מה השם המלא שלך?', en:'Great choice! "{name}" 😊\n\nJust a few quick details before payment — what\'s your full name?', fr:'Excellent choix ! « {name} » 😊\n\nQuelques détails avant le paiement — quel est votre nom complet ?', ar:'اختيار ممتاز! "{name}" 😊\n\nبعض التفاصيل السريعة قبل الدفع — ما اسمك الكامل؟', ru:'Отличный выбор! «{name}» 😊\n\nПара коротких вопросов перед оплатой — как вас зовут (полное имя)?' },
+  ask_phone: { he:'ומה מספר הטלפון שלך?', en:'And your phone number?', fr:'Et votre numéro de téléphone ?', ar:'وما رقم هاتفك؟', ru:'А ваш номер телефона?' },
+  bad_phone: { he:'זה לא נראה כמו מספר טלפון תקין 🤔 תוכל לכתוב שוב?', en:'That doesn\'t look like a valid phone number 🤔 Could you re-type it?', fr:'Cela ne ressemble pas à un numéro valide 🤔 Pouvez-vous réessayer ?', ar:'لا يبدو هذا رقم هاتف صحيحًا 🤔 هل يمكنك كتابته مجددًا؟', ru:'Это не похоже на корректный номер 🤔 Напишите ещё раз?' },
+  ask_address: { he:'ומה הכתובת של העסק (או כתובת לתיאום, אם אין עדיין כתובת עסק קבועה)?', en:'And the business address (or a contact address if there\'s no fixed one yet)?', fr:'Et l\'adresse de l\'entreprise (ou une adresse de contact s\'il n\'y en a pas encore) ?', ar:'وما عنوان النشاط التجاري (أو عنوان للتواصل إن لم يوجد عنوان ثابت بعد)؟', ru:'Адрес бизнеса (или контактный адрес, если постоянного пока нет)?' },
+  ask_business_name: { he:'מה שם העסק (לצורך הפקת חשבוניות)?', en:'What\'s the business name (for invoicing)?', fr:'Quel est le nom de l\'entreprise (pour la facturation) ?', ar:'ما اسم النشاط التجاري (لإصدار الفواتير)؟', ru:'Название бизнеса (для выставления счетов)?' },
+  ask_tax_id: { he:'ומה מספר עוסק מורשה / ח.פ שלך?', en:'And your Israeli business/tax ID (עוסק מורשה / ח.פ)?', fr:'Et votre numéro d\'entreprise israélien (עוסק מורשה / ח.פ) ?', ar:'وما رقم السجل الضريبي / الشركة لديك (עוסק מורשה / ח.פ)؟', ru:'Ваш израильский номер предпринимателя/компании (עוסק מורשה / ח.פ)?' },
+  ask_email: { he:'ומה כתובת האימייל שלך?', en:'And your email address?', fr:'Et votre adresse e-mail ?', ar:'وما بريدك الإلكتروني؟', ru:'А ваш адрес электронной почты?' },
+  bad_email: { he:'זה לא נראה כמו כתובת מייל תקינה 🤔 תוכל לכתוב שוב?', en:'That doesn\'t look like a valid email 🤔 Could you re-type it?', fr:'Cela ne ressemble pas à un e-mail valide 🤔 Pouvez-vous réessayer ?', ar:'لا يبدو هذا بريدًا إلكترونيًا صحيحًا 🤔 هل يمكنك كتابته مجددًا؟', ru:'Это не похоже на корректный email 🤔 Напишите ещё раз?' },
+  preparing_payment: { he:'רגע אחד, מכין את קישור התשלום שלך... 💳', en:'One moment, preparing your payment link… 💳', fr:'Un instant, préparation de votre lien de paiement… 💳', ar:'لحظة واحدة، نجهّز رابط الدفع الخاص بك... 💳', ru:'Секунду, готовим вашу ссылку на оплату… 💳' },
+  payment_ready: { he:'הקישור מוכן! מעביר אותך לדף האישור של PayPal 🚀', en:'Ready! Taking you to PayPal to approve 🚀', fr:'C\'est prêt ! Redirection vers PayPal pour valider 🚀', ar:'الرابط جاهز! ننقلك إلى صفحة الموافقة في PayPal 🚀', ru:'Готово! Переходим на страницу подтверждения PayPal 🚀' },
+  payment_error: { he:'אירעה שגיאה בהכנת התשלום — צור קשר בוואטסאפ 💬', en:'There was a problem preparing the payment — reach us on WhatsApp 💬', fr:'Problème lors de la préparation du paiement — contactez-nous sur WhatsApp 💬', ar:'حدث خطأ في تجهيز الدفع — تواصل معنا عبر واتساب 💬', ru:'Ошибка при подготовке оплаты — напишите нам в WhatsApp 💬' },
+  objection_fallback: { he:'אפשר לספר לי קצת יותר על מה שמטריד אותך?', en:'Can you tell me a bit more about what\'s on your mind?', fr:'Pouvez-vous m\'en dire un peu plus sur ce qui vous préoccupe ?', ar:'هل يمكنك إخباري أكثر عمّا يقلقك؟', ru:'Расскажите чуть подробнее, что вас беспокоит?' },
+  small_glitch: { he:'מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', en:'Sorry, a small glitch — could you try again? 🙏', fr:'Désolé, petit souci technique — pouvez-vous réessayer ? 🙏', ar:'عذرًا، حدث خلل بسيط — هل يمكنك المحاولة مجددًا؟ 🙏', ru:'Извините, небольшой сбой — попробуете ещё раз? 🙏' },
+  dashboard_btn: { he:'כניסה לדשבורד שלי →', en:'Go to my dashboard →', fr:'Accéder à mon tableau de bord →', ar:'الدخول إلى لوحة التحكم →', ru:'Перейти в мой кабинет →' },
+  paid_success: { he:'התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים.\n\nהדשבורד האישי שלך מוכן — תוכל להתחבר אליו עם קוד חד-פעמי שנשלח למייל שלך, ולעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬', en:'Payment received! 🎉\n\nWelcome to uallak — we\'ve emailed you all the details.\n\nYour personal dashboard is ready: sign in with a one-time code sent to your email to follow activity, connections and your subscription. Our team is on WhatsApp for any question 💬', fr:'Paiement reçu ! 🎉\n\nBienvenue chez uallak — tous les détails sont dans votre e-mail.\n\nVotre tableau de bord est prêt : connectez-vous avec un code à usage unique envoyé par e-mail pour suivre l\'activité, les connexions et votre abonnement. Notre équipe est sur WhatsApp 💬', ar:'تم استلام الدفع بنجاح! 🎉\n\nشكرًا لانضمامك إلى uallak. أرسلنا لك بريدًا بكل التفاصيل.\n\nلوحة التحكم الشخصية جاهزة — سجّل الدخول برمز لمرة واحدة يصلك عبر البريد لمتابعة النشاط والاتصالات وتفاصيل الاشتراك. فريقنا متاح على واتساب لأي سؤال 💬', ru:'Оплата получена! 🎉\n\nСпасибо, что присоединились к uallak. Мы отправили вам письмо со всеми деталями.\n\nВаш личный кабинет готов — войдите по одноразовому коду из письма, чтобы следить за активностью, подключениями и подпиской. Наша команда на связи в WhatsApp 💬' },
+  paid_error: { he:'נראה שהייתה בעיה באישור התשלום 😕\n\nאפשר לנסות שוב או לפנות אלינו בוואטסאפ ונשלים את זה ביחד 💬', en:'Looks like the payment approval hit a problem 😕\n\nTry again, or message us on WhatsApp and we\'ll finish it together 💬', fr:'Un problème est survenu lors de la validation du paiement 😕\n\nRéessayez ou écrivez-nous sur WhatsApp et nous finaliserons ensemble 💬', ar:'يبدو أن هناك مشكلة في تأكيد الدفع 😕\n\nحاول مجددًا أو راسلنا على واتساب وسننهي الأمر معًا 💬', ru:'Похоже, при подтверждении оплаты возникла проблема 😕\n\nПопробуйте ещё раз или напишите нам в WhatsApp — доведём дело вместе 💬' },
+  paid_pending: { he:'קיבלנו את הפעולה שלך והתשלום עדיין באימות מול PayPal ⏳\n\nברגע שהוא יאושר סופית נשלח לך מייל עם כל הפרטים וגישה לדשבורד. אם זה נמשך יותר מכמה דקות, אפשר לפנות אלינו בוואטסאפ 💬', en:'We got your action — the payment is still being verified with PayPal ⏳\n\nOnce it\'s confirmed we\'ll email you all the details and dashboard access. If it takes more than a few minutes, message us on WhatsApp 💬', fr:'C\'est enregistré — le paiement est en cours de vérification chez PayPal ⏳\n\nDès confirmation, vous recevrez un e-mail avec tous les détails et l\'accès au tableau de bord. Si cela dépasse quelques minutes, écrivez-nous sur WhatsApp 💬', ar:'استلمنا طلبك — الدفع لا يزال قيد التحقق لدى PayPal ⏳\n\nفور تأكيده سنرسل لك بريدًا بكل التفاصيل والوصول إلى لوحة التحكم. إذا استغرق أكثر من بضع دقائق، راسلنا على واتساب 💬', ru:'Мы получили вашу оплату — она ещё проверяется в PayPal ⏳\n\nКак только она подтвердится, пришлём письмо со всеми деталями и доступом в кабинет. Если это займёт больше нескольких минут — напишите нам в WhatsApp 💬' },
+};
+
 const BASE_QUESTIONS = [
   { id:"intro", type:"free_text", text:"שלום! אני המערכת של uallak 👋\n\nלפני שנבנה לך תכנית עבודה מותאמת אישית — ספר לי על העסק שלך ועל המצב הנוכחי. כמה משפטים חופשיים, בלי מגבלות." },
   { id:"business_age", type:"choice", text:"כמה זמן העסק קיים?", options:["פחות משנה","1-3 שנים","3-7 שנים","יותר מ-7 שנים"] },
@@ -118,9 +176,152 @@ const BASE_QUESTIONS = [
   { id:"organic_followup_info", type:"info", text:"תקבל דוח חודשי שקוף על ההתקדמות. חשוב לדעת שתוצאות משמעותיות בקידום אורגני לוקחות בממוצע כ-6 חודשים להבשיל - ולכן קריטי לא לעצור באמצע התהליך, כדי לא לאבד את המומנטום שנבנה." }
 ];
 
-let questions = [...BASE_QUESTIONS];
+// Question translations keyed by question id. Hebrew lives in BASE_QUESTIONS /
+// CONDITIONAL_QUESTIONS; missing ids/langs fall back to Hebrew.
+const Q_I18N = {
+  intro: {
+    en:{ text:"Hi! I'm the uallak system 👋\n\nBefore we build your personalized marketing plan — tell me about your business and where things stand today. A few free sentences, no limits." },
+    fr:{ text:"Bonjour ! Je suis le système uallak 👋\n\nAvant de construire votre plan marketing personnalisé — parlez-moi de votre entreprise et de sa situation actuelle. Quelques phrases libres, sans limite." },
+    ar:{ text:"مرحبًا! أنا نظام uallak 👋\n\nقبل أن نبني لك خطة تسويق مخصصة — أخبرني عن عملك وعن وضعه الحالي. بضع جمل حرة، بلا قيود." },
+    ru:{ text:"Здравствуйте! Я система uallak 👋\n\nПрежде чем мы построим ваш персональный маркетинговый план — расскажите о вашем бизнесе и его текущем положении. Несколько свободных предложений, без ограничений." } },
+  business_age: {
+    en:{ text:"How long has the business existed?", options:["Less than a year","1-3 years","3-7 years","More than 7 years"] },
+    fr:{ text:"Depuis combien de temps l'entreprise existe-t-elle ?", options:["Moins d'un an","1-3 ans","3-7 ans","Plus de 7 ans"] },
+    ar:{ text:"منذ متى يعمل النشاط التجاري؟", options:["أقل من سنة","1-3 سنوات","3-7 سنوات","أكثر من 7 سنوات"] },
+    ru:{ text:"Сколько лет существует бизнес?", options:["Меньше года","1-3 года","3-7 лет","Больше 7 лет"] } },
+  financial_status: {
+    en:{ text:"What's the current financial situation?", options:["Nicely profitable","Barely covering costs","Running at a loss","New business — too early to tell"] },
+    fr:{ text:"Quelle est la situation financière actuelle ?", options:["Bien rentable","Couvre à peine les frais","À perte","Nouvelle entreprise — trop tôt pour le dire"] },
+    ar:{ text:"ما الوضع المالي الحالي؟", options:["ربح جيد","نغطي التكاليف بالكاد","خسارة","نشاط جديد — من المبكر الحكم"] },
+    ru:{ text:"Каково текущее финансовое положение?", options:["Хорошая прибыль","Едва покрываем расходы","В убытке","Новый бизнес — пока рано судить"] } },
+  revenue_trend: {
+    en:{ text:"How has your monthly revenue looked over the last 3 months?", options:["Slight growth","Flat / stuck","Declining"] },
+    fr:{ text:"Comment a évolué votre chiffre d'affaires mensuel ces 3 derniers mois ?", options:["Légère croissance","Stagnation","En baisse"] },
+    ar:{ text:"كيف بدا دخلك الشهري خلال آخر 3 أشهر؟", options:["نمو طفيف","ثابت / متوقف","في تراجع"] },
+    ru:{ text:"Как выглядела ваша месячная выручка за последние 3 месяца?", options:["Небольшой рост","Топчется на месте","Снижается"] } },
+  recent_revenue: {
+    en:{ text:"This helps the system set accurate goals and understand your real starting point — what was the average monthly revenue over the last 3 months? (an estimate or range is fine)" },
+    fr:{ text:"Cela aide le système à fixer des objectifs précis et à comprendre votre vrai point de départ — quel a été le chiffre d'affaires mensuel moyen des 3 derniers mois ? (estimation ou fourchette acceptée)" },
+    ar:{ text:"هذا يساعد النظام على تحديد أهداف دقيقة وفهم نقطة انطلاقك الحقيقية — ما متوسط الدخل الشهري خلال آخر 3 أشهر؟ (رقم تقريبي أو نطاق يكفي)" },
+    ru:{ text:"Это помогает системе поставить точные цели и понять вашу реальную отправную точку — какой была средняя месячная выручка за последние 3 месяца? (примерная цифра или диапазон)" } },
+  marketing_budget: {
+    en:{ text:"How much can you put into marketing per month?\n(not including our management fee)", options:["Up to ₪1,000","₪1,000-3,000","₪3,000-5,000","₪10,000+","₪15,000+"] },
+    fr:{ text:"Quel budget marketing mensuel pouvez-vous consacrer ?\n(hors nos frais de gestion)", options:["Jusqu'à ₪1 000","₪1 000-3 000","₪3 000-5 000","₪10 000+","₪15 000+"] },
+    ar:{ text:"كم يمكنك تخصيصه للتسويق شهريًا؟\n(بدون رسوم الإدارة لدينا)", options:["حتى ₪1,000","₪1,000-3,000","₪3,000-5,000","₪10,000+","₪15,000+"] },
+    ru:{ text:"Сколько вы можете выделять на маркетинг в месяц?\n(без учёта нашей платы за ведение)", options:["До ₪1 000","₪1 000-3 000","₪3 000-5 000","₪10 000+","₪15 000+"] } },
+  existing_digital: {
+    en:{ text:"What do you already have digitally? (choose any)", options:["Website","Active Instagram","Active Facebook","TikTok","Google My Business","Email list / newsletter","Nothing"] },
+    fr:{ text:"Que possédez-vous déjà en digital ? (plusieurs choix possibles)", options:["Site web","Instagram actif","Facebook actif","TikTok","Google My Business","Liste e-mail / newsletter","Rien"] },
+    ar:{ text:"ما الذي تملكه رقميًا حاليًا؟ (يمكن اختيار أكثر من إجابة)", options:["موقع إلكتروني","إنستغرام نشط","فيسبوك نشط","تيك توك","Google My Business","قائمة بريدية / نشرة","لا شيء"] },
+    ru:{ text:"Что у вас уже есть в digital? (можно выбрать несколько)", options:["Сайт","Активный Instagram","Активный Facebook","TikTok","Google My Business","Рассылка / база e-mail","Ничего"] } },
+  newsletter_status: {
+    en:{ text:"Do you have a customer email list today?", options:["Yes, active and sending regularly","I have a list but don't send","None at all"] },
+    fr:{ text:"Avez-vous aujourd'hui une liste e-mail clients ?", options:["Oui, active avec envois réguliers","J'ai une liste mais je n'envoie pas","Aucune"] },
+    ar:{ text:"هل لديك اليوم قائمة بريدية للعملاء؟", options:["نعم، نشطة وأرسل بانتظام","لدي قائمة لكن لا أرسل","لا توجد إطلاقًا"] },
+    ru:{ text:"Есть ли у вас сегодня база e-mail клиентов?", options:["Да, активная, рассылаю регулярно","База есть, но не рассылаю","Нет вообще"] } },
+  main_goal: {
+    en:{ text:"What's your most important goal for the next 3 months?", options:["More leads and new customers","Professional visibility and branding","Organic Google ranking","Growing online sales","Everything — I want the full package"] },
+    fr:{ text:"Quel est votre objectif principal pour les 3 prochains mois ?", options:["Plus de leads et de nouveaux clients","Visibilité professionnelle et image de marque","Référencement organique sur Google","Augmenter les ventes en ligne","Tout — je veux l'accompagnement complet"] },
+    ar:{ text:"ما أهم هدف لديك في الأشهر الثلاثة القادمة؟", options:["مزيد من العملاء المحتملين والجدد","حضور احترافي وبناء علامة","تصدّر نتائج غوغل مجانيًا","زيادة المبيعات أونلاين","كل شيء — أريد الحزمة الكاملة"] },
+    ru:{ text:"Какая цель для вас важнее всего в ближайшие 3 месяца?", options:["Больше лидов и новых клиентов","Профессиональный имидж и брендинг","Органическое продвижение в Google","Рост онлайн-продаж","Всё сразу — нужна полная поддержка"] } },
+  biggest_fear: {
+    en:{ text:"What scares you most about trying a new marketing service?", options:["Wasting money without results","No time to manage another thing","Tried before and it didn't work","Not sure the business is ready","Nothing — ready to go"] },
+    fr:{ text:"Qu'est-ce qui vous fait le plus peur dans un nouveau service marketing ?", options:["Dépenser sans résultats","Pas le temps de gérer autre chose","Déjà essayé, sans succès","Pas sûr que l'entreprise soit prête","Rien — je suis prêt"] },
+    ar:{ text:"ما أكثر ما يخيفك في تجربة خدمة تسويق جديدة؟", options:["إهدار المال دون نتائج","لا وقت لإدارة شيء إضافي","جربت سابقًا ولم ينجح","لست متأكدًا أن العمل جاهز","لا شيء — مستعد للتجربة"] },
+    ru:{ text:"Что больше всего пугает в новом маркетинговом сервисе?", options:["Потратить деньги без результата","Нет времени управлять ещё чем-то","Пробовал раньше — не сработало","Не уверен, что бизнес готов","Ничего — готов пробовать"] } },
+  media_management: {
+    en:{ text:"Who manages your digital presence day-to-day today?", options:["I do it myself","An employee","An external agency","A freelancer","No one right now — neglected"] },
+    fr:{ text:"Qui gère votre présence digitale au quotidien ?", options:["Moi-même","Un employé","Une agence externe","Un freelance","Personne — c'est délaissé"] },
+    ar:{ text:"من يدير حضورك الرقمي يوميًا اليوم؟", options:["أنا بنفسي","موظف لدي","وكالة خارجية","مستقل","لا أحد حاليًا — مهمَل"] },
+    ru:{ text:"Кто сегодня ведёт ваш digital на постоянной основе?", options:["Я сам","Мой сотрудник","Внешнее агентство","Фрилансер","Никто — заброшено"] } },
+  camera_comfort: {
+    en:{ text:"If the system gives you a ready script — would you film yourself or ask employees to join in?", options:["Yes, gladly","Only me","Only employees","Prefer no camera"] },
+    fr:{ text:"Avec un script prêt, accepteriez-vous de vous filmer ou de solliciter vos employés ?", options:["Oui, avec plaisir","Moi uniquement","Les employés uniquement","Plutôt sans caméra"] },
+    ar:{ text:"إذا أعطاك النظام نصًا جاهزًا — هل تصوّر نفسك أو تطلب من الموظفين المشاركة؟", options:["نعم بكل سرور","أنا فقط","الموظفون فقط","أفضّل بدون كاميرا"] },
+    ru:{ text:"Если система даст готовый сценарий — готовы сниматься сами или привлечь сотрудников?", options:["Да, с удовольствием","Только я","Только сотрудники","Лучше без камеры"] } },
+  media_assets: {
+    en:{ text:"How do you handle media and design materials today?", options:["I have a regular designer/photographer","Work with an external agency","Do everything myself","Nothing today"] },
+    fr:{ text:"Comment gérez-vous aujourd'hui vos visuels et supports ?", options:["Designer/photographe attitré","Agence externe","Je fais tout moi-même","Rien pour l'instant"] },
+    ar:{ text:"كيف تدير اليوم موادك الإعلامية والتصميم؟", options:["لدي مصمم/مصور ثابت","أعمل مع جهة خارجية","أفعل كل شيء بنفسي","لا شيء لدي اليوم"] },
+    ru:{ text:"Как вы сегодня решаете вопрос медиа и дизайна?", options:["Есть постоянный дизайнер/фотограф","Работаю с внешним агентством","Делаю всё сам","Пока ничего нет"] } },
+  media_assets_info: {
+    en:{ text:"Using advanced AI tools we'll create professional marketing images from base photos you send us — all included in the management fee. We'll also set up an organized Drive folder where you can review and approve everything before it's published 📁" },
+    fr:{ text:"Grâce à des outils d'IA avancés, nous créerons des visuels marketing professionnels à partir de vos photos — tout est inclus dans les frais de gestion. Nous créerons aussi un dossier Drive organisé pour consulter et valider chaque élément avant publication 📁" },
+    ar:{ text:"بأدوات ذكاء اصطناعي متقدمة سننشئ لك صورًا تسويقية احترافية من الصور الأساسية التي ترسلها — كل ذلك ضمن رسوم الإدارة. كما سنجهز لك مجلد Drive منظمًا لمراجعة واعتماد كل المواد قبل النشر 📁" },
+    ru:{ text:"С помощью продвинутых AI-инструментов мы создадим профессиональные маркетинговые изображения из ваших базовых фото — всё включено в плату за ведение. Также заведём аккуратную папку Drive, где вы сможете просматривать и утверждать материалы до публикации 📁" } },
+  content_creator_collab: {
+    en:{ text:"Would you be interested in creator collaborations — a gifted product for a review, or paying for a video used by both sides — on a separate budget?", options:["Yes","No","Maybe later"] },
+    fr:{ text:"Seriez-vous intéressé par des collaborations avec des créateurs — produit offert contre avis, ou vidéo rémunérée utilisée des deux côtés — sur un budget séparé ?", options:["Oui","Non","Peut-être plus tard"] },
+    ar:{ text:"هل تهمك تعاونات مع صناع المحتوى — منتج هدية مقابل تقييم، أو الدفع مقابل فيديو يخدم الطرفين — بميزانية منفصلة؟", options:["نعم","لا","ربما لاحقًا"] },
+    ru:{ text:"Интересны ли вам коллаборации с блогерами — продукт в подарок за обзор или оплата видео, которое используют обе стороны, — на отдельный бюджет?", options:["Да","Нет","Возможно позже"] } },
+  organic_history: {
+    en:{ text:"Is the business doing SEO today, or has it in the past?", options:["Yes, currently","In the past, not today","Never"] },
+    fr:{ text:"L'entreprise fait-elle du SEO aujourd'hui, ou en a-t-elle fait ?", options:["Oui, actuellement","Par le passé, plus maintenant","Jamais"] },
+    ar:{ text:"هل يجري تحسين محركات البحث للنشاط اليوم أو جرى سابقًا؟", options:["نعم، حاليًا","سابقًا وليس اليوم","أبدًا"] },
+    ru:{ text:"Продвигается ли бизнес в поиске сейчас или продвигался раньше?", options:["Да, сейчас","Раньше, но не сейчас","Никогда"] } },
+  organic_info: {
+    en:{ text:"SEO is like building a digital asset — unlike paid ads that stop the moment you stop paying, organic ranking keeps bringing customers long-term and builds trust and authority for your business on Google." },
+    fr:{ text:"Le SEO, c'est construire un actif digital — contrairement à la pub payante qui s'arrête dès qu'on cesse de payer, le référencement organique continue d'amener des clients sur le long terme et bâtit confiance et autorité sur Google." },
+    ar:{ text:"التحسين المجاني لمحركات البحث كبناء أصل رقمي — بعكس الإعلانات المدفوعة التي تتوقف عند التوقف عن الدفع، يستمر في جلب العملاء على المدى الطويل ويبني ثقة ومكانة لعملك في غوغل." },
+    ru:{ text:"SEO — это цифровой актив: в отличие от платной рекламы, которая останавливается вместе с оплатой, органическое продвижение продолжает приводить клиентов в долгую и строит доверие и авторитет вашего бизнеса в Google." } },
+  organic_interest: {
+    en:{ text:"Would you like to reach top Google positions — and have Google's AI recommend your business when people search for similar services?", options:["Yes, interested","Not right now"] },
+    fr:{ text:"Aimeriez-vous atteindre les premières positions Google — et que l'IA de Google recommande votre entreprise lors de recherches similaires ?", options:["Oui, intéressé","Pas pour l'instant"] },
+    ar:{ text:"هل تود الوصول إلى المراتب الأولى في غوغل — وأن يوصي ذكاء غوغل الاصطناعي بعملك عند البحث عن خدمة مشابهة؟", options:["نعم، مهتم","ليس الآن"] },
+    ru:{ text:"Хотите выйти на первые позиции Google — и чтобы ИИ Google рекомендовал ваш бизнес при похожих запросах?", options:["Да, интересно","Не сейчас"] } },
+  organic_followup_info: {
+    en:{ text:"You'll get a transparent monthly progress report. Note that meaningful SEO results take about 6 months on average to mature — which is why it's critical not to stop mid-way and lose the momentum you've built." },
+    fr:{ text:"Vous recevrez un rapport mensuel transparent. Sachez que des résultats SEO significatifs demandent en moyenne 6 mois — d'où l'importance de ne pas s'arrêter en cours de route pour ne pas perdre l'élan acquis." },
+    ar:{ text:"ستتلقى تقريرًا شهريًا شفافًا عن التقدم. اعلم أن النتائج المهمة في التحسين المجاني تستغرق نحو 6 أشهر في المتوسط — لذا من الحاسم عدم التوقف في المنتصف حتى لا تفقد الزخم." },
+    ru:{ text:"Вы будете получать прозрачный ежемесячный отчёт. Важно знать: значимые результаты SEO созревают в среднем около 6 месяцев — поэтому критично не останавливаться на полпути и не терять набранный темп." } },
+  new_business_expectations: {
+    en:{ text:"Exciting! A business at the start is exactly where the right marketing makes the difference.\n\nLet's look forward — what would you like to happen in the first three months? (customers, revenue, exposure — in your own words)" },
+    fr:{ text:"Passionnant ! Une entreprise qui démarre, c'est exactement là où le bon marketing fait la différence.\n\nRegardons devant — que voudriez-vous voir se produire dans les trois premiers mois ? (clients, revenus, visibilité — avec vos mots)" },
+    ar:{ text:"مشوّق! النشاط في بدايته هو تمامًا حيث يصنع التسويق الصحيح الفرق.\n\nلننظر للأمام — ماذا تريد أن يحدث في الأشهر الثلاثة الأولى؟ (عملاء، دخل، انتشار — بكلماتك)" },
+    ru:{ text:"Здорово! Бизнес на старте — именно тот момент, когда правильный маркетинг решает всё.\n\nПосмотрим вперёд — что бы вы хотели видеть в первые три месяца? (клиенты, доход, охват — своими словами)" } },
+  new_business_concern: {
+    en:{ text:"And what stresses you most about this beginning?", options:["Not enough customers coming","Money running out before takeoff","Not knowing how to market myself right","Competition in my field","Not stressed — I'm ready"] },
+    fr:{ text:"Et qu'est-ce qui vous stresse le plus dans ce début ?", options:["Pas assez de clients","L'argent épuisé avant le décollage","Ne pas savoir bien me vendre","La concurrence dans mon domaine","Pas de stress — je suis prêt"] },
+    ar:{ text:"وما أكثر ما يقلقك في هذه البداية؟", options:["ألا يأتي عملاء كافون","أن ينفد المال قبل الانطلاق","ألا أعرف تسويق نفسي جيدًا","المنافسة في مجالي","لا قلق — أنا مستعد"] },
+    ru:{ text:"А что больше всего тревожит в этом начале?", options:["Что клиентов будет мало","Что деньги кончатся до взлёта","Что не сумею правильно себя продвигать","Конкуренция в моей сфере","Не тревожит — я готов"] } },
+  self_managed_excitement_info: {
+    en:{ text:"Respect for doing it all yourself! 💪 Good to know — your package also includes smart automations working behind the scenes, like instant automatic replies to new leads, so no inquiry falls through the cracks while you're busy running everything." },
+    fr:{ text:"Respect pour tout gérer vous-même ! 💪 Bon à savoir — votre offre inclut aussi des automatisations intelligentes en coulisses, comme une réponse automatique immédiate aux nouveaux leads, pour qu'aucune demande ne passe à la trappe pendant que vous gérez tout." },
+    ar:{ text:"احترام لأنك تدير كل شيء بنفسك! 💪 جيد أن تعرف — تشمل باقتك أيضًا أتمتة ذكية تعمل خلف الكواليس، مثل رد فوري تلقائي على العملاء الجدد، حتى لا يضيع أي استفسار بينما أنت منشغل بإدارة كل شيء." },
+    ru:{ text:"Уважение — вы делаете всё сами! 💪 Знайте: в ваш пакет также входят умные автоматизации, работающие за кулисами, например мгновенный автоответ новым лидам — чтобы ни одно обращение не потерялось, пока вы заняты делом." } },
+  organic_budget: {
+    en:{ text:"Great! What monthly budget would you dedicate specifically to SEO?\n\nImportant — this is completely separate from the ad budget you mentioned. It covers our management plus the professional tool subscription (SEOptimer / SEMrush / Ahrefs, per your level), starting from ₪1,000/month." },
+    fr:{ text:"Parfait ! Quel budget mensuel consacreriez-vous spécifiquement au SEO ?\n\nImportant — c'est un budget totalement distinct du budget publicitaire mentionné. Il couvre notre gestion plus l'abonnement à l'outil professionnel (SEOptimer / SEMrush / Ahrefs, selon votre niveau), à partir de ₪1 000/mois." },
+    ar:{ text:"ممتاز! ما الميزانية الشهرية التي ستخصصها تحديدًا للتحسين المجاني؟\n\nمهم — هذه ميزانية منفصلة تمامًا عن ميزانية الإعلانات التي ذكرتها. تغطي إدارتنا واشتراك الأداة الاحترافية (SEOptimer / SEMrush / Ahrefs حسب المستوى المناسب)، وتبدأ من ₪1,000 شهريًا." },
+    ru:{ text:"Отлично! Какой месячный бюджет вы готовы выделить именно на SEO?\n\nВажно — это полностью отдельный бюджет от рекламного, о котором вы говорили. Он покрывает наше ведение и подписку на профессиональный инструмент (SEOptimer / SEMrush / Ahrefs по вашему уровню), от ₪1 000 в месяц." } },
+};
+
+// Multi-language detection of the "other / something else" option (both our
+// fixed options and the LLM's translated dynamic ones)
+const OTHER_PREFIXES = ['אחר', 'משהו אחר', 'other', 'something else', 'autre', 'أخرى', 'شيء آخر', 'другое', 'что-то другое'];
+function isOtherOption(opt) {
+  const low = (opt || '').trim().toLowerCase();
+  return OTHER_PREFIXES.some(p => low.startsWith(p));
+}
+
+function localizeQuestion(q) {
+  const lang = uallakI18n.current();
+  if (lang === 'he') return q;
+  const tr = Q_I18N[q.id] && Q_I18N[q.id][lang];
+  if (!tr) return q;
+  return { ...q, text: tr.text || q.text, options: tr.options || q.options };
+}
+
+let questions = BASE_QUESTIONS.map(localizeQuestion);
 let currentQ = 0;
 let answers = {};
+let answerIdx = {};  // question id -> chosen option INDEX (language-independent conditional logic)
+
+uallakI18n.init(CHROME);
+uallakI18n.mountSwitcher(document.getElementById('langRow'));
+// Mid-chat switch: re-localize every question not yet asked (base +
+// conditional ids only — dynamic LLM questions pass through unchanged)
+uallakI18n.onChange(() => { questions = questions.map(localizeQuestion); });
 let multiSelected = [];
 let dynamicQsAdded = false;
 let proposalData = null;
@@ -177,20 +378,20 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
   if (withOptions) {
     const grid = document.createElement('div');
     grid.className = 'options-grid';
-    withOptions.forEach(opt => {
+    withOptions.forEach((opt, optIdx) => {
       const btn = document.createElement('button');
       btn.className = 'option-btn';
       btn.dir = 'auto';
       btn.textContent = opt;
-      btn.onclick = () => (opt === 'אחר' || opt.startsWith('אחר'))
+      btn.onclick = () => isOtherOption(opt)
         ? showOtherInput(btn, grid)
-        : selectOption(opt, btn, grid);
+        : selectOption(opt, optIdx, btn, grid);
       grid.appendChild(btn);
     });
     bubble.appendChild(grid);
     const hint = document.createElement('div');
     hint.className = 'free-text-hint';
-    hint.textContent = 'או כתוב תשובה משלך למטה 👇';
+    hint.textContent = uallakI18n.t('free_text_hint');
     bubble.appendChild(hint);
   }
 
@@ -208,14 +409,14 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
     });
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'option-btn';
-    confirmBtn.textContent = '✓ אישור בחירה';
+    confirmBtn.textContent = uallakI18n.t('confirm_multi');
     confirmBtn.style.cssText = 'background:#1A1A1A;color:white;width:100%;margin-top:4px;';
     confirmBtn.onclick = () => confirmMulti(grid);
     grid.appendChild(confirmBtn);
     bubble.appendChild(grid);
     const hint = document.createElement('div');
     hint.className = 'free-text-hint';
-    hint.textContent = 'או כתוב תשובה משלך למטה 👇';
+    hint.textContent = uallakI18n.t('free_text_hint');
     bubble.appendChild(hint);
   }
 
@@ -237,59 +438,73 @@ function showTyping() {
 
 function hideTyping() { const t = document.getElementById('typing'); if(t) t.remove(); }
 
-function selectOption(opt, btn, grid) {
+function selectOption(opt, optIdx, btn, grid) {
   grid.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   setTimeout(() => {
     grid.querySelectorAll('.option-btn').forEach(b => { b.disabled=true; b.style.cursor='default'; });
     addMessage(opt, 'user');
     const questionId = questions[currentQ].id;
-    answers[questionId] = opt;
-    applyConditionalLogic(questionId, opt);
+    answers[questionId] = opt;          // the text, in the client's language (feeds the LLMs)
+    answerIdx[questionId] = optIdx;     // the index — language-independent branching
+    applyConditionalLogic(questionId, optIdx);
     currentQ++;
     maybeReact(questionId, opt, nextQuestion);
   }, 300);
 }
 
 // שאלות/הודעות שמוכנסות דינמית לתוך questions[] בהתאם לתשובות קודמות - אותו דפוס
-// כמו הוספת השאלות הדינמיות מה-API, רק מבוסס על תשובות שכבר ניתנו במקום קריאת שרת
-function applyConditionalLogic(questionId, answerValue) {
+// כמו הוספת השאלות הדינמיות מה-API, רק מבוסס על תשובות שכבר ניתנו במקום קריאת שרת.
+// Hebrew here is canonical; Q_I18N carries the translations (localizeQuestion applies them).
+const CONDITIONAL_QUESTIONS = {
+  new_business_expectations: {
+    id: 'new_business_expectations',
+    type: 'free_text',
+    text: 'מרגש! עסק בתחילת הדרך זה בדיוק השלב שבו שיווק נכון עושה את ההבדל.\n\nבוא נסתכל קדימה - מה היית רוצה שיקרה בשלושת החודשים הראשונים? (לקוחות, הכנסות, חשיפה - במילים שלך)'
+  },
+  new_business_concern: {
+    id: 'new_business_concern',
+    type: 'choice',
+    text: 'ומה הדבר שהכי מלחיץ אותך בהתחלה הזאת?',
+    options: ['שלא יגיעו מספיק לקוחות', 'שהכסף ייגמר לפני שהעסק יתרומם', 'שאני לא אדע לשווק את עצמי נכון', 'התחרות בתחום שלי', 'לא מלחיץ - אני מוכן לזה']
+  },
+  self_managed_excitement_info: {
+    id: 'self_managed_excitement_info',
+    type: 'info',
+    text: 'וואו, מכבד את זה שאתה עושה הכל לבד! 💪 שווה שתדע - כחלק מהחבילה שלנו תקבל גם אוטומציות חכמות שעובדות בשבילך מאחורי הקלעים, כמו מענה אוטומטי ומיידי ללידים חדשים - כדי שאף פנייה לא תיפול בין הכיסאות בזמן שאתה עסוק בלנהל את הכל.'
+  },
+  organic_budget: {
+    id: 'organic_budget',
+    type: 'free_text',
+    text: 'מעולה! כמה תקציב חודשי היית מוכן להעמיד ספציפית לקידום האורגני?\n\nחשוב לדעת - זה תקציב נפרד לגמרי מתקציב הפרסום הממומן שציינת קודם. התקציב הזה מכסה את הניהול שלנו ואת מנוי הכלי המקצועי (SEOptimer / SEMrush / Ahrefs, בהתאם לרמה המתאימה לך), ומתחיל מ-₪1,000 לחודש ומעלה.'
+  },
+};
+
+// Branching matches by option INDEX (answerIdx), never by option text — the
+// texts are language-dependent now. Indices refer to BASE_QUESTIONS' options
+// order, which every translation preserves.
+function applyConditionalLogic(questionId, optIdx) {
   // עסק שעוד לא באמת פועל — שאלות על העבר (מחזור, ניסיונות קודמים, פחדים היסטוריים)
   // לא רלוונטיות ומרגישות צורמות. מסירים אותן ושואלים במקומן שאלות שמסתכלות קדימה.
-  if (questionId === 'financial_status' && answerValue.startsWith('עסק חדש')) {
+  if (questionId === 'financial_status' && optIdx === 3) {  // "עסק חדש..."
     const pastOrientedIds = ['revenue_trend', 'recent_revenue', 'biggest_fear'];
     questions = questions.filter((q, i) => i <= currentQ || !pastOrientedIds.includes(q.id));
     questions.splice(currentQ + 1, 0,
-      {
-        id: 'new_business_expectations',
-        type: 'free_text',
-        text: 'מרגש! עסק בתחילת הדרך זה בדיוק השלב שבו שיווק נכון עושה את ההבדל.\n\nבוא נסתכל קדימה - מה היית רוצה שיקרה בשלושת החודשים הראשונים? (לקוחות, הכנסות, חשיפה - במילים שלך)'
-      },
-      {
-        id: 'new_business_concern',
-        type: 'choice',
-        text: 'ומה הדבר שהכי מלחיץ אותך בהתחלה הזאת?',
-        options: ['שלא יגיעו מספיק לקוחות', 'שהכסף ייגמר לפני שהעסק יתרומם', 'שאני לא אדע לשווק את עצמי נכון', 'התחרות בתחום שלי', 'לא מלחיץ - אני מוכן לזה']
-      }
+      localizeQuestion(CONDITIONAL_QUESTIONS.new_business_expectations),
+      localizeQuestion(CONDITIONAL_QUESTIONS.new_business_concern)
     );
   }
 
   if (questionId === 'media_management'
-      && answerValue === 'אני בעצמי'
-      && answers['marketing_budget'] && answers['marketing_budget'] !== 'עד ₪1,000') {
-    questions.splice(currentQ + 1, 0, {
-      id: 'self_managed_excitement_info',
-      type: 'info',
-      text: 'וואו, מכבד את זה שאתה עושה הכל לבד! 💪 שווה שתדע - כחלק מהחבילה שלנו תקבל גם אוטומציות חכמות שעובדות בשבילך מאחורי הקלעים, כמו מענה אוטומטי ומיידי ללידים חדשים - כדי שאף פנייה לא תיפול בין הכיסאות בזמן שאתה עסוק בלנהל את הכל.'
-    });
+      && optIdx === 0  // "אני בעצמי"
+      && answers['marketing_budget'] && answerIdx['marketing_budget'] !== 0) {  // above "עד ₪1,000"
+    questions.splice(currentQ + 1, 0,
+      localizeQuestion(CONDITIONAL_QUESTIONS.self_managed_excitement_info));
   }
 
-  if (questionId === 'organic_interest' && answerValue === 'כן, מעוניין') {
-    questions.splice(currentQ + 1, 0, {
-      id: 'organic_budget',
-      type: 'free_text',
-      text: 'מעולה! כמה תקציב חודשי היית מוכן להעמיד ספציפית לקידום האורגני?\n\nחשוב לדעת - זה תקציב נפרד לגמרי מתקציב הפרסום הממומן שציינת קודם. התקציב הזה מכסה את הניהול שלנו ואת מנוי הכלי המקצועי (SEOptimer / SEMrush / Ahrefs, בהתאם לרמה המתאימה לך), ומתחיל מ-₪1,000 לחודש ומעלה.'
-    });
+  if (questionId === 'organic_interest' && optIdx === 0) {  // "כן, מעוניין"
+    questions.splice(currentQ + 1, 0,
+      localizeQuestion(CONDITIONAL_QUESTIONS.organic_budget));
   }
 }
 
@@ -326,49 +541,49 @@ function sendText() {
     checkoutName = text;
     addMessage(text, 'user');
     checkoutStep = 'phone';
-    setTimeout(() => { addMessage("ומה מספר הטלפון שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    setTimeout(() => { addMessage(uallakI18n.t('ask_phone'), 'bot'); document.getElementById('userInput').focus(); }, 600);
     return;
   }
   if (checkoutStep === 'phone') {
     addMessage(text, 'user');
     if (!isValidPhone(text)) {
       setTimeout(() => {
-        addMessage("זה לא נראה כמו מספר טלפון תקין 🤔 תוכל לכתוב שוב?", 'bot');
+        addMessage(uallakI18n.t('bad_phone'), 'bot');
         document.getElementById('userInput').focus();
       }, 600);
       return;
     }
     checkoutPhone = text;
     checkoutStep = 'address';
-    setTimeout(() => { addMessage("ומה הכתובת של העסק (או כתובת לתיאום, אם אין עדיין כתובת עסק קבועה)?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    setTimeout(() => { addMessage(uallakI18n.t('ask_address'), 'bot'); document.getElementById('userInput').focus(); }, 600);
     return;
   }
   if (checkoutStep === 'address') {
     checkoutAddress = text;
     addMessage(text, 'user');
     checkoutStep = 'business_name';
-    setTimeout(() => { addMessage("מה שם העסק (לצורך הפקת חשבוניות)?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    setTimeout(() => { addMessage(uallakI18n.t('ask_business_name'), 'bot'); document.getElementById('userInput').focus(); }, 600);
     return;
   }
   if (checkoutStep === 'business_name') {
     checkoutBusinessName = text;
     addMessage(text, 'user');
     checkoutStep = 'business_tax_id';
-    setTimeout(() => { addMessage("ומה מספר עוסק מורשה / ח.פ שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    setTimeout(() => { addMessage(uallakI18n.t('ask_tax_id'), 'bot'); document.getElementById('userInput').focus(); }, 600);
     return;
   }
   if (checkoutStep === 'business_tax_id') {
     checkoutBusinessTaxId = text;
     addMessage(text, 'user');
     checkoutStep = 'email';
-    setTimeout(() => { addMessage("ומה כתובת האימייל שלך?", 'bot'); document.getElementById('userInput').focus(); }, 600);
+    setTimeout(() => { addMessage(uallakI18n.t('ask_email'), 'bot'); document.getElementById('userInput').focus(); }, 600);
     return;
   }
   if (checkoutStep === 'email') {
     addMessage(text, 'user');
     if (!isValidEmail(text)) {
       setTimeout(() => {
-        addMessage("זה לא נראה כמו כתובת מייל תקינה 🤔 תוכל לכתוב שוב?", 'bot');
+        addMessage(uallakI18n.t('bad_email'), 'bot');
         document.getElementById('userInput').focus();
       }, 600);
       return;
@@ -454,7 +669,7 @@ function nextQuestion() {
 }
 
 function showProcessing() {
-  addMessage("תודה! המערכת עובדת עכשיו על התכנית המותאמת לך 🔄", 'bot');
+  addMessage(uallakI18n.t('processing_msg'), 'bot');
   setTimeout(() => {
     document.getElementById('processing').classList.add('active');
     const steps = ['step1','step2','step3','step4'];
@@ -480,7 +695,7 @@ async function fetchProposal(answers) {
     setTimeout(() => displayProposal(data.data), 1400);
   } catch(e) {
     document.getElementById('processing').classList.remove('active');
-    addMessage("אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬", 'bot');
+    addMessage(uallakI18n.t('generic_error'), 'bot');
   }
 }
 
@@ -488,12 +703,13 @@ function displayProposal(data) {
   proposalData = data;
   const p = data.proposal;
   if (!p.approved) {
-    addMessage(`תודה שפנית אלינו 🙏\n\n${p.rejection_reason}\n\nאנחנו ממליצים לחזור אלינו כשהתנאים ישתנו — נשמח לעזור!`, 'bot');
+    addMessage(uallakI18n.t('reject_wrap', { reason: p.rejection_reason }), 'bot');
     return;
   }
-  const risk = p.risk_level==='high'?'גבוהה':p.risk_level==='medium'?'בינונית':'נמוכה';
-  const marketBlock = p.market_reality ? `\n\n📊 תמונת השוק שלך: ${p.market_reality}` : '';
-  const msg = `✅ התכנית שלך מוכנה!\n\n📋 סיכום: ${p.business_summary}${marketBlock}\n\n⚠️ רמת סיכון: ${risk}\n\n🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n🔧 דברים שאתה יכול לעשות לבד:\n${p.self_help_tips.map(t=>`  · ${t}`).join('\n')}`;
+  const t = uallakI18n.t;
+  const risk = t(p.risk_level==='high'?'risk_high':p.risk_level==='medium'?'risk_medium':'risk_low');
+  const marketBlock = p.market_reality ? `\n\n${t('proposal_market')} ${p.market_reality}` : '';
+  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n${t('proposal_tips')}\n${p.self_help_tips.map(tip=>`  · ${tip}`).join('\n')}`;
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');
@@ -513,20 +729,22 @@ function showPackageOptions(packages, scarcityNote) {
   bubble.className = 'msg-bubble';
   const textDiv = document.createElement('div');
   textDiv.style.whiteSpace = 'pre-line';
-  textDiv.textContent = 'הנה כמה אפשרויות שמתאימות לך — אין כאן תשובה "לא נכונה", תבחר את מה שמרגיש הכי נכון 👇';
+  textDiv.dir = 'auto';
+  textDiv.textContent = uallakI18n.t('pick_package');
   bubble.appendChild(textDiv);
 
   const grid = document.createElement('div');
   grid.className = 'options-grid';
   grid.style.flexDirection = 'column';
   const badgeHtml = scarcityNote
-    ? `<span style="display:inline-block;margin-top:8px;padding:3px 10px;background:rgba(255,76,31,0.1);color:var(--accent);border-radius:100px;font-size:12px;font-weight:700;">🔥 1 מתוך 20 החודש</span>`
+    ? `<span style="display:inline-block;margin-top:8px;padding:3px 10px;background:rgba(255,76,31,0.1);color:var(--accent);border-radius:100px;font-size:12px;font-weight:700;">${uallakI18n.t('pkg_badge')}</span>`
     : '';
   packages.forEach(pkg => {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
-    btn.style.cssText = 'width:100%;text-align:right;padding:14px 18px;';
-    btn.innerHTML = `<strong>${pkg.name}</strong><br><span style="font-size:13px;color:var(--gray);">${pkg.description||''}</span><br><span style="font-size:13px;">הקמה ₪${pkg.setup_fee_total} · ניהול חודשי ₪${pkg.monthly_management_total}</span><br>${badgeHtml}`;
+    btn.dir = 'auto';
+    btn.style.cssText = 'width:100%;text-align:start;padding:14px 18px;';
+    btn.innerHTML = `<strong>${pkg.name}</strong><br><span style="font-size:13px;color:var(--gray);">${pkg.description||''}</span><br><span style="font-size:13px;">${uallakI18n.t('pkg_price', { setup: pkg.setup_fee_total, monthly: pkg.monthly_management_total })}</span><br>${badgeHtml}`;
     btn.onclick = () => selectPackage(pkg, btn, grid);
     grid.appendChild(btn);
   });
@@ -545,7 +763,7 @@ function selectPackage(pkg, btn, grid) {
   selectedPackage = pkg;
   addMessage(pkg.name, 'user');
   setTimeout(() => {
-    addMessage(`בחירה מעולה! "${pkg.name}" 😊\n\nרק כמה פרטים קצרים לפני שממשיכים לתשלום — מה השם המלא שלך?`, 'bot');
+    addMessage(uallakI18n.t('pkg_chosen', { name: pkg.name }), 'bot');
     checkoutStep = 'name';
     document.getElementById('userInput').focus();
   }, 600);
@@ -566,14 +784,14 @@ async function handleObjection(text) {
     });
     const data = await res.json();
     hideTyping();
-    addMessage(data.reply || "אפשר לספר לי קצת יותר על מה שמטריד אותך?", 'bot');
+    addMessage(data.reply || uallakI18n.t('objection_fallback'), 'bot');
     setTimeout(() => showPackageOptions(
       (proposalData.proposal && proposalData.proposal.packages) || [],
       proposalData.proposal && proposalData.proposal.scarcity_note
     ), 900);
   } catch(e) {
     hideTyping();
-    addMessage("מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏", 'bot');
+    addMessage(uallakI18n.t('small_glitch'), 'bot');
     setTimeout(() => showPackageOptions(
       (proposalData.proposal && proposalData.proposal.packages) || [],
       proposalData.proposal && proposalData.proposal.scarcity_note
@@ -589,14 +807,15 @@ function showOtherInput(btn, grid) {
   wrapper.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;width:100%;';
 
   const label = document.createElement('span');
-  label.textContent = 'אחר:';
+  label.textContent = uallakI18n.t('other_label');
   label.style.cssText = 'font-size:14px;color:#666;white-space:nowrap;';
 
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'chat-input';
   input.style.cssText = 'flex:1;padding:8px 14px;font-size:14px;';
-  input.placeholder = 'הקלד את תשובתך...';
+  input.dir = 'auto';
+  input.placeholder = uallakI18n.t('other_ph');
 
   const confirmBtn = document.createElement('button');
   confirmBtn.className = 'send-btn';
@@ -625,7 +844,7 @@ function showOtherInput(btn, grid) {
 }
 
 async function startCheckout(name, phone, address, businessName, businessTaxId, email) {
-  addMessage("רגע אחד, מכין את קישור התשלום שלך... 💳", 'bot');
+  addMessage(uallakI18n.t('preparing_payment'), 'bot');
   try {
     const res = await fetch('/api/checkout', {
       method: 'POST',
@@ -645,13 +864,13 @@ async function startCheckout(name, phone, address, businessName, businessTaxId, 
     });
     const data = await res.json();
     if (data.success && data.data.approve_url) {
-      addMessage("הקישור מוכן! מעביר אותך לדף האישור של PayPal 🚀", 'bot');
+      addMessage(uallakI18n.t('payment_ready'), 'bot');
       setTimeout(() => { window.location.href = data.data.approve_url; }, 1200);
     } else {
-      addMessage("אירעה שגיאה בהכנת התשלום — צור קשר בוואטסאפ 💬", 'bot');
+      addMessage(uallakI18n.t('payment_error'), 'bot');
     }
   } catch(e) {
-    addMessage("אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬", 'bot');
+    addMessage(uallakI18n.t('generic_error'), 'bot');
   }
 }
 
@@ -669,7 +888,7 @@ function showDashboardLinkButton() {
   const btn = document.createElement('button');
   btn.className = 'option-btn';
   btn.style.cssText = 'background:#1A1A1A;color:white;';
-  btn.textContent = 'כניסה לדשבורד שלי →';
+  btn.textContent = uallakI18n.t('dashboard_btn');
   btn.onclick = () => { window.location.href = '/login/'; };
   grid.appendChild(btn);
   bubble.appendChild(grid);
@@ -684,17 +903,17 @@ window.onload = () => {
   const payment = params.get('payment');
   if (payment === 'success') {
     setTimeout(() => {
-      addMessage("התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים.\n\nהדשבורד האישי שלך מוכן — תוכל להתחבר אליו עם קוד חד-פעמי שנשלח למייל שלך, ולעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬", 'bot');
+      addMessage(uallakI18n.t('paid_success'), 'bot');
       setTimeout(() => showDashboardLinkButton(), 900);
     }, 500);
     return;
   }
   if (payment === 'error') {
-    setTimeout(() => addMessage("נראה שהייתה בעיה באישור התשלום 😕\n\nאפשר לנסות שוב או לפנות אלינו בוואטסאפ ונשלים את זה ביחד 💬", 'bot'), 500);
+    setTimeout(() => addMessage(uallakI18n.t('paid_error'), 'bot'), 500);
     return;
   }
   if (payment === 'pending') {
-    setTimeout(() => addMessage("קיבלנו את הפעולה שלך והתשלום עדיין באימות מול PayPal ⏳\n\nברגע שהוא יאושר סופית נשלח לך מייל עם כל הפרטים וגישה לדשבורד. אם זה נמשך יותר מכמה דקות, אפשר לפנות אלינו בוואטסאפ 💬", 'bot'), 500);
+    setTimeout(() => addMessage(uallakI18n.t('paid_pending'), 'bot'), 500);
     return;
   }
   setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);

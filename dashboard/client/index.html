@@ -501,6 +501,12 @@ body {
   background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed;
 }
 .confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
+.lang-switcher {
+  background: var(--panel-2); color: var(--gray); border: 1px solid var(--border);
+  border-radius: 100px; padding: 6px 10px; font-family: 'Heebo', sans-serif;
+  font-size: 12px; cursor: pointer; outline: none;
+}
+.lang-switcher:hover { color: var(--white); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -513,73 +519,73 @@ body {
       <div class="welcome-icon">👋</div>
       <div class="welcome-body">
         <div class="welcome-title" id="tourGreeting">ברוכים הבאים!</div>
-        <div class="welcome-text">כאן רואים את החבילה שלך, דמי הניהול, ומתי החיוב הבא. הכל שקוף ומעודכן.</div>
+        <div class="welcome-text" data-i18n="tour1_text">כאן רואים את החבילה שלך, דמי הניהול, ומתי החיוב הבא. הכל שקוף ומעודכן.</div>
       </div>
       <div class="welcome-dots">
         <div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
       </div>
       <div class="welcome-btn-row">
-        <button class="welcome-btn primary" onclick="welcomeStep(2)">בואו נתחיל</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(2)" data-i18n="tour_start">בואו נתחיל</button>
       </div>
     </div>
 
     <div class="welcome-step" data-step="2">
       <div class="welcome-icon">🖼️</div>
       <div class="welcome-body">
-        <div class="welcome-title">אזור אישורים</div>
-        <div class="welcome-text">כשהמערכת תכין חומרים (תמונות, סרטונים, פוסטים) — הם יחכו כאן לאישור שלך לפני שהם עולים.</div>
+        <div class="welcome-title" data-i18n="tour2_title">אזור אישורים</div>
+        <div class="welcome-text" data-i18n="tour2_text">כשהמערכת תכין חומרים (תמונות, סרטונים, פוסטים) — הם יחכו כאן לאישור שלך לפני שהם עולים.</div>
       </div>
       <div class="welcome-dots">
         <div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
       </div>
       <div class="welcome-btn-row">
-        <button class="welcome-btn skip" onclick="welcomeStep(1)">חזרה</button>
-        <button class="welcome-btn primary" onclick="welcomeStep(3)">הבנתי, המשך</button>
+        <button class="welcome-btn skip" onclick="welcomeStep(1)" data-i18n="tour_back">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(3)" data-i18n="tour_got_it">הבנתי, המשך</button>
       </div>
     </div>
 
     <div class="welcome-step" data-step="3">
       <div class="welcome-icon">🔌</div>
       <div class="welcome-body">
-        <div class="welcome-title">הצעד הראשון: חיבור חשבונות</div>
-        <div class="welcome-text">בהתאם לחבילה שלך — לוחצים "חבר עכשיו" בכל כרטיס, ומאשרים.</div>
+        <div class="welcome-title" data-i18n="tour3_title">הצעד הראשון: חיבור חשבונות</div>
+        <div class="welcome-text" data-i18n="tour3_text">בהתאם לחבילה שלך — לוחצים "חבר עכשיו" בכל כרטיס, ומאשרים.</div>
         <div class="welcome-time-badge" id="tourTimeBadge">⏱ כ-5 דקות</div>
       </div>
       <div class="welcome-dots">
         <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div><div class="welcome-dot"></div>
       </div>
       <div class="welcome-btn-row">
-        <button class="welcome-btn skip" onclick="welcomeStep(2)">חזרה</button>
-        <button class="welcome-btn primary" onclick="welcomeStep(4)">המשך</button>
+        <button class="welcome-btn skip" onclick="welcomeStep(2)" data-i18n="tour_back">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(4)" data-i18n="tour_next">המשך</button>
       </div>
     </div>
 
     <div class="welcome-step" data-step="4">
       <div class="welcome-icon">📋</div>
       <div class="welcome-body">
-        <div class="welcome-title">כאן תראו הכל</div>
-        <div class="welcome-text">כל פעולה שהמערכת עושה בשבילך תופיע כאן, בזמן אמת.</div>
+        <div class="welcome-title" data-i18n="tour4_title">כאן תראו הכל</div>
+        <div class="welcome-text" data-i18n="tour4_text">כל פעולה שהמערכת עושה בשבילך תופיע כאן, בזמן אמת.</div>
       </div>
       <div class="welcome-dots">
         <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div><div class="welcome-dot"></div>
       </div>
       <div class="welcome-btn-row">
-        <button class="welcome-btn skip" onclick="welcomeStep(3)">חזרה</button>
-        <button class="welcome-btn primary" onclick="welcomeStep(5)">המשך</button>
+        <button class="welcome-btn skip" onclick="welcomeStep(3)" data-i18n="tour_back">חזרה</button>
+        <button class="welcome-btn primary" onclick="welcomeStep(5)" data-i18n="tour_next">המשך</button>
       </div>
     </div>
 
     <div class="welcome-step" data-step="5">
       <div class="welcome-icon">✉</div>
       <div class="welcome-body">
-        <div class="welcome-title">יש לך תמיכה, תמיד</div>
-        <div class="welcome-text">הכפתור הכתום למטה בפינה — שאלה, בקשה, כל דבר. זמין 24/7.</div>
+        <div class="welcome-title" data-i18n="tour5_title">יש לך תמיכה, תמיד</div>
+        <div class="welcome-text" data-i18n="tour5_text">הכפתור הכתום למטה בפינה — שאלה, בקשה, כל דבר. זמין 24/7.</div>
       </div>
       <div class="welcome-dots">
         <div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot"></div><div class="welcome-dot active"></div>
       </div>
       <div class="welcome-btn-row">
-        <button class="welcome-btn primary" onclick="closeWelcome()">קדימה, לדשבורד שלי</button>
+        <button class="welcome-btn primary" onclick="closeWelcome()" data-i18n="tour_finish">קדימה, לדשבורד שלי</button>
       </div>
     </div>
 
@@ -589,10 +595,11 @@ body {
 <div class="topbar">
   <div class="logo">u<span>allak</span></div>
   <div class="topbar-right">
-    <span class="package-badge" id="packageBadge">טוען…</span>
-    <button class="upgrade-btn" onclick="toggleUpgradePanel()">⬆ שדרוג חבילה</button>
-    <button class="help-btn" onclick="openWelcome(false)" title="סיור היכרות">?</button>
-    <a class="avatar" id="avatarInitial" href="/profile/" title="הפרופיל שלי">·</a>
+    <span id="langRow"></span>
+    <span class="package-badge" id="packageBadge">…</span>
+    <button class="upgrade-btn" onclick="toggleUpgradePanel()" data-i18n="upgrade_btn">⬆ שדרוג חבילה</button>
+    <button class="help-btn" onclick="openWelcome(false)" data-i18n-title="help_title" title="סיור היכרות">?</button>
+    <a class="avatar" id="avatarInitial" href="/profile/" data-i18n-title="profile_title" title="הפרופיל שלי">·</a>
   </div>
 </div>
 
@@ -600,23 +607,23 @@ body {
   <div class="notice-banner" id="noticeBanner"></div>
 
   <div class="greeting" id="greeting">שלום 👋</div>
-  <div class="greeting-sub">הנה מה שקורה בעסק שלך היום</div>
+  <div class="greeting-sub" data-i18n="greeting_sub">הנה מה שקורה בעסק שלך היום</div>
 
   <div class="stat-grid" id="statGridMain">
     <div class="stat-card">
-      <div class="stat-label">חבילה נוכחית</div>
+      <div class="stat-label" data-i18n="stat_package">חבילה נוכחית</div>
       <div class="stat-value" id="statPackage">—</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">דמי ניהול חודשיים</div>
+      <div class="stat-label" data-i18n="stat_fee">דמי ניהול חודשיים</div>
       <div class="stat-value accent" id="statFee">—</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">חיוב הבא</div>
+      <div class="stat-label" data-i18n="stat_next_billing">חיוב הבא</div>
       <div class="stat-value" id="statNextBilling" style="font-size:19px;">—</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">פעולות החודש</div>
+      <div class="stat-label" data-i18n="stat_actions">פעולות החודש</div>
       <div class="stat-value" id="statActions">—</div>
     </div>
   </div>
@@ -627,24 +634,24 @@ body {
       <span class="timeline-pct" id="timelinePct"></span>
     </div>
     <div class="timeline-track"><div class="timeline-fill" id="timelineFill" style="width:0%"></div></div>
-    <div class="timeline-note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
+    <div class="timeline-note" data-i18n="timeline_note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
   </div>
 
   <div class="section-head">
     <div>
-      <div class="section-title">ממתין לאישור שלך</div>
-      <div class="section-sub">חומרים שהמערכת מכינה יחכו כאן לאור ירוק ממך</div>
+      <div class="section-title" data-i18n="pending_title">ממתין לאישור שלך</div>
+      <div class="section-sub" data-i18n="pending_sub">חומרים שהמערכת מכינה יחכו כאן לאור ירוק ממך</div>
     </div>
-    <span class="pending-badge" id="pendingBadge">0 ממתינים</span>
+    <span class="pending-badge" id="pendingBadge">0</span>
   </div>
   <div class="activity-list" id="pendingApprovalList" style="margin-bottom:36px;">
-    <div class="empty-row">אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן</div>
+    <div class="empty-row" data-i18n="pending_empty">אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן</div>
   </div>
 
   <div class="section-head">
     <div>
-      <div class="section-title">חיבורים</div>
-      <div class="section-sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
+      <div class="section-title" data-i18n="conn_title">חיבורים</div>
+      <div class="section-sub" data-i18n="conn_sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
     </div>
   </div>
   <div class="conn-grid" id="connGrid">
@@ -656,10 +663,10 @@ body {
         </div>
         <div>
           <div class="conn-name">Google Ads</div>
-          <div class="conn-status" id="gadsStatus">לא מחובר</div>
+          <div class="conn-status" id="gadsStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()">חבר עכשיו</button>
+      <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -668,11 +675,11 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="10" r="2"/><path d="M20 16l-4.5-4.5L9 18"/></svg>
         </div>
         <div>
-          <div class="conn-name">Meta — פייסבוק + אינסטגרם</div>
-          <div class="conn-status" id="metaStatus">לא מחובר</div>
+          <div class="conn-name" data-i18n="meta_card">Meta — פייסבוק + אינסטגרם</div>
+          <div class="conn-status" id="metaStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()">חבר עכשיו</button>
+      <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
     <div class="conn-card locked">
@@ -682,11 +689,11 @@ body {
         </div>
         <div>
           <div class="conn-name">TikTok</div>
-          <div class="conn-status">נעול</div>
+          <div class="conn-status" data-i18n="locked">נעול</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled>נעול</button>
-      <div class="lock-note">שדרג חבילה כדי לפתוח</div>
+      <button class="conn-btn locked-btn" disabled data-i18n="locked">נעול</button>
+      <div class="lock-note" data-i18n="lock_note">שדרג חבילה כדי לפתוח</div>
     </div>
 
     <div class="conn-card unlocked">
@@ -695,17 +702,17 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
         </div>
         <div>
-          <div class="conn-name">האתר שלך (WordPress)</div>
-          <div class="conn-status" id="siteStatus">לא מחובר</div>
+          <div class="conn-name" data-i18n="site_card">האתר שלך (WordPress)</div>
+          <div class="conn-status" id="siteStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()">חבר עכשיו</button>
+      <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()" data-i18n="connect_now">חבר עכשיו</button>
       <div id="siteForm" style="display:none; margin-top:10px;">
-        <input class="site-input" id="siteUrl" dir="ltr" placeholder="כתובת האתר, למשל mysite.co.il">
-        <input class="site-input" id="siteUser" dir="ltr" placeholder="שם משתמש WordPress">
+        <input class="site-input" id="siteUrl" dir="ltr" data-i18n-placeholder="site_url_ph" placeholder="כתובת האתר, למשל mysite.co.il">
+        <input class="site-input" id="siteUser" dir="ltr" data-i18n-placeholder="site_user_ph" placeholder="שם משתמש WordPress">
         <input class="site-input" id="sitePass" dir="ltr" type="password" placeholder="Application Password">
-        <div class="lock-note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
-        <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()">חיבור</button>
+        <div class="lock-note" data-i18n="site_app_pw_note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
+        <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()" data-i18n="site_connect">חיבור</button>
       </div>
     </div>
 
@@ -715,11 +722,11 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
         </div>
         <div>
-          <div class="conn-name">דיוור / מיילים</div>
-          <div class="conn-status">חיבור יתווסף בקרוב</div>
+          <div class="conn-name" data-i18n="newsletter_card">דיוור / מיילים</div>
+          <div class="conn-status" data-i18n="coming_soon_status">חיבור יתווסף בקרוב</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled>בקרוב</button>
+      <button class="conn-btn locked-btn" disabled data-i18n="coming_soon">בקרוב</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -728,38 +735,38 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/><path d="M9 10a1 1 0 0 0 1 1h1l1 2 2 1a1 1 0 0 0 1-1v-1"/></svg>
         </div>
         <div>
-          <div class="conn-name">וואטסאפ עסקי</div>
-          <div class="conn-status">חיבור יתווסף בקרוב</div>
+          <div class="conn-name" data-i18n="whatsapp_card">וואטסאפ עסקי</div>
+          <div class="conn-status" data-i18n="coming_soon_status">חיבור יתווסף בקרוב</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled>בקרוב</button>
+      <button class="conn-btn locked-btn" disabled data-i18n="coming_soon">בקרוב</button>
     </div>
 
   </div>
 
   <div class="section-head">
     <div>
-      <div class="section-title">פעילות אחרונה</div>
-      <div class="section-sub">מה שהמערכת עשתה בשבילך</div>
+      <div class="section-title" data-i18n="activity_title">פעילות אחרונה</div>
+      <div class="section-sub" data-i18n="activity_sub">מה שהמערכת עשתה בשבילך</div>
     </div>
   </div>
   <div class="activity-list" id="activityListMain">
-    <div class="empty-row">טוען…</div>
+    <div class="empty-row" data-i18n="loading">טוען…</div>
   </div>
 
   <div class="section-head">
     <div>
-      <div class="section-title">חיובים</div>
-      <div class="section-sub">היסטוריית תשלומים והחבילה הנוכחית שלך</div>
+      <div class="section-title" data-i18n="billing_title">חיובים</div>
+      <div class="section-sub" data-i18n="billing_sub">היסטוריית תשלומים והחבילה הנוכחית שלך</div>
     </div>
   </div>
   <div class="billing-card" id="billingSection">
-    <div class="empty-row">טוען…</div>
+    <div class="empty-row" data-i18n="loading">טוען…</div>
   </div>
 
   <div class="affiliate-note">
     <span class="affiliate-icon">ⓘ</span>
-    <span>הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.</span>
+    <span data-i18n="affiliate_note">הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.</span>
   </div>
 
 </div>
@@ -775,27 +782,27 @@ body {
     <div class="support-avatar" id="supportAvatar">🤖</div>
     <div class="support-head-text">
       <div class="support-head-title" id="supportTitle">צוות uallak</div>
-      <div class="support-head-sub">זמין עכשיו</div>
+      <div class="support-head-sub" data-i18n="chat_available">זמין עכשיו</div>
     </div>
-    <button class="support-new-chat" onclick="startNewChat()">שיחה חדשה</button>
+    <button class="support-new-chat" onclick="startNewChat()" data-i18n="new_chat">שיחה חדשה</button>
   </div>
   <div class="persona-pick" id="personaPick" style="display:none;">
-    <div class="persona-pick-title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
+    <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
     <div class="persona-pick-btns">
       <button class="persona-pick-btn" onclick="choosePersona('male')">
-        <span id="personaPreviewMale"></span>דניאל
+        <span id="personaPreviewMale"></span><span data-i18n="persona_short_male">דניאל</span>
       </button>
       <button class="persona-pick-btn" onclick="choosePersona('female')">
-        <span id="personaPreviewFemale"></span>דנה
+        <span id="personaPreviewFemale"></span><span data-i18n="persona_short_female">דנה</span>
       </button>
     </div>
   </div>
   <div class="support-messages" id="supportMessages">
-    <div class="support-msg bot" id="chatIntroMsg">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
+    <div class="support-msg bot" id="chatIntroMsg" data-i18n="chat_intro">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
   </div>
   <div class="chip-row" id="chipRow"></div>
   <div class="support-input-area">
-    <input class="support-input" id="supportInput" dir="auto" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
+    <input class="support-input" id="supportInput" dir="auto" data-i18n-placeholder="chat_input_ph" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
     <button class="support-send" onclick="sendSupportMsg()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
@@ -806,13 +813,184 @@ body {
 <div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
 <div class="upgrade-panel" id="upgradePanel">
   <button class="upgrade-close" onclick="toggleUpgradePanel()">✕</button>
-  <div style="font-size:18px; font-weight:800; margin:6px 0 4px 0;">שדרוג חבילה</div>
-  <div style="font-size:12.5px; color:var(--gray); margin-bottom:22px;">השדרוג ייכנס לתוקף מהחיוב הבא — מאשרים פעם אחת ב-PayPal וזהו</div>
-  <div id="upgradeTiers"><div class="empty-row">טוען…</div></div>
-  <button class="confirm-upgrade-btn" id="confirmUpgradeBtn" disabled onclick="confirmUpgrade()">בחרו חבילה כדי להמשיך</button>
+  <div style="font-size:18px; font-weight:800; margin:6px 0 4px 0;" data-i18n="upgrade_title">שדרוג חבילה</div>
+  <div style="font-size:12.5px; color:var(--gray); margin-bottom:22px;" data-i18n="upgrade_sub">השדרוג ייכנס לתוקף מהחיוב הבא — מאשרים פעם אחת ב-PayPal וזהו</div>
+  <div id="upgradeTiers"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+  <button class="confirm-upgrade-btn" id="confirmUpgradeBtn" disabled onclick="confirmUpgrade()" data-i18n="upgrade_pick">בחרו חבילה כדי להמשיך</button>
 </div>
 
+<script src="/assets/i18n.js"></script>
 <script>
+// ─── i18n string table (Hebrew = source of truth + fallback) ────────────────
+const DASH_I18N = {
+  _page_title: { he:'uallak — הדשבורד שלך', en:'uallak — Your dashboard', fr:'uallak — Votre tableau de bord', ar:'uallak — لوحة التحكم الخاصة بك', ru:'uallak — Ваш кабинет' },
+  upgrade_btn: { he:'⬆ שדרוג חבילה', en:'⬆ Upgrade package', fr:'⬆ Changer de formule', ar:'⬆ ترقية الباقة', ru:'⬆ Улучшить пакет' },
+  help_title: { he:'סיור היכרות', en:'Welcome tour', fr:'Visite guidée', ar:'جولة تعريفية', ru:'Ознакомительный тур' },
+  profile_title: { he:'הפרופיל שלי', en:'My profile', fr:'Mon profil', ar:'ملفي الشخصي', ru:'Мой профиль' },
+  greeting_sub: { he:'הנה מה שקורה בעסק שלך היום', en:'Here\'s what\'s happening in your business today', fr:'Voici ce qui se passe dans votre entreprise aujourd\'hui', ar:'إليك ما يحدث في عملك اليوم', ru:'Вот что происходит в вашем бизнесе сегодня' },
+  hello: { he:'שלום 👋', en:'Hello 👋', fr:'Bonjour 👋', ar:'مرحبًا 👋', ru:'Здравствуйте 👋' },
+  hello_name: { he:'שלום, {name} 👋', en:'Hello, {name} 👋', fr:'Bonjour, {name} 👋', ar:'مرحبًا، {name} 👋', ru:'Здравствуйте, {name} 👋' },
+  welcome_generic: { he:'ברוכים הבאים!', en:'Welcome!', fr:'Bienvenue !', ar:'أهلًا بك!', ru:'Добро пожаловать!' },
+  welcome_name: { he:'ברוכים הבאים, {name}!', en:'Welcome, {name}!', fr:'Bienvenue, {name} !', ar:'أهلًا بك، {name}!', ru:'Добро пожаловать, {name}!' },
+  tour1_text: { he:'כאן רואים את החבילה שלך, דמי הניהול, ומתי החיוב הבא. הכל שקוף ומעודכן.', en:'Here you see your package, the management fee and the next billing date. Everything transparent and up to date.', fr:'Ici, vous voyez votre formule, les frais de gestion et le prochain prélèvement. Tout est transparent et à jour.', ar:'هنا ترى باقتك ورسوم الإدارة وموعد الفاتورة القادمة. كل شيء شفاف ومحدّث.', ru:'Здесь вы видите свой пакет, плату за ведение и дату следующего списания. Всё прозрачно и актуально.' },
+  tour_start: { he:'בואו נתחיל', en:'Let\'s start', fr:'Commençons', ar:'لنبدأ', ru:'Начнём' },
+  tour_back: { he:'חזרה', en:'Back', fr:'Retour', ar:'رجوع', ru:'Назад' },
+  tour_next: { he:'המשך', en:'Next', fr:'Suivant', ar:'التالي', ru:'Далее' },
+  tour_got_it: { he:'הבנתי, המשך', en:'Got it, next', fr:'Compris, suivant', ar:'فهمت، التالي', ru:'Понятно, далее' },
+  tour_finish: { he:'קדימה, לדשבורד שלי', en:'Take me to my dashboard', fr:'Vers mon tableau de bord', ar:'إلى لوحة التحكم الخاصة بي', ru:'Вперёд, в мой кабинет' },
+  tour2_title: { he:'אזור אישורים', en:'Approvals area', fr:'Zone d\'approbation', ar:'منطقة الموافقات', ru:'Зона согласований' },
+  tour2_text: { he:'כשהמערכת תכין חומרים (תמונות, סרטונים, פוסטים) — הם יחכו כאן לאישור שלך לפני שהם עולים.', en:'When the system prepares materials (images, videos, posts) — they\'ll wait here for your approval before going live.', fr:'Quand le système préparera des contenus (images, vidéos, posts), ils attendront ici votre validation avant publication.', ar:'عندما يجهّز النظام موادًا (صور، فيديوهات، منشورات) — ستنتظر هنا موافقتك قبل النشر.', ru:'Когда система подготовит материалы (изображения, видео, посты) — они будут ждать здесь вашего одобрения перед публикацией.' },
+  tour3_title: { he:'הצעד הראשון: חיבור חשבונות', en:'Step one: connect your accounts', fr:'Première étape : connecter vos comptes', ar:'الخطوة الأولى: ربط الحسابات', ru:'Первый шаг: подключение аккаунтов' },
+  tour3_text: { he:'בהתאם לחבילה שלך — לוחצים "חבר עכשיו" בכל כרטיס, ומאשרים.', en:'Per your package — click "Connect now" on each card and approve.', fr:'Selon votre formule — cliquez « Connecter » sur chaque carte et validez.', ar:'حسب باقتك — اضغط "اربط الآن" في كل بطاقة ووافق.', ru:'Согласно вашему пакету — нажмите «Подключить» на каждой карточке и подтвердите.' },
+  tour_time: { he:'⏱ כ-{min} דקות', en:'⏱ ~{min} minutes', fr:'⏱ ~{min} minutes', ar:'⏱ نحو {min} دقائق', ru:'⏱ ~{min} минут' },
+  tour4_title: { he:'כאן תראו הכל', en:'You\'ll see everything here', fr:'Vous verrez tout ici', ar:'هنا سترى كل شيء', ru:'Здесь вы увидите всё' },
+  tour4_text: { he:'כל פעולה שהמערכת עושה בשבילך תופיע כאן, בזמן אמת.', en:'Every action the system takes for you appears here, in real time.', fr:'Chaque action du système pour vous apparaît ici, en temps réel.', ar:'كل إجراء يقوم به النظام من أجلك يظهر هنا لحظيًا.', ru:'Каждое действие системы для вас появляется здесь в реальном времени.' },
+  tour5_title: { he:'יש לך תמיכה, תמיד', en:'You always have support', fr:'Vous avez toujours du soutien', ar:'الدعم متاح لك دائمًا', ru:'Поддержка всегда рядом' },
+  tour5_text: { he:'הכפתור הכתום למטה בפינה — שאלה, בקשה, כל דבר. זמין 24/7.', en:'The orange button in the corner — a question, a request, anything. Available 24/7.', fr:'Le bouton orange en bas — une question, une demande, tout. Disponible 24h/24.', ar:'الزر البرتقالي في الأسفل — سؤال، طلب، أي شيء. متاح 24/7.', ru:'Оранжевая кнопка в углу — вопрос, просьба, что угодно. Доступна 24/7.' },
+  stat_package: { he:'חבילה נוכחית', en:'Current package', fr:'Formule actuelle', ar:'الباقة الحالية', ru:'Текущий пакет' },
+  stat_fee: { he:'דמי ניהול חודשיים', en:'Monthly management fee', fr:'Frais de gestion mensuels', ar:'رسوم الإدارة الشهرية', ru:'Ежемесячная плата за ведение' },
+  stat_next_billing: { he:'חיוב הבא', en:'Next billing', fr:'Prochain prélèvement', ar:'الفاتورة القادمة', ru:'Следующее списание' },
+  stat_actions: { he:'פעולות החודש', en:'Actions this month', fr:'Actions ce mois-ci', ar:'إجراءات هذا الشهر', ru:'Действий за месяц' },
+  timeline_label: { he:'חודש {m} מתוך 6 — תוכנית צמיחה', en:'Month {m} of 6 — growth plan', fr:'Mois {m} sur 6 — plan de croissance', ar:'الشهر {m} من 6 — خطة النمو', ru:'Месяц {m} из 6 — план роста' },
+  timeline_note: { he:'תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6', en:'Meaningful organic results are usually felt around month 6', fr:'Les résultats organiques significatifs se ressentent généralement vers le 6e mois', ar:'النتائج المجانية المهمة تُلمس عادة حوالي الشهر السادس', ru:'Ощутимые органические результаты обычно появляются к 6-му месяцу' },
+  pending_title: { he:'ממתין לאישור שלך', en:'Waiting for your approval', fr:'En attente de votre validation', ar:'بانتظار موافقتك', ru:'Ждёт вашего одобрения' },
+  pending_sub: { he:'חומרים שהמערכת מכינה יחכו כאן לאור ירוק ממך', en:'Materials the system prepares wait here for your green light', fr:'Les contenus préparés attendent ici votre feu vert', ar:'المواد التي يجهزها النظام تنتظر هنا الضوء الأخضر منك', ru:'Материалы, подготовленные системой, ждут здесь вашего одобрения' },
+  pending_badge: { he:'{n} ממתינים', en:'{n} pending', fr:'{n} en attente', ar:'{n} بانتظار', ru:'{n} в ожидании' },
+  pending_empty: { he:'אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן', en:'Nothing waiting for approval right now — when there is, it appears here', fr:'Rien en attente de validation — dès qu\'il y en aura, ce sera ici', ar:'لا مواد بانتظار الموافقة حاليًا — عندما توجد ستظهر هنا', ru:'Сейчас ничего не ждёт одобрения — как появится, будет здесь' },
+  pending_empty_weekly: { he:'אין חומרים שממתינים לאישור כרגע — הצעות חדשות מגיעות כל שבוע', en:'Nothing waiting right now — new suggestions arrive every week', fr:'Rien en attente — de nouvelles suggestions arrivent chaque semaine', ar:'لا شيء بانتظارك حاليًا — اقتراحات جديدة تصل كل أسبوع', ru:'Сейчас ничего нет — новые предложения приходят каждую неделю' },
+  conn_title: { he:'חיבורים', en:'Connections', fr:'Connexions', ar:'الاتصالات', ru:'Подключения' },
+  conn_sub: { he:'מה שקשור לחבילה שלך פתוח לחיבור מיידי', en:'Whatever your package includes is open for immediate connection', fr:'Ce que couvre votre formule est prêt à être connecté', ar:'كل ما تشمله باقتك جاهز للربط الفوري', ru:'Всё, что входит в ваш пакет, доступно для подключения' },
+  not_connected: { he:'לא מחובר', en:'Not connected', fr:'Non connecté', ar:'غير متصل', ru:'Не подключено' },
+  connected_status: { he:'מחובר', en:'Connected', fr:'Connecté', ar:'متصل', ru:'Подключено' },
+  connected_btn: { he:'מחובר ✓', en:'Connected ✓', fr:'Connecté ✓', ar:'متصل ✓', ru:'Подключено ✓' },
+  connect_now: { he:'חבר עכשיו', en:'Connect now', fr:'Connecter', ar:'اربط الآن', ru:'Подключить' },
+  locked: { he:'נעול', en:'Locked', fr:'Verrouillé', ar:'مقفل', ru:'Закрыто' },
+  lock_note: { he:'שדרג חבילה כדי לפתוח', en:'Upgrade your package to unlock', fr:'Changez de formule pour débloquer', ar:'قم بترقية الباقة للفتح', ru:'Улучшите пакет, чтобы открыть' },
+  meta_card: { he:'Meta — פייסבוק + אינסטגרם', en:'Meta — Facebook + Instagram', fr:'Meta — Facebook + Instagram', ar:'Meta — فيسبوك + إنستغرام', ru:'Meta — Facebook + Instagram' },
+  site_card: { he:'האתר שלך (WordPress)', en:'Your website (WordPress)', fr:'Votre site (WordPress)', ar:'موقعك (WordPress)', ru:'Ваш сайт (WordPress)' },
+  site_url_ph: { he:'כתובת האתר, למשל mysite.co.il', en:'Site address, e.g. mysite.co.il', fr:'Adresse du site, ex. monsite.fr', ar:'عنوان الموقع، مثل mysite.co.il', ru:'Адрес сайта, напр. mysite.co.il' },
+  site_user_ph: { he:'שם משתמש WordPress', en:'WordPress username', fr:'Nom d\'utilisateur WordPress', ar:'اسم مستخدم WordPress', ru:'Имя пользователя WordPress' },
+  site_app_pw_note: { he:'יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords', en:'Create an Application Password on your site: Users → Profile → Application Passwords', fr:'Créez un mot de passe d\'application : Utilisateurs → Profil → Application Passwords', ar:'أنشئ كلمة مرور تطبيق في موقعك: المستخدمون ← الملف الشخصي ← Application Passwords', ru:'Создайте пароль приложения на сайте: Пользователи → Профиль → Application Passwords' },
+  site_connect: { he:'חיבור', en:'Connect', fr:'Connecter', ar:'ربط', ru:'Подключить' },
+  site_fill_all: { he:'נא למלא את כל שדות החיבור של האתר', en:'Please fill in all the website connection fields', fr:'Veuillez remplir tous les champs de connexion du site', ar:'يرجى تعبئة جميع حقول ربط الموقع', ru:'Пожалуйста, заполните все поля подключения сайта' },
+  site_connecting: { he:'מתחבר...', en:'Connecting…', fr:'Connexion…', ar:'جارٍ الربط...', ru:'Подключаем…' },
+  site_connected_notice: { he:'האתר חובר בהצלחה ✓', en:'Website connected ✓', fr:'Site connecté ✓', ar:'تم ربط الموقع بنجاح ✓', ru:'Сайт подключён ✓' },
+  site_connect_failed: { he:'חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', en:'Website connection failed — check the address, username and Application Password and try again', fr:'Échec de connexion — vérifiez l\'adresse, l\'utilisateur et l\'Application Password, puis réessayez', ar:'فشل ربط الموقع — تحقق من العنوان واسم المستخدم وApplication Password وحاول مجددًا', ru:'Подключение сайта не удалось — проверьте адрес, имя пользователя и Application Password и попробуйте снова' },
+  newsletter_card: { he:'דיוור / מיילים', en:'Email marketing', fr:'E-mailing', ar:'البريد التسويقي', ru:'Email-рассылки' },
+  whatsapp_card: { he:'וואטסאפ עסקי', en:'WhatsApp Business', fr:'WhatsApp Business', ar:'واتساب للأعمال', ru:'WhatsApp Business' },
+  coming_soon_status: { he:'חיבור יתווסף בקרוב', en:'Connection coming soon', fr:'Connexion bientôt disponible', ar:'الربط سيتوفر قريبًا', ru:'Подключение скоро появится' },
+  coming_soon: { he:'בקרוב', en:'Soon', fr:'Bientôt', ar:'قريبًا', ru:'Скоро' },
+  disconnect_link: { he:'ניתוק חיבור', en:'Disconnect', fr:'Déconnecter', ar:'فصل الاتصال', ru:'Отключить' },
+  disconnect_confirm: { he:'בטוחים? לחיצה נוספת תנתק', en:'Sure? Click again to disconnect', fr:'Sûr ? Cliquez encore pour déconnecter', ar:'متأكد؟ اضغط مجددًا للفصل', ru:'Уверены? Нажмите ещё раз для отключения' },
+  disconnecting: { he:'מנתק…', en:'Disconnecting…', fr:'Déconnexion…', ar:'جارٍ الفصل…', ru:'Отключаем…' },
+  disconnect_failed: { he:'הניתוק נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', en:'Disconnect failed — try again; if it repeats, talk to us in the chat', fr:'Échec de la déconnexion — réessayez ; si cela persiste, contactez-nous via le chat', ar:'فشل الفصل — حاول مجددًا، وإن تكرر تحدث معنا في الدردشة', ru:'Отключение не удалось — попробуйте ещё раз; если повторится, напишите нам в чат' },
+  activity_title: { he:'פעילות אחרונה', en:'Recent activity', fr:'Activité récente', ar:'النشاط الأخير', ru:'Последняя активность' },
+  activity_sub: { he:'מה שהמערכת עשתה בשבילך', en:'What the system has done for you', fr:'Ce que le système a fait pour vous', ar:'ما فعله النظام من أجلك', ru:'Что система сделала для вас' },
+  activity_empty: { he:'עדיין אין פעילות — ברגע שהמערכת תתחיל לעבוד בשבילך, הכל יופיע כאן', en:'No activity yet — the moment the system starts working for you, it all shows up here', fr:'Pas encore d\'activité — dès que le système travaillera pour vous, tout apparaîtra ici', ar:'لا نشاط بعد — حالما يبدأ النظام العمل من أجلك سيظهر كل شيء هنا', ru:'Активности пока нет — как только система начнёт работать для вас, всё появится здесь' },
+  loading: { he:'טוען…', en:'Loading…', fr:'Chargement…', ar:'جارٍ التحميل…', ru:'Загрузка…' },
+  billing_title: { he:'חיובים', en:'Billing', fr:'Facturation', ar:'الفواتير', ru:'Платежи' },
+  billing_sub: { he:'היסטוריית תשלומים והחבילה הנוכחית שלך', en:'Payment history and your current package', fr:'Historique des paiements et votre formule actuelle', ar:'سجل المدفوعات وباقتك الحالية', ru:'История платежей и ваш текущий пакет' },
+  billing_paid: { he:'שולם', en:'Paid', fr:'Payé', ar:'مدفوع', ru:'Оплачено' },
+  billing_pending_pay: { he:'ממתין לתשלום', en:'Pending payment', fr:'En attente de paiement', ar:'بانتظار الدفع', ru:'Ожидает оплаты' },
+  billing_monthly_row: { he:'ניהול חודשי', en:'Monthly management', fr:'Gestion mensuelle', ar:'إدارة شهرية', ru:'Ежемесячное ведение' },
+  billing_current_pkg: { he:'חבילה נוכחית', en:'Current package', fr:'Formule actuelle', ar:'الباقة الحالية', ru:'Текущий пакет' },
+  billing_setup: { he:'דמי הקמה', en:'Setup fee', fr:'Frais de mise en place', ar:'رسوم التأسيس', ru:'Плата за запуск' },
+  billing_next: { he:'החיוב הבא', en:'Next billing', fr:'Prochain prélèvement', ar:'الفاتورة القادمة', ru:'Следующее списание' },
+  billing_history: { he:'היסטוריית חיובים', en:'Billing history', fr:'Historique de facturation', ar:'سجل الفواتير', ru:'История платежей' },
+  billing_none_yet: { he:'עדיין לא בוצעו חיובים במנוי 🎁', en:'No subscription charges yet 🎁', fr:'Aucun prélèvement pour l\'instant 🎁', ar:'لا رسوم على الاشتراك بعد 🎁', ru:'Списаний по подписке пока не было 🎁' },
+  per_month: { he:'/חודש', en:'/month', fr:'/mois', ar:'/شهر', ru:'/мес' },
+  affiliate_note: { he:'הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.', en:'The professional tools we connect for you (like analytics and SEO tools) are carefully chosen from partnerships with leading industry providers — it doesn\'t change your price, and helps us keep developing the system.', fr:'Les outils professionnels que nous connectons pour vous (analyse, SEO) sont soigneusement choisis via des partenariats avec des fournisseurs de premier plan — cela ne change pas votre prix et nous aide à développer le système.', ar:'الأدوات الاحترافية التي نربطها لك (كأدوات التحليل والتحسين) مختارة بعناية من شراكات مع مزوّدين رائدين — لا يغيّر ذلك سعرك، ويساعدنا على مواصلة تطوير النظام.', ru:'Профессиональные инструменты, которые мы подключаем для вас (аналитика, SEO), тщательно выбраны в рамках партнёрств с ведущими провайдерами — это не меняет вашу цену и помогает нам развивать систему.' },
+  upgrade_title: { he:'שדרוג חבילה', en:'Upgrade package', fr:'Changer de formule', ar:'ترقية الباقة', ru:'Улучшение пакета' },
+  upgrade_sub: { he:'השדרוג ייכנס לתוקף מהחיוב הבא — מאשרים פעם אחת ב-PayPal וזהו', en:'The upgrade takes effect from the next billing — one PayPal approval and that\'s it', fr:'Le changement prend effet au prochain prélèvement — une validation PayPal et c\'est tout', ar:'تسري الترقية من الفاتورة القادمة — موافقة واحدة في PayPal وانتهى', ru:'Улучшение вступит в силу со следующего списания — одно подтверждение в PayPal, и всё' },
+  upgrade_pick: { he:'בחרו חבילה כדי להמשיך', en:'Pick a package to continue', fr:'Choisissez une formule pour continuer', ar:'اختر باقة للمتابعة', ru:'Выберите пакет, чтобы продолжить' },
+  upgrade_go: { he:'שדרגו עכשיו — לאישור ב-PayPal', en:'Upgrade now — approve on PayPal', fr:'Valider maintenant — approbation PayPal', ar:'رقِّ الآن — الموافقة في PayPal', ru:'Улучшить сейчас — подтвердить в PayPal' },
+  upgrade_preparing: { he:'רגע, מכינים את השדרוג…', en:'One moment, preparing the upgrade…', fr:'Un instant, préparation…', ar:'لحظة، نجهّز الترقية…', ru:'Секунду, готовим…' },
+  upgrade_error_retry: { he:'שגיאה — נסו שוב', en:'Error — try again', fr:'Erreur — réessayez', ar:'خطأ — حاول مجددًا', ru:'Ошибка — попробуйте ещё раз' },
+  upgrade_load_error: { he:'שגיאה בטעינת החבילות — נסו שוב', en:'Error loading packages — try again', fr:'Erreur de chargement des formules — réessayez', ar:'خطأ في تحميل الباقات — حاول مجددًا', ru:'Ошибка загрузки пакетов — попробуйте ещё раз' },
+  upgrade_top_tier: { he:'אתם כבר בחבילה הגבוהה ביותר 🎉', en:'You\'re already on the top package 🎉', fr:'Vous êtes déjà à la formule maximale 🎉', ar:'أنت بالفعل على أعلى باقة 🎉', ru:'У вас уже максимальный пакет 🎉' },
+  tier_current: { he:'נוכחית', en:'Current', fr:'Actuelle', ar:'الحالية', ru:'Текущий' },
+  tier_yours: { he:'החבילה שלך', en:'Your package', fr:'Votre formule', ar:'باقتك', ru:'Ваш пакет' },
+  chat_available: { he:'זמין עכשיו', en:'Available now', fr:'Disponible', ar:'متاح الآن', ru:'На связи' },
+  new_chat: { he:'שיחה חדשה', en:'New chat', fr:'Nouvelle discussion', ar:'محادثة جديدة', ru:'Новый чат' },
+  chat_team: { he:'צוות uallak', en:'uallak team', fr:'Équipe uallak', ar:'فريق uallak', ru:'Команда uallak' },
+  persona_title: { he:'רגע לפני שמתחילים — מי ילווה אתכם כאן?', en:'Before we start — who will accompany you here?', fr:'Avant de commencer — qui vous accompagnera ici ?', ar:'قبل أن نبدأ — من سيرافقك هنا؟', ru:'Прежде чем начать — кто будет вас сопровождать?' },
+  persona_male: { he:'דניאל מ-uallak', en:'Daniel from uallak', fr:'Daniel de uallak', ar:'دانيال من uallak', ru:'Даниэль из uallak' },
+  persona_female: { he:'דנה מ-uallak', en:'Dana from uallak', fr:'Dana de uallak', ar:'دانا من uallak', ru:'Дана из uallak' },
+  persona_short_male: { he:'דניאל', en:'Daniel', fr:'Daniel', ar:'دانيال', ru:'Даниэль' },
+  persona_short_female: { he:'דנה', en:'Dana', fr:'Dana', ar:'دانا', ru:'Дана' },
+  chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
+  chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
+  chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
+  chat_error: { he:'מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', en:'Sorry, a small glitch — could you try again? 🙏', fr:'Désolé, petit souci — pouvez-vous réessayer ? 🙏', ar:'عذرًا، حدث خلل بسيط — حاول مجددًا؟ 🙏', ru:'Извините, небольшой сбой — попробуете ещё раз? 🙏' },
+  chat_prev: { he:'הצג שיחות קודמות', en:'Show previous conversations', fr:'Voir les discussions précédentes', ar:'عرض المحادثات السابقة', ru:'Показать прошлые беседы' },
+  chat_divider: { he:'— שיחה חדשה —', en:'— new conversation —', fr:'— nouvelle discussion —', ar:'— محادثة جديدة —', ru:'— новая беседа —' },
+  chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
+  greet_back: { he:'טוב לראות אותך שוב{name} 👋', en:'Good to see you again{name} 👋', fr:'Ravi de vous revoir{name} 👋', ar:'سعيد برؤيتك مجددًا{name} 👋', ru:'Рады видеть вас снова{name} 👋' },
+  greet_first_1: { he:'היי{name}, ברוכים הבאים ל-uallak! 👋', en:'Hi{name}, welcome to uallak! 👋', fr:'Bonjour{name}, bienvenue chez uallak ! 👋', ar:'مرحبًا{name}، أهلًا بك في uallak! 👋', ru:'Привет{name}, добро пожаловать в uallak! 👋' },
+  greet_first_2: { he:'מעכשיו אנחנו הצוות שלך. כל מה שנכין בשבילך — רעיונות, פוסטים, קמפיינים — יופיע באזור "ממתין לאישור שלך", ואישור שלך הוא מה שמכניס אותנו לפעולה.', en:'From now on we\'re your team. Everything we prepare for you — ideas, posts, campaigns — appears in the "Waiting for your approval" area, and your approval is what sets us in motion.', fr:'Désormais, nous sommes votre équipe. Tout ce que nous préparons — idées, posts, campagnes — apparaît dans « En attente de votre validation », et votre accord nous met en action.', ar:'من الآن نحن فريقك. كل ما نجهزه لك — أفكار، منشورات، حملات — يظهر في منطقة "بانتظار موافقتك"، وموافقتك هي ما يطلقنا للعمل.', ru:'Теперь мы — ваша команда. Всё, что мы готовим для вас — идеи, посты, кампании — появляется в зоне «Ждёт вашего одобрения», и именно ваше одобрение запускает нас в работу.' },
+  greet_first_pending: { he:'כבר מחכות לך {n} הצעות ראשונות 🎯', en:'{n} first suggestions are already waiting for you 🎯', fr:'{n} premières suggestions vous attendent déjà 🎯', ar:'{n} اقتراحات أولى بانتظارك بالفعل 🎯', ru:'Вас уже ждут {n} первых предложений 🎯' },
+  greet_first_3: { he:'ואם משהו לא ברור — אני כאן בצ׳אט.', en:'And if anything is unclear — I\'m here in the chat.', fr:'Et si quelque chose n\'est pas clair — je suis là dans le chat.', ar:'وإن لم يكن شيء واضحًا — أنا هنا في الدردشة.', ru:'А если что-то неясно — я здесь, в чате.' },
+  greet_pending: { he:'יש {n} הצעות חדשות שממתינות לאישור שלך{teaser} 🎯 שווה להציץ באזור "ממתין לאישור שלך" — ואם רוצים, אפשר לעבור עליהן איתי כאן.', en:'{n} new suggestions await your approval{teaser} 🎯 Worth a look in the "Waiting for your approval" area — or we can go through them together here.', fr:'{n} nouvelles suggestions attendent votre validation{teaser} 🎯 Jetez un œil à la zone « En attente » — ou parcourons-les ensemble ici.', ar:'هناك {n} اقتراحات جديدة بانتظار موافقتك{teaser} 🎯 ألقِ نظرة على منطقة "بانتظار موافقتك" — أو نمر عليها معًا هنا.', ru:'{n} новых предложений ждут вашего одобрения{teaser} 🎯 Загляните в зону «Ждёт вашего одобрения» — или разберём их вместе здесь.' },
+  greet_idle: { he:'אם צריך משהו — אני כאן.', en:'If you need anything — I\'m here.', fr:'Si vous avez besoin de quoi que ce soit — je suis là.', ar:'إن احتجت شيئًا — أنا هنا.', ru:'Если что-то нужно — я здесь.' },
+  greet_teaser: { he:' (בין השאר: "{title}")', en:' (including: "{title}")', fr:' (dont : « {title} »)', ar:' (من بينها: "{title}")', ru:' (в том числе: «{title}»)' },
+  chip_pending: { he:'מה ממתין לאישור שלי?', en:'What\'s waiting for my approval?', fr:'Qu\'est-ce qui attend ma validation ?', ar:'ما الذي ينتظر موافقتي؟', ru:'Что ждёт моего одобрения?' },
+  chip_campaigns: { he:'מה המצב בקמפיינים?', en:'How are my campaigns doing?', fr:'Où en sont mes campagnes ?', ar:'كيف حال حملاتي؟', ru:'Как дела с кампаниями?' },
+  chip_start: { he:'איך מתחילים?', en:'How do I get started?', fr:'Comment commencer ?', ar:'كيف أبدأ؟', ru:'С чего начать?' },
+  chip_upgrade: { he:'שדרג אותי', en:'Upgrade me', fr:'Passez-moi à la formule supérieure', ar:'رقِّ باقتي', ru:'Улучшите мой пакет' },
+  sugg_kind_promotion: { he:'מבצע', en:'Promotion', fr:'Promotion', ar:'عرض', ru:'Акция' },
+  sugg_kind_content: { he:'רעיון תוכן', en:'Content idea', fr:'Idée de contenu', ar:'فكرة محتوى', ru:'Идея контента' },
+  sugg_kind_tweak: { he:'שיפור קמפיין', en:'Campaign tweak', fr:'Optimisation de campagne', ar:'تحسين حملة', ru:'Улучшение кампании' },
+  sugg_kind_homework: { he:'משימה', en:'Task', fr:'Tâche', ar:'مهمة', ru:'Задание' },
+  sugg_kind_default: { he:'הצעה', en:'Suggestion', fr:'Suggestion', ar:'اقتراح', ru:'Предложение' },
+  sugg_approve: { he:'אישור — קדימה', en:'Approve — go ahead', fr:'Valider — allons-y', ar:'موافقة — انطلقوا', ru:'Одобрить — вперёд' },
+  sugg_reject: { he:'לא הפעם', en:'Not this time', fr:'Pas cette fois', ar:'ليس هذه المرة', ru:'Не в этот раз' },
+  sugg_approved_notice: { he:'ההצעה אושרה — הצוות מתחיל לעבוד עליה ✓', en:'Approved — the team is starting on it ✓', fr:'Validé — l\'équipe s\'y met ✓', ar:'تمت الموافقة — الفريق يبدأ العمل عليها ✓', ru:'Одобрено — команда приступает ✓' },
+  sugg_rejected_notice: { he:'ההצעה נדחתה — נכין משהו אחר בשבוע הבא', en:'Rejected — we\'ll prepare something else next week', fr:'Refusé — nous préparerons autre chose la semaine prochaine', ar:'رُفض الاقتراح — سنجهز شيئًا آخر الأسبوع القادم', ru:'Отклонено — на следующей неделе подготовим другое' },
+  sugg_error: { he:'משהו השתבש — נסו שוב', en:'Something went wrong — try again', fr:'Un problème est survenu — réessayez', ar:'حدث خطأ — حاول مجددًا', ru:'Что-то пошло не так — попробуйте ещё раз' },
+  notice_gads_connected: { he:'חשבון Google Ads חובר בהצלחה ✓', en:'Google Ads account connected ✓', fr:'Compte Google Ads connecté ✓', ar:'تم ربط حساب Google Ads بنجاح ✓', ru:'Аккаунт Google Ads подключён ✓' },
+  notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
+  notice_connect_error: { he:'חיבור {p} נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', en:'{p} connection failed — try again; if it repeats, talk to us in the chat', fr:'Échec de connexion {p} — réessayez ; si cela persiste, contactez-nous via le chat', ar:'فشل ربط {p} — حاول مجددًا، وإن تكرر تحدث معنا في الدردشة', ru:'Подключение {p} не удалось — попробуйте ещё раз; если повторится, напишите нам в чат' },
+  notice_upgrade_success: { he:'השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', en:'Upgrade approved! The new package takes effect from the next billing 🎉', fr:'Changement validé ! La nouvelle formule prend effet au prochain prélèvement 🎉', ar:'تمت الموافقة على الترقية! تسري الباقة الجديدة من الفاتورة القادمة 🎉', ru:'Улучшение подтверждено! Новый пакет вступит в силу со следующего списания 🎉' },
+  notice_upgrade_pending: { he:'השדרוג עדיין באימות מול PayPal — נעדכן ברגע שיאושר', en:'The upgrade is still being verified with PayPal — we\'ll update you once approved', fr:'Le changement est en cours de vérification chez PayPal — nous vous informerons dès validation', ar:'الترقية لا تزال قيد التحقق لدى PayPal — سنعلمك فور الموافقة', ru:'Улучшение ещё проверяется в PayPal — сообщим, как только подтвердится' },
+  notice_upgrade_error: { he:'הייתה בעיה באישור השדרוג — נסו שוב או דברו איתנו בצ׳אט', en:'There was a problem approving the upgrade — try again or talk to us in the chat', fr:'Problème lors de la validation — réessayez ou contactez-nous via le chat', ar:'حدثت مشكلة في تأكيد الترقية — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Проблема с подтверждением — попробуйте ещё раз или напишите нам в чат' },
+  notice_cancelled: { he:'המנוי בוטל דרך PayPal. אם זו לא הייתה כוונה — דברו איתנו בצ׳אט ונסדר הכל.', en:'The subscription was cancelled via PayPal. If that wasn\'t intended — talk to us in the chat and we\'ll sort it out.', fr:'L\'abonnement a été annulé via PayPal. Si ce n\'était pas voulu — contactez-nous via le chat.', ar:'أُلغي الاشتراك عبر PayPal. إن لم يكن مقصودًا — تحدث معنا في الدردشة وسنرتب كل شيء.', ru:'Подписка отменена через PayPal. Если это не было намеренно — напишите нам в чат, всё уладим.' },
+  // Activity feed labels (act_<action_type>)
+  act_account_connected: { he:'חשבון פרסום חובר בהצלחה', en:'Ad account connected', fr:'Compte publicitaire connecté', ar:'تم ربط الحساب الإعلاني', ru:'Рекламный аккаунт подключён' },
+  act_campaign_created: { he:'קמפיין חדש נוצר וממתין להפעלה', en:'New campaign created, awaiting activation', fr:'Nouvelle campagne créée, en attente d\'activation', ar:'أُنشئت حملة جديدة وتنتظر التفعيل', ru:'Создана новая кампания, ждёт запуска' },
+  act_campaign_paused: { he:'קמפיין הושהה', en:'Campaign paused', fr:'Campagne mise en pause', ar:'أُوقفت الحملة مؤقتًا', ru:'Кампания приостановлена' },
+  act_campaign_resumed: { he:'קמפיין הופעל מחדש', en:'Campaign resumed', fr:'Campagne relancée', ar:'استؤنفت الحملة', ru:'Кампания возобновлена' },
+  act_subscription_created: { he:'המנוי הופעל', en:'Subscription activated', fr:'Abonnement activé', ar:'تم تفعيل الاشتراك', ru:'Подписка активирована' },
+  act_payment_confirmed: { he:'התשלום אושר', en:'Payment confirmed', fr:'Paiement confirmé', ar:'تم تأكيد الدفع', ru:'Платёж подтверждён' },
+  act_upgrade_requested: { he:'בקשת שדרוג חבילה נשלחה', en:'Package upgrade requested', fr:'Demande de changement de formule envoyée', ar:'أُرسل طلب ترقية الباقة', ru:'Отправлен запрос на улучшение пакета' },
+  act_ads_issue_detected: { he:'זוהתה בעיה בקמפיין — הצוות מטפל', en:'Campaign issue detected — the team is on it', fr:'Problème détecté sur une campagne — l\'équipe s\'en occupe', ar:'رُصدت مشكلة في الحملة — الفريق يعالجها', ru:'Обнаружена проблема в кампании — команда занимается' },
+  act_content_published: { he:'פוסט חדש פורסם ברשתות החברתיות', en:'New post published on social media', fr:'Nouveau post publié sur les réseaux', ar:'نُشر منشور جديد على الشبكات الاجتماعية', ru:'Новый пост опубликован в соцсетях' },
+  act_comment_replied: { he:'הצוות הגיב לתגובה בעמוד שלך', en:'The team replied to a comment on your page', fr:'L\'équipe a répondu à un commentaire sur votre page', ar:'رد الفريق على تعليق في صفحتك', ru:'Команда ответила на комментарий на вашей странице' },
+  act_content_inbox_surfaced: { he:'התקבלו תגובות/הודעות חדשות — הצוות עודכן', en:'New comments/messages received — the team was notified', fr:'Nouveaux commentaires/messages reçus — l\'équipe est informée', ar:'وردت تعليقات/رسائل جديدة — أُبلغ الفريق', ru:'Получены новые комментарии/сообщения — команда уведомлена' },
+  act_checkout_details: { he:'פרטי יצירת קשר נשמרו', en:'Contact details saved', fr:'Coordonnées enregistrées', ar:'حُفظت بيانات التواصل', ru:'Контактные данные сохранены' },
+  act_website_connected: { he:'האתר שלך חובר בהצלחה', en:'Your website was connected', fr:'Votre site a été connecté', ar:'تم ربط موقعك بنجاح', ru:'Ваш сайт подключён' },
+  act_website_content_created: { he:'תוכן חדש נוצר באתר שלך', en:'New content created on your site', fr:'Nouveau contenu créé sur votre site', ar:'أُنشئ محتوى جديد في موقعك', ru:'На вашем сайте создан новый контент' },
+  act_website_content_updated: { he:'תוכן באתר שלך עודכן', en:'Content on your site was updated', fr:'Contenu de votre site mis à jour', ar:'حُدّث محتوى موقعك', ru:'Контент на вашем сайте обновлён' },
+  act_website_seo_updated: { he:'בוצע שיפור SEO באתר שלך', en:'SEO improvement made on your site', fr:'Amélioration SEO effectuée sur votre site', ar:'أُجري تحسين SEO في موقعك', ru:'На сайте выполнено SEO-улучшение' },
+  act_website_seo_plugin_installed: { he:'תוסף SEO הותקן באתר שלך', en:'SEO plugin installed on your site', fr:'Plugin SEO installé sur votre site', ar:'ثُبّت مكوّن SEO في موقعك', ru:'На сайте установлен SEO-плагин' },
+  act_website_issue_detected: { he:'זוהתה בעיה באתר — הצוות מטפל', en:'Website issue detected — the team is on it', fr:'Problème détecté sur le site — l\'équipe s\'en occupe', ar:'رُصدت مشكلة في الموقع — الفريق يعالجها', ru:'Обнаружена проблема на сайте — команда занимается' },
+  act_website_provisioned: { he:'האתר החדש שלך הוקם ועלה לאוויר', en:'Your new website was built and is live', fr:'Votre nouveau site a été créé et mis en ligne', ar:'أُنشئ موقعك الجديد وأصبح متاحًا', ru:'Ваш новый сайт создан и работает' },
+  act_website_populated: { he:'תוכן ראשוני הועלה לאתר החדש שלך', en:'Initial content uploaded to your new site', fr:'Contenu initial ajouté à votre nouveau site', ar:'رُفع المحتوى الأولي إلى موقعك الجديد', ru:'На новый сайт загружен начальный контент' },
+  act_suggestions_added: { he:'הצעות חדשות ממתינות לאישור שלך 🎯', en:'New suggestions await your approval 🎯', fr:'De nouvelles suggestions attendent votre validation 🎯', ar:'اقتراحات جديدة بانتظار موافقتك 🎯', ru:'Новые предложения ждут вашего одобрения 🎯' },
+  act_suggestion_approved: { he:'אישרת הצעה — הצוות מטפל', en:'You approved a suggestion — the team is on it', fr:'Suggestion validée — l\'équipe s\'en occupe', ar:'وافقت على اقتراح — الفريق يعمل عليه', ru:'Вы одобрили предложение — команда занимается' },
+  act_suggestion_rejected: { he:'הצעה נדחתה', en:'Suggestion declined', fr:'Suggestion refusée', ar:'رُفض اقتراح', ru:'Предложение отклонено' },
+  act_sales_alert_sent: { he:'נשלח אליך עדכון על המרות חדשות 🎉', en:'You were sent an update about new conversions 🎉', fr:'Une mise à jour sur de nouvelles conversions vous a été envoyée 🎉', ar:'أُرسل إليك تحديث عن تحويلات جديدة 🎉', ru:'Вам отправлено уведомление о новых конверсиях 🎉' },
+  act_urgent_notification: { he:'נשלח אליך עדכון דחוף בוואטסאפ', en:'An urgent update was sent to you on WhatsApp', fr:'Une alerte urgente vous a été envoyée sur WhatsApp', ar:'أُرسل إليك تحديث عاجل عبر واتساب', ru:'Вам отправлено срочное уведомление в WhatsApp' },
+  act_payment_failure_notified: { he:'החיוב האחרון לא עבר — שלחנו לך עדכון', en:'The last charge didn\'t go through — we sent you an update', fr:'Le dernier prélèvement a échoué — nous vous avons prévenu', ar:'لم تنجح آخر عملية دفع — أرسلنا لك تحديثًا', ru:'Последнее списание не прошло — мы отправили вам уведомление' },
+  act_seo_tool_connected: { he:'כלי הקידום האורגני חובר בהצלחה', en:'The SEO tool was connected', fr:'L\'outil SEO a été connecté', ar:'تم ربط أداة تحسين محركات البحث', ru:'SEO-инструмент подключён' },
+  act_seo_research_completed: { he:'בוצע מחקר מתחרים ומילות מפתח לעסק שלך', en:'Competitor & keyword research done for your business', fr:'Étude concurrents & mots-clés réalisée pour votre entreprise', ar:'أُجري بحث المنافسين والكلمات المفتاحية لعملك', ru:'Проведено исследование конкурентов и ключевых слов' },
+  act_seo_strategy_proposed: { he:'הוכנה תוכנית קידום אורגני — בבדיקת הצוות', en:'An SEO plan was prepared — under team review', fr:'Un plan SEO a été préparé — en cours de revue', ar:'أُعدت خطة تحسين محركات البحث — قيد مراجعة الفريق', ru:'Подготовлен SEO-план — на проверке у команды' },
+  act_seo_article_generated: { he:'נכתב מאמר חדש לאתר שלך — בבדיקה לפני פרסום', en:'A new article was written for your site — in review before publishing', fr:'Un nouvel article a été rédigé pour votre site — en relecture avant publication', ar:'كُتب مقال جديد لموقعك — قيد المراجعة قبل النشر', ru:'Для вашего сайта написана новая статья — на проверке перед публикацией' },
+  act_account_disconnected: { he:'חיבור מערכת נותק לבקשתך', en:'A platform connection was disconnected at your request', fr:'Une connexion a été retirée à votre demande', ar:'فُصل اتصال منصة بناءً على طلبك', ru:'Подключение платформы отключено по вашему запросу' },
+  act_subscription_cancelled: { he:'המנוי בוטל — לא יהיו חיובים נוספים', en:'The subscription was cancelled — no further charges', fr:'L\'abonnement a été annulé — plus aucun prélèvement', ar:'أُلغي الاشتراك — لا رسوم إضافية', ru:'Подписка отменена — списаний больше не будет' },
+  act_account_closed: { he:'החשבון נסגר לבקשתך', en:'The account was closed at your request', fr:'Le compte a été fermé à votre demande', ar:'أُغلق الحساب بناءً على طلبك', ru:'Аккаунт закрыт по вашему запросу' },
+  act_account_transferred: { he:'הניהול הועבר לגורם אחר לבקשתך', en:'Management was transferred at your request', fr:'La gestion a été transférée à votre demande', ar:'نُقلت الإدارة بناءً على طلبك', ru:'Ведение передано по вашему запросу' },
+};
+
 // ─── shared state ────────────────────────────────────────────────────────────
 let dashboardData = null;
 let selectedTierId = null;
@@ -822,15 +1000,15 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g,
     ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
-function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+function ils(n) { return '₪' + Number(n || 0).toLocaleString(uallakI18n.locale()); }
 function fmtDate(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' }); }
+  try { return new Date(iso).toLocaleDateString(uallakI18n.locale(), { day: 'numeric', month: 'long' }); }
   catch (e) { return '—'; }
 }
 function fmtDateTime(iso) {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); }
+  try { return new Date(iso).toLocaleString(uallakI18n.locale(), { dateStyle: 'short', timeStyle: 'short' }); }
   catch (e) { return ''; }
 }
 
@@ -897,42 +1075,11 @@ function platformsInPackage(pkg) {
 }
 
 // ─── dashboard data ──────────────────────────────────────────────────────────
-const ACTIVITY_LABELS = {
-  'account_connected': 'חשבון פרסום חובר בהצלחה',
-  'campaign_created': 'קמפיין חדש נוצר וממתין להפעלה',
-  'campaign_paused': 'קמפיין הושהה',
-  'campaign_resumed': 'קמפיין הופעל מחדש',
-  'subscription_created': 'המנוי הופעל',
-  'payment_confirmed': 'התשלום אושר',
-  'upgrade_requested': 'בקשת שדרוג חבילה נשלחה',
-  'ads_issue_detected': 'זוהתה בעיה בקמפיין — הצוות מטפל',
-  'content_published': 'פוסט חדש פורסם ברשתות החברתיות',
-  'comment_replied': 'הצוות הגיב לתגובה בעמוד שלך',
-  'content_inbox_surfaced': 'התקבלו תגובות/הודעות חדשות — הצוות עודכן',
-  'checkout_details': 'פרטי יצירת קשר נשמרו',
-  'website_connected': 'האתר שלך חובר בהצלחה',
-  'website_content_created': 'תוכן חדש נוצר באתר שלך',
-  'website_content_updated': 'תוכן באתר שלך עודכן',
-  'website_seo_updated': 'בוצע שיפור SEO באתר שלך',
-  'website_seo_plugin_installed': 'תוסף SEO הותקן באתר שלך',
-  'website_issue_detected': 'זוהתה בעיה באתר — הצוות מטפל',
-  'website_provisioned': 'האתר החדש שלך הוקם ועלה לאוויר',
-  'website_populated': 'תוכן ראשוני הועלה לאתר החדש שלך',
-  'suggestions_added': 'הצעות חדשות ממתינות לאישור שלך 🎯',
-  'suggestion_approved': 'אישרת הצעה — הצוות מטפל',
-  'suggestion_rejected': 'הצעה נדחתה',
-  'sales_alert_sent': 'נשלח אליך עדכון על המרות חדשות 🎉',
-  'urgent_notification': 'נשלח אליך עדכון דחוף בוואטסאפ',
-  'payment_failure_notified': 'החיוב האחרון לא עבר — שלחנו לך עדכון',
-  'seo_tool_connected': 'כלי הקידום האורגני חובר בהצלחה',
-  'seo_research_completed': 'בוצע מחקר מתחרים ומילות מפתח לעסק שלך',
-  'seo_strategy_proposed': 'הוכנה תוכנית קידום אורגני — בבדיקת הצוות',
-  'seo_article_generated': 'נכתב מאמר חדש לאתר שלך — בבדיקה לפני פרסום',
-  'account_disconnected': 'חיבור מערכת נותק לבקשתך',
-  'subscription_cancelled': 'המנוי בוטל — לא יהיו חיובים נוספים',
-  'account_closed': 'החשבון נסגר לבקשתך',
-  'account_transferred': 'הניהול הועבר לגורם אחר לבקשתך',
-};
+// Activity labels live in DASH_I18N as act_<action_type> keys (all languages)
+function actLabel(actionType) {
+  const key = 'act_' + actionType;
+  return DASH_I18N[key] ? uallakI18n.t(key) : null;
+}
 
 async function loadDashboard() {
   try {
@@ -944,8 +1091,10 @@ async function loadDashboard() {
     const d = dashboardData;
 
     const name = (d.client && d.client.name) || '';
-    document.getElementById('greeting').textContent = name ? `שלום, ${name} 👋` : 'שלום 👋';
-    document.getElementById('tourGreeting').textContent = name ? `ברוכים הבאים, ${name}!` : 'ברוכים הבאים!';
+    document.getElementById('greeting').textContent =
+      name ? uallakI18n.t('hello_name', { name }) : uallakI18n.t('hello');
+    document.getElementById('tourGreeting').textContent =
+      name ? uallakI18n.t('welcome_name', { name }) : uallakI18n.t('welcome_generic');
     const avatar = document.getElementById('avatarInitial');
     if (d.client && d.client.profile_image) {
       avatar.innerHTML = `<img src="${esc(d.client.profile_image)}" alt="">`;
@@ -957,11 +1106,11 @@ async function loadDashboard() {
     // page; 'cancelled' (cancelled the subscription on paypal.com directly) is
     // the one non-live status that can still log in
     if (d.client && d.client.status === 'cancelled') {
-      showNotice('המנוי בוטל דרך PayPal. אם זו לא הייתה כוונה — דברו איתנו בצ׳אט ונסדר הכל.', 'warn');
+      showNotice(uallakI18n.t('notice_cancelled'), 'warn');
     }
 
     const pkg = (d.client && d.client.package) || '';
-    document.getElementById('packageBadge').textContent = pkg || 'חבילה';
+    document.getElementById('packageBadge').textContent = pkg || uallakI18n.t('stat_package');
     document.getElementById('statPackage').textContent = pkg || '—';
     document.getElementById('statFee').textContent = d.monthly_fee ? ils(d.monthly_fee) : '—';
     document.getElementById('statNextBilling').textContent = d.next_billing_date ? fmtDate(d.next_billing_date) : '—';
@@ -972,24 +1121,24 @@ async function loadDashboard() {
     if (createdAt) {
       const months = Math.max(1, Math.min(6, Math.floor((Date.now() - new Date(createdAt).getTime()) / (30 * 24 * 3600 * 1000)) + 1));
       document.getElementById('timelineCard').style.display = 'block';
-      document.getElementById('timelineLabel').textContent = `חודש ${months} מתוך 6 — תוכנית צמיחה`;
+      document.getElementById('timelineLabel').textContent = uallakI18n.t('timeline_label', { m: months });
       document.getElementById('timelinePct').textContent = Math.round(months / 6 * 100) + '%';
       document.getElementById('timelineFill').style.width = Math.round(months / 6 * 100) + '%';
     }
 
     // Dynamic tour time estimate: ~5 minutes per platform in the package
     const minutes = platformsInPackage(pkg) * 5;
-    document.getElementById('tourTimeBadge').textContent = `⏱ כ-${minutes} דקות`;
+    document.getElementById('tourTimeBadge').textContent = uallakI18n.t('tour_time', { min: minutes });
 
     // Real activity feed
     const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed');
     document.getElementById('activityListMain').innerHTML = feed.length
       ? feed.map(a => `<div class="activity-row">
           <div class="activity-dot"></div>
-          <div class="activity-text">${esc(ACTIVITY_LABELS[a.action_type] || (a.agent_name + ' — ' + a.action_type))}</div>
+          <div class="activity-text">${esc(actLabel(a.action_type) || (a.agent_name + ' — ' + a.action_type))}</div>
           <div class="activity-time">${fmtDateTime(a.created_at)}</div>
         </div>`).join('')
-      : '<div class="empty-row">עדיין אין פעילות — ברגע שהמערכת תתחיל לעבוד בשבילך, הכל יופיע כאן</div>';
+      : `<div class="empty-row">${uallakI18n.t('activity_empty')}</div>`;
 
     // Platform connection state
     const conns = d.connections || [];
@@ -1015,8 +1164,12 @@ async function loadDashboard() {
     chatData.dashReady = true;
     maybeShowGreeting();
 
-    // First visit → auto-run the tour
-    if (!d.tour_completed) openWelcome(true);
+    // First visit → auto-run the tour (once per page load — a language-switch
+    // re-render must not pop it again)
+    if (!d.tour_completed && !window._tourAutoOpened) {
+      window._tourAutoOpened = true;
+      openWelcome(true);
+    }
   } catch (e) {
     console.error('dashboard load failed', e);
   }
@@ -1028,20 +1181,21 @@ async function loadBilling() {
     const body = await res.json();
     if (!body.success) return;
     const d = body.data;
-    const statusLabel = s => s === 'COMPLETED' ? '<span style="color:var(--green);">שולם</span>' : esc(s || '');
-    const txRows = (d.transactions || []).map(t => `
+    const t = uallakI18n.t;
+    const statusLabel = s => s === 'COMPLETED' ? `<span style="color:var(--green);">${t('billing_paid')}</span>` : esc(s || '');
+    const txRows = (d.transactions || []).map(tx => `
       <div class="billing-row">
-        <span class="billing-label">${fmtDateTime(t.date)}</span>
-        <span>ניהול חודשי — ${t.currency === 'ILS' ? ils(t.amount) : esc(t.amount + ' ' + (t.currency || ''))} ${statusLabel(t.status)}</span>
+        <span class="billing-label">${fmtDateTime(tx.date)}</span>
+        <span>${t('billing_monthly_row')} — ${tx.currency === 'ILS' ? ils(tx.amount) : esc(tx.amount + ' ' + (tx.currency || ''))} ${statusLabel(tx.status)}</span>
       </div>`).join('');
     document.getElementById('billingSection').innerHTML = `
       <div class="billing-row">
-        <span class="billing-label">חבילה נוכחית</span>
-        <span style="font-weight:700;">${esc(d.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + '/חודש' : ''}</span>
+        <span class="billing-label">${t('billing_current_pkg')}</span>
+        <span style="font-weight:700;">${esc(d.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + t('per_month') : ''}</span>
       </div>
-      ${d.setup_fee ? `<div class="billing-row"><span class="billing-label">דמי הקמה</span><span>${ils(d.setup_fee)} ${d.setup_fee_charged ? '<span style="color:var(--green);">שולם</span>' : '<span style="color:var(--gray);">ממתין לתשלום</span>'}</span></div>` : ''}
-      ${d.next_billing ? `<div class="billing-row"><span class="billing-label">החיוב הבא</span><span>${fmtDateTime(d.next_billing)}</span></div>` : ''}
-      ${txRows || '<div class="billing-row"><span class="billing-label">היסטוריית חיובים</span><span style="color:var(--gray);">עדיין לא בוצעו חיובים במנוי 🎁</span></div>'}`;
+      ${d.setup_fee ? `<div class="billing-row"><span class="billing-label">${t('billing_setup')}</span><span>${ils(d.setup_fee)} ${d.setup_fee_charged ? `<span style="color:var(--green);">${t('billing_paid')}</span>` : `<span style="color:var(--gray);">${t('billing_pending_pay')}</span>`}</span></div>` : ''}
+      ${d.next_billing ? `<div class="billing-row"><span class="billing-label">${t('billing_next')}</span><span>${fmtDateTime(d.next_billing)}</span></div>` : ''}
+      ${txRows || `<div class="billing-row"><span class="billing-label">${t('billing_history')}</span><span style="color:var(--gray);">${t('billing_none_yet')}</span></div>`}`;
   } catch (e) {
     console.error('billing load failed', e);
   }
@@ -1065,27 +1219,27 @@ async function loadUpgradeOptions() {
     const body = await res.json();
     const d = body.data || {};
     if (!d.available) {
-      box.innerHTML = `<div class="empty-row">${esc(d.reason || 'אתם כבר בחבילה הגבוהה ביותר 🎉')}</div>`;
+      box.innerHTML = `<div class="empty-row">${esc(d.reason || uallakI18n.t('upgrade_top_tier'))}</div>`;
       return;
     }
     const current = d.current || {};
     box.innerHTML = `
       <div class="tier-card current">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="tier-name">${esc(current.package || 'החבילה שלך')}</span>
-          <span class="tier-tag">נוכחית</span>
+          <span class="tier-name">${esc(current.package || uallakI18n.t('tier_yours'))}</span>
+          <span class="tier-tag">${uallakI18n.t('tier_current')}</span>
         </div>
-        <div class="tier-price">${ils(current.monthly_fee)}<span>/חודש</span></div>
+        <div class="tier-price">${ils(current.monthly_fee)}<span>${uallakI18n.t('per_month')}</span></div>
       </div>
       ${(d.tiers || []).map(t => `
         <div class="tier-card selectable" data-tier="${esc(t.id)}" onclick="selectTier('${esc(t.id)}', this)">
           <div class="tier-name">${esc(t.name)}</div>
           <div class="tier-desc">${esc(t.description)}</div>
-          <div class="tier-price">${ils(t.monthly_fee)}<span>/חודש</span></div>
+          <div class="tier-price">${ils(t.monthly_fee)}<span>${uallakI18n.t('per_month')}</span></div>
           ${t.note ? `<div class="tier-note">${esc(t.note)}</div>` : ''}
         </div>`).join('')}`;
   } catch (e) {
-    box.innerHTML = '<div class="empty-row">שגיאה בטעינת החבילות — נסו שוב</div>';
+    box.innerHTML = `<div class="empty-row">${uallakI18n.t('upgrade_load_error')}</div>`;
     upgradeOptionsLoaded = false;
   }
 }
@@ -1097,14 +1251,14 @@ function selectTier(tierId, el) {
   const btn = document.getElementById('confirmUpgradeBtn');
   btn.disabled = false;
   btn.classList.add('ready');
-  btn.textContent = 'שדרגו עכשיו — לאישור ב-PayPal';
+  btn.textContent = uallakI18n.t('upgrade_go');
 }
 
 async function confirmUpgrade() {
   if (!selectedTierId) return;
   const btn = document.getElementById('confirmUpgradeBtn');
   btn.disabled = true;
-  btn.textContent = 'רגע, מכינים את השדרוג…';
+  btn.textContent = uallakI18n.t('upgrade_preparing');
   try {
     const res = await fetch('/api/client/upgrade', {
       method: 'POST', credentials: 'same-origin',
@@ -1115,11 +1269,11 @@ async function confirmUpgrade() {
     if (res.ok && body.approve_url) {
       window.location.href = body.approve_url;
     } else {
-      btn.textContent = (body.detail || 'שגיאה — נסו שוב');
+      btn.textContent = (body.detail || uallakI18n.t('upgrade_error_retry'));
       btn.disabled = false;
     }
   } catch (e) {
-    btn.textContent = 'שגיאה — נסו שוב';
+    btn.textContent = uallakI18n.t('upgrade_error_retry');
     btn.disabled = false;
   }
 }
@@ -1135,10 +1289,12 @@ function connectMeta() {
 
 function markPlatformConnected(statusId, btnId, platformKey) {
   const status = document.getElementById(statusId);
-  status.textContent = 'מחובר';
+  status.textContent = uallakI18n.t('connected_status');
+  status.removeAttribute('data-i18n');  // stop applyDom resetting it to "not connected"
   status.classList.add('connected');
   const btn = document.getElementById(btnId);
-  btn.textContent = 'מחובר ✓';
+  btn.textContent = uallakI18n.t('connected_btn');
+  btn.removeAttribute('data-i18n');
   btn.className = 'conn-btn connected-btn';
   btn.onclick = null;
   // Disconnect action - needed when a connection breaks, permissions change,
@@ -1147,7 +1303,7 @@ function markPlatformConnected(statusId, btnId, platformKey) {
     const link = document.createElement('button');
     link.id = 'disc-' + platformKey;
     link.className = 'disconnect-link';
-    link.textContent = 'ניתוק חיבור';
+    link.textContent = uallakI18n.t('disconnect_link');
     link.onclick = () => disconnectPlatform(platformKey, link);
     btn.insertAdjacentElement('afterend', link);
   }
@@ -1158,12 +1314,12 @@ function markPlatformConnected(statusId, btnId, platformKey) {
 async function disconnectPlatform(platformKey, link) {
   if (!link.classList.contains('arm')) {
     link.classList.add('arm');
-    link.textContent = 'בטוחים? לחיצה נוספת תנתק';
-    setTimeout(() => { link.classList.remove('arm'); link.textContent = 'ניתוק חיבור'; }, 6000);
+    link.textContent = uallakI18n.t('disconnect_confirm');
+    setTimeout(() => { link.classList.remove('arm'); link.textContent = uallakI18n.t('disconnect_link'); }, 6000);
     return;
   }
   link.disabled = true;
-  link.textContent = 'מנתק…';
+  link.textContent = uallakI18n.t('disconnecting');
   try {
     const res = await fetch('/api/client/disconnect', {
       method: 'POST', credentials: 'same-origin',
@@ -1181,8 +1337,8 @@ async function disconnectPlatform(platformKey, link) {
   }
   link.disabled = false;
   link.classList.remove('arm');
-  link.textContent = 'ניתוק חיבור';
-  showNotice('הניתוק נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', 'warn');
+  link.textContent = uallakI18n.t('disconnect_link');
+  showNotice(uallakI18n.t('disconnect_failed'), 'warn');
 }
 
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
@@ -1205,12 +1361,12 @@ async function connectWebsite() {
   const username = document.getElementById('siteUser').value.trim();
   const app_password = document.getElementById('sitePass').value.trim();
   if (!site_url || !username || !app_password) {
-    showNotice('נא למלא את כל שדות החיבור של האתר', 'warn');
+    showNotice(uallakI18n.t('site_fill_all'), 'warn');
     return;
   }
   const btn = document.getElementById('siteSubmitBtn');
   btn.disabled = true;
-  btn.textContent = 'מתחבר...';
+  btn.textContent = uallakI18n.t('site_connecting');
   try {
     const res = await fetch('/api/website/connect', {
       method: 'POST',
@@ -1221,15 +1377,15 @@ async function connectWebsite() {
     const body = await res.json();
     if (res.ok && body.success) {
       markWebsiteConnected();
-      showNotice('האתר חובר בהצלחה ✓', 'success');
+      showNotice(uallakI18n.t('site_connected_notice'), 'success');
       return;
     }
   } catch (e) {
     console.error('website connect failed', e);
   }
   btn.disabled = false;
-  btn.textContent = 'חיבור';
-  showNotice('חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', 'warn');
+  btn.textContent = uallakI18n.t('site_connect');
+  showNotice(uallakI18n.t('site_connect_failed'), 'warn');
 }
 
 // ─── chat persona (client-chosen, never inferred from name) ──────────────────
@@ -1237,12 +1393,14 @@ const PERSONA_SVGS = {
   male: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><rect x="13" y="15" width="22" height="19" rx="7" fill="#F7F4EF"/><path d="M14 20 v-2 a7 7 0 0 1 7-7 h6 a7 7 0 0 1 7 7 v2 z" fill="#1A1A1A"/><circle cx="19" cy="25" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25" r="2.3" fill="#1A1A1A"/><path d="M19.5 29.5c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
   female: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><path d="M12 34 q-2.5-9 1-16 q3-7 11-7 q8 0 11 7 q3.5 7 1 16 l-3.5-1 v-8 h-17 v8 z" fill="#1A1A1A"/><rect x="13" y="16" width="22" height="18" rx="7" fill="#F7F4EF"/><path d="M14 21 v-1.5 a8 8 0 0 1 8-8 h4 a8 8 0 0 1 8 8 V21 q-5-3.5-10-3.5 T14 21 z" fill="#1A1A1A"/><circle cx="19" cy="25.5" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25.5" r="2.3" fill="#1A1A1A"/><path d="M16.5 22.5 l4-1 M27.5 21.5 l4 1" stroke="#1A1A1A" stroke-width="1.4" stroke-linecap="round"/><path d="M19.5 30c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
 };
-const PERSONA_NAMES = { male: 'דניאל מ-uallak', female: 'דנה מ-uallak' };
+function personaName(gender) {
+  return uallakI18n.t(gender === 'male' ? 'persona_male' : 'persona_female');
+}
 
 function applyPersona(gender) {
   if (!PERSONA_SVGS[gender]) return;
   document.getElementById('supportAvatar').innerHTML = PERSONA_SVGS[gender];
-  document.getElementById('supportTitle').textContent = PERSONA_NAMES[gender];
+  document.getElementById('supportTitle').textContent = personaName(gender);
   document.getElementById('supportFabBtn').innerHTML =
     PERSONA_SVGS[gender].replace('<svg ', '<svg class="persona" ');
 }
@@ -1273,9 +1431,9 @@ async function choosePersona(gender) {
 }
 
 // ─── pending suggestions (proactive engagement feed) ─────────────────────────
-const SUGG_KIND_LABELS = {
-  promotion: 'מבצע', content_idea: 'רעיון תוכן',
-  campaign_tweak: 'שיפור קמפיין', homework: 'משימה',
+const SUGG_KIND_KEYS = {
+  promotion: 'sugg_kind_promotion', content_idea: 'sugg_kind_content',
+  campaign_tweak: 'sugg_kind_tweak', homework: 'sugg_kind_homework',
 };
 
 async function loadSuggestions() {
@@ -1294,7 +1452,7 @@ async function loadSuggestions() {
 
 function renderSuggestions(items) {
   const badge = document.getElementById('pendingBadge');
-  badge.textContent = `${items.length} ממתינים`;
+  badge.textContent = uallakI18n.t('pending_badge', { n: items.length });
   badge.classList.toggle('has-items', items.length > 0);
 
   // The chat owns the suggestions experience - keep it in the loop
@@ -1304,19 +1462,19 @@ function renderSuggestions(items) {
   maybeShowGreeting();
   const list = document.getElementById('pendingApprovalList');
   if (!items.length) {
-    list.innerHTML = '<div class="empty-row">אין חומרים שממתינים לאישור כרגע — הצעות חדשות מגיעות כל שבוע</div>';
+    list.innerHTML = `<div class="empty-row">${uallakI18n.t('pending_empty_weekly')}</div>`;
     return;
   }
   list.innerHTML = items.map(s => `
     <div class="sugg-row" id="sugg-${s.id}">
       <div class="sugg-top">
-        <span class="sugg-kind">${esc(SUGG_KIND_LABELS[s.kind] || 'הצעה')}</span>
+        <span class="sugg-kind">${esc(uallakI18n.t(SUGG_KIND_KEYS[s.kind] || 'sugg_kind_default'))}</span>
         <span class="sugg-title">${esc(s.title)}</span>
       </div>
       <div class="sugg-body">${esc(s.body)}</div>
       <div class="sugg-actions">
-        <button class="sugg-btn approve" onclick="decideSuggestion(${s.id}, 'approved', this)">אישור — קדימה</button>
-        <button class="sugg-btn reject" onclick="decideSuggestion(${s.id}, 'rejected', this)">לא הפעם</button>
+        <button class="sugg-btn approve" onclick="decideSuggestion(${s.id}, 'approved', this)">${uallakI18n.t('sugg_approve')}</button>
+        <button class="sugg-btn reject" onclick="decideSuggestion(${s.id}, 'rejected', this)">${uallakI18n.t('sugg_reject')}</button>
       </div>
     </div>`).join('');
 }
@@ -1332,9 +1490,8 @@ async function decideSuggestion(id, decision, btn) {
     });
     const body = await res.json();
     if (res.ok && body.success) {
-      showNotice(decision === 'approved'
-        ? 'ההצעה אושרה — הצוות מתחיל לעבוד עליה ✓'
-        : 'ההצעה נדחתה — נכין משהו אחר בשבוע הבא', decision === 'approved' ? 'success' : 'warn');
+      showNotice(uallakI18n.t(decision === 'approved' ? 'sugg_approved_notice' : 'sugg_rejected_notice'),
+                 decision === 'approved' ? 'success' : 'warn');
       loadSuggestions();
       return;
     }
@@ -1342,7 +1499,7 @@ async function decideSuggestion(id, decision, btn) {
     console.error('suggestion decide failed', e);
   }
   btn.disabled = false;
-  showNotice('משהו השתבש — נסו שוב', 'warn');
+  showNotice(uallakI18n.t('sugg_error'), 'warn');
 }
 
 // ─── support chat (concierge) ────────────────────────────────────────────────
@@ -1375,7 +1532,7 @@ async function loadSupportHistory() {
       const link = document.createElement('div');
       link.className = 'chat-load-prev';
       link.id = 'chatLoadPrev';
-      link.textContent = 'הצג שיחות קודמות';
+      link.textContent = uallakI18n.t('chat_prev');
       link.onclick = loadPreviousConversations;
       document.getElementById('supportMessages').prepend(link);
     }
@@ -1409,7 +1566,7 @@ async function loadPreviousConversations() {
     }
     const divider = document.createElement('div');
     divider.className = 'chat-divider';
-    divider.textContent = '— שיחה חדשה —';
+    divider.textContent = uallakI18n.t('chat_divider');
     frag.appendChild(divider);
     box.prepend(frag);
   } catch (e) {
@@ -1432,41 +1589,42 @@ async function startNewChat() {
     const link = document.createElement('div');
     link.className = 'chat-load-prev';
     link.id = 'chatLoadPrev';
-    link.textContent = 'הצג שיחות קודמות';
+    link.textContent = uallakI18n.t('chat_prev');
     link.onclick = loadPreviousConversations;
     box.prepend(link);
     supportHistoryLoaded = true;
   } catch (e) {
     console.error('start new chat failed', e);
-    showNotice('לא הצלחנו לפתוח שיחה חדשה — נסו שוב', 'warn');
+    showNotice(uallakI18n.t('chat_new_failed'), 'warn');
   }
 }
 
 // ─── concierge greeting + quick-reply chips ──────────────────────────────────
 function greetingText() {
+  const t = uallakI18n.t;
   const first = (chatData.name || '').trim().split(' ')[0];
+  const namePart = first ? (uallakI18n.current() === 'he' ? ', ' + first : ' ' + first) : '';
   let hello;
-  if (chatData.gender === 'male') hello = `ברוך שובך${first ? ', ' + first : ''}! 👋`;
-  else if (chatData.gender === 'female') hello = `ברוכה שובך${first ? ', ' + first : ''}! 👋`;
-  else hello = `היי${first ? ' ' + first : ''}, טוב לראות אותך שוב! 👋`;
+  // Hebrew keeps its gendered welcome-back forms (the client's own choice);
+  // the other languages have one natural form
+  if (uallakI18n.current() === 'he' && chatData.gender === 'male') hello = `ברוך שובך${namePart}! 👋`;
+  else if (uallakI18n.current() === 'he' && chatData.gender === 'female') hello = `ברוכה שובך${namePart}! 👋`;
+  else hello = t('greet_back', { name: namePart });
 
   if (chatData.firstVisit) {
-    const lines = [`היי${first ? ' ' + first : ''}, ברוכים הבאים ל-uallak! 👋`,
-      'מעכשיו אנחנו הצוות שלך. כל מה שנכין בשבילך — רעיונות, פוסטים, קמפיינים — ' +
-      'יופיע באזור "ממתין לאישור שלך", ואישור שלך הוא מה שמכניס אותנו לפעולה.'];
+    const lines = [t('greet_first_1', { name: namePart }), t('greet_first_2')];
     if (chatData.pendingCount > 0) {
-      lines.push(`כבר מחכות לך ${chatData.pendingCount} הצעות ראשונות 🎯`);
+      lines.push(t('greet_first_pending', { n: chatData.pendingCount }));
     }
-    lines.push('ואם משהו לא ברור — אני כאן בצ׳אט.');
+    lines.push(t('greet_first_3'));
     return lines.join('\n');
   }
   if (chatData.pendingCount > 0) {
     const teaser = chatData.pendingTitles.length
-      ? ` (בין השאר: "${chatData.pendingTitles[0]}")` : '';
-    return `${hello}\nיש ${chatData.pendingCount} הצעות חדשות שממתינות לאישור שלך${teaser} 🎯 ` +
-           'שווה להציץ באזור "ממתין לאישור שלך" — ואם רוצים, אפשר לעבור עליהן איתי כאן.';
+      ? t('greet_teaser', { title: chatData.pendingTitles[0] }) : '';
+    return `${hello}\n${t('greet_pending', { n: chatData.pendingCount, teaser })}`;
   }
-  return `${hello}\nאם צריך משהו — אני כאן.`;
+  return `${hello}\n${t('greet_idle')}`;
 }
 
 function maybeShowGreeting() {
@@ -1492,14 +1650,15 @@ function greetingClick() {
 }
 
 function renderChips() {
+  const t = uallakI18n.t;
   const chips = [];
-  if (chatData.pendingCount > 0) chips.push('מה ממתין לאישור שלי?');
+  if (chatData.pendingCount > 0) chips.push(t('chip_pending'));
   if (chatData.conns.some(c => ['google_ads', 'meta_ads'].includes(c.platform) && c.status === 'active')) {
-    chips.push('מה המצב בקמפיינים?');
+    chips.push(t('chip_campaigns'));
   } else {
-    chips.push('איך מתחילים?');
+    chips.push(t('chip_start'));
   }
-  chips.push('שדרג אותי');
+  chips.push(t('chip_upgrade'));
   document.getElementById('chipRow').innerHTML = chips.map(t =>
     `<button class="chip" onclick="sendChip(this.textContent)">${esc(t)}</button>`).join('');
 }
@@ -1529,7 +1688,7 @@ async function sendSupportMsg() {
 
   // Typing indicator - upgrade proposals and web searches can take a while,
   // the client should see the chat is working, not frozen
-  const typing = appendSupportMsg('כותבים לך תשובה…', 'bot typing');
+  const typing = appendSupportMsg(uallakI18n.t('chat_typing'), 'bot typing');
 
   try {
     const res = await fetch('/api/client-chat', {
@@ -1543,33 +1702,40 @@ async function sendSupportMsg() {
     if (data.success) {
       appendSupportMsg(data.reply, data.needs_human_followup ? 'escalated' : 'bot');
     } else {
-      appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
+      appendSupportMsg(uallakI18n.t('chat_error'), 'bot');
     }
   } catch (e) {
     console.error('support chat request failed', e);
     typing.remove();
-    appendSupportMsg('מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', 'bot');
+    appendSupportMsg(uallakI18n.t('chat_error'), 'bot');
   }
 }
 
 // ─── boot ────────────────────────────────────────────────────────────────────
 (function () {
+  uallakI18n.init(DASH_I18N);
+  uallakI18n.mountSwitcher(document.getElementById('langRow'));
+  // Re-render every JS-built area in the new language (server data is cached
+  // ~5min by the agents, so the refetches are cheap). Static text is handled
+  // by the engine's applyDom.
+  uallakI18n.onChange(() => { loadDashboard(); loadBilling(); loadSuggestions(); });
+
   const params = new URLSearchParams(window.location.search);
   if (params.get('connected') === 'google_ads') {
     markGoogleAdsConnected();
-    showNotice('חשבון Google Ads חובר בהצלחה ✓', 'success');
+    showNotice(uallakI18n.t('notice_gads_connected'), 'success');
   } else if (params.get('connected') === 'meta') {
     markMetaConnected();
-    showNotice('חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', 'success');
+    showNotice(uallakI18n.t('notice_meta_connected'), 'success');
   } else if (params.get('connect_error')) {
     const errLabel = (params.get('connect_error') || '').includes('meta') ? 'Meta' : 'Google Ads';
-    showNotice(`חיבור ${errLabel} נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט`, 'warn');
+    showNotice(uallakI18n.t('notice_connect_error', { p: errLabel }), 'warn');
   } else if (params.get('upgrade') === 'success') {
-    showNotice('השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', 'success');
+    showNotice(uallakI18n.t('notice_upgrade_success'), 'success');
   } else if (params.get('upgrade') === 'pending') {
-    showNotice('השדרוג עדיין באימות מול PayPal — נעדכן ברגע שיאושר', 'warn');
+    showNotice(uallakI18n.t('notice_upgrade_pending'), 'warn');
   } else if (params.get('upgrade') === 'error') {
-    showNotice('הייתה בעיה באישור השדרוג — נסו שוב או דברו איתנו בצ׳אט', 'warn');
+    showNotice(uallakI18n.t('notice_upgrade_error'), 'warn');
   }
   if ([...params.keys()].length) history.replaceState(null, '', window.location.pathname);
 

@@ -50,13 +50,31 @@ description: How multi-language support works in uallak — chat language matchi
 
 ## Rollout (phased — deliberate scope decision)
 
-- ✅ **v1 (done):** both chats' language matching + RTL bubbles; engine;
-  login page fully localized (the pattern proof).
-- **Next, in value order:** dashboard/client + dashboard/profile (the daily
-  client surfaces — biggest string tables, includes ACTIVITY_LABELS and
-  server-notice strings), then dashboard/onboarding page chrome (base
-  questions + buttons are hardcoded Hebrew in the page JS), then landing.
+- ✅ **v1:** both chats' language matching + RTL bubbles; engine; login page.
+- ✅ **v2 (2026-07-18):** dashboard/client (incl. activity labels as
+  `act_<action_type>` keys in DASH_I18N + tour + chat concierge),
+  dashboard/profile, and the sales-chat page chrome — BASE_QUESTIONS +
+  conditional questions translated via `Q_I18N` (Hebrew stays canonical in
+  the question defs; `localizeQuestion()` applies translations).
+- **Remaining:** landing page (marketing copy = copywriting decision).
 - **Not planned:** dashboard/admin (Johnny reads Hebrew).
+
+## Critical patterns added in v2 (keep these invariants)
+
+- **Sales-chat branching is by option INDEX** (`answerIdx` +
+  `applyConditionalLogic(questionId, optIdx)`) — never compare translated
+  option TEXT. Translations must preserve option order.
+- The "other/something else" option is detected via `isOtherOption()`'s
+  multilingual prefix list — extend it if a language is added.
+- **Offboarding confirm phrases** exist per language on BOTH sides:
+  `PHRASES` in profile page ⟷ `CLOSE/TRANSFER_CONFIRM_PHRASES` in
+  api_server (lowercase match). Keep the two lists in sync.
+- Elements whose text is set dynamically after connect (e.g. the connection
+  cards) must `removeAttribute('data-i18n')` or applyDom will reset them on
+  the next language switch.
+- Language switch re-renders JS-built areas via `uallakI18n.onChange`
+  re-running the load functions; the welcome tour auto-open is guarded by a
+  once-per-pageload flag so a switch can't re-trigger it.
 - **Business decisions, not engineering:** terms page (legal text needs real
   translation sign-off), transactional emails' language (currently Hebrew),
   server-side Hebrew strings in API error `detail`s.

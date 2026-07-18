@@ -1254,15 +1254,18 @@ class OffboardRequest(BaseModel):
     reason: str = ""
 
 # The exact phrases the client must type - checked server-side too, so a stray
-# API call can never close an account by accident
-CLOSE_CONFIRM_PHRASE = "סגירת חשבון"
-TRANSFER_CONFIRM_PHRASE = "מעבר סוכנות"
+# API call can never close an account by accident. One accepted phrase per UI
+# language (the profile page shows the one matching the client's language).
+CLOSE_CONFIRM_PHRASES = {"סגירת חשבון", "close account", "fermer le compte",
+                          "إغلاق الحساب", "закрыть аккаунт"}
+TRANSFER_CONFIRM_PHRASES = {"מעבר סוכנות", "transfer agency", "changer d'agence",
+                             "نقل الوكالة", "смена агентства"}
 
 @app.post("/api/client/close-account")
 def client_close_account(req: OffboardRequest, request: Request, response: Response):
     # Plain `def`: PayPal cancel + provider revokes are blocking HTTP calls
     client_id = _require_session(request)
-    if req.confirm_phrase.strip() != CLOSE_CONFIRM_PHRASE:
+    if req.confirm_phrase.strip().lower() not in CLOSE_CONFIRM_PHRASES:
         raise HTTPException(status_code=400, detail="אישור הסגירה לא תקין")
     result = _offboard_client(client_id, "closure", req.reason.strip())
     response.delete_cookie("session", path="/")  # closure ends the session too
@@ -1273,7 +1276,7 @@ def client_transfer_out(req: OffboardRequest, request: Request, response: Respon
     # Hard lock applies to transfers too - the client's copy of their data
     # rides the confirmation email as an attachment, not the dashboard
     client_id = _require_session(request)
-    if req.confirm_phrase.strip() != TRANSFER_CONFIRM_PHRASE:
+    if req.confirm_phrase.strip().lower() not in TRANSFER_CONFIRM_PHRASES:
         raise HTTPException(status_code=400, detail="אישור המעבר לא תקין")
     result = _offboard_client(client_id, "transfer", req.reason.strip())
     response.delete_cookie("session", path="/")

@@ -20,6 +20,7 @@
   var SUPPORTED = ['he', 'en', 'fr', 'ar', 'ru'];
   var RTL = ['he', 'ar'];
   var NATIVE_NAMES = { he: 'עברית', en: 'English', fr: 'Français', ar: 'العربية', ru: 'Русский' };
+  var LOCALES = { he: 'he-IL', en: 'en-GB', fr: 'fr-FR', ar: 'ar', ru: 'ru-RU' };
   var STORAGE_KEY = 'uallak_lang';
 
   var table = {};
@@ -51,6 +52,11 @@
     document.documentElement.dir = RTL.indexOf(lang) !== -1 ? 'rtl' : 'ltr';
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    // For strings that carry OUR OWN inline markup (<b>, <br>) - never used
+    // with user-provided content
+    document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
+      el.innerHTML = t(el.getAttribute('data-i18n-html'));
     });
     document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
       el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
@@ -90,6 +96,7 @@
     init: function (pageTable) { table = pageTable || {}; applyDom(); },
     setLanguage: setLanguage,
     current: function () { return lang; },
+    locale: function () { return LOCALES[lang] || 'he-IL'; },
     isRtl: function () { return RTL.indexOf(lang) !== -1; },
     onChange: function (fn) { listeners.push(fn); },
     mountSwitcher: mountSwitcher,
