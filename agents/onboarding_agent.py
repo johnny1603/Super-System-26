@@ -92,14 +92,31 @@ def get_upgrade_tiers() -> list:
     ]
 
 
+# Shared by every client-facing prompt (the support chat imports it too):
+# adapt the LANGUAGE, never the substance or the quality bar.
+LANGUAGE_RULE = """
+CLIENT LANGUAGE:
+- Detect the language the client writes in (their free-text intro/messages/answers) and write ALL
+  client-facing text in THAT language. Supported: Hebrew, English, French, Arabic, Russian.
+  Hebrew is the default when the language is unclear, mixed, or unsupported.
+- Adapt LANGUAGE ONLY. Every substance rule applies unchanged in every language: pricing and
+  currency (amounts stay in NIS / ₪), honesty, estimates-not-guarantees phrasing, tone, and the
+  honest/scarcity separation. Hebrew example phrases in these instructions demonstrate STYLE -
+  translate the style, never paste the Hebrew literally into a non-Hebrew reply.
+- Fixed options/labels shown to the client (e.g. the "something else - tell me" choice) must be in
+  the same language as the rest of the reply.
+"""
+
+
 def get_api_key():
     return os.environ.get("ANTHROPIC_API_KEY", "")
 
 def get_dynamic_questions(client_intro, answers, api_key):
     system = """You are a business profiling expert for uallak marketing system, conducting a warm
 ~5 minute conversation — not a quick form. Based on what the client described, generate 4-6 dynamic
-follow-up questions in Hebrew that make the client feel deeply understood, while also surfacing
-material the sales team can use later to handle objections.
+follow-up questions in the client's own language (see CLIENT LANGUAGE below) that make the client
+feel deeply understood, while also surfacing material the sales team can use later to handle
+objections.
 
 Every question must reference something specific the client actually said — never generic filler.
 
@@ -127,7 +144,7 @@ sharpens the proposal and shows we understand their market:
   reputation-driven
 
 Other rules:
-- Always include an option like: "משהו אחר - ספר לי"
+- Always include an option like: "משהו אחר - ספר לי" (translated to the client's language)
 - If business is declining, ask what changed
 - If new business with financial pressure, ask about backup plan
 - Ask about emotional barriers if relevant
@@ -136,9 +153,9 @@ Other rules:
   script.
 
 Return JSON only:
-{"questions": [{"id": "dynamic_1", "text": "question in Hebrew", "type": "choice", "options": ["option1", "option2", "משהו אחר - ספר לי"]}]}"""
+{"questions": [{"id": "dynamic_1", "text": "question in the client's language", "type": "choice", "options": ["option1", "option2", "the 'something else - tell me' option in the client's language"]}]}""" + LANGUAGE_RULE
 
-    user_message = f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers)}"
+    user_message = f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers, ensure_ascii=False)}"
     result = safe_claude_json_call(system, user_message, max_tokens=3000, api_key=api_key)
     return result.get("questions", [])
 
@@ -174,7 +191,7 @@ MARKET EXPERTISE — TALK LIKE SOMEONE WHO ALREADY KNOWS THIS MARKET:
   בדרך כלל סביב 70-150 ש"ח") — reasonable, defensible ROUND RANGES, never fabricated precision
   (no "87.3 ש"ח") and never hedged into vagueness. If the exact niche is obscure, reason openly
   from the closest comparable industry.
-- Fill "market_reality" (Hebrew, 2-4 sentences): the competitive picture for THIS industry, the
+- Fill "market_reality" (client's language, 2-4 sentences): the competitive picture for THIS industry, the
   relevant benchmark range, and — when the client stated both a budget and a goal — the honest math
   between them (e.g. budget ÷ typical cost-per-lead = the realistic lead range). If the client's
   goal doesn't match their budget, say so plainly and professionally, then state what IS realistic
@@ -377,7 +394,8 @@ CRITICAL RULES:
   ("כ-40-55 לידים", "צמיחה של כ-20%-30% בעוקבים", "התקרבות לעמוד הראשון בביטויים המרכזיים") and
   make the estimate nature natural in the phrasing. Never a bare exact number that reads as a
   commitment ("300 לידים", "מקום 1 בגוגל") — useful expectations, not contractual promises
-- All response text must be in Hebrew
+- All response text must be in the client's language (see CLIENT LANGUAGE below; Hebrew default)
+{LANGUAGE_RULE}
 - OUTPUT LENGTH LIMITS (hard limits — keep the response compact, this directly affects generation
   time and cost, not just a token ceiling):
   - business_summary: max 2-3 sentences
@@ -432,19 +450,19 @@ Return JSON only with this exact structure:
 {{
   "approved": true,
   "rejection_reason": "",
-  "business_summary": "Hebrew text",
-  "market_reality": "Hebrew text - the market/benchmark/budget-vs-goal analysis described above",
+  "business_summary": "client-language text",
+  "market_reality": "client-language text - the market/benchmark/budget-vs-goal analysis described above",
   "risk_level": "low/medium/high",
   "goals_90_days": [],
   "kpis": {{}},
   "self_help_tips": [],
-  "honest_note": "Hebrew text",
-  "scarcity_note": "Hebrew text",
+  "honest_note": "client-language text",
+  "scarcity_note": "client-language text",
   "packages": [
     {{
       "id": "short-id e.g. light",
-      "name": "Hebrew package name",
-      "description": "1-2 sentence Hebrew description of who this fits",
+      "name": "client-language package name",
+      "description": "1-2 sentence client-language description of who this fits",
       "recommended_services": [],
       "setup_fee_total": 0,
       "monthly_management_total": 0,
@@ -556,10 +574,11 @@ respond to what they ACTUALLY said — never a generic reassurance that could ap
 
 End by inviting them back to the packages — reference them briefly by name so it's easy to pick
 one, or ask one short clarifying question if that's what's genuinely needed to move forward.
-Keep it to 2-5 sentences, warm and human, not corporate. All text in Hebrew.
+Keep it to 2-5 sentences, warm and human, not corporate. All text in the client's language
+(the language they wrote their message in — see CLIENT LANGUAGE).
 
 Return JSON only:
-{"reply": "Hebrew text"}"""
+{"reply": "client-language text"}""" + LANGUAGE_RULE
 
     user_message = f"""Packages offered to this client:
 {json.dumps(packages, ensure_ascii=False, indent=2)}
@@ -587,7 +606,9 @@ mid-way through an onboarding chat with a small business owner. You just saw one
 said. Write ONE short, natural reaction to it - encouragement, a brief genuine compliment, or a
 follow-up comment tied to what they SPECIFICALLY said. 1 sentence, occasionally 2 max. Warm and
 human, never generic filler like just "מעניין!" - be specific to their actual answer.
-Respond in Hebrew, plain text only - no JSON, no quotes, no markdown, just the sentence itself."""
+Respond in the SAME LANGUAGE the client's answer is written in (Hebrew, English, French, Arabic or
+Russian; Hebrew if unclear). Plain text only - no JSON, no quotes, no markdown, just the sentence
+itself."""
 
     user_message = f"Question asked: {question_text}\nClient's answer: {answer_text}"
 

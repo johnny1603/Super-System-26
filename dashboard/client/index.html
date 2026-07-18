@@ -795,7 +795,7 @@ body {
   </div>
   <div class="chip-row" id="chipRow"></div>
   <div class="support-input-area">
-    <input class="support-input" id="supportInput" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
+    <input class="support-input" id="supportInput" dir="auto" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
     <button class="support-send" onclick="sendSupportMsg()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
@@ -1356,6 +1356,9 @@ function appendSupportMsg(text, cls) {
   const box = document.getElementById('supportMessages');
   const msg = document.createElement('div');
   msg.className = `support-msg ${cls}`;
+  // Per-message direction: replies match the client's language (Arabic/Hebrew
+  // render RTL, English/French/Russian LTR)
+  msg.dir = 'auto';
   msg.textContent = text;
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
@@ -1400,6 +1403,7 @@ async function loadPreviousConversations() {
     for (const entry of previous) {
       const msg = document.createElement('div');
       msg.className = `support-msg ${entry.direction === 'inbound' ? 'user' : 'bot'}`;
+      msg.dir = 'auto';
       msg.textContent = entry.content;
       frag.appendChild(msg);
     }

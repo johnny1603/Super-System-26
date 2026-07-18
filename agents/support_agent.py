@@ -18,6 +18,7 @@ from datetime import datetime
 from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
+from agents.onboarding_agent import LANGUAGE_RULE
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, claude_web_search_call, safe_claude_json_call
 
@@ -156,11 +157,12 @@ answer confidently from the given data (this is different from "no platform data
 from "needs a web search") - say so honestly, tell the client a team member will follow up
 personally, and set needs_human_followup to true.
 
-Keep replies short: 2-4 sentences max. Hebrew only.
+Keep replies short: 2-4 sentences max, in the client's language (the language of their message
+and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
-{"reply": "Hebrew text", "needs_human_followup": true/false, "web_search_query": "",
- "upgrade_request": ""}"""
+{"reply": "client-language text", "needs_human_followup": true/false, "web_search_query": "",
+ "upgrade_request": ""}""" + LANGUAGE_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -177,8 +179,10 @@ Rules:
   business and marketing (their business context is provided).
 - If the search doesn't produce a reliable answer, say so honestly and that a team member
   will follow up personally - never bluff.
-- Reply in Hebrew only, 2-5 sentences, PLAIN TEXT (no JSON, no markdown headers, no link
-  lists; mentioning a source naturally inline, like "לפי נתוני...", is fine)."""
+- Reply in the client's language (the language their message is written in; Hebrew default -
+  supported: Hebrew, English, French, Arabic, Russian), 2-5 sentences, PLAIN TEXT (no JSON, no
+  markdown headers, no link lists; mentioning a source naturally inline, like "לפי נתוני...",
+  is fine)."""
 
 _FALLBACK = {
     "reply": "מצטערים, הייתה תקלה קטנה מהצד שלנו - צוות uallak יחזור אליך בהקדם 🙏",

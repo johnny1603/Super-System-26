@@ -75,6 +75,8 @@ app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard"
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
 app.mount("/admin", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "admin"), html=True), name="admin")
 app.mount("/profile", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "profile"), html=True), name="profile")
+# Shared static assets (i18n engine etc.) used across the per-page mounts
+app.mount("/assets", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "assets")), name="assets")
 
 # Starlette's Mount("/login") only matches paths UNDER the mount ("/login/...").
 # The bare "/login" falls through every mount and API route to the root "/"

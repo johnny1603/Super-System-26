@@ -88,31 +88,99 @@ body {
 .msg.success { color: var(--green); }
 .step { display: none; }
 .step.active { display: block; }
+.lang-row { text-align: center; margin-top: 18px; }
+.lang-switcher {
+  background: var(--panel-2); color: var(--gray); border: 1px solid var(--border);
+  border-radius: 100px; padding: 6px 12px; font-family: 'Heebo', sans-serif;
+  font-size: 12.5px; cursor: pointer; outline: none;
+}
+.lang-switcher:hover { color: var(--white); border-color: var(--accent); }
 </style>
 </head>
 <body>
 
 <div class="card">
   <div class="logo">u<span>allak</span></div>
-  <div class="subtitle">כניסה לדשבורד האישי שלך</div>
+  <div class="subtitle" data-i18n="subtitle">כניסה לדשבורד האישי שלך</div>
 
   <div class="step active" id="stepEmail">
-    <label class="field-label" for="emailInput">כתובת המייל שלך</label>
-    <input class="field-input" id="emailInput" type="email" placeholder="you@example.com" autocomplete="email">
+    <label class="field-label" for="emailInput" data-i18n="email_label">כתובת המייל שלך</label>
+    <input class="field-input" id="emailInput" type="email" dir="ltr" placeholder="you@example.com" autocomplete="email">
     <div class="msg" id="emailMsg"></div>
-    <button class="btn" id="sendCodeBtn" onclick="requestCode()">שלח קוד התחברות</button>
+    <button class="btn" id="sendCodeBtn" onclick="requestCode()" data-i18n="send_code">שלח קוד התחברות</button>
   </div>
 
   <div class="step" id="stepCode">
     <div class="msg" style="color:var(--white);" id="codeSentMsg"></div>
-    <label class="field-label" for="codeInput">קוד בן 6 ספרות</label>
+    <label class="field-label" for="codeInput" data-i18n="code_label">קוד בן 6 ספרות</label>
     <input class="field-input code-input" id="codeInput" type="text" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="one-time-code">
     <div class="msg" id="codeMsg"></div>
-    <button class="btn" id="verifyBtn" onclick="verifyCode()">כניסה</button>
-    <button class="btn-link" onclick="backToEmail()">שלח לי קוד אחר / שנה מייל</button>
+    <button class="btn" id="verifyBtn" onclick="verifyCode()" data-i18n="verify">כניסה</button>
+    <button class="btn-link" onclick="backToEmail()" data-i18n="resend">שלח לי קוד אחר / שנה מייל</button>
   </div>
+
+  <div class="lang-row" id="langRow"></div>
 </div>
 
+<script src="/assets/i18n.js"></script>
+<script>
+// Page string table — Hebrew is the source of truth; the engine falls back to
+// it for any missing key. {email} is interpolated by t().
+const I18N = {
+  _page_title: {
+    he: 'uallak — כניסה לדשבורד', en: 'uallak — Dashboard sign-in',
+    fr: 'uallak — Connexion au tableau de bord', ar: 'uallak — تسجيل الدخول إلى لوحة التحكم',
+    ru: 'uallak — Вход в личный кабинет' },
+  subtitle: {
+    he: 'כניסה לדשבורד האישי שלך', en: 'Sign in to your personal dashboard',
+    fr: 'Connectez-vous à votre tableau de bord', ar: 'تسجيل الدخول إلى لوحة التحكم الشخصية',
+    ru: 'Вход в ваш личный кабинет' },
+  email_label: {
+    he: 'כתובת המייל שלך', en: 'Your email address', fr: 'Votre adresse e-mail',
+    ar: 'بريدك الإلكتروني', ru: 'Ваш адрес электронной почты' },
+  send_code: {
+    he: 'שלח קוד התחברות', en: 'Send sign-in code', fr: 'Envoyer le code de connexion',
+    ar: 'إرسال رمز الدخول', ru: 'Отправить код входа' },
+  code_label: {
+    he: 'קוד בן 6 ספרות', en: '6-digit code', fr: 'Code à 6 chiffres',
+    ar: 'رمز مكوّن من 6 أرقام', ru: 'Код из 6 цифр' },
+  verify: {
+    he: 'כניסה', en: 'Sign in', fr: 'Se connecter', ar: 'دخول', ru: 'Войти' },
+  resend: {
+    he: 'שלח לי קוד אחר / שנה מייל', en: 'Send another code / change email',
+    fr: 'Renvoyer un code / changer d’e-mail', ar: 'إرسال رمز آخر / تغيير البريد',
+    ru: 'Отправить другой код / изменить почту' },
+  code_sent: {
+    he: 'אם קיים חשבון עבור {email}, שלחנו אליו קוד בן 6 ספרות. הקוד בתוקף ל-10 דקות.',
+    en: 'If an account exists for {email}, we sent it a 6-digit code. It is valid for 10 minutes.',
+    fr: 'Si un compte existe pour {email}, nous lui avons envoyé un code à 6 chiffres, valable 10 minutes.',
+    ar: 'إذا كان هناك حساب لـ {email}، فقد أرسلنا إليه رمزًا من 6 أرقام. الرمز صالح لمدة 10 دقائق.',
+    ru: 'Если для {email} существует аккаунт, мы отправили на него код из 6 цифр. Код действителен 10 минут.' },
+  err_no_email: {
+    he: 'נא להזין כתובת מייל', en: 'Please enter an email address',
+    fr: 'Veuillez saisir une adresse e-mail', ar: 'يرجى إدخال البريد الإلكتروني',
+    ru: 'Пожалуйста, введите адрес электронной почты' },
+  err_no_code: {
+    he: 'נא להזין את הקוד שקיבלת', en: 'Please enter the code you received',
+    fr: 'Veuillez saisir le code reçu', ar: 'يرجى إدخال الرمز الذي تلقيته',
+    ru: 'Пожалуйста, введите полученный код' },
+  err_generic: {
+    he: 'משהו השתבש - נסה שוב', en: 'Something went wrong — please try again',
+    fr: 'Une erreur est survenue — veuillez réessayer', ar: 'حدث خطأ ما - حاول مرة أخرى',
+    ru: 'Что-то пошло не так — попробуйте ещё раз' },
+  err_bad_code: {
+    he: 'קוד שגוי או שפג תוקפו - נסה שוב', en: 'Wrong or expired code — try again',
+    fr: 'Code incorrect ou expiré — réessayez', ar: 'رمز خاطئ أو منتهي الصلاحية - حاول مجددًا',
+    ru: 'Неверный или просроченный код — попробуйте ещё раз' },
+  success: {
+    he: 'התחברת בהצלחה, מעביר אותך לדשבורד...', en: 'Signed in — taking you to your dashboard…',
+    fr: 'Connexion réussie — redirection vers votre tableau de bord…',
+    ar: 'تم تسجيل الدخول بنجاح، جارٍ نقلك إلى لوحة التحكم...',
+    ru: 'Вход выполнен — переходим в ваш кабинет…' },
+};
+uallakI18n.init(I18N);
+uallakI18n.mountSwitcher(document.getElementById('langRow'));
+</script>
 <script>
 let currentEmail = '';
 
@@ -124,7 +192,7 @@ function setMsg(id, text, type) {
 
 async function requestCode() {
   const email = document.getElementById('emailInput').value.trim();
-  if (!email) { setMsg('emailMsg', 'נא להזין כתובת מייל', 'error'); return; }
+  if (!email) { setMsg('emailMsg', uallakI18n.t('err_no_email'), 'error'); return; }
 
   const btn = document.getElementById('sendCodeBtn');
   btn.disabled = true;
@@ -137,12 +205,12 @@ async function requestCode() {
       body: JSON.stringify({ email })
     });
     currentEmail = email;
-    document.getElementById('codeSentMsg').textContent = `אם קיים חשבון עבור ${email}, שלחנו אליו קוד בן 6 ספרות. הקוד בתוקף ל-10 דקות.`;
+    document.getElementById('codeSentMsg').textContent = uallakI18n.t('code_sent', { email });
     document.getElementById('stepEmail').classList.remove('active');
     document.getElementById('stepCode').classList.add('active');
     document.getElementById('codeInput').focus();
   } catch (e) {
-    setMsg('emailMsg', 'משהו השתבש - נסה שוב', 'error');
+    setMsg('emailMsg', uallakI18n.t('err_generic'), 'error');
   } finally {
     btn.disabled = false;
   }
@@ -150,7 +218,7 @@ async function requestCode() {
 
 async function verifyCode() {
   const code = document.getElementById('codeInput').value.trim();
-  if (!code) { setMsg('codeMsg', 'נא להזין את הקוד שקיבלת', 'error'); return; }
+  if (!code) { setMsg('codeMsg', uallakI18n.t('err_no_code'), 'error'); return; }
 
   const btn = document.getElementById('verifyBtn');
   btn.disabled = true;
@@ -163,13 +231,13 @@ async function verifyCode() {
       body: JSON.stringify({ email: currentEmail, code })
     });
     if (res.ok) {
-      setMsg('codeMsg', 'התחברת בהצלחה, מעביר אותך לדשבורד...', 'success');
+      setMsg('codeMsg', uallakI18n.t('success'), 'success');
       setTimeout(() => { window.location.href = '/dashboard/'; }, 700);
     } else {
-      setMsg('codeMsg', 'קוד שגוי או שפג תוקפו - נסה שוב', 'error');
+      setMsg('codeMsg', uallakI18n.t('err_bad_code'), 'error');
     }
   } catch (e) {
-    setMsg('codeMsg', 'משהו השתבש - נסה שוב', 'error');
+    setMsg('codeMsg', uallakI18n.t('err_generic'), 'error');
   } finally {
     btn.disabled = false;
   }

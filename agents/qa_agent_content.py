@@ -71,6 +71,10 @@ version that fixes anything that fails:
 Do not change the proposal's own "approved" field (business eligibility) — that is unrelated to
 this quality review. Only touch it if it is clearly inconsistent with the rest of the proposal.
 
+LANGUAGE: the proposal's client-facing text may be in Hebrew, English, French, Arabic, or Russian
+(it matches the language the client wrote in). PRESERVE that language in every correction — apply
+all the criteria above in whatever language the text is written in; never translate it to Hebrew.
+
 Return JSON only, with this exact shape:
 {
   "review_approved": true or false,
