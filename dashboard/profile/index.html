@@ -209,6 +209,7 @@ body {
     <div class="section-title" data-i18n="account_title">החשבון שלי</div>
   </div>
   <div class="actions-row">
+    <button class="btn" id="mediaFolderBtn" onclick="openMediaFolder()" data-i18n="media_folder_btn">📁 תיקיית המדיה שלי ב-Drive</button>
     <a class="btn" href="/api/client/data-export" data-i18n="export_btn">⬇ ייצוא הנתונים שלי (JSON)</a>
     <button class="btn" onclick="logout()" data-i18n="logout_btn">התנתקות</button>
   </div>
@@ -282,6 +283,9 @@ const I18N = {
   costs_total_label: { he:'סה״כ תקציב פרסום ששולם ישירות לפלטפורמות (30 ימים)', en:'Total ad budget paid directly to the platforms (30 days)', fr:'Budget publicitaire total payé directement aux plateformes (30 jours)', ar:'إجمالي ميزانية الإعلانات المدفوعة مباشرة للمنصات (30 يومًا)', ru:'Итого рекламный бюджет, уплаченный платформам напрямую (30 дней)' },
   honest_note: { he:'תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.', en:'Your ad budget is paid by you directly to Google and Meta with your own payment method — it never passes through us and we take no commission on it. Exactly as promised in your proposal: our management fee is separate, and your ad spend is transparent here at any moment. SEO tool subscriptions (if any) are also paid directly to the provider.', fr:'Votre budget publicitaire est payé directement à Google et Meta avec votre propre moyen de paiement — il ne transite jamais par nous et nous ne prenons aucune commission. Comme promis dans votre proposition : nos frais de gestion sont séparés, et vos dépenses publicitaires sont transparentes ici à tout moment. Les abonnements aux outils SEO (le cas échéant) sont également payés directement au fournisseur.', ar:'ميزانية إعلاناتك تُدفع مباشرة إلى Google وMeta بوسيلة الدفع الخاصة بك — لا تمر عبرنا ولا نأخذ عليها أي عمولة. تمامًا كما وعدنا في العرض: رسوم إدارتنا منفصلة، ونفقات إعلاناتك شفافة هنا في أي لحظة. اشتراكات أدوات SEO (إن وجدت) تُدفع أيضًا مباشرة للمزوّد.', ru:'Рекламный бюджет вы платите напрямую Google и Meta со своей карты — эти деньги не проходят через нас, и мы не берём с них комиссию. Ровно как обещано в предложении: наша плата за ведение отдельна, а рекламные расходы прозрачны здесь в любой момент. Подписки на SEO-инструменты (если есть) также оплачиваются напрямую провайдеру.' },
   account_title: { he:'החשבון שלי', en:'My account', fr:'Mon compte', ar:'حسابي', ru:'Мой аккаунт' },
+  media_folder_btn: { he:'📁 תיקיית המדיה שלי ב-Drive', en:'📁 My media folder on Drive', fr:'📁 Mon dossier médias sur Drive', ar:'📁 مجلد الوسائط الخاص بي في Drive', ru:'📁 Моя папка медиа на Drive' },
+  media_folder_opening: { he:'פותח את התיקייה…', en:'Opening the folder…', fr:'Ouverture du dossier…', ar:'جارٍ فتح المجلد…', ru:'Открываем папку…' },
+  media_folder_err: { he:'לא הצלחנו לפתוח את התיקייה — נסו שוב או דברו איתנו בצ׳אט', en:'Couldn\'t open the folder — try again or talk to us in the chat', fr:'Impossible d\'ouvrir le dossier — réessayez ou contactez-nous via le chat', ar:'تعذر فتح المجلد — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Не удалось открыть папку — попробуйте ещё раз или напишите нам в чат' },
   export_btn: { he:'⬇ ייצוא הנתונים שלי (JSON)', en:'⬇ Export my data (JSON)', fr:'⬇ Exporter mes données (JSON)', ar:'⬇ تصدير بياناتي (JSON)', ru:'⬇ Экспорт моих данных (JSON)' },
   logout_btn: { he:'התנתקות', en:'Log out', fr:'Se déconnecter', ar:'تسجيل الخروج', ru:'Выйти' },
   end_title: { he:'סיום התקשרות', en:'Ending our engagement', fr:'Fin de collaboration', ar:'إنهاء التعامل', ru:'Завершение сотрудничества' },
@@ -443,6 +447,30 @@ async function loadCosts() {
     console.error('costs load failed', e);
     area.innerHTML = `<div class="empty-row">${uallakI18n.t('costs_error')}</div>`;
   }
+}
+
+// ─── media folder (Drive) ────────────────────────────────────────────────────
+async function openMediaFolder() {
+  const btn = document.getElementById('mediaFolderBtn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('media_folder_opening');
+  try {
+    const res = await fetch('/api/client/media-folder', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success && body.data.link) {
+      window.open(body.data.link, '_blank');
+      btn.disabled = false;
+      btn.textContent = original;
+      return;
+    }
+    showNotice(body.detail || uallakI18n.t('media_folder_err'), 'warn');
+  } catch (e) {
+    console.error('media folder failed', e);
+    showNotice(uallakI18n.t('media_folder_err'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = original;
 }
 
 // ─── logout ──────────────────────────────────────────────────────────────────

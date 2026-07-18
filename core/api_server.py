@@ -1751,6 +1751,95 @@ def seo_cycle():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ─── Media agent (generation + Drive org; admin/scheduler except folder link) ─
+
+class MediaConnectAccountRequest(BaseModel):
+    client_id: int
+    api_key: str  # the CLIENT'S Higgsfield Cloud API key (their plan, their card)
+
+@app.post("/api/media/connect-account", dependencies=_admin_only)
+def media_connect_account(req: MediaConnectAccountRequest):
+    from agents.media_agent import connect_generation_account
+    result = connect_generation_account(req.client_id, req.api_key)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class MediaGenerateRequest(BaseModel):
+    client_id: int
+    brief: str
+    platform: str = "instagram"
+
+@app.post("/api/media/generate-image", dependencies=_admin_only)
+def media_generate_image(req: MediaGenerateRequest):
+    # Plain `def`: prompt-craft LLM + Imagen + Drive upload, all blocking
+    from agents.media_agent import generate_image
+    result = generate_image(req.client_id, req.brief, req.platform)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.post("/api/media/generate-video", dependencies=_admin_only)
+def media_generate_video(req: MediaGenerateRequest):
+    # Plain `def` and SLOW (Veo polls up to ~10 min) — the most expensive
+    # call in the system; caps + cost tracking live in media_gen_service
+    from agents.media_agent import generate_video
+    result = generate_video(req.client_id, req.brief, req.platform)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class FilmingKitRequest(BaseModel):
+    client_id: int
+    topic: str
+
+@app.post("/api/media/filming-kit", dependencies=_admin_only)
+def media_filming_kit(req: FilmingKitRequest):
+    from agents.media_agent import create_filming_kit
+    result = create_filming_kit(req.client_id, req.topic)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class MediaPublishPrepRequest(BaseModel):
+    client_id: int
+    file_id: str
+
+@app.post("/api/media/prepare-publish", dependencies=_admin_only)
+def media_prepare_publish(req: MediaPublishPrepRequest):
+    # Returns a public URL for a single Drive file — feed it to
+    # /api/meta-content/publish as media_url
+    from agents.media_agent import prepare_for_publishing
+    return {"success": True, "data": prepare_for_publishing(req.client_id, req.file_id)}
+
+@app.get("/api/media/weekly-checkin", dependencies=_admin_only)
+def media_weekly_checkin():
+    # THE sacred cadence: Cloud Scheduler, Saturdays 20:00 Asia/Jerusalem
+    from agents.media_agent import run_weekly_media_checkin
+    try:
+        return {"success": True, "data": run_weekly_media_checkin()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/media/sync-site-folders", dependencies=_admin_only)
+def media_sync_site_folders(client_id: int):
+    from agents.media_agent import sync_website_media_folders
+    return {"success": True, "data": {"pages": sync_website_media_folders(client_id)}}
+
+@app.get("/api/client/media-folder")
+def client_media_folder(request: Request):
+    """Session-gated: the client's own browsable Drive folder link (created +
+    shared with their email on first ask). Plain `def`: Drive HTTP calls."""
+    client_id = _require_session(request)
+    if not drive_service.is_configured() or not os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
+        raise HTTPException(status_code=503, detail="תיקיית המדיה עדיין לא מוגדרת — דברו איתנו בצ'אט")
+    from agents.media_agent import get_client_media_link
+    try:
+        return {"success": True, "data": {"link": get_client_media_link(client_id)}}
+    except Exception as e:
+        print(f"[media_folder] failed for client {client_id}: {e}")
+        raise HTTPException(status_code=500, detail="לא הצלחנו לפתוח את התיקייה — נסו שוב")
+
 # ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
 
 @app.get("/api/client/suggestions")

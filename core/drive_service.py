@@ -16,6 +16,7 @@ google-auth does the JWT signing (already installed transitively via
 google-cloud-pubsub, and pinned explicitly in requirements.txt); the Drive
 calls themselves are plain REST via httpx, same style as the other services.
 """
+import base64
 import json
 import os
 import secrets
@@ -92,6 +93,79 @@ def ensure_folder(name: str, parent_id: str) -> str:
     )
     response.raise_for_status()
     return response.json()["id"]
+
+
+def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str) -> dict:
+    """Binary upload (images/videos/docs for the media agent). Same multipart
+    scheme as upload_json but with raw bytes as the media part. Returns
+    Drive's {id, size, name, webViewLink}."""
+    metadata = json.dumps({"name": filename, "parents": [folder_id]}, ensure_ascii=False)
+    boundary = f"uallak_{secrets.token_hex(16)}"
+    body = (
+        (f"--{boundary}\r\n"
+         "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+         f"{metadata}\r\n"
+         f"--{boundary}\r\n"
+         f"Content-Type: {mime_type}\r\n"
+         "Content-Transfer-Encoding: base64\r\n\r\n").encode("utf-8")
+        + base64.b64encode(content)
+        + f"\r\n--{boundary}--".encode("utf-8")
+    )
+    response = httpx.post(
+        DRIVE_UPLOAD_URL,
+        headers={**_headers(), "Content-Type": f"multipart/related; boundary={boundary}"},
+        params={"uploadType": "multipart", "supportsAllDrives": "true",
+                "fields": "id,size,name,webViewLink"},
+        content=body,
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def share_with_user(file_id: str, email: str, role: str = "reader") -> bool:
+    """Grant a user access to a file/folder (the client's window into their
+    media). Best-effort: a failed share must not fail the upload that
+    preceded it — the media exists either way."""
+    try:
+        response = httpx.post(
+            f"{DRIVE_FILES_URL}/{file_id}/permissions",
+            headers={**_headers(), "Content-Type": "application/json"},
+            params={"supportsAllDrives": "true", "sendNotificationEmail": "false"},
+            json={"type": "user", "role": role, "emailAddress": email},
+            timeout=TIMEOUT,
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print(f"[drive_service] share with {email} failed (non-fatal): {e}")
+        return False
+
+
+def get_link(file_id: str) -> str:
+    """The human-browsable webViewLink for a file/folder."""
+    response = httpx.get(
+        f"{DRIVE_FILES_URL}/{file_id}",
+        headers=_headers(),
+        params={"fields": "webViewLink", "supportsAllDrives": "true"},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json().get("webViewLink", "")
+
+
+def make_file_public(file_id: str) -> str:
+    """Flip ONE file to anyone-with-link reader and return its direct-download
+    URL — needed when publishing to Meta (their server fetches media from a
+    public URL). Deliberately per-file: client folders stay restricted."""
+    response = httpx.post(
+        f"{DRIVE_FILES_URL}/{file_id}/permissions",
+        headers={**_headers(), "Content-Type": "application/json"},
+        params={"supportsAllDrives": "true"},
+        json={"type": "anyone", "role": "reader"},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return f"https://drive.google.com/uc?export=download&id={file_id}"
 
 
 def upload_json(folder_id: str, filename: str, content: str) -> dict:

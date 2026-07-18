@@ -41,6 +41,13 @@ def web_search_cost_ils(searches: int) -> float:
     return round(searches * (WEB_SEARCH_USD_PER_1000 / 1000) * USD_TO_ILS, 4)
 
 
+def usd_to_ils(usd: float) -> float:
+    """Generic fixed-rate conversion for any future flat-USD-priced operation.
+    (Media generation no longer uses it - clients pay Higgsfield directly on
+    their own plans, so generation never enters client_costs.)"""
+    return round(usd * USD_TO_ILS, 4)
+
+
 def record_cost(category: str, amount_ils: float, client_id: int = None, details: dict = None):
     """Fire-and-forget: cost tracking must never break the operation it's
     tracking. client_id is nullable - onboarding calls happen before a client
