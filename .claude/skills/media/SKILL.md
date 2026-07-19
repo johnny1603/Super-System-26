@@ -26,12 +26,15 @@ spend / SEO tools / WP Application Passwords):
 - Each client signs up at higgsfield.ai on THEIR OWN payment method and a
   plan sized to their volume (Starter $15 / Plus $39 / Ultra $99 per month,
   Stripe-billed; we never see the card).
-- They create an API key at **cloud.higgsfield.ai/api-keys** and hand it to
-  us → stored per client (`client_accounts`, platform='higgsfield') via
-  `POST /api/media/connect-account`. Every generation runs on their key and
-  consumes THEIR plan credits — verified: API auth is a per-account Bearer
-  key, and plan credits are what API generations draw on, so per-client keys
-  ARE the supported multi-tenant path.
+- They create an API key at **cloud.higgsfield.ai/api-keys** and paste it in
+  themselves via the dashboard's "יצירת מדיה" connection card → stored per
+  client (`client_accounts`, platform='higgsfield') via the session-gated
+  `POST /api/media/connect` — client self-service, same pattern as the
+  WordPress Application Password card (no OAuth exists for Higgsfield
+  either). Every generation runs on their key and consumes THEIR plan
+  credits — verified: API auth is a per-account Bearer key, and plan credits
+  are what API generations draw on, so per-client keys ARE the supported
+  multi-tenant path.
 - The **Team plan is deliberately NOT used** — it's one shared org wallet
   (us absorbing costs), the opposite of this model.
 - **Generation never writes to client_costs** (that table is OUR internal
@@ -124,21 +127,24 @@ System (one-time): create the media root folder in Johnny's Drive, share
 with the service account email (Editor), set `DRIVE_MEDIA_FOLDER_ID`;
 create the Saturday scheduler job (above).
 
-Per client (the onboarding runbook):
+Per client — CLIENT SELF-SERVICE via a dashboard connection card (like
+WordPress, unlike the admin-only SEO tool connect):
 1. Client signs up at higgsfield.ai with their own payment method, picks a
-   plan sized to their content volume (guide: Starter $15 covers a light
-   image-only cadence; Plus $39 for weekly video).
-2. Client creates an API key at cloud.higgsfield.ai/api-keys and sends it
-   to us (same trust step as the WordPress Application Password).
-3. `POST /api/media/connect-account` {client_id, api_key}.
-4. Assign the agent: `POST /api/clients/{id}/agents` with `media_agent`.
+   plan sized to their content volume (guide shown on the card: Starter $15
+   covers a light image-only cadence; Plus $39 for weekly video).
+2. Client creates an API key at cloud.higgsfield.ai/api-keys.
+3. Client pastes it into the "יצירת מדיה" card in their dashboard, which
+   calls the session-gated `POST /api/media/connect` — no admin step needed.
+4. Admin still assigns the agent: `POST /api/clients/{id}/agents` with
+   `media_agent` (that's what makes the client eligible for the Saturday
+   check-in and lets the team generate for them).
 
 ## Endpoints
 
-Admin (X-Admin-Key): `POST /api/media/connect-account`,
-`POST /api/media/generate-image`, `POST /api/media/generate-video`
-(slow — job polling up to ~10 min), `POST /api/media/filming-kit`,
-`POST /api/media/prepare-publish`, `GET /api/media/weekly-checkin`,
-`GET /api/media/sync-site-folders`.
-Client (session): `GET /api/client/media-folder`.
+Client (session): `POST /api/media/connect` (paste their Higgsfield API
+key — the dashboard card), `GET /api/client/media-folder`.
+Admin (X-Admin-Key): `POST /api/media/generate-image`,
+`POST /api/media/generate-video` (slow — job polling up to ~10 min),
+`POST /api/media/filming-kit`, `POST /api/media/prepare-publish`,
+`GET /api/media/weekly-checkin`, `GET /api/media/sync-site-folders`.
 All plain `def` (blocking HTTP + LLM).

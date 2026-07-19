@@ -909,6 +909,7 @@ _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
     "meta": ["meta_ads", "meta_page", "meta_instagram"],
     "wordpress": ["wordpress"],
+    "higgsfield": ["higgsfield"],
 }
 
 def _disconnect_platform(client_id: int, platform: str) -> dict:
@@ -932,6 +933,9 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     # wordpress: nothing to revoke remotely - the Application Password lives in
     # the client's own wp-admin (we tell them they can delete it there too);
     # deleting our stored copy of it IS the disconnect.
+    # higgsfield: same as wordpress - the API key lives on the client's own
+    # Higgsfield account; they can revoke it themselves at
+    # cloud.higgsfield.ai/api-keys, and deleting our stored copy is our half.
 
     removed = remove_accounts(client_id, _DISCONNECT_GROUPS[platform])
 
@@ -1754,13 +1758,18 @@ def seo_cycle():
 # ─── Media agent (generation + Drive org; admin/scheduler except folder link) ─
 
 class MediaConnectAccountRequest(BaseModel):
-    client_id: int
     api_key: str  # the CLIENT'S Higgsfield Cloud API key (their plan, their card)
 
-@app.post("/api/media/connect-account", dependencies=_admin_only)
-def media_connect_account(req: MediaConnectAccountRequest):
+@app.post("/api/media/connect")
+def media_connect_account(req: MediaConnectAccountRequest, request: Request):
+    # Session-gated like /api/website/connect - the client pastes their OWN
+    # Higgsfield API key (created at cloud.higgsfield.ai/api-keys on their own
+    # paid plan), same self-service pattern as the WordPress Application
+    # Password card. Plain `def`: no blocking calls here, but consistent with
+    # the other connect endpoints.
+    client_id = _require_session(request)
     from agents.media_agent import connect_generation_account
-    result = connect_generation_account(req.client_id, req.api_key)
+    result = connect_generation_account(client_id, req.api_key)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}

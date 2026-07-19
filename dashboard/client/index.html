@@ -718,6 +718,24 @@ body {
 
     <div class="conn-card unlocked">
       <div class="conn-top">
+        <div class="conn-icon" style="background:#7C3AED;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z"/><path d="M19 14l.8 2.4L22 17.2l-2.2.8L19 20.4l-.8-2.4L16 17.2l2.2-.8z"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="higgsfield_card">יצירת מדיה (תמונות/סרטונים)</div>
+          <div class="conn-status" id="higgsfieldStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="higgsfieldBtn" onclick="toggleHiggsfieldForm()" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="higgsfieldForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="higgsfield_signup_note">נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.</div>
+        <input class="site-input" id="higgsfieldKey" dir="ltr" type="password" data-i18n-placeholder="higgsfield_key_ph" placeholder="Higgsfield API Key">
+        <button class="conn-btn primary" id="higgsfieldSubmitBtn" onclick="connectHiggsfield()" data-i18n="site_connect">חיבור</button>
+      </div>
+    </div>
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
         <div class="conn-icon" style="background:#464646;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
         </div>
@@ -876,6 +894,12 @@ const DASH_I18N = {
   site_connecting: { he:'מתחבר...', en:'Connecting…', fr:'Connexion…', ar:'جارٍ الربط...', ru:'Подключаем…' },
   site_connected_notice: { he:'האתר חובר בהצלחה ✓', en:'Website connected ✓', fr:'Site connecté ✓', ar:'تم ربط الموقع بنجاح ✓', ru:'Сайт подключён ✓' },
   site_connect_failed: { he:'חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', en:'Website connection failed — check the address, username and Application Password and try again', fr:'Échec de connexion — vérifiez l\'adresse, l\'utilisateur et l\'Application Password, puis réessayez', ar:'فشل ربط الموقع — تحقق من العنوان واسم المستخدم وApplication Password وحاول مجددًا', ru:'Подключение сайта не удалось — проверьте адрес, имя пользователя и Application Password и попробуйте снова' },
+  higgsfield_card: { he:'יצירת מדיה (תמונות/סרטונים)', en:'Media generation (images/videos)', fr:'Génération de médias (images/vidéos)', ar:'إنشاء الوسائط (صور/فيديوهات)', ru:'Генерация медиа (изображения/видео)' },
+  higgsfield_signup_note: { he:'נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.', en:'Sign up with your own payment method at higgsfield.ai, then create an API key in your account\'s API Keys area (cloud.higgsfield.ai/api-keys) — payment for generation itself goes directly through you, we just operate the tool for you.', fr:'Inscrivez-vous avec votre propre moyen de paiement sur higgsfield.ai, puis créez une clé API dans la section API Keys de votre compte (cloud.higgsfield.ai/api-keys) — le paiement de la génération passe directement par vous, nous opérons simplement l\'outil pour vous.', ar:'سجّل بوسيلة الدفع الخاصة بك على higgsfield.ai، ثم أنشئ مفتاح API في قسم API Keys بحسابك (cloud.higgsfield.ai/api-keys) — الدفع مقابل الإنشاء نفسه يتم مباشرة من خلالك، نحن فقط نشغّل الأداة نيابة عنك.', ru:'Зарегистрируйтесь на higgsfield.ai со своим способом оплаты, затем создайте API-ключ в разделе API Keys вашего аккаунта (cloud.higgsfield.ai/api-keys) — оплата за саму генерацию идёт напрямую от вас, мы лишь управляем инструментом от вашего имени.' },
+  higgsfield_key_ph: { he:'Higgsfield API Key', en:'Higgsfield API Key', fr:'Clé API Higgsfield', ar:'مفتاح API الخاص بـ Higgsfield', ru:'API-ключ Higgsfield' },
+  higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
+  higgsfield_connected_notice: { he:'חשבון יצירת המדיה חובר בהצלחה ✓', en:'Media generation account connected ✓', fr:'Compte de génération de médias connecté ✓', ar:'تم ربط حساب إنشاء الوسائط بنجاح ✓', ru:'Аккаунт генерации медиа подключён ✓' },
+  higgsfield_connect_failed: { he:'החיבור נכשל — ודאו שהמפתח תקין ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the key is correct and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez la clé et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تأكد من صحة المفتاح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключ и попробуйте снова, или напишите нам в чат' },
   newsletter_card: { he:'דיוור / מיילים', en:'Email marketing', fr:'E-mailing', ar:'البريد التسويقي', ru:'Email-рассылки' },
   whatsapp_card: { he:'וואטסאפ עסקי', en:'WhatsApp Business', fr:'WhatsApp Business', ar:'واتساب للأعمال', ru:'WhatsApp Business' },
   coming_soon_status: { he:'חיבור יתווסף בקרוב', en:'Connection coming soon', fr:'Connexion bientôt disponible', ar:'الربط سيتوفر قريبًا', ru:'Подключение скоро появится' },
@@ -1160,6 +1184,9 @@ async function loadDashboard() {
     if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
       markWebsiteConnected();
     }
+    if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
+      markHiggsfieldConnected();
+    }
 
     // Chat persona: apply the client's saved choice, or offer the one-time picker
     initPersona(d.client && d.client.owner_gender);
@@ -1360,6 +1387,51 @@ function markWebsiteConnected() {
 function toggleSiteForm() {
   const form = document.getElementById('siteForm');
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+function markHiggsfieldConnected() {
+  markPlatformConnected('higgsfieldStatus', 'higgsfieldBtn', 'higgsfield');
+  document.getElementById('higgsfieldForm').style.display = 'none';
+}
+
+function toggleHiggsfieldForm() {
+  const form = document.getElementById('higgsfieldForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+// Higgsfield has no OAuth redirect - the client pastes their OWN API key
+// (created at cloud.higgsfield.ai/api-keys on their own paid plan), same
+// self-service pattern as the WordPress Application Password card. No
+// server-side validation call here (would burn the client's credits) - a
+// bad key just fails on the first real generation, surfaced via an alert.
+async function connectHiggsfield() {
+  const api_key = document.getElementById('higgsfieldKey').value.trim();
+  if (!api_key) {
+    showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn');
+    return;
+  }
+  const btn = document.getElementById('higgsfieldSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('site_connecting');
+  try {
+    const res = await fetch('/api/media/connect', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      markHiggsfieldConnected();
+      showNotice(uallakI18n.t('higgsfield_connected_notice'), 'success');
+      return;
+    }
+  } catch (e) {
+    console.error('higgsfield connect failed', e);
+  }
+  btn.disabled = false;
+  btn.textContent = uallakI18n.t('site_connect');
+  showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
 }
 
 // WordPress has no OAuth redirect - the client pastes an Application Password

@@ -179,11 +179,13 @@ def prepare_for_publishing(client_id: int, file_id: str) -> dict:
 # ─── Generation account (client-paid Higgsfield key) ─────────────────────────
 
 def connect_generation_account(client_id: int, api_key: str) -> dict:
-    """Store the client's Higgsfield Cloud API key. Admin-triggered: the
-    client signs up at higgsfield.ai with their own card, creates a key at
-    cloud.higgsfield.ai/api-keys, and hands it over (see the media skill's
-    client setup runbook). Validated by the first real generation, not here
-    (a validation call would burn the client's credits)."""
+    """Store the client's Higgsfield Cloud API key. Client self-service via
+    the dashboard connection card (POST /api/media/connect, session-gated) -
+    same pattern as the WordPress Application Password card: the client
+    signs up at higgsfield.ai with their own payment method, creates a key
+    at cloud.higgsfield.ai/api-keys, and pastes it in themselves. Validated
+    by the first real generation, not here (a validation call would burn the
+    client's credits)."""
     if not (api_key or "").strip():
         return {"success": False, "errors": ["api_key is required"]}
     from agents.client_agent import upsert_account
@@ -200,9 +202,9 @@ def _generation_key(client_id: int) -> str:
     return (rows[0].get("access_token") or "") if rows else ""
 
 
-_NO_ACCOUNT_ERROR = ("client's Higgsfield account is not connected - the client signs up "
-                     "with their own payment method and we store their API key via "
-                     "POST /api/media/connect-account (see the media skill)")
+_NO_ACCOUNT_ERROR = ("client's Higgsfield account is not connected - the client connects it "
+                     "themselves from the dashboard's connection card (POST /api/media/connect, "
+                     "same self-service pattern as WordPress; see the media skill)")
 
 
 # ─── Generation (images / videos) ─────────────────────────────────────────────
