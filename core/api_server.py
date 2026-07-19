@@ -910,6 +910,10 @@ _DISCONNECT_GROUPS = {
     "meta": ["meta_ads", "meta_page", "meta_instagram"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
+    # HeyGen + ElevenLabs disconnect together (both are the avatar add-on's
+    # credentials; like wordpress/higgsfield, the keys live on the client's
+    # own accounts and are revocable there - deleting our copy is our half)
+    "avatar": ["heygen", "elevenlabs"],
 }
 
 def _disconnect_platform(client_id: int, platform: str) -> dict:
@@ -1834,6 +1838,125 @@ def media_weekly_checkin():
 def media_sync_site_folders(client_id: int):
     from agents.media_agent import sync_website_media_folders
     return {"success": True, "data": {"pages": sync_website_media_folders(client_id)}}
+
+# ─── Avatar agent (distinct paid add-on — HeyGen twins + ElevenLabs voices) ──
+
+class AvatarConnectRequest(BaseModel):
+    heygen_key: str
+    elevenlabs_key: str = ""  # optional - voice cloning is its own choice
+
+@app.post("/api/avatar/connect")
+def avatar_connect(req: AvatarConnectRequest, request: Request):
+    # Session-gated self-service, same pattern as the Higgsfield card: the
+    # client's OWN accounts, their payment methods, their keys
+    client_id = _require_session(request)
+    from agents.avatar_agent import connect_accounts
+    result = connect_accounts(client_id, req.heygen_key, req.elevenlabs_key)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarConsentRequest(BaseModel):
+    scope: str  # likeness | voice
+
+@app.post("/api/avatar/consent")
+def avatar_consent(req: AvatarConsentRequest, request: Request):
+    # The MANDATORY recorded consent step - the client's own explicit
+    # confirmation (checkbox in the dashboard card), logged with statement
+    # version + timestamp. Every creation path re-checks it server-side.
+    client_id = _require_session(request)
+    from agents.avatar_agent import record_consent
+    result = record_consent(client_id, req.scope)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarSourceRequest(BaseModel):
+    client_id: int
+    kind: str = "avatar"  # avatar | voice
+
+@app.post("/api/avatar/request-source", dependencies=_admin_only)
+def avatar_request_source(req: AvatarSourceRequest):
+    from agents.avatar_agent import request_source_kit
+    result = request_source_kit(req.client_id, req.kind)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarCreateRequest(BaseModel):
+    client_id: int
+    avatar_name: str = ""
+
+@app.post("/api/avatar/create", dependencies=_admin_only)
+def avatar_create(req: AvatarCreateRequest):
+    # Consent-gated in the agent; plain `def` - Drive + HeyGen uploads block
+    from agents.avatar_agent import create_avatar
+    result = create_avatar(req.client_id, req.avatar_name)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarVoiceRequest(BaseModel):
+    client_id: int
+
+@app.post("/api/avatar/create-voice", dependencies=_admin_only)
+def avatar_create_voice(req: AvatarVoiceRequest):
+    from agents.avatar_agent import create_voice_clone
+    result = create_voice_clone(req.client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarTierRequest(BaseModel):
+    client_id: int
+    tier_id: str  # basic | advanced | enhanced | custom (PRICING["avatar"])
+
+@app.post("/api/avatar/set-tier", dependencies=_admin_only)
+def avatar_set_tier(req: AvatarTierRequest):
+    from agents.avatar_agent import set_tier
+    result = set_tier(req.client_id, req.tier_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class AvatarVideoRequest(BaseModel):
+    client_id: int
+    script_text: str
+    avatar_id: str = ""
+    heygen_voice_id: str = ""
+
+@app.post("/api/avatar/generate-video", dependencies=_admin_only)
+def avatar_generate_video(req: AvatarVideoRequest):
+    # SLOW (HeyGen render polls up to ~15 min). Tier + minutes + consent
+    # gates enforced in the agent; minutes are the billed unit
+    from agents.avatar_agent import generate_avatar_video
+    result = generate_avatar_video(req.client_id, req.script_text,
+                                   req.avatar_id, req.heygen_voice_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/avatar/usage", dependencies=_admin_only)
+def avatar_usage(client_id: int):
+    from agents.avatar_agent import get_monthly_usage
+    return {"success": True, "data": get_monthly_usage(client_id)}
+
+@app.get("/api/avatar/list", dependencies=_admin_only)
+def avatar_list(client_id: int):
+    # The multi-avatar picker's data source - pass a chosen avatar_id to
+    # /api/avatar/generate-video (default only auto-picks when exactly one)
+    from agents.avatar_agent import list_ready_avatars
+    return {"success": True, "data": {"avatars": list_ready_avatars(client_id)}}
+
+@app.get("/api/avatar/scan", dependencies=_admin_only)
+def avatar_scan():
+    # Daily readiness scan (twin training takes days - clients get notified,
+    # never left wondering)
+    from agents.avatar_agent import run_readiness_scan
+    try:
+        return {"success": True, "data": run_readiness_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/client/media-folder")
 def client_media_folder(request: Request):

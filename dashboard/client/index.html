@@ -736,6 +736,33 @@ body {
 
     <div class="conn-card unlocked">
       <div class="conn-top">
+        <div class="conn-icon" style="background:#0EA5A5;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/><path d="M17 3.5l1 1M20 6l1 .5"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="avatar_card">אווטאר דיגיטלי (תוספת בתשלום)</div>
+          <div class="conn-status" id="avatarStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="avatarBtn" onclick="toggleAvatarForm()" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="avatarForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="avatar_signup_note">שירות בתשלום נפרד מדמי הניהול. נרשמים בחשבונכם ובאמצעי התשלום שלכם ל-HeyGen (ולרצון גם ל-ElevenLabs לשיבוט קול), יוצרים מפתחות API בהגדרות החשבון, ומדביקים כאן — המנויים לכלים משולמים ישירות דרככם.</div>
+        <input class="site-input" id="avatarHeygenKey" dir="ltr" type="password" data-i18n-placeholder="avatar_heygen_ph" placeholder="HeyGen API Key">
+        <input class="site-input" id="avatarElevenKey" dir="ltr" type="password" data-i18n-placeholder="avatar_eleven_ph" placeholder="ElevenLabs API Key (אופציונלי)">
+        <label style="display:flex; gap:8px; align-items:flex-start; font-size:11.5px; color:var(--gray); margin:8px 0; cursor:pointer;">
+          <input type="checkbox" id="avatarConsentLikeness" style="margin-top:2px;">
+          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+        </label>
+        <label style="display:flex; gap:8px; align-items:flex-start; font-size:11.5px; color:var(--gray); margin:8px 0; cursor:pointer;">
+          <input type="checkbox" id="avatarConsentVoice" style="margin-top:2px;">
+          <span data-i18n="avatar_consent_voice">(רק אם חיברתם ElevenLabs) אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+        </label>
+        <button class="conn-btn primary" id="avatarSubmitBtn" onclick="connectAvatar()" data-i18n="site_connect">חיבור</button>
+      </div>
+    </div>
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
         <div class="conn-icon" style="background:#464646;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
         </div>
@@ -900,6 +927,17 @@ const DASH_I18N = {
   higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
   higgsfield_connected_notice: { he:'חשבון יצירת המדיה חובר בהצלחה ✓', en:'Media generation account connected ✓', fr:'Compte de génération de médias connecté ✓', ar:'تم ربط حساب إنشاء الوسائط بنجاح ✓', ru:'Аккаунт генерации медиа подключён ✓' },
   higgsfield_connect_failed: { he:'החיבור נכשל — ודאו שהמפתח תקין ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the key is correct and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez la clé et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تأكد من صحة المفتاح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключ и попробуйте снова, или напишите нам в чат' },
+  avatar_card: { he:'אווטאר דיגיטלי (תוספת בתשלום)', en:'Digital avatar (paid add-on)', fr:'Avatar numérique (option payante)', ar:'أفاتار رقمي (إضافة مدفوعة)', ru:'Цифровой аватар (платное дополнение)' },
+  avatar_signup_note: { he:'שירות בתשלום נפרד מדמי הניהול. נרשמים בחשבונכם ובאמצעי התשלום שלכם ל-HeyGen — שימו לב: ליצירת האווטאר נדרש מסלול Team של HeyGen (כ-149$ לחודש), לא המסלול הזול יותר — ולרצון גם ל-ElevenLabs לשיבוט קול. יוצרים מפתחות API בהגדרות החשבון ומדביקים כאן. התשלום לכלים (מנוי + קרדיטים לפי שימוש) מתבצע ישירות דרככם, לא דרכנו.', en:'A service billed separately from your management fee. Sign up for HeyGen with your own account and payment method — note: avatar creation requires HeyGen\'s Team plan (~$149/month), not the cheaper plan — and optionally ElevenLabs for voice cloning. Create API keys in your account settings and paste them here. Payment for the tools (subscription + usage credits) goes directly through you, not through us.', fr:'Service facturé séparément de vos frais de gestion. Inscrivez-vous à HeyGen avec votre propre compte et moyen de paiement — attention : la création d\'avatar nécessite la formule Team de HeyGen (~149 $/mois), pas la formule moins chère — et si vous le souhaitez à ElevenLabs pour le clonage vocal. Créez des clés API dans les paramètres du compte et collez-les ici. Le paiement des outils (abonnement + crédits à l\'usage) passe directement par vous, pas par nous.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. سجّل في HeyGen بحسابك ووسيلة دفعك الخاصة — تنبيه: إنشاء الأفاتار يتطلب باقة Team من HeyGen (نحو 149$ شهريًا) وليس الباقة الأرخص — واختياريًا في ElevenLabs لاستنساخ الصوت. أنشئ مفاتيح API في إعدادات الحساب والصقها هنا. الدفع مقابل الأدوات (اشتراك + رصيد حسب الاستخدام) يتم مباشرة من خلالك، لا من خلالنا.', ru:'Услуга оплачивается отдельно от платы за ведение. Зарегистрируйтесь в HeyGen со своим аккаунтом и способом оплаты — внимание: для создания аватара нужен тариф Team от HeyGen (~$149/мес), а не более дешёвый — и по желанию в ElevenLabs для клонирования голоса. Создайте API-ключи в настройках аккаунта и вставьте их сюда. Оплата инструментов (подписка + кредиты по использованию) идёт напрямую через вас, не через нас.' },
+  avatar_heygen_ph: { he:'HeyGen API Key', en:'HeyGen API Key', fr:'Clé API HeyGen', ar:'مفتاح HeyGen API', ru:'API-ключ HeyGen' },
+  avatar_eleven_ph: { he:'ElevenLabs API Key (אופציונלי)', en:'ElevenLabs API Key (optional)', fr:'Clé API ElevenLabs (facultatif)', ar:'مفتاح ElevenLabs API (اختياري)', ru:'API-ключ ElevenLabs (необязательно)' },
+  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a digital avatar of my likeness on my own HeyGen account, and to produce videos for my business with it. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer un avatar numérique à mon image sur mon propre compte HeyGen, et à produire des vidéos pour mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء أفاتار رقمي يمثل شكلي في حساب HeyGen الخاص بي، ولإنتاج فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания цифрового аватара с моей внешностью в моём собственном аккаунте HeyGen и на производство видео для моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
+  avatar_consent_voice: { he:'(רק אם חיברתם ElevenLabs) אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'(Only if connecting ElevenLabs) I explicitly consent to the voice recordings I upload being used to create a digital voice clone on my own ElevenLabs account, for use in videos for my business. I can request that this use stop at any time.', fr:'(Uniquement si vous connectez ElevenLabs) Je consens explicitement à ce que les enregistrements vocaux que je téléverse servent à créer un clone vocal numérique sur mon propre compte ElevenLabs, pour des vidéos de mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'(فقط إذا ربطت ElevenLabs) أوافق صراحةً على استخدام التسجيلات الصوتية التي أرفعها لإنشاء نسخة رقمية من صوتي في حساب ElevenLabs الخاص بي، لاستخدامها في فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'(Только при подключении ElevenLabs) Я явно соглашаюсь на использование загруженных мной аудиозаписей для создания цифрового клона моего голоса в моём собственном аккаунте ElevenLabs для видео моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
+  avatar_fill_heygen: { he:'נא להזין את מפתח ה-HeyGen', en:'Please enter the HeyGen API key', fr:'Veuillez saisir la clé API HeyGen', ar:'يرجى إدخال مفتاح HeyGen', ru:'Пожалуйста, введите ключ HeyGen' },
+  avatar_need_consent: { he:'כדי להמשיך יש לאשר את הסכמת השימוש בדמות — זו דרישה מחייבת', en:'You must confirm the likeness consent to continue — it\'s a mandatory requirement', fr:'Vous devez confirmer le consentement d\'utilisation de votre image — c\'est obligatoire', ar:'يجب تأكيد الموافقة على استخدام صورتك للمتابعة — هذا شرط إلزامي', ru:'Для продолжения необходимо подтвердить согласие на использование образа — это обязательное требование' },
+  avatar_need_voice_consent: { he:'חיברתם ElevenLabs — יש לאשר גם את הסכמת שיבוט הקול', en:'You added an ElevenLabs key — please also confirm the voice-cloning consent', fr:'Vous avez ajouté une clé ElevenLabs — veuillez aussi confirmer le consentement vocal', ar:'أضفت مفتاح ElevenLabs — يرجى تأكيد موافقة استنساخ الصوت أيضًا', ru:'Вы добавили ключ ElevenLabs — подтвердите также согласие на клонирование голоса' },
+  avatar_connected_notice: { he:'חשבונות האווטאר חוברו וההסכמה נרשמה ✓', en:'Avatar accounts connected and consent recorded ✓', fr:'Comptes avatar connectés et consentement enregistré ✓', ar:'تم ربط حسابات الأفاتار وتسجيل الموافقة ✓', ru:'Аккаунты аватара подключены, согласие зафиксировано ✓' },
+  avatar_connect_failed: { he:'החיבור נכשל — ודאו שהמפתחות תקינים ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the keys and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez les clés et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تحقق من المفاتيح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключи и попробуйте снова, или напишите нам в чат' },
   newsletter_card: { he:'דיוור / מיילים', en:'Email marketing', fr:'E-mailing', ar:'البريد التسويقي', ru:'Email-рассылки' },
   whatsapp_card: { he:'וואטסאפ עסקי', en:'WhatsApp Business', fr:'WhatsApp Business', ar:'واتساب للأعمال', ru:'WhatsApp Business' },
   coming_soon_status: { he:'חיבור יתווסף בקרוב', en:'Connection coming soon', fr:'Connexion bientôt disponible', ar:'الربط سيتوفر قريبًا', ru:'Подключение скоро появится' },
@@ -1017,6 +1055,14 @@ const DASH_I18N = {
   act_media_filming_kit_created: { he:'ערכת צילום מוכנה בשבילך — תסריט וטיפים בתיקיית ה-Drive', en:'A filming kit is ready for you — script and tips in your Drive folder', fr:'Un kit de tournage vous attend — script et conseils dans votre Drive', ar:'عدة التصوير جاهزة لك — نص ونصائح في مجلد Drive', ru:'Для вас готов съёмочный набор — сценарий и советы в папке Drive' },
   act_media_plan_proposed: { he:'תוכנית תוכן לשבוע הקרוב מחכה לאישור שלך 🌙', en:'Next week\'s content plan awaits your approval 🌙', fr:'Le plan de contenu de la semaine attend votre validation 🌙', ar:'خطة محتوى الأسبوع القادم بانتظار موافقتك 🌙', ru:'План контента на неделю ждёт вашего одобрения 🌙' },
   act_media_prepared_for_publishing: { he:'פריט מדיה הוכן לפרסום', en:'A media item was prepared for publishing', fr:'Un média a été préparé pour publication', ar:'جُهّز عنصر وسائط للنشر', ru:'Медиафайл подготовлен к публикации' },
+  act_avatar_accounts_connected: { he:'חשבונות האווטאר חוברו בהצלחה', en:'Your avatar accounts were connected', fr:'Vos comptes avatar ont été connectés', ar:'تم ربط حسابات الأفاتار الخاصة بك', ru:'Ваши аккаунты аватара подключены' },
+  act_avatar_consent_recorded: { he:'הסכמתך לשימוש בדמות/בקול נרשמה', en:'Your likeness/voice consent was recorded', fr:'Votre consentement (image/voix) a été enregistré', ar:'سُجلت موافقتك على استخدام الصورة/الصوت', ru:'Ваше согласие на использование образа/голоса зафиксировано' },
+  act_avatar_source_requested: { he:'הוראות צילום לאווטאר מחכות לך ב-Drive', en:'Avatar filming instructions await you on Drive', fr:'Les instructions de tournage pour l\'avatar vous attendent sur Drive', ar:'تعليمات تصوير الأفاتار بانتظارك في Drive', ru:'Инструкции по съёмке для аватара ждут вас на Drive' },
+  act_avatar_creation_submitted: { he:'יצירת האווטאר הדיגיטלי שלך יצאה לדרך', en:'Your digital avatar creation is underway', fr:'La création de votre avatar numérique est lancée', ar:'بدأت عملية إنشاء الأفاتار الرقمي الخاص بك', ru:'Создание вашего цифрового аватара запущено' },
+  act_avatar_ready: { he:'האווטאר הדיגיטלי שלך מוכן! 🎉', en:'Your digital avatar is ready! 🎉', fr:'Votre avatar numérique est prêt ! 🎉', ar:'الأفاتار الرقمي الخاص بك جاهز! 🎉', ru:'Ваш цифровой аватар готов! 🎉' },
+  act_avatar_voice_created: { he:'שיבוט הקול שלך מוכן 🎙', en:'Your voice clone is ready 🎙', fr:'Votre clone vocal est prêt 🎙', ar:'نسخة صوتك الرقمية جاهزة 🎙', ru:'Клон вашего голоса готов 🎙' },
+  act_avatar_video_created: { he:'סרטון אווטאר חדש נוצר — מחכה בתיקיית ה-Drive שלך', en:'A new avatar video was created — waiting in your Drive folder', fr:'Une nouvelle vidéo avatar a été créée — dans votre dossier Drive', ar:'أُنشئ فيديو أفاتار جديد — بانتظارك في مجلد Drive', ru:'Создано новое видео с аватаром — ждёт в вашей папке Drive' },
+  act_avatar_tier_set: { he:'חבילת האווטאר שלך עודכנה', en:'Your avatar tier was updated', fr:'Votre formule avatar a été mise à jour', ar:'حُدّثت باقة الأفاتار الخاصة بك', ru:'Ваш тариф аватара обновлён' },
   act_account_disconnected: { he:'חיבור מערכת נותק לבקשתך', en:'A platform connection was disconnected at your request', fr:'Une connexion a été retirée à votre demande', ar:'فُصل اتصال منصة بناءً على طلبك', ru:'Подключение платформы отключено по вашему запросу' },
   act_subscription_cancelled: { he:'המנוי בוטל — לא יהיו חיובים נוספים', en:'The subscription was cancelled — no further charges', fr:'L\'abonnement a été annulé — plus aucun prélèvement', ar:'أُلغي الاشتراك — لا رسوم إضافية', ru:'Подписка отменена — списаний больше не будет' },
   act_account_closed: { he:'החשבון נסגר לבקשתך', en:'The account was closed at your request', fr:'Le compte a été fermé à votre demande', ar:'أُغلق الحساب بناءً على طلبك', ru:'Аккаунт закрыт по вашему запросу' },
@@ -1186,6 +1232,9 @@ async function loadDashboard() {
     }
     if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
       markHiggsfieldConnected();
+    }
+    if (conns.some(c => c.platform === 'heygen' && c.status === 'active')) {
+      markAvatarConnected();
     }
 
     // Chat persona: apply the client's saved choice, or offer the one-time picker
@@ -1397,6 +1446,66 @@ function markHiggsfieldConnected() {
 function toggleHiggsfieldForm() {
   const form = document.getElementById('higgsfieldForm');
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+function markAvatarConnected() {
+  markPlatformConnected('avatarStatus', 'avatarBtn', 'avatar');
+  document.getElementById('avatarForm').style.display = 'none';
+}
+
+function toggleAvatarForm() {
+  const form = document.getElementById('avatarForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+// Avatar add-on: the client pastes their OWN HeyGen (+optional ElevenLabs)
+// keys. The consent checkboxes are MANDATORY, recorded server-side BEFORE the
+// keys are stored - likeness consent always; voice consent required only when
+// an ElevenLabs key is provided (and its checkbox must then be ticked).
+async function connectAvatar() {
+  const heygen_key = document.getElementById('avatarHeygenKey').value.trim();
+  const elevenlabs_key = document.getElementById('avatarElevenKey').value.trim();
+  const likenessOk = document.getElementById('avatarConsentLikeness').checked;
+  const voiceOk = document.getElementById('avatarConsentVoice').checked;
+  if (!heygen_key) { showNotice(uallakI18n.t('avatar_fill_heygen'), 'warn'); return; }
+  if (!likenessOk) { showNotice(uallakI18n.t('avatar_need_consent'), 'warn'); return; }
+  if (elevenlabs_key && !voiceOk) { showNotice(uallakI18n.t('avatar_need_voice_consent'), 'warn'); return; }
+
+  const btn = document.getElementById('avatarSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('site_connecting');
+  try {
+    const consent = await fetch('/api/avatar/consent', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'likeness' }),
+    });
+    if (!consent.ok) throw new Error('likeness consent failed');
+    if (elevenlabs_key) {
+      const voiceConsent = await fetch('/api/avatar/consent', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'voice' }),
+      });
+      if (!voiceConsent.ok) throw new Error('voice consent failed');
+    }
+    const res = await fetch('/api/avatar/connect', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heygen_key, elevenlabs_key }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      markAvatarConnected();
+      showNotice(uallakI18n.t('avatar_connected_notice'), 'success');
+      return;
+    }
+  } catch (e) {
+    console.error('avatar connect failed', e);
+  }
+  btn.disabled = false;
+  btn.textContent = uallakI18n.t('site_connect');
+  showNotice(uallakI18n.t('avatar_connect_failed'), 'warn');
 }
 
 // Higgsfield has no OAuth redirect - the client pastes their OWN API key

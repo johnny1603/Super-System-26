@@ -114,10 +114,11 @@ uploaded to `scripts/` in Drive and announced in the dashboard chat.
 
 ## Tier 2 extension points (future — do NOT build casually)
 
-- **Avatar agent**: `generate_image/generate_video` accept an
-  `avatar_context` dict that v1 ignores (passed into the prompt-crafting
-  payload). The future avatar agent enriches through it; needs its own
-  handoff + paid add-on pricing.
+- **Avatar agent**: NOW BUILT as `agents/avatar_agent.py` — but on HeyGen +
+  ElevenLabs, NOT Higgsfield (real-person twins vs invented characters; see
+  the avatar skill). The `avatar_context` dict on generate_image/video
+  remains for possible future cross-pollination but the avatar agent does
+  not use Higgsfield at all.
 - **AI podcast**: future format on generate_video + a voice bank. Noted
   direction only.
 

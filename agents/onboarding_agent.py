@@ -50,6 +50,35 @@ PRICING = {
         "level_c": {"tool": "Ahrefs", "monthly_budget_range": "15000+"}
     },
 
+    # Avatar/cinematic video tier (avatar_agent) — a DISTINCT PAID ADD-ON, never
+    # part of standard platform management. Numbers are final (handoff
+    # 2026-07-19): billed/tracked unit is MINUTES per month; video counts are
+    # client-facing estimates only (~30s average). Separate from — and in
+    # addition to — the client's own direct HeyGen/ElevenLabs subscriptions
+    # (their payment method, never ours). NOT yet offered by build_proposal —
+    # sales/support/pricing-display integration is a separate follow-up handoff.
+    "avatar": {
+        "setup_first_avatar": 150,
+        "setup_additional_avatar": 100,
+        "monthly_tiers": [
+            {"id": "basic",    "minutes_per_month": 10, "monthly_ils": 450,  "video_estimate": "~20"},
+            {"id": "advanced", "minutes_per_month": 20, "monthly_ils": 800,  "video_estimate": "~40"},
+            {"id": "enhanced", "minutes_per_month": 40, "monthly_ils": 1550, "video_estimate": "~80"},
+        ],
+        # above 40 minutes/month: custom quote (no fixed tier)
+        # Client-side direct costs (THEIRS, paid straight to the vendors —
+        # must be disclosed in any client-facing copy, honest_note included,
+        # when the follow-up handoff wires this tier into proposals):
+        # HeyGen TEAM plan ~$149/mo (required — the workspace-invite step for
+        # avatar creation needs Team plan, NOT the cheaper ~$24-29 Creator
+        # plan), HeyGen API generation credits pay-as-you-go (~$1-3/min),
+        # optional ElevenLabs plan for voice cloning.
+        "client_direct_costs_note_he": (
+            "בנוסף למחירי uallak: מנוי HeyGen Team (כ-149$ לחודש, נדרש לצורך יצירת "
+            "האווטאר) + קרדיטים ל-API לפי שימוש, ולרצון מנוי ElevenLabs לשיבוט קול — "
+            "כולם משולמים על ידך ישירות לספקים, לא דרכנו."),
+    },
+
     "raffle": {"setup_and_management": 250},
     "min_budget": 1000,
     "benefit_months": 2
@@ -160,7 +189,11 @@ Return JSON only:
     return result.get("questions", [])
 
 def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None):
-    pricing_str = json.dumps(PRICING)
+    # The avatar tier is deliberately EXCLUDED from the proposal prompt — the
+    # sales-chat integration of that add-on is a separate future handoff, and
+    # letting the model see the numbers now would have it offering an
+    # unlaunched tier. Remove this exclusion in that follow-up, nowhere else.
+    pricing_str = json.dumps({k: v for k, v in PRICING.items() if k != "avatar"})
 
     empathy_block = ""
     if empathy_analysis:

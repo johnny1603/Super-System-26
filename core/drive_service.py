@@ -153,6 +153,37 @@ def get_link(file_id: str) -> str:
     return response.json().get("webViewLink", "")
 
 
+def list_files(folder_id: str) -> list:
+    """Non-folder files directly inside a folder — the avatar agent reads the
+    client's uploaded source material this way. Returns
+    [{id, name, mimeType, size}]."""
+    response = httpx.get(
+        DRIVE_FILES_URL,
+        headers=_headers(),
+        params={"q": f"'{folder_id}' in parents and trashed = false "
+                     "and mimeType != 'application/vnd.google-apps.folder'",
+                "fields": "files(id,name,mimeType,size)", "pageSize": 100,
+                "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json().get("files", [])
+
+
+def download_file(file_id: str) -> bytes:
+    """Raw file content (alt=media). Kept simple — source clips are phone
+    videos/photos, well within memory."""
+    response = httpx.get(
+        f"{DRIVE_FILES_URL}/{file_id}",
+        headers=_headers(),
+        params={"alt": "media", "supportsAllDrives": "true"},
+        follow_redirects=True,
+        timeout=300,
+    )
+    response.raise_for_status()
+    return response.content
+
+
 def make_file_public(file_id: str) -> str:
     """Flip ONE file to anyone-with-link reader and return its direct-download
     URL — needed when publishing to Meta (their server fetches media from a
