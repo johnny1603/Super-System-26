@@ -860,6 +860,7 @@ async function startCheckout(name, phone, address, businessName, businessTaxId, 
         package_name: selectedPackage ? selectedPackage.name : '',
         setup_fee_total: selectedPackage ? selectedPackage.setup_fee_total : 0,
         monthly_management_total: selectedPackage ? selectedPackage.monthly_management_total : 0,
+        language: uallakI18n.current(),
       })
     });
     const data = await res.json();

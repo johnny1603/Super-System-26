@@ -108,6 +108,8 @@ class OnboardingRequest(BaseModel):
     answers: dict
     client_email: str = ""
     client_name: str = ""
+    language: str = "he"  # sales-chat page's active uallakI18n language - no client row
+                          # exists yet at proposal time, so this rides along explicitly
 
 @app.post("/api/onboarding")
 def onboarding(req: OnboardingRequest):
@@ -135,7 +137,7 @@ def onboarding(req: OnboardingRequest):
         # שליחת מיילים
         send_admin_alert(req.answers, proposal)
         if req.client_email:
-            send_client_report(req.client_email, req.client_name, proposal)
+            send_client_report(req.client_email, req.client_name, proposal, req.language)
 
         return {"success": True, "data": result}
     except Exception as e:
@@ -201,12 +203,14 @@ class CheckoutRequest(BaseModel):
     package_name: str = ""
     setup_fee_total: int = 0
     monthly_management_total: int = 0
+    language: str = "he"  # the sales-chat page's active uallakI18n language at checkout time
 
 @app.post("/api/checkout")
 async def checkout(req: CheckoutRequest):
     try:
         client = create_client(req.client_name, req.client_email, req.client_phone, req.package_name,
-                                req.client_address, req.business_name, req.business_tax_id)
+                                req.client_address, req.business_name, req.business_tax_id,
+                                req.language)
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
 
@@ -510,7 +514,7 @@ async def login_request_code(req: LoginRequestCodeRequest):
             code = f"{secrets.randbelow(1_000_000):06d}"
             expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
             create_login_code(client["id"], code, expires_at)
-            send_login_code(client["email"], client.get("name", ""), code)
+            send_login_code(client["email"], client.get("name", ""), code, client["id"])
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -525,7 +529,7 @@ MAX_LOGIN_CODE_ATTEMPTS = 5
 
 @app.post("/api/login/verify-code")
 async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
-    invalid = HTTPException(status_code=401, detail="קוד שגוי או שפג תוקפו")
+    invalid = HTTPException(status_code=401, detail={"code": "ERR_INVALID_CODE"})
 
     client = get_client_by_email(req.email.strip())
     if not client or client.get("status") in OFFBOARDED_STATUSES:
@@ -801,11 +805,11 @@ def client_upgrade(req: UpgradeRequest, request: Request):
     client_id = _require_session(request)
     sub = _client_subscription_info(client_id)
     if not sub["subscription_id"]:
-        raise HTTPException(status_code=400, detail="אין מנוי פעיל לשדרוג")
+        raise HTTPException(status_code=400, detail={"code": "ERR_NO_ACTIVE_SUBSCRIPTION"})
 
     tier = next((t for t in get_upgrade_tiers() if t["id"] == req.tier_id), None)
     if not tier or tier["monthly_fee"] <= sub["monthly_fee"]:
-        raise HTTPException(status_code=400, detail="חבילה לא זמינה לשדרוג")
+        raise HTTPException(status_code=400, detail={"code": "ERR_TIER_UNAVAILABLE"})
 
     try:
         # The upgraded plan must live under the same PayPal product as the
@@ -835,7 +839,7 @@ def client_upgrade(req: UpgradeRequest, request: Request):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail="שגיאה בהכנת השדרוג — נסה שוב או פנה אלינו בצ'אט")
+        raise HTTPException(status_code=500, detail={"code": "ERR_UPGRADE_FAILED"})
 
 @app.get("/api/upgrade-success")
 def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = "", tier_id: str = ""):
@@ -968,10 +972,10 @@ def client_disconnect(req: DisconnectRequest, request: Request):
     # Plain `def`: the revoke is a blocking HTTP call to the provider
     client_id = _require_session(request)
     if req.platform not in _DISCONNECT_GROUPS:
-        raise HTTPException(status_code=400, detail="unknown platform")
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PLATFORM"})
     result = _disconnect_platform(client_id, req.platform)
     if not result["removed"]:
-        raise HTTPException(status_code=404, detail="הפלטפורמה הזו לא מחוברת")
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_CONNECTED"})
     log_activity(client_id, "client_agent", "account_disconnected",
                  {"platform": req.platform, "revoked": result["revoked"]}, {})
     return {"success": True, "data": result}
@@ -1221,10 +1225,10 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
             export_name = f"uallak-export-{client_id}.json" if export_json else ""
             if mode == "closure":
                 send_account_closed(client["email"], client.get("name", ""),
-                                    export_name, export_json)
+                                    export_name, export_json, client_id)
             else:
                 send_account_transferred(client["email"], client.get("name", ""),
-                                         export_name, export_json)
+                                         export_name, export_json, client_id)
     except Exception as e:
         print(f"[offboarding] confirmation email failed for client {client_id} (non-fatal): {e}")
 
@@ -1263,7 +1267,7 @@ def client_close_account(req: OffboardRequest, request: Request, response: Respo
     # Plain `def`: PayPal cancel + provider revokes are blocking HTTP calls
     client_id = _require_session(request)
     if req.confirm_phrase.strip().lower() not in CLOSE_CONFIRM_PHRASES:
-        raise HTTPException(status_code=400, detail="אישור הסגירה לא תקין")
+        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_CLOSE_PHRASE"})
     result = _offboard_client(client_id, "closure", req.reason.strip())
     response.delete_cookie("session", path="/")  # closure ends the session too
     return {"success": True, "data": result}
@@ -1274,7 +1278,7 @@ def client_transfer_out(req: OffboardRequest, request: Request, response: Respon
     # rides the confirmation email as an attachment, not the dashboard
     client_id = _require_session(request)
     if req.confirm_phrase.strip().lower() not in TRANSFER_CONFIRM_PHRASES:
-        raise HTTPException(status_code=400, detail="אישור המעבר לא תקין")
+        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_TRANSFER_PHRASE"})
     result = _offboard_client(client_id, "transfer", req.reason.strip())
     response.delete_cookie("session", path="/")
     return {"success": True, "data": result}
@@ -1966,13 +1970,13 @@ def client_media_folder(request: Request):
     shared with their email on first ask). Plain `def`: Drive HTTP calls."""
     client_id = _require_session(request)
     if not drive_service.is_configured() or not os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
-        raise HTTPException(status_code=503, detail="תיקיית המדיה עדיין לא מוגדרת — דברו איתנו בצ'אט")
+        raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_NOT_CONFIGURED"})
     from agents.media_agent import get_client_media_link
     try:
         return {"success": True, "data": {"link": get_client_media_link(client_id)}}
     except Exception as e:
         print(f"[media_folder] failed for client {client_id}: {e}")
-        raise HTTPException(status_code=500, detail="לא הצלחנו לפתוח את התיקייה — נסו שוב")
+        raise HTTPException(status_code=500, detail={"code": "ERR_MEDIA_FOLDER_FAILED"})
 
 # ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
 
@@ -2008,6 +2012,9 @@ class ClientProfileRequest(BaseModel):
                                       # the dashboard (never inferred from their name)
     profile_image: str | None = None  # data:image/... URL, resized in the browser before
                                       # upload; "" removes the picture
+    language: str | None = None       # he|en|fr|ar|ru — kept in sync with uallakI18n's
+                                      # switcher choice; the stored preference outbound
+                                      # emails use (no live message to detect language from)
 
 # ~200KB of base64 ≈ a 150KB image - far more than the browser-side resize
 # produces, just a hard stop against arbitrary-size uploads into the DB
@@ -2027,9 +2034,25 @@ async def client_profile(req: ClientProfileRequest, request: Request):
         if len(req.profile_image) > MAX_PROFILE_IMAGE_CHARS:
             raise HTTPException(status_code=400, detail="profile_image too large")
         changes["profile_image"] = req.profile_image or None
+    if req.language is not None:
+        if req.language not in ("he", "en", "fr", "ar", "ru"):
+            raise HTTPException(status_code=400, detail="language must be he|en|fr|ar|ru")
+        changes["language"] = req.language
     if not changes:
         raise HTTPException(status_code=400, detail="nothing to update")
-    db.table("clients").update(changes).eq("id", client_id).execute()
+    try:
+        db.table("clients").update(changes).eq("id", client_id).execute()
+    except Exception as e:
+        # clients.language may not exist in Supabase yet - retry without it
+        # rather than failing the whole request (e.g. a profile_image update
+        # bundled in the same call must still succeed)
+        if "language" in changes:
+            print(f"[client_profile] update without language (column missing?): {e}")
+            changes.pop("language")
+            if changes:
+                db.table("clients").update(changes).eq("id", client_id).execute()
+        else:
+            raise
     return {"success": True}
 
 @app.get("/api/engagement/weekly", dependencies=_admin_only)

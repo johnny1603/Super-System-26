@@ -56,8 +56,81 @@ description: How multi-language support works in uallak — chat language matchi
   dashboard/profile, and the sales-chat page chrome — BASE_QUESTIONS +
   conditional questions translated via `Q_I18N` (Hebrew stays canonical in
   the question defs; `localizeQuestion()` applies translations).
-- **Remaining:** landing page (marketing copy = copywriting decision).
+- ✅ **v3 (2026-07-21):** landing page (full marketing copy, all sections);
+  terms page (see below — translated WITH an AI-disclosure, not blocked on
+  legal review); stored email-language preference; the server error-code
+  pattern (see both below). All four were the explicit business-decision
+  items flagged in v2 — none remain blocking.
 - **Not planned:** dashboard/admin (Johnny reads Hebrew).
+
+## Terms page — translated with an explicit AI-disclosure (business decision, 2026-07-21)
+
+`dashboard/terms/index.html` is now fully localized (all 15 sections), but
+carries a `.translation-notice` box shown on every NON-Hebrew language
+(hidden on `he`, toggled by `uallakI18n.onChange`) stating: the page was
+AI-translated, the **Hebrew version is binding/authoritative** in case of
+any discrepancy, and the client can contact the team for clarification.
+This was a deliberate call to ship real translations now rather than block
+on formal legal sign-off — if that sign-off later happens, the notice can
+be softened or removed, but don't remove it without that review.
+
+## Stored client language (emails — business decision, 2026-07-21)
+
+Unlike chat (detects language live from the message) and the UI engine
+(reads a switcher choice each page load), outbound emails have no live
+signal to detect from — they need a STORED preference. `clients.language`
+(he/en/fr/ar/ru, default `he`) is:
+- **Captured at checkout**: the sales-chat page sends its active
+  `uallakI18n.current()` in the `/api/checkout` body → `create_client(...,
+  language=...)`.
+- **Kept in sync afterward**: the profile page's language switcher
+  fire-and-forgets a `POST /api/client/profile {language}` on every change
+  (`syncLanguagePreference()`, same one-tap-preference pattern as
+  `owner_gender`) — so a client who switches later doesn't get stuck with
+  their signup-time language for emails.
+- **Used by** `core/email_service.py`'s `_lang_of(client_id, language)` for
+  every CLIENT-facing email (proposal report, payment confirmation, login
+  code, sales-alert celebration, account closed/transferred). Each has its
+  own small string table + `_tr()` (same `{name}`-placeholder convention as
+  the JS engine) — the HTML STRUCTURE stays ONE shared template per
+  function, only the strings swap, so future edits don't need repeating 5x.
+- **NOT used by** `send_admin_alert` or the weekly Google Ads/Meta platform
+  digests — those go to `ADMIN_EMAIL` (Johnny), who reads Hebrew, same rule
+  as the admin dashboard. Don't localize those.
+- **Known gap, coded defensively**: `clients.language` doesn't exist in
+  Supabase yet. `create_client` and `POST /api/client/profile` both try the
+  insert/update WITH `language` first and retry WITHOUT it on failure
+  (never breaking checkout/profile updates) — add a nullable `language text
+  default 'he'` column whenever convenient to make the stored preference
+  actually persist instead of silently no-oping.
+
+## Server error-code pattern (API errors — business decision, 2026-07-21)
+
+Client-facing API failures return `HTTPException(status_code=..., detail=
+{"code": "ERR_SOME_CODE"})` — a structured code, never raw Hebrew prose —
+so the frontend can translate it into the current UI language instead of
+displaying server text verbatim. `uallakI18n.errorText(body, fallbackKey)`
+(in the shared engine) does the lookup: takes a parsed fetch response body,
+lowercases `body.detail.code` (e.g. `ERR_NOT_CONNECTED` → `err_not_connected`)
+and looks for that key in the PAGE's own table; falls back to `fallbackKey`
+when the code is missing/unmapped. Never reads `body.detail` directly in
+page code — that was the actual bug found and fixed (`dashboard/client/
+index.html`'s upgrade-confirm handler and `dashboard/profile/index.html`'s
+offboard/media-folder handlers all used to do `body.detail ||
+t('some_fallback')`, which showed raw Hebrew straight through if the server
+returned it, regardless of the client's chosen language).
+
+Converted endpoints: login verify-code, package upgrade (3 codes),
+disconnect (2 codes), close/transfer confirm-phrase (2 codes), media folder
+(2 codes) — see `core/api_server.py`. `admin_login`'s "סיסמה שגויה" was
+LEFT AS Hebrew prose on purpose (admin-only, Johnny reads Hebrew, same rule
+as the admin dashboard) — don't convert it, that would be over-engineering
+a surface this rule explicitly excludes.
+
+If you add a new client-facing failure path: raise with a `{"code": ...}`
+detail, add the matching `err_<lowercased_code>` key to the calling page's
+own I18N table, and call `uallakI18n.errorText(body, 'some_generic_fallback')`
+in the catch/failure branch — never `body.detail` directly.
 
 ## Critical patterns added in v2 (keep these invariants)
 
@@ -75,16 +148,18 @@ description: How multi-language support works in uallak — chat language matchi
 - Language switch re-renders JS-built areas via `uallakI18n.onChange`
   re-running the load functions; the welcome tour auto-open is guarded by a
   once-per-pageload flag so a switch can't re-trigger it.
-- **Business decisions, not engineering:** terms page (legal text needs real
-  translation sign-off), transactional emails' language (currently Hebrew),
-  server-side Hebrew strings in API error `detail`s.
+- All four former "business decisions, not engineering" items (terms page,
+  transactional email language, server error codes, landing page copy) were
+  resolved 2026-07-21 — see the dedicated sections above.
 
 ## Gotchas
 
-- Server responses (API `detail` errors, notice texts) are still Hebrew —
-  localizing them needs an error-code pattern, not string matching.
 - The sales-chat page's BASE questions are hardcoded Hebrew in its JS — the
   LLM's dynamic questions match the client's language but the scripted parts
   don't, until that page's chrome is localized.
 - `_bare_path_redirect`/mount rules apply to `/assets` like any mount — it's
   registered before the root catch-all in api_server.
+- Any NEW server error path must use the `{"code": "ERR_X"}` detail pattern
+  from day one — retrofitting a raw-Hebrew-string endpoint later is exactly
+  how the three leaks above happened (a page's failure branch reads
+  `body.detail` once, and it quietly bypasses the whole i18n system).

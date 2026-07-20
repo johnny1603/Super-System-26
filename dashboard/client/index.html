@@ -968,6 +968,9 @@ const DASH_I18N = {
   upgrade_go: { he:'שדרגו עכשיו — לאישור ב-PayPal', en:'Upgrade now — approve on PayPal', fr:'Valider maintenant — approbation PayPal', ar:'رقِّ الآن — الموافقة في PayPal', ru:'Улучшить сейчас — подтвердить в PayPal' },
   upgrade_preparing: { he:'רגע, מכינים את השדרוג…', en:'One moment, preparing the upgrade…', fr:'Un instant, préparation…', ar:'لحظة، نجهّز الترقية…', ru:'Секунду, готовим…' },
   upgrade_error_retry: { he:'שגיאה — נסו שוב', en:'Error — try again', fr:'Erreur — réessayez', ar:'خطأ — حاول مجددًا', ru:'Ошибка — попробуйте ещё раз' },
+  err_no_active_subscription: { he:'אין מנוי פעיל לשדרוג', en:'No active subscription to upgrade', fr:'Aucun abonnement actif à mettre à niveau', ar:'لا يوجد اشتراك نشط للترقية', ru:'Нет активной подписки для улучшения' },
+  err_tier_unavailable: { he:'החבילה הזו לא זמינה לשדרוג', en:'This package isn\'t available for upgrade', fr:'Cette formule n\'est pas disponible pour la mise à niveau', ar:'هذه الباقة غير متاحة للترقية', ru:'Этот пакет недоступен для улучшения' },
+  err_upgrade_failed: { he:'שגיאה בהכנת השדרוג — נסו שוב או פנו אלינו בצ\'אט', en:'Error preparing the upgrade — try again or reach us in chat', fr:'Erreur lors de la préparation de la mise à niveau — réessayez ou contactez-nous via le chat', ar:'خطأ في تحضير الترقية — حاول مجددًا أو تواصل معنا عبر الدردشة', ru:'Ошибка при подготовке улучшения — попробуйте снова или напишите нам в чат' },
   upgrade_load_error: { he:'שגיאה בטעינת החבילות — נסו שוב', en:'Error loading packages — try again', fr:'Erreur de chargement des formules — réessayez', ar:'خطأ في تحميل الباقات — حاول مجددًا', ru:'Ошибка загрузки пакетов — попробуйте ещё раз' },
   upgrade_top_tier: { he:'אתם כבר בחבילה הגבוהה ביותר 🎉', en:'You\'re already on the top package 🎉', fr:'Vous êtes déjà à la formule maximale 🎉', ar:'أنت بالفعل على أعلى باقة 🎉', ru:'У вас уже максимальный пакет 🎉' },
   tier_current: { he:'נוכחית', en:'Current', fr:'Actuelle', ar:'الحالية', ru:'Текущий' },
@@ -1353,7 +1356,7 @@ async function confirmUpgrade() {
     if (res.ok && body.approve_url) {
       window.location.href = body.approve_url;
     } else {
-      btn.textContent = (body.detail || uallakI18n.t('upgrade_error_retry'));
+      btn.textContent = uallakI18n.errorText(body, 'upgrade_error_retry');
       btn.disabled = false;
     }
   } catch (e) {

@@ -18,8 +18,13 @@ def _db():
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
 def create_client(name: str, email: str = "", phone: str = "", package: str = "",
-                   address: str = "", business_name: str = "", business_tax_id: str = "") -> dict:
-    result = _db().table("clients").insert({
+                   address: str = "", business_name: str = "", business_tax_id: str = "",
+                   language: str = "he") -> dict:
+    # language: the client's UI language switcher choice at checkout time
+    # (uallakI18n.current(), same 5 codes as the frontend engine) - the
+    # stored preference outbound emails use, since (unlike chat) there's no
+    # live message to detect language from. Defaults to Hebrew.
+    row = {
         "name": name,
         "email": email,
         "phone": phone,
@@ -29,7 +34,17 @@ def create_client(name: str, email: str = "", phone: str = "", package: str = ""
         "business_tax_id": business_tax_id,
         "status": "active",
         "onboarding_completed": False,
-    }).execute()
+    }
+    try:
+        result = _db().table("clients").insert({
+            **row, "language": language if language in ("he", "en", "fr", "ar", "ru") else "he",
+        }).execute()
+    except Exception as e:
+        # clients.language doesn't exist in Supabase yet (nullable text
+        # column, default 'he' - add it whenever convenient) - never let a
+        # missing column break checkout, which is what this function serves
+        print(f"[client_agent] create_client without language (column missing?): {e}")
+        result = _db().table("clients").insert(row).execute()
     return result.data[0] if result.data else {}
 
 

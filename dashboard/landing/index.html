@@ -64,6 +64,13 @@ body {
   transition: all 0.25s;
 }
 .nav-cta:hover { background: var(--accent); color: white; transform: translateY(-2px); }
+.lang-switcher {
+  background: var(--card); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 100px; padding: 8px 14px; font-family: 'Heebo', sans-serif;
+  font-size: 12.5px; cursor: pointer; outline: none;
+}
+.lang-switcher:hover { border-color: var(--accent); }
+@media (max-width: 560px) { .lang-switcher { font-size: 11px; padding: 6px 10px; } }
 
 /* ---------- HERO ---------- */
 .hero {
@@ -495,7 +502,10 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <nav class="nav">
   <div class="nav-logo">u<span>allak</span></div>
-  <button class="nav-cta" onclick="location.href='/login'">התחברות</button>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div id="langRow"></div>
+    <button class="nav-cta" data-i18n="nav_login" onclick="location.href='/login'">התחברות</button>
+  </div>
 </nav>
 
 <section class="hero">
@@ -503,8 +513,8 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
   <div class="orb-wrap" id="orbWrap2"><div class="orb orb2"></div></div>
   <div class="orb-wrap" id="orbWrap3"><div class="orb orb3"></div></div>
   <div class="hero-content">
-    <h1>העסק שלך<br><span class="accent-line">יכול יותר.</span></h1>
-    <p>מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.</p>
+    <h1 data-i18n-html="hero_title">העסק שלך<br><span class="accent-line">יכול יותר.</span></h1>
+    <p data-i18n="hero_sub">מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.</p>
   </div>
   <div class="scroll-hint">
     <div class="scroll-line"></div>
@@ -514,34 +524,34 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <section>
   <div class="section-head reveal">
-    <div class="eyebrow">מוכר לך?</div>
-    <h2>אנחנו מבינים את הקושי שלך</h2>
-    <p>עסקים קטנים ובינוניים נתקלים באותם קירות, שוב ושוב</p>
+    <div class="eyebrow" data-i18n="pain_eyebrow">מוכר לך?</div>
+    <h2 data-i18n="pain_h2">אנחנו מבינים את הקושי שלך</h2>
+    <p data-i18n="pain_sub">עסקים קטנים ובינוניים נתקלים באותם קירות, שוב ושוב</p>
   </div>
   <div class="pain-grid">
     <div class="pain-card reveal">
       <span class="pain-emoji">🌱</span>
-      <h3>עסק שרק התחיל</h3>
-      <p>יש מוצר או שירות טוב, אבל אף אחד לא יודע שהעסק קיים. אין תקציב לטעויות.</p>
-      <span class="pain-tag tag-blue">התחלה</span>
+      <h3 data-i18n="pain_1_title">עסק שרק התחיל</h3>
+      <p data-i18n="pain_1_body">יש מוצר או שירות טוב, אבל אף אחד לא יודע שהעסק קיים. אין תקציב לטעויות.</p>
+      <span class="pain-tag tag-blue" data-i18n="pain_1_tag">התחלה</span>
     </div>
     <div class="pain-card reveal">
       <span class="pain-emoji">📉</span>
-      <h3>עסק שמדשדש</h3>
-      <p>היה טוב, ועכשיו התנועה יורדת. לא תמיד ברור מה השתנה ואיך לתקן.</p>
-      <span class="pain-tag tag-amber">קיים</span>
+      <h3 data-i18n="pain_2_title">עסק שמדשדש</h3>
+      <p data-i18n="pain_2_body">היה טוב, ועכשיו התנועה יורדת. לא תמיד ברור מה השתנה ואיך לתקן.</p>
+      <span class="pain-tag tag-amber" data-i18n="pain_2_tag">קיים</span>
     </div>
     <div class="pain-card reveal">
       <span class="pain-emoji">💸</span>
-      <h3>משלם ולא מקבל</h3>
-      <p>כבר היה ניסיון עם משרד פרסום או פרילנסר. שולם כסף, והתוצאה האמיתית לא הגיעה.</p>
-      <span class="pain-tag tag-red">נכווה בעבר</span>
+      <h3 data-i18n="pain_3_title">משלם ולא מקבל</h3>
+      <p data-i18n="pain_3_body">כבר היה ניסיון עם משרד פרסום או פרילנסר. שולם כסף, והתוצאה האמיתית לא הגיעה.</p>
+      <span class="pain-tag tag-red" data-i18n="pain_3_tag">נכווה בעבר</span>
     </div>
     <div class="pain-card reveal">
       <span class="pain-emoji">📦</span>
-      <h3>מוצר טוב בלי לקוחות</h3>
-      <p>ברור שמה שנמכר כאן שווה — אבל השיווק פשוט לא קורה.</p>
-      <span class="pain-tag tag-green">פוטנציאל</span>
+      <h3 data-i18n="pain_4_title">מוצר טוב בלי לקוחות</h3>
+      <p data-i18n="pain_4_body">ברור שמה שנמכר כאן שווה — אבל השיווק פשוט לא קורה.</p>
+      <span class="pain-tag tag-green" data-i18n="pain_4_tag">פוטנציאל</span>
     </div>
   </div>
 </section>
@@ -551,38 +561,38 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
     <div class="ba-flex">
       <div class="ba-text">
         <div class="section-head">
-          <div class="eyebrow">השינוי</div>
-          <h2>לפני ואחרי uallak</h2>
-          <p>גרור את הקו ותראה את ההבדל</p>
+          <div class="eyebrow" data-i18n="ba_eyebrow">השינוי</div>
+          <h2 data-i18n="ba_h2">לפני ואחרי uallak</h2>
+          <p data-i18n="ba_sub">גרור את הקו ותראה את ההבדל</p>
         </div>
       </div>
       <div class="ba-visual">
         <div class="ba-slider" id="baSlider">
           <div class="ba-panel ba-green">
-            <div class="ba-label">אחרי</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>נוכחות פעילה ועקבית</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>עלות ליד מדודה ומותאמת</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>תגובה ללידים תוך דקות</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>תוכן שמתפרסם כל חודש</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>קמפיינים שמתכווננים לבד</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>נראות דיגיטלית חזקה</div>
-            <div class="ba-row"><span class="ba-icon">✓</span>דוח שקוף כל שבוע</div>
+            <div class="ba-label" data-i18n="ba_after_label">אחרי</div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_1">נוכחות פעילה ועקבית</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_2">עלות ליד מדודה ומותאמת</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_3">תגובה ללידים תוך דקות</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_4">תוכן שמתפרסם כל חודש</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_5">קמפיינים שמתכווננים לבד</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_6">נראות דיגיטלית חזקה</span></div>
+            <div class="ba-row"><span class="ba-icon">✓</span><span data-i18n="ba_after_7">דוח שקוף כל שבוע</span></div>
           </div>
           <div class="ba-panel ba-red">
-            <div class="ba-label">לפני</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>רשתות חברתיות שקטות</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>עלות ליד גבוהה ולא ברורה</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>תגובה ללידים תוך ימים</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>אין תוכן חודשי קבוע</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>קמפיינים שלא מתעדכנים</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>נראות דיגיטלית חלשה</div>
-            <div class="ba-row"><span class="ba-icon">✕</span>אין מעקב או נתונים</div>
+            <div class="ba-label" data-i18n="ba_before_label">לפני</div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_1">רשתות חברתיות שקטות</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_2">עלות ליד גבוהה ולא ברורה</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_3">תגובה ללידים תוך ימים</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_4">אין תוכן חודשי קבוע</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_5">קמפיינים שלא מתעדכנים</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_6">נראות דיגיטלית חלשה</span></div>
+            <div class="ba-row"><span class="ba-icon">✕</span><span data-i18n="ba_before_7">אין מעקב או נתונים</span></div>
           </div>
           <div class="ba-handle" id="baHandle" style="left:30%">
             <div class="ba-grip">⇔</div>
           </div>
         </div>
-        <div class="ba-hint">גרור ימינה כדי לראות מה אפשרי →</div>
+        <div class="ba-hint" data-i18n="ba_hint">גרור ימינה כדי לראות מה אפשרי →</div>
       </div>
     </div>
   </div>
@@ -590,43 +600,43 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <section>
   <div class="section-head reveal">
-    <div class="eyebrow">איך זה עובד</div>
-    <h2>מהרגע שנרשמים ועד שהעסק מתקדם</h2>
+    <div class="eyebrow" data-i18n="how_eyebrow">איך זה עובד</div>
+    <h2 data-i18n="how_h2">מהרגע שנרשמים ועד שהעסק מתקדם</h2>
   </div>
   <div class="steps-wrap">
     <div class="step reveal">
       <div class="step-num">1</div>
       <div class="step-content">
-        <h4>איפיון מעמיק</h4>
-        <p>צ'אט דינמי לחלוטין, שמכיר לעומק את העסק ואת מי שמאחוריו — ובונה הצעה מדויקת עם יעדים ברורים ש-uallak מתחייבת אליהם.</p>
+        <h4 data-i18n="step_1_title">איפיון מעמיק</h4>
+        <p data-i18n="step_1_body">צ'אט דינמי לחלוטין, שמכיר לעומק את העסק ואת מי שמאחוריו — ובונה הצעה מדויקת עם יעדים ברורים ש-uallak מתחייבת אליהם.</p>
       </div>
     </div>
     <div class="step reveal">
       <div class="step-num">2</div>
       <div class="step-content">
-        <h4>בחירת מסלול</h4>
-        <p>בוחרים את המסלול שהכי מתאים לצרכים החשובים ל-3 החודשים הקרובים, והמערכת מציבה יעדים ברורים שהיא אמורה להגיע אליהם עד תום התקופה.</p>
+        <h4 data-i18n="step_2_title">בחירת מסלול</h4>
+        <p data-i18n="step_2_body">בוחרים את המסלול שהכי מתאים לצרכים החשובים ל-3 החודשים הקרובים, והמערכת מציבה יעדים ברורים שהיא אמורה להגיע אליהם עד תום התקופה.</p>
       </div>
     </div>
     <div class="step reveal">
       <div class="step-num">3</div>
       <div class="step-content">
-        <h4>הרשאות ראשוניות</h4>
-        <p>לאחר ההרשמה יושבים עם המערכת בפעם הראשונה, כדי לתת לה את ההרשאות הנדרשות מול המערכות השונות כדי שתוכל לפעול עצמאית.</p>
+        <h4 data-i18n="step_3_title">הרשאות ראשוניות</h4>
+        <p data-i18n="step_3_body">לאחר ההרשמה יושבים עם המערכת בפעם הראשונה, כדי לתת לה את ההרשאות הנדרשות מול המערכות השונות כדי שתוכל לפעול עצמאית.</p>
       </div>
     </div>
     <div class="step reveal">
       <div class="step-num">4</div>
       <div class="step-content">
-        <h4>המערכת פועלת — בשקיפות מלאה</h4>
-        <p>מהרגע הזה המערכת רצה, ואתם רואים הכל — כל פעולה, כל תוצאה — בזמן אמת דרך הדשבורד.</p>
+        <h4 data-i18n="step_4_title">המערכת פועלת — בשקיפות מלאה</h4>
+        <p data-i18n="step_4_body">מהרגע הזה המערכת רצה, ואתם רואים הכל — כל פעולה, כל תוצאה — בזמן אמת דרך הדשבורד.</p>
       </div>
     </div>
     <div class="step reveal">
       <div class="step-num">5</div>
       <div class="step-content">
-        <h4>תקשורת שוטפת</h4>
-        <p>צ'אט קבוע לתקשורת מול הצוות שמקדם את העסק, ותמיכה מהירה בוואטסאפ לכל שאלה שעולה בדרך.</p>
+        <h4 data-i18n="step_5_title">תקשורת שוטפת</h4>
+        <p data-i18n="step_5_body">צ'אט קבוע לתקשורת מול הצוות שמקדם את העסק, ותמיכה מהירה בוואטסאפ לכל שאלה שעולה בדרך.</p>
       </div>
     </div>
   </div>
@@ -634,66 +644,66 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <section>
   <div class="section-head reveal">
-    <div class="eyebrow">מה קורה מאחורי הקלעים</div>
-    <h2>המערכת עובדת בשבילך 24/7</h2>
-    <p>צבא של אוטומציות שרצות ברקע ודואגות לעסק שלך — כמו עובד נוסף שלא ישן ולא לוקח חופש</p>
+    <div class="eyebrow" data-i18n="auto_eyebrow">מה קורה מאחורי הקלעים</div>
+    <h2 data-i18n="auto_h2">המערכת עובדת בשבילך 24/7</h2>
+    <p data-i18n="auto_sub">צבא של אוטומציות שרצות ברקע ודואגות לעסק שלך — כמו עובד נוסף שלא ישן ולא לוקח חופש</p>
   </div>
   <div class="auto-grid">
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#FF4C1F,#FF8A5C)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </div>
-      <h4>תגובה ללידים</h4>
-      <p>וואטסאפ, אינסטגרם, טופס באתר — כל פנייה מקבלת מענה תוך דקות, גם ב-3 בלילה.</p>
+      <h4 data-i18n="auto_1_title">תגובה ללידים</h4>
+      <p data-i18n="auto_1_body">וואטסאפ, אינסטגרם, טופס באתר — כל פנייה מקבלת מענה תוך דקות, גם ב-3 בלילה.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#FFC93C,#FFE08A)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
       </div>
-      <h4>תוכן שמתפרסם לבד</h4>
-      <p>פוסטים, רילסים, סטוריז, כתבות ותוכן לטיקטוק — הכל נכתב, מתוזמן ומתפרסם לבד.</p>
+      <h4 data-i18n="auto_2_title">תוכן שמתפרסם לבד</h4>
+      <p data-i18n="auto_2_body">פוסטים, רילסים, סטוריז, כתבות ותוכן לטיקטוק — הכל נכתב, מתוזמן ומתפרסם לבד.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#00C96E,#5CE0A0)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 3v18h18M18 9l-5 5-4-4-4 4"/></svg>
       </div>
-      <h4>קמפיינים שמתכווננים</h4>
-      <p>בגוגל, מטא וטיקטוק — תקציב, קהלים ומודעות מתעדכנים אוטומטית לפי מה שבאמת עובד.</p>
+      <h4 data-i18n="auto_3_title">קמפיינים שמתכווננים</h4>
+      <p data-i18n="auto_3_body">בגוגל, מטא וטיקטוק — תקציב, קהלים ומודעות מתעדכנים אוטומטית לפי מה שבאמת עובד.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#378ADD,#7FB8F5)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
       </div>
-      <h4>דוח שבועי</h4>
-      <p>לידים, עלויות, המרות והשוואה לשבוע שעבר — סיכום ברור, בלי ז'רגון שאין צורך להבין.</p>
+      <h4 data-i18n="auto_4_title">דוח שבועי</h4>
+      <p data-i18n="auto_4_body">לידים, עלויות, המרות והשוואה לשבוע שעבר — סיכום ברור, בלי ז'רגון שאין צורך להבין.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#D4537E,#F0A0C0)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
-      <h4>התראות בזמן אמת</h4>
-      <p>ליד חם, תקציב שנגמר, ביקורת שדורשת מענה — הידיעה מגיעה מיד, לא בעוד שבוע.</p>
+      <h4 data-i18n="auto_5_title">התראות בזמן אמת</h4>
+      <p data-i18n="auto_5_body">ליד חם, תקציב שנגמר, ביקורת שדורשת מענה — הידיעה מגיעה מיד, לא בעוד שבוע.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#7F77DD,#B0AAF0)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
       </div>
-      <h4>אתר שמתעדכן</h4>
-      <p>עמודים חדשים, תוכן עונתי, קישורים שבורים שמתוקנים — בלי לגעת בקוד בכלל.</p>
+      <h4 data-i18n="auto_6_title">אתר שמתעדכן</h4>
+      <p data-i18n="auto_6_body">עמודים חדשים, תוכן עונתי, קישורים שבורים שמתוקנים — בלי לגעת בקוד בכלל.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#639922,#A0CC66)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 22c6-3 9-7 9-13V5l-9-3-9 3v4c0 6 3 10 9 13z"/></svg>
       </div>
-      <h4>תוכן אורגני ו-SEO</h4>
-      <p>מילות מפתח, בלוג ו-Google Business שבונים נראות אמיתית, בלי לשלם על כל קליק.</p>
+      <h4 data-i18n="auto_7_title">תוכן אורגני ו-SEO</h4>
+      <p data-i18n="auto_7_body">מילות מפתח, בלוג ו-Google Business שבונים נראות אמיתית, בלי לשלם על כל קליק.</p>
     </div>
     <div class="auto-card reveal">
       <div class="auto-icon" style="background:linear-gradient(135deg,#1D9E75,#5DCAA5)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       </div>
-      <h4>אוטומציות בין מערכות</h4>
-      <p>CRM, וואטסאפ, מייל ויומן — כל הכלים מדברים אחד עם השני, בלי עבודה ידנית.</p>
+      <h4 data-i18n="auto_8_title">אוטומציות בין מערכות</h4>
+      <p data-i18n="auto_8_body">CRM, וואטסאפ, מייל ויומן — כל הכלים מדברים אחד עם השני, בלי עבודה ידנית.</p>
     </div>
   </div>
 </section>
@@ -701,46 +711,46 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 <section>
   <div class="fit-wrap reveal">
     <div class="section-head">
-      <div class="eyebrow">למי זה מתאים</div>
-      <h2>עובדים עם כל סוג עסק</h2>
-      <p>המערכת מתאימה את עצמה לתחום שלך</p>
+      <div class="eyebrow" data-i18n="fit_eyebrow">למי זה מתאים</div>
+      <h2 data-i18n="fit_h2">עובדים עם כל סוג עסק</h2>
+      <p data-i18n="fit_sub">המערכת מתאימה את עצמה לתחום שלך</p>
     </div>
     <div class="fit-grid">
       <div class="fit-card fit-1">
         <span class="fit-emoji">👗</span>
-        <h3>חנויות אופנה</h3>
-        <p>קמפיינים ויזואליים שהופכים גלילה לרכישה, וקטלוג שממשיך למכור גם כשישנים.</p>
-        <div class="fit-tags"><span class="fit-tag">קטלוג</span><span class="fit-tag">אינסטגרם</span><span class="fit-tag">מכירות אונליין</span></div>
+        <h3 data-i18n="fit_1_title">חנויות אופנה</h3>
+        <p data-i18n="fit_1_body">קמפיינים ויזואליים שהופכים גלילה לרכישה, וקטלוג שממשיך למכור גם כשישנים.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_1_tag1">קטלוג</span><span class="fit-tag" data-i18n="fit_1_tag2">אינסטגרם</span><span class="fit-tag" data-i18n="fit_1_tag3">מכירות אונליין</span></div>
       </div>
       <div class="fit-card fit-2">
         <span class="fit-emoji">⚖️</span>
-        <h3>עורכי דין</h3>
-        <p>נוכחות שמשדרת רצינות עוד לפני הפגישה הראשונה, וטופס לידים שמסנן פניות רציניות.</p>
-        <div class="fit-tags"><span class="fit-tag">אמינות</span><span class="fit-tag">SEO</span><span class="fit-tag">לידים איכותיים</span></div>
+        <h3 data-i18n="fit_2_title">עורכי דין</h3>
+        <p data-i18n="fit_2_body">נוכחות שמשדרת רצינות עוד לפני הפגישה הראשונה, וטופס לידים שמסנן פניות רציניות.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_2_tag1">אמינות</span><span class="fit-tag" data-i18n="fit_2_tag2">SEO</span><span class="fit-tag" data-i18n="fit_2_tag3">לידים איכותיים</span></div>
       </div>
       <div class="fit-card fit-3">
         <span class="fit-emoji">🍝</span>
-        <h3>מסעדות</h3>
-        <p>תוכן שגורם לרצות להגיע, ומערכת הזמנות ששומרת על שולחנות מלאים כל ערב.</p>
-        <div class="fit-tags"><span class="fit-tag">לוקאלי</span><span class="fit-tag">תוכן</span><span class="fit-tag">Google Business</span></div>
+        <h3 data-i18n="fit_3_title">מסעדות</h3>
+        <p data-i18n="fit_3_body">תוכן שגורם לרצות להגיע, ומערכת הזמנות ששומרת על שולחנות מלאים כל ערב.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_3_tag1">לוקאלי</span><span class="fit-tag" data-i18n="fit_3_tag2">תוכן</span><span class="fit-tag">Google Business</span></div>
       </div>
       <div class="fit-card fit-4">
         <span class="fit-emoji">🛒</span>
-        <h3>מסחר ומכירות</h3>
-        <p>קמפיינים ממוקדי המרה שמדברים בשפת המספרים, לא בשפת הלייקים.</p>
-        <div class="fit-tags"><span class="fit-tag">המרות</span><span class="fit-tag">Google Ads</span><span class="fit-tag">רימרקטינג</span></div>
+        <h3 data-i18n="fit_4_title">מסחר ומכירות</h3>
+        <p data-i18n="fit_4_body">קמפיינים ממוקדי המרה שמדברים בשפת המספרים, לא בשפת הלייקים.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_4_tag1">המרות</span><span class="fit-tag">Google Ads</span><span class="fit-tag" data-i18n="fit_4_tag3">רימרקטינג</span></div>
       </div>
       <div class="fit-card fit-5">
         <span class="fit-emoji">💅</span>
-        <h3>יופי וטיפוח</h3>
-        <p>ויזואליה שממלאת יומן תורים, ותזכורות אוטומטיות שמונעות ביטולים ברגע האחרון.</p>
-        <div class="fit-tags"><span class="fit-tag">ויזואל</span><span class="fit-tag">לידים</span><span class="fit-tag">ניהול תורים</span></div>
+        <h3 data-i18n="fit_5_title">יופי וטיפוח</h3>
+        <p data-i18n="fit_5_body">ויזואליה שממלאת יומן תורים, ותזכורות אוטומטיות שמונעות ביטולים ברגע האחרון.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_5_tag1">ויזואל</span><span class="fit-tag" data-i18n="fit_5_tag2">לידים</span><span class="fit-tag" data-i18n="fit_5_tag3">ניהול תורים</span></div>
       </div>
       <div class="fit-card fit-6">
         <span class="fit-emoji">🛠️</span>
-        <h3>נותני שירותים</h3>
-        <p>מיתוג שהופך מומחיות לעסק שמוצאים ובוחרים, גם בלי המלצה אישית.</p>
-        <div class="fit-tags"><span class="fit-tag">מיתוג</span><span class="fit-tag">אורגני</span><span class="fit-tag">תדמית מקצועית</span></div>
+        <h3 data-i18n="fit_6_title">נותני שירותים</h3>
+        <p data-i18n="fit_6_body">מיתוג שהופך מומחיות לעסק שמוצאים ובוחרים, גם בלי המלצה אישית.</p>
+        <div class="fit-tags"><span class="fit-tag" data-i18n="fit_6_tag1">מיתוג</span><span class="fit-tag" data-i18n="fit_6_tag2">אורגני</span><span class="fit-tag" data-i18n="fit_6_tag3">תדמית מקצועית</span></div>
       </div>
     </div>
   </div>
@@ -748,11 +758,11 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <section>
   <div class="section-head reveal">
-    <div class="eyebrow">מי אנחנו</div>
-    <h2>הבית לעסקים קטנים ובינוניים</h2>
+    <div class="eyebrow" data-i18n="about_eyebrow">מי אנחנו</div>
+    <h2 data-i18n="about_h2">הבית לעסקים קטנים ובינוניים</h2>
   </div>
   <div class="about-wrap reveal">
-    <p class="about-lead">
+    <p class="about-lead" data-i18n-html="about_lead">
       uallak לא נולדה כדי להיות עוד משרד פרסום. היא נולדה מתוך אמונה אחת פשוטה —
       <strong>שלכל עסק, קטן כגדול, מגיע שיווק ומעטפת ברמה של חברה גדולה</strong>, בלי המחירים המנופחים ובלי להרגיש כמו לקוח מספר 47 בתור.
       אנחנו בונים את המערכת הזו כדי להיות בדיוק זה — הבית שבו מבינים את העסק שלך לעומק, דואגים לו כאילו הוא שלנו, ונמצאים לצידך גם בימים הטובים וגם בפחות טובים.
@@ -764,9 +774,9 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
           <svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 2l2.4 7.2H22l-6 4.4 2.4 7.2L12 16.4 5.6 20.8 8 13.6 2 9.2h7.6z"/></svg>
         </span>
         <div>
-          <span class="honesty-badge">✦ הזדמנות</span>
-          <p class="honesty-title">הזמן הכי טוב להצטרף הוא עכשיו</p>
-          <p class="honesty-text">uallak בנויה על הטכנולוגיה העדכנית ביותר שקיימת היום. עסקים שמצטרפים בשלב הזה נהנים מהטבות והזדמנויות שלא בטוח שיחזרו בהמשך.</p>
+          <span class="honesty-badge" data-i18n="honesty_badge">✦ הזדמנות</span>
+          <p class="honesty-title" data-i18n="honesty_title">הזמן הכי טוב להצטרף הוא עכשיו</p>
+          <p class="honesty-text" data-i18n="honesty_text">uallak בנויה על הטכנולוגיה העדכנית ביותר שקיימת היום. עסקים שמצטרפים בשלב הזה נהנים מהטבות והזדמנויות שלא בטוח שיחזרו בהמשך.</p>
         </div>
       </div>
     </div>
@@ -775,22 +785,22 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
         <div class="pillar-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-        <h4>שקיפות מלאה</h4>
-        <p>תמיד ברור מה קורה, למה, ומה זה עושה לעסק.</p>
+        <h4 data-i18n="pillar_1_title">שקיפות מלאה</h4>
+        <p data-i18n="pillar_1_body">תמיד ברור מה קורה, למה, ומה זה עושה לעסק.</p>
       </div>
       <div class="pillar">
         <div class="pillar-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
-        <h4>ליווי אישי</h4>
-        <p>תמיד יש עם מי לדבר, גם כשמשהו לא הולך כמתוכנן.</p>
+        <h4 data-i18n="pillar_2_title">ליווי אישי</h4>
+        <p data-i18n="pillar_2_body">תמיד יש עם מי לדבר, גם כשמשהו לא הולך כמתוכנן.</p>
       </div>
       <div class="pillar">
         <div class="pillar-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF4C1F" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         </div>
-        <h4>טכנולוגיה שעובדת בשבילך</h4>
-        <p>מערכת שרצה ברקע ומביאה תוצאות, לא רק הבטחות.</p>
+        <h4 data-i18n="pillar_3_title">טכנולוגיה שעובדת בשבילך</h4>
+        <p data-i18n="pillar_3_body">מערכת שרצה ברקע ומביאה תוצאות, לא רק הבטחות.</p>
       </div>
     </div>
   </div>
@@ -798,60 +808,60 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
 
 <section style="padding-bottom:40px;">
   <div class="commit-box reveal">
-    <h2>אם לא הגענו ליעד — אין תשלום דמי ניהול. נקודה.</h2>
+    <h2 data-i18n="commit_h2">אם לא הגענו ליעד — אין תשלום דמי ניהול. נקודה.</h2>
     <div class="commit-stats">
-      <div><div class="commit-stat-num">72h</div><div class="commit-stat-label">זמן תגובה ראשוני</div></div>
-      <div><div class="commit-stat-num">24/7</div><div class="commit-stat-label">המערכת פעילה</div></div>
-      <div><div class="commit-stat-num">100%</div><div class="commit-stat-label">שקיפות בדוחות</div></div>
+      <div><div class="commit-stat-num">72h</div><div class="commit-stat-label" data-i18n="commit_stat_1">זמן תגובה ראשוני</div></div>
+      <div><div class="commit-stat-num">24/7</div><div class="commit-stat-label" data-i18n="commit_stat_2">המערכת פעילה</div></div>
+      <div><div class="commit-stat-num">100%</div><div class="commit-stat-label" data-i18n="commit_stat_3">שקיפות בדוחות</div></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="section-head reveal">
-    <div class="eyebrow">שאלות שכדאי לענות עליהן</div>
-    <h2>לפני שמתחילים</h2>
+    <div class="eyebrow" data-i18n="faq_eyebrow">שאלות שכדאי לענות עליהן</div>
+    <h2 data-i18n="faq_h2">לפני שמתחילים</h2>
   </div>
   <div class="faq-wrap">
     <div class="faq-item reveal">
-      <h4>כמה זמן לוקח לראות תוצאות?</h4>
-      <p>איפיון ראשוני עם תכנית עבודה מותאמת מוכן תוך 72 שעות. תוצאות בשטח תלויות בתחום ובתקציב, ונדבר על זה בכנות כבר בשיחה הראשונה.</p>
+      <h4 data-i18n="faq_1_q">כמה זמן לוקח לראות תוצאות?</h4>
+      <p data-i18n="faq_1_a">איפיון ראשוני עם תכנית עבודה מותאמת מוכן תוך 72 שעות. תוצאות בשטח תלויות בתחום ובתקציב, ונדבר על זה בכנות כבר בשיחה הראשונה.</p>
     </div>
     <div class="faq-item reveal">
-      <h4>אני לא מבין כלום בשיווק דיגיטלי — זו בעיה?</h4>
-      <p>ממש לא. זו בדיוק הסיבה שuallak קיימת. המערכת מסבירה הכל בשפה פשוטה, ולא מצפים שתדע מונחים או תבין קמפיינים.</p>
+      <h4 data-i18n="faq_2_q">אני לא מבין כלום בשיווק דיגיטלי — זו בעיה?</h4>
+      <p data-i18n="faq_2_a">ממש לא. זו בדיוק הסיבה שuallak קיימת. המערכת מסבירה הכל בשפה פשוטה, ולא מצפים שתדע מונחים או תבין קמפיינים.</p>
     </div>
     <div class="faq-item reveal">
-      <h4>מה אם זה לא יעבוד לי?</h4>
-      <p>אם לא הגענו ליעד שסיכמנו — אין תשלום דמי ניהול. זו לא סיסמת שיווק, זו התחייבות אמיתית.</p>
+      <h4 data-i18n="faq_3_q">מה אם זה לא יעבוד לי?</h4>
+      <p data-i18n="faq_3_a">אם לא הגענו ליעד שסיכמנו — אין תשלום דמי ניהול. זו לא סיסמת שיווק, זו התחייבות אמיתית.</p>
     </div>
     <div class="faq-item reveal">
-      <h4>נותנים גישה לחשבונות שלי — זה בטוח?</h4>
-      <p>ההרשאות מוגבלות בדיוק למה שנדרש כדי לעבוד, אפשר לבטל אותן בכל רגע, וכל פעולה שקורה נגישה לצפייה בדשבורד — בלי הפתעות.</p>
+      <h4 data-i18n="faq_4_q">נותנים גישה לחשבונות שלי — זה בטוח?</h4>
+      <p data-i18n="faq_4_a">ההרשאות מוגבלות בדיוק למה שנדרש כדי לעבוד, אפשר לבטל אותן בכל רגע, וכל פעולה שקורה נגישה לצפייה בדשבורד — בלי הפתעות.</p>
     </div>
     <div class="faq-item reveal">
-      <h4>יש התחייבות לתקופה ארוכה?</h4>
-      <p>לא. המטרה שתישאר כי זה עובד, לא כי חתמת על משהו שקשה לצאת ממנו.</p>
+      <h4 data-i18n="faq_5_q">יש התחייבות לתקופה ארוכה?</h4>
+      <p data-i18n="faq_5_a">לא. המטרה שתישאר כי זה עובד, לא כי חתמת על משהו שקשה לצאת ממנו.</p>
     </div>
   </div>
 </section>
 
 <section class="final-cta">
-  <h2>אז למה עוד<br><span class="accent-line">מחכה?</span></h2>
+  <h2 data-i18n-html="final_h1">אז למה עוד<br><span class="accent-line">מחכה?</span></h2>
   <div class="scarcity-box reveal">
     <span class="scarcity-dot"></span>
-    <span>הטבה בלעדית לנרשמים מהאתר — <span class="scarcity-highlight">מוגבל ל-20 עסקים בחודש</span></span>
+    <span data-i18n-html="scarcity_text">הטבה בלעדית לנרשמים מהאתר — <span class="scarcity-highlight">מוגבל ל-20 עסקים בחודש</span></span>
   </div>
   <div class="cta-buttons reveal">
-    <button class="btn-primary" onclick="location.href='/chat/'">להתחלת איפיון מקצועי לעסק שלך</button>
+    <button class="btn-primary" data-i18n="cta_primary" onclick="location.href='/chat/'">להתחלת איפיון מקצועי לעסק שלך</button>
     <a class="btn-whatsapp" href="https://wa.me/972504493725" target="_blank">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3zM12 19.5a7.4 7.4 0 0 1-3.8-1l-.3-.2-2.5.9.9-2.4-.2-.3A7.5 7.5 0 1 1 12 19.5zm4.1-5.6c-.2-.1-1.3-.6-1.5-.7s-.4-.1-.5.1-.5.7-.7.8-.3.2-.5.1a6.1 6.1 0 0 1-1.8-1.1 6.7 6.7 0 0 1-1.2-1.5c-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4a.5.5 0 0 0 0-.5c0-.1-.5-1.2-.7-1.7s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.6 10.6 0 0 0 4 3.6c1.4.6 1.9.6 2.6.5a2.2 2.2 0 0 0 1.5-1 1.8 1.8 0 0 0 .1-1c-.1-.2-.2-.2-.4-.3z"/></svg>
-      דבר איתנו בוואטסאפ
+      <span data-i18n="cta_whatsapp">דבר איתנו בוואטסאפ</span>
     </a>
   </div>
 </section>
 
-<footer>© uallak — כל הזכויות שמורות &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">תקנון uallak</a></footer>
+<footer data-i18n-html="footer_text">© uallak — כל הזכויות שמורות &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">תקנון uallak</a></footer>
 
 <a class="wa-float" href="https://wa.me/972504493725" target="_blank" aria-label="WhatsApp">
   <svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3zM12 19.5a7.4 7.4 0 0 1-3.8-1l-.3-.2-2.5.9.9-2.4-.2-.3A7.5 7.5 0 1 1 12 19.5zm4.1-5.6c-.2-.1-1.3-.6-1.5-.7s-.4-.1-.5.1-.5.7-.7.8-.3.2-.5.1a6.1 6.1 0 0 1-1.8-1.1 6.7 6.7 0 0 1-1.2-1.5c-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4a.5.5 0 0 0 0-.5c0-.1-.5-1.2-.7-1.7s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.6 10.6 0 0 0 4 3.6c1.4.6 1.9.6 2.6.5a2.2 2.2 0 0 0 1.5-1 1.8 1.8 0 0 0 .1-1c-.1-.2-.2-.2-.4-.3z"/></svg>
@@ -953,6 +963,167 @@ scrollBtn.addEventListener('click', () => {
 window.addEventListener('scroll', updateScrollFloat);
 updateScrollFloat();
 
+</script>
+
+<script src="/assets/i18n.js"></script>
+<script>
+const I18N = {
+  _page_title: { he:'uallak — העסק שלך יכול יותר', en:'uallak — Your business can do more', fr:'uallak — Votre entreprise peut faire plus', ar:'uallak — عملك يستطيع أكثر', ru:'uallak — Ваш бизнес может больше' },
+  nav_login: { he:'התחברות', en:'Sign in', fr:'Connexion', ar:'تسجيل الدخول', ru:'Вход' },
+  hero_title: { he:'העסק שלך<br><span class="accent-line">יכול יותר.</span>', en:'Your business<br><span class="accent-line">can do more.</span>', fr:'Votre entreprise<br><span class="accent-line">peut faire plus.</span>', ar:'عملك<br><span class="accent-line">يستطيع أكثر.</span>', ru:'Ваш бизнес<br><span class="accent-line">может больше.</span>' },
+  hero_sub: { he:'מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.', en:'An autonomous digital marketing system that runs for you 24/7 — no need to understand marketing, nothing extra to manage.', fr:'Un système de marketing digital autonome qui travaille pour vous 24h/24 — pas besoin de comprendre le marketing, rien de plus à gérer.', ar:'نظام تسويق رقمي مستقل يعمل من أجلك على مدار الساعة — بلا حاجة لفهم التسويق، وبلا أي شيء إضافي لإدارته.', ru:'Автономная система digital-маркетинга, которая работает на вас 24/7 — не нужно разбираться в маркетинге, не нужно ничем управлять.' },
+
+  pain_eyebrow: { he:'מוכר לך?', en:'Sound familiar?', fr:'Ça vous parle ?', ar:'هل يبدو مألوفًا؟', ru:'Знакомо?' },
+  pain_h2: { he:'אנחנו מבינים את הקושי שלך', en:'We understand your struggle', fr:'Nous comprenons votre difficulté', ar:'نحن نتفهم صعوبتك', ru:'Мы понимаем вашу проблему' },
+  pain_sub: { he:'עסקים קטנים ובינוניים נתקלים באותם קירות, שוב ושוב', en:'Small and medium businesses hit the same walls, again and again', fr:'Les PME se heurtent aux mêmes obstacles, encore et encore', ar:'الشركات الصغيرة والمتوسطة تصطدم بنفس العوائق، مرارًا وتكرارًا', ru:'Малый и средний бизнес снова и снова упирается в одни и те же стены' },
+  pain_1_title: { he:'עסק שרק התחיל', en:'A business that just started', fr:'Une entreprise qui démarre', ar:'عمل بدأ للتو', ru:'Бизнес, который только начался' },
+  pain_1_body: { he:'יש מוצר או שירות טוב, אבל אף אחד לא יודע שהעסק קיים. אין תקציב לטעויות.', en:'There\'s a good product or service, but nobody knows the business exists. No budget for mistakes.', fr:'Un bon produit ou service existe, mais personne ne sait que l\'entreprise existe. Aucune marge d\'erreur.', ar:'هناك منتج أو خدمة جيدة، لكن لا أحد يعرف أن العمل موجود. لا مجال للأخطاء.', ru:'Есть хороший продукт или услуга, но никто не знает, что бизнес существует. Нет бюджета на ошибки.' },
+  pain_1_tag: { he:'התחלה', en:'Starting out', fr:'Démarrage', ar:'البداية', ru:'Старт' },
+  pain_2_title: { he:'עסק שמדשדש', en:'A business that\'s stalling', fr:'Une entreprise qui stagne', ar:'عمل يتعثر', ru:'Бизнес, который буксует' },
+  pain_2_body: { he:'היה טוב, ועכשיו התנועה יורדת. לא תמיד ברור מה השתנה ואיך לתקן.', en:'It used to do well, and now traffic is dropping. It\'s not always clear what changed or how to fix it.', fr:'Ça marchait bien, et maintenant le trafic baisse. On ne sait pas toujours ce qui a changé ni comment y remédier.', ar:'كان جيدًا، والآن حركة الزوار تنخفض. ليس واضحًا دائمًا ما الذي تغيّر وكيفية الإصلاح.', ru:'Раньше всё шло хорошо, а теперь трафик падает. Не всегда понятно, что изменилось и как это исправить.' },
+  pain_2_tag: { he:'קיים', en:'Established', fr:'Existante', ar:'قائم', ru:'Действующий' },
+  pain_3_title: { he:'משלם ולא מקבל', en:'Paying and getting nothing', fr:'Payer sans résultat', ar:'يدفع ولا يحصل على شيء', ru:'Платит и не получает' },
+  pain_3_body: { he:'כבר היה ניסיון עם משרד פרסום או פרילנסר. שולם כסף, והתוצאה האמיתית לא הגיעה.', en:'Already tried an agency or a freelancer. Money was paid, and the real results never came.', fr:'Déjà tenté avec une agence ou un freelance. De l\'argent a été payé, et les vrais résultats ne sont jamais arrivés.', ar:'جُرِّب من قبل مع وكالة إعلانات أو مستقل. دُفع المال، ولم تصل النتيجة الحقيقية.', ru:'Уже был опыт с агентством или фрилансером. Деньги заплачены, а реального результата так и не было.' },
+  pain_3_tag: { he:'נכווה בעבר', en:'Burned before', fr:'Déjà échaudé', ar:'تجربة سيئة سابقة', ru:'Обжёгся раньше' },
+  pain_4_title: { he:'מוצר טוב בלי לקוחות', en:'A good product, no customers', fr:'Un bon produit, pas de clients', ar:'منتج جيد بلا عملاء', ru:'Хороший продукт без клиентов' },
+  pain_4_body: { he:'ברור שמה שנמכר כאן שווה — אבל השיווק פשוט לא קורה.', en:'It\'s clear what\'s being sold here has real value — but the marketing just isn\'t happening.', fr:'Il est clair que ce qui est vendu ici a de la valeur — mais le marketing ne se fait tout simplement pas.', ar:'من الواضح أن ما يُباع هنا له قيمة حقيقية — لكن التسويق ببساطة لا يحدث.', ru:'Понятно, что здесь продаётся что-то стоящее — но маркетинга просто нет.' },
+  pain_4_tag: { he:'פוטנציאל', en:'Potential', fr:'Potentiel', ar:'إمكانات', ru:'Потенциал' },
+
+  ba_eyebrow: { he:'השינוי', en:'The shift', fr:'Le changement', ar:'التحوّل', ru:'Перемена' },
+  ba_h2: { he:'לפני ואחרי uallak', en:'Before and after uallak', fr:'Avant et après uallak', ar:'قبل وبعد uallak', ru:'До и после uallak' },
+  ba_sub: { he:'גרור את הקו ותראה את ההבדל', en:'Drag the line to see the difference', fr:'Faites glisser la ligne pour voir la différence', ar:'اسحب الخط لترى الفرق', ru:'Перетащите линию, чтобы увидеть разницу' },
+  ba_after_label: { he:'אחרי', en:'After', fr:'Après', ar:'بعد', ru:'После' },
+  ba_before_label: { he:'לפני', en:'Before', fr:'Avant', ar:'قبل', ru:'До' },
+  ba_after_1: { he:'נוכחות פעילה ועקבית', en:'Active, consistent presence', fr:'Présence active et régulière', ar:'حضور نشط ومستمر', ru:'Активное и стабильное присутствие' },
+  ba_after_2: { he:'עלות ליד מדודה ומותאמת', en:'Measured, optimized cost per lead', fr:'Coût par lead mesuré et optimisé', ar:'تكلفة عميل محتمل مقاسة ومحسّنة', ru:'Измеримая и оптимизированная стоимость лида' },
+  ba_after_3: { he:'תגובה ללידים תוך דקות', en:'Leads answered within minutes', fr:'Réponse aux leads en quelques minutes', ar:'الرد على العملاء المحتملين خلال دقائق', ru:'Ответ лидам за считанные минуты' },
+  ba_after_4: { he:'תוכן שמתפרסם כל חודש', en:'Content published every month', fr:'Du contenu publié chaque mois', ar:'محتوى يُنشر كل شهر', ru:'Контент публикуется каждый месяц' },
+  ba_after_5: { he:'קמפיינים שמתכווננים לבד', en:'Campaigns that self-optimize', fr:'Campagnes qui s\'optimisent seules', ar:'حملات تُحسّن نفسها تلقائيًا', ru:'Кампании, которые сами оптимизируются' },
+  ba_after_6: { he:'נראות דיגיטלית חזקה', en:'Strong digital visibility', fr:'Forte visibilité numérique', ar:'حضور رقمي قوي', ru:'Сильная цифровая видимость' },
+  ba_after_7: { he:'דוח שקוף כל שבוע', en:'A transparent report every week', fr:'Un rapport transparent chaque semaine', ar:'تقرير شفاف كل أسبوع', ru:'Прозрачный отчёт каждую неделю' },
+  ba_before_1: { he:'רשתות חברתיות שקטות', en:'Quiet social media', fr:'Réseaux sociaux silencieux', ar:'حسابات تواصل اجتماعي صامتة', ru:'Тихие соцсети' },
+  ba_before_2: { he:'עלות ליד גבוהה ולא ברורה', en:'High, unclear cost per lead', fr:'Coût par lead élevé et flou', ar:'تكلفة عميل محتمل مرتفعة وغير واضحة', ru:'Высокая и непонятная стоимость лида' },
+  ba_before_3: { he:'תגובה ללידים תוך ימים', en:'Leads answered within days', fr:'Réponse aux leads en plusieurs jours', ar:'الرد على العملاء المحتملين خلال أيام', ru:'Ответ лидам за несколько дней' },
+  ba_before_4: { he:'אין תוכן חודשי קבוע', en:'No regular monthly content', fr:'Pas de contenu mensuel régulier', ar:'لا يوجد محتوى شهري ثابت', ru:'Нет регулярного ежемесячного контента' },
+  ba_before_5: { he:'קמפיינים שלא מתעדכנים', en:'Campaigns that never update', fr:'Campagnes jamais mises à jour', ar:'حملات لا يتم تحديثها', ru:'Кампании без обновлений' },
+  ba_before_6: { he:'נראות דיגיטלית חלשה', en:'Weak digital visibility', fr:'Faible visibilité numérique', ar:'حضور رقمي ضعيف', ru:'Слабая цифровая видимость' },
+  ba_before_7: { he:'אין מעקב או נתונים', en:'No tracking or data', fr:'Aucun suivi ni donnée', ar:'لا متابعة ولا بيانات', ru:'Нет отслеживания и данных' },
+  ba_hint: { he:'גרור ימינה כדי לראות מה אפשרי ←', en:'Drag to see what\'s possible →', fr:'Glissez pour voir ce qui est possible →', ar:'اسحب لترى ما هو ممكن ←', ru:'Перетащите, чтобы увидеть возможное →' },
+
+  how_eyebrow: { he:'איך זה עובד', en:'How it works', fr:'Comment ça marche', ar:'كيف يعمل', ru:'Как это работает' },
+  how_h2: { he:'מהרגע שנרשמים ועד שהעסק מתקדם', en:'From sign-up to real progress', fr:'De l\'inscription à la progression réelle', ar:'من التسجيل إلى تقدّم العمل', ru:'От регистрации до реального роста бизнеса' },
+  step_1_title: { he:'איפיון מעמיק', en:'In-depth discovery', fr:'Diagnostic approfondi', ar:'تحليل معمّق', ru:'Глубокое знакомство' },
+  step_1_body: { he:'צ\'אט דינמי לחלוטין, שמכיר לעומק את העסק ואת מי שמאחוריו — ובונה הצעה מדויקת עם יעדים ברורים ש-uallak מתחייבת אליהם.', en:'A fully dynamic chat that gets to know your business and the person behind it in depth — and builds an exact proposal with clear goals uallak commits to.', fr:'Un chat entièrement dynamique qui apprend à connaître votre entreprise et la personne derrière elle en profondeur — et construit une proposition précise avec des objectifs clairs auxquels uallak s\'engage.', ar:'محادثة ديناميكية بالكامل تتعرّف بعمق على عملك ومن وراءه — وتبني عرضًا دقيقًا بأهداف واضحة تلتزم بها uallak.', ru:'Полностью динамичный чат, который глубоко изучает ваш бизнес и человека за ним — и составляет точное предложение с чёткими целями, за которые uallak берёт на себя ответственность.' },
+  step_2_title: { he:'בחירת מסלול', en:'Choosing a plan', fr:'Choix de la formule', ar:'اختيار الباقة', ru:'Выбор пакета' },
+  step_2_body: { he:'בוחרים את המסלול שהכי מתאים לצרכים החשובים ל-3 החודשים הקרובים, והמערכת מציבה יעדים ברורים שהיא אמורה להגיע אליהם עד תום התקופה.', en:'Choose the plan that best fits what matters most for the next 3 months, and the system sets clear goals it\'s meant to reach by the end of that period.', fr:'Choisissez la formule la plus adaptée à vos besoins pour les 3 prochains mois, et le système fixe des objectifs clairs à atteindre d\'ici la fin de la période.', ar:'اختر الباقة الأنسب لاحتياجاتك الأهم خلال الثلاثة أشهر القادمة، ويضع النظام أهدافًا واضحة يُفترض أن يصل إليها بنهاية الفترة.', ru:'Вы выбираете пакет, который лучше всего подходит для ближайших 3 месяцев, а система ставит чёткие цели, которых должна достичь к концу периода.' },
+  step_3_title: { he:'הרשאות ראשוניות', en:'Initial permissions', fr:'Autorisations initiales', ar:'الأذونات الأولية', ru:'Первичные доступы' },
+  step_3_body: { he:'לאחר ההרשמה יושבים עם המערכת בפעם הראשונה, כדי לתת לה את ההרשאות הנדרשות מול המערכות השונות כדי שתוכל לפעול עצמאית.', en:'After signing up, you sit with the system for the first time to give it the permissions it needs across the different platforms so it can operate on its own.', fr:'Après l\'inscription, vous vous installez une première fois avec le système pour lui accorder les autorisations nécessaires sur les différentes plateformes afin qu\'il puisse fonctionner de façon autonome.', ar:'بعد التسجيل، تجلس مع النظام للمرة الأولى لمنحه الأذونات اللازمة عبر المنصات المختلفة حتى يتمكن من العمل بشكل مستقل.', ru:'После регистрации вы впервые «садитесь» с системой, чтобы дать ей нужные доступы к разным платформам — и она сможет работать самостоятельно.' },
+  step_4_title: { he:'המערכת פועלת — בשקיפות מלאה', en:'The system is running — in full transparency', fr:'Le système fonctionne — en toute transparence', ar:'النظام يعمل — بشفافية كاملة', ru:'Система работает — в полной прозрачности' },
+  step_4_body: { he:'מהרגע הזה המערכת רצה, ואתם רואים הכל — כל פעולה, כל תוצאה — בזמן אמת דרך הדשבורד.', en:'From this moment the system runs, and you see everything — every action, every result — in real time through the dashboard.', fr:'À partir de ce moment, le système fonctionne, et vous voyez tout — chaque action, chaque résultat — en temps réel via le tableau de bord.', ar:'من هذه اللحظة يعمل النظام، وأنت ترى كل شيء — كل إجراء، وكل نتيجة — في الوقت الفعلي عبر لوحة التحكم.', ru:'С этого момента система работает, и вы видите всё — каждое действие, каждый результат — в реальном времени через личный кабинет.' },
+  step_5_title: { he:'תקשורת שוטפת', en:'Ongoing communication', fr:'Communication continue', ar:'تواصل مستمر', ru:'Постоянная связь' },
+  step_5_body: { he:'צ\'אט קבוע לתקשורת מול הצוות שמקדם את העסק, ותמיכה מהירה בוואטסאפ לכל שאלה שעולה בדרך.', en:'An ongoing chat with the team promoting your business, plus fast WhatsApp support for any question along the way.', fr:'Un chat permanent avec l\'équipe qui fait avancer votre entreprise, ainsi qu\'un support WhatsApp rapide pour toute question.', ar:'محادثة دائمة مع الفريق الذي يروّج لعملك، ودعم سريع عبر واتساب لأي سؤال يطرأ في الطريق.', ru:'Постоянный чат с командой, которая продвигает ваш бизнес, и быстрая поддержка в WhatsApp по любым вопросам.' },
+
+  auto_eyebrow: { he:'מה קורה מאחורי הקלעים', en:'What happens behind the scenes', fr:'Ce qui se passe en coulisses', ar:'ماذا يحدث خلف الكواليس', ru:'Что происходит за кулисами' },
+  auto_h2: { he:'המערכת עובדת בשבילך 24/7', en:'The system works for you 24/7', fr:'Le système travaille pour vous 24h/24', ar:'النظام يعمل من أجلك على مدار الساعة', ru:'Система работает на вас 24/7' },
+  auto_sub: { he:'צבא של אוטומציות שרצות ברקע ודואגות לעסק שלך — כמו עובד נוסף שלא ישן ולא לוקח חופש', en:'An army of automations running in the background, looking after your business — like an extra employee who never sleeps or takes a day off.', fr:'Une armée d\'automatisations qui tournent en arrière-plan et prennent soin de votre entreprise — comme un employé de plus qui ne dort jamais et ne prend pas de congés.', ar:'جيش من الأتمتة يعمل في الخلفية ويعتني بعملك — مثل موظف إضافي لا ينام ولا يأخذ إجازة.', ru:'Целая армия автоматизаций работает в фоне и заботится о вашем бизнесе — как ещё один сотрудник, который никогда не спит и не берёт отпуск.' },
+  auto_1_title: { he:'תגובה ללידים', en:'Lead response', fr:'Réponse aux leads', ar:'الرد على العملاء المحتملين', ru:'Ответ на лиды' },
+  auto_1_body: { he:'וואטסאפ, אינסטגרם, טופס באתר — כל פנייה מקבלת מענה תוך דקות, גם ב-3 בלילה.', en:'WhatsApp, Instagram, a website form — every inquiry gets a response within minutes, even at 3am.', fr:'WhatsApp, Instagram, formulaire du site — chaque demande reçoit une réponse en quelques minutes, même à 3h du matin.', ar:'واتساب، إنستغرام، نموذج الموقع — كل استفسار يحصل على رد خلال دقائق، حتى الساعة 3 فجرًا.', ru:'WhatsApp, Instagram, форма на сайте — на каждое обращение отвечают за считанные минуты, даже в 3 часа ночи.' },
+  auto_2_title: { he:'תוכן שמתפרסם לבד', en:'Content that publishes itself', fr:'Du contenu qui se publie seul', ar:'محتوى يُنشر من تلقاء نفسه', ru:'Контент, который публикуется сам' },
+  auto_2_body: { he:'פוסטים, רילסים, סטוריז, כתבות ותוכן לטיקטוק — הכל נכתב, מתוזמן ומתפרסם לבד.', en:'Posts, reels, stories, articles, and TikTok content — all written, scheduled, and published on their own.', fr:'Posts, reels, stories, articles et contenu TikTok — tout est rédigé, planifié et publié automatiquement.', ar:'منشورات، ريلز، ستوريز، مقالات ومحتوى تيك توك — كل ذلك يُكتب ويُجدول ويُنشر تلقائيًا.', ru:'Посты, рилс, сторис, статьи и контент для TikTok — всё пишется, планируется и публикуется само.' },
+  auto_3_title: { he:'קמפיינים שמתכווננים', en:'Self-adjusting campaigns', fr:'Des campagnes qui s\'ajustent', ar:'حملات تُضبط تلقائيًا', ru:'Кампании, которые сами настраиваются' },
+  auto_3_body: { he:'בגוגל, מטא וטיקטוק — תקציב, קהלים ומודעות מתעדכנים אוטומטית לפי מה שבאמת עובד.', en:'On Google, Meta, and TikTok — budget, audiences, and ads update automatically based on what actually works.', fr:'Sur Google, Meta et TikTok — budget, audiences et annonces s\'ajustent automatiquement selon ce qui fonctionne vraiment.', ar:'على جوجل وميتا وتيك توك — الميزانية والجماهير والإعلانات تتحدث تلقائيًا وفق ما ينجح فعليًا.', ru:'В Google, Meta и TikTok — бюджет, аудитории и объявления обновляются автоматически по тому, что реально работает.' },
+  auto_4_title: { he:'דוח שבועי', en:'Weekly report', fr:'Rapport hebdomadaire', ar:'تقرير أسبوعي', ru:'Еженедельный отчёт' },
+  auto_4_body: { he:'לידים, עלויות, המרות והשוואה לשבוע שעבר — סיכום ברור, בלי ז\'רגון שאין צורך להבין.', en:'Leads, costs, conversions, and a comparison to last week — a clear summary, no jargon you need to understand.', fr:'Leads, coûts, conversions et comparaison à la semaine précédente — un résumé clair, sans jargon à déchiffrer.', ar:'العملاء المحتملون، التكاليف، التحويلات ومقارنة بالأسبوع الماضي — ملخص واضح، بلا مصطلحات معقدة.', ru:'Лиды, расходы, конверсии и сравнение с прошлой неделей — понятная сводка без лишнего жаргона.' },
+  auto_5_title: { he:'התראות בזמן אמת', en:'Real-time alerts', fr:'Alertes en temps réel', ar:'تنبيهات فورية', ru:'Уведомления в реальном времени' },
+  auto_5_body: { he:'ליד חם, תקציב שנגמר, ביקורת שדורשת מענה — הידיעה מגיעה מיד, לא בעוד שבוע.', en:'A hot lead, a budget running out, a review that needs a response — you find out immediately, not a week later.', fr:'Un lead chaud, un budget épuisé, un avis qui nécessite une réponse — vous le savez immédiatement, pas une semaine plus tard.', ar:'عميل محتمل ساخن، ميزانية شارفت على النفاد، تقييم يحتاج ردًا — تصلك المعرفة فورًا، لا بعد أسبوع.', ru:'Горячий лид, закончившийся бюджет, отзыв, требующий ответа — вы узнаёте сразу, а не через неделю.' },
+  auto_6_title: { he:'אתר שמתעדכן', en:'A site that updates itself', fr:'Un site qui se met à jour', ar:'موقع يُحدَّث ذاتيًا', ru:'Сайт, который обновляется сам' },
+  auto_6_body: { he:'עמודים חדשים, תוכן עונתי, קישורים שבורים שמתוקנים — בלי לגעת בקוד בכלל.', en:'New pages, seasonal content, broken links fixed — without touching any code at all.', fr:'Nouvelles pages, contenu saisonnier, liens cassés réparés — sans jamais toucher au code.', ar:'صفحات جديدة، محتوى موسمي، روابط معطوبة يتم إصلاحها — دون لمس أي كود.', ru:'Новые страницы, сезонный контент, исправленные битые ссылки — без единой строчки кода.' },
+  auto_7_title: { he:'תוכן אורגני ו-SEO', en:'Organic content & SEO', fr:'Contenu organique et SEO', ar:'محتوى عضوي وتحسين محركات البحث', ru:'Органический контент и SEO' },
+  auto_7_body: { he:'מילות מפתח, בלוג ו-Google Business שבונים נראות אמיתית, בלי לשלם על כל קליק.', en:'Keywords, a blog, and Google Business that build real visibility, without paying for every click.', fr:'Mots-clés, blog et fiche Google Business qui construisent une vraie visibilité, sans payer chaque clic.', ar:'كلمات مفتاحية ومدونة و Google Business تبني حضورًا حقيقيًا، دون الدفع مقابل كل نقرة.', ru:'Ключевые слова, блог и Google Business, которые создают реальную видимость без оплаты за каждый клик.' },
+  auto_8_title: { he:'אוטומציות בין מערכות', en:'Cross-system automation', fr:'Automatisations entre systèmes', ar:'أتمتة بين الأنظمة', ru:'Автоматизация между системами' },
+  auto_8_body: { he:'CRM, וואטסאפ, מייל ויומן — כל הכלים מדברים אחד עם השני, בלי עבודה ידנית.', en:'CRM, WhatsApp, email, and calendar — every tool talks to the others, with no manual work.', fr:'CRM, WhatsApp, e-mail et calendrier — tous les outils communiquent entre eux, sans travail manuel.', ar:'CRM وواتساب والبريد الإلكتروني والتقويم — كل الأدوات تتحدث مع بعضها، دون عمل يدوي.', ru:'CRM, WhatsApp, почта и календарь — все инструменты общаются между собой без ручной работы.' },
+
+  fit_eyebrow: { he:'למי זה מתאים', en:'Who this is for', fr:'À qui cela s\'adresse', ar:'لمن يناسب هذا', ru:'Кому это подходит' },
+  fit_h2: { he:'עובדים עם כל סוג עסק', en:'We work with every kind of business', fr:'Nous travaillons avec tout type d\'entreprise', ar:'نعمل مع كل أنواع الأعمال', ru:'Мы работаем с любым бизнесом' },
+  fit_sub: { he:'המערכת מתאימה את עצמה לתחום שלך', en:'The system adapts itself to your field', fr:'Le système s\'adapte à votre secteur', ar:'يتكيّف النظام مع مجال عملك', ru:'Система адаптируется под вашу сферу' },
+  fit_1_title: { he:'חנויות אופנה', en:'Fashion stores', fr:'Boutiques de mode', ar:'متاجر الأزياء', ru:'Магазины одежды' },
+  fit_1_body: { he:'קמפיינים ויזואליים שהופכים גלילה לרכישה, וקטלוג שממשיך למכור גם כשישנים.', en:'Visual campaigns that turn scrolling into buying, and a catalog that keeps selling even while you sleep.', fr:'Des campagnes visuelles qui transforment le défilement en achat, et un catalogue qui continue de vendre même pendant votre sommeil.', ar:'حملات بصرية تحوّل التصفّح إلى شراء، وكتالوج يستمر في البيع حتى أثناء نومك.', ru:'Визуальные кампании, превращающие пролистывание в покупку, и каталог, который продолжает продавать, пока вы спите.' },
+  fit_1_tag1: { he:'קטלוג', en:'Catalog', fr:'Catalogue', ar:'كتالوج', ru:'Каталог' },
+  fit_1_tag2: { he:'אינסטגרם', en:'Instagram', fr:'Instagram', ar:'إنستغرام', ru:'Instagram' },
+  fit_1_tag3: { he:'מכירות אונליין', en:'Online sales', fr:'Ventes en ligne', ar:'مبيعات عبر الإنترنت', ru:'Онлайн-продажи' },
+  fit_2_title: { he:'עורכי דין', en:'Lawyers', fr:'Avocats', ar:'المحامون', ru:'Юристы' },
+  fit_2_body: { he:'נוכחות שמשדרת רצינות עוד לפני הפגישה הראשונה, וטופס לידים שמסנן פניות רציניות.', en:'A presence that signals credibility before the first meeting, and a lead form that filters serious inquiries.', fr:'Une présence qui inspire le sérieux avant même le premier rendez-vous, et un formulaire qui filtre les demandes sérieuses.', ar:'حضور يعكس الجدية حتى قبل الاجتماع الأول، ونموذج عملاء محتملين يُصفّي الطلبات الجادة.', ru:'Присутствие, которое внушает доверие ещё до первой встречи, и форма для лидов, отсеивающая серьёзные обращения.' },
+  fit_2_tag1: { he:'אמינות', en:'Credibility', fr:'Crédibilité', ar:'مصداقية', ru:'Доверие' },
+  fit_2_tag2: { he:'SEO', en:'SEO', fr:'SEO', ar:'تحسين محركات البحث', ru:'SEO' },
+  fit_2_tag3: { he:'לידים איכותיים', en:'Quality leads', fr:'Leads qualifiés', ar:'عملاء محتملون جيدون', ru:'Качественные лиды' },
+  fit_3_title: { he:'מסעדות', en:'Restaurants', fr:'Restaurants', ar:'المطاعم', ru:'Рестораны' },
+  fit_3_body: { he:'תוכן שגורם לרצות להגיע, ומערכת הזמנות ששומרת על שולחנות מלאים כל ערב.', en:'Content that makes people want to come in, and a booking system that keeps tables full every night.', fr:'Du contenu qui donne envie de venir, et un système de réservation qui remplit les tables tous les soirs.', ar:'محتوى يجعل الناس يرغبون بالحضور، ونظام حجوزات يحافظ على امتلاء الطاولات كل ليلة.', ru:'Контент, который вызывает желание прийти, и система бронирования, которая держит столики заполненными каждый вечер.' },
+  fit_3_tag1: { he:'לוקאלי', en:'Local', fr:'Local', ar:'محلي', ru:'Локальный охват' },
+  fit_3_tag2: { he:'תוכן', en:'Content', fr:'Contenu', ar:'محتوى', ru:'Контент' },
+  fit_4_title: { he:'מסחר ומכירות', en:'Retail & sales', fr:'Commerce et ventes', ar:'التجارة والمبيعات', ru:'Торговля и продажи' },
+  fit_4_body: { he:'קמפיינים ממוקדי המרה שמדברים בשפת המספרים, לא בשפת הלייקים.', en:'Conversion-focused campaigns that speak the language of numbers, not likes.', fr:'Des campagnes axées sur la conversion qui parlent le langage des chiffres, pas des likes.', ar:'حملات تركّز على التحويل وتتحدث بلغة الأرقام، لا لغة الإعجابات.', ru:'Кампании, ориентированные на конверсию и говорящие на языке цифр, а не лайков.' },
+  fit_4_tag1: { he:'המרות', en:'Conversions', fr:'Conversions', ar:'التحويلات', ru:'Конверсии' },
+  fit_4_tag3: { he:'רימרקטינג', en:'Remarketing', fr:'Remarketing', ar:'إعادة الاستهداف', ru:'Ремаркетинг' },
+  fit_5_title: { he:'יופי וטיפוח', en:'Beauty & wellness', fr:'Beauté et bien-être', ar:'الجمال والعناية', ru:'Красота и уход' },
+  fit_5_body: { he:'ויזואליה שממלאת יומן תורים, ותזכורות אוטומטיות שמונעות ביטולים ברגע האחרון.', en:'Visuals that fill up the appointment book, and automatic reminders that prevent last-minute cancellations.', fr:'Des visuels qui remplissent le carnet de rendez-vous, et des rappels automatiques qui évitent les annulations de dernière minute.', ar:'محتوى بصري يملأ سجل المواعيد، وتذكيرات تلقائية تمنع الإلغاءات في اللحظة الأخيرة.', ru:'Визуал, который заполняет запись на приём, и автоматические напоминания, предотвращающие отмены в последний момент.' },
+  fit_5_tag1: { he:'ויזואל', en:'Visuals', fr:'Visuels', ar:'محتوى بصري', ru:'Визуал' },
+  fit_5_tag2: { he:'לידים', en:'Leads', fr:'Leads', ar:'عملاء محتملون', ru:'Лиды' },
+  fit_5_tag3: { he:'ניהול תורים', en:'Appointment management', fr:'Gestion des rendez-vous', ar:'إدارة المواعيد', ru:'Управление записью' },
+  fit_6_title: { he:'נותני שירותים', en:'Service providers', fr:'Prestataires de services', ar:'مقدّمو الخدمات', ru:'Поставщики услуг' },
+  fit_6_body: { he:'מיתוג שהופך מומחיות לעסק שמוצאים ובוחרים, גם בלי המלצה אישית.', en:'Branding that turns expertise into a business people find and choose, even without a personal referral.', fr:'Un branding qui transforme l\'expertise en une entreprise que l\'on trouve et que l\'on choisit, même sans recommandation personnelle.', ar:'هوية بصرية تحوّل الخبرة إلى عمل يُعثر عليه ويُختار، حتى بلا توصية شخصية.', ru:'Брендинг, превращающий экспертность в бизнес, который находят и выбирают даже без личной рекомендации.' },
+  fit_6_tag1: { he:'מיתוג', en:'Branding', fr:'Branding', ar:'الهوية البصرية', ru:'Брендинг' },
+  fit_6_tag2: { he:'אורגני', en:'Organic', fr:'Organique', ar:'عضوي', ru:'Органика' },
+  fit_6_tag3: { he:'תדמית מקצועית', en:'Professional image', fr:'Image professionnelle', ar:'صورة مهنية', ru:'Профессиональный имидж' },
+
+  about_eyebrow: { he:'מי אנחנו', en:'Who we are', fr:'Qui nous sommes', ar:'من نحن', ru:'Кто мы' },
+  about_h2: { he:'הבית לעסקים קטנים ובינוניים', en:'A home for small and medium businesses', fr:'Une maison pour les PME', ar:'بيت للشركات الصغيرة والمتوسطة', ru:'Дом для малого и среднего бизнеса' },
+  about_lead: {
+    he:'uallak לא נולדה כדי להיות עוד משרד פרסום. היא נולדה מתוך אמונה אחת פשוטה — <strong>שלכל עסק, קטן כגדול, מגיע שיווק ומעטפת ברמה של חברה גדולה</strong>, בלי המחירים המנופחים ובלי להרגיש כמו לקוח מספר 47 בתור. אנחנו בונים את המערכת הזו כדי להיות בדיוק זה — הבית שבו מבינים את העסק שלך לעומק, דואגים לו כאילו הוא שלנו, ונמצאים לצידך גם בימים הטובים וגם בפחות טובים.<br><small style="font-size:12.5px; color:#999;">(כן, גם בלי הבירוקרטיה.)</small>',
+    en:'uallak wasn\'t born to be just another ad agency. It was born from one simple belief — <strong>that every business, small or large, deserves marketing and support on the level of a big company</strong>, without the inflated prices and without feeling like customer #47 in line. We\'re building this system to be exactly that — the home where your business is understood in depth, cared for as if it were our own, and where we\'re by your side on the good days and the harder ones too.<br><small style="font-size:12.5px; color:#999;">(Yes, without the bureaucracy too.)</small>',
+    fr:'uallak n\'est pas née pour être une agence de plus. Elle est née d\'une conviction simple — <strong>chaque entreprise, petite ou grande, mérite un marketing et un accompagnement au niveau d\'une grande société</strong>, sans les prix gonflés et sans se sentir comme le client n°47 dans la file. Nous construisons ce système pour être exactement cela — la maison où votre entreprise est comprise en profondeur, prise en charge comme si elle était la nôtre, et où nous sommes à vos côtés dans les bons jours comme dans les moins bons.<br><small style="font-size:12.5px; color:#999;">(Oui, sans la bureaucratie non plus.)</small>',
+    ar:'لم تُولد uallak لتكون مجرد وكالة إعلانات أخرى. وُلدت من إيمان بسيط واحد — <strong>أن كل عمل، صغيرًا كان أم كبيرًا، يستحق تسويقًا واهتمامًا بمستوى شركة كبرى</strong>، دون أسعار مبالغ فيها ودون الشعور بأنك العميل رقم 47 في الطابور. نحن نبني هذا النظام ليكون بالضبط ذلك — البيت الذي يُفهم فيه عملك بعمق، ويُعتنى به وكأنه ملكنا، ونكون فيه إلى جانبك في الأيام الجيدة والأقل جودة أيضًا.<br><small style="font-size:12.5px; color:#999;">(نعم، وأيضًا دون بيروقراطية.)</small>',
+    ru:'uallak появилась не для того, чтобы быть ещё одним рекламным агентством. Она родилась из одной простой веры — <strong>каждый бизнес, малый или крупный, заслуживает маркетинга и заботы на уровне крупной компании</strong>, без завышенных цен и без ощущения себя клиентом №47 в очереди. Мы строим эту систему именно для этого — дом, где ваш бизнес понимают глубоко, заботятся о нём как о своём, и где мы рядом с вами и в хорошие дни, и в не очень.<br><small style="font-size:12.5px; color:#999;">(Да, и без бюрократии тоже.)</small>' },
+  honesty_badge: { he:'✦ הזדמנות', en:'✦ Opportunity', fr:'✦ Opportunité', ar:'✦ فرصة', ru:'✦ Возможность' },
+  honesty_title: { he:'הזמן הכי טוב להצטרף הוא עכשיו', en:'The best time to join is now', fr:'Le meilleur moment pour nous rejoindre, c\'est maintenant', ar:'أفضل وقت للانضمام هو الآن', ru:'Лучшее время присоединиться — сейчас' },
+  honesty_text: { he:'uallak בנויה על הטכנולוגיה העדכנית ביותר שקיימת היום. עסקים שמצטרפים בשלב הזה נהנים מהטבות והזדמנויות שלא בטוח שיחזרו בהמשך.', en:'uallak is built on the most current technology available today. Businesses that join at this stage enjoy benefits and opportunities that may not come around again.', fr:'uallak est construite sur la technologie la plus récente disponible aujourd\'hui. Les entreprises qui nous rejoignent à ce stade profitent d\'avantages et d\'opportunités qui pourraient ne pas se reproduire.', ar:'بُنيت uallak على أحدث تقنية متاحة اليوم. الأعمال التي تنضم في هذه المرحلة تستفيد من مزايا وفرص قد لا تتكرر لاحقًا.', ru:'uallak построена на самых современных технологиях, доступных сегодня. Бизнесы, которые присоединяются на этом этапе, получают преимущества и возможности, которые могут больше не повториться.' },
+  pillar_1_title: { he:'שקיפות מלאה', en:'Full transparency', fr:'Transparence totale', ar:'شفافية كاملة', ru:'Полная прозрачность' },
+  pillar_1_body: { he:'תמיד ברור מה קורה, למה, ומה זה עושה לעסק.', en:'It\'s always clear what\'s happening, why, and what it\'s doing for the business.', fr:'On sait toujours ce qui se passe, pourquoi, et ce que cela apporte à l\'entreprise.', ar:'من الواضح دائمًا ما الذي يحدث، ولماذا، وماذا يفعل ذلك لعملك.', ru:'Всегда понятно, что происходит, почему и что это даёт бизнесу.' },
+  pillar_2_title: { he:'ליווי אישי', en:'Personal support', fr:'Accompagnement personnalisé', ar:'مرافقة شخصية', ru:'Личное сопровождение' },
+  pillar_2_body: { he:'תמיד יש עם מי לדבר, גם כשמשהו לא הולך כמתוכנן.', en:'There\'s always someone to talk to, even when something doesn\'t go as planned.', fr:'Il y a toujours quelqu\'un à qui parler, même quand les choses ne se passent pas comme prévu.', ar:'يوجد دائمًا من تتحدث معه، حتى عندما لا تسير الأمور كما هو مخطط.', ru:'Всегда есть с кем поговорить, даже когда что-то идёт не по плану.' },
+  pillar_3_title: { he:'טכנולוגיה שעובדת בשבילך', en:'Technology that works for you', fr:'Une technologie qui travaille pour vous', ar:'تقنية تعمل من أجلك', ru:'Технология, которая работает на вас' },
+  pillar_3_body: { he:'מערכת שרצה ברקע ומביאה תוצאות, לא רק הבטחות.', en:'A system that runs in the background and delivers results, not just promises.', fr:'Un système qui tourne en arrière-plan et livre des résultats, pas seulement des promesses.', ar:'نظام يعمل في الخلفية ويحقق نتائج، لا مجرد وعود.', ru:'Система, которая работает в фоне и приносит результаты, а не только обещания.' },
+
+  commit_h2: { he:'אם לא הגענו ליעד — אין תשלום דמי ניהול. נקודה.', en:'If we don\'t hit the target — no management fee. Period.', fr:'Si nous n\'atteignons pas l\'objectif — pas de frais de gestion. Point final.', ar:'إن لم نصل إلى الهدف — لا رسوم إدارة. نقطة.', ru:'Если мы не достигаем цели — без платы за ведение. Точка.' },
+  commit_stat_1: { he:'זמן תגובה ראשוני', en:'Initial response time', fr:'Délai de première réponse', ar:'زمن الاستجابة الأولى', ru:'Время первого ответа' },
+  commit_stat_2: { he:'המערכת פעילה', en:'System active', fr:'Système actif', ar:'النظام نشط', ru:'Система активна' },
+  commit_stat_3: { he:'שקיפות בדוחות', en:'Reporting transparency', fr:'Transparence des rapports', ar:'شفافية التقارير', ru:'Прозрачность отчётов' },
+
+  faq_eyebrow: { he:'שאלות שכדאי לענות עליהן', en:'Questions worth answering', fr:'Des questions à se poser', ar:'أسئلة يستحق الإجابة عنها', ru:'Вопросы, на которые стоит ответить' },
+  faq_h2: { he:'לפני שמתחילים', en:'Before you start', fr:'Avant de commencer', ar:'قبل أن تبدأ', ru:'Перед началом' },
+  faq_1_q: { he:'כמה זמן לוקח לראות תוצאות?', en:'How long until I see results?', fr:'Combien de temps avant de voir des résultats ?', ar:'كم من الوقت يستغرق ظهور النتائج؟', ru:'Сколько времени до появления результатов?' },
+  faq_1_a: { he:'איפיון ראשוני עם תכנית עבודה מותאמת מוכן תוך 72 שעות. תוצאות בשטח תלויות בתחום ובתקציב, ונדבר על זה בכנות כבר בשיחה הראשונה.', en:'An initial discovery with a tailored work plan is ready within 72 hours. Real-world results depend on your field and budget, and we\'ll talk about that honestly from the very first conversation.', fr:'Un premier diagnostic avec un plan de travail sur mesure est prêt en 72 heures. Les résultats concrets dépendent du secteur et du budget, et nous en parlerons honnêtement dès le premier échange.', ar:'يكون التحليل الأولي مع خطة عمل مخصصة جاهزًا خلال 72 ساعة. النتائج الفعلية تعتمد على المجال والميزانية، وسنتحدث عن ذلك بصراحة من المحادثة الأولى.', ru:'Первичный анализ с индивидуальным планом работы готов в течение 72 часов. Реальные результаты зависят от сферы и бюджета — мы честно обсудим это уже на первом разговоре.' },
+  faq_2_q: { he:'אני לא מבין כלום בשיווק דיגיטלי — זו בעיה?', en:'I don\'t understand digital marketing at all — is that a problem?', fr:'Je ne comprends rien au marketing digital — est-ce un problème ?', ar:'لا أفهم أي شيء في التسويق الرقمي — هل هذه مشكلة؟', ru:'Я совсем не разбираюсь в digital-маркетинге — это проблема?' },
+  faq_2_a: { he:'ממש לא. זו בדיוק הסיבה שuallak קיימת. המערכת מסבירה הכל בשפה פשוטה, ולא מצפים שתדע מונחים או תבין קמפיינים.', en:'Not at all. That\'s exactly why uallak exists. The system explains everything in plain language, and you\'re never expected to know the jargon or understand campaigns.', fr:'Pas du tout. C\'est exactement pour cela que uallak existe. Le système explique tout simplement, et on n\'attend pas de vous que vous connaissiez le jargon ou compreniez les campagnes.', ar:'أبدًا. هذا بالضبط سبب وجود uallak. يشرح النظام كل شيء بلغة بسيطة، ولا يُتوقّع منك معرفة المصطلحات أو فهم الحملات.', ru:'Совсем нет. Именно поэтому uallak и существует. Система объясняет всё простым языком, и от вас не ждут знания терминов или понимания кампаний.' },
+  faq_3_q: { he:'מה אם זה לא יעבוד לי?', en:'What if it doesn\'t work for me?', fr:'Et si ça ne marche pas pour moi ?', ar:'ماذا لو لم ينجح الأمر معي؟', ru:'А если у меня не сработает?' },
+  faq_3_a: { he:'אם לא הגענו ליעד שסיכמנו — אין תשלום דמי ניהול. זו לא סיסמת שיווק, זו התחייבות אמיתית.', en:'If we don\'t hit the target we agreed on — there\'s no management fee. This isn\'t a marketing slogan, it\'s a real commitment.', fr:'Si nous n\'atteignons pas l\'objectif convenu — pas de frais de gestion. Ce n\'est pas un slogan marketing, c\'est un vrai engagement.', ar:'إن لم نصل إلى الهدف المتفق عليه — لا رسوم إدارة. هذا ليس شعارًا تسويقيًا، بل التزام حقيقي.', ru:'Если мы не достигаем согласованной цели — платы за ведение нет. Это не маркетинговый слоган, а настоящее обязательство.' },
+  faq_4_q: { he:'נותנים גישה לחשבונות שלי — זה בטוח?', en:'I\'m giving access to my accounts — is it safe?', fr:'Je donne accès à mes comptes — est-ce sûr ?', ar:'أمنح صلاحية الوصول لحساباتي — هل هذا آمن؟', ru:'Я даю доступ к своим аккаунтам — это безопасно?' },
+  faq_4_a: { he:'ההרשאות מוגבלות בדיוק למה שנדרש כדי לעבוד, אפשר לבטל אותן בכל רגע, וכל פעולה שקורה נגישה לצפייה בדשבורד — בלי הפתעות.', en:'Permissions are limited to exactly what\'s needed to work, they can be revoked at any moment, and every action taken is visible in the dashboard — no surprises.', fr:'Les autorisations sont limitées à ce qui est strictement nécessaire pour travailler, elles peuvent être révoquées à tout moment, et chaque action est visible dans le tableau de bord — sans surprise.', ar:'الأذونات مقتصرة تمامًا على ما هو ضروري للعمل، ويمكن إلغاؤها في أي لحظة، وكل إجراء يحدث يمكن الاطلاع عليه في لوحة التحكم — بلا مفاجآت.', ru:'Доступы ограничены ровно тем, что нужно для работы, их можно отозвать в любой момент, а каждое действие видно в личном кабинете — без сюрпризов.' },
+  faq_5_q: { he:'יש התחייבות לתקופה ארוכה?', en:'Is there a long-term commitment?', fr:'Y a-t-il un engagement de longue durée ?', ar:'هل هناك التزام لفترة طويلة؟', ru:'Есть ли долгосрочные обязательства?' },
+  faq_5_a: { he:'לא. המטרה שתישאר כי זה עובד, לא כי חתמת על משהו שקשה לצאת ממנו.', en:'No. The goal is for you to stay because it\'s working, not because you signed something hard to get out of.', fr:'Non. L\'objectif est que vous restiez parce que ça fonctionne, pas parce que vous avez signé quelque chose dont il est difficile de sortir.', ar:'لا. الهدف أن تبقى لأن الأمر ينجح، لا لأنك وقّعت على شيء يصعب الخروج منه.', ru:'Нет. Цель в том, чтобы вы оставались, потому что это работает, а не потому что подписали что-то, из чего трудно выйти.' },
+
+  final_h1: { he:'אז למה עוד<br><span class="accent-line">מחכה?</span>', en:'So what are you<br><span class="accent-line">waiting for?</span>', fr:'Alors qu\'est-ce que<br><span class="accent-line">vous attendez ?</span>', ar:'إذن ماذا<br><span class="accent-line">تنتظر؟</span>', ru:'Так чего же вы<br><span class="accent-line">ждёте?</span>' },
+  scarcity_text: { he:'הטבה בלעדית לנרשמים מהאתר — <span class="scarcity-highlight">מוגבל ל-20 עסקים בחודש</span>', en:'An exclusive perk for website sign-ups — <span class="scarcity-highlight">limited to 20 businesses a month</span>', fr:'Un avantage exclusif pour les inscriptions via le site — <span class="scarcity-highlight">limité à 20 entreprises par mois</span>', ar:'مزايا حصرية للمسجّلين عبر الموقع — <span class="scarcity-highlight">محدودة بـ20 عملًا شهريًا</span>', ru:'Эксклюзивный бонус для тех, кто регистрируется на сайте — <span class="scarcity-highlight">только для 20 компаний в месяц</span>' },
+  cta_primary: { he:'להתחלת איפיון מקצועי לעסק שלך', en:'Start a professional discovery for your business', fr:'Démarrer un diagnostic professionnel pour votre entreprise', ar:'ابدأ تحليلاً احترافيًا لعملك', ru:'Начать профессиональный анализ для вашего бизнеса' },
+  cta_whatsapp: { he:'דבר איתנו בוואטסאפ', en:'Talk to us on WhatsApp', fr:'Discutez avec nous sur WhatsApp', ar:'تحدث معنا عبر واتساب', ru:'Написать нам в WhatsApp' },
+  footer_text: {
+    he:'© uallak — כל הזכויות שמורות &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">תקנון uallak</a>',
+    en:'© uallak — All rights reserved &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">uallak Terms</a>',
+    fr:'© uallak — Tous droits réservés &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">Conditions uallak</a>',
+    ar:'© uallak — جميع الحقوق محفوظة &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">شروط uallak</a>',
+    ru:'© uallak — Все права защищены &nbsp;·&nbsp; <a href="/terms/" style="color:inherit; text-decoration:underline;">Условия uallak</a>' },
+};
+uallakI18n.init(I18N);
+uallakI18n.mountSwitcher(document.getElementById('langRow'));
 </script>
 
 </body>

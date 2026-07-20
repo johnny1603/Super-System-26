@@ -91,6 +91,23 @@
     return select;
   }
 
+  // Server error-code pattern: API failures return detail={"code": "ERR_X"}
+  // instead of raw Hebrew prose (see .claude/skills/i18n/SKILL.md) - this
+  // resolves a fetch response's parsed body to a translated string, looking
+  // for the lowercased code (e.g. "ERR_NOT_CONNECTED" -> key
+  // "err_not_connected") in the PAGE's own table first, and falling back to
+  // a generic key when the code is missing or unmapped. Never surfaces
+  // body.detail itself, so a server string can't leak past the current UI
+  // language by accident.
+  function errorText(body, fallbackKey) {
+    var code = body && body.detail && body.detail.code;
+    if (code) {
+      var key = String(code).toLowerCase();
+      if (table[key]) return t(key);
+    }
+    return t(fallbackKey);
+  }
+
   window.uallakI18n = {
     t: t,
     init: function (pageTable) { table = pageTable || {}; applyDom(); },
@@ -100,6 +117,7 @@
     isRtl: function () { return RTL.indexOf(lang) !== -1; },
     onChange: function (fn) { listeners.push(fn); },
     mountSwitcher: mountSwitcher,
+    errorText: errorText,
     SUPPORTED: SUPPORTED,
   };
 })();

@@ -316,6 +316,8 @@ const I18N = {
   media_folder_btn: { he:'📁 תיקיית המדיה שלי ב-Drive', en:'📁 My media folder on Drive', fr:'📁 Mon dossier médias sur Drive', ar:'📁 مجلد الوسائط الخاص بي في Drive', ru:'📁 Моя папка медиа на Drive' },
   media_folder_opening: { he:'פותח את התיקייה…', en:'Opening the folder…', fr:'Ouverture du dossier…', ar:'جارٍ فتح المجلد…', ru:'Открываем папку…' },
   media_folder_err: { he:'לא הצלחנו לפתוח את התיקייה — נסו שוב או דברו איתנו בצ׳אט', en:'Couldn\'t open the folder — try again or talk to us in the chat', fr:'Impossible d\'ouvrir le dossier — réessayez ou contactez-nous via le chat', ar:'تعذر فتح المجلد — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Не удалось открыть папку — попробуйте ещё раз или напишите нам в чат' },
+  err_media_not_configured: { he:'תיקיית המדיה עדיין לא מוגדרת — דברו איתנו בצ׳אט', en:'The media folder isn\'t set up yet — talk to us in the chat', fr:'Le dossier médias n\'est pas encore configuré — contactez-nous via le chat', ar:'مجلد الوسائط غير مُهيأ بعد — تحدث معنا في الدردشة', ru:'Папка медиа ещё не настроена — напишите нам в чат' },
+  err_media_folder_failed: { he:'לא הצלחנו לפתוח את התיקייה — נסו שוב', en:'Couldn\'t open the folder — try again', fr:'Impossible d\'ouvrir le dossier — réessayez', ar:'تعذر فتح المجلد — حاول مجددًا', ru:'Не удалось открыть папку — попробуйте ещё раз' },
   export_btn: { he:'⬇ ייצוא הנתונים שלי (JSON)', en:'⬇ Export my data (JSON)', fr:'⬇ Exporter mes données (JSON)', ar:'⬇ تصدير بياناتي (JSON)', ru:'⬇ Экспорт моих данных (JSON)' },
   logout_btn: { he:'התנתקות', en:'Log out', fr:'Se déconnecter', ar:'تسجيل الخروج', ru:'Выйти' },
   end_title: { he:'סיום התקשרות', en:'Ending our engagement', fr:'Fin de collaboration', ar:'إنهاء التعامل', ru:'Завершение сотрудничества' },
@@ -341,6 +343,8 @@ const I18N = {
   pic_save_err: { he:'שמירת התמונה נכשלה — נסו שוב', en:'Saving the picture failed — try again', fr:'Échec de l\'enregistrement — réessayez', ar:'فشل حفظ الصورة — حاول مجددًا', ru:'Не удалось сохранить фото — попробуйте ещё раз' },
   offboard_working: { he:'מבצע… מבטלים את המנוי ומנתקים חיבורים', en:'Working… cancelling the subscription and disconnecting', fr:'En cours… annulation de l\'abonnement et déconnexion', ar:'جارٍ التنفيذ… نلغي الاشتراك ونفصل الاتصالات', ru:'Выполняем… отменяем подписку и отключаем подключения' },
   offboard_err: { he:'הפעולה נכשלה — נסו שוב או דברו איתנו בצ׳אט', en:'The action failed — try again or talk to us in the chat', fr:'Échec de l\'action — réessayez ou contactez-nous via le chat', ar:'فشل الإجراء — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Действие не удалось — попробуйте ещё раз или напишите нам в чат' },
+  err_invalid_close_phrase: { he:'משפט האישור לסגירה אינו תקין', en:'The closing confirmation phrase isn\'t correct', fr:'La phrase de confirmation de fermeture n\'est pas correcte', ar:'عبارة تأكيد الإغلاق غير صحيحة', ru:'Фраза подтверждения закрытия неверна' },
+  err_invalid_transfer_phrase: { he:'משפט האישור למעבר אינו תקין', en:'The transfer confirmation phrase isn\'t correct', fr:'La phrase de confirmation de transfert n\'est pas correcte', ar:'عبارة تأكيد النقل غير صحيحة', ru:'Фраза подтверждения перехода неверна' },
   bye_close_title: { he:'החשבון נסגר — תודה על הכל', en:'Account closed — thank you for everything', fr:'Compte fermé — merci pour tout', ar:'أُغلق الحساب — شكرًا على كل شيء', ru:'Аккаунт закрыт — спасибо за всё' },
   bye_transfer_title: { he:'המעבר הושלם — בהצלחה בהמשך!', en:'Transfer complete — good luck ahead!', fr:'Transfert terminé — bonne continuation !', ar:'اكتمل النقل — بالتوفيق!', ru:'Переход завершён — удачи в дальнейшем!' },
   bye_body: { he:'המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך מייל אישור עם עותק מלא של הנתונים שלך כקובץ מצורף', en:'Your PayPal subscription is cancelled — no more charges. We\'ve emailed you a confirmation with a full copy of your data attached', fr:'Votre abonnement PayPal est annulé — plus aucun prélèvement. Un e-mail de confirmation avec une copie complète de vos données vous a été envoyé', ar:'أُلغي اشتراك PayPal ولن تكون هناك رسوم أخرى. أرسلنا لك بريد تأكيد مع نسخة كاملة من بياناتك مرفقة', ru:'Подписка PayPal отменена — списаний больше не будет. Мы отправили письмо-подтверждение с полной копией ваших данных во вложении' },
@@ -543,7 +547,7 @@ async function openMediaFolder() {
       btn.textContent = original;
       return;
     }
-    showNotice(body.detail || uallakI18n.t('media_folder_err'), 'warn');
+    showNotice(uallakI18n.errorText(body, 'media_folder_err'), 'warn');
   } catch (e) {
     console.error('media folder failed', e);
     showNotice(uallakI18n.t('media_folder_err'), 'warn');
@@ -601,7 +605,7 @@ async function offboard(mode) {
         </div></div>`;
       return;
     }
-    showNotice(body.detail || uallakI18n.t('offboard_err'), 'warn');
+    showNotice(uallakI18n.errorText(body, 'offboard_err'), 'warn');
   } catch (e) {
     console.error('offboard failed', e);
     showNotice(uallakI18n.t('offboard_err'), 'warn');
@@ -615,9 +619,20 @@ uallakI18n.init(I18N);
 uallakI18n.mountSwitcher(document.getElementById('langRow'));
 // Rebuild the JS-rendered areas in the new language (server data is cached
 // ~5min by the agents, so the refetch is cheap)
-uallakI18n.onChange(() => { loadProfile(); loadCosts(); });
+uallakI18n.onChange(() => { loadProfile(); loadCosts(); syncLanguagePreference(); });
 loadProfile();
 loadCosts();
+
+// Keep the stored preference (outbound emails: login codes, payment
+// confirmations, weekly reports) in sync with the switcher — same one-tap
+// pattern as owner_gender, fire-and-forget, never blocks the UI switch.
+function syncLanguagePreference() {
+  fetch('/api/client/profile', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ language: uallakI18n.current() }),
+  }).catch(e => console.error('language sync failed', e));
+}
 </script>
 
 </body>

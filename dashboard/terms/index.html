@@ -32,109 +32,213 @@ p, li { font-size: 15px; color: #333; margin-bottom: 10px; }
 ul, ol { padding-right: 22px; margin-bottom: 12px; }
 .section { margin-bottom: 4px; }
 footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0.08); font-size: 13.5px; color: #8A8A8A; }
+.translation-notice {
+  background: rgba(55,138,221,0.07); border: 1px solid rgba(55,138,221,0.25);
+  border-radius: 14px; padding: 16px 20px; font-size: 13.5px; color: #555; margin-bottom: 24px;
+  display: none;
+}
+.translation-notice.visible { display: block; }
+.lang-row { text-align: center; margin-bottom: 20px; }
+.lang-switcher {
+  background: #FFFFFF; color: #1A1A1A; border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 100px; padding: 7px 14px; font-family: 'Heebo', sans-serif;
+  font-size: 12.5px; cursor: pointer; outline: none;
+}
+.lang-switcher:hover { border-color: #FF4C1F; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="top-link" href="/">← חזרה לעמוד הבית</a>
-  <h1>תקנון uallak</h1>
-  <p class="updated">עדכון אחרון: יולי 2026</p>
+  <a class="top-link" href="/" data-i18n="back_home">← חזרה לעמוד הבית</a>
+  <div class="lang-row" id="langRow"></div>
+  <h1 data-i18n="terms_title">תקנון uallak</h1>
+  <p class="updated" data-i18n="updated_label">עדכון אחרון: יולי 2026</p>
 
-  <div class="disclaimer">
+  <div class="translation-notice" id="translationNotice" data-i18n="translation_notice">
+    This page was translated automatically by AI. In case of any discrepancy, the Hebrew version is the binding, authoritative one. If anything here is unclear, please contact our team via chat or WhatsApp for clarification.
+  </div>
+
+  <div class="disclaimer" data-i18n="disclaimer_text">
     מסמך זה הוא תקנון כללי המסדיר את השימוש בשירותי uallak. אנו ממליצים לעבור עליו היטב לפני תחילת השימוש בשירות.
   </div>
 
   <div class="section">
-    <h2><span class="num">1.</span>כללי</h2>
-    <p>ברוכים הבאים ל-uallak ("המערכת", "השירות", "אנחנו"). תקנון זה מסדיר את תנאי השימוש בשירותי השיווק הדיגיטלי האוטונומיים המוצעים על ידי uallak ללקוחותיה ("הלקוח", "אתם").</p>
-    <p>עצם השימוש באתר, בצ'אט האיפיון, או בכל שירות אחר של uallak מהווה הסכמה מלאה לתנאים המפורטים במסמך זה. מי שאינו מסכים לתנאים מתבקש להימנע מהשימוש בשירות.</p>
+    <h2><span class="num">1.</span><span data-i18n="s1_title">כללי</span></h2>
+    <p data-i18n="s1_p1">ברוכים הבאים ל-uallak ("המערכת", "השירות", "אנחנו"). תקנון זה מסדיר את תנאי השימוש בשירותי השיווק הדיגיטלי האוטונומיים המוצעים על ידי uallak ללקוחותיה ("הלקוח", "אתם").</p>
+    <p data-i18n="s1_p2">עצם השימוש באתר, בצ'אט האיפיון, או בכל שירות אחר של uallak מהווה הסכמה מלאה לתנאים המפורטים במסמך זה. מי שאינו מסכים לתנאים מתבקש להימנע מהשימוש בשירות.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">2.</span>הגדרות</h2>
+    <h2><span class="num">2.</span><span data-i18n="s2_title">הגדרות</span></h2>
     <ul>
-      <li><strong>"המערכת" / "uallak"</strong> — מערכת השיווק הדיגיטלי האוטונומית על כל רכיביה, כולל צ'אט האיפיון, הדשבורד, וכל סוכן פועל בתוכה.</li>
-      <li><strong>"הלקוח"</strong> — כל עסק או אדם שנרשם לשירות ומשתמש בו.</li>
-      <li><strong>"השירותים"</strong> — פעולות השיווק הדיגיטלי המבוצעות על ידי uallak עבור הלקוח, לרבות ניהול קמפיינים, יצירת תוכן, ניהול רשתות חברתיות, ופעולות נלוות.</li>
-      <li><strong>"חשבונות מקושרים"</strong> — חשבונות פרסום, רשתות חברתיות, אתר, או כל מערכת אחרת שהלקוח מעניק ל-uallak גישה אליה.</li>
+      <li data-i18n-html="s2_li1"><strong>"המערכת" / "uallak"</strong> — מערכת השיווק הדיגיטלי האוטונומית על כל רכיביה, כולל צ'אט האיפיון, הדשבורד, וכל סוכן פועל בתוכה.</li>
+      <li data-i18n-html="s2_li2"><strong>"הלקוח"</strong> — כל עסק או אדם שנרשם לשירות ומשתמש בו.</li>
+      <li data-i18n-html="s2_li3"><strong>"השירותים"</strong> — פעולות השיווק הדיגיטלי המבוצעות על ידי uallak עבור הלקוח, לרבות ניהול קמפיינים, יצירת תוכן, ניהול רשתות חברתיות, ופעולות נלוות.</li>
+      <li data-i18n-html="s2_li4"><strong>"חשבונות מקושרים"</strong> — חשבונות פרסום, רשתות חברתיות, אתר, או כל מערכת אחרת שהלקוח מעניק ל-uallak גישה אליה.</li>
     </ul>
   </div>
 
   <div class="section">
-    <h2><span class="num">3.</span>תיאור השירות</h2>
-    <p>uallak מספקת שירותי שיווק דיגיטלי אוטומטיים, המבוצעים באמצעות מערכת טכנולוגית הכוללת רכיבי בינה מלאכותית. השירות כולל, בהתאם למסלול שנבחר, ניהול קמפיינים בפלטפורמות פרסום, יצירת תוכן שיווקי, ניהול נוכחות ברשתות חברתיות, ופעולות שיווק נוספות.</p>
-    <p>uallak שומרת לעצמה את הזכות לשנות, להרחיב או לצמצם את מרכיבי השירות בכל עת, ותודיע על שינויים מהותיים ללקוחות הפעילים.</p>
+    <h2><span class="num">3.</span><span data-i18n="s3_title">תיאור השירות</span></h2>
+    <p data-i18n="s3_p1">uallak מספקת שירותי שיווק דיגיטלי אוטומטיים, המבוצעים באמצעות מערכת טכנולוגית הכוללת רכיבי בינה מלאכותית. השירות כולל, בהתאם למסלול שנבחר, ניהול קמפיינים בפלטפורמות פרסום, יצירת תוכן שיווקי, ניהול נוכחות ברשתות חברתיות, ופעולות שיווק נוספות.</p>
+    <p data-i18n="s3_p2">uallak שומרת לעצמה את הזכות לשנות, להרחיב או לצמצם את מרכיבי השירות בכל עת, ותודיע על שינויים מהותיים ללקוחות הפעילים.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">4.</span>הרשמה ותחילת שירות</h2>
-    <p>תהליך ההרשמה כולל שלב איפיון (באמצעות צ'אט דינמי), קבלת הצעת שירות מותאמת אישית, ואישור תשלום. השירות מתחיל להיות פעיל רק לאחר השלמת תהליך התשלום הראשוני. אין אפשרות לפתיחת חשבון ללא תשלום.</p>
+    <h2><span class="num">4.</span><span data-i18n="s4_title">הרשמה ותחילת שירות</span></h2>
+    <p data-i18n="s4_p1">תהליך ההרשמה כולל שלב איפיון (באמצעות צ'אט דינמי), קבלת הצעת שירות מותאמת אישית, ואישור תשלום. השירות מתחיל להיות פעיל רק לאחר השלמת תהליך התשלום הראשוני. אין אפשרות לפתיחת חשבון ללא תשלום.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">5.</span>תשלום ומנוי</h2>
-    <p>התשלום עבור השירות מתבצע באופן חודשי חוזר, באמצעי התשלום שנמסר על ידי הלקוח בעת ההרשמה. במסלולים הכוללים דמי הקמה, אלו ייגבו בנפרד ובנוסף לדמי הניהול החודשיים.</p>
-    <p>מחיר השירות עשוי להשתנות מעת לעת; שינוי במחיר יימסר ללקוח מראש ולא יחול באופן רטרואקטיבי.</p>
+    <h2><span class="num">5.</span><span data-i18n="s5_title">תשלום ומנוי</span></h2>
+    <p data-i18n="s5_p1">התשלום עבור השירות מתבצע באופן חודשי חוזר, באמצעי התשלום שנמסר על ידי הלקוח בעת ההרשמה. במסלולים הכוללים דמי הקמה, אלו ייגבו בנפרד ובנוסף לדמי הניהול החודשיים.</p>
+    <p data-i18n="s5_p2">מחיר השירות עשוי להשתנות מעת לעת; שינוי במחיר יימסר ללקוח מראש ולא יחול באופן רטרואקטיבי.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">6.</span>ביטול מנוי</h2>
-    <p>הלקוח רשאי לבטל את המנוי בכל עת, ללא התחייבות לתקופה מינימלית. הביטול ייכנס לתוקף בתום מחזור החיוב הנוכחי. ביטול אינו מזכה בהחזר עבור התקופה שכבר שולמה, אלא אם נדרש אחרת על פי דין.</p>
-    <p>uallak שומרת לעצמה את הזכות להשעות או להפסיק שירות ללקוח במקרה של הפרת תנאי תקנון זה, אי-תשלום, או שימוש לרעה בשירות.</p>
+    <h2><span class="num">6.</span><span data-i18n="s6_title">ביטול מנוי</span></h2>
+    <p data-i18n="s6_p1">הלקוח רשאי לבטל את המנוי בכל עת, ללא התחייבות לתקופה מינימלית. הביטול ייכנס לתוקף בתום מחזור החיוב הנוכחי. ביטול אינו מזכה בהחזר עבור התקופה שכבר שולמה, אלא אם נדרש אחרת על פי דין.</p>
+    <p data-i18n="s6_p2">uallak שומרת לעצמה את הזכות להשעות או להפסיק שירות ללקוח במקרה של הפרת תנאי תקנון זה, אי-תשלום, או שימוש לרעה בשירות.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">7.</span>הרשאות גישה לחשבונות מקושרים</h2>
-    <p>לצורך מתן השירות, הלקוח מעניק ל-uallak גישה מוגבלת לחשבונות מקושרים (כגון חשבונות פרסום, רשתות חברתיות, ואתר). ההרשאות ניתנות אך ורק לצורך מתן השירות, ואינן משמשות למטרה אחרת.</p>
-    <p>הלקוח רשאי לבטל הרשאות אלה בכל עת. ביטול הרשאות עשוי לפגוע ביכולת uallak לספק את השירות, ו-uallak לא תישא באחריות לתוצאות הנובעות מכך.</p>
+    <h2><span class="num">7.</span><span data-i18n="s7_title">הרשאות גישה לחשבונות מקושרים</span></h2>
+    <p data-i18n="s7_p1">לצורך מתן השירות, הלקוח מעניק ל-uallak גישה מוגבלת לחשבונות מקושרים (כגון חשבונות פרסום, רשתות חברתיות, ואתר). ההרשאות ניתנות אך ורק לצורך מתן השירות, ואינן משמשות למטרה אחרת.</p>
+    <p data-i18n="s7_p2">הלקוח רשאי לבטל הרשאות אלה בכל עת. ביטול הרשאות עשוי לפגוע ביכולת uallak לספק את השירות, ו-uallak לא תישא באחריות לתוצאות הנובעות מכך.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">8.</span>פרטיות ואבטחת מידע</h2>
-    <p>uallak אוספת ומעבדת מידע הנדרש לצורך מתן השירות בלבד, ופועלת בהתאם לחוק הגנת הפרטיות, התשמ"א-1981. המידע נשמר באמצעים מאובטחים, ואינו נמכר או מועבר לצדדים שלישיים למעט ככל שנדרש לצורך מתן השירות עצמו (למשל, פלטפורמות פרסום) או על פי דין.</p>
-    <p>הלקוח רשאי לפנות בכל עת בבקשה לעיין, לתקן או למחוק את המידע האישי שנאסף אודותיו, בכפוף למגבלות הדין.</p>
+    <h2><span class="num">8.</span><span data-i18n="s8_title">פרטיות ואבטחת מידע</span></h2>
+    <p data-i18n="s8_p1">uallak אוספת ומעבדת מידע הנדרש לצורך מתן השירות בלבד, ופועלת בהתאם לחוק הגנת הפרטיות, התשמ"א-1981. המידע נשמר באמצעים מאובטחים, ואינו נמכר או מועבר לצדדים שלישיים למעט ככל שנדרש לצורך מתן השירות עצמו (למשל, פלטפורמות פרסום) או על פי דין.</p>
+    <p data-i18n="s8_p2">הלקוח רשאי לפנות בכל עת בבקשה לעיין, לתקן או למחוק את המידע האישי שנאסף אודותיו, בכפוף למגבלות הדין.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">9.</span>קניין רוחני</h2>
-    <p>כל תוכן שיווקי שנוצר על ידי uallak במסגרת השירות עבור הלקוח (פוסטים, מודעות, תכנים לאתר וכיו"ב) שייך ללקוח לשימוש בעסקו, ככל ששולם עבורו במלואו.</p>
-    <p>הטכנולוגיה, השיטות, הקוד, והמותג של uallak נותרים בבעלותה הבלעדית, ואין בשירות כדי להעניק ללקוח כל זכות בהם.</p>
-    <p>הלקוח מצהיר כי הוא בעל הזכויות בכל חומר שהוא מספק ל-uallak (לוגו, תכנים, תמונות), ומתחייב שאין בשימוש בהם כדי להפר זכויות צד שלישי כלשהו.</p>
+    <h2><span class="num">9.</span><span data-i18n="s9_title">קניין רוחני</span></h2>
+    <p data-i18n="s9_p1">כל תוכן שיווקי שנוצר על ידי uallak במסגרת השירות עבור הלקוח (פוסטים, מודעות, תכנים לאתר וכיו"ב) שייך ללקוח לשימוש בעסקו, ככל ששולם עבורו במלואו.</p>
+    <p data-i18n="s9_p2">הטכנולוגיה, השיטות, הקוד, והמותג של uallak נותרים בבעלותה הבלעדית, ואין בשירות כדי להעניק ללקוח כל זכות בהם.</p>
+    <p data-i18n="s9_p3">הלקוח מצהיר כי הוא בעל הזכויות בכל חומר שהוא מספק ל-uallak (לוגו, תכנים, תמונות), ומתחייב שאין בשימוש בהם כדי להפר זכויות צד שלישי כלשהו.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">10.</span>הגבלת אחריות</h2>
-    <p>uallak פועלת במיטב המאמצים המקצועיים והטכנולוגיים העומדים לרשותה, אך אינה מתחייבת לתוצאות עסקיות ספציפיות (כגון מכירות, הכנסות, או כמות לידים), אלא ככל שהובטח מפורשות בהצעת השירות שאושרה על ידי הלקוח.</p>
-    <p>uallak אינה אחראית לשינויי מדיניות, תקלות, או שינויים בפלטפורמות צד שלישי (כגון גוגל, מטא, טיקטוק) המשפיעים על השירות, ואינה יכולה להבטיח את זמינותן הרציפה.</p>
-    <p>אחריותה הכוללת של uallak, ככל שתקום, לא תעלה על סך התשלומים ששולמו בפועל על ידי הלקוח בשלושת החודשים שקדמו לאירוע נשוא התביעה.</p>
+    <h2><span class="num">10.</span><span data-i18n="s10_title">הגבלת אחריות</span></h2>
+    <p data-i18n="s10_p1">uallak פועלת במיטב המאמצים המקצועיים והטכנולוגיים העומדים לרשותה, אך אינה מתחייבת לתוצאות עסקיות ספציפיות (כגון מכירות, הכנסות, או כמות לידים), אלא ככל שהובטח מפורשות בהצעת השירות שאושרה על ידי הלקוח.</p>
+    <p data-i18n="s10_p2">uallak אינה אחראית לשינויי מדיניות, תקלות, או שינויים בפלטפורמות צד שלישי (כגון גוגל, מטא, טיקטוק) המשפיעים על השירות, ואינה יכולה להבטיח את זמינותן הרציפה.</p>
+    <p data-i18n="s10_p3">אחריותה הכוללת של uallak, ככל שתקום, לא תעלה על סך התשלומים ששולמו בפועל על ידי הלקוח בשלושת החודשים שקדמו לאירוע נשוא התביעה.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">11.</span>שיפוי</h2>
-    <p>הלקוח מתחייב לשפות את uallak בגין כל נזק, הפסד או הוצאה שייגרמו לה כתוצאה משימוש לא חוקי בשירות, מהפרת תנאי תקנון זה, או ממסירת חומרים המפרים זכויות צד שלישי.</p>
+    <h2><span class="num">11.</span><span data-i18n="s11_title">שיפוי</span></h2>
+    <p data-i18n="s11_p1">הלקוח מתחייב לשפות את uallak בגין כל נזק, הפסד או הוצאה שייגרמו לה כתוצאה משימוש לא חוקי בשירות, מהפרת תנאי תקנון זה, או ממסירת חומרים המפרים זכויות צד שלישי.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">12.</span>כוח עליון</h2>
-    <p>uallak לא תישא באחריות לאי-עמידה בהתחייבויותיה כתוצאה מנסיבות שאינן בשליטתה, לרבות תקלות תשתית, אסונות טבע, מגבלות רגולטוריות, או תקלות בפלטפורמות צד שלישי.</p>
+    <h2><span class="num">12.</span><span data-i18n="s12_title">כוח עליון</span></h2>
+    <p data-i18n="s12_p1">uallak לא תישא באחריות לאי-עמידה בהתחייבויותיה כתוצאה מנסיבות שאינן בשליטתה, לרבות תקלות תשתית, אסונות טבע, מגבלות רגולטוריות, או תקלות בפלטפורמות צד שלישי.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">13.</span>שינויים בתקנון</h2>
-    <p>uallak רשאית לעדכן תקנון זה מעת לעת. שינויים מהותיים יימסרו ללקוחות הפעילים. המשך השימוש בשירות לאחר עדכון מהווה הסכמה לתנאים המעודכנים.</p>
+    <h2><span class="num">13.</span><span data-i18n="s13_title">שינויים בתקנון</span></h2>
+    <p data-i18n="s13_p1">uallak רשאית לעדכן תקנון זה מעת לעת. שינויים מהותיים יימסרו ללקוחות הפעילים. המשך השימוש בשירות לאחר עדכון מהווה הסכמה לתנאים המעודכנים.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">14.</span>דין וסמכות שיפוט</h2>
-    <p>על תקנון זה יחולו דיני מדינת ישראל בלבד. סמכות השיפוט הבלעדית בכל מחלוקת הנוגעת לתקנון זה או לשירות תהא נתונה לבתי המשפט המוסמכים במחוז תל אביב-יפו.</p>
+    <h2><span class="num">14.</span><span data-i18n="s14_title">דין וסמכות שיפוט</span></h2>
+    <p data-i18n="s14_p1">על תקנון זה יחולו דיני מדינת ישראל בלבד. סמכות השיפוט הבלעדית בכל מחלוקת הנוגעת לתקנון זה או לשירות תהא נתונה לבתי המשפט המוסמכים במחוז תל אביב-יפו.</p>
   </div>
 
   <div class="section">
-    <h2><span class="num">15.</span>יצירת קשר</h2>
-    <p>לכל שאלה בנוגע לתקנון זה, ניתן לפנות אלינו דרך הצ'אט במערכת או בוואטסאפ.</p>
+    <h2><span class="num">15.</span><span data-i18n="s15_title">יצירת קשר</span></h2>
+    <p data-i18n="s15_p1">לכל שאלה בנוגע לתקנון זה, ניתן לפנות אלינו דרך הצ'אט במערכת או בוואטסאפ.</p>
   </div>
 
-  <footer>© uallak — כל הזכויות שמורות</footer>
+  <footer data-i18n="footer_text">© uallak — כל הזכויות שמורות</footer>
 </div>
+<script src="/assets/i18n.js"></script>
+<script>
+const I18N = {
+  _page_title: { he:'תקנון uallak', en:'uallak Terms of Service', fr:'Conditions d\'utilisation uallak', ar:'شروط استخدام uallak', ru:'Условия использования uallak' },
+  back_home: { he:'← חזרה לעמוד הבית', en:'← Back to home', fr:'← Retour à l\'accueil', ar:'← العودة إلى الصفحة الرئيسية', ru:'← Назад на главную' },
+  terms_title: { he:'תקנון uallak', en:'uallak Terms of Service', fr:'Conditions d\'utilisation uallak', ar:'شروط استخدام uallak', ru:'Условия использования uallak' },
+  updated_label: { he:'עדכון אחרון: יולי 2026', en:'Last updated: July 2026', fr:'Dernière mise à jour : juillet 2026', ar:'آخر تحديث: يوليو 2026', ru:'Последнее обновление: июль 2026' },
+  translation_notice: {
+    he:'',
+    en:'This page was translated automatically by AI. In case of any discrepancy, the Hebrew version is the binding, authoritative one. If anything here is unclear, feel free to contact our team via chat or WhatsApp for clarification.',
+    fr:'Cette page a été traduite automatiquement par IA. En cas de divergence, la version hébraïque fait foi. Pour toute clarification, n\'hésitez pas à contacter notre équipe via le chat ou WhatsApp.',
+    ar:'تُرجمت هذه الصفحة تلقائيًا بواسطة الذكاء الاصطناعي. في حال وجود أي تعارض، فإن النسخة العبرية هي الملزمة والمعتمدة. لأي استفسار، لا تتردد في التواصل مع فريقنا عبر الدردشة أو واتساب.',
+    ru:'Эта страница переведена автоматически с помощью ИИ. В случае расхождений версия на иврите является обязательной и приоритетной. Если что-то неясно, свяжитесь с нашей командой через чат или WhatsApp.' },
+  disclaimer_text: { he:'מסמך זה הוא תקנון כללי המסדיר את השימוש בשירותי uallak. אנו ממליצים לעבור עליו היטב לפני תחילת השימוש בשירות.', en:'This document is a general terms of service governing the use of uallak\'s services. We recommend reading it carefully before starting to use the service.', fr:'Ce document constitue les conditions générales régissant l\'utilisation des services uallak. Nous vous recommandons de le lire attentivement avant de commencer à utiliser le service.', ar:'هذه الوثيقة هي شروط استخدام عامة تنظم استخدام خدمات uallak. نوصي بقراءتها جيدًا قبل البدء باستخدام الخدمة.', ru:'Этот документ представляет собой общие условия использования услуг uallak. Рекомендуем внимательно ознакомиться с ним перед началом использования сервиса.' },
+
+  s1_title: { he:'כללי', en:'General', fr:'Généralités', ar:'عام', ru:'Общие положения' },
+  s1_p1: { he:'ברוכים הבאים ל-uallak ("המערכת", "השירות", "אנחנו"). תקנון זה מסדיר את תנאי השימוש בשירותי השיווק הדיגיטלי האוטונומיים המוצעים על ידי uallak ללקוחותיה ("הלקוח", "אתם").', en:'Welcome to uallak ("the System", "the Service", "we"). These Terms govern the use of the autonomous digital marketing services offered by uallak to its clients ("the Client", "you").', fr:'Bienvenue chez uallak (« le Système », « le Service », « nous »). Les présentes Conditions régissent l\'utilisation des services de marketing digital autonomes proposés par uallak à ses clients (« le Client », « vous »).', ar:'مرحبًا بكم في uallak ("النظام"، "الخدمة"، "نحن"). تنظم هذه الشروط استخدام خدمات التسويق الرقمي المستقلة التي تقدمها uallak لعملائها ("العميل"، "أنتم").', ru:'Добро пожаловать в uallak («Система», «Сервис», «мы»). Настоящие Условия регулируют использование автономных услуг цифрового маркетинга, предоставляемых uallak своим клиентам («Клиент», «вы»).' },
+  s1_p2: { he:'עצם השימוש באתר, בצ\'אט האיפיון, או בכל שירות אחר של uallak מהווה הסכמה מלאה לתנאים המפורטים במסמך זה. מי שאינו מסכים לתנאים מתבקש להימנע מהשימוש בשירות.', en:'Mere use of the website, the discovery chat, or any other uallak service constitutes full agreement to the terms set out in this document. Anyone who does not agree to these terms is asked to refrain from using the service.', fr:'Le simple fait d\'utiliser le site, le chat de diagnostic ou tout autre service uallak constitue une acceptation pleine et entière des présentes conditions. Toute personne qui n\'accepte pas ces conditions est invitée à ne pas utiliser le service.', ar:'يشكّل مجرد استخدام الموقع أو محادثة التحليل أو أي خدمة أخرى من uallak موافقة كاملة على الشروط الواردة في هذه الوثيقة. من لا يوافق على الشروط، يُرجى منه الامتناع عن استخدام الخدمة.', ru:'Само использование сайта, чата первичного анализа или любой другой услуги uallak означает полное согласие с условиями, изложенными в этом документе. Тот, кто не согласен с условиями, должен воздержаться от использования сервиса.' },
+
+  s2_title: { he:'הגדרות', en:'Definitions', fr:'Définitions', ar:'تعريفات', ru:'Определения' },
+  s2_li1: { he:'<strong>"המערכת" / "uallak"</strong> — מערכת השיווק הדיגיטלי האוטונומית על כל רכיביה, כולל צ\'אט האיפיון, הדשבורד, וכל סוכן פועל בתוכה.', en:'<strong>"the System" / "uallak"</strong> — the autonomous digital marketing system in all its components, including the discovery chat, the dashboard, and every agent operating within it.', fr:'<strong>« le Système » / « uallak »</strong> — le système de marketing digital autonome dans tous ses composants, y compris le chat de diagnostic, le tableau de bord et tout agent y opérant.', ar:'<strong>"النظام" / "uallak"</strong> — نظام التسويق الرقمي المستقل بجميع مكوناته، بما في ذلك محادثة التحليل ولوحة التحكم وكل وكيل يعمل ضمنه.', ru:'<strong>«Система» / «uallak»</strong> — автономная система цифрового маркетинга во всех её компонентах, включая чат первичного анализа, личный кабинет и всех агентов, работающих в её составе.' },
+  s2_li2: { he:'<strong>"הלקוח"</strong> — כל עסק או אדם שנרשם לשירות ומשתמש בו.', en:'<strong>"the Client"</strong> — any business or person who signs up for and uses the service.', fr:'<strong>« le Client »</strong> — toute entreprise ou personne qui s\'inscrit au service et l\'utilise.', ar:'<strong>"العميل"</strong> — أي عمل أو شخص يسجّل في الخدمة ويستخدمها.', ru:'<strong>«Клиент»</strong> — любой бизнес или человек, зарегистрировавшийся в сервисе и использующий его.' },
+  s2_li3: { he:'<strong>"השירותים"</strong> — פעולות השיווק הדיגיטלי המבוצעות על ידי uallak עבור הלקוח, לרבות ניהול קמפיינים, יצירת תוכן, ניהול רשתות חברתיות, ופעולות נלוות.', en:'<strong>"the Services"</strong> — the digital marketing activities performed by uallak for the Client, including campaign management, content creation, social media management, and related actions.', fr:'<strong>« les Services »</strong> — les activités de marketing digital réalisées par uallak pour le Client, y compris la gestion de campagnes, la création de contenu, la gestion des réseaux sociaux et les actions connexes.', ar:'<strong>"الخدمات"</strong> — أنشطة التسويق الرقمي التي تنفذها uallak لصالح العميل، بما في ذلك إدارة الحملات وإنشاء المحتوى وإدارة وسائل التواصل الاجتماعي والأنشطة ذات الصلة.', ru:'<strong>«Услуги»</strong> — действия по цифровому маркетингу, выполняемые uallak для Клиента, включая управление кампаниями, создание контента, ведение социальных сетей и сопутствующие действия.' },
+  s2_li4: { he:'<strong>"חשבונות מקושרים"</strong> — חשבונות פרסום, רשתות חברתיות, אתר, או כל מערכת אחרת שהלקוח מעניק ל-uallak גישה אליה.', en:'<strong>"Connected Accounts"</strong> — advertising accounts, social media accounts, a website, or any other system to which the Client grants uallak access.', fr:'<strong>« Comptes connectés »</strong> — comptes publicitaires, réseaux sociaux, site web, ou tout autre système auquel le Client donne accès à uallak.', ar:'<strong>"الحسابات المرتبطة"</strong> — حسابات الإعلانات، وسائل التواصل الاجتماعي، الموقع الإلكتروني، أو أي نظام آخر يمنح العميل uallak صلاحية الوصول إليه.', ru:'<strong>«Подключённые аккаунты»</strong> — рекламные аккаунты, аккаунты соцсетей, сайт или любая другая система, к которой Клиент предоставляет uallak доступ.' },
+
+  s3_title: { he:'תיאור השירות', en:'Description of the Service', fr:'Description du service', ar:'وصف الخدمة', ru:'Описание услуги' },
+  s3_p1: { he:'uallak מספקת שירותי שיווק דיגיטלי אוטומטיים, המבוצעים באמצעות מערכת טכנולוגית הכוללת רכיבי בינה מלאכותית. השירות כולל, בהתאם למסלול שנבחר, ניהול קמפיינים בפלטפורמות פרסום, יצירת תוכן שיווקי, ניהול נוכחות ברשתות חברתיות, ופעולות שיווק נוספות.', en:'uallak provides automated digital marketing services, performed through a technological system that includes artificial intelligence components. Depending on the plan chosen, the service includes campaign management on advertising platforms, marketing content creation, social media presence management, and additional marketing activities.', fr:'uallak fournit des services de marketing digital automatisés, réalisés au moyen d\'un système technologique intégrant des composants d\'intelligence artificielle. Selon la formule choisie, le service comprend la gestion de campagnes sur les plateformes publicitaires, la création de contenu marketing, la gestion de la présence sur les réseaux sociaux et d\'autres activités marketing.', ar:'تقدّم uallak خدمات تسويق رقمي آلية، تُنفَّذ عبر نظام تقني يتضمن مكونات ذكاء اصطناعي. تشمل الخدمة، وفقًا للباقة المختارة، إدارة الحملات على منصات الإعلانات، وإنشاء المحتوى التسويقي، وإدارة الحضور على وسائل التواصل الاجتماعي، وأنشطة تسويقية إضافية.', ru:'uallak предоставляет автоматизированные услуги цифрового маркетинга, выполняемые с помощью технологической системы, включающей компоненты искусственного интеллекта. В зависимости от выбранного пакета услуга включает управление кампаниями на рекламных платформах, создание маркетингового контента, ведение присутствия в соцсетях и дополнительные маркетинговые действия.' },
+  s3_p2: { he:'uallak שומרת לעצמה את הזכות לשנות, להרחיב או לצמצם את מרכיבי השירות בכל עת, ותודיע על שינויים מהותיים ללקוחות הפעילים.', en:'uallak reserves the right to change, expand, or reduce the components of the service at any time, and will notify active clients of material changes.', fr:'uallak se réserve le droit de modifier, d\'étendre ou de réduire les composants du service à tout moment, et informera les clients actifs de tout changement substantiel.', ar:'تحتفظ uallak بالحق في تغيير أو توسيع أو تقليص مكونات الخدمة في أي وقت، وستُبلغ العملاء النشطين بأي تغييرات جوهرية.', ru:'uallak оставляет за собой право изменять, расширять или сокращать компоненты услуги в любое время и уведомит активных клиентов о существенных изменениях.' },
+
+  s4_title: { he:'הרשמה ותחילת שירות', en:'Registration and Service Commencement', fr:'Inscription et démarrage du service', ar:'التسجيل وبدء الخدمة', ru:'Регистрация и начало обслуживания' },
+  s4_p1: { he:'תהליך ההרשמה כולל שלב איפיון (באמצעות צ\'אט דינמי), קבלת הצעת שירות מותאמת אישית, ואישור תשלום. השירות מתחיל להיות פעיל רק לאחר השלמת תהליך התשלום הראשוני. אין אפשרות לפתיחת חשבון ללא תשלום.', en:'The registration process includes a discovery stage (via a dynamic chat), receiving a personalized service proposal, and payment confirmation. The service becomes active only after the initial payment process is completed. An account cannot be opened without payment.', fr:'Le processus d\'inscription comprend une étape de diagnostic (via un chat dynamique), la réception d\'une proposition de service personnalisée, et la confirmation du paiement. Le service ne devient actif qu\'une fois le paiement initial finalisé. Aucun compte ne peut être ouvert sans paiement.', ar:'تتضمن عملية التسجيل مرحلة تحليل (عبر محادثة ديناميكية)، واستلام عرض خدمة مخصص، وتأكيد الدفع. تصبح الخدمة نشطة فقط بعد إتمام عملية الدفع الأولية. لا يمكن فتح حساب دون دفع.', ru:'Процесс регистрации включает этап анализа (через динамический чат), получение персонализированного предложения услуги и подтверждение оплаты. Услуга становится активной только после завершения первоначальной оплаты. Открыть аккаунт без оплаты невозможно.' },
+
+  s5_title: { he:'תשלום ומנוי', en:'Payment and Subscription', fr:'Paiement et abonnement', ar:'الدفع والاشتراك', ru:'Оплата и подписка' },
+  s5_p1: { he:'התשלום עבור השירות מתבצע באופן חודשי חוזר, באמצעי התשלום שנמסר על ידי הלקוח בעת ההרשמה. במסלולים הכוללים דמי הקמה, אלו ייגבו בנפרד ובנוסף לדמי הניהול החודשיים.', en:'Payment for the service is made on a recurring monthly basis, via the payment method provided by the Client at registration. For plans that include a setup fee, it is charged separately and in addition to the monthly management fee.', fr:'Le paiement du service est effectué mensuellement de façon récurrente, via le moyen de paiement fourni par le Client lors de l\'inscription. Pour les formules incluant des frais de mise en place, ceux-ci sont facturés séparément et en supplément des frais de gestion mensuels.', ar:'يتم دفع مقابل الخدمة على أساس شهري متكرر، عبر وسيلة الدفع التي قدّمها العميل عند التسجيل. بالنسبة للباقات التي تشمل رسوم تأسيس، تُحصَّل هذه الرسوم بشكل منفصل وبالإضافة إلى رسوم الإدارة الشهرية.', ru:'Оплата услуги производится на регулярной ежемесячной основе через способ оплаты, предоставленный Клиентом при регистрации. Для пакетов, включающих плату за настройку, она взимается отдельно и дополнительно к ежемесячной плате за ведение.' },
+  s5_p2: { he:'מחיר השירות עשוי להשתנות מעת לעת; שינוי במחיר יימסר ללקוח מראש ולא יחול באופן רטרואקטיבי.', en:'The price of the service may change from time to time; any price change will be communicated to the Client in advance and will not apply retroactively.', fr:'Le prix du service peut être modifié périodiquement ; tout changement de prix sera communiqué au Client à l\'avance et ne s\'appliquera pas rétroactivement.', ar:'قد يتغير سعر الخدمة من وقت لآخر؛ وسيُبلَّغ العميل بأي تغيير في السعر مسبقًا ولن يُطبَّق بأثر رجعي.', ru:'Цена услуги может периодически меняться; об изменении цены Клиент будет уведомлен заранее, и оно не будет применяться задним числом.' },
+
+  s6_title: { he:'ביטול מנוי', en:'Subscription Cancellation', fr:'Résiliation de l\'abonnement', ar:'إلغاء الاشتراك', ru:'Отмена подписки' },
+  s6_p1: { he:'הלקוח רשאי לבטל את המנוי בכל עת, ללא התחייבות לתקופה מינימלית. הביטול ייכנס לתוקף בתום מחזור החיוב הנוכחי. ביטול אינו מזכה בהחזר עבור התקופה שכבר שולמה, אלא אם נדרש אחרת על פי דין.', en:'The Client may cancel the subscription at any time, with no minimum-term commitment. Cancellation takes effect at the end of the current billing cycle. Cancellation does not entitle the Client to a refund for a period already paid for, unless otherwise required by law.', fr:'Le Client peut résilier son abonnement à tout moment, sans engagement de durée minimale. La résiliation prend effet à la fin du cycle de facturation en cours. La résiliation ne donne pas droit à un remboursement pour une période déjà payée, sauf disposition légale contraire.', ar:'يجوز للعميل إلغاء الاشتراك في أي وقت، دون التزام بفترة دنيا. يسري الإلغاء عند نهاية دورة الفوترة الحالية. لا يمنح الإلغاء الحق في استرداد مقابل الفترة التي سبق دفعها، ما لم يقتضِ القانون خلاف ذلك.', ru:'Клиент может отменить подписку в любое время, без обязательства минимального срока. Отмена вступает в силу по окончании текущего платёжного цикла. Отмена не даёт права на возврат средств за уже оплаченный период, если иное не требуется по закону.' },
+  s6_p2: { he:'uallak שומרת לעצמה את הזכות להשעות או להפסיק שירות ללקוח במקרה של הפרת תנאי תקנון זה, אי-תשלום, או שימוש לרעה בשירות.', en:'uallak reserves the right to suspend or terminate service to a Client in the event of a breach of these Terms, non-payment, or misuse of the service.', fr:'uallak se réserve le droit de suspendre ou de résilier le service d\'un Client en cas de violation des présentes Conditions, de non-paiement ou d\'utilisation abusive du service.', ar:'تحتفظ uallak بالحق في تعليق أو إنهاء الخدمة عن العميل في حال مخالفة شروط هذا التقنون، أو عدم الدفع، أو إساءة استخدام الخدمة.', ru:'uallak оставляет за собой право приостановить или прекратить обслуживание Клиента в случае нарушения настоящих Условий, неоплаты или злоупотребления сервисом.' },
+
+  s7_title: { he:'הרשאות גישה לחשבונות מקושרים', en:'Access Permissions to Connected Accounts', fr:'Autorisations d\'accès aux comptes connectés', ar:'أذونات الوصول إلى الحسابات المرتبطة', ru:'Права доступа к подключённым аккаунтам' },
+  s7_p1: { he:'לצורך מתן השירות, הלקוח מעניק ל-uallak גישה מוגבלת לחשבונות מקושרים (כגון חשבונות פרסום, רשתות חברתיות, ואתר). ההרשאות ניתנות אך ורק לצורך מתן השירות, ואינן משמשות למטרה אחרת.', en:'In order to provide the service, the Client grants uallak limited access to Connected Accounts (such as advertising accounts, social media, and a website). Permissions are granted solely for the purpose of providing the service and are not used for any other purpose.', fr:'Afin de fournir le service, le Client accorde à uallak un accès limité aux comptes connectés (tels que comptes publicitaires, réseaux sociaux et site web). Ces autorisations sont accordées uniquement dans le but de fournir le service et ne sont utilisées à aucune autre fin.', ar:'من أجل تقديم الخدمة، يمنح العميل uallak صلاحية وصول محدودة إلى الحسابات المرتبطة (مثل حسابات الإعلانات ووسائل التواصل الاجتماعي والموقع الإلكتروني). تُمنح هذه الأذونات فقط لغرض تقديم الخدمة ولا تُستخدم لأي غرض آخر.', ru:'Для предоставления услуги Клиент предоставляет uallak ограниченный доступ к Подключённым аккаунтам (таким как рекламные аккаунты, соцсети и сайт). Доступ предоставляется исключительно для целей оказания услуги и не используется в иных целях.' },
+  s7_p2: { he:'הלקוח רשאי לבטל הרשאות אלה בכל עת. ביטול הרשאות עשוי לפגוע ביכולת uallak לספק את השירות, ו-uallak לא תישא באחריות לתוצאות הנובעות מכך.', en:'The Client may revoke these permissions at any time. Revoking permissions may impair uallak\'s ability to provide the service, and uallak shall not be liable for any resulting consequences.', fr:'Le Client peut révoquer ces autorisations à tout moment. La révocation des autorisations peut affecter la capacité de uallak à fournir le service, et uallak ne saurait être tenue responsable des conséquences en résultant.', ar:'يجوز للعميل إلغاء هذه الأذونات في أي وقت. قد يؤثر إلغاء الأذونات على قدرة uallak على تقديم الخدمة، ولن تتحمل uallak أي مسؤولية عن النتائج المترتبة على ذلك.', ru:'Клиент может отозвать эти права доступа в любое время. Отзыв доступа может повлиять на способность uallak предоставлять услугу, и uallak не несёт ответственности за возникающие в результате последствия.' },
+
+  s8_title: { he:'פרטיות ואבטחת מידע', en:'Privacy and Data Security', fr:'Confidentialité et sécurité des données', ar:'الخصوصية وأمن المعلومات', ru:'Конфиденциальность и безопасность данных' },
+  s8_p1: { he:'uallak אוספת ומעבדת מידע הנדרש לצורך מתן השירות בלבד, ופועלת בהתאם לחוק הגנת הפרטיות, התשמ"א-1981. המידע נשמר באמצעים מאובטחים, ואינו נמכר או מועבר לצדדים שלישיים למעט ככל שנדרש לצורך מתן השירות עצמו (למשל, פלטפורמות פרסום) או על פי דין.', en:'uallak collects and processes only the information required to provide the service, and acts in accordance with Israel\'s Privacy Protection Law, 5741-1981. Information is stored using secure means and is not sold or transferred to third parties except as required to provide the service itself (e.g., advertising platforms) or as required by law.', fr:'uallak collecte et traite uniquement les informations nécessaires à la fourniture du service, conformément à la loi israélienne sur la protection de la vie privée de 1981. Les informations sont conservées par des moyens sécurisés et ne sont ni vendues ni transférées à des tiers, sauf dans la mesure requise pour la fourniture du service lui-même (par exemple, les plateformes publicitaires) ou en vertu de la loi.', ar:'تجمع uallak وتعالج فقط المعلومات اللازمة لتقديم الخدمة، وتعمل وفقًا لقانون حماية الخصوصية الإسرائيلي لعام 1981. تُحفظ المعلومات بوسائل آمنة، ولا تُباع أو تُنقل إلى أطراف ثالثة إلا بالقدر اللازم لتقديم الخدمة نفسها (مثل منصات الإعلانات) أو وفقًا لما يقتضيه القانون.', ru:'uallak собирает и обрабатывает только информацию, необходимую для предоставления услуги, и действует в соответствии с израильским Законом о защите частной жизни 1981 года. Информация хранится с использованием защищённых средств и не продаётся и не передаётся третьим лицам, за исключением случаев, необходимых для предоставления самой услуги (например, рекламным платформам), или по требованию закона.' },
+  s8_p2: { he:'הלקוח רשאי לפנות בכל עת בבקשה לעיין, לתקן או למחוק את המידע האישי שנאסף אודותיו, בכפוף למגבלות הדין.', en:'The Client may contact us at any time to request to view, correct, or delete the personal information collected about them, subject to legal limitations.', fr:'Le Client peut nous contacter à tout moment pour demander à consulter, corriger ou supprimer les informations personnelles collectées à son sujet, sous réserve des limitations légales.', ar:'يجوز للعميل التواصل في أي وقت لطلب الاطلاع على معلوماته الشخصية المجمَّعة أو تصحيحها أو حذفها، بما يخضع لقيود القانون.', ru:'Клиент может в любое время обратиться с просьбой ознакомиться, исправить или удалить собранную о нём личную информацию, с учётом законодательных ограничений.' },
+
+  s9_title: { he:'קניין רוחני', en:'Intellectual Property', fr:'Propriété intellectuelle', ar:'الملكية الفكرية', ru:'Интеллектуальная собственность' },
+  s9_p1: { he:'כל תוכן שיווקי שנוצר על ידי uallak במסגרת השירות עבור הלקוח (פוסטים, מודעות, תכנים לאתר וכיו"ב) שייך ללקוח לשימוש בעסקו, ככל ששולם עבורו במלואו.', en:'Any marketing content created by uallak for the Client as part of the service (posts, ads, website content, etc.) belongs to the Client for use in their business, provided it has been paid for in full.', fr:'Tout contenu marketing créé par uallak pour le Client dans le cadre du service (publications, publicités, contenus de site web, etc.) appartient au Client pour un usage dans son entreprise, sous réserve qu\'il ait été intégralement payé.', ar:'أي محتوى تسويقي تُنشئه uallak للعميل ضمن الخدمة (منشورات، إعلانات، محتوى للموقع، إلخ) يملكه العميل لاستخدامه في عمله، شريطة أن يكون قد دُفع بالكامل.', ru:'Любой маркетинговый контент, созданный uallak для Клиента в рамках услуги (посты, реклама, контент для сайта и т.д.), принадлежит Клиенту для использования в его бизнесе, при условии полной оплаты.' },
+  s9_p2: { he:'הטכנולוגיה, השיטות, הקוד, והמותג של uallak נותרים בבעלותה הבלעדית, ואין בשירות כדי להעניק ללקוח כל זכות בהם.', en:'uallak\'s technology, methods, code, and brand remain its exclusive property, and nothing in the service grants the Client any rights therein.', fr:'La technologie, les méthodes, le code et la marque de uallak demeurent sa propriété exclusive, et rien dans le service ne confère au Client de droits sur ceux-ci.', ar:'تبقى تقنية uallak وأساليبها وشيفرتها البرمجية وعلامتها التجارية ملكًا حصريًا لها، ولا تمنح الخدمة العميل أي حقوق فيها.', ru:'Технология, методы, код и бренд uallak остаются её исключительной собственностью, и услуга не предоставляет Клиенту никаких прав на них.' },
+  s9_p3: { he:'הלקוח מצהיר כי הוא בעל הזכויות בכל חומר שהוא מספק ל-uallak (לוגו, תכנים, תמונות), ומתחייב שאין בשימוש בהם כדי להפר זכויות צד שלישי כלשהו.', en:'The Client represents that they hold the rights to any material they provide to uallak (logo, content, images), and undertakes that using it does not infringe any third-party rights.', fr:'Le Client déclare détenir les droits sur tout matériel qu\'il fournit à uallak (logo, contenus, images), et s\'engage à ce que leur utilisation ne porte pas atteinte aux droits d\'un tiers.', ar:'يقرّ العميل بأنه يملك الحقوق في أي مواد يزوّد بها uallak (شعار، محتوى، صور)، ويتعهد بأن استخدامها لا يخالف حقوق أي طرف ثالث.', ru:'Клиент заявляет, что обладает правами на любые материалы, предоставляемые им uallak (логотип, контент, изображения), и гарантирует, что их использование не нарушает права третьих лиц.' },
+
+  s10_title: { he:'הגבלת אחריות', en:'Limitation of Liability', fr:'Limitation de responsabilité', ar:'تحديد المسؤولية', ru:'Ограничение ответственности' },
+  s10_p1: { he:'uallak פועלת במיטב המאמצים המקצועיים והטכנולוגיים העומדים לרשותה, אך אינה מתחייבת לתוצאות עסקיות ספציפיות (כגון מכירות, הכנסות, או כמות לידים), אלא ככל שהובטח מפורשות בהצעת השירות שאושרה על ידי הלקוח.', en:'uallak operates using its best professional and technological efforts, but does not guarantee specific business outcomes (such as sales, revenue, or lead volume), except to the extent explicitly committed to in the service proposal approved by the Client.', fr:'uallak met en œuvre ses meilleurs efforts professionnels et technologiques, mais ne garantit pas de résultats commerciaux spécifiques (tels que ventes, revenus ou volume de leads), sauf dans la mesure expressément prévue dans la proposition de service approuvée par le Client.', ar:'تعمل uallak وفق أفضل جهودها المهنية والتقنية، لكنها لا تلتزم بنتائج تجارية محددة (كالمبيعات أو الإيرادات أو عدد العملاء المحتملين)، إلا بالقدر الذي تم الالتزام به صراحةً في عرض الخدمة الذي وافق عليه العميل.', ru:'uallak прилагает все профессиональные и технологические усилия, но не гарантирует конкретных бизнес-результатов (таких как продажи, доход или количество лидов), за исключением случаев, прямо оговорённых в предложении услуги, одобренном Клиентом.' },
+  s10_p2: { he:'uallak אינה אחראית לשינויי מדיניות, תקלות, או שינויים בפלטפורמות צד שלישי (כגון גוגל, מטא, טיקטוק) המשפיעים על השירות, ואינה יכולה להבטיח את זמינותן הרציפה.', en:'uallak is not responsible for policy changes, malfunctions, or changes in third-party platforms (such as Google, Meta, TikTok) that affect the service, and cannot guarantee their continuous availability.', fr:'uallak n\'est pas responsable des changements de politique, dysfonctionnements ou modifications des plateformes tierces (telles que Google, Meta, TikTok) affectant le service, et ne peut garantir leur disponibilité continue.', ar:'لا تتحمل uallak مسؤولية تغييرات السياسات أو الأعطال أو التغييرات في منصات الطرف الثالث (مثل جوجل وميتا وتيك توك) التي تؤثر على الخدمة، ولا يمكنها ضمان توفرها المستمر.', ru:'uallak не несёт ответственности за изменения политики, сбои или изменения на сторонних платформах (таких как Google, Meta, TikTok), влияющие на услугу, и не может гарантировать их непрерывную доступность.' },
+  s10_p3: { he:'אחריותה הכוללת של uallak, ככל שתקום, לא תעלה על סך התשלומים ששולמו בפועל על ידי הלקוח בשלושת החודשים שקדמו לאירוע נשוא התביעה.', en:'uallak\'s total liability, to the extent it arises, shall not exceed the total payments actually made by the Client in the three months preceding the event giving rise to the claim.', fr:'La responsabilité totale de uallak, dans la mesure où elle serait engagée, ne dépassera pas le total des paiements effectivement versés par le Client au cours des trois mois précédant l\'événement à l\'origine de la réclamation.', ar:'لن تتجاوز المسؤولية الإجمالية لـ uallak، إن وُجدت، مجموع المدفوعات التي سدّدها العميل فعليًا خلال الأشهر الثلاثة السابقة للحادثة موضوع المطالبة.', ru:'Общая ответственность uallak, если таковая возникает, не превысит суммы фактических платежей Клиента за три месяца, предшествующих событию, послужившему основанием для претензии.' },
+
+  s11_title: { he:'שיפוי', en:'Indemnification', fr:'Indemnisation', ar:'التعويض', ru:'Возмещение убытков' },
+  s11_p1: { he:'הלקוח מתחייב לשפות את uallak בגין כל נזק, הפסד או הוצאה שייגרמו לה כתוצאה משימוש לא חוקי בשירות, מהפרת תנאי תקנון זה, או ממסירת חומרים המפרים זכויות צד שלישי.', en:'The Client undertakes to indemnify uallak for any damage, loss, or expense incurred as a result of unlawful use of the service, breach of these Terms, or the provision of materials that infringe third-party rights.', fr:'Le Client s\'engage à indemniser uallak pour tout dommage, perte ou dépense résultant d\'une utilisation illégale du service, d\'une violation des présentes Conditions, ou de la fourniture de contenus portant atteinte aux droits d\'un tiers.', ar:'يتعهد العميل بتعويض uallak عن أي ضرر أو خسارة أو نفقة تلحق بها نتيجة استخدام غير قانوني للخدمة، أو مخالفة شروط هذا التقنون، أو تقديم مواد تخالف حقوق طرف ثالث.', ru:'Клиент обязуется возместить uallak любой ущерб, убытки или расходы, возникшие в результате незаконного использования услуги, нарушения настоящих Условий или предоставления материалов, нарушающих права третьих лиц.' },
+
+  s12_title: { he:'כוח עליון', en:'Force Majeure', fr:'Force majeure', ar:'القوة القاهرة', ru:'Форс-мажор' },
+  s12_p1: { he:'uallak לא תישא באחריות לאי-עמידה בהתחייבויותיה כתוצאה מנסיבות שאינן בשליטתה, לרבות תקלות תשתית, אסונות טבע, מגבלות רגולטוריות, או תקלות בפלטפורמות צד שלישי.', en:'uallak shall not be liable for failure to meet its obligations due to circumstances beyond its control, including infrastructure failures, natural disasters, regulatory restrictions, or third-party platform malfunctions.', fr:'uallak ne saurait être tenue responsable de tout manquement à ses obligations résultant de circonstances échappant à son contrôle, y compris des pannes d\'infrastructure, des catastrophes naturelles, des restrictions réglementaires ou des dysfonctionnements de plateformes tierces.', ar:'لن تتحمل uallak مسؤولية عدم الوفاء بالتزاماتها نتيجة ظروف خارجة عن سيطرتها، بما في ذلك أعطال البنية التحتية أو الكوارث الطبيعية أو القيود التنظيمية أو أعطال منصات الطرف الثالث.', ru:'uallak не несёт ответственности за невыполнение своих обязательств вследствие обстоятельств, находящихся вне её контроля, включая сбои инфраструктуры, стихийные бедствия, регуляторные ограничения или сбои сторонних платформ.' },
+
+  s13_title: { he:'שינויים בתקנון', en:'Changes to These Terms', fr:'Modifications des présentes conditions', ar:'التغييرات في هذا التقنون', ru:'Изменения условий' },
+  s13_p1: { he:'uallak רשאית לעדכן תקנון זה מעת לעת. שינויים מהותיים יימסרו ללקוחות הפעילים. המשך השימוש בשירות לאחר עדכון מהווה הסכמה לתנאים המעודכנים.', en:'uallak may update these Terms from time to time. Material changes will be communicated to active clients. Continued use of the service after an update constitutes agreement to the updated terms.', fr:'uallak peut mettre à jour les présentes Conditions de temps à autre. Les changements substantiels seront communiqués aux clients actifs. La poursuite de l\'utilisation du service après une mise à jour vaut acceptation des conditions mises à jour.', ar:'يجوز لـ uallak تحديث هذا التقنون من وقت لآخر. سيتم إبلاغ العملاء النشطين بالتغييرات الجوهرية. يشكّل استمرار استخدام الخدمة بعد التحديث موافقة على الشروط المحدَّثة.', ru:'uallak может периодически обновлять настоящие Условия. О существенных изменениях будет сообщено активным клиентам. Продолжение использования услуги после обновления означает согласие с обновлёнными условиями.' },
+
+  s14_title: { he:'דין וסמכות שיפוט', en:'Governing Law and Jurisdiction', fr:'Droit applicable et juridiction', ar:'القانون الحاكم والاختصاص القضائي', ru:'Применимое право и юрисдикция' },
+  s14_p1: { he:'על תקנון זה יחולו דיני מדינת ישראל בלבד. סמכות השיפוט הבלעדית בכל מחלוקת הנוגעת לתקנון זה או לשירות תהא נתונה לבתי המשפט המוסמכים במחוז תל אביב-יפו.', en:'These Terms shall be governed solely by the laws of the State of Israel. Exclusive jurisdiction over any dispute relating to these Terms or the service shall rest with the competent courts of the Tel Aviv-Jaffa district.', fr:'Les présentes Conditions sont exclusivement régies par les lois de l\'État d\'Israël. Les tribunaux compétents du district de Tel Aviv-Jaffa auront compétence exclusive pour tout litige relatif aux présentes Conditions ou au service.', ar:'يخضع هذا التقنون حصريًا لقوانين دولة إسرائيل. تكون الاختصاص القضائي الحصري في أي نزاع يتعلق بهذا التقنون أو بالخدمة للمحاكم المختصة في منطقة تل أبيب-يافا.', ru:'Настоящие Условия регулируются исключительно законодательством Государства Израиль. Исключительная юрисдикция по любым спорам, связанным с настоящими Условиями или услугой, принадлежит компетентным судам округа Тель-Авив-Яффо.' },
+
+  s15_title: { he:'יצירת קשר', en:'Contact', fr:'Contact', ar:'التواصل', ru:'Контакты' },
+  s15_p1: { he:'לכל שאלה בנוגע לתקנון זה, ניתן לפנות אלינו דרך הצ\'אט במערכת או בוואטסאפ.', en:'For any questions regarding these Terms, please contact us via the in-system chat or WhatsApp.', fr:'Pour toute question concernant les présentes Conditions, vous pouvez nous contacter via le chat du système ou WhatsApp.', ar:'لأي استفسار بخصوص هذا التقنون، يمكنكم التواصل معنا عبر الدردشة داخل النظام أو واتساب.', ru:'По любым вопросам, касающимся настоящих Условий, свяжитесь с нами через чат в системе или WhatsApp.' },
+
+  footer_text: { he:'© uallak — כל הזכויות שמורות', en:'© uallak — All rights reserved', fr:'© uallak — Tous droits réservés', ar:'© uallak — جميع الحقوق محفوظة', ru:'© uallak — Все права защищены' },
+};
+uallakI18n.init(I18N);
+uallakI18n.mountSwitcher(document.getElementById('langRow'));
+
+function updateTranslationNotice() {
+  const notice = document.getElementById('translationNotice');
+  if (uallakI18n.current() === 'he') notice.classList.remove('visible');
+  else notice.classList.add('visible');
+}
+updateTranslationNotice();
+uallakI18n.onChange(updateTranslationNotice);
+</script>
 </body>
 </html>

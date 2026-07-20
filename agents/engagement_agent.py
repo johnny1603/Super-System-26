@@ -333,7 +333,7 @@ def run_daily_engagement() -> dict:
             continue
         if _sales_alert_already_sent(client_id, yesterday):
             continue
-        send_sales_alert(client["email"], client.get("name", ""), conversions)
+        send_sales_alert(client["email"], client.get("name", ""), conversions, client_id)
         log_activity(client_id, AGENT_NAME, "sales_alert_sent",
                      {"date": yesterday, "conversions": conversions}, {})
         summary["alerts_sent"] += 1
