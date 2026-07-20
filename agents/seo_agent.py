@@ -412,11 +412,96 @@ def build_strategy(client_id: int) -> dict:
     topics = [item.get("topic", "") for item in (plan.get("content_plan") or [])[:3]]
     agent_alert(AGENT_NAME, [
         f"client {client_id}: organic SEO strategy proposed (research: {research.get('source')}) — "
-        f"review the seo_strategy_proposed activity row and execute approved topics via "
-        f"POST /api/seo/write-article. First topics: {'; '.join(t for t in topics if t)}"])
+        f"review it and approve via POST /api/seo/approve-strategy (or the admin dashboard's "
+        f"client drawer) — approved topics write themselves automatically from there, paced by "
+        f"the weekly article cap, no more manual write-article calls needed. "
+        f"First topics: {'; '.join(t for t in topics if t)}"])
     log_step(AGENT_NAME, "build_strategy",
              f"client {client_id}: {len(plan.get('content_plan') or [])} topics proposed")
     return {"success": True, "plan": plan, "research_source": research.get("source")}
+
+
+# ─── Strategy approval → automatic article writing (closes the manual-trigger gap) ─
+
+def _pending_topics(client_id: int, plan: dict) -> list:
+    """content_plan items from an approved plan that haven't been written
+    yet (matched by exact topic text — the same identity write_article's own
+    dedup uses), ordered by the plan's own priority field."""
+    written = {((r.get("details") or {}).get("topic") or "").strip()
+               for r in _recent_activity(client_id, "seo_article_generated", 3650, limit=200)}
+    pending = [item for item in (plan.get("content_plan") or [])
+              if (item.get("topic") or "").strip() and (item.get("topic") or "").strip() not in written]
+    return sorted(pending, key=lambda item: item.get("priority", 99))
+
+
+def _approved_plan(client_id: int) -> dict:
+    """The content_plan from the newest APPROVED strategy, or {} if none has
+    ever been approved for this client."""
+    approved = _recent_activity(client_id, "seo_strategy_approved", 3650, limit=1)
+    if not approved:
+        return {}
+    strategy_id = (approved[0].get("details") or {}).get("strategy_activity_id")
+    proposed = _recent_activity(client_id, "seo_strategy_proposed", 3650, limit=50)
+    row = next((r for r in proposed if r.get("id") == strategy_id), None)
+    return (row.get("details") or {}).get("plan") or {} if row else {}
+
+
+def _advance_pending_articles(client_id: int) -> list:
+    """Write as many pending topics from the newest APPROVED strategy as
+    write_article's own weekly-cap/dedup/quality gates allow right now —
+    called immediately on approval, and again every weekly seo_cycle run
+    until the whole approved plan is written. Stops at the first
+    write_article failure for ANY reason (cap reached, dedup, quality gate)
+    and lets the next cycle continue — write_article already alerts on real
+    failures, so nothing is silently lost."""
+    plan = _approved_plan(client_id)
+    if not plan:
+        return []
+    written = []
+    for item in _pending_topics(client_id, plan):
+        result = write_article(client_id, item.get("topic", ""),
+                               item.get("target_keyword", ""),
+                               notes=item.get("rationale", ""))
+        if not result.get("success"):
+            break
+        written.append(result)
+    return written
+
+
+def get_pending_strategy(client_id: int) -> dict:
+    """The admin drawer's approval surface: is there a proposed strategy
+    still awaiting Johnny's yes/no, or an already-approved one still working
+    through its topics?"""
+    proposed = _recent_activity(client_id, "seo_strategy_proposed", 3650, limit=1)
+    if not proposed:
+        return {"awaiting_approval": False}
+    approved = _recent_activity(client_id, "seo_strategy_approved", 3650, limit=1)
+    already_approved = bool(approved) and approved[0]["created_at"] > proposed[0]["created_at"]
+    if already_approved:
+        plan = (proposed[0].get("details") or {}).get("plan") or {}
+        return {"awaiting_approval": False, "approved": True,
+                "pending_topics": _pending_topics(client_id, plan)}
+    return {"awaiting_approval": True,
+            "plan": (proposed[0].get("details") or {}).get("plan") or {},
+            "proposed_at": proposed[0]["created_at"]}
+
+
+def approve_strategy(client_id: int) -> dict:
+    """Johnny's one remaining manual step for organic SEO: approve. Every
+    article after that writes itself automatically — an immediate top-up
+    now (as many topics as this week's cap allows), then run_seo_cycle
+    keeps advancing the rest each week until the approved plan is fully
+    written. No more per-topic POST /api/seo/write-article calls."""
+    proposed = _recent_activity(client_id, "seo_strategy_proposed", 3650, limit=1)
+    if not proposed:
+        return {"success": False, "errors": ["no proposed strategy on file for this client"]}
+    _log_activity(client_id, "seo_strategy_approved", {"strategy_activity_id": proposed[0]["id"]})
+    log_step(AGENT_NAME, "approve_strategy", f"client {client_id}: approved — writing queued articles")
+    written = _advance_pending_articles(client_id)
+    return {"success": True, "written_now": [
+        {"topic": w.get("title", ""), "post_id": w.get("post_id"), "link": w.get("link", "")}
+        for w in written
+    ]}
 
 
 # ─── Article writing (iron rules enforced; publishes as WP DRAFT) ─────────────
@@ -560,9 +645,11 @@ def get_recent_articles_for_promotion(client_id: int, limit: int = 5) -> list:
 def run_seo_cycle() -> dict:
     """Scheduled entry (weekly): for every client assigned to this agent
     (client_agents rows — admin assigns via POST /api/clients/{id}/agents),
-    refresh the audit + research and propose/refresh strategy for Johnny —
-    unless a proposal is still fresh (STRATEGY_MIN_INTERVAL_DAYS). Article
-    writing is NOT automatic — Johnny triggers it per approved topic."""
+    FIRST advances any approved strategy's remaining pending topics (the
+    weekly top-up that replaced Johnny manually calling write-article per
+    topic — see approve_strategy), THEN refreshes the audit + research and
+    proposes/refreshes strategy for Johnny — unless a proposal is still
+    fresh (STRATEGY_MIN_INTERVAL_DAYS)."""
     log_step(AGENT_NAME, "seo_cycle", "starting")
     rows = (
         _db().table("client_agents").select("client_id")
@@ -570,13 +657,17 @@ def run_seo_cycle() -> dict:
         .execute().data or []
     )
     summary = {"clients": len(rows), "proposed": 0, "skipped_fresh": 0,
-               "skipped_no_site": 0, "failed": 0}
+               "skipped_no_site": 0, "failed": 0, "articles_advanced": 0}
     for row in rows:
         client_id = row["client_id"]
         from agents.website_agent import is_connected
         if not is_connected(client_id):
             summary["skipped_no_site"] += 1
             continue
+
+        written = _advance_pending_articles(client_id)
+        summary["articles_advanced"] += len(written)
+
         if _recent_activity(client_id, "seo_strategy_proposed",
                             STRATEGY_MIN_INTERVAL_DAYS, limit=1):
             summary["skipped_fresh"] += 1

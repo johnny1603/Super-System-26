@@ -85,8 +85,18 @@ context by REUSING `engagement_agent._client_context` (calendar + trends +
 performance — one trend mechanism, never a second one), proposes 2-3 visual
 items into **client_suggestions kind='media_plan'** (the existing approval
 pipeline; dashboard label added), plus a chat nudge. 5-day dedup makes reruns
-harmless. Approval alerts (engagement's decide_suggestion) tell the team to
-produce — generation is then triggered via the admin endpoints.
+harmless.
+
+**Approval → generation is automatic (2026-07-21, closed the manual-trigger
+gap)**: `engagement_agent.decide_suggestion` dispatches an approved
+`media_plan` suggestion straight to `generate_image`/`generate_video`
+(`context.format`/`context.platform` from the suggestion) or
+`create_filming_kit` (`format='self_filmed'`) via FastAPI `BackgroundTasks` —
+never inline in the client's approve-tap request, since generation can take
+up to ~10 minutes. The team no longer manually triggers anything after a
+client approves; results still land in Drive for human review before
+anything is ever published (unchanged). See the engagement skill's
+`_AUTO_FULFILL` note for why only this suggestion kind gets auto-dispatched.
 
 ## Camera coaching (delivers the sales-chat promise)
 

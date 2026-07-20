@@ -98,9 +98,21 @@ def get_suggestions(client_id: int, status: str = "pending", limit: int = 20) ->
     return query.execute().data or []
 
 
-def decide_suggestion(client_id: int, suggestion_id: int, decision: str) -> dict:
+def decide_suggestion(client_id: int, suggestion_id: int, decision: str, background_tasks=None) -> dict:
     """Client taps approve/reject in the dashboard. Ownership-checked (the
-    row must belong to the session's client) and only pending rows move."""
+    row must belong to the session's client) and only pending rows move.
+
+    On approval, dispatches kind-specific AUTOMATIC fulfillment when a clean
+    one exists (currently: media_plan -> media_agent generation/filming-kit,
+    see _AUTO_FULFILL) via `background_tasks` (a starlette BackgroundTasks
+    instance, duck-typed here so this module doesn't import fastapi —
+    generation can take up to ~10 minutes and must never block the client's
+    approve-tap request). Kinds with no clean 1:1 automatic mapping
+    (promotion/content_idea/campaign_tweak/homework) still just alert the
+    team for human fulfillment, same as before — a deliberate, flagged
+    choice (see the engagement skill), not an oversight: those are
+    open-ended ideas needing creative/business judgment, not a single
+    deterministic function call."""
     if decision not in ("approved", "rejected"):
         return {"success": False, "error": "decision must be approved|rejected"}
     rows = (_db().table("client_suggestions").select("*")
@@ -117,10 +129,59 @@ def decide_suggestion(client_id: int, suggestion_id: int, decision: str) -> dict
     log_activity(client_id, AGENT_NAME, f"suggestion_{decision}",
                  {"suggestion_id": suggestion_id, "title": suggestion.get("title", "")}, {})
     if decision == "approved":
-        # v1 fulfillment is human — the team must actually see approvals
+        outcome = _dispatch_approved(client_id, suggestion, background_tasks)
         agent_alert(AGENT_NAME, [f"client {client_id} APPROVED suggestion "
-                                 f"'{suggestion.get('title', '')}' (#{suggestion_id}) — action needed"])
+                                 f"'{suggestion.get('title', '')}' (#{suggestion_id}) — {outcome}"])
     return {"success": True, "id": suggestion_id, "status": decision}
+
+
+# ─── Kind-specific automatic fulfillment (closes the approve→execute gap) ─────
+
+def _fulfill_media_plan(client_id: int, suggestion: dict):
+    """Runs in the BACKGROUND after a media_plan suggestion is approved —
+    never inline in the client's approve-tap request (generation can take
+    up to ~10 minutes; media_gen_service's polling). generate_image/
+    generate_video/create_filming_kit already alert on their own expected
+    failure paths — this only needs a safety net for anything that escapes
+    them, since an exception in a background task has no other visibility
+    to a human."""
+    from agents.media_agent import create_filming_kit, generate_image, generate_video
+    context = suggestion.get("context") or {}
+    fmt = context.get("format", "image")
+    platform = context.get("platform", "instagram")
+    brief = f"{suggestion.get('title', '')} — {suggestion.get('body', '')}".strip(" —")
+    try:
+        if fmt == "self_filmed":
+            create_filming_kit(client_id, suggestion.get("title", ""))
+        elif fmt == "video":
+            generate_video(client_id, brief, platform=platform)
+        else:
+            generate_image(client_id, brief, platform=platform)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: automatic fulfillment of approved media "
+                                 f"suggestion '{suggestion.get('title', '')}' crashed unexpectedly "
+                                 f"({e}) — needs manual follow-up"])
+
+
+# kind -> background handler. Only kinds with a clean, safe-to-run-unattended
+# mapping onto an existing agent function belong here — see the docstring
+# above and the engagement skill for why the other kinds are excluded.
+_AUTO_FULFILL = {
+    "media_plan": _fulfill_media_plan,
+}
+
+
+def _dispatch_approved(client_id: int, suggestion: dict, background_tasks) -> str:
+    handler = _AUTO_FULFILL.get(suggestion.get("kind"))
+    if not handler:
+        return "action needed"  # unchanged v1 behavior for kinds with no automatic mapping
+    if background_tasks is None:
+        # Called from a context that can't run this safely in the background
+        # (e.g. a future non-HTTP caller) - never block synchronously on a
+        # ~10-minute generation call; leave it for manual follow-up instead.
+        return "action needed (automatic fulfillment unavailable in this context)"
+    background_tasks.add_task(handler, client_id, suggestion)
+    return "approved — generation/preparation starting automatically in the background"
 
 
 # ─── Weekly engagement run ────────────────────────────────────────────────────

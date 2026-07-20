@@ -42,9 +42,43 @@ routine events to it.
 Output → `client_suggestions` rows (`status='pending'`) → the dashboard's
 "ממתין לאישור שלך" area + a chat push via `log_communication`. The client
 approves/rejects in place (`POST /api/client/suggestions/{id}/decide`,
-ownership-checked). **An approval fires `agent_alert` — v1 fulfillment is
-human**; wire approved suggestions into execution agents as those grow.
-Repeat-avoidance: the prompt gets the client's last 10 suggestion titles.
+ownership-checked). **An approval fires `agent_alert` AND, for kinds with a
+clean automatic mapping, dispatches real execution** (2026-07-21, closed the
+manual-trigger gap — see `_AUTO_FULFILL` below); Repeat-avoidance: the
+prompt gets the client's last 10 suggestion titles.
+
+### Approval → automatic fulfillment (`_AUTO_FULFILL`)
+
+`decide_suggestion(client_id, suggestion_id, decision, background_tasks)` —
+the `background_tasks` param is a starlette `BackgroundTasks` instance from
+the endpoint (duck-typed, not imported as a type here, so this module stays
+free of a FastAPI import). On approval, `_dispatch_approved` looks up the
+suggestion's `kind` in `_AUTO_FULFILL`:
+
+- **`media_plan`** (media_agent's weekly plan, see the media skill) → the
+  ONLY kind wired today. `_fulfill_media_plan` reads `context.format`
+  (`image`/`video`/`self_filmed`) and `context.platform`, then calls
+  `media_agent.generate_image`/`generate_video`/`create_filming_kit` via
+  `background_tasks.add_task(...)` — **never inline**, since generation can
+  take up to ~10 minutes (media_gen_service's job-polling) and the client's
+  approve-tap request must return immediately. If `background_tasks` is
+  `None` (a caller that can't run work safely in the background), it falls
+  back to the old "action needed" alert rather than blocking synchronously.
+- **`promotion` / `content_idea` / `campaign_tweak` / `homework`** —
+  deliberately NOT auto-dispatched. These are open-ended ideas that need
+  creative or business judgment to execute well (what exactly to write,
+  which campaign lever to pull, how to word a promo) — not a single
+  deterministic function call the way "generate this image" is. Still
+  human-fulfilled via the `agent_alert`, same as before. Revisit only once a
+  specific kind consistently maps onto ONE safe, unattended-appropriate
+  action — don't force a mapping that doesn't cleanly exist.
+
+Adding a new auto-fulfilled kind: add one entry to `_AUTO_FULFILL`, write a
+handler with the same signature `(client_id, suggestion) -> None` that
+catches its own expected failures (the underlying agent function should
+already `agent_alert` on those) and only needs a try/except safety net for
+truly unexpected crashes — a background task's exception has no other
+visibility to a human.
 
 **The support chat OWNS this experience** (2026-07-16): the dashboard greets
 each session with a personalized, gender-aware welcome bubble that surfaces
@@ -163,6 +197,8 @@ scans.)
 ## Deferred / not built
 
 Inbound WhatsApp webhooks, per-industry event packs beyond the tag hints,
-auto-execution of approved suggestions (v1 is team-fulfilled), client AI
-avatars (explicitly future — architecture note: reuse owner_gender + the
-suggestion pipe), suggestion snooze/edit (approve/reject only for v1).
+client AI avatars (explicitly future — architecture note: reuse
+owner_gender + the suggestion pipe), suggestion snooze/edit (approve/reject
+only for v1). Auto-execution now covers `media_plan` only (see
+`_AUTO_FULFILL`) — the other three suggestion kinds remain team-fulfilled by
+design, not because nobody got to it.

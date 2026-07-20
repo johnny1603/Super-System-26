@@ -4,7 +4,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -1726,9 +1726,22 @@ class SeoWriteArticleRequest(BaseModel):
 @app.post("/api/seo/write-article", dependencies=_admin_only)
 def seo_write_article(req: SeoWriteArticleRequest):
     # Creates a WP DRAFT via website_agent — human publishes. Weekly cap +
-    # quality gate enforced inside the agent (iron rules).
+    # quality gate enforced inside the agent (iron rules). Manual/ad-hoc use
+    # only now — approved-strategy topics write themselves automatically
+    # (see approve_strategy / run_seo_cycle).
     from agents.seo_agent import write_article
     result = write_article(req.client_id, req.topic, req.target_keyword, req.notes)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.post("/api/seo/approve-strategy", dependencies=_admin_only)
+def seo_approve_strategy(req: SeoStrategyRequest):
+    """Johnny's one remaining manual step for organic SEO — approving
+    immediately writes as many queued articles as the weekly cap allows;
+    run_seo_cycle advances the rest automatically each week from here."""
+    from agents.seo_agent import approve_strategy
+    result = approve_strategy(req.client_id)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
@@ -1979,10 +1992,13 @@ class SuggestionDecideRequest(BaseModel):
 
 @app.post("/api/client/suggestions/{suggestion_id}/decide")
 async def client_suggestion_decide(suggestion_id: int, req: SuggestionDecideRequest,
-                                   request: Request):
+                                   request: Request, background_tasks: BackgroundTasks):
     client_id = _require_session(request)
     from agents.engagement_agent import decide_suggestion
-    result = decide_suggestion(client_id, suggestion_id, req.decision)
+    # Approving a media suggestion can kick off generation that takes up to
+    # ~10 minutes (media_gen_service polling) - never block this request on
+    # it. background_tasks runs the actual work AFTER the response is sent.
+    result = decide_suggestion(client_id, suggestion_id, req.decision, background_tasks)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "decide failed"))
     return {"success": True, "data": result}
@@ -2139,6 +2155,24 @@ def budget_scan():
     budget skill for the scheduler command."""
     from agents.budget_agent import run_weekly_scan
     return {"success": True, "data": run_weekly_scan()}
+
+@app.get("/api/admin/clients/{client_id}/seo/pending-strategy")
+def admin_seo_pending_strategy(client_id: int, request: Request):
+    """Admin dashboard drawer's SEO approval surface (session cookie, not
+    X-Admin-Key — this is the browser-facing counterpart to the /api/seo/*
+    server-to-server endpoints)."""
+    _require_admin(request)
+    from agents.seo_agent import get_pending_strategy
+    return {"success": True, "data": get_pending_strategy(client_id)}
+
+@app.post("/api/admin/clients/{client_id}/seo/approve-strategy")
+def admin_seo_approve_strategy(client_id: int, request: Request):
+    _require_admin(request)
+    from agents.seo_agent import approve_strategy
+    result = approve_strategy(client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
 
 @app.get("/api/pricing/monitor-scan", dependencies=_admin_only)
 def pricing_monitor_scan():

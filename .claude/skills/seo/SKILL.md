@@ -26,11 +26,22 @@ description: How uallak's organic SEO agent works — client-paid research tools
   inbox. Clients can't evaluate SEO strategy; do NOT route this through
   `client_suggestions`.
 - **Routine CONTENT → the normal draft flow**: articles land as WP drafts;
-  approval = a human publishing them. Approval of a strategy = Johnny
-  executing its topics via `POST /api/seo/write-article`.
+  approval = a human publishing them in WordPress.
 
-There is no dedicated strategy-approval UI yet — the activity row + alert IS
-v1. A proper admin approve/reject surface is a known natural next step.
+**Approving a strategy now writes its articles automatically (2026-07-21,
+closed the manual-trigger gap)** — `approve_strategy(client_id)`
+(`POST /api/seo/approve-strategy`, X-Admin-Key, or the admin dashboard
+drawer's "אשר" button, session-gated via `/api/admin/clients/{id}/seo/*`)
+logs a `seo_strategy_approved` activity row and immediately calls
+`write_article` for as many `content_plan` topics as this week's
+`MAX_ARTICLES_PER_WEEK` cap allows (highest-`priority` first). Remaining
+topics are NOT written all at once — `run_seo_cycle` (the same weekly
+scheduled job) advances the backlog automatically each week
+(`_advance_pending_articles`) until the whole approved plan is written.
+Johnny approves once; no more per-topic `write-article` calls. The
+`content_plan` can list more topics than one week's cap allows on purpose —
+that's expected pacing, not a bug. `write-article` itself stays available
+for ad-hoc/manual articles outside a strategy.
 
 ## Iron rules (content — mirror of website_agent's standing rules)
 
@@ -92,9 +103,17 @@ Assignment = a `client_agents` row (`agent_name='seo_agent'`,
 - `GET /api/seo/audit?client_id=` (free)
 - `GET /api/seo/research?client_id=&force_refresh=` (costs money)
 - `POST /api/seo/strategy` {client_id} (audit+research+LLM → Johnny alert)
+- `POST /api/seo/approve-strategy` {client_id} (approves + writes queued
+  articles up to this week's cap immediately; `run_seo_cycle` advances the
+  rest weekly)
 - `POST /api/seo/write-article` {client_id, topic, target_keyword, notes}
+  (manual/ad-hoc — approved-strategy topics write themselves now)
 - `GET /api/seo/promotable?client_id=` (media-agent preview)
-- `GET /api/seo/cycle` (scheduler)
+- `GET /api/seo/cycle` (scheduler — also advances approved strategies now)
+
+Admin dashboard (session cookie, not X-Admin-Key): `GET /api/admin/clients/
+{id}/seo/pending-strategy`, `POST /api/admin/clients/{id}/seo/approve-strategy`
+— the client drawer's "אסטרטגיית SEO אורגני" section.
 
 Scheduler (weekly, Mondays 08:00 — strategy refresh at most every 21 days per
 client, `STRATEGY_MIN_INTERVAL_DAYS`):

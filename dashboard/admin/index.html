@@ -743,11 +743,56 @@ async function openDrawer(clientId) {
     </div>
 
     <div class="drawer-section">
+      <div class="drawer-label">אסטרטגיית SEO אורגני</div>
+      <div id="seoStrategyArea">
+        <div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
       <div class="drawer-label">פעילות אחרונה</div>
       ${activityRows}
     </div>`;
 
   loadBudgetSection(clientId);
+  loadSeoStrategySection(clientId);
+}
+
+async function loadSeoStrategySection(clientId) {
+  const area = document.getElementById('seoStrategyArea');
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/seo/pending-strategy`);
+    const d = res.data;
+    if (d.awaiting_approval) {
+      const topics = (d.plan.content_plan || []).map(t =>
+        `<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">• ${esc(t.topic)}</div>`).join('');
+      area.innerHTML = `
+        <div class="drawer-stat-row" style="border:none;"><b>אסטרטגיה ממתינה לאישור</b> (${fmtDate(d.proposed_at)})</div>
+        ${topics}
+        <button class="drawer-action-btn" onclick="approveSeoStrategy(${clientId})">✓ אשר — כתיבת המאמרים תתחיל אוטומטית</button>`;
+    } else if (d.approved) {
+      const pending = d.pending_topics || [];
+      area.innerHTML = pending.length
+        ? `<div class="drawer-stat-row" style="border:none;color:var(--gray);">אסטרטגיה מאושרת — ${pending.length} מאמרים בתור, נכתבים אוטומטית לפי התקרה השבועית</div>`
+        : '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אסטרטגיה מאושרת — כל המאמרים נכתבו ✓</div>';
+    } else {
+      area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין אסטרטגיה מוצעת עדיין ללקוח זה</div>';
+    }
+  } catch (e) {
+    console.error('seo strategy load failed', e);
+    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת נתוני SEO</div>';
+  }
+}
+
+async function approveSeoStrategy(clientId) {
+  const area = document.getElementById('seoStrategyArea');
+  area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">מאשר וכותב מאמרים…</div>';
+  try {
+    await api(`/api/admin/clients/${clientId}/seo/approve-strategy`, { method: 'POST' });
+  } catch (e) {
+    console.error('approve strategy failed', e);
+  }
+  loadSeoStrategySection(clientId);
 }
 
 function conf(c) {
