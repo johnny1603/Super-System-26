@@ -47,38 +47,41 @@ the exact sentence. Bump `CONSENT_VERSION` when wording changes. Revocation
 is "client asks, we stop + delete" — handled manually for now (flag if it
 needs automation).
 
-## HeyGen API reality (re-verified 2026-07-19 — drives the flow's shape)
+## HeyGen API reality (re-verified 2026-07-20 — drives the flow's shape)
 
 - **Billing (Feb 2026 migration, confirmed)**: HeyGen's API is
   PAY-AS-YOU-GO — the client tops up an API wallet from $5, no monthly
   commitment, credits expire after 12 months, no free API credits. The API
-  wallet is SEPARATE from HeyGen's web plans. Generation runs ~$1/min
-  (Avatar III 1080p) to ~$3/min (Avatar V), up to $5/min (Avatar IV 4K) —
-  useful margin math: a Basic-tier client (10 min/mo, 450₪) pays HeyGen
-  roughly $10-30/mo in credits on top.
-- **VIDEO digital twin CREATION API remains ENTERPRISE-ONLY even after the
-  migration** (HeyGen help center, current: "only available for Enterprise
-  API users" — Enterprise = Pay-As-You-Go + the Digital Twin Creation API).
-  The billing change affected generation, not creation access.
-- **The decided creation flow (2026-07-19) — workspace invite**: the CLIENT
-  invites Johnny's own HeyGen login as a **Creator-role collaborator** to
-  their workspace (scoped role: can create avatars/videos/voices, no full
-  account access, no password sharing — available on **Team plan and
-  above**, NOT confirmed on the cheap Creator solo plan). JOHNNY performs
-  the one-time creation step in their workspace — not the client. After the
-  avatar exists, ALL ongoing generation runs on the client's own API key
-  exactly like Higgsfield — zero further manual involvement for that
-  avatar. `create_avatar` still tries the Enterprise API first and returns
-  method='workspace_invite' with instructions when it isn't available; the
-  **daily readiness scan** (`GET /api/avatar/scan`) detects each finished
-  avatar and notifies the client — nobody is left wondering.
-- **Client cost implication (disclose everywhere, no surprises)**: because
-  of the workspace-invite requirement, avatar-tier clients need HeyGen's
-  **Team plan (~$149/mo)**, not the ~$24-29 Creator plan — plus API
-  generation credits. Their direct cost, never ours. The dashboard card
-  says this explicitly; `PRICING["avatar"]["client_direct_costs_note_he"]`
-  carries the canonical Hebrew disclosure for the future proposals
-  integration.
+  wallet is SEPARATE from HeyGen's web plans — **standalone, works for
+  free-plan users too** ("any user—including free users—can unlock…
+  features by purchasing any amount of API credits", help center).
+  Generation runs ~$1/min (Avatar III twin 1080p) to ~$3/min (Avatar IV
+  photo) and ~$4/min (Avatar IV twin) — useful margin math: a Basic-tier
+  client (10 min/mo, 450₪) pays HeyGen roughly $10-40/mo in credits on top.
+- **VIDEO digital twin CREATION API remains ENTERPRISE-ONLY** — but that
+  gates only the API. **Web-UI twin creation is included on EVERY plan,
+  including Free** (pricing page: Free = 1 Custom Digital Twin; Creator
+  $29 / Pro $49 = "1+"; Business $149 = 5). The earlier belief that
+  creation itself needed a Team/Business plan was wrong.
+- **The decided creation flow (2026-07-20) — client self-creates**: the
+  CLIENT creates their own twin in HeyGen's web UI, a few clicks following
+  the source kit (which names the exact steps + the consent-statement
+  video HeyGen requires). Works on whatever plan they're on, incl. free.
+  No workspace invite, no collaborator step, no Johnny involvement.
+  Then they connect their HeyGen API key via the existing dashboard card
+  (unchanged) and ALL generation runs on that key exactly like Higgsfield.
+  `create_avatar` still tries the Enterprise API first and returns
+  method='web_ui_self_service' (+ a dashboard-chat message pointing the
+  client to the web UI) when it isn't available; the **daily readiness
+  scan** (`GET /api/avatar/scan`) detects each finished avatar and
+  notifies the client — nobody is left wondering.
+- **Client cost implication (disclose everywhere, no surprises)**: NO paid
+  HeyGen subscription is required — one avatar works on the Free plan;
+  **additional avatars (our 100₪-each pricing) need a paid plan/add-on**.
+  Ongoing generation is paid from the pay-as-you-go API wallet (~$1-4/min).
+  Their direct cost, never ours. The dashboard card says this explicitly;
+  `PRICING["avatar"]["client_direct_costs_note_he"]` carries the canonical
+  Hebrew disclosure for the future proposals integration.
 - **Photo Avatar** create/train: available via the standard API ✓ (fully
   automated here).
 - Video generation with any existing avatar: standard pay-as-you-go API ✓.
@@ -101,8 +104,8 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
    upload); the kit names the consent-clip convention (filename contains
    'consent').
 3. `POST /api/avatar/create` — photos → photo-avatar path; videos → twin
-   path (Enterprise API, or the workspace-invite flow above). `POST
-   /api/avatar/create-voice` for the ElevenLabs clone (instant).
+   path (Enterprise API, or the client-self-creates web-UI flow above).
+   `POST /api/avatar/create-voice` for the ElevenLabs clone (instant).
 4. Daily scan detects each avatar's readiness (multi-avatar aware, with a
    stop condition so new HeyGen STOCK avatars can't false-trigger) →
    client notified 🎉.

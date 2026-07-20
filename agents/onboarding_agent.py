@@ -69,14 +69,20 @@ PRICING = {
         # Client-side direct costs (THEIRS, paid straight to the vendors —
         # must be disclosed in any client-facing copy, honest_note included,
         # when the follow-up handoff wires this tier into proposals):
-        # HeyGen TEAM plan ~$149/mo (required — the workspace-invite step for
-        # avatar creation needs Team plan, NOT the cheaper ~$24-29 Creator
-        # plan), HeyGen API generation credits pay-as-you-go (~$1-3/min),
-        # optional ElevenLabs plan for voice cloning.
+        # HeyGen — NO paid subscription required (re-verified 2026-07-20; the
+        # earlier "Team plan ~$149 required" assumption was WRONG): avatar
+        # creation works in the web UI on every plan incl. Free (1 custom twin
+        # included; additional twins need a paid plan/add-on — relevant to our
+        # 100₪-per-additional-avatar pricing), and video generation runs on
+        # HeyGen's standalone pay-as-you-go API wallet (top up from $5,
+        # ~$1-4/min by model, credits expire after 12 months) regardless of
+        # plan. Optional ElevenLabs plan for voice cloning.
         "client_direct_costs_note_he": (
-            "בנוסף למחירי uallak: מנוי HeyGen Team (כ-149$ לחודש, נדרש לצורך יצירת "
-            "האווטאר) + קרדיטים ל-API לפי שימוש, ולרצון מנוי ElevenLabs לשיבוט קול — "
-            "כולם משולמים על ידך ישירות לספקים, לא דרכנו."),
+            "בנוסף למחירי uallak: חשבון HeyGen — יצירת האווטאר עצמה אפשרית בכל מסלול, "
+            "כולל החינמי (אווטאר אחד; אווטארים נוספים דורשים מסלול בתשלום), והפקת "
+            "הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-1-4$ לדקת "
+            "וידאו). לרצון גם מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות "
+            "לספקים, לא דרכנו."),
     },
 
     "raffle": {"setup_and_management": 250},

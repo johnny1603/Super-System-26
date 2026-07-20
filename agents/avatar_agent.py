@@ -21,11 +21,13 @@ collects it with an explicit checkbox; the server re-checks on every
 creation path. HeyGen additionally requires its own recorded consent-
 statement VIDEO for digital twins — our source-kit instructions cover it.
 
-HeyGen API reality (verified 2026-07-19): photo-avatar creation/training is
-standard-plan API; VIDEO digital-twin creation via API is Enterprise-only —
-on a normal client account the twin is created in HeyGen's web UI (our
-source kit walks the client through it) and this agent detects readiness by
-scanning their avatar list, then generates videos with it (standard API).
+HeyGen API reality (re-verified 2026-07-20): photo-avatar creation/training
+is standard API; VIDEO digital-twin creation via API is Enterprise-only, BUT
+web-UI twin creation is available on EVERY plan including Free (1 twin
+included; more need a paid plan/add-on) — so the CLIENT creates the twin
+themselves in HeyGen's web UI following our source kit, and this agent
+detects readiness by scanning their avatar list, then generates videos with
+it (standard pay-as-you-go API — also plan-independent).
 
 Storage: everything lives under the client's existing media Drive root
 (media_agent's folders — reused, not rebuilt): `avatar-source/` for their
@@ -154,9 +156,10 @@ continuous 2-3 minute video, 720p+ (1080p preferred), good even lighting, plain 
 looking at camera, natural pauses, varied short sentences, hands visible sometimes, NO cuts or
 filters; PLUS HeyGen's own required consent-statement video (state name + explicit permission to
 create the avatar, one take, ~15 seconds — give the exact sentence to say); PLUS one final step:
-invite the uallak team member as a Creator-role collaborator to their HeyGen workspace
-(Team plan; workspace settings → members — the exact email arrives in the dashboard chat), so
-the one-time technical creation is done FOR them, with no password sharing. kind='voice':
+create the avatar THEMSELVES in HeyGen's website (a few clicks, works on every plan including
+the free one — in HeyGen: Avatars → create digital twin → upload the SAME training footage and
+consent video they filmed); once it finishes training, our system detects it automatically and
+lets them know. kind='voice':
 instructions for ElevenLabs voice cloning — 1-3 minutes total of clean solo speech, quiet room,
 phone mic is fine, natural tone, no music/background noise.
 
@@ -227,8 +230,9 @@ def create_avatar(client_id: int, avatar_name: str = "") -> dict:
     """Create the client's avatar from their uploaded source material, on
     THEIR HeyGen account. Photos-only → photo-avatar path (standard API).
     Video footage → digital-twin path: tries the Enterprise creation API;
-    on a permission error returns the web-UI fallback instructions instead
-    of failing opaquely. Consent (likeness) is a hard gate."""
+    on a permission error the CLIENT is pointed to HeyGen's web UI to create
+    the twin themselves (available on every plan incl. Free) instead of
+    failing opaquely. Consent (likeness) is a hard gate."""
     if not has_consent(client_id, "likeness"):
         return {"success": False, "errors": [_NO_CONSENT.format(scope="likeness")]}
     api_key = _key(client_id, HEYGEN_PLATFORM)
@@ -285,25 +289,29 @@ def create_avatar(client_id: int, avatar_name: str = "") -> dict:
     except Exception as e:
         message = str(e)
         if any(word in message.lower() for word in ("permission", "forbidden", "enterprise", "401", "403")):
-            # Non-Enterprise API key: twin creation happens in HeyGen's web UI.
-            # The decided flow (2026-07-19): the CLIENT invites Johnny's own
-            # HeyGen login as a Creator-role collaborator to their workspace
-            # (Team plan+; scoped role - no password sharing, no full account
-            # access), and JOHNNY performs the one-time creation there. After
-            # that, all generation runs on the client's API key as usual.
+            # Non-Enterprise API key (the normal case): twin creation happens
+            # in HeyGen's web UI, BY THE CLIENT — decided 2026-07-20 after
+            # HeyGen's pricing page confirmed every plan (incl. Free) includes
+            # web-UI custom-twin creation; only the creation API is
+            # Enterprise-gated. The source kit already walks them through it;
+            # the daily scan detects the finished avatar and notifies them.
+            from agents.client_agent import log_communication
             _log_activity(client_id, "avatar_creation_submitted",
-                          {"method": "workspace_invite", "name": name,
+                          {"method": "web_ui_self_service", "name": name,
                            "known_avatar_ids": known_ids})
-            agent_alert(AGENT_NAME, [
-                f"client {client_id}: HeyGen twin-creation API not available on their key "
-                f"({message[:150]}) - have the client invite you as a Creator-role "
-                f"collaborator to their HeyGen workspace (Team plan), then create avatar "
-                f"'{name}' there yourself (their footage is in avatar-source); the daily "
-                f"scan will detect it when ready"])
-            return {"success": True, "method": "workspace_invite",
-                    "note": "creation API unavailable on this HeyGen key - the client invites "
-                            "Johnny as a Creator-role workspace collaborator and he performs "
-                            "the one-time creation; readiness scan will detect and notify"}
+            log_communication(client_id, "outbound", "dashboard_chat",
+                              "הצעד האחרון ליצירת האווטאר הוא אצלכם ב-HeyGen 🎬 נכנסים לחשבון, "
+                              "בוחרים יצירת אווטאר דיגיטלי, ומעלים שם את אותם צילומים וסרטון "
+                              "ההסכמה שהכנתם לפי הערכה (עובד בכל מסלול, כולל החינמי). ברגע "
+                              "שהאווטאר יסיים להתאמן — נזהה אותו אוטומטית ונעדכן אתכם 🎉")
+            log_step(AGENT_NAME, "create_avatar",
+                     f"client {client_id}: twin-creation API unavailable ({message[:120]}) - "
+                     f"client directed to self-create '{name}' in HeyGen's web UI")
+            return {"success": True, "method": "web_ui_self_service",
+                    "note": "creation API unavailable on this HeyGen key (normal - it is "
+                            "Enterprise-only) - the client creates the twin themselves in "
+                            "HeyGen's web UI per the source kit (any plan, incl. free); "
+                            "the readiness scan will detect and notify"}
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar creation failed: {e}"])
         return {"success": False, "errors": [message]}
 
