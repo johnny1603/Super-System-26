@@ -207,6 +207,34 @@ _NO_ACCOUNT_ERROR = ("client's Higgsfield account is not connected - the client 
                      "same self-service pattern as WordPress; see the media skill)")
 
 
+def get_monthly_usage(client_id: int) -> dict:
+    """Generation activity this calendar month — the pull point for
+    budget_agent (and anything else wanting a Higgsfield usage summary
+    without re-querying client_activity itself). Credits are the CLIENT'S
+    own Higgsfield plan credits, not an ILS/USD figure - Higgsfield exposes
+    no spend/billing API, so a currency amount here would be a fabricated
+    number. `credits_total` is None (not 0) when every generation this month
+    came back without a credits field at all, so callers can tell "zero
+    usage" apart from "usage happened but the field was empty"."""
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    rows = (_db().table("client_activity").select("action_type,details,created_at")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .in_("action_type", ["media_image_created", "media_video_created"])
+            .gte("created_at", month_start).limit(1000).execute().data or [])
+    images = [r for r in rows if r["action_type"] == "media_image_created"]
+    videos = [r for r in rows if r["action_type"] == "media_video_created"]
+    credit_values = [(r.get("details") or {}).get("credits") for r in rows]
+    known_credits = [c for c in credit_values if isinstance(c, (int, float))]
+    return {
+        "connected": bool(_generation_key(client_id)),
+        "images_this_month": len(images),
+        "videos_this_month": len(videos),
+        "credits_total": round(sum(known_credits), 2) if known_credits else None,
+        "credits_unit_known": bool(known_credits) and len(known_credits) == len(rows),
+    }
+
+
 # ─── Generation (images / videos) ─────────────────────────────────────────────
 
 PROMPT_SYSTEM = """You are the creative director of uallak, an Israeli marketing agency,

@@ -171,6 +171,17 @@ def is_connected(client_id: int) -> bool:
     return bool(connection.get("account_id") and ":" in (connection.get("access_token") or ""))
 
 
+def is_provisioned_by_us(client_id: int) -> bool:
+    """True when THIS client's site was created via provision_site (InstaWP,
+    billable to us) rather than an existing site they connected — the pull
+    point for budget_agent, which needs to know whether the InstaWP hosting
+    cost basis (PRICING["website"]["new_site_hosting"]) actually applies."""
+    rows = (_db().table("client_activity").select("id")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "website_provisioned").limit(1).execute().data)
+    return bool(rows)
+
+
 def _log_activity(client_id: int, action_type: str, details: dict, result: dict = None):
     _db().table("client_activity").insert({
         "client_id": client_id,

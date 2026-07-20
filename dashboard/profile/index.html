@@ -121,6 +121,23 @@ body {
 }
 .honest-note .icon { color: var(--accent); font-weight: 900; }
 
+/* ---------- EXTERNAL TOOLS (confidence-labeled) ---------- */
+.tool-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px 20px; margin-bottom: 10px;
+}
+.tool-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tool-name { font-weight: 700; font-size: 14px; }
+.tool-figure { font-weight: 800; font-size: 15px; }
+.confidence-badge {
+  font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 100px;
+  white-space: nowrap;
+}
+.confidence-badge.hard { background: rgba(0,201,110,0.14); color: var(--green); }
+.confidence-badge.estimate { background: rgba(255,190,0,0.14); color: #FFBE00; }
+.confidence-badge.unknown { background: rgba(255,255,255,0.08); color: var(--gray); }
+.tool-note { font-size: 12px; color: var(--gray); margin-top: 8px; line-height: 1.6; }
+
 /* ---------- ACCOUNT ACTIONS ---------- */
 .actions-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -199,6 +216,7 @@ body {
     <div class="section-sub" data-i18n="costs_sub">כמה שילמת ישירות לפלטפורמות הפרסום (תקציב מדיה) — בנפרד מדמי הניהול שלנו</div>
   </div>
   <div id="costsArea"><div class="empty-row" data-i18n="costs_loading">טוען נתונים מהפלטפורמות…</div></div>
+  <div id="toolsArea"></div>
   <div class="honest-note">
     <span class="icon">ⓘ</span>
     <span data-i18n="honest_note">תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.</span>
@@ -279,6 +297,18 @@ const I18N = {
   costs_empty: { he:'אין פלטפורמות פרסום מחוברות כרגע — אחרי חיבור Google Ads או Meta בדשבורד, ההוצאות יופיעו כאן', en:'No ad platforms connected yet — once Google Ads or Meta is connected in the dashboard, spend will appear here', fr:'Aucune plateforme connectée — dès que Google Ads ou Meta sera connecté dans le tableau de bord, les dépenses apparaîtront ici', ar:'لا توجد منصات إعلان متصلة حاليًا — بعد ربط Google Ads أو Meta في لوحة التحكم ستظهر النفقات هنا', ru:'Рекламные платформы не подключены — после подключения Google Ads или Meta в кабинете расходы появятся здесь' },
   costs_error: { he:'שגיאה בטעינת הנתונים — נסו לרענן את העמוד', en:'Error loading data — try refreshing the page', fr:'Erreur de chargement — actualisez la page', ar:'خطأ في تحميل البيانات — حاول تحديث الصفحة', ru:'Ошибка загрузки данных — обновите страницу' },
   platform_error: { he:'לא הצלחנו למשוך נתונים כרגע — נסו לרענן', en:'Couldn\'t fetch data right now — try refreshing', fr:'Impossible de récupérer les données — actualisez', ar:'تعذر جلب البيانات الآن — حاول التحديث', ru:'Не удалось получить данные — обновите страницу' },
+  tools_title: { he:'כלי יצירה נוספים', en:'Other tools', fr:'Autres outils', ar:'أدوات أخرى', ru:'Другие инструменты' },
+  badge_hard: { he:'מספר אמיתי', en:'Real figure', fr:'Chiffre réel', ar:'رقم حقيقي', ru:'Реальная цифра' },
+  badge_estimate: { he:'הערכה', en:'Estimate', fr:'Estimation', ar:'تقدير', ru:'Оценка' },
+  badge_unknown: { he:'לא ידוע לנו', en:'Unknown to us', fr:'Inconnu pour nous', ar:'غير معروف لدينا', ru:'Нам неизвестно' },
+  tool_higgsfield: { he:'יצירת מדיה (Higgsfield)', en:'Media generation (Higgsfield)', fr:'Génération de médias (Higgsfield)', ar:'إنشاء الوسائط (Higgsfield)', ru:'Генерация медиа (Higgsfield)' },
+  tool_higgsfield_note: { he:'מספר התמונות/הסרטונים שנוצרו החודש הוא נתון אמיתי — אין לנו גישה לעלות בפועל בחשבון ה-Higgsfield שלך.', en:'The number of images/videos generated this month is real — we have no visibility into the actual cost on your Higgsfield account.', fr:'Le nombre d\'images/vidéos générées ce mois-ci est réel — nous n\'avons pas de visibilité sur le coût réel sur votre compte Higgsfield.', ar:'عدد الصور/الفيديوهات المُنشأة هذا الشهر رقم حقيقي — لا نملك رؤية للتكلفة الفعلية في حساب Higgsfield الخاص بك.', ru:'Количество изображений/видео за этот месяц реально — у нас нет доступа к фактической стоимости на вашем аккаунте Higgsfield.' },
+  tool_heygen: { he:'אווטאר דיגיטלי (HeyGen)', en:'Digital avatar (HeyGen)', fr:'Avatar numérique (HeyGen)', ar:'أفاتار رقمي (HeyGen)', ru:'Цифровой аватар (HeyGen)' },
+  tool_heygen_note: { he:'משך הסרטונים בדקות הוא נתון אמיתי; טווח העלות בשקלים הוא הערכה בלבד לפי תעריפי HeyGen הפומביים — לא החיוב בפועל שלך.', en:'Video minutes are real; the cost range is only an estimate from HeyGen\'s published rates — not your actual bill.', fr:'Les minutes de vidéo sont réelles ; la fourchette de coût n\'est qu\'une estimation basée sur les tarifs publics de HeyGen — pas votre facture réelle.', ar:'دقائق الفيديو رقم حقيقي؛ نطاق التكلفة مجرد تقدير وفق أسعار HeyGen المعلنة — وليس فاتورتك الفعلية.', ru:'Минуты видео реальны; диапазон стоимости — лишь оценка по опубликованным тарифам HeyGen, а не ваш фактический счёт.' },
+  tool_elevenlabs: { he:'שיבוט קול (ElevenLabs)', en:'Voice cloning (ElevenLabs)', fr:'Clonage vocal (ElevenLabs)', ar:'استنساخ الصوت (ElevenLabs)', ru:'Клонирование голоса (ElevenLabs)' },
+  tool_elevenlabs_note: { he:'אין לנו כיום נראות לצריכה או לעלות בחשבון ה-ElevenLabs שלך.', en:'We currently have no visibility into usage or cost on your ElevenLabs account.', fr:'Nous n\'avons actuellement aucune visibilité sur l\'usage ou le coût de votre compte ElevenLabs.', ar:'لا نملك حاليًا أي رؤية للاستخدام أو التكلفة في حساب ElevenLabs الخاص بك.', ru:'В настоящее время у нас нет доступа к использованию или стоимости на вашем аккаунте ElevenLabs.' },
+  tool_seo: { he:'כלי מחקר SEO', en:'SEO research tool', fr:'Outil de recherche SEO', ar:'أداة أبحاث SEO', ru:'Инструмент SEO-исследований' },
+  tool_seo_note: { he:'המחיר המוצג הוא מחיר המחירון הרשמי של הכלי, לא בהכרח סכום החיוב בפועל שלך (מטבע/הנחות עשויים להיות שונים).', en:'The price shown is the tool\'s official list price, not necessarily your actual bill (currency/discounts may differ).', fr:'Le prix affiché est le tarif public de l\'outil, pas nécessairement votre facture réelle (devise/remises peuvent différer).', ar:'السعر المعروض هو سعر القائمة الرسمي للأداة، وليس بالضرورة فاتورتك الفعلية (قد تختلف العملة/الخصومات).', ru:'Указанная цена — это официальная цена инструмента по прайс-листу, не обязательно ваш фактический счёт (валюта/скидки могут отличаться).' },
   no_spend_row: { he:'עדיין לא נרשמה הוצאה בתקופה הזו', en:'No spend recorded in this period yet', fr:'Aucune dépense enregistrée sur la période', ar:'لم تُسجل نفقات في هذه الفترة بعد', ru:'Расходов за этот период пока нет' },
   costs_total_label: { he:'סה״כ תקציב פרסום ששולם ישירות לפלטפורמות (30 ימים)', en:'Total ad budget paid directly to the platforms (30 days)', fr:'Budget publicitaire total payé directement aux plateformes (30 jours)', ar:'إجمالي ميزانية الإعلانات المدفوعة مباشرة للمنصات (30 يومًا)', ru:'Итого рекламный бюджет, уплаченный платформам напрямую (30 дней)' },
   honest_note: { he:'תקציב הפרסום משולם על ידך ישירות ל-Google ול-Meta, באמצעי התשלום שלך — הכסף הזה לא עובר דרכנו ואנחנו לא גובים עליו עמלה. בדיוק כמו שהבטחנו בהצעה: דמי הניהול שלנו נפרדים, ותקציב הפרסום שקוף לך כאן בכל רגע. מנויים לכלי SEO (אם יש) משולמים גם הם ישירות לספק ומופיעים בחיובים שלו.', en:'Your ad budget is paid by you directly to Google and Meta with your own payment method — it never passes through us and we take no commission on it. Exactly as promised in your proposal: our management fee is separate, and your ad spend is transparent here at any moment. SEO tool subscriptions (if any) are also paid directly to the provider.', fr:'Votre budget publicitaire est payé directement à Google et Meta avec votre propre moyen de paiement — il ne transite jamais par nous et nous ne prenons aucune commission. Comme promis dans votre proposition : nos frais de gestion sont séparés, et vos dépenses publicitaires sont transparentes ici à tout moment. Les abonnements aux outils SEO (le cas échéant) sont également payés directement au fournisseur.', ar:'ميزانية إعلاناتك تُدفع مباشرة إلى Google وMeta بوسيلة الدفع الخاصة بك — لا تمر عبرنا ولا نأخذ عليها أي عمولة. تمامًا كما وعدنا في العرض: رسوم إدارتنا منفصلة، ونفقات إعلاناتك شفافة هنا في أي لحظة. اشتراكات أدوات SEO (إن وجدت) تُدفع أيضًا مباشرة للمزوّد.', ru:'Рекламный бюджет вы платите напрямую Google и Meta со своей карты — эти деньги не проходят через нас, и мы не берём с них комиссию. Ровно как обещано в предложении: наша плата за ведение отдельна, а рекламные расходы прозрачны здесь в любой момент. Подписки на SEO-инструменты (если есть) также оплачиваются напрямую провайдеру.' },
@@ -418,6 +448,7 @@ async function loadCosts() {
     const d = body.data;
     if (!d.platforms.length) {
       area.innerHTML = `<div class="empty-row">${uallakI18n.t('costs_empty')}</div>`;
+      renderTools(d.external_tools || {});
       return;
     }
     const platformCards = d.platforms.map(p => {
@@ -443,10 +474,58 @@ async function loadCosts() {
         <div class="costs-total-value">${ils(d.total_spend)}</div>
       </div>
       ${platformCards}`;
+    renderTools(d.external_tools || {});
   } catch (e) {
     console.error('costs load failed', e);
     area.innerHTML = `<div class="empty-row">${uallakI18n.t('costs_error')}</div>`;
   }
+}
+
+function badge(confidence) {
+  if (!confidence) return '';
+  return `<span class="confidence-badge ${confidence}">${esc(uallakI18n.t('badge_' + confidence))}</span>`;
+}
+
+function renderTools(tools) {
+  const area = document.getElementById('toolsArea');
+  const cards = [];
+
+  if (tools.higgsfield && tools.higgsfield.connected) {
+    const t = tools.higgsfield;
+    cards.push(`<div class="tool-card">
+      <div class="tool-head"><span class="tool-name">${uallakI18n.t('tool_higgsfield')}</span>${badge(t.confidence)}</div>
+      <div class="tool-figure">${t.images_this_month} 🖼 · ${t.videos_this_month} 🎬${t.credits_used_this_month != null ? ` · ${t.credits_used_this_month} credits` : ''}</div>
+      <div class="tool-note">${uallakI18n.t('tool_higgsfield_note')}</div>
+    </div>`);
+  }
+  if (tools.heygen && tools.heygen.connected) {
+    const t = tools.heygen;
+    const range = t.estimated_ils_range ? `${ils(t.estimated_ils_range[0])} – ${ils(t.estimated_ils_range[1])}` : '—';
+    cards.push(`<div class="tool-card">
+      <div class="tool-head"><span class="tool-name">${uallakI18n.t('tool_heygen')}</span>${badge(t.confidence)}</div>
+      <div class="tool-figure">${t.minutes_used_this_month} min · ${range}</div>
+      <div class="tool-note">${uallakI18n.t('tool_heygen_note')}</div>
+    </div>`);
+  }
+  if (tools.elevenlabs && tools.elevenlabs.connected) {
+    cards.push(`<div class="tool-card">
+      <div class="tool-head"><span class="tool-name">${uallakI18n.t('tool_elevenlabs')}</span>${badge(tools.elevenlabs.confidence)}</div>
+      <div class="tool-note">${uallakI18n.t('tool_elevenlabs_note')}</div>
+    </div>`);
+  }
+  if (tools.seo_tool && tools.seo_tool.connected) {
+    const t = tools.seo_tool;
+    const price = t.reference_list_price_ils_month != null ? `~${ils(t.reference_list_price_ils_month)}` : '—';
+    cards.push(`<div class="tool-card">
+      <div class="tool-head"><span class="tool-name">${esc(t.tool)} — ${uallakI18n.t('tool_seo')}</span>${badge(t.confidence)}</div>
+      <div class="tool-figure">${price}</div>
+      <div class="tool-note">${uallakI18n.t('tool_seo_note')}</div>
+    </div>`);
+  }
+
+  area.innerHTML = cards.length
+    ? `<div class="section-head" style="margin-top:22px;"><div class="section-title">${uallakI18n.t('tools_title')}</div></div>${cards.join('')}`
+    : '';
 }
 
 // ─── media folder (Drive) ────────────────────────────────────────────────────

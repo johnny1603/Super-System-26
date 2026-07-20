@@ -226,6 +226,15 @@ async def checkout(req: CheckoutRequest):
                     "client_email": req.client_email,
                     "client_name": req.client_name,
                 }).eq("id", recent_lead.data[0]["id"]).execute()
+                # Also stamp client_id on the lead, for budget_agent's exact-match forecast
+                # join — leads.client_id doesn't exist in Supabase yet (nullable bigint,
+                # add it whenever convenient), so this silently no-ops until that column is
+                # added; budget_agent falls back to the email match above until then.
+                try:
+                    db.table("leads").update({"client_id": client_id}).eq(
+                        "id", recent_lead.data[0]["id"]).execute()
+                except Exception:
+                    pass
         except Exception as backfill_err:
             print(f"[checkout] lead backfill failed (non-fatal): {backfill_err}")
 
@@ -971,36 +980,16 @@ def client_disconnect(req: DisconnectRequest, request: Request):
 
 @app.get("/api/client/external-costs")
 def client_external_costs(request: Request):
-    """What the client pays the ad platforms DIRECTLY (their own card, never
-    through us) - the transparency every proposal's honest_note promises.
-    Same data source the agents already use (get_campaign_performance), no
-    new spend tracking. Plain `def`: blocking calls to both ad APIs."""
+    """What the client pays external platforms/tools DIRECTLY (their own
+    card, never through us) - the transparency every proposal's honest_note
+    promises. Delegates to budget_agent, which is the single place this
+    cross-agent aggregation now lives (ad spend via get_campaign_performance,
+    plus Higgsfield/HeyGen/ElevenLabs/SEO-tool visibility, each honestly
+    labeled hard/estimate/unknown - see the budget skill). Plain `def`:
+    blocking calls to the ad APIs."""
     client_id = _require_session(request)
-    from agents.google_ads_agent import get_campaign_performance as google_perf
-    from agents.meta_ads_agent import get_campaign_performance as meta_perf
-
-    connected = {a.get("platform") for a in get_accounts(client_id) if a.get("status") == "active"}
-    platforms = []
-    for platform, label, fetch in (("google_ads", "Google Ads", google_perf),
-                                   ("meta_ads", "Meta (פייסבוק + אינסטגרם)", meta_perf)):
-        if platform not in connected:
-            continue
-        perf = fetch(client_id)
-        platforms.append({
-            "platform": platform,
-            "label": label,
-            "period": perf.get("period", "last_30_days"),
-            "error": perf.get("error"),
-            "total_spend": (perf.get("totals") or {}).get("cost", 0),
-            "campaigns": [{"name": c.get("name"), "status": c.get("status"), "cost": c.get("cost")}
-                          for c in (perf.get("campaigns") or [])],
-        })
-
-    return {"success": True, "data": {
-        "currency": "ILS",
-        "platforms": platforms,
-        "total_spend": round(sum(p["total_spend"] for p in platforms), 2),
-    }}
+    from agents.budget_agent import get_client_facing_costs
+    return {"success": True, "data": get_client_facing_costs(client_id)}
 
 # ─── Data export + closure / transfer protocols (client-facing) ──────────────
 
@@ -2113,6 +2102,43 @@ def admin_send_chat_message(client_id: int, req: AdminMessageRequest, request: R
     # support agent writes to), so they see it next time they open the chat
     entry = log_communication(client_id, "outbound", "dashboard_chat", req.text)
     return {"success": True, "data": entry}
+
+@app.get("/api/admin/clients/{client_id}/budget")
+def admin_client_budget(client_id: int, request: Request):
+    """The full per-client financial picture (budget_agent) - our own
+    numbers reused from admin_service, real ad spend, and honestly-labeled
+    client-paid external tool visibility. Heavier than /api/admin/clients/{id}
+    (live ad-platform calls, cached client-side in the agents), fetched as
+    its own lazy-loaded drawer section."""
+    _require_admin(request)
+    from agents.budget_agent import get_financial_picture
+    data = get_financial_picture(client_id)
+    if not data.get("available"):
+        raise HTTPException(status_code=404, detail="No financial picture available for this client")
+    return {"success": True, "data": data}
+
+@app.get("/api/admin/clients/{client_id}/budget/trend")
+def admin_client_budget_trend(client_id: int, request: Request):
+    _require_admin(request)
+    from agents.budget_agent import get_trend
+    return {"success": True, "data": get_trend(client_id)}
+
+@app.post("/api/admin/clients/{client_id}/budget/narrative")
+def admin_client_budget_narrative(client_id: int, request: Request):
+    """On-demand only (not run automatically in the weekly scan) - burns one
+    Claude call, so the drawer's narrative button fetches it lazily rather
+    than every drawer-open generating one."""
+    _require_admin(request)
+    from agents.budget_agent import generate_narrative
+    return {"success": True, "data": generate_narrative(client_id)}
+
+@app.get("/api/budget/scan", dependencies=_admin_only)
+def budget_scan():
+    """Weekly cron (X-Admin-Key) - snapshots every active client's financial
+    picture for trend history and raises deduped deviation alerts. See the
+    budget skill for the scheduler command."""
+    from agents.budget_agent import run_weekly_scan
+    return {"success": True, "data": run_weekly_scan()}
 
 @app.get("/api/admin/alerts")
 def admin_alerts(request: Request, status: str = None):

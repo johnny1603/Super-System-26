@@ -155,6 +155,13 @@ def _get_tool_connection(client_id: int) -> dict:
     return result.data[0] if result.data else {}
 
 
+def get_connected_tool(client_id: int) -> str:
+    """Which research tool (if any) this client is paying for — the pull
+    point for budget_agent, which needs the tool name for a reference-price
+    lookup but never the API key itself."""
+    return _get_tool_connection(client_id).get("account_id") or ""
+
+
 def _client_domain(client_id: int) -> str:
     """The client's domain, from their connected WordPress site URL — the one
     piece of ground truth every research/audit step needs."""

@@ -15,6 +15,11 @@ DEFAULT_SETTINGS = {
     "whatsapp_number": "972504493725",
     "alert_email": os.environ.get("ADMIN_EMAIL", ""),
     "low_margin_threshold_pct": 70,
+    # budget_agent's weekly deviation scan — admin-tunable so a threshold
+    # change never needs a deploy (same pattern as low_margin_threshold_pct)
+    "ad_spend_drift_pct_high": 130,
+    "ad_spend_drift_pct_low": 50,
+    "zero_conversion_spend_floor_ils": 300,
 }
 
 # Created lazily - no DB client at import time

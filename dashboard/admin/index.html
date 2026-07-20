@@ -520,6 +520,18 @@ async function loadSettings() {
       <input id="set-threshold" type="number" value="${esc(s.low_margin_threshold_pct)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">budget_agent — חריגת הוצאת פרסום מעל תקציב (%)</span>
+      <input id="set-drift-high" type="number" value="${esc(s.ad_spend_drift_pct_high)}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">budget_agent — תת-ניצול תקציב פרסום (%)</span>
+      <input id="set-drift-low" type="number" value="${esc(s.ad_spend_drift_pct_low)}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">budget_agent — סף הוצאה ללא המרות להתראה (₪)</span>
+      <input id="set-zero-conv" type="number" value="${esc(s.zero_conversion_spend_floor_ils)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
@@ -535,6 +547,9 @@ async function saveSettings() {
       whatsapp_number: document.getElementById('set-whatsapp').value.trim(),
       alert_email: document.getElementById('set-email').value.trim(),
       low_margin_threshold_pct: Number(document.getElementById('set-threshold').value) || 70,
+      ad_spend_drift_pct_high: Number(document.getElementById('set-drift-high').value) || 130,
+      ad_spend_drift_pct_low: Number(document.getElementById('set-drift-low').value) || 50,
+      zero_conversion_spend_floor_ils: Number(document.getElementById('set-zero-conv').value) || 300,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';
@@ -622,9 +637,81 @@ async function openDrawer(clientId) {
     </div>
 
     <div class="drawer-section">
+      <div class="drawer-label">תמונה פיננסית מלאה (budget_agent)</div>
+      <div id="budgetArea">
+        <div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
       <div class="drawer-label">פעילות אחרונה</div>
       ${activityRows}
     </div>`;
+
+  loadBudgetSection(clientId);
+}
+
+function conf(c) {
+  const map = { hard: ['מספר אמיתי', 'var(--green)'], estimate: ['הערכה', '#FFBE00'], unknown: ['לא ידוע', 'var(--gray)'] };
+  const [label, color] = map[c] || ['—', 'var(--gray)'];
+  return `<span style="font-size:10px;font-weight:700;color:${color};border:1px solid ${color};border-radius:100px;padding:2px 8px;">${label}</span>`;
+}
+
+async function loadBudgetSection(clientId) {
+  const area = document.getElementById('budgetArea');
+  if (!area) return;
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/budget`);
+    const d = res.data;
+
+    const adjusted = d.our_revenue_and_cost_adjusted;
+    const adjustedRow = adjusted ? `<div class="drawer-stat-row">
+      <span class="drawer-stat-label">מרווח מתוקן (כולל עלויות שלא נרשמו עדיין) ${conf('hard')}</span>
+      <span>${ils(adjusted.margin_month_ils)}${adjusted.margin_pct != null ? ` (${adjusted.margin_pct}%)` : ''}</span>
+    </div>` : '';
+
+    const drift = d.ad_spend_vs_forecast;
+    const driftRow = drift ? `<div class="drawer-stat-row">
+      <span class="drawer-stat-label">הוצאת פרסום מול תקציב שהוצהר ${conf(drift.confidence)}</span>
+      <span>${ils(drift.actual_30d_ad_spend_ils)} מתוך ${ils(drift.stated_monthly_budget_ils)} (${drift.ratio_pct}%)
+        ${drift.direction !== 'on_track' ? `<b style="color:var(--accent);">⚠ ${drift.direction === 'over' ? 'חריגה' : 'תת-ניצול'}</b>` : ''}</span>
+    </div>` : `<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין תקציב מוצהר תואם (${(d.forecast || {}).source || 'לא נמצא'})</div>`;
+
+    const toolRows = Object.entries(d.external_client_paid_costs || {})
+      .filter(([, v]) => v.connected)
+      .map(([name, v]) => `<div class="drawer-stat-row">
+        <span class="drawer-stat-label">${esc(name)} ${conf(v.confidence)}</span>
+        <span style="font-size:11.5px;color:var(--gray);max-width:260px;text-align:left;">${esc(v.note || '')}</span>
+      </div>`).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין כלים חיצוניים מחוברים</div>';
+
+    const gapRows = Object.entries(d.internal_cost_gaps || {}).map(([name, g]) =>
+      `<div class="drawer-stat-row"><span class="drawer-stat-label">⚠ פער מעקב: ${esc(name)}</span>
+       <span style="font-size:11.5px;color:var(--gray);max-width:260px;text-align:left;">${esc(g.note || '')}</span></div>`
+    ).join('');
+
+    area.innerHTML = `
+      ${adjustedRow}
+      ${driftRow}
+      ${gapRows}
+      <div class="drawer-stat-row" style="border:none;padding-top:14px;"><b>עלויות ששולמו ישירות לספקים ע״י הלקוח</b></div>
+      ${toolRows}
+      <button class="drawer-action-btn secondary" style="margin-top:10px;" onclick="loadBudgetNarrative(${clientId})">✨ ניתוח קצר (Claude)</button>
+      <div id="budgetNarrative-${clientId}" style="font-size:12.5px;color:var(--white);margin-top:8px;line-height:1.7;"></div>`;
+  } catch (e) {
+    console.error('budget load failed', e);
+    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין תמונה פיננסית זמינה ללקוח זה</div>';
+  }
+}
+
+async function loadBudgetNarrative(clientId) {
+  const el = document.getElementById(`budgetNarrative-${clientId}`);
+  el.textContent = 'חושב…';
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/budget/narrative`, { method: 'POST' });
+    el.textContent = res.data.narrative || 'אין תובנה מיוחדת כרגע.';
+  } catch (e) {
+    el.textContent = 'שגיאה בהפקת הניתוח.';
+  }
 }
 
 async function sendAdminChat(clientId) {
