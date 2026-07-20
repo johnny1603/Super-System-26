@@ -578,13 +578,20 @@ async function loadPricing() {
       ${row('הקמה + ניהול', ils(d.raffle.setup_and_management))}
     </div>`;
 
-    const seoRef = Object.entries(d.client_direct_external_cost_references.seo_tool_list_price_usd_month)
-      .map(([tool, price]) => row(tool, '$' + price)).join('');
+    const vendorBlocks = Object.entries(d.third_party_vendors).map(([key, v]) => {
+      const planRows = v.plans
+        ? Object.entries(v.plans).map(([plan, price]) => row(plan, '$' + price)).join('')
+        : row('הפקה', `$${v.generation_usd_per_min_range[0]}–$${v.generation_usd_per_min_range[1]} לדקה`);
+      return `<div class="pricing-block">
+        <div class="pricing-block-title">${esc(v.vendor)} <span style="color:var(--gray);font-weight:400;font-size:11px;">— נבדק לאחרונה ${esc(v.checked_at)}</span></div>
+        ${planRows}
+        <div class="pricing-note">${esc(v.what_for)} <a href="${esc(v.pricing_url)}" target="_blank" style="color:var(--accent);">מחירון רשמי ↗</a></div>
+      </div>`;
+    }).join('');
     const externalBlock = `<div class="pricing-block">
-      <div class="pricing-block-title">עלויות ישירות של הלקוח (ללא עמלה מצידנו) — מחירי ייחוס</div>
-      ${row('HeyGen — הפקת וידאו', `$${d.client_direct_external_cost_references.heygen_generation_usd_per_min_range[0]}–$${d.client_direct_external_cost_references.heygen_generation_usd_per_min_range[1]} לדקה`)}
-      ${seoRef}
-      <div class="pricing-note">מחירי מחירון פומביים של הספקים, לא בהכרח מה שהלקוח משלם בפועל (מטבע/הנחות עשויים להשתנות) — ראו budget_agent. Higgsfield ו-ElevenLabs לא כלולים כאן: אין קבוע מובנה במערכת למחירים שלהם (רק תיעוד חופשי ב-skills), כדי לא ליצור עותק שני שיתבדר מהמקור.</div>
+      <div class="pricing-block-title">ספקי צד שלישי — מחירי ייחוס</div>
+      <div class="pricing-note" style="margin-bottom:10px;">מחירי מחירון פומביים, לא בהכרח מה שכל לקוח/אנחנו משלמים בפועל (מטבע/הנחות עשויים להשתנות) — נבדקים אוטומטית פעמיים בחודש ע״י price_monitor_agent, ראו התראות בטאב "התראות" אם משהו נראה שהשתנה.</div>
+      ${vendorBlocks}
     </div>`;
 
     panel.innerHTML = setupBlock + mgmtBlock + autoBlock + websiteBlock + seoBlock + avatarBlock + raffleBlock + externalBlock;

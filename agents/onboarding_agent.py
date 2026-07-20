@@ -4,6 +4,9 @@ import time
 from datetime import datetime
 
 from core.claude_json import safe_claude_json_call
+from core.third_party_pricing import THIRD_PARTY_PRICING
+
+_HEYGEN_MIN_RANGE = THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"]
 
 PRICING = {
     # Per-platform monthly management fees - summed when a package includes multiple platform
@@ -68,22 +71,22 @@ PRICING = {
         ],
         # above 40 minutes/month: custom quote (no fixed tier)
         # Client-side direct costs (THEIRS, paid straight to the vendors —
-        # must be disclosed in any client-facing copy, honest_note included,
-        # when the follow-up handoff wires this tier into proposals):
-        # HeyGen — NO paid subscription required (re-verified 2026-07-20; the
-        # earlier "Team plan ~$149 required" assumption was WRONG): avatar
-        # creation works in the web UI on every plan incl. Free (1 custom twin
-        # included; additional twins need a paid plan/add-on — relevant to our
+        # must be disclosed in any client-facing copy, honest_note included):
+        # HeyGen — NO paid subscription required: avatar creation works in
+        # the web UI on every plan incl. Free (1 custom twin included;
+        # additional twins need a paid plan/add-on — relevant to our
         # 100₪-per-additional-avatar pricing), and video generation runs on
-        # HeyGen's standalone pay-as-you-go API wallet (top up from $5,
-        # ~$1-4/min by model, credits expire after 12 months) regardless of
-        # plan. Optional ElevenLabs plan for voice cloning.
+        # HeyGen's standalone pay-as-you-go API wallet (top up from $5)
+        # regardless of plan. Optional ElevenLabs plan for voice cloning.
+        # The per-minute $ range is interpolated from
+        # core/third_party_pricing.py (single source of truth, re-checked
+        # twice a month by price_monitor_agent) — never hardcode it here.
         "client_direct_costs_note_he": (
             "בנוסף למחירי uallak: חשבון HeyGen — יצירת האווטאר עצמה אפשרית בכל מסלול, "
             "כולל החינמי (אווטאר אחד; אווטארים נוספים דורשים מסלול בתשלום), והפקת "
-            "הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-1-4$ לדקת "
-            "וידאו). לרצון גם מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות "
-            "לספקים, לא דרכנו."),
+            f"הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-"
+            f"{int(_HEYGEN_MIN_RANGE[0])}-{int(_HEYGEN_MIN_RANGE[1])}$ לדקת וידאו). לרצון גם "
+            "מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות לספקים, לא דרכנו."),
     },
 
     "raffle": {"setup_and_management": 250},

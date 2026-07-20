@@ -301,13 +301,14 @@ def update_settings(changes: dict) -> dict:
 def get_pricing_reference() -> dict:
     """Read-only view over EVERY pricing number in the system, in one place
     for Johnny — pulled live from PRICING (onboarding_agent — what we charge)
-    and budget_agent's reference constants (what the client pays vendors
-    directly), never copied. Nothing here is a second source of truth: if
-    PRICING or budget_agent's constants change, this view changes with them
-    by construction. Admin-only for now (session-gated) — deliberately not
-    exposed client-facing; see the pricing-reference skill for why."""
+    and THIRD_PARTY_PRICING (core/third_party_pricing.py — every vendor our
+    pricing model depends on or discloses to clients), never copied. Nothing
+    here is a second source of truth: if either source changes, this view
+    changes with it by construction. Admin-only for now (session-gated) —
+    deliberately not exposed client-facing; see the pricing-reference skill
+    for why."""
     from agents.onboarding_agent import PRICING
-    from agents import budget_agent
+    from core.third_party_pricing import THIRD_PARTY_PRICING
 
     p = PRICING
     return {
@@ -332,17 +333,10 @@ def get_pricing_reference() -> dict:
         "raffle": p["raffle"],
         "min_monthly_budget_ils": p["min_budget"],
         "benefit_months": p["benefit_months"],
-        # Client-DIRECT costs we never bill for — same reference figures
-        # budget_agent uses for its own cost-visibility estimates (confidence
-        # "estimate", not "hard" — see the budget skill). Higgsfield and
-        # ElevenLabs plan prices aren't included here because no structured
-        # constant for them exists anywhere in the codebase yet (only prose
-        # in the media/avatar skills) — showing a number here would create a
-        # second copy of it to drift out of sync, so it's left out on purpose.
-        "client_direct_external_cost_references": {
-            "heygen_generation_usd_per_min_range": list(budget_agent.HEYGEN_USD_PER_MIN_RANGE),
-            "seo_tool_list_price_usd_month": budget_agent.SEO_TOOL_LIST_PRICE_USD_MONTH,
-        },
+        # Every third-party vendor our pricing model depends on or discloses
+        # to clients — dated/sourced reference prices, re-checked twice a
+        # month by price_monitor_agent. NOT necessarily what any given
+        # client actually pays (currency/discounts can differ).
+        "third_party_vendors": THIRD_PARTY_PRICING,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
-    return get_settings()

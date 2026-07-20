@@ -132,11 +132,13 @@ Client (session cookie): `GET /api/client/external-costs` now delegates to
 `budget_agent.get_client_facing_costs` — same URL/shape as before, plus a new
 `external_tools` section.
 
-`HEYGEN_USD_PER_MIN_RANGE` and `SEO_TOOL_LIST_PRICE_USD_MONTH` are also read
-by `admin_service.get_pricing_reference()` (the admin dashboard's "מחירון
-מלא" tab, 2026-07-20) — if either constant moves or is renamed, that page
-changes with it by construction; don't let a future edit quietly break that
-import.
+`HEYGEN_USD_PER_MIN_RANGE` and `SEO_TOOL_LIST_PRICE_USD_MONTH` (2026-07-21)
+are now DERIVED at import time from `core/third_party_pricing.py`
+(`THIRD_PARTY_PRICING` — the actual single source of truth these vendor
+prices live in, checked twice a month by `price_monitor_agent`), not
+hardcoded here anymore. `admin_service.get_pricing_reference()` (the admin
+dashboard's "מחירון מלא" tab) now reads `third_party_pricing` directly
+instead of reaching into this agent — see the price-monitoring skill.
 
 Scheduler (weekly, mirrors the seo-cycle pattern):
 

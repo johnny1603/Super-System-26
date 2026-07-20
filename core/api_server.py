@@ -2140,6 +2140,15 @@ def budget_scan():
     from agents.budget_agent import run_weekly_scan
     return {"success": True, "data": run_weekly_scan()}
 
+@app.get("/api/pricing/monitor-scan", dependencies=_admin_only)
+def pricing_monitor_scan():
+    """Bi-monthly cron (X-Admin-Key) - re-checks every vendor in
+    core/third_party_pricing.py against its live pricing page and alerts on
+    anything that isn't a confident match. See the price-monitoring skill
+    for the scheduler command."""
+    from agents.price_monitor_agent import run_price_check
+    return {"success": True, "data": run_price_check()}
+
 @app.get("/api/admin/alerts")
 def admin_alerts(request: Request, status: str = None):
     _require_admin(request)

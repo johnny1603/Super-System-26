@@ -45,6 +45,7 @@ from datetime import datetime, timedelta, timezone
 
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.third_party_pricing import THIRD_PARTY_PRICING
 
 AGENT_NAME = "budget_agent"
 
@@ -53,19 +54,22 @@ ESTIMATE = "estimate"
 UNKNOWN = "unknown"
 
 # HeyGen avatar video generation: published per-minute API pricing range
-# across avatar models (re-verified 2026-07-20 — see .claude/skills/avatar
-# /SKILL.md). We don't record which avatar model a given video used, so this
-# is deliberately a wide range, never collapsed into one fabricated number.
-HEYGEN_USD_PER_MIN_RANGE = (1.0, 4.0)
+# across avatar models. We don't record which avatar model a given video
+# used, so this is deliberately a wide range, never collapsed into one
+# fabricated number. SOURCE OF TRUTH: core/third_party_pricing.py (checked
+# twice a month by agents/price_monitor_agent.py) — don't hardcode a second
+# copy here again.
+HEYGEN_USD_PER_MIN_RANGE = tuple(THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"])
 
 # SEO tool reference LIST prices for the entry-appropriate plan per
-# PRICING["seo_tiers"] (checked against each vendor's public pricing page,
-# 2026-07-20). NOT the client's verified invoice — currency, discounts, and
-# grandfathered plans can all differ from this. Always surfaced as ESTIMATE.
+# PRICING["seo_tiers"]. NOT the client's verified invoice — currency,
+# discounts, and grandfathered plans can all differ from this. Always
+# surfaced as ESTIMATE. Derived from core/third_party_pricing.py — same
+# single-source-of-truth note as above.
 SEO_TOOL_LIST_PRICE_USD_MONTH = {
-    "seoptimer": 29.0,    # DIY SEO plan (entry tier)
-    "semrush": 139.95,    # Pro plan (entry tier)
-    "ahrefs": 129.0,      # Lite plan (entry tier)
+    "seoptimer": THIRD_PARTY_PRICING["seoptimer"]["plans"]["diy_seo"],
+    "semrush": THIRD_PARTY_PRICING["semrush"]["plans"]["pro"],
+    "ahrefs": THIRD_PARTY_PRICING["ahrefs"]["plans"]["lite"],
 }
 
 # Weekly scan cadence -> re-alert an ongoing deviation at most this often
@@ -223,16 +227,16 @@ def get_external_client_paid_costs(client_id: int) -> dict:
             "tier": usage["tier"],
             "estimated_usd_range": [round(minutes * low, 2), round(minutes * high, 2)],
             "estimated_ils_range": [usd_to_ils(minutes * low), usd_to_ils(minutes * high)],
-            "note": ("Minutes are real — HeyGen's own render duration, tracked by "
-                     "avatar_agent. The $ range is a wide ESTIMATE from HeyGen's "
-                     "published per-minute API pricing ($1-4/min depending on avatar "
-                     "model, which isn't recorded per video) — not the client's actual "
-                     "invoice. HeyGen does expose a wallet-balance endpoint (v2/user/"
-                     "remaining_quota) that could give a real current-balance reading, "
-                     "but its semantics/units after the Feb-2026 pay-as-you-go "
-                     "migration weren't verifiable with confidence — flagged as a "
-                     "future one-round check, not wired in here to avoid presenting "
-                     "an unverified number as real."),
+            "note": (f"Minutes are real — HeyGen's own render duration, tracked by "
+                     f"avatar_agent. The $ range is a wide ESTIMATE from HeyGen's "
+                     f"published per-minute API pricing (${low}-${high}/min depending on "
+                     f"avatar model, which isn't recorded per video) — not the client's "
+                     f"actual invoice. HeyGen does expose a wallet-balance endpoint "
+                     f"(v2/user/remaining_quota) that could give a real current-balance "
+                     f"reading, but its semantics/units after the Feb-2026 pay-as-you-go "
+                     f"migration weren't verifiable with confidence — flagged as a "
+                     f"future one-round check, not wired in here to avoid presenting "
+                     f"an unverified number as real."),
         }
     else:
         result["heygen"] = {"connected": False}
@@ -251,15 +255,16 @@ def get_external_client_paid_costs(client_id: int) -> dict:
     tool = get_connected_tool(client_id)
     if tool:
         list_price = SEO_TOOL_LIST_PRICE_USD_MONTH.get(tool)
+        checked_at = (THIRD_PARTY_PRICING.get(tool) or {}).get("checked_at", "unknown date")
         result["seo_tool"] = {
             "connected": True, "tool": tool,
             "confidence": ESTIMATE if list_price else UNKNOWN,
             "reference_list_price_usd_month": list_price,
             "reference_list_price_ils_month": usd_to_ils(list_price) if list_price else None,
             "note": (f"{tool}'s published list price for its entry-appropriate plan "
-                     "(checked 2026-07-20) — NOT verified against this client's actual "
-                     "invoice, currency, or any discount/grandfathered plan. None of "
-                     "these tools expose a per-account billing API to us."
+                     f"(checked {checked_at}) — NOT verified against this client's actual "
+                     f"invoice, currency, or any discount/grandfathered plan. None of "
+                     f"these tools expose a per-account billing API to us."
                      if list_price else f"no reference price on file for '{tool}'."),
         }
     else:
