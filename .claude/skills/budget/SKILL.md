@@ -132,6 +132,12 @@ Client (session cookie): `GET /api/client/external-costs` now delegates to
 `budget_agent.get_client_facing_costs` — same URL/shape as before, plus a new
 `external_tools` section.
 
+`HEYGEN_USD_PER_MIN_RANGE` and `SEO_TOOL_LIST_PRICE_USD_MONTH` are also read
+by `admin_service.get_pricing_reference()` (the admin dashboard's "מחירון
+מלא" tab, 2026-07-20) — if either constant moves or is renamed, that page
+changes with it by construction; don't let a future edit quietly break that
+import.
+
 Scheduler (weekly, mirrors the seo-cycle pattern):
 
 ```

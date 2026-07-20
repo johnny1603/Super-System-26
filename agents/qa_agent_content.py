@@ -46,7 +46,10 @@ version that fixes anything that fails:
     setup_fee_breakdown lines beyond the floor line, fold them back into the floor line instead
     (keeping setup_fee_total unchanged). SECOND EXEMPTION: a monthly line "אחסון ותשתית אתר"
     (managed hosting passthrough, only on packages that build a NEW website) is legitimate
-    without any recommended_services entry — never flag, remove, or "match" it
+    without any recommended_services entry — never flag, remove, or "match" it. THIRD EXEMPTION:
+    an avatar/digital-twin monthly line is tracked by its own "avatar" entry in
+    recommended_services (see criterion 15), but is NOT part of this platform-keyword mechanism —
+    never attempt to match or flag it here
 12. HONEST_NOTE VS SCARCITY_NOTE SEPARATION — honest_note must contain ONLY factual/operational
     disclosures (ad spend/SEO tool cost transparency, payment timeline, support model, organic SEO
     shortfall). The payment timeline legitimately includes the FACT that month 2 carries no
@@ -67,6 +70,15 @@ version that fixes anything that fails:
     apologetic, not hedged into vagueness), and goals_90_days/kpis/packages must not contradict it
     (e.g. market_reality says 300 leads is unrealistic while a goal still promises 300 leads).
     Keep the field in the returned proposal — never drop it
+15. AVATAR ADD-ON DISCLOSURE — if ANY package's recommended_services includes "avatar" (the
+    digital-twin video add-on), honest_note must disclose that the client pays HeyGen (and
+    ElevenLabs too, if voice cloning is relevant) DIRECTLY on their own account/card, separate
+    from and additional to monthly_management_total — same disclosure pattern as criterion 9's
+    ad-spend rule. Also check this add-on is genuinely relevant to the business (personal-brand
+    services, or a client already comfortable on camera) rather than a random inclusion with no
+    story behind it — if the package's description/business_summary give no reason for it, that's
+    a tone/consistency issue too (criterion 4), not just a missing-disclosure one. If the
+    disclosure is missing, this is a failure — fix by adding it to honest_note
 
 Do not change the proposal's own "approved" field (business eligibility) — that is unrelated to
 this quality review. Only touch it if it is clearly inconsistent with the rest of the proposal.

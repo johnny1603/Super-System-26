@@ -48,6 +48,14 @@ description: How uallak's sales chat + proposal pipeline works — question flow
 - **No position labels on questions**: the dynamic-questions prompt forbids "שאלה אחרונה" /
   numbering — flow length varies, labels read as broken scripting. This was never hardcoded;
   it was LLM-generated, so the fix lives in the prompt.
+- **Avatar/digital-twin add-on** (wired 2026-07-20, BUDGET PYRAMID #9): PRICING["avatar"] is no
+  longer excluded from the prompt payload. Offered ONLY when genuinely relevant (personal-brand
+  services, or a client already comfortable on camera per `camera_comfort`) — never a default
+  line. Setup fee stacks on the setup floor; the recommended monthly tier is its own
+  monthly_breakdown line INCLUDED in monthly_management_total (same treatment as the new-site
+  hosting line — the one exception to "no non-platform monthly lines"). An explicit client
+  request (sales chat OR support_agent's upgrade path) always overrides the relevance filter —
+  see the avatar skill for the full pricing/consent picture.
 
 ## build_proposal has an EXISTING-CLIENT UPGRADE MODE
 

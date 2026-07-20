@@ -144,6 +144,13 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 /* SETTINGS */
 .settings-row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
 .settings-row:last-child { border-bottom:none; }
+.pricing-block { margin-bottom: 22px; }
+.pricing-block:last-child { margin-bottom: 0; }
+.pricing-block-title { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.pricing-row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.pricing-row:last-child { border-bottom:none; }
+.pricing-row .label { color: var(--gray); }
+.pricing-note { font-size: 11.5px; color: var(--gray); margin-top: 6px; line-height: 1.6; }
 .settings-row input {
   background:var(--panel-2); border:1px solid var(--border); border-radius:8px; color:white;
   font-family:'Heebo',sans-serif; font-size:13px; padding:8px 12px; width:220px; outline:none; text-align:left; direction:ltr;
@@ -209,6 +216,7 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <span class="nav-count" id="alertsCount" style="display:none;"></span>
     </div>
     <div class="nav-item" data-tab="reports" onclick="showTab('reports', this)"><div class="nav-item-left"><span>📊</span> דוחות שבועיים</div></div>
+    <div class="nav-item" data-tab="pricing" onclick="showTab('pricing', this)"><div class="nav-item-left"><span>💰</span> מחירון מלא</div></div>
     <div class="nav-item" data-tab="settings" onclick="showTab('settings', this)"><div class="nav-item-left"><span>⚙</span> הגדרות</div></div>
   </div>
 
@@ -236,6 +244,12 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="page-title">דוחות שבועיים</div>
       <div class="page-sub">דוחות Google Ads שנשלחו אוטומטית לצוות</div>
       <div class="table-wrap" id="reportsList"></div>
+    </div>
+
+    <div id="tab-pricing" style="display:none;">
+      <div class="page-title">מחירון מלא</div>
+      <div class="page-sub">כל מספרי המחיר במערכת, במקום אחד — נשלף בזמן אמת מ-PRICING ומהקבועים של budget_agent, בלי להקליד מספר פעמיים</div>
+      <div class="panel-pad" id="pricingPanel"></div>
     </div>
 
     <div id="tab-settings" style="display:none;">
@@ -298,12 +312,13 @@ async function adminLogout() {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
-  ['overview','clients','alerts','reports','settings'].forEach(t => {
+  ['overview','clients','alerts','reports','pricing','settings'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   if (name === 'reports') loadReports();
+  if (name === 'pricing') loadPricing();
   if (name === 'settings') loadSettings();
 }
 
@@ -500,6 +515,83 @@ async function loadReports() {
         </details>`;
       }).join('')
     : '<div class="empty-state">אין עדיין דוחות שבועיים — הם יופיעו כאן אחרי הריצה המתוזמנת הראשונה</div>';
+}
+
+// ─── pricing reference (read-only, pulled live from PRICING/budget_agent) ─────
+async function loadPricing() {
+  const panel = document.getElementById('pricingPanel');
+  panel.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>';
+  try {
+    const res = await api('/api/admin/pricing');
+    const d = res.data;
+    const row = (label, value) => `<div class="pricing-row"><span class="label">${esc(label)}</span><span>${value}</span></div>`;
+
+    const setupBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">דמי הקמה</div>
+      ${row('חבילה סטנדרטית', ils(d.setup_fees_ils.standard_package))}
+      ${row('שירות בודד', ils(d.setup_fees_ils.single_service_package))}
+      ${row('סף תקציב מינימלי לחבילה', ils(d.min_monthly_budget_ils) + '/חודש')}
+      ${row('חודשי הטבה (ניהול חינם)', d.benefit_months)}
+    </div>`;
+
+    const mgmtBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">ניהול חודשי לפי פלטפורמה</div>
+      ${Object.entries(d.platform_management_monthly_ils).map(([k, v]) => row(k, ils(v))).join('')}
+      ${row('רצפת מינימום (ללא פלטפורמה)', ils(d.monthly_management_minimum_ils))}
+      ${row('תוספת פיקוח מעל סף תקציב', `${ils(d.ad_spend_surcharge.threshold_ils)} +${d.ad_spend_surcharge.pct_above_threshold}%`)}
+    </div>`;
+
+    const autoBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">אוטומציה</div>
+      ${row('דמי הקמה בסיסיים', ils(d.automation.base_setup_fee))}
+      <div class="pricing-note">${esc(d.automation.base_covers)}</div>
+    </div>`;
+
+    const websiteBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">אתר אינטרנט</div>
+      ${row('טווח דמי הקמה', `${ils(d.website.setup_range_ils[0])} – ${ils(d.website.setup_range_ils[1])}`)}
+      ${row('מרווח רווח מינימלי', d.website.min_profit_margin_pct + '%')}
+      ${row(d.website.new_site_hosting.label_he, `${ils(d.website.new_site_hosting.client_monthly_ils)} (עלות בסיס לנו: ${ils(d.website.new_site_hosting.cost_monthly_ils)})`)}
+    </div>`;
+
+    const seoBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">SEO אורגני — פירמידת תקציב</div>
+      ${row('סף מינימלי להמלצה', ils(d.organic_seo_tiers.min_monthly_budget_to_recommend) + '/חודש')}
+      ${row('רמה A', `${esc(d.organic_seo_tiers.level_a.tool)} (${esc(d.organic_seo_tiers.level_a.monthly_budget_range)} ₪)`)}
+      ${row('רמה B', `${esc(d.organic_seo_tiers.level_b.tool)} (${esc(d.organic_seo_tiers.level_b.monthly_budget_range)} ₪)`)}
+      ${row('רמה C', `${esc(d.organic_seo_tiers.level_c.tool)} (${esc(d.organic_seo_tiers.level_c.monthly_budget_range)} ₪)`)}
+    </div>`;
+
+    const avatarTiers = d.avatar.monthly_tiers.map(t =>
+      row(`מסלול ${esc(t.id)}`, `${t.minutes_per_month} דק׳/חודש — ${ils(t.monthly_ils)} (${esc(t.video_estimate)} סרטונים)`)
+    ).join('');
+    const avatarBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">תוספת אווטאר דיגיטלי</div>
+      ${row('הקמה — אווטאר ראשון', ils(d.avatar.setup_first_avatar))}
+      ${row('הקמה — אווטאר נוסף', ils(d.avatar.setup_additional_avatar))}
+      ${avatarTiers}
+      <div class="pricing-note">${esc(d.avatar.client_direct_costs_note_he)}</div>
+    </div>`;
+
+    const raffleBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">הגרלה</div>
+      ${row('הקמה + ניהול', ils(d.raffle.setup_and_management))}
+    </div>`;
+
+    const seoRef = Object.entries(d.client_direct_external_cost_references.seo_tool_list_price_usd_month)
+      .map(([tool, price]) => row(tool, '$' + price)).join('');
+    const externalBlock = `<div class="pricing-block">
+      <div class="pricing-block-title">עלויות ישירות של הלקוח (ללא עמלה מצידנו) — מחירי ייחוס</div>
+      ${row('HeyGen — הפקת וידאו', `$${d.client_direct_external_cost_references.heygen_generation_usd_per_min_range[0]}–$${d.client_direct_external_cost_references.heygen_generation_usd_per_min_range[1]} לדקה`)}
+      ${seoRef}
+      <div class="pricing-note">מחירי מחירון פומביים של הספקים, לא בהכרח מה שהלקוח משלם בפועל (מטבע/הנחות עשויים להשתנות) — ראו budget_agent. Higgsfield ו-ElevenLabs לא כלולים כאן: אין קבוע מובנה במערכת למחירים שלהם (רק תיעוד חופשי ב-skills), כדי לא ליצור עותק שני שיתבדר מהמקור.</div>
+    </div>`;
+
+    panel.innerHTML = setupBlock + mgmtBlock + autoBlock + websiteBlock + seoBlock + avatarBlock + raffleBlock + externalBlock;
+  } catch (e) {
+    console.error('pricing load failed', e);
+    panel.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת המחירון</div>';
+  }
 }
 
 // ─── settings ────────────────────────────────────────────────────────────────

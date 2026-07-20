@@ -55,8 +55,9 @@ PRICING = {
     # 2026-07-19): billed/tracked unit is MINUTES per month; video counts are
     # client-facing estimates only (~30s average). Separate from — and in
     # addition to — the client's own direct HeyGen/ElevenLabs subscriptions
-    # (their payment method, never ours). NOT yet offered by build_proposal —
-    # sales/support/pricing-display integration is a separate follow-up handoff.
+    # (their payment method, never ours). Wired into build_proposal 2026-07-20
+    # — see BUDGET PYRAMID #9 below for the relevance rule (offered only when
+    # genuinely fitting, never a default line in every proposal).
     "avatar": {
         "setup_first_avatar": 150,
         "setup_additional_avatar": 100,
@@ -195,11 +196,10 @@ Return JSON only:
     return result.get("questions", [])
 
 def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None):
-    # The avatar tier is deliberately EXCLUDED from the proposal prompt — the
-    # sales-chat integration of that add-on is a separate future handoff, and
-    # letting the model see the numbers now would have it offering an
-    # unlaunched tier. Remove this exclusion in that follow-up, nowhere else.
-    pricing_str = json.dumps({k: v for k, v in PRICING.items() if k != "avatar"})
+    # Avatar tier wired into the sales chat 2026-07-20 (was deliberately excluded
+    # while unlaunched — see BUDGET PYRAMID #9 for the relevance rule that keeps
+    # it out of most proposals; it's an optional add-on, not a default line).
+    pricing_str = json.dumps(PRICING)
 
     empathy_block = ""
     if empathy_analysis:
@@ -320,7 +320,8 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      included, plus the ad-spend surcharge line below if it applies. Do NOT add separate monthly line
      items for non-platform services (SEO, email, organic social, automation) - those are covered by
      whichever platform-group fee(s) or the minimum floor already present, not billed again. The ONLY
-     other monthly line allowed is the new-site hosting line from BUDGET PYRAMID #5, when it applies
+     other monthly lines allowed are the new-site hosting line from BUDGET PYRAMID #5 and the
+     avatar-tier line from BUDGET PYRAMID #9, when either applies
    - If the recommended/actual ad spend budget for a package exceeds
      {PRICING['monthly_ad_spend_surcharge_threshold']} NIS/month, add
      {PRICING['monthly_ad_spend_surcharge_pct'] * 100:.0f}% of the amount ABOVE that threshold as a
@@ -413,6 +414,44 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      portion via efficient, quality image-based posts and short videos assembled from the client's
      own product photos (economical production), rather than expensive custom video work
 
+9) AVATAR / DIGITAL-TWIN VIDEO — OPTIONAL ADD-ON, MENTION ONLY WHEN GENUINELY RELEVANT:
+   - A DISTINCT PAID ADD-ON on top of standard management — NOT a default line in every package. Most
+     clients should never see it; only include it when the business itself would genuinely benefit
+     from a real person's digital twin fronting content at real volume: personal-brand services
+     (coaches, consultants, real-estate agents, insurance/finance advisors, tutors/course creators),
+     or any business whose owner/staff is already comfortable and effective on camera per
+     "camera_comfort" where scaling that presence (more videos than they could realistically film
+     themselves) would move the needle. Do NOT offer it when a physical product/space IS the story
+     (retail, food, physical goods) or when the budget sits at/near the entry tier (#8) — this add-on
+     needs real headroom to make sense. When it doesn't apply, don't mention it at all — no filler
+     "you could also add an avatar" line in every proposal. This relevance filter is for
+     PROACTIVELY suggesting it — if the client (or upgrade_context.upgrade_request) explicitly
+     asked for an avatar/digital twin by name, include it as requested regardless of the filter
+     above (still apply sound judgment on the numbers, same as any explicit request)
+   - When included: list "avatar" in recommended_services (same convention as organic SEO's tier), and
+     add {PRICING['avatar']['setup_first_avatar']} NIS as its own setup_fee_breakdown line (stacked on
+     top of the setup floor, same stacking pattern as BUDGET PYRAMID #6's automation scaling) —
+     additional avatars ({PRICING['avatar']['setup_additional_avatar']} NIS each) are rarely relevant
+     at proposal time; recommend just the first avatar unless the client explicitly asked for more than
+     one distinct on-camera presence
+   - Monthly: recommend the "{PRICING['avatar']['monthly_tiers'][0]['id']}" tier
+     ({PRICING['avatar']['monthly_tiers'][0]['minutes_per_month']} min/month,
+     {PRICING['avatar']['monthly_tiers'][0]['monthly_ils']} NIS) as the default starting point unless
+     the client's stated content volume/goals clearly call for more — add it as its own
+     monthly_breakdown line (e.g. "אווטאר דיגיטלי — בסיסי"), INCLUDED in monthly_management_total
+     (same treatment as the new-site hosting line in BUDGET PYRAMID #5 — this is the exception #1
+     allows for)
+   - The client ALSO pays HeyGen (avatar creation/generation) directly on their own account, and
+     ElevenLabs too if they want voice cloning — same external-cost pattern as ad spend/SEO tools.
+     Whenever avatar is included, honest_note must disclose this alongside the other external-cost
+     points (see honest_note's rules below) — write it naturally in the client's language, keeping the
+     same substance as this reference disclosure: "{PRICING['avatar']['client_direct_costs_note_he']}"
+     — no required paid HeyGen plan for one avatar, ongoing generation billed through HeyGen's own
+     pay-as-you-go credits
+   - Consent, the filming-kit instructions, and connecting the HeyGen/ElevenLabs accounts all happen
+     AFTER purchase in the client's dashboard (avatar_agent) — never something to walk through or
+     promise specifics about in the sales chat itself
+
 ═══════════════════════════════════════════════════════════════════════════
 
 CRITICAL RULES:
@@ -460,8 +499,9 @@ CRITICAL RULES:
   — for the non-flagged portions of a package with requires_manual_followup=true (BUDGET PYRAMID
   #7) — whatever floor would otherwise apply to that package type. Reflect the floor as its own line
   item (e.g. "חבילת הקמה בסיסית") in setup_fee_breakdown. Any extra bespoke setup work beyond the
-  standard package (e.g. a full multi-page website build beyond the included landing page, or scaled
-  automation work per BUDGET PYRAMID #6) stacks on top of the floor as additional line items
+  standard package (e.g. a full multi-page website build beyond the included landing page, scaled
+  automation work per BUDGET PYRAMID #6, or an avatar setup fee per BUDGET PYRAMID #9) stacks on top
+  of the floor as additional line items
 - honest_note must cover, briefly and without repetition: (a) any external cost the client pays
   directly — ad spend for google/meta/sponsored articles, and/or SEO tool subscription
   (SEOptimer/SEMrush/Ahrefs) — as additional to monthly_management_total, paid via the client's own
@@ -472,10 +512,11 @@ CRITICAL RULES:
   with gift/benefit words (no "חינם", "מתנה", "הטבה", "בונוס") and never framed as an offer; the
   celebratory framing of the same fact lives in scarcity_note only; (c) the
   support model transparency fact from BUDGET PYRAMID #3, stated once; (d) if applicable, the organic
-  SEO budget-shortfall disclosure from BUDGET PYRAMID #4. Combine these naturally into one coherent
-  note, not a list of disclaimers
+  SEO budget-shortfall disclosure from BUDGET PYRAMID #4; (e) if the package includes the avatar
+  add-on, the client's own direct HeyGen/ElevenLabs costs per BUDGET PYRAMID #9, same pattern as (a).
+  Combine these naturally into one coherent note, not a list of disclaimers
 - honest_note vs scarcity_note — STRICT SEPARATION: honest_note contains ONLY factual/operational
-  disclosures (the four points above) - NEVER any promotional, incentive, or urgency language (no
+  disclosures (the points above) - NEVER any promotional, incentive, or urgency language (no
   gift framing of the free month, no "1 of 20 businesses", no limited-time framing, no selling
   language of any kind). The payment-timeline FACT that month 2 carries no management fee belongs in
   honest_note (point b above, neutrally phrased); its PROMOTIONAL framing ("חודשיים מתנה", "הטבה
@@ -532,8 +573,9 @@ reasoning, estimates-not-guarantees, honesty):
   new monthly_management_total per the per-platform-group formula) - not a diff or delta price
 - setup_fee_total covers ONLY new one-time work this change actually requires (e.g.
   {PRICING['single_service_setup_fee']} NIS to launch a newly added platform, website work per
-  the website rules, or 0 when nothing new is needed). The standard onboarding setup floor does
-  NOT apply - it was already delivered and paid at signup
+  the website rules, the avatar-tier setup fee per BUDGET PYRAMID #9 when that's what was
+  requested, or 0 when nothing new is needed). The standard onboarding setup floor does NOT
+  apply - it was already delivered and paid at signup
 - benefit_value stays monthly_management_total x 2 (system invariant) but do NOT mention free
   months anywhere in the text - the benefit months applied at their original signup only
 - scarcity_note must be an empty string - no urgency tactics with existing clients

@@ -125,11 +125,31 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
 Disconnect: `_DISCONNECT_GROUPS["avatar"]` = heygen + elevenlabs together
 (dashboard two-click, offboarding purge covers it automatically).
 
+## Sales chat + support chat + pricing reference (wired 2026-07-20)
+
+`onboarding_agent.build_proposal` now sees `PRICING["avatar"]` (the exclusion
+is gone — BUDGET PYRAMID #9 there is the relevance rule: only offered when
+the business is genuinely camera-forward-content-shaped, e.g. personal-brand
+services or a client already comfortable on camera per `camera_comfort` —
+NOT a default line in every proposal). Setup fee stacks on the setup floor;
+the recommended monthly tier (default: basic) is its own `monthly_breakdown`
+line INCLUDED in `monthly_management_total` (same treatment as the new-site
+hosting line) — the client's own HeyGen/ElevenLabs cost stays a separate
+`honest_note` disclosure, same pattern as ad spend/SEO tools. An EXPLICIT
+client request (sales chat or `support_agent`'s in-chat upgrade path, which
+reuses the exact same `build_proposal` call) always overrides the relevance
+filter — the filter only gates PROACTIVE suggestions.
+
+`admin_service.get_pricing_reference()` (`GET /api/admin/pricing`, admin
+dashboard's "מחירון מלא" tab) now surfaces the avatar tier alongside every
+other pricing number, pulled live from `PRICING` — never a second copy.
+
 ## Deferred / flagged
 
-- Sales chat, support chat, and unified pricing display for this tier —
-  **separate follow-up handoff** (the PRICING exclusion comes off then).
-- PayPal billing wiring for the tier fee itself (part of that follow-up).
+- PayPal billing wiring for the tier fee itself (the tier's monthly fee is
+  now included in `monthly_management_total`, so it rides the client's
+  existing subscription amount automatically — no separate billing plumbing
+  needed; flag if a future change wants it billed as its own item).
 - Consent revocation automation (v1: client asks → we stop + delete,
   manually).
 - VERIFICATION: both services are docs-derived, never run with live keys —

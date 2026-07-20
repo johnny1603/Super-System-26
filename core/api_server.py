@@ -2165,6 +2165,15 @@ def admin_update_settings(request: Request, changes: dict):
     _require_admin(request)
     return {"success": True, "data": admin_service.update_settings(changes)}
 
+@app.get("/api/admin/pricing")
+def admin_pricing_reference(request: Request):
+    """Read-only unified pricing reference (setup fees, platform management,
+    organic SEO tiers, website hosting, avatar tier, and client-direct
+    external cost references) - pulled live from PRICING/budget_agent,
+    never a second copy of any number. See admin_service.get_pricing_reference."""
+    _require_admin(request)
+    return {"success": True, "data": admin_service.get_pricing_reference()}
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "uallak-super-system"}
