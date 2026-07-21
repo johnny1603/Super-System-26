@@ -43,8 +43,20 @@ description: How multi-language support works in uallak — chat language matchi
   `uallakI18n.onChange(fn)` if the page caches rendered strings.
 - Direction: `setLanguage` flips `<html dir>`/`<html lang>` (he/ar → rtl).
   Force `dir="ltr"` on inherently-LTR inputs (emails, URLs).
-- Switcher: `uallakI18n.mountSwitcher(containerEl)` (native-name `<select>`);
-  choice persists in localStorage `uallak_lang` across pages.
+- Switcher: `uallakI18n.mountSwitcher(containerEl)` — a settings-style round
+  flag badge (2026-07-21 redesign, replacing the old plain-text `<select>`)
+  showing the CURRENT language; click opens a small dropdown (flag + label
+  per option). Mounted on every page that calls it: login, profile, the
+  client dashboard's topbar, the sales-chat page, landing, terms. One
+  redesign in the shared engine reaches all of them — never restyle this
+  per-page; a page's own `.lang-switcher` CSS class is dead now (removed
+  everywhere it existed) since the control no longer uses that class name.
+  Flags: `FLAGS` in i18n.js. **Arabic deliberately uses Israel's flag 🇮🇱, not
+  a generic Arabic-country flag** — these are Israeli Arabic-speaking
+  clients, not a foreign audience — paired with the menu label "ערבית"
+  (`MENU_LABELS.ar`, Hebrew word for Arabic, not "العربية") so the option
+  reads unambiguously regardless of which language is currently on screen.
+  Choice persists in localStorage `uallak_lang` across pages.
 - Fonts: Heebo covers Hebrew+Latin; Arabic/Cyrillic fall back to system
   sans-serif. Good enough for v1; a Noto addition is a future polish item.
 
@@ -61,6 +73,10 @@ description: How multi-language support works in uallak — chat language matchi
   legal review); stored email-language preference; the server error-code
   pattern (see both below). All four were the explicit business-decision
   items flagged in v2 — none remain blocking.
+- ✅ **v3.1 (2026-07-21):** switcher redesign (flag badge, see Layer 2 above)
+  + confirmed it's genuinely mounted on every page, including the client
+  dashboard's topbar (it already was — just easy to miss as a plain
+  `<select>`; the flag badge fixes that visibility problem directly).
 - **Not planned:** dashboard/admin (Johnny reads Hebrew).
 
 ## Terms page — translated with an explicit AI-disclosure (business decision, 2026-07-21)
