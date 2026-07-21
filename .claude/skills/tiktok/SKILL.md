@@ -152,3 +152,21 @@ Google/Meta), token encryption at rest (same accepted MVP debt as
 Google/Meta), multi-chunk video upload (single-chunk only — fine at current
 sizes, would need real chunking for large files), scheduled engagement scan
 (no cadence exists yet — pull-triggered only, see Gotchas).
+
+**Paid TikTok Ads — entirely out of scope, a real separate future initiative.**
+Everything above is organic content only (mirrors `meta_content_agent.py`).
+There is no TikTok equivalent of `meta_ads_agent.py`/`google_ads_agent.py`.
+Paid campaign management would need TikTok's separate Marketing API
+(`business-api.tiktok.com`) — its own TikTok Business Center account, its
+own app registration/scopes, its own review process — none of which this
+integration touches. Don't assume paid reach is covered just because
+`agents/tiktok_content_agent.py` exists.
+
+**Upload-to-Inbox cannot pre-fill caption/hashtags — a hard API limit, not a
+choice.** `post/publish/inbox/video/init/`'s request schema has no
+`post_info`/`title` field at all (unlike Direct Post's `video/init/`, which
+does accept `title`). The client always types their own caption when they
+open the app to review/publish; the generated caption is sent as a
+copy-paste suggestion via chat instead (see `publish()`). This is a real
+trade-off against the SELF_ONLY restriction Direct Post carries until the
+content audit — worth re-weighing if that audit is ever pursued.
