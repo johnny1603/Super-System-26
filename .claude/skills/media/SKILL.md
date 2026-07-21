@@ -63,9 +63,13 @@ Never use unlicensed copyrighted music; no workaround exists in the code.
 Root: `DRIVE_MEDIA_FOLDER_ID` (a folder in Johnny's Drive shared with the
 service account as Editor — same setup pattern as the archive folder).
 Per client: `client-{id} — {name}/` with `images/{instagram,facebook,tiktok,
-website}`, `videos/{instagram,facebook,tiktok}`, `scripts/`, and
+website}`, `videos/{instagram,facebook,tiktok}`, `scripts/`,
 `website-media/{page}` (synced from the live site's pages via
-`sync_website_media_folders` / `GET /api/media/sync-site-folders`).
+`sync_website_media_folders` / `GET /api/media/sync-site-folders`), and
+`content-docs/` (2026-07-21 — `agents/content_docs_agent.py`'s Google Docs
+for scripts/homework too dense for the chat itself; see the content-docs
+skill). All subfolders go through `_subfolder(client_id, *path)` — reuse it,
+never a second per-client root.
 The client folder is shared read-only with the client's email on first touch;
 they browse it in Drive itself — `GET /api/client/media-folder`
 (session-gated) returns the link, surfaced as a button on the profile page.

@@ -1845,6 +1845,32 @@ def media_sync_site_folders(client_id: int):
     from agents.media_agent import sync_website_media_folders
     return {"success": True, "data": {"pages": sync_website_media_folders(client_id)}}
 
+# ─── Content docs (long-form scripts/homework as Google Docs) ────────────────
+
+class ContentDocDeliverRequest(BaseModel):
+    client_id: int
+    title: str
+    html_content: str
+    doc_kind: str = "content"  # free-form: "script" | "homework" | "instructions" | ...
+    body: str = ""             # optional override for the approval card's ask; Hebrew default otherwise
+
+@app.post("/api/content-docs/deliver", dependencies=_admin_only)
+def content_docs_deliver(req: ContentDocDeliverRequest):
+    from agents.content_docs_agent import deliver_doc
+    result = deliver_doc(req.client_id, req.title, req.html_content, req.doc_kind, req.body)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/admin/clients/{client_id}/content-docs")
+def admin_content_docs(client_id: int, request: Request):
+    """Admin dashboard drawer's visibility into delivered docs (session
+    cookie, not X-Admin-Key — same browser-facing pattern as the SEO
+    strategy/pending endpoints)."""
+    _require_admin(request)
+    from agents.content_docs_agent import list_delivered_docs
+    return {"success": True, "data": list_delivered_docs(client_id)}
+
 # ─── Avatar agent (distinct paid add-on — HeyGen twins + ElevenLabs voices) ──
 
 class AvatarConnectRequest(BaseModel):

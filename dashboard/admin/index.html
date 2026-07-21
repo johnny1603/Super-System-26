@@ -750,12 +750,41 @@ async function openDrawer(clientId) {
     </div>
 
     <div class="drawer-section">
+      <div class="drawer-label">מסמכי תוכן (סקריפטים / שיעורי בית)</div>
+      <div id="contentDocsArea">
+        <div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
       <div class="drawer-label">פעילות אחרונה</div>
       ${activityRows}
     </div>`;
 
   loadBudgetSection(clientId);
   loadSeoStrategySection(clientId);
+  loadContentDocsSection(clientId);
+}
+
+async function loadContentDocsSection(clientId) {
+  const area = document.getElementById('contentDocsArea');
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/content-docs`);
+    const docs = res.data || [];
+    area.innerHTML = docs.length
+      ? docs.map(d => `<div class="drawer-stat-row">
+          <span class="drawer-stat-label">${esc(d.title)}${d.doc_kind ? ` <span style="color:var(--gray);">(${esc(d.doc_kind)})</span>` : ''}</span>
+          <span>${d.status === 'approved'
+            ? `<span style="color:var(--green);">✓ אושר ${fmtDate(d.acknowledged_at)}</span>`
+            : d.status === 'rejected' ? '<span style="color:var(--gray);">נדחה</span>'
+            : '<span style="color:var(--yellow);">ממתין לאישור</span>'}
+            ${d.link ? ` · <a href="${esc(d.link)}" target="_blank" style="color:var(--accent);">פתח ↗</a>` : ''}</span>
+        </div>`).join('')
+      : '<div class="drawer-stat-row" style="border:none;color:var(--gray);">לא נשלחו מסמכי תוכן ללקוח זה</div>';
+  } catch (e) {
+    console.error('content docs load failed', e);
+    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת מסמכי התוכן</div>';
+  }
 }
 
 async function loadSeoStrategySection(clientId) {

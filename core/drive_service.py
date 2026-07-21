@@ -199,6 +199,42 @@ def make_file_public(file_id: str) -> str:
     return f"https://drive.google.com/uc?export=download&id={file_id}"
 
 
+def upload_google_doc(folder_id: str, filename: str, html_content: str) -> dict:
+    """Uploads HTML that Drive CONVERTS into a native, editable Google Doc —
+    not a downloadable .txt/.docx sitting in the folder. Same multipart
+    upload as upload_bytes, but the two Content-Types differ on purpose: the
+    metadata part's mimeType is the TARGET format Drive imports INTO
+    (application/vnd.google-apps.document), while the content part's
+    Content-Type (text/html) is the SOURCE format Drive imports FROM. Basic
+    HTML (headings, <b>/<strong>, <ul>/<ol>, <p>) carries over as real Doc
+    formatting. Returns Drive's {id, name, webViewLink}."""
+    metadata = json.dumps(
+        {"name": filename, "parents": [folder_id],
+         "mimeType": "application/vnd.google-apps.document"},
+        ensure_ascii=False,
+    )
+    boundary = f"uallak_{secrets.token_hex(16)}"
+    body = (
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{metadata}\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+        f"{html_content}\r\n"
+        f"--{boundary}--"
+    ).encode("utf-8")
+    response = httpx.post(
+        DRIVE_UPLOAD_URL,
+        headers={**_headers(), "Content-Type": f"multipart/related; boundary={boundary}"},
+        params={"uploadType": "multipart", "supportsAllDrives": "true",
+                "fields": "id,name,webViewLink"},
+        content=body,
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def upload_json(folder_id: str, filename: str, content: str) -> dict:
     """Multipart upload of one JSON document. Returns Drive's {id, size, name}.
     Callers treating this as a durable archive MUST verify id exists and

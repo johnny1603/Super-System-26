@@ -1001,6 +1001,7 @@ const DASH_I18N = {
   sugg_kind_tweak: { he:'שיפור קמפיין', en:'Campaign tweak', fr:'Optimisation de campagne', ar:'تحسين حملة', ru:'Улучшение кампании' },
   sugg_kind_homework: { he:'משימה', en:'Task', fr:'Tâche', ar:'مهمة', ru:'Задание' },
   sugg_kind_media_plan: { he:'תוכן לשבוע הקרוב', en:'Next week\'s content', fr:'Contenu de la semaine', ar:'محتوى الأسبوع القادم', ru:'Контент на неделю' },
+  sugg_kind_content_doc: { he:'📄 מסמך לעיון', en:'📄 Document to review', fr:'📄 Document à consulter', ar:'📄 مستند للاطلاع', ru:'📄 Документ на рассмотрение' },
   sugg_kind_default: { he:'הצעה', en:'Suggestion', fr:'Suggestion', ar:'اقتراح', ru:'Предложение' },
   sugg_approve: { he:'אישור — קדימה', en:'Approve — go ahead', fr:'Valider — allons-y', ar:'موافقة — انطلقوا', ru:'Одобрить — вперёд' },
   sugg_reject: { he:'לא הפעם', en:'Not this time', fr:'Pas cette fois', ar:'ليس هذه المرة', ru:'Не в этот раз' },
@@ -1620,7 +1621,7 @@ async function choosePersona(gender) {
 const SUGG_KIND_KEYS = {
   promotion: 'sugg_kind_promotion', content_idea: 'sugg_kind_content',
   campaign_tweak: 'sugg_kind_tweak', homework: 'sugg_kind_homework',
-  media_plan: 'sugg_kind_media_plan',
+  media_plan: 'sugg_kind_media_plan', content_doc: 'sugg_kind_content_doc',
 };
 
 async function loadSuggestions() {
@@ -1703,10 +1704,21 @@ function appendSupportMsg(text, cls) {
   // Per-message direction: replies match the client's language (Arabic/Hebrew
   // render RTL, English/French/Russian LTR)
   msg.dir = 'auto';
-  msg.textContent = text;
+  msg.innerHTML = linkify(text);
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
   return msg;
+}
+
+// Escapes the FULL message first (both client-typed and system text — never
+// trust either), then turns any http(s) URL into a real clickable link, so
+// notifications that carry a direct link (content docs, avatar-ready,
+// filming kits, media plans, ...) are a genuine "quick link" the client taps,
+// not a URL they have to select and copy by hand.
+function linkify(text) {
+  const escaped = esc(text);
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${url}</a>`);
 }
 
 async function loadSupportHistory() {
