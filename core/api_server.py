@@ -46,6 +46,7 @@ from core.session import (
 )
 from core import google_ads_service
 from core import meta_service
+from core import tiktok_service
 from core import admin_service
 from core import drive_service
 
@@ -921,6 +922,7 @@ async def client_logout(response: Response):
 _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
     "meta": ["meta_ads", "meta_page", "meta_instagram"],
+    "tiktok": ["tiktok"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
     # HeyGen + ElevenLabs disconnect together (both are the avatar add-on's
@@ -1442,6 +1444,44 @@ def meta_oauth_callback(state: str = "", code: str = "", error: str = ""):
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=meta")
 
+# ─── TikTok OAuth (client connects their own TikTok account) ────────────────
+
+@app.get("/api/oauth/tiktok/start")
+async def tiktok_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    return RedirectResponse(url=tiktok_service.build_consent_url(state))
+
+@app.get("/api/oauth/tiktok/callback")
+def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    # Identity comes from the signed state token, not the session cookie - the
+    # browser arrives here from TikTok's domain (same CSRF protection as Meta's)
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+    if error or not code:
+        print(f"[tiktok oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+
+    try:
+        tokens = tiktok_service.exchange_code(code)
+        access_token, refresh_token = tokens["access_token"], tokens["refresh_token"]
+        user = tiktok_service.get_user_info(access_token)
+        open_id = user.get("open_id", "")
+        if not open_id:
+            print(f"[tiktok oauth] client {client_id}: no open_id in user info response")
+            return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+
+        stored_token = tiktok_service.join_tokens(access_token, refresh_token)
+        upsert_account(client_id, "tiktok", open_id, stored_token, "active")
+        log_activity(client_id, "tiktok_content_agent", "account_connected",
+                     {"open_id": open_id, "display_name": user.get("display_name", "")}, {})
+        return RedirectResponse(url="/dashboard/?connected=tiktok")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+
 # ─── Meta execution (admin/scheduler only) ───────────────────────────────────
 
 class MetaCreateCampaignRequest(BaseModel):
@@ -1530,6 +1570,30 @@ def meta_content_scan():
 @app.get("/api/meta-content/engagement", dependencies=_admin_only)
 def meta_content_engagement(client_id: int):
     from agents.meta_content_agent import get_engagement_summary
+    try:
+        return {"success": True, "data": get_engagement_summary(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── TikTok execution (admin/scheduler only) ─────────────────────────────────
+
+class TikTokPublishRequest(BaseModel):
+    client_id: int
+    drive_file_id: str
+    caption: str = ""
+
+@app.post("/api/tiktok-content/publish", dependencies=_admin_only)
+def tiktok_content_publish(req: TikTokPublishRequest):
+    # Plain `def`: downloads from Drive + uploads to TikTok are blocking HTTP
+    from agents.tiktok_content_agent import publish
+    result = publish(req.client_id, {"drive_file_id": req.drive_file_id, "caption": req.caption})
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/tiktok-content/engagement", dependencies=_admin_only)
+def tiktok_content_engagement(client_id: int):
+    from agents.tiktok_content_agent import get_engagement_summary
     try:
         return {"success": True, "data": get_engagement_summary(client_id)}
     except Exception as e:

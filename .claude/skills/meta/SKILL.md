@@ -164,4 +164,8 @@ LLM comment replies (deliberate: wrong public reply on a client's brand page
 is worse than a slow one), asset picker for users with multiple ad
 accounts/Pages (first-asset MVP, same as Google), token encryption at rest
 (same accepted MVP debt as Google), creative image upload by hash
-(`image_url`/`picture` only for now), TikTok equivalent.
+(`image_url`/`picture` only for now).
+
+TikTok is now built separately (`agents/tiktok_content_agent.py`,
+`core/tiktok_service.py` — see the `tiktok` skill) — it's its own OAuth/API,
+not an extension of this one.

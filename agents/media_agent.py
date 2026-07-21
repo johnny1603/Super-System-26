@@ -5,6 +5,10 @@ makes the visuals they and the human team pull from.
 Feeds (pull points for other agents — call these, don't rebuild):
 - meta_content_agent: `prepare_for_publishing(client_id, file_id)` returns a
   PUBLIC url a Meta publish spec can use as media_url.
+- tiktok_content_agent: no public-url step needed — it takes the Drive
+  `file_id` directly and downloads it privately (TikTok's FILE_UPLOAD source
+  needs no public link, unlike Meta's media_url; see .claude/skills/tiktok/
+  SKILL.md for why PULL_FROM_URL isn't usable here).
 - seo_agent / website_agent: generated site imagery lands in the client's
   Drive folder (website subfolders); wordpress upload goes through the
   existing wp.upload_media_from_url with the public link.

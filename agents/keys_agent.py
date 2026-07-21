@@ -16,6 +16,8 @@ KEYS = {
     "GOOGLE_OAUTH_CLIENT_SECRET": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
     "META_APP_ID": os.environ.get("META_APP_ID", ""),
     "META_APP_SECRET": os.environ.get("META_APP_SECRET", ""),
+    "TIKTOK_CLIENT_KEY": os.environ.get("TIKTOK_CLIENT_KEY", ""),
+    "TIKTOK_CLIENT_SECRET": os.environ.get("TIKTOK_CLIENT_SECRET", ""),
     # Drive integrations (core/drive_service.py): the service-account JSON key,
     # the offboarded-client archive folder, and the media agent's root folder
     "GOOGLE_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", ""),

@@ -676,18 +676,17 @@ body {
       <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
-    <div class="conn-card locked">
+    <div class="conn-card unlocked">
       <div class="conn-top">
-        <div class="conn-icon" style="background:#2A2A2A;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#8A8A85" stroke-width="2"><path d="M9 18V6l8 6-8 6z"/></svg>
+        <div class="conn-icon" style="background:#000000;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M9 18V6l8 6-8 6z"/></svg>
         </div>
         <div>
           <div class="conn-name">TikTok</div>
-          <div class="conn-status" data-i18n="locked">נעול</div>
+          <div class="conn-status" id="tiktokStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn locked-btn" disabled data-i18n="locked">נעול</button>
-      <div class="lock-note" data-i18n="lock_note">שדרג חבילה כדי לפתוח</div>
+      <button class="conn-btn primary" id="tiktokBtn" onclick="connectTiktok()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1010,6 +1009,7 @@ const DASH_I18N = {
   sugg_error: { he:'משהו השתבש — נסו שוב', en:'Something went wrong — try again', fr:'Un problème est survenu — réessayez', ar:'حدث خطأ — حاول مجددًا', ru:'Что-то пошло не так — попробуйте ещё раз' },
   notice_gads_connected: { he:'חשבון Google Ads חובר בהצלחה ✓', en:'Google Ads account connected ✓', fr:'Compte Google Ads connecté ✓', ar:'تم ربط حساب Google Ads بنجاح ✓', ru:'Аккаунт Google Ads подключён ✓' },
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
+  notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_connect_error: { he:'חיבור {p} נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', en:'{p} connection failed — try again; if it repeats, talk to us in the chat', fr:'Échec de connexion {p} — réessayez ; si cela persiste, contactez-nous via le chat', ar:'فشل ربط {p} — حاول مجددًا، وإن تكرر تحدث معنا في الدردشة', ru:'Подключение {p} не удалось — попробуйте ещё раз; если повторится, напишите нам в чат' },
   notice_upgrade_success: { he:'השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', en:'Upgrade approved! The new package takes effect from the next billing 🎉', fr:'Changement validé ! La nouvelle formule prend effet au prochain prélèvement 🎉', ar:'تمت الموافقة على الترقية! تسري الباقة الجديدة من الفاتورة القادمة 🎉', ru:'Улучшение подтверждено! Новый пакет вступит в силу со следующего списания 🎉' },
   notice_upgrade_pending: { he:'השדרוג עדיין באימות מול PayPal — נעדכן ברגע שיאושר', en:'The upgrade is still being verified with PayPal — we\'ll update you once approved', fr:'Le changement est en cours de vérification chez PayPal — nous vous informerons dès validation', ar:'الترقية لا تزال قيد التحقق لدى PayPal — سنعلمك فور الموافقة', ru:'Улучшение ещё проверяется в PayPal — сообщим, как только подтвердится' },
@@ -1225,6 +1225,9 @@ async function loadDashboard() {
     if (conns.some(c => ['meta_ads', 'meta_page'].includes(c.platform) && c.status === 'active')) {
       markMetaConnected();
     }
+    if (conns.some(c => c.platform === 'tiktok' && c.status === 'active')) {
+      markTiktokConnected();
+    }
     if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
       markWebsiteConnected();
     }
@@ -1369,6 +1372,10 @@ function connectMeta() {
   window.location.href = '/api/oauth/meta/start';
 }
 
+function connectTiktok() {
+  window.location.href = '/api/oauth/tiktok/start';
+}
+
 function markPlatformConnected(statusId, btnId, platformKey) {
   const status = document.getElementById(statusId);
   status.textContent = uallakI18n.t('connected_status');
@@ -1425,6 +1432,7 @@ async function disconnectPlatform(platformKey, link) {
 
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
+function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok'); }
 
 function markWebsiteConnected() {
   markPlatformConnected('siteStatus', 'siteBtn', 'wordpress');
@@ -1926,8 +1934,12 @@ async function sendSupportMsg() {
   } else if (params.get('connected') === 'meta') {
     markMetaConnected();
     showNotice(uallakI18n.t('notice_meta_connected'), 'success');
+  } else if (params.get('connected') === 'tiktok') {
+    markTiktokConnected();
+    showNotice(uallakI18n.t('notice_tiktok_connected'), 'success');
   } else if (params.get('connect_error')) {
-    const errLabel = (params.get('connect_error') || '').includes('meta') ? 'Meta' : 'Google Ads';
+    const err = params.get('connect_error') || '';
+    const errLabel = err.includes('tiktok') ? 'TikTok' : err.includes('meta') ? 'Meta' : 'Google Ads';
     showNotice(uallakI18n.t('notice_connect_error', { p: errLabel }), 'warn');
   } else if (params.get('upgrade') === 'success') {
     showNotice(uallakI18n.t('notice_upgrade_success'), 'success');
