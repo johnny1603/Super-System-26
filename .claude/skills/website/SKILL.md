@@ -62,18 +62,24 @@ without telling us.
 - `agents/support_agent.py` — injects `website_overview` into the LLM payload
   when connected; `consult_platform_agent` answers "website"/"wordpress"/"site".
 - `dashboard/client/index.html` — the connect card + form
-  (`connectWebsite()`), `wordpress` in the connections check, activity labels.
+  (`connectWebsite()`), `wordpress` in the connections check, activity labels,
+  PLUS the "אין לי אתר — הקימו לי אחד" self-provision button/flow
+  (`createNewSite()`, `handleSiteProvisionStatus()`, polls the existing
+  `/api/dashboard` payload's `website_provision_status` field rather than a
+  dedicated status endpoint).
 
 ## Endpoints
 
-Client-facing: `POST /api/website/connect` (session cookie).
+Client-facing: `POST /api/website/connect` (session cookie), `POST
+/api/website/self-provision` (session cookie, no body — see "Self-service
+provisioning" below).
 Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,
 `POST /api/website/update`, `POST /api/website/alt-text`,
 `POST /api/website/install-seo-plugin`, `POST /api/website/provision`
-(optional `logo_url` + `industry_hint`), `POST /api/website/populate`,
-`GET /api/website/overview?client_id=`, `GET /api/website/standards?client_id=`,
-`POST /api/website/brand` (re-run brand identity when a logo arrives),
-`GET /api/website/scan` (daily).
+(manual-override path: optional `site_name`/`logo_url`/`industry_hint`),
+`POST /api/website/populate`, `GET /api/website/overview?client_id=`,
+`GET /api/website/standards?client_id=`, `POST /api/website/brand` (re-run
+brand identity when a logo arrives), `GET /api/website/scan` (daily).
 
 Scheduler job (same pattern as the other scans):
 
@@ -158,8 +164,11 @@ Decision (2026-07): WordPress only, on **InstaWP** per-site managed hosting
 custom domains + free SSL, API v2 with Bearer token). Cost basis in PRICING
 assumes Starter.
 
-**Flow** (`provision_site(client_id, site_name)` — admin-triggered via
-`POST /api/website/provision`, X-Admin-Key):
+**Flow** (`provision_site(client_id, site_name)` — reachable two ways: the
+admin override `POST /api/website/provision` (X-Admin-Key, custom
+site_name/logo_url/industry_hint), and the client's own self-service
+`POST /api/website/self-provision` — see "Self-service provisioning" below
+for why the client path is safe despite this being a real-money trigger):
 
 1. `POST {api}/sites/template` with `template_slug` +
    **`is_reserved: true`** (= permanent = BILLABLE from this moment) →
@@ -209,9 +218,10 @@ directly (honest_note mentions it for new-site packages).
 
 **Phase-2 gotchas:**
 
-- `is_reserved: true` is the money switch — never call provision from a
-  client-facing flow, and never "retry" a timeout without checking the
-  InstaWP dashboard for a half-created site first.
+- `is_reserved: true` is the money switch — never "retry" a timeout without
+  checking the InstaWP dashboard for a half-created site first. It IS now
+  reachable from a client-facing flow (see below) — but only through the
+  one narrow, parameter-free entry point, never a general-purpose one.
 - provision_site refuses when the client already has an active `wordpress`
   row (would orphan a paid site) — disconnect deliberately first.
 - InstaWP responses wrap in `{status, message, data}`; the service unwraps
@@ -219,6 +229,61 @@ directly (honest_note mentions it for new-site packages).
 - Custom-domain mapping (client's own domain → provisioned site) is a MANUAL
   InstaWP-dashboard step for now — clients launch on the `*.instawp.xyz`
   subdomain until done; automating the mapping API is deferred.
+
+## Self-service provisioning (client dashboard, 2026-07)
+
+**Business decision (2026-07):** the dashboard's website card now offers
+"אין לי אתר — הקימו לי אחד" alongside the existing "חבר עכשיו" (connect
+existing) option, so a client with no site can self-serve instead of waiting
+on an admin to notice and manually call `/api/website/provision`. This
+reverses the earlier blanket "never client-facing" stance — the reasoning
+for why that's now considered safe:
+
+- **`request_self_provision(client_id, background_tasks)`** is a genuinely
+  narrower entry point, not the admin endpoint reused with a session check:
+  no site_name/logo_url/industry_hint params exist for a client to touch.
+  Business info is already on file from onboarding; no logo → the
+  zero-design-questionnaire neutral-palette fallback (see
+  `apply_brand_identity`) applies automatically, same as it would for an
+  admin-triggered call made with no extra input.
+- Guarded against accidental double-billing: refuses if `is_connected()` is
+  already true, and refuses a second click while a request is still
+  in-flight (`_provision_state_from_activity` reads the client's own recent
+  `client_activity` rows for an unresolved `website_provision_requested`).
+- Runs via `background_tasks` (duck-typed exactly like
+  `engagement_agent._dispatch_approved` — this module still imports no
+  fastapi) since real provisioning takes real minutes; the dashboard shows a
+  "בהקמה..." state and polls the existing `/api/dashboard` payload's new
+  `website_provision_status` field (`None | 'requested' | 'failed'`, derived
+  from the same `client_activity` rows, no new table or endpoint) until it
+  resolves, then reports success/failure via dashboard chat either way.
+
+**What v1 self-service does NOT do:** it does not call `populate_site` —
+there is no existing function anywhere in the codebase that auto-generates
+the initial page copy / article batch from onboarding answers with zero
+human input (populate_site takes ALREADY-GENERATED items; today those are
+hand-assembled per client, admin-side). So a self-provisioned site launches
+with exactly what `provision_site` alone produces: the master template's
+generic Hebrew page skeleton (בית/אודות/שירותים/צור קשר/תקנון) and the
+neutral-by-industry color palette — NOT personalized page copy. This is
+identical to what an admin-triggered `provision_site` call with no extra
+input produces today; self-service didn't lower the bar, it just removed
+the human bottleneck for reaching that same starting point. Building real
+zero-touch content generation (personalized base-page copy, an initial
+article batch) is a separate, not-yet-built capability — don't assume it's
+covered because this section exists.
+
+**Billing entitlement is NOT verified anywhere in code.** Nothing checks
+whether the client's stored `package` (free-text LLM-authored proposal JSON,
+see `onboarding_agent.PRICING["website"]["new_site_hosting"]`) actually
+priced in the 50 NIS/mo hosting line before self-service lets them trigger a
+real recurring InstaWP cost. This was previously an implicit admin judgment
+call (the admin manually decided when to click provision); self-service
+removes that check entirely, on the assumption that any active client who
+has no site connected already chose a package that included one. If that
+assumption turns out wrong in practice, the fix is parsing/flagging
+`package.monthly_breakdown` for the hosting line before allowing
+self-provision — not built, flagged here as a known gap.
 
 ## Deferred / not built
 

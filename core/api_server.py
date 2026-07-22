@@ -615,6 +615,13 @@ async def dashboard_data(request: Request):
     activity_month_count = sum(1 for e in activity if (e.get("created_at") or "") >= month_start)
     tour_completed = any(e.get("action_type") == "welcome_tour_completed" for e in activity)
 
+    # Self-service "create a new site" progress, from activity already fetched
+    # above — no extra query. None when a wordpress row is already active.
+    website_provision_status = None
+    if not any(a.get("platform") == "wordpress" and a.get("status") == "active" for a in accounts):
+        from agents.website_agent import _provision_state_from_activity
+        website_provision_status = _provision_state_from_activity(activity)
+
     return {"success": True, "data": {
         "client": {
             "id": client.get("id"),
@@ -636,6 +643,7 @@ async def dashboard_data(request: Request):
         # needs platform + status to paint the connection cards
         "connections": [{"platform": a.get("platform"), "status": a.get("status")}
                         for a in accounts],
+        "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
         "tour_completed": tour_completed,
@@ -1617,6 +1625,21 @@ def website_connect(req: WebsiteConnectRequest, request: Request):
         raise HTTPException(status_code=400, detail=result.get("error", "connection failed"))
     return {"success": True, "data": result}
 
+@app.post("/api/website/self-provision")
+def website_self_provision(request: Request, background_tasks: BackgroundTasks):
+    # The client's "הקימו לי אתר" alternative to /connect when they have no
+    # site at all. Deliberately no request body — see
+    # website_agent.request_self_provision's docstring for why no params are
+    # needed or wanted from the client here. Returns immediately; the actual
+    # provisioning runs in background_tasks (real minutes) and reports back
+    # via dashboard chat + website_provision_status in /api/dashboard.
+    client_id = _require_session(request)
+    from agents.website_agent import request_self_provision
+    result = request_self_provision(client_id, background_tasks)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
 # ─── Website execution (admin/scheduler only) ────────────────────────────────
 
 class WebsitePublishRequest(BaseModel):
@@ -1682,8 +1705,11 @@ class WebsiteProvisionRequest(BaseModel):
 
 @app.post("/api/website/provision", dependencies=_admin_only)
 def website_provision(req: WebsiteProvisionRequest):
-    # Creates a BILLABLE hosted site (reserved InstaWP clone) - admin/fulfillment
-    # only, never client-facing. Plain `def`: provisioning polls for minutes.
+    # Creates a BILLABLE hosted site (reserved InstaWP clone). This admin
+    # endpoint is for manual overrides (custom site_name/logo/industry_hint);
+    # the client's own self-service trigger is the narrower, parameter-free
+    # POST /api/website/self-provision above. Plain `def`: provisioning polls
+    # for minutes.
     from agents.website_agent import provision_site
     result = provision_site(req.client_id, req.site_name, req.logo_url, req.industry_hint)
     if not result.get("success"):

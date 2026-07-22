@@ -577,13 +577,19 @@ def apply_brand_identity(client_id: int, logo_url: str = "", industry_hint: str 
 # ─── Phase 2: provision a NEW site (InstaWP, admin-triggered only) ────────────
 
 def provision_site(client_id: int, site_name: str = "",
-                   logo_url: str = "", industry_hint: str = "") -> dict:
+                   logo_url: str = "", industry_hint: str = "",
+                   triggered_by: str = "admin") -> dict:
     """Spin up a real WordPress site for a client who has none: clone the
     uallak master template on InstaWP (reserved = billable — the hosting cost
     passthrough in PRICING exists because of this call), then rotate the
     template's baked-in Application Password for a per-site one and store the
     connection exactly like a Phase-1 connect. From that point every Phase-1
-    tool (publish/update/SEO) works on the new site unchanged."""
+    tool (publish/update/SEO) works on the new site unchanged.
+
+    `triggered_by` ('admin' | 'client') is recorded on the activity row only
+    — an audit trail of who actually pulled the billable trigger, since
+    request_self_provision() is now a second caller of this same function
+    (see its docstring for why client-facing provisioning is safe here)."""
     from core import instawp_service as iwp
 
     template_slug = os.environ.get("WEBSITE_TEMPLATE_SLUG", "")
@@ -631,6 +637,12 @@ def provision_site(client_id: int, site_name: str = "",
                             [f"client {client_id}: cleanup of InstaWP site "
                              f"{site['id']} ALSO failed ({cleanup_error}) — delete it "
                              "manually in the InstaWP dashboard or it keeps billing"])
+        # A self-service request has no admin watching the alert channel in
+        # real time — this is the client-facing progress signal (see
+        # _provision_state_from_activity) that tells them (and a page reload)
+        # it's dead rather than still running.
+        _log_activity(client_id, "website_provision_failed",
+                      {"error": str(e), "triggered_by": triggered_by})
         return {"success": False, "errors": [str(e)]}
 
     from agents.client_agent import upsert_account
@@ -639,7 +651,7 @@ def provision_site(client_id: int, site_name: str = "",
     _overview_cache.pop(client_id, None)
     _log_activity(client_id, "website_provisioned",
                   {"site_url": site_url, "provider": "instawp",
-                   "site_id": site.get("id")})
+                   "site_id": site.get("id"), "triggered_by": triggered_by})
     log_step(AGENT_NAME, "provision_site", f"client {client_id}: live at {site_url}")
 
     # Standing rules kick in immediately on every new site: plugins + page
@@ -654,6 +666,88 @@ def provision_site(client_id: int, site_name: str = "",
         agent_alert(AGENT_NAME, [f"client {client_id}: post-provision standards/brand "
                                  f"step failed on {site_url}: {e}"])
     return result
+
+
+# ─── Self-service entry point (client dashboard, "Create a new site for me") ─
+
+def _provision_state_from_activity(activity: list) -> str | None:
+    """'requested' (background task still running) | 'failed' | None, read
+    from an already-fetched client_activity list (newest first) — the
+    client-facing progress signal for a self-service request. 'connected' is
+    NOT reported here; callers check client_accounts/is_connected for that,
+    same as every other platform card.
+
+    Stops at the FIRST of the three provisioning milestones (requested /
+    failed / provisioned) — not just the first requested/failed — so a long-
+    since-succeeded request (site since disconnected, client trying again)
+    doesn't get misread as still in progress just because that old
+    'requested' row is still further back in the same history."""
+    for entry in activity:
+        if entry.get("agent_name") != AGENT_NAME:
+            continue
+        action = entry.get("action_type")
+        if action == "website_provision_requested":
+            return "requested"
+        if action == "website_provision_failed":
+            return "failed"
+        if action == "website_provisioned":
+            return None
+    return None
+
+
+def request_self_provision(client_id: int, background_tasks=None) -> dict:
+    """The ONLY client-facing trigger for provision_site — the dashboard's
+    "הקימו לי אתר" button, deliberately narrower than the admin endpoint (no
+    site_name/logo_url/industry_hint params a client could fumble; business
+    info is already on file from onboarding and the neutral-palette fallback
+    needs none of it — see apply_brand_identity). Money starts moving the
+    instant InstaWP's is_reserved:true call succeeds, same as the admin path;
+    the safety net here is procedural, not a missing-data gate: one click,
+    one immediate confirmation, and `is_connected`/in-progress checks below
+    make a duplicate site genuinely impossible to trigger by accident.
+
+    Runs in the background (`background_tasks`, duck-typed exactly like
+    engagement_agent's `_dispatch_approved` — this module stays fastapi-free)
+    since provisioning genuinely takes real minutes (InstaWP clone + task
+    poll + credential rotation + standards/brand pass) and must never block
+    the client's click."""
+    if is_connected(client_id):
+        return {"success": False, "errors": ["client already has a connected website"]}
+    recent = (_db().table("client_activity").select("agent_name,action_type")
+              .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+              .order("created_at", desc=True).limit(5).execute().data or [])
+    if _provision_state_from_activity(recent) == "requested":
+        return {"success": False, "errors": ["a provisioning request is already in progress"]}
+    if background_tasks is None:
+        return {"success": False,
+                "errors": ["self-provisioning unavailable in this context"]}
+
+    from agents.client_agent import get_client, log_communication
+    client = get_client(client_id)
+    _log_activity(client_id, "website_provision_requested", {"triggered_by": "client"})
+    log_communication(client_id, "outbound", "dashboard_chat",
+                      'קיבלנו! מקימים לכם עכשיו אתר וורדפרס חדש — ההקמה וההגדרה '
+                      'הראשונית לוקחות בדרך כלל כמה דקות. נעדכן כאן ברגע שהוא מוכן. 🚀')
+    background_tasks.add_task(_run_self_provision, client_id, client.get("name", ""))
+    return {"success": True, "status": "requested"}
+
+
+def _run_self_provision(client_id: int, business_name: str):
+    """Background worker for request_self_provision(). No logo_url/
+    industry_hint on purpose — the neutral-by-industry default palette IS
+    the intended v1 result for a self-service build, same as it would be for
+    an admin-triggered one run without extra input."""
+    from agents.client_agent import log_communication
+    result = provision_site(client_id, site_name=business_name, triggered_by="client")
+    if result.get("success"):
+        log_communication(client_id, "outbound", "dashboard_chat",
+                          f'האתר החדש שלכם מוכן! 🎉\n{result["site_url"]}\n'
+                          'זה מבוסס על תבנית מקצועית עם עיצוב נקי כברירת מחדל — '
+                          'נדבר בהמשך על מיתוג, תוכן ומאמרים לאתר.')
+    else:
+        log_communication(client_id, "outbound", "dashboard_chat",
+                          'משהו השתבש בהקמת האתר החדש. הצוות שלנו כבר קיבל התראה '
+                          'ויחזור אליכם בהקדם — אין צורך לנסות שוב בינתיים.')
 
 
 def populate_site(client_id: int, items: list) -> dict:

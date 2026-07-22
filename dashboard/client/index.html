@@ -172,6 +172,10 @@ body {
 .conn-btn.primary:hover { background: #e0431a; }
 .conn-btn.connected-btn { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: default; }
 .conn-btn.locked-btn { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed; }
+.conn-btn.secondary { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+.conn-btn.secondary:hover { background: rgba(255,76,31,0.08); }
+.site-choice-row { display: flex; gap: 8px; }
+.site-choice-row .conn-btn { width: auto; flex: 1; }
 .lock-note { font-size: 11.5px; color: var(--accent); margin-top: -6px; }
 .site-input {
   width: 100%;
@@ -699,13 +703,23 @@ body {
           <div class="conn-status" id="siteStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()" data-i18n="connect_now">חבר עכשיו</button>
+      <div class="site-choice-row" id="siteChoiceRow">
+        <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()" data-i18n="connect_now">חבר עכשיו</button>
+        <button class="conn-btn secondary" id="siteCreateBtn" onclick="toggleCreateSiteForm()" data-i18n="site_create_new">אין לי אתר — הקימו לי אחד</button>
+      </div>
       <div id="siteForm" style="display:none; margin-top:10px;">
         <input class="site-input" id="siteUrl" dir="ltr" data-i18n-placeholder="site_url_ph" placeholder="כתובת האתר, למשל mysite.co.il">
         <input class="site-input" id="siteUser" dir="ltr" data-i18n-placeholder="site_user_ph" placeholder="שם משתמש WordPress">
         <input class="site-input" id="sitePass" dir="ltr" type="password" placeholder="Application Password">
         <div class="lock-note" data-i18n="site_app_pw_note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
         <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()" data-i18n="site_connect">חיבור</button>
+      </div>
+      <div id="siteCreateForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="site_create_time_note">ההקמה כוללת שכפול אתר וורדפרס מקצועי ובדיקות תקינות ראשוניות — זה לוקח בדרך כלל כמה דקות, לא מיידי. נעדכן אתכם כאן וגם בצ'אט כשהאתר מוכן.</div>
+        <button class="conn-btn primary" id="siteCreateConfirmBtn" onclick="createNewSite()" data-i18n="site_create_confirm">כן, הקימו לי אתר חדש</button>
+      </div>
+      <div id="siteCreateProgress" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="site_create_in_progress">האתר החדש שלכם בהקמה כרגע — זה עשוי לקחת כמה דקות. אפשר להמשיך לגלוש בדשבורד, נעדכן כאן וגם בצ'אט ברגע שהוא מוכן.</div>
       </div>
     </div>
 
@@ -914,6 +928,15 @@ const DASH_I18N = {
   site_connecting: { he:'מתחבר...', en:'Connecting…', fr:'Connexion…', ar:'جارٍ الربط...', ru:'Подключаем…' },
   site_connected_notice: { he:'האתר חובר בהצלחה ✓', en:'Website connected ✓', fr:'Site connecté ✓', ar:'تم ربط الموقع بنجاح ✓', ru:'Сайт подключён ✓' },
   site_connect_failed: { he:'חיבור האתר נכשל — בדקו את הכתובת, שם המשתמש וה-Application Password ונסו שוב', en:'Website connection failed — check the address, username and Application Password and try again', fr:'Échec de connexion — vérifiez l\'adresse, l\'utilisateur et l\'Application Password, puis réessayez', ar:'فشل ربط الموقع — تحقق من العنوان واسم المستخدم وApplication Password وحاول مجددًا', ru:'Подключение сайта не удалось — проверьте адрес, имя пользователя и Application Password и попробуйте снова' },
+  site_create_new: { he:'אין לי אתר — הקימו לי אחד', en:'I don\'t have a site — build me one', fr:'Je n\'ai pas de site — créez-en un pour moi', ar:'ليس لدي موقع — أنشئوا لي واحدًا', ru:'У меня нет сайта — создайте его для меня' },
+  site_create_time_note: { he:'ההקמה כוללת שכפול אתר וורדפרס מקצועי ובדיקות תקינות ראשוניות — זה לוקח בדרך כלל כמה דקות, לא מיידי. נעדכן אתכם כאן וגם בצ\'אט כשהאתר מוכן.', en:'Setup includes cloning a professional WordPress site and initial checks — this usually takes a few real minutes, not instant. We\'ll update you here and in the chat once it\'s ready.', fr:'La création inclut le clonage d\'un site WordPress professionnel et des vérifications initiales — cela prend généralement quelques minutes, pas instantané. Nous vous informerons ici et dans le chat une fois prêt.', ar:'يشمل الإعداد استنساخ موقع WordPress احترافي وفحوصات أولية — يستغرق هذا عادةً بضع دقائق حقيقية، ليس فوريًا. سنحدثكم هنا وفي الدردشة عند الجاهزية.', ru:'Настройка включает клонирование профессионального сайта WordPress и первичные проверки — это обычно занимает несколько минут, не мгновенно. Мы сообщим здесь и в чате, когда сайт будет готов.' },
+  site_create_confirm: { he:'כן, הקימו לי אתר חדש', en:'Yes, build me a new site', fr:'Oui, créez-moi un nouveau site', ar:'نعم، أنشئوا لي موقعًا جديدًا', ru:'Да, создайте мне новый сайт' },
+  site_create_in_progress: { he:'האתר החדש שלכם בהקמה כרגע — זה עשוי לקחת כמה דקות. אפשר להמשיך לגלוש בדשבורד, נעדכן כאן וגם בצ\'אט ברגע שהוא מוכן.', en:'Your new site is being built right now — this may take a few minutes. Feel free to keep browsing the dashboard; we\'ll update you here and in the chat once it\'s ready.', fr:'Votre nouveau site est en cours de création — cela peut prendre quelques minutes. Continuez à naviguer sur le tableau de bord ; nous vous informerons ici et dans le chat une fois prêt.', ar:'موقعكم الجديد قيد الإنشاء الآن — قد يستغرق ذلك بضع دقائق. يمكنكم متابعة تصفح لوحة التحكم، وسنحدثكم هنا وفي الدردشة عند الجاهزية.', ru:'Ваш новый сайт сейчас создаётся — это может занять несколько минут. Вы можете продолжать пользоваться панелью — мы сообщим здесь и в чате, когда он будет готов.' },
+  site_create_starting: { he:'שולח בקשה...', en:'Sending request…', fr:'Envoi en cours…', ar:'جارٍ الإرسال...', ru:'Отправка запроса…' },
+  site_create_started_notice: { he:'קיבלנו! מקימים לכם אתר חדש — נעדכן כשהוא מוכן.', en:'Got it! Building your new site — we\'ll update you when it\'s ready.', fr:'C\'est noté ! Création de votre nouveau site — nous vous informerons une fois prêt.', ar:'تم الاستلام! جارٍ إنشاء موقعكم الجديد — سنحدثكم عند الجاهزية.', ru:'Принято! Создаём ваш новый сайт — сообщим, когда он будет готов.' },
+  site_create_failed: { he:'לא הצלחנו לשלוח את הבקשה כרגע — נסו שוב בעוד רגע או דברו איתנו בצ\'אט', en:'We couldn\'t send the request right now — try again in a moment or talk to us in the chat', fr:'Impossible d\'envoyer la demande pour le moment — réessayez dans un instant ou contactez-nous via le chat', ar:'لم نتمكن من إرسال الطلب الآن — حاولوا مجددًا بعد قليل أو تحدثوا معنا في الدردشة', ru:'Не удалось отправить запрос сейчас — попробуйте снова через минуту или напишите нам в чат' },
+  site_create_done_notice: { he:'האתר החדש שלכם מוכן ✓', en:'Your new site is ready ✓', fr:'Votre nouveau site est prêt ✓', ar:'موقعكم الجديد جاهز ✓', ru:'Ваш новый сайт готов ✓' },
+  site_create_error_notice: { he:'משהו השתבש בהקמת האתר — הצוות שלנו קיבל התראה ויחזור אליכם', en:'Something went wrong building the site — our team was alerted and will get back to you', fr:'Un problème est survenu lors de la création du site — notre équipe a été alertée et vous recontactera', ar:'حدث خطأ أثناء إنشاء الموقع — تم تنبيه فريقنا وسيتواصل معكم', ru:'Что-то пошло не так при создании сайта — наша команда уведомлена и свяжется с вами' },
   higgsfield_card: { he:'יצירת מדיה (תמונות/סרטונים)', en:'Media generation (images/videos)', fr:'Génération de médias (images/vidéos)', ar:'إنشاء الوسائط (صور/فيديوهات)', ru:'Генерация медиа (изображения/видео)' },
   higgsfield_signup_note: { he:'נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.', en:'Sign up with your own payment method at higgsfield.ai, then create an API key in your account\'s API Keys area (cloud.higgsfield.ai/api-keys) — payment for generation itself goes directly through you, we just operate the tool for you.', fr:'Inscrivez-vous avec votre propre moyen de paiement sur higgsfield.ai, puis créez une clé API dans la section API Keys de votre compte (cloud.higgsfield.ai/api-keys) — le paiement de la génération passe directement par vous, nous opérons simplement l\'outil pour vous.', ar:'سجّل بوسيلة الدفع الخاصة بك على higgsfield.ai، ثم أنشئ مفتاح API في قسم API Keys بحسابك (cloud.higgsfield.ai/api-keys) — الدفع مقابل الإنشاء نفسه يتم مباشرة من خلالك، نحن فقط نشغّل الأداة نيابة عنك.', ru:'Зарегистрируйтесь на higgsfield.ai со своим способом оплаты, затем создайте API-ключ в разделе API Keys вашего аккаунта (cloud.higgsfield.ai/api-keys) — оплата за саму генерацию идёт напрямую от вас, мы лишь управляем инструментом от вашего имени.' },
   higgsfield_key_ph: { he:'Higgsfield API Key', en:'Higgsfield API Key', fr:'Clé API Higgsfield', ar:'مفتاح API الخاص بـ Higgsfield', ru:'API-ключ Higgsfield' },
@@ -1229,7 +1252,11 @@ async function loadDashboard() {
       markTiktokConnected();
     }
     if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
+      const wasProvisioning = !!window._siteProvisionPoll;
       markWebsiteConnected();
+      if (wasProvisioning) showNotice(uallakI18n.t('site_create_done_notice'), 'success');
+    } else {
+      handleSiteProvisionStatus(d.website_provision_status);
     }
     if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
       markHiggsfieldConnected();
@@ -1437,11 +1464,75 @@ function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBt
 function markWebsiteConnected() {
   markPlatformConnected('siteStatus', 'siteBtn', 'wordpress');
   document.getElementById('siteForm').style.display = 'none';
+  document.getElementById('siteCreateBtn').style.display = 'none';
+  document.getElementById('siteCreateForm').style.display = 'none';
+  document.getElementById('siteCreateProgress').style.display = 'none';
+  // Drop the two-button flex layout so the remaining connected-state siteBtn
+  // goes back to its normal full-width look (site-choice-row's CSS forces
+  // width:auto/flex:1 on conn-btn children, which only makes sense while both
+  // buttons are visible side by side).
+  document.getElementById('siteChoiceRow').classList.remove('site-choice-row');
+  if (window._siteProvisionPoll) { clearInterval(window._siteProvisionPoll); window._siteProvisionPoll = null; }
 }
 
 function toggleSiteForm() {
   const form = document.getElementById('siteForm');
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('siteCreateForm').style.display = 'none';
+}
+
+function toggleCreateSiteForm() {
+  const form = document.getElementById('siteCreateForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('siteForm').style.display = 'none';
+}
+
+// Client-triggered "build me a new WordPress site" — fires the background
+// provision, then shows the in-progress state and polls the existing
+// dashboard payload (which already carries website_provision_status) until
+// it resolves. See website_agent.request_self_provision for the backend side.
+async function createNewSite() {
+  const btn = document.getElementById('siteCreateConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('site_create_starting');
+  try {
+    const res = await fetch('/api/website/self-provision', { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      showNotice(uallakI18n.t('site_create_started_notice'), 'success');
+      showSiteProvisionProgress();
+      return;
+    }
+  } catch (e) {
+    console.error('self-provision request failed', e);
+  }
+  btn.disabled = false;
+  btn.textContent = uallakI18n.t('site_create_confirm');
+  showNotice(uallakI18n.t('site_create_failed'), 'warn');
+}
+
+function showSiteProvisionProgress() {
+  document.getElementById('siteChoiceRow').style.display = 'none';
+  document.getElementById('siteForm').style.display = 'none';
+  document.getElementById('siteCreateForm').style.display = 'none';
+  document.getElementById('siteCreateProgress').style.display = 'block';
+  if (!window._siteProvisionPoll) {
+    window._siteProvisionPoll = setInterval(loadDashboard, 15000);
+  }
+}
+
+function handleSiteProvisionStatus(status) {
+  if (status === 'requested') {
+    showSiteProvisionProgress();
+  } else if (status === 'failed') {
+    if (window._siteProvisionPoll) { clearInterval(window._siteProvisionPoll); window._siteProvisionPoll = null; }
+    document.getElementById('siteCreateProgress').style.display = 'none';
+    document.getElementById('siteChoiceRow').style.display = 'flex';
+    if (!window._siteProvisionFailNoticeShown) {
+      window._siteProvisionFailNoticeShown = true;
+      showNotice(uallakI18n.t('site_create_error_notice'), 'warn');
+    }
+  }
 }
 
 function markHiggsfieldConnected() {
