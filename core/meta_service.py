@@ -294,6 +294,18 @@ def get_pages(user_token: str) -> list:
     ).get("data", [])
 
 
+def get_ad_account_pixels(user_token: str, ad_account_id: str) -> list:
+    """Meta Pixels (datasets) owned by the ad account — READ-only discovery
+    for the website tracking audit: tells us which pixel id SHOULD be firing
+    on the client's site, so the audit can say 'a pixel exists in their Meta
+    account but isn't installed' vs 'no pixel exists at all'."""
+    return graph_get(
+        f"{ad_account_id}/adspixels", user_token,
+        params={"fields": "id,name", "limit": 25},
+        marketing=True,
+    ).get("data", [])
+
+
 # ─── Marketing API helpers (paid campaigns) ───────────────────────────────────
 
 def get_campaigns(user_token: str, ad_account_id: str) -> list:

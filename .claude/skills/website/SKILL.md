@@ -79,7 +79,9 @@ Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,
 (manual-override path: optional `site_name`/`logo_url`/`industry_hint`),
 `POST /api/website/populate`, `GET /api/website/overview?client_id=`,
 `GET /api/website/standards?client_id=`, `POST /api/website/brand` (re-run
-brand identity when a logo arrives), `GET /api/website/scan` (daily).
+brand identity when a logo arrives), `GET /api/website/scan` (daily),
+`GET /api/website/tracking?client_id=` (tag audit),
+`POST /api/website/install-tracking` (GTM-first snippet injection).
 
 Scheduler job (same pattern as the other scans):
 
@@ -127,6 +129,67 @@ checklist below): genuinely mobile-first theme (tested on a real phone, not
 just "technically responsive"), true RTL layout with Hebrew-appropriate fonts
 (Heebo/Assistant/Rubik class — not a mechanical LTR flip), minimal preinstalled
 plugins.
+
+## Tracking tags — GA4 / Meta Pixel / GTM (2026-07-23)
+
+**Why this exists**: budget_agent's cross-platform cost-per-result comparison
+is only as honest as the conversion data feeding it — an untagged site means
+missing/incomplete attribution, quietly corrupting a feature built
+specifically to be data-grounded.
+
+**Architecture decision — GTM-FIRST** (researched against current practice,
+not assumed): one GTM container installed once per site; GA4, Meta Pixel
+(Meta ships an official GTM template now), and future tags configured INSIDE
+GTM with zero further site changes. Direct gtag/fbevents injection exists as
+the fallback for clients with IDs but no container.
+`install_tracking_tags` refuses `gtm_container_id` + direct ids together —
+GA4/pixel inside GTM *plus* direct-installed double-counts every event.
+
+**Audit** (`get_tracking_status`, `GET /api/website/tracking`, also folded
+into `run_standards_check` as report-only issues):
+- Fetches the rendered homepage (unauthenticated — what a visitor actually
+  gets) and regex-detects GTM container / GA4 measurement id / `fbq('init')`.
+- **Expected-pixel discovery is real on the Meta side**: the client's
+  connected ad account lists its pixels (`meta_service.get_ad_account_pixels`,
+  read-only), so the audit distinguishes "pixel exists but isn't installed",
+  "installed pixel doesn't match their account (previous agency's?)", and
+  "no pixel exists at all". No Google equivalent — our OAuth scope is Ads,
+  not Analytics, so GA4 expectation is presence-only, stated honestly.
+- **When GTM is present, GA4/pixel "not detected" is NOT conclusive** — tags
+  configured inside the container don't appear in static HTML; the status
+  says so instead of guessing.
+
+**Install** (`install_tracking_tags`, `POST /api/website/install-tracking`,
+admin-only with explicit ids — never from a standing scan, which can't know
+the client's container/property/pixel ids): injects the snippet via a
+Custom HTML widget (core `wp/v2/widgets`, WP 5.8+) — the ONE injection path
+core REST offers (no options API for snippet plugins, no theme-file writes).
+Real limitations, all handled: `<script>` survives only for users with
+`unfiltered_html` (single-site admins yes, Editors silently stripped);
+block/FSE themes may register no widget areas (reported as failure with the
+manual path named); the widget renders where the sidebar renders (footer
+usually — functionally fine, not the doc-preferred `<head>`). **The result
+is VERIFIED by re-fetching the homepage** (`verified_on_homepage`) — a 2xx
+on the widget POST proves nothing.
+
+**Honest v1 boundary — what's verified vs still a gap**:
+- VERIFIED by this work: tag PRESENCE on the rendered homepage, and
+  pixel-id match against the client's own ad account.
+- STILL A KNOWN GAP (deliberately deferred, flagged in every status
+  response): conversion-EVENT configuration — whether a lead form
+  submission actually fires a conversion event. That lives inside GTM's
+  workspace / the ad platforms; automating it needs GTM API access (OAuth
+  to the client's Google account with Tag Manager scope — a new consent
+  flow, a business decision) or per-form wiring. Until then,
+  cost-per-conversion comparability still ultimately depends on conversion
+  actions configured in Google Ads / Meta Events Manager.
+- Widgets-REST injection itself carries the standard VERIFICATION STATUS
+  caveat: written against WP core REST docs, never run against a live site.
+
+Master-template note: consider adding a pre-created (empty) GTM container
+per client at onboarding as the standard operating procedure — the audit
+will flag its absence on every fresh provision until ids exist, which is
+correct pressure, not noise.
 
 ## Cost discipline (the design rule for this agent)
 

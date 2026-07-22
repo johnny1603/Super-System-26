@@ -1763,6 +1763,35 @@ def website_standards(client_id: int, auto_install_plugins: bool = True):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/website/tracking", dependencies=_admin_only)
+def website_tracking(client_id: int):
+    # Tracking-tag audit (GA4/Pixel/GTM presence + expected-pixel discovery) —
+    # the data-quality gate for budget_agent's cross-platform comparison
+    from agents.website_agent import get_tracking_status
+    try:
+        return {"success": True, "data": get_tracking_status(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class WebsiteTrackingInstallRequest(BaseModel):
+    client_id: int
+    gtm_container_id: str = ""     # GTM-first: pass this ALONE when possible
+    ga4_measurement_id: str = ""   # direct-install fallback (no GTM container)
+    meta_pixel_id: str = ""        # direct-install fallback
+
+@app.post("/api/website/install-tracking", dependencies=_admin_only)
+def website_install_tracking(req: WebsiteTrackingInstallRequest):
+    # Admin-triggered with explicit ids — never from a standing scan (a scan
+    # can't know the client's container/property/pixel ids). Result includes
+    # verified_on_homepage: False means the widget saved but the tag does NOT
+    # render (unfiltered_html stripping / non-rendering sidebar) - manual look.
+    from agents.website_agent import install_tracking_tags
+    result = install_tracking_tags(req.client_id, req.gtm_container_id,
+                                   req.ga4_measurement_id, req.meta_pixel_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
 class WebsiteBrandRequest(BaseModel):
     client_id: int
     logo_url: str = ""

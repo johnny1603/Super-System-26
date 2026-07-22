@@ -240,6 +240,43 @@ def fetch_bytes(url: str) -> bytes:
     return fetched.content
 
 
+def fetch_homepage_html(site_url: str, max_bytes: int = 800_000) -> str:
+    """The site's rendered homepage HTML, unauthenticated — what a real
+    visitor (and every tracking tag) actually gets. Used by the tracking-tag
+    audit; capped because we only need the <head>/inline scripts, not a
+    media-heavy body."""
+    response = httpx.get(site_url, timeout=TIMEOUT, follow_redirects=True,
+                         headers={"User-Agent": "Mozilla/5.0 (uallak site audit)"})
+    if response.status_code != 200:
+        raise WordPressError(f"homepage fetch failed: {response.status_code} for {site_url}")
+    return response.text[:max_bytes]
+
+
+# ─── Widgets (WP 5.8+ core REST — the tracking-snippet injection path) ───────
+
+def list_sidebars(site_url: str, username: str, app_password: str) -> list:
+    """Registered widget areas (wp/v2/sidebars). Block (FSE) themes may
+    register none — callers must treat an empty list as 'no injection path
+    on this theme', not an error."""
+    result = rest_get(site_url, "wp/v2/sidebars", username, app_password)
+    return result if isinstance(result, list) else []
+
+
+def add_custom_html_widget(site_url: str, username: str, app_password: str,
+                           sidebar_id: str, content: str, title: str = "") -> dict:
+    """Create a Custom HTML widget carrying `content` in the given sidebar
+    (wp/v2/widgets, core since 5.8). IMPORTANT: <script> tags survive only
+    when the authenticated user has the `unfiltered_html` capability —
+    single-site ADMINS have it, Editors don't (WP strips script/iframe
+    silently). Callers must VERIFY the tag actually renders afterwards
+    (re-fetch the homepage) instead of trusting this call's 2xx."""
+    return rest_post(site_url, "wp/v2/widgets", username, app_password, data={
+        "id_base": "custom_html",
+        "sidebar": sidebar_id,
+        "instance": {"raw": {"title": title, "content": content}},
+    })
+
+
 # Standing rule: images on sites we build/manage are served as WebP (lightest
 # widely-supported format — page weight is an SEO ranking factor). Only these
 # static raster types get converted; GIFs (animation), SVGs, and video pass

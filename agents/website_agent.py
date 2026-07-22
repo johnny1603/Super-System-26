@@ -505,6 +505,21 @@ def run_standards_check(client_id: int, auto_install_plugins: bool = True) -> di
     except wp.WordPressError as e:
         report["issues"].append(f"media alt-text check failed: {e}")
 
+    # 5. Tracking tags (GA4 / Meta Pixel / GTM) — REPORT-ONLY here: unlike the
+    # plugin installs above, fixing this needs per-client IDs (a GTM container,
+    # a GA4 property, the client's own pixel) that no standing check can
+    # invent. Gaps surface as issues; installation is the explicit
+    # install_tracking_tags() call once the IDs exist. This is a data-quality
+    # gate for budget_agent's cross-platform comparison — untracked
+    # conversions make cost-per-conversion comparisons quietly dishonest.
+    try:
+        tracking = get_tracking_status(client_id)
+        report["tracking"] = tracking
+        for issue in tracking.get("issues", []):
+            report["issues"].append(f"tracking: {issue}")
+    except Exception as e:
+        report["issues"].append(f"tracking-tag check failed: {e}")
+
     _log_activity(client_id, "website_standards_check",
                   {"issues": report["issues"], "fixed": report["fixed"]})
     if report["issues"]:
@@ -513,6 +528,219 @@ def run_standards_check(client_id: int, auto_install_plugins: bool = True) -> di
     log_step(AGENT_NAME, "standards_check",
              f"client {client_id}: {len(report['issues'])} issues, {len(report['fixed'])} fixed")
     return report
+
+
+# ─── Tracking tags: GA4 / Meta Pixel / GTM (audit + install) ─────────────────
+# Architecture decision (2026-07-23, researched against current practice):
+# GTM-FIRST. One GTM container installed once on the site; GA4, Meta Pixel
+# (Meta now ships an official GTM template), and anything future are then
+# configured INSIDE GTM with no further site changes. Direct gtag/fbevents
+# injection is supported below as the fallback for clients who already have
+# IDs but no GTM container. Conversion-EVENT configuration (making a lead
+# form submission actually fire as a conversion) happens inside GTM / the
+# platforms and is NOT automatable from here in v1 — see the website skill's
+# tracking section for the honest v1-vs-deferred split.
+
+_GTM_RE = re.compile(r"GTM-[A-Z0-9]{4,10}")
+_GA4_RE = re.compile(r"G-[A-Z0-9]{6,14}")
+_PIXEL_INIT_RE = re.compile(r"fbq\(\s*['\"]init['\"]\s*,\s*['\"](\d{5,20})['\"]")
+
+TRACKING_WIDGET_TITLE = "uallak tracking"
+
+
+def _detect_tracking_tags(html: str) -> dict:
+    """What's actually present in the homepage HTML a visitor receives.
+    Regex-based, same deliberate simplicity as content_quality_issues — the
+    standard snippets (gtm.js, gtag/js, fbevents.js) are what we're looking
+    for; a headless/proxied tag setup would need a real browser to verify
+    and honestly reports as not-detected here."""
+    gtm = _GTM_RE.search(html) if "googletagmanager.com" in html else None
+    ga4 = _GA4_RE.search(html) if ("gtag/js" in html or "gtag(" in html) else None
+    pixel = _PIXEL_INIT_RE.search(html) if ("connect.facebook.net" in html or "fbq(" in html) else None
+    return {
+        "gtm_container_id": gtm.group(0) if gtm else None,
+        "ga4_measurement_id": ga4.group(0) if ga4 else None,
+        "meta_pixel_id": pixel.group(1) if pixel else None,
+    }
+
+
+def get_tracking_status(client_id: int) -> dict:
+    """The tracking-tag audit for one managed site: what actually renders on
+    the homepage vs what SHOULD be there. Meta side gets real expected-pixel
+    discovery (the client's connected ad account lists its pixels); Google
+    side has no equivalent (our OAuth scope covers Ads, not Analytics), so
+    GA4 expectation is simply 'present or not' — stated, not guessed."""
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"connected": False}
+    site_url = connection.get("account_id") or ""
+
+    detected = _detect_tracking_tags(wp.fetch_homepage_html(site_url))
+    issues = []
+    if not detected["gtm_container_id"]:
+        if detected["ga4_measurement_id"] or detected["meta_pixel_id"]:
+            issues.append("no GTM container (tags are direct-installed — works, but GTM "
+                          "is the house architecture for adding/changing tags without "
+                          "site edits)")
+        else:
+            issues.append("no GTM container detected")
+    if not detected["ga4_measurement_id"] and not detected["gtm_container_id"]:
+        issues.append("no GA4 tag detected (and no GTM that could be loading one) — "
+                      "Google-side conversion data for this site is not being collected")
+    if not detected["meta_pixel_id"] and not detected["gtm_container_id"]:
+        issues.append("no Meta Pixel detected (and no GTM that could be loading one) — "
+                      "Meta-side conversion data for this site is not being collected")
+
+    # Expected pixel: the client's own connected Meta ad account lists its
+    # pixels — real discovery, so 'pixel exists but isn't installed' and
+    # 'no pixel exists at all' are distinguishable, honestly.
+    expected_pixels = None
+    try:
+        from agents.client_agent import get_accounts
+        meta_row = next((a for a in get_accounts(client_id)
+                         if a.get("platform") == "meta_ads" and a.get("status") == "active"), None)
+        if meta_row:
+            from core import meta_service
+            expected_pixels = meta_service.get_ad_account_pixels(
+                meta_row["access_token"], meta_row["account_id"])
+            expected_ids = {p.get("id") for p in expected_pixels}
+            if detected["meta_pixel_id"] and expected_ids and detected["meta_pixel_id"] not in expected_ids:
+                issues.append(f"installed Meta Pixel {detected['meta_pixel_id']} does not "
+                              f"match any pixel on the client's own ad account "
+                              f"({sorted(expected_ids)}) — possibly a previous agency's pixel")
+            if not detected["meta_pixel_id"] and not detected["gtm_container_id"] and expected_ids:
+                issues.append(f"client's ad account has pixel(s) {sorted(expected_ids)} "
+                              "ready to install")
+    except Exception as e:
+        log_step(AGENT_NAME, "tracking_status",
+                 f"client {client_id}: pixel discovery failed (degrading): {e}")
+
+    # GTM detected -> GA4/pixel may fire from inside the container, which
+    # homepage-HTML inspection cannot see into. Say so instead of guessing.
+    note = None
+    if detected["gtm_container_id"] and not (detected["ga4_measurement_id"]
+                                             and detected["meta_pixel_id"]):
+        note = ("GTM container present — GA4/Pixel may be configured inside it, which "
+                "static HTML inspection can't verify. Confirm in the GTM workspace; "
+                "'not detected' for GA4/Pixel is NOT conclusive when GTM is present.")
+
+    return {"connected": True, "site_url": site_url, "detected": detected,
+            "expected_meta_pixels": expected_pixels, "issues": issues, "note": note,
+            "conversion_events_note": (
+                "This audit verifies tag PRESENCE only. Whether a lead/conversion event "
+                "actually fires on form submission is configured inside GTM / the ad "
+                "platforms and is NOT verified here — a known v1 gap (see the website "
+                "skill). budget_agent's cost-per-conversion comparison is only as good "
+                "as these events.")}
+
+
+def _tracking_snippet(gtm_container_id: str = "", ga4_measurement_id: str = "",
+                      meta_pixel_id: str = "") -> str:
+    """The combined HTML the widget will carry. GTM-first: when a container
+    id is given, ONLY the GTM snippet goes in (GA4/pixel belong inside the
+    container — double-installing them here would double-count every event)."""
+    if gtm_container_id:
+        return (
+            f"<script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':new Date().getTime(),"
+            f"event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?"
+            f"'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;"
+            f"f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{gtm_container_id}');</script>"
+            f"<noscript><iframe src=\"https://www.googletagmanager.com/ns.html?id={gtm_container_id}\" "
+            f"height=\"0\" width=\"0\" style=\"display:none;visibility:hidden\"></iframe></noscript>")
+    parts = []
+    if ga4_measurement_id:
+        parts.append(
+            f"<script async src=\"https://www.googletagmanager.com/gtag/js?id={ga4_measurement_id}\"></script>"
+            f"<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}"
+            f"gtag('js',new Date());gtag('config','{ga4_measurement_id}');</script>")
+    if meta_pixel_id:
+        parts.append(
+            f"<script>!function(f,b,e,v,n,t,s){{if(f.fbq)return;n=f.fbq=function(){{n.callMethod?"
+            f"n.callMethod.apply(n,arguments):n.queue.push(arguments)}};if(!f._fbq)f._fbq=n;"
+            f"n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;"
+            f"t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}}(window,"
+            f"document,'script','https://connect.facebook.net/en_US/fbevents.js');"
+            f"fbq('init','{meta_pixel_id}');fbq('track','PageView');</script>"
+            f"<noscript><img height=\"1\" width=\"1\" style=\"display:none\" "
+            f"src=\"https://www.facebook.com/tr?id={meta_pixel_id}&ev=PageView&noscript=1\"/></noscript>")
+    return "".join(parts)
+
+
+def install_tracking_tags(client_id: int, gtm_container_id: str = "",
+                          ga4_measurement_id: str = "", meta_pixel_id: str = "") -> dict:
+    """Inject tracking tags onto a managed site via a Custom HTML widget
+    (core wp/v2/widgets, WP 5.8+) — the one injection path core REST actually
+    offers (no options API for third-party snippet plugins, no theme-file
+    writes). Admin-triggered with explicit IDs; never runs from a standing
+    scan (a scan can't know the client's container/property/pixel ids).
+
+    GTM-first: pass gtm_container_id alone whenever possible; direct
+    ga4/pixel ids are the fallback. Real limitations, checked here:
+    - The site's WP user must have `unfiltered_html` (single-site admins do;
+      Editors get <script> silently stripped) — so the result is VERIFIED by
+      re-fetching the homepage, never assumed from a 2xx.
+    - Block (FSE) themes may register no widget areas — reported as failure
+      with the manual path named, not worked around blindly.
+    - Widget renders where the sidebar renders (usually footer): fine for
+      GTM/GA4/pixel function; not the <head> placement docs prefer."""
+    ids_given = [i for i in (gtm_container_id, ga4_measurement_id, meta_pixel_id) if i]
+    if not ids_given:
+        return {"success": False, "errors": ["pass at least one of gtm_container_id / "
+                                             "ga4_measurement_id / meta_pixel_id"]}
+    if gtm_container_id and (ga4_measurement_id or meta_pixel_id):
+        return {"success": False, "errors": [
+            "pass EITHER gtm_container_id OR direct ids, not both — GA4/pixel belong "
+            "inside the GTM container; installing them twice double-counts every event"]}
+
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"success": False, "errors": ["no connected website"]}
+    site_url, username, app_password = _creds(connection)
+
+    log_step(AGENT_NAME, "install_tracking_tags", f"client {client_id}: {ids_given}")
+    try:
+        existing = _detect_tracking_tags(wp.fetch_homepage_html(site_url))
+        if gtm_container_id and existing["gtm_container_id"]:
+            return {"success": False, "errors": [
+                f"site already has GTM container {existing['gtm_container_id']} — "
+                "configure inside it instead of installing a second container"]}
+
+        sidebars = [s for s in wp.list_sidebars(site_url, username, app_password)
+                    if s.get("id") and s.get("id") != "wp_inactive_widgets"]
+        if not sidebars:
+            return {"success": False, "errors": [
+                "theme registers no widget areas (likely a block/FSE theme) — no core-REST "
+                "injection path; install the snippet manually in wp-admin (Appearance → "
+                "Editor, or a header plugin) for this site"]}
+
+        snippet = _tracking_snippet(gtm_container_id, ga4_measurement_id, meta_pixel_id)
+        widget = wp.add_custom_html_widget(site_url, username, app_password,
+                                           sidebars[0]["id"], snippet,
+                                           title=TRACKING_WIDGET_TITLE)
+
+        # Verify for real: unfiltered_html stripping and non-rendering sidebars
+        # both pass the POST but leave the page untagged
+        after = _detect_tracking_tags(wp.fetch_homepage_html(site_url))
+        verified = ((not gtm_container_id or after["gtm_container_id"] == gtm_container_id)
+                    and (not ga4_measurement_id or after["ga4_measurement_id"] == ga4_measurement_id)
+                    and (not meta_pixel_id or after["meta_pixel_id"] == meta_pixel_id))
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: tracking-tag install failed on "
+                                 f"{site_url}: {e}"])
+        return {"success": False, "errors": [str(e)]}
+
+    _log_activity(client_id, "website_tracking_installed",
+                  {"gtm": gtm_container_id, "ga4": ga4_measurement_id,
+                   "pixel": meta_pixel_id, "sidebar": sidebars[0]["id"],
+                   "widget_id": widget.get("id"), "verified_on_homepage": verified})
+    if not verified:
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: tracking widget created on {site_url} but the tag does "
+            "NOT render on the homepage — likely <script> stripped (WP user lacks "
+            "unfiltered_html) or the sidebar doesn't render on the front page. "
+            "Needs a manual look in wp-admin."])
+    return {"success": True, "verified_on_homepage": verified,
+            "widget_id": widget.get("id"), "sidebar": sidebars[0]["id"]}
 
 
 def _extract_logo_palette(logo_bytes: bytes) -> list:
