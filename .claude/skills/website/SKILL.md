@@ -175,16 +175,59 @@ on the widget POST proves nothing.
 **Honest v1 boundary — what's verified vs still a gap**:
 - VERIFIED by this work: tag PRESENCE on the rendered homepage, and
   pixel-id match against the client's own ad account.
-- STILL A KNOWN GAP (deliberately deferred, flagged in every status
-  response): conversion-EVENT configuration — whether a lead form
-  submission actually fires a conversion event. That lives inside GTM's
-  workspace / the ad platforms; automating it needs GTM API access (OAuth
-  to the client's Google account with Tag Manager scope — a new consent
-  flow, a business decision) or per-form wiring. Until then,
-  cost-per-conversion comparability still ultimately depends on conversion
-  actions configured in Google Ads / Meta Events Manager.
+- Conversion-EVENT verification/configuration: NOW BUILT via the GTM API
+  consent — see the next section. Without that consent, presence-only
+  remains the honest limit (and the status response says which mode it's
+  reporting in).
 - Widgets-REST injection itself carries the standard VERIFICATION STATUS
   caveat: written against WP core REST docs, never run against a live site.
+
+## GTM API — conversion-event verification + configuration (2026-07-23)
+
+**Auth: a SEPARATE Google consent, deliberately** (`/api/oauth/gtm/start` →
+`/api/oauth/gtm/callback`, same OAuth client as Ads, different scopes, own
+`client_accounts` row: `platform='google_tagmanager'`,
+`account_id`=container API path, token=refresh token). Separate because a
+grant's scopes are fixed at consent time — appending GTM scopes to the Ads
+consent would force every existing Ads client to reconnect, and only
+site-managed clients need this at all. The callback prefers the container
+whose GTM-XXX public id is actually installed on the client's site (from
+the tracking audit), falling back to first-container MVP. Dashboard: the
+measurement button appears on the site card once a site is connected,
+behind the standard pre-action popup (`preact_gtm_*`). Disconnect group
+`"gtm"` revokes via the shared Google token revoke.
+
+**VERIFICATION/REVIEW FLAG (business decision, checked 2026-07-23)**: both
+scopes (`tagmanager.edit.containers`, `tagmanager.publish`) are Google
+SENSITIVE scopes — NOT "restricted" (no third-party security assessment),
+but they must be added to the OAuth consent screen and the app verification
+RE-SUBMITTED with justification. Until approved: "unverified app" warning,
+max 100 test users — development-testable now, a timeline gate before
+client-facing rollout. Same class of review as the adwords scope.
+
+**Verify** (`get_conversion_tracking_status`, folded into
+`get_tracking_status.conversion_tracking` + `GET /api/website/
+conversion-tracking`): reads the PUBLISHED container version (`versions:
+live`) — workspace drafts fire nothing, and reporting a draft as working
+would be exactly the false confidence this exists to kill. Reports GA4
+lead-event tags (`gaawe` with a `LEAD_EVENT_NAMES` event) and their trigger
+types; "no published version at all" is its own explicit state.
+
+**Configure — v1 scope = the single common case**
+(`configure_lead_conversion`, `POST /api/website/configure-conversion`,
+admin): standard HTML form submission → GA4 `generate_lead` event
+(GA4's own recommended lead event, importable by Google Ads as a conversion
+action), created in the default workspace and PUBLISHED in the same call.
+Double-count guard: refuses when the live container already has a lead tag.
+GA4 id falls back to what the site's homepage declares when not passed.
+
+**v1 limits, stated not hidden**: (a) GTM's built-in Form Submission
+trigger catches standard submits — heavily-AJAXed form builders need a
+custom-event trigger (v2 follow-up); (b) two manual platform steps remain
+with no API in our scopes: marking `generate_lead` as a key event in GA4
+and importing it as a conversion action in Google Ads — the configure
+response names them every time; (c) Meta-side conversion events (Pixel
+lead events / CAPI) are untouched by this — Google-side only.
 
 Master-template note: consider adding a pre-created (empty) GTM container
 per client at onboarding as the standard operating procedure — the audit

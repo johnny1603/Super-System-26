@@ -624,14 +624,163 @@ def get_tracking_status(client_id: int) -> dict:
                 "static HTML inspection can't verify. Confirm in the GTM workspace; "
                 "'not detected' for GA4/Pixel is NOT conclusive when GTM is present.")
 
+    # Conversion events: REAL verification when the client's GTM API consent
+    # exists (reads the PUBLISHED container version) — the honest note stays
+    # only for clients without that consent.
+    conversion = None
+    try:
+        conversion = get_conversion_tracking_status(client_id)
+        if conversion.get("gtm_api_connected") and not conversion.get("configured_live"):
+            issues.append("no lead conversion event live in GTM — "
+                          "cost-per-conversion data from this site is missing "
+                          "(configure via POST /api/website/configure-conversion)")
+    except Exception as e:
+        log_step(AGENT_NAME, "tracking_status",
+                 f"client {client_id}: conversion status failed (degrading): {e}")
+
+    conversion_note = (
+        "Conversion-event status is VERIFIED (see conversion_tracking — read from the "
+        "published GTM container)." if (conversion or {}).get("gtm_api_connected") else
+        "This audit verifies tag PRESENCE only. Whether a lead/conversion event actually "
+        "fires needs the client's GTM API consent (the dashboard's measurement link) — "
+        "until then it's a known gap, and budget_agent's cost-per-conversion comparison "
+        "is only as good as these events.")
+
     return {"connected": True, "site_url": site_url, "detected": detected,
             "expected_meta_pixels": expected_pixels, "issues": issues, "note": note,
-            "conversion_events_note": (
-                "This audit verifies tag PRESENCE only. Whether a lead/conversion event "
-                "actually fires on form submission is configured inside GTM / the ad "
-                "platforms and is NOT verified here — a known v1 gap (see the website "
-                "skill). budget_agent's cost-per-conversion comparison is only as good "
-                "as these events.")}
+            "conversion_tracking": conversion,
+            "conversion_events_note": conversion_note}
+
+
+# ─── Conversion-event configuration (GTM API — closes the v1 tracking gap) ──
+
+GTM_PLATFORM = "google_tagmanager"
+# GA4 event names we accept as "a lead conversion is configured" when
+# verifying someone else's existing setup — generate_lead is what WE create
+# (GA4's own recommended event, importable by Google Ads as a conversion)
+LEAD_EVENT_NAMES = {"generate_lead", "form_submit", "submit_lead_form", "lead", "contact"}
+
+
+def _gtm_connection(client_id: int) -> dict:
+    rows = (_db().table("client_accounts").select("*")
+            .eq("client_id", client_id).eq("platform", GTM_PLATFORM)
+            .eq("status", "active").order("id", desc=True).limit(1).execute().data)
+    return rows[0] if rows else {}
+
+
+def get_conversion_tracking_status(client_id: int) -> dict:
+    """Is a lead conversion event ACTUALLY LIVE in the client's GTM
+    container? Reads the PUBLISHED container version (workspace contents are
+    drafts — a configured-but-unpublished tag fires nothing, and reporting
+    it as working would be exactly the false confidence this feature exists
+    to kill). Requires the client's GTM API connection (separate OAuth)."""
+    from core import gtm_service as gtm
+
+    conn = _gtm_connection(client_id)
+    if not conn.get("access_token"):
+        return {"gtm_api_connected": False,
+                "note": "GTM API not connected — conversion-event verification needs the "
+                        "client's Tag Manager consent (the dashboard's measurement link)"}
+
+    refresh_token, container_path = conn["access_token"], conn["account_id"]
+    live = gtm.get_live_version(refresh_token, container_path)
+    if not live:
+        return {"gtm_api_connected": True, "configured_live": False,
+                "issue": "container has NO published version at all — nothing in it "
+                         "(tags, triggers) is running on the site yet"}
+
+    tags = live.get("tag") or []
+    triggers = {t.get("triggerId"): t for t in (live.get("trigger") or [])}
+    lead_tags = []
+    for tag in tags:
+        if tag.get("type") != "gaawe":
+            continue
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        if (params.get("eventName") or "").lower() in LEAD_EVENT_NAMES:
+            firing = [triggers.get(tid, {}).get("type", "unknown")
+                      for tid in (tag.get("firingTriggerId") or [])]
+            lead_tags.append({"tag_name": tag.get("name"), "event_name": params.get("eventName"),
+                              "measurement_id": params.get("measurementIdOverride", ""),
+                              "trigger_types": firing})
+    return {
+        "gtm_api_connected": True,
+        "configured_live": bool(lead_tags),
+        "lead_event_tags": lead_tags,
+        "live_version_name": live.get("name", ""),
+        "note": (None if lead_tags else
+                 "published container has no GA4 lead-event tag — conversion data from "
+                 "this site is NOT being collected; run configure_lead_conversion"),
+    }
+
+
+def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> dict:
+    """V1 conversion configuration — THE single common case: standard HTML
+    form submission → GA4 'generate_lead' event, created in the default
+    workspace and PUBLISHED (a draft fires nothing). Idempotent-ish: refuses
+    when the live container already has a lead-event tag rather than
+    stacking a duplicate that would double-count every lead. Known v1 limit,
+    stated: GTM's built-in Form Submission trigger catches standard submits;
+    heavily-AJAXed form builders need a custom-event trigger — flagged
+    follow-up, not silently attempted."""
+    from core import gtm_service as gtm
+
+    conn = _gtm_connection(client_id)
+    if not conn.get("access_token"):
+        return {"success": False, "errors": ["GTM API not connected for this client"]}
+
+    ga4_measurement_id = (ga4_measurement_id or "").strip()
+    if not ga4_measurement_id:
+        # Fall back to what the site itself declares (direct-installed GA4)
+        site = _get_connection(client_id)
+        if site.get("account_id"):
+            try:
+                detected = _detect_tracking_tags(wp.fetch_homepage_html(site["account_id"]))
+                ga4_measurement_id = detected.get("ga4_measurement_id") or ""
+            except Exception:
+                pass
+    if not ga4_measurement_id:
+        return {"success": False, "errors": [
+            "no ga4_measurement_id given and none detectable on the site — a GA4 "
+            "property id (G-...) is required for the event tag"]}
+
+    status = get_conversion_tracking_status(client_id)
+    if status.get("configured_live"):
+        return {"success": False, "errors": [
+            f"live container already has lead-event tag(s) "
+            f"({[t['tag_name'] for t in status['lead_event_tags']]}) — configuring another "
+            "would double-count leads; change the existing one in GTM instead"]}
+
+    refresh_token, container_path = conn["access_token"], conn["account_id"]
+    log_step(AGENT_NAME, "configure_lead_conversion",
+             f"client {client_id}: {container_path} → {ga4_measurement_id}")
+    try:
+        workspace = gtm.default_workspace_path(refresh_token, container_path)
+        trigger = timed_step(AGENT_NAME, "gtm_create_trigger",
+                             lambda: gtm.create_form_submit_trigger(refresh_token, workspace))
+        tag = timed_step(AGENT_NAME, "gtm_create_tag",
+                         lambda: gtm.create_ga4_lead_event_tag(
+                             refresh_token, workspace, ga4_measurement_id,
+                             trigger["triggerId"]))
+        published = timed_step(AGENT_NAME, "gtm_publish",
+                               lambda: gtm.publish_workspace(refresh_token, workspace))
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed: {e}"])
+        return {"success": False, "errors": [str(e)]}
+
+    version = (published.get("containerVersion") or {})
+    _log_activity(client_id, "website_conversion_configured",
+                  {"ga4_measurement_id": ga4_measurement_id,
+                   "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId")},
+                  {"live_version": version.get("name", "")})
+    log_step(AGENT_NAME, "configure_lead_conversion",
+             f"client {client_id}: published as '{version.get('name', '')}'")
+    return {"success": True, "event_name": "generate_lead",
+            "ga4_measurement_id": ga4_measurement_id,
+            "live_version": version.get("name", ""),
+            "note": ("Form submissions now fire GA4 'generate_lead'. Remaining manual "
+                     "platform steps: mark generate_lead as a key event in GA4 and import "
+                     "it as a conversion action in Google Ads (no public API for either "
+                     "from our scopes).")}
 
 
 def _tracking_snippet(gtm_container_id: str = "", ga4_measurement_id: str = "",

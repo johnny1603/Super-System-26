@@ -136,14 +136,17 @@ budget endpoint and the narrative LLM get it for free).
 - Platform list is data-driven (`google_ads`/`meta_ads` today) — a future
   TikTok Ads agent joins by appearing in `ad_spend` with the same `totals`
   shape.
-- **Upstream data quality (2026-07-23)**: the comparison's conversion
-  numbers are only as good as site-side tracking. `website_agent`'s
-  tracking-tag audit (`GET /api/website/tracking`, also in the standards
-  check) verifies GA4/Pixel/GTM PRESENCE on managed sites and flags gaps —
-  but conversion-EVENT configuration (a lead form actually firing) is still
-  a known unverified layer (see the website skill's tracking section).
-  When a client's site shows tracking gaps, read this comparison with extra
-  suspicion.
+- **Upstream data quality (2026-07-23, updated same day)**: the comparison's
+  conversion numbers are only as good as site-side tracking. `website_agent`
+  verifies GA4/Pixel/GTM PRESENCE on managed sites, and — once a client has
+  granted the separate GTM API consent — VERIFIES AND CONFIGURES the actual
+  lead conversion event (form submit → GA4 `generate_lead`, published, read
+  back from the LIVE container version; see the website skill's GTM API
+  section). Partially addressed, not fully: Google-side only (Meta Pixel
+  lead events remain unverified), AJAX-heavy forms need a v2 trigger, and
+  two manual platform steps remain (GA4 key-event marking + Google Ads
+  conversion import). When a client's site shows tracking gaps or has no
+  GTM consent, read this comparison with extra suspicion.
 
 ## Trend (real drift over time, not just a snapshot)
 

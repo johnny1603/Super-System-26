@@ -769,6 +769,7 @@ body {
       <div id="siteCreateProgress" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="site_create_in_progress">האתר החדש שלכם בהקמה כרגע — זה עשוי לקחת כמה דקות. אפשר להמשיך לגלוש בדשבורד, נעדכן כאן וגם בצ'אט ברגע שהוא מוכן.</div>
       </div>
+      <button class="conn-btn secondary" id="gtmLink" style="display:none; margin-top:8px;" onclick="connectGtm()" data-i18n="gtm_connect_btn">חיבור מדידת המרות (Google Tag Manager)</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1102,6 +1103,11 @@ const DASH_I18N = {
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
+  gtm_connect_btn: { he:'חיבור מדידת המרות (Google Tag Manager)', en:'Connect conversion measurement (Google Tag Manager)', fr:'Connecter la mesure des conversions (Google Tag Manager)', ar:'ربط قياس التحويلات (Google Tag Manager)', ru:'Подключить измерение конверсий (Google Tag Manager)' },
+  gtm_connected_btn: { he:'מדידת המרות מחוברת ✓', en:'Conversion measurement connected ✓', fr:'Mesure des conversions connectée ✓', ar:'قياس التحويلات مرتبط ✓', ru:'Измерение конверсий подключено ✓' },
+  notice_gtm_connected: { he:'Google Tag Manager חובר בהצלחה ✓ — מעכשיו אפשר לוודא ולהגדיר מדידת לידים באתר', en:'Google Tag Manager connected ✓ — lead measurement on your site can now be verified and configured', fr:'Google Tag Manager connecté ✓ — la mesure des leads sur votre site peut désormais être vérifiée et configurée', ar:'تم ربط Google Tag Manager ✓ — يمكن الآن التحقق من قياس العملاء المحتملين على موقعكم وإعداده', ru:'Google Tag Manager подключён ✓ — теперь можно проверять и настраивать измерение лидов на вашем сайте' },
+  preact_gtm_title: { he:'רגע לפני חיבור המדידה', en:'Before connecting measurement', fr:'Avant de connecter la mesure', ar:'قبل ربط القياس', ru:'Перед подключением измерения' },
+  preact_gtm_body: { he:'כדי לדעת אילו קמפיינים באמת מביאים לכם לידים, אנחנו צריכים גישה ל-Google Tag Manager שלכם — מערכת המדידה של האתר. זו הרשאה נפרדת מחיבור Google Ads, כי מדובר בהרשאה אחרת אצל גוגל, ורק בעל החשבון יכול לאשר אותה. אנחנו נשתמש בה רק להגדרת מדידת המרות (למשל: שליחת טופס יצירת קשר) — לא נשנה שום דבר אחר.', en:'To know which campaigns actually bring you leads, we need access to your Google Tag Manager — the site\'s measurement system. It\'s a separate consent from your Google Ads connection because Google treats it as a different permission, and only the account owner can grant it. We\'ll use it only for conversion measurement setup (e.g. contact form submissions) — nothing else gets changed.', fr:'Pour savoir quelles campagnes vous apportent réellement des leads, nous avons besoin d\'accéder à votre Google Tag Manager — le système de mesure du site. C\'est un consentement distinct de votre connexion Google Ads car Google le traite comme une autorisation différente, et seul le propriétaire du compte peut l\'accorder. Nous l\'utiliserons uniquement pour configurer la mesure des conversions (ex. envoi du formulaire de contact) — rien d\'autre ne sera modifié.', ar:'لمعرفة أي الحملات تجلب لكم عملاء محتملين فعلًا، نحتاج إلى الوصول إلى Google Tag Manager الخاص بكم — نظام قياس الموقع. هذه موافقة منفصلة عن ربط Google Ads لأن غوغل تعاملها كصلاحية مختلفة، وصاحب الحساب وحده يستطيع منحها. سنستخدمها فقط لإعداد قياس التحويلات (مثل إرسال نموذج التواصل) — لن يتغير أي شيء آخر.', ru:'Чтобы знать, какие кампании действительно приносят вам лиды, нам нужен доступ к вашему Google Tag Manager — системе измерения сайта. Это отдельное согласие от подключения Google Ads, потому что Google считает это другим разрешением, и дать его может только владелец аккаунта. Мы используем его только для настройки измерения конверсий (например, отправка контактной формы) — больше ничего не изменится.' },
   upgrade_addons_title: { he:'תוספות ושירותים נוספים — הצעה מדויקת בצ\'אט', en:'Add-ons & extra services — get an exact quote in the chat', fr:'Options et services supplémentaires — devis précis dans le chat', ar:'إضافات وخدمات أخرى — عرض دقيق في الدردشة', ru:'Дополнения и услуги — точное предложение в чате' },
   addon_ask_btn: { he:'קבלו הצעה בצ\'אט', en:'Get a quote in the chat', fr:'Obtenir un devis dans le chat', ar:'احصلوا على عرض في الدردشة', ru:'Получить предложение в чате' },
   team_role_general: { he:'הקונסיירז\' הראשי — לכל נושא', en:'Main concierge — anything at all', fr:'Concierge principal — pour tout sujet', ar:'المرافق الرئيسي — لأي موضوع', ru:'Главный консьерж — по любым вопросам' },
@@ -1344,8 +1350,13 @@ async function loadDashboard() {
       const wasProvisioning = !!window._siteProvisionPoll;
       markWebsiteConnected();
       if (wasProvisioning) showNotice(uallakI18n.t('site_create_done_notice'), 'success');
+      // Measurement consent link appears once a site exists to measure
+      document.getElementById('gtmLink').style.display = 'block';
     } else {
       handleSiteProvisionStatus(d.website_provision_status);
+    }
+    if (conns.some(c => c.platform === 'google_tagmanager' && c.status === 'active')) {
+      markGtmConnected();
     }
     if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
       markHiggsfieldConnected();
@@ -1625,6 +1636,21 @@ function connectTiktokExplained() {
   // land in their TikTok inbox for THEM to post - explained up front, not
   // discovered in confusion later.
   preactExplain('tiktok', connectTiktok);
+}
+
+// GTM measurement consent - a SEPARATE Google consent from Google Ads (its
+// own scopes); revealed on the site card once a site is connected
+function connectGtm() {
+  preactExplain('gtm', () => { window.location.href = '/api/oauth/gtm/start'; });
+}
+function markGtmConnected() {
+  const link = document.getElementById('gtmLink');
+  link.style.display = 'block';
+  link.textContent = uallakI18n.t('gtm_connected_btn');
+  link.removeAttribute('data-i18n');
+  link.className = 'conn-btn connected-btn';
+  link.onclick = null;
+  link.style.marginTop = '8px';
 }
 
 function markWebsiteConnected() {
@@ -2273,9 +2299,12 @@ async function sendSupportMsg() {
   } else if (params.get('connected') === 'tiktok') {
     markTiktokConnected();
     showNotice(uallakI18n.t('notice_tiktok_connected'), 'success');
+  } else if (params.get('connected') === 'gtm') {
+    showNotice(uallakI18n.t('notice_gtm_connected'), 'success');
   } else if (params.get('connect_error')) {
     const err = params.get('connect_error') || '';
-    const errLabel = err.includes('tiktok') ? 'TikTok' : err.includes('meta') ? 'Meta' : 'Google Ads';
+    const errLabel = err.includes('gtm') ? 'Google Tag Manager'
+      : err.includes('tiktok') ? 'TikTok' : err.includes('meta') ? 'Meta' : 'Google Ads';
     showNotice(uallakI18n.t('notice_connect_error', { p: errLabel }), 'warn');
   } else if (params.get('upgrade') === 'success') {
     showNotice(uallakI18n.t('notice_upgrade_success'), 'success');

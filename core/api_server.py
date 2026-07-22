@@ -1139,6 +1139,7 @@ _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
     "meta": ["meta_ads", "meta_page", "meta_instagram", "meta_pending"],
     "tiktok": ["tiktok"],
+    "gtm": ["google_tagmanager"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
     # HeyGen + ElevenLabs disconnect together (both are the avatar add-on's
@@ -1154,7 +1155,9 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
 
     revoked = None
-    if platform == "google_ads":
+    if platform in ("google_ads", "gtm"):
+        # Same Google OAuth infrastructure — revoking the refresh token kills
+        # the grant regardless of which scopes it carried
         for row in rows:
             if row.get("access_token"):
                 revoked = google_ads_service.revoke_token(row["access_token"])
@@ -1562,6 +1565,65 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
+# ─── Google Tag Manager OAuth (separate consent — measurement, not ads) ─────
+
+@app.get("/api/oauth/gtm/start")
+async def gtm_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    from core import gtm_service
+    return RedirectResponse(url=gtm_service.build_consent_url(state))
+
+@app.get("/api/oauth/gtm/callback")
+def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import gtm_service
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=gtm")
+    if error or not code:
+        print(f"[gtm oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=gtm")
+    try:
+        tokens = gtm_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print(f"[gtm oauth] client {client_id}: token exchange returned no refresh_token")
+            return RedirectResponse(url="/dashboard/?connect_error=gtm")
+
+        # Prefer the container actually INSTALLED on the client's site (the
+        # GTM-XXX id the tracking audit sees in the homepage HTML) — falls
+        # back to the first container the grant can see (first-asset MVP,
+        # same as Ads/Meta account picking)
+        container = {}
+        try:
+            from agents.website_agent import get_tracking_status
+            detected_id = ((get_tracking_status(client_id).get("detected") or {})
+                           .get("gtm_container_id"))
+            if detected_id:
+                container = gtm_service.find_container_by_public_id(refresh_token, detected_id)
+        except Exception as e:
+            print(f"[gtm oauth] client {client_id}: site-container match failed ({e})")
+        if not container:
+            accounts = gtm_service.list_accounts(refresh_token)
+            for account in accounts:
+                containers = gtm_service.list_containers(refresh_token, account["path"])
+                if containers:
+                    container = containers[0]
+                    break
+        if not container:
+            print(f"[gtm oauth] client {client_id}: authorized user has no GTM containers")
+            return RedirectResponse(url="/dashboard/?connect_error=gtm_no_container")
+
+        upsert_account(client_id, "google_tagmanager", container["path"], refresh_token, "active")
+        log_activity(client_id, "website_agent", "gtm_api_connected",
+                     {"container_path": container["path"],
+                      "public_id": container.get("publicId", "")}, {})
+        return RedirectResponse(url="/dashboard/?connected=gtm")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=gtm")
+
 # ─── Google Ads execution (admin/scheduler only) ─────────────────────────────
 
 class CreateCampaignRequest(BaseModel):
@@ -1955,13 +2017,37 @@ def website_standards(client_id: int, auto_install_plugins: bool = True):
 
 @app.get("/api/website/tracking", dependencies=_admin_only)
 def website_tracking(client_id: int):
-    # Tracking-tag audit (GA4/Pixel/GTM presence + expected-pixel discovery) —
-    # the data-quality gate for budget_agent's cross-platform comparison
+    # Tracking-tag audit (GA4/Pixel/GTM presence + expected-pixel discovery +
+    # live conversion-event status when the GTM API consent exists) — the
+    # data-quality gate for budget_agent's cross-platform comparison
     from agents.website_agent import get_tracking_status
     try:
         return {"success": True, "data": get_tracking_status(client_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/website/conversion-tracking", dependencies=_admin_only)
+def website_conversion_tracking(client_id: int):
+    from agents.website_agent import get_conversion_tracking_status
+    try:
+        return {"success": True, "data": get_conversion_tracking_status(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ConfigureConversionRequest(BaseModel):
+    client_id: int
+    ga4_measurement_id: str = ""  # optional — falls back to the id detected on the site
+
+@app.post("/api/website/configure-conversion", dependencies=_admin_only)
+def website_configure_conversion(req: ConfigureConversionRequest):
+    # Creates + PUBLISHES the form-submit → GA4 generate_lead setup in the
+    # client's own GTM container. Refuses when a lead tag is already live
+    # (double-counting guard). Plain `def`: multiple GTM API calls.
+    from agents.website_agent import configure_lead_conversion
+    result = configure_lead_conversion(req.client_id, req.ga4_measurement_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
 
 class WebsiteTrackingInstallRequest(BaseModel):
     client_id: int

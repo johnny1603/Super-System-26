@@ -171,7 +171,8 @@ in the catch/failure branch — never `body.detail` directly.
   needing more than a 1-2 click approval from the client, the dashboard shows
   `preactExplain(key, onContinue)` — one shared modal, copy in
   `preact_<key>_title`/`preact_<key>_body` (5 languages), once per pageload
-  per key. Existing keys: wordpress, higgsfield, avatar, tiktok, meta_page.
+  per key. Existing keys: wordpress, higgsfield, avatar, tiktok, meta_page,
+  gtm.
   New manual-step flows must use this component, never a bespoke popup;
   plain OAuth redirects (Google/Meta connect) stay popup-free on purpose.
 - All four former "business decisions, not engineering" items (terms page,
