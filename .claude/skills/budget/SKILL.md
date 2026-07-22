@@ -117,6 +117,18 @@ budget endpoint and the narrative LLM get it for free).
   reasoning as the organic-strategy routing — reallocation needs business
   judgment); never an automatic budget change. Dedup 13 days
   (`REALLOCATION_DEDUP_DAYS`) — a standing recommendation nudges bi-weekly.
+- **Profitability safeguard (2026-07-23, same day)**: relative comparison ≠
+  absolute profitability — a relatively-worse campaign can still be
+  net-positive for the client, and NO profitability data (profit margin /
+  average customer value) is captured anywhere in the system to judge that.
+  Enforced consequences: the alert is ALWAYS framed as "test INCREMENTAL
+  budget on the better platform", never "cut the worse one"; and the alert
+  states the missing-profitability limitation out loud ("relative comparison
+  only — use your own knowledge of whether the lower performer is still
+  worth keeping"). The comparison's own `note` field carries the same
+  framing so the admin endpoint and narrative LLM inherit it. Never
+  "improve" the alert copy back into cut-the-loser language without
+  profitability data actually existing first.
 - **Confidence**: the comparison is ESTIMATE even though every input is
   HARD — 'conversions' means Google's conversion column on one side and our
   summed `CONVERSION_ACTION_TYPES` on Meta's — directional, not exact, and
@@ -183,6 +195,21 @@ gcloud scheduler jobs create http budget-scan --schedule="0 7 * * 1" \
 
 ## Deferred / flagged
 
+- **Profitability context capture (BUSINESS DECISION, flagged 2026-07-23)**:
+  the cross-platform safeguard above exists because we capture no client
+  profit-margin / average-customer-value data. Two candidate mechanisms,
+  both deliberately NOT built: (a) one or two structured questions at
+  onboarding (rough margin or typical customer value) — small to build, but
+  adds friction to a sales flow that's deliberately light, and self-reported
+  margin from a prospect mid-sales-chat is low-quality data; (b) the
+  lighter-touch option — periodic conversational check-ins via the support
+  chat ("how many of the leads from X became paying customers recently?"),
+  building a rough real signal over time. (b) fits the house's low-ask
+  philosophy better but is a genuinely new proactive-outreach loop (cadence,
+  response parsing into a structured signal, storage, nag-avoidance) — real
+  scope, not a refinement, so it needs its own handoff if wanted. Either
+  would upgrade recommendations from "relative only" to genuinely
+  profitability-aware.
 - `leads.client_id` column (see above) — the biggest single accuracy
   upgrade available for the forecast side.
 - HeyGen wallet-balance endpoint (`v2/user/remaining_quota`) — real signal,

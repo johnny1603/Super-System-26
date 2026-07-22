@@ -31,10 +31,22 @@ its own (see NARRATIVE_SYSTEM).
 
 CROSS-PLATFORM COMPARISON (extension, 2026-07-23): the same aggregated ad
 data also feeds compare_platform_performance() — cost-per-result across the
-client's paid platforms, with a reallocation RECOMMENDATION routed to Johnny
+client's paid platforms, with a RECOMMENDATION routed to Johnny
 (agent_alert) when the gap is meaningful AND sustained across two weekly
 snapshots. Never an automatic reallocation: shifting a client's budget is a
 business-judgment call (same routing reasoning as organic strategy).
+
+PROFITABILITY SAFEGUARD (same day): relative performance is NOT absolute
+profitability — no profit-margin/customer-value data is captured anywhere in
+the system, so this agent genuinely cannot judge whether the relatively-
+worse platform is still net-positive for the client. Consequences, enforced
+in the alert text and the comparison's own note: (a) the recommendation is
+ALWAYS framed as testing incremental budget on the better platform, never as
+cutting the worse one; (b) the missing-profitability limitation is stated
+out loud to Johnny, not hidden. Capturing rough profitability context
+(margin/customer-value at onboarding, or a conversational lead-outcome
+check-in loop) is flagged as a future business decision in the budget skill
+— deliberately NOT built here.
 
 KNOWN GAP (flagged, not silently worked around): the `leads` table has no
 `client_id` column, so matching a client to their onboarding intake falls
@@ -287,7 +299,11 @@ def compare_platform_performance(ad_spend: dict, gap_ratio: float = DEFAULT_CROS
         "note": ("Spend/conversions/clicks are HARD (live platform APIs), but 'conversions' "
                  "is not an identical definition across platforms (Google's conversion column "
                  "vs our summed Meta action types) — treat the comparison as directional, "
-                 "not exact. Recommendation-only: reallocation is a human decision."),
+                 "not exact. RELATIVE only: no profitability data (profit margin / customer "
+                 "value) is captured anywhere, so this cannot say whether the worse platform "
+                 "is unprofitable in absolute terms — a relatively-worse campaign can still "
+                 "be net-positive. Frame any action as testing incremental budget on the "
+                 "better platform, not cutting the worse one. Human decision either way."),
     }
 
 
@@ -669,11 +685,19 @@ def run_weekly_scan() -> dict:
                 agent_alert(AGENT_NAME, [message])
                 summary["alerts_raised"] += 1
 
-            # Cross-platform reallocation RECOMMENDATION (to Johnny, never an
-            # automatic reallocation — requires business judgment): only when
-            # the gap is meaningful NOW and was already meaningful in the same
-            # direction a scan ago (_gap_sustained). First sighting just gets
-            # recorded by the snapshot above.
+            # Cross-platform recommendation to Johnny (never an automatic
+            # change): only when the gap is meaningful NOW and was already
+            # meaningful in the same direction a scan ago (_gap_sustained).
+            # First sighting just gets recorded by the snapshot above.
+            #
+            # PROFITABILITY SAFEGUARD (2026-07-23): relative comparison is NOT
+            # absolute profitability — a campaign that's worse than the other
+            # platform can still be net-positive for the client's business,
+            # and we capture no profit-margin/customer-value data to judge
+            # that. So the recommendation is framed as testing INCREMENTAL
+            # budget on the better platform, never as cutting the worse one,
+            # and the alert says the limitation out loud instead of implying
+            # a certainty this data can't support.
             if (comparison.get("meaningful") and _gap_sustained(client_id, comparison)
                     and not _already_alerted(client_id, "cross_platform_reallocation",
                                              days=REALLOCATION_DEDUP_DAYS)):
@@ -691,9 +715,16 @@ def run_weekly_scan() -> dict:
                     f"{better['conversions']} conv / {better['clicks']} clicks; "
                     f"{worse['label']} spend {worse['cost']} ILS / "
                     f"{worse['conversions']} conv / {worse['clicks']} clicks.",
-                    f"  RECOMMENDATION ONLY - consider shifting budget toward {better['label']}; "
-                    "reallocation is a human decision. Caveat: conversion definitions are not "
-                    "identical across platforms (directional, not exact).",
+                    f"  OPPORTUNITY (not a cut): consider testing INCREMENTAL budget on "
+                    f"{better['label']}. This is NOT a recommendation to reduce "
+                    f"{worse['label']} — a relatively-worse campaign can still be "
+                    "net-positive for the client in absolute terms.",
+                    "  LIMITATION, said plainly: we don't capture profitability data "
+                    "(client profit margin / average customer value), so this is a "
+                    f"RELATIVE comparison only — use your own knowledge of whether "
+                    f"{worse['label']} is still worth keeping before acting. Also: "
+                    "conversion definitions differ across platforms (directional, not "
+                    "exact). Any change is a human decision.",
                 ]
                 if comparison.get("metric_note"):
                     lines.append(f"  NOTE: {comparison['metric_note']}")
