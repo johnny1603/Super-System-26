@@ -695,6 +695,48 @@ def _provision_state_from_activity(activity: list) -> str | None:
     return None
 
 
+def _package_includes_hosting(client_id: int) -> bool:
+    """True ONLY when we can positively confirm the client's ORIGINAL
+    checkout package included the new-site hosting line — the literal
+    monthly_breakdown key PRICING['website']['new_site_hosting']['label_he']
+    the onboarding prompt is instructed to write whenever a package builds a
+    NEW site (see onboarding_agent's BUDGET PYRAMID #5, point 5). Fails
+    CLOSED: any gap in the lookup (no checkout activity, no matching lead/
+    proposal, package_id absent from the stored proposal, key not present)
+    returns False. Self-provisioning a real recurring InstaWP cost is the
+    wrong place to assume an entitlement that's never actually verified
+    anywhere else in the codebase (see the website skill's "Self-service
+    provisioning" section) — no proposal match is a reason to say no, not a
+    reason to guess yes.
+
+    Package UPGRADES (get_upgrade_tiers) never add website hosting — an
+    upgrade's subscription_created row has no package_id/monthly_breakdown
+    to check at all, so this only ever looks at the ORIGINAL checkout row."""
+    from agents.budget_agent import _lead_row
+    from agents.onboarding_agent import PRICING
+    hosting_label = PRICING["website"]["new_site_hosting"]["label_he"]
+
+    package_id = None
+    for row in (_db().table("client_activity").select("action_type,details")
+                .eq("client_id", client_id).eq("agent_name", "paypal_service")
+                .order("created_at", desc=True).limit(50).execute().data or []):
+        if row.get("action_type") == "subscription_cancelled":
+            break
+        details = row.get("details") or {}
+        if row.get("action_type") == "subscription_created" and not details.get("upgrade"):
+            package_id = details.get("package_id")
+            break
+    if not package_id:
+        return False
+
+    lead, _source = _lead_row(client_id)
+    packages = (lead.get("proposal") or {}).get("packages") or []
+    chosen = next((p for p in packages if p.get("id") == package_id), None)
+    if not chosen:
+        return False
+    return hosting_label in (chosen.get("monthly_breakdown") or {})
+
+
 def request_self_provision(client_id: int, background_tasks=None) -> dict:
     """The ONLY client-facing trigger for provision_site — the dashboard's
     "הקימו לי אתר" button, deliberately narrower than the admin endpoint (no
@@ -702,22 +744,33 @@ def request_self_provision(client_id: int, background_tasks=None) -> dict:
     info is already on file from onboarding and the neutral-palette fallback
     needs none of it — see apply_brand_identity). Money starts moving the
     instant InstaWP's is_reserved:true call succeeds, same as the admin path;
-    the safety net here is procedural, not a missing-data gate: one click,
-    one immediate confirmation, and `is_connected`/in-progress checks below
-    make a duplicate site genuinely impossible to trigger by accident.
+    the safety net here is procedural AND now a real entitlement check
+    (_package_includes_hosting) — not a missing-data gate: one click, one
+    immediate confirmation, and the checks below make both a duplicate site
+    and an unbilled one genuinely impossible to trigger by accident.
 
     Runs in the background (`background_tasks`, duck-typed exactly like
     engagement_agent's `_dispatch_approved` — this module stays fastapi-free)
     since provisioning genuinely takes real minutes (InstaWP clone + task
     poll + credential rotation + standards/brand pass) and must never block
-    the client's click."""
+    the client's click.
+
+    Returns a `code` field (matching the `{"code": "ERR_X"}` server
+    error-code pattern — see the i18n skill) on every failure branch, so the
+    calling endpoint can raise a properly localizable HTTPException instead
+    of leaking raw English strings past the client's chosen UI language."""
     if is_connected(client_id):
-        return {"success": False, "errors": ["client already has a connected website"]}
+        return {"success": False, "code": "ERR_WEBSITE_ALREADY_CONNECTED",
+                "errors": ["client already has a connected website"]}
+    if not _package_includes_hosting(client_id):
+        return {"success": False, "code": "ERR_WEBSITE_NOT_IN_PACKAGE",
+                "errors": ["client's package does not include new-site hosting"]}
     recent = (_db().table("client_activity").select("agent_name,action_type")
               .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
               .order("created_at", desc=True).limit(5).execute().data or [])
     if _provision_state_from_activity(recent) == "requested":
-        return {"success": False, "errors": ["a provisioning request is already in progress"]}
+        return {"success": False, "code": "ERR_WEBSITE_PROVISION_IN_PROGRESS",
+                "errors": ["a provisioning request is already in progress"]}
     if background_tasks is None:
         return {"success": False,
                 "errors": ["self-provisioning unavailable in this context"]}

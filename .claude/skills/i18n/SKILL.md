@@ -138,7 +138,10 @@ returned it, regardless of the client's chosen language).
 
 Converted endpoints: login verify-code, package upgrade (3 codes),
 disconnect (2 codes), close/transfer confirm-phrase (2 codes), media folder
-(2 codes) — see `core/api_server.py`. `admin_login`'s "סיסמה שגויה" was
+(2 codes), website self-provision (3 codes: `ERR_WEBSITE_NOT_IN_PACKAGE`,
+`ERR_WEBSITE_ALREADY_CONNECTED`, `ERR_WEBSITE_PROVISION_IN_PROGRESS` — see
+the website skill's "Self-service provisioning" section) — see
+`core/api_server.py`. `admin_login`'s "סיסמה שגויה" was
 LEFT AS Hebrew prose on purpose (admin-only, Johnny reads Hebrew, same rule
 as the admin dashboard) — don't convert it, that would be over-engineering
 a surface this rule explicitly excludes.

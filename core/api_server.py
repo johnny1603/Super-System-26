@@ -1637,7 +1637,13 @@ def website_self_provision(request: Request, background_tasks: BackgroundTasks):
     from agents.website_agent import request_self_provision
     result = request_self_provision(client_id, background_tasks)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+        # {"code": "ERR_X"} pattern (see the i18n skill) whenever the agent
+        # gave us one — e.g. ERR_WEBSITE_NOT_IN_PACKAGE, the real-money
+        # entitlement gate — so the dashboard can localize it instead of
+        # showing raw English straight through.
+        code = result.get("code")
+        detail = {"code": code} if code else result.get("errors", ["unknown error"])
+        raise HTTPException(status_code=400, detail=detail)
     return {"success": True, "data": result}
 
 # ─── Website execution (admin/scheduler only) ────────────────────────────────

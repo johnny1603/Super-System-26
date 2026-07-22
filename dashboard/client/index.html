@@ -937,6 +937,9 @@ const DASH_I18N = {
   site_create_failed: { he:'לא הצלחנו לשלוח את הבקשה כרגע — נסו שוב בעוד רגע או דברו איתנו בצ\'אט', en:'We couldn\'t send the request right now — try again in a moment or talk to us in the chat', fr:'Impossible d\'envoyer la demande pour le moment — réessayez dans un instant ou contactez-nous via le chat', ar:'لم نتمكن من إرسال الطلب الآن — حاولوا مجددًا بعد قليل أو تحدثوا معنا في الدردشة', ru:'Не удалось отправить запрос сейчас — попробуйте снова через минуту или напишите нам в чат' },
   site_create_done_notice: { he:'האתר החדש שלכם מוכן ✓', en:'Your new site is ready ✓', fr:'Votre nouveau site est prêt ✓', ar:'موقعكم الجديد جاهز ✓', ru:'Ваш новый сайт готов ✓' },
   site_create_error_notice: { he:'משהו השתבש בהקמת האתר — הצוות שלנו קיבל התראה ויחזור אליכם', en:'Something went wrong building the site — our team was alerted and will get back to you', fr:'Un problème est survenu lors de la création du site — notre équipe a été alertée et vous recontactera', ar:'حدث خطأ أثناء إنشاء الموقع — تم تنبيه فريقنا وسيتواصل معكم', ru:'Что-то пошло не так при создании сайта — наша команда уведомлена и свяжется с вами' },
+  err_website_not_in_package: { he:'הקמת אתר חדש אינה כלולה בחבילה הנוכחית שלכם — דברו איתנו בצ\'אט כדי להוסיף את השירות', en:'Building a new site isn\'t included in your current package — talk to us in the chat to add it', fr:'La création d\'un nouveau site n\'est pas incluse dans votre formule actuelle — contactez-nous via le chat pour l\'ajouter', ar:'إنشاء موقع جديد غير مشمول في باقتكم الحالية — تحدثوا معنا في الدردشة لإضافة الخدمة', ru:'Создание нового сайта не входит в ваш текущий пакет — напишите нам в чат, чтобы добавить услугу' },
+  err_website_already_connected: { he:'כבר יש לכם אתר מחובר — נתקו אותו קודם אם אתם רוצים אתר חדש', en:'You already have a connected website — disconnect it first if you want a new one', fr:'Vous avez déjà un site connecté — déconnectez-le d\'abord si vous en voulez un nouveau', ar:'لديكم بالفعل موقع مرتبط — افصلوه أولاً إذا أردتم موقعًا جديدًا', ru:'У вас уже есть подключённый сайт — сначала отключите его, если хотите новый' },
+  err_website_provision_in_progress: { he:'כבר מקימים לכם אתר — אין צורך ללחוץ שוב', en:'We\'re already building your site — no need to click again', fr:'Nous créons déjà votre site — pas besoin de cliquer à nouveau', ar:'نحن بالفعل نُنشئ موقعكم — لا داعٍ للنقر مرة أخرى', ru:'Мы уже создаём ваш сайт — не нужно нажимать снова' },
   higgsfield_card: { he:'יצירת מדיה (תמונות/סרטונים)', en:'Media generation (images/videos)', fr:'Génération de médias (images/vidéos)', ar:'إنشاء الوسائط (صور/فيديوهات)', ru:'Генерация медиа (изображения/видео)' },
   higgsfield_signup_note: { he:'נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.', en:'Sign up with your own payment method at higgsfield.ai, then create an API key in your account\'s API Keys area (cloud.higgsfield.ai/api-keys) — payment for generation itself goes directly through you, we just operate the tool for you.', fr:'Inscrivez-vous avec votre propre moyen de paiement sur higgsfield.ai, puis créez une clé API dans la section API Keys de votre compte (cloud.higgsfield.ai/api-keys) — le paiement de la génération passe directement par vous, nous opérons simplement l\'outil pour vous.', ar:'سجّل بوسيلة الدفع الخاصة بك على higgsfield.ai، ثم أنشئ مفتاح API في قسم API Keys بحسابك (cloud.higgsfield.ai/api-keys) — الدفع مقابل الإنشاء نفسه يتم مباشرة من خلالك، نحن فقط نشغّل الأداة نيابة عنك.', ru:'Зарегистрируйтесь на higgsfield.ai со своим способом оплаты, затем создайте API-ключ в разделе API Keys вашего аккаунта (cloud.higgsfield.ai/api-keys) — оплата за саму генерацию идёт напрямую от вас, мы лишь управляем инструментом от вашего имени.' },
   higgsfield_key_ph: { he:'Higgsfield API Key', en:'Higgsfield API Key', fr:'Clé API Higgsfield', ar:'مفتاح API الخاص بـ Higgsfield', ru:'API-ключ Higgsfield' },
@@ -1503,12 +1506,15 @@ async function createNewSite() {
       showSiteProvisionProgress();
       return;
     }
+    // {"code": "ERR_X"} pattern (see the i18n skill) - e.g. ERR_WEBSITE_NOT_IN_PACKAGE
+    // when the client's package never included site hosting - never read body.detail directly.
+    showNotice(uallakI18n.errorText(body, 'site_create_failed'), 'warn');
   } catch (e) {
     console.error('self-provision request failed', e);
+    showNotice(uallakI18n.t('site_create_failed'), 'warn');
   }
   btn.disabled = false;
   btn.textContent = uallakI18n.t('site_create_confirm');
-  showNotice(uallakI18n.t('site_create_failed'), 'warn');
 }
 
 function showSiteProvisionProgress() {

@@ -273,17 +273,40 @@ zero-touch content generation (personalized base-page copy, an initial
 article batch) is a separate, not-yet-built capability — don't assume it's
 covered because this section exists.
 
-**Billing entitlement is NOT verified anywhere in code.** Nothing checks
-whether the client's stored `package` (free-text LLM-authored proposal JSON,
-see `onboarding_agent.PRICING["website"]["new_site_hosting"]`) actually
-priced in the 50 NIS/mo hosting line before self-service lets them trigger a
-real recurring InstaWP cost. This was previously an implicit admin judgment
-call (the admin manually decided when to click provision); self-service
-removes that check entirely, on the assumption that any active client who
-has no site connected already chose a package that included one. If that
-assumption turns out wrong in practice, the fix is parsing/flagging
-`package.monthly_breakdown` for the hosting line before allowing
-self-provision — not built, flagged here as a known gap.
+**Billing entitlement IS verified (2026-07-22 fix), best-effort and fail-CLOSED.**
+`_package_includes_hosting(client_id)` gates `request_self_provision` before
+anything else runs:
+
+1. Reads the client's own `client_activity` (`agent_name='paypal_service'`,
+   newest first) for the ORIGINAL `subscription_created` row (skips
+   `upgrade: true` rows — `get_upgrade_tiers()`'s fixed ladder never includes
+   website hosting, so an upgrade row can never confirm or deny it) and
+   pulls its `package_id`. Stops at a `subscription_cancelled` row exactly
+   like `_client_subscription_info` does.
+2. Looks up the matching `leads` row via `budget_agent._lead_row(client_id)`
+   (exact `client_id` match, falling back to an email match — reused as-is,
+   not reimplemented; see that function's own docstring for the known
+   `leads.client_id` column gap).
+3. Finds the package in `lead.proposal.packages` whose `id` matches, and
+   checks whether its `monthly_breakdown` dict contains the EXACT key
+   `PRICING["website"]["new_site_hosting"]["label_he"]` — the literal string
+   the onboarding prompt is instructed to write whenever a package builds a
+   new site (BUDGET PYRAMID #5, point 5).
+
+**Any gap in that chain returns False** (no checkout row found, no matching
+lead, package_id not in the stored proposal, key genuinely absent) — the
+client sees `ERR_WEBSITE_NOT_IN_PACKAGE` ("this isn't included in your
+package — talk to us in the chat") rather than silently being allowed
+through. This is a best-effort structural check, not a perfect one: it
+trusts the LLM-authored `monthly_breakdown` to use the exact PRICING label
+(the onboarding prompt instructs this, but LLM output isn't literally
+guaranteed) and it can't help a client whose lead row is missing/unmatched
+for unrelated reasons (e.g. a manually-created client with no proposal at
+all) — such a client is correctly blocked here too, and needs an admin to
+provision manually via `/api/website/provision` instead, same as before this
+fix existed. Follows the `{"code": "ERR_X"}` server error-code pattern (see
+the i18n skill) — `ERR_WEBSITE_ALREADY_CONNECTED` and
+`ERR_WEBSITE_PROVISION_IN_PROGRESS` cover the other two failure branches.
 
 ## Deferred / not built
 
