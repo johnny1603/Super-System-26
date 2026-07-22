@@ -297,7 +297,11 @@ anything else runs:
 lead, package_id not in the stored proposal, key genuinely absent) — the
 client sees `ERR_WEBSITE_NOT_IN_PACKAGE` ("this isn't included in your
 package — talk to us in the chat") rather than silently being allowed
-through. This is a best-effort structural check, not a perfect one: it
+through. This includes a client who added a website LATER via the in-chat /
+upgrade-panel add-on flow (2026-07-23: the panel's add-ons route website
+purchases through the chat proposal brain) — those close manually with the
+team, so the admin provisions via `POST /api/website/provision`; the
+self-service gate only ever recognizes the ORIGINAL checkout package. This is a best-effort structural check, not a perfect one: it
 trusts the LLM-authored `monthly_breakdown` to use the exact PRICING label
 (the onboarding prompt instructs this, but LLM output isn't literally
 guaranteed) and it can't help a client whose lead row is missing/unmatched

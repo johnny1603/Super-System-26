@@ -806,17 +806,21 @@ def _client_subscription_info(client_id: int) -> dict:
 
 @app.get("/api/client/upgrade-options")
 def client_upgrade_options(request: Request):
-    from agents.onboarding_agent import get_upgrade_tiers
+    from agents.onboarding_agent import get_upgrade_addons, get_upgrade_tiers
     client_id = _require_session(request)
     client = get_client(client_id)
     sub = _client_subscription_info(client_id)
     if not sub["subscription_id"]:
         return {"success": True, "data": {"available": False, "reason": "אין מנוי פעיל לשדרוג"}}
     tiers = [t for t in get_upgrade_tiers() if t["monthly_fee"] > sub["monthly_fee"]]
+    # addons: PRICING-derived at call time (avatar/new site/SEO/automation) —
+    # priced via the in-chat proposal brain, not the flat plan-revision flow
+    addons = get_upgrade_addons()
     return {"success": True, "data": {
-        "available": bool(tiers),
+        "available": bool(tiers) or bool(addons),
         "current": {"package": client.get("package", ""), "monthly_fee": sub["monthly_fee"]},
         "tiers": tiers,
+        "addons": addons,
     }}
 
 class UpgradeRequest(BaseModel):

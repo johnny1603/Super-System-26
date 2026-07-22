@@ -96,10 +96,14 @@ PRICING = {
 
 
 def get_upgrade_tiers() -> list:
-    """The package ladder shown in the dashboard's upgrade panel, priced from
-    PRICING (the single source of truth) - never hardcode these numbers
-    elsewhere. Ordered cheapest-first; the dashboard offers only tiers priced
-    above the client's current monthly fee."""
+    """The self-service package ladder shown in the dashboard's upgrade panel
+    (platform-management combos ONLY — flat monthly fees the existing PayPal
+    plan-revision flow can bill directly), priced from PRICING (the single
+    source of truth) - never hardcode these numbers elsewhere. Ordered
+    cheapest-first; the dashboard offers only tiers priced above the client's
+    current monthly fee. Everything with heterogeneous pricing (setup fees,
+    external vendor costs, scope judgment) lives in get_upgrade_addons()
+    below instead — never force it into this flat ladder."""
     fees = PRICING["platform_management_fees"]
     meta_google = fees["meta"] + fees["google"]
     full = meta_google + fees["tiktok"]
@@ -127,6 +131,68 @@ def get_upgrade_tiers() -> list:
             "setup_fee_addition": 0,
             "description": "הכל כלול, בתוספת ניהול קידום אורגני מקצועי",
             "note": "+ תשלום נפרד לכלי ה-SEO (לפי התקציב)",
+        },
+    ]
+
+
+def get_upgrade_addons() -> list:
+    """The upgrade panel's ADD-ONS catalog — every service added since the
+    original ladder (avatar, new website + hosting, organic SEO, automation),
+    with every number formatted from PRICING at CALL TIME so this can never
+    go stale again (same single-source-of-truth principle as the admin
+    pricing reference page; the panel was hardcoded once and drifted — that's
+    the bug this function exists to prevent).
+
+    These are deliberately NOT self-service-billable tiers: each has
+    heterogeneous pricing (one-time setup fees, scope ranges, external
+    vendor costs paid directly, fit judgment) that the flat PayPal
+    plan-revision flow can't represent. `chat_request` routes the client
+    into the support chat instead, where the SAME pricing brain as
+    onboarding (_build_upgrade_proposal -> build_proposal upgrade mode)
+    prices it properly. Hebrew server-side strings, same accepted pattern as
+    the tier descriptions above."""
+    p = PRICING
+    avatar = p["avatar"]
+    hosting = p["website"]["new_site_hosting"]
+    avatar_tiers_text = ", ".join(
+        f"{t['minutes_per_month']} דק'/חודש — ₪{t['monthly_ils']:,}"
+        for t in avatar["monthly_tiers"])
+    return [
+        {
+            "id": "avatar",
+            "name": "אווטאר דיגיטלי — סרטונים עם הדמות שלך",
+            "description": (f"הפקת סרטונים עם תאום דיגיטלי של הדמות שלך. מסלולים: "
+                            f"{avatar_tiers_text}. הקמה חד-פעמית ₪{avatar['setup_first_avatar']} "
+                            f"לאווטאר ראשון."),
+            "note": "בנוסף: חשבונות HeyGen/ElevenLabs משולמים על ידך ישירות לספקים",
+            "chat_request": ("אני רוצה לשמוע על תוספת האווטאר הדיגיטלי — אילו מסלולים יש "
+                             "ומה מתאים לעסק שלי?"),
+        },
+        {
+            "id": "new_website",
+            "name": "אתר וורדפרס חדש",
+            "description": (f"הקמת אתר מקצועי חדש: הקמה ₪{p['website']['setup_min']:,}-"
+                            f"₪{p['website']['setup_max']:,} לפי היקף + "
+                            f"{hosting['label_he']} ₪{hosting['client_monthly_ils']}/חודש."),
+            "note": "הדומיין נרכש על ידך ישירות (כ-80-100 ₪ לשנה)",
+            "chat_request": "אני רוצה הצעת מחיר להקמת אתר חדש לעסק שלי.",
+        },
+        {
+            "id": "organic_seo",
+            "name": "קידום אורגני (SEO)",
+            "description": (f"ניהול קידום אורגני מקצועי — ₪{p['monthly_management_minimum']}/חודש "
+                            f"דמי ניהול, מומלץ מתקציב אורגני של "
+                            f"₪{p['seo_tiers']['min_monthly_budget_to_recommend']:,}/חודש."),
+            "note": "בנוסף: מנוי לכלי ה-SEO משולם על ידך ישירות (לפי התקציב)",
+            "chat_request": "אני רוצה לשמוע על קידום אורגני — מה זה כולל ומה העלות לעסק שלי?",
+        },
+        {
+            "id": "automation",
+            "name": "אוטומציות לעסק",
+            "description": (f"בוט מענה ללידים, חיבור CRM ואוטומציות נוספות — הקמה החל "
+                            f"מ-₪{p['automation']['base_setup_fee']}, לפי היקף ומורכבות."),
+            "note": "",
+            "chat_request": "אני רוצה לשמוע על אוטומציות לעסק שלי — מה אפשר לחבר ומה העלות?",
         },
     ]
 
