@@ -919,18 +919,50 @@ def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = ""
                 # Avatar ADDS to the package, never replaces its name — and the
                 # tier assignment avatar_agent's generation gates need is
                 # deterministic bookkeeping, safe to auto-run on payment
-                current_package = get_client(client_id).get("package") or ""
+                client_row = get_client(client_id)
+                current_package = client_row.get("package") or ""
                 package_name = f"{current_package} + {tier['name']}" if current_package else tier["name"]
                 from agents.avatar_agent import set_tier
                 set_tier(client_id, tier["avatar_tier_id"])
+                # One-time setup fee: auto-invoiced via the SAME create_invoice
+                # mechanism checkout already uses for the original setup fee —
+                # a plan revision can't charge it, but an invoice collects it
+                # without a manual step. NOTE the honest limit: an invoice is a
+                # payment REQUEST the client pays from their email, not an
+                # instant charge — identical to how the checkout setup fee
+                # already works (accepted house mechanism), so avatar reaches
+                # parity, not beyond it. Non-fatal: an invoice failure never
+                # breaks the upgrade itself (same idiom as checkout).
+                invoice_note = ""
+                try:
+                    invoice = create_invoice(
+                        client_id=client_id,
+                        amount=tier["setup_fee_addition"],
+                        description=f"uallak — דמי הקמה אווטאר דיגיטלי ({tier['name']})",
+                        client_name=client_row.get("name", ""),
+                        client_email=client_row.get("email", ""),
+                        address=client_row.get("address", ""),
+                        business_name=client_row.get("business_name", ""),
+                        business_tax_id=client_row.get("business_tax_id", ""),
+                    )
+                    log_activity(client_id, "paypal_service", "invoice_sent",
+                                 {"setup_fee": tier["setup_fee_addition"], "reason": "avatar_addon"},
+                                 invoice)
+                    invoice_note = (f"Setup-fee invoice ({tier['setup_fee_addition']} ILS) auto-sent "
+                                    f"({invoice.get('invoice_number', '')}) — follow up only if it "
+                                    "goes unpaid (PayPal dashboard shows status).")
+                except Exception as invoice_err:
+                    log_activity(client_id, "paypal_service", "invoice_failed",
+                                 {"error": str(invoice_err), "reason": "avatar_addon"}, {})
+                    invoice_note = (f"Setup-fee invoice FAILED to send ({invoice_err}) — collect the "
+                                    f"{tier['setup_fee_addition']} ILS manually.")
                 from core.agent_base import agent_alert as _alert
                 _alert("support_agent", [
                     f"client {client_id} self-purchased the avatar add-on ({tier['name']}, "
                     f"+{tier['addon_monthly']} ILS/mo — recurring now billing via PayPal). "
-                    f"MANUAL STEPS: collect the {tier['setup_fee_addition']} ILS one-time "
-                    "setup fee (plan revisions can't charge it), and walk them through "
-                    "avatar onboarding — HeyGen key + consent in the dashboard card, then "
-                    "the source kit. Tier is already assigned."])
+                    f"{invoice_note} "
+                    "REMAINING MANUAL STEP: walk them through avatar onboarding — HeyGen key "
+                    "+ consent in the dashboard card, then the source kit. Tier is already assigned."])
             else:
                 package_name = tier["name"]
             update_client_package(client_id, package_name)

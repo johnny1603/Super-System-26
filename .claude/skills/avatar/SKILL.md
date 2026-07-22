@@ -154,11 +154,15 @@ computes ADDITIVE tier entries per client at request time; the standard
 PayPal plan-revision flow bills the new recurring total. On PayPal-confirmed
 success, `/api/upgrade-success`: appends (never replaces) the avatar tier to
 the package name, AUTO-ASSIGNS the tier (`avatar_agent.set_tier` —
-deterministic bookkeeping, so generation gates work immediately), and alerts
-the team with the manual steps: collect the one-time setup fee (a plan
-REVISION cannot charge one — same accepted limitation as the ladder's TikTok
-setup addition) and run avatar onboarding (HeyGen key + consent + source
-kit). Double-buy guard: avatar tiers are offered/accepted only while no
+deterministic bookkeeping, so generation gates work immediately),
+AUTO-INVOICES the one-time setup fee via the same `create_invoice` mechanism
+checkout uses for the original setup fee (a plan REVISION cannot charge a
+one-time fee; the invoice closes the manual-collection gap — the honest
+remaining friction is inherent to invoicing: it's a payment REQUEST the
+client pays from their email, not an instant charge, identical to checkout's
+own setup fee; invoice failure is non-fatal and the alert says to collect
+manually), and alerts the team with the one remaining manual step: avatar
+onboarding (HeyGen key + consent + source kit). Double-buy guard: avatar tiers are offered/accepted only while no
 avatar tier is assigned (`_client_has_avatar_tier`, FAILS CLOSED on read
 errors). Consent is NOT bypassed by purchase — creation/generation still
 hard-gate on the recorded consent row exactly as before.
@@ -169,9 +173,13 @@ hard-gate on the recorded consent row exactly as before.
   now included in `monthly_management_total`, so it rides the client's
   existing subscription amount automatically — no separate billing plumbing
   needed; flag if a future change wants it billed as its own item).
-- The one-time avatar setup fee in the self-service flow is team-collected
-  (see above) — automating a one-time charge alongside a plan revision
-  would need a separate PayPal order flow; not built.
+- The one-time avatar setup fee is auto-INVOICED (see above) but not
+  auto-CHARGED — a truly instant one-time charge alongside a plan revision
+  would need a separate PayPal Orders flow with a second client approval
+  redirect; not built, and probably not worth it (checkout's own setup fee
+  lives with the same invoice-based friction). No invoice-paid webhook
+  tracking exists either (same as checkout) — payment status lives in the
+  PayPal dashboard.
 - Consent revocation automation (v1: client asks → we stop + delete,
   manually).
 - VERIFICATION: both services are docs-derived, never run with live keys —
