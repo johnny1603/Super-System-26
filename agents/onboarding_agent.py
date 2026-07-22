@@ -135,6 +135,33 @@ def get_upgrade_tiers() -> list:
     ]
 
 
+def get_avatar_upgrade_tiers(current_monthly_fee: int) -> list:
+    """Self-service avatar add-on entries for the upgrade panel. Unlike the
+    platform ladder these are ADDITIVE — the client's current fee + the
+    avatar tier — computed per client at request time, never stored. Avatar
+    is directly billable (2026-07-23 decision) because its pricing is exact
+    and deterministic in PRICING; website/SEO/automation stay chat-routed
+    because theirs is scope-dependent. The one-time setup fee cannot ride a
+    PayPal plan revision (revisions change only the recurring amount — the
+    SAME accepted limitation as the ladder's TikTok setup addition), so it's
+    stated in the note and collected by the team, who get an operational
+    alert on completion (see /api/upgrade-success)."""
+    avatar = PRICING["avatar"]
+    labels = {"basic": "בסיסי", "advanced": "מתקדם", "enhanced": "מורחב"}
+    return [{
+        "id": f"avatar_{t['id']}",
+        "avatar_tier_id": t["id"],
+        "name": f"אווטאר דיגיטלי — {labels.get(t['id'], t['id'])}",
+        "monthly_fee": current_monthly_fee + t["monthly_ils"],
+        "addon_monthly": t["monthly_ils"],
+        "setup_fee_addition": avatar["setup_first_avatar"],
+        "description": (f"עד {t['minutes_per_month']} דקות וידאו אווטאר בחודש "
+                        f"({t['video_estimate']} סרטונים), בנוסף לכל מה שיש לך היום"),
+        "note": (f"+ ₪{avatar['setup_first_avatar']} הקמה חד-פעמית (בגבייה נפרדת). "
+                 "בנוסף: חשבון HeyGen משולם על ידך ישירות לספק"),
+    } for t in avatar["monthly_tiers"]]
+
+
 def get_upgrade_addons() -> list:
     """The upgrade panel's ADD-ONS catalog — every service added since the
     original ladder (avatar, new website + hosting, organic SEO, automation),
@@ -152,22 +179,11 @@ def get_upgrade_addons() -> list:
     prices it properly. Hebrew server-side strings, same accepted pattern as
     the tier descriptions above."""
     p = PRICING
-    avatar = p["avatar"]
     hosting = p["website"]["new_site_hosting"]
-    avatar_tiers_text = ", ".join(
-        f"{t['minutes_per_month']} דק'/חודש — ₪{t['monthly_ils']:,}"
-        for t in avatar["monthly_tiers"])
+    # Avatar is NOT in this list anymore (2026-07-23): its pricing is exact,
+    # so it's directly billable via get_avatar_upgrade_tiers above. Only the
+    # scope-dependent services stay chat-routed here.
     return [
-        {
-            "id": "avatar",
-            "name": "אווטאר דיגיטלי — סרטונים עם הדמות שלך",
-            "description": (f"הפקת סרטונים עם תאום דיגיטלי של הדמות שלך. מסלולים: "
-                            f"{avatar_tiers_text}. הקמה חד-פעמית ₪{avatar['setup_first_avatar']} "
-                            f"לאווטאר ראשון."),
-            "note": "בנוסף: חשבונות HeyGen/ElevenLabs משולמים על ידך ישירות לספקים",
-            "chat_request": ("אני רוצה לשמוע על תוספת האווטאר הדיגיטלי — אילו מסלולים יש "
-                             "ומה מתאים לעסק שלי?"),
-        },
         {
             "id": "new_website",
             "name": "אתר וורדפרס חדש",

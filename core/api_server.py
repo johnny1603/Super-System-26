@@ -804,17 +804,33 @@ def _client_subscription_info(client_id: int) -> dict:
             }
     return {"monthly_fee": 0, "setup_fee": 0, "subscription_id": None, "checkout_at": None}
 
+def _client_has_avatar_tier(client_id: int) -> bool:
+    """Guard against double-selling the avatar add-on. FAILS CLOSED: if the
+    read errors, we act as if a tier exists (don't offer) — the risk of
+    hiding the option for one panel-load beats the risk of double-billing."""
+    try:
+        from agents.avatar_agent import get_monthly_usage
+        return bool(get_monthly_usage(client_id).get("tier"))
+    except Exception as e:
+        print(f"[upgrade-options] client {client_id}: avatar tier read failed ({e}) - not offering avatar")
+        return True
+
 @app.get("/api/client/upgrade-options")
 def client_upgrade_options(request: Request):
-    from agents.onboarding_agent import get_upgrade_addons, get_upgrade_tiers
+    from agents.onboarding_agent import get_avatar_upgrade_tiers, get_upgrade_addons, get_upgrade_tiers
     client_id = _require_session(request)
     client = get_client(client_id)
     sub = _client_subscription_info(client_id)
     if not sub["subscription_id"]:
         return {"success": True, "data": {"available": False, "reason": "אין מנוי פעיל לשדרוג"}}
     tiers = [t for t in get_upgrade_tiers() if t["monthly_fee"] > sub["monthly_fee"]]
-    # addons: PRICING-derived at call time (avatar/new site/SEO/automation) —
-    # priced via the in-chat proposal brain, not the flat plan-revision flow
+    # Avatar add-on: exact deterministic pricing -> directly billable like the
+    # ladder (additive: current fee + tier). Offered only while no avatar tier
+    # is assigned yet — double-buy guard.
+    if not _client_has_avatar_tier(client_id):
+        tiers += get_avatar_upgrade_tiers(sub["monthly_fee"])
+    # addons: PRICING-derived at call time (new site/SEO/automation) — scope-
+    # dependent pricing, so priced via the in-chat proposal brain instead
     addons = get_upgrade_addons()
     return {"success": True, "data": {
         "available": bool(tiers) or bool(addons),
@@ -828,13 +844,21 @@ class UpgradeRequest(BaseModel):
 
 @app.post("/api/client/upgrade")
 def client_upgrade(req: UpgradeRequest, request: Request):
-    from agents.onboarding_agent import get_upgrade_tiers
+    from agents.onboarding_agent import get_avatar_upgrade_tiers, get_upgrade_tiers
     client_id = _require_session(request)
     sub = _client_subscription_info(client_id)
     if not sub["subscription_id"]:
         raise HTTPException(status_code=400, detail={"code": "ERR_NO_ACTIVE_SUBSCRIPTION"})
 
-    tier = next((t for t in get_upgrade_tiers() if t["id"] == req.tier_id), None)
+    # Avatar tiers are computed per client (additive to the CURRENT fee) —
+    # always recomputed server-side here, never trusted from the panel
+    if req.tier_id.startswith("avatar_"):
+        if _client_has_avatar_tier(client_id):
+            raise HTTPException(status_code=400, detail={"code": "ERR_TIER_UNAVAILABLE"})
+        candidates = get_avatar_upgrade_tiers(sub["monthly_fee"])
+    else:
+        candidates = get_upgrade_tiers()
+    tier = next((t for t in candidates if t["id"] == req.tier_id), None)
     if not tier or tier["monthly_fee"] <= sub["monthly_fee"]:
         raise HTTPException(status_code=400, detail={"code": "ERR_TIER_UNAVAILABLE"})
 
@@ -881,13 +905,39 @@ def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = ""
             print(f"[upgrade_success] client {client_id}: live plan {live.get('plan_id')} != expected {plan_id}")
             return RedirectResponse(url="/dashboard/?upgrade=pending")
 
-        tier = next((t for t in get_upgrade_tiers() if t["id"] == tier_id), None)
+        if tier_id.startswith("avatar_"):
+            # Recompute with the same basis the POST used — the old fee row is
+            # still the newest subscription_created at this point
+            from agents.onboarding_agent import get_avatar_upgrade_tiers
+            sub_now = _client_subscription_info(client_id)
+            tier = next((t for t in get_avatar_upgrade_tiers(sub_now["monthly_fee"])
+                         if t["id"] == tier_id), None)
+        else:
+            tier = next((t for t in get_upgrade_tiers() if t["id"] == tier_id), None)
         if tier:
-            update_client_package(client_id, tier["name"])
+            if tier_id.startswith("avatar_"):
+                # Avatar ADDS to the package, never replaces its name — and the
+                # tier assignment avatar_agent's generation gates need is
+                # deterministic bookkeeping, safe to auto-run on payment
+                current_package = get_client(client_id).get("package") or ""
+                package_name = f"{current_package} + {tier['name']}" if current_package else tier["name"]
+                from agents.avatar_agent import set_tier
+                set_tier(client_id, tier["avatar_tier_id"])
+                from core.agent_base import agent_alert as _alert
+                _alert("support_agent", [
+                    f"client {client_id} self-purchased the avatar add-on ({tier['name']}, "
+                    f"+{tier['addon_monthly']} ILS/mo — recurring now billing via PayPal). "
+                    f"MANUAL STEPS: collect the {tier['setup_fee_addition']} ILS one-time "
+                    "setup fee (plan revisions can't charge it), and walk them through "
+                    "avatar onboarding — HeyGen key + consent in the dashboard card, then "
+                    "the source kit. Tier is already assigned."])
+            else:
+                package_name = tier["name"]
+            update_client_package(client_id, package_name)
             # Logged as subscription_created so the fee derivations (dashboard
             # + admin MRR) pick up the new amount - they read the newest row
             log_activity(client_id, "paypal_service", "subscription_created",
-                         {"package_name": tier["name"], "monthly_management_total": tier["monthly_fee"],
+                         {"package_name": package_name, "monthly_management_total": tier["monthly_fee"],
                           "setup_fee_total": tier["setup_fee_addition"], "upgrade": True},
                          {"subscription_id": subscription_id})
         return RedirectResponse(url="/dashboard/?upgrade=success")

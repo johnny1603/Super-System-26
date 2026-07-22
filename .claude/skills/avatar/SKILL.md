@@ -144,12 +144,34 @@ filter — the filter only gates PROACTIVE suggestions.
 dashboard's "מחירון מלא" tab) now surfaces the avatar tier alongside every
 other pricing number, pulled live from `PRICING` — never a second copy.
 
+## Self-service purchase (upgrade panel, 2026-07-23)
+
+Avatar is directly billable from the dashboard's upgrade panel — the ONLY
+add-on that is, because its pricing is exact in PRICING (150₪ setup,
+450/800/1550₪ monthly tiers); website/SEO/automation stay chat-routed
+(scope-dependent). `onboarding_agent.get_avatar_upgrade_tiers(current_fee)`
+computes ADDITIVE tier entries per client at request time; the standard
+PayPal plan-revision flow bills the new recurring total. On PayPal-confirmed
+success, `/api/upgrade-success`: appends (never replaces) the avatar tier to
+the package name, AUTO-ASSIGNS the tier (`avatar_agent.set_tier` —
+deterministic bookkeeping, so generation gates work immediately), and alerts
+the team with the manual steps: collect the one-time setup fee (a plan
+REVISION cannot charge one — same accepted limitation as the ladder's TikTok
+setup addition) and run avatar onboarding (HeyGen key + consent + source
+kit). Double-buy guard: avatar tiers are offered/accepted only while no
+avatar tier is assigned (`_client_has_avatar_tier`, FAILS CLOSED on read
+errors). Consent is NOT bypassed by purchase — creation/generation still
+hard-gate on the recorded consent row exactly as before.
+
 ## Deferred / flagged
 
 - PayPal billing wiring for the tier fee itself (the tier's monthly fee is
   now included in `monthly_management_total`, so it rides the client's
   existing subscription amount automatically — no separate billing plumbing
   needed; flag if a future change wants it billed as its own item).
+- The one-time avatar setup fee in the self-service flow is team-collected
+  (see above) — automating a one-time charge alongside a plan revision
+  would need a separate PayPal order flow; not built.
 - Consent revocation automation (v1: client asks → we stop + delete,
   manually).
 - VERIFICATION: both services are docs-derived, never run with live keys —
