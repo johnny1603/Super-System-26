@@ -91,6 +91,40 @@ Deliberately NOT alerted on: anything with `estimate`/`unknown` confidence
 (a HeyGen cost estimate is too fuzzy to trigger a real alert) and the
 InstaWP hosting gap (informational, not a recurring deviation).
 
+## Cross-platform performance comparison (extension, 2026-07-23)
+
+`compare_platform_performance(ad_spend)` — pure computation over the
+ad_spend dict `get_ad_spend` already built (never a second fetch); surfaced
+as `cross_platform_comparison` in `get_financial_picture` (so the admin
+budget endpoint and the narrative LLM get it for free).
+
+- **Metric, in honesty order**: `cost_per_conversion` when every qualifying
+  platform has ≥ `CPR_MIN_CONVERSIONS_EACH` (3) conversions; falls back to
+  `cost_per_click` as an explicitly-labeled PROXY when tracking is
+  absent/asymmetric but both have ≥ `CPC_MIN_CLICKS_EACH` (30) clicks;
+  otherwise `applicable: false` with the reason stated. Both platforms also
+  need ≥ `cross_platform_min_spend_ils` (default 300₪) real 30-day spend.
+- **"Meaningful"**: worse-platform cost-per-result ≥
+  `cross_platform_gap_ratio` × the better one (default 1.5). Both thresholds
+  are admin-tunable via `app_settings`, same as the drift thresholds.
+- **"Sustained"**: the weekly snapshot now records a compact
+  `cross_platform` block; a recommendation fires only when the CURRENT scan
+  shows a meaningful gap AND a previous snapshot 5-21 days back
+  (`_gap_sustained`) recorded a meaningful gap with the SAME better platform
+  and metric. First sighting is recorded, never alerted — two independent
+  30-day reads ~a week apart, not one noisy window.
+- **Routing**: `agent_alert` to Johnny as a RECOMMENDATION ONLY (same
+  reasoning as the organic-strategy routing — reallocation needs business
+  judgment); never an automatic budget change. Dedup 13 days
+  (`REALLOCATION_DEDUP_DAYS`) — a standing recommendation nudges bi-weekly.
+- **Confidence**: the comparison is ESTIMATE even though every input is
+  HARD — 'conversions' means Google's conversion column on one side and our
+  summed `CONVERSION_ACTION_TYPES` on Meta's — directional, not exact, and
+  the output note says so.
+- Platform list is data-driven (`google_ads`/`meta_ads` today) — a future
+  TikTok Ads agent joins by appearing in `ad_spend` with the same `totals`
+  shape.
+
 ## Trend (real drift over time, not just a snapshot)
 
 Each weekly scan records a `budget_snapshot_recorded` activity row (reuses

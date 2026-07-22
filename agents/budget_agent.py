@@ -29,6 +29,13 @@ separate, on-demand, OPTIONAL call that explains numbers already computed
 here in plain Hebrew for Johnny; it is never allowed to invent a number of
 its own (see NARRATIVE_SYSTEM).
 
+CROSS-PLATFORM COMPARISON (extension, 2026-07-23): the same aggregated ad
+data also feeds compare_platform_performance() — cost-per-result across the
+client's paid platforms, with a reallocation RECOMMENDATION routed to Johnny
+(agent_alert) when the gap is meaningful AND sustained across two weekly
+snapshots. Never an automatic reallocation: shifting a client's budget is a
+business-judgment call (same routing reasoning as organic strategy).
+
 KNOWN GAP (flagged, not silently worked around): the `leads` table has no
 `client_id` column, so matching a client to their onboarding intake falls
 back to "newest lead row with this email" — the same approximate join
@@ -78,6 +85,27 @@ DEVIATION_DEDUP_DAYS = 6
 DEFAULT_ZERO_CONVERSION_SPEND_FLOOR_ILS = 300
 DEFAULT_AD_SPEND_DRIFT_PCT_HIGH = 130
 DEFAULT_AD_SPEND_DRIFT_PCT_LOW = 50
+
+# ─── Cross-platform comparison thresholds ────────────────────────────────────
+# "Meaningful": the worse platform pays >= this multiple of the better
+# platform's cost-per-result (1.5 = 50% more expensive). Admin-tunable via
+# app_settings ('cross_platform_gap_ratio'), like the drift thresholds.
+DEFAULT_CROSS_PLATFORM_GAP_RATIO = 1.5
+# Both platforms must have real skin in the game before a comparison means
+# anything — below this 30-day spend, cost-per-result is noise.
+DEFAULT_CROSS_PLATFORM_MIN_SPEND_ILS = 300
+# Minimum outcome volume per platform for each metric mode. Tiny denominators
+# make cost-per-result swing wildly (2 conversions vs 3 is a 50% "gap").
+CPR_MIN_CONVERSIONS_EACH = 3
+CPC_MIN_CLICKS_EACH = 30
+# "Sustained": the same-direction meaningful gap must appear in a PREVIOUS
+# weekly snapshot this many days back (two independent 30-day reads, ~a week
+# apart) before it becomes a recommendation — never a single window's noise.
+SUSTAINED_LOOKBACK_MIN_DAYS = 5
+SUSTAINED_LOOKBACK_MAX_DAYS = 21
+# A reallocation recommendation is a bigger ask than a threshold alert —
+# re-nudge at most every ~2 weeks, not weekly.
+REALLOCATION_DEDUP_DAYS = 13
 
 # Created lazily — no DB client at import time (api_server imports every agent at startup)
 _db_instance = None
@@ -181,6 +209,85 @@ def get_ad_spend(client_id: int) -> dict:
         "google_ads": google, "meta_ads": meta,
         "total_ils": total, "period": "last_30_days", "confidence": HARD,
         "source": "live Google Ads / Meta Marketing API (agents.google_ads_agent / meta_ads_agent)",
+    }
+
+
+# ─── Cross-platform performance comparison (extension, 2026-07-23) ───────────
+
+def compare_platform_performance(ad_spend: dict, gap_ratio: float = DEFAULT_CROSS_PLATFORM_GAP_RATIO,
+                                 min_spend: float = DEFAULT_CROSS_PLATFORM_MIN_SPEND_ILS) -> dict:
+    """Cost-per-result across the client's connected PAID platforms, from the
+    ad_spend dict get_ad_spend already built (never a second fetch). Pure
+    computation — safe to call anywhere.
+
+    Metric choice, in honesty order:
+    - cost_per_conversion when EVERY qualifying platform has >=
+      CPR_MIN_CONVERSIONS_EACH recorded conversions — the real outcome metric.
+    - cost_per_click as an explicit PROXY when conversions are unusable
+      (asymmetric/absent tracking) but every platform has >=
+      CPC_MIN_CLICKS_EACH clicks. A weaker signal, and labeled as one.
+    - Otherwise: not comparable, with the reason stated — never a comparison
+      built on numbers too thin to mean anything.
+
+    The comparison's confidence is ESTIMATE even though every input is HARD:
+    'conversions' means Google's conversion column on one side and our summed
+    CONVERSION_ACTION_TYPES on Meta's side — real numbers, but not a
+    perfectly identical definition, so the comparison inherits that fuzz.
+    Platform list is data-driven: a future paid platform (e.g. TikTok Ads)
+    joins by appearing in ad_spend with the same totals shape."""
+    platforms = []
+    for key, label in (("google_ads", "Google Ads"), ("meta_ads", "Meta")):
+        perf = ad_spend.get(key) or {}
+        totals = perf.get("totals") or {}
+        if perf.get("connected") and not perf.get("error") and totals.get("cost", 0) > 0:
+            platforms.append({"platform": key, "label": label, **totals})
+
+    if len(platforms) < 2:
+        return {"applicable": False,
+                "reason": "fewer than two paid platforms with real 30-day spend"}
+    thin = [p["label"] for p in platforms if p["cost"] < min_spend]
+    if thin:
+        return {"applicable": False,
+                "reason": f"spend below the {min_spend} ILS/30d comparison floor on: "
+                          f"{', '.join(thin)} — cost-per-result would be noise"}
+
+    if all(p["conversions"] >= CPR_MIN_CONVERSIONS_EACH for p in platforms):
+        metric, metric_note = "cost_per_conversion", None
+        for p in platforms:
+            p["cost_per_result"] = round(p["cost"] / p["conversions"], 2)
+    elif all(p["clicks"] >= CPC_MIN_CLICKS_EACH for p in platforms):
+        metric = "cost_per_click"
+        metric_note = ("PROXY metric: conversion data is absent or asymmetric across "
+                       "platforms (different/missing tracking setups), so this compares "
+                       "cost per CLICK — a real but much weaker signal than cost per "
+                       "conversion. Fixing conversion tracking is worth more than "
+                       "reallocating on clicks.")
+        for p in platforms:
+            p["cost_per_result"] = round(p["cost"] / p["clicks"], 2)
+    else:
+        return {"applicable": False,
+                "reason": ("outcome volume too low to compare honestly (need >= "
+                           f"{CPR_MIN_CONVERSIONS_EACH} conversions each, or >= "
+                           f"{CPC_MIN_CLICKS_EACH} clicks each for the click proxy)")}
+
+    ranked = sorted(platforms, key=lambda p: p["cost_per_result"])
+    better, worse = ranked[0], ranked[-1]
+    ratio = round(worse["cost_per_result"] / better["cost_per_result"], 2) if better["cost_per_result"] else None
+    return {
+        "applicable": True,
+        "metric": metric,
+        "metric_note": metric_note,
+        "platforms": ranked,
+        "better": better["platform"],
+        "worse": worse["platform"],
+        "gap_ratio": ratio,
+        "meaningful": bool(ratio and ratio >= gap_ratio),
+        "gap_ratio_threshold": gap_ratio,
+        "confidence": ESTIMATE,
+        "note": ("Spend/conversions/clicks are HARD (live platform APIs), but 'conversions' "
+                 "is not an identical definition across platforms (Google's conversion column "
+                 "vs our summed Meta action types) — treat the comparison as directional, "
+                 "not exact. Recommendation-only: reallocation is a human decision."),
     }
 
 
@@ -400,6 +507,8 @@ def get_financial_picture(client_id: int) -> dict:
         },
         "our_revenue_and_cost_adjusted": adjusted,
         "ad_spend": ad_spend,
+        # Reuses the ad_spend dict fetched above — never a second API pass
+        "cross_platform_comparison": compare_platform_performance(ad_spend),
         "external_client_paid_costs": external,
         "internal_cost_gaps": gaps,
         "forecast": forecast,
@@ -414,13 +523,26 @@ def _snapshot(client_id: int, picture: dict):
     table) — so get_trend() below is a real recorded time series, not a
     single always-current snapshot re-derived on each call."""
     our = picture["our_revenue_and_cost"]
-    _log_activity(client_id, "budget_snapshot_recorded", {
+    details = {
         "monthly_fee_ils": our["monthly_fee_ils"],
         "cost_month_ils": our["cost_month_ils"],
         "margin_month_ils": our["margin_month_ils"],
         "ad_spend_30d_ils": picture["ad_spend"]["total_ils"],
         "ad_spend_vs_forecast_ratio_pct": (picture.get("ad_spend_vs_forecast") or {}).get("ratio_pct"),
-    })
+    }
+    comparison = picture.get("cross_platform_comparison") or {}
+    if comparison.get("applicable"):
+        # Compact record per scan — this is what makes "sustained" a real,
+        # recorded property (two independent 30-day reads a week apart)
+        # instead of a judgment call re-derived from one window.
+        details["cross_platform"] = {
+            "metric": comparison["metric"],
+            "better": comparison["better"],
+            "worse": comparison["worse"],
+            "gap_ratio": comparison["gap_ratio"],
+            "meaningful": comparison["meaningful"],
+        }
+    _log_activity(client_id, "budget_snapshot_recorded", details)
 
 
 def get_trend(client_id: int, points: int = 12) -> dict:
@@ -441,14 +563,35 @@ def get_trend(client_id: int, points: int = 12) -> dict:
 
 # ─── Deviation alerts (weekly scan) ────────────────────────────────────────────
 
-def _already_alerted(client_id: int, issue_key: str) -> bool:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=DEVIATION_DEDUP_DAYS)).isoformat()
+def _already_alerted(client_id: int, issue_key: str, days: int = DEVIATION_DEDUP_DAYS) -> bool:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = (_db().table("client_activity").select("id")
             .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
             .eq("action_type", "budget_deviation_flagged")
             .eq("details->>issue_key", issue_key)
             .gte("created_at", cutoff).limit(1).execute().data)
     return bool(rows)
+
+
+def _gap_sustained(client_id: int, comparison: dict) -> bool:
+    """True when a PREVIOUS weekly snapshot (5-21 days back) already recorded
+    a meaningful gap in the SAME direction (same better platform, same
+    metric). Two independent 30-day reads about a week apart is the working
+    definition of 'sustained' here — the first sighting is recorded by
+    _snapshot and deliberately NOT alerted."""
+    low = (datetime.now(timezone.utc) - timedelta(days=SUSTAINED_LOOKBACK_MAX_DAYS)).isoformat()
+    high = (datetime.now(timezone.utc) - timedelta(days=SUSTAINED_LOOKBACK_MIN_DAYS)).isoformat()
+    rows = (_db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "budget_snapshot_recorded")
+            .gte("created_at", low).lte("created_at", high)
+            .order("created_at", desc=True).limit(5).execute().data or [])
+    for row in rows:
+        prev = (row.get("details") or {}).get("cross_platform") or {}
+        if (prev.get("meaningful") and prev.get("better") == comparison.get("better")
+                and prev.get("metric") == comparison.get("metric")):
+            return True
+    return False
 
 
 def _check_deviations(client_id: int, picture: dict, settings: dict) -> list:
@@ -509,6 +652,14 @@ def run_weekly_scan() -> dict:
             picture = get_financial_picture(client_id)
             if not picture.get("available"):
                 continue
+            # Recompute the comparison with the admin-tuned thresholds so the
+            # snapshot's recorded 'meaningful' and the alert below agree on
+            # one definition (the picture default uses the module constants)
+            comparison = compare_platform_performance(
+                picture["ad_spend"],
+                gap_ratio=settings.get("cross_platform_gap_ratio", DEFAULT_CROSS_PLATFORM_GAP_RATIO),
+                min_spend=settings.get("cross_platform_min_spend_ils", DEFAULT_CROSS_PLATFORM_MIN_SPEND_ILS))
+            picture["cross_platform_comparison"] = comparison
             _snapshot(client_id, picture)
             summary["clients_scanned"] += 1
             for issue_key, message in _check_deviations(client_id, picture, settings):
@@ -516,6 +667,42 @@ def run_weekly_scan() -> dict:
                     continue
                 _log_activity(client_id, "budget_deviation_flagged", {"issue_key": issue_key})
                 agent_alert(AGENT_NAME, [message])
+                summary["alerts_raised"] += 1
+
+            # Cross-platform reallocation RECOMMENDATION (to Johnny, never an
+            # automatic reallocation — requires business judgment): only when
+            # the gap is meaningful NOW and was already meaningful in the same
+            # direction a scan ago (_gap_sustained). First sighting just gets
+            # recorded by the snapshot above.
+            if (comparison.get("meaningful") and _gap_sustained(client_id, comparison)
+                    and not _already_alerted(client_id, "cross_platform_reallocation",
+                                             days=REALLOCATION_DEDUP_DAYS)):
+                by_key = {p["platform"]: p for p in comparison["platforms"]}
+                better, worse = by_key[comparison["better"]], by_key[comparison["worse"]]
+                unit = ("conversion" if comparison["metric"] == "cost_per_conversion"
+                        else "click (PROXY — see note)")
+                lines = [
+                    f"client {client_id}: sustained cross-platform efficiency gap — "
+                    f"{better['label']} is producing results at {better['cost_per_result']} ILS/{unit} "
+                    f"vs {worse['label']} at {worse['cost_per_result']} ILS/{unit} "
+                    f"({comparison['gap_ratio']}x, threshold {comparison['gap_ratio_threshold']}x), "
+                    f"seen in two weekly reads ~a week apart.",
+                    f"  30d basis: {better['label']} spend {better['cost']} ILS / "
+                    f"{better['conversions']} conv / {better['clicks']} clicks; "
+                    f"{worse['label']} spend {worse['cost']} ILS / "
+                    f"{worse['conversions']} conv / {worse['clicks']} clicks.",
+                    f"  RECOMMENDATION ONLY - consider shifting budget toward {better['label']}; "
+                    "reallocation is a human decision. Caveat: conversion definitions are not "
+                    "identical across platforms (directional, not exact).",
+                ]
+                if comparison.get("metric_note"):
+                    lines.append(f"  NOTE: {comparison['metric_note']}")
+                _log_activity(client_id, "budget_deviation_flagged",
+                              {"issue_key": "cross_platform_reallocation",
+                               "metric": comparison["metric"],
+                               "better": comparison["better"], "worse": comparison["worse"],
+                               "gap_ratio": comparison["gap_ratio"]})
+                agent_alert(AGENT_NAME, lines)
                 summary["alerts_raised"] += 1
         except Exception as e:
             summary["errors"] += 1
