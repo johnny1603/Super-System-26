@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from supabase import create_client as _supabase_create_client, Client
 
@@ -2409,6 +2409,15 @@ def filter_questions_endpoint(req: FilterRequest):
         print(f"Filter error: {e}")
         traceback.print_exc()
         return {"skip_ids": []}
+
+# TikTok domain verification (signature-file method) — must resolve at the
+# site root exactly, so it's registered as a route BEFORE the root catch-all
+# mount below (routes beat mounts, but keep the visual ordering honest too).
+# Needed for TikTok developer-app URL-ownership verification; harmless to
+# keep serving permanently.
+@app.get("/tiktokrJGb1d7R9INmQdVAEt5me4e6LEOQtAXk.txt", include_in_schema=False)
+async def tiktok_domain_verification():
+    return PlainTextResponse("tiktok-developers-site-verification=rJGb1d7R9INmQdVAEt5me4e6LEOQtAXk")
 
 # Must be last — catch-all for the landing page
 app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")
