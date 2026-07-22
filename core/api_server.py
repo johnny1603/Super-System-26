@@ -929,7 +929,7 @@ async def client_logout(response: Response):
 # they all die together - the revoke kills the single underlying grant.
 _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
-    "meta": ["meta_ads", "meta_page", "meta_instagram"],
+    "meta": ["meta_ads", "meta_page", "meta_instagram", "meta_pending"],
     "tiktok": ["tiktok"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
@@ -1418,9 +1418,6 @@ def meta_oauth_callback(state: str = "", code: str = "", error: str = ""):
 
         ad_accounts = meta_service.get_ad_accounts(user_token)
         pages = meta_service.get_pages(user_token)
-        if not ad_accounts and not pages:
-            print(f"[meta oauth] client {client_id}: authorized user has no ad accounts or Pages")
-            return RedirectResponse(url="/dashboard/?connect_error=no_meta_assets")
 
         # One consent connects every asset the user has: ad account for the ads
         # agent, Page (+ linked Instagram) for the content agent. MVP: first of
@@ -1444,6 +1441,20 @@ def meta_oauth_callback(state: str = "", code: str = "", error: str = ""):
             if instagram_id:
                 upsert_account(client_id, "meta_instagram", instagram_id, page_token, "active")
                 connected["instagram"] = instagram_id
+        else:
+            # No Page (with or without an ad account) is a GUIDED state now,
+            # not an error: park the user token so the detection scan can
+            # watch me/accounts (no-assets case - the ads row already holds it
+            # otherwise), send the create-your-Page guide, and tell the
+            # dashboard to explain what happens next. The old
+            # connect_error=no_meta_assets dead-end is gone on purpose.
+            from agents.meta_content_agent import send_page_creation_guide
+            if not ad_accounts:
+                upsert_account(client_id, "meta_pending", "pending_page", user_token, "active")
+                connected["pending_page_token"] = True
+            send_page_creation_guide(client_id)
+            log_activity(client_id, "meta_ads_agent", "account_connected", connected, {})
+            return RedirectResponse(url="/dashboard/?connected=meta_no_page")
 
         log_activity(client_id, "meta_ads_agent", "account_connected", connected, {})
         return RedirectResponse(url="/dashboard/?connected=meta")
@@ -1569,9 +1580,13 @@ def meta_content_inbox(client_id: int):
 
 @app.get("/api/meta-content/scan", dependencies=_admin_only)
 def meta_content_scan():
-    from agents.meta_content_agent import run_inbox_scan
+    # Two scans per scheduler hit: the comment/DM inbox sweep, plus detection
+    # of self-created Pages for guided no-Page clients (see the meta skill's
+    # No-Page flow) - piggybacked here so no extra Cloud Scheduler job exists
+    from agents.meta_content_agent import run_inbox_scan, run_page_detection_scan
     try:
-        return {"success": True, "data": run_inbox_scan()}
+        return {"success": True, "data": {"inbox": run_inbox_scan(),
+                                          "page_detection": run_page_detection_scan()}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

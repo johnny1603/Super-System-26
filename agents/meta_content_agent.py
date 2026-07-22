@@ -26,6 +26,15 @@ from core.agent_base import agent_alert, log_step, timed_step
 AGENT_NAME = "meta_content_agent"
 PAGE_PLATFORM = "meta_page"            # account_id=Page id, access_token=Page token
 INSTAGRAM_PLATFORM = "meta_instagram"  # account_id=IG business id, same Page token
+# A client who authorized Meta but has NO Page yet: the long-lived USER token
+# is parked here so run_page_detection_scan can keep calling me/accounts until
+# their self-created Page appears — then it's swapped for real meta_page/
+# meta_instagram rows and this row is deleted. Without parking the token, a
+# no-assets client would need a full "reconnect" once their Page exists, which
+# is exactly the friction the guided flow removes.
+PENDING_PLATFORM = "meta_pending"
+
+PAGE_GUIDE_DEDUP_DAYS = 3  # a client retrying "Connect" shouldn't get the guide spammed
 
 VALID_TARGETS = ("facebook", "instagram")
 # facebook: text | link | photo | video (FB Reels need a separate resumable-upload
@@ -90,6 +99,165 @@ def page_connected_client_ids() -> list:
         .execute()
     )
     return sorted({row["client_id"] for row in (result.data or [])})
+
+
+# ─── No-Page flow: guided self-creation + auto-detection ─────────────────────
+# Page creation via API was deliberately NOT attempted: Meta's Pages API has
+# no reliable, generally-available "create a Page programmatically on the
+# user's behalf" path for a standard Business app — while the native flow is
+# a genuinely quick few clicks the client does once. Guide + auto-detect
+# beats a fragile API path here.
+
+# Static, not LLM-generated: unlike a filming kit (per-business creative),
+# these steps are identical for every client — only the language varies, and
+# the stored profile preference picks the variant (email-language pattern).
+_PAGE_GUIDE = {
+    "he": ("כדי שנוכל לפרסם בשבילך בפייסבוק ובאינסטגרם, צריך עמוד עסקי (Page) — "
+           "וזה משהו שרק בעל החשבון יכול ליצור, לכן זה אצלך. זה לוקח 2-3 דקות:\n"
+           "1. היכנסו ל-facebook.com/pages/create (או באפליקציה: תפריט ← דפים ← יצירת דף)\n"
+           "2. שם הדף = שם העסק שלך\n"
+           "3. בחרו קטגוריה שמתאימה לתחום\n"
+           "4. העלו תמונת פרופיל (לוגו אם יש) ותמונת נושא\n"
+           "5. זהו! אין צורך לחבר שוב — המערכת שלנו תזהה את הדף החדש אוטומטית "
+           "תוך מספר שעות ותעדכן אותך כאן 🎉"),
+    "en": ("To publish for you on Facebook and Instagram we need a business Page — "
+           "and only the account owner can create one, which is why this step is yours. "
+           "It takes 2-3 minutes:\n"
+           "1. Go to facebook.com/pages/create (or in the app: Menu → Pages → Create)\n"
+           "2. Page name = your business name\n"
+           "3. Pick a category that fits your field\n"
+           "4. Upload a profile picture (your logo if you have one) and a cover photo\n"
+           "5. That's it! No need to reconnect — our system detects the new Page "
+           "automatically within a few hours and will update you here 🎉"),
+    "fr": ("Pour publier pour vous sur Facebook et Instagram, il faut une Page "
+           "professionnelle — et seul le propriétaire du compte peut la créer, c'est "
+           "pourquoi cette étape vous revient. Cela prend 2-3 minutes :\n"
+           "1. Allez sur facebook.com/pages/create (ou dans l'appli : Menu → Pages → Créer)\n"
+           "2. Nom de la Page = le nom de votre entreprise\n"
+           "3. Choisissez une catégorie adaptée à votre domaine\n"
+           "4. Ajoutez une photo de profil (votre logo si vous en avez un) et une couverture\n"
+           "5. C'est tout ! Pas besoin de reconnecter — notre système détecte la nouvelle "
+           "Page automatiquement sous quelques heures et vous informera ici 🎉"),
+    "ar": ("لكي ننشر نيابةً عنك على فيسبوك وإنستغرام نحتاج إلى صفحة أعمال (Page) — "
+           "وصاحب الحساب وحده يستطيع إنشاءها، ولهذا هذه الخطوة لك. تستغرق 2-3 دقائق:\n"
+           "1. ادخلوا إلى facebook.com/pages/create (أو في التطبيق: القائمة ← الصفحات ← إنشاء)\n"
+           "2. اسم الصفحة = اسم عملك\n"
+           "3. اختاروا فئة تناسب مجالكم\n"
+           "4. أضيفوا صورة الملف الشخصي (الشعار إن وجد) وصورة الغلاف\n"
+           "5. هذا كل شيء! لا حاجة لإعادة الربط — نظامنا يكتشف الصفحة الجديدة تلقائيًا "
+           "خلال ساعات قليلة وسيحدثكم هنا 🎉"),
+    "ru": ("Чтобы публиковать за вас в Facebook и Instagram, нужна бизнес-страница (Page) — "
+           "создать её может только владелец аккаунта, поэтому этот шаг за вами. "
+           "Это занимает 2-3 минуты:\n"
+           "1. Откройте facebook.com/pages/create (или в приложении: Меню → Страницы → Создать)\n"
+           "2. Название страницы = название вашего бизнеса\n"
+           "3. Выберите подходящую категорию\n"
+           "4. Загрузите фото профиля (логотип, если есть) и обложку\n"
+           "5. Готово! Повторно подключаться не нужно — наша система обнаружит новую "
+           "страницу автоматически в течение нескольких часов и сообщит вам здесь 🎉"),
+}
+
+
+def send_page_creation_guide(client_id: int) -> dict:
+    """The guided "create your Page yourself" instructions, via dashboard chat
+    — sent by the OAuth callback when the authorized user has no Page. Static
+    steps in the client's stored language preference (Facebook's native flow
+    is identical for everyone; no LLM call for fixed content). Deduped so a
+    client retrying "Connect" a few times isn't spammed."""
+    from agents.client_agent import get_activity, get_client, log_communication, log_activity
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=PAGE_GUIDE_DEDUP_DAYS)).isoformat()
+    for entry in get_activity(client_id, limit=50):
+        if (entry.get("agent_name") == AGENT_NAME
+                and entry.get("action_type") == "page_guide_sent"
+                and (entry.get("created_at") or "") >= cutoff):
+            return {"success": True, "deduped": True}
+
+    client = get_client(client_id)
+    language = (client.get("language") or "he").lower()
+    log_communication(client_id, "outbound", "dashboard_chat",
+                      _PAGE_GUIDE.get(language, _PAGE_GUIDE["he"]))
+    log_activity(client_id, AGENT_NAME, "page_guide_sent", {"language": language}, {})
+    log_step(AGENT_NAME, "send_page_creation_guide", f"client {client_id} ({language})")
+    return {"success": True, "deduped": False}
+
+
+def _page_guide_sent_client_ids() -> list:
+    """Clients who were sent the creation guide — the ONLY population the
+    detection scan watches. Deliberately not 'every ads-only client': a
+    long-standing ads-only client who happens to manage some Page never asked
+    us to connect it, and silently connecting it would be a surprise, not a
+    feature."""
+    rows = (_db().table("client_activity").select("client_id")
+            .eq("agent_name", AGENT_NAME).eq("action_type", "page_guide_sent")
+            .limit(500).execute().data or [])
+    return sorted({r["client_id"] for r in rows})
+
+
+def run_page_detection_scan() -> dict:
+    """For every guided no-Page client who still has no meta_page row: call
+    me/accounts with their parked/stored user token; the moment their
+    self-created Page appears, connect it exactly like the OAuth callback
+    would have (Page + linked IG, first-asset MVP), clean up the parked
+    token row, and tell the client. Folded into the existing
+    /api/meta-content/scan scheduler hits — no new job."""
+    from agents.client_agent import log_activity, log_communication, remove_accounts, upsert_account
+
+    summary = {"clients_scanned": 0, "pages_connected": 0, "failures": 0}
+    for client_id in _page_guide_sent_client_ids():
+        if is_connected(client_id):
+            continue  # already resolved (detected earlier, or a manual reconnect)
+        # The user token is parked on meta_pending (no-assets case) or already
+        # stored on meta_ads (ad-account-only case) — either works for me/accounts
+        token_row = (_get_connection(client_id, PENDING_PLATFORM)
+                     or _get_connection(client_id, "meta_ads"))
+        user_token = token_row.get("access_token", "")
+        if not user_token:
+            continue
+        summary["clients_scanned"] += 1
+        try:
+            pages = meta.get_pages(user_token)
+            if not pages:
+                continue
+            page = pages[0]
+            if len(pages) > 1:
+                log_step(AGENT_NAME, "page_detection",
+                         f"client {client_id}: {len(pages)} Pages, using {page['id']} (first-asset MVP)")
+            page_token = page.get("access_token") or user_token
+            upsert_account(client_id, PAGE_PLATFORM, page["id"], page_token, "active")
+            connected = {"page": page["id"], "via": "page_detection_scan"}
+            instagram_id = (page.get("instagram_business_account") or {}).get("id")
+            if instagram_id:
+                upsert_account(client_id, INSTAGRAM_PLATFORM, instagram_id, page_token, "active")
+                connected["instagram"] = instagram_id
+            remove_accounts(client_id, [PENDING_PLATFORM])  # parked token no longer needed
+            log_activity(client_id, AGENT_NAME, "account_connected", connected, {})
+            log_communication(client_id, "outbound", "dashboard_chat",
+                              f'זיהינו את העמוד העסקי החדש שלך בפייסבוק ("{page.get("name", "")}") '
+                              'וחיברנו אותו אוטומטית — הכל מוכן, אין צורך בשום פעולה נוספת 🎉')
+            summary["pages_connected"] += 1
+        except Exception as e:
+            summary["failures"] += 1
+            if meta.is_token_error(e):
+                # ~60-day user token died before they created the Page — only a
+                # real reconnect can mint a new one.
+                if token_row.get("platform") == PENDING_PLATFORM:
+                    # Drop the dead parked row so this client leaves the scan
+                    # population (no token → skipped) instead of re-alerting on
+                    # every scheduler hit.
+                    remove_accounts(client_id, [PENDING_PLATFORM])
+                    agent_alert(AGENT_NAME, [
+                        f"client {client_id}: parked Meta user token expired before their Page "
+                        f"was created - they need to tap Connect again (guide was sent)"])
+                else:
+                    # meta_ads token — the daily ads health scan owns that alert
+                    # (refresh/reconnect flow); don't double-alert from here
+                    log_step(AGENT_NAME, "page_detection",
+                             f"client {client_id}: meta_ads token dead (ads scan handles it)")
+            else:
+                log_step(AGENT_NAME, "page_detection", f"client {client_id}: {e}")
+    log_step(AGENT_NAME, "run_page_detection_scan", f"done - {summary}")
+    return summary
 
 
 # ─── Publishing ───────────────────────────────────────────────────────────────

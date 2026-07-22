@@ -43,6 +43,7 @@ The callback exchanges code → short-lived token → **long-lived user token
 | `meta_ads` | ad account id (`act_...`, keep prefix) | long-lived USER token |
 | `meta_page` | Page id | PAGE token (no expiry when derived from a long-lived user token) |
 | `meta_instagram` | IG business account id | same PAGE token |
+| `meta_pending` (only while no Page exists) | `pending_page` | long-lived USER token, parked for the detection scan |
 
 - App credentials: `META_APP_ID` / `META_APP_SECRET` (in keys_agent `KEYS`) —
   the equivalent of `GOOGLE_OAUTH_CLIENT_ID/SECRET`. No developer-token
@@ -57,8 +58,39 @@ The callback exchanges code → short-lived token → **long-lived user token
   still-valid long-lived token returns a fresh 60-day one. If it's already dead
   (error code 190), the scan alerts "client must reconnect".
 - A user may have a Page but no ad account (or vice versa) — the callback
-  connects whatever exists; error only when there's neither
-  (`connect_error=no_meta_assets`).
+  connects whatever exists. **No Page is a GUIDED state, not an error**
+  (2026-07-22; the old `connect_error=no_meta_assets` dead-end is gone) —
+  see "No-Page flow" below.
+
+## No-Page flow (guided self-creation + auto-detection, 2026-07-22)
+
+Page creation via API was deliberately NOT attempted — Meta has no reliable
+generally-available "create a Page for the user" path for a standard
+Business app, while the native flow is a quick few clicks only the account
+owner can do. So when the callback finds no Page:
+
+1. The long-lived user token is kept: on `meta_ads` if an ad account exists,
+   otherwise PARKED on a `meta_pending` row (`account_id='pending_page'`) —
+   without parking it, a no-assets client would need a full reconnect later.
+   `meta_pending` is in `_DISCONNECT_GROUPS["meta"]`.
+2. `meta_content_agent.send_page_creation_guide()` sends step-by-step
+   instructions via dashboard chat — STATIC text in the client's stored
+   language preference (`clients.language`), not LLM-generated (the native
+   Facebook flow is identical for everyone; only language varies). Deduped
+   3 days (`page_guide_sent` activity rows).
+3. Redirect is `?connected=meta_no_page` → the dashboard shows the shared
+   pre-action explanation popup (`preactExplain('meta_page')`) covering what
+   happened and why this part is the client's.
+4. `run_page_detection_scan()` (piggybacked on the existing
+   `/api/meta-content/scan` scheduler hits — no new job; the endpoint now
+   returns `{inbox, page_detection}`) watches `me/accounts` for every
+   guided client (`page_guide_sent` rows are the ONLY scan population — a
+   long-standing ads-only client who never asked is deliberately not
+   auto-connected) until the Page appears, then connects Page + linked IG
+   exactly like the callback would, deletes the parked row, and notifies
+   the client via chat. A dead parked token (60-day expiry before they got
+   around to it) alerts once and removes the row — the client must tap
+   Connect again.
 
 ## Access-tier reality (why testing is on our own Pages)
 
@@ -115,7 +147,9 @@ Admin/scheduler (X-Admin-Key): `POST /api/meta-ads/create-campaign`,
 `GET /api/meta-ads/scan` (daily), `GET /api/meta-ads/weekly-report` (weekly),
 `POST /api/meta-content/publish`, `POST /api/meta-content/reply`,
 `GET /api/meta-content/inbox?client_id=`, `GET /api/meta-content/scan`
-(few times daily), `GET /api/meta-content/engagement?client_id=`.
+(few times daily — runs BOTH the inbox sweep and the no-Page detection
+scan, returns `{inbox, page_detection}`),
+`GET /api/meta-content/engagement?client_id=`.
 
 Cloud Scheduler jobs (same pattern as google-ads-scan):
 

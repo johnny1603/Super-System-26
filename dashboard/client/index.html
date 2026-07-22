@@ -505,6 +505,29 @@ body {
   background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed;
 }
 .confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
+
+/* ---------- PRE-ACTION EXPLANATION (shared across ALL manual-step flows) ---------- */
+/* One component for every "the client does this part themselves" moment:
+   WordPress app-password, HeyGen web-UI creation, Higgsfield key, TikTok
+   inbox-publish, Meta Page creation. Never reinvent per-integration. */
+.preact-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  z-index: 600; display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.preact-overlay.open { display: flex; animation: fadeIn 0.2s ease; }
+.preact-modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+  max-width: 440px; width: 100%; padding: 26px 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+}
+.preact-icon { width: 46px; height: 46px; border-radius: 13px; background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 21px; margin-bottom: 14px; }
+.preact-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+.preact-body { font-size: 13.5px; color: var(--gray); line-height: 1.65; white-space: pre-line; }
+.preact-btns { display: flex; gap: 8px; margin-top: 18px; }
+.preact-btns .conn-btn { width: auto; flex: 1; }
+.preact-btns .conn-btn.cancel { background: transparent; color: var(--gray); border: 1px solid var(--border); }
+.preact-btns .conn-btn.cancel:hover { color: var(--white); }
 </style>
 </head>
 <body>
@@ -690,7 +713,7 @@ body {
           <div class="conn-status" id="tiktokStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="tiktokBtn" onclick="connectTiktok()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="tiktokBtn" onclick="connectTiktokExplained()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -704,7 +727,7 @@ body {
         </div>
       </div>
       <div class="site-choice-row" id="siteChoiceRow">
-        <button class="conn-btn primary" id="siteBtn" onclick="toggleSiteForm()" data-i18n="connect_now">חבר עכשיו</button>
+        <button class="conn-btn primary" id="siteBtn" onclick="openSiteFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
         <button class="conn-btn secondary" id="siteCreateBtn" onclick="toggleCreateSiteForm()" data-i18n="site_create_new">אין לי אתר — הקימו לי אחד</button>
       </div>
       <div id="siteForm" style="display:none; margin-top:10px;">
@@ -733,7 +756,7 @@ body {
           <div class="conn-status" id="higgsfieldStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="higgsfieldBtn" onclick="toggleHiggsfieldForm()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="higgsfieldBtn" onclick="openHiggsfieldFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
       <div id="higgsfieldForm" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="higgsfield_signup_note">נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.</div>
         <input class="site-input" id="higgsfieldKey" dir="ltr" type="password" data-i18n-placeholder="higgsfield_key_ph" placeholder="Higgsfield API Key">
@@ -751,7 +774,7 @@ body {
           <div class="conn-status" id="avatarStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="avatarBtn" onclick="toggleAvatarForm()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="avatarBtn" onclick="openAvatarFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
       <div id="avatarForm" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="avatar_signup_note">שירות בתשלום נפרד מדמי הניהול. נרשמים בחשבונכם ובאמצעי התשלום שלכם ל-HeyGen (ולרצון גם ל-ElevenLabs לשיבוט קול), יוצרים מפתחות API בהגדרות החשבון, ומדביקים כאן — המנויים לכלים משולמים ישירות דרככם.</div>
         <input class="site-input" id="avatarHeygenKey" dir="ltr" type="password" data-i18n-placeholder="avatar_heygen_ph" placeholder="HeyGen API Key">
@@ -863,6 +886,19 @@ body {
 
 <!-- ---------- UPGRADE PANEL ---------- -->
 <div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
+
+<!-- ---------- PRE-ACTION EXPLANATION MODAL (shared - see preactExplain) ---------- -->
+<div class="preact-overlay" id="preactOverlay">
+  <div class="preact-modal">
+    <div class="preact-icon" id="preactIcon">💡</div>
+    <div class="preact-title" id="preactTitle"></div>
+    <div class="preact-body" id="preactBody"></div>
+    <div class="preact-btns">
+      <button class="conn-btn primary" id="preactContinue"></button>
+      <button class="conn-btn cancel" onclick="closePreact()" id="preactCancel"></button>
+    </div>
+  </div>
+</div>
 <div class="upgrade-panel" id="upgradePanel">
   <button class="upgrade-close" onclick="toggleUpgradePanel()">✕</button>
   <div style="font-size:18px; font-weight:800; margin:6px 0 4px 0;" data-i18n="upgrade_title">שדרוג חבילה</div>
@@ -1036,6 +1072,19 @@ const DASH_I18N = {
   notice_gads_connected: { he:'חשבון Google Ads חובר בהצלחה ✓', en:'Google Ads account connected ✓', fr:'Compte Google Ads connecté ✓', ar:'تم ربط حساب Google Ads بنجاح ✓', ru:'Аккаунт Google Ads подключён ✓' },
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
+  notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
+  preact_continue: { he:'הבנתי, ממשיכים', en:'Got it, continue', fr:'Compris, continuer', ar:'فهمت، لنكمل', ru:'Понятно, продолжить' },
+  preact_cancel: { he:'אולי אחר כך', en:'Maybe later', fr:'Plus tard', ar:'ربما لاحقًا', ru:'Может, позже' },
+  preact_wordpress_title: { he:'רגע לפני שמחברים את האתר', en:'Before connecting your site', fr:'Avant de connecter votre site', ar:'قبل ربط موقعكم', ru:'Перед подключением сайта' },
+  preact_wordpress_body: { he:'כדי לעבוד על האתר בצורה מאובטחת, וורדפרס דורש "סיסמת אפליקציה" — סיסמה נפרדת שרק אתם יכולים ליצור, מתוך ניהול האתר שלכם (משתמשים ← פרופיל ← Application Passwords). זו לא הסיסמה הרגילה שלכם, ואפשר לבטל אותה בכל רגע. ניצור אתכם שלב-שלב בטופס הבא.', en:'To work on your site securely, WordPress requires an "Application Password" — a separate password only YOU can create, from your own site admin (Users → Profile → Application Passwords). It\'s not your regular password, and you can revoke it anytime. The next form walks you through it step by step.', fr:'Pour travailler sur votre site en toute sécurité, WordPress exige un « Application Password » — un mot de passe distinct que vous seul pouvez créer, depuis l\'admin de votre site (Utilisateurs → Profil → Application Passwords). Ce n\'est pas votre mot de passe habituel, et il est révocable à tout moment. Le formulaire suivant vous guide pas à pas.', ar:'للعمل على موقعكم بأمان، يتطلب WordPress "كلمة مرور تطبيق" — كلمة مرور منفصلة أنتم وحدكم من يستطيع إنشاءها، من إدارة موقعكم (المستخدمون ← الملف الشخصي ← Application Passwords). ليست كلمة المرور العادية، ويمكن إلغاؤها في أي وقت. النموذج التالي يرشدكم خطوة بخطوة.', ru:'Для безопасной работы с сайтом WordPress требует «пароль приложения» — отдельный пароль, который можете создать только вы, в админке своего сайта (Пользователи → Профиль → Application Passwords). Это не ваш обычный пароль, и его можно отозвать в любой момент. Следующая форма проведёт вас по шагам.' },
+  preact_higgsfield_title: { he:'רגע לפני חיבור יצירת המדיה', en:'Before connecting media generation', fr:'Avant de connecter la génération de médias', ar:'قبل ربط إنشاء الوسائط', ru:'Перед подключением генерации медиа' },
+  preact_higgsfield_body: { he:'יצירת התמונות והסרטונים רצה על חשבון Higgsfield שלכם — כך התשלום על היצירה עובר ישירות דרככם, בשקיפות מלאה, ולא דרכנו. לכן את מפתח ה-API רק אתם יכולים ליצור, בחשבון שלכם (cloud.higgsfield.ai/api-keys). בטופס הבא פשוט מדביקים אותו — ומכאן אנחנו מפעילים הכל בשבילכם.', en:'Image and video generation runs on YOUR Higgsfield account — so payment for generation goes directly through you, fully transparently, not through us. That\'s why only you can create the API key, in your own account (cloud.higgsfield.ai/api-keys). In the next form you just paste it — and from there we operate everything for you.', fr:'La génération d\'images et de vidéos tourne sur VOTRE compte Higgsfield — le paiement de la génération passe donc directement par vous, en toute transparence, pas par nous. C\'est pourquoi vous seul pouvez créer la clé API, dans votre compte (cloud.higgsfield.ai/api-keys). Dans le formulaire suivant, collez-la simplement — et nous opérons tout pour vous.', ar:'إنشاء الصور والفيديوهات يعمل على حساب Higgsfield الخاص بكم — فيمر الدفع مقابل الإنشاء مباشرة من خلالكم وبشفافية كاملة، وليس من خلالنا. لذلك أنتم وحدكم من يستطيع إنشاء مفتاح API، في حسابكم (cloud.higgsfield.ai/api-keys). في النموذج التالي الصقوه فقط — ومن هناك نشغّل كل شيء نيابة عنكم.', ru:'Генерация изображений и видео работает на ВАШЕМ аккаунте Higgsfield — оплата за генерацию идёт напрямую от вас, полностью прозрачно, а не через нас. Поэтому только вы можете создать API-ключ, в своём аккаунте (cloud.higgsfield.ai/api-keys). В следующей форме просто вставьте его — а дальше мы всё делаем за вас.' },
+  preact_avatar_title: { he:'רגע לפני שמתחילים עם האווטאר', en:'Before starting your avatar', fr:'Avant de commencer votre avatar', ar:'قبل البدء بالأفاتار', ru:'Перед созданием аватара' },
+  preact_avatar_body: { he:'האווטאר הדיגיטלי נוצר על חשבון HeyGen שלכם — הפנים והקול שלכם נשארים בבעלותכם, בחשבון שלכם, ולא אצלנו. לכן שני שלבים הם רק שלכם: יצירת מפתח API בחשבון, ובהמשך — יצירת האווטאר עצמו באתר HeyGen (כמה קליקים, עובד גם במסלול החינמי; נשלח הוראות מדויקות). וגם: נבקש הסכמה מפורשת לשימוש בדמות — בלי זה שום דבר לא רץ.', en:'Your digital avatar is created on YOUR HeyGen account — your face and voice stay yours, in your account, never held by us. That\'s why two steps are yours alone: creating an API key in your account, and later creating the avatar itself on HeyGen\'s site (a few clicks, works on the free plan too; we\'ll send exact instructions). Also: we\'ll ask for explicit consent to use your likeness — nothing runs without it.', fr:'Votre avatar numérique est créé sur VOTRE compte HeyGen — votre visage et votre voix restent à vous, dans votre compte, jamais chez nous. C\'est pourquoi deux étapes vous reviennent : créer une clé API dans votre compte, puis créer l\'avatar lui-même sur le site HeyGen (quelques clics, fonctionne aussi avec l\'offre gratuite ; nous enverrons des instructions précises). Aussi : nous demanderons un consentement explicite pour utiliser votre image — rien ne tourne sans cela.', ar:'يُنشأ الأفاتار الرقمي على حساب HeyGen الخاص بكم — وجهكم وصوتكم يبقيان ملككم، في حسابكم، وليس لدينا أبدًا. لذلك خطوتان لكم وحدكم: إنشاء مفتاح API في الحساب، ولاحقًا إنشاء الأفاتار نفسه في موقع HeyGen (بضع نقرات، يعمل أيضًا في الخطة المجانية؛ سنرسل تعليمات دقيقة). وأيضًا: سنطلب موافقة صريحة على استخدام صورتكم — لا شيء يعمل بدونها.', ru:'Ваш цифровой аватар создаётся на ВАШЕМ аккаунте HeyGen — ваше лицо и голос остаются вашими, в вашем аккаунте, а не у нас. Поэтому два шага только ваши: создание API-ключа в аккаунте, а позже — создание самого аватара на сайте HeyGen (несколько кликов, работает и на бесплатном тарифе; мы пришлём точные инструкции). И ещё: мы запросим явное согласие на использование вашего образа — без него ничего не запускается.' },
+  preact_tiktok_title: { he:'רגע לפני חיבור טיקטוק', en:'Before connecting TikTok', fr:'Avant de connecter TikTok', ar:'قبل ربط تيك توك', ru:'Перед подключением TikTok' },
+  preact_tiktok_body: { he:'חשוב לדעת מראש איך זה עובד: סרטונים שנכין לכם לא מתפרסמים לבד — הם מגיעים לתיבת הדואר הנכנס שלכם באפליקציית טיקטוק, ואתם פותחים, מוסיפים כיתוב (נשלח לכם הצעה מוכנה) ומפרסמים בלחיצה. ככה טיקטוק בנויה, וככה גם המילה האחרונה על כל פרסום נשארת אצלכם.', en:'Worth knowing up front how this works: videos we prepare don\'t publish by themselves — they arrive in your inbox inside the TikTok app, where you open, add a caption (we\'ll send you a ready-to-paste one) and publish with a tap. That\'s how TikTok is built, and it also keeps the final word on every post with you.', fr:'Bon à savoir d\'avance : les vidéos que nous préparons ne se publient pas toutes seules — elles arrivent dans votre boîte de réception dans l\'appli TikTok, où vous ouvrez, ajoutez une légende (nous vous en enverrons une prête à coller) et publiez d\'un geste. C\'est ainsi que TikTok fonctionne, et le dernier mot sur chaque publication reste le vôtre.', ar:'من المهم معرفة كيفية العمل مسبقًا: الفيديوهات التي نجهزها لا تُنشر من تلقاء نفسها — تصل إلى صندوق الوارد لديكم داخل تطبيق تيك توك، فتفتحونها وتضيفون تعليقًا (سنرسل لكم اقتراحًا جاهزًا) وتنشرون بنقرة. هكذا بُني تيك توك، وهكذا تبقى الكلمة الأخيرة في كل نشر لكم.', ru:'Важно знать заранее, как это работает: подготовленные нами видео не публикуются сами — они приходят в ваш входящий ящик в приложении TikTok, где вы открываете, добавляете подпись (мы пришлём готовую) и публикуете одним нажатием. Так устроен TikTok, и так последнее слово о каждой публикации остаётся за вами.' },
+  preact_meta_page_title: { he:'חסר רק עמוד עסקי בפייסבוק', en:'Only a Facebook business Page is missing', fr:'Il ne manque qu\'une Page professionnelle Facebook', ar:'ينقص فقط صفحة أعمال على فيسبوك', ru:'Не хватает только бизнес-страницы Facebook' },
+  preact_meta_page_body: { he:'החיבור עצמו הצליח! כדי שנוכל לפרסם בשבילכם, צריך עמוד עסקי (Page) — ורק בעל החשבון יכול ליצור אותו, לכן החלק הקצר הזה אצלכם (2-3 דקות, כמה קליקים בפייסבוק). שלחנו לצ\'אט הוראות מדויקות. ברגע שהעמוד קיים — נזהה אותו אוטומטית ונשלים את החיבור לבד, בלי שום פעולה נוספת מכם.', en:'The connection itself succeeded! To publish for you we need a business Page — and only the account owner can create one, so this short part is yours (2-3 minutes, a few clicks on Facebook). We sent exact instructions to the chat. The moment the Page exists we\'ll detect it automatically and finish the connection ourselves — no further action from you.', fr:'La connexion elle-même a réussi ! Pour publier pour vous, il faut une Page professionnelle — et seul le propriétaire du compte peut la créer, donc cette courte étape vous revient (2-3 minutes, quelques clics sur Facebook). Nous avons envoyé des instructions précises dans le chat. Dès que la Page existe, nous la détectons automatiquement et terminons la connexion nous-mêmes — aucune autre action de votre part.', ar:'الربط نفسه نجح! لكي ننشر نيابةً عنكم نحتاج إلى صفحة أعمال — وصاحب الحساب وحده يستطيع إنشاءها، لذا هذا الجزء القصير لكم (2-3 دقائق، بضع نقرات في فيسبوك). أرسلنا تعليمات دقيقة إلى الدردشة. بمجرد وجود الصفحة سنكتشفها تلقائيًا ونكمل الربط بأنفسنا — دون أي إجراء إضافي منكم.', ru:'Само подключение прошло успешно! Чтобы публиковать за вас, нужна бизнес-страница — создать её может только владелец аккаунта, поэтому эта короткая часть за вами (2-3 минуты, несколько кликов в Facebook). Точные инструкции мы отправили в чат. Как только страница появится, мы обнаружим её автоматически и сами завершим подключение — больше ничего делать не нужно.' },
   notice_connect_error: { he:'חיבור {p} נכשל — נסו שוב, ואם זה חוזר דברו איתנו בצ׳אט', en:'{p} connection failed — try again; if it repeats, talk to us in the chat', fr:'Échec de connexion {p} — réessayez ; si cela persiste, contactez-nous via le chat', ar:'فشل ربط {p} — حاول مجددًا، وإن تكرر تحدث معنا في الدردشة', ru:'Подключение {p} не удалось — попробуйте ещё раз; если повторится, напишите нам в чат' },
   notice_upgrade_success: { he:'השדרוג אושר! החבילה החדשה תיכנס לתוקף מהחיוב הבא 🎉', en:'Upgrade approved! The new package takes effect from the next billing 🎉', fr:'Changement validé ! La nouvelle formule prend effet au prochain prélèvement 🎉', ar:'تمت الموافقة على الترقية! تسري الباقة الجديدة من الفاتورة القادمة 🎉', ru:'Улучшение подтверждено! Новый пакет вступит в силу со следующего списания 🎉' },
   notice_upgrade_pending: { he:'השדרוג עדיין באימות מול PayPal — נעדכן ברגע שיאושר', en:'The upgrade is still being verified with PayPal — we\'ll update you once approved', fr:'Le changement est en cours de vérification chez PayPal — nous vous informerons dès validation', ar:'الترقية لا تزال قيد التحقق لدى PayPal — سنعلمك فور الموافقة', ru:'Улучшение ещё проверяется в PayPal — сообщим, как только подтвердится' },
@@ -1463,6 +1512,55 @@ async function disconnectPlatform(platformKey, link) {
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
 function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok'); }
+
+// ─── pre-action explanation (universal pattern) ─────────────────────────────
+// House rule (2026-07-22): before ANY action that needs more than a 1-2 click
+// approval from the client, a small popup explains what's about to happen and
+// WHY this part is theirs to do — never leave them wondering why they're being
+// asked to do something manually. One shared component, keyed i18n copy per
+// flow (preact_<key>_title / preact_<key>_body). Shown once per page load per
+// key; "continue" runs the wrapped action.
+const _preactShown = {};
+function preactExplain(key, onContinue) {
+  if (_preactShown[key]) { if (onContinue) onContinue(); return; }
+  document.getElementById('preactTitle').textContent = uallakI18n.t('preact_' + key + '_title');
+  document.getElementById('preactBody').textContent = uallakI18n.t('preact_' + key + '_body');
+  const continueBtn = document.getElementById('preactContinue');
+  continueBtn.textContent = uallakI18n.t('preact_continue');
+  document.getElementById('preactCancel').textContent = uallakI18n.t('preact_cancel');
+  continueBtn.onclick = () => {
+    _preactShown[key] = true;
+    closePreact();
+    if (onContinue) onContinue();
+  };
+  document.getElementById('preactOverlay').classList.add('open');
+}
+function closePreact() { document.getElementById('preactOverlay').classList.remove('open'); }
+
+// Wrappers: explain BEFORE the form opens; closing an already-open form needs
+// no explanation. The OAuth-redirect flows (Google/Meta) stay popup-free on
+// purpose - they're a simple 1-2 click provider consent, below the rule's bar.
+function openSiteFormExplained() {
+  const form = document.getElementById('siteForm');
+  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+  preactExplain('wordpress', toggleSiteForm);
+}
+function openHiggsfieldFormExplained() {
+  const form = document.getElementById('higgsfieldForm');
+  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+  preactExplain('higgsfield', toggleHiggsfieldForm);
+}
+function openAvatarFormExplained() {
+  const form = document.getElementById('avatarForm');
+  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+  preactExplain('avatar', toggleAvatarForm);
+}
+function connectTiktokExplained() {
+  // The OAuth part is simple, but what FOLLOWS isn't obvious: published videos
+  // land in their TikTok inbox for THEM to post - explained up front, not
+  // discovered in confusion later.
+  preactExplain('tiktok', connectTiktok);
+}
 
 function markWebsiteConnected() {
   markPlatformConnected('siteStatus', 'siteBtn', 'wordpress');
@@ -2031,6 +2129,12 @@ async function sendSupportMsg() {
   } else if (params.get('connected') === 'meta') {
     markMetaConnected();
     showNotice(uallakI18n.t('notice_meta_connected'), 'success');
+  } else if (params.get('connected') === 'meta_no_page') {
+    // Authorized fine, but no business Page exists yet - the guided
+    // self-creation state (full steps wait in the chat; the popup explains
+    // what's happening and why this part is theirs)
+    showNotice(uallakI18n.t('notice_meta_no_page'), 'warn');
+    preactExplain('meta_page', null);
   } else if (params.get('connected') === 'tiktok') {
     markTiktokConnected();
     showNotice(uallakI18n.t('notice_tiktok_connected'), 'success');

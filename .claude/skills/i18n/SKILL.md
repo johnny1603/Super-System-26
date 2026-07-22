@@ -167,6 +167,13 @@ in the catch/failure branch — never `body.detail` directly.
 - Language switch re-renders JS-built areas via `uallakI18n.onChange`
   re-running the load functions; the welcome tour auto-open is guarded by a
   once-per-pageload flag so a switch can't re-trigger it.
+- **Pre-action explanation popup (house rule, 2026-07-22)**: before any flow
+  needing more than a 1-2 click approval from the client, the dashboard shows
+  `preactExplain(key, onContinue)` — one shared modal, copy in
+  `preact_<key>_title`/`preact_<key>_body` (5 languages), once per pageload
+  per key. Existing keys: wordpress, higgsfield, avatar, tiktok, meta_page.
+  New manual-step flows must use this component, never a bespoke popup;
+  plain OAuth redirects (Google/Meta connect) stay popup-free on purpose.
 - All four former "business decisions, not engineering" items (terms page,
   transactional email language, server error codes, landing page copy) were
   resolved 2026-07-21 — see the dedicated sections above.
