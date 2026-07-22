@@ -177,9 +177,10 @@ hard-gate on the recorded consent row exactly as before.
   auto-CHARGED — a truly instant one-time charge alongside a plan revision
   would need a separate PayPal Orders flow with a second client approval
   redirect; not built, and probably not worth it (checkout's own setup fee
-  lives with the same invoice-based friction). No invoice-paid webhook
-  tracking exists either (same as checkout) — payment status lives in the
-  PayPal dashboard.
+  lives with the same invoice-based friction). Whether it gets PAID is now
+  tracked — see `INVOICING.INVOICE.PAID`/`.CANCELLED` webhook handling and
+  the invoice-aging scan in `core/api_server.py` (2026-07-23), which covers
+  this invoice AND the original checkout setup-fee invoice the same way.
 - Consent revocation automation (v1: client asks → we stop + delete,
   manually).
 - VERIFICATION: both services are docs-derived, never run with live keys —

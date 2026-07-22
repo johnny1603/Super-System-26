@@ -73,7 +73,11 @@ actual domain-connection blocker, decided to defer until budget allows.
 - [ ] Subscribe to the same event types as Sandbox:
       `BILLING.SUBSCRIPTION.ACTIVATED`, `BILLING.SUBSCRIPTION.RE-ACTIVATED`,
       `PAYMENT.SALE.COMPLETED`, `BILLING.SUBSCRIPTION.CANCELLED`,
-      `BILLING.SUBSCRIPTION.PAYMENT.FAILED`, `BILLING.SUBSCRIPTION.SUSPENDED`
+      `BILLING.SUBSCRIPTION.PAYMENT.FAILED`, `BILLING.SUBSCRIPTION.SUSPENDED`,
+      `INVOICING.INVOICE.PAID`, `INVOICING.INVOICE.CANCELLED`
+      (the last two are new as of 2026-07-23 — invoice payment tracking for
+      setup fees; **also add them to the SANDBOX webhook now**, not just at
+      go-live, so this is actually testable before then)
 - [ ] Update `PAYPAL_WEBHOOK_ID` in Cloud Run
 
 ### 3. Migration notes (verified against the code)

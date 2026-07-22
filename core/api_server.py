@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -334,6 +335,36 @@ def payment_success(client_id: int, subscription_id: str = None):
         traceback.print_exc()
         return RedirectResponse(url="/chat/?payment=error")
 
+_INVOICE_NUMBER_RE = re.compile(r"^INV-(\d+)-\d+$")
+
+def _client_id_from_invoice_number(invoice_number: str):
+    """Recover the client id from our own invoice_number scheme
+    (f"INV-{client_id}-{timestamp}", see paypal_service.create_invoice) —
+    invoice webhook resources carry no custom_id/custom field the way
+    subscription resources do, so the number itself IS the correlation key."""
+    match = _INVOICE_NUMBER_RE.match((invoice_number or "").strip())
+    return int(match.group(1)) if match else None
+
+
+def _invoice_reconciliation_state(client_id: int, invoice_number: str) -> str:
+    """'paid' | 'cancelled' | 'unresolved' — the newest matching event for
+    this invoice_number among this client's own activity. Append-only, same
+    idiom as every other status derivation in this codebase (newest-row-
+    wins, e.g. _client_subscription_info) — no in-place update of the
+    original invoice_sent row; a new event row IS the status update here."""
+    for entry in get_activity(client_id, limit=200):
+        if entry.get("agent_name") != "paypal_service":
+            continue
+        if (entry.get("details") or {}).get("invoice_number") != invoice_number:
+            continue
+        action = entry.get("action_type")
+        if action == "invoice_paid":
+            return "paid"
+        if action == "invoice_cancelled":
+            return "cancelled"
+    return "unresolved"
+
+
 @app.post("/api/paypal/webhook")
 async def paypal_webhook(request: Request):
     body = await request.body()
@@ -401,7 +432,84 @@ async def paypal_webhook(request: Request):
         else:
             print(f"[paypal webhook] event {event_type} had no custom_id on resource - skipping")
 
+    # Invoice events (setup fees — original checkout AND the avatar add-on,
+    # both created via paypal_service.create_invoice). Invoice resources
+    # carry no custom_id the way subscription resources do — the invoice
+    # NUMBER (our own "INV-{client_id}-{ts}" scheme) is the correlation key.
+    INVOICE_PAID_EVENTS = {"INVOICING.INVOICE.PAID"}
+    INVOICE_CANCELLED_EVENTS = {"INVOICING.INVOICE.CANCELLED"}
+    if event_type in INVOICE_PAID_EVENTS | INVOICE_CANCELLED_EVENTS:
+        # Docs-derived resource shape (never verified against a live invoice
+        # webhook) — detail.invoice_number is what we set at creation;
+        # top-level fallback in case the payload nests differently in
+        # practice, same defensive style as the custom_id/custom fallback above.
+        invoice_number = (resource.get("detail") or {}).get("invoice_number") or resource.get("invoice_number", "")
+        client_id = _client_id_from_invoice_number(invoice_number)
+        if not client_id:
+            print(f"[paypal webhook] {event_type}: could not recover client_id from "
+                  f"invoice_number={invoice_number!r} - skipping")
+        elif event_type in INVOICE_PAID_EVENTS:
+            paid_amount = (resource.get("amount") or {}).get("value")
+            log_activity(client_id, "paypal_service", "invoice_paid",
+                         {"invoice_number": invoice_number, "amount": paid_amount},
+                         {"paypal_invoice_id": resource.get("id"), "source": "paypal_webhook"})
+            print(f"[paypal webhook] client {client_id}: invoice {invoice_number} PAID")
+        else:  # cancelled
+            log_activity(client_id, "paypal_service", "invoice_cancelled",
+                         {"invoice_number": invoice_number}, {"paypal_invoice_id": resource.get("id")})
+            alert("paypal_webhook", [
+                f"client {client_id}: invoice {invoice_number} was CANCELLED on PayPal's side "
+                "before payment - follow up on collecting this fee another way"])
+
     return {"success": True}
+
+# ─── Invoice aging (unpaid setup-fee follow-up) ──────────────────────────────
+
+INVOICE_UNPAID_ALERT_DAYS = 7
+
+def run_invoice_aging_scan() -> dict:
+    """Cron entry point: any invoice_sent row older than
+    INVOICE_UNPAID_ALERT_DAYS with no matching invoice_paid/invoice_cancelled
+    event yet gets ONE alert to Johnny (flag-once dedup via
+    invoice_unpaid_flagged — a standing unpaid invoice doesn't need a fresh
+    alert every scan). PayPal has no 'invoice aging' webhook event, so this
+    is the only way an unpaid invoice surfaces at all beyond someone
+    checking the PayPal dashboard by hand."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=INVOICE_UNPAID_ALERT_DAYS)).isoformat()
+    rows = (db.table("client_activity").select("client_id,details,created_at")
+            .eq("agent_name", "paypal_service").eq("action_type", "invoice_sent")
+            .lte("created_at", cutoff).order("created_at", desc=True).limit(500).execute().data or [])
+
+    summary = {"invoices_checked": 0, "alerts_raised": 0}
+    for row in rows:
+        client_id = row.get("client_id")
+        invoice_number = (row.get("details") or {}).get("invoice_number")
+        if not (client_id and invoice_number):
+            continue
+        summary["invoices_checked"] += 1
+        if _invoice_reconciliation_state(client_id, invoice_number) != "unresolved":
+            continue
+        already_flagged = any(
+            (e.get("details") or {}).get("invoice_number") == invoice_number
+            for e in get_activity(client_id, limit=200)
+            if e.get("agent_name") == "paypal_service" and e.get("action_type") == "invoice_unpaid_flagged")
+        if already_flagged:
+            continue
+        log_activity(client_id, "paypal_service", "invoice_unpaid_flagged",
+                     {"invoice_number": invoice_number, "sent_at": row.get("created_at")}, {})
+        alert("paypal_webhook", [
+            f"client {client_id}: invoice {invoice_number} (sent {row.get('created_at', '')[:10]}) "
+            f"is still unpaid after {INVOICE_UNPAID_ALERT_DAYS}+ days - follow up on collecting it"])
+        summary["alerts_raised"] += 1
+    print(f"[invoice_aging_scan] done - {summary}")
+    return summary
+
+@app.get("/api/paypal/invoice-aging-scan", dependencies=_admin_only)
+def paypal_invoice_aging_scan():
+    try:
+        return {"success": True, "data": run_invoice_aging_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ObjectionRequest(BaseModel):
     text: str
