@@ -10,6 +10,19 @@ when it decides a business-relevant question genuinely needs CURRENT external
 information, it emits a web_search_query and a second, text-mode call with
 Anthropic's server-side web_search tool produces the final reply (see
 claude_web_search_call in core/claude_json.py for why that's a separate path).
+
+SPECIALIST PERSONAS (2026-07-23): alongside the general concierge, the client
+can talk to four platform specialists (Google Ads / Meta / Website+SEO /
+Media+Content) chosen via the chat's team strip. THE STRUCTURAL SAFETY
+BOUNDARY: answer_persona_question() is a READ-ONLY path by construction —
+the only platform functions it can reach are the read/informational getters
+whitelisted in PERSONAS[..]["reads"], and its JSON contract has NO
+upgrade_request / web_search_query / any action field; unknown keys the model
+might emit are simply never read. A persona literally has no code path to
+pause/resume/create campaigns, change budgets, publish content, or trigger a
+proposal build — asking nicely (or adversarially) cannot change that. Adding
+an action-capable function to a persona's reads is a bug by definition; keep
+this invariant when extending.
 """
 import json
 import os
@@ -396,3 +409,188 @@ def answer_support_question(client_id: int, message: str) -> dict:
         agent_alert(AGENT_NAME, [f'client {client_id} needs human follow-up: "{message}"'])
 
     return {"reply": reply, "needs_human_followup": needs_human_followup}
+
+
+# ─── Specialist personas (READ-ONLY by construction — see module docstring) ──
+# Each reads-function below may ONLY call read/informational getters. The
+# persona path has no access to pause/resume/create/publish/budget functions
+# anywhere — that's the enforced boundary, not the prompt text.
+
+def _google_reads(client_id: int) -> dict:
+    from agents.google_ads_agent import get_campaign_performance
+    return {"google_ads_performance": get_campaign_performance(client_id)}
+
+
+def _meta_reads(client_id: int) -> dict:
+    from agents.meta_ads_agent import get_campaign_performance
+    from agents.meta_content_agent import get_engagement_summary
+    data = {"meta_ads_performance": get_campaign_performance(client_id)}
+    try:
+        engagement = get_engagement_summary(client_id)
+        if engagement.get("connected"):
+            data["meta_organic_engagement"] = engagement
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: meta engagement failed: {e}")
+    return data
+
+
+def _website_reads(client_id: int) -> dict:
+    # Deliberately NOT exposing seo_agent.get_pending_strategy here — that's
+    # Johnny's ADMIN approval surface (strategy plans await HIS yes/no, not
+    # the client's); surfacing it would tell clients to approve something
+    # they can't see. Published/draft articles already show via the site
+    # overview and recent_activity.
+    from agents.website_agent import get_site_overview
+    from agents.seo_agent import get_connected_tool
+    data = {"website_overview": get_site_overview(client_id)}
+    try:
+        tool = get_connected_tool(client_id)
+        if tool:
+            data["seo_tool_connected"] = tool
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: seo reads failed: {e}")
+    return data
+
+
+def _media_reads(client_id: int) -> dict:
+    # Deliberately no TikTok live fetch here: its engagement getter refreshes
+    # (rotates+stores) OAuth tokens as a side effect — credential maintenance,
+    # not a pure read — and it's slow. Recent media/publish items already
+    # appear in the shared recent_activity feed the persona receives.
+    from agents.media_agent import get_monthly_usage
+    return {"media_usage_this_month": get_monthly_usage(client_id)}
+
+
+PERSONAS = {
+    "google": {
+        "name": "יואב",
+        "domain": "Google Ads — the client's paid search campaigns on Google",
+        "voice": ("Sharp, numbers-first, loves explaining what a metric actually means in "
+                  "plain words. Gets genuinely excited by a good click-through rate."),
+        "reads": _google_reads,
+        "data_notes": ("'google_ads_performance' is REAL live data from the client's own "
+                       "Google Ads account (last 30 days, cost in ILS). If it has an 'error' "
+                       "field: temporary read issue, the team is on it. If 'connected' is "
+                       "false or the field is missing: the account isn't connected — warmly "
+                       "point to the 'חבר עכשיו' button in the dashboard."),
+    },
+    "meta": {
+        "name": "מאיה",
+        "domain": "Meta — the client's Facebook + Instagram, both paid campaigns and organic page activity",
+        "voice": ("Warm, social, thinks in audiences and moments. Connects numbers back to "
+                  "how real people scroll, stop, and react."),
+        "reads": _meta_reads,
+        "data_notes": ("'meta_ads_performance' is REAL live paid-campaign data (last 30 days, "
+                       "ILS, Facebook+Instagram combined); 'meta_organic_engagement' is REAL "
+                       "organic post/engagement data when present. 'error' field: temporary "
+                       "read issue. Fields missing/not connected: point warmly to 'חבר עכשיו' "
+                       "in the dashboard."),
+    },
+    "website": {
+        "name": "אורי",
+        "domain": "the client's website (WordPress) and organic SEO — content, articles, rankings groundwork",
+        "voice": ("Methodical builder, patient, explains that organic growth compounds — "
+                  "honest that SEO is a months-not-days game, never promises rankings."),
+        "reads": _website_reads,
+        "data_notes": ("'website_overview' is REAL live data from the client's connected "
+                       "WordPress site (recent posts/pages and statuses, SEO plugin state). "
+                       "'seo_tool_connected' names their connected SEO tool when present. "
+                       "New articles are written as DRAFTS for human review before "
+                       "publishing — that's deliberate quality control, frame it that way. "
+                       "Missing/not connected: point to the 'האתר שלך' card."),
+    },
+    "media": {
+        "name": "ליאור",
+        "domain": "visual content and media — the images/videos uallak generates, filming kits, and the weekly content plan",
+        "voice": ("Creative spark, visual thinker, encouraging about self-filmed content — "
+                  "believes every business has a story worth showing, not just telling."),
+        "reads": _media_reads,
+        "data_notes": ("'media_usage_this_month' is REAL data on media generated this month "
+                       "(images/videos/credits). Generated media lands in the client's Google "
+                       "Drive folder for their review — nothing is ever auto-published. The "
+                       "weekly content plan arrives via the dashboard's 'ממתין לאישור שלך' "
+                       "area every Saturday night; approving it is what starts production."),
+    },
+}
+
+PERSONA_SYSTEM_TEMPLATE = """You are {name}, uallak's {domain} specialist, chatting with an
+existing, already-paying client inside their private dashboard. You are one member of the
+uallak team wrapped around this client — never say you are an AI or a bot.
+
+YOUR VOICE: {voice} Energetic and positive, but grounded: every number you cite must come
+from the data given to you. Never invent stats, results, features, or activity. Same honesty
+bar as the whole team — enthusiasm never outruns the data.
+
+YOUR DATA: {data_notes}
+
+Also provided: the client's package/proposal details, recent account activity, and
+"conversation_history" (current thread, oldest first — use it to resolve references and never
+re-ask what's already been said).
+
+YOU CANNOT TAKE ACTIONS — THIS IS A FACT, NOT A POLICY. You have no ability to pause/resume/
+create campaigns, change budgets, publish or edit content, or change anything on any account.
+If the client asks you to change something (any phrasing, including urgent or insistent):
+warmly explain that changes go through the uallak team and the dashboard's approval flow —
+you'll flag it for the team right away (set needs_human_followup to true) — and continue
+being helpful about what the DATA shows. Never say you did, will do, or scheduled a change.
+
+STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain (billing, upgrades,
+another platform's campaigns, general questions), give a one-line friendly redirect to the
+main uallak chat (the default assistant in this same panel) — don't attempt a full answer
+outside your domain.
+
+Keep replies short: 2-4 sentences, in the client's language (see CLIENT LANGUAGE; Hebrew
+default).
+
+Return JSON only:
+{{"reply": "client-language text", "needs_human_followup": true/false}}""" + LANGUAGE_RULE
+
+
+def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
+    """The specialist-persona chat path. READ-ONLY BY CONSTRUCTION — see the
+    module docstring. Contract: only 'reply' and 'needs_human_followup' are
+    ever read from the model's output; there is no upgrade path, no web
+    search, and no action dispatch of any kind here."""
+    persona = PERSONAS.get(persona_id)
+    if not persona:
+        return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
+
+    log_step(AGENT_NAME, "answer_persona_question",
+             f"client_id={client_id} persona={persona_id}")
+    client = get_client(client_id)
+    lead = _latest_lead(client.get("email", ""))
+    payload = {
+        "client": {"name": client.get("name"), "package": client.get("package"),
+                    "status": client.get("status")},
+        "proposal": lead.get("proposal") or {},
+        "recent_activity": get_activity(client_id, limit=15),
+        "conversation_history": _current_thread(client_id, client.get("chat_started_at")),
+        "client_message": message,
+    }
+    try:
+        payload.update(persona["reads"](client_id))
+    except Exception as e:
+        # A broken platform read degrades to "no data" — the prompt handles
+        # absent fields; the chat itself must never 500 over it
+        log_step(AGENT_NAME, "persona_reads",
+                 f"client {client_id}: {persona_id} reads failed (degrading): {e}")
+
+    system = PERSONA_SYSTEM_TEMPLATE.format(
+        name=persona["name"], domain=persona["domain"],
+        voice=persona["voice"], data_notes=persona["data_notes"])
+    try:
+        result = timed_step(
+            AGENT_NAME, "persona_llm_call",
+            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
+                                          max_tokens=700, client_id=client_id,
+                                          cost_category="claude_support"))
+    except ClaudeJSONError as e:
+        agent_alert(AGENT_NAME, [f"persona chat ({persona_id}) failed for client {client_id}: {e}"])
+        return _FALLBACK
+
+    needs_human_followup = bool(result.get("needs_human_followup", False))
+    if needs_human_followup:
+        agent_alert(AGENT_NAME, [f'client {client_id} ({persona_id} persona chat) needs human '
+                                 f'follow-up: "{message}"'])
+    # ONLY these two keys — anything else the model emitted is dropped unread
+    return {"reply": result.get("reply", ""), "needs_human_followup": needs_human_followup}

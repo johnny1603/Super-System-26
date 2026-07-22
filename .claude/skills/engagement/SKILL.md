@@ -143,6 +143,48 @@ client's name** — no data means show the picker, not a guess. Future
 client-facing AI avatars (out of scope for now) should reuse `owner_gender`
 and the suggestion/approval pipe rather than inventing parallel ones.
 
+## Specialist personas (team strip, 2026-07-23)
+
+The chat panel's team strip adds four specialist personas next to the
+general concierge (the default front door, unchanged): יואב (Google Ads),
+מאיה (Meta), אורי (Website+SEO), ליאור (Media/Content). One thread — the
+strip only changes who ANSWERS; all messages log to the same
+`dashboard_chat` channel and share `conversation_history`.
+
+**THE NON-NEGOTIABLE SAFETY BOUNDARY — structural, not prompt-level.**
+`support_agent.answer_persona_question()` is read-only BY CONSTRUCTION:
+
+- The only platform functions reachable are the read/informational getters
+  whitelisted in `PERSONAS[..]["reads"]` (`get_campaign_performance`,
+  `get_engagement_summary`, `get_site_overview`, `get_connected_tool`,
+  `get_monthly_usage`). No pause/resume/create/publish/budget function is
+  imported or referenced anywhere in the persona path.
+- The persona JSON contract has ONLY `reply` + `needs_human_followup` — no
+  `upgrade_request`, no `web_search_query`. The code reads exactly those two
+  keys; anything else the model emits is dropped unread, so even a fully
+  jailbroken persona output cannot trigger a proposal build, a search, or
+  any action.
+- Change requests ("increase my budget", "pause that campaign") get a warm
+  redirect to the team/approval flow + `needs_human_followup: true` (which
+  raises the standard team alert) — never acknowledgment of execution.
+- Upgrades and web search stay EXCLUSIVE to the general concierge — that's
+  also the natural place for buying intent, so nothing was lost by scoping
+  them out of specialists.
+
+Adding an action-capable function to a persona's `reads` is a bug by
+definition — extend the whitelist only with genuine read functions. Two
+deliberate read exclusions: `seo_agent.get_pending_strategy` (that approval
+is JOHNNY's admin surface, not the client's — exposing it tells clients to
+approve something they can't see) and TikTok's engagement getter (rotates+
+stores OAuth tokens as a side effect — credential maintenance, not a pure
+read — and it's slow).
+
+Frontend: `TEAM_PERSONAS` in `dashboard/client/index.html` (ids MUST match
+`support_agent.PERSONAS` keys), avatar colors mirror each platform's
+connection-card color, roles/switch-note in the i18n table (names are
+proper nouns, untranslated). `POST /api/client-chat` takes an optional
+`persona` field (`general` default; unknown → `ERR_UNKNOWN_PERSONA`).
+
 ## Setup SQL (run once in Supabase)
 
 ```sql

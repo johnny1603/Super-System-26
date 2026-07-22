@@ -728,16 +728,30 @@ async def api_get_communications(client_id: int, limit: int = 50):
 
 class ClientChatRequest(BaseModel):
     message: str
+    persona: str = "general"  # general (concierge, full capabilities) or a
+                              # PERSONAS key (google|meta|website|media) —
+                              # specialist personas are READ-ONLY by
+                              # construction (see support_agent's docstring)
 
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request):
     client_id = _require_session(request)
     try:
-        from agents.support_agent import answer_support_question
+        from agents.support_agent import PERSONAS, answer_persona_question, answer_support_question
+        persona = (req.persona or "general").strip()
+        if persona != "general" and persona not in PERSONAS:
+            raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PERSONA"})
         log_communication(client_id, "inbound", "dashboard_chat", req.message)
-        result = answer_support_question(client_id, req.message)
+        if persona == "general":
+            result = answer_support_question(client_id, req.message)
+        else:
+            # Specialist path: structurally read-only — no upgrade builds, no
+            # web search, no action functions reachable (support_agent enforces)
+            result = answer_persona_question(client_id, persona, req.message)
         log_communication(client_id, "outbound", "dashboard_chat", result["reply"])
         return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

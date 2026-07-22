@@ -506,6 +506,30 @@ body {
 }
 .confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
 
+/* ---------- TEAM STRIP (specialist persona selector in the chat) ---------- */
+.team-strip {
+  display: flex; gap: 8px; padding: 9px 14px 5px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.team-strip::-webkit-scrollbar { display: none; }
+.team-member {
+  background: none; border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 2px; font-family: 'Heebo', sans-serif; flex-shrink: 0;
+}
+.team-member .tm-avatar {
+  width: 34px; height: 34px; border-radius: 50%; overflow: hidden;
+  border: 2px solid transparent; transition: border-color 0.15s;
+}
+.team-member .tm-avatar svg { width: 100%; height: 100%; display: block; }
+.team-member.active .tm-avatar { border-color: var(--accent); }
+.team-member .tm-name {
+  font-size: 9.5px; color: var(--gray); max-width: 54px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.team-member.active .tm-name { color: var(--white); font-weight: 700; }
+
 /* ---------- PRE-ACTION EXPLANATION (shared across ALL manual-step flows) ---------- */
 /* One component for every "the client does this part themselves" moment:
    WordPress app-password, HeyGen web-UI creation, Higgsfield key, TikTok
@@ -857,10 +881,14 @@ body {
     <div class="support-avatar" id="supportAvatar">🤖</div>
     <div class="support-head-text">
       <div class="support-head-title" id="supportTitle">צוות uallak</div>
-      <div class="support-head-sub" data-i18n="chat_available">זמין עכשיו</div>
+      <div class="support-head-sub" id="supportSub" data-i18n="chat_available">זמין עכשיו</div>
     </div>
     <button class="support-new-chat" onclick="startNewChat()" data-i18n="new_chat">שיחה חדשה</button>
   </div>
+  <!-- The team strip: the general concierge (front door, default) + the four
+       read-only specialists. Selecting one only changes who ANSWERS - all
+       messages stay in the same thread. -->
+  <div class="team-strip" id="teamStrip"></div>
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
     <div class="persona-pick-btns">
@@ -1073,6 +1101,12 @@ const DASH_I18N = {
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
+  team_role_general: { he:'הקונסיירז\' הראשי — לכל נושא', en:'Main concierge — anything at all', fr:'Concierge principal — pour tout sujet', ar:'المرافق الرئيسي — لأي موضوع', ru:'Главный консьерж — по любым вопросам' },
+  team_role_google: { he:'מומחה Google Ads', en:'Google Ads specialist', fr:'Spécialiste Google Ads', ar:'خبير إعلانات Google', ru:'Специалист по Google Ads' },
+  team_role_meta: { he:'מומחית מטא — פייסבוק ואינסטגרם', en:'Meta specialist — Facebook & Instagram', fr:'Spécialiste Meta — Facebook & Instagram', ar:'خبيرة Meta — فيسبوك وإنستغرام', ru:'Специалист по Meta — Facebook и Instagram' },
+  team_role_website: { he:'מומחה אתר וקידום אורגני', en:'Website & SEO specialist', fr:'Spécialiste site web & SEO', ar:'خبير المواقع وتحسين محركات البحث', ru:'Специалист по сайту и SEO' },
+  team_role_media: { he:'מומחה תוכן ויזואלי ומדיה', en:'Visual content & media specialist', fr:'Spécialiste contenu visuel & médias', ar:'خبير المحتوى المرئي والوسائط', ru:'Специалист по визуальному контенту и медиа' },
+  persona_switch_note: { he:'היי, כאן {name} — {role} 👋 שאלו אותי הכל על התחום שלי. שינויים בפועל (תקציבים, קמפיינים, פרסום) תמיד עוברים דרך הצוות ותהליך האישורים — אני אדאג להעביר כל בקשה כזו הלאה.', en:'Hi, {name} here — {role} 👋 Ask me anything in my domain. Actual changes (budgets, campaigns, publishing) always go through the team and the approval flow — I\'ll pass any such request along.', fr:'Bonjour, {name} ici — {role} 👋 Posez-moi toutes vos questions dans mon domaine. Les changements réels (budgets, campagnes, publication) passent toujours par l\'équipe et le processus d\'approbation — je transmettrai toute demande de ce type.', ar:'مرحبًا، {name} هنا — {role} 👋 اسألوني أي شيء في مجالي. التغييرات الفعلية (الميزانيات، الحملات، النشر) تمر دائمًا عبر الفريق ومسار الموافقات — سأمرر أي طلب كهذا.', ru:'Привет, это {name} — {role} 👋 Спрашивайте меня о чём угодно в моей области. Реальные изменения (бюджеты, кампании, публикации) всегда проходят через команду и процесс одобрения — любую такую просьбу я передам дальше.' },
   preact_continue: { he:'הבנתי, ממשיכים', en:'Got it, continue', fr:'Compris, continuer', ar:'فهمت، لنكمل', ru:'Понятно, продолжить' },
   preact_cancel: { he:'אולי אחר כך', en:'Maybe later', fr:'Plus tard', ar:'ربما لاحقًا', ru:'Может, позже' },
   preact_wordpress_title: { he:'רגע לפני שמחברים את האתר', en:'Before connecting your site', fr:'Avant de connecter votre site', ar:'قبل ربط موقعكم', ru:'Перед подключением сайта' },
@@ -1789,10 +1823,70 @@ function personaName(gender) {
 
 function applyPersona(gender) {
   if (!PERSONA_SVGS[gender]) return;
-  document.getElementById('supportAvatar').innerHTML = PERSONA_SVGS[gender];
-  document.getElementById('supportTitle').textContent = personaName(gender);
+  window._personaGender = gender;
+  // Only repaint the header when the GENERAL concierge is the active chat -
+  // a specialist persona keeps their own avatar/name up there
+  if (currentPersona === 'general') {
+    document.getElementById('supportAvatar').innerHTML = PERSONA_SVGS[gender];
+    document.getElementById('supportTitle').textContent = personaName(gender);
+  }
   document.getElementById('supportFabBtn').innerHTML =
     PERSONA_SVGS[gender].replace('<svg ', '<svg class="persona" ');
+  renderTeamStrip();
+}
+
+// ─── specialist personas (team strip) ────────────────────────────────────────
+// Visual identities for the READ-ONLY specialist chats (backend:
+// support_agent.PERSONAS - ids must match). Names are proper nouns, not
+// translated; roles come from the i18n table. Colors mirror each platform's
+// connection-card color so the mental model stays consistent.
+const TEAM_PERSONAS = {
+  google: { name: 'יואב', roleKey: 'team_role_google',
+    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#4285F4"/><rect x="14" y="26" width="5" height="9" rx="1.5" fill="#fff"/><rect x="21.5" y="20" width="5" height="15" rx="1.5" fill="#fff"/><rect x="29" y="14" width="5" height="21" rx="1.5" fill="#fff"/></svg>` },
+  meta: { name: 'מאיה', roleKey: 'team_role_meta',
+    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#0866FF"/><circle cx="18.5" cy="24" r="7" fill="none" stroke="#fff" stroke-width="2.6"/><circle cx="29.5" cy="24" r="7" fill="none" stroke="#fff" stroke-width="2.6"/></svg>` },
+  website: { name: 'אורי', roleKey: 'team_role_website',
+    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#464646"/><circle cx="24" cy="24" r="10" fill="none" stroke="#fff" stroke-width="2.2"/><path d="M14 24h20M24 14a15 15 0 0 1 0 20 15 15 0 0 1 0-20z" fill="none" stroke="#fff" stroke-width="2.2"/></svg>` },
+  media: { name: 'ליאור', roleKey: 'team_role_media',
+    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#7C3AED"/><path d="M19 16l13 8-13 8z" fill="#fff"/><path d="M33 11l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z" fill="#fff"/></svg>` },
+};
+let currentPersona = 'general';
+
+function renderTeamStrip() {
+  const strip = document.getElementById('teamStrip');
+  if (!strip) return;
+  strip.innerHTML = '';
+  const gender = window._personaGender || 'male';
+  const members = [['general', { name: personaName(gender), roleKey: 'team_role_general',
+                                 svg: PERSONA_SVGS[gender] }]]
+                  .concat(Object.entries(TEAM_PERSONAS));
+  members.forEach(([id, p]) => {
+    const btn = document.createElement('button');
+    btn.className = 'team-member' + (id === currentPersona ? ' active' : '');
+    btn.title = uallakI18n.t(p.roleKey);
+    btn.innerHTML = `<span class="tm-avatar">${p.svg}</span><span class="tm-name">${esc(p.name)}</span>`;
+    btn.onclick = () => selectTeamPersona(id);
+    strip.appendChild(btn);
+  });
+}
+
+function selectTeamPersona(id) {
+  if (id === currentPersona) return;
+  currentPersona = id;
+  renderTeamStrip();
+  const sub = document.getElementById('supportSub');
+  sub.removeAttribute('data-i18n'); // we own this text now; applyDom must not reset it
+  if (id === 'general') {
+    applyPersona(window._personaGender || 'male');
+    sub.textContent = uallakI18n.t('chat_available');
+    return;
+  }
+  const p = TEAM_PERSONAS[id];
+  document.getElementById('supportAvatar').innerHTML = p.svg;
+  document.getElementById('supportTitle').textContent = p.name;
+  sub.textContent = uallakI18n.t(p.roleKey);
+  appendSupportMsg(uallakI18n.t('persona_switch_note',
+                                { name: p.name, role: uallakI18n.t(p.roleKey) }), 'bot');
 }
 
 function initPersona(gender) {
@@ -2097,7 +2191,7 @@ async function sendSupportMsg() {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, persona: currentPersona }),
     });
     const data = await res.json();
     typing.remove();
@@ -2120,7 +2214,17 @@ async function sendSupportMsg() {
   // Re-render every JS-built area in the new language (server data is cached
   // ~5min by the agents, so the refetches are cheap). Static text is handled
   // by the engine's applyDom.
-  uallakI18n.onChange(() => { loadDashboard(); loadBilling(); loadSuggestions(); });
+  uallakI18n.onChange(() => {
+    loadDashboard(); loadBilling(); loadSuggestions();
+    renderTeamStrip();
+    // A specialist owns the header subtitle (data-i18n was removed on switch)
+    // - re-translate their role text after applyDom ran
+    if (currentPersona !== 'general') {
+      document.getElementById('supportSub').textContent =
+        uallakI18n.t(TEAM_PERSONAS[currentPersona].roleKey);
+    }
+  });
+  renderTeamStrip();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('connected') === 'google_ads') {
