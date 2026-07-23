@@ -15,12 +15,11 @@ Google Ads) for the same reason as GTM/Merchant Center: a grant's scopes are
 fixed at consent time, so bundling would force every Ads client to
 reconnect for scopes only content-publishing clients need.
 
-## Pricing model — DECOUPLED, a business decision (2026-07-23)
+## Pricing model — DECOUPLED, a business decision (2026-07-23, CONFIRMED same day)
 
-The YouTube fee (`PRICING["youtube"]["management_fee_ils_proposed"]`, 150₪
-PROPOSED — not yet confirmed as final, see below) covers ONLY ongoing
-management: connection, uploads, engagement tracking. It is deliberately
-NOT a generation-cost bucket:
+The YouTube fee (`PRICING["platform_management_fees"]["youtube"]`, **150₪/mo,
+confirmed**) covers ONLY ongoing management: connection, uploads, engagement
+tracking. It is deliberately NOT a generation-cost bucket:
 
 - Media generation for YouTube content (podcasts, repurposed shorts/reels,
   YouTube-specific videos) stays entirely inside the client's EXISTING
@@ -33,23 +32,33 @@ NOT a generation-cost bucket:
   engagement OPERATIONAL work, same principle as every other platform
   management fee in PRICING.
 
-**Cost research behind the proposed number (the handoff's explicit ask —
-verify, don't assume it mirrors Higgsfield's per-generation billing)**:
-the YouTube Data API v3 has **zero monetary billing** — quota units only,
-not a per-request charge. Default project quota is 10,000 units/day;
+**Cost research behind the number (the handoff's explicit ask — verify,
+don't assume it mirrors Higgsfield's per-generation billing)**: the
+YouTube Data API v3 has **zero monetary billing** — quota units only, not
+a per-request charge. Default project quota is 10,000 units/day;
 `videos.insert` dropped from ~1,600 to ~100 units per call in Dec 2025,
 so the default free quota alone supports ~100 uploads/day — far beyond
 uallak's realistic volume across every client combined. **There is no real
 API cost to price into the fee at all.** `DAILY_UPLOAD_LIMIT = 90` in
 `core/youtube_service.py` is a safety brake under the free cap, not a
-cost-avoidance measure. Proposed 150₪/month sits roughly at avatar-setup
-scale, well below the 350₪ platform-management tiers (which include real
-ads/content-strategy work YouTube publishing doesn't) — **flagged for
-confirmation before treating as final**; not yet added to
-`PRICING["platform_management_fees"]` or wired into the sales-chat proposal
-prompt (see `onboarding_agent.py`'s comment at the constant) on purpose,
-since wiring an unconfirmed number into live client proposals would be
-presumptuous.
+cost-avoidance measure. 150₪/month sits roughly at avatar-setup scale, well
+below the 350₪ platform-management tiers (which include real ads/content-
+strategy work YouTube publishing doesn't).
+
+**Now fully wired into the live sales-chat proposal flow** (2026-07-23,
+confirmed): `PRICING["platform_management_fees"]["youtube"] = 150` sits
+alongside meta/google/tiktok; `build_proposal`'s BUDGET PYRAMID #1 prompt
+text names all four platform groups explicitly (YouTube's lower rate and
+the reasoning for it spelled out to the model), `recommended_services` and
+the monthly_breakdown line-naming rule both include "youtube"/"ניהול
+יוטיוב", and a YOUTUBE RELEVANCE GUARD line tells the model to only include
+it when the package already produces video content to publish (a media/
+avatar tier, or organic content that includes video) — recommending
+YouTube management with nothing to upload would be nonsensical. Deliberately
+NOT added to the self-service upgrade-panel ladder (`get_upgrade_tiers`) —
+an existing client adding YouTube goes through the chat's upgrade-request
+path instead, which reuses this same `build_proposal` (upgrade mode) and
+now prices it correctly.
 
 ## Auth model — one consent, one stored row
 

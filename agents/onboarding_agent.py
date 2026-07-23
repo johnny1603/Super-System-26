@@ -15,6 +15,13 @@ PRICING = {
         "meta": 350,     # Facebook + Instagram bundled together as ONE group
         "google": 350,
         "tiktok": 350,   # priced separately - requires significantly more media/content production work
+        # CONFIRMED 2026-07-23 (see .claude/skills/youtube/SKILL.md for the cost/quota
+        # research this is based on). Deliberately LOWER than the other three: this fee
+        # is publishing/management ONLY (connection, uploads, engagement tracking) -
+        # generation stays entirely in the client's existing media/avatar tier, never a
+        # second YouTube-specific generation charge, so there's no production-work
+        # premium to price in here the way TikTok has one.
+        "youtube": 150,
     },
     # Floor used when a package includes NONE of the platform groups above (e.g. organic-only,
     # automation-only, or a single-service non-ad package) - every package still has SOME monthly fee
@@ -87,30 +94,6 @@ PRICING = {
             f"הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-"
             f"{int(_HEYGEN_MIN_RANGE[0])}-{int(_HEYGEN_MIN_RANGE[1])}$ לדקת וידאו). לרצון גם "
             "מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות לספקים, לא דרכנו."),
-    },
-
-    # YouTube (2026-07-23 handoff) — PROPOSED, not yet confirmed as final; see
-    # .claude/skills/youtube/SKILL.md for the full cost/quota research this is
-    # based on. Deliberately NOT added to platform_management_fees above:
-    # that dict feeds the sales-chat proposal prompt directly, and wiring an
-    # unconfirmed number into live proposals would be presumptuous. Once
-    # confirmed, move/copy this into platform_management_fees.
-    #
-    # Model: this fee is PUBLISHING/MANAGEMENT ONLY (connection, uploads,
-    # engagement tracking) - deliberately decoupled from generation cost.
-    # The YouTube Data API itself has NO monetary billing (quota units only;
-    # our volume is nowhere near the 10,000/day free cap even after
-    # videos.insert's Dec-2025 cost drop to ~100 units/upload) - so there is
-    # no real API cost to price in here at all. Media generation for
-    # YouTube content (podcasts, repurposed shorts, YouTube-specific videos)
-    # stays entirely inside the client's EXISTING media/avatar tier - a
-    # bigger/more complex YouTube video means upgrading THAT tier, never a
-    # second YouTube-specific generation charge.
-    "youtube": {
-        "management_fee_ils_proposed": 150,  # PROPOSED - roughly avatar-setup scale,
-                                             # well below the 350 platform-management
-                                             # tiers (which include real ads/content
-                                             # strategy work YouTube publishing doesn't)
     },
 
     "raffle": {"setup_and_management": 250},
@@ -411,26 +394,39 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
 ═══════════════════════════════════════════════════════════════════════════
 
 1) MONTHLY MANAGEMENT FEE — PER-PLATFORM-GROUP FORMULA (applies to every package):
-   - There are three platform groups, each priced independently at
-     {PRICING['platform_management_fees']['meta']} NIS/month: "meta" (Facebook + Instagram bundled
-     together as ONE group), "google", and "tiktok" (priced separately because it requires
-     significantly more media/content production work than the other two)
-   - monthly_management_total = the SUM of {PRICING['platform_management_fees']['meta']} NIS for
-     EACH platform group actually included in that package. Example: a package with both Meta and
-     Google included is {PRICING['platform_management_fees']['meta']} + {PRICING['platform_management_fees']['google']}
-     = {PRICING['platform_management_fees']['meta'] + PRICING['platform_management_fees']['google']}
-     NIS/month management — NEVER a flat fee covering multiple platform groups for one price
-   - If a package includes NONE of meta/google/tiktok (e.g. an organic-only, automation-only, or
-     single-service non-ad package), monthly_management_total falls back to the
+   - There are four platform groups, each priced independently: "meta" (Facebook + Instagram
+     bundled together as ONE group) and "google" at {PRICING['platform_management_fees']['meta']}
+     NIS/month each; "tiktok" at {PRICING['platform_management_fees']['tiktok']} NIS/month (priced
+     higher because it requires significantly more media/content production work); "youtube" at
+     {PRICING['platform_management_fees']['youtube']} NIS/month (priced LOWER - this fee covers
+     publishing/management only (connection, uploads, engagement tracking); YouTube content
+     generation is never a separate charge here - it draws on whichever media/avatar tier the
+     package already includes, same content, just also published to YouTube)
+   - monthly_management_total = the SUM of each included platform group's own fee. Example: a
+     package with both Meta and Google included is {PRICING['platform_management_fees']['meta']} +
+     {PRICING['platform_management_fees']['google']} =
+     {PRICING['platform_management_fees']['meta'] + PRICING['platform_management_fees']['google']}
+     NIS/month management — NEVER a flat fee covering multiple platform groups for one price, and
+     NEVER the same fee for youtube as for the other three
+   - If a package includes NONE of meta/google/tiktok/youtube (e.g. an organic-only,
+     automation-only, or single-service non-ad package), monthly_management_total falls back to the
      {PRICING['monthly_management_minimum']} NIS minimum instead - every package still has SOME
      monthly management fee, never zero
    - monthly_breakdown must show ONE line item per included platform group at its fee (e.g.
-     "ניהול מטא": 350, "ניהול גוגל": 350), plus the minimum-floor line only when no platform group is
-     included, plus the ad-spend surcharge line below if it applies. Do NOT add separate monthly line
-     items for non-platform services (SEO, email, organic social, automation) - those are covered by
-     whichever platform-group fee(s) or the minimum floor already present, not billed again. The ONLY
-     other monthly lines allowed are the new-site hosting line from BUDGET PYRAMID #5 and the
-     avatar-tier line from BUDGET PYRAMID #9, when either applies
+     "ניהול מטא": 350, "ניהול גוגל": 350, "ניהול יוטיוב": {PRICING['platform_management_fees']['youtube']}),
+     plus the minimum-floor line only when no platform group is included, plus the ad-spend
+     surcharge line below if it applies. Do NOT add separate monthly line items for non-platform
+     services (SEO, email, organic social, automation) - those are covered by whichever
+     platform-group fee(s) or the minimum floor already present, not billed again. The ONLY other
+     monthly lines allowed are the new-site hosting line from BUDGET PYRAMID #5 and the avatar-tier
+     line from BUDGET PYRAMID #9, when either applies
+   - YouTube is organic-only here (no paid-ads product exists for it in this system, same as
+     TikTok) - it never contributes to the ad-spend surcharge below, which is about paid ad
+     spend oversight specifically
+   - YOUTUBE RELEVANCE GUARD: only include "youtube" when the package already produces video
+     content the client can actually publish there (a media/avatar tier, or organic content that
+     includes video) - never recommend YouTube management on top of a package with no video source
+     at all; there would be nothing to upload
    - If the recommended/actual ad spend budget for a package exceeds
      {PRICING['monthly_ad_spend_surcharge_threshold']} NIS/month, add
      {PRICING['monthly_ad_spend_surcharge_pct'] * 100:.0f}% of the amount ABOVE that threshold as a
@@ -593,16 +589,17 @@ CRITICAL RULES:
     shortfall point when it actually applies)
   - each package's description: max 1-2 sentences
 - recommended_services lists ONLY the ONGOING managed services of the package (the things the
-  monthly fee is computed from: "google", "meta", "tiktok", organic SEO tier, automation, etc.) —
+  monthly fee is computed from: "google", "meta", "tiktok", "youtube", organic SEO tier, automation,
+  etc.) —
   never one-time setup deliverables. The standard setup package contents (landing page, market
   research, audit, campaign launches, the one TikTok video, the initial articles) are covered by
   the setup floor line item and must NOT appear in recommended_services and should NOT be itemized
   as separate setup_fee_breakdown lines — itemize a setup line beyond the floor only when it is
   genuinely billed ABOVE the floor (e.g. a full website build, scaled automation work), and then
   reflect that same extra work in the package description
-- Every monthly_breakdown platform-management line ("ניהול מטא", "ניהול גוגל", "ניהול טיקטוק") must
-  have its platform present in recommended_services, and vice versa — these two must always agree,
-  since both are derived from the same set of included platform groups
+- Every monthly_breakdown platform-management line ("ניהול מטא", "ניהול גוגל", "ניהול טיקטוק",
+  "ניהול יוטיוב") must have its platform present in recommended_services, and vice versa — these two
+  must always agree, since both are derived from the same set of included platform groups
 - setup_fee_total floor per package type: {PRICING['min_setup_fee']} NIS for a standard package,
   {PRICING['single_service_setup_fee']} NIS for a single-service package (see BUDGET PYRAMID #2), or
   — for the non-flagged portions of a package with requires_manual_followup=true (BUDGET PYRAMID

@@ -5,11 +5,13 @@ agent: media_agent/avatar_agent generate the actual video; this agent is
 purely the pipe from already-generated media to the client's YouTube channel.
 No content generation and no LLM calls here.
 
-PRICING MODEL (business decision, 2026-07-23 handoff) — DECOUPLED from
-generation cost, on purpose:
-- The YouTube fee (PRICING["youtube"]) covers ONLY ongoing management:
-  connection, uploads, engagement tracking. It is NOT a generation-cost
-  bucket the way Higgsfield/avatar minutes are.
+PRICING MODEL (business decision, 2026-07-23 handoff, CONFIRMED same day at
+150 NIS/month) — DECOUPLED from generation cost, on purpose:
+- The YouTube fee (PRICING["platform_management_fees"]["youtube"]) covers
+  ONLY ongoing management: connection, uploads, engagement tracking. It is
+  NOT a generation-cost bucket the way Higgsfield/avatar minutes are. Fully
+  wired into the live sales-chat proposal flow (build_proposal) alongside
+  meta/google/tiktok — see the youtube skill for the full pricing writeup.
 - Media generation for YouTube content (podcasts, repurposed shorts/reels,
   YouTube-specific videos) stays entirely inside the client's EXISTING
   media/avatar tier system. A client wanting longer/more complex YouTube
