@@ -680,3 +680,109 @@ def run_weekly_report(send_email: bool = True) -> dict:
 
     log_step(AGENT_NAME, "run_weekly_report", f"done - {len(clients_data)} clients in report")
     return report
+
+
+# ─── Merchant Center (2026-07-23) — priced INSIDE the core Google Ads fee ────
+# Extends this agent rather than a new one, per the handoff: same OAuth
+# infrastructure family, same "Google-side platform management" business
+# bucket. NOT a separate add-on fee — covered by PRICING["platform_management
+# _fees"]["google"], same principle as Meta bundling FB+IG under one fee.
+#
+# THE DEPENDENCY THIS HANDOFF ASKED TO INVESTIGATE, NOT ASSUME (checked
+# 2026-07-23): Merchant Center does NOT actually depend on WooCommerce/
+# website_agent e-commerce support. A Merchant Center account's product feed
+# can come from many sources Google supports directly — a connected Shopify
+# store, a manually-maintained Google Sheet, a scheduled fetch from any URL,
+# or direct API insertion — and OUR job here is CONNECT + MONITOR an
+# EXISTING account/feed, never to BE the feed source. So:
+#   - Client already sells somewhere with a real product feed (their own
+#     Shopify, a WooCommerce site we don't manage, a marketplace, or a
+#     manually-kept Sheet) -> Merchant Center works today, fully independent
+#     of website_agent's WooCommerce gap.
+#   - Client has NO product feed anywhere and no e-commerce presence (a
+#     services business, or a site we built with no WooCommerce) -> Merchant
+#     Center genuinely isn't offerable — but that's because there's nothing
+#     to advertise, not because of our website tooling. Same reason we
+#     wouldn't pitch Google Shopping to a services-only business anyway.
+# Conclusion: this is a per-client ELIGIBILITY question (do they have
+# products + a feed source), not a blocked FEATURE. Building website_agent
+# WooCommerce support would let US become a feed source for clients whose
+# site we build — a real future enhancement, but not what's blocking this.
+
+MERCHANT_PLATFORM = "merchant_center"
+
+
+def _merchant_connection(client_id: int) -> dict:
+    result = (
+        _db().table("client_accounts").select("*")
+        .eq("client_id", client_id).eq("platform", MERCHANT_PLATFORM)
+        .eq("status", "active").order("id", desc=True).limit(1).execute()
+    )
+    return result.data[0] if result.data else {}
+
+
+def is_merchant_connected(client_id: int) -> bool:
+    conn = _merchant_connection(client_id)
+    return bool(conn.get("access_token") and conn.get("account_id"))
+
+
+def get_feed_status(client_id: int) -> dict:
+    """Account + data-source (feed) health for the client's OWN Merchant
+    Center account. Reports per-source processing state honestly — a data
+    source existing is not the same as it processing successfully."""
+    from core import merchant_center_service as mc
+
+    conn = _merchant_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return {"connected": False}
+
+    merchant_id = conn["account_id"]
+    log_step(AGENT_NAME, "get_feed_status", f"client_id={client_id} merchant_id={merchant_id}")
+    try:
+        account = mc.get_account(conn["access_token"], merchant_id)
+        sources = mc.list_data_sources(conn["access_token"], merchant_id)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"Merchant Center feed status fetch failed for client {client_id}: {e}"])
+        return {"connected": True, "error": str(e)}
+
+    if not sources:
+        return {"connected": True, "account_name": account.get("accountName", ""),
+                "data_sources": [], "issues": ["no product feed / data source configured on this "
+                                               "Merchant Center account — nothing to advertise until "
+                                               "one exists (Shopify feed, manual Sheet, or another source)"]}
+
+    feeds, issues = [], []
+    for source in sources:
+        name = source.get("displayName", source.get("name", ""))
+        state = ((source.get("fileInput") or {}).get("fetchSettings") or {}).get("fetchState", "")
+        feed = {"name": name, "fetch_state": state}
+        feeds.append(feed)
+        if state and state not in ("OK", "SUCCESS", ""):
+            issues.append(f"data source '{name}' fetch state: {state}")
+    return {"connected": True, "account_name": account.get("accountName", ""),
+            "data_sources": feeds, "issues": issues}
+
+
+def run_merchant_center_scan() -> dict:
+    """Daily-scan-style check across every connected Merchant Center account
+    — folds into the SAME cadence as the Ads health scan conceptually, but
+    kept as its own function/endpoint (GET /api/google-ads/merchant-scan)
+    since it's a genuinely separate API/account namespace from campaigns."""
+    rows = (_db().table("client_accounts").select("client_id")
+            .eq("platform", MERCHANT_PLATFORM).eq("status", "active").execute().data or [])
+    client_ids = sorted({r["client_id"] for r in rows})
+    summary = {"clients_scanned": 0, "issues_found": 0}
+    for client_id in client_ids:
+        try:
+            status = get_feed_status(client_id)
+            if not status.get("connected"):
+                continue
+            summary["clients_scanned"] += 1
+            if status.get("issues"):
+                agent_alert(AGENT_NAME, [f"client {client_id}: Merchant Center feed issue(s) — "
+                                         f"{'; '.join(status['issues'])}"])
+                summary["issues_found"] += len(status["issues"])
+        except Exception as e:
+            log_step(AGENT_NAME, "merchant_center_scan", f"client {client_id}: {e}")
+    log_step(AGENT_NAME, "run_merchant_center_scan", f"done - {summary}")
+    return summary

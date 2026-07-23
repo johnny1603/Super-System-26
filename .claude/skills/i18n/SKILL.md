@@ -172,7 +172,10 @@ in the catch/failure branch — never `body.detail` directly.
   `preactExplain(key, onContinue)` — one shared modal, copy in
   `preact_<key>_title`/`preact_<key>_body` (5 languages), once per pageload
   per key. Existing keys: wordpress, higgsfield, avatar, tiktok, meta_page,
-  gtm.
+  gtm, merchant_center. Plain OAuth redirects (Google Ads/Meta/TikTok/
+  YouTube connect) stay popup-free — Merchant Center gets one because it's
+  genuinely two steps (consent + typing an account id from their own
+  settings), not a plain 1-2 click redirect.
   New manual-step flows must use this component, never a bespoke popup;
   plain OAuth redirects (Google/Meta connect) stay popup-free on purpose.
 - All four former "business decisions, not engineering" items (terms page,

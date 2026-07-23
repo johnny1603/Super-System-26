@@ -1139,7 +1139,9 @@ _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
     "meta": ["meta_ads", "meta_page", "meta_instagram", "meta_pending"],
     "tiktok": ["tiktok"],
+    "youtube": ["youtube"],
     "gtm": ["google_tagmanager"],
+    "merchant_center": ["merchant_center", "merchant_center_pending"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
     # HeyGen + ElevenLabs disconnect together (both are the avatar add-on's
@@ -1155,7 +1157,7 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
 
     revoked = None
-    if platform in ("google_ads", "gtm"):
+    if platform in ("google_ads", "gtm", "youtube", "merchant_center"):
         # Same Google OAuth infrastructure — revoking the refresh token kills
         # the grant regardless of which scopes it carried
         for row in rows:
@@ -1624,6 +1626,110 @@ def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=gtm")
 
+# ─── YouTube OAuth (client connects their own channel — separate consent) ───
+
+@app.get("/api/oauth/youtube/start")
+async def youtube_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    from core import youtube_service
+    return RedirectResponse(url=youtube_service.build_consent_url(state))
+
+@app.get("/api/oauth/youtube/callback")
+def youtube_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import youtube_service
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=youtube")
+    if error or not code:
+        print(f"[youtube oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=youtube")
+    try:
+        tokens = youtube_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print(f"[youtube oauth] client {client_id}: token exchange returned no refresh_token")
+            return RedirectResponse(url="/dashboard/?connect_error=youtube")
+        channel = youtube_service.get_own_channel(refresh_token)
+        if not channel.get("channel_id"):
+            print(f"[youtube oauth] client {client_id}: authorized user has no YouTube channel")
+            return RedirectResponse(url="/dashboard/?connect_error=youtube_no_channel")
+        upsert_account(client_id, "youtube", channel["channel_id"], refresh_token, "active")
+        log_activity(client_id, "youtube_content_agent", "account_connected",
+                     {"channel_id": channel["channel_id"], "title": channel.get("title", "")}, {})
+        return RedirectResponse(url="/dashboard/?connected=youtube")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=youtube")
+
+# ─── Merchant Center OAuth (separate consent; merchant id linked afterward) ──
+# Two-step by design (see core/merchant_center_service.py's docstring on why
+# account discovery isn't trusted): consent grants the token, parked on a
+# pending row; the client then types their own numeric Merchant Center id
+# (visible in their own account settings) and we VERIFY access to exactly
+# that id before storing the real connection — same "park token, verify
+# later" shape as meta_content_agent's no-Page flow.
+
+@app.get("/api/oauth/merchant-center/start")
+async def merchant_center_oauth_start(request: Request):
+    client_id = _require_session(request)
+    state = create_oauth_state_token(client_id)
+    from core import merchant_center_service
+    return RedirectResponse(url=merchant_center_service.build_consent_url(state))
+
+@app.get("/api/oauth/merchant-center/callback")
+def merchant_center_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
+    if error or not code:
+        print(f"[merchant center oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
+    try:
+        from core import merchant_center_service
+        tokens = merchant_center_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print(f"[merchant center oauth] client {client_id}: token exchange returned no refresh_token")
+            return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
+        upsert_account(client_id, "merchant_center_pending", "pending_id", refresh_token, "active")
+        return RedirectResponse(url="/dashboard/?connected=merchant_center_pending")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
+
+class MerchantCenterLinkRequest(BaseModel):
+    merchant_id: str
+
+@app.post("/api/merchant-center/link")
+def merchant_center_link(req: MerchantCenterLinkRequest, request: Request):
+    # Plain `def`: verification makes a blocking call to the Merchant API
+    client_id = _require_session(request)
+    merchant_id = (req.merchant_id or "").strip()
+    if not merchant_id.isdigit():
+        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_MERCHANT_ID"})
+    pending = (db.table("client_accounts").select("*")
+              .eq("client_id", client_id).eq("platform", "merchant_center_pending")
+              .eq("status", "active").order("id", desc=True).limit(1).execute().data)
+    if not pending:
+        raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
+    refresh_token = pending[0]["access_token"]
+    try:
+        from core import merchant_center_service
+        account = merchant_center_service.get_account(refresh_token, merchant_id)
+    except Exception as e:
+        print(f"[merchant-center link] client {client_id}: verification failed for "
+              f"merchant_id={merchant_id}: {e}")
+        raise HTTPException(status_code=400, detail={"code": "ERR_MERCHANT_ID_NOT_ACCESSIBLE"})
+    upsert_account(client_id, "merchant_center", merchant_id, refresh_token, "active")
+    remove_accounts(client_id, ["merchant_center_pending"])
+    log_activity(client_id, "google_ads_agent", "merchant_center_connected",
+                 {"merchant_id": merchant_id, "account_name": account.get("accountName", "")}, {})
+    return {"success": True, "data": {"merchant_id": merchant_id,
+                                      "account_name": account.get("accountName", "")}}
+
 # ─── Google Ads execution (admin/scheduler only) ─────────────────────────────
 
 class CreateCampaignRequest(BaseModel):
@@ -1659,6 +1765,22 @@ def google_ads_weekly_report():
     from agents.google_ads_agent import run_weekly_report
     try:
         return {"success": True, "data": run_weekly_report()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/google-ads/merchant-status", dependencies=_admin_only)
+def google_ads_merchant_status(client_id: int):
+    from agents.google_ads_agent import get_feed_status
+    try:
+        return {"success": True, "data": get_feed_status(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/google-ads/merchant-scan", dependencies=_admin_only)
+def google_ads_merchant_scan():
+    from agents.google_ads_agent import run_merchant_center_scan
+    try:
+        return {"success": True, "data": run_merchant_center_scan()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1887,6 +2009,32 @@ def tiktok_content_publish(req: TikTokPublishRequest):
 @app.get("/api/tiktok-content/engagement", dependencies=_admin_only)
 def tiktok_content_engagement(client_id: int):
     from agents.tiktok_content_agent import get_engagement_summary
+    try:
+        return {"success": True, "data": get_engagement_summary(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── YouTube execution (admin/scheduler only) ────────────────────────────────
+
+class YoutubePublishRequest(BaseModel):
+    client_id: int
+    drive_file_id: str
+    title: str
+    description: str = ""
+
+@app.post("/api/youtube-content/publish", dependencies=_admin_only)
+def youtube_content_publish(req: YoutubePublishRequest):
+    # Plain `def`: downloads from Drive + uploads to YouTube are blocking HTTP
+    from agents.youtube_content_agent import publish
+    result = publish(req.client_id, {"drive_file_id": req.drive_file_id,
+                                     "title": req.title, "description": req.description})
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/youtube-content/engagement", dependencies=_admin_only)
+def youtube_content_engagement(client_id: int):
+    from agents.youtube_content_agent import get_engagement_summary
     try:
         return {"success": True, "data": get_engagement_summary(client_id)}
     except Exception as e:

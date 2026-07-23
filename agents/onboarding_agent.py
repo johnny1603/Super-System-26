@@ -89,6 +89,30 @@ PRICING = {
             "מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות לספקים, לא דרכנו."),
     },
 
+    # YouTube (2026-07-23 handoff) — PROPOSED, not yet confirmed as final; see
+    # .claude/skills/youtube/SKILL.md for the full cost/quota research this is
+    # based on. Deliberately NOT added to platform_management_fees above:
+    # that dict feeds the sales-chat proposal prompt directly, and wiring an
+    # unconfirmed number into live proposals would be presumptuous. Once
+    # confirmed, move/copy this into platform_management_fees.
+    #
+    # Model: this fee is PUBLISHING/MANAGEMENT ONLY (connection, uploads,
+    # engagement tracking) - deliberately decoupled from generation cost.
+    # The YouTube Data API itself has NO monetary billing (quota units only;
+    # our volume is nowhere near the 10,000/day free cap even after
+    # videos.insert's Dec-2025 cost drop to ~100 units/upload) - so there is
+    # no real API cost to price in here at all. Media generation for
+    # YouTube content (podcasts, repurposed shorts, YouTube-specific videos)
+    # stays entirely inside the client's EXISTING media/avatar tier - a
+    # bigger/more complex YouTube video means upgrading THAT tier, never a
+    # second YouTube-specific generation charge.
+    "youtube": {
+        "management_fee_ils_proposed": 150,  # PROPOSED - roughly avatar-setup scale,
+                                             # well below the 350 platform-management
+                                             # tiers (which include real ads/content
+                                             # strategy work YouTube publishing doesn't)
+    },
+
     "raffle": {"setup_and_management": 250},
     "min_budget": 1000,
     "benefit_months": 2

@@ -9,6 +9,10 @@ Feeds (pull points for other agents — call these, don't rebuild):
   `file_id` directly and downloads it privately (TikTok's FILE_UPLOAD source
   needs no public link, unlike Meta's media_url; see .claude/skills/tiktok/
   SKILL.md for why PULL_FROM_URL isn't usable here).
+- youtube_content_agent: same shape as TikTok — takes the Drive `file_id`
+  directly, downloads it privately, uploads raw bytes via YouTube's
+  resumable upload (no domain-verification requirement at all, so no
+  public-URL step is even possible/needed here).
 - seo_agent / website_agent: generated site imagery lands in the client's
   Drive folder (website subfolders); wordpress upload goes through the
   existing wp.upload_media_from_url with the public link.

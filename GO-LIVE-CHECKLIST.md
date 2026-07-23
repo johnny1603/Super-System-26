@@ -18,8 +18,15 @@ actual domain-connection blocker, decided to defer until budget allows.
 
 ### 2. Redirect URIs to update manually, per platform
 
-- [ ] Google Cloud Console — OAuth Client → Authorized redirect URIs
-      (Google Ads connection)
+- [ ] Google Cloud Console — OAuth Client → Authorized redirect URIs. ONE
+      OAuth client now serves FIVE separate consents (each its own
+      `client_accounts` platform row, different scopes): Google Ads
+      (`/api/oauth/google-ads/callback`), GTM
+      (`/api/oauth/gtm/callback`), YouTube
+      (`/api/oauth/youtube/callback`), Merchant Center
+      (`/api/oauth/merchant-center/callback`) — all four redirect URIs must
+      be registered on the SAME OAuth client, and all four break together
+      if `PUBLIC_APP_URL` and the registered URIs ever drift apart.
 - [ ] Meta App Dashboard — Facebook Login for Business → Valid OAuth
       Redirect URIs
 - [ ] TikTok Developer Portal — App settings → Redirect URI
@@ -49,6 +56,24 @@ actual domain-connection blocker, decided to defer until budget allows.
   domain just fronts the same service).
 - HeyGen / ElevenLabs / Higgsfield / InstaWP / Green API — key-based, no
   redirect URIs or stored callback URLs on their side.
+
+## 🔒 Google OAuth app verification (business-decision gate, tracked here)
+
+Three sensitive-scope consents were added this week (GTM, YouTube, Merchant
+Center — `.../auth/tagmanager.*`, `.../auth/youtube.*`, `.../auth/content`),
+each on top of the existing Google Ads `adwords` scope. Until Google's OAuth
+verification review (consent-screen review + scope justifications) is
+submitted and approved for ALL of them:
+
+- [ ] Every affected consent screen shows Google's "unverified app" warning
+- [ ] Only up to 100 TEST USERS (added in Cloud Console) can actually
+      complete these consents — real clients cannot connect until approved
+- [ ] Submit the verification request (bundle all three scope additions
+      into one review where possible) well before counting on any of
+      GTM/YouTube/Merchant Center being client-facing
+
+This is independent of the domain/PayPal switch — it can (and should) be
+done well before go-live day, since development/testing needs it too.
 
 ## 💳 PayPal: Sandbox → Live
 

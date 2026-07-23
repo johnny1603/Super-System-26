@@ -743,6 +743,37 @@ body {
 
     <div class="conn-card unlocked">
       <div class="conn-top">
+        <div class="conn-icon" style="background:#FF0000;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 12s0-3.6-.5-5.2c-.3-1-1-1.7-2-2C17.9 4.3 12 4.3 12 4.3s-5.9 0-7.5.5c-1 .3-1.7 1-2 2C2 8.4 2 12 2 12s0 3.6.5 5.2c.3 1 1 1.7 2 2 1.6.5 7.5.5 7.5.5s5.9 0 7.5-.5c1-.3 1.7-1 2-2 .5-1.6.5-5.2.5-5.2z"/><path d="M10 15.5l5-3.5-5-3.5z" fill="white" stroke="none"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">YouTube</div>
+          <div class="conn-status" id="youtubeStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="youtubeBtn" onclick="connectYoutube()" data-i18n="connect_now">חבר עכשיו</button>
+    </div>
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#34A853;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M6 2l1 5M18 2l-1 5"/><path d="M3.5 7h17l-1.5 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><circle cx="9.5" cy="12.5" r="1" fill="white" stroke="none"/><circle cx="14.5" cy="12.5" r="1" fill="white" stroke="none"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="merchant_card">Merchant Center — קניות בגוגל</div>
+          <div class="conn-status" id="merchantStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="merchantBtn" onclick="connectMerchantCenter()" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="merchantForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="merchant_id_note">מזהה Merchant Center נמצא ב-merchants.google.com למעלה, ליד שם החשבון (מספר בלבד)</div>
+        <input class="site-input" id="merchantIdInput" dir="ltr" placeholder="Merchant Center ID">
+        <button class="conn-btn primary" id="merchantSubmitBtn" onclick="linkMerchantCenter()" data-i18n="site_connect">חיבור</button>
+      </div>
+    </div>
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
         <div class="conn-icon" style="background:#464646;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
         </div>
@@ -1106,6 +1137,18 @@ const DASH_I18N = {
   gtm_connect_btn: { he:'חיבור מדידת המרות (Google Tag Manager)', en:'Connect conversion measurement (Google Tag Manager)', fr:'Connecter la mesure des conversions (Google Tag Manager)', ar:'ربط قياس التحويلات (Google Tag Manager)', ru:'Подключить измерение конверсий (Google Tag Manager)' },
   gtm_connected_btn: { he:'מדידת המרות מחוברת ✓', en:'Conversion measurement connected ✓', fr:'Mesure des conversions connectée ✓', ar:'قياس التحويلات مرتبط ✓', ru:'Измерение конверсий подключено ✓' },
   notice_gtm_connected: { he:'Google Tag Manager חובר בהצלחה ✓ — מעכשיו אפשר לוודא ולהגדיר מדידת לידים באתר', en:'Google Tag Manager connected ✓ — lead measurement on your site can now be verified and configured', fr:'Google Tag Manager connecté ✓ — la mesure des leads sur votre site peut désormais être vérifiée et configurée', ar:'تم ربط Google Tag Manager ✓ — يمكن الآن التحقق من قياس العملاء المحتملين على موقعكم وإعداده', ru:'Google Tag Manager подключён ✓ — теперь можно проверять и настраивать измерение лидов на вашем сайте' },
+  notice_youtube_connected: { he:'ערוץ YouTube חובר בהצלחה ✓', en:'YouTube channel connected ✓', fr:'Chaîne YouTube connectée ✓', ar:'تم ربط قناة YouTube بنجاح ✓', ru:'Канал YouTube подключён ✓' },
+  merchant_card: { he:'Merchant Center — קניות בגוגל', en:'Merchant Center — Google Shopping', fr:'Merchant Center — Google Shopping', ar:'Merchant Center — تسوق Google', ru:'Merchant Center — Google Покупки' },
+  merchant_id_note: { he:'מזהה Merchant Center נמצא ב-merchants.google.com למעלה, ליד שם החשבון (מספר בלבד)', en:'Find your Merchant Center ID at merchants.google.com, top of the page next to the account name (numbers only)', fr:'Trouvez votre identifiant Merchant Center sur merchants.google.com, en haut de la page à côté du nom du compte (chiffres uniquement)', ar:'تجدون معرّف Merchant Center في merchants.google.com أعلى الصفحة بجانب اسم الحساب (أرقام فقط)', ru:'Найдите свой ID Merchant Center на merchants.google.com, вверху страницы рядом с названием аккаунта (только цифры)' },
+  merchant_pending_status: { he:'ממתין למזהה החשבון', en:'Waiting for account id', fr:'En attente de l\'identifiant du compte', ar:'بانتظار معرّف الحساب', ru:'Ожидание ID аккаунта' },
+  notice_merchant_pending: { he:'ההרשאה אושרה — נשאר רק להזין את מזהה ה-Merchant Center שלכם', en:'Consent approved — just enter your Merchant Center id to finish', fr:'Consentement approuvé — il ne reste qu\'à saisir votre identifiant Merchant Center', ar:'تمت الموافقة — تبقى فقط إدخال معرّف Merchant Center الخاص بكم', ru:'Согласие получено — осталось ввести ваш ID Merchant Center' },
+  notice_merchant_connected: { he:'Merchant Center חובר בהצלחה ✓', en:'Merchant Center connected ✓', fr:'Merchant Center connecté ✓', ar:'تم ربط Merchant Center بنجاح ✓', ru:'Merchant Center подключён ✓' },
+  merchant_link_failed: { he:'החיבור נכשל — ודאו שהמזהה נכון ושהחשבון שאישרתם הוא בעל גישה אליו', en:'Connection failed — check the id is correct and the account you approved has access to it', fr:'Échec de connexion — vérifiez que l\'identifiant est correct et que le compte approuvé y a accès', ar:'فشل الربط — تحققوا من صحة المعرّف ومن أن الحساب الذي وافقتم عليه لديه صلاحية الوصول', ru:'Подключение не удалось — проверьте правильность ID и что одобренный аккаунт имеет к нему доступ' },
+  err_invalid_merchant_id: { he:'מזהה Merchant Center צריך להיות מספר בלבד', en:'Merchant Center id must be numbers only', fr:'L\'identifiant Merchant Center doit être uniquement numérique', ar:'يجب أن يكون معرّف Merchant Center أرقامًا فقط', ru:'ID Merchant Center должен состоять только из цифр' },
+  err_no_pending_merchant_consent: { he:'ההרשאה פגה — לחצו שוב על חבר עכשיו', en:'The consent expired — click Connect now again', fr:'Le consentement a expiré — cliquez à nouveau sur Connecter', ar:'انتهت صلاحية الموافقة — اضغطوا على ربط الآن مرة أخرى', ru:'Согласие истекло — нажмите «Подключить» снова' },
+  err_merchant_id_not_accessible: { he:'החשבון שאישרתם אין לו גישה למזהה הזה — בדקו את המספר', en:'The account you approved has no access to this id — double-check the number', fr:'Le compte approuvé n\'a pas accès à cet identifiant — vérifiez le numéro', ar:'الحساب الذي وافقتم عليه ليس لديه صلاحية الوصول لهذا المعرّف — تحققوا من الرقم', ru:'У одобренного аккаунта нет доступа к этому ID — проверьте номер' },
+  preact_merchant_center_title: { he:'רגע לפני חיבור Merchant Center', en:'Before connecting Merchant Center', fr:'Avant de connecter Merchant Center', ar:'قبل ربط Merchant Center', ru:'Перед подключением Merchant Center' },
+  preact_merchant_center_body: { he:'כדי לנהל את פרסום המוצרים שלכם בגוגל (Google Shopping), נצטרך גישה לחשבון ה-Merchant Center שלכם. יש כאן שני שלבים: קודם אישור בגוגל, ואז הזנת מספר מזהה החשבון (תמצאו אותו בקלות ב-merchants.google.com) — כי רק בעל החשבון יכול לאשר את שניהם. אם עדיין אין לכם עדיין הזנת מוצרים (feed) בחשבון, כדאי לוודא שיש מקור מוצרים לפני שממשיכים.', en:'To manage your product listings on Google (Google Shopping) we need access to your Merchant Center account. There are two steps: first Google\'s consent, then entering your account id number (easy to find at merchants.google.com) — only the account owner can approve both. If you don\'t have a product feed in the account yet, make sure you have a product source before continuing.', fr:'Pour gérer vos annonces produits sur Google (Google Shopping), nous avons besoin d\'accéder à votre compte Merchant Center. Il y a deux étapes : d\'abord le consentement Google, puis la saisie du numéro d\'identifiant de votre compte (facile à trouver sur merchants.google.com) — seul le propriétaire du compte peut approuver les deux. Si vous n\'avez pas encore de flux de produits dans le compte, assurez-vous d\'avoir une source de produits avant de continuer.', ar:'لإدارة قوائم منتجاتكم على غوغل (Google Shopping)، نحتاج إلى الوصول لحساب Merchant Center الخاص بكم. هناك خطوتان: أولًا موافقة غوغل، ثم إدخال رقم معرّف الحساب (يسهل إيجاده في merchants.google.com) — فقط صاحب الحساب يستطيع الموافقة على الاثنين. إذا لم يكن لديكم بعد خلاصة منتجات في الحساب، تأكدوا من وجود مصدر منتجات قبل المتابعة.', ru:'Чтобы управлять вашими товарными объявлениями в Google (Google Покупки), нам нужен доступ к вашему аккаунту Merchant Center. Есть два шага: сначала согласие Google, затем ввод номера ID вашего аккаунта (легко найти на merchants.google.com) — только владелец аккаунта может одобрить оба. Если у вас ещё нет фида товаров в аккаунте, убедитесь, что у вас есть источник товаров, прежде чем продолжить.' },
   preact_gtm_title: { he:'רגע לפני חיבור המדידה', en:'Before connecting measurement', fr:'Avant de connecter la mesure', ar:'قبل ربط القياس', ru:'Перед подключением измерения' },
   preact_gtm_body: { he:'כדי לדעת אילו קמפיינים באמת מביאים לכם לידים, אנחנו צריכים גישה ל-Google Tag Manager שלכם — מערכת המדידה של האתר. זו הרשאה נפרדת מחיבור Google Ads, כי מדובר בהרשאה אחרת אצל גוגל, ורק בעל החשבון יכול לאשר אותה. אנחנו נשתמש בה רק להגדרת מדידת המרות (למשל: שליחת טופס יצירת קשר) — לא נשנה שום דבר אחר.', en:'To know which campaigns actually bring you leads, we need access to your Google Tag Manager — the site\'s measurement system. It\'s a separate consent from your Google Ads connection because Google treats it as a different permission, and only the account owner can grant it. We\'ll use it only for conversion measurement setup (e.g. contact form submissions) — nothing else gets changed.', fr:'Pour savoir quelles campagnes vous apportent réellement des leads, nous avons besoin d\'accéder à votre Google Tag Manager — le système de mesure du site. C\'est un consentement distinct de votre connexion Google Ads car Google le traite comme une autorisation différente, et seul le propriétaire du compte peut l\'accorder. Nous l\'utiliserons uniquement pour configurer la mesure des conversions (ex. envoi du formulaire de contact) — rien d\'autre ne sera modifié.', ar:'لمعرفة أي الحملات تجلب لكم عملاء محتملين فعلًا، نحتاج إلى الوصول إلى Google Tag Manager الخاص بكم — نظام قياس الموقع. هذه موافقة منفصلة عن ربط Google Ads لأن غوغل تعاملها كصلاحية مختلفة، وصاحب الحساب وحده يستطيع منحها. سنستخدمها فقط لإعداد قياس التحويلات (مثل إرسال نموذج التواصل) — لن يتغير أي شيء آخر.', ru:'Чтобы знать, какие кампании действительно приносят вам лиды, нам нужен доступ к вашему Google Tag Manager — системе измерения сайта. Это отдельное согласие от подключения Google Ads, потому что Google считает это другим разрешением, и дать его может только владелец аккаунта. Мы используем его только для настройки измерения конверсий (например, отправка контактной формы) — больше ничего не изменится.' },
   upgrade_addons_title: { he:'תוספות ושירותים נוספים — הצעה מדויקת בצ\'אט', en:'Add-ons & extra services — get an exact quote in the chat', fr:'Options et services supplémentaires — devis précis dans le chat', ar:'إضافات وخدمات أخرى — عرض دقيق في الدردشة', ru:'Дополнения и услуги — точное предложение в чате' },
@@ -1345,6 +1388,14 @@ async function loadDashboard() {
     }
     if (conns.some(c => c.platform === 'tiktok' && c.status === 'active')) {
       markTiktokConnected();
+    }
+    if (conns.some(c => c.platform === 'youtube' && c.status === 'active')) {
+      markYoutubeConnected();
+    }
+    if (conns.some(c => c.platform === 'merchant_center' && c.status === 'active')) {
+      markMerchantConnected();
+    } else if (conns.some(c => c.platform === 'merchant_center_pending' && c.status === 'active')) {
+      showMerchantIdForm();
     }
     if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
       const wasProvisioning = !!window._siteProvisionPoll;
@@ -1588,6 +1639,54 @@ async function disconnectPlatform(platformKey, link) {
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
 function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok'); }
+function markYoutubeConnected() { markPlatformConnected('youtubeStatus', 'youtubeBtn', 'youtube'); }
+// Plain OAuth redirect, no pre-action popup — same exemption as Google Ads/
+// Meta/TikTok connect (a simple 1-2 click provider consent, below the
+// universal explanation rule's bar; see preactExplain's own comment).
+function connectYoutube() { window.location.href = '/api/oauth/youtube/start'; }
+
+// Merchant Center: OAuth THEN a manual id-entry step - genuinely more than
+// 1-2 clicks (find the id in their own Merchant Center settings), so this
+// DOES get the pre-action popup unlike the plain-OAuth platforms above.
+function connectMerchantCenter() {
+  preactExplain('merchant_center', () => { window.location.href = '/api/oauth/merchant-center/start'; });
+}
+function markMerchantConnected() {
+  markPlatformConnected('merchantStatus', 'merchantBtn', 'merchant_center');
+  document.getElementById('merchantForm').style.display = 'none';
+}
+function showMerchantIdForm() {
+  document.getElementById('merchantForm').style.display = 'block';
+  document.getElementById('merchantBtn').style.display = 'none';
+  document.getElementById('merchantStatus').textContent = uallakI18n.t('merchant_pending_status');
+  document.getElementById('merchantStatus').removeAttribute('data-i18n');
+}
+async function linkMerchantCenter() {
+  const merchant_id = document.getElementById('merchantIdInput').value.trim();
+  if (!merchant_id) { showNotice(uallakI18n.t('site_fill_all'), 'warn'); return; }
+  const btn = document.getElementById('merchantSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('site_connecting');
+  try {
+    const res = await fetch('/api/merchant-center/link', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ merchant_id }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      markMerchantConnected();
+      showNotice(uallakI18n.t('notice_merchant_connected'), 'success');
+      return;
+    }
+    showNotice(uallakI18n.errorText(body, 'merchant_link_failed'), 'warn');
+  } catch (e) {
+    console.error('merchant center link failed', e);
+    showNotice(uallakI18n.t('merchant_link_failed'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = uallakI18n.t('site_connect');
+}
 
 // ─── pre-action explanation (universal pattern) ─────────────────────────────
 // House rule (2026-07-22): before ANY action that needs more than a 1-2 click
@@ -2301,9 +2400,17 @@ async function sendSupportMsg() {
     showNotice(uallakI18n.t('notice_tiktok_connected'), 'success');
   } else if (params.get('connected') === 'gtm') {
     showNotice(uallakI18n.t('notice_gtm_connected'), 'success');
+  } else if (params.get('connected') === 'youtube') {
+    markYoutubeConnected();
+    showNotice(uallakI18n.t('notice_youtube_connected'), 'success');
+  } else if (params.get('connected') === 'merchant_center_pending') {
+    showMerchantIdForm();
+    showNotice(uallakI18n.t('notice_merchant_pending'), 'success');
   } else if (params.get('connect_error')) {
     const err = params.get('connect_error') || '';
-    const errLabel = err.includes('gtm') ? 'Google Tag Manager'
+    const errLabel = err.includes('merchant') ? 'Merchant Center'
+      : err.includes('gtm') ? 'Google Tag Manager'
+      : err.includes('youtube') ? 'YouTube'
       : err.includes('tiktok') ? 'TikTok' : err.includes('meta') ? 'Meta' : 'Google Ads';
     showNotice(uallakI18n.t('notice_connect_error', { p: errLabel }), 'warn');
   } else if (params.get('upgrade') === 'success') {
