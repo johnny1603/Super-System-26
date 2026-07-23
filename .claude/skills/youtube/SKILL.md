@@ -71,6 +71,49 @@ cap until approved — a real timeline gate, flagged as a business decision
 same as the others this week). YouTube API Services additionally reserves
 a compliance-audit right at scale — noted, not currently a blocker.
 
+## No-channel flow (guided self-creation + auto-detection, 2026-07-23)
+
+Channel creation via API was deliberately NOT attempted — same reasoning as
+`meta_content_agent`'s no-Page flow and why `website_agent.provision_site`
+exists for WordPress but there's no equivalent here: there's no reliable
+"create a YouTube channel on the user's behalf" API for a standard app,
+while the native flow is a genuinely quick minute the client does once.
+
+When the OAuth callback finds no channel:
+1. The refresh token is parked on a `youtube_pending` row (`account_id=
+   'pending_channel'`) — without parking it, a no-channel client would need
+   a full reconnect once their channel exists. `youtube_pending` is in
+   `_DISCONNECT_GROUPS["youtube"]`.
+2. `send_channel_creation_guide()` sends step-by-step instructions via
+   dashboard chat — STATIC text in the client's stored language preference
+   (the native YouTube flow is identical for everyone; no LLM call), deduped
+   3 days (`channel_guide_sent` activity rows). Steps: youtube.com signed in
+   with the same Google account → profile picture → "Create a channel" (or
+   studio.youtube.com, which offers this automatically) → name the channel
+   → done.
+3. Redirect is `?connected=youtube_no_channel` → the dashboard shows the
+   shared pre-action popup (`preactExplain('youtube_channel')`).
+4. `run_channel_detection_scan()` (`GET /api/youtube-content/scan` — no
+   existing YouTube scan to piggyback on, unlike Meta's inbox scan, so this
+   NEEDS its own scheduler job) watches `channels.list(mine=true)` for
+   every guided client (`channel_guide_sent` rows are the ONLY scan
+   population) until the channel appears, then connects it exactly like the
+   callback would, deletes the parked row, and notifies the client via chat.
+
+```
+gcloud scheduler jobs create http youtube-channel-scan --schedule="0 8,14,20 * * *" \
+  --uri="{SERVICE_URL}/api/youtube-content/scan" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}
+```
+
+**Real constraint sharper here than for Meta**: while this app sits in
+Google's "Testing" OAuth publishing status (unverified — see the scope
+flag below), granted refresh tokens expire after just **7 days**, not the
+usual long lifetime. A client who takes longer than a week to create their
+channel will hit `invalid_grant` on the next scan attempt — handled (the
+parked row is deleted and the team is alerted to ask them to reconnect),
+but worth knowing this failure mode is more likely here than it would be
+once the app is verified/in production.
+
 Token exchange/refresh reuse `google_ads_service`'s scope-agnostic OAuth
 helpers directly (same pattern as `gtm_service.py`) — not a third copy.
 
@@ -98,11 +141,13 @@ the same honest limit as `tiktok_content_agent`'s own engagement summary.
 
 Client-facing: `/api/oauth/youtube/start`, `/api/oauth/youtube/callback`.
 Admin (X-Admin-Key): `POST /api/youtube-content/publish`,
-`GET /api/youtube-content/engagement?client_id=`.
+`GET /api/youtube-content/engagement?client_id=`,
+`GET /api/youtube-content/scan` (channel-detection — see above, needs its
+own scheduler job, unlike everything else in this file).
 
-No dedicated Cloud Scheduler job — same reasoning as TikTok: publish/
-engagement stay admin/pull-triggered through the weekly media pull-point
-pattern (media_agent → this agent), not a standing scan.
+Publish/engagement themselves stay admin/pull-triggered through the weekly
+media pull-point pattern (media_agent → this agent), same reasoning as
+TikTok — only the no-channel detection above needs a real recurring job.
 
 ## Deferred / not built
 

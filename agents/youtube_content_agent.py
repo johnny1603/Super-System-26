@@ -44,6 +44,14 @@ from core.agent_base import agent_alert, log_step, timed_step
 
 AGENT_NAME = "youtube_content_agent"
 YOUTUBE_PLATFORM = "youtube"  # account_id=channel_id, access_token=refresh token
+# A client who authorized YouTube but has NO channel yet: the refresh token
+# is parked here so run_channel_detection_scan can keep checking channels.list
+# until their self-created channel appears — then it's swapped for a real
+# 'youtube' row and this row is deleted. Same shape as meta_content_agent's
+# meta_pending row for the no-Page flow.
+YOUTUBE_PENDING_PLATFORM = "youtube_pending"
+
+CHANNEL_GUIDE_DEDUP_DAYS = 3  # a client retrying "Connect" shouldn't get the guide spammed
 
 ENGAGEMENT_WINDOW_DAYS = 7
 RECENT_UPLOADS_LIMIT = 20
@@ -78,6 +86,167 @@ def _get_connection(client_id: int) -> dict:
 def is_connected(client_id: int) -> bool:
     conn = _get_connection(client_id)
     return bool(conn.get("access_token") and conn.get("account_id"))
+
+
+def _get_pending_connection(client_id: int) -> dict:
+    result = (
+        _db().table("client_accounts")
+        .select("*")
+        .eq("client_id", client_id)
+        .eq("platform", YOUTUBE_PENDING_PLATFORM)
+        .eq("status", "active")
+        .order("id", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else {}
+
+
+# ─── No-channel flow: guided self-creation + auto-detection ─────────────────
+# Channel creation via API was deliberately NOT attempted — same reasoning as
+# meta_content_agent's no-Page flow: there is no reliable "create a YouTube
+# channel on the user's behalf" API for a standard app, while the native flow
+# is a genuinely quick few clicks the client does once. Guide + auto-detect
+# beats a fragile API path here, same as we can't provision a channel the way
+# website_agent.provision_site provisions a new WordPress site.
+
+_CHANNEL_GUIDE = {
+    "he": ("כדי לפרסם בשבילך בטיוב, צריך ערוץ YouTube — וזה משהו שרק בעל החשבון יכול "
+           "ליצור, לכן זה אצלך. זה לוקח דקה:\n"
+           "1. היכנסו ל-youtube.com עם אותו חשבון גוגל שאישרתם איתו הרגע את החיבור\n"
+           "2. לחצו על תמונת הפרופיל (למעלה מימין) ← \"צור ערוץ\" (או פתחו את "
+           "studio.youtube.com, שמציע את זה אוטומטית אם אין לכם ערוץ)\n"
+           "3. תנו לערוץ שם (בדרך כלל שם העסק) ואפשר להוסיף תמונת פרופיל\n"
+           "4. זהו! אין צורך לחבר שוב — המערכת שלנו תזהה את הערוץ החדש אוטומטית "
+           "ותעדכן אותך כאן 🎉"),
+    "en": ("To publish for you on YouTube we need a channel — and only the account "
+           "owner can create one, which is why this step is yours. It takes a minute:\n"
+           "1. Go to youtube.com signed in with the same Google account you just used "
+           "to connect\n"
+           "2. Click your profile picture (top right) → \"Create a channel\" (or open "
+           "studio.youtube.com, which offers this automatically if you have none)\n"
+           "3. Give the channel a name (usually your business name) and optionally add "
+           "a profile picture\n"
+           "4. That's it! No need to reconnect — our system detects the new channel "
+           "automatically and will update you here 🎉"),
+    "fr": ("Pour publier pour vous sur YouTube, il faut une chaîne — et seul le "
+           "propriétaire du compte peut la créer, c'est pourquoi cette étape vous "
+           "revient. Cela prend une minute :\n"
+           "1. Allez sur youtube.com connecté avec le même compte Google que vous "
+           "venez d'utiliser pour la connexion\n"
+           "2. Cliquez sur votre photo de profil (en haut à droite) → « Créer une "
+           "chaîne » (ou ouvrez studio.youtube.com, qui le propose automatiquement "
+           "si vous n'en avez pas)\n"
+           "3. Donnez un nom à la chaîne (généralement le nom de votre entreprise) et "
+           "ajoutez éventuellement une photo de profil\n"
+           "4. C'est tout ! Pas besoin de reconnecter — notre système détecte la "
+           "nouvelle chaîne automatiquement et vous informera ici 🎉"),
+    "ar": ("لكي ننشر نيابةً عنك على يوتيوب نحتاج إلى قناة — وصاحب الحساب وحده يستطيع "
+           "إنشاءها، ولهذا هذه الخطوة لك. تستغرق دقيقة:\n"
+           "1. ادخلوا إلى youtube.com بنفس حساب غوغل الذي استخدمتموه للتو للربط\n"
+           "2. اضغطوا على صورة الملف الشخصي (أعلى اليمين) ← \"إنشاء قناة\" (أو افتحوا "
+           "studio.youtube.com الذي يقترح ذلك تلقائيًا إن لم يكن لديكم قناة)\n"
+           "3. أعطوا القناة اسمًا (عادةً اسم عملكم) ويمكن إضافة صورة ملف شخصي\n"
+           "4. هذا كل شيء! لا حاجة لإعادة الربط — نظامنا يكتشف القناة الجديدة تلقائيًا "
+           "وسيحدثكم هنا 🎉"),
+    "ru": ("Чтобы публиковать за вас на YouTube, нужен канал — создать его может "
+           "только владелец аккаунта, поэтому этот шаг за вами. Это займёт минуту:\n"
+           "1. Откройте youtube.com под тем же аккаунтом Google, которым вы только "
+           "что подключились\n"
+           "2. Нажмите на фото профиля (справа вверху) → «Создать канал» (или "
+           "откройте studio.youtube.com — он предложит это автоматически, если "
+           "канала ещё нет)\n"
+           "3. Дайте каналу название (обычно название вашего бизнеса) и при желании "
+           "добавьте фото профиля\n"
+           "4. Готово! Повторно подключаться не нужно — наша система обнаружит новый "
+           "канал автоматически и сообщит вам здесь 🎉"),
+}
+
+
+def send_channel_creation_guide(client_id: int) -> dict:
+    """The guided "create your channel yourself" instructions, via dashboard
+    chat — sent when the OAuth callback finds no channel. Static steps in
+    the client's stored language preference (YouTube's native flow is
+    identical for everyone; no LLM call for fixed content) — same pattern as
+    meta_content_agent.send_page_creation_guide. Deduped so a client
+    retrying "Connect" a few times isn't spammed."""
+    from agents.client_agent import get_activity, get_client, log_communication, log_activity
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=CHANNEL_GUIDE_DEDUP_DAYS)).isoformat()
+    for entry in get_activity(client_id, limit=50):
+        if (entry.get("agent_name") == AGENT_NAME
+                and entry.get("action_type") == "channel_guide_sent"
+                and (entry.get("created_at") or "") >= cutoff):
+            return {"success": True, "deduped": True}
+
+    client = get_client(client_id)
+    language = (client.get("language") or "he").lower()
+    log_communication(client_id, "outbound", "dashboard_chat",
+                      _CHANNEL_GUIDE.get(language, _CHANNEL_GUIDE["he"]))
+    log_activity(client_id, AGENT_NAME, "channel_guide_sent", {"language": language}, {})
+    log_step(AGENT_NAME, "send_channel_creation_guide", f"client {client_id} ({language})")
+    return {"success": True, "deduped": False}
+
+
+def _channel_guide_sent_client_ids() -> list:
+    """Clients who were sent the creation guide — the ONLY population the
+    detection scan watches, same deliberate scoping as Meta's equivalent (a
+    long-standing client who never asked to connect YouTube never gets a
+    channel silently auto-connected)."""
+    rows = (_db().table("client_activity").select("client_id")
+            .eq("agent_name", AGENT_NAME).eq("action_type", "channel_guide_sent")
+            .limit(500).execute().data or [])
+    return sorted({r["client_id"] for r in rows})
+
+
+def run_channel_detection_scan() -> dict:
+    """For every guided no-channel client who still has no youtube row: call
+    channels.list(mine=true) with their parked refresh token; the moment
+    their self-created channel appears, connect it exactly like the OAuth
+    callback would have, clean up the parked token, and tell the client.
+    No existing recurring YouTube scan to piggyback on (unlike Meta's inbox
+    scan) — this needs its own scheduler job, see the youtube skill."""
+    from agents.client_agent import log_activity, log_communication, remove_accounts, upsert_account
+
+    summary = {"clients_scanned": 0, "channels_connected": 0, "failures": 0}
+    for client_id in _channel_guide_sent_client_ids():
+        if is_connected(client_id):
+            continue  # already resolved (detected earlier, or a manual reconnect)
+        pending = _get_pending_connection(client_id)
+        refresh_token = pending.get("access_token", "")
+        if not refresh_token:
+            continue
+        summary["clients_scanned"] += 1
+        try:
+            channel = yt.get_own_channel(refresh_token)
+            if not channel.get("channel_id"):
+                continue
+            upsert_account(client_id, YOUTUBE_PLATFORM, channel["channel_id"], refresh_token, "active")
+            remove_accounts(client_id, [YOUTUBE_PENDING_PLATFORM])
+            log_activity(client_id, AGENT_NAME, "account_connected",
+                         {"channel_id": channel["channel_id"], "title": channel.get("title", ""),
+                          "via": "channel_detection_scan"}, {})
+            log_communication(client_id, "outbound", "dashboard_chat",
+                              f'זיהינו את ערוץ היוטיוב החדש שלך ("{channel.get("title", "")}") '
+                              'וחיברנו אותו אוטומטית — הכל מוכן, אין צורך בשום פעולה נוספת 🎉')
+            summary["channels_connected"] += 1
+        except Exception as e:
+            # Unverified-app OAuth grants (Google's "Testing" publishing status —
+            # see the youtube skill's verification-timeline flag) expire refresh
+            # tokens after just 7 days, unlike normal ~unlimited-lifetime tokens.
+            # A client slower than that to create their channel needs a real
+            # reconnect, not an endless silent retry.
+            if "invalid_grant" in str(e).lower():
+                remove_accounts(client_id, [YOUTUBE_PENDING_PLATFORM])
+                agent_alert(AGENT_NAME, [
+                    f"client {client_id}: parked YouTube consent token expired before their "
+                    f"channel was created (7-day expiry while the app is in Google's "
+                    f"unverified/testing mode) - they need to tap Connect again (guide was sent)"])
+            else:
+                summary["failures"] += 1
+                log_step(AGENT_NAME, "channel_detection", f"client {client_id}: {e}")
+    log_step(AGENT_NAME, "run_channel_detection_scan", f"done - {summary}")
+    return summary
 
 
 # ─── Publishing ─────────────────────────────────────────────────────────────

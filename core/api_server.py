@@ -1139,7 +1139,7 @@ _DISCONNECT_GROUPS = {
     "google_ads": ["google_ads"],
     "meta": ["meta_ads", "meta_page", "meta_instagram", "meta_pending"],
     "tiktok": ["tiktok"],
-    "youtube": ["youtube"],
+    "youtube": ["youtube", "youtube_pending"],
     "gtm": ["google_tagmanager"],
     "merchant_center": ["merchant_center", "merchant_center_pending"],
     "wordpress": ["wordpress"],
@@ -1652,8 +1652,15 @@ def youtube_oauth_callback(state: str = "", code: str = "", error: str = ""):
             return RedirectResponse(url="/dashboard/?connect_error=youtube")
         channel = youtube_service.get_own_channel(refresh_token)
         if not channel.get("channel_id"):
-            print(f"[youtube oauth] client {client_id}: authorized user has no YouTube channel")
-            return RedirectResponse(url="/dashboard/?connect_error=youtube_no_channel")
+            # No channel yet - guided state, not an error (same pattern as
+            # meta_content_agent's no-Page flow): park the token so the
+            # detection scan can watch for the self-created channel, send
+            # the guide, tell the dashboard what happens next.
+            upsert_account(client_id, "youtube_pending", "pending_channel", refresh_token, "active")
+            from agents.youtube_content_agent import send_channel_creation_guide
+            send_channel_creation_guide(client_id)
+            print(f"[youtube oauth] client {client_id}: no channel yet - guided + parked for detection")
+            return RedirectResponse(url="/dashboard/?connected=youtube_no_channel")
         upsert_account(client_id, "youtube", channel["channel_id"], refresh_token, "active")
         log_activity(client_id, "youtube_content_agent", "account_connected",
                      {"channel_id": channel["channel_id"], "title": channel.get("title", "")}, {})
@@ -2037,6 +2044,17 @@ def youtube_content_engagement(client_id: int):
     from agents.youtube_content_agent import get_engagement_summary
     try:
         return {"success": True, "data": get_engagement_summary(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/youtube-content/scan", dependencies=_admin_only)
+def youtube_content_scan():
+    # Channel-creation detection for guided no-channel clients (see the
+    # youtube skill's "No-channel flow") - no existing YouTube scan to
+    # piggyback on, so this is its own scheduled job
+    from agents.youtube_content_agent import run_channel_detection_scan
+    try:
+        return {"success": True, "data": run_channel_detection_scan()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
