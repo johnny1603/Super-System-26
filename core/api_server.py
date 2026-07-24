@@ -845,18 +845,24 @@ class ClientChatRequest(BaseModel):
 def client_chat(req: ClientChatRequest, request: Request):
     client_id = _require_session(request)
     try:
-        from agents.support_agent import PERSONAS, answer_persona_question, answer_support_question
+        from agents.support_agent import (PERSONAS, answer_persona_question,
+                                           answer_support_question, persona_channel)
         persona = (req.persona or "general").strip()
         if persona != "general" and persona not in PERSONAS:
             raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PERSONA"})
-        log_communication(client_id, "inbound", "dashboard_chat", req.message)
+        # Each persona's messages are stored on their own channel, so the
+        # conversation with (say) the Media specialist is fully separate from
+        # the general concierge and every other specialist — persisted and
+        # replayed independently (see support_agent.persona_channel).
+        channel = persona_channel(persona)
+        log_communication(client_id, "inbound", channel, req.message)
         if persona == "general":
             result = answer_support_question(client_id, req.message)
         else:
             # Specialist path: structurally read-only — no upgrade builds, no
             # web search, no action functions reachable (support_agent enforces)
             result = answer_persona_question(client_id, persona, req.message)
-        log_communication(client_id, "outbound", "dashboard_chat", result["reply"])
+        log_communication(client_id, "outbound", channel, result["reply"])
         return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}
     except HTTPException:
         raise
@@ -866,11 +872,18 @@ def client_chat(req: ClientChatRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/client-chat/history")
-async def client_chat_history(request: Request, scope: str = "current"):
+async def client_chat_history(request: Request, scope: str = "current", persona: str = "general"):
     # scope=current -> the active thread only (bounded by clients.chat_started_at,
-    # set by the 'שיחה חדשה' action); scope=all -> full history for browsing
+    # set by the 'שיחה חדשה' action); scope=all -> full history for browsing.
+    # persona selects WHICH conversation: the general concierge or one specialist,
+    # each stored on its own channel (see support_agent.persona_channel).
+    from agents.support_agent import PERSONAS, persona_channel
     client_id = _require_session(request)
-    history = list(reversed(get_communications(client_id, limit=200, channel="dashboard_chat")))
+    persona = (persona or "general").strip()
+    if persona != "general" and persona not in PERSONAS:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PERSONA"})
+    channel = persona_channel(persona)
+    history = list(reversed(get_communications(client_id, limit=200, channel=channel)))
     boundary = get_client(client_id).get("chat_started_at")
     current = ([h for h in history if (h.get("created_at") or "") >= boundary]
                if boundary else history)

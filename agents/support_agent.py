@@ -96,12 +96,26 @@ def _latest_lead(email: str) -> dict:
     return result.data[0] if result.data else {}
 
 
-def _current_thread(client_id: int, chat_started_at: str) -> list:
-    """The current conversation thread (oldest first) for LLM context. The
-    thread boundary is clients.chat_started_at - set by the dashboard's
-    'שיחה חדשה' action; None/empty means the whole history is one thread."""
+def persona_channel(persona_id: str) -> str:
+    """Each specialist persona keeps its own conversation, fully separate from
+    the general concierge and from every other specialist. We encode that
+    separation in the communications 'channel': the general concierge stays
+    'dashboard_chat' (unchanged, so existing history stays intact), and each
+    specialist uses 'dashboard_chat:<persona_id>'. One column, no migration —
+    and the LLM for a given persona only ever sees that persona's own thread."""
+    pid = (persona_id or "general").strip()
+    return "dashboard_chat" if pid == "general" else f"dashboard_chat:{pid}"
+
+
+def _current_thread(client_id: int, chat_started_at: str,
+                    channel: str = "dashboard_chat") -> list:
+    """The current conversation thread (oldest first) for LLM context, scoped
+    to ONE channel (the general concierge or a single specialist persona — see
+    persona_channel). The thread boundary is clients.chat_started_at - set by
+    the dashboard's 'שיחה חדשה' action; None/empty means the whole history is
+    one thread."""
     rows = get_communications(client_id, limit=CONVERSATION_HISTORY_LIMIT * 2,
-                              channel="dashboard_chat")
+                              channel=channel)
     if chat_started_at:
         # Both timestamps come from Postgres in the same ISO form, so string
         # comparison is safe and avoids format-parsing pitfalls
@@ -564,7 +578,8 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
                     "status": client.get("status")},
         "proposal": lead.get("proposal") or {},
         "recent_activity": get_activity(client_id, limit=15),
-        "conversation_history": _current_thread(client_id, client.get("chat_started_at")),
+        "conversation_history": _current_thread(client_id, client.get("chat_started_at"),
+                                                channel=persona_channel(persona_id)),
         "client_message": message,
     }
     try:

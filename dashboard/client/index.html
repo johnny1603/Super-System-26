@@ -916,11 +916,13 @@ body {
       <div class="support-head-title" id="supportTitle">צוות uallak</div>
       <div class="support-head-sub" id="supportSub" data-i18n="chat_available">זמין עכשיו</div>
     </div>
+    <button class="support-new-chat" onclick="downloadConversation()" data-i18n-title="chat_download" title="הורדת השיחה" aria-label="הורדת השיחה">⬇</button>
     <button class="support-new-chat" onclick="startNewChat()" data-i18n="new_chat">שיחה חדשה</button>
   </div>
   <!-- The team strip: the general concierge (front door, default) + the four
-       read-only specialists. Selecting one only changes who ANSWERS - all
-       messages stay in the same thread. -->
+       read-only specialists. Each is its OWN separate conversation — selecting
+       one swaps the panel to that persona's own thread (its own history +
+       context), never a shared/mixed thread. -->
   <div class="team-strip" id="teamStrip"></div>
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
@@ -1093,6 +1095,10 @@ const DASH_I18N = {
   tier_yours: { he:'החבילה שלך', en:'Your package', fr:'Votre formule', ar:'باقتك', ru:'Ваш пакет' },
   chat_available: { he:'זמין עכשיו', en:'Available now', fr:'Disponible', ar:'متاح الآن', ru:'На связи' },
   new_chat: { he:'שיחה חדשה', en:'New chat', fr:'Nouvelle discussion', ar:'محادثة جديدة', ru:'Новый чат' },
+  chat_download: { he:'הורדת השיחה', en:'Download conversation', fr:'Télécharger la conversation', ar:'تنزيل المحادثة', ru:'Скачать беседу' },
+  chat_dl_me: { he:'אני', en:'Me', fr:'Moi', ar:'أنا', ru:'Я' },
+  chat_dl_team: { he:'uallak', en:'uallak', fr:'uallak', ar:'uallak', ru:'uallak' },
+  chat_dl_empty: { he:'(אין עדיין הודעות בשיחה זו)', en:'(no messages in this conversation yet)', fr:'(aucun message dans cette conversation pour l\'instant)', ar:'(لا توجد رسائل في هذه المحادثة بعد)', ru:'(в этой беседе пока нет сообщений)' },
   chat_team: { he:'צוות uallak', en:'uallak team', fr:'Équipe uallak', ar:'فريق uallak', ru:'Команда uallak' },
   persona_title: { he:'רגע לפני שמתחילים — מי ילווה אתכם כאן?', en:'Before we start — who will accompany you here?', fr:'Avant de commencer — qui vous accompagnera ici ?', ar:'قبل أن نبدأ — من سيرافقك هنا؟', ru:'Прежде чем начать — кто будет вас сопровождать?' },
   persona_male: { he:'דניאל מ-uallak', en:'Daniel from uallak', fr:'Daniel de uallak', ar:'دانيال من uallak', ru:'Даниэль из uallak' },
@@ -2038,14 +2044,15 @@ function selectTeamPersona(id) {
   if (id === 'general') {
     applyPersona(window._personaGender || 'male');
     sub.textContent = uallakI18n.t('chat_available');
-    return;
+  } else {
+    const p = TEAM_PERSONAS[id];
+    document.getElementById('supportAvatar').innerHTML = p.svg;
+    document.getElementById('supportTitle').textContent = p.name;
+    sub.textContent = uallakI18n.t(p.roleKey);
   }
-  const p = TEAM_PERSONAS[id];
-  document.getElementById('supportAvatar').innerHTML = p.svg;
-  document.getElementById('supportTitle').textContent = p.name;
-  sub.textContent = uallakI18n.t(p.roleKey);
-  appendSupportMsg(uallakI18n.t('persona_switch_note',
-                                { name: p.name, role: uallakI18n.t(p.roleKey) }), 'bot');
+  // Each persona is its OWN conversation — swap the panel to that persona's
+  // separate thread (its own history + intro), never a shared/mixed thread.
+  loadThread(id);
 }
 
 function initPersona(gender) {
@@ -2177,10 +2184,35 @@ function linkify(text) {
     `<a href="${url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${url}</a>`);
 }
 
-async function loadSupportHistory() {
+// The intro line at the top of a thread: the personalized greeting for the
+// general concierge, or the specialist's own "hi, I'm {name}" note for a
+// specialist — so each separate conversation opens in its own voice.
+function threadIntroText(personaId) {
+  if (personaId === 'general') return greetingText();
+  const p = TEAM_PERSONAS[personaId];
+  return uallakI18n.t('persona_switch_note',
+                      { name: p.name, role: uallakI18n.t(p.roleKey) });
+}
+
+// Load and render ONE persona's own conversation, replacing whatever thread is
+// currently displayed. Every persona (general concierge + each specialist) is a
+// fully separate conversation, persisted and replayed on its own channel — so
+// switching to the Media specialist shows only the Media conversation, never a
+// mix. See support_agent.persona_channel / the /api/client-chat/history persona
+// param for the backend side.
+async function loadThread(personaId) {
   supportHistoryLoaded = true;
+  const box = document.getElementById('supportMessages');
+  box.innerHTML = '';
+  const intro = document.createElement('div');
+  intro.className = 'support-msg bot';
+  intro.id = 'chatIntroMsg';
+  intro.dir = 'auto';
+  intro.textContent = threadIntroText(personaId);
+  box.appendChild(intro);
   try {
-    const res = await fetch('/api/client-chat/history', { credentials: 'same-origin' });
+    const res = await fetch('/api/client-chat/history?persona=' + encodeURIComponent(personaId),
+                            { credentials: 'same-origin' });
     const data = await res.json();
     if (!data.success) return;
     if (data.has_previous) {
@@ -2189,13 +2221,13 @@ async function loadSupportHistory() {
       link.id = 'chatLoadPrev';
       link.textContent = uallakI18n.t('chat_prev');
       link.onclick = loadPreviousConversations;
-      document.getElementById('supportMessages').prepend(link);
+      box.prepend(link);
     }
     for (const entry of data.history) {
       appendSupportMsg(entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
     }
   } catch (e) {
-    console.error('failed to load support chat history', e);
+    console.error('failed to load chat thread', e);
   }
 }
 
@@ -2203,7 +2235,8 @@ async function loadPreviousConversations() {
   // Older threads render above the current one with a divider - history is
   // never lost, "שיחה חדשה" just moves the boundary
   try {
-    const res = await fetch('/api/client-chat/history?scope=all', { credentials: 'same-origin' });
+    const res = await fetch('/api/client-chat/history?scope=all&persona='
+                            + encodeURIComponent(currentPersona), { credentials: 'same-origin' });
     const data = await res.json();
     if (!data.success) return;
     const boundary = data.chat_started_at || '';
@@ -2234,24 +2267,56 @@ async function startNewChat() {
     const res = await fetch('/api/client-chat/new', { method: 'POST', credentials: 'same-origin' });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error('new chat failed');
-    const box = document.getElementById('supportMessages');
-    box.innerHTML = '';
-    const intro = document.createElement('div');
-    intro.className = 'support-msg bot';
-    intro.id = 'chatIntroMsg';
-    intro.textContent = greetingText();
-    box.appendChild(intro);
-    const link = document.createElement('div');
-    link.className = 'chat-load-prev';
-    link.id = 'chatLoadPrev';
-    link.textContent = uallakI18n.t('chat_prev');
-    link.onclick = loadPreviousConversations;
-    box.prepend(link);
-    supportHistoryLoaded = true;
+    // The thread boundary moved — reload the current persona's now-fresh
+    // conversation (past messages stay browsable via "load previous").
+    await loadThread(currentPersona);
   } catch (e) {
     console.error('start new chat failed', e);
     showNotice(uallakI18n.t('chat_new_failed'), 'warn');
   }
+}
+
+// Let the client save/share their conversation. Pulls the FULL history for the
+// persona currently on screen (each persona is its own conversation) and hands
+// it back as a plain-text file — no server round-trip beyond the read, so it
+// works even if the client just wants to forward it to someone.
+async function downloadConversation() {
+  const who = currentPersona === 'general'
+    ? uallakI18n.t('team_role_general')
+    : TEAM_PERSONAS[currentPersona].name + ' — ' + uallakI18n.t(TEAM_PERSONAS[currentPersona].roleKey);
+  let entries = [];
+  try {
+    const res = await fetch('/api/client-chat/history?scope=all&persona='
+                            + encodeURIComponent(currentPersona), { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.success) entries = data.history || [];
+  } catch (e) {
+    console.error('download conversation fetch failed', e);
+  }
+  const meLabel = uallakI18n.t('chat_dl_me');
+  const teamLabel = uallakI18n.t('chat_dl_team');
+  const lines = [
+    'uallak — ' + who,
+    (chatData.name || '') + '  ·  ' + new Date().toLocaleString(uallakI18n.locale()),
+    '─────────────────────────────', '',
+  ];
+  for (const e of entries) {
+    const when = e.created_at ? new Date(e.created_at).toLocaleString(uallakI18n.locale()) : '';
+    const speaker = e.direction === 'inbound' ? meLabel : teamLabel;
+    lines.push(`[${when}] ${speaker}:`);
+    lines.push(e.content || '');
+    lines.push('');
+  }
+  if (entries.length === 0) lines.push(uallakI18n.t('chat_dl_empty'));
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'uallak-chat-' + currentPersona + '-' + new Date().toISOString().slice(0, 10) + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── concierge greeting + quick-reply chips ──────────────────────────────────
@@ -2284,9 +2349,12 @@ function greetingText() {
 
 function maybeShowGreeting() {
   if (!chatData.dashReady || !chatData.suggReady) return;
-  // Personalize the chat's opening message every load...
+  // Personalize the chat's opening message every load — but only when the
+  // general concierge thread is the one on screen; a specialist thread owns
+  // its own intro (threadIntroText) and must not be overwritten with the
+  // concierge greeting.
   const intro = document.getElementById('chatIntroMsg');
-  if (intro) intro.textContent = greetingText();
+  if (intro && currentPersona === 'general') intro.textContent = greetingText();
   renderChips();
   // ...but pop the greeting bubble only once per session, so it welcomes
   // rather than nags
@@ -2329,7 +2397,7 @@ function toggleSupportChat() {
   panel.classList.toggle('open');
   document.getElementById('supportInput').focus();
   if (panel.classList.contains('open') && !supportHistoryLoaded) {
-    loadSupportHistory();
+    loadThread(currentPersona);
   }
 }
 

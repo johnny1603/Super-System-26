@@ -19,6 +19,8 @@
 body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
 .chat-container { width:100%; max-width:680px; background:var(--card); border-radius:24px; box-shadow:0 20px 60px rgba(0,0,0,0.12); overflow:hidden; display:flex; flex-direction:column; height:90vh; max-height:780px; }
 .chat-header { background:var(--ink); padding:20px 28px; display:flex; align-items:center; gap:14px; }
+.chat-dl-btn { margin-inline-start:auto; width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,0.12); color:#fff; border:none; font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:background 0.2s; }
+.chat-dl-btn:hover { background:var(--accent); }
 .chat-logo { font-size:22px; font-weight:700; color:white; letter-spacing:-1px; }
 .chat-logo span { color:#FF4C1F; }
 .chat-status { display:flex; align-items:center; gap:6px; font-size:13px; color:rgba(255,255,255,0.5); margin-top:4px; }
@@ -39,7 +41,7 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
 .option-btn.selected { background:var(--ink); color:white; border-color:var(--ink); }
 .option-btn.multi.selected { background:var(--accent); border-color:var(--accent); color:white; }
 .option-btn:disabled { cursor:default; opacity:0.6; }
-.free-text-hint { font-size:12px; color:var(--gray); margin-top:8px; }
+.free-text-hint { font-size:14.5px; color:var(--accent); font-weight:600; margin-top:8px; }
 .typing { display:flex; align-items:center; gap:5px; padding:14px 18px; }
 .typing span { width:7px; height:7px; background:var(--gray); border-radius:50%; animation:bounce 1.2s infinite; }
 .typing span:nth-child(2){animation-delay:0.2s;}
@@ -69,7 +71,7 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
   <div class="proc-logo">u<span>allak</span></div>
   <div class="proc-ring"></div>
   <div class="proc-text" data-i18n="proc_text">🏗️ בונים את התכנית שלך...</div>
-  <div class="proc-sub" data-i18n="proc_sub">זה לוקח כ-60 שניות — אנחנו עובדים קשה בשבילך 💪 אל תצא מהדף</div>
+  <div class="proc-sub" data-i18n="proc_sub">זה לוקח כ-3-4 דקות — אנחנו בונים לך תכנית אמיתית ומדויקת, שווה את ההמתנה 💪 אל תסגור את הדף</div>
   <div class="proc-steps">
     <div class="proc-step" id="step1"><span class="proc-step-icon">🔍</span> <span data-i18n="proc_1">מנתח את פרופיל העסק שלך</span></div>
     <div class="proc-step" id="step2"><span class="proc-step-icon">📊</span> <span data-i18n="proc_2">בודק את השוק והמתחרים</span></div>
@@ -86,6 +88,7 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
       <div class="chat-status"><span class="status-dot"></span><span data-i18n="status_online">המערכת פעילה</span></div>
     </div>
     <div id="langRow"></div>
+    <button class="chat-dl-btn" onclick="downloadTranscript()" data-i18n-title="dl_title" title="הורדת השיחה" aria-label="הורדת השיחה">⬇</button>
   </div>
   <div class="chat-messages" id="messages"></div>
   <div class="chat-input-area">
@@ -106,16 +109,21 @@ const CHROME = {
   status_online: { he:'המערכת פעילה', en:'System online', fr:'Système en ligne', ar:'النظام متصل', ru:'Система на связи' },
   input_ph: { he:'כתוב כאן...', en:'Type here…', fr:'Écrivez ici…', ar:'اكتب هنا...', ru:'Пишите здесь…' },
   free_text_hint: { he:'או כתוב תשובה משלך למטה 👇', en:'Or type your own answer below 👇', fr:'Ou écrivez votre propre réponse ci-dessous 👇', ar:'أو اكتب إجابتك الخاصة بالأسفل 👇', ru:'Или напишите свой ответ ниже 👇' },
+  dl_title: { he:'הורדת השיחה', en:'Download conversation', fr:'Télécharger la conversation', ar:'تنزيل المحادثة', ru:'Скачать беседу' },
+  dl_me: { he:'אני', en:'Me', fr:'Moi', ar:'أنا', ru:'Я' },
+  dl_team: { he:'uallak', en:'uallak', fr:'uallak', ar:'uallak', ru:'uallak' },
+  dl_empty: { he:'(אין עדיין הודעות בשיחה)', en:'(no messages in this conversation yet)', fr:'(aucun message dans cette conversation pour l\'instant)', ar:'(لا توجد رسائل في هذه المحادثة بعد)', ru:'(в этой беседе пока нет сообщений)' },
   confirm_multi: { he:'✓ אישור בחירה', en:'✓ Confirm selection', fr:'✓ Valider la sélection', ar:'✓ تأكيد الاختيار', ru:'✓ Подтвердить выбор' },
   other_label: { he:'אחר:', en:'Other:', fr:'Autre :', ar:'أخرى:', ru:'Другое:' },
   other_ph: { he:'הקלד את תשובתך...', en:'Type your answer…', fr:'Saisissez votre réponse…', ar:'اكتب إجابتك...', ru:'Введите свой ответ…' },
   proc_text: { he:'🏗️ בונים את התכנית שלך...', en:'🏗️ Building your plan…', fr:'🏗️ Construction de votre plan…', ar:'🏗️ نبني خطتك...', ru:'🏗️ Строим ваш план…' },
-  proc_sub: { he:'זה לוקח כ-60 שניות — אנחנו עובדים קשה בשבילך 💪 אל תצא מהדף', en:'Takes about 60 seconds — we\'re working hard for you 💪 Please stay on this page', fr:'Environ 60 secondes — on travaille dur pour vous 💪 Restez sur cette page', ar:'يستغرق نحو 60 ثانية — نعمل بجد من أجلك 💪 لا تغادر الصفحة', ru:'Займёт около 60 секунд — мы стараемся для вас 💪 Не покидайте страницу' },
+  proc_sub: { he:'זה לוקח כ-3-4 דקות — אנחנו בונים לך תכנית אמיתית ומדויקת, שווה את ההמתנה 💪 אל תסגור את הדף', en:'This takes about 3-4 minutes — we\'re building you a real, precise plan, worth the wait 💪 Please keep this page open', fr:'Cela prend environ 3-4 minutes — nous vous construisons un plan réel et précis, ça vaut l\'attente 💪 Gardez cette page ouverte', ar:'يستغرق هذا نحو 3-4 دقائق — نبني لك خطة حقيقية ودقيقة تستحق الانتظار 💪 أبقِ الصفحة مفتوحة', ru:'Это займёт около 3-4 минут — мы готовим для вас реальный, точный план, он стоит ожидания 💪 Не закрывайте эту страницу' },
   proc_1: { he:'מנתח את פרופיל העסק שלך', en:'Analyzing your business profile', fr:'Analyse du profil de votre entreprise', ar:'نحلل ملف عملك', ru:'Анализируем профиль вашего бизнеса' },
   proc_2: { he:'בודק את השוק והמתחרים', en:'Checking the market and competitors', fr:'Étude du marché et des concurrents', ar:'نفحص السوق والمنافسين', ru:'Изучаем рынок и конкурентов' },
   proc_3: { he:'בונה תכנית עבודה מותאמת', en:'Building a tailored work plan', fr:'Création d\'un plan de travail sur mesure', ar:'نبني خطة عمل مخصصة', ru:'Составляем индивидуальный план работы' },
   proc_4: { he:'מחשב הצעת מחיר מדויקת', en:'Calculating an exact quote', fr:'Calcul d\'un devis précis', ar:'نحسب عرض سعر دقيقًا', ru:'Рассчитываем точное предложение' },
   proc_5: { he:'התכנית שלך מוכנה!', en:'Your plan is ready!', fr:'Votre plan est prêt !', ar:'خطتك جاهزة!', ru:'Ваш план готов!' },
+  proc_almost: { he:'עוד רגע ומסיימים — שמים את הנגיעות האחרונות בתכנית שלך ✨ אל תסגור את הדף', en:'Almost there — adding the final touches to your plan ✨ Please keep this page open', fr:'Presque fini — dernières touches à votre plan ✨ Gardez cette page ouverte', ar:'اقتربنا — نضيف اللمسات الأخيرة لخطتك ✨ أبقِ الصفحة مفتوحة', ru:'Почти готово — вносим финальные штрихи в ваш план ✨ Не закрывайте страницу' },
   processing_msg: { he:'תודה! המערכת עובדת עכשיו על התכנית המותאמת לך 🔄', en:'Thank you! The system is now building your tailored plan 🔄', fr:'Merci ! Le système prépare votre plan personnalisé 🔄', ar:'شكرًا! النظام يعمل الآن على خطتك المخصصة 🔄', ru:'Спасибо! Система готовит ваш персональный план 🔄' },
   generic_error: { he:'אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬', en:'Something went wrong — try again or reach us on WhatsApp 💬', fr:'Une erreur est survenue — réessayez ou contactez-nous sur WhatsApp 💬', ar:'حدث خطأ — حاول مجددًا أو تواصل معنا عبر واتساب 💬', ru:'Произошла ошибка — попробуйте ещё раз или напишите нам в WhatsApp 💬' },
   reject_wrap: { he:'תודה שפנית אלינו 🙏\n\n{reason}\n\nאנחנו ממליצים לחזור אלינו כשהתנאים ישתנו — נשמח לעזור!', en:'Thank you for reaching out 🙏\n\n{reason}\n\nWe recommend coming back when things change — we\'d love to help!', fr:'Merci de nous avoir contactés 🙏\n\n{reason}\n\nRevenez quand la situation évoluera — nous serons ravis de vous aider !', ar:'شكرًا لتواصلك معنا 🙏\n\n{reason}\n\nننصح بالعودة إلينا عندما تتغير الظروف — يسعدنا مساعدتك!', ru:'Спасибо за обращение 🙏\n\n{reason}\n\nВозвращайтесь, когда условия изменятся — будем рады помочь!' },
@@ -332,7 +340,7 @@ let selectedPackage = null;
 
 // שאלות "משמעותיות" שאחריהן מציגים תגובה קצרה וחמה, כדי שהצ'אט ירגיש כמו שיחה
 // ולא כמו טופס - לא אחרי כל תשובה, רק בנקודות שבאמת שווה לעצור בהן
-const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_budget', 'new_business_expectations', 'new_business_concern']);
+const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_budget', 'new_business_expectations', 'new_business_concern', 'main_goal', 'existing_digital', 'media_management', 'camera_comfort']);
 
 async function maybeReact(questionId, answerText, next) {
   if (!REACTION_QUESTION_IDS.has(questionId)) { setTimeout(next, 700); return; }
@@ -647,14 +655,22 @@ async function loadDynamicQuestions() {
   setTimeout(() => nextQuestion(), 500);
 }
 
+// The "something else / other" choice was removed from the option lists (the
+// free-text box below every question already lets the client type their own
+// answer). Dynamic LLM questions are told not to add it, but we also strip it
+// here defensively so it can never resurface in any language.
+function withoutOtherOptions(options) {
+  return (options || []).filter(opt => !isOtherOption(opt));
+}
+
 function nextQuestion() {
   if (currentQ >= questions.length) { showProcessing(); return; }
   showTyping();
   setTimeout(() => {
     hideTyping();
     const q = questions[currentQ];
-    if (q.type==='choice') addMessage(q.text, 'bot', q.options);
-    else if (q.type==='multi') addMessage(q.text, 'bot', null, q.options);
+    if (q.type==='choice') addMessage(q.text, 'bot', withoutOtherOptions(q.options));
+    else if (q.type==='multi') addMessage(q.text, 'bot', null, withoutOtherOptions(q.options));
     else if (q.type==='info') {
       addMessage(q.text, 'bot');
       currentQ++;
@@ -664,18 +680,47 @@ function nextQuestion() {
   }, 900);
 }
 
+// Timers we may need to cancel the moment the real proposal arrives, so a
+// late-firing step/reassurance can't fight the completion animation.
+let procTimers = [];
+let procDone = false;
+
 function showProcessing() {
   addMessage(uallakI18n.t('processing_msg'), 'bot');
   setTimeout(() => {
+    procDone = false;
+    procTimers = [];
     document.getElementById('processing').classList.add('active');
-    const steps = ['step1','step2','step3','step4'];
-    steps.forEach((s,i) => setTimeout(() => document.getElementById(s).classList.add('done'), i*12000));
+    // The build genuinely takes ~3-4 minutes, so the four progress steps are
+    // spread across that window (not crammed into 36s) — the client sees steady
+    // movement instead of everything finishing early and the screen looking
+    // frozen. The CSS spinner runs the whole time regardless, so it never
+    // freezes even if the wait runs long. step5 lights on real completion.
+    const stepDelays = [0, 45000, 95000, 155000];  // step1..step4, up to ~2.6min
+    stepDelays.forEach((delay, i) => {
+      procTimers.push(setTimeout(() => {
+        if (!procDone) document.getElementById('step' + (i + 1)).classList.add('done');
+      }, delay));
+    });
+    // If it runs past the last step, keep reassuring so an extended wait still
+    // feels alive and intentional, not stuck.
+    procTimers.push(setTimeout(() => {
+      if (!procDone) {
+        const sub = document.getElementById('processing').querySelector('.proc-sub');
+        if (sub) sub.textContent = uallakI18n.t('proc_almost');
+      }
+    }, 200000));  // ~3.3min
     fetchProposal(answers);
   }, 800);
 }
 
 function hideProcessing() {
-  document.getElementById('step5').classList.add('done');
+  procDone = true;
+  procTimers.forEach(clearTimeout);
+  procTimers = [];
+  // Light every step through step5 so the sequence reads as fully completed,
+  // however early or late the real response landed.
+  ['step1','step2','step3','step4','step5'].forEach(s => document.getElementById(s).classList.add('done'));
   setTimeout(() => document.getElementById('processing').classList.remove('active'), 1200);
 }
 
@@ -690,6 +735,9 @@ async function fetchProposal(answers) {
     hideProcessing();
     setTimeout(() => displayProposal(data.data), 1400);
   } catch(e) {
+    procDone = true;
+    procTimers.forEach(clearTimeout);
+    procTimers = [];
     document.getElementById('processing').classList.remove('active');
     addMessage(uallakI18n.t('generic_error'), 'bot');
   }
@@ -893,6 +941,39 @@ function showDashboardLinkButton() {
   div.appendChild(bubble);
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Let the prospect save or forward the whole sales conversation. This chat
+// isn't tied to a logged-in account, so we build the transcript straight from
+// the messages on screen and hand it back as a plain-text file (client-side,
+// no server needed).
+function downloadTranscript() {
+  const meLabel = uallakI18n.t('dl_me');
+  const teamLabel = uallakI18n.t('dl_team');
+  const lines = ['uallak', new Date().toLocaleString(uallakI18n.locale()),
+                 '─────────────────────────────', ''];
+  let count = 0;
+  document.querySelectorAll('#messages .msg').forEach(msg => {
+    if (msg.id === 'typing') return;
+    const textEl = msg.querySelector('.msg-bubble > div');
+    const text = textEl ? textEl.textContent.trim() : '';
+    if (!text) return;
+    const speaker = msg.classList.contains('user') ? meLabel : teamLabel;
+    lines.push(speaker + ':');
+    lines.push(text);
+    lines.push('');
+    count++;
+  });
+  if (!count) lines.push(uallakI18n.t('dl_empty'));
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'uallak-' + new Date().toISOString().slice(0, 10) + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 window.onload = () => {
