@@ -936,9 +936,29 @@ def _client_has_avatar_tier(client_id: int) -> bool:
         print(f"[upgrade-options] client {client_id}: avatar tier read failed ({e}) - not offering avatar")
         return True
 
+def _client_has_youtube_addon(client_id: int) -> bool:
+    """Guard against double-selling the standalone YouTube add-on. A
+    'youtube_content_agent / addon_activated' row is written on a confirmed
+    purchase (see /api/upgrade-success); this is a TARGETED query for it (not a
+    recent-activity scan, which could age the row out and re-offer to a busy
+    client). FAILS CLOSED: a read error is treated as 'already has it', hiding
+    the option for one load rather than risking a double-sell — same stance as
+    _client_has_avatar_tier."""
+    try:
+        rows = (db.table("client_activity").select("id")
+                .eq("client_id", client_id)
+                .eq("agent_name", "youtube_content_agent")
+                .eq("action_type", "addon_activated")
+                .limit(1).execute().data or [])
+        return bool(rows)
+    except Exception as e:
+        print(f"[upgrade-options] client {client_id}: youtube addon read failed ({e}) - not offering")
+        return True
+
 @app.get("/api/client/upgrade-options")
 def client_upgrade_options(request: Request):
-    from agents.onboarding_agent import get_avatar_upgrade_tiers, get_upgrade_addons, get_upgrade_tiers
+    from agents.onboarding_agent import (get_avatar_upgrade_tiers, get_upgrade_addons,
+                                          get_upgrade_tiers, get_youtube_standalone_addon)
     client_id = _require_session(request)
     client = get_client(client_id)
     sub = _client_subscription_info(client_id)
@@ -950,6 +970,10 @@ def client_upgrade_options(request: Request):
     # is assigned yet — double-buy guard.
     if not _client_has_avatar_tier(client_id):
         tiers += get_avatar_upgrade_tiers(sub["monthly_fee"])
+    # Standalone "YouTube alone" add-on: exact +50/mo, directly billable like the
+    # avatar tiers (additive), offered until the client already has it.
+    if not _client_has_youtube_addon(client_id):
+        tiers.append(get_youtube_standalone_addon(sub["monthly_fee"]))
     # addons: PRICING-derived at call time (new site/SEO/automation) — scope-
     # dependent pricing, so priced via the in-chat proposal brain instead
     addons = get_upgrade_addons()
@@ -971,12 +995,18 @@ def client_upgrade(req: UpgradeRequest, request: Request):
     if not sub["subscription_id"]:
         raise HTTPException(status_code=400, detail={"code": "ERR_NO_ACTIVE_SUBSCRIPTION"})
 
-    # Avatar tiers are computed per client (additive to the CURRENT fee) —
-    # always recomputed server-side here, never trusted from the panel
+    # Avatar + YouTube-standalone add-ons are computed per client (additive to
+    # the CURRENT fee) — always recomputed server-side here, never trusted from
+    # the panel.
     if req.tier_id.startswith("avatar_"):
         if _client_has_avatar_tier(client_id):
             raise HTTPException(status_code=400, detail={"code": "ERR_TIER_UNAVAILABLE"})
         candidates = get_avatar_upgrade_tiers(sub["monthly_fee"])
+    elif req.tier_id == "youtube_standalone":
+        if _client_has_youtube_addon(client_id):
+            raise HTTPException(status_code=400, detail={"code": "ERR_TIER_UNAVAILABLE"})
+        from agents.onboarding_agent import get_youtube_standalone_addon
+        candidates = [get_youtube_standalone_addon(sub["monthly_fee"])]
     else:
         candidates = get_upgrade_tiers()
     tier = next((t for t in candidates if t["id"] == req.tier_id), None)
@@ -1033,6 +1063,10 @@ def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = ""
             sub_now = _client_subscription_info(client_id)
             tier = next((t for t in get_avatar_upgrade_tiers(sub_now["monthly_fee"])
                          if t["id"] == tier_id), None)
+        elif tier_id == "youtube_standalone":
+            from agents.onboarding_agent import get_youtube_standalone_addon
+            sub_now = _client_subscription_info(client_id)
+            tier = get_youtube_standalone_addon(sub_now["monthly_fee"])
         else:
             tier = next((t for t in get_upgrade_tiers() if t["id"] == tier_id), None)
         if tier:
@@ -1084,6 +1118,22 @@ def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = ""
                     f"{invoice_note} "
                     "REMAINING MANUAL STEP: walk them through avatar onboarding — HeyGen key "
                     "+ consent in the dashboard card, then the source kit. Tier is already assigned."])
+            elif tier_id == "youtube_standalone":
+                # Additive add-on: appends to the package name (never replaces),
+                # same as avatar. The 'addon_activated' row is what
+                # _client_has_youtube_addon reads to stop re-offering it.
+                client_row = get_client(client_id)
+                current_package = client_row.get("package") or ""
+                package_name = f"{current_package} + {tier['name']}" if current_package else tier["name"]
+                log_activity(client_id, "youtube_content_agent", "addon_activated",
+                             {"addon_monthly": tier["addon_monthly"]},
+                             {"subscription_id": subscription_id})
+                from core.agent_base import agent_alert as _alert
+                _alert("support_agent", [
+                    f"client {client_id} self-purchased the standalone YouTube add-on "
+                    f"(+{tier['addon_monthly']} ILS/mo, recurring via PayPal). REMAINING MANUAL "
+                    "STEP: if their YouTube channel isn't connected yet, point them to the "
+                    "Connect flow; the youtube_content_agent handles uploads once connected."])
             else:
                 package_name = tier["name"]
             update_client_package(client_id, package_name)

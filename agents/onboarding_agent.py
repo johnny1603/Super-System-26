@@ -23,6 +23,15 @@ PRICING = {
         # premium to price in here the way TikTok has one.
         "youtube": 150,
     },
+    # Standalone "YouTube alone" upgrade add-on (2026-07-25). A flat, directly-
+    # billable +50/mo upsell offered ONLY through the dashboard upgrade panel, for
+    # an EXISTING client who wants just YouTube channel management + organic reach
+    # without a full media/content plan. Deliberately SEPARATE from
+    # platform_management_fees["youtube"] (150) above — that 150 line is YouTube
+    # management priced INSIDE build_proposal when a video/content plan already
+    # exists, and is left untouched by this add-on. Client-facing wording in
+    # get_youtube_standalone_addon() is DRAFT, pending Johnny's review before live.
+    "youtube_standalone_addon_monthly": 50,
     # Floor used when a package includes NONE of the platform groups above (e.g. organic-only,
     # automation-only, or a single-service non-ad package) - every package still has SOME monthly fee
     "monthly_management_minimum": 350,
@@ -167,6 +176,32 @@ def get_avatar_upgrade_tiers(current_monthly_fee: int) -> list:
         "note": (f"+ ₪{avatar['setup_first_avatar']} הקמה חד-פעמית (בגבייה נפרדת). "
                  "בנוסף: חשבון HeyGen משולם על ידך ישירות לספק"),
     } for t in avatar["monthly_tiers"]]
+
+
+def get_youtube_standalone_addon(current_monthly_fee: int) -> dict:
+    """The standalone "YouTube alone" upgrade — a flat, directly-billable
+    ADDITIVE add-on (current fee + 50) for an existing client who wants only
+    YouTube channel management + organic reach, WITHOUT a full media/content
+    plan. Exact deterministic pricing, so it's directly billable the same way
+    the avatar tiers are — never chat-routed, because chat routing reuses
+    build_proposal's 150-NIS YouTube-with-content logic, which this add-on
+    deliberately does NOT touch (see PRICING comment). Additive fee is computed
+    per client at request time, never stored.
+
+    NOTE: the client-facing Hebrew strings below are DRAFT, pending Johnny's
+    review before this goes live (Step 3 of the handoff)."""
+    addon = PRICING["youtube_standalone_addon_monthly"]
+    return {
+        "id": "youtube_standalone",
+        "name": "ניהול יוטיוב",
+        "monthly_fee": current_monthly_fee + addon,
+        "addon_monthly": addon,
+        "setup_fee_addition": 0,
+        "description": (f"ניהול ערוץ היוטיוב שלך — חיבור הערוץ, העלאת הסרטונים שאנחנו "
+                        f"מייצרים עבורך, ומעקב אחרי הצפיות והביצועים. ₪{addon}/חודש בנוסף "
+                        "לחבילה הנוכחית שלך."),
+        "note": "התוספת נכנסת לחיוב מהמחזור הבא. אין דמי הקמה.",
+    }
 
 
 def get_upgrade_addons() -> list:

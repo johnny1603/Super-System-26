@@ -415,7 +415,7 @@ async function loadClients() {
     ? `${clientsCache.filter(c => c.status === 'active').length} פעילים מתוך ${clientsCache.length}`
     : '';
 
-  const platformNames = { google_ads: 'Google', meta: 'Meta', tiktok: 'TikTok' };
+  const platformNames = { google_ads: 'Google', meta: 'Meta', tiktok: 'TikTok', youtube: 'YouTube' };
   const statusPill = s =>
     s === 'active' ? '<span class="status-pill active">פעיל</span>'
     : s === 'pending_payment' ? '<span class="status-pill pending">ממתין לתשלום</span>'
