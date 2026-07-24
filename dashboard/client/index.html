@@ -311,44 +311,64 @@ body {
 .support-fab svg { width: 24px; height: 24px; }
 .support-fab svg.persona { width: 44px; height: 44px; }
 
-.support-panel {
-  position: fixed;
-  bottom: 96px; left: 26px;
-  width: 360px;
-  height: 480px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  z-index: 199;
-  opacity: 0;
-  transform: translateY(16px) scale(0.97);
-  pointer-events: none;
+/* ---------- MULTI-WINDOW CHAT ---------- */
+/* Launcher popover: pick which agent to open a conversation with. */
+.chat-launcher {
+  position: fixed; bottom: 96px; left: 26px; width: 268px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5); z-index: 205; overflow: hidden;
+  opacity: 0; transform: translateY(16px) scale(0.97); pointer-events: none;
   transition: all 0.2s ease;
 }
-.support-panel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+.chat-launcher.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+.launcher-head { padding: 15px 16px 11px; font-size: 14px; font-weight: 800;
+  background: linear-gradient(180deg, #1c1c1c, var(--panel)); }
+.launcher-list { padding: 6px; max-height: 58vh; overflow-y: auto; }
+.launcher-item { display: flex; align-items: center; gap: 11px; padding: 9px 10px;
+  border-radius: 12px; cursor: pointer; }
+.launcher-item:hover { background: var(--panel-2); }
+.launcher-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
+.launcher-ava svg { width: 100%; height: 100%; display: block; }
+.launcher-name { font-size: 13px; font-weight: 700; }
+.launcher-role { font-size: 11px; color: var(--gray); }
+.launcher-open-dot { margin-inline-start: auto; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green); flex-shrink: 0; }
 
-.support-head {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 10px;
-  background: linear-gradient(180deg, #1c1c1c, var(--panel));
-}
-.support-avatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: var(--accent-dim);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-}
-.support-head-text { flex: 1; }
-.support-head-title { font-size: 14px; font-weight: 700; }
-.support-head-sub { font-size: 11.5px; color: var(--green); display: flex; align-items: center; gap: 5px; }
-.support-head-sub::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+/* Open windows lay out along the bottom; each is fully independent. */
+.chat-windows { position: fixed; bottom: 96px; left: 26px; z-index: 199;
+  display: flex; gap: 12px; align-items: flex-end; pointer-events: none; }
+.chat-window { width: 322px; height: 468px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 18px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); pointer-events: auto;
+  animation: greetIn 0.2s ease; }
+.chat-window.minimized { display: none; }
+.cw-head { padding: 11px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; background: linear-gradient(180deg, #1c1c1c, var(--panel)); }
+.cw-ava { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.cw-ava svg { width: 100%; height: 100%; display: block; }
+.cw-titles { flex: 1; min-width: 0; }
+.cw-title { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-sub { font-size: 11px; color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-btn { width: 25px; height: 25px; border-radius: 7px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--gray); cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; font-family: inherit; }
+.cw-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cw-messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.cw-input-area { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+
+/* Dock: minimized windows collapse to pills you can reopen or close. */
+.chat-dock { position: fixed; bottom: 26px; left: 92px; z-index: 200;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: 60vw; }
+.dock-pill { display: flex; align-items: center; gap: 7px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 100px; padding: 5px 8px 5px 6px; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+.dock-pill:hover { border-color: var(--accent); }
+.dock-ava { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
+.dock-ava svg { width: 100%; height: 100%; display: block; }
+.dock-name { font-size: 12px; font-weight: 700; }
+.dock-close { border: none; background: none; color: var(--gray); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+.dock-close:hover { color: var(--accent); }
 
 .support-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .support-msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-line; }
@@ -507,29 +527,14 @@ body {
 .confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
 .upgrade-addons-title { font-size: 12px; font-weight: 800; color: var(--gray); margin: 18px 0 10px; text-transform: none; letter-spacing: 0.3px; }
 
-/* ---------- TEAM STRIP (specialist persona selector in the chat) ---------- */
-.team-strip {
-  display: flex; gap: 8px; padding: 9px 14px 5px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto; scrollbar-width: none;
+/* On narrow screens each window goes near-full-width and stacks; the dock
+   switches between them so conversations still never mix. */
+@media (max-width: 640px) {
+  .chat-windows { left: 0; right: 0; bottom: 0; display: block; }
+  .chat-window { position: fixed; left: 8px; right: 8px; bottom: 80px; width: auto; height: 70vh; }
+  .chat-launcher { left: 8px; right: 8px; width: auto; }
+  .chat-dock { left: 8px; right: 8px; bottom: 18px; max-width: none; }
 }
-.team-strip::-webkit-scrollbar { display: none; }
-.team-member {
-  background: none; border: none; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 2px; font-family: 'Heebo', sans-serif; flex-shrink: 0;
-}
-.team-member .tm-avatar {
-  width: 34px; height: 34px; border-radius: 50%; overflow: hidden;
-  border: 2px solid transparent; transition: border-color 0.15s;
-}
-.team-member .tm-avatar svg { width: 100%; height: 100%; display: block; }
-.team-member.active .tm-avatar { border-color: var(--accent); }
-.team-member .tm-name {
-  font-size: 9.5px; color: var(--gray); max-width: 54px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.team-member.active .tm-name { color: var(--white); font-weight: 700; }
 
 /* ---------- PRE-ACTION EXPLANATION (shared across ALL manual-step flows) ---------- */
 /* One component for every "the client does this part themselves" moment:
@@ -905,25 +910,17 @@ body {
 
 <div class="chat-greeting" id="chatGreeting" onclick="greetingClick()"></div>
 
-<button class="support-fab" id="supportFabBtn" onclick="toggleSupportChat()" aria-label="תמיכה">
+<button class="support-fab" id="supportFabBtn" onclick="toggleLauncher()" aria-label="תמיכה">
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 </button>
 
-<div class="support-panel" id="supportPanel">
-  <div class="support-head">
-    <div class="support-avatar" id="supportAvatar">🤖</div>
-    <div class="support-head-text">
-      <div class="support-head-title" id="supportTitle">צוות uallak</div>
-      <div class="support-head-sub" id="supportSub" data-i18n="chat_available">זמין עכשיו</div>
-    </div>
-    <button class="support-new-chat" onclick="downloadConversation()" data-i18n-title="chat_download" title="הורדת השיחה" aria-label="הורדת השיחה">⬇</button>
-    <button class="support-new-chat" onclick="startNewChat()" data-i18n="new_chat">שיחה חדשה</button>
-  </div>
-  <!-- The team strip: the general concierge (front door, default) + the four
-       read-only specialists. Each is its OWN separate conversation — selecting
-       one swaps the panel to that persona's own thread (its own history +
-       context), never a shared/mixed thread. -->
-  <div class="team-strip" id="teamStrip"></div>
+<!-- Multi-window chat. The FAB opens this launcher; each agent picked here
+     opens its OWN independent window (built in JS into #chatWindows), so a
+     client can keep several agent conversations open at once with nothing
+     mixing. Minimized windows collapse into #chatDock. Backend keeps each
+     conversation on its own persona channel (support_agent.persona_channel). -->
+<div class="chat-launcher" id="chatLauncher">
+  <div class="launcher-head" data-i18n="chat_team">צוות uallak</div>
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
     <div class="persona-pick-btns">
@@ -935,17 +932,11 @@ body {
       </button>
     </div>
   </div>
-  <div class="support-messages" id="supportMessages">
-    <div class="support-msg bot" id="chatIntroMsg" data-i18n="chat_intro">היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?</div>
-  </div>
-  <div class="chip-row" id="chipRow"></div>
-  <div class="support-input-area">
-    <input class="support-input" id="supportInput" dir="auto" data-i18n-placeholder="chat_input_ph" placeholder="כתוב הודעה..." onkeydown="if(event.key==='Enter') sendSupportMsg()">
-    <button class="support-send" onclick="sendSupportMsg()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
-  </div>
+  <div class="launcher-list" id="launcherList"></div>
 </div>
+
+<div class="chat-windows" id="chatWindows"></div>
+<div class="chat-dock" id="chatDock"></div>
 
 <!-- ---------- UPGRADE PANEL ---------- -->
 <div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
@@ -1096,6 +1087,8 @@ const DASH_I18N = {
   chat_available: { he:'זמין עכשיו', en:'Available now', fr:'Disponible', ar:'متاح الآن', ru:'На связи' },
   new_chat: { he:'שיחה חדשה', en:'New chat', fr:'Nouvelle discussion', ar:'محادثة جديدة', ru:'Новый чат' },
   chat_download: { he:'הורדת השיחה', en:'Download conversation', fr:'Télécharger la conversation', ar:'تنزيل المحادثة', ru:'Скачать беседу' },
+  chat_minimize: { he:'מזעור', en:'Minimize', fr:'Réduire', ar:'تصغير', ru:'Свернуть' },
+  chat_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
   chat_dl_me: { he:'אני', en:'Me', fr:'Moi', ar:'أنا', ru:'Я' },
   chat_dl_team: { he:'uallak', en:'uallak', fr:'uallak', ar:'uallak', ru:'uallak' },
   chat_dl_empty: { he:'(אין עדיין הודעות בשיחה זו)', en:'(no messages in this conversation yet)', fr:'(aucun message dans cette conversation pour l\'instant)', ar:'(لا توجد رسائل في هذه المحادثة بعد)', ru:'(в этой беседе пока нет сообщений)' },
@@ -1536,12 +1529,11 @@ function askAboutAddon(index) {
   const addon = (window._upgradeAddons || [])[index];
   if (!addon) return;
   toggleUpgradePanel();
-  if (currentPersona !== 'general') selectTeamPersona('general');
-  const panel = document.getElementById('supportPanel');
-  if (!panel.classList.contains('open')) toggleSupportChat();
-  const input = document.getElementById('supportInput');
-  input.value = addon.chat_request || '';
-  input.focus();
+  // Add-ons route to the GENERAL concierge (the only persona with the
+  // upgrade-proposal capability) — open its window and pre-fill the request.
+  const w = openAgentWindow('general');
+  w.inputEl.value = addon.chat_request || '';
+  w.inputEl.focus();
 }
 
 function selectTier(tierId, el) {
@@ -1989,16 +1981,31 @@ function personaName(gender) {
 function applyPersona(gender) {
   if (!PERSONA_SVGS[gender]) return;
   window._personaGender = gender;
-  // Only repaint the header when the GENERAL concierge is the active chat -
-  // a specialist persona keeps their own avatar/name up there
-  if (currentPersona === 'general') {
-    document.getElementById('supportAvatar').innerHTML = PERSONA_SVGS[gender];
-    document.getElementById('supportTitle').textContent = personaName(gender);
-  }
   document.getElementById('supportFabBtn').innerHTML =
     PERSONA_SVGS[gender].replace('<svg ', '<svg class="persona" ');
-  renderTeamStrip();
+  // If the general concierge window is open, repaint its identity live
+  const gw = CHAT_WINDOWS.general;
+  if (gw) {
+    const p = personaMeta('general');
+    const ava = gw.root.querySelector('[data-role="ava"]');
+    const title = gw.root.querySelector('[data-role="title"]');
+    if (ava) ava.innerHTML = p.svg;
+    if (title) title.textContent = p.name;
+  }
+  renderLauncher();
 }
+
+// Unified metadata for any persona id (general concierge + specialists), so the
+// launcher, windows, and dock all render the same identity from one place.
+function personaMeta(id) {
+  if (id === 'general') {
+    const g = window._personaGender || 'male';
+    return { id: 'general', name: personaName(g), roleKey: 'team_role_general', svg: PERSONA_SVGS[g] };
+  }
+  const p = TEAM_PERSONAS[id];
+  return { id: id, name: p.name, roleKey: p.roleKey, svg: p.svg };
+}
+function allPersonaIds() { return ['general'].concat(Object.keys(TEAM_PERSONAS)); }
 
 // ─── specialist personas (team strip) ────────────────────────────────────────
 // Visual identities for the READ-ONLY specialist chats (backend:
@@ -2015,44 +2022,131 @@ const TEAM_PERSONAS = {
   media: { name: 'ליאור', roleKey: 'team_role_media',
     svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#7C3AED"/><path d="M19 16l13 8-13 8z" fill="#fff"/><path d="M33 11l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z" fill="#fff"/></svg>` },
 };
-let currentPersona = 'general';
+// ─── multi-window manager ────────────────────────────────────────────────────
+// Each persona (general concierge + 4 specialists) can have its OWN window open
+// at the same time; nothing is shared between them. State per open window:
+// CHAT_WINDOWS[personaId] = { root, msgsEl, inputEl, chipsEl, minimized }.
+const CHAT_WINDOWS = {};
 
-function renderTeamStrip() {
-  const strip = document.getElementById('teamStrip');
-  if (!strip) return;
-  strip.innerHTML = '';
-  const gender = window._personaGender || 'male';
-  const members = [['general', { name: personaName(gender), roleKey: 'team_role_general',
-                                 svg: PERSONA_SVGS[gender] }]]
-                  .concat(Object.entries(TEAM_PERSONAS));
-  members.forEach(([id, p]) => {
-    const btn = document.createElement('button');
-    btn.className = 'team-member' + (id === currentPersona ? ' active' : '');
-    btn.title = uallakI18n.t(p.roleKey);
-    btn.innerHTML = `<span class="tm-avatar">${p.svg}</span><span class="tm-name">${esc(p.name)}</span>`;
-    btn.onclick = () => selectTeamPersona(id);
-    strip.appendChild(btn);
+// The launcher lists every agent; an open one is marked with a green dot.
+function renderLauncher() {
+  const list = document.getElementById('launcherList');
+  if (!list) return;
+  list.innerHTML = '';
+  allPersonaIds().forEach(id => {
+    const p = personaMeta(id);
+    const item = document.createElement('div');
+    item.className = 'launcher-item';
+    const openDot = CHAT_WINDOWS[id] ? '<span class="launcher-open-dot"></span>' : '';
+    item.innerHTML = `<span class="launcher-ava">${p.svg}</span>`
+      + `<span><span class="launcher-name">${esc(p.name)}</span><br>`
+      + `<span class="launcher-role">${esc(uallakI18n.t(p.roleKey))}</span></span>${openDot}`;
+    item.onclick = () => openAgentWindow(id);
+    list.appendChild(item);
   });
 }
 
-function selectTeamPersona(id) {
-  if (id === currentPersona) return;
-  currentPersona = id;
-  renderTeamStrip();
-  const sub = document.getElementById('supportSub');
-  sub.removeAttribute('data-i18n'); // we own this text now; applyDom must not reset it
-  if (id === 'general') {
-    applyPersona(window._personaGender || 'male');
-    sub.textContent = uallakI18n.t('chat_available');
-  } else {
-    const p = TEAM_PERSONAS[id];
-    document.getElementById('supportAvatar').innerHTML = p.svg;
-    document.getElementById('supportTitle').textContent = p.name;
-    sub.textContent = uallakI18n.t(p.roleKey);
+function toggleLauncher() {
+  const l = document.getElementById('chatLauncher');
+  const opening = !l.classList.contains('open');
+  if (opening) { renderLauncher(); document.getElementById('chatGreeting').classList.remove('visible'); }
+  l.classList.toggle('open');
+}
+
+// Open (or re-focus) an agent's own window. Multiple windows can be open at
+// once; each keeps its own messages, input, and history.
+function openAgentWindow(id) {
+  document.getElementById('chatLauncher').classList.remove('open');
+  if (CHAT_WINDOWS[id]) {
+    restoreWindow(id); focusWindow(id); CHAT_WINDOWS[id].inputEl.focus();
+    return CHAT_WINDOWS[id];
   }
-  // Each persona is its OWN conversation — swap the panel to that persona's
-  // separate thread (its own history + intro), never a shared/mixed thread.
-  loadThread(id);
+  const w = buildWindow(id);
+  CHAT_WINDOWS[id] = w;
+  document.getElementById('chatWindows').appendChild(w.root);
+  renderLauncher();
+  loadWindowHistory(id);
+  if (id === 'general') renderChips();
+  focusWindow(id);
+  w.inputEl.focus();
+  return w;
+}
+
+function buildWindow(id) {
+  const p = personaMeta(id);
+  const root = document.createElement('div');
+  root.className = 'chat-window';
+  root.dataset.persona = id;
+  const head = document.createElement('div');
+  head.className = 'cw-head';
+  head.innerHTML =
+    `<span class="cw-ava" data-role="ava">${p.svg}</span>`
+    + `<span class="cw-titles"><span class="cw-title" data-role="title">${esc(p.name)}</span>`
+    + `<span class="cw-sub" data-role="sub">${esc(uallakI18n.t(p.roleKey))}</span></span>`
+    + `<button class="cw-btn" data-act="dl" title="${esc(uallakI18n.t('chat_download'))}">⬇</button>`
+    + `<button class="cw-btn" data-act="new" title="${esc(uallakI18n.t('new_chat'))}">✎</button>`
+    + `<button class="cw-btn" data-act="min" title="${esc(uallakI18n.t('chat_minimize'))}">–</button>`
+    + `<button class="cw-btn" data-act="close" title="${esc(uallakI18n.t('chat_close'))}">✕</button>`;
+  const msgs = document.createElement('div');
+  msgs.className = 'cw-messages';
+  let chips = null;
+  if (id === 'general') { chips = document.createElement('div'); chips.className = 'chip-row'; }
+  const inputArea = document.createElement('div');
+  inputArea.className = 'cw-input-area';
+  const input = document.createElement('input');
+  input.className = 'support-input'; input.dir = 'auto';
+  input.placeholder = uallakI18n.t('chat_input_ph');
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendInWindow(id); });
+  const send = document.createElement('button');
+  send.className = 'support-send';
+  send.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+  send.onclick = () => sendInWindow(id);
+  inputArea.appendChild(input); inputArea.appendChild(send);
+  head.querySelector('[data-act="dl"]').onclick = () => downloadWindowConversation(id);
+  head.querySelector('[data-act="new"]').onclick = () => newChatInWindow(id);
+  head.querySelector('[data-act="min"]').onclick = () => minimizeWindow(id);
+  head.querySelector('[data-act="close"]').onclick = () => closeAgentWindow(id);
+  root.appendChild(head); root.appendChild(msgs);
+  if (chips) root.appendChild(chips);
+  root.appendChild(inputArea);
+  root.addEventListener('mousedown', () => focusWindow(id));
+  return { root: root, msgsEl: msgs, inputEl: input, chipsEl: chips, minimized: false };
+}
+
+// Raise a window: moving it to the end of the row puts it rightmost on desktop;
+// on mobile (windows stacked) it puts it on top.
+function focusWindow(id) {
+  const w = CHAT_WINDOWS[id];
+  if (w) document.getElementById('chatWindows').appendChild(w.root);
+}
+function minimizeWindow(id) {
+  const w = CHAT_WINDOWS[id]; if (!w) return;
+  w.minimized = true; w.root.classList.add('minimized'); renderDock();
+}
+function restoreWindow(id) {
+  const w = CHAT_WINDOWS[id]; if (!w) return;
+  w.minimized = false; w.root.classList.remove('minimized'); renderDock(); focusWindow(id);
+}
+function closeAgentWindow(id) {
+  const w = CHAT_WINDOWS[id]; if (!w) return;
+  w.root.remove(); delete CHAT_WINDOWS[id]; renderDock(); renderLauncher();
+}
+function renderDock() {
+  const dock = document.getElementById('chatDock');
+  dock.innerHTML = '';
+  Object.keys(CHAT_WINDOWS).forEach(id => {
+    if (!CHAT_WINDOWS[id].minimized) return;
+    const p = personaMeta(id);
+    const pill = document.createElement('div');
+    pill.className = 'dock-pill';
+    pill.innerHTML = `<span class="dock-ava">${p.svg}</span><span class="dock-name">${esc(p.name)}</span>`;
+    pill.onclick = () => restoreWindow(id);
+    const x = document.createElement('button');
+    x.className = 'dock-close'; x.textContent = '✕';
+    x.onclick = (e) => { e.stopPropagation(); closeAgentWindow(id); };
+    pill.appendChild(x);
+    dock.appendChild(pill);
+  });
 }
 
 function initPersona(gender) {
@@ -2153,23 +2247,23 @@ async function decideSuggestion(id, decision, btn) {
   showNotice(uallakI18n.t('sugg_error'), 'warn');
 }
 
-// ─── support chat (concierge) ────────────────────────────────────────────────
-let supportHistoryLoaded = false;
+// ─── support chat (multi-window) ─────────────────────────────────────────────
 // Everything the concierge experience needs about this client, filled by
 // loadDashboard() + renderSuggestions(); greeting/chips render once both are in
 const chatData = { name: '', gender: null, firstVisit: false, conns: [],
                    pendingCount: 0, pendingTitles: [], dashReady: false, suggReady: false };
 
-function appendSupportMsg(text, cls) {
-  const box = document.getElementById('supportMessages');
+// Append a message into a SPECIFIC window's message box (each window owns its
+// own box — messages never bleed between agent conversations).
+function appendMsg(msgsEl, text, cls) {
   const msg = document.createElement('div');
   msg.className = `support-msg ${cls}`;
   // Per-message direction: replies match the client's language (Arabic/Hebrew
   // render RTL, English/French/Russian LTR)
   msg.dir = 'auto';
   msg.innerHTML = linkify(text);
-  box.appendChild(msg);
-  box.scrollTop = box.scrollHeight;
+  msgsEl.appendChild(msg);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
   return msg;
 }
 
@@ -2184,9 +2278,9 @@ function linkify(text) {
     `<a href="${url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${url}</a>`);
 }
 
-// The intro line at the top of a thread: the personalized greeting for the
-// general concierge, or the specialist's own "hi, I'm {name}" note for a
-// specialist — so each separate conversation opens in its own voice.
+// The intro line at the top of a window: the personalized greeting for the
+// general concierge, or the specialist's own "hi, I'm {name}" note — so each
+// separate conversation opens in its own voice.
 function threadIntroText(personaId) {
   if (personaId === 'general') return greetingText();
   const p = TEAM_PERSONAS[personaId];
@@ -2194,22 +2288,20 @@ function threadIntroText(personaId) {
                       { name: p.name, role: uallakI18n.t(p.roleKey) });
 }
 
-// Load and render ONE persona's own conversation, replacing whatever thread is
-// currently displayed. Every persona (general concierge + each specialist) is a
-// fully separate conversation, persisted and replayed on its own channel — so
-// switching to the Media specialist shows only the Media conversation, never a
-// mix. See support_agent.persona_channel / the /api/client-chat/history persona
-// param for the backend side.
-async function loadThread(personaId) {
-  supportHistoryLoaded = true;
-  const box = document.getElementById('supportMessages');
-  box.innerHTML = '';
+// Load and render ONE persona's own conversation into ITS window. Every persona
+// is a fully separate conversation, persisted and replayed on its own channel
+// (see support_agent.persona_channel / the /api/client-chat/history persona
+// param). Nothing mixes because each window only ever reads its own channel.
+async function loadWindowHistory(personaId) {
+  const w = CHAT_WINDOWS[personaId];
+  if (!w) return;
+  w.msgsEl.innerHTML = '';
   const intro = document.createElement('div');
   intro.className = 'support-msg bot';
-  intro.id = 'chatIntroMsg';
+  intro.dataset.role = 'intro';
   intro.dir = 'auto';
   intro.textContent = threadIntroText(personaId);
-  box.appendChild(intro);
+  w.msgsEl.appendChild(intro);
   try {
     const res = await fetch('/api/client-chat/history?persona=' + encodeURIComponent(personaId),
                             { credentials: 'same-origin' });
@@ -2218,32 +2310,31 @@ async function loadThread(personaId) {
     if (data.has_previous) {
       const link = document.createElement('div');
       link.className = 'chat-load-prev';
-      link.id = 'chatLoadPrev';
       link.textContent = uallakI18n.t('chat_prev');
-      link.onclick = loadPreviousConversations;
-      box.prepend(link);
+      link.onclick = () => loadPrevInWindow(personaId, link);
+      w.msgsEl.prepend(link);
     }
     for (const entry of data.history) {
-      appendSupportMsg(entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
+      appendMsg(w.msgsEl, entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
     }
   } catch (e) {
-    console.error('failed to load chat thread', e);
+    console.error('failed to load window history', e);
   }
 }
 
-async function loadPreviousConversations() {
+async function loadPrevInWindow(personaId, linkEl) {
   // Older threads render above the current one with a divider - history is
-  // never lost, "שיחה חדשה" just moves the boundary
+  // never lost, "new chat" just moves the boundary
   try {
     const res = await fetch('/api/client-chat/history?scope=all&persona='
-                            + encodeURIComponent(currentPersona), { credentials: 'same-origin' });
+                            + encodeURIComponent(personaId), { credentials: 'same-origin' });
     const data = await res.json();
     if (!data.success) return;
+    const w = CHAT_WINDOWS[personaId];
+    if (!w) return;
     const boundary = data.chat_started_at || '';
     const previous = data.history.filter(h => (h.created_at || '') < boundary);
-    const box = document.getElementById('supportMessages');
-    const link = document.getElementById('chatLoadPrev');
-    if (link) link.remove();
+    if (linkEl) linkEl.remove();
     const frag = document.createDocumentFragment();
     for (const entry of previous) {
       const msg = document.createElement('div');
@@ -2256,38 +2347,37 @@ async function loadPreviousConversations() {
     divider.className = 'chat-divider';
     divider.textContent = uallakI18n.t('chat_divider');
     frag.appendChild(divider);
-    box.prepend(frag);
+    w.msgsEl.prepend(frag);
   } catch (e) {
     console.error('failed to load previous conversations', e);
   }
 }
 
-async function startNewChat() {
+async function newChatInWindow(personaId) {
   try {
     const res = await fetch('/api/client-chat/new', { method: 'POST', credentials: 'same-origin' });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error('new chat failed');
-    // The thread boundary moved — reload the current persona's now-fresh
-    // conversation (past messages stay browsable via "load previous").
-    await loadThread(currentPersona);
+    // The boundary is shared, so refresh every open window to its fresh thread
+    // (past messages stay browsable via "load previous").
+    for (const pid of Object.keys(CHAT_WINDOWS)) await loadWindowHistory(pid);
   } catch (e) {
     console.error('start new chat failed', e);
     showNotice(uallakI18n.t('chat_new_failed'), 'warn');
   }
 }
 
-// Let the client save/share their conversation. Pulls the FULL history for the
-// persona currently on screen (each persona is its own conversation) and hands
-// it back as a plain-text file — no server round-trip beyond the read, so it
-// works even if the client just wants to forward it to someone.
-async function downloadConversation() {
-  const who = currentPersona === 'general'
+// Let the client save/share ONE agent's conversation as a plain-text file - no
+// server round-trip beyond the read, so they can forward it to someone.
+async function downloadWindowConversation(personaId) {
+  const p = personaMeta(personaId);
+  const who = personaId === 'general'
     ? uallakI18n.t('team_role_general')
-    : TEAM_PERSONAS[currentPersona].name + ' — ' + uallakI18n.t(TEAM_PERSONAS[currentPersona].roleKey);
+    : p.name + ' — ' + uallakI18n.t(p.roleKey);
   let entries = [];
   try {
     const res = await fetch('/api/client-chat/history?scope=all&persona='
-                            + encodeURIComponent(currentPersona), { credentials: 'same-origin' });
+                            + encodeURIComponent(personaId), { credentials: 'same-origin' });
     const data = await res.json();
     if (data.success) entries = data.history || [];
   } catch (e) {
@@ -2312,11 +2402,42 @@ async function downloadConversation() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'uallak-chat-' + currentPersona + '-' + new Date().toISOString().slice(0, 10) + '.txt';
+  a.download = 'uallak-chat-' + personaId + '-' + new Date().toISOString().slice(0, 10) + '.txt';
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+async function sendInWindow(personaId) {
+  const w = CHAT_WINDOWS[personaId];
+  if (!w) return;
+  const text = w.inputEl.value.trim();
+  if (!text) return;
+  appendMsg(w.msgsEl, text, 'user');
+  w.inputEl.value = '';
+  // Typing indicator - upgrade proposals and web searches can take a while,
+  // the client should see the chat is working, not frozen
+  const typing = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+  try {
+    const res = await fetch('/api/client-chat', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, persona: personaId }),
+    });
+    const data = await res.json();
+    typing.remove();
+    if (data.success) {
+      appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
+    } else {
+      appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
+    }
+  } catch (e) {
+    console.error('support chat request failed', e);
+    typing.remove();
+    appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
+  }
 }
 
 // ─── concierge greeting + quick-reply chips ──────────────────────────────────
@@ -2349,14 +2470,15 @@ function greetingText() {
 
 function maybeShowGreeting() {
   if (!chatData.dashReady || !chatData.suggReady) return;
-  // Personalize the chat's opening message every load — but only when the
-  // general concierge thread is the one on screen; a specialist thread owns
-  // its own intro (threadIntroText) and must not be overwritten with the
-  // concierge greeting.
-  const intro = document.getElementById('chatIntroMsg');
-  if (intro && currentPersona === 'general') intro.textContent = greetingText();
-  renderChips();
-  // ...but pop the greeting bubble only once per session, so it welcomes
+  // If the concierge window is open, refresh its greeting intro + chips with
+  // the now-loaded client data. A specialist window owns its own intro.
+  const gw = CHAT_WINDOWS.general;
+  if (gw) {
+    const intro = gw.msgsEl.querySelector('[data-role="intro"]');
+    if (intro) intro.textContent = greetingText();
+    renderChips();
+  }
+  // ...pop the floating greeting bubble only once per session, so it welcomes
   // rather than nags
   if (sessionStorage.getItem('uallak_greeted')) return;
   sessionStorage.setItem('uallak_greeted', '1');
@@ -2368,11 +2490,14 @@ function maybeShowGreeting() {
 
 function greetingClick() {
   document.getElementById('chatGreeting').classList.remove('visible');
-  const panel = document.getElementById('supportPanel');
-  if (!panel.classList.contains('open')) toggleSupportChat();
+  openAgentWindow('general');
 }
 
+// Quick-reply chips live on the concierge window only (they drive concierge-only
+// flows: pending approvals, starting campaigns, upgrades).
 function renderChips() {
+  const gw = CHAT_WINDOWS.general;
+  if (!gw || !gw.chipsEl) return;
   const t = uallakI18n.t;
   const chips = [];
   if (chatData.pendingCount > 0) chips.push(t('chip_pending'));
@@ -2382,56 +2507,14 @@ function renderChips() {
     chips.push(t('chip_start'));
   }
   chips.push(t('chip_upgrade'));
-  document.getElementById('chipRow').innerHTML = chips.map(t =>
-    `<button class="chip" onclick="sendChip(this.textContent)">${esc(t)}</button>`).join('');
+  gw.chipsEl.innerHTML = chips.map(c =>
+    `<button class="chip" onclick="sendChip(this.textContent)">${esc(c)}</button>`).join('');
 }
 
 function sendChip(text) {
-  const input = document.getElementById('supportInput');
-  input.value = text;
-  sendSupportMsg();
-}
-
-function toggleSupportChat() {
-  const panel = document.getElementById('supportPanel');
-  panel.classList.toggle('open');
-  document.getElementById('supportInput').focus();
-  if (panel.classList.contains('open') && !supportHistoryLoaded) {
-    loadThread(currentPersona);
-  }
-}
-
-async function sendSupportMsg() {
-  const input = document.getElementById('supportInput');
-  const text = input.value.trim();
-  if (!text) return;
-
-  appendSupportMsg(text, 'user');
-  input.value = '';
-
-  // Typing indicator - upgrade proposals and web searches can take a while,
-  // the client should see the chat is working, not frozen
-  const typing = appendSupportMsg(uallakI18n.t('chat_typing'), 'bot typing');
-
-  try {
-    const res = await fetch('/api/client-chat', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, persona: currentPersona }),
-    });
-    const data = await res.json();
-    typing.remove();
-    if (data.success) {
-      appendSupportMsg(data.reply, data.needs_human_followup ? 'escalated' : 'bot');
-    } else {
-      appendSupportMsg(uallakI18n.t('chat_error'), 'bot');
-    }
-  } catch (e) {
-    console.error('support chat request failed', e);
-    typing.remove();
-    appendSupportMsg(uallakI18n.t('chat_error'), 'bot');
-  }
+  const w = openAgentWindow('general');
+  w.inputEl.value = text;
+  sendInWindow('general');
 }
 
 // ─── boot ────────────────────────────────────────────────────────────────────
@@ -2443,15 +2526,28 @@ async function sendSupportMsg() {
   // by the engine's applyDom.
   uallakI18n.onChange(() => {
     loadDashboard(); loadBilling(); loadSuggestions();
-    renderTeamStrip();
-    // A specialist owns the header subtitle (data-i18n was removed on switch)
-    // - re-translate their role text after applyDom ran
-    if (currentPersona !== 'general') {
-      document.getElementById('supportSub').textContent =
-        uallakI18n.t(TEAM_PERSONAS[currentPersona].roleKey);
+    renderLauncher();
+    // Re-translate every OPEN window's role subtitle + input placeholder (their
+    // text is JS-set, so applyDom doesn't reach it), then refresh chips + dock.
+    Object.keys(CHAT_WINDOWS).forEach(id => {
+      const w = CHAT_WINDOWS[id];
+      const sub = w.root.querySelector('[data-role="sub"]');
+      if (sub) sub.textContent = uallakI18n.t(personaMeta(id).roleKey);
+      if (w.inputEl) w.inputEl.placeholder = uallakI18n.t('chat_input_ph');
+    });
+    renderChips();
+    renderDock();
+  });
+  renderLauncher();
+  // Close the launcher on an outside click (the FAB's own handler toggles it,
+  // so exclude the FAB here to avoid immediately re-closing what it just opened).
+  document.addEventListener('click', (e) => {
+    const l = document.getElementById('chatLauncher');
+    const fab = document.getElementById('supportFabBtn');
+    if (l.classList.contains('open') && !l.contains(e.target) && !fab.contains(e.target)) {
+      l.classList.remove('open');
     }
   });
-  renderTeamStrip();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('connected') === 'google_ads') {
