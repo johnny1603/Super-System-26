@@ -33,6 +33,16 @@
   var LOCALES = { he: 'he-IL', en: 'en-GB', fr: 'fr-FR', ar: 'ar', ru: 'ru-RU' };
   var STORAGE_KEY = 'uallak_lang';
 
+  // What a language button shows: every language shows ONLY its flag glyph (no
+  // label). Arabic is the deliberate exception — it shows its name AS TEXT
+  // ("ערבית") with no flag at all, since the only fitting flag would be
+  // Israel's (these are Israeli Arabic-speaking clients) and that duplicates
+  // the Hebrew badge — the word reads unambiguously instead. `is-text` styling
+  // hangs off the same distinction.
+  function switcherFace(code) {
+    return code === 'ar' ? MENU_LABELS.ar : (FLAGS[code] || '🌐');
+  }
+
   var table = {};
   var listeners = [];
 
@@ -85,11 +95,12 @@
     listeners.forEach(function (fn) { fn(lang); });
   }
 
-  // Settings-style compact control: a round flag badge showing the CURRENT
-  // language, opening a small dropdown menu (flag + label per option) on
-  // click - replaces the old plain-text <select> everywhere mountSwitcher is
-  // used (login, profile, dashboard, landing, terms), so the redesign only
-  // needs to happen once, here, in the shared engine.
+  // Compact control: a raised 3D flag badge showing the CURRENT language,
+  // opening a small popover of raised 3D round buttons (flag-only, one per
+  // language; Arabic shows the word "ערבית" instead of a flag) on click -
+  // replaces the old plain-text <select> everywhere mountSwitcher is used
+  // (login, profile, dashboard, landing, terms), so the design only needs to
+  // happen once, here, in the shared engine.
   var SWITCHER_STYLE_ID = 'uallak-i18n-switcher-style';
 
   function ensureSwitcherStyles() {
@@ -98,20 +109,37 @@
     style.id = SWITCHER_STYLE_ID;
     style.textContent =
       '.uallak-lang-switcher{position:relative;display:inline-block;line-height:0;}' +
-      '.uallak-lang-badge{width:34px;height:34px;border-radius:50%;background:var(--accent,#FF4C1F);' +
-      'color:#fff;border:none;font-size:16px;display:flex;align-items:center;justify-content:center;' +
-      'cursor:pointer;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.22);transition:transform .15s;}' +
-      '.uallak-lang-badge:hover{transform:scale(1.07);}' +
+      // ── Current-language badge: raised, embossed accent button ──
+      '.uallak-lang-badge{width:38px;height:38px;border-radius:50%;border:1px solid rgba(0,0,0,0.14);' +
+      'color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;' +
+      'background:linear-gradient(145deg,#ff7a52 0%,#ff4c1f 55%,#d8380f 100%);' +
+      'box-shadow:0 4px 9px rgba(0,0,0,0.34),inset 0 2px 2px rgba(255,255,255,0.5),' +
+      'inset 0 -3px 4px rgba(0,0,0,0.3);transition:transform .12s,box-shadow .12s;}' +
+      '.uallak-lang-badge:hover{transform:translateY(-1px);' +
+      'box-shadow:0 6px 14px rgba(0,0,0,0.38),inset 0 2px 2px rgba(255,255,255,0.55),inset 0 -3px 4px rgba(0,0,0,0.3);}' +
+      '.uallak-lang-badge:active{transform:translateY(1px);' +
+      'box-shadow:0 2px 5px rgba(0,0,0,0.3),inset 0 3px 5px rgba(0,0,0,0.34),inset 0 -1px 2px rgba(255,255,255,0.3);}' +
+      '.uallak-lang-badge.is-text{font-size:11px;font-weight:800;letter-spacing:-0.3px;}' +
       '.uallak-lang-badge:focus-visible{outline:2px solid var(--accent,#FF4C1F);outline-offset:2px;}' +
-      '.uallak-lang-menu{position:absolute;top:calc(100% + 8px);inset-inline-end:0;background:#fff;' +
-      'border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.28);padding:6px;min-width:150px;' +
-      'display:none;z-index:9999;}' +
-      '.uallak-lang-menu.open{display:block;}' +
-      '.uallak-lang-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;' +
-      'cursor:pointer;font-family:inherit;font-size:13.5px;color:#1A1A1A;white-space:nowrap;}' +
-      '.uallak-lang-item:hover{background:rgba(0,0,0,0.06);}' +
-      '.uallak-lang-item.active{background:rgba(255,76,31,0.12);font-weight:700;color:#FF4C1F;}' +
-      '.uallak-lang-item .uallak-flag{font-size:16px;line-height:1;}';
+      // ── Popover: a wrapped row of round buttons ──
+      '.uallak-lang-menu{position:absolute;top:calc(100% + 10px);inset-inline-end:0;' +
+      'background:rgba(255,255,255,0.97);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,0.3);' +
+      'padding:10px;display:none;gap:9px;flex-wrap:wrap;justify-content:center;max-width:184px;z-index:9999;}' +
+      '.uallak-lang-menu.open{display:flex;}' +
+      // ── One raised, embossed round button per language ──
+      '.uallak-lang-item{width:42px;height:42px;border-radius:50%;border:1px solid rgba(0,0,0,0.1);cursor:pointer;' +
+      'display:flex;align-items:center;justify-content:center;font-size:20px;padding:0;font-family:inherit;color:#1A1A1A;' +
+      'background:linear-gradient(145deg,#ffffff 0%,#ececec 55%,#d6d6d6 100%);' +
+      'box-shadow:0 4px 8px rgba(0,0,0,0.26),inset 0 2px 2px rgba(255,255,255,0.95),' +
+      'inset 0 -3px 4px rgba(0,0,0,0.16);transition:transform .12s,box-shadow .12s;}' +
+      '.uallak-lang-item:hover{transform:translateY(-2px);' +
+      'box-shadow:0 8px 14px rgba(0,0,0,0.3),inset 0 2px 2px rgba(255,255,255,0.95),inset 0 -3px 4px rgba(0,0,0,0.16);}' +
+      '.uallak-lang-item:active{transform:translateY(1px);' +
+      'box-shadow:0 2px 5px rgba(0,0,0,0.26),inset 0 3px 5px rgba(0,0,0,0.22);}' +
+      '.uallak-lang-item.is-text{font-size:12px;font-weight:800;letter-spacing:-0.3px;}' +
+      '.uallak-lang-item.active{border-color:rgba(0,0,0,0.14);color:#fff;' +
+      'background:linear-gradient(145deg,#ff7a52 0%,#ff4c1f 55%,#d8380f 100%);' +
+      'box-shadow:0 4px 9px rgba(0,0,0,0.34),inset 0 2px 2px rgba(255,255,255,0.45),inset 0 -3px 4px rgba(0,0,0,0.3);}';
     document.head.appendChild(style);
   }
 
@@ -124,10 +152,14 @@
 
     var badge = document.createElement('button');
     badge.type = 'button';
-    badge.className = 'uallak-lang-badge';
     badge.setAttribute('aria-label', 'Language / שפה');
     badge.setAttribute('aria-haspopup', 'true');
-    badge.textContent = FLAGS[lang] || '🌐';
+
+    function paintBadge(code) {
+      badge.className = 'uallak-lang-badge' + (code === 'ar' ? ' is-text' : '');
+      badge.textContent = switcherFace(code);
+    }
+    paintBadge(lang);
 
     var menu = document.createElement('div');
     menu.className = 'uallak-lang-menu';
@@ -135,16 +167,16 @@
     function renderMenu() {
       menu.innerHTML = '';
       SUPPORTED.forEach(function (code) {
-        var item = document.createElement('div');
-        item.className = 'uallak-lang-item' + (code === lang ? ' active' : '');
-        item.setAttribute('role', 'button');
-        var flagSpan = document.createElement('span');
-        flagSpan.className = 'uallak-flag';
-        flagSpan.textContent = FLAGS[code] || '🌐';
-        var labelSpan = document.createElement('span');
-        labelSpan.textContent = MENU_LABELS[code];
-        item.appendChild(flagSpan);
-        item.appendChild(labelSpan);
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'uallak-lang-item' + (code === lang ? ' active' : '')
+                         + (code === 'ar' ? ' is-text' : '');
+        // The language name is kept as an accessible label / hover tooltip only
+        // - it is intentionally not shown as visible text (Arabic aside, whose
+        // face IS its name).
+        item.setAttribute('aria-label', MENU_LABELS[code]);
+        item.title = MENU_LABELS[code];
+        item.textContent = switcherFace(code);
         item.addEventListener('click', function (e) {
           e.stopPropagation();
           setLanguage(code);
@@ -167,7 +199,7 @@
     // Keep the badge + menu in sync if the language changes (this switch, or
     // in principle another one on the same page)
     listeners.push(function (newLang) {
-      badge.textContent = FLAGS[newLang] || '🌐';
+      paintBadge(newLang);
       renderMenu();
     });
 
