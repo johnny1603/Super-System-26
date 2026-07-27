@@ -428,6 +428,10 @@ function addMessage(text, sender='bot', withOptions=null, multiOptions=null) {
   div.appendChild(bubble);
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+  // Mirror the conversation to the server. This chat has no account behind it,
+  // so the lead row is the only place a transcript can live — without this the
+  // CRM can show that someone dropped off but never where.
+  leadTracker.message(sender === 'user' ? 'user' : 'assistant', text);
   return div;
 }
 
@@ -729,7 +733,9 @@ async function fetchProposal(answers) {
     const res = await fetch('/api/onboarding', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({answers})
+      // lead_id folds the proposal into the row this chat already opened, so the
+      // traffic source stays attached to it instead of landing on a fresh row
+      body: JSON.stringify({answers, lead_id: leadTracker.id, language: uallakI18n.current()})
     });
     const data = await res.json();
     hideProcessing();
@@ -905,6 +911,7 @@ async function startCheckout(name, phone, address, businessName, businessTaxId, 
         setup_fee_total: selectedPackage ? selectedPackage.setup_fee_total : 0,
         monthly_management_total: selectedPackage ? selectedPackage.monthly_management_total : 0,
         language: uallakI18n.current(),
+        lead_id: leadTracker.id,   // exact lead -> client link; see core/lead_tracking
       })
     });
     const data = await res.json();
@@ -976,9 +983,64 @@ function downloadTranscript() {
   URL.revokeObjectURL(url);
 }
 
-window.onload = () => {
+// ─── Lead tracking ───────────────────────────────────────────────────────────
+// Opens the lead row on ARRIVAL, carrying whatever the URL says about where
+// this visitor came from. Every call here is best-effort and swallows its own
+// errors: an ad blocker or a failed request must cost us the attribution, never
+// the conversation.
+const leadTracker = {
+  id: '',
+  ATTRIBUTION_PARAMS: [
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+    // Click ids — the only attribution signal a visitor can't fake by editing
+    // the URL, and the only one that proves a paid click actually happened.
+    'gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'msclkid',
+  ],
+  _store(key, value) { try { sessionStorage.setItem(key, value); } catch (e) {} },
+  _read(key) { try { return sessionStorage.getItem(key) || ''; } catch (e) { return ''; } },
+
+  // Reattach to an existing lead without ever creating one — used on the
+  // payment return trip, where a new row would be a phantom duplicate.
+  restore() { this.id = this._read('uallak_lead_id'); },
+
+  async start() {
+    this.restore();
+    if (this.id) return;   // same visit, page just reloaded
+    const params = new URLSearchParams(window.location.search);
+    const attribution = {
+      referrer: document.referrer || '',
+      landing_path: window.location.pathname + window.location.search,
+    };
+    this.ATTRIBUTION_PARAMS.forEach(key => {
+      const value = params.get(key);
+      if (value) attribution[key] = value;
+    });
+    try {
+      const res = await fetch('/api/lead/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attribution, language: uallakI18n.current() }),
+      });
+      const body = await res.json();
+      this.id = (body.data && body.data.lead_id) || '';
+      if (this.id) this._store('uallak_lead_id', this.id);
+    } catch (e) { /* tracking never blocks the chat */ }
+  },
+
+  message(role, text) {
+    if (!this.id || !text) return;
+    fetch('/api/lead/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: this.id, role, content: text }),
+    }).catch(() => {});   // fire and forget — the UI must not wait on this
+  },
+};
+
+window.onload = async () => {
   const params = new URLSearchParams(window.location.search);
   const payment = params.get('payment');
+  leadTracker.restore();
   if (payment === 'success') {
     setTimeout(() => {
       addMessage(uallakI18n.t('paid_success'), 'bot');
@@ -994,6 +1056,9 @@ window.onload = () => {
     setTimeout(() => addMessage(uallakI18n.t('paid_pending'), 'bot'), 500);
     return;
   }
+  // Awaited so the very first bot message is already attributable — the lead
+  // row must exist before addMessage starts mirroring the conversation.
+  await leadTracker.start();
   setTimeout(() => { addMessage(questions[0].text, 'bot'); document.getElementById('userInput').focus(); }, 500);
 };
 </script>

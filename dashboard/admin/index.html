@@ -99,6 +99,36 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 
 .platform-tag { display:inline-block; background:var(--panel-2); border:1px solid var(--border); font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:6px; margin-left:4px; color:var(--gray); }
 
+/* CRM — leads. Same grid/pill/drawer vocabulary as the clients table above. */
+.lead-row { display:grid; grid-template-columns: 1.1fr 1.9fr 1.1fr 1.3fr 0.55fr 1fr 0.8fr; align-items:center; padding:14px 20px; border-bottom:1px solid var(--border); font-size:13.5px; cursor:pointer; }
+.lead-row:hover:not(.head) { background: var(--panel-2); }
+.lead-row.head { color:var(--gray); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; padding:12px 20px; cursor:default; }
+.lead-row:last-child { border-bottom:none; }
+.lead-cell-clip { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.source-badge { display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--gray); }
+.source-badge.google_ads { background:rgba(66,133,244,0.12); color:#7FB8F5; border-color:rgba(66,133,244,0.3); }
+.source-badge.meta { background:rgba(0,119,255,0.12); color:#6FA8FF; border-color:rgba(0,119,255,0.3); }
+.source-badge.tiktok { background:rgba(255,0,80,0.12); color:#FF6E9C; border-color:rgba(255,0,80,0.3); }
+.source-badge.microsoft_ads { background:rgba(0,164,239,0.12); color:#6FC8F0; border-color:rgba(0,164,239,0.3); }
+.source-badge.organic { background:rgba(0,201,110,0.12); color:var(--green); border-color:rgba(0,201,110,0.3); }
+.source-badge.referral { background:rgba(255,176,32,0.12); color:var(--yellow); border-color:rgba(255,176,32,0.3); }
+.source-badge.unknown { font-style:italic; }
+.status-pill.bad { background:rgba(255,59,59,0.12); color:var(--red); }
+
+.filter-bar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+.filter-bar select, .filter-bar input { background:var(--panel); border:1px solid var(--border); border-radius:9px; color:var(--white); font-family:'Heebo',sans-serif; font-size:13px; padding:9px 12px; outline:none; }
+.filter-bar select:focus, .filter-bar input:focus { border-color:var(--accent); }
+.filter-bar .spacer { flex:1; }
+.sort-btn { background:var(--panel); border:1px solid var(--border); color:var(--gray); font-family:'Heebo',sans-serif; font-size:12.5px; padding:9px 14px; border-radius:9px; cursor:pointer; }
+.sort-btn:hover { color:var(--white); }
+
+.transcript { max-height:340px; overflow-y:auto; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:13px; }
+.transcript-msg { margin-bottom:11px; font-size:12.5px; line-height:1.55; }
+.transcript-msg:last-child { margin-bottom:0; }
+.transcript-role { font-size:10.5px; font-weight:700; color:var(--gray); text-transform:uppercase; letter-spacing:0.4px; display:block; margin-bottom:2px; }
+.transcript-msg.user .transcript-role { color:var(--accent); }
+.kv-mono { direction:ltr; text-align:left; font-size:11.5px; word-break:break-all; max-width:62%; }
+
 .manage-btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); font-family:'Heebo',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 14px; border-radius: 8px; cursor: pointer; }
 .manage-btn:hover { background: var(--accent); border-color: var(--accent); }
 .wa-quick-btn { width: 32px; height: 32px; border-radius: 50%; background: rgba(37,211,102,0.12); border: 1px solid rgba(37,211,102,0.3); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
@@ -211,6 +241,10 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="nav-item-left"><span>👥</span> לקוחות</div>
       <span class="nav-count" id="clientsCount" style="display:none;"></span>
     </div>
+    <div class="nav-item" data-tab="leads" onclick="showTab('leads', this)">
+      <div class="nav-item-left"><span>🧲</span> לידים</div>
+      <span class="nav-count" id="leadsCount" style="display:none;"></span>
+    </div>
     <div class="nav-item" data-tab="alerts" onclick="showTab('alerts', this)">
       <div class="nav-item-left"><span>🚨</span> התראות</div>
       <span class="nav-count" id="alertsCount" style="display:none;"></span>
@@ -232,6 +266,27 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="page-sub" id="clientsSub"></div>
       <div id="openAlertsBanner"></div>
       <div class="table-wrap" id="clientsTable"></div>
+    </div>
+
+    <div id="tab-leads" style="display:none;">
+      <div class="page-title">לידים</div>
+      <div class="page-sub" id="leadsSub">טוען…</div>
+      <div class="filter-bar">
+        <select id="leadStatusFilter" onchange="renderLeads()">
+          <option value="">כל הסטטוסים</option>
+          <option value="in_progress">בשיחה</option>
+          <option value="dropped_off">נטשו</option>
+          <option value="converted">הפכו ללקוח</option>
+          <option value="declined">סירבו</option>
+        </select>
+        <select id="leadSourceFilter" onchange="renderLeads()">
+          <option value="">כל המקורות</option>
+        </select>
+        <input id="leadSearch" type="search" placeholder="חיפוש שם או אימייל" oninput="renderLeads()">
+        <div class="spacer"></div>
+        <button class="sort-btn" id="leadSortBtn" onclick="toggleLeadSort()">מיון: חדש ← ישן</button>
+      </div>
+      <div class="table-wrap" id="leadsTable"></div>
     </div>
 
     <div id="tab-alerts" style="display:none;">
@@ -312,11 +367,12 @@ async function adminLogout() {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
-  ['overview','clients','alerts','reports','pricing','settings'].forEach(t => {
+  ['overview','clients','leads','alerts','reports','pricing','settings'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
+  if (name === 'leads') loadLeads();
   if (name === 'reports') loadReports();
   if (name === 'pricing') loadPricing();
   if (name === 'settings') loadSettings();
@@ -655,6 +711,202 @@ async function saveSettings() {
   setTimeout(() => { document.getElementById('settingsSaved').textContent = ''; }, 2500);
 }
 
+// ─── CRM: leads ──────────────────────────────────────────────────────────────
+let leadsCache = [];
+let leadSortAsc = false;
+
+const SOURCE_LABELS = {
+  google_ads: 'Google Ads', meta: 'Meta', tiktok: 'TikTok', microsoft_ads: 'Microsoft',
+  organic: 'אורגני', referral: 'הפניה', direct: 'ישיר', unknown: 'לא ידוע',
+};
+// How much the source label is actually worth. Shown, never hidden: a click id
+// proves a paid click happened, a utm tag is just what the link claimed, and a
+// lead with no signal at all is not the same thing as a lead that typed the URL.
+const CONFIDENCE_LABELS = {
+  click_id: 'ודאי — מזהה קליק ממערכת הפרסום',
+  utm: 'לפי תגיות הקישור בלבד',
+  referrer: 'הוסק ממקור ההפניה',
+  none: 'אין נתוני מקור',
+};
+const LEAD_STATUS = {
+  in_progress: { label: 'בשיחה', cls: 'pending' },
+  dropped_off: { label: 'נטש', cls: 'other' },
+  converted:   { label: 'הפך ללקוח', cls: 'active' },
+  declined:    { label: 'סירב', cls: 'bad' },
+};
+
+async function loadLeads() {
+  const res = await api('/api/admin/leads');
+  const data = res.data || {};
+  leadsCache = data.leads || [];
+  const counts = data.counts || {};
+  const byStatus = counts.by_status || {};
+
+  const countEl = document.getElementById('leadsCount');
+  countEl.textContent = counts.total || 0;
+  countEl.style.display = counts.total ? 'inline' : 'none';
+  document.getElementById('leadsSub').textContent = counts.total
+    ? `${counts.total} לידים · ${byStatus.converted || 0} הפכו ללקוח · ${byStatus.dropped_off || 0} נטשו `
+      + `(ללא פעילות מעל ${data.drop_off_hours} שעות)`
+    : 'עדיין אין לידים';
+
+  // Source options come from the data, so a platform we've never seen a lead
+  // from never shows up as an empty filter.
+  const sourceFilter = document.getElementById('leadSourceFilter');
+  const chosen = sourceFilter.value;
+  sourceFilter.innerHTML = '<option value="">כל המקורות</option>' +
+    Object.entries(counts.by_source || {}).sort((a, b) => b[1] - a[1])
+      .map(([src, n]) => `<option value="${esc(src)}">${esc(SOURCE_LABELS[src] || src)} (${n})</option>`)
+      .join('');
+  sourceFilter.value = chosen;
+  renderLeads();
+}
+
+function toggleLeadSort() {
+  leadSortAsc = !leadSortAsc;
+  document.getElementById('leadSortBtn').textContent =
+    leadSortAsc ? 'מיון: ישן ← חדש' : 'מיון: חדש ← ישן';
+  renderLeads();
+}
+
+function renderLeads() {
+  const status = document.getElementById('leadStatusFilter').value;
+  const source = document.getElementById('leadSourceFilter').value;
+  const term = document.getElementById('leadSearch').value.trim().toLowerCase();
+
+  const rows = leadsCache.filter(l =>
+    (!status || l.status === status) &&
+    (!source || l.source_platform === source) &&
+    (!term || `${l.client_name} ${l.client_email}`.toLowerCase().includes(term))
+  ).sort((a, b) => {
+    const diff = new Date(a.first_contact_at || 0) - new Date(b.first_contact_at || 0);
+    return leadSortAsc ? diff : -diff;
+  });
+
+  const head = `<div class="lead-row head">
+    <span>פנייה ראשונה</span><span>ליד</span><span>מקור</span><span>קמפיין</span>
+    <span>שפה</span><span>סטטוס</span><span>הצעה</span>
+  </div>`;
+
+  document.getElementById('leadsTable').innerHTML = head + (rows.length ? rows.map(l => {
+    const st = LEAD_STATUS[l.status] || { label: l.status, cls: 'other' };
+    const campaign = l.utm_campaign || l.utm_content
+      || (l.utm_source ? l.utm_source + (l.utm_medium ? ' / ' + l.utm_medium : '') : '');
+    return `<div class="lead-row" onclick="openLeadDrawer('${esc(l.lead_id)}')">
+      <span>${fmtDate(l.first_contact_at)}</span>
+      <span class="client-name-cell">
+        <div class="client-avatar">${esc(initial(l.client_name || l.client_email || '?'))}</div>
+        <div style="min-width:0;">
+          <div class="client-name">${esc(l.client_name || 'טרם נמסר שם')}</div>
+          <div class="client-email">${esc(l.client_email || '—')}</div>
+        </div>
+      </span>
+      <span><span class="source-badge ${esc(l.source_platform)}">${esc(SOURCE_LABELS[l.source_platform] || l.source_platform)}</span></span>
+      <span class="lead-cell-clip" title="${esc(campaign)}">${esc(campaign || '—')}</span>
+      <span>${esc(String(l.language || '—').toUpperCase())}</span>
+      <span><span class="status-pill ${st.cls}">${esc(st.label)}</span></span>
+      <span>${l.has_proposal ? (l.monthly_fee ? ils(l.monthly_fee) : '✓') : '—'}</span>
+    </div>`;
+  }).join('') : '<div class="empty-state">אין לידים שמתאימים לסינון</div>');
+}
+
+async function setLeadStatus(leadId, status) {
+  await api(`/api/admin/leads/${encodeURIComponent(leadId)}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  await loadLeads();
+  openLeadDrawer(leadId);
+}
+
+async function openLeadDrawer(leadId) {
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = '<div class="empty-state">טוען…</div>';
+  drawer.classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+
+  const res = await api(`/api/admin/leads/${encodeURIComponent(leadId)}`);
+  const l = res.data;
+  const st = LEAD_STATUS[l.status] || { label: l.status, cls: 'other' };
+  const row = (label, value) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${label}</span><span>${value}</span></div>`;
+  const monoRow = (label, value) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(label)}</span><span class="kv-mono">${esc(value)}</span></div>`;
+
+  const utmRows = [['utm_source', l.utm_source], ['utm_medium', l.utm_medium],
+                   ['utm_campaign', l.utm_campaign], ['utm_content', l.utm_content]]
+    .filter(([, v]) => v).map(([k, v]) => monoRow(k, v)).join('');
+  const clickRows = Object.entries(l.click_ids || {})
+    .map(([k, v]) => monoRow(k, String(v).slice(0, 32) + (String(v).length > 32 ? '…' : ''))).join('');
+
+  const answerRows = Object.entries(l.answers || {})
+    .filter(([k]) => !k.startsWith('_'))
+    .map(([k, v]) => monoRow(k, typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    .join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">טרם נאספו תשובות</div>';
+
+  const transcript = l.transcript_available
+    ? `<div class="transcript">${l.messages.map(m => `
+        <div class="transcript-msg ${m.role === 'user' ? 'user' : ''}">
+          <span class="transcript-role">${m.role === 'user' ? 'הליד' : 'uallak'}</span>
+          <div dir="auto">${esc(m.content)}</div>
+        </div>`).join('')}</div>`
+    // Leads from before transcript capture existed genuinely have no
+    // conversation stored. Say so rather than render a convincing empty box.
+    : '<div class="empty-state" style="padding:16px;">לא נשמר תמלול לשיחה הזו — לידים מלפני הפעלת מעקב השיחות אינם כוללים תמלול</div>';
+
+  drawer.innerHTML = `
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    <div class="drawer-head">
+      <div class="drawer-avatar">${esc(initial(l.client_name || l.client_email || '?'))}</div>
+      <div>
+        <div class="drawer-name">${esc(l.client_name || 'ליד ללא שם')}</div>
+        <div class="drawer-email">${esc(l.client_email || 'טרם נמסר אימייל')}</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">מקור התנועה</div>
+      ${row('פלטפורמה', `<span class="source-badge ${esc(l.source_platform)}">${esc(SOURCE_LABELS[l.source_platform] || l.source_platform)}</span>`)}
+      ${row('רמת ודאות', esc(CONFIDENCE_LABELS[l.source_confidence] || l.source_confidence))}
+      ${l.source_detail ? monoRow('פירוט', l.source_detail) : ''}
+      ${utmRows}
+      ${clickRows}
+      ${l.referrer ? monoRow('הגיע מ־', l.referrer) : ''}
+      ${l.landing_path ? monoRow('דף נחיתה', l.landing_path) : ''}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">סטטוס וזמנים</div>
+      ${row('סטטוס', `<span class="status-pill ${st.cls}">${esc(st.label)}</span>`)}
+      ${row('שפת השיחה', esc(String(l.language || '—').toUpperCase()))}
+      ${row('פנייה ראשונה', fmtDate(l.first_contact_at))}
+      ${row('פעילות אחרונה', fmtDate(l.last_activity_at))}
+      ${l.converted_at ? row('הפך ללקוח', fmtDate(l.converted_at)) : ''}
+      ${row('הצעה', l.has_proposal ? `${ils(l.setup_fee)} הקמה · ${ils(l.monthly_fee)}/חודש` : 'לא נבנתה הצעה')}
+    </div>
+
+    <div class="drawer-section">
+      ${l.client_id
+        ? `<button class="drawer-action-btn" onclick="openDrawer(${Number(l.client_id)})">פתח את כרטיס הלקוח →</button>`
+        : ''}
+      ${l.status !== 'declined'
+        ? `<button class="drawer-action-btn secondary" onclick="setLeadStatus('${esc(l.lead_id)}','declined')">סמן כסירב</button>`
+        : `<button class="drawer-action-btn secondary" onclick="setLeadStatus('${esc(l.lead_id)}','in_progress')">בטל סימון סירוב</button>`}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">תמלול השיחה</div>
+      ${transcript}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">תשובות מהאיפיון</div>
+      ${answerRows}
+    </div>
+  `;
+}
+
 // ─── client drawer ───────────────────────────────────────────────────────────
 async function openDrawer(clientId) {
   const drawer = document.getElementById('drawer');
@@ -908,7 +1160,7 @@ function closeDrawer() {
 // ─── boot ────────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    await Promise.all([loadOverview(), loadClients(), loadAlerts()]);
+    await Promise.all([loadOverview(), loadClients(), loadLeads(), loadAlerts()]);
   } catch (e) {
     if (e.message !== 'unauthenticated') console.error(e);
   }

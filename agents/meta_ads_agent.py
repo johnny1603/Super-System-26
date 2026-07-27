@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from supabase import create_client as _supabase_client
 
+from core import lead_tracking
 from core import meta_service as meta
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
@@ -336,6 +337,11 @@ def create_link_campaign(client_id: int, spec: dict) -> dict:
             lambda: meta.graph_post(f"{act}/adcreatives", token, data={
                 "name": f"{name} - creative 1",
                 "object_story_spec": {"page_id": page_conn["account_id"], "link_data": link_data},
+                # Ad-level attribution for the CRM. Meta expands the dynamic
+                # parameters at click time; fbclid on its own is NOT resolvable
+                # to a campaign through any API, so this is the only way the
+                # lead row can ever name the ad that produced it.
+                "url_tags": lead_tracking.META_URL_TAGS,
             }, marketing=True),
         )["id"]
 

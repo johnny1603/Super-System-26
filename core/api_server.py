@@ -50,6 +50,7 @@ from core import meta_service
 from core import tiktok_service
 from core import admin_service
 from core import drive_service
+from core import lead_tracking
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -112,6 +113,8 @@ class OnboardingRequest(BaseModel):
     client_name: str = ""
     language: str = "he"  # sales-chat page's active uallakI18n language - no client row
                           # exists yet at proposal time, so this rides along explicitly
+    lead_id: str = ""     # the lead the chat opened on arrival (core/lead_tracking); empty
+                          # when tracking never started, which must not lose the proposal
 
 @app.post("/api/onboarding")
 def onboarding(req: OnboardingRequest):
@@ -125,8 +128,7 @@ def onboarding(req: OnboardingRequest):
         # שמירה ב-DB — נשמור את המסלול הזול ביותר כבסיס להשוואה בטבלה
         packages = proposal.get("packages", [])
         cheapest = min(packages, key=lambda pkg: pkg.get("monthly_management_total", 0)) if packages else {}
-        db.table("leads").insert({
-            "created_at": datetime.now().isoformat(),
+        lead_fields = {
             "client_email": req.client_email,
             "client_name": req.client_name,
             "answers": req.answers,
@@ -134,7 +136,23 @@ def onboarding(req: OnboardingRequest):
             "approved": bool(proposal.get("approved")),
             "setup_fee": cheapest.get("setup_fee_total", 0),
             "monthly_fee": cheapest.get("monthly_management_total", 0),
-        }).execute()
+            "language": req.language,
+        }
+        # The chat already opened this lead on arrival, carrying its traffic
+        # source — fold the proposal into THAT row so attribution stays attached.
+        # The insert fallback matters: a blocked/failed /api/lead/start must cost
+        # us the attribution, never the proposal itself.
+        try:
+            attached = lead_tracking.attach_proposal(req.lead_id, lead_fields)
+        except Exception as lead_err:
+            # Caught, not propagated: without this the fallback below is
+            # unreachable on the exact failure it exists for.
+            print(f"[lead] attach_proposal failed (non-fatal): {lead_err}")
+            attached = False
+        if not attached:
+            db.table("leads").insert({
+                "created_at": datetime.now().isoformat(), **lead_fields,
+            }).execute()
 
         # שליחת מיילים
         send_admin_alert(req.answers, proposal)
@@ -151,6 +169,37 @@ def onboarding(req: OnboardingRequest):
 async def get_leads():
     result = db.table("leads").select("*").order("created_at", desc=True).execute()
     return {"leads": result.data}
+
+# ─── Lead tracking (public — same tier as the sales chat these come from) ────
+# Opening the lead row on ARRIVAL rather than at proposal time is the whole
+# point: it is what makes traffic source, first-contact time and drop-off
+# knowable at all. Both endpoints swallow their own failures — a tracking
+# problem must never take the sales chat down with it.
+
+class LeadStartRequest(BaseModel):
+    attribution: dict = {}   # utm_*, click ids, referrer, landing_path — all browser-supplied
+    language: str = "he"
+
+@app.post("/api/lead/start")
+def lead_start(req: LeadStartRequest):
+    try:
+        return {"success": True, "data": lead_tracking.start_lead(req.attribution, req.language)}
+    except Exception as e:
+        print(f"[lead] start failed (non-fatal): {e}")
+        return {"success": False, "data": {"lead_id": ""}}
+
+class LeadMessageRequest(BaseModel):
+    lead_id: str
+    role: str        # user | assistant
+    content: str
+
+@app.post("/api/lead/message")
+def lead_message(req: LeadMessageRequest):
+    try:
+        return lead_tracking.record_message(req.lead_id, req.role, req.content)
+    except Exception as e:
+        print(f"[lead] message failed (non-fatal): {e}")
+        return {"success": False}
 
 @app.get("/api/monitor/scan", dependencies=_admin_only)
 def monitor_scan():
@@ -206,6 +255,7 @@ class CheckoutRequest(BaseModel):
     setup_fee_total: int = 0
     monthly_management_total: int = 0
     language: str = "he"  # the sales-chat page's active uallakI18n language at checkout time
+    lead_id: str = ""     # exact lead->client link, replacing the guess below
 
 @app.post("/api/checkout")
 async def checkout(req: CheckoutRequest):
@@ -216,31 +266,33 @@ async def checkout(req: CheckoutRequest):
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
 
-        # The lead row was created at proposal time, before the client gave their name/email —
-        # backfill the newest contactless lead now that we finally know who they are. (Newest-first
-        # match is good enough at current volume; a chat-session id would make this exact.)
+        # Link the lead to the client it became. lead_id makes this exact — it is
+        # the chat session's own key, so concurrent chats can no longer be
+        # confused for each other.
+        #
+        # The old newest-contactless-lead guess survives ONLY as the fallback for
+        # a browser that never got a lead row (blocked request, /api/lead/start
+        # failure). It is wrong under concurrency, which is exactly why it is now
+        # the second choice rather than the only one.
         try:
-            recent_lead = (
-                db.table("leads").select("id")
-                .eq("client_email", "")
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if recent_lead.data:
-                db.table("leads").update({
-                    "client_email": req.client_email,
-                    "client_name": req.client_name,
-                }).eq("id", recent_lead.data[0]["id"]).execute()
-                # Also stamp client_id on the lead, for budget_agent's exact-match forecast
-                # join — leads.client_id doesn't exist in Supabase yet (nullable bigint,
-                # add it whenever convenient), so this silently no-ops until that column is
-                # added; budget_agent falls back to the email match above until then.
-                try:
-                    db.table("leads").update({"client_id": client_id}).eq(
-                        "id", recent_lead.data[0]["id"]).execute()
-                except Exception:
-                    pass
+            linked = lead_tracking.mark_converted(req.lead_id, client_id,
+                                                  req.client_email, req.client_name)
+            if not linked:
+                recent_lead = (
+                    db.table("leads").select("id")
+                    .eq("client_email", "")
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if recent_lead.data:
+                    db.table("leads").update({
+                        "client_email": req.client_email,
+                        "client_name": req.client_name,
+                        "client_id": client_id,
+                        "status": "converted",
+                        "converted_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("id", recent_lead.data[0]["id"]).execute()
         except Exception as backfill_err:
             print(f"[checkout] lead backfill failed (non-fatal): {backfill_err}")
 
@@ -2811,6 +2863,34 @@ def admin_overview(request: Request):
 def admin_clients(request: Request):
     _require_admin(request)
     return {"success": True, "data": admin_service.list_clients_admin()}
+
+# ─── CRM: leads with source attribution ──────────────────────────────────────
+# Browser-session guarded like the rest of the admin dashboard, NOT X-Admin-Key
+# (the existing /api/leads above is the server-to-server one and stays as is).
+
+@app.get("/api/admin/leads")
+def admin_leads(request: Request):
+    _require_admin(request)
+    return {"success": True, "data": lead_tracking.list_leads()}
+
+@app.get("/api/admin/leads/{lead_id}")
+def admin_lead_detail(request: Request, lead_id: str):
+    _require_admin(request)
+    data = lead_tracking.get_lead(lead_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="lead not found")
+    return {"success": True, "data": data}
+
+class AdminLeadStatusRequest(BaseModel):
+    status: str   # in_progress | converted | declined ('declined' is the manual one)
+
+@app.post("/api/admin/leads/{lead_id}/status")
+def admin_lead_status(request: Request, lead_id: str, req: AdminLeadStatusRequest):
+    _require_admin(request)
+    result = lead_tracking.set_status(lead_id, req.status)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "bad status"))
+    return {"success": True, "data": result}
 
 @app.get("/api/admin/clients/{client_id}")
 def admin_client_detail(client_id: int, request: Request):

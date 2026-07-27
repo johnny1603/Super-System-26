@@ -1,0 +1,68 @@
+<!--
+  Campaign-parameter forwarding for the WordPress marketing site.
+
+  WHY THIS EXISTS
+  The domain split put the marketing site on uallak.com and the sales chat on
+  app.uallak.com. An ad click lands on uallak.com carrying utm_*/gclid/fbclid,
+  and those parameters do NOT survive the hop to another domain on their own.
+  Without this snippet every paid lead reaches the chat clean and is recorded
+  as "direct" — attribution lost on exactly the traffic we paid for.
+
+  It also remembers the parameters for the visit, so someone who lands on the
+  home page, reads /pricing, and only then clicks through to the chat still
+  arrives attributed. The equivalent forwarding for the app's own landing page
+  is uallakGo() in dashboard/landing/index.html.
+
+  WHERE TO PUT IT
+  wp-admin -> Appearance -> Customize -> Additional CSS won't take JS. Use one
+  of these instead, site-wide (not per page):
+    1. The GTM container, if one is installed (see the website skill's
+       tracking-tags section) — a Custom HTML tag firing on All Pages.
+    2. A Custom HTML widget in a footer widget area, the same injection path
+       website_agent.install_tracking_tags uses.
+    3. The theme's header/footer hook, if the theme offers a code field.
+
+  VERIFY IT WORKS
+  Open https://uallak.com/?utm_source=test&utm_medium=cpc, click through to the
+  chat, and confirm the chat URL carries utm_source=test. Then check the lead in
+  the admin CRM tab — it should read "לפי תגיות הקישור בלבד", not "אין נתוני מקור".
+-->
+<script>
+(function () {
+  var KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+              'gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'msclkid'];
+  var STORE = 'uallak_campaign';
+
+  function fromUrl() {
+    var params = new URLSearchParams(window.location.search), found = {};
+    KEYS.forEach(function (key) {
+      var value = params.get(key);
+      if (value) found[key] = value;
+    });
+    return found;
+  }
+
+  var campaign = fromUrl();
+  if (Object.keys(campaign).length) {
+    try { sessionStorage.setItem(STORE, JSON.stringify(campaign)); } catch (e) {}
+  } else {
+    // Landed earlier in this visit — carry it across internal page views.
+    try { campaign = JSON.parse(sessionStorage.getItem(STORE) || '{}'); } catch (e) { campaign = {}; }
+  }
+  if (!Object.keys(campaign).length) return;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var links = document.querySelectorAll('a[href*="app.uallak.com"]');
+    Array.prototype.forEach.call(links, function (link) {
+      try {
+        var url = new URL(link.href);
+        Object.keys(campaign).forEach(function (key) {
+          // Never overwrite a parameter the link author set deliberately.
+          if (!url.searchParams.has(key)) url.searchParams.set(key, campaign[key]);
+        });
+        link.href = url.toString();
+      } catch (e) {}
+    });
+  });
+})();
+</script>

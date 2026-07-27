@@ -49,3 +49,13 @@ form, which also avoids needing a form plugin on a fresh site.
 
 Internal links point at `https://app.uallak.com/...` (chat, login, terms),
 since the app no longer lives on the root domain.
+
+## Required companion: `forward-campaign-params.html`
+
+Because the marketing site and the chat are now on different domains, campaign
+parameters (`utm_*`, `gclid`, `fbclid`, …) are dropped on the hop from
+uallak.com to app.uallak.com unless something carries them across. That snippet
+does it, and must be installed site-wide when the WordPress site goes up —
+otherwise every paid lead lands in the CRM as "direct" and the whole
+source-attribution feature reports nothing useful for ad traffic. Installation
+options and a verification step are in the file's own comment header.

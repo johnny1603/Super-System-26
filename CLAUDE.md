@@ -33,6 +33,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   months). Change business rules there and in its prompts, nowhere else.
 - `agents/qa_agent.py` (numeric, no LLM) → `agents/qa_agent_content.py` (merged content +
   master review) run after `build_proposal`.
+- `core/lead_tracking.py` — the sales chat's lead lifecycle and traffic-source
+  attribution. A `leads` row is opened when someone LANDS on the chat (not when
+  a proposal is built), which is what makes source, first-contact time and
+  drop-off knowable. Also owns the outbound tagging scheme
+  (`GOOGLE_ADS_FINAL_URL_SUFFIX` / `META_URL_TAGS`) that google_ads_agent and
+  meta_ads_agent stamp on campaigns they create — read side and write side of
+  attribution deliberately live in one file. `dropped_off` is DERIVED at read
+  time from `last_activity_at`, never stored. See `HANDOFF-crm-leads.md`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
 - `core/drive_service.py` — Google Drive archive for offboarded clients (service account
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
@@ -54,8 +62,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - Prompts must state hard output-length limits — response length is the main latency driver.
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
-  `client_communications`, `leads`, `login_codes`, `alerts`, `client_costs`,
-  `app_settings`, `weekly_reports`.
+  `client_communications`, `leads`, `lead_messages`, `login_codes`, `alerts`,
+  `client_costs`, `app_settings`, `weekly_reports`.
+- Schema changes are hand-applied in the Supabase SQL editor. Put the statements
+  in `migrations/<date>-<what>.sql` first so the change is reviewable and
+  repeatable — idempotent (`add column if not exists`), and say in the file what
+  breaks if it hasn't been run yet.
 
 ## Known traps
 

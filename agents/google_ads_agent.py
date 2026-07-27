@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from supabase import create_client as _supabase_client
 
 from core import google_ads_service as gads
+from core import lead_tracking
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
@@ -288,6 +289,11 @@ def create_search_campaign(client_id: int, spec: dict) -> dict:
             # Mandatory declaration since v20 - our SMB campaigns never carry
             # EU political advertising
             "containsEuPoliticalAdvertising": "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+            # Ad-level attribution for the CRM: Google expands the ValueTrack
+            # braces at click time, so the lead row lands with the campaign and
+            # creative that produced it - not just "came from Google".
+            # gclid alone can't tell us that without a separate click_view call.
+            "finalUrlSuffix": lead_tracking.GOOGLE_ADS_FINAL_URL_SUFFIX,
         }}},
     ]
 
