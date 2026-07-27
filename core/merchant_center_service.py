@@ -50,7 +50,7 @@ from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_c
 
 ACCOUNTS_BASE = "https://merchantapi.googleapis.com/accounts/v1beta"
 DATASOURCES_BASE = "https://merchantapi.googleapis.com/datasources/v1beta"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/merchant-center/callback"
 MERCHANT_SCOPE = "https://www.googleapis.com/auth/content"
 TIMEOUT = 30

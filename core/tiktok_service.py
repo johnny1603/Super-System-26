@@ -39,7 +39,7 @@ from agents.keys_agent import get_key
 
 API_BASE = "https://open.tiktokapis.com/v2"
 OAUTH_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/tiktok/callback"
 TIMEOUT = 60  # video chunk uploads can be slow on the client's connection... no,
               # WE do the upload server-side (Drive -> TikTok), but keep a

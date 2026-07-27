@@ -46,7 +46,7 @@ from agents.keys_agent import get_key
 from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_code  # noqa: F401
 
 GTM_BASE_URL = "https://tagmanager.googleapis.com/tagmanager/v2"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/gtm/callback"
 GTM_SCOPES = [
     "https://www.googleapis.com/auth/tagmanager.edit.containers",

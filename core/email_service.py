@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 GMAIL_USER = os.environ.get("GMAIL_USER", "johnny_support@uallak.com")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", GMAIL_USER)
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 
 # ─── Client-facing email language ──────────────────────────────────────────────
 # Unlike chat (which detects language live from the client's own message),

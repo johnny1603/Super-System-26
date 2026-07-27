@@ -36,7 +36,7 @@ from core.api_call_counters import increment_call_counter
 GRAPH_API_VERSION = "v23.0"
 GRAPH_BASE_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 OAUTH_DIALOG_URL = f"https://www.facebook.com/{GRAPH_API_VERSION}/dialog/oauth"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/meta/callback"
 TIMEOUT = 30
 

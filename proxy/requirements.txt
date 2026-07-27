@@ -1,0 +1,8 @@
+# Deliberately tiny and independent of the app's requirements.txt — this
+# service must never grow a reason to import anything from the app.
+httpx==0.28.1
+uvicorn[standard]==0.50.2
+# Range, not an exact pin: nothing here touches Starlette's fast-moving
+# surface (one Route, one StreamingResponse), and the app's own pin lives in
+# fastapi's dependency tree, not here.
+starlette>=0.48,<1.0

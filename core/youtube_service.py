@@ -38,7 +38,7 @@ from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_c
 
 API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/youtube/callback"
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",

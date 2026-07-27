@@ -1021,7 +1021,7 @@ def client_upgrade(req: UpgradeRequest, request: Request):
         product_id = get_plan(current_plan_id).get("product_id")
         new_plan_id = create_plan(product_id, f"uallak ניהול חודשי — {tier['name']}", tier["monthly_fee"])
 
-        public_url = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+        public_url = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
         revision = revise_subscription_plan(
             sub["subscription_id"], new_plan_id,
             return_url=(f"{public_url}/api/upgrade-success?client_id={client_id}"

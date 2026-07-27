@@ -57,9 +57,11 @@ unused. Dev-testing uses the same OAuth flow against a Google Ads *test* account
   `DEVELOPER_TOKEN_NOT_APPROVED` / permission error on a real account = this.
 - **Redirect URI must match EXACTLY** what's registered on the OAuth client,
   including scheme and path: `{PUBLIC_APP_URL}/api/oauth/google-ads/callback`.
-  `PUBLIC_APP_URL` defaults to `https://uallak.com`, which is NOT connected to
-  the service — it must be set to the real Cloud Run URL in the env, and the
-  same URL registered in Google Cloud Console.
+  `PUBLIC_APP_URL` defaults to `https://app.uallak.com` — the app's own
+  subdomain under the domain split (`uallak.com` root is the WordPress
+  marketing site and serves NO app routes). Until `app.uallak.com` DNS is
+  live it must be set to the real Cloud Run URL in the env, and whichever
+  URL is in use must be the one registered in Google Cloud Console.
 - **MCC (manager) accounts need the `login-customer-id` header** — set the
   optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID` env var. Directly-owned accounts don't.
 - **Costs come back as `costMicros` strings** — divide by 1,000,000; currency is

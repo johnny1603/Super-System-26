@@ -35,8 +35,15 @@ the bundled git when the user explicitly asks for it.
 - Container: Dockerfile → `uvicorn core.api_server:app` on port 8080
 - Cloud Scheduler hits `GET /api/monitor/scan` twice a day — after API-level changes,
   confirm that route still works
-- `uallak.com` is **not connected**: `me-west1` doesn't support direct
-  `gcloud run domain-mappings`; connecting it needs an HTTPS Load Balancer or a region move
+- **Domain split (2026-07-28):** `uallak.com` + `www` → the WordPress marketing site
+  (InstaWP, provisioned via our own website agent); the app → `app.uallak.com`.
+  `me-west1` still doesn't support `gcloud run domain-mappings`, so `app.uallak.com`
+  maps to a second, tiny Cloud Run service in `proxy/` (`super-system-proxy`,
+  deployed to a mapping-capable region) that reverse-proxies everything to
+  `super-system` in me-west1. See `HANDOFF-domain-split.md` for the runbook.
+  **Deploying the proxy is a separate `gcloud run deploy` from a separate source
+  directory** — a normal app deploy never touches it, and it almost never needs
+  redeploying (it holds no app logic)
 
 ## Required env vars on the service
 

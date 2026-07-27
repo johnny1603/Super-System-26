@@ -8,7 +8,7 @@ import httpx
 from agents.keys_agent import get_key
 
 BASE_URL = "https://api-m.sandbox.paypal.com"
-PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://uallak.com")
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 TIMEOUT = 15
 
 

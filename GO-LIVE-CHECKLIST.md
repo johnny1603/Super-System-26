@@ -1,20 +1,33 @@
 # uallak — Go-Live Checklist (Domain Switch + PayPal Live)
 
 Purpose: Reference list for the day we switch from the temporary Cloud Run URL
-to uallak.com, and from PayPal Sandbox to Live. Keep this updated as new
+to the real domain, and from PayPal Sandbox to Live. Keep this updated as new
 integrations are added.
 
-## 🌐 Domain Switch (temp URL → uallak.com)
+## 🌐 Domain Switch (temp URL → app.uallak.com)
 
-Prerequisite: Load Balancer set up in me-west1 (or region migration) — the
-actual domain-connection blocker, decided to defer until budget allows.
+**The domain is SPLIT (decided 2026-07-28):** `uallak.com` + `www` are the
+WordPress marketing site (provisioned through our own website agent on
+InstaWP — see `HANDOFF-domain-split.md`); the app lives entirely at
+`app.uallak.com`. The app serves no routes on the root domain, so every URL
+below is an `app.` URL — sending an OAuth redirect or an email login link to
+the bare `uallak.com` now lands on WordPress and fails.
+
+Prerequisite: the `super-system-proxy` service in `proxy/` deployed to a
+region that supports domain mappings (me-west1 does not), with
+`app.uallak.com` mapped to it. This replaces the earlier "Load Balancer or
+region migration" blocker — the proxy is free and needs no LB.
 
 ### 1. Core app config
 
-- [ ] Update `PUBLIC_APP_URL` in Cloud Run env vars to `https://uallak.com`
+- [ ] Update `PUBLIC_APP_URL` in Cloud Run env vars to `https://app.uallak.com`
       (drives OAuth redirect_uri building in meta_service/tiktok_service/
       google flows AND the links inside login-code/payment emails — one var,
-      all of them)
+      all of them). The code default is already `https://app.uallak.com`, so
+      this is only needed if the var is currently set to the run.app URL.
+      **Do not set it until the DNS record is live and serving** — every
+      login email and OAuth callback breaks the moment it points at a domain
+      that doesn't resolve yet.
 
 ### 2. Redirect URIs to update manually, per platform
 
@@ -47,13 +60,19 @@ actual domain-connection blocker, decided to defer until budget allows.
 - [ ] Email links (login codes, payment confirmations) point to the new
       domain
 - [ ] `/login`, `/dashboard`, `/admin`, `/chat`, `/terms` all resolve
-      correctly on the new domain
+      correctly on `app.uallak.com` (i.e. through the proxy)
+- [ ] Log in and reload — proves the session cookie survives the proxy hop,
+      the one thing a plain `/health` check cannot tell you
+- [ ] Run one full proposal build through the proxy — it is the longest
+      request in the system and the one most likely to hit a timeout that
+      the direct run.app URL never showed
 
 ### Explicitly NOT affected by the domain switch
 
 - Cloud Scheduler jobs — they hit the `*.run.app` service URL directly and
-  keep working through a domain switch; no need to repoint them (the LB
-  domain just fronts the same service).
+  keep working through a domain switch; no need to repoint them (the proxy
+  just fronts the same service). Leave them on run.app deliberately: routing
+  them through the proxy would add a hop and a failure mode for no benefit.
 - HeyGen / ElevenLabs / Higgsfield / InstaWP / Green API — key-based, no
   redirect URIs or stored callback URLs on their side.
 
