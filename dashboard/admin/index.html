@@ -128,6 +128,9 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .transcript-role { font-size:10.5px; font-weight:700; color:var(--gray); text-transform:uppercase; letter-spacing:0.4px; display:block; margin-bottom:2px; }
 .transcript-msg.user .transcript-role { color:var(--accent); }
 .kv-mono { direction:ltr; text-align:left; font-size:11.5px; word-break:break-all; max-width:62%; }
+/* Caveat line under a tier figure — the count is knowingly incomplete and the
+   drawer says so next to the number, not in a footnote nobody reads. */
+.tier-note { display:block; font-size:10.5px; color:var(--gray); margin-top:2px; line-height:1.45; }
 
 .manage-btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); font-family:'Heebo',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 14px; border-radius: 8px; cursor: pointer; }
 .manage-btn:hover { background: var(--accent); border-color: var(--accent); }
@@ -687,11 +690,46 @@ async function loadSettings() {
       <input id="set-zero-conv" type="number" value="${esc(s.zero_conversion_spend_floor_ils)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">תקציב שורות ב-Supabase (עלות תשתית פנימית)</span>
+      <input id="set-row-budget" type="number" value="${esc(s.supabase_row_budget)}">
+    </div>
+    <div class="settings-row">
+      <span class="drawer-stat-label">אחוז ניצול שמפעיל התראה (%)</span>
+      <input id="set-row-warn" type="number" value="${esc(s.supabase_row_warn_pct)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
     <button class="save-btn" onclick="saveSettings()">שמור הגדרות</button>
-    <span id="settingsSaved" style="color:var(--green);font-size:12.5px;margin-right:12px;"></span>`;
+    <span id="settingsSaved" style="color:var(--green);font-size:12.5px;margin-right:12px;"></span>
+
+    <div class="pricing-block" style="margin-top:26px;">
+      <div class="pricing-block-title">ניצול תשתית — פנימי בלבד</div>
+      <div id="platformUsage" class="pricing-note">טוען…</div>
+    </div>`;
+  loadPlatformUsage();
+}
+
+async function loadPlatformUsage() {
+  const res = await api('/api/admin/platform-usage');
+  const u = res.data || {};
+  const el = document.getElementById('platformUsage');
+  if (!el) return;
+  const counts = Object.entries(u.row_counts || {})
+    .map(([table, n]) => `<div class="pricing-row"><span class="label">${esc(table)}</span>` +
+                         `<span>${Number(n).toLocaleString('he-IL')}</span></div>`).join('');
+  const pct = u.used_pct == null ? '—' : u.used_pct + '%';
+  el.innerHTML = counts +
+    `<div class="pricing-row"><span class="label">סה״כ שורות</span>` +
+    `<span>${Number(u.total_rows || 0).toLocaleString('he-IL')} מתוך ` +
+    `${Number(u.row_budget || 0).toLocaleString('he-IL')} (${esc(pct)})</span></div>` +
+    (u.over_threshold
+      ? '<div class="pricing-note" style="color:var(--yellow);">חצית את סף ההתראה — כדאי לבדוק את מסלול ה-Supabase</div>'
+      : '') +
+    // Say what the number is, so nobody reads it as "% of your Supabase plan".
+    `<div class="pricing-note">${esc(u.measures || '')}</div>` +
+    '<div class="pricing-note">מדד עלות פנימי בלבד — אינו קשור למדרגות התמחור של הלקוחות.</div>';
 }
 
 async function saveSettings() {
@@ -705,6 +743,8 @@ async function saveSettings() {
       ad_spend_drift_pct_high: Number(document.getElementById('set-drift-high').value) || 130,
       ad_spend_drift_pct_low: Number(document.getElementById('set-drift-low').value) || 50,
       zero_conversion_spend_floor_ils: Number(document.getElementById('set-zero-conv').value) || 300,
+      supabase_row_budget: Number(document.getElementById('set-row-budget').value) || 400000,
+      supabase_row_warn_pct: Number(document.getElementById('set-row-warn').value) || 80,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';
@@ -907,6 +947,36 @@ async function openLeadDrawer(leadId) {
   `;
 }
 
+// ─── lead volume + pricing tier (client drawer section) ──────────────────────
+function leadVolumeRows(v) {
+  const row = (label, value, note) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${label}</span>` +
+    `<span style="text-align:left;">${value}` +
+    (note ? `<span class="tier-note">${note}</span>` : '') + `</span></div>`;
+  const price = t => (t && t.monthly_fee) ? ils(t.monthly_fee) + '/חודש' : 'כלול, ללא תוספת';
+
+  if (!v) {
+    return '<div class="drawer-stat-row" style="border:none;color:var(--gray);">' +
+           'נתוני נפח הלידים אינם זמינים כרגע</div>';
+  }
+  if (!v.measured) {
+    // Honest empty state, not a zero: "0 leads" and "never counted" are
+    // different facts and the second one must not masquerade as the first.
+    return '<div class="drawer-stat-row" style="border:none;color:var(--gray);">' +
+           'טרם נמדד החודש — הסריקה היומית תעדכן זאת</div>';
+  }
+  return row('לידים (30 יום אחרונים)', `<strong>${Number(v.lead_count).toLocaleString('he-IL')}</strong>`)
+    + row('מדרגה נוכחית', esc((v.current_tier || {}).label_he || '—') + ' — ' + price(v.current_tier))
+    + row('מדרגה לחיוב החודש', esc((v.billable_tier || {}).label_he || '—') + ' — ' + price(v.billable_tier),
+          'מבוסס על החודש שעבר — לעולם לא רטרואקטיבי')
+    + row('צפוי מהמחזור הבא', esc((v.billable_from_next_cycle || {}).label_he || '—') + ' — ' +
+          price(v.billable_from_next_cycle),
+          'לא מחויב אוטומטית — ההחלטה שלך')
+    + row('מקור הספירה', esc(v.source || 'אין חשבון פרסום מחובר'),
+          v.complete ? '' : 'ספירה חלקית: המרות מגוגל ומטא בלבד, לא כולל אורגני, וואטסאפ או טלפון')
+    + row('נמדד לאחרונה', fmtDate(v.counted_at));
+}
+
 // ─── client drawer ───────────────────────────────────────────────────────────
 async function openDrawer(clientId) {
   const drawer = document.getElementById('drawer');
@@ -949,6 +1019,11 @@ async function openDrawer(clientId) {
       <div class="drawer-stat-row"><span class="drawer-stat-label">הצטרף</span><span>${fmtDate(c.created_at)}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">חיוב הבא</span><span>${d.next_billing ? fmtDate(d.next_billing) : '—'}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">כתובת</span><span>${esc(c.address || '—')}</span></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-label">נפח לידים ותמחור</div>
+      ${leadVolumeRows(d.lead_volume)}
     </div>
 
     <div class="drawer-section">

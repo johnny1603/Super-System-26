@@ -41,6 +41,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   meta_ads_agent stamp on campaigns they create — read side and write side of
   attribution deliberately live in one file. `dropped_off` is DERIVED at read
   time from `last_activity_at`, never stored. See `HANDOFF-crm-leads.md`.
+- `core/lead_volume.py` — per-client lead-volume PRICING TIERS (value-based, gates
+  nothing) plus uallak's own Supabase footprint watch. The two are deliberately
+  never joined. **`count_client_leads()` is a documented placeholder seam**: no
+  table stores leads delivered *to* a client (`leads` is uallak's OWN funnel —
+  one row per client, the conversation that sold them), so it approximates with
+  Google/Meta ad conversions and always reports `complete: False`. Tier crossings
+  alert admin only — nothing bills automatically. See `HANDOFF-lead-volume-tiers.md`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
 - `core/drive_service.py` — Google Drive archive for offboarded clients (service account
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
@@ -62,8 +69,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - Prompts must state hard output-length limits — response length is the main latency driver.
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
-  `client_communications`, `leads`, `lead_messages`, `login_codes`, `alerts`,
-  `client_costs`, `app_settings`, `weekly_reports`.
+  `client_communications`, `client_suggestions`, `leads`, `lead_messages`,
+  `client_lead_volume`, `login_codes`, `alerts`, `client_costs`, `app_settings`,
+  `weekly_reports`. **`leads` is uallak's own acquisition funnel, not leads
+  delivered to clients** — a frequent and expensive misreading.
 - Schema changes are hand-applied in the Supabase SQL editor. Put the statements
   in `migrations/<date>-<what>.sql` first so the change is reviewable and
   repeatable — idempotent (`add column if not exists`), and say in the file what

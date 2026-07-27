@@ -35,6 +35,9 @@ the bundled git when the user explicitly asks for it.
 - Container: Dockerfile → `uvicorn core.api_server:app` on port 8080
 - Cloud Scheduler hits `GET /api/monitor/scan` twice a day — after API-level changes,
   confirm that route still works
+- `GET /api/leads/volume-scan` needs its own daily job (lead-volume tiers + the Supabase
+  footprint alert) — see `HANDOFF-lead-volume-tiers.md`. It is scheduled rather than
+  computed on page load on purpose: the ad-platform quotas are real
 - **Domain split (2026-07-28):** `uallak.com` + `www` → the WordPress marketing site
   (InstaWP, provisioned via our own website agent); the app → `app.uallak.com`.
   `me-west1` still doesn't support `gcloud run domain-mappings`, so `app.uallak.com`

@@ -106,9 +106,44 @@ PRICING = {
     },
 
     "raffle": {"setup_and_management": 250},
+
+    # Lead-volume add-on: a VALUE-based price set by how many leads a client's
+    # campaigns produce, layered on top of the campaign-level attribution that
+    # ships in every package. It gates NOTHING — attribution works identically
+    # at every tier; only the price changes. Deliberately unrelated to what the
+    # feature costs us to run (that is tracked separately, internally, in
+    # core/lead_volume.get_platform_usage).
+    #
+    # Boundaries are inclusive at both ends and the ladder is contiguous. The
+    # brief's table wrote "301-700" and "700+", which overlap at exactly 700 —
+    # resolved as 301-700 -> ₪59 and 701+ -> ₪99.
+    "lead_volume_tiers": [
+        {"key": "included", "min_leads": 0,   "max_leads": 100,  "monthly_fee": 0,
+         "label_he": "עד 100 לידים בחודש — כלול"},
+        {"key": "growth",   "min_leads": 101, "max_leads": 300,  "monthly_fee": 29,
+         "label_he": "101–300 לידים בחודש"},
+        {"key": "scale",    "min_leads": 301, "max_leads": 700,  "monthly_fee": 59,
+         "label_he": "301–700 לידים בחודש"},
+        {"key": "high",     "min_leads": 701, "max_leads": None, "monthly_fee": 99,
+         "label_he": "מעל 700 לידים בחודש"},
+    ],
+
     "min_budget": 1000,
     "benefit_months": 2
 }
+
+
+def tier_for_lead_count(lead_count: int) -> dict:
+    """Which lead-volume tier a monthly lead count falls into, read from
+    PRICING (the single source of truth) — never duplicate these numbers or
+    re-implement the boundaries anywhere else. Counts below zero and counts
+    past the top of the ladder both resolve, so no caller has to bounds-check.
+    """
+    count = max(0, int(lead_count or 0))
+    for tier in PRICING["lead_volume_tiers"]:
+        if count >= tier["min_leads"] and (tier["max_leads"] is None or count <= tier["max_leads"]):
+            return tier
+    return PRICING["lead_volume_tiers"][-1]
 
 
 def get_upgrade_tiers() -> list:

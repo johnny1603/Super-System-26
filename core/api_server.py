@@ -201,6 +201,17 @@ def lead_message(req: LeadMessageRequest):
         print(f"[lead] message failed (non-fatal): {e}")
         return {"success": False}
 
+@app.get("/api/leads/volume-scan", dependencies=_admin_only)
+def leads_volume_scan():
+    # Daily scheduler job: refresh every active client's lead volume + tier,
+    # alert once on a first-time tier crossing, and check uallak's own Supabase
+    # footprint. Plain `def` — it walks every client and hits cached ad APIs.
+    from core.lead_volume import run_volume_scan
+    try:
+        return {"success": True, "data": run_volume_scan()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/monitor/scan", dependencies=_admin_only)
 def monitor_scan():
     if not is_agent_active("monitor_agent"):
@@ -2872,6 +2883,15 @@ def admin_clients(request: Request):
 def admin_leads(request: Request):
     _require_admin(request)
     return {"success": True, "data": lead_tracking.list_leads()}
+
+@app.get("/api/admin/platform-usage")
+def admin_platform_usage(request: Request):
+    # uallak's OWN infrastructure-cost signal. Deliberately not joined to the
+    # client lead-volume tiers anywhere: a client's tier is value-based and
+    # says nothing about what they cost us to serve.
+    _require_admin(request)
+    from core.lead_volume import get_platform_usage
+    return {"success": True, "data": get_platform_usage()}
 
 @app.get("/api/admin/leads/{lead_id}")
 def admin_lead_detail(request: Request, lead_id: str):

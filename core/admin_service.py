@@ -20,6 +20,13 @@ DEFAULT_SETTINGS = {
     "ad_spend_drift_pct_high": 130,
     "ad_spend_drift_pct_low": 50,
     "zero_conversion_spend_floor_ils": 300,
+    # uallak's OWN Supabase footprint watch (core/lead_volume.get_platform_usage)
+    # — internal infrastructure cost, deliberately unrelated to any client's
+    # lead-volume pricing tier. Admin-tunable so a plan change needs no deploy.
+    # Row count is a proxy: Supabase's real ceiling is database SIZE, and the
+    # plan's actual limit isn't readable without the Management API.
+    "supabase_row_budget": 400000,
+    "supabase_row_warn_pct": 80,
 }
 
 # Created lazily - no DB client at import time
@@ -236,8 +243,18 @@ def get_client_admin(client_id: int) -> dict:
     google_account = next((a for a in get_accounts(client_id)
                            if a.get("platform") == "google_ads" and a.get("status") == "active"), {})
 
+    # Stored snapshot only — never triggers an ad-API call, so opening a client
+    # drawer can't burn the daily Google Ads operation cap.
+    try:
+        from core.lead_volume import get_client_volume
+        lead_volume = get_client_volume(client_id)
+    except Exception as e:
+        print(f"[admin_service] lead volume lookup failed for client {client_id}: {e}")
+        lead_volume = None
+
     return {
         "client": client,
+        "lead_volume": lead_volume,
         "monthly_fee": fee,
         "setup_fee": fees.get("setup_fee", 0),
         "subscription_id": fees.get("subscription_id"),
