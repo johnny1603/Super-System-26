@@ -7,8 +7,9 @@ each other:
    value-based price per client, set by how many leads their campaigns produce.
    It gates NOTHING: campaign-level attribution ships in every package and
    works identically at every tier. The tier only sets a price.
-2. **Internal infra watch** (`get_platform_usage`) — uallak's own row growth in
-   Supabase against our plan. Purely a cost signal for Johnny. A client's tier
+2. **Internal infra watch** (`get_platform_usage`) — uallak's own database size
+   in Supabase against our plan's real ceiling (Supabase caps size, never row
+   count). Purely a cost signal for Johnny. A client's tier
    has no relationship to what they cost us to serve, and connecting the two
    would be exactly the infrastructure-cost pricing the brief ruled out.
 
@@ -306,45 +307,67 @@ def _row_count(table: str) -> int:
         return 0
 
 
+def _db_size_bytes():
+    """Real database size straight from Postgres, via the db_size_bytes() RPC
+    (migrations/2026-07-30-supabase-size-watch.sql).
+
+    None — never 0 — when the migration hasn't been applied or the call fails,
+    so the caller can say "not measured" instead of showing 0%, which would
+    read as "plenty of room left"."""
+    try:
+        value = _db().rpc("db_size_bytes", {}).execute().data
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
 def get_platform_usage(alert_if_over: bool = False) -> dict:
-    """Aggregate lead-data volume across ALL clients vs our Supabase budget.
+    """uallak's own Supabase footprint vs the plan's real ceiling.
 
     Internal cost signal only — deliberately NOT connected to the client tiers
     above (see module docstring).
 
-    Honest limit: Supabase's real ceiling is database SIZE, and the plan's
-    actual limit is not readable without the Supabase Management API, which we
-    don't integrate. So this tracks ROW COUNT against an admin-configurable
-    budget in app_settings and reports that it is a proxy, rather than
-    displaying a fabricated "% of your plan".
+    Measures database SIZE, which is what Supabase actually caps (it enforces
+    no row limit on any tier). Row counts are still reported alongside, as
+    context for what is filling the database, but they are not the budget.
     """
     from core.admin_service import get_settings
 
     settings = get_settings()
-    budget = int(settings.get("supabase_row_budget") or 0)
-    warn_pct = float(settings.get("supabase_row_warn_pct") or 80)
+    budget_mb = float(settings.get("supabase_size_budget_mb") or 0)
+    warn_pct = float(settings.get("supabase_warn_pct") or 80)
+
+    size_bytes = _db_size_bytes()
+    # Decimal MB, matching how the budget is stored (see admin_service).
+    used_mb = round(size_bytes / 1_000_000, 2) if size_bytes is not None else None
+    used_pct = (round(used_mb / budget_mb * 100, 1)
+                if used_mb is not None and budget_mb else None)
 
     counts = {table: _row_count(table) for table in ("leads", "lead_messages")}
-    total = sum(counts.values())
-    used_pct = round(total / budget * 100, 1) if budget else None
 
     usage = {
         "row_counts": counts,
-        "total_rows": total,
-        "row_budget": budget,
+        "total_rows": sum(counts.values()),
+        "db_size_mb": used_mb,
+        "size_budget_mb": budget_mb,
         "used_pct": used_pct,
         "warn_pct": warn_pct,
-        "over_threshold": bool(budget and used_pct is not None and used_pct >= warn_pct),
-        "measures": "row count, as a proxy for database size — Supabase's real "
-                    "limit is size, and the plan's actual ceiling is not readable "
-                    "without the Supabase Management API",
+        "over_threshold": bool(used_pct is not None and used_pct >= warn_pct),
+        "measured": used_mb is not None,
+        "measures": (
+            "database size as reported by Postgres (pg_database_size), against "
+            "the Supabase plan's real per-project ceiling"
+            if used_mb is not None else
+            "database size unavailable — run "
+            "migrations/2026-07-30-supabase-size-watch.sql"
+        ),
     }
 
     if alert_if_over and usage["over_threshold"]:
         agent_alert(AGENT_NAME, [
-            f"lead data is at {used_pct}% of the configured Supabase row budget "
-            f"({total:,} of {budget:,} rows across leads + lead_messages). "
-            f"This is uallak's own infrastructure cost, unrelated to any client's "
-            f"pricing tier. Adjust supabase_row_budget in settings if the plan changed."
+            f"uallak's Supabase database is at {used_pct}% of the plan ceiling "
+            f"({used_mb:,.1f} MB of {budget_mb:,.0f} MB). This is uallak's own "
+            f"infrastructure cost, unrelated to any client's pricing tier. "
+            f"Raise supabase_size_budget_mb in settings after a plan upgrade."
         ])
     return usage

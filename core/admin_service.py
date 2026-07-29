@@ -23,10 +23,15 @@ DEFAULT_SETTINGS = {
     # uallak's OWN Supabase footprint watch (core/lead_volume.get_platform_usage)
     # — internal infrastructure cost, deliberately unrelated to any client's
     # lead-volume pricing tier. Admin-tunable so a plan change needs no deploy.
-    # Row count is a proxy: Supabase's real ceiling is database SIZE, and the
-    # plan's actual limit isn't readable without the Management API.
-    "supabase_row_budget": 400000,
-    "supabase_row_warn_pct": 80,
+    #
+    # This is the plan's REAL ceiling, not a proxy: Supabase caps database SIZE
+    # and never row count, on any tier. Verified in the dashboard 2026-07-30 —
+    # FREE plan, 0.5 GB per project, 25.84 MB in use. Stored in decimal MB
+    # (1 MB = 1,000,000 bytes), the conservative reading of Supabase's "0.5 GB"
+    # (500 MB < 512 MiB), so the warning fires slightly early rather than late.
+    # Raise this after a plan upgrade: Pro includes 8 GB -> 8000.
+    "supabase_size_budget_mb": 500,
+    "supabase_warn_pct": 80,
 }
 
 # Created lazily - no DB client at import time

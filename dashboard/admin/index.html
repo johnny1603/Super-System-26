@@ -690,12 +690,12 @@ async function loadSettings() {
       <input id="set-zero-conv" type="number" value="${esc(s.zero_conversion_spend_floor_ils)}">
     </div>
     <div class="settings-row">
-      <span class="drawer-stat-label">תקציב שורות ב-Supabase (עלות תשתית פנימית)</span>
-      <input id="set-row-budget" type="number" value="${esc(s.supabase_row_budget)}">
+      <span class="drawer-stat-label">תקרת נפח מסד הנתונים ב-Supabase (MB, עלות תשתית פנימית)</span>
+      <input id="set-size-budget" type="number" value="${esc(s.supabase_size_budget_mb)}">
     </div>
     <div class="settings-row">
       <span class="drawer-stat-label">אחוז ניצול שמפעיל התראה (%)</span>
-      <input id="set-row-warn" type="number" value="${esc(s.supabase_row_warn_pct)}">
+      <input id="set-usage-warn" type="number" value="${esc(s.supabase_warn_pct)}">
     </div>
     <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
@@ -719,11 +719,18 @@ async function loadPlatformUsage() {
   const counts = Object.entries(u.row_counts || {})
     .map(([table, n]) => `<div class="pricing-row"><span class="label">${esc(table)}</span>` +
                          `<span>${Number(n).toLocaleString('he-IL')}</span></div>`).join('');
-  const pct = u.used_pct == null ? '—' : u.used_pct + '%';
+  // Size is the budgeted number; row counts above are context only. Until the
+  // db_size_bytes() migration runs, measured is false — show that plainly
+  // rather than a 0% that would read as "plenty of room".
+  const sizeRow = u.measured
+    ? `<span>${Number(u.db_size_mb || 0).toLocaleString('he-IL')} MB מתוך ` +
+      `${Number(u.size_budget_mb || 0).toLocaleString('he-IL')} MB ` +
+      `(${esc(u.used_pct == null ? '—' : u.used_pct + '%')})</span>`
+    : '<span style="color:var(--gray);">טרם נמדד</span>';
   el.innerHTML = counts +
     `<div class="pricing-row"><span class="label">סה״כ שורות</span>` +
-    `<span>${Number(u.total_rows || 0).toLocaleString('he-IL')} מתוך ` +
-    `${Number(u.row_budget || 0).toLocaleString('he-IL')} (${esc(pct)})</span></div>` +
+    `<span>${Number(u.total_rows || 0).toLocaleString('he-IL')}</span></div>` +
+    `<div class="pricing-row"><span class="label">נפח מסד הנתונים</span>${sizeRow}</div>` +
     (u.over_threshold
       ? '<div class="pricing-note" style="color:var(--yellow);">חצית את סף ההתראה — כדאי לבדוק את מסלול ה-Supabase</div>'
       : '') +
@@ -743,8 +750,8 @@ async function saveSettings() {
       ad_spend_drift_pct_high: Number(document.getElementById('set-drift-high').value) || 130,
       ad_spend_drift_pct_low: Number(document.getElementById('set-drift-low').value) || 50,
       zero_conversion_spend_floor_ils: Number(document.getElementById('set-zero-conv').value) || 300,
-      supabase_row_budget: Number(document.getElementById('set-row-budget').value) || 400000,
-      supabase_row_warn_pct: Number(document.getElementById('set-row-warn').value) || 80,
+      supabase_size_budget_mb: Number(document.getElementById('set-size-budget').value) || 500,
+      supabase_warn_pct: Number(document.getElementById('set-usage-warn').value) || 80,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';

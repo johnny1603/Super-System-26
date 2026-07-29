@@ -99,19 +99,26 @@ you've forgotten.
 
 ## Step 3 — internal infra watch, deliberately disconnected
 
-`get_platform_usage()` tracks uallak's own `leads` + `lead_messages` row growth
-against an admin-configurable budget (`supabase_row_budget`,
-`supabase_row_warn_pct` in settings), and alerts past the threshold.
+`get_platform_usage()` tracks uallak's own database **size** against an
+admin-configurable ceiling (`supabase_size_budget_mb`, `supabase_warn_pct` in
+settings), and alerts past the threshold. `leads` + `lead_messages` row counts
+are still reported next to it as context for what is filling the database, but
+they are not the budget.
 
 It is **not** joined to client tiers anywhere, and shouldn't be — a client's
 tier is value-based and says nothing about what they cost us to serve. Wiring
 them together would reintroduce exactly the infrastructure-cost pricing the
 brief ruled out.
 
-**Honest limit:** Supabase's real ceiling is database *size*, and the plan's
-actual limit is not readable without the Supabase Management API, which we
-don't integrate. This tracks row count as a proxy against a number you
-configure, and the UI says so rather than displaying a fabricated "% of plan".
+**Why size, not rows (changed 2026-07-30):** this used to track row count
+against a `supabase_row_budget` of 400,000, described here as a placeholder.
+That number could never be made real — Supabase enforces no row limit on any
+plan tier; it caps database size. The watch now reads `pg_database_size()`
+through the `db_size_bytes()` RPC and compares it to the plan's actual ceiling.
+Dashboard-verified 2026-07-30: **Free plan, 0.5 GB per project, 25.84 MB in
+use**. The budget is stored in decimal MB (500 MB is the conservative reading of
+"0.5 GB", since 500 MB < 512 MiB), so the warning fires early rather than late.
+On a Pro upgrade, set it to 8000 (8 GB included).
 
 ## Deploy
 
@@ -129,8 +136,12 @@ gcloud scheduler jobs create http lead-volume-scan --schedule="0 6 * * *" \
   --update-headers=X-Admin-Key={ADMIN_KEY}
 ```
 
-3. Optionally set `supabase_row_budget` in admin settings to match your actual
-   plan. The default (400,000 rows) is a placeholder, not a measured limit.
+3. **Run `migrations/2026-07-30-supabase-size-watch.sql`** to create the
+   `db_size_bytes()` RPC and retire the old row-budget settings keys. Until it
+   runs, `get_platform_usage()` reports `measured: false` and the admin drawer
+   shows "טרם נמדד" instead of a percentage — no scan, alert or client-facing
+   path breaks. The default budget (500 MB) already matches the current Free
+   plan, so no settings edit is needed unless the plan changes.
 
 ## Files
 
