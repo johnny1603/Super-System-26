@@ -110,6 +110,17 @@ body {
   margin: 0 auto;
   line-height: 1.6;
 }
+/* Plain-language statement of what this product actually is. Deliberately
+   literal rather than brand-voice: it's what a first-time visitor (and an
+   OAuth reviewer) reads to understand the app's purpose and its name. */
+.hero-purpose {
+  font-size: clamp(14px, 1.5vw, 16px);
+  color: #5f5f5f;
+  max-width: 620px;
+  margin: 24px auto 0;
+  line-height: 1.7;
+}
+.hero-purpose strong { color: var(--ink); font-weight: 700; }
 .scroll-hint {
   position: absolute;
   bottom: 40px;
@@ -508,6 +519,7 @@ footer { text-align: center; padding: 40px 6% 100px; color: var(--gray); font-si
   <div class="hero-content">
     <h1 data-i18n-html="hero_title">העסק שלך<br><span class="accent-line">יכול יותר.</span></h1>
     <p data-i18n="hero_sub">מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.</p>
+    <p class="hero-purpose" data-i18n-html="hero_purpose"><strong>uallak</strong> היא סוכנות שיווק דיגיטלי מבוססת בינה מלאכותית לעסקים קטנים ובינוניים בישראל. המערכת מתכננת, מפעילה ומייעלת קמפיינים בגוגל, מטא וטיקטוק, מנהלת תוכן ואת אתר העסק, ומרכזת הכל בדשבורד אחד עם דיווח שקוף.</p>
   </div>
   <div class="scroll-hint">
     <div class="scroll-line"></div>
@@ -974,6 +986,15 @@ const I18N = {
   nav_login: { he:'התחברות', en:'Sign in', fr:'Connexion', ar:'تسجيل الدخول', ru:'Вход' },
   hero_title: { he:'העסק שלך<br><span class="accent-line">יכול יותר.</span>', en:'Your business<br><span class="accent-line">can do more.</span>', fr:'Votre entreprise<br><span class="accent-line">peut faire plus.</span>', ar:'عملك<br><span class="accent-line">يستطيع أكثر.</span>', ru:'Ваш бизнес<br><span class="accent-line">может больше.</span>' },
   hero_sub: { he:'מערכת שיווק דיגיטלית אוטונומית שרצה בשבילך 24/7 — בלי צורך להבין בקידום, בלי לנהל עוד דבר.', en:'An autonomous digital marketing system that runs for you 24/7 — no need to understand marketing, nothing extra to manage.', fr:'Un système de marketing digital autonome qui travaille pour vous 24h/24 — pas besoin de comprendre le marketing, rien de plus à gérer.', ar:'نظام تسويق رقمي مستقل يعمل من أجلك على مدار الساعة — بلا حاجة لفهم التسويق، وبلا أي شيء إضافي لإدارته.', ru:'Автономная система digital-маркетинга, которая работает на вас 24/7 — не нужно разбираться в маркетинге, не нужно ничем управлять.' },
+  // Literal description of the product and its name. The Latin-script
+  // languages open on "Uallak" so the name Google's OAuth consent screen is
+  // registered under appears verbatim on the homepage.
+  hero_purpose: {
+    he:'<strong>uallak</strong> היא סוכנות שיווק דיגיטלי מבוססת בינה מלאכותית לעסקים קטנים ובינוניים בישראל. המערכת מתכננת, מפעילה ומייעלת קמפיינים בגוגל, מטא וטיקטוק, מנהלת תוכן ואת אתר העסק, ומרכזת הכל בדשבורד אחד עם דיווח שקוף.',
+    en:'<strong>Uallak</strong> is an AI-powered digital marketing agency for small and medium businesses in Israel. It plans, runs and optimizes advertising campaigns across Google, Meta and TikTok, manages content and your business website, and brings all of it together in a single dashboard with transparent reporting.',
+    fr:'<strong>Uallak</strong> est une agence de marketing digital propulsée par l\'IA pour les petites et moyennes entreprises en Israël. Elle planifie, lance et optimise des campagnes publicitaires sur Google, Meta et TikTok, gère le contenu et le site de votre entreprise, et réunit le tout dans un seul tableau de bord avec un reporting transparent.',
+    ar:'<strong>uallak</strong> هي وكالة تسويق رقمي مدعومة بالذكاء الاصطناعي للشركات الصغيرة والمتوسطة في إسرائيل. تخطط الحملات الإعلانية على جوجل وميتا وتيك توك وتشغّلها وتحسّنها، وتدير المحتوى وموقع عملك، وتجمع ذلك كله في لوحة تحكم واحدة مع تقارير شفافة.',
+    ru:'<strong>Uallak</strong> — это агентство цифрового маркетинга на базе искусственного интеллекта для малого и среднего бизнеса в Израиле. Оно планирует, ведёт и оптимизирует рекламные кампании в Google, Meta и TikTok, управляет контентом и сайтом вашего бизнеса и сводит всё это в единую панель с прозрачной отчётностью.' },
 
   pain_eyebrow: { he:'מוכר לך?', en:'Sound familiar?', fr:'Ça vous parle ?', ar:'هل يبدو مألوفًا؟', ru:'Знакомо?' },
   pain_h2: { he:'אנחנו מבינים את הקושי שלך', en:'We understand your struggle', fr:'Nous comprenons votre difficulté', ar:'نحن نتفهم صعوبتك', ru:'Мы понимаем вашу проблему' },

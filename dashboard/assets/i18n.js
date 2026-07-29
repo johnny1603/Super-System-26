@@ -12,7 +12,9 @@
  *   partially translated page degrades to Hebrew, never to raw keys.
  * - Direction: he/ar are RTL, en/fr/ru are LTR — setLanguage() flips
  *   <html dir> and <html lang>, which cascades to the whole layout.
- * - Choice persists in localStorage ('uallak_lang') across all pages.
+ * - Choice persists in localStorage ('uallak_lang') across all pages. With
+ *   nothing stored yet, the browser's own language picks the starting one
+ *   (Hebrew if it asks for anything we don't carry).
  */
 (function () {
   'use strict';
@@ -46,11 +48,29 @@
   var table = {};
   var listeners = [];
 
+  // First visit only (nothing stored yet): follow the browser's own language
+  // list, so a non-Hebrew visitor lands on a page they can actually read
+  // instead of always getting Hebrew. Hebrew remains the fallback whenever the
+  // browser asks for a language we don't carry.
+  function browserLang() {
+    try {
+      var candidates = navigator.languages || [navigator.language];
+      for (var i = 0; i < candidates.length; i++) {
+        if (!candidates[i]) continue;
+        var base = String(candidates[i]).toLowerCase().split('-')[0];
+        if (base === 'iw') base = 'he'; // legacy Hebrew tag, still sent by some browsers
+        if (SUPPORTED.indexOf(base) !== -1) return base;
+      }
+    } catch (e) { /* no navigator (SSR, odd embed) — fall through */ }
+    return 'he';
+  }
+
   function storedLang() {
     try {
       var value = localStorage.getItem(STORAGE_KEY);
-      return SUPPORTED.indexOf(value) !== -1 ? value : 'he';
-    } catch (e) { return 'he'; }
+      if (SUPPORTED.indexOf(value) !== -1) return value; // explicit choice always wins
+    } catch (e) { /* private mode — treat as "nothing stored" */ }
+    return browserLang();
   }
 
   var lang = storedLang();
