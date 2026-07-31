@@ -53,6 +53,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
   exports the full client record to Drive, then purges the live rows to a PII-stripped
   tombstone; offboarded clients are hard-locked out of login.
+- `core/client_leads.py` — the leads a CLIENT receives (`client_leads` table), fed by the
+  PUBLIC signed-token endpoint `POST /api/leads/capture/{token}` that a form on the client's
+  own site posts to. Read the module docstring before touching it: this is NOT
+  `core/lead_tracking.py`'s `leads`. See `HANDOFF-client-dashboard-nav.md`.
+- `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
+  print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
+  bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
+  exportable dataset means one branch in `api_server._export_dataset`, nothing else.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
   terms `/terms/`, login `/login`, client dashboard `/dashboard`, client profile `/profile`
   (picture, external ad-spend transparency report, logout, account closure/transfer),
@@ -70,9 +78,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
   `client_communications`, `client_suggestions`, `leads`, `lead_messages`,
-  `client_lead_volume`, `login_codes`, `alerts`, `client_costs`, `app_settings`,
-  `weekly_reports`. **`leads` is uallak's own acquisition funnel, not leads
-  delivered to clients** — a frequent and expensive misreading.
+  `client_lead_volume`, `client_leads`, `login_codes`, `alerts`, `client_costs`,
+  `app_settings`, `weekly_reports`. **`leads` is uallak's own acquisition funnel,
+  not leads delivered to clients** — a frequent and expensive misreading.
+  `client_leads` (core/client_leads.py) is the other direction: people who
+  contacted a CLIENT. The two never join.
 - Schema changes are hand-applied in the Supabase SQL editor. Put the statements
   in `migrations/<date>-<what>.sql` first so the change is reviewable and
   repeatable — idempotent (`add column if not exists`), and say in the file what

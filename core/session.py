@@ -68,6 +68,49 @@ def verify_oauth_state_token(token: str):
     return payload.get("client_id") if payload else None
 
 
+def _sign_lead_capture(payload_b64: bytes) -> str:
+    # Derived secret again, for the same reason as the other two: this token is
+    # pasted into a PUBLIC web page (the client's own site form), so it must
+    # never verify as a session or an admin cookie no matter who reads it.
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":lead-capture").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_lead_capture_token(client_id: int) -> str:
+    """Identifies a client to the PUBLIC lead-capture endpoint
+    (POST /api/leads/capture/{token}), embedded in a form on their own website.
+
+    Deliberately NON-EXPIRING - unlike every other token here. A form snippet
+    pasted into a site is not re-pasted on a schedule, and an expiry would
+    silently stop capturing the client's customers one day with no signal. The
+    token grants exactly one capability: create a lead row for this client. It
+    reads nothing. Rotating it means changing SESSION_SECRET_KEY, which
+    rotates every session too - so treat a leaked token as spam exposure
+    (bounded by client_leads.MAX_LEADS_PER_DAY), not as account compromise."""
+    payload = json.dumps({"client_id": client_id, "purpose": "lead_capture"}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_lead_capture(payload_b64)}"
+
+
+def verify_lead_capture_token(token: str):
+    """Returns the client_id for a well-signed capture token, otherwise None.
+    Does NOT go through _verify(): that helper rejects a payload without a
+    future `exp`, and these tokens deliberately have none."""
+    if not token or "." not in token:
+        return None
+    try:
+        payload_b64_str, signature = token.split(".", 1)
+        payload_b64 = payload_b64_str.encode()
+        if not hmac.compare_digest(signature, _sign_lead_capture(payload_b64)):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        if payload.get("purpose") != "lead_capture":
+            return None
+        return payload.get("client_id")
+    except Exception:
+        return None
+
+
 def create_admin_session_token() -> str:
     """Session for the admin dashboard - authenticated by ADMIN_PASSWORD at
     login, then carried in an 'admin_session' cookie."""

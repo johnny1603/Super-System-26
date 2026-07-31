@@ -558,6 +558,198 @@ body {
 .preact-btns .conn-btn { width: auto; flex: 1; }
 .preact-btns .conn-btn.cancel { background: transparent; color: var(--gray); border: 1px solid var(--border); }
 .preact-btns .conn-btn.cancel:hover { color: var(--white); }
+
+/* ---------- MAIN NAV ---------- */
+/* The page used to be one long scroll with no structure. Views are swapped in
+   place (not separate pages) so the chat windows, upgrade panel and welcome
+   tour stay alive across navigation - all of them are page-level singletons. */
+.mainnav {
+  display: flex; gap: 6px; align-items: center;
+  padding: 0 32px; overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: #111111;
+}
+.mainnav::-webkit-scrollbar { display: none; }
+.nav-item {
+  display: flex; align-items: center; gap: 7px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--gray); font-family: 'Heebo', sans-serif;
+  font-size: 13.5px; font-weight: 600; white-space: nowrap;
+  padding: 14px 14px 12px 14px; cursor: pointer;
+}
+.nav-item:hover { color: var(--white); }
+.nav-item.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-item .nav-ico { font-size: 15px; line-height: 1; }
+.nav-count {
+  background: var(--accent-dim); color: var(--accent);
+  border-radius: 100px; font-size: 10.5px; font-weight: 800;
+  padding: 1px 7px; min-width: 19px; text-align: center;
+}
+.view { display: none; }
+.view.active { display: block; }
+
+/* ---------- EXPORT BAR ---------- */
+.export-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 20px 0; }
+.export-btn {
+  background: var(--panel); border: 1px solid var(--border); color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 600;
+  padding: 8px 14px; border-radius: 100px; cursor: pointer;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+}
+.export-btn:hover { border-color: var(--accent); color: var(--accent); }
+.export-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.export-btn[disabled]:hover { border-color: var(--border); color: var(--white); }
+
+/* ---------- FILTER BAR ---------- */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.filter-input, .filter-select {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 12.5px;
+  padding: 8px 12px; border-radius: 9px; outline: none;
+}
+.filter-input:focus, .filter-select:focus { border-color: var(--accent); }
+.filter-input { flex: 1; min-width: 160px; }
+.filter-select option { background: var(--panel-2); }
+
+/* ---------- LEADS ---------- */
+.lead-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.lead-stat {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 18px; min-width: 96px;
+}
+.lead-stat-val { font-size: 21px; font-weight: 900; }
+.lead-stat-lbl { font-size: 11.5px; color: var(--gray); margin-top: 2px; }
+.lead-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+  padding: 15px 18px; margin-bottom: 10px;
+}
+.lead-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.lead-name { font-size: 15px; font-weight: 700; }
+.lead-contact { font-size: 12.5px; color: var(--gray); margin-top: 3px; }
+.lead-contact a { color: var(--gray); text-decoration: none; }
+.lead-contact a:hover { color: var(--accent); }
+.lead-msg {
+  font-size: 13px; color: var(--white); opacity: 0.86; margin-top: 10px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.lead-meta { font-size: 11.5px; color: var(--gray); margin-top: 9px; }
+.lead-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.lead-wa {
+  background: #0FBE64; color: #fff; border: none; border-radius: 100px;
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 700;
+  padding: 7px 14px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.lead-wa:hover { filter: brightness(1.08); }
+.lead-status-select {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 12px; padding: 7px 12px;
+  border-radius: 100px; cursor: pointer; outline: none;
+}
+.lead-note-btn {
+  background: none; border: 1px solid var(--border); color: var(--gray);
+  font-family: 'Heebo', sans-serif; font-size: 12px; padding: 7px 14px;
+  border-radius: 100px; cursor: pointer;
+}
+.lead-note-btn:hover { color: var(--white); border-color: var(--accent); }
+.lead-note-area { display: none; margin-top: 10px; }
+.lead-note-area.open { display: block; }
+.lead-note-area textarea {
+  width: 100%; min-height: 66px; resize: vertical;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 12.5px; padding: 10px 12px;
+  border-radius: 9px; outline: none;
+}
+.lead-note-area textarea:focus { border-color: var(--accent); }
+.lead-note-saved { font-size: 11.5px; color: var(--green); margin-top: 6px; display: none; }
+.lead-badge {
+  font-size: 10.5px; font-weight: 800; padding: 3px 10px; border-radius: 100px;
+  border: 1px solid var(--border); color: var(--gray); white-space: nowrap;
+}
+.lead-badge.new { color: var(--accent); border-color: rgba(255,76,31,0.35); background: var(--accent-dim); }
+.lead-badge.won { color: var(--green); border-color: rgba(0,201,110,0.35); background: rgba(0,201,110,0.1); }
+
+/* ---------- SETUP / INFO PANEL ---------- */
+.info-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+  padding: 18px 20px; margin-bottom: 20px;
+}
+.info-panel-title { font-size: 14px; font-weight: 700; margin-bottom: 7px; }
+.info-panel-text { font-size: 12.5px; color: var(--gray); line-height: 1.65; }
+.code-box {
+  background: #0A0A0A; border: 1px solid var(--border); border-radius: 9px;
+  padding: 12px 14px; margin-top: 12px; overflow-x: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
+  color: #B9E6C9; white-space: pre; direction: ltr; text-align: left;
+}
+
+/* ---------- PERSONAL AREA ---------- */
+.detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 26px; }
+.detail-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 13px; padding: 16px 18px;
+}
+.detail-label { font-size: 11.5px; color: var(--gray); margin-bottom: 5px; }
+.detail-value { font-size: 14.5px; font-weight: 600; word-break: break-word; }
+.detail-value.muted { color: var(--gray); font-weight: 400; font-style: italic; }
+
+/* ---------- MEDIA HUB ---------- */
+.media-filters { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px; }
+.media-chip {
+  background: var(--panel); border: 1px solid var(--border); color: var(--gray);
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 600;
+  padding: 7px 14px; border-radius: 100px; cursor: pointer;
+}
+.media-chip:hover { color: var(--white); }
+.media-chip.active { background: var(--accent-dim); border-color: rgba(255,76,31,0.35); color: var(--accent); }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.media-item {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+  padding: 15px 16px; display: flex; flex-direction: column; gap: 7px;
+  text-decoration: none; color: var(--white);
+}
+a.media-item:hover { border-color: var(--accent); }
+.media-item-top { display: flex; align-items: center; gap: 9px; }
+.media-kind-ico { font-size: 19px; line-height: 1; }
+.media-item-kind { font-size: 12px; font-weight: 700; }
+.media-item-title {
+  font-size: 12.5px; color: var(--gray); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.media-item-meta { font-size: 11px; color: var(--gray); margin-top: auto; padding-top: 4px; }
+.media-item-missing { font-size: 11px; color: var(--accent); }
+
+/* ---------- SUPPORT ---------- */
+.support-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; text-align: center; max-width: 460px; margin: 0 auto 20px auto;
+}
+.support-emoji { font-size: 42px; line-height: 1; margin-bottom: 12px; }
+.support-title { font-size: 19px; font-weight: 800; margin-bottom: 8px; }
+.support-text { font-size: 13.5px; color: var(--gray); line-height: 1.7; margin-bottom: 20px; }
+.support-number {
+  font-size: 17px; font-weight: 700; direction: ltr; letter-spacing: 0.5px;
+  margin-bottom: 18px; unicode-bidi: isolate;
+}
+.support-wa {
+  background: #0FBE64; color: #fff; border: none; border-radius: 100px;
+  font-family: 'Heebo', sans-serif; font-size: 15px; font-weight: 700;
+  padding: 13px 30px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 9px;
+}
+.support-wa:hover { filter: brightness(1.08); }
+.support-alt {
+  background: none; border: 1px solid var(--border); color: var(--gray);
+  font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 600;
+  padding: 11px 24px; border-radius: 100px; cursor: pointer; margin-top: 12px;
+}
+.support-alt:hover { color: var(--white); border-color: var(--accent); }
+
+@media (max-width: 720px) {
+  .mainnav { padding: 0 14px; }
+  .nav-item { padding: 13px 10px 11px 10px; font-size: 12.5px; }
+  .detail-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
@@ -654,8 +846,32 @@ body {
   </div>
 </div>
 
+<!-- Views are swapped in place by showView(); the chat launcher, upgrade panel
+     and welcome tour live OUTSIDE .main so navigating never tears them down. -->
+<div class="mainnav" id="mainNav">
+  <button class="nav-item active" data-view="home" onclick="showView('home')">
+    <span class="nav-ico">🏠</span><span data-i18n="nav_home">בית</span>
+  </button>
+  <button class="nav-item" data-view="leads" onclick="showView('leads')">
+    <span class="nav-ico">👥</span><span data-i18n="nav_leads">לידים</span>
+    <span class="nav-count" id="navLeadsCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="media" onclick="showView('media')">
+    <span class="nav-ico">🖼</span><span data-i18n="nav_media">מדיה</span>
+    <span class="nav-count" id="navMediaCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="personal" onclick="showView('personal')">
+    <span class="nav-ico">👤</span><span data-i18n="nav_personal">אזור אישי</span>
+  </button>
+  <button class="nav-item" data-view="support" onclick="showView('support')">
+    <span class="nav-ico">💬</span><span data-i18n="nav_support">תמיכה</span>
+  </button>
+</div>
+
 <div class="main">
   <div class="notice-banner" id="noticeBanner"></div>
+
+<div class="view active" id="viewHome">
 
   <div class="greeting" id="greeting">שלום 👋</div>
   <div class="greeting-sub" data-i18n="greeting_sub">הנה מה שקורה בעסק שלך היום</div>
@@ -890,6 +1106,7 @@ body {
   <div class="activity-list" id="activityListMain">
     <div class="empty-row" data-i18n="loading">טוען…</div>
   </div>
+  <div class="export-bar" data-export="activity" style="margin-top:14px;"></div>
 
   <div class="section-head">
     <div>
@@ -900,11 +1117,154 @@ body {
   <div class="billing-card" id="billingSection">
     <div class="empty-row" data-i18n="loading">טוען…</div>
   </div>
+  <div class="export-bar" data-export="billing" style="margin-top:14px;"></div>
 
   <div class="affiliate-note">
     <span class="affiliate-icon">ⓘ</span>
     <span data-i18n="affiliate_note">הכלים המקצועיים שאנחנו מחברים עבורך (כמו כלי ניתוח וקידום) נבחרים בקפידה מתוך שיתופי פעולה עם ספקים מובילים בתעשייה — זה לא משנה לך את המחיר, ועוזר לנו להמשיך לפתח את המערכת.</span>
   </div>
+
+</div><!-- /viewHome -->
+
+<!-- ---------- LEADS ---------- -->
+<div class="view" id="viewLeads">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="leads_title">הלידים שלי</div>
+      <div class="section-sub" data-i18n="leads_sub">אנשים שפנו לעסק שלך — רק שלך, אף אחד אחר לא רואה אותם</div>
+    </div>
+  </div>
+
+  <div class="lead-stats" id="leadStats"></div>
+
+  <div class="filter-bar">
+    <input class="filter-input" id="leadSearch" data-i18n-placeholder="leads_search_ph"
+           placeholder="חיפוש בשם, טלפון, אימייל או הודעה…" oninput="scheduleLeadReload()">
+    <select class="filter-select" id="leadStatusFilter" onchange="loadLeads()">
+      <option value="" data-i18n="leads_f_all_status">כל הסטטוסים</option>
+      <option value="new" data-i18n="lead_status_new">חדש</option>
+      <option value="contacted" data-i18n="lead_status_contacted">נוצר קשר</option>
+      <option value="qualified" data-i18n="lead_status_qualified">מתאים</option>
+      <option value="won" data-i18n="lead_status_won">נסגר</option>
+      <option value="lost" data-i18n="lead_status_lost">לא רלוונטי</option>
+    </select>
+    <select class="filter-select" id="leadSourceFilter" onchange="loadLeads()">
+      <option value="" data-i18n="leads_f_all_sources">כל המקורות</option>
+      <option value="website_form" data-i18n="lead_src_website_form">טופס באתר</option>
+      <option value="whatsapp" data-i18n="lead_src_whatsapp">וואטסאפ</option>
+      <option value="phone" data-i18n="lead_src_phone">טלפון</option>
+      <option value="meta_lead_form" data-i18n="lead_src_meta_lead_form">טופס Meta</option>
+      <option value="manual" data-i18n="lead_src_manual">הוזן ידנית</option>
+      <option value="unknown" data-i18n="lead_src_unknown">לא ידוע</option>
+    </select>
+    <select class="filter-select" id="leadDaysFilter" onchange="loadLeads()">
+      <option value="0" data-i18n="leads_f_all_time">מאז ומתמיד</option>
+      <option value="7" data-i18n="leads_f_7d">7 ימים</option>
+      <option value="30" data-i18n="leads_f_30d">30 ימים</option>
+      <option value="90" data-i18n="leads_f_90d">90 ימים</option>
+    </select>
+  </div>
+
+  <div class="export-bar" data-export="leads"></div>
+
+  <div id="leadsList">
+    <div class="empty-row" data-i18n="loading">טוען…</div>
+  </div>
+
+  <div class="info-panel" id="leadCapturePanel" style="margin-top:24px;">
+    <div class="info-panel-title" data-i18n="leads_capture_title">איך לידים מגיעים לכאן?</div>
+    <div class="info-panel-text" data-i18n="leads_capture_text">כל טופס יצירת קשר באתר שלך יכול לשלוח לידים ישירות לכאן. הקוד הבא הוא הכתובת הפרטית שלך — הצוות שלנו מחבר אותה לאתר עבורך, ואם יש לך מפתח אתר משלך, אפשר להעביר לו את זה.</div>
+    <div class="code-box" id="leadCaptureSnippet">…</div>
+  </div>
+</div><!-- /viewLeads -->
+
+<!-- ---------- MEDIA ASSETS HUB ---------- -->
+<div class="view" id="viewMedia">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="media_title">המדיה שלי</div>
+      <div class="section-sub" data-i18n="media_sub">כל מה שנוצר עבורך אי פעם — לא רק מה שממתין לאישור</div>
+    </div>
+  </div>
+
+  <div class="media-filters" id="mediaFilters"></div>
+  <div class="export-bar" data-export="media"></div>
+
+  <div id="mediaGrid">
+    <div class="empty-row" data-i18n="loading">טוען…</div>
+  </div>
+
+  <div class="info-panel" style="margin-top:22px;">
+    <div class="info-panel-title" data-i18n="media_drive_title">התיקייה שלך ב-Google Drive</div>
+    <div class="info-panel-text" data-i18n="media_drive_text">כל הקבצים שמורים בתיקייה פרטית ב-Drive שמשותפת איתך. אפשר לפתוח אותה ולהוריד כל קובץ בגודל המלא.</div>
+    <div style="margin-top:12px;">
+      <a class="export-btn" id="mediaFolderLink" href="#" target="_blank" rel="noopener"
+         data-i18n="media_drive_btn">📁 פתיחת התיקייה ב-Drive</a>
+    </div>
+  </div>
+</div><!-- /viewMedia -->
+
+<!-- ---------- PERSONAL AREA ---------- -->
+<div class="view" id="viewPersonal">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="personal_title">אזור אישי</div>
+      <div class="section-sub" data-i18n="personal_sub">פרטי העסק, אנשי הקשר, החבילה וההיסטוריה הכספית שלך</div>
+    </div>
+  </div>
+
+  <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="personal_business">פרטי העסק</div></div></div>
+  <div class="detail-grid" id="businessDetails"></div>
+
+  <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="personal_contact">פרטי קשר</div></div></div>
+  <div class="detail-grid" id="contactDetails"></div>
+
+  <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="personal_package">החבילה שלי</div></div></div>
+  <div class="detail-grid" id="packageDetails"></div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title" style="font-size:15px;" data-i18n="personal_billing">היסטוריית חיובים</div>
+    </div>
+  </div>
+  <div class="billing-card" id="personalBillingSection">
+    <div class="empty-row" data-i18n="loading">טוען…</div>
+  </div>
+  <div class="export-bar" data-export="billing" style="margin-top:14px;"></div>
+
+  <div class="info-panel" style="margin-top:24px;">
+    <div class="info-panel-title" data-i18n="personal_edit_title">צריך לעדכן פרט?</div>
+    <div class="info-panel-text" data-i18n="personal_edit_text">פרטי העסק נשמרים בדיוק כפי שנמסרו בהרשמה, כדי שהחשבוניות והחוזה יישארו תקפים. לעדכון — פנו אלינו בצ׳אט או בוואטסאפ ונטפל בזה מיד.</div>
+    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="export-btn" href="/profile/" data-i18n="personal_profile_btn">⚙ הגדרות פרופיל ותמונה</a>
+      <button class="export-btn" onclick="showView('support')" data-i18n="personal_support_btn">💬 פנייה לנציג</button>
+    </div>
+  </div>
+</div><!-- /viewPersonal -->
+
+<!-- ---------- HUMAN SUPPORT ---------- -->
+<div class="view" id="viewSupport">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="support_title">תמיכה אנושית</div>
+      <div class="section-sub" data-i18n="support_sub">מעבר לצ׳אט עם המערכת — כאן מדברים עם בנאדם</div>
+    </div>
+  </div>
+
+  <div class="support-card">
+    <div class="support-emoji">👋</div>
+    <div class="support-title" data-i18n="support_card_title">מדברים עם נציג בוואטסאפ</div>
+    <div class="support-text" data-i18n="support_card_text">לחיצה אחת פותחת שיחת וואטסאפ עם נציג אנושי מהצוות שלנו. מענה בשעות הפעילות, ובדרך כלל הרבה יותר מהר.</div>
+    <div class="support-number" id="supportNumber">…</div>
+    <a class="support-wa" id="supportWaBtn" href="#" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/></svg>
+      <span data-i18n="support_wa_btn">פתיחת וואטסאפ</span>
+    </a>
+    <div>
+      <button class="support-alt" onclick="toggleLauncher()" data-i18n="support_chat_btn">או דברו עם המערכת בצ׳אט</button>
+    </div>
+  </div>
+</div><!-- /viewSupport -->
 
 </div>
 
@@ -966,6 +1326,112 @@ body {
 // ─── i18n string table (Hebrew = source of truth + fallback) ────────────────
 const DASH_I18N = {
   _page_title: { he:'uallak — הדשבורד שלך', en:'uallak — Your dashboard', fr:'uallak — Votre tableau de bord', ar:'uallak — لوحة التحكم الخاصة بك', ru:'uallak — Ваш кабинет' },
+
+  // ── nav ──
+  nav_home: { he:'בית', en:'Home', fr:'Accueil', ar:'الرئيسية', ru:'Главная' },
+  nav_leads: { he:'לידים', en:'Leads', fr:'Prospects', ar:'العملاء المحتملون', ru:'Лиды' },
+  nav_media: { he:'מדיה', en:'Media', fr:'Médias', ar:'الوسائط', ru:'Медиа' },
+  nav_personal: { he:'אזור אישי', en:'My account', fr:'Mon compte', ar:'المنطقة الشخصية', ru:'Личный кабинет' },
+  nav_support: { he:'תמיכה', en:'Support', fr:'Assistance', ar:'الدعم', ru:'Поддержка' },
+
+  // ── exports ──
+  export_pdf: { he:'📄 PDF', en:'📄 PDF', fr:'📄 PDF', ar:'📄 PDF', ru:'📄 PDF' },
+  export_xlsx: { he:'📊 Excel', en:'📊 Excel', fr:'📊 Excel', ar:'📊 Excel', ru:'📊 Excel' },
+  export_gdoc: { he:'📝 Google Docs', en:'📝 Google Docs', fr:'📝 Google Docs', ar:'📝 Google Docs', ru:'📝 Google Docs' },
+  export_label: { he:'ייצוא:', en:'Export:', fr:'Exporter :', ar:'تصدير:', ru:'Экспорт:' },
+  export_gdoc_working: { he:'יוצר מסמך…', en:'Creating doc…', fr:'Création…', ar:'جارٍ الإنشاء…', ru:'Создание…' },
+  export_gdoc_done: { he:'המסמך נוצר ונפתח בלשונית חדשה — הוא משותף איתך במייל שלך', en:'Doc created and opened in a new tab — it is shared with your email', fr:'Document créé et ouvert dans un nouvel onglet — partagé avec votre e-mail', ar:'تم إنشاء المستند وفتحه في تبويب جديد — تمت مشاركته مع بريدك', ru:'Документ создан и открыт в новой вкладке — он расшарен на вашу почту' },
+  export_gdoc_fail: { he:'לא הצלחנו ליצור את המסמך כרגע. אפשר להוריד Excel או PDF בינתיים.', en:"Couldn't create the doc right now. Excel or PDF work in the meantime.", fr:"Impossible de créer le document. Excel ou PDF fonctionnent en attendant.", ar:'تعذّر إنشاء المستند الآن. يمكنك تنزيل Excel أو PDF.', ru:'Не удалось создать документ. Пока доступны Excel и PDF.' },
+  err_media_not_configured: { he:'ייצוא ל-Google Docs עדיין לא מוגדר במערכת. אפשר להוריד Excel או PDF.', en:'Google Docs export is not configured yet. Excel and PDF are available.', fr:"L'export Google Docs n'est pas encore configuré. Excel et PDF sont disponibles.", ar:'تصدير Google Docs غير مُهيأ بعد. Excel وPDF متاحان.', ru:'Экспорт в Google Docs ещё не настроен. Доступны Excel и PDF.' },
+  err_google_doc_failed: { he:'לא הצלחנו ליצור את המסמך כרגע. אפשר להוריד Excel או PDF בינתיים.', en:"Couldn't create the doc right now. Excel or PDF work in the meantime.", fr:"Impossible de créer le document. Excel ou PDF fonctionnent en attendant.", ar:'تعذّر إنشاء المستند الآن. يمكنك تنزيل Excel أو PDF.', ru:'Не удалось создать документ. Пока доступны Excel и PDF.' },
+
+  // ── leads ──
+  leads_title: { he:'הלידים שלי', en:'My leads', fr:'Mes prospects', ar:'عملائي المحتملون', ru:'Мои лиды' },
+  leads_sub: { he:'אנשים שפנו לעסק שלך — רק שלך, אף אחד אחר לא רואה אותם', en:'People who contacted your business — yours alone, nobody else sees them', fr:'Les personnes qui ont contacté votre entreprise — à vous seul', ar:'أشخاص تواصلوا مع عملك — لك وحدك', ru:'Люди, обратившиеся в ваш бизнес — только ваши' },
+  leads_search_ph: { he:'חיפוש בשם, טלפון, אימייל או הודעה…', en:'Search name, phone, email or message…', fr:'Rechercher nom, téléphone, e-mail…', ar:'ابحث بالاسم أو الهاتف أو البريد…', ru:'Поиск по имени, телефону, почте…' },
+  leads_f_all_status: { he:'כל הסטטוסים', en:'All statuses', fr:'Tous les statuts', ar:'كل الحالات', ru:'Все статусы' },
+  leads_f_all_sources: { he:'כל המקורות', en:'All sources', fr:'Toutes les sources', ar:'كل المصادر', ru:'Все источники' },
+  leads_f_all_time: { he:'מאז ומתמיד', en:'All time', fr:'Depuis toujours', ar:'كل الوقت', ru:'За всё время' },
+  leads_f_7d: { he:'7 ימים', en:'7 days', fr:'7 jours', ar:'٧ أيام', ru:'7 дней' },
+  leads_f_30d: { he:'30 ימים', en:'30 days', fr:'30 jours', ar:'٣٠ يومًا', ru:'30 дней' },
+  leads_f_90d: { he:'90 ימים', en:'90 days', fr:'90 jours', ar:'٩٠ يومًا', ru:'90 дней' },
+  leads_empty: { he:'עדיין לא נרשמו לידים. ברגע שמישהו יפנה דרך הערוצים המחוברים — הוא יופיע כאן.', en:'No leads recorded yet. The moment someone reaches out through a connected channel, they appear here.', fr:"Aucun prospect pour l'instant. Dès qu'une personne vous contacte via un canal connecté, elle apparaît ici.", ar:'لا يوجد عملاء محتملون بعد. بمجرد أن يتواصل أحدهم عبر قناة متصلة سيظهر هنا.', ru:'Лидов пока нет. Как только кто-то обратится через подключённый канал, он появится здесь.' },
+  leads_empty_filtered: { he:'אין לידים שתואמים לסינון הנוכחי', en:'No leads match the current filters', fr:'Aucun prospect ne correspond aux filtres', ar:'لا يوجد عملاء مطابقون للتصفية', ru:'Нет лидов по текущим фильтрам' },
+  leads_unavailable: { he:'אזור הלידים בהכנה — הוא ייפתח ברגע שהמערכת תסיים את ההתקנה בצד שלנו.', en:'The leads area is being set up — it opens as soon as our side finishes provisioning.', fr:"L'espace prospects est en cours de configuration.", ar:'منطقة العملاء المحتملين قيد الإعداد.', ru:'Раздел лидов настраивается — откроется после завершения установки.' },
+  leads_stat_total: { he:'סה״כ', en:'Total', fr:'Total', ar:'الإجمالي', ru:'Всего' },
+  leads_stat_30d: { he:'ב-30 יום', en:'Last 30 days', fr:'30 derniers jours', ar:'آخر ٣٠ يومًا', ru:'За 30 дней' },
+  leads_stat_new: { he:'חדשים', en:'New', fr:'Nouveaux', ar:'جدد', ru:'Новые' },
+  leads_stat_won: { he:'נסגרו', en:'Won', fr:'Gagnés', ar:'مغلقة', ru:'Закрыто' },
+  lead_status_new: { he:'חדש', en:'New', fr:'Nouveau', ar:'جديد', ru:'Новый' },
+  lead_status_contacted: { he:'נוצר קשר', en:'Contacted', fr:'Contacté', ar:'تم التواصل', ru:'Связались' },
+  lead_status_qualified: { he:'מתאים', en:'Qualified', fr:'Qualifié', ar:'مؤهل', ru:'Квалифицирован' },
+  lead_status_won: { he:'נסגר', en:'Won', fr:'Gagné', ar:'مغلق', ru:'Успех' },
+  lead_status_lost: { he:'לא רלוונטי', en:'Lost', fr:'Perdu', ar:'غير مناسب', ru:'Отказ' },
+  lead_src_website_form: { he:'טופס באתר', en:'Website form', fr:'Formulaire du site', ar:'نموذج الموقع', ru:'Форма на сайте' },
+  lead_src_whatsapp: { he:'וואטסאפ', en:'WhatsApp', fr:'WhatsApp', ar:'واتساب', ru:'WhatsApp' },
+  lead_src_phone: { he:'טלפון', en:'Phone', fr:'Téléphone', ar:'هاتف', ru:'Телефон' },
+  lead_src_meta_lead_form: { he:'טופס Meta', en:'Meta lead form', fr:'Formulaire Meta', ar:'نموذج Meta', ru:'Форма Meta' },
+  lead_src_manual: { he:'הוזן ידנית', en:'Added manually', fr:'Ajouté manuellement', ar:'أُضيف يدويًا', ru:'Добавлен вручную' },
+  lead_src_unknown: { he:'לא ידוע', en:'Unknown', fr:'Inconnu', ar:'غير معروف', ru:'Неизвестно' },
+  lead_wa_btn: { he:'שליחת וואטסאפ', en:'Send WhatsApp', fr:'Envoyer WhatsApp', ar:'إرسال واتساب', ru:'Написать в WhatsApp' },
+  lead_note_btn: { he:'הערה', en:'Note', fr:'Note', ar:'ملاحظة', ru:'Заметка' },
+  lead_note_ph: { he:'הערות פרטיות שלך על הליד הזה…', en:'Your private notes on this lead…', fr:'Vos notes privées sur ce prospect…', ar:'ملاحظاتك الخاصة…', ru:'Ваши личные заметки…' },
+  lead_note_saved: { he:'✓ נשמר', en:'✓ Saved', fr:'✓ Enregistré', ar:'✓ تم الحفظ', ru:'✓ Сохранено' },
+  lead_no_name: { he:'ללא שם', en:'No name given', fr:'Sans nom', ar:'بدون اسم', ru:'Без имени' },
+  lead_wa_prefill: { he:'שלום {name}, מדברים מ{business}. ראינו שפנית אלינו 🙂', en:'Hi {name}, this is {business}. We saw you got in touch 🙂', fr:'Bonjour {name}, ici {business}. Nous avons vu votre message 🙂', ar:'مرحبًا {name}، معك {business}. رأينا رسالتك 🙂', ru:'Здравствуйте, {name}! Это {business}. Мы получили ваше обращение 🙂' },
+  leads_capture_title: { he:'איך לידים מגיעים לכאן?', en:'How do leads get here?', fr:'Comment les prospects arrivent-ils ici ?', ar:'كيف يصل العملاء المحتملون إلى هنا؟', ru:'Как лиды сюда попадают?' },
+  leads_capture_text: { he:'כל טופס יצירת קשר באתר שלך יכול לשלוח לידים ישירות לכאן. הקוד הבא הוא הכתובת הפרטית שלך — הצוות שלנו מחבר אותה לאתר עבורך, ואם יש לך מפתח אתר משלך, אפשר להעביר לו את זה.', en:'Any contact form on your site can send leads straight here. The snippet below is your private endpoint — our team wires it up for you, and if you have your own developer you can hand it to them.', fr:"Tout formulaire de contact de votre site peut envoyer les prospects ici. L'extrait ci-dessous est votre adresse privée.", ar:'أي نموذج تواصل في موقعك يمكنه إرسال العملاء إلى هنا. الكود أدناه هو عنوانك الخاص.', ru:'Любая форма на вашем сайте может отправлять лиды сюда. Ниже — ваш приватный адрес.' },
+
+  // ── media hub ──
+  media_title: { he:'המדיה שלי', en:'My media', fr:'Mes médias', ar:'الوسائط الخاصة بي', ru:'Мои материалы' },
+  media_sub: { he:'כל מה שנוצר עבורך אי פעם — לא רק מה שממתין לאישור', en:'Everything ever created for you — not just what is awaiting approval', fr:'Tout ce qui a été créé pour vous — pas seulement en attente', ar:'كل ما أُنتج لك — وليس فقط ما ينتظر الموافقة', ru:'Всё, что когда-либо создано для вас — не только ожидающее одобрения' },
+  media_empty: { he:'עדיין לא נוצרו חומרים. ברגע שהמערכת תייצר תמונה, סרטון או תסריט — הכל ייאסף כאן.', en:'Nothing created yet. As soon as an image, video or script is produced, it collects here.', fr:"Rien pour l'instant. Dès qu'une image, une vidéo ou un script est produit, tout se retrouve ici.", ar:'لم يُنتج شيء بعد. بمجرد إنشاء صورة أو فيديو أو نص سيظهر هنا.', ru:'Пока ничего не создано. Как только появится изображение, видео или сценарий — всё соберётся здесь.' },
+  media_all: { he:'הכל', en:'All', fr:'Tout', ar:'الكل', ru:'Все' },
+  media_kind_image: { he:'תמונות', en:'Images', fr:'Images', ar:'صور', ru:'Изображения' },
+  media_kind_video: { he:'סרטונים', en:'Videos', fr:'Vidéos', ar:'فيديوهات', ru:'Видео' },
+  media_kind_avatar: { he:'וידאו אווטאר', en:'Avatar videos', fr:'Vidéos avatar', ar:'فيديو أفاتار', ru:'Видео с аватаром' },
+  media_kind_script: { he:'תסריטי צילום', en:'Filming kits', fr:'Kits de tournage', ar:'أطقم تصوير', ru:'Съёмочные наборы' },
+  media_kind_document: { he:'מסמכים', en:'Documents', fr:'Documents', ar:'مستندات', ru:'Документы' },
+  media_open: { he:'פתיחה ב-Drive ↗', en:'Open in Drive ↗', fr:'Ouvrir dans Drive ↗', ar:'فتح في Drive ↗', ru:'Открыть в Drive ↗' },
+  media_unavailable: { he:'הקובץ נוצר אך לא נשמר ב-Drive — הצוות שלנו כבר יודע', en:'Created but not saved to Drive — our team has been alerted', fr:'Créé mais non enregistré sur Drive — notre équipe est alertée', ar:'أُنشئ لكنه لم يُحفظ في Drive — تم تنبيه فريقنا', ru:'Создано, но не сохранено в Drive — команда уведомлена' },
+  media_drive_title: { he:'התיקייה שלך ב-Google Drive', en:'Your Google Drive folder', fr:'Votre dossier Google Drive', ar:'مجلدك في Google Drive', ru:'Ваша папка в Google Drive' },
+  media_drive_text: { he:'כל הקבצים שמורים בתיקייה פרטית ב-Drive שמשותפת איתך. אפשר לפתוח אותה ולהוריד כל קובץ בגודל המלא.', en:'Every file lives in a private Drive folder shared with you. Open it to download anything at full size.', fr:'Chaque fichier est dans un dossier Drive privé partagé avec vous.', ar:'كل الملفات في مجلد Drive خاص تمت مشاركته معك.', ru:'Все файлы — в приватной папке Drive, расшаренной вам.' },
+  media_drive_btn: { he:'📁 פתיחת התיקייה ב-Drive', en:'📁 Open Drive folder', fr:'📁 Ouvrir le dossier Drive', ar:'📁 فتح مجلد Drive', ru:'📁 Открыть папку Drive' },
+
+  // ── personal area ──
+  personal_title: { he:'אזור אישי', en:'My account', fr:'Mon compte', ar:'المنطقة الشخصية', ru:'Личный кабинет' },
+  personal_sub: { he:'פרטי העסק, אנשי הקשר, החבילה וההיסטוריה הכספית שלך', en:'Your business details, contacts, package and billing history', fr:'Vos informations, contacts, formule et historique de facturation', ar:'تفاصيل عملك وجهات الاتصال والباقة وسجل الفواتير', ru:'Данные бизнеса, контакты, пакет и история платежей' },
+  personal_business: { he:'פרטי העסק', en:'Business details', fr:"Informations de l'entreprise", ar:'تفاصيل العمل', ru:'Данные бизнеса' },
+  personal_contact: { he:'פרטי קשר', en:'Contact details', fr:'Coordonnées', ar:'بيانات التواصل', ru:'Контактные данные' },
+  personal_package: { he:'החבילה שלי', en:'My package', fr:'Ma formule', ar:'باقتي', ru:'Мой пакет' },
+  personal_billing: { he:'היסטוריית חיובים', en:'Billing history', fr:'Historique de facturation', ar:'سجل الفواتير', ru:'История платежей' },
+  personal_edit_title: { he:'צריך לעדכן פרט?', en:'Need to update something?', fr:'Besoin de modifier une information ?', ar:'تحتاج لتحديث معلومة؟', ru:'Нужно что-то изменить?' },
+  personal_edit_text: { he:'פרטי העסק נשמרים בדיוק כפי שנמסרו בהרשמה, כדי שהחשבוניות והחוזה יישארו תקפים. לעדכון — פנו אלינו בצ׳אט או בוואטסאפ ונטפל בזה מיד.', en:'Business details are kept exactly as given at signup so invoices and the contract stay valid. To change one, message us in the chat or on WhatsApp and we will handle it.', fr:"Les informations sont conservées telles que fournies à l'inscription. Pour les modifier, écrivez-nous.", ar:'تُحفظ تفاصيل العمل كما قُدّمت عند التسجيل. للتعديل تواصل معنا.', ru:'Данные хранятся так, как указаны при регистрации. Чтобы изменить — напишите нам.' },
+  personal_profile_btn: { he:'⚙ הגדרות פרופיל ותמונה', en:'⚙ Profile & picture settings', fr:'⚙ Profil et photo', ar:'⚙ إعدادات الملف والصورة', ru:'⚙ Профиль и фото' },
+  personal_support_btn: { he:'💬 פנייה לנציג', en:'💬 Talk to a human', fr:'💬 Parler à un humain', ar:'💬 التحدث مع ممثل', ru:'💬 Связаться с человеком' },
+  field_business_name: { he:'שם העסק', en:'Business name', fr:"Nom de l'entreprise", ar:'اسم العمل', ru:'Название бизнеса' },
+  field_business_tax_id: { he:'ח.פ / עוסק מורשה', en:'Business / tax ID', fr:'Numéro SIRET / TVA', ar:'الرقم الضريبي', ru:'ИНН / рег. номер' },
+  field_address: { he:'כתובת', en:'Address', fr:'Adresse', ar:'العنوان', ru:'Адрес' },
+  field_contact_name: { he:'איש קשר', en:'Contact name', fr:'Contact', ar:'جهة الاتصال', ru:'Контактное лицо' },
+  field_email: { he:'אימייל', en:'Email', fr:'E-mail', ar:'البريد الإلكتروني', ru:'Эл. почта' },
+  field_phone: { he:'טלפון', en:'Phone', fr:'Téléphone', ar:'الهاتف', ru:'Телефон' },
+  field_package: { he:'חבילה', en:'Package', fr:'Formule', ar:'الباقة', ru:'Пакет' },
+  field_monthly_fee: { he:'דמי ניהול חודשיים', en:'Monthly management fee', fr:'Frais mensuels', ar:'رسوم الإدارة الشهرية', ru:'Ежемесячная плата' },
+  field_setup_fee: { he:'דמי הקמה', en:'Setup fee', fr:"Frais d'installation", ar:'رسوم الإعداد', ru:'Плата за настройку' },
+  field_client_since: { he:'לקוח מאז', en:'Client since', fr:'Client depuis', ar:'عميل منذ', ru:'Клиент с' },
+  field_connections: { he:'מערכות מחוברות', en:'Connected systems', fr:'Systèmes connectés', ar:'الأنظمة المتصلة', ru:'Подключённые системы' },
+  field_empty: { he:'לא נמסר', en:'Not provided', fr:'Non renseigné', ar:'غير متوفر', ru:'Не указано' },
+
+  // ── support ──
+  support_title: { he:'תמיכה אנושית', en:'Human support', fr:'Assistance humaine', ar:'دعم بشري', ru:'Поддержка человеком' },
+  support_sub: { he:'מעבר לצ׳אט עם המערכת — כאן מדברים עם בנאדם', en:'Beyond the system chat — this is a real person', fr:"Au-delà du chat — ici, c'est une vraie personne", ar:'أبعد من الدردشة — هنا تتحدث مع إنسان', ru:'Помимо чата с системой — здесь живой человек' },
+  support_card_title: { he:'מדברים עם נציג בוואטסאפ', en:'Talk to a rep on WhatsApp', fr:'Parler à un conseiller sur WhatsApp', ar:'تحدث مع ممثل عبر واتساب', ru:'Написать представителю в WhatsApp' },
+  support_card_text: { he:'לחיצה אחת פותחת שיחת וואטסאפ עם נציג אנושי מהצוות שלנו. מענה בשעות הפעילות, ובדרך כלל הרבה יותר מהר.', en:'One click opens a WhatsApp chat with a human on our team. Answered during business hours, usually much sooner.', fr:'Un clic ouvre une conversation WhatsApp avec un membre de notre équipe.', ar:'نقرة واحدة تفتح محادثة واتساب مع أحد أعضاء فريقنا.', ru:'Один клик открывает чат в WhatsApp с человеком из нашей команды.' },
+  support_wa_btn: { he:'פתיחת וואטסאפ', en:'Open WhatsApp', fr:'Ouvrir WhatsApp', ar:'فتح واتساب', ru:'Открыть WhatsApp' },
+  support_chat_btn: { he:'או דברו עם המערכת בצ׳אט', en:'Or chat with the system', fr:'Ou discuter avec le système', ar:'أو تحدث مع النظام', ru:'Или напишите в чат системы' },
+  support_wa_prefill: { he:'שלום, אני {name} מ-uallak. אשמח לעזרה בנושא:', en:'Hi, this is {name} from uallak. I could use help with:', fr:'Bonjour, ici {name} de uallak. J’aurais besoin d’aide pour :', ar:'مرحبًا، أنا {name} من uallak. أحتاج مساعدة بخصوص:', ru:'Здравствуйте, это {name} из uallak. Нужна помощь с:' },
+  support_unavailable: { he:'מספר התמיכה לא זמין כרגע — אפשר לפנות אלינו בצ׳אט והצוות יחזור אליכם.', en:'The support number is unavailable right now — use the chat and the team will get back to you.', fr:"Le numéro n'est pas disponible — utilisez le chat.", ar:'رقم الدعم غير متاح حاليًا — استخدم الدردشة.', ru:'Номер поддержки сейчас недоступен — напишите в чат.' },
+
   upgrade_btn: { he:'⬆ שדרוג חבילה', en:'⬆ Upgrade package', fr:'⬆ Changer de formule', ar:'⬆ ترقية الباقة', ru:'⬆ Улучшить пакет' },
   help_title: { he:'סיור היכרות', en:'Welcome tour', fr:'Visite guidée', ar:'جولة تعريفية', ru:'Ознакомительный тур' },
   profile_title: { he:'הפרופיל שלי', en:'My profile', fr:'Mon profil', ar:'ملفي الشخصي', ru:'Мой профиль' },
@@ -1280,6 +1746,9 @@ function welcomeStep(n) {
 
 function openWelcome(isAuto) {
   tourWasAutoOpened = !!isAuto;
+  // Every tour target lives in the home view - opening the tour from another
+  // section would highlight elements nobody can see.
+  showView('home');
   const overlay = document.getElementById('welcomeOverlay');
   overlay.classList.add('visible');
   document.body.style.paddingTop = overlay.offsetHeight + 'px';
@@ -1453,7 +1922,9 @@ async function loadBilling() {
         <span class="billing-label">${fmtDateTime(tx.date)}</span>
         <span>${t('billing_monthly_row')} — ${tx.currency === 'ILS' ? ils(tx.amount) : esc(tx.amount + ' ' + (tx.currency || ''))} ${statusLabel(tx.status)}</span>
       </div>`).join('');
-    document.getElementById('billingSection').innerHTML = `
+    // Rendered into BOTH the home summary and the personal area's billing
+    // block - same markup, one fetch, so the two can never disagree.
+    const billingHtml = `
       <div class="billing-row">
         <span class="billing-label">${t('billing_current_pkg')}</span>
         <span style="font-weight:700;">${esc(d.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + t('per_month') : ''}</span>
@@ -1461,6 +1932,10 @@ async function loadBilling() {
       ${d.setup_fee ? `<div class="billing-row"><span class="billing-label">${t('billing_setup')}</span><span>${ils(d.setup_fee)} ${d.setup_fee_charged ? `<span style="color:var(--green);">${t('billing_paid')}</span>` : `<span style="color:var(--gray);">${t('billing_pending_pay')}</span>`}</span></div>` : ''}
       ${d.next_billing ? `<div class="billing-row"><span class="billing-label">${t('billing_next')}</span><span>${fmtDateTime(d.next_billing)}</span></div>` : ''}
       ${txRows || `<div class="billing-row"><span class="billing-label">${t('billing_history')}</span><span style="color:var(--gray);">${t('billing_none_yet')}</span></div>`}`;
+    ['billingSection', 'personalBillingSection'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = billingHtml;
+    });
   } catch (e) {
     console.error('billing load failed', e);
   }
@@ -2517,6 +2992,438 @@ function sendChip(text) {
   sendInWindow('general');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════
+// Views swap in place rather than being separate pages, because the chat
+// windows, the upgrade panel and the welcome tour are page-level singletons -
+// a real navigation would destroy an open agent conversation mid-sentence.
+const VIEWS = ['home', 'leads', 'media', 'personal', 'support'];
+const viewLoaded = {};   // one lazy fetch per section per page load
+
+function showView(name) {
+  if (VIEWS.indexOf(name) === -1) name = 'home';
+  VIEWS.forEach(v => {
+    const el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
+    if (el) el.classList.toggle('active', v === name);
+  });
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.toggle('active', item.getAttribute('data-view') === name);
+  });
+  if (history.replaceState) history.replaceState(null, '', name === 'home' ? '#' : '#' + name);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
+  if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
+  if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
+  if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTS (PDF / Excel / Google Docs)
+// ═══════════════════════════════════════════════════════════════════════════
+// Every .export-bar[data-export="<dataset>"] on the page gets the same three
+// buttons, so a new exportable section is one empty div in the markup.
+//
+// PDF deliberately opens a print-styled page that prints itself rather than
+// downloading a server-rendered file - a server-side PDF of Hebrew needs an
+// embedded font plus bidi shaping the container doesn't have, and the browser
+// already does both correctly. See core/export_service.py's docstring.
+function renderExportBars() {
+  const t = uallakI18n.t;
+  document.querySelectorAll('.export-bar').forEach(bar => {
+    const dataset = bar.getAttribute('data-export');
+    if (!dataset) return;
+    bar.innerHTML = `
+      <span style="font-size:11.5px; color:var(--gray); align-self:center;">${t('export_label')}</span>
+      <a class="export-btn" href="/api/client/export/${encodeURIComponent(dataset)}?format=pdf"
+         target="_blank" rel="noopener">${t('export_pdf')}</a>
+      <a class="export-btn" href="/api/client/export/${encodeURIComponent(dataset)}?format=xlsx">${t('export_xlsx')}</a>
+      <button class="export-btn" onclick="exportGoogleDoc('${dataset}', this)">${t('export_gdoc')}</button>`;
+  });
+}
+
+async function exportGoogleDoc(dataset, btn) {
+  const t = uallakI18n.t;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = t('export_gdoc_working');
+  try {
+    const res = await fetch('/api/client/export/' + encodeURIComponent(dataset) + '/google-doc',
+                            { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) {
+      showNotice(uallakI18n.errorText(body, 'export_gdoc_fail'), 'warn');
+      return;
+    }
+    if (body.data && body.data.link) window.open(body.data.link, '_blank', 'noopener');
+    showNotice(t('export_gdoc_done'), 'success');
+  } catch (e) {
+    showNotice(t('export_gdoc_fail'), 'warn');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEADS — the client's OWN leads (client_leads), never uallak's sales funnel
+// ═══════════════════════════════════════════════════════════════════════════
+let leadSearchTimer = null;
+
+function scheduleLeadReload() {
+  clearTimeout(leadSearchTimer);
+  leadSearchTimer = setTimeout(loadLeads, 300);
+}
+
+function leadFilters() {
+  return {
+    q: document.getElementById('leadSearch').value.trim(),
+    status: document.getElementById('leadStatusFilter').value,
+    source: document.getElementById('leadSourceFilter').value,
+    days: document.getElementById('leadDaysFilter').value,
+  };
+}
+
+async function loadLeads() {
+  const t = uallakI18n.t;
+  const list = document.getElementById('leadsList');
+  const f = leadFilters();
+  const anyFilter = !!(f.q || f.status || f.source || (f.days && f.days !== '0'));
+  try {
+    const params = new URLSearchParams({ q: f.q, status: f.status, source: f.source, days: f.days });
+    const res = await fetch('/api/client/leads?' + params.toString(), { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    if (!res.ok) { list.innerHTML = `<div class="empty-row">${esc(t('leads_unavailable'))}</div>`; return; }
+    const body = await res.json();
+    if (!body.success) { list.innerHTML = `<div class="empty-row">${esc(t('leads_unavailable'))}</div>`; return; }
+
+    renderLeadStats(body.data.stats);
+    const leads = body.data.leads || [];
+    if (!leads.length) {
+      list.innerHTML = `<div class="empty-row">${esc(t(anyFilter ? 'leads_empty_filtered' : 'leads_empty'))}</div>`;
+      return;
+    }
+    list.innerHTML = leads.map(renderLeadCard).join('');
+  } catch (e) {
+    console.error('leads load failed', e);
+    list.innerHTML = `<div class="empty-row">${esc(t('leads_unavailable'))}</div>`;
+  }
+}
+
+function renderLeadStats(stats) {
+  if (!stats) return;
+  const t = uallakI18n.t;
+  const byStatus = stats.by_status || {};
+  const cells = [
+    { label: t('leads_stat_total'), value: stats.total || 0 },
+    { label: t('leads_stat_30d'), value: stats.last_30_days || 0 },
+    { label: t('leads_stat_new'), value: byStatus.new || 0 },
+    { label: t('leads_stat_won'), value: byStatus.won || 0 },
+  ];
+  document.getElementById('leadStats').innerHTML = cells.map(c => `
+    <div class="lead-stat">
+      <div class="lead-stat-val">${esc(c.value)}</div>
+      <div class="lead-stat-lbl">${esc(c.label)}</div>
+    </div>`).join('');
+
+  const badge = document.getElementById('navLeadsCount');
+  const newCount = byStatus.new || 0;
+  badge.textContent = newCount;
+  badge.style.display = newCount ? '' : 'none';
+}
+
+// A pre-filled WhatsApp message, so "quick send" is one tap and not a blank
+// compose box. The client can still edit it before sending — wa.me only
+// pre-fills, it never sends on its own.
+function leadWaHref(lead) {
+  if (!lead.whatsapp_link) return '';
+  const business = (dashboardData && dashboardData.client && dashboardData.client.name) || '';
+  const text = uallakI18n.t('lead_wa_prefill', {
+    name: lead.name || '', business: business,
+  });
+  return lead.whatsapp_link + '?text=' + encodeURIComponent(text);
+}
+
+function renderLeadCard(lead) {
+  const t = uallakI18n.t;
+  const statusKey = 'lead_status_' + lead.status;
+  const sourceKey = 'lead_src_' + lead.source;
+  const waHref = leadWaHref(lead);
+  const badgeClass = lead.status === 'new' ? 'new' : (lead.status === 'won' ? 'won' : '');
+
+  const contactBits = [];
+  if (lead.phone) contactBits.push(`<a href="tel:${esc(lead.phone)}" dir="ltr">${esc(lead.phone)}</a>`);
+  if (lead.email) contactBits.push(`<a href="mailto:${esc(lead.email)}" dir="ltr">${esc(lead.email)}</a>`);
+
+  const statusOptions = ['new', 'contacted', 'qualified', 'won', 'lost'].map(s =>
+    `<option value="${s}"${s === lead.status ? ' selected' : ''}>${esc(t('lead_status_' + s))}</option>`).join('');
+
+  return `
+    <div class="lead-card" id="lead-${lead.id}">
+      <div class="lead-head">
+        <div>
+          <div class="lead-name">${esc(lead.name || t('lead_no_name'))}</div>
+          ${contactBits.length ? `<div class="lead-contact">${contactBits.join(' · ')}</div>` : ''}
+        </div>
+        <span class="lead-badge ${badgeClass}">${esc(DASH_I18N[statusKey] ? t(statusKey) : lead.status)}</span>
+      </div>
+      ${lead.message ? `<div class="lead-msg">${esc(lead.message)}</div>` : ''}
+      <div class="lead-meta">
+        ${esc(fmtDateTime(lead.created_at))}
+        · ${esc(DASH_I18N[sourceKey] ? t(sourceKey) : lead.source)}
+        ${lead.source_detail ? ' · ' + esc(lead.source_detail) : ''}
+      </div>
+      <div class="lead-actions">
+        ${waHref ? `<a class="lead-wa" href="${esc(waHref)}" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.6 6.3A9 9 0 0 0 4.2 18.1L3 21l3-1.1A9 9 0 1 0 17.6 6.3z"/></svg>
+          ${esc(t('lead_wa_btn'))}</a>` : ''}
+        <select class="lead-status-select" onchange="setLeadStatus(${lead.id}, this.value, this)">${statusOptions}</select>
+        <button class="lead-note-btn" onclick="toggleLeadNote(${lead.id})">${esc(t('lead_note_btn'))}${lead.notes ? ' •' : ''}</button>
+      </div>
+      <div class="lead-note-area${lead.notes ? ' open' : ''}" id="note-area-${lead.id}">
+        <textarea id="note-${lead.id}" placeholder="${esc(t('lead_note_ph'))}"
+                  onblur="saveLeadNote(${lead.id})">${esc(lead.notes || '')}</textarea>
+        <div class="lead-note-saved" id="note-saved-${lead.id}">${esc(t('lead_note_saved'))}</div>
+      </div>
+    </div>`;
+}
+
+function toggleLeadNote(leadId) {
+  const area = document.getElementById('note-area-' + leadId);
+  area.classList.toggle('open');
+  if (area.classList.contains('open')) document.getElementById('note-' + leadId).focus();
+}
+
+async function setLeadStatus(leadId, status, selectEl) {
+  const previous = selectEl.getAttribute('data-previous') || '';
+  try {
+    const res = await fetch('/api/client/leads/' + leadId + '/status', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error('status update failed');
+    // Reload rather than patch in place: the stat cards and the nav badge both
+    // depend on this value, and a partial update would leave them stale.
+    loadLeads();
+  } catch (e) {
+    console.error('lead status failed', e);
+    if (previous) selectEl.value = previous;
+    showNotice(uallakI18n.t('leads_unavailable'), 'warn');
+  }
+}
+
+async function saveLeadNote(leadId) {
+  const textarea = document.getElementById('note-' + leadId);
+  if (!textarea) return;
+  try {
+    const res = await fetch('/api/client/leads/' + leadId + '/note', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: textarea.value }),
+    });
+    if (!res.ok) return;
+    const saved = document.getElementById('note-saved-' + leadId);
+    saved.style.display = 'block';
+    setTimeout(() => { saved.style.display = 'none'; }, 2000);
+  } catch (e) {
+    console.error('lead note failed', e);
+  }
+}
+
+async function loadLeadCapture() {
+  try {
+    const res = await fetch('/api/client/lead-capture', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) return;
+    document.getElementById('leadCaptureSnippet').textContent = body.data.form_snippet || '';
+  } catch (e) {
+    // Non-fatal: the explanatory panel just stays empty
+    document.getElementById('leadCapturePanel').style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIA ASSETS HUB
+// ═══════════════════════════════════════════════════════════════════════════
+// Reads the index the generating agents already write into client_activity —
+// this view stores nothing of its own. Shows EVERYTHING ever produced, which
+// is the point: the homepage's approvals queue is one moment in an asset's
+// life, not the library.
+const MEDIA_ICONS = { image: '🖼', video: '🎬', avatar: '🧑‍💼', script: '📝', document: '📄' };
+let mediaAssetsCache = [];
+let mediaKindFilter = '';
+
+async function loadMediaAssets() {
+  const t = uallakI18n.t;
+  const grid = document.getElementById('mediaGrid');
+  try {
+    const res = await fetch('/api/client/media-assets', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    if (!body.success) { grid.innerHTML = `<div class="empty-row">${esc(t('media_empty'))}</div>`; return; }
+
+    mediaAssetsCache = body.data.assets || [];
+    renderMediaFilters(body.data.counts || {});
+    renderMediaGrid();
+
+    const badge = document.getElementById('navMediaCount');
+    badge.textContent = mediaAssetsCache.length;
+    badge.style.display = mediaAssetsCache.length ? '' : 'none';
+
+    const folderLink = document.getElementById('mediaFolderLink');
+    if (body.data.folder_link) {
+      folderLink.href = body.data.folder_link;
+      folderLink.removeAttribute('disabled');
+    } else {
+      // No Drive folder yet (nothing generated, or media not configured) —
+      // a dead link is worse than a disabled button
+      folderLink.href = '#';
+      folderLink.setAttribute('disabled', 'disabled');
+    }
+  } catch (e) {
+    console.error('media assets load failed', e);
+    grid.innerHTML = `<div class="empty-row">${esc(t('media_empty'))}</div>`;
+  }
+}
+
+function renderMediaFilters(counts) {
+  const t = uallakI18n.t;
+  const kinds = ['image', 'video', 'avatar', 'script', 'document'].filter(k => counts[k]);
+  const chips = [`<button class="media-chip${mediaKindFilter ? '' : ' active'}" onclick="filterMedia('')">${esc(t('media_all'))} (${mediaAssetsCache.length})</button>`];
+  kinds.forEach(k => {
+    chips.push(`<button class="media-chip${mediaKindFilter === k ? ' active' : ''}" onclick="filterMedia('${k}')">${MEDIA_ICONS[k]} ${esc(t('media_kind_' + k))} (${counts[k]})</button>`);
+  });
+  document.getElementById('mediaFilters').innerHTML = kinds.length ? chips.join('') : '';
+}
+
+function filterMedia(kind) {
+  mediaKindFilter = kind;
+  const counts = {};
+  mediaAssetsCache.forEach(a => { counts[a.kind] = (counts[a.kind] || 0) + 1; });
+  renderMediaFilters(counts);
+  renderMediaGrid();
+}
+
+function renderMediaGrid() {
+  const t = uallakI18n.t;
+  const grid = document.getElementById('mediaGrid');
+  const items = mediaKindFilter
+    ? mediaAssetsCache.filter(a => a.kind === mediaKindFilter)
+    : mediaAssetsCache;
+
+  if (!items.length) {
+    grid.className = '';
+    grid.innerHTML = `<div class="empty-row">${esc(t('media_empty'))}</div>`;
+    return;
+  }
+  grid.className = 'media-grid';
+  grid.innerHTML = items.map(asset => {
+    // Same fallback idiom as the lead status/source labels: an asset kind with
+    // no translation shows its raw name, never the untranslated i18n key.
+    const kindKey = 'media_kind_' + asset.kind;
+    const inner = `
+      <div class="media-item-top">
+        <span class="media-kind-ico">${MEDIA_ICONS[asset.kind] || '📎'}</span>
+        <span class="media-item-kind">${esc(DASH_I18N[kindKey] ? t(kindKey) : asset.kind)}</span>
+      </div>
+      ${asset.title ? `<div class="media-item-title">${esc(asset.title)}</div>` : ''}
+      <div class="media-item-meta">
+        ${esc(fmtDateTime(asset.created_at))}${asset.platform ? ' · ' + esc(asset.platform) : ''}
+      </div>
+      ${asset.available ? `<div class="media-item-meta" style="color:var(--accent);">${esc(t('media_open'))}</div>`
+                        : `<div class="media-item-missing">${esc(t('media_unavailable'))}</div>`}`;
+    return asset.available
+      ? `<a class="media-item" href="${esc(asset.link)}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="media-item">${inner}</div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PERSONAL AREA
+// ═══════════════════════════════════════════════════════════════════════════
+// Business and contact details already existed on the clients row (collected
+// at checkout) — they had simply never been shown back to the person they
+// describe. Read-only on purpose: changing a tax ID mid-contract is a
+// conversation, not a form field. See personal_edit_text.
+function detailCard(labelKey, value) {
+  const t = uallakI18n.t;
+  const empty = !value && value !== 0;
+  return `
+    <div class="detail-card">
+      <div class="detail-label">${esc(t(labelKey))}</div>
+      <div class="detail-value${empty ? ' muted' : ''}">${esc(empty ? t('field_empty') : value)}</div>
+    </div>`;
+}
+
+async function loadAccount() {
+  try {
+    const res = await fetch('/api/client/account', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    if (!body.success) return;
+    const d = body.data;
+    const t = uallakI18n.t;
+
+    document.getElementById('businessDetails').innerHTML =
+      detailCard('field_business_name', d.business.business_name) +
+      detailCard('field_business_tax_id', d.business.business_tax_id) +
+      detailCard('field_address', d.business.address);
+
+    document.getElementById('contactDetails').innerHTML =
+      detailCard('field_contact_name', d.contact.name) +
+      detailCard('field_email', d.contact.email) +
+      detailCard('field_phone', d.contact.phone);
+
+    const connected = (d.connections || []).filter(c => c.status === 'active').length;
+    document.getElementById('packageDetails').innerHTML =
+      detailCard('field_package', d.subscription.package) +
+      detailCard('field_monthly_fee', d.subscription.monthly_fee ? ils(d.subscription.monthly_fee) + t('per_month') : '') +
+      detailCard('field_setup_fee', d.subscription.setup_fee ? ils(d.subscription.setup_fee) : '') +
+      detailCard('field_client_since', d.subscription.client_since ? fmtDate(d.subscription.client_since) : '') +
+      detailCard('field_connections', connected || '');
+  } catch (e) {
+    console.error('account load failed', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HUMAN SUPPORT
+// ═══════════════════════════════════════════════════════════════════════════
+// The number comes from /api/client/support, which reads the SAME app_settings
+// value the admin dashboard edits (admin_service.DEFAULT_SETTINGS
+// .whatsapp_number). Deliberately never hardcoded here — the landing page's
+// literal wa.me links are the existing duplicate and this must not become a
+// third copy that drifts.
+async function loadSupport() {
+  const t = uallakI18n.t;
+  try {
+    const res = await fetch('/api/client/support', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    const link = body.success && body.data ? body.data.whatsapp_link : '';
+    const number = body.success && body.data ? body.data.whatsapp_number : '';
+
+    const numberEl = document.getElementById('supportNumber');
+    const btn = document.getElementById('supportWaBtn');
+    if (!link) {
+      numberEl.textContent = t('support_unavailable');
+      btn.style.display = 'none';
+      return;
+    }
+    // Display the number the way an Israeli reads it back: 972501234567 -> 050-123-4567
+    numberEl.textContent = number.replace(/^972/, '0').replace(/^(\d{3})(\d{3})(\d{4})$/, '$1-$2-$3');
+    const name = (dashboardData && dashboardData.client && dashboardData.client.name) || '';
+    btn.href = link + '?text=' + encodeURIComponent(t('support_wa_prefill', { name }));
+    btn.style.display = '';
+  } catch (e) {
+    console.error('support load failed', e);
+    document.getElementById('supportNumber').textContent = t('support_unavailable');
+    document.getElementById('supportWaBtn').style.display = 'none';
+  }
+}
+
 // ─── boot ────────────────────────────────────────────────────────────────────
 (function () {
   uallakI18n.init(DASH_I18N);
@@ -2526,6 +3433,14 @@ function sendChip(text) {
   // by the engine's applyDom.
   uallakI18n.onChange(() => {
     loadDashboard(); loadBilling(); loadSuggestions();
+    // The nav sections are JS-built too, so re-render whichever ones the
+    // client has actually opened (an unopened section re-renders on first
+    // visit anyway, in the language that is current by then).
+    renderExportBars();
+    if (viewLoaded.leads) { loadLeads(); loadLeadCapture(); }
+    if (viewLoaded.media) loadMediaAssets();
+    if (viewLoaded.personal) loadAccount();
+    if (viewLoaded.support) loadSupport();
     renderLauncher();
     // Re-translate every OPEN window's role subtitle + input placeholder (their
     // text is JS-set, so applyDom doesn't reach it), then refresh chips + dock.
@@ -2548,6 +3463,11 @@ function sendChip(text) {
       l.classList.remove('open');
     }
   });
+
+  // Captured BEFORE the replaceState below, which drops the fragment along
+  // with the query string
+  const initialView = (window.location.hash || '').replace('#', '');
+  renderExportBars();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('connected') === 'google_ads') {
@@ -2598,6 +3518,11 @@ function sendChip(text) {
   loadDashboard();
   loadBilling();
   loadSuggestions();
+
+  // A deep link (/dashboard/#leads) lands on that section; anything else, or
+  // nothing, lands on home. Done last so the lazy loaders fire after the
+  // page's own data requests are already in flight.
+  if (initialView && initialView !== 'home') showView(initialView);
 })();
 </script>
 

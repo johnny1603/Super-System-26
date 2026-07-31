@@ -44,6 +44,7 @@ from core.session import (
     create_session_token, verify_session_token,
     create_oauth_state_token, verify_oauth_state_token,
     create_admin_session_token, verify_admin_session_token,
+    create_lead_capture_token, verify_lead_capture_token,
 )
 from core import google_ads_service
 from core import meta_service
@@ -51,6 +52,8 @@ from core import tiktok_service
 from core import admin_service
 from core import drive_service
 from core import lead_tracking
+from core import client_leads as client_leads_service
+from core import export_service
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -1418,6 +1421,18 @@ def _build_client_export(client_id: int, performance_override: dict = None) -> d
         "activity": get_activity(client_id, limit=500),
         "communications": get_communications(client_id, limit=500),
     }
+
+    # The client's OWN leads - people who approached THEIR business. The
+    # offboarding purge deletes these rows, so the export has to carry them or
+    # a leaving client loses their customers' contact details. Never fatal:
+    # the table may not exist yet (migration not run), and a missing leads
+    # block must not sink the archive that everything else depends on.
+    try:
+        export["my_leads"] = client_leads_service.list_leads(client_id, limit=1000)
+    except Exception as e:
+        print(f"[data_export] client_leads unavailable for client {client_id}: {e}")
+        export["my_leads"] = []
+
     return export
 
 @app.get("/api/client/data-export")
@@ -1439,7 +1454,7 @@ def client_data_export(request: Request):
 # funnel records).
 _ARCHIVE_PURGE_TABLES = ("client_accounts", "client_agents", "client_activity",
                           "client_communications", "client_suggestions",
-                          "client_costs", "login_codes")
+                          "client_costs", "login_codes", "client_leads")
 
 def _archive_and_purge_client(client_id: int, client: dict, export_json: str) -> dict:
     """Retention model (business decision, 2026-07): the Drive archive - one
@@ -2729,6 +2744,419 @@ def client_media_folder(request: Request):
     except Exception as e:
         print(f"[media_folder] failed for client {client_id}: {e}")
         raise HTTPException(status_code=500, detail={"code": "ERR_MEDIA_FOLDER_FAILED"})
+
+# ─── The client's OWN leads (client_leads - NOT uallak's `leads` funnel) ─────
+#
+# See core/client_leads.py for the distinction. Everything here is scoped to
+# the session's client_id, except the capture endpoint, which is public by
+# necessity (it is called from a form on the client's own website).
+
+@app.get("/api/client/leads")
+def client_leads_list(request: Request, status: str = "", source: str = "",
+                      q: str = "", days: int = 0):
+    # Plain `def`: blocking Supabase reads
+    client_id = _require_session(request)
+    try:
+        return {"success": True, "data": {
+            "leads": client_leads_service.list_leads(
+                client_id, status=status, source=source, query=q, days=days),
+            "stats": client_leads_service.lead_stats(client_id),
+            "statuses": list(client_leads_service.STATUSES),
+            "sources": list(client_leads_service.SOURCES),
+        }}
+    except Exception as e:
+        # The client_leads table may not exist yet (migration not run). An
+        # honest empty state beats a broken section - the UI shows the
+        # not-yet-configured message rather than an error.
+        print(f"[client_leads] list failed for client {client_id}: {e}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_LEADS_UNAVAILABLE"})
+
+class LeadStatusRequest(BaseModel):
+    status: str  # new | contacted | qualified | won | lost
+
+@app.post("/api/client/leads/{lead_id}/status")
+def client_lead_set_status(lead_id: int, req: LeadStatusRequest, request: Request):
+    client_id = _require_session(request)
+    try:
+        updated = client_leads_service.set_status(client_id, lead_id, req.status)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_STATUS"})
+    if not updated:
+        # Empty result = the row isn't this client's (or doesn't exist). Same
+        # 404 either way, so a guessed id can't confirm another client's lead.
+        raise HTTPException(status_code=404, detail={"code": "ERR_LEAD_NOT_FOUND"})
+    return {"success": True, "data": updated}
+
+class LeadNoteRequest(BaseModel):
+    note: str = ""
+
+@app.post("/api/client/leads/{lead_id}/note")
+def client_lead_set_note(lead_id: int, req: LeadNoteRequest, request: Request):
+    client_id = _require_session(request)
+    updated = client_leads_service.set_note(client_id, lead_id, req.note)
+    if not updated:
+        raise HTTPException(status_code=404, detail={"code": "ERR_LEAD_NOT_FOUND"})
+    return {"success": True, "data": updated}
+
+@app.get("/api/client/lead-capture")
+def client_lead_capture_setup(request: Request):
+    """The client's own capture endpoint + a ready-to-paste HTML form snippet.
+    Shown in the leads section so there is a visible answer to 'how do leads
+    get in here' rather than a section that is empty forever with no
+    explanation."""
+    client_id = _require_session(request)
+    token = create_lead_capture_token(client_id)
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    url = f"{base}/api/leads/capture/{token}"
+    snippet = (
+        f'<form action="{url}" method="post">\n'
+        '  <input name="name" placeholder="שם">\n'
+        '  <input name="phone" placeholder="טלפון">\n'
+        '  <input name="email" placeholder="אימייל">\n'
+        '  <textarea name="message" placeholder="במה נוכל לעזור?"></textarea>\n'
+        '  <!-- optional: same-site https thank-you page to return to -->\n'
+        '  <input type="hidden" name="redirect" value="https://YOUR-SITE/thanks">\n'
+        '  <button type="submit">שליחה</button>\n'
+        '</form>'
+    )
+    return {"success": True, "data": {"capture_url": url, "form_snippet": snippet}}
+
+@app.post("/api/leads/capture/{token}")
+async def public_lead_capture(token: str, request: Request):
+    """PUBLIC. A form on the client's own site posts a lead here; the signed
+    token in the path says which client it belongs to (it grants nothing else
+    - see core/session.create_lead_capture_token).
+
+    Accepts JSON or a classic form post, and always answers 200 for anything
+    well-signed: a real customer filling in a contact form must never be shown
+    an error because of a cap or a validation rule on our side. Whether the
+    row was actually stored is in the response body, for callers that care."""
+    client_id = verify_lead_capture_token(token)
+    if not client_id:
+        raise HTTPException(status_code=404, detail={"code": "ERR_INVALID_CAPTURE_TOKEN"})
+
+    # Body parsed by hand rather than with request.form(): Starlette's form
+    # parsing asserts on `python-multipart`, which is NOT in requirements.txt,
+    # so request.form() would raise on a plain urlencoded post - the exact
+    # shape a <form method="post"> sends. Parsing urlencoded ourselves keeps
+    # the classic HTML form working with no new dependency. multipart/form-data
+    # (a form with a file input) is therefore NOT supported - documented in
+    # HANDOFF-client-dashboard-nav.md, and no contact form needs it.
+    from urllib.parse import parse_qs
+
+    payload = {}
+    content_type = (request.headers.get("content-type") or "").lower()
+    try:
+        raw = await request.body()
+        if "application/json" in content_type:
+            payload = json.loads(raw or b"{}")
+        elif "application/x-www-form-urlencoded" in content_type:
+            payload = {key: values[0] for key, values
+                       in parse_qs(raw.decode("utf-8", "replace")).items() if values}
+        elif raw:
+            payload = json.loads(raw)  # no/odd content-type but a JSON body
+    except Exception as e:
+        print(f"[lead_capture] client {client_id}: unreadable body ({e})")
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    referer = request.headers.get("referer", "")
+    payload.setdefault("source_detail", referer)
+    result = client_leads_service.capture_lead(
+        client_id, payload, source=str(payload.get("source") or "website_form"))
+
+    # A plain <form method="post"> navigates the browser to whatever this
+    # returns, so a thank-you page is how the customer gets back to the site.
+    # The target is accepted ONLY when it is https and on the SAME HOST the
+    # form was submitted from - an unauthenticated public endpoint that
+    # redirects anywhere a caller names is an open redirect, and this one
+    # would sit on the client's own domain.
+    redirect_to = str(payload.get("redirect") or "").strip()
+    if redirect_to:
+        from urllib.parse import urlparse
+        target, origin = urlparse(redirect_to), urlparse(referer)
+        if target.scheme == "https" and target.netloc and target.netloc == origin.netloc:
+            return RedirectResponse(url=redirect_to, status_code=303)
+        print(f"[lead_capture] client {client_id}: ignored off-site redirect "
+              f"{redirect_to[:120]!r} (referer host {origin.netloc!r})")
+
+    return {"success": True, "stored": result["stored"]}
+
+# ─── Personal area + human support ───────────────────────────────────────────
+
+@app.get("/api/client/account")
+def client_account(request: Request):
+    """Everything the אזור אישי section shows about the account itself. The
+    business/contact fields already exist on the clients row (they are
+    collected at checkout) - they had simply never been shown back to the
+    client, who is the person they describe."""
+    client_id = _require_session(request)
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    sub = _client_subscription_info(client_id)
+    return {"success": True, "data": {
+        "business": {
+            "business_name": client.get("business_name") or "",
+            "business_tax_id": client.get("business_tax_id") or "",
+            "address": client.get("address") or "",
+        },
+        "contact": {
+            "name": client.get("name") or "",
+            "email": client.get("email") or "",
+            "phone": client.get("phone") or "",
+        },
+        "subscription": {
+            "package": client.get("package") or "",
+            "status": client.get("status") or "",
+            "client_since": client.get("created_at"),
+            "monthly_fee": sub["monthly_fee"],
+            "setup_fee": sub["setup_fee"],
+            "has_live_subscription": bool(sub["subscription_id"]),
+        },
+        # platform + status only, never the stored credentials
+        "connections": [{"platform": a.get("platform"), "status": a.get("status")}
+                        for a in get_accounts(client_id)],
+    }}
+
+@app.get("/api/client/support")
+def client_support(request: Request):
+    """The human rep's WhatsApp number, read from the SAME app_settings value
+    the admin dashboard edits (admin_service.DEFAULT_SETTINGS['whatsapp_number'])
+    - so changing it in one place changes it everywhere. Deliberately not a
+    second constant: the landing page's hardcoded wa.me links are the existing
+    duplicate, and this endpoint is what lets the dashboard avoid becoming a
+    third one."""
+    _require_session(request)
+    number = ""
+    try:
+        number = str(admin_service.get_settings().get("whatsapp_number") or "")
+    except Exception as e:
+        # app_settings unreadable - fall back to the in-code default rather
+        # than showing the client no way to reach a human at all
+        print(f"[client_support] settings read failed ({e}) - using default")
+        number = str(admin_service.DEFAULT_SETTINGS.get("whatsapp_number") or "")
+    return {"success": True, "data": {
+        "whatsapp_number": number,
+        "whatsapp_link": client_leads_service.whatsapp_link(number),
+    }}
+
+# ─── Media assets hub ────────────────────────────────────────────────────────
+
+# Every asset any agent has ever produced for a client is ALREADY recorded as a
+# client_activity row carrying result.file_id + result.link. This is the index;
+# the files themselves live in the client's Drive folder (shared read-only with
+# them on first touch). Nothing here duplicates storage - it reads what the
+# generating agents already wrote.
+_MEDIA_ASSET_KINDS = {
+    # action_type (written by the agent named in the comment) -> UI kind
+    "media_image_created":       "image",     # media_agent
+    "media_video_created":       "video",     # media_agent
+    "avatar_video_created":      "avatar",    # avatar_agent
+    "media_filming_kit_created": "script",    # media_agent
+    "content_doc_created":       "document",  # content_docs_agent
+}
+
+def _client_media_assets(client_id: int, limit: int = 1000) -> list:
+    """Queries client_activity by action_type rather than paging get_activity():
+    the hub promises EVERYTHING ever created, and a client with a busy activity
+    feed would otherwise have their oldest media fall off the end of a generic
+    'last N rows' read."""
+    try:
+        rows = (db.table("client_activity").select("*")
+                .eq("client_id", client_id)
+                .in_("action_type", list(_MEDIA_ASSET_KINDS))
+                .order("created_at", desc=True)
+                .limit(limit).execute().data or [])
+    except Exception as e:
+        print(f"[media_assets] activity query failed for client {client_id}: {e}")
+        return []
+
+    assets = []
+    for entry in rows:
+        kind = _MEDIA_ASSET_KINDS.get(entry.get("action_type"))
+        if not kind:
+            continue
+        details = entry.get("details") or {}
+        result = entry.get("result") or {}
+        link = result.get("link") or ""
+        # An asset row with no Drive link is one whose upload failed after
+        # generation (the agents alert on that path and keep the activity row).
+        # Show it, flagged - hiding it would make the hub quietly incomplete.
+        assets.append({
+            "id": entry.get("id"),
+            "kind": kind,
+            "created_at": entry.get("created_at"),
+            "platform": details.get("platform") or "",
+            "title": (details.get("title") or details.get("topic")
+                      or details.get("brief") or details.get("script_preview") or ""),
+            "link": link,
+            "available": bool(link),
+            "duration_seconds": details.get("duration_seconds"),
+        })
+    return assets
+
+@app.get("/api/client/media-assets")
+def client_media_assets(request: Request, kind: str = ""):
+    """EVERYTHING ever created for this client - not just the pending-approval
+    queue the homepage shows. Approval state is a moment in an asset's life;
+    this is the whole library."""
+    client_id = _require_session(request)
+    assets = _client_media_assets(client_id)
+    if kind:
+        assets = [a for a in assets if a["kind"] == kind]
+    counts = {}
+    for asset in assets:
+        counts[asset["kind"]] = counts.get(asset["kind"], 0) + 1
+    # The browsable Drive folder link is best-effort: media may not be
+    # configured, and that must not empty out an otherwise valid asset list.
+    folder_link = ""
+    try:
+        if drive_service.is_configured() and os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
+            from agents.media_agent import get_client_media_link
+            folder_link = get_client_media_link(client_id)
+    except Exception as e:
+        print(f"[media_assets] folder link unavailable for client {client_id}: {e}")
+    return {"success": True, "data": {"assets": assets, "counts": counts,
+                                      "folder_link": folder_link}}
+
+# ─── File exports (PDF / Excel / Google Doc) ─────────────────────────────────
+
+def _export_dataset(client_id: int, dataset: str) -> dict:
+    """One dict per exportable view: {title, subtitle, columns, rows}. Adding a
+    dataset is a new branch here and nothing else - the three renderers in
+    core/export_service all consume this same shape."""
+    client = get_client(client_id) or {}
+    name = client.get("name") or f"client-{client_id}"
+
+    if dataset == "leads":
+        rows = client_leads_service.list_leads(client_id, limit=1000)
+        status_he = {"new": "חדש", "contacted": "נוצר קשר", "qualified": "מתאים",
+                     "won": "נסגר", "lost": "לא רלוונטי"}
+        return {
+            "title": "הלידים שלי",
+            "subtitle": name,
+            "columns": [("created_at", "תאריך"), ("name", "שם"), ("phone", "טלפון"),
+                        ("email", "אימייל"), ("message", "הודעה"),
+                        ("source", "מקור"), ("status", "סטטוס"), ("notes", "הערות")],
+            "rows": [{**r, "status": status_he.get(r.get("status"), r.get("status", ""))}
+                     for r in rows],
+        }
+
+    if dataset == "media":
+        kind_he = {"image": "תמונה", "video": "סרטון", "avatar": "וידאו אווטאר",
+                   "script": "תסריט צילום", "document": "מסמך"}
+        return {
+            "title": "המדיה שנוצרה עבורי",
+            "subtitle": name,
+            "columns": [("created_at", "תאריך"), ("kind", "סוג"),
+                        ("platform", "פלטפורמה"), ("title", "תיאור"), ("link", "קישור")],
+            "rows": [{**a, "kind": kind_he.get(a["kind"], a["kind"])}
+                     for a in _client_media_assets(client_id)],
+        }
+
+    if dataset == "activity":
+        return {
+            "title": "פעילות המערכת",
+            "subtitle": name,
+            "columns": [("created_at", "תאריך"), ("agent_name", "סוכן"),
+                        ("action_type", "פעולה")],
+            "rows": get_activity(client_id, limit=500),
+        }
+
+    if dataset == "billing":
+        sub = _client_subscription_info(client_id)
+        transactions = []
+        if sub["subscription_id"]:
+            try:
+                start = sub["checkout_at"] or (
+                    datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+                transactions = list_subscription_transactions(
+                    sub["subscription_id"], start, datetime.now(timezone.utc).isoformat())
+            except Exception as e:
+                print(f"[export] billing transactions failed for client {client_id}: {e}")
+        # list_subscription_transactions already flattens PayPal's nested
+        # amount_with_breakdown into {date, amount, currency, status} - the
+        # same rows the billing card renders. Don't re-derive them here.
+        return {
+            "title": "היסטוריית חיובים",
+            "subtitle": name,
+            "columns": [("date", "תאריך"), ("amount", "סכום"),
+                        ("currency", "מטבע"), ("status", "סטטוס")],
+            "rows": transactions,
+        }
+
+    raise HTTPException(status_code=404, detail={"code": "ERR_UNKNOWN_DATASET"})
+
+@app.get("/api/client/export/{dataset}")
+def client_export(dataset: str, request: Request, format: str = "xlsx"):
+    """format=xlsx  -> a real .xlsx download (written by core/export_service,
+                       stdlib zipfile - no new dependency).
+       format=pdf   -> a print-styled HTML page that opens its own print
+                       dialog; the client saves it as PDF from there. See
+                       core/export_service's docstring for why the PDF is not
+                       rendered server-side (Hebrew needs an embedded font +
+                       bidi shaping that the container does not have)."""
+    # Plain `def`: the billing dataset makes blocking PayPal calls
+    client_id = _require_session(request)
+    data = _export_dataset(client_id, dataset)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    if format == "pdf":
+        return Response(
+            content=export_service.print_html(
+                data["title"], data["subtitle"], data["columns"], data["rows"]),
+            media_type="text/html; charset=utf-8",
+        )
+    if format == "xlsx":
+        return Response(
+            content=export_service.to_xlsx(data["title"], data["columns"], data["rows"]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition":
+                     f'attachment; filename="uallak-{dataset}-{stamp}.xlsx"'},
+        )
+    raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_FORMAT"})
+
+@app.post("/api/client/export/{dataset}/google-doc")
+def client_export_google_doc(dataset: str, request: Request):
+    """Creates a REAL, editable Google Doc of the dataset and returns its link.
+
+    OWNERSHIP CAVEAT, stated plainly because it is a real limitation: the Doc
+    is created by OUR service account, in uallak's Drive, and then shared with
+    the client's email as a writer. It is not created IN the client's own
+    Drive, because no client-side Google OAuth in this codebase carries a
+    Drive scope - the client Google flows (Ads, GTM, YouTube, Merchant Center)
+    request advertising scopes only. The client can 'Make a copy' to own it
+    outright. Closing that gap needs a new consent screen + Drive scope; see
+    HANDOFF-client-dashboard-nav.md."""
+    # Plain `def`: Drive HTTP calls
+    client_id = _require_session(request)
+    if not drive_service.is_configured() or not os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
+        raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_NOT_CONFIGURED"})
+
+    data = _export_dataset(client_id, dataset)
+    client = get_client(client_id) or {}
+    try:
+        from agents.media_agent import _subfolder
+        folder = _subfolder(client_id, "exports")
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+        uploaded = drive_service.upload_google_doc(
+            folder, f"{data['title']} — {stamp}",
+            export_service.doc_html(data["title"], data["subtitle"],
+                                    data["columns"], data["rows"]))
+        if client.get("email"):
+            # writer, not commenter: this is the client's OWN data, and they
+            # need edit rights to copy it into their Drive comfortably
+            drive_service.share_with_user(uploaded["id"], client["email"], role="writer")
+    except Exception as e:
+        print(f"[export] google doc failed for client {client_id}/{dataset}: {e}")
+        raise HTTPException(status_code=502, detail={"code": "ERR_GOOGLE_DOC_FAILED"})
+
+    log_activity(client_id, "export_service", "export_google_doc_created",
+                 {"dataset": dataset}, {"link": uploaded.get("webViewLink", "")})
+    return {"success": True, "data": {"link": uploaded.get("webViewLink", ""),
+                                      "shared_with": client.get("email", "")}}
 
 # ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
 
