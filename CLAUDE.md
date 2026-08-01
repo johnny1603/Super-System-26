@@ -25,6 +25,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   search + citations don't mix with strict JSON output, hence two paths. Used by the support
   chat's two-stage flow (JSON call gates → emits web_search_query → text call searches).
 - `core/agent_base.py` — `log_step` / `timed_step` / `agent_alert`: standard logging+alerting.
+- `core/client_journey.py` — the client's milestone track, **derived at read time** from
+  rows that already exist (activity, accounts, leads, PayPal). There is deliberately no
+  milestones table: a parallel tracker would drift from the activity log invisibly. Also
+  owns `connection_status()`, the single definition of "fully connected" that the 90-day
+  goal cycle will start from. See `HANDOFF-engagement-upgrade.md`.
+- `agents/interview_agent.py` — the first-login conversation that replaced the static tour.
+  Explains AND gathers (competitors with links above all), routes domain turns through
+  `support_agent.PERSONAS`, runs inside the existing chat window. Captured facts land in
+  `client_activity` and are read back through `core/competitor_research.py` — **never a new
+  silo**; that module is already where all four agents get market context.
 - `core/competitor_research.py` — the shared "look before you generate" step, used by the
   media, website and ads agents through three LENSES (`media` / `website` / `ads`). One
   cached `claude_web_search_call` per (client, lens) — 14/30/7-day TTLs — so four agents
@@ -98,8 +108,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
   `client_communications`, `client_suggestions`, `leads`, `lead_messages`,
-  `client_lead_volume`, `client_leads`, `landing_pages`, `login_codes`, `alerts`,
-  `client_costs`, `app_settings`, `weekly_reports`. **`leads` is uallak's own acquisition funnel,
+  `client_lead_volume`, `client_leads`, `client_feedback`, `landing_pages`, `login_codes`,
+  `alerts`, `client_costs`, `app_settings`, `weekly_reports`. **`leads` is uallak's own acquisition funnel,
   not leads delivered to clients** — a frequent and expensive misreading.
   `client_leads` (core/client_leads.py) is the other direction: people who
   contacted a CLIENT. The two never join.

@@ -481,7 +481,22 @@ def _media_reads(client_id: int) -> dict:
     # not a pure read — and it's slow. Recent media/publish items already
     # appear in the shared recent_activity feed the persona receives.
     from agents.media_agent import get_monthly_usage
-    return {"media_usage_this_month": get_monthly_usage(client_id)}
+    data = {"media_usage_this_month": get_monthly_usage(client_id)}
+    # Camera hesitation is a MEDIA conversation, so the facts it needs live
+    # here: does this client already have an avatar, and what would one cost.
+    # Both are pure reads — the persona still cannot create or buy anything.
+    try:
+        from agents.avatar_agent import list_ready_avatars
+        from agents.onboarding_agent import PRICING
+        avatar_pricing = PRICING.get("avatar") or {}
+        data["avatar_option"] = {
+            "ready_avatars": len(list_ready_avatars(client_id) or []),
+            "setup_ils": avatar_pricing.get("setup_first_avatar"),
+            "monthly_tiers": avatar_pricing.get("monthly_tiers", [])[:1],
+        }
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: avatar reads failed: {e}")
+    return data
 
 
 PERSONAS = {
@@ -540,7 +555,19 @@ PERSONAS = {
                        "(images/videos/credits). Generated media lands in the client's Google "
                        "Drive folder for their review — nothing is ever auto-published. The "
                        "weekly content plan arrives via the dashboard's 'ממתין לאישור שלך' "
-                       "area every Saturday night; approving it is what starts production."),
+                       "area every Saturday night; approving it is what starts production. "
+                       "CAMERA HESITATION — if they say they're uncomfortable on camera, "
+                       "don't rush past it and don't sell immediately. FIRST: encourage them "
+                       "genuinely — most owners feel this, the first take is always the worst, "
+                       "it gets easier, and we send a filming kit with a script, a shot list "
+                       "and coaching so they are never improvising. THEN, as a real second "
+                       "option in the same breath (not a consolation prize): we can build an "
+                       "AI avatar that looks and sounds like them and films instead of them — "
+                       "a PAID add-on, setup plus a monthly tier, and it needs their recorded "
+                       "consent. Quote 'avatar_option' figures ONLY if present and say they're "
+                       "a starting point, not a final quote. If ready_avatars > 0 they already "
+                       "have one — remind them rather than pitching it again. Let them choose; "
+                       "never imply filming themselves is the lesser option."),
     },
 }
 

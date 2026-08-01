@@ -1248,6 +1248,78 @@ def client_billing(request: Request):
         "transactions": transactions,
     }}
 
+# ─── First-login interview + login moments + journey (2026-08-02) ────────────
+
+class InterviewTurnRequest(BaseModel):
+    message: str = ""      # empty = the opening turn
+    language: str = "he"   # the client's chosen UI language
+
+@app.post("/api/client/interview")
+def client_interview_turn(req: InterviewTurnRequest, request: Request):
+    # The first-login conversation that replaced the static tour. Plain `def`:
+    # one blocking LLM call per turn.
+    client_id = _require_session(request)
+    from agents.interview_agent import start_or_continue
+    return {"success": True, "data": start_or_continue(client_id, req.message, req.language)}
+
+@app.get("/api/client/interview/state")
+def client_interview_state(request: Request):
+    client_id = _require_session(request)
+    from agents.interview_agent import captured_facts, is_completed
+    facts = captured_facts(client_id)
+    return {"success": True, "data": {
+        "completed": is_completed(client_id),
+        "competitors_captured": len(facts.get("competitors") or []),
+    }}
+
+class LoginMomentRequest(BaseModel):
+    language: str = "he"
+
+@app.post("/api/client/login-moment")
+def client_login_moment(req: LoginMomentRequest, request: Request):
+    # Fired once per day when the client opens the dashboard. An empty message
+    # is a normal, frequent outcome — nothing was worth saying. Plain `def`:
+    # may make one blocking LLM call.
+    client_id = _require_session(request)
+    from agents.engagement_agent import run_login_moment
+    return {"success": True, "data": run_login_moment(client_id, req.language)}
+
+class ClientFeedbackRequest(BaseModel):
+    message: str = ""
+    rating: int = None     # 1-5, optional — never inferred from the text
+    source: str = "weekly_checkin"
+
+@app.post("/api/client/feedback")
+def client_feedback_submit(req: ClientFeedbackRequest, request: Request):
+    client_id = _require_session(request)
+    from agents.engagement_agent import store_feedback
+    result = store_feedback(client_id, req.message, req.rating, req.source)
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail={"code": "ERR_FEEDBACK_UNAVAILABLE"})
+    return {"success": True, "data": result}
+
+@app.get("/api/client/journey")
+def client_journey_view(request: Request):
+    # The progress timeline. Every milestone is DERIVED from rows that already
+    # exist — see core/client_journey.py on why there is no milestones table.
+    client_id = _require_session(request)
+    from core import client_journey
+    try:
+        return {"success": True, "data": client_journey.journey(client_id)}
+    except Exception as e:
+        print(f"[journey] client {client_id}: {e}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_JOURNEY_UNAVAILABLE"})
+
+@app.get("/api/admin/feedback", dependencies=_admin_only)
+def admin_list_feedback(only_unreviewed: bool = False, limit: int = 100):
+    from agents.engagement_agent import list_feedback
+    return {"success": True, "data": list_feedback(limit, only_unreviewed)}
+
+@app.post("/api/admin/feedback/{feedback_id}/reviewed", dependencies=_admin_only)
+def admin_mark_feedback_reviewed(feedback_id: int):
+    from agents.engagement_agent import mark_feedback_reviewed
+    return {"success": True, "data": mark_feedback_reviewed(feedback_id)}
+
 @app.post("/api/client/tour-completed")
 def client_tour_completed(request: Request):
     client_id = _require_session(request)

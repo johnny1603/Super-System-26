@@ -99,6 +99,50 @@ reports), deduped per-day via `client_activity` `sales_alert_sent` rows.
 Fetch failures return None and are skipped silently — a missing celebration
 is not an incident.
 
+## Login moments — the fourth job (2026-08-02)
+
+`run_login_moment(client_id, language)` → `POST /api/client/login-moment`,
+called by the dashboard when a client opens it. The other three jobs are cron;
+this is the only REACTIVE one, and the only one that fires when we know the
+client is actually reading.
+
+**The design rule, and why it isn't templated**: triggers are evaluated in CODE
+(`_collect_login_facts` — cheap DB reads, hard dedup), and only if something is
+genuinely worth saying does ONE LLM call write ONE message covering all of it.
+- Code decides WHETHER to speak → an LLM can never invent a reason to.
+- The LLM decides HOW → the message is specific to what actually happened
+  instead of becoming the same four sentences every morning. The f-string chat
+  pushes elsewhere in this agent are one-off notifications; a *daily* surface
+  built that way is how a product starts to feel dead.
+
+**Deduped to once per client per day** (`login_moment_sent` activity row),
+which is also the spend cap: a client reloading six times is greeted once, and
+a client with nothing happening costs zero LLM calls.
+
+Triggers folded in: time-of-day greeting (Israel clock, 5 languages via
+`LANGUAGE_RULE`), pending client-side items asked about *by name*, work
+delivered in the last 7 days acknowledged *specifically*, new lead counts, and
+the weekly satisfaction ask (`feedback_asked`, 7-day interval).
+
+**One honesty constraint baked into the prompt**: it may name the lead CHANNEL
+but must NOT claim organic vs paid. `client_leads.source` is a channel
+(form/phone/WhatsApp), and the utm/gclid capture that would make that
+distinction real is not built yet — see `HANDOFF-engagement-upgrade.md`.
+
+## Platform feedback store
+
+`store_feedback` / `list_feedback` / `mark_feedback_reviewed` +
+`GET /api/admin/feedback`. Table: `client_feedback`
+(`migrations/2026-08-02-client-feedback.sql`) — the ONE thing in this area that
+earns its own table, because it's read as a cross-client list by a human with a
+reviewed/unreviewed state, which `client_activity`'s per-client append-only
+shape doesn't serve. `rating` is stored only when the client actually gave one;
+it is never inferred from the prose, because a made-up score would poison the
+only honest satisfaction signal there is.
+
+Before the migration runs, the ASK still happens and `store_feedback` alerts
+with the client's verbatim words rather than dropping them silently.
+
 ## WhatsApp SOS (Green API)
 
 `core/whatsapp_service.py`: `send_whatsapp(phone, message)` — Israeli phone

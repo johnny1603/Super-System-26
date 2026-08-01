@@ -669,6 +669,44 @@ body {
 .lead-badge.new { color: var(--accent); border-color: rgba(255,76,31,0.35); background: var(--accent-dim); }
 .lead-badge.won { color: var(--green); border-color: rgba(0,201,110,0.35); background: rgba(0,201,110,0.1); }
 
+/* ---------- PROGRESS JOURNEY ---------- */
+.jn-bar {
+  height: 6px; border-radius: 100px; background: var(--panel-2);
+  overflow: hidden; margin-bottom: 18px;
+}
+.jn-bar-fill {
+  height: 100%; width: 0; border-radius: 100px; background: var(--accent);
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Horizontal scroll on small screens rather than a squashed track — the page
+   body must never scroll sideways. */
+.jn-track {
+  display: flex; gap: 0; overflow-x: auto; padding-bottom: 6px;
+}
+.jn-step {
+  flex: 1 0 108px; position: relative; text-align: center; padding: 0 4px;
+}
+/* The connecting line, drawn behind the dots */
+.jn-step::before {
+  content: ''; position: absolute; top: 7px; inset-inline-start: -50%;
+  width: 100%; height: 2px; background: var(--border);
+}
+.jn-step:first-child::before { display: none; }
+.jn-step.done::before { background: var(--accent); }
+.jn-dot {
+  width: 16px; height: 16px; border-radius: 50%; margin: 0 auto 9px;
+  background: var(--panel-2); border: 2px solid var(--border);
+  position: relative; z-index: 1; transition: all 0.3s;
+}
+.jn-step.done .jn-dot {
+  background: var(--accent); border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+.jn-label { font-size: 11.5px; font-weight: 700; line-height: 1.35; }
+.jn-step:not(.done) .jn-label { color: var(--gray); font-weight: 500; }
+.jn-when { font-size: 10.5px; color: var(--gray); margin-top: 3px; }
+.chat-launcher.has-unread { box-shadow: 0 0 0 3px var(--accent-dim); }
+
 /* ---------- LANDING PAGES ---------- */
 .lp-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
@@ -931,6 +969,22 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
   <div class="activity-list" id="pendingApprovalList" style="margin-bottom:36px;">
     <div class="empty-row" data-i18n="pending_empty">אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן</div>
+  </div>
+
+  <!-- Progress journey: every milestone is DERIVED from rows that already
+       exist (activity, accounts, leads) — see core/client_journey.py. Hidden
+       entirely if the endpoint is unavailable rather than showing a broken
+       track. -->
+  <div id="journeyPanel" style="display:none;margin-bottom:36px;">
+    <div class="section-head">
+      <div>
+        <div class="section-title" data-i18n="journey_title">המסע שלך עם uallak</div>
+        <div class="section-sub" data-i18n="journey_sub">כל אבן דרך מאז היום הראשון — מתעדכן מעצמו</div>
+      </div>
+      <span class="pending-badge" id="journeyProgressText">…</span>
+    </div>
+    <div class="jn-bar"><div class="jn-bar-fill" id="journeyBarFill"></div></div>
+    <div class="jn-track" id="journeyTrack"></div>
   </div>
 
   <div class="section-head">
@@ -1454,6 +1508,20 @@ const DASH_I18N = {
   leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
   leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
   leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
+
+  // ── progress journey ──
+  journey_title: { he:'המסע שלך עם uallak', en:'Your journey with uallak', fr:'Votre parcours avec uallak', ar:'رحلتك مع uallak', ru:'Ваш путь с uallak' },
+  journey_sub: { he:'כל אבן דרך מאז היום הראשון — מתעדכן מעצמו', en:'Every milestone since day one — updates itself', fr:'Chaque étape depuis le premier jour — mise à jour automatique', ar:'كل محطة منذ اليوم الأول — تتحدث تلقائيًا', ru:'Каждая веха с первого дня — обновляется сама' },
+  journey_progress: { he:'{done} מתוך {total}', en:'{done} of {total}', fr:'{done} sur {total}', ar:'{done} من {total}', ru:'{done} из {total}' },
+  journey_signup: { he:'הצטרפתם', en:'Signed up', fr:'Inscription', ar:'الانضمام', ru:'Регистрация' },
+  journey_subscribed: { he:'המנוי הופעל', en:'Subscription active', fr:'Abonnement actif', ar:'الاشتراك مفعّل', ru:'Подписка активна' },
+  journey_first_connection: { he:'החיבור הראשון', en:'First integration', fr:'Première intégration', ar:'أول ربط', ru:'Первая интеграция' },
+  journey_all_connected: { he:'הכל מחובר', en:'Everything connected', fr:'Tout est connecté', ar:'كل شيء متصل', ru:'Всё подключено' },
+  journey_website: { he:'האתר באוויר', en:'Website live', fr:'Site en ligne', ar:'الموقع مباشر', ru:'Сайт запущен' },
+  journey_first_campaign: { he:'הקמפיין הראשון', en:'First campaign', fr:'Première campagne', ar:'أول حملة', ru:'Первая кампания' },
+  journey_first_content: { he:'התוכן הראשון', en:'First content', fr:'Premier contenu', ar:'أول محتوى', ru:'Первый контент' },
+  journey_first_lead: { he:'הליד הראשון', en:'First lead', fr:'Premier prospect', ar:'أول عميل محتمل', ru:'Первый лид' },
+  journey_first_sale: { he:'המכירה הראשונה', en:'First sale', fr:'Première vente', ar:'أول عملية بيع', ru:'Первая продажа' },
 
   // ── landing pages ──
   nav_landing: { he:'דפי נחיתה', en:'Landing pages', fr:'Pages de destination', ar:'صفحات هبوط', ru:'Лендинги' },
@@ -2005,12 +2073,23 @@ async function loadDashboard() {
     chatData.dashReady = true;
     maybeShowGreeting();
 
-    // First visit → auto-run the tour (once per page load — a language-switch
-    // re-render must not pop it again)
-    if (!d.tour_completed && !window._tourAutoOpened) {
-      window._tourAutoOpened = true;
-      openWelcome(true);
+    // First visit → the INTERVIEW, not the static tour. The tour explained and
+    // learned nothing; this asks (competitors above all) while still answering
+    // whatever they want to know. The "?" button still replays the tour.
+    // Once per page load — a language-switch re-render must not restart it.
+    if (!d.tour_completed && !window._firstRunStarted) {
+      window._firstRunStarted = true;
+      startInterview();
+    } else if (d.tour_completed && !window._loginMomentDone) {
+      // Returning client → a proactive, LLM-written greeting about what's
+      // actually true today. Server-side dedup means once per day, not per
+      // page load; the flag just avoids a redundant round trip.
+      window._loginMomentDone = true;
+      runLoginMoment();
     }
+
+    // Progress timeline (Part 3) — derived, not separately tracked
+    loadJourney();
   } catch (e) {
     console.error('dashboard load failed', e);
   }
@@ -2991,6 +3070,93 @@ async function downloadWindowConversation(personaId) {
   URL.revokeObjectURL(url);
 }
 
+// ─── proactive login moment ──────────────────────────────────────────────────
+// The message is written server-side by the engagement engine from facts it
+// verified; the client sees it in the chat they already use. An empty message
+// is normal and frequent — it means nothing was worth saying today.
+async function runLoginMoment() {
+  try {
+    const res = await fetch('/api/client/login-moment', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: uallakI18n.current() }),
+    });
+    const body = await res.json();
+    if (!body.success || !body.data.sent || !body.data.message) return;
+    // Surface it where the client is looking: a chat badge, not a popup that
+    // interrupts whatever they opened the dashboard to do.
+    const launcher = document.getElementById('chatLauncher');
+    if (launcher) launcher.classList.add('has-unread');
+    const w = CHAT_WINDOWS['general'];
+    if (w) appendMsg(w.msgsEl, body.data.message, 'bot');
+  } catch (e) {
+    console.error('login moment failed', e);   // never block the dashboard
+  }
+}
+
+// ─── progress journey (Part 3) ───────────────────────────────────────────────
+async function loadJourney() {
+  const track = document.getElementById('journeyTrack');
+  if (!track) return;
+  try {
+    const res = await fetch('/api/client/journey', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) throw new Error('unavailable');
+    const d = body.data;
+    document.getElementById('journeyProgressText').textContent =
+      uallakI18n.t('journey_progress', { done: d.done_count, total: d.total_count });
+    const pct = d.total_count ? Math.round((d.done_count / d.total_count) * 100) : 0;
+    document.getElementById('journeyBarFill').style.width = pct + '%';
+    track.innerHTML = d.milestones.map(m => `
+      <div class="jn-step ${m.done ? 'done' : ''}">
+        <div class="jn-dot"></div>
+        <div class="jn-label">${esc(uallakI18n.t(m.key))}</div>
+        <div class="jn-when">${m.done && m.at ? esc(fmtDate(m.at)) : ''}</div>
+      </div>`).join('');
+    document.getElementById('journeyPanel').style.display = 'block';
+  } catch (e) {
+    // Non-fatal: the panel simply stays hidden
+    document.getElementById('journeyPanel').style.display = 'none';
+  }
+}
+
+// ─── first-login interview ───────────────────────────────────────────────────
+// Runs INSIDE the existing general chat window rather than on a screen of its
+// own: its turns are ordinary dashboard_chat messages, so when the interview
+// ends the client's first conversation is simply the top of their chat history
+// instead of something that vanished. The static tour is still one click away
+// on the "?" button — it just isn't what happens first any more.
+let interviewMode = false;
+
+async function interviewTurn(text) {
+  const w = CHAT_WINDOWS['general'];
+  if (!w) return;
+  const typing = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+  try {
+    const res = await fetch('/api/client/interview', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text || '', language: uallakI18n.current() }),
+    });
+    const body = await res.json();
+    typing.remove();
+    if (!body.success) { interviewMode = false; return; }
+    if (body.data.reply) appendMsg(w.msgsEl, body.data.reply, 'bot');
+    // Once it's done, later messages go back to the normal support chat
+    if (body.data.complete) interviewMode = false;
+  } catch (e) {
+    console.error('interview turn failed', e);
+    typing.remove();
+    interviewMode = false;   // never trap the client in a broken interview
+  }
+}
+
+async function startInterview() {
+  interviewMode = true;
+  openAgentWindow('general');
+  await interviewTurn('');   // opening turn — nothing said yet
+}
+
 async function sendInWindow(personaId) {
   const w = CHAT_WINDOWS[personaId];
   if (!w) return;
@@ -2998,6 +3164,8 @@ async function sendInWindow(personaId) {
   if (!text) return;
   appendMsg(w.msgsEl, text, 'user');
   w.inputEl.value = '';
+  // While the interview is running, the general window's sends are its turns
+  if (interviewMode && personaId === 'general') { await interviewTurn(text); return; }
   // Typing indicator - upgrade proposals and web searches can take a while,
   // the client should see the chat is working, not frozen
   const typing = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');

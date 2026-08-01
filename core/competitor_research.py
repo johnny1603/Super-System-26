@@ -87,6 +87,9 @@ def _db():
 
 _COMMON_RULES = """
 Standing rules (all of them absolute):
+- START from `competitors_named_by_client` when it is present: those are competitors the
+  business OWNER named, with links, and they outrank anything you would find by searching
+  the niche cold. Research those specifically before looking wider.
 - Run at most 3 focused searches, then answer from what you found plus your own knowledge.
 - NEVER invent numbers. No fabricated ad spend, traffic, follower counts, conversion rates
   or "trending right now" claims. Describe what you can actually observe, qualitatively.
@@ -186,6 +189,25 @@ def _market_reality(client_id: int) -> str:
         return ""
 
 
+def _client_supplied_competitors(client_id: int) -> list:
+    """Competitors the CLIENT named, from the first-login interview
+    (agents/interview_agent.py). The best input of the three sources: the
+    sales chat asked while selling them, the SEO tool infers from keyword
+    overlap, but this is the business owner naming who they actually lose
+    deals to — with links.
+
+    Read through this module ON PURPOSE, so the interview never became its own
+    silo: every consuming agent already asks competitor_research for market
+    context, so adding a source here reaches all of them at once."""
+    try:
+        from agents.interview_agent import captured_facts
+        facts = captured_facts(client_id)
+        return [c for c in (facts.get("competitors") or []) if c.get("name") or c.get("url")][:10]
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client-supplied competitor lookup failed for {client_id}: {e}")
+        return []
+
+
 def _tool_competitor_domains(client_id: int) -> list:
     """Real competitor domains from the client's PAID SEO tool — read from
     seo_agent's existing cache, never by calling the tool. Costs nothing and
@@ -221,6 +243,7 @@ def _cached(client_id: int, lens: str) -> dict:
         if details.get("lens") == lens and details.get("summary"):
             return {"success": True, "lens": lens, "summary": details["summary"],
                     "tool_competitors": details.get("tool_competitors") or [],
+                    "client_named_competitors": details.get("client_named_competitors") or [],
                     "researched_at": row.get("created_at", ""), "cached": True}
     return {}
 
@@ -252,12 +275,16 @@ def research(client_id: int, lens: str, extra_context: dict = None,
     try:
         brief = _client_brief(client_id)
         tool_competitors = _tool_competitor_domains(client_id)
+        client_named = _client_supplied_competitors(client_id)
         payload = {
             "business": brief,
             "market_reality_from_proposal": _market_reality(client_id),
             # Named by the client in the sales chat / found by their paid SEO
             # tool — the prompt is told to start from these before searching wide
             "known_competitor_domains": tool_competitors,
+            # Named by the CLIENT in the first-login interview, with links —
+            # the strongest of the three sources (see _client_supplied_competitors)
+            "competitors_named_by_client": client_named,
         }
         if extra_context:
             payload["additional_context"] = extra_context
@@ -276,7 +303,8 @@ def research(client_id: int, lens: str, extra_context: dict = None,
         return {"success": False, "lens": lens, "error": str(e)}
 
     result = {"success": True, "lens": lens, "summary": summary,
-              "tool_competitors": tool_competitors, "cached": False}
+              "tool_competitors": tool_competitors,
+              "client_named_competitors": client_named, "cached": False}
     try:
         _db().table("client_activity").insert({
             "client_id": client_id,
@@ -284,7 +312,9 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             "action_type": ACTIVITY_TYPE,
             "details": {"lens": lens, "summary": summary,
                         "tool_competitors": tool_competitors,
-                        "grounded_in_tool_data": bool(tool_competitors)},
+                        "client_named_competitors": client_named,
+                        "grounded_in_tool_data": bool(tool_competitors),
+                        "grounded_in_client_input": bool(client_named)},
             "result": {},
         }).execute()
     except Exception as e:

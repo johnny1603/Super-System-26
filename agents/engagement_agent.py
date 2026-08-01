@@ -1,5 +1,5 @@
 """uallak's proactive engagement engine — the shift from "answer when asked"
-to "drive the relationship". Three jobs:
+to "drive the relationship". Four jobs:
 
 1. WEEKLY suggestions (run_weekly_engagement, Cloud Scheduler → /api/engagement/weekly):
    one LLM call per active client that combines three proactive angles —
@@ -22,6 +22,18 @@ to "drive the relationship". Three jobs:
    can't wait), used by the ads health scans when a campaign gets
    auto-paused. Falls back to a dashboard-chat message when WhatsApp is
    unconfigured/failed, and alerts the team on real send failures.
+
+4. LOGIN MOMENTS (run_login_moment, called when the client opens the
+   dashboard): the only REACTIVE job here — the other three are cron. Code
+   evaluates the triggers (time of day, pending items on the client's side,
+   what we delivered since last week, new leads, the weekly satisfaction ask)
+   and only if something is genuinely worth saying does ONE LLM call write
+   ONE message about it. Deduped to once per client per day. Deliberately NOT
+   templated: this is a daily surface, and the f-string pushes elsewhere in
+   this file would read as dead within a week here. Also owns the platform
+   FEEDBACK store (store_feedback/list_feedback) — the answer to the weekly
+   ask, and the one thing in this file addressed to us rather than to the
+   client's market.
 
 Suggestion lifecycle: pending → approved/rejected by the client in the
 dashboard (see /api/client/suggestions endpoints). An approval alerts the
@@ -364,6 +376,244 @@ def notify_client_urgent(client_id: int, message_he: str) -> dict:
     log_activity(client_id, AGENT_NAME, "urgent_notification",
                  {"channel": "whatsapp", "sent": sent}, {"message": message_he[:200]})
     return {"success": True, "whatsapp_sent": sent}
+
+
+# ─── Login moments: proactive, LLM-WRITTEN, never templated (2026-08-02) ─────
+# The fourth job. The three above are all SCHEDULED (cron hits an endpoint);
+# this one is REACTIVE — it fires when the client actually shows up, which is
+# the only moment we know they are reading.
+#
+# THE DESIGN RULE: triggers are evaluated in CODE (cheap DB reads, hard dedup),
+# and only if something is genuinely worth saying does ONE LLM call write ONE
+# message covering all of it. That split is deliberate:
+# - Code decides WHETHER to speak, so an LLM can never invent a reason to.
+# - The LLM decides HOW, so the message is specific to what actually happened
+#   and does not become the same four sentences every morning. The existing
+#   chat pushes in this file are f-string templates; those are one-off
+#   notifications, this is a daily surface, and a daily template is how a
+#   product starts to feel dead.
+#
+# Cost: at most one call per client per day (greeting dedup gates the whole
+# thing), and zero calls when nothing is worth saying.
+
+LOGIN_MOMENT_ACTION = "login_moment_sent"
+FEEDBACK_ASK_ACTION = "feedback_asked"
+FEEDBACK_ASK_INTERVAL_DAYS = 7
+
+# Israel is the client base; the greeting must match THEIR clock, not the
+# container's UTC. No pytz/zoneinfo dependency needed for a fixed offset
+# question this coarse — and DST slippage of an hour cannot move "morning"
+# into "evening".
+ISRAEL_UTC_OFFSET_HOURS = 3
+
+
+def _israel_hour() -> int:
+    return (datetime.now(timezone.utc) + timedelta(hours=ISRAEL_UTC_OFFSET_HOURS)).hour
+
+
+def _part_of_day() -> str:
+    hour = _israel_hour()
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def _acted_within(client_id: int, action_type: str, days: int) -> bool:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = (_db().table("client_activity").select("id")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", action_type)
+            .gte("created_at", cutoff).limit(1).execute().data)
+    return bool(rows)
+
+
+def _collect_login_facts(client_id: int) -> dict:
+    """What is TRUE right now and worth a mention. Pure reads, no LLM, no
+    side effects — and every value here is something a row proves."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    facts = {"part_of_day": _part_of_day()}
+
+    # (2.2) Their side of the work: approved homework still open, and anything
+    # still pending a decision. "Pending" is what we ask about directly.
+    pending = [s for s in get_suggestions(client_id, status="pending", limit=10)]
+    facts["pending_suggestions"] = [
+        {"title": s.get("title", ""), "kind": s.get("kind", "")} for s in pending[:4]]
+    approved_homework = (_db().table("client_suggestions")
+                         .select("title,decided_at,kind")
+                         .eq("client_id", client_id).eq("kind", "homework")
+                         .eq("status", "approved")
+                         .order("decided_at", desc=True).limit(3).execute().data or [])
+    facts["homework_in_progress"] = [h.get("title", "") for h in approved_homework]
+
+    # (2.6) Things WE delivered since they last looked — praise has to name the
+    # actual item or it is noise.
+    delivered = (_db().table("client_activity")
+                 .select("agent_name,action_type,details,created_at")
+                 .eq("client_id", client_id)
+                 .in_("action_type", ["media_image_created", "media_video_created",
+                                      "seo_article_generated", "landing_page_published",
+                                      "media_plan_proposed"])
+                 .gte("created_at", since)
+                 .order("created_at", desc=True).limit(5).execute().data or [])
+    facts["recently_delivered"] = [
+        {"what": d.get("action_type", ""),
+         "detail": (d.get("details") or {}).get("title")
+                   or (d.get("details") or {}).get("topic")
+                   or (d.get("details") or {}).get("brief", "")[:80]}
+        for d in delivered]
+
+    # (2.3) New leads since a week ago, with whatever attribution we honestly
+    # have. NOTE: client_leads.source is a CHANNEL (form/phone/whatsapp), not
+    # organic-vs-paid — the utm/gclid capture that would make that distinction
+    # real is not built yet, so the prompt is told not to claim a traffic
+    # source. Congratulating on the lead itself is still true.
+    leads = (_db().table("client_leads").select("name,source,source_detail,status,created_at")
+             .eq("client_id", client_id).gte("created_at", since)
+             .order("created_at", desc=True).limit(10).execute().data or [])
+    facts["new_leads_this_week"] = len(leads)
+    facts["new_won_this_week"] = sum(1 for row in leads if row.get("status") == "won")
+    facts["lead_channels"] = sorted({row.get("source", "") for row in leads if row.get("source")})
+
+    # (2.4) Weekly satisfaction check-in, at most once a week
+    facts["ask_for_feedback"] = not _acted_within(client_id, FEEDBACK_ASK_ACTION,
+                                                  FEEDBACK_ASK_INTERVAL_DAYS)
+    return facts
+
+
+LOGIN_MOMENT_SYSTEM = """You are the uallak team greeting an existing client who has just
+opened their dashboard. Write ONE short message that feels like a person who actually looked
+at their account before speaking — not a daily template.
+
+You receive FACTS about what is genuinely true right now. Rules about them:
+- Mention only what is in the facts. Never invent results, numbers, traffic sources, or
+  work that isn't listed. If a fact list is empty, it did not happen.
+- Greet for the given part_of_day, naturally — not "Good morning!" as a header.
+- If `pending_suggestions` is non-empty, ASK DIRECTLY whether they've managed to prepare or
+  decide on it, naming the specific item. Don't just list it.
+- If `recently_delivered` is non-empty, acknowledge the SPECIFIC thing by name. "Well done"
+  with nothing attached is worse than saying nothing.
+- If `new_leads_this_week` > 0, be pleased about it and say the number. You may name the
+  CHANNEL (`lead_channels`) but you must NOT say whether traffic was organic or paid — we
+  do not measure that yet, and guessing would be a lie about their marketing.
+- If `ask_for_feedback` is true, close by asking — warmly, once — whether they're happy with
+  the platform so far and whether there's anything to pass to the team that builds it.
+- If nothing above applies, a short warm greeting that offers help is the whole message.
+
+TONE: one human on the client's team, mid-relationship. Never an AI or a bot. Never
+enthusiastic beyond what the facts support.
+
+LANGUAGE: {language_rule}
+
+HARD LIMITS: max 4 sentences total. At most ONE question. No bullet lists. No emoji spam —
+one, at most, and only if it fits.
+
+Return JSON only:
+{{"message": "the message", "asked_for_feedback": false}}"""
+
+
+def run_login_moment(client_id: int, language: str = "he") -> dict:
+    """Called when a client opens their dashboard. Returns
+    {"message": str, "sent": bool} — empty message means nothing was worth
+    saying, which is a normal and frequent outcome.
+
+    Deduped to ONCE PER DAY per client: a client who reloads the dashboard six
+    times gets greeted once. That dedup is also what caps the LLM spend.
+    """
+    if _acted_within(client_id, LOGIN_MOMENT_ACTION, 1):
+        return {"success": True, "message": "", "sent": False, "reason": "already_greeted_today"}
+
+    try:
+        facts = _collect_login_facts(client_id)
+    except Exception as e:
+        # A greeting is a nicety; never let it break a dashboard load.
+        print(f"[{AGENT_NAME}] login facts failed for client {client_id}: {e}")
+        return {"success": False, "message": "", "sent": False}
+
+    from agents.client_agent import get_client, log_activity, log_communication
+    from agents.onboarding_agent import LANGUAGE_RULE
+
+    client = get_client(client_id) or {}
+    payload = {"client_name": client.get("name", ""), "ui_language": language, **facts}
+    try:
+        result = timed_step(
+            AGENT_NAME, "login_moment_llm",
+            lambda: safe_claude_json_call(
+                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE),
+                json.dumps(payload, ensure_ascii=False),
+                max_tokens=500, client_id=client_id, cost_category="engagement_login"))
+    except Exception as e:  # includes ClaudeJSONError
+        print(f"[{AGENT_NAME}] login moment generation failed for client {client_id}: {e}")
+        return {"success": False, "message": "", "sent": False}
+
+    message = (result.get("message") or "").strip()
+    if not message:
+        return {"success": True, "message": "", "sent": False}
+
+    log_communication(client_id, "outbound", "dashboard_chat", message)
+    log_activity(client_id, AGENT_NAME, LOGIN_MOMENT_ACTION,
+                 {"part_of_day": facts["part_of_day"],
+                  "pending": len(facts["pending_suggestions"]),
+                  "delivered": len(facts["recently_delivered"]),
+                  "new_leads": facts["new_leads_this_week"]}, {})
+    if result.get("asked_for_feedback") and facts["ask_for_feedback"]:
+        # Recorded separately so the weekly cadence is driven by when we
+        # actually ASKED, not by when we happened to greet.
+        log_activity(client_id, AGENT_NAME, FEEDBACK_ASK_ACTION, {}, {})
+    log_step(AGENT_NAME, "login_moment",
+             f"client {client_id}: greeted ({facts['part_of_day']})")
+    return {"success": True, "message": message, "sent": True,
+            "asked_for_feedback": bool(result.get("asked_for_feedback"))}
+
+
+# ─── Client feedback on uallak itself (the weekly ask's answer) ──────────────
+
+def store_feedback(client_id: int, message: str, rating=None,
+                   source: str = "weekly_checkin") -> dict:
+    """Persist what the client said about the PLATFORM (not their business).
+    Johnny reads these; see migrations/2026-08-02-client-feedback.sql for why
+    this is the one thing here that earns its own table."""
+    text = (message or "").strip()[:4000]
+    if not text and rating is None:
+        return {"success": False, "error": "empty feedback"}
+    try:
+        row = _db().table("client_feedback").insert({
+            "client_id": client_id,
+            "rating": int(rating) if str(rating).strip().isdigit() else None,
+            "message": text,
+            "source": source,
+        }).execute()
+    except Exception as e:
+        # Before the migration runs this is the expected path — the ASK still
+        # happened, so losing the answer silently would be the worst outcome.
+        agent_alert(AGENT_NAME, [f"client {client_id}: could not STORE platform feedback "
+                                 f"({e}). The client's words were: {text[:400]}"])
+        return {"success": False, "error": str(e)}
+
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "feedback_received",
+                 {"rating": rating, "chars": len(text)}, {})
+    agent_alert(AGENT_NAME, [f"client {client_id} left platform feedback"
+                             f"{f' (rating {rating}/5)' if rating else ''}: {text[:300]}"])
+    return {"success": True, "id": (row.data or [{}])[0].get("id")}
+
+
+def list_feedback(limit: int = 100, only_unreviewed: bool = False) -> list:
+    """Johnny's review list, newest first."""
+    query = (_db().table("client_feedback").select("*")
+             .order("created_at", desc=True).limit(limit))
+    if only_unreviewed:
+        query = query.eq("reviewed", False)
+    return query.execute().data or []
+
+
+def mark_feedback_reviewed(feedback_id: int) -> dict:
+    result = (_db().table("client_feedback").update({"reviewed": True})
+              .eq("id", feedback_id).execute())
+    return {"success": bool(result.data)}
 
 
 PAYMENT_FAILURE_MESSAGE_HE = (
