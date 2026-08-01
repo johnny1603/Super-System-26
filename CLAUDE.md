@@ -56,7 +56,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/client_leads.py` — the leads a CLIENT receives (`client_leads` table), fed by the
   PUBLIC signed-token endpoint `POST /api/leads/capture/{token}` that a form on the client's
   own site posts to. Read the module docstring before touching it: this is NOT
-  `core/lead_tracking.py`'s `leads`. See `HANDOFF-client-dashboard-nav.md`.
+  `core/lead_tracking.py`'s `leads`. On sites WE build, that form is injected into the
+  contact page automatically at provision time (`website_agent.install_lead_capture_form`,
+  see the website skill) — the client never handles the token or an embed snippet; the
+  manual snippet is now only a labelled fallback for sites we don't manage.
+  See `HANDOFF-client-dashboard-nav.md` and `HANDOFF-lead-capture-autowire.md`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an

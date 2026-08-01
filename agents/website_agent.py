@@ -20,6 +20,12 @@ access_token='username:app_password' (WP usernames cannot contain ':').
 Costs: everything this agent does is free (core WP REST API + free plugins
 from wordpress.org). Anything with a price tag — hosting, domain, paid
 plugin/theme licenses — is deliberately NOT reachable from here.
+
+Lead capture: every site this agent BUILDS gets its contact form wired to the
+client's own capture endpoint automatically at provision time (see the
+"Lead capture" section below) — the client never handles a token or an embed
+snippet. That is the only supported install path for a site of ours; the
+manual snippet survives only for sites we don't manage.
 """
 import os
 import re
@@ -520,6 +526,19 @@ def run_standards_check(client_id: int, auto_install_plugins: bool = True) -> di
     except Exception as e:
         report["issues"].append(f"tracking-tag check failed: {e}")
 
+    # 6. Lead capture — REPORT-ONLY here, same reasoning as the tracking tags
+    # above but for a different reason: installing edits a PAGE's content, and
+    # a standing scan that rewrites pages on a site the client connected
+    # themselves is too much power for a check. provision_site does the
+    # installing (sites we built); this only ever tells the truth about it.
+    try:
+        capture = get_lead_capture_status(client_id)
+        report["lead_capture"] = capture
+        for issue in capture.get("issues", []):
+            report["issues"].append(f"lead capture: {issue}")
+    except Exception as e:
+        report["issues"].append(f"lead-capture check failed: {e}")
+
     _log_activity(client_id, "website_standards_check",
                   {"issues": report["issues"], "fixed": report["fixed"]})
     if report["issues"]:
@@ -892,6 +911,287 @@ def install_tracking_tags(client_id: int, gtm_container_id: str = "",
             "widget_id": widget.get("id"), "sidebar": sidebars[0]["id"]}
 
 
+# ─── Lead capture: wiring the client's contact form to client_leads ──────────
+# Why this exists: `POST /api/leads/capture/{token}` (core/client_leads.py) was
+# built with a paste-it-yourself HTML snippet as its only install path, which
+# is not a real install path for a non-technical SMB owner — it left the
+# client's leads section permanently empty. Since we BUILD the site, the form
+# is ours to wire; the client never sees the token or the markup.
+#
+# Mechanism decision (checked, not assumed): this codebase installs NO contact
+# form plugin — nothing anywhere creates, edits or reads a form, and
+# run_standards_check only ever asserted that a page matching REQUIRED_PAGES
+# ["contact"] EXISTS. So there is no plugin webhook to hook into; a plugin
+# would also cost one of MAX_ACTIVE_PLUGINS and a wordpress.org dependency.
+# The capture endpoint was deliberately written to accept a classic
+# urlencoded `<form method="post">` (it hand-parses the body precisely so no
+# JS and no python-multipart are needed), so a plain HTML form injected into
+# the contact page's content via the Phase-1 REST path is the smallest thing
+# that works: zero plugins, zero JS, zero cost, and GTM's built-in Form
+# Submission trigger (see configure_lead_conversion) fires on it — which an
+# AJAX-submitting form builder would NOT do.
+
+LEAD_FORM_START = "<!-- uallak-lead-capture:start -->"
+LEAD_FORM_END = "<!-- uallak-lead-capture:end -->"
+LEAD_CAPTURE_PATH = "/api/leads/capture/"
+# Marker-delimited so a re-install REPLACES the block instead of appending a
+# second form (re-provision, token change, or a repeated populate run).
+_LEAD_FORM_BLOCK_RE = re.compile(
+    re.escape(LEAD_FORM_START) + r".*?" + re.escape(LEAD_FORM_END),
+    re.S)
+
+THANKS_PAGE_SLUG = "toda"
+THANKS_PAGE_TITLE = "תודה"
+
+
+def _capture_url(client_id: int) -> str:
+    """This client's OWN capture endpoint. Derived per client from the HMAC
+    token (core/session.create_lead_capture_token) on every call — there is no
+    stored, shared or hardcoded token anywhere, and a token minted for client A
+    verifies as nothing but client A."""
+    from core.session import create_lead_capture_token
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    return f"{base}{LEAD_CAPTURE_PATH}{create_lead_capture_token(client_id)}"
+
+
+def _lead_form_html(capture_url: str, thanks_url: str = "") -> str:
+    """The injected block. Written to pass content_quality_issues unaided:
+    starts at <h2>, every field carries a <label for=...>, no <img>, and the
+    hidden/submit controls the gate skips are the only unlabelled ones."""
+    redirect_field = (f'\n<input type="hidden" name="redirect" value="{thanks_url}">'
+                      if thanks_url else "")
+    return (
+        f'{LEAD_FORM_START}\n'
+        f'<div class="uallak-lead-capture">\n'
+        f'<h2>השאירו פרטים ונחזור אליכם</h2>\n'
+        f'<form action="{capture_url}" method="post">\n'
+        f'<p><label for="uallak-lead-name">שם</label><br>\n'
+        f'<input id="uallak-lead-name" name="name" type="text" autocomplete="name" required></p>\n'
+        f'<p><label for="uallak-lead-phone">טלפון</label><br>\n'
+        f'<input id="uallak-lead-phone" name="phone" type="tel" autocomplete="tel"></p>\n'
+        f'<p><label for="uallak-lead-email">אימייל</label><br>\n'
+        f'<input id="uallak-lead-email" name="email" type="email" autocomplete="email"></p>\n'
+        f'<p><label for="uallak-lead-message">במה נוכל לעזור?</label><br>\n'
+        f'<textarea id="uallak-lead-message" name="message" rows="4"></textarea></p>'
+        f'{redirect_field}\n'
+        f'<p><button type="submit">שליחה</button></p>\n'
+        f'</form>\n</div>\n'
+        f'{LEAD_FORM_END}')
+
+
+def _find_contact_page(pages: list) -> dict:
+    """The page the form belongs on, matched with REQUIRED_PAGES["contact"] —
+    the same keyword list the standards check already uses, so 'which page is
+    the contact page' has one definition in this file, not two. Published
+    pages win over drafts (a draft is not where a customer lands); newest
+    modified breaks a remaining tie."""
+    keywords = REQUIRED_PAGES["contact"]
+    matches = [p for p in pages
+               if any(k.lower() in f"{(p.get('title') or {}).get('rendered', '')} "
+                                   f"{p.get('slug', '')}".lower() for k in keywords)]
+    if not matches:
+        return {}
+    matches.sort(key=lambda p: (p.get("status") == "publish", p.get("modified") or ""),
+                 reverse=True)
+    return matches[0]
+
+
+def _ensure_thanks_page(client_id: int, site_url: str, username: str,
+                        app_password: str) -> str:
+    """A real thank-you page on the client's OWN site, returned as a URL for
+    the form's `redirect` field. Not a nicety: a classic form post navigates
+    the browser to whatever the endpoint returns, so without this a customer
+    who fills in the form lands on `{"success":true,"stored":true}`. The
+    capture endpoint only honours a redirect that is https AND on the same
+    host as the referer (open-redirect guard), which a page on this site is.
+
+    Idempotent — an existing page with our slug is reused, never duplicated."""
+    existing = wp.list_content(site_url, username, app_password, "page", limit=50)
+    for page in existing:
+        if page.get("slug") == THANKS_PAGE_SLUG and page.get("status") == "publish":
+            return page.get("link") or ""
+    created = wp.create_content(site_url, username, app_password, "page", {
+        "title": THANKS_PAGE_TITLE,
+        "slug": THANKS_PAGE_SLUG,
+        "status": "publish",  # a redirect target must be live, not a draft
+        "excerpt": "תודה על פנייתכם — קיבלנו את הפרטים ונחזור אליכם בהקדם.",
+        "content": ("<h2>תודה על פנייתכם!</h2>\n"
+                    "<p>קיבלנו את הפרטים שלכם ונחזור אליכם בהקדם האפשרי.</p>"),
+    })
+    _log_activity(client_id, "website_content_created",
+                  {"kind": "page", "title": THANKS_PAGE_TITLE, "status": "publish",
+                   "purpose": "lead_capture_thanks"},
+                  {"id": created.get("id"), "link": created.get("link", "")})
+    return created.get("link") or ""
+
+
+def install_lead_capture_form(client_id: int, page_id: int = 0) -> dict:
+    """Wire the client's contact page to THEIR capture endpoint, automatically.
+    Called on every site we provision (see provision_site / populate_site) and
+    available to an admin for a site the client connected themselves.
+
+    Idempotent: the block is marker-delimited, so a second run replaces it
+    (picking up a rotated token) rather than adding a second form.
+
+    VERIFIED, never assumed: `<form>` survives wp_kses only for a user with
+    `unfiltered_html` (single-site admins — which our provisioned sites use —
+    yes; an Editor on a client's own site, no), so the page is re-fetched
+    anonymously afterwards and the result reports what a visitor actually
+    gets. A draft contact page has no public URL and reports verified=None."""
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"success": False, "code": "ERR_NO_SITE",
+                "errors": ["client has no connected website — the manual snippet "
+                           "is the only path for a site we don't manage"]}
+    site_url, username, app_password = _creds(connection)
+
+    if not site_url.lower().startswith("https://"):
+        # The endpoint's open-redirect guard only accepts an https target, so
+        # on a plain-http site the visitor would land on raw JSON after
+        # submitting. Refusing beats shipping that experience to a customer.
+        return {"success": False, "code": "ERR_SITE_NOT_HTTPS",
+                "errors": [f"{site_url} is not served over https — the post-submit "
+                           "redirect back to the site cannot be used, so a customer "
+                           "would land on a raw JSON response. Fix SSL first."]}
+
+    log_step(AGENT_NAME, "install_lead_capture_form", f"client {client_id}: {site_url}")
+    try:
+        pages = wp.list_content(site_url, username, app_password, "page", limit=50)
+        if page_id:
+            page = next((p for p in pages if p.get("id") == page_id), {})
+            if not page:
+                return {"success": False, "code": "ERR_PAGE_NOT_FOUND",
+                        "errors": [f"page {page_id} not found on {site_url}"]}
+        else:
+            page = _find_contact_page(pages)
+        if not page:
+            # Deliberately NOT auto-created: run_standards_check's rule is that
+            # missing pages are reported, never conjured empty.
+            return {"success": False, "code": "ERR_NO_CONTACT_PAGE",
+                    "errors": [f"no contact page found on {site_url} (looked for "
+                               f"{', '.join(REQUIRED_PAGES['contact'][:3])}) — create it "
+                               "first, then re-run"]}
+
+        current = wp.get_content(site_url, username, app_password, "page", page["id"])
+        body = (current.get("content") or {}).get("raw", "") or ""
+
+        # The standing quality gate applies to the WHOLE page body on update.
+        # Check the pre-existing half separately so a template/page that was
+        # already non-compliant reports as ITS OWN problem instead of surfacing
+        # as a confusing rejection of the form we just built.
+        pre_existing = content_quality_issues(_LEAD_FORM_BLOCK_RE.sub("", body))
+        if pre_existing:
+            return {"success": False, "code": "ERR_PAGE_QUALITY",
+                    "errors": [f"the contact page's existing HTML violates the standing "
+                               f"quality rules, so it cannot be updated: "
+                               f"{'; '.join(pre_existing)}"]}
+
+        thanks_url = _ensure_thanks_page(client_id, site_url, username, app_password)
+        capture_url = _capture_url(client_id)
+        block = _lead_form_html(capture_url, thanks_url)
+        merged = (_LEAD_FORM_BLOCK_RE.sub(lambda _: block, body)
+                  if _LEAD_FORM_BLOCK_RE.search(body) else f"{body}\n\n{block}")
+    except wp.WordPressError as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: lead-form install on {site_url} "
+                                 f"failed while reading the site: {e}"])
+        return {"success": False, "errors": [str(e)]}
+
+    # Through the gated agent-level update, not wp.update_content directly —
+    # the quality rules are machine-enforced on every write and this is a write.
+    updated = update_content(client_id, "page", page["id"], {"content": merged})
+    if not updated.get("success"):
+        return {"success": False, "code": "ERR_UPDATE_FAILED",
+                "errors": updated.get("errors", ["update failed"])}
+
+    verified, link = None, updated.get("link") or page.get("link") or ""
+    if page.get("status") == "publish" and link:
+        try:
+            # The client's FULL url, not just the path — the token carries no
+            # characters HTML-escaping would touch, so an exact match is safe
+            # and proves it is THIS client's form that rendered.
+            verified = capture_url in wp.fetch_public_html(link)
+        except Exception as e:
+            print(f"[website_agent] lead-form verify fetch failed for {link}: {e}")
+            verified = False
+
+    _log_activity(client_id, "website_lead_form_installed",
+                  {"page_id": page["id"], "page_link": link,
+                   "page_status": page.get("status"), "thanks_url": thanks_url,
+                   "verified_on_page": verified})
+    if verified is False:
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: lead-capture form saved to {link} but the form does "
+            "NOT render for a visitor — likely <form> stripped by wp_kses (the WP user "
+            "lacks unfiltered_html) or the theme doesn't output page content as-is. "
+            "The client's leads section will stay empty until this is fixed manually."])
+    log_step(AGENT_NAME, "install_lead_capture_form",
+             f"client {client_id}: page {page['id']} wired (verified={verified})")
+    return {"success": True, "page_id": page["id"], "page_link": link,
+            "page_status": page.get("status"), "thanks_url": thanks_url,
+            "verified_on_page": verified}
+
+
+def get_lead_capture_status(client_id: int) -> dict:
+    """LIVE audit: is this client's contact page actually posting to THEIR
+    capture endpoint right now? Fetches the page anonymously, so it reflects
+    the visitor's reality rather than our activity log. Used by the admin
+    endpoint and folded into run_standards_check as report-only."""
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"connected": False, "mode": "manual", "installed": False,
+                "issues": ["no website connected — leads can only arrive via the "
+                           "manual snippet on a site we don't manage"]}
+    site_url, username, app_password = _creds(connection)
+    status = {"connected": True, "site_url": site_url, "installed": False,
+              "mode": "auto" if is_provisioned_by_us(client_id) else "connected",
+              "issues": []}
+    try:
+        page = _find_contact_page(
+            wp.list_content(site_url, username, app_password, "page", limit=50))
+        if not page:
+            status["issues"].append("no contact page found — nothing to wire a form onto")
+            return status
+        status["page_id"], status["page_link"] = page["id"], page.get("link") or ""
+        if page.get("status") != "publish":
+            status["issues"].append(f"contact page {page['id']} is a {page.get('status')}, "
+                                    "not published — a visitor cannot reach the form")
+            return status
+        html = wp.fetch_public_html(status["page_link"])
+        # Match this client's OWN url, not just the path: a form left over from
+        # another client's token would capture into the wrong account, which is
+        # worth catching loudly rather than reporting as "installed".
+        if _capture_url(client_id) in html:
+            status["installed"] = True
+        elif LEAD_CAPTURE_PATH in html:
+            status["issues"].append("the contact page posts to a capture URL that is NOT "
+                                    "this client's — leads are landing in another account")
+        else:
+            status["issues"].append("contact page has no uallak capture form — leads from "
+                                    "it are not reaching the dashboard")
+    except Exception as e:
+        status["issues"].append(f"lead-capture check failed: {e}")
+    return status
+
+
+def lead_capture_summary(client_id: int) -> dict:
+    """What the CLIENT's own dashboard shows, read from the activity log
+    rather than the live site — this runs on a dashboard page load, and two
+    HTTP round trips to the client's site is the wrong price for rendering an
+    info panel. get_lead_capture_status() is the live-truth version."""
+    row = (_db().table("client_activity").select("details,created_at")
+           .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+           .eq("action_type", "website_lead_form_installed")
+           .order("created_at", desc=True).limit(1).execute().data or [])
+    details = (row[0].get("details") or {}) if row else {}
+    return {
+        "site_connected": is_connected(client_id),
+        "managed_by_us": is_provisioned_by_us(client_id),
+        # verified_on_page is None for a draft page — installed, not yet public
+        "auto_wired": bool(row) and details.get("verified_on_page") is not False,
+        "page_link": details.get("page_link") or "",
+    }
+
+
 def _extract_logo_palette(logo_bytes: bytes) -> list:
     """Dominant brand colors from a logo image: quantize small, drop
     near-white/near-black (backgrounds and outlines), return up to 3 hex
@@ -1036,6 +1336,22 @@ def provision_site(client_id: int, site_name: str = "",
     # (logo analysis or the neutral-by-industry fallback). Both are
     # best-effort here — the site IS provisioned; problems alert, not abort.
     result = {"success": True, "site_url": site_url, "site_id": site.get("id")}
+
+    # Lead capture is wired HERE, at build time, on every site we create — the
+    # client never sees a token or an embed snippet. BEFORE the standards check
+    # on purpose: that check now reports an unwired contact form as an issue,
+    # and alerting about a gap we are two lines away from closing is noise.
+    # Its own try, because a failure here must not mask a successful provision
+    # (the site is live either way) and the function already alerts on the
+    # paths that matter.
+    try:
+        result["lead_capture"] = install_lead_capture_form(client_id)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: lead-capture wiring failed on "
+                                 f"{site_url}: {e} — the site is live but its contact "
+                                 "form is not feeding client_leads"])
+        result["lead_capture"] = {"success": False, "errors": [str(e)]}
+
     try:
         result["standards"] = run_standards_check(client_id)
         result["brand"] = apply_brand_identity(client_id, logo_url, industry_hint)
@@ -1198,6 +1514,18 @@ def populate_site(client_id: int, items: list) -> dict:
                                       "errors": result.get("errors", [])})
     if summary["failed"]:
         summary["success"] = False
+
+    # Re-assert the lead form on sites we built: a populate run can introduce
+    # the REAL contact page (the template's placeholder is what provision-time
+    # wiring landed on), and the marker-delimited block makes a re-run a
+    # replace, not a duplicate. Only for our own sites — never silently edit a
+    # page on a site the client connected themselves.
+    if is_provisioned_by_us(client_id):
+        try:
+            summary["lead_capture"] = install_lead_capture_form(client_id)
+        except Exception as e:
+            summary["lead_capture"] = {"success": False, "errors": [str(e)]}
+
     _log_activity(client_id, "website_populated",
                   {"requested": len(items), "created": len(summary["created"]),
                    "failed": summary["failed"]})

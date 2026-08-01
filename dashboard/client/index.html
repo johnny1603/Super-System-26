@@ -1171,10 +1171,23 @@ a.media-item:hover { border-color: var(--accent); }
     <div class="empty-row" data-i18n="loading">טוען…</div>
   </div>
 
+  <!-- "How do leads get here?" — three honest states, set by loadLeadCapture():
+       wired (we build+manage the site, nothing for the client to do), pending
+       (site connected, form not confirmed yet), manual (no site of ours — the
+       raw snippet, collapsed, for a developer). The snippet is never the
+       default view: most clients should never see HTML. -->
   <div class="info-panel" id="leadCapturePanel" style="margin-top:24px;">
     <div class="info-panel-title" data-i18n="leads_capture_title">איך לידים מגיעים לכאן?</div>
-    <div class="info-panel-text" data-i18n="leads_capture_text">כל טופס יצירת קשר באתר שלך יכול לשלוח לידים ישירות לכאן. הקוד הבא הוא הכתובת הפרטית שלך — הצוות שלנו מחבר אותה לאתר עבורך, ואם יש לך מפתח אתר משלך, אפשר להעביר לו את זה.</div>
-    <div class="code-box" id="leadCaptureSnippet">…</div>
+    <div class="info-panel-text" id="leadCaptureText" data-i18n="leads_capture_pending">אנחנו מחברים את טופס יצירת הקשר באתר שלך לכאן. עד שזה יושלם, אפשר להוסיף לידים גם ידנית.</div>
+    <a id="leadCaptureFormLink" href="#" target="_blank" rel="noopener"
+       class="info-panel-text" style="display:none;margin-top:8px;text-decoration:underline;"
+       data-i18n="leads_capture_view_form">צפייה בטופס באתר ↗</a>
+
+    <details id="leadCaptureAdvanced" style="margin-top:14px;display:none;">
+      <summary class="info-panel-text" style="cursor:pointer;" data-i18n="leads_capture_adv_toggle">מתקדם / למפתחים — חיבור אתר חיצוני</summary>
+      <div class="info-panel-text" style="margin-top:8px;" data-i18n="leads_capture_adv_text">אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.</div>
+      <div class="code-box" id="leadCaptureSnippet">…</div>
+    </details>
   </div>
 </div><!-- /viewLeads -->
 
@@ -1380,7 +1393,12 @@ const DASH_I18N = {
   lead_no_name: { he:'ללא שם', en:'No name given', fr:'Sans nom', ar:'بدون اسم', ru:'Без имени' },
   lead_wa_prefill: { he:'שלום {name}, מדברים מ{business}. ראינו שפנית אלינו 🙂', en:'Hi {name}, this is {business}. We saw you got in touch 🙂', fr:'Bonjour {name}, ici {business}. Nous avons vu votre message 🙂', ar:'مرحبًا {name}، معك {business}. رأينا رسالتك 🙂', ru:'Здравствуйте, {name}! Это {business}. Мы получили ваше обращение 🙂' },
   leads_capture_title: { he:'איך לידים מגיעים לכאן?', en:'How do leads get here?', fr:'Comment les prospects arrivent-ils ici ?', ar:'كيف يصل العملاء المحتملون إلى هنا؟', ru:'Как лиды сюда попадают?' },
-  leads_capture_text: { he:'כל טופס יצירת קשר באתר שלך יכול לשלוח לידים ישירות לכאן. הקוד הבא הוא הכתובת הפרטית שלך — הצוות שלנו מחבר אותה לאתר עבורך, ואם יש לך מפתח אתר משלך, אפשר להעביר לו את זה.', en:'Any contact form on your site can send leads straight here. The snippet below is your private endpoint — our team wires it up for you, and if you have your own developer you can hand it to them.', fr:"Tout formulaire de contact de votre site peut envoyer les prospects ici. L'extrait ci-dessous est votre adresse privée.", ar:'أي نموذج تواصل في موقعك يمكنه إرسال العملاء إلى هنا. الكود أدناه هو عنوانك الخاص.', ru:'Любая форма на вашем сайте может отправлять лиды сюда. Ниже — ваш приватный адрес.' },
+  leads_capture_wired: { he:'טופס יצירת הקשר באתר שלך כבר מחובר לכאן — כל פנייה נכנסת נוחתת ברשימה הזו אוטומטית. אין שום דבר שצריך להתקין.', en:'The contact form on your site is already connected — every enquiry lands in this list automatically. Nothing to install.', fr:'Le formulaire de contact de votre site est déjà connecté — chaque demande arrive ici automatiquement. Rien à installer.', ar:'نموذج التواصل في موقعك متصل بالفعل — كل استفسار يصل إلى هذه القائمة تلقائيًا. لا شيء لتثبيته.', ru:'Форма обратной связи на вашем сайте уже подключена — каждое обращение попадает сюда автоматически. Ничего устанавливать не нужно.' },
+  leads_capture_pending: { he:'אנחנו מחברים את טופס יצירת הקשר באתר שלך לכאן. עד שזה יושלם, אפשר להוסיף לידים גם ידנית.', en:'We are connecting your site’s contact form to this list. Until that is done, leads can also be added manually.', fr:'Nous connectons le formulaire de contact de votre site à cette liste. En attendant, les prospects peuvent être ajoutés manuellement.', ar:'نقوم بربط نموذج التواصل في موقعك بهذه القائمة. حتى ذلك الحين يمكن إضافة العملاء يدويًا.', ru:'Мы подключаем форму обратной связи вашего сайта к этому списку. Пока лиды можно добавлять вручную.' },
+  leads_capture_manual: { he:'לידים מגיעים לכאן מטפסים באתר, מקמפיינים ומפניות שנרשמות ידנית. אם יש לך אתר שאנחנו לא מנהלים, אפשר לחבר גם אותו — הפרטים בקישור למטה.', en:'Leads arrive here from site forms, campaigns and manually added enquiries. If you have a site we don’t manage, it can be connected too — details below.', fr:'Les prospects arrivent des formulaires du site, des campagnes et des saisies manuelles. Si vous avez un site que nous ne gérons pas, il peut aussi être connecté — détails ci-dessous.', ar:'يصل العملاء المحتملون من نماذج الموقع والحملات والإدخال اليدوي. إذا كان لديك موقع لا نديره، يمكن ربطه أيضًا — التفاصيل أدناه.', ru:'Лиды поступают из форм сайта, кампаний и добавленных вручную обращений. Если у вас есть сайт, который мы не ведём, его тоже можно подключить — детали ниже.' },
+  leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
+  leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
+  leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
 
   // ── media hub ──
   media_title: { he:'המדיה שלי', en:'My media', fr:'Mes médias', ar:'الوسائط الخاصة بي', ru:'Мои материалы' },
@@ -3232,12 +3250,37 @@ async function saveLeadNote(leadId) {
   }
 }
 
+// The client should never need raw HTML: on a site we build, website_agent
+// wires the contact form to the capture endpoint at build time. The snippet
+// survives only as a collapsed developer fallback for a site we don't manage —
+// shown by default to nobody.
 async function loadLeadCapture() {
   try {
     const res = await fetch('/api/client/lead-capture', { credentials: 'same-origin' });
     const body = await res.json();
     if (!body.success) return;
-    document.getElementById('leadCaptureSnippet').textContent = body.data.form_snippet || '';
+    const d = body.data;
+
+    const textEl = document.getElementById('leadCaptureText');
+    const linkEl = document.getElementById('leadCaptureFormLink');
+    const advEl = document.getElementById('leadCaptureAdvanced');
+
+    let key = 'leads_capture_manual';           // no site of ours → snippet is the path
+    if (d.auto_wired) key = 'leads_capture_wired';
+    else if (d.site_connected) key = 'leads_capture_pending';
+    // data-i18n (not just textContent) so a language switch re-renders the
+    // state we picked, not the markup's default one
+    textEl.setAttribute('data-i18n', key);
+    textEl.textContent = uallakI18n.t(key);
+
+    if (d.auto_wired && d.form_page_link) {
+      linkEl.href = d.form_page_link;
+      linkEl.style.display = 'block';
+    }
+    // The developer toggle appears only where it can actually help: a client
+    // with a site we manage has nothing to paste anywhere.
+    advEl.style.display = d.managed_by_us ? 'none' : 'block';
+    document.getElementById('leadCaptureSnippet').textContent = d.form_snippet || '';
   } catch (e) {
     // Non-fatal: the explanatory panel just stays empty
     document.getElementById('leadCapturePanel').style.display = 'none';

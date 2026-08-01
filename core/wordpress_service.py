@@ -240,16 +240,25 @@ def fetch_bytes(url: str) -> bytes:
     return fetched.content
 
 
+def fetch_public_html(url: str, max_bytes: int = 800_000) -> str:
+    """Any page on the site as an ANONYMOUS visitor receives it — no auth
+    header, so what comes back is what the public actually gets. This is the
+    only honest way to verify an injection: a 2xx on the REST write proves the
+    row was saved, not that the markup survived wp_kses or that the theme
+    renders it. Capped because we only ever scan for a marker string."""
+    response = httpx.get(url, timeout=TIMEOUT, follow_redirects=True,
+                         headers={"User-Agent": "Mozilla/5.0 (uallak site audit)"})
+    if response.status_code != 200:
+        raise WordPressError(f"page fetch failed: {response.status_code} for {url}")
+    return response.text[:max_bytes]
+
+
 def fetch_homepage_html(site_url: str, max_bytes: int = 800_000) -> str:
     """The site's rendered homepage HTML, unauthenticated — what a real
     visitor (and every tracking tag) actually gets. Used by the tracking-tag
     audit; capped because we only need the <head>/inline scripts, not a
     media-heavy body."""
-    response = httpx.get(site_url, timeout=TIMEOUT, follow_redirects=True,
-                         headers={"User-Agent": "Mozilla/5.0 (uallak site audit)"})
-    if response.status_code != 200:
-        raise WordPressError(f"homepage fetch failed: {response.status_code} for {site_url}")
-    return response.text[:max_bytes]
+    return fetch_public_html(site_url, max_bytes)
 
 
 # ─── Widgets (WP 5.8+ core REST — the tracking-snippet injection path) ───────

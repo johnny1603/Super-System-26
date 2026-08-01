@@ -71,15 +71,21 @@ carries the client_id itself, so there is no lookup table and a tampered token
 verifies as nothing. It grants exactly one capability: create a lead row for
 that client. It reads nothing.
 
-The leads section shows each client their own capture URL and a paste-ready form
-snippet, so the section explains itself instead of sitting empty with no reason
-given.
+The leads section explains itself instead of sitting empty with no reason given.
+**Since 2026-08-01 it does not show raw HTML to do it** — on a site we build the
+form is wired automatically at provision time, and the panel says so; the
+paste-ready snippet moved into a collapsed "מתקדם / למפתחים" toggle that only
+appears for clients whose site we don't manage. See
+`HANDOFF-lead-capture-autowire.md`.
 
 **Three limits worth stating:**
 
-1. **No ingestion is wired to a live site yet.** The endpoint exists and works;
-   installing the form on a client's WordPress site is a per-client step nobody
-   has taken. Until then the section shows its honest empty state.
+1. ~~**No ingestion is wired to a live site yet.**~~ **FIXED 2026-08-01**:
+   `website_agent.install_lead_capture_form` injects the form into the contact
+   page of every site we provision, verified by re-fetching the page as a
+   visitor. Still a real per-client gap for sites we DON'T host (Wix, a
+   developer's build) — those keep the manual snippet, now clearly labelled as
+   the fallback rather than shown to everyone.
 2. **`multipart/form-data` posts are not supported** — only JSON and
    `application/x-www-form-urlencoded`. Starlette's `request.form()` asserts on
    `python-multipart`, which is not in `requirements.txt`, so the body is parsed

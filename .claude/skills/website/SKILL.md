@@ -81,7 +81,10 @@ Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,
 `GET /api/website/standards?client_id=`, `POST /api/website/brand` (re-run
 brand identity when a logo arrives), `GET /api/website/scan` (daily),
 `GET /api/website/tracking?client_id=` (tag audit),
-`POST /api/website/install-tracking` (GTM-first snippet injection).
+`POST /api/website/install-tracking` (GTM-first snippet injection),
+`POST /api/website/install-lead-form` + `GET /api/website/lead-capture-status`
+(contact-form → client_leads wiring; automatic at provision time, see the
+"Lead capture" section).
 
 Scheduler job (same pattern as the other scans):
 
@@ -234,6 +237,81 @@ per client at onboarding as the standard operating procedure — the audit
 will flag its absence on every fresh provision until ids exist, which is
 correct pressure, not noise.
 
+## Lead capture — the contact form is wired automatically (2026-08-01)
+
+**The problem it fixes**: `POST /api/leads/capture/{token}`
+(`core/client_leads.py`) shipped with one install path — a client copying an
+HTML `<form>` snippet with their token into their own site. No SMB owner does
+that, so `client_leads` stayed empty and the dashboard's leads section showed
+an honest-but-permanent empty state. We build the site; the form is ours to
+wire.
+
+**Mechanism — a plain HTML form in the contact page's content. CHECKED, not
+assumed**: this codebase installs NO contact-form plugin and never did —
+nothing anywhere creates, reads or edits a form, and `run_standards_check`
+only ever asserted that a page matching `REQUIRED_PAGES["contact"]` EXISTS.
+So there was no plugin webhook to hook into. A form plugin (CF7 + a
+webhook add-on) would cost one of `MAX_ACTIVE_PLUGINS`, a wordpress.org
+dependency, and an AJAX submit that GTM's built-in Form Submission trigger
+does NOT catch. The capture endpoint was already written to accept a classic
+urlencoded `<form method="post">` (it hand-parses the body precisely so no JS
+and no `python-multipart` are needed) — so injecting the form into the page
+content via the Phase-1 REST path is the smallest thing that works: zero
+plugins, zero JS, zero cost, and `configure_lead_conversion`'s GA4
+`generate_lead` trigger fires on it.
+
+- `install_lead_capture_form(client_id, page_id=0)` — finds the contact page
+  with the SAME `REQUIRED_PAGES["contact"]` keywords the standards check uses
+  (published beats draft), replaces-or-appends a marker-delimited block
+  (`<!-- uallak-lead-capture:start/end -->`, so a re-run never duplicates a
+  form), and writes through the GATED `update_content` — the standing quality
+  rules are not routed around.
+- **The thank-you page is load-bearing, not decoration**: a classic form post
+  navigates the browser to whatever the endpoint returns, so without a
+  `redirect` the customer lands on `{"success":true,"stored":true}`.
+  `_ensure_thanks_page` creates/reuses a published `toda` page and points
+  `redirect` at it — which passes the endpoint's same-host-https
+  open-redirect guard because it IS the same host. This is also why the
+  function REFUSES a non-https site (`ERR_SITE_NOT_HTTPS`).
+- **VERIFIED by re-fetching the page anonymously** (`verified_on_page`), same
+  discipline as `install_tracking_tags`: `<form>` survives `wp_kses` only for
+  a user with `unfiltered_html` (our provisioned sites use an admin — yes; an
+  Editor on a client's own site — no). Verification matches the client's FULL
+  capture URL, so a form carrying ANOTHER client's token reports as a problem
+  instead of a success. A draft contact page reports `verified=None`.
+- **Per-client token, always derived, never stored**: `_capture_url()` calls
+  `create_lead_capture_token(client_id)` per call. Nothing is shared or
+  hardcoded, and a token minted for one client verifies as no one else.
+
+**Where it runs automatically**: `provision_site` (BEFORE `run_standards_check`
+— that check now reports an unwired form, and alerting about a gap two lines
+from being closed is noise) and at the end of `populate_site` for sites we
+provisioned (a populate can introduce the REAL contact page; the marker makes
+it a replace). `run_standards_check` is REPORT-ONLY on this
+(`get_lead_capture_status`) for the same reason it's report-only on tracking
+ids: a standing scan that rewrites page content on a site the CLIENT connected
+is too much power for a check.
+
+**Where it is genuinely unbuildable — the manual snippet stays, labelled**:
+a client whose site we don't manage at all (no `wordpress` row: Wix, Squarespace,
+a developer's custom build) has no REST surface to write to. A connected site
+can also fail on `ERR_SITE_NOT_HTTPS`, `ERR_NO_CONTACT_PAGE` (never
+auto-created — same rule as the standards check), `ERR_PAGE_QUALITY` (the
+page's pre-existing HTML violates the standing rules; reported as its own
+problem so it doesn't read as a rejection of our form), or
+`verified_on_page: False` (markup stripped). All of those alert.
+
+**Dashboard**: `GET /api/client/lead-capture` now also returns `auto_wired` /
+`site_connected` / `managed_by_us` / `form_page_link`, read from the activity
+log via `lead_capture_summary()` — NOT by calling the client's site, since
+this runs on a page load. The leads panel shows one of three states
+(wired / pending / manual) and the raw snippet now lives in a COLLAPSED
+`<details>` "מתקדם / למפתחים", hidden entirely for clients whose site we
+manage.
+
+Admin endpoints: `POST /api/website/install-lead-form` (manual/repair path),
+`GET /api/website/lead-capture-status` (live check).
+
 ## Cost discipline (the design rule for this agent)
 
 Everything Phase 1 does is FREE: core WP REST API + free wordpress.org
@@ -304,7 +382,11 @@ for why the client path is safe despite this being a real-money trigger):
    check verifies these survive cloning), minimal plugins (free Yoast +
    `pojo-accessibility` preinstalled saves two API installs per site), admin
    user (default name `uallak`), and an Application Password for that user,
-   created in wp-admin.
+   created in wp-admin. **The צור קשר page's own HTML must pass
+   `content_quality_issues`** (headings start at `<h2>`, alt text on images,
+   every form field labelled) — the lead-capture wiring appends to that page
+   through the gated `update_content`, so a non-compliant template page fails
+   every provision with `ERR_PAGE_QUALITY`.
 2. Save a template from it; put its slug in `WEBSITE_TEMPLATE_SLUG`.
 3. Env vars on Cloud Run: `INSTAWP_API_KEY` +
    `WEBSITE_TEMPLATE_APP_PASSWORD` (both in keys_agent KEYS),

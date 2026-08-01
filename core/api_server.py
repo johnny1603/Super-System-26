@@ -2375,6 +2375,34 @@ def website_install_tracking(req: WebsiteTrackingInstallRequest):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
 
+class WebsiteLeadFormRequest(BaseModel):
+    client_id: int
+    page_id: int = 0   # optional override; 0 = find the contact page automatically
+
+@app.post("/api/website/install-lead-form", dependencies=_admin_only)
+def website_install_lead_form(req: WebsiteLeadFormRequest):
+    # Manual/repair path only. Every site WE provision gets this automatically
+    # at build time (provision_site → install_lead_capture_form), which is the
+    # whole point — the client never touches an embed snippet. This endpoint is
+    # for a site the client connected themselves, or a re-run after a fix.
+    # Plain `def`: several blocking WP round trips.
+    from agents.website_agent import install_lead_capture_form
+    result = install_lead_capture_form(req.client_id, req.page_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/website/lead-capture-status", dependencies=_admin_only)
+def website_lead_capture_status(client_id: int):
+    # LIVE check — fetches the contact page anonymously and confirms it posts
+    # to THIS client's capture URL. verified against the client's own token, so
+    # a form left over from another client reports as a problem, not a success.
+    from agents.website_agent import get_lead_capture_status
+    try:
+        return {"success": True, "data": get_lead_capture_status(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class WebsiteBrandRequest(BaseModel):
     client_id: int
     logo_url: str = ""
@@ -2800,14 +2828,31 @@ def client_lead_set_note(lead_id: int, req: LeadNoteRequest, request: Request):
 
 @app.get("/api/client/lead-capture")
 def client_lead_capture_setup(request: Request):
-    """The client's own capture endpoint + a ready-to-paste HTML form snippet.
-    Shown in the leads section so there is a visible answer to 'how do leads
-    get in here' rather than a section that is empty forever with no
-    explanation."""
+    """How this client's leads actually arrive, in the leads section.
+
+    For a site WE built the honest answer is now "it's already connected" —
+    website_agent wires the contact form at build time and the client never
+    needs the token or the markup. The snippet stays in the response for the
+    clients that genuinely need it (a site we don't manage), where the UI keeps
+    it collapsed behind a developer toggle instead of showing everyone raw HTML.
+
+    Site state is read from the activity log (lead_capture_summary), NOT by
+    calling the client's site — this runs on a dashboard page load."""
     client_id = _require_session(request)
     token = create_lead_capture_token(client_id)
     base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
     url = f"{base}/api/leads/capture/{token}"
+
+    try:
+        from agents.website_agent import lead_capture_summary
+        summary = lead_capture_summary(client_id)
+    except Exception as e:
+        # The panel is explanatory, not load-bearing: degrade to the manual
+        # snippet rather than failing the request.
+        print(f"[client_leads] lead-capture summary failed for client {client_id}: {e}")
+        summary = {"site_connected": False, "managed_by_us": False,
+                   "auto_wired": False, "page_link": ""}
+
     snippet = (
         f'<form action="{url}" method="post">\n'
         '  <input name="name" placeholder="שם">\n'
@@ -2819,7 +2864,15 @@ def client_lead_capture_setup(request: Request):
         '  <button type="submit">שליחה</button>\n'
         '</form>'
     )
-    return {"success": True, "data": {"capture_url": url, "form_snippet": snippet}}
+    return {"success": True, "data": {
+        "capture_url": url, "form_snippet": snippet,
+        # auto_wired: our website agent already connected the client's contact
+        # form — the UI says so instead of showing HTML nobody asked for.
+        "auto_wired": summary["auto_wired"],
+        "site_connected": summary["site_connected"],
+        "managed_by_us": summary["managed_by_us"],
+        "form_page_link": summary["page_link"],
+    }}
 
 @app.post("/api/leads/capture/{token}")
 async def public_lead_capture(token: str, request: Request):
