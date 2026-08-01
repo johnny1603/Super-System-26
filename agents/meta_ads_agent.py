@@ -256,6 +256,136 @@ def _validate_campaign_spec(spec: dict) -> list:
     return errors
 
 
+# ─── Research-grounded spec drafting (2026-08-01) ─────────────────────────────
+# Mirror of google_ads_agent.draft_campaign_spec — same two-gate discipline
+# (draft is not creation; creation still lands PAUSED) and the same refusal to
+# infer a budget. The prompt differs because the medium does: Meta is
+# interruption, not intent — nobody searched for this, so the creative has to
+# earn the stop, and the research is read for HOOKS and AUDIENCE rather than
+# keywords.
+
+CAMPAIGN_DRAFT_SYSTEM = f"""You are the paid-social strategist for uallak, an Israeli
+marketing agency, drafting ONE Meta (Facebook/Instagram) traffic campaign for a small
+business — grounded in real competitor research, not generic best practice.
+
+You receive the business context, the campaign goal, the daily budget, the landing page,
+and competitor research for the niche.
+
+Ground rules:
+- Meta is INTERRUPTION, not intent: nobody searched for this. The first line must earn the
+  stop. Lead with the audience's problem or desire, never with the business's name.
+- Use the research for the HOOKS and OFFERS that recur in this space, the objections
+  competitors answer, and above all its stated GAP — the angle nobody is running.
+- INFORM, NEVER COPY: never reproduce a competitor's ad text or name a competitor.
+- Never invent facts about the business — no prices, guarantees, awards, stock claims or
+  "#1" claims unless they appear in the business context.
+- Hebrew ad text (Israeli market). No clickbait, no fake urgency, no health/income claims —
+  Meta rejects those and they burn the client's Page.
+- image_direction is a BRIEF for our media agent, not a prompt: describe the scene in one
+  English sentence. Never include text/logos in the described scene (Hebrew renders badly
+  in generation models — media_agent's own iron rule).
+
+HARD LIMITS (violations fail validation):
+- primary_text: max {PRIMARY_TEXT_MAX_CHARS} chars (aim well under — the fold cuts ~125)
+- headline: max {HEADLINE_MAX_CHARS} CHARACTERS (count them)
+- description: max {DESCRIPTION_MAX_CHARS} CHARACTERS (count them)
+
+Return JSON only:
+{{"name": "campaign name",
+  "primary_text": "Hebrew",
+  "headline": "Hebrew, <= {HEADLINE_MAX_CHARS} chars",
+  "description": "Hebrew, <= {DESCRIPTION_MAX_CHARS} chars",
+  "image_direction": "English, 1 sentence — a brief for the media agent",
+  "audience_rationale": "English, max 3 sentences — who this is aimed at and why",
+  "messaging_rationale": "English, max 3 sentences — what in the research drove this angle",
+  "notes_for_johnny": "English, max 3 sentences, including what the research could NOT see"}}"""
+
+
+def draft_campaign_spec(client_id: int, daily_budget_ils: float, final_url: str = "",
+                        goal: str = "", force_refresh_research: bool = False) -> dict:
+    """Competitor research → a validated Meta traffic campaign spec, for review.
+
+    CREATES NOTHING — the returned spec is what create_link_campaign takes, and
+    that call still creates the campaign PAUSED. Two independent human gates
+    before any spend. `daily_budget_ils` is required, never inferred.
+
+    Note the spec carries `image_direction` (a brief) rather than `image_url`:
+    producing the actual creative is media_agent's job on the client's own
+    Higgsfield key, so this hands over a brief instead of inventing an asset.
+    """
+    from core import competitor_research
+
+    if not isinstance(daily_budget_ils, (int, float)) or daily_budget_ils <= 0:
+        return {"success": False, "errors": ["daily_budget_ils is required and must be positive "
+                                             "— the budget is never inferred from a proposal"]}
+    if not final_url:
+        from agents.website_agent import _get_connection as _wp_connection
+        final_url = (_wp_connection(client_id) or {}).get("account_id") or ""
+    if not final_url.startswith(("http://", "https://")):
+        return {"success": False, "errors": ["final_url is required (no connected website to "
+                                             "fall back on) and must start with http(s)://"]}
+
+    research = competitor_research.research(client_id, "ads",
+                                            extra_context={"channel": "meta_social",
+                                                           "goal": goal},
+                                            force_refresh=force_refresh_research)
+    if not research.get("success"):
+        return {"success": False,
+                "errors": [f"competitor research unavailable ({research.get('error')}) — "
+                           "refusing to draft a campaign with no view of the market"]}
+
+    from agents.seo_agent import _business_context
+    payload = {
+        "business": _business_context(client_id),
+        "goal": goal or "lead generation",
+        "daily_budget_ils": daily_budget_ils,
+        "final_url": final_url,
+        "competitor_research": research["summary"],
+    }
+    log_step(AGENT_NAME, "draft_campaign_spec",
+             f"client {client_id}: {daily_budget_ils} ILS/day, research "
+             f"{'cached' if research.get('cached') else 'fresh'}")
+
+    user_message = json.dumps(payload, ensure_ascii=False)
+    spec, errors = None, []
+    for _attempt in range(2):
+        try:
+            drafted = timed_step(
+                AGENT_NAME, "campaign_draft_llm",
+                lambda: safe_claude_json_call(CAMPAIGN_DRAFT_SYSTEM, user_message,
+                                              max_tokens=1800, client_id=client_id,
+                                              cost_category="claude_meta_ads"))
+        except ClaudeJSONError as e:
+            agent_alert(AGENT_NAME, [f"client {client_id}: campaign draft failed: {e}"])
+            return {"success": False, "errors": [str(e)]}
+        spec = {**drafted, "daily_budget_ils": daily_budget_ils, "final_url": final_url}
+        errors = _validate_campaign_spec(spec)
+        if not errors:
+            break
+        user_message = json.dumps({**payload, "previous_attempt_issues": errors},
+                                  ensure_ascii=False)
+    if errors:
+        agent_alert(AGENT_NAME, [f"client {client_id}: drafted campaign failed validation "
+                                 f"twice: {'; '.join(errors)}"])
+        return {"success": False, "errors": errors}
+
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "meta_ads_campaign_drafted",
+                 {"name": spec.get("name", ""),
+                  "daily_budget_ils": spec.get("daily_budget_ils"),
+                  "audience_rationale": spec.get("audience_rationale", ""),
+                  "messaging_rationale": spec.get("messaging_rationale", ""),
+                  "research_cached": research.get("cached", False),
+                  "research_tool_grounded": bool(research.get("tool_competitors"))},
+                 {"spec": spec})
+    log_step(AGENT_NAME, "draft_campaign_spec", f"client {client_id}: draft ready")
+    return {"success": True, "spec": spec,
+            "research_summary": research["summary"],
+            "research_cached": research.get("cached", False),
+            "next_step": "review, produce the image from image_direction (media_agent), then "
+                         "POST /api/meta-ads/create-campaign (still created PAUSED)"}
+
+
 def create_link_campaign(client_id: int, spec: dict) -> dict:
     """Create a complete Traffic campaign (campaign + ad set targeting Israel +
     link-ad creative published as the client's Page + one ad). ALWAYS created

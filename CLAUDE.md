@@ -25,6 +25,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   search + citations don't mix with strict JSON output, hence two paths. Used by the support
   chat's two-stage flow (JSON call gates → emits web_search_query → text call searches).
 - `core/agent_base.py` — `log_step` / `timed_step` / `agent_alert`: standard logging+alerting.
+- `core/competitor_research.py` — the shared "look before you generate" step, used by the
+  media, website and ads agents through three LENSES (`media` / `website` / `ads`). One
+  cached `claude_web_search_call` per (client, lens) — 14/30/7-day TTLs — so four agents
+  don't buy the same research four times. **`seo_agent` deliberately does NOT use it**
+  (it is tool-first: real SEMrush/Ahrefs data beats a web search); the dependency runs the
+  other way — this module reads seo_agent's cached research for real competitor domains at
+  zero paid units. Standing rules in every lens prompt: never invent metrics, inform never
+  copy, say plainly when nothing was findable.
 - `agents/` — one file per agent. `agents/_template_agent.py` is the canonical structure;
   use the `new-agent` skill when creating or modifying agents.
 - `agents/onboarding_agent.py` — the sales pipeline (`run_full_onboarding`) AND the `PRICING`

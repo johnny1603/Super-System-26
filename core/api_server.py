@@ -1900,6 +1900,27 @@ def google_ads_create_campaign(req: CreateCampaignRequest):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
 
+class DraftCampaignRequest(BaseModel):
+    # Shared by both ads agents' draft endpoints (Google below, Meta further
+    # down) — the drafting inputs are identical; only the produced spec differs.
+    client_id: int
+    daily_budget_ils: float        # REQUIRED — never inferred from the proposal
+    final_url: str = ""            # defaults to the client's connected site
+    goal: str = ""                 # free text, e.g. "leads for weekday appointments"
+    force_refresh_research: bool = False
+
+@app.post("/api/google-ads/draft-campaign", dependencies=_admin_only)
+def google_ads_draft_campaign(req: DraftCampaignRequest):
+    # Researches the niche, then drafts a spec FROM that research. Creates
+    # NOTHING — review the draft, then POST it to /create-campaign (which still
+    # creates the campaign PAUSED). Plain `def`: web-search + LLM, both blocking.
+    from agents.google_ads_agent import draft_campaign_spec
+    result = draft_campaign_spec(req.client_id, req.daily_budget_ils, req.final_url,
+                                 req.goal, req.force_refresh_research)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
 @app.get("/api/google-ads/scan", dependencies=_admin_only)
 def google_ads_scan():
     from agents.google_ads_agent import run_health_scan
@@ -2059,6 +2080,19 @@ def meta_ads_create_campaign(req: MetaCreateCampaignRequest):
     from agents.meta_ads_agent import create_link_campaign
     spec = req.model_dump(exclude={"client_id"})
     result = create_link_campaign(req.client_id, spec)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.post("/api/meta-ads/draft-campaign", dependencies=_admin_only)
+def meta_ads_draft_campaign(req: DraftCampaignRequest):
+    # Researches the niche, then drafts a spec FROM that research. Creates
+    # NOTHING — the returned spec goes to /api/meta-ads/create-campaign after a
+    # human reviews it, and that call still creates the campaign PAUSED.
+    # Plain `def`: a web-search call plus an LLM call, both blocking.
+    from agents.meta_ads_agent import draft_campaign_spec
+    result = draft_campaign_spec(req.client_id, req.daily_budget_ils, req.final_url,
+                                 req.goal, req.force_refresh_research)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
@@ -2403,6 +2437,32 @@ def website_lead_capture_status(client_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class WebsiteLandscapeRequest(BaseModel):
+    client_id: int
+    force_refresh: bool = False   # re-run the web search instead of using the 30-day cache
+
+@app.post("/api/website/research-landscape", dependencies=_admin_only)
+def website_research_landscape(req: WebsiteLandscapeRequest):
+    # Competitor research (organic AND paid results) → a structured site build
+    # brief. Runs automatically at the end of provision_site; this is the
+    # re-run/repair path. Changes NOTHING on the site — v1 records the brief.
+    # Plain `def`: web-search + LLM, both blocking.
+    from agents.website_agent import research_site_landscape
+    result = research_site_landscape(req.client_id, req.force_refresh)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.get("/api/website/blueprint", dependencies=_admin_only)
+def website_blueprint(client_id: int):
+    # The most recent recorded build brief. Read-only and free — never triggers
+    # new research (that is the POST above).
+    from agents.website_agent import get_site_blueprint
+    try:
+        return {"success": True, "data": get_site_blueprint(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class WebsiteBrandRequest(BaseModel):
     client_id: int
     logo_url: str = ""
@@ -2434,6 +2494,18 @@ def website_overview(client_id: int):
     from agents.website_agent import get_site_overview
     try:
         return {"success": True, "data": get_site_overview(client_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/competitor-research", dependencies=_admin_only)
+def competitor_research_inspect(client_id: int, lens: str, force_refresh: bool = False):
+    # The raw research one lens produced, for inspecting/priming the cache
+    # (media and ads agents consume this internally — this is how a human sees
+    # what they were given). force_refresh=true spends a new web-search fee.
+    from core import competitor_research
+    try:
+        return {"success": True, "data": competitor_research.research(
+            client_id, lens, force_refresh=force_refresh)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

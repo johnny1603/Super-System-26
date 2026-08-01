@@ -87,6 +87,43 @@ unused. Dev-testing uses the same OAuth flow against a Google Ads *test* account
 - Errors nest the useful message in `error.details[0].errors[0].message` —
   `_ads_error_message()` in the service extracts it.
 
+## Research-grounded campaign drafting (2026-08-01)
+
+Before this, `create_search_campaign` took a spec an ADMIN TYPED BY HAND — the
+agent could execute a campaign but had no view of the market it was launching
+into, which is exactly how generic campaigns get built.
+
+`draft_campaign_spec(client_id, daily_budget_ils, final_url="", goal="")` →
+`POST /api/google-ads/draft-campaign` closes that: it runs the `"ads"` lens of
+`core/competitor_research.py` (competitors advertising, recurring OFFERS,
+MESSAGING, AUDIENCE SIGNALS, SATURATION, GAP), then a JSON call drafts keywords
+/ headlines / descriptions FROM that research, plus `targeting_rationale`,
+`messaging_rationale` and `notes_for_johnny`.
+
+**Two independent human gates before a shekel moves**, and this is the design
+rule to preserve:
+1. Drafting **creates nothing** — it returns the spec `create_search_campaign`
+   takes, for review.
+2. Creation still lands the campaign **PAUSED**, unchanged.
+
+**Budget is never inferred.** `daily_budget_ils` is a required argument;
+guessing someone's ad spend from a stored proposal is not a guess this system
+makes. `MAX_DAILY_BUDGET_ILS` applies to a drafted spec exactly as to a typed one.
+
+**The draft is validated by the SAME `_validate_campaign_spec` the create path
+uses**, with one repair round that feeds the named violations back (the pattern
+`seo_agent.write_article` uses) — character limits are what usually trip an LLM.
+A draft that wouldn't pass creation is not shown to a human.
+
+**Refuses to draft when research fails** — a spec built with no market view is
+the generic campaign this function exists to prevent.
+
+Prompt rules that must survive edits: inform-never-copy, never name a competitor
+in ad copy (Google restricts it and it wastes budget), never invent business
+facts (prices/guarantees/awards/"#1" — Israeli consumer-protection rules and
+Google policy both bite), Hebrew ad text, and prefer few high-intent keywords
+over broad reach on an SMB budget.
+
 ## Campaign-creation gotchas
 
 - RSA limits: 3–15 headlines ≤30 chars, 2–4 descriptions ≤90 chars, keywords
@@ -104,6 +141,8 @@ unused. Dev-testing uses the same OAuth flow against a Google Ads *test* account
 - `GET /api/google-ads/weekly-report` — WoW digest emailed to ADMIN_EMAIL
 - `POST /api/google-ads/create-campaign` — manual/admin campaign creation
   (`{client_id, name, daily_budget_ils, final_url, keywords, headlines, descriptions}`)
+- `POST /api/google-ads/draft-campaign` — research-grounded DRAFT of that spec
+  (`{client_id, daily_budget_ils, final_url?, goal?}`); creates nothing, see above
 
 Scheduler jobs follow the monitor_agent pattern (`/api/monitor/scan`), e.g.:
 `gcloud scheduler jobs create http google-ads-scan --schedule="0 7 * * *" --uri="{SERVICE_URL}/api/google-ads/scan" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}` (weekly report: `--schedule="0 8 * * 0"`).

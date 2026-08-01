@@ -6,10 +6,16 @@ media alt text), install a free SEO plugin. Building NEW sites for clients
 without one is Phase 2 — it needs a real hosting/cost decision first (see
 .claude/skills/website/SKILL.md, "Phase 2" section).
 
-Like meta_content_agent, this is a pipe, not a brain: content arrives
-ALREADY GENERATED (title/body/media URLs) and goes to the client's site.
-No LLM calls here at all. New content defaults to status='draft' — a human
-reviews and publishes, same principle as campaigns created PAUSED.
+Like meta_content_agent, this is a pipe, not a brain FOR CONTENT: content
+arrives ALREADY GENERATED (title/body/media URLs) and goes to the client's
+site. New content defaults to status='draft' — a human reviews and publishes,
+same principle as campaigns created PAUSED.
+
+ONE deliberate exception to the old "no LLM calls here at all" rule
+(2026-08-01): research_site_landscape() makes LLM calls to turn competitor
+research into a build BRIEF. It generates no content and publishes nothing —
+the pipe rule's actual purpose (content generation lives in the agent that
+owns the content) is intact. Everything else here remains LLM-free.
 
 Connection flow (no OAuth): the client fills site URL + WP username +
 Application Password in the dashboard card → POST /api/website/connect →
@@ -27,6 +33,7 @@ client's own capture endpoint automatically at provision time (see the
 snippet. That is the only supported install path for a site of ours; the
 manual snippet survives only for sites we don't manage.
 """
+import json
 import os
 import re
 import time
@@ -36,6 +43,7 @@ from supabase import create_client as _supabase_client
 
 from core import wordpress_service as wp
 from core.agent_base import agent_alert, log_step, timed_step
+from core.claude_json import safe_claude_json_call
 
 AGENT_NAME = "website_agent"
 WORDPRESS_PLATFORM = "wordpress"
@@ -1251,6 +1259,123 @@ def apply_brand_identity(client_id: int, logo_url: str = "", industry_hint: str 
     return {"success": True, "source": source, "palette": palette}
 
 
+# ─── Competitive landscape: look at the market before building the site ──────
+# Standing rule this extends: design decisions come from sales-chat data and the
+# client's logo, NEVER a design questionnaire. Competitor research is a third
+# input of the same kind — evidence we gather ourselves, nothing the client is
+# asked to answer. It informs structure and direction; it never copies a layout.
+#
+# The BOTH-SIDES-OF-THE-SERP rule is the point of the exercise: businesses
+# buying a search term often run newer, better-built landing pages precisely
+# because they pay for the traffic, so the paid side is worth studying even when
+# the advertiser is smaller than the organic incumbents. The research lens
+# (core/competitor_research, "website") is told to cover both and to say so
+# explicitly when the paid side wasn't observable — an unobservable ad result is
+# reported, never quietly backfilled with organic ones.
+
+SITE_BLUEPRINT_SYSTEM = """You are uallak's web strategist, turning raw competitive research
+into a concrete build brief for ONE Israeli small business's WordPress site.
+
+You receive the business context, its brand palette, and research covering competitors from
+BOTH the organic and paid results for their local searches.
+
+Rules:
+- INFORM, NEVER COPY: recommend structure and direction that fits the niche, never a
+  reproduction of a named competitor's layout, wording or design.
+- Only recommend what our stack actually builds: WordPress pages/sections, copy direction,
+  imagery direction. No custom apps, no paid plugins, no theme purchases.
+- Every site we build already has בית/אודות/שירותים/צור קשר/תקנון — propose what those
+  should CONTAIN and what (if anything) to add, not a from-scratch sitemap.
+- Never invent metrics. If the research did not observe something, say so.
+- HARD LIMITS: max 6 page_recommendations, max 5 design_directions, max 4
+  conversion_recommendations, max 3 differentiators; every string max 1 sentence.
+
+Return JSON only:
+{"page_recommendations": [{"page": "Hebrew page name", "should_contain": "English, 1 sentence"}],
+ "design_directions": ["English, 1 sentence each"],
+ "conversion_recommendations": ["English, 1 sentence each"],
+ "differentiators": ["English, 1 sentence each — what this site does that competitors don't"],
+ "notes_for_johnny": "English, max 3 sentences, including anything the research could NOT see"}"""
+
+
+def research_site_landscape(client_id: int, force_refresh: bool = False) -> dict:
+    """Competitor research → a concrete site build brief, recorded for the
+    human and for whatever populates the site later.
+
+    Two-stage on purpose (the house pattern support_agent already uses): a
+    web-search TEXT call gathers the landscape, then a JSON call turns it into
+    a structured brief — search citations split a response into multiple text
+    blocks and do not mix with strict single-object JSON output.
+
+    Deliberately does NOT edit the site. v1 records the brief; acting on it is
+    a human's call (or a future content generator's input), exactly like
+    apply_brand_identity records a palette without re-skinning the theme."""
+    from core import competitor_research
+
+    research = competitor_research.research(client_id, "website",
+                                            force_refresh=force_refresh)
+    if not research.get("success"):
+        return {"success": False, "errors": [f"landscape research unavailable: "
+                                             f"{research.get('error', 'unknown')}"]}
+
+    try:
+        payload = {
+            "business": _business_context_for_research(client_id),
+            "brand_palette": _latest_palette(client_id),
+            "competitor_research": research["summary"],
+        }
+        blueprint = timed_step(
+            AGENT_NAME, "site_blueprint_llm",
+            lambda: safe_claude_json_call(SITE_BLUEPRINT_SYSTEM,
+                                          json.dumps(payload, ensure_ascii=False),
+                                          max_tokens=1600, client_id=client_id,
+                                          cost_category="claude_website_research"))
+    except Exception as e:  # includes ClaudeJSONError and a missing/odd client row
+        agent_alert(AGENT_NAME, [f"client {client_id}: site blueprint build failed: {e}"])
+        return {"success": False, "errors": [str(e)]}
+
+    _log_activity(client_id, "website_landscape_researched",
+                  {"blueprint": blueprint, "research_cached": research.get("cached", False),
+                   "tool_grounded": bool(research.get("tool_competitors"))},
+                  {"research_summary": research["summary"][:2000]})
+    log_step(AGENT_NAME, "research_site_landscape",
+             f"client {client_id}: {len(blueprint.get('page_recommendations') or [])} page recs")
+    return {"success": True, "blueprint": blueprint,
+            "research_summary": research["summary"],
+            "research_cached": research.get("cached", False)}
+
+
+def _business_context_for_research(client_id: int) -> dict:
+    """seo_agent's context builder, reused rather than reimplemented (same
+    reason media_agent reuses it) — minus the raw chat transcript, which a
+    structure/design brief has no use for."""
+    from agents.seo_agent import _business_context
+    context = _business_context(client_id)
+    context.pop("sales_chat_answers", None)
+    return context
+
+
+def _latest_palette(client_id: int) -> list:
+    rows = (_db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "website_brand_identity")
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    return ((rows[0].get("details") or {}).get("palette") or []) if rows else []
+
+
+def get_site_blueprint(client_id: int) -> dict:
+    """The most recent recorded build brief, for whoever populates or reworks
+    the site. Read-only and free — never triggers new research."""
+    rows = (_db().table("client_activity").select("details,created_at")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "website_landscape_researched")
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    if not rows:
+        return {"exists": False, "blueprint": {}}
+    return {"exists": True, "blueprint": (rows[0].get("details") or {}).get("blueprint") or {},
+            "researched_at": rows[0].get("created_at", "")}
+
+
 # ─── Phase 2: provision a NEW site (InstaWP, admin-triggered only) ────────────
 
 def provision_site(client_id: int, site_name: str = "",
@@ -1358,6 +1483,19 @@ def provision_site(client_id: int, site_name: str = "",
     except Exception as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: post-provision standards/brand "
                                  f"step failed on {site_url}: {e}"])
+
+    # Look at the competitive landscape for every site we build. Its own try
+    # and LAST because it is the only step here that costs a web-search fee and
+    # the only one that changes nothing on the site — a failure must not touch
+    # the provision result. The brief is recorded for the human and for
+    # whatever populates the site later (get_site_blueprint).
+    try:
+        result["landscape"] = research_site_landscape(client_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "provision_site",
+                 f"client {client_id}: landscape research failed ({e}) — site is fine, "
+                 "brief can be built later via POST /api/website/research-landscape")
+        result["landscape"] = {"success": False, "errors": [str(e)]}
     return result
 
 

@@ -238,6 +238,156 @@ def _validate_campaign_spec(spec: dict) -> list:
     return errors
 
 
+# ─── Research-grounded spec drafting (2026-08-01) ─────────────────────────────
+# Before this existed, create_search_campaign took a spec an admin had typed by
+# hand — the agent could execute a campaign but had no view of the market it was
+# launching into, which is exactly how generic campaigns get built. This adds
+# the missing step: research the space, then draft a spec FROM that research.
+#
+# It deliberately stops at a DRAFT. Creation stays a separate, explicit call
+# (and still lands PAUSED), so the research step never becomes a path to
+# spending a client's money without a human in the loop. Budget in particular is
+# never inferred: it is a required argument, because guessing at someone's ad
+# spend from a proposal is not a guess this system should make.
+
+CAMPAIGN_DRAFT_SYSTEM = f"""You are the paid-search strategist for uallak, an Israeli
+marketing agency, drafting ONE Google Search campaign for a small business — grounded in
+real competitor research, not generic best practice.
+
+You receive the business context, the campaign goal, the daily budget, the landing page,
+and competitor research for the niche.
+
+Ground rules:
+- Use the research to shape KEYWORDS (what this audience actually searches), MESSAGING
+  (the hooks and proof points that recur, and the objections competitors answer) and
+  DIFFERENTIATION (prefer the research's stated GAP — the angle nobody is running).
+- INFORM, NEVER COPY: never reproduce a competitor's ad text. Never name a competitor in
+  ad copy (Google restricts it and it wastes budget).
+- Never invent facts about the business — no prices, guarantees, awards, delivery times or
+  "#1" claims unless they appear in the business context. Israeli consumer-protection rules
+  and Google's own policies both bite here.
+- Hebrew ad text and Hebrew keywords (this is the Israeli market). Keep to the character
+  limits below — they are Google's, and text over them is REJECTED, not truncated.
+- A small budget must not be spread thin: prefer fewer, high-intent keywords over broad
+  reach. Phrase and exact match beat broad for an SMB budget.
+
+HARD LIMITS (violations fail validation):
+- name: short, no emoji
+- keywords: 5-20 entries, each max {KEYWORD_MAX_CHARS} chars, each
+  {{"text": "Hebrew keyword", "match_type": "PHRASE"|"EXACT"|"BROAD"}}
+- headlines: 5-15 entries, each max {RSA_HEADLINE_MAX_CHARS} CHARACTERS (count them)
+- descriptions: 2-4 entries, each max {RSA_DESCRIPTION_MAX_CHARS} CHARACTERS (count them)
+
+Return JSON only:
+{{"name": "campaign name",
+  "keywords": [{{"text": "Hebrew", "match_type": "PHRASE"}}],
+  "headlines": ["Hebrew, <= {RSA_HEADLINE_MAX_CHARS} chars"],
+  "descriptions": ["Hebrew, <= {RSA_DESCRIPTION_MAX_CHARS} chars"],
+  "targeting_rationale": "English, max 3 sentences — why these keywords for this market",
+  "messaging_rationale": "English, max 3 sentences — what in the research drove this angle",
+  "notes_for_johnny": "English, max 3 sentences, including what the research could NOT see"}}"""
+
+
+def draft_campaign_spec(client_id: int, daily_budget_ils: float, final_url: str = "",
+                        goal: str = "", force_refresh_research: bool = False) -> dict:
+    """Competitor research → a validated Search campaign spec, for review.
+
+    CREATES NOTHING. The returned spec is the input create_search_campaign
+    takes, so an admin reviews the draft and then explicitly calls creation
+    (which itself still lands PAUSED — two independent human gates before a
+    single shekel moves).
+
+    `daily_budget_ils` is REQUIRED and never inferred: the money is the
+    client's, and the existing MAX_DAILY_BUDGET_ILS ceiling applies to a
+    drafted spec exactly as it does to a hand-typed one.
+    """
+    from core import competitor_research
+
+    if not isinstance(daily_budget_ils, (int, float)) or daily_budget_ils <= 0:
+        return {"success": False, "errors": ["daily_budget_ils is required and must be positive "
+                                             "— the budget is never inferred from a proposal"]}
+    if not final_url:
+        # Default to the client's own site rather than asking twice; an
+        # explicit final_url still wins.
+        from agents.website_agent import _get_connection as _wp_connection
+        final_url = (_wp_connection(client_id) or {}).get("account_id") or ""
+    if not final_url.startswith(("http://", "https://")):
+        return {"success": False, "errors": ["final_url is required (no connected website to "
+                                             "fall back on) and must start with http(s)://"]}
+
+    research = competitor_research.research(client_id, "ads",
+                                            extra_context={"channel": "google_search",
+                                                           "goal": goal},
+                                            force_refresh=force_refresh_research)
+    if not research.get("success"):
+        # Refusing beats drafting blind: a spec built with no market view is
+        # exactly the generic campaign this function exists to prevent.
+        return {"success": False,
+                "errors": [f"competitor research unavailable ({research.get('error')}) — "
+                           "refusing to draft a campaign with no view of the market"]}
+
+    from agents.seo_agent import _business_context
+    payload = {
+        "business": _business_context(client_id),
+        "goal": goal or "lead generation",
+        "daily_budget_ils": daily_budget_ils,
+        "final_url": final_url,
+        "competitor_research": research["summary"],
+    }
+    log_step(AGENT_NAME, "draft_campaign_spec",
+             f"client {client_id}: {daily_budget_ils} ILS/day, research "
+             f"{'cached' if research.get('cached') else 'fresh'}")
+
+    user_message = json.dumps(payload, ensure_ascii=False)
+    spec, errors = None, []
+    for _attempt in range(2):
+        try:
+            drafted = timed_step(
+                AGENT_NAME, "campaign_draft_llm",
+                lambda: safe_claude_json_call(CAMPAIGN_DRAFT_SYSTEM, user_message,
+                                              max_tokens=2000, client_id=client_id,
+                                              cost_category="claude_google_ads"))
+        except ClaudeJSONError as e:
+            agent_alert(AGENT_NAME, [f"client {client_id}: campaign draft failed: {e}"])
+            return {"success": False, "errors": [str(e)]}
+        spec = {**drafted, "daily_budget_ils": daily_budget_ils, "final_url": final_url}
+        # The SAME validator the create path uses — a draft that wouldn't pass
+        # creation is not a draft worth showing a human.
+        errors = _validate_campaign_spec(spec)
+        if not errors:
+            break
+        # One repair round with the named violations (the pattern seo_agent's
+        # article writer uses) — character limits are what usually trip it.
+        user_message = json.dumps({**payload, "previous_attempt_issues": errors},
+                                  ensure_ascii=False)
+    if errors:
+        agent_alert(AGENT_NAME, [f"client {client_id}: drafted campaign failed validation "
+                                 f"twice: {'; '.join(errors)}"])
+        return {"success": False, "errors": errors}
+
+    _log_activity_draft(client_id, spec, research)
+    log_step(AGENT_NAME, "draft_campaign_spec",
+             f"client {client_id}: draft ready ({len(spec.get('keywords', []))} keywords)")
+    return {"success": True, "spec": spec,
+            "research_summary": research["summary"],
+            "research_cached": research.get("cached", False),
+            "next_step": "review, then POST /api/google-ads/create-campaign with this spec "
+                         "(the campaign is still created PAUSED)"}
+
+
+def _log_activity_draft(client_id: int, spec: dict, research: dict):
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "google_ads_campaign_drafted",
+                 {"name": spec.get("name", ""),
+                  "daily_budget_ils": spec.get("daily_budget_ils"),
+                  "keyword_count": len(spec.get("keywords") or []),
+                  "targeting_rationale": spec.get("targeting_rationale", ""),
+                  "messaging_rationale": spec.get("messaging_rationale", ""),
+                  "research_cached": research.get("cached", False),
+                  "research_tool_grounded": bool(research.get("tool_competitors"))},
+                 {"spec": spec})
+
+
 def create_search_campaign(client_id: int, spec: dict) -> dict:
     """Create a complete Search campaign (budget + campaign + geo/language
     targeting + ad group + keywords + one responsive search ad) in a single

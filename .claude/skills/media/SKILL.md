@@ -116,6 +116,38 @@ uploaded to `scripts/` in Drive and announced in the dashboard chat.
 - **website/seo**: pass that same public URL to
   `wp.upload_media_from_url` (WebP conversion applies as usual).
 
+## Competitor research before generating (2026-08-01)
+
+The agent no longer creates in a vacuum. Both places media originates now take
+a `competitor_research` input from `core/competitor_research.py` (lens
+`"media"`):
+
+- `_craft_prompt()` — every generated image/video
+- `_checkin_for_client()` — the Saturday weekly plan, where most briefs are
+  actually born
+
+What the lens returns: named competitors, the VISUAL STYLE and FORMATS that
+recur in the niche, the recurring MESSAGING ANGLES, and a GAP line (what nobody
+in the niche is doing). The prompts are told to use it as DIRECTION and to
+prefer the GAP — **inform, never copy**, with an explicit instruction to make
+something different when the research names a specific competitor asset.
+
+**Cost**: cached **14 days per client** in `client_activity`
+(`competitor_research_completed`), so a client generating ten assets in a day
+pays for one research pass, not ten. Uncached, it is up to 3 server-side web
+searches (`claude_web_search_call`, which bills tokens + per-search fee to
+client_costs under `claude_competitor_research_media`).
+
+**Failure is silent by design**: `summary_for_prompt()` returns `""` and
+generation proceeds on business context alone, exactly as before this existed.
+A web-search outage must never stop a client's content being made — and it must
+never break the sacred Saturday run.
+
+**This did NOT loosen the anti-trend-chasing rule.** The weekly planner still
+forbids invented "viral this week" claims; research is *observed* evidence
+about the niche, which is why it is allowed to outrank generic instinct — the
+lens prompt itself bans invented metrics.
+
 ## Iron rules (generation quality)
 
 - **NO text inside generated images** — every model renders Hebrew badly;
@@ -125,6 +157,8 @@ uploaded to `scripts/` in Drive and announced in the dashboard chat.
   feeds the prompt when present.
 - Briefs go through a Claude prompt-crafting step (cost_category
   claude_media) — never pass a raw client brief straight to Imagen/Veo.
+- Competitor research informs, never copies (above) — if you touch the
+  prompt-crafting system prompt, keep that clause.
 
 ## Tier 2 extension points (future — do NOT build casually)
 

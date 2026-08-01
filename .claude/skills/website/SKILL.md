@@ -237,6 +237,45 @@ per client at onboarding as the standard operating procedure — the audit
 will flag its absence on every fresh provision until ids exist, which is
 correct pressure, not noise.
 
+## Competitive landscape research before building (2026-08-01)
+
+`research_site_landscape(client_id)` — competitor research → a concrete site
+build brief, run automatically at the END of `provision_site` and re-runnable
+via `POST /api/website/research-landscape`. `GET /api/website/blueprint` reads
+the last recorded brief for free.
+
+**BOTH sides of the SERP, deliberately**: the research lens
+(`core/competitor_research.py`, `"website"`) covers the top ORGANIC results AND
+the top PAID/ad results for the client's local searches. The paid side is the
+point — businesses buying a search term often run newer, better-built landing
+pages precisely because they pay for the traffic, so they are worth studying
+even when the advertiser is the smaller business. When the paid side is not
+observable the lens must SAY so; organic results are never quietly presented as
+covering it.
+
+**Two-stage** (the house pattern): a web-search TEXT call gathers the landscape,
+then `SITE_BLUEPRINT_SYSTEM` (a JSON call) turns it into
+`page_recommendations` / `design_directions` / `conversion_recommendations` /
+`differentiators` / `notes_for_johnny`. Search citations split a response into
+multiple text blocks and don't mix with strict JSON output — hence two calls.
+
+**It changes NOTHING on the site.** v1 records the brief for the human and for
+whatever populates the site later, exactly as `apply_brand_identity` records a
+palette without re-skinning the theme. It also runs LAST in `provision_site`, in
+its own try, because it is the only step there that costs a web-search fee and
+the only one that touches nothing — a failure can never affect the provision.
+
+**This is the ONE deliberate exception** to this agent's "no LLM calls here at
+all" rule (module docstring updated). It generates no content and publishes
+nothing, so the pipe rule's actual purpose — content generation lives in the
+agent that owns the content — is intact. Don't use it as precedent for adding
+content generation here.
+
+**Standing rule it extends, not breaks**: design decisions come from sales-chat
+data and the client's logo, NEVER a design questionnaire. Competitor research is
+a third input of the same kind — evidence we gather ourselves, nothing the
+client is asked. Cached 30 days (site design moves slowest of the three lenses).
+
 ## Lead capture — the contact form is wired automatically (2026-08-01)
 
 **The problem it fixes**: `POST /api/leads/capture/{token}`

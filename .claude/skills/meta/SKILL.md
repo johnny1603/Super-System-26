@@ -140,10 +140,37 @@ owner can do. So when the callback finds no Page:
 - Tokens ride the `Authorization: Bearer` header, never query params — keeps
   them out of URLs and logs.
 
+## Research-grounded campaign drafting (2026-08-01)
+
+`meta_ads_agent.draft_campaign_spec(client_id, daily_budget_ils, final_url="",
+goal="")` → `POST /api/meta-ads/draft-campaign`. Mirror of the Google agent's
+function (see the google-ads skill for the shared design rules — two human
+gates, budget never inferred, same-validator + one repair round, refuses to
+draft when research fails). It runs the `"ads"` lens of
+`core/competitor_research.py` and drafts `primary_text` / `headline` /
+`description` from it.
+
+**Two things differ because the medium differs:**
+1. The prompt treats Meta as **interruption, not intent** — nobody searched for
+   this, so the first line must earn the stop and lead with the audience's
+   problem, never the business name. The Google prompt optimizes keywords; this
+   one reads the research for HOOKS, OFFERS and AUDIENCE signals.
+2. The spec carries **`image_direction`** (a one-sentence brief for media_agent)
+   rather than `image_url` — producing the creative is media_agent's job on the
+   client's own Higgsfield key, so drafting hands over a brief instead of
+   inventing an asset. Produce the image, then pass its public URL as
+   `image_url` to `create-campaign`.
+
+Prompt rules to preserve on edit: no clickbait / fake urgency / health or income
+claims (Meta rejects those and it burns the client's Page), never name a
+competitor, never invent business facts, Hebrew ad text, and no text or logos in
+the described scene (media_agent's own iron rule — Hebrew renders badly).
+
 ## Endpoints
 
 Client-facing: `/api/oauth/meta/start`, `/api/oauth/meta/callback`.
 Admin/scheduler (X-Admin-Key): `POST /api/meta-ads/create-campaign`,
+`POST /api/meta-ads/draft-campaign` (research-grounded draft; creates nothing),
 `GET /api/meta-ads/scan` (daily), `GET /api/meta-ads/weekly-report` (weekly),
 `POST /api/meta-content/publish`, `POST /api/meta-content/reply`,
 `GET /api/meta-content/inbox?client_id=`, `GET /api/meta-content/scan`

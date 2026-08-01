@@ -61,6 +61,7 @@ from datetime import datetime, timedelta, timezone
 
 from supabase import create_client as _supabase_client
 
+from core import competitor_research
 from core import drive_service as drive
 from core import media_gen_service as gen
 from core.agent_base import agent_alert, log_step, timed_step
@@ -256,6 +257,12 @@ IRON RULES:
 - Grounded in THIS business (its industry, audience, setting — from the context given);
   authentic Israeli small-business feel, not generic stock-photo gloss.
 - If a brand palette (hex colors) is provided, weave those tones into the scene naturally.
+- When competitor_research is provided, use it as DIRECTION, never as a template: match the
+  register that visibly works in this niche (shot type, setting, polish level) and prefer
+  the stated GAP over what everyone already does. NEVER reproduce a specific competitor's
+  scene, composition or concept — if the research names a competitor's asset, deliberately
+  make something different that works for the same audience. Research absent or empty is
+  normal: fall back to the business context alone, never to generic stock imagery.
 - Professional, warm, high-quality photography/cinematography language. No shock value,
   no celebrity likenesses, no trademarked characters or brands.
 - max 120 words in generation_prompt. One clear scene, not a collage of ideas.
@@ -287,6 +294,14 @@ def _craft_prompt(client_id: int, brief: str, platform: str, kind: str,
         "media_kind": kind,
         "brand_palette": _brand_palette(client_id),
     }
+    # Look at the niche before generating for it. Cached ~2 weeks per client in
+    # core/competitor_research, so a client generating ten assets in a day pays
+    # for one research pass, not ten — and an empty string (research failed or
+    # unavailable) simply leaves the prompt grounded in business context alone,
+    # exactly as it was before this step existed.
+    research = competitor_research.summary_for_prompt(client_id, "media")
+    if research:
+        payload["competitor_research"] = research
     # TIER-2 extension point: a future avatar agent enriches prompts here
     if avatar_context:
         payload["avatar_context"] = avatar_context
@@ -442,9 +457,12 @@ available, upcoming Israeli calendar events, and recently made suggestions.
 Propose 2-3 concrete MEDIA items for the coming week. Each must be:
 - Visual (an image, a short video, or a self-filmed clip we'd coach them through) — never
   a text-only idea.
-- Tied to something real: an upcoming calendar event, their stated goals, or a proven
+- Tied to something real: an upcoming calendar event, their stated goals, a proven
   format for their industry (your confident knowledge — NEVER invented "viral this week"
-  claims; trends enter deliberately, not franticly).
+  claims; trends enter deliberately, not franticly), or the competitor_research when it is
+  provided — which is observed evidence about this niche, so prefer it over generic
+  instinct. Use it for DIRECTION and prefer its stated GAP; never propose reproducing a
+  competitor's specific piece of content.
 - Something uallak actually produces after approval (generated image/video, or a filming
   kit for them to film).
 Respect sensitive calendar events: near one, propose toned-down content, not promotions.
@@ -476,6 +494,12 @@ def _checkin_for_client(client: dict, events: list) -> int:
     # business context, one source of truth (no second trend mechanism)
     from agents.engagement_agent import _client_context
     payload = _client_context(client, events)
+    # The weekly plan is where most media briefs are actually born, so it gets
+    # the same niche evidence the per-asset prompt does. Cached, and silently
+    # skipped when unavailable — the sacred Saturday run must never fail on it.
+    research = competitor_research.summary_for_prompt(client_id, "media")
+    if research:
+        payload["competitor_research"] = research
     result = safe_claude_json_call(WEEKLY_PLAN_SYSTEM, json.dumps(payload, ensure_ascii=False),
                                    max_tokens=900, client_id=client_id,
                                    cost_category="claude_media")

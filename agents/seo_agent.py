@@ -519,6 +519,11 @@ authorship; genuine quality + human review is the compliance strategy):
   facts, statistics, testimonials, or credentials.
 - One clear topic per article, matching the given target keyword naturally (no stuffing).
 - It must differ substantively from the recent_titles provided.
+- When market_research is provided, use it to pick angles and sub-topics the competitors
+  named in it have NOT covered well — that differentiation is the whole point of the
+  research. Never restate a competitor's article; never mention competitors by name in the
+  article itself; never borrow a metric from the research (it is qualitative research, and
+  the no-invented-facts rule above still binds absolutely).
 
 FORMAT (violations cause automatic rejection):
 - Hebrew. {ARTICLE_WORDS_MIN}-{ARTICLE_WORDS_MAX} words.
@@ -568,6 +573,22 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
         "notes": notes,
         "recent_titles": recent[:10],
     }
+    # The strategy that produced this topic was research-grounded; the article
+    # that fulfils it was not. Reads run_market_research's EXISTING cache (7-day
+    # TTL) rather than starting a new one — free when warm, and skipped entirely
+    # rather than paying for research just to write a single article.
+    cached_research = _recent_activity(client_id, "seo_research_completed",
+                                       RESEARCH_CACHE_DAYS, limit=1)
+    if cached_research:
+        research = (cached_research[0].get("details") or {}).get("research") or {}
+        # The tool bundle is large and numeric; the article writer needs the
+        # qualitative shape (who competes, what they cover), not the full report.
+        payload["market_research"] = {
+            "source": research.get("source", ""),
+            "summary": research.get("summary", ""),
+            "competitors": ((research.get("data") or {}).get("competitors") or [])[:5],
+            "top_keywords": ((research.get("data") or {}).get("top_keywords") or [])[:10],
+        }
     log_step(AGENT_NAME, "write_article", f"client {client_id}: '{topic}'")
 
     user_message = json.dumps(payload, ensure_ascii=False)

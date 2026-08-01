@@ -91,6 +91,22 @@ or acquisition of any kind. Johnny does that personally.
    - `seo_tools_service` has a daily call cap (200/day, `api_call_counters`,
      fails open) as a runaway brake.
 
+**Where the research is actually consumed (2026-08-01)**: `build_strategy` has
+always used it. `write_article` now does too — it reads the SAME 7-day
+`seo_research_completed` cache (free when warm, skipped entirely when cold —
+it never starts a research run just to write one article) and the article
+prompt is told to pick angles the named competitors have NOT covered. The
+no-invented-facts iron rule still binds: research is qualitative context for
+choosing an angle, never a source of numbers to quote.
+
+**This agent is the ONE that does not use `core/competitor_research.py`** (the
+shared web-search research the media/website/ads agents got on 2026-08-01) —
+deliberately, because it is tool-FIRST and real paid-tool data beats a web
+search. The dependency runs the other way: `competitor_research` READS this
+agent's cached `seo_research_completed` row for real competitor domains, at
+zero paid units, so a client with SEMrush/Ahrefs connected silently improves
+every other agent's research too.
+
 ## Who gets the agent
 
 Assignment = a `client_agents` row (`agent_name='seo_agent'`,
