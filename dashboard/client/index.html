@@ -3105,7 +3105,11 @@ function sendChip(text) {
 // Views swap in place rather than being separate pages, because the chat
 // windows, the upgrade panel and the welcome tour are page-level singletons -
 // a real navigation would destroy an open agent conversation mid-sentence.
-const VIEWS = ['home', 'leads', 'media', 'personal', 'support'];
+// MUST list every view: showView() coerces an unlisted name to 'home', so a
+// nav button for a missing entry renders fine and silently does nothing. Keep
+// this in the same order as the nav buttons, and add to it in the SAME commit
+// that adds a view.
+const VIEWS = ['home', 'leads', 'landing', 'media', 'personal', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
