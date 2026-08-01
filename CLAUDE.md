@@ -69,6 +69,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   see the website skill) — the client never handles the token or an embed snippet; the
   manual snippet is now only a labelled fallback for sites we don't manage.
   See `HANDOFF-client-dashboard-nav.md` and `HANDOFF-lead-capture-autowire.md`.
+- `core/landing_pages.py` + `core/landing_domains.py` + `agents/landing_page_agent.py` —
+  in-code LANDING pages (lightweight, one offer, one form), deliberately NOT the WordPress
+  site `website_agent` builds: no shared table, renderer or hosting path. All clients' pages
+  are served by ONE route on this app (`/lp/{client_slug}/{page_slug}`) — never a hosting
+  project per page. 3 included per client, **enforced server-side**; a 4th is blocked and
+  priced by a human, never by code. Content is STRUCTURED and escaped into a fixed template
+  — raw HTML is never stored, because these serve from the same origin as the dashboard
+  session cookie. See `.claude/skills/landing-pages/SKILL.md`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
@@ -90,8 +98,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   The full proposal pipeline has a < 2-minute target and is not there yet.
 - Supabase tables: `clients`, `client_accounts`, `client_agents`, `client_activity`,
   `client_communications`, `client_suggestions`, `leads`, `lead_messages`,
-  `client_lead_volume`, `client_leads`, `login_codes`, `alerts`, `client_costs`,
-  `app_settings`, `weekly_reports`. **`leads` is uallak's own acquisition funnel,
+  `client_lead_volume`, `client_leads`, `landing_pages`, `login_codes`, `alerts`,
+  `client_costs`, `app_settings`, `weekly_reports`. **`leads` is uallak's own acquisition funnel,
   not leads delivered to clients** — a frequent and expensive misreading.
   `client_leads` (core/client_leads.py) is the other direction: people who
   contacted a CLIENT. The two never join.

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -669,6 +669,21 @@ body {
 .lead-badge.new { color: var(--accent); border-color: rgba(255,76,31,0.35); background: var(--accent-dim); }
 .lead-badge.won { color: var(--green); border-color: rgba(0,201,110,0.35); background: rgba(0,201,110,0.1); }
 
+/* ---------- LANDING PAGES ---------- */
+.lp-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+  padding: 16px 18px; margin-bottom: 12px;
+}
+.lp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lp-title { font-weight: 700; font-size: 14.5px; }
+.lp-goal { color: var(--gray); font-size: 12.5px; margin-top: 4px; }
+.lp-url {
+  display: block; margin-top: 10px; font-size: 12px; color: var(--accent);
+  word-break: break-all; direction: ltr; text-align: left;
+}
+.lp-meta { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--gray); }
+.lp-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
 /* ---------- SETUP / INFO PANEL ---------- */
 .info-panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
@@ -855,6 +870,9 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="leads" onclick="showView('leads')">
     <span class="nav-ico">👥</span><span data-i18n="nav_leads">לידים</span>
     <span class="nav-count" id="navLeadsCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="landing" onclick="showView('landing')">
+    <span class="nav-ico">🎯</span><span data-i18n="nav_landing">דפי נחיתה</span>
   </button>
   <button class="nav-item" data-view="media" onclick="showView('media')">
     <span class="nav-ico">🖼</span><span data-i18n="nav_media">מדיה</span>
@@ -1191,6 +1209,43 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
 </div><!-- /viewLeads -->
 
+<!-- ---------- LANDING PAGES ---------- -->
+<!-- Lightweight conversion pages, built in code and served from ONE shared
+     route — deliberately NOT the WordPress site the website agent builds.
+     The 3-page allowance is enforced server-side; this UI only reflects it. -->
+<div class="view" id="viewLanding">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="landing_title">דפי נחיתה</div>
+      <div class="section-sub" data-i18n="landing_sub">דפים קלים וממוקדים להשארת פרטים — נפרדים מהאתר הראשי שלכם</div>
+    </div>
+  </div>
+
+  <!-- Domain card: the client's own subdomain is the goal; our URL is a
+       waiting state and says so. -->
+  <div class="info-panel" id="landingDomainPanel">
+    <div class="info-panel-title" data-i18n="landing_domain_title">הכתובת של דפי הנחיתה</div>
+    <div class="info-panel-text" id="landingDomainText">…</div>
+    <div class="code-box" id="landingDomainRecord" style="display:none;white-space:pre-wrap;"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="sugg-btn reject" id="landingDomainAskBtn" onclick="landingAskDomain()"
+              data-i18n="landing_domain_ask">חיבור הדומיין שלי</button>
+      <button class="sugg-btn approve" id="landingDomainVerifyBtn" onclick="landingVerifyDomain()"
+              style="display:none;" data-i18n="landing_domain_verify">הוספתי — בדקו עכשיו</button>
+    </div>
+  </div>
+
+  <div id="landingAllowance" class="info-panel-text" style="margin:18px 0 10px;"></div>
+  <div id="landingList">
+    <div class="empty-row" data-i18n="loading">טוען…</div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <button class="sugg-btn approve" id="landingCreateBtn" onclick="landingCreate()"
+            data-i18n="landing_create">+ דף נחיתה חדש</button>
+  </div>
+</div><!-- /viewLanding -->
+
 <!-- ---------- MEDIA ASSETS HUB ---------- -->
 <div class="view" id="viewMedia">
   <div class="section-head">
@@ -1399,6 +1454,40 @@ const DASH_I18N = {
   leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
   leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
   leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
+
+  // ── landing pages ──
+  nav_landing: { he:'דפי נחיתה', en:'Landing pages', fr:'Pages de destination', ar:'صفحات هبوط', ru:'Лендинги' },
+  landing_title: { he:'דפי נחיתה', en:'Landing pages', fr:'Pages de destination', ar:'صفحات الهبوط', ru:'Лендинги' },
+  landing_sub: { he:'דפים קלים וממוקדים להשארת פרטים — נפרדים מהאתר הראשי שלכם', en:'Fast, single-purpose pages for capturing enquiries — separate from your main website', fr:'Pages rapides et ciblées pour capter les demandes — distinctes de votre site principal', ar:'صفحات سريعة ومركّزة لجمع الطلبات — منفصلة عن موقعك الرئيسي', ru:'Быстрые целевые страницы для сбора заявок — отдельно от основного сайта' },
+  landing_allowance: { he:'{used} מתוך {total} דפי נחיתה הכלולים בחבילה שלכם', en:'{used} of {total} landing pages included in your package', fr:'{used} sur {total} pages incluses dans votre forfait', ar:'{used} من {total} صفحات مشمولة في باقتك', ru:'{used} из {total} лендингов, включённых в ваш пакет' },
+  landing_empty: { he:'עדיין אין דפי נחיתה. צרו את הראשון — נכתוב לכם את הטקסט ונשאיר אותו כטיוטה לאישור.', en:'No landing pages yet. Create the first one — we write the copy and leave it as a draft for your approval.', fr:'Aucune page pour l’instant. Créez la première — nous rédigeons le texte et le laissons en brouillon.', ar:'لا توجد صفحات بعد. أنشئ الأولى — نكتب النص ونتركه كمسودة لموافقتك.', ru:'Пока нет лендингов. Создайте первый — мы напишем текст и оставим черновик на ваше утверждение.' },
+  landing_unavailable: { he:'אזור דפי הנחיתה בהכנה — הוא ייפתח ברגע שהמערכת תסיים את ההתקנה בצד שלנו.', en:'The landing pages area is being set up — it opens as soon as our side finishes provisioning.', fr:'L’espace pages de destination est en cours de configuration.', ar:'منطقة صفحات الهبوط قيد الإعداد.', ru:'Раздел лендингов настраивается — откроется после завершения установки.' },
+  landing_create: { he:'+ דף נחיתה חדש', en:'+ New landing page', fr:'+ Nouvelle page', ar:'+ صفحة هبوط جديدة', ru:'+ Новый лендинг' },
+  landing_request_extra: { he:'בקשת דף נוסף מהצוות', en:'Ask the team for another page', fr:'Demander une page supplémentaire', ar:'اطلب صفحة إضافية من الفريق', ru:'Запросить у команды ещё один' },
+  landing_extra_sent: { he:'הבקשה נשלחה לצוות — נחזור אליכם בצ׳אט', en:'Request sent to the team — we’ll reply in the chat', fr:'Demande envoyée — nous répondrons dans le chat', ar:'تم إرسال الطلب — سنرد في المحادثة', ru:'Запрос отправлен команде — ответим в чате' },
+  landing_status_live: { he:'באוויר', en:'Live', fr:'En ligne', ar:'مباشر', ru:'Опубликован' },
+  landing_status_draft: { he:'טיוטה', en:'Draft', fr:'Brouillon', ar:'مسودة', ru:'Черновик' },
+  landing_publish: { he:'העלאה לאוויר', en:'Publish', fr:'Publier', ar:'نشر', ru:'Опубликовать' },
+  landing_rewrite: { he:'שכתוב הטקסט', en:'Rewrite the copy', fr:'Réécrire le texte', ar:'إعادة كتابة النص', ru:'Переписать текст' },
+  landing_rewriting: { he:'כותב מחדש…', en:'Rewriting…', fr:'Réécriture…', ar:'جارٍ إعادة الكتابة…', ru:'Переписываем…' },
+  landing_creating: { he:'מכין את הדף — רגע…', en:'Building the page — one moment…', fr:'Création de la page…', ar:'جارٍ إنشاء الصفحة…', ru:'Создаём страницу…' },
+  landing_create_failed: { he:'משהו השתבש — נסו שוב או כתבו לנו בצ׳אט', en:'Something went wrong — try again or message us in the chat', fr:'Une erreur est survenue — réessayez ou écrivez-nous', ar:'حدث خطأ — حاول مجددًا أو راسلنا', ru:'Что-то пошло не так — попробуйте снова или напишите нам' },
+  landing_leads_count: { he:'{n} לידים מהדף הזה', en:'{n} leads from this page', fr:'{n} prospects depuis cette page', ar:'{n} عملاء من هذه الصفحة', ru:'{n} лидов с этой страницы' },
+  landing_prompt_title: { he:'איך נקרא לדף? (למשל: מבצע פתיחת שנה)', en:'What should we call this page? (e.g. New-year offer)', fr:'Comment nommer cette page ?', ar:'ما اسم هذه الصفحة؟', ru:'Как назовём страницу?' },
+  landing_prompt_goal: { he:'מה ההצעה או הקמפיין שהדף הזה משרת? (משפט אחד)', en:'Which offer or campaign is this page for? (one sentence)', fr:'Pour quelle offre ou campagne ? (une phrase)', ar:'لأي عرض أو حملة هذه الصفحة؟ (جملة واحدة)', ru:'Для какого предложения или кампании эта страница? (одно предложение)' },
+  landing_prompt_feedback: { he:'מה לשנות בטקסט? (אפשר להשאיר ריק לניסוח חדש)', en:'What should change in the copy? (leave empty for a fresh version)', fr:'Que faut-il changer ? (laisser vide pour une nouvelle version)', ar:'ما الذي تريد تغييره؟ (اتركه فارغًا لنسخة جديدة)', ru:'Что изменить в тексте? (оставьте пустым для новой версии)' },
+  // domain card — our URL is always described as temporary, never as the address
+  landing_domain_title: { he:'הכתובת של דפי הנחיתה', en:'Your landing pages’ address', fr:'L’adresse de vos pages', ar:'عنوان صفحات الهبوط', ru:'Адрес ваших лендингов' },
+  landing_domain_shared: { he:'הדפים שלכם עובדים כרגע על כתובת זמנית שלנו. עדיף שהם יהיו על הדומיין שלכם — זה נראה מקצועי יותר ותורם לאתר שלכם. זה דורש שינוי אחד קטן אצל מי שמנהל לכם את הדומיין, ואנחנו מכינים לכם בדיוק מה להעביר לו.', en:'Your pages currently run on a temporary address of ours. They belong on your own domain — it looks more professional and the credit goes to your site. It takes one small change by whoever manages your domain, and we prepare exactly what to send them.', fr:'Vos pages utilisent une adresse temporaire. Elles devraient être sur votre domaine — nous préparons exactement quoi transmettre.', ar:'صفحاتك تعمل حاليًا على عنوان مؤقت لدينا. الأفضل أن تكون على نطاقك — ونحن نجهّز لك ما ترسله بالضبط.', ru:'Ваши страницы работают на нашем временном адресе. Им лучше быть на вашем домене — мы подготовим, что именно отправить.' },
+  landing_domain_pending: { he:'ממתינים לחיבור {host} — הדפים ממשיכים לעבוד בכתובת הזמנית עד אז. העבירו את ההודעה הזו למי שמנהל לכם את הדומיין:', en:'Waiting for {host} to connect — your pages keep working on the temporary address until then. Forward this to whoever manages your domain:', fr:'En attente de {host} — vos pages restent sur l’adresse temporaire. Transmettez ceci au gestionnaire de votre domaine :', ar:'بانتظار ربط {host} — الصفحات تعمل على العنوان المؤقت حتى ذلك الحين. أرسل هذا لمن يدير نطاقك:', ru:'Ожидаем подключения {host} — до этого страницы работают на временном адресе. Передайте это тому, кто управляет вашим доменом:' },
+  landing_domain_active: { he:'מחובר! דפי הנחיתה שלכם רצים על {host} ✅', en:'Connected! Your landing pages run on {host} ✅', fr:'Connecté ! Vos pages sont sur {host} ✅', ar:'تم الربط! صفحاتك على {host} ✅', ru:'Подключено! Ваши лендинги работают на {host} ✅' },
+  landing_domain_ask: { he:'חיבור הדומיין שלי', en:'Connect my domain', fr:'Connecter mon domaine', ar:'ربط نطاقي', ru:'Подключить мой домен' },
+  landing_domain_verify: { he:'הוספתי — בדקו עכשיו', en:'I’ve added it — check now', fr:'C’est ajouté — vérifier', ar:'أضفته — تحقق الآن', ru:'Добавил — проверьте' },
+  landing_domain_sent: { he:'שלחתי לכם בצ׳אט בדיוק מה להעביר', en:'I’ve sent you in the chat exactly what to forward', fr:'Je vous ai envoyé dans le chat quoi transmettre', ar:'أرسلت لك في المحادثة ما يجب إرساله', ru:'Отправил в чат, что именно передать' },
+  landing_domain_bad: { he:'הכתובת לא נראית תקינה — למשל lp.hasake.co.il', en:'That address doesn’t look valid — e.g. lp.yourbusiness.co.il', fr:'Adresse invalide — ex. lp.votresite.fr', ar:'العنوان غير صالح — مثل lp.yoursite.com', ru:'Адрес выглядит неверно — например lp.yoursite.ru' },
+  landing_domain_checking: { he:'בודק…', en:'Checking…', fr:'Vérification…', ar:'جارٍ التحقق…', ru:'Проверяем…' },
+  landing_domain_ok: { he:'מחובר! הדפים עברו לדומיין שלכם', en:'Connected! Your pages moved to your domain', fr:'Connecté ! Vos pages sont sur votre domaine', ar:'تم الربط! انتقلت الصفحات إلى نطاقك', ru:'Подключено! Страницы переехали на ваш домен' },
+  landing_domain_not_yet: { he:'עדיין לא — הפרטים בצ׳אט', en:'Not yet — details in the chat', fr:'Pas encore — détails dans le chat', ar:'ليس بعد — التفاصيل في المحادثة', ru:'Пока нет — подробности в чате' },
 
   // ── media hub ──
   media_title: { he:'המדיה שלי', en:'My media', fr:'Mes médias', ar:'الوسائط الخاصة بي', ru:'Мои материалы' },
@@ -3032,6 +3121,7 @@ function showView(name) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
+  if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
@@ -3284,6 +3374,189 @@ async function loadLeadCapture() {
   } catch (e) {
     // Non-fatal: the explanatory panel just stays empty
     document.getElementById('leadCapturePanel').style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LANDING PAGES
+// ═══════════════════════════════════════════════════════════════════════════
+// Conversion pages served from our shared route, separate from the WordPress
+// site. The 3-page allowance is enforced server-side — this UI reflects it and
+// offers the "ask for another" path when it's reached, which routes to the
+// team through the chat rather than pricing anything here.
+let landingState = null;
+
+async function loadLanding() {
+  const list = document.getElementById('landingList');
+  try {
+    const res = await fetch('/api/client/landing-pages', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) throw new Error('unavailable');
+    landingState = body.data;
+    renderLandingDomain(body.data.domain);
+    renderLandingPages(body.data);
+  } catch (e) {
+    list.innerHTML = `<div class="empty-row">${uallakI18n.t('landing_unavailable')}</div>`;
+    document.getElementById('landingDomainPanel').style.display = 'none';
+    document.getElementById('landingCreateBtn').style.display = 'none';
+  }
+}
+
+function renderLandingDomain(domain) {
+  const text = document.getElementById('landingDomainText');
+  const record = document.getElementById('landingDomainRecord');
+  const askBtn = document.getElementById('landingDomainAskBtn');
+  const verifyBtn = document.getElementById('landingDomainVerifyBtn');
+
+  if (domain.mode === 'active') {
+    text.textContent = uallakI18n.t('landing_domain_active', { host: domain.hostname });
+    record.style.display = 'none';
+    askBtn.style.display = 'none';
+    verifyBtn.style.display = 'none';
+  } else if (domain.mode === 'pending') {
+    // Waiting state, stated as such — never presented as the final address
+    text.textContent = uallakI18n.t('landing_domain_pending', { host: domain.hostname });
+    record.textContent = domain.dns ? domain.dns.forward_text : '';
+    record.style.display = 'block';
+    askBtn.style.display = 'none';
+    verifyBtn.style.display = 'inline-block';
+  } else {
+    text.textContent = uallakI18n.t('landing_domain_shared');
+    record.style.display = 'none';
+    askBtn.style.display = 'inline-block';
+    verifyBtn.style.display = 'none';
+  }
+}
+
+function renderLandingPages(data) {
+  const list = document.getElementById('landingList');
+  document.getElementById('landingAllowance').textContent =
+    uallakI18n.t('landing_allowance', { used: data.used, total: data.included });
+
+  const createBtn = document.getElementById('landingCreateBtn');
+  createBtn.textContent = data.can_create
+    ? uallakI18n.t('landing_create') : uallakI18n.t('landing_request_extra');
+
+  if (!data.pages.length) {
+    list.innerHTML = `<div class="empty-row">${uallakI18n.t('landing_empty')}</div>`;
+    return;
+  }
+  list.innerHTML = data.pages.map(page => {
+    const live = page.status === 'published';
+    const badge = live
+      ? `<span class="lead-badge won">${uallakI18n.t('landing_status_live')}</span>`
+      : `<span class="lead-badge">${uallakI18n.t('landing_status_draft')}</span>`;
+    const urlRow = live
+      ? `<a class="lp-url" href="${esc(page.url)}" target="_blank" rel="noopener">${esc(page.url)}</a>`
+      : '';
+    const publishBtn = live ? '' :
+      `<button class="sugg-btn approve" onclick="landingPublish(${page.id})">${uallakI18n.t('landing_publish')}</button>`;
+    return `<div class="lp-card">
+      <div class="lp-head"><span class="lp-title">${esc(page.title)}</span>${badge}</div>
+      ${page.goal ? `<div class="lp-goal">${esc(page.goal)}</div>` : ''}
+      ${urlRow}
+      <div class="lp-meta"><span>${uallakI18n.t('landing_leads_count', { n: page.leads })}</span></div>
+      <div class="lp-actions">
+        ${publishBtn}
+        <button class="sugg-btn reject" onclick="landingRegenerate(${page.id})">${uallakI18n.t('landing_rewrite')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function landingCreate() {
+  // At the ceiling this button becomes the "ask the team" path — the 4th page
+  // is a pricing decision a human makes, never something the UI grants.
+  if (landingState && !landingState.can_create) {
+    await fetch('/api/client/landing-pages/request-extra', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: '' }),
+    });
+    showNotice(uallakI18n.t('landing_extra_sent'), 'success');
+    return;
+  }
+  const title = prompt(uallakI18n.t('landing_prompt_title'));
+  if (!title) return;
+  const goal = prompt(uallakI18n.t('landing_prompt_goal')) || '';
+  showNotice(uallakI18n.t('landing_creating'), 'success');
+  try {
+    const res = await fetch('/api/client/landing-pages', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, goal, generate: true }),
+    });
+    if (!res.ok) throw new Error('create failed');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_create_failed'), 'warn');
+  }
+}
+
+async function landingPublish(pageId) {
+  try {
+    const res = await fetch(`/api/client/landing-pages/${pageId}/publish`, {
+      method: 'POST', credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('publish failed');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_create_failed'), 'warn');
+  }
+}
+
+async function landingRegenerate(pageId) {
+  const feedback = prompt(uallakI18n.t('landing_prompt_feedback')) || '';
+  showNotice(uallakI18n.t('landing_rewriting'), 'success');
+  try {
+    const res = await fetch(`/api/client/landing-pages/${pageId}/regenerate`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feedback }),
+    });
+    if (!res.ok) throw new Error('regenerate failed');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_create_failed'), 'warn');
+  }
+}
+
+async function landingAskDomain() {
+  const hostname = prompt(uallakI18n.t('landing_prompt_domain'));
+  if (!hostname) return;
+  try {
+    const res = await fetch('/api/client/landing-domain', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostname }),
+    });
+    if (!res.ok) throw new Error('domain request failed');
+    // The full forwardable instruction also lands in the chat, which is where
+    // the client is meant to pick it up and pass it on.
+    showNotice(uallakI18n.t('landing_domain_sent'), 'success');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_domain_bad'), 'warn');
+  }
+}
+
+async function landingVerifyDomain() {
+  showNotice(uallakI18n.t('landing_domain_checking'), 'success');
+  try {
+    const res = await fetch('/api/client/landing-domain/verify', {
+      method: 'POST', credentials: 'same-origin',
+    });
+    const body = await res.json();
+    if (body.success && body.data.verified) {
+      showNotice(uallakI18n.t('landing_domain_ok'), 'success');
+    } else {
+      // The detailed reason (including "it's on our side") is delivered in the
+      // chat by the agent — the toast just says to look there.
+      showNotice(uallakI18n.t('landing_domain_not_yet'), 'warn');
+    }
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_domain_not_yet'), 'warn');
   }
 }
 

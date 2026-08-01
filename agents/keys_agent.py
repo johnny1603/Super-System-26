@@ -32,6 +32,12 @@ KEYS = {
     # every provisioned clone inherits it, and provision_site() immediately swaps it
     # for a per-site one (see the website skill)
     "WEBSITE_TEMPLATE_APP_PASSWORD": os.environ.get("WEBSITE_TEMPLATE_APP_PASSWORD", ""),
+    # Cloudflare for SaaS — issues certificates for CLIENTS' own landing-page
+    # subdomains (core/landing_domains.py). Absent is a SUPPORTED state, not a
+    # broken one: landing pages keep serving on the shared app URL and the
+    # domain flow reports that the remaining work is on our side.
+    "CLOUDFLARE_API_TOKEN": os.environ.get("CLOUDFLARE_API_TOKEN", ""),
+    "CLOUDFLARE_ZONE_ID": os.environ.get("CLOUDFLARE_ZONE_ID", ""),
 }
 
 def get_key(name):

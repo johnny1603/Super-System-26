@@ -463,6 +463,15 @@ def _website_reads(client_id: int) -> dict:
             data["seo_tool_connected"] = tool
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: seo reads failed: {e}")
+    # Landing pages belong to this specialist's domain (the client's web
+    # presence), and dashboard_payload is a pure READ — it lists pages, URLs,
+    # lead counts and the domain state, and can create/publish/price nothing.
+    # That keeps the persona path's read-only-by-construction invariant intact.
+    try:
+        from agents.landing_page_agent import dashboard_payload
+        data["landing_pages"] = dashboard_payload(client_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: landing reads failed: {e}")
     return data
 
 
@@ -511,7 +520,15 @@ PERSONAS = {
                        "'seo_tool_connected' names their connected SEO tool when present. "
                        "New articles are written as DRAFTS for human review before "
                        "publishing — that's deliberate quality control, frame it that way. "
-                       "Missing/not connected: point to the 'האתר שלך' card."),
+                       "Missing/not connected: point to the 'האתר שלך' card. "
+                       "'landing_pages' is their LANDING PAGES — a separate thing from the "
+                       "WordPress site: light, single-offer pages for capturing enquiries. "
+                       "'included' of them come free with every package. 'domain.mode' is "
+                       "'shared' (still on our temporary address), 'pending' (waiting for "
+                       "their DNS record — if they say they added it, tell them to press "
+                       "'הוספתי — בדקו עכשיו' in the דפי נחיתה section) or 'active' (running "
+                       "on their own domain). If they want a page BEYOND the included "
+                       "number, never quote a price — say you'll pass it to the team."),
     },
     "media": {
         "name": "ליאור",

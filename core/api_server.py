@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from supabase import create_client as _supabase_create_client, Client
 
@@ -2946,6 +2946,151 @@ def client_lead_capture_setup(request: Request):
         "form_page_link": summary["page_link"],
     }}
 
+# ─── Landing pages (client-facing, session-gated) ────────────────────────────
+# Every client gets landing_pages.MAX_PAGES_PER_CLIENT included in their base
+# package regardless of tier. The ceiling is enforced in core/landing_pages.py
+# (server-side); the UI's own check is a courtesy, not the control.
+
+def _landing_unavailable(client_id: int, error: Exception):
+    print(f"[landing_pages] client {client_id}: {error}")
+    raise HTTPException(status_code=503, detail={"code": "ERR_LANDING_UNAVAILABLE"})
+
+@app.get("/api/client/landing-pages")
+def client_landing_pages(request: Request):
+    """The Landing Pages section: pages, live URLs (or DNS-pending state),
+    per-page lead counts, and the domain card."""
+    client_id = _require_session(request)
+    try:
+        from agents.landing_page_agent import dashboard_payload
+        return {"success": True, "data": dashboard_payload(client_id)}
+    except Exception as e:
+        # Before the migration runs this is the honest state, same shape as the
+        # leads section's own not-yet-provisioned answer.
+        _landing_unavailable(client_id, e)
+
+class LandingCreateRequest(BaseModel):
+    title: str
+    goal: str = ""       # which offer/campaign this page is for
+    generate: bool = True
+
+@app.post("/api/client/landing-pages")
+def client_landing_create(req: LandingCreateRequest, request: Request):
+    # Plain `def`: an LLM copy call plus DB writes, all blocking.
+    client_id = _require_session(request)
+    from agents.landing_page_agent import create_page
+    result = create_page(client_id, req.title, req.goal, req.generate)
+    if not result.get("success"):
+        # The 3-page ceiling answers with its own code so the UI can offer the
+        # "ask for another" path instead of showing a generic failure.
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_CREATE_FAILED"),
+                                    "errors": result.get("errors", [])})
+    return {"success": True, "data": result}
+
+class LandingUpdateRequest(BaseModel):
+    title: str = None
+    goal: str = None
+    content: dict = None
+
+@app.post("/api/client/landing-pages/{page_id}")
+def client_landing_update(page_id: int, req: LandingUpdateRequest, request: Request):
+    client_id = _require_session(request)
+    from core import landing_pages
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    result = landing_pages.update_page(client_id, page_id, fields)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_UPDATE_FAILED")})
+    return {"success": True, "data": result["page"]}
+
+@app.post("/api/client/landing-pages/{page_id}/publish")
+def client_landing_publish(page_id: int, request: Request):
+    client_id = _require_session(request)
+    from agents.landing_page_agent import publish_page
+    result = publish_page(client_id, page_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_PUBLISH_FAILED")})
+    return {"success": True, "data": result}
+
+class LandingRegenerateRequest(BaseModel):
+    feedback: str = ""   # the client's own words on what to change
+
+@app.post("/api/client/landing-pages/{page_id}/regenerate")
+def client_landing_regenerate(page_id: int, req: LandingRegenerateRequest, request: Request):
+    client_id = _require_session(request)
+    from agents.landing_page_agent import regenerate_copy
+    result = regenerate_copy(client_id, page_id, req.feedback)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_COPY_FAILED")})
+    return {"success": True, "data": result["page"]}
+
+@app.delete("/api/client/landing-pages/{page_id}")
+def client_landing_delete(page_id: int, request: Request):
+    client_id = _require_session(request)
+    from core import landing_pages
+    if not landing_pages.delete_page(client_id, page_id):
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    return {"success": True}
+
+class LandingExtraRequest(BaseModel):
+    reason: str = ""
+
+@app.post("/api/client/landing-pages/request-extra")
+def client_landing_request_extra(req: LandingExtraRequest, request: Request):
+    # A 4th page is NOT auto-created and NOT auto-priced — this records the
+    # request, alerts Johnny, and tells the client a human is looking at it.
+    client_id = _require_session(request)
+    from agents.landing_page_agent import request_extra_page
+    return {"success": True, "data": request_extra_page(client_id, req.reason)}
+
+class LandingDomainRequest(BaseModel):
+    hostname: str        # e.g. lp.theirbusiness.co.il
+
+@app.post("/api/client/landing-domain")
+def client_landing_domain_request(req: LandingDomainRequest, request: Request):
+    client_id = _require_session(request)
+    from agents.landing_page_agent import request_domain
+    result = request_domain(client_id, req.hostname)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_BAD_HOSTNAME")})
+    return {"success": True, "data": result}
+
+@app.post("/api/client/landing-domain/verify")
+def client_landing_domain_verify(request: Request):
+    # Client-triggered "I've added the record" check. Reports the result into
+    # the dashboard chat either way — including saying when the remaining work
+    # is on OUR side, so nobody is sent to re-check a correct record.
+    client_id = _require_session(request)
+    from agents.landing_page_agent import verify_domain
+    result = verify_domain(client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_NO_DOMAIN")})
+    return {"success": True, "data": result}
+
+class AdminLandingCreateRequest(BaseModel):
+    client_id: int
+    title: str
+    goal: str = ""
+    generate: bool = True
+
+@app.post("/api/landing-pages/admin/create", dependencies=_admin_only)
+def admin_landing_create(req: AdminLandingCreateRequest):
+    # Johnny's path for creating a page on a client's behalf — including the
+    # 4th page AFTER he has made the pricing decision. It goes through the same
+    # ceiling check, so granting an extra page is a deliberate act (raise the
+    # client's allowance or delete an unused page), never an accident.
+    from agents.landing_page_agent import create_page
+    result = create_page(req.client_id, req.title, req.goal, req.generate)
+    if not result.get("success"):
+        raise HTTPException(status_code=400,
+                            detail={"code": result.get("code", "ERR_LANDING_CREATE_FAILED"),
+                                    "errors": result.get("errors", [])})
+    return {"success": True, "data": result}
+
 @app.post("/api/leads/capture/{token}")
 async def public_lead_capture(token: str, request: Request):
     """PUBLIC. A form on the client's own site posts a lead here; the signed
@@ -3623,6 +3768,59 @@ def filter_questions_endpoint(req: FilterRequest):
 @app.get("/tiktokrJGb1d7R9INmQdVAEt5me4e6LEOQtAXk.txt", include_in_schema=False)
 async def tiktok_domain_verification():
     return PlainTextResponse("tiktok-developers-site-verification=rJGb1d7R9INmQdVAEt5me4e6LEOQtAXk")
+
+# ─── Landing pages: the PUBLIC serving routes ────────────────────────────────
+# ONE shared route serves every client's landing pages — no per-client or
+# per-page hosting project, which is the whole reason this scales past the
+# ~30-project ceiling that shaped the hosting decision. Registered here, before
+# the root catch-all mount, for the same reason as the TikTok file above.
+
+@app.get("/_uallak-verify", include_in_schema=False)
+def landing_domain_verify_marker():
+    # Answers on EVERY hostname that reaches this app, which is exactly what
+    # makes it a proof of routing: core/landing_domains.verify_domain fetches
+    # this over HTTPS on the client's own hostname. It carries no secret and
+    # identifies no client — it only proves "this hostname reaches uallak".
+    from core.landing_domains import VERIFY_BODY
+    return PlainTextResponse(VERIFY_BODY)
+
+@app.get("/lp/{client_segment}/{page_slug}", include_in_schema=False)
+def serve_landing_page(client_segment: str, page_slug: str, request: Request):
+    # PUBLIC and unauthenticated by necessity — this is the page a real visitor
+    # loads. Plain `def`: Supabase reads are blocking.
+    from core import landing_pages
+    from core.session import create_lead_capture_token
+
+    # The client id is the trailing numeric segment of the slug (see
+    # landing_pages.client_slug) — no lookup table, and a renamed business
+    # keeps working.
+    match = re.search(r"(\d+)$", client_segment or "")
+    if not match:
+        raise HTTPException(status_code=404, detail="not found")
+    client_id = int(match.group(1))
+
+    try:
+        page = landing_pages.get_by_slug(client_id, page_slug)
+    except Exception as e:
+        print(f"[landing] lookup failed for {client_segment}/{page_slug}: {e}")
+        raise HTTPException(status_code=503, detail="temporarily unavailable")
+    # A draft is not publicly reachable — same 404 as a page that never
+    # existed, so an unpublished slug can't be probed for.
+    if not page or page.get("status") != "published":
+        raise HTTPException(status_code=404, detail="not found")
+
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    capture_url = f"{base}/api/leads/capture/{create_lead_capture_token(client_id)}"
+    # The redirect target is THIS request's own URL, so it always matches the
+    # host the visitor actually used — the shared URL or the client's own
+    # domain. That is what satisfies the capture endpoint's same-host-https
+    # open-redirect guard in both states, without this route having to know
+    # which one it is serving.
+    public_url = str(request.url.replace(query="", scheme="https"))
+    page_html = landing_pages.render_page(
+        page, capture_url, public_url,
+        sent=request.query_params.get("sent") == "1")
+    return HTMLResponse(page_html)
 
 # Must be last — catch-all for the landing page
 app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")
