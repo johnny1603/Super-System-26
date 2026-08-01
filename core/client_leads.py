@@ -94,12 +94,69 @@ def whatsapp_link(phone: str) -> str:
 
 # ─── Write path ───────────────────────────────────────────────────────────────
 
+def _insert_lead(client_id: int, base_row: dict, attribution: dict):
+    """Insert with attribution, falling back to without.
+
+    The attribution columns arrive in a migration
+    (2026-08-02-client-leads-attribution.sql). If it hasn't been run, PostgREST
+    rejects the whole insert for unknown columns — and losing a real customer
+    enquiry because a migration is pending is not an acceptable trade. So the
+    fallback drops attribution and keeps the LEAD, alerting once so the gap is
+    visible rather than silent.
+
+    The retry deliberately does not inspect the error message: PostgREST's
+    schema-cache wording is not a contract, and any insert failure that a
+    smaller row can survive is one worth surviving."""
+    try:
+        return _db().table("client_leads").insert({**base_row, **attribution}).execute()
+    except Exception as e:
+        result = _db().table("client_leads").insert(base_row).execute()
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: lead STORED but WITHOUT attribution ({e}). "
+            f"Run migrations/2026-08-02-client-leads-attribution.sql — until then "
+            f"organic-vs-paid is unknown for every lead captured."])
+        return result
+
+
 def _captured_today(client_id: int) -> int:
     since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     rows = (_db().table("client_leads").select("id", count="exact")
             .eq("client_id", client_id).gte("created_at", since)
             .limit(1).execute())
     return rows.count or 0
+
+
+def _attribution_fields(payload: dict) -> dict:
+    """Where this visitor actually came from, classified.
+
+    Reuses `core/lead_tracking` — its UTM/click-id constants AND its
+    `classify_source()` verdict — rather than reimplementing attribution for
+    the other direction of travel. The two TABLES never join (that boundary is
+    absolute), but the two must agree on what "a paid Google click" means, and
+    one classifier is how that stays true.
+
+    Every value here came off a URL a stranger controls: truncated hard,
+    never executed, never trusted beyond being a string."""
+    from core import lead_tracking
+
+    utm = {field: lead_tracking._clean(payload.get(field))
+           for field in lead_tracking.UTM_FIELDS}
+    click_ids = {param: lead_tracking._clean(payload.get(param), 500)
+                 for param in lead_tracking.CLICK_ID_PLATFORMS}
+    referrer = lead_tracking._clean(payload.get("referrer"), 500)
+    landing_path = lead_tracking._clean(payload.get("landing_path"), 500)
+
+    classified = lead_tracking.classify_source(utm, click_ids, referrer)
+    return {
+        **utm,
+        # Only the click ids actually present — an empty map is honest, a map
+        # of empty strings is noise.
+        "click_ids": {param: value for param, value in click_ids.items() if value},
+        "referrer": referrer,
+        "landing_path": landing_path,
+        "source_platform": classified["platform"],
+        "source_confidence": classified["confidence"],
+    }
 
 
 def capture_lead(client_id: int, payload: dict, source: str = "website_form") -> dict:
@@ -120,6 +177,14 @@ def capture_lead(client_id: int, payload: dict, source: str = "website_form") ->
     if source not in SOURCES:
         source = "unknown"
 
+    base_row = {
+        "client_id": client_id,
+        "name": name, "phone": phone, "email": email, "message": message,
+        "source": source,
+        "source_detail": _clip(payload.get("source_detail"), MAX_SOURCE_DETAIL_CHARS),
+        "status": "new",
+    }
+
     try:
         if _captured_today(client_id) >= MAX_LEADS_PER_DAY:
             agent_alert(AGENT_NAME, [
@@ -128,13 +193,7 @@ def capture_lead(client_id: int, payload: dict, source: str = "website_form") ->
                 f"DROPPED. Check for a form loop or a scripted flood."])
             return {"stored": False, "id": None, "reason": "daily_cap"}
 
-        row = _db().table("client_leads").insert({
-            "client_id": client_id,
-            "name": name, "phone": phone, "email": email, "message": message,
-            "source": source,
-            "source_detail": _clip(payload.get("source_detail"), MAX_SOURCE_DETAIL_CHARS),
-            "status": "new",
-        }).execute()
+        row = _insert_lead(client_id, base_row, _attribution_fields(payload))
     except Exception as e:
         # A failed capture loses a real customer enquiry - loud, not silent.
         agent_alert(AGENT_NAME,

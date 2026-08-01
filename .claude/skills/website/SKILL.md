@@ -340,6 +340,27 @@ page's pre-existing HTML violates the standing rules; reported as its own
 problem so it doesn't read as a rejection of our form), or
 `verified_on_page: False` (markup stripped). All of those alert.
 
+**Traffic attribution (2026-08-02)**: the injected block now also carries
+`_ATTRIBUTION_SCRIPT`, which captures `utm_*` / `gclid` / `fbclid` / `ttclid` /
+`msclkid` and posts them with the lead.
+
+- **FIRST-TOUCH via sessionStorage, not `location.search`.** On a real
+  multi-page site the visitor lands on the homepage with `?gclid=…` and then
+  navigates to צור קשר, where the parameters are long gone — reading the
+  current URL on the contact page would capture almost nothing. Session-scoped
+  only: no cookie, nothing that outlives the tab.
+- **It needs script here, unlike landing pages.** We render a landing page, so
+  its route writes the hidden fields server-side. WordPress renders this page;
+  the query string is reachable only from the browser.
+- **Degradation is deliberate and now REPORTED.** `<script>` survives wp_kses
+  only with `unfiltered_html`. If stripped, the form still works and the lead
+  is still captured — only attribution is missing. `install_lead_capture_form`
+  therefore returns `attribution_script_live` SEPARATELY from
+  `verified_on_page` (they fail independently) and alerts when the form works
+  but the script didn't survive. Fields are CREATED by the script rather than
+  pre-rendered empty, so absent data stays absent instead of becoming a row of
+  empty strings that looks measured.
+
 **Dashboard**: `GET /api/client/lead-capture` now also returns `auto_wired` /
 `site_connected` / `managed_by_us` / `form_page_link`, read from the activity
 log via `lead_capture_summary()` — NOT by calling the client's site, since

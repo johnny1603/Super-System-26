@@ -3929,9 +3929,14 @@ def serve_landing_page(client_segment: str, page_slug: str, request: Request):
     # open-redirect guard in both states, without this route having to know
     # which one it is serving.
     public_url = str(request.url.replace(query="", scheme="https"))
+    # Attribution rides in as hidden fields rendered from THIS request's query
+    # string — no JS on the page, and it still works with JS disabled.
     page_html = landing_pages.render_page(
         page, capture_url, public_url,
-        sent=request.query_params.get("sent") == "1")
+        sent=request.query_params.get("sent") == "1",
+        query_params=request.query_params,
+        path=request.url.path,
+        referrer=request.headers.get("referer", ""))
     return HTMLResponse(page_html)
 
 # Must be last — catch-all for the landing page

@@ -289,8 +289,38 @@ footer{margin-top:40px;font-size:12px;color:var(--muted);text-align:center}
 """
 
 
+# Attribution parameters carried from the visitor's URL into the capture POST.
+# Mirrors core/lead_tracking's own field list — imported there rather than
+# re-typed, so a new click-id platform is added in exactly one place.
+def _attribution_hidden_fields(query_params, path: str, referrer: str) -> str:
+    """Hidden inputs carrying utm_*/click ids straight off THIS request's query
+    string.
+
+    Rendered SERVER-SIDE on purpose. The obvious implementation is a snippet of
+    JavaScript reading `location.search` — but this page's whole design rule is
+    that it ships no JS at all (see render_page), and the route already holds
+    the query string, so reading it here costs nothing and keeps the page a
+    single static document. It also means attribution survives a visitor with
+    JS disabled, which a script-based version silently would not.
+    """
+    from core import lead_tracking
+
+    fields = []
+    for name in list(lead_tracking.UTM_FIELDS) + list(lead_tracking.CLICK_ID_PLATFORMS):
+        value = (query_params.get(name) or "").strip()[:500]
+        if value:
+            fields.append(f'<input type="hidden" name="{_e(name)}" value="{_e(value)}">')
+    # Always sent: they let the classifier fall back to referrer/direct instead
+    # of reporting "no data" for an untagged visit.
+    fields.append(f'<input type="hidden" name="landing_path" value="{_e(path)}">')
+    if referrer:
+        fields.append(f'<input type="hidden" name="referrer" value="{_e(referrer)}">')
+    return "\n  ".join(fields)
+
+
 def render_page(page: dict, capture_url: str, public_url: str,
-                sent: bool = False) -> str:
+                sent: bool = False, query_params=None, path: str = "",
+                referrer: str = "") -> str:
     """The whole page, as one self-contained HTML document. No external CSS,
     no JS, no fonts — a landing page's only job is to load instantly and
     capture a lead, and every external request is a chance to be slow.
@@ -318,6 +348,8 @@ def render_page(page: dict, capture_url: str, public_url: str,
             block += f'<p>{_e(section["body"])}</p>'
         section_parts.append(block + "</section>")
     sections_html = "".join(section_parts)
+
+    attribution_fields = _attribution_hidden_fields(query_params or {}, path, referrer)
 
     sent_html = ('<div class="sent">תודה! קיבלנו את הפרטים ונחזור אליכם בהקדם.</div>'
                  if sent else "")
@@ -352,6 +384,7 @@ def render_page(page: dict, capture_url: str, public_url: str,
   <input type="hidden" name="source" value="website_form">
   <input type="hidden" name="source_detail" value="{_e(source_detail_for(page.get('slug', '')))}">
   <input type="hidden" name="redirect" value="{_e(public_url)}?sent=1">
+  {attribution_fields}
   <button type="submit">{_e(content['cta_text'])}</button>
   {note_html}
 </form>

@@ -177,11 +177,16 @@ deliberately not in the checklist rather than being invented.
 - **Part 5, creator/video reference research.** Extends the
   `competitor_research` "media" lens to return creator names and example video
   links, delivered through chat.
-- **Part 2.3, organic vs paid.** Genuinely blocked today and the reason the
-  login-moment prompt is forbidden from claiming a traffic source:
-  `client_leads.source` is a *channel*, and the capture form never records
-  `utm_*`/`gclid`/`fbclid`. Closing this means adding attribution capture to
-  both the landing-page form and the WordPress injected form, then storing it.
+- **Part 2.3, organic vs paid — DATA NOW LANDED (2026-08-02), messaging still
+  to change.** Both capture paths record `utm_*`/click ids, and
+  `client_leads` now stores the classified `source_platform` /
+  `source_confidence` (see `migrations/2026-08-02-client-leads-attribution.sql`).
+  The login-moment prompt is **deliberately unchanged** — it still refuses to
+  claim a traffic source. Switching it on is a follow-up, and when it happens
+  it must respect two things: `source_confidence` of `none` means direct/not
+  measured and must never be phrased as "organic", and rows created before the
+  migration have `source_platform` NULL, which is "we didn't measure this" —
+  a different statement from "direct".
 - **Part 2.5, SEO page-1 milestone — BLOCKED, not merely unbuilt.** There is no
   rank *tracking*: no stored history, no tracked-keyword concept, no milestone
   detection. What exists is a point-in-time `position` read from SEMrush/Ahrefs,

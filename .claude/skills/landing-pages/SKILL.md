@@ -85,6 +85,16 @@ WordPress auto-wiring uses — no second capture path, no second token scheme.
 Per-page attribution rides on `client_leads.source_detail` as `lp:{slug}`, so
 `lead_counts_by_page()` needed **no schema change**.
 
+**Attribution (2026-08-02) is rendered SERVER-SIDE**, which is the whole
+advantage of owning the renderer: `_attribution_hidden_fields()` reads `utm_*`
+/ `gclid` / `fbclid` / `ttclid` / `msclkid` off **this request's** query string
+and emits hidden inputs. No JavaScript — which keeps the page's zero-JS rule
+intact and means attribution still works for a visitor with JS disabled. (The
+WordPress form can't do this: WordPress renders that page, so it needs a script
+— see the website skill.) Classification is `lead_tracking.classify_source()`,
+shared with uallak's own funnel; the two TABLES never join, but they must agree
+on what "a paid Google click" means.
+
 The `redirect` field is built from **the request's own URL**
 (`request.url.replace(query="", scheme="https")`), which is what satisfies the
 capture endpoint's same-host-https open-redirect guard on BOTH the shared URL

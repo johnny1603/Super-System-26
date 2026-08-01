@@ -962,6 +962,58 @@ def _capture_url(client_id: int) -> str:
     return f"{base}{LEAD_CAPTURE_PATH}{create_lead_capture_token(client_id)}"
 
 
+# FIRST-TOUCH attribution, and why it needs script here when the landing pages
+# manage without any.
+#
+# A landing page is rendered by US, so its route reads the query string and
+# writes hidden fields server-side (core/landing_pages). A WordPress page is
+# rendered by WORDPRESS — we only inject content into it, so the query string
+# is reachable only from the browser.
+#
+# It also has to be FIRST-TOUCH rather than current-URL: on a real multi-page
+# site the visitor lands on the homepage with ?gclid=... and then navigates to
+# צור קשר, by which point the parameters are long gone. Reading location.search
+# on the contact page would therefore capture almost nothing. sessionStorage
+# holds what was seen on the way in, for this browsing session only — no
+# cookie, no cross-site identifier, nothing that outlives the tab.
+#
+# DEGRADATION IS DELIBERATE: <script> in post content survives wp_kses only for
+# a user with `unfiltered_html` (single-site admins — which our provisioned
+# sites use — yes; an Editor on a client's own site, no). If it is stripped,
+# the FORM still works and the lead is still captured; only attribution is
+# absent, and `classify_source` then honestly reports confidence "none" rather
+# than guessing. That is why the fields are CREATED by the script rather than
+# pre-rendered empty: absent beats a row full of empty strings pretending to be
+# measured data.
+_ATTRIBUTION_SCRIPT = """<script>
+(function () {
+  var FIELDS = ["utm_source","utm_medium","utm_campaign","utm_content","utm_term",
+                "gclid","gbraid","wbraid","fbclid","ttclid","msclkid"];
+  var KEY = "uallak_attr", store = {};
+  try { store = JSON.parse(sessionStorage.getItem(KEY) || "{}"); } catch (e) {}
+  var qs = new URLSearchParams(window.location.search), sawParams = false;
+  FIELDS.forEach(function (f) {
+    var v = qs.get(f);
+    if (v) { store[f] = String(v).slice(0, 500); sawParams = true; }
+  });
+  // First touch wins: only stamp the entry page/referrer when nothing is stored
+  if (!store.landing_path && (sawParams || !sessionStorage.getItem(KEY))) {
+    store.landing_path = window.location.pathname.slice(0, 500);
+    if (document.referrer) store.referrer = document.referrer.slice(0, 500);
+  }
+  try { sessionStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {}
+  var form = document.querySelector('form[action*="/api/leads/capture/"]');
+  if (!form) return;
+  Object.keys(store).forEach(function (k) {
+    if (!store[k]) return;
+    var input = document.createElement("input");
+    input.type = "hidden"; input.name = k; input.value = store[k];
+    form.appendChild(input);
+  });
+})();
+</script>"""
+
+
 def _lead_form_html(capture_url: str, thanks_url: str = "") -> str:
     """The injected block. Written to pass content_quality_issues unaided:
     starts at <h2>, every field carries a <label for=...>, no <img>, and the
@@ -984,6 +1036,7 @@ def _lead_form_html(capture_url: str, thanks_url: str = "") -> str:
         f'{redirect_field}\n'
         f'<p><button type="submit">שליחה</button></p>\n'
         f'</form>\n</div>\n'
+        f'{_ATTRIBUTION_SCRIPT}\n'
         f'{LEAD_FORM_END}')
 
 
@@ -1112,12 +1165,21 @@ def install_lead_capture_form(client_id: int, page_id: int = 0) -> dict:
                 "errors": updated.get("errors", ["update failed"])}
 
     verified, link = None, updated.get("link") or page.get("link") or ""
+    attribution_live = None
     if page.get("status") == "publish" and link:
         try:
             # The client's FULL url, not just the path — the token carries no
             # characters HTML-escaping would touch, so an exact match is safe
             # and proves it is THIS client's form that rendered.
-            verified = capture_url in wp.fetch_public_html(link)
+            rendered = wp.fetch_public_html(link)
+            verified = capture_url in rendered
+            # Reported SEPARATELY from `verified` because they fail
+            # independently: wp_kses strips <script> for a user without
+            # unfiltered_html while leaving the form intact, so the lead still
+            # gets captured with attribution silently missing. Knowing which of
+            # the two happened is the difference between "no paid traffic" and
+            # "we cannot see paid traffic".
+            attribution_live = "uallak_attr" in rendered
         except Exception as e:
             print(f"[website_agent] lead-form verify fetch failed for {link}: {e}")
             verified = False
@@ -1125,7 +1187,17 @@ def install_lead_capture_form(client_id: int, page_id: int = 0) -> dict:
     _log_activity(client_id, "website_lead_form_installed",
                   {"page_id": page["id"], "page_link": link,
                    "page_status": page.get("status"), "thanks_url": thanks_url,
-                   "verified_on_page": verified})
+                   "verified_on_page": verified,
+                   "attribution_script_live": attribution_live})
+    if verified and attribution_live is False:
+        # Not an outage — leads still arrive. But every one of them will read
+        # as "source unknown", so say it out loud rather than letting the
+        # dashboard quietly report no paid traffic.
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: lead form on {link} works, but the attribution "
+            "script was STRIPPED (the WP user likely lacks unfiltered_html). Leads "
+            "will be captured with NO utm/click-id data — organic vs paid will read "
+            "as unknown for this client until it is installed manually."])
     if verified is False:
         agent_alert(AGENT_NAME, [
             f"client {client_id}: lead-capture form saved to {link} but the form does "
@@ -1136,7 +1208,8 @@ def install_lead_capture_form(client_id: int, page_id: int = 0) -> dict:
              f"client {client_id}: page {page['id']} wired (verified={verified})")
     return {"success": True, "page_id": page["id"], "page_link": link,
             "page_status": page.get("status"), "thanks_url": thanks_url,
-            "verified_on_page": verified}
+            "verified_on_page": verified,
+            "attribution_script_live": attribution_live}
 
 
 def get_lead_capture_status(client_id: int) -> dict:
