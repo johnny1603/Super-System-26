@@ -669,6 +669,22 @@ body {
 .lead-badge.new { color: var(--accent); border-color: rgba(255,76,31,0.35); background: var(--accent-dim); }
 .lead-badge.won { color: var(--green); border-color: rgba(0,201,110,0.35); background: rgba(0,201,110,0.1); }
 
+/* ---------- GUIDED CONNECTION WALKTHROUGH ---------- */
+.conn-guide {
+  background: var(--panel); border: 1px solid var(--accent);
+  border-radius: 13px; padding: 18px 20px; margin-bottom: 18px;
+}
+.conn-guide-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.conn-guide-title { font-size: 15px; font-weight: 800; }
+.conn-guide-text { font-size: 12.5px; color: var(--gray); line-height: 1.6; margin-top: 6px; }
+/* The spotlight: one card is obviously next, the rest recede without hiding */
+.conn-card.conn-next {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.conn-card.conn-dimmed { opacity: 0.45; transition: opacity 0.2s; }
+.conn-card.conn-dimmed:hover { opacity: 1; }
+
 /* ---------- PROGRESS JOURNEY ---------- */
 .jn-bar {
   height: 6px; border-radius: 100px; background: var(--panel-2);
@@ -993,6 +1009,21 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="section-sub" data-i18n="conn_sub">מה שקשור לחבילה שלך פתוח לחיבור מיידי</div>
     </div>
   </div>
+
+  <!-- Guided walkthrough: ONE next step at a time, derived server-side from
+       the client's purchased package. The grid below is unchanged — this
+       spotlights the next card in it rather than replacing it. -->
+  <div class="conn-guide" id="connGuide" style="display:none;">
+    <div class="conn-guide-head">
+      <div class="conn-guide-title" id="connGuideTitle">…</div>
+      <span class="pending-badge" id="connGuideCount">…</span>
+    </div>
+    <div class="conn-guide-text" id="connGuideText"></div>
+    <div class="jn-bar" style="margin:12px 0 0;"><div class="jn-bar-fill" id="connGuideBarFill"></div></div>
+    <button class="sugg-btn approve" style="margin-top:14px;" onclick="scrollToNextConnCard()"
+            data-i18n="conn_guide_jump">קחו אותי לשלב הבא</button>
+  </div>
+
   <div class="conn-grid" id="connGrid">
 
     <div class="conn-card unlocked">
@@ -1508,6 +1539,21 @@ const DASH_I18N = {
   leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
   leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
   leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
+
+  // ── guided connections ──
+  conn_step_count: { he:'{done} מתוך {total}', en:'{done} of {total}', fr:'{done} sur {total}', ar:'{done} من {total}', ru:'{done} из {total}' },
+  conn_guide_next_title: { he:'השלב הבא: {what}', en:'Next step: {what}', fr:'Étape suivante : {what}', ar:'الخطوة التالية: {what}', ru:'Следующий шаг: {what}' },
+  conn_guide_next_text: { he:'לוקח דקה או שתיים. התוכנית ל-90 יום ושיחת האפיון איתנו מתחילות ברגע שהכל מחובר — אז כדאי לסיים היום.', en:'Takes a minute or two. Your 90-day plan and our in-depth strategy conversation both start once everything is connected — so it pays to finish today.', fr:'Une à deux minutes. Votre plan de 90 jours et notre échange stratégique démarrent une fois tout connecté — autant finir aujourd’hui.', ar:'يستغرق دقيقة أو دقيقتين. خطة الـ90 يومًا ومحادثة الاستراتيجية تبدآن بمجرد اكتمال الربط — لذا يُفضّل الانتهاء اليوم.', ru:'Займёт минуту-другую. Ваш 90-дневный план и стратегическая беседа начинаются, как только всё подключено — лучше закончить сегодня.' },
+  conn_guide_done_title: { he:'הכל מחובר! 🎉', en:'Everything is connected! 🎉', fr:'Tout est connecté ! 🎉', ar:'كل شيء متصل! 🎉', ru:'Всё подключено! 🎉' },
+  conn_guide_done_text: { he:'מכאן מתחילה התוכנית ל-90 יום. נדבר רגע כדי לאפיין את העסק לעומק — פתחנו לכם צ׳אט.', en:'Your 90-day plan starts from here. Let’s talk properly about your business — we’ve opened a chat for you.', fr:'Votre plan de 90 jours démarre ici. Parlons de votre activité — un chat est ouvert.', ar:'تبدأ خطة الـ90 يومًا من هنا. لنتحدث عن عملك بعمق — فتحنا لك محادثة.', ru:'Отсюда стартует ваш 90-дневный план. Давайте подробно обсудим бизнес — мы открыли чат.' },
+  conn_guide_jump: { he:'קחו אותי לשלב הבא', en:'Take me to the next step', fr:'Aller à l’étape suivante', ar:'خذني إلى الخطوة التالية', ru:'Перейти к следующему шагу' },
+  conn_step_website: { he:'האתר', en:'your website', fr:'votre site', ar:'موقعك', ru:'ваш сайт' },
+  conn_step_google_ads: { he:'Google Ads', en:'Google Ads', fr:'Google Ads', ar:'Google Ads', ru:'Google Ads' },
+  conn_step_meta: { he:'פייסבוק ואינסטגרם', en:'Facebook & Instagram', fr:'Facebook et Instagram', ar:'فيسبوك وإنستغرام', ru:'Facebook и Instagram' },
+  conn_step_tiktok: { he:'טיקטוק', en:'TikTok', fr:'TikTok', ar:'تيك توك', ru:'TikTok' },
+  conn_step_youtube: { he:'יוטיוב', en:'YouTube', fr:'YouTube', ar:'يوتيوب', ru:'YouTube' },
+  conn_step_media: { he:'חשבון יצירת המדיה', en:'your media generation account', fr:'votre compte de génération de médias', ar:'حساب إنتاج الوسائط', ru:'аккаунт генерации медиа' },
+  conn_step_avatar: { he:'האווטאר הדיגיטלי', en:'your digital avatar', fr:'votre avatar numérique', ar:'الأفاتار الرقمي', ru:'цифровой аватар' },
 
   // ── progress journey ──
   journey_title: { he:'המסע שלך עם uallak', en:'Your journey with uallak', fr:'Votre parcours avec uallak', ar:'رحلتك مع uallak', ru:'Ваш путь с uallak' },
@@ -2073,14 +2119,15 @@ async function loadDashboard() {
     chatData.dashReady = true;
     maybeShowGreeting();
 
-    // First visit → the INTERVIEW, not the static tour. The tour explained and
-    // learned nothing; this asks (competitors above all) while still answering
-    // whatever they want to know. The "?" button still replays the tour.
-    // Once per page load — a language-switch re-render must not restart it.
-    if (!d.tour_completed && !window._firstRunStarted) {
+    // Connections come FIRST, guided one step at a time; the deep interview
+    // waits for them (and so does the 90-day clock). The static tour is still
+    // on the "?" button. Once per page load — a language-switch re-render must
+    // not restart any of it.
+    if (!window._firstRunStarted) {
       window._firstRunStarted = true;
-      startInterview();
-    } else if (d.tour_completed && !window._loginMomentDone) {
+      runConnectionFlow(!d.tour_completed);
+    }
+    if (d.tour_completed && !window._loginMomentDone) {
       // Returning client → a proactive, LLM-written greeting about what's
       // actually true today. Server-side dedup means once per day, not per
       // page load; the flag just avoids a redundant round trip.
@@ -3117,6 +3164,108 @@ async function loadJourney() {
   } catch (e) {
     // Non-fatal: the panel simply stays hidden
     document.getElementById('journeyPanel').style.display = 'none';
+  }
+}
+
+// ─── guided connection walkthrough ───────────────────────────────────────────
+// The Connections grid stays exactly as it is (same cards, same connect
+// buttons); what's new is a guide ABOVE it that names ONE next step and dims
+// the rest, so the client is never asked to parse everything at once. The
+// required list is derived from their PURCHASED package server-side — this UI
+// only renders what it's told.
+async function runConnectionFlow(isFirstLogin) {
+  let status;
+  try {
+    const res = await fetch('/api/client/connection-checklist', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) throw new Error('unavailable');
+    status = body.data;
+  } catch (e) {
+    document.getElementById('connGuide').style.display = 'none';
+    return;   // grid still works on its own; the guide is the addition
+  }
+  renderConnectionGuide(status);
+
+  if (status.complete) {
+    // Everything connected → the deep interview is what happens next
+    const state = await fetch('/api/client/interview/state', { credentials: 'same-origin' })
+      .then(r => r.json()).catch(() => null);
+    if (state && state.success && !state.data.completed) startInterview();
+    return;
+  }
+  // Still missing steps → the urgency message, naming their real next step
+  if (isFirstLogin) runConnectionNudge();
+}
+
+function renderConnectionGuide(status) {
+  const guide = document.getElementById('connGuide');
+  if (!status.expected || !status.expected.length) {
+    // Either nothing is required or — more likely — the purchased package
+    // couldn't be read. Say nothing rather than implying they're done.
+    guide.style.display = 'none';
+    return;
+  }
+  guide.style.display = 'block';
+  document.getElementById('connGuideCount').textContent =
+    uallakI18n.t('conn_step_count', { done: status.done_count, total: status.total_count });
+  document.getElementById('connGuideBarFill').style.width =
+    Math.round((status.done_count / status.total_count) * 100) + '%';
+
+  const titleEl = document.getElementById('connGuideTitle');
+  const textEl = document.getElementById('connGuideText');
+  if (status.complete) {
+    titleEl.textContent = uallakI18n.t('conn_guide_done_title');
+    textEl.textContent = uallakI18n.t('conn_guide_done_text');
+  } else {
+    titleEl.textContent = uallakI18n.t('conn_guide_next_title',
+      { what: uallakI18n.t('conn_step_' + status.next_step) });
+    textEl.textContent = uallakI18n.t('conn_guide_next_text');
+  }
+  // Dim everything that isn't the current step, so one card is obviously next
+  highlightNextConnCard(status.complete ? null : status.next_step);
+}
+
+// step key -> the existing card's status element, which is already inside the
+// card we want to spotlight. Reuses the grid rather than rebuilding it.
+const CONN_STEP_ANCHOR = {
+  website: 'siteStatus', google_ads: 'gadsStatus', meta: 'metaStatus',
+  tiktok: 'tiktokStatus', youtube: 'youtubeStatus',
+  media: 'higgsfieldStatus', avatar: 'avatarStatus',
+};
+
+function highlightNextConnCard(stepKey) {
+  document.querySelectorAll('#connGrid .conn-card').forEach(c => {
+    c.classList.remove('conn-next', 'conn-dimmed');
+  });
+  if (!stepKey) return;
+  const anchor = document.getElementById(CONN_STEP_ANCHOR[stepKey]);
+  const card = anchor && anchor.closest('.conn-card');
+  if (!card) return;
+  document.querySelectorAll('#connGrid .conn-card').forEach(c => {
+    if (c !== card) c.classList.add('conn-dimmed');
+  });
+  card.classList.add('conn-next');
+}
+
+function scrollToNextConnCard() {
+  const card = document.querySelector('#connGrid .conn-card.conn-next');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function runConnectionNudge() {
+  try {
+    const res = await fetch('/api/client/connection-nudge', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: uallakI18n.current() }),
+    });
+    const body = await res.json();
+    if (!body.success || !body.data.sent) return;
+    openAgentWindow('general');
+    const w = CHAT_WINDOWS['general'];
+    if (w) appendMsg(w.msgsEl, body.data.message, 'bot');
+  } catch (e) {
+    console.error('connection nudge failed', e);
   }
 }
 

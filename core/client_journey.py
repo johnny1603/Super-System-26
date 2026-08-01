@@ -35,18 +35,107 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "client_journey"
 
-# The integrations a client is expected to connect, by what their package
-# actually includes. Keys are client_accounts.platform values; the label keys
-# are resolved client-side (dashboard i18n), never translated here — this
-# module returns data, not Hebrew.
+# ─── The connection checklist, DERIVED FROM THE PURCHASED PACKAGE ────────────
+# Replaces the earlier "whatever they've already connected" guess, which could
+# have started a 90-day promise early (the `expectation_inferred` flag that
+# shipped flagged as a known hole — this closes it).
+#
+# The authority is `recommended_services` on the package the client actually
+# checked out with. The proposal prompt defines it as "ONLY the ONGOING managed
+# services of the package (the things the monthly fee is computed from)", and
+# enforces that every monthly_breakdown platform-management line has its
+# platform present there and vice versa. So it is the one field that is BOTH
+# machine-readable and contractually tied to what the client is paying for.
+#
+# ORDERED, and the order is the product: the dashboard walks the client through
+# one step at a time. Website first because SEO, landing pages and tracking all
+# sit on top of it; then the paid platforms (where the money starts moving);
+# then organic/content; then the client-paid generation keys.
+CONNECTION_STEPS = [
+    # key            client_accounts platforms that PROVE it   required when...
+    {"key": "website",     "platforms": ("wordpress",),
+     "services": ("website", "seo", "organic")},
+    {"key": "google_ads",  "platforms": ("google_ads",),
+     "services": ("google",)},
+    {"key": "meta",        "platforms": ("meta_ads", "meta_page"),
+     "services": ("meta", "facebook", "instagram")},
+    {"key": "tiktok",      "platforms": ("tiktok",),
+     "services": ("tiktok",)},
+    {"key": "youtube",     "platforms": ("youtube",),
+     "services": ("youtube",)},
+    {"key": "media",       "platforms": ("higgsfield",),
+     "services": ("media", "content", "video", "avatar")},
+    {"key": "avatar",      "platforms": ("heygen",),
+     "services": ("avatar",)},
+]
+
+# Legacy alias kept so nothing that imported it breaks; the checklist above is
+# the real source now.
 INTEGRATION_PLATFORMS = {
-    "google_ads": "google_ads",
-    "meta_ads": "meta_ads",
-    "meta_page": "meta_ads",      # same consent, same expectation
-    "tiktok": "tiktok",
-    "youtube": "youtube",
-    "wordpress": "website",
+    platform: step["key"] for step in CONNECTION_STEPS for platform in step["platforms"]
 }
+
+
+def _chosen_package(client_id: int) -> dict:
+    """The package the client actually checked out with.
+
+    Same lookup `website_agent._package_includes_hosting` already uses, and
+    for the same reason: the ORIGINAL `subscription_created` row carries the
+    package_id, upgrade rows never do, and a cancellation ends the search.
+    Reused deliberately rather than reimplemented — two different answers to
+    "which package did they buy" is exactly the bug worth not having."""
+    package_id = None
+    for row in (_db().table("client_activity").select("action_type,details")
+                .eq("client_id", client_id).eq("agent_name", "paypal_service")
+                .order("created_at", desc=True).limit(50).execute().data or []):
+        if row.get("action_type") == "subscription_cancelled":
+            break
+        details = row.get("details") or {}
+        if row.get("action_type") == "subscription_created" and not details.get("upgrade"):
+            package_id = details.get("package_id")
+            break
+    if not package_id:
+        return {}
+    try:
+        from agents.budget_agent import _lead_row
+        lead, _source = _lead_row(client_id)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] package lookup failed for client {client_id}: {e}")
+        return {}
+    packages = (lead.get("proposal") or {}).get("packages") or []
+    return next((p for p in packages if p.get("id") == package_id), {})
+
+
+def required_connections(client_id: int) -> dict:
+    """The ordered checklist THIS client must complete, from THEIR package.
+
+    Returns {"steps": [...], "resolved": bool, "services": [...]}.
+
+    `resolved` False means we could not read the purchased package (no
+    checkout row, no matching lead, package_id absent from the stored
+    proposal). Callers gating the 90-day clock MUST refuse to start it in that
+    case — fail closed, exactly like the website self-provision entitlement
+    check. An unresolved package is a reason to ask a human, never a reason to
+    assume the client owes nothing."""
+    package = _chosen_package(client_id)
+    services = [str(s).strip().lower() for s in (package.get("recommended_services") or [])]
+
+    # A new-site build is priced as a monthly_breakdown line rather than a
+    # recommended_service, so it needs its own check — otherwise a client whose
+    # package builds them a site wouldn't be asked to connect one.
+    breakdown_text = " ".join(str(k) for k in (package.get("monthly_breakdown") or {}))
+    builds_site = "אחסון" in breakdown_text
+
+    steps = []
+    for step in CONNECTION_STEPS:
+        needed = builds_site and step["key"] == "website"
+        if not needed:
+            needed = any(any(token in service for token in step["services"])
+                         for service in services)
+        if needed:
+            steps.append({"key": step["key"], "platforms": list(step["platforms"])})
+
+    return {"steps": steps, "services": services, "resolved": bool(package)}
 
 _db_instance = None
 
@@ -70,40 +159,82 @@ def _first(rows: list, predicate) -> dict:
 
 # ─── Connection completeness (also the future 90-day clock trigger) ──────────
 
-def connection_status(client_id: int, expected: list = None) -> dict:
-    """Which integrations are live vs still missing.
+def connection_status(client_id: int) -> dict:
+    """Which of THIS client's required integrations are live vs still missing,
+    as an ORDERED walk-through — the dashboard shows one `next_step` at a time
+    rather than a flat grid of everything.
 
-    `expected` is the set of platform groups this client's package needs. When
-    not given it falls back to "whatever they have already connected plus a
-    website", which is NOT a real expectation — so callers that need a true
-    completeness gate (the 90-day cycle) must pass it explicitly. Stated here
-    because a silently-wrong "fully connected" would start a 90-day clock
-    early, and that is a promise to a paying client.
+    The expectation now comes from the purchased package
+    (`required_connections`), not from a guess. When the package cannot be
+    resolved, `complete` is False and `resolved` is False: the 90-day clock
+    must not start on an unknown obligation.
     """
     accounts = (_db().table("client_accounts").select("platform,status")
                 .eq("client_id", client_id).eq("status", "active")
                 .execute().data or [])
     connected_platforms = {a["platform"] for a in accounts}
-    connected_groups = {INTEGRATION_PLATFORMS[p] for p in connected_platforms
-                        if p in INTEGRATION_PLATFORMS}
 
-    if expected is None:
-        expected_groups = set(connected_groups) or set()
-        inferred = True
-    else:
-        expected_groups = set(expected)
-        inferred = False
+    checklist = required_connections(client_id)
+    steps = []
+    for step in checklist["steps"]:
+        # ANY of a step's platforms proves it — one Meta consent may return the
+        # ad account, the Page, or both, and either is "Meta is connected".
+        done = any(platform in connected_platforms for platform in step["platforms"])
+        steps.append({"key": step["key"], "platforms": step["platforms"], "done": done})
 
-    missing = sorted(expected_groups - connected_groups)
+    pending = [s for s in steps if not s["done"]]
+    done_steps = [s for s in steps if s["done"]]
     return {
-        "connected": sorted(connected_groups),
-        "expected": sorted(expected_groups),
-        "missing": missing,
-        "complete": not missing and bool(expected_groups),
-        # True = we guessed the expectation; a caller gating money or a
-        # 90-day promise on this must treat it as not-authoritative.
-        "expectation_inferred": inferred,
+        "steps": steps,
+        "connected": [s["key"] for s in done_steps],
+        "expected": [s["key"] for s in steps],
+        "missing": [s["key"] for s in pending],
+        # The single next thing to ask for. None when nothing is left.
+        "next_step": pending[0]["key"] if pending else None,
+        "done_count": len(done_steps),
+        "total_count": len(steps),
+        "complete": checklist["resolved"] and not pending and bool(steps),
+        # False = the purchased package could not be read; callers gating the
+        # 90-day clock must fail closed on this (see required_connections).
+        "resolved": checklist["resolved"],
     }
+
+
+# ─── The 90-day clock start (recorded once, when the last step lands) ────────
+
+CONNECTIONS_COMPLETE_ACTION = "connections_completed"
+
+
+def connections_completed_at(client_id: int) -> str:
+    """When this client finished ALL their required connections — the exact
+    moment the 90-day cycle starts from. Empty string = not yet.
+
+    Recorded as a row rather than recomputed, because the cycle needs a fixed
+    start date: a client who later disconnects a platform must not have their
+    90-day clock silently reset, and a package edited afterwards must not move
+    a date the client was already told."""
+    rows = (_db().table("client_activity").select("created_at")
+            .eq("client_id", client_id).eq("agent_name", SERVICE_NAME)
+            .eq("action_type", CONNECTIONS_COMPLETE_ACTION)
+            .order("created_at").limit(1).execute().data or [])
+    return rows[0].get("created_at", "") if rows else ""
+
+
+def note_connections_complete(client_id: int) -> dict:
+    """Idempotently stamp the completion moment. Safe to call on every status
+    read — it writes at most once, ever, and only when the checklist really is
+    resolved AND complete (never on the unresolved-package path)."""
+    existing = connections_completed_at(client_id)
+    if existing:
+        return {"newly_completed": False, "at": existing}
+    status = connection_status(client_id)
+    if not (status["resolved"] and status["complete"]):
+        return {"newly_completed": False, "at": ""}
+
+    from agents.client_agent import log_activity
+    log_activity(client_id, SERVICE_NAME, CONNECTIONS_COMPLETE_ACTION,
+                 {"steps": status["expected"]}, {})
+    return {"newly_completed": True, "at": connections_completed_at(client_id)}
 
 
 # ─── The journey ─────────────────────────────────────────────────────────────

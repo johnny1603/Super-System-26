@@ -28,10 +28,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/client_journey.py` — the client's milestone track, **derived at read time** from
   rows that already exist (activity, accounts, leads, PayPal). There is deliberately no
   milestones table: a parallel tracker would drift from the activity log invisibly. Also
-  owns `connection_status()`, the single definition of "fully connected" that the 90-day
-  goal cycle will start from. See `HANDOFF-engagement-upgrade.md`.
-- `agents/interview_agent.py` — the first-login conversation that replaced the static tour.
-  Explains AND gathers (competitors with links above all), routes domain turns through
+  owns the **package-derived connection checklist** (`required_connections` /
+  `connection_status`) — the required integrations come from the purchased package's
+  `recommended_services`, never a guess, and **fail closed** when the package can't be
+  read. `note_connections_complete()` stamps the 90-day clock start once, permanently.
+  See `HANDOFF-engagement-upgrade.md`.
+- `agents/interview_agent.py` — the onboarding conversation that replaced the static tour,
+  in two phases: `connection_nudge()` at first login while integrations are missing, then
+  the deep interview **gated** on every required connection being live. Explains AND
+  gathers (competitors with links above all), routes domain turns through
   `support_agent.PERSONAS`, runs inside the existing chat window. Captured facts land in
   `client_activity` and are read back through `core/competitor_research.py` — **never a new
   silo**; that module is already where all four agents get market context.

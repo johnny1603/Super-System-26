@@ -41,13 +41,21 @@ learns the team while being interviewed by it. The specialists themselves stay
 READ-ONLY (support_agent's invariant): this agent writes the captured facts,
 personas never do.
 
-## The 90-day urgency (Part 4's dependency, built here on purpose)
+## Two phases, and the gate between them (revised 2026-08-02)
 
-The 90-day goal clock starts only when every integration is connected, so the
-single most valuable thing this conversation can do is get them all connected
-on day one. The prompt is told to raise that — honestly, as a reason to act
-today, never as a fake deadline. The cycle logic itself lands in the next
-commit; this is the half that has to live in the first conversation.
+1. `connection_nudge()` — the FIRST-login message, sent while integrations are
+   still missing. Names the ONE real next step and says honestly why finishing
+   today matters: the 90-day plan and this interview both start only once
+   everything is connected. Deduped to once a day.
+2. `start_or_continue()` — the DEEP interview, gated by `readiness()` on every
+   required connection for the client's PURCHASED package being live
+   (`core/client_journey.connection_status`).
+
+The gate is what makes the urgency honest rather than a sales line: the
+conversation genuinely does wait. It also makes the interview better — it can
+ask about platforms it can actually see. It fails CLOSED on a package it
+cannot resolve, and it blocks only the OPENING turn, so an interview already
+under way is never dead-ended mid-sentence by a disconnect.
 """
 import json
 import os
@@ -66,6 +74,7 @@ MAX_TURNS = 12
 
 CAPTURE_ACTION = "client_facts_captured"
 INTERVIEW_DONE_ACTION = "first_login_interview_completed"
+NUDGE_ACTION = "connection_nudge_sent"
 
 _db_instance = None
 
@@ -152,11 +161,10 @@ SPEAK AS THE RIGHT SPECIALIST. The team: {personas}. When the turn is about a sp
 domain, answer AS that specialist and say who you are ("אני אורי, אחראי על האתר וה-SEO
 שלכם"). For general/platform talk, you are the concierge and no name is needed.
 
-THE 90-DAY CLOCK — raise this early, once, and honestly: their 90-day goal cycle starts
-only when ALL their integrations are connected, so connecting everything TODAY means the
-clock starts today instead of a week from now. Currently connected: {connected}. Missing:
-{missing}. Frame it as a reason to finish today — never as a deadline, a penalty, or a
-threat. If nothing is missing, congratulate them on being fully set up and skip it.
+THEY HAVE JUST FINISHED CONNECTING EVERYTHING ({connected}) — that is why this
+conversation is happening now. Open by acknowledging it genuinely: the setup is done, their
+90-day plan starts from here, and this conversation is what shapes it. Say it once, briefly,
+then get on with listening. Never re-explain the connection process; it's behind them.
 
 TONE: warm, direct, human. You are a team wrapped around this business, never an AI or a
 bot. Never invent facts about their business, their results, or what uallak has done for
@@ -184,6 +192,109 @@ def _persona_summary() -> str:
     return "; ".join(f"{p['name']} ({key}) — {p['domain']}" for key, p in PERSONAS.items())
 
 
+def readiness(client_id: int) -> dict:
+    """Whether the DEEP interview should run yet.
+
+    The gate (2026-08-02): every required connection for the client's PURCHASED
+    package must be done first. Two reasons, both real:
+    - The interview is far better informed once the platforms are connected —
+      it can ask about what it can actually see.
+    - It gives the connection walkthrough a reward that isn't a lecture: the
+      characterization conversation (and the 90-day clock) genuinely waits for
+      it, so the urgency we express is true.
+
+    Fails CLOSED on an unresolved package: `resolved` False means we could not
+    read what they bought, so we cannot claim they are finished."""
+    from core import client_journey
+    status = client_journey.connection_status(client_id)
+    return {
+        "ready": bool(status["complete"]),
+        "completed": is_completed(client_id),
+        "connection_status": status,
+    }
+
+
+CONNECTION_NUDGE_SYSTEM = """You are the uallak team talking to a client who has just logged
+in for the very first time. Their account is live but their integrations are not connected
+yet, and ONE message from you decides whether they finish today or drift for a week.
+
+Say, warmly and in their language:
+- A short welcome. You are their team, never an AI or a bot.
+- What the ONE next step is, named specifically (`next_step`), and that it takes a couple of
+  minutes. Point them at the connection cards on this screen.
+- WHY today: their 90-day plan and the in-depth strategy conversation with us both start
+  only once EVERYTHING is connected — so finishing today means starting today instead of
+  losing a week. State it as a fact about how we work, NEVER as a deadline, a penalty, a
+  threat, or a countdown. No false scarcity.
+- That you're right here if anything gets stuck.
+
+Do NOT list every step. One next step, one reason, one offer of help.
+
+LANGUAGE: {language_rule}
+
+HARD LIMITS: max 4 sentences. At most one emoji. No bullet lists.
+
+Return JSON only: {{"message": "..."}}"""
+
+
+def connection_nudge(client_id: int, language: str = "he") -> dict:
+    """The first-login urgency message (handoff Part 4, point 4). Written by
+    the LLM against the client's REAL next step, so it names the actual thing
+    rather than reading like a form letter.
+
+    Deduped to once per day — a client reloading the dashboard is not asked
+    again, and a client who genuinely stalls for a day gets one fresh nudge."""
+    from agents.client_agent import get_client, log_communication
+    from agents.onboarding_agent import LANGUAGE_RULE
+    from core import client_journey
+
+    if _acted_within(client_id, NUDGE_ACTION, 1):
+        return {"success": True, "message": "", "sent": False, "reason": "nudged_today"}
+
+    status = client_journey.connection_status(client_id)
+    if status["complete"] or not status["next_step"]:
+        return {"success": True, "message": "", "sent": False, "reason": "nothing_missing"}
+
+    client = get_client(client_id) or {}
+    payload = {
+        "client_name": client.get("name", ""),
+        "ui_language": language,
+        "next_step": status["next_step"],
+        "done_count": status["done_count"],
+        "total_count": status["total_count"],
+        "remaining": status["missing"],
+    }
+    try:
+        result = timed_step(
+            AGENT_NAME, "connection_nudge_llm",
+            lambda: safe_claude_json_call(
+                CONNECTION_NUDGE_SYSTEM.format(language_rule=LANGUAGE_RULE),
+                json.dumps(payload, ensure_ascii=False),
+                max_tokens=400, client_id=client_id, cost_category="claude_interview"))
+        message = (result.get("message") or "").strip()
+    except Exception as e:  # includes ClaudeJSONError
+        print(f"[{AGENT_NAME}] connection nudge failed for client {client_id}: {e}")
+        message = ""
+
+    if not message:
+        return {"success": True, "message": "", "sent": False}
+    log_communication(client_id, "outbound", "dashboard_chat", message)
+    _log_activity(client_id, NUDGE_ACTION,
+                  {"next_step": status["next_step"], "remaining": status["missing"]})
+    return {"success": True, "message": message, "sent": True,
+            "next_step": status["next_step"]}
+
+
+def _acted_within(client_id: int, action_type: str, days: int) -> bool:
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = (_db().table("client_activity").select("id")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", action_type)
+            .gte("created_at", cutoff).limit(1).execute().data)
+    return bool(rows)
+
+
 def start_or_continue(client_id: int, message: str = "", language: str = "he") -> dict:
     """One interview turn. `message` empty = the opening turn (nothing said yet).
 
@@ -198,6 +309,15 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
     client = get_client(client_id) or {}
     status = client_journey.connection_status(client_id)
 
+    # The gate: the deep interview waits for every required connection. Only
+    # blocks the OPENING turn — an interview already under way when something
+    # gets disconnected must be allowed to finish rather than dead-ending
+    # mid-sentence.
+    if not message and not status["complete"]:
+        return {"success": False, "code": "ERR_INTERVIEW_NOT_READY",
+                "reply": "", "complete": False,
+                "connection_status": status}
+
     if message:
         # The client's own turn is recorded BEFORE the LLM call, so a failure
         # below never loses what they typed.
@@ -205,8 +325,7 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
 
     system = INTERVIEW_SYSTEM.format(
         personas=_persona_summary(),
-        connected=", ".join(status["connected"]) or "(none yet)",
-        missing=", ".join(status["missing"]) or "(none — everything is connected)",
+        connected=", ".join(status["connected"]) or "their platforms",
         language_rule=LANGUAGE_RULE,
     )
     payload = {

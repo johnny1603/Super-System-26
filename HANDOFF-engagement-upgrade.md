@@ -117,13 +117,63 @@ The Python side is **unrun** — no usable interpreter here, as always.
    client's verbatim words instead of dropping them.
 2. Nothing else. No new env vars, no new secrets, no new vendor.
 
+## Part 4 gating — package-derived checklist (added 2026-08-02, same day)
+
+The `expectation_inferred` hole flagged below is **now closed**. The required
+connections come from the client's PURCHASED package instead of a guess.
+
+**Where the package contents live** (investigated, not assumed):
+`leads.proposal.packages[]`, and the authoritative field is
+**`recommended_services`**. The proposal prompt defines it as "ONLY the ONGOING
+managed services of the package (the things the monthly fee is computed from)"
+and enforces that every `monthly_breakdown` platform-management line has its
+platform present there and vice versa — so it is the one field that is both
+machine-readable and contractually tied to what the client pays for. A new-site
+build is the exception: it's priced as a `monthly_breakdown` line rather than a
+service, so `required_connections()` checks that separately, or a client whose
+package builds them a site would never be asked to connect one.
+
+**Which package they bought** reuses `website_agent._package_includes_hosting`'s
+lookup exactly — the ORIGINAL `subscription_created` row carries `package_id`,
+upgrade rows never do, a cancellation ends the search. Deliberately reused
+rather than reimplemented: two different answers to "which package did they
+buy" is the bug worth not having.
+
+**Reusable vs net-new**, as asked:
+- *Reusable:* the whole Connections grid — every card, every connect button,
+  every `mark*Connected()` call. Untouched.
+- *Net-new:* the ordered checklist, a guide panel above the grid naming ONE
+  next step, and a spotlight (`.conn-next` / `.conn-dimmed`) that dims the
+  other cards to 45% instead of hiding them.
+
+**The gate.** `interview_agent.readiness()` blocks the deep interview until
+every required connection is live, and it **fails closed** when the package
+can't be resolved — an unreadable package is a reason to ask a human, never a
+reason to assume the client owes nothing. It blocks only the OPENING turn, so
+an interview already under way is never dead-ended mid-sentence by a disconnect.
+
+**The clock start** is stamped once by
+`client_journey.note_connections_complete()` as a `connections_completed`
+activity row. Recorded rather than recomputed on purpose: a client who later
+disconnects a platform must not have their 90-day clock silently reset, and a
+package edited afterwards must not move a date the client was already told.
+Commit 2's cycle logic reads `connections_completed_at()`.
+
+**Flow now:** first login → guided checklist + an LLM urgency message naming
+their real next step ("the 90-day plan and our strategy conversation both start
+once everything is connected") → all connected → deep interview opens itself.
+
+**One thing that does not exist**: the handoff mentioned WhatsApp Business as a
+possible step. `core/whatsapp_service.py` is Green API on uallak-side global
+credentials — there is no per-client WhatsApp connection to ask for, so it is
+deliberately not in the checklist rather than being invented.
+
 ## Commit 2 — what's left, and what it depends on
 
-- **Part 4, 90-day goal cycles.** `client_journey.connection_status()` is
-  ready and is the intended trigger, but note its `expectation_inferred` flag:
-  without an explicit expected-integrations list it *guesses* what a package
-  needs, and a wrong guess would start a 90-day promise early. That list has to
-  come from the package/proposal before the cycle can be gated on it.
+- **Part 4, the cycle itself.** The gating, the checklist and the clock-start
+  timestamp are done (above). What remains is defining the 90-day goals,
+  summarizing them to the client at cycle start, and re-summarizing every 90
+  days from `connections_completed_at()`.
 - **Part 5, creator/video reference research.** Extends the
   `competitor_research` "media" lens to return creator names and example video
   links, delivered through chat.

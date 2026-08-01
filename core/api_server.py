@@ -1260,17 +1260,57 @@ def client_interview_turn(req: InterviewTurnRequest, request: Request):
     # one blocking LLM call per turn.
     client_id = _require_session(request)
     from agents.interview_agent import start_or_continue
-    return {"success": True, "data": start_or_continue(client_id, req.message, req.language)}
+    result = start_or_continue(client_id, req.message, req.language)
+    if not result.get("success"):
+        # The deep interview waits for every required connection — the UI shows
+        # the walkthrough instead of an error.
+        raise HTTPException(status_code=409,
+                            detail={"code": result.get("code", "ERR_INTERVIEW_NOT_READY")})
+    return {"success": True, "data": result}
 
 @app.get("/api/client/interview/state")
 def client_interview_state(request: Request):
     client_id = _require_session(request)
-    from agents.interview_agent import captured_facts, is_completed
+    from agents.interview_agent import captured_facts, readiness
     facts = captured_facts(client_id)
+    state = readiness(client_id)
     return {"success": True, "data": {
-        "completed": is_completed(client_id),
+        "completed": state["completed"],
+        "ready": state["ready"],
+        "connection_status": state["connection_status"],
         "competitors_captured": len(facts.get("competitors") or []),
     }}
+
+@app.get("/api/client/connection-checklist")
+def client_connection_checklist(request: Request):
+    """The ordered, package-derived connection walkthrough — one next step at a
+    time. `resolved: false` means we could not read the purchased package; the
+    UI must say so rather than implying nothing is required."""
+    client_id = _require_session(request)
+    from core import client_journey
+    try:
+        status = client_journey.connection_status(client_id)
+        # Stamp the 90-day clock start the first time the last step lands.
+        # Idempotent and a no-op unless the checklist is resolved AND complete.
+        completion = client_journey.note_connections_complete(client_id)
+        return {"success": True, "data": {**status,
+                                          "completed_at": completion.get("at", ""),
+                                          "newly_completed": completion.get("newly_completed", False)}}
+    except Exception as e:
+        print(f"[connections] client {client_id}: {e}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_CHECKLIST_UNAVAILABLE"})
+
+class ConnectionNudgeRequest(BaseModel):
+    language: str = "he"
+
+@app.post("/api/client/connection-nudge")
+def client_connection_nudge(req: ConnectionNudgeRequest, request: Request):
+    # The first-login urgency message, naming the client's REAL next step.
+    # Returns an empty message when nothing is missing or they were already
+    # nudged today. Plain `def`: one blocking LLM call.
+    client_id = _require_session(request)
+    from agents.interview_agent import connection_nudge
+    return {"success": True, "data": connection_nudge(client_id, req.language)}
 
 class LoginMomentRequest(BaseModel):
     language: str = "he"
