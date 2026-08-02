@@ -137,6 +137,51 @@ Comment CONTENT is NOT read (the `commentThreads` endpoint is a bigger
 scope ask than `youtube.readonly` cleanly covers) — aggregate counts only,
 the same honest limit as `tiktok_content_agent`'s own engagement summary.
 
+## Public niche search — API KEY, no OAuth (2026-08-03)
+
+A second, separate use of the Data API lives at the bottom of
+`core/youtube_service.py`: `search_videos(query)`, authenticated by a plain
+project key (`YOUTUBE_DATA_API_KEY`, registered in `keys_agent.KEYS`) through
+`_get_with_key()` — **never** a client's OAuth token. Everything above that
+section acts AS a client on their own channel; this one reads public YouTube as
+an anonymous user, which is why it needs no connection, no consent screen and no
+Google verification.
+
+Consumed by `core/competitor_research.py` as another grounding source for the
+**media lens only** (`_youtube_niche_videos`) — it supplements the web search,
+never replaces it, and both feed the same single prompt. See
+`HANDOFF-social-trend-research.md`.
+
+**What it returns: real video titles, channel names, publish dates, real URLs
+(built from API-returned ids). What it does NOT return: view counts, subscriber
+counts, trending rank** — `search.list` exposes none of them. `order=viewCount`
+ranks the result set without revealing any number, so it is not a measurement
+anyone may quote. The lens prompt states this explicitly; never let this get
+framed as trend analytics in client-facing copy.
+
+**Quota is the real constraint, and it is SHARED with uploads:**
+
+| | cost | brake |
+|---|---|---|
+| `search.list` (niche discovery) | 100 units | `DAILY_SEARCH_LIMIT = 40` → 4,000 units |
+| `videos.insert` (upload) | ~100 units | `DAILY_UPLOAD_LIMIT = 90` → 9,000 units |
+| `playlistItems` / `videos.list` (engagement) | 1-2 units | none needed |
+
+One project quota of **10,000 units/day** covers all of them. The two brakes
+deliberately overlap (13,000 units of nominal headroom) because real upload
+volume is ~zero today — but **if uploads become routine, lower
+`DAILY_SEARCH_LIMIT` first**: research degrades silently, a failed upload is a
+client deliverable. Counted through `core/api_call_counters` under platform
+`youtube_search`, separate from uploads' `youtube` row.
+
+**Headroom in practice**: the media lens caches 14 days per client and spends at
+most 2 searches per uncached pass, so 40 searches/day ≈ 20 client research passes
+per day ≈ **~280 media clients** before the brake binds. Not a near-term
+bottleneck. When it becomes one, a **quota increase is free** — a Google audit
+form (YouTube API Services compliance review), not a billing change. Do that
+before considering caching search results separately; the research cache already
+absorbs most of the repeat load.
+
 ## Endpoints
 
 Client-facing: `/api/oauth/youtube/start`, `/api/oauth/youtube/callback`.

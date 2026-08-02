@@ -18,6 +18,11 @@ KEYS = {
     "META_APP_SECRET": os.environ.get("META_APP_SECRET", ""),
     "TIKTOK_CLIENT_KEY": os.environ.get("TIKTOK_CLIENT_KEY", ""),
     "TIKTOK_CLIENT_SECRET": os.environ.get("TIKTOK_CLIENT_SECRET", ""),
+    # PUBLIC YouTube search for niche research (core/youtube_service.search_videos,
+    # read by core/competitor_research). Plain API key, no OAuth — separate from
+    # the GOOGLE_OAUTH_* pair that publishes to a client's own channel. Absent is
+    # a SUPPORTED state: niche research falls back to web search alone.
+    "YOUTUBE_DATA_API_KEY": os.environ.get("YOUTUBE_DATA_API_KEY", ""),
     # Drive integrations (core/drive_service.py): the service-account JSON key,
     # the offboarded-client archive folder, and the media agent's root folder
     "GOOGLE_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", ""),

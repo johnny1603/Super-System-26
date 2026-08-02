@@ -26,6 +26,7 @@ its first real key.
 """
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -158,5 +159,127 @@ def get_video_stats(refresh_token: str, video_ids: list) -> list:
             "views": int(stats.get("viewCount", 0) or 0),
             "likes": int(stats.get("likeCount", 0) or 0),
             "comments": int(stats.get("commentCount", 0) or 0),
+        })
+    return videos
+
+
+# ─── Public niche discovery (API KEY auth, not OAuth) ─────────────────────────
+#
+# Everything above this line acts as ONE CLIENT on their own channel (OAuth
+# refresh token). This section is the opposite: an unauthenticated-user view of
+# PUBLIC YouTube, used by core/competitor_research to find real videos in a
+# client's niche. It therefore needs no client connection, no consent screen and
+# no Google verification — just the project API key — which is exactly why it is
+# the only outward-looking social source we can actually run today.
+#
+# QUOTA — the real constraint, read before adding a caller:
+#   * search.list costs **100 units**; the default project quota is
+#     **10,000 units/day**, so ~100 searches/day.
+#   * That pool is SHARED with uploads (videos.insert, also ~100 units), which
+#     already carry DAILY_UPLOAD_LIMIT = 90. 90 uploads + 90 searches would be
+#     18,000 units — double the quota. Hence a deliberately smaller brake here:
+#     DAILY_SEARCH_LIMIT = 40 (4,000 units) leaves ~6,000 for uploads.
+#   * Uploads are a paid client deliverable; niche research is an enrichment
+#     that degrades silently. If the two ever contend, research must lose.
+#   * A quota increase is FREE but needs a Google audit form, not a billing
+#     change. See .claude/skills/youtube/SKILL.md before assuming headroom.
+
+SEARCH_UNITS = 100          # documented quota cost of one search.list call
+DAILY_SEARCH_LIMIT = 40     # our brake: 4,000 units/day, under the shared 10,000
+SEARCH_WINDOW_DAYS = 90     # "what works NOW", not an all-time megahit
+SEARCH_MAX_RESULTS = 5
+WATCH_URL = "https://www.youtube.com/watch?v={}"
+CHANNEL_URL = "https://www.youtube.com/channel/{}"
+
+
+def data_api_key() -> str:
+    """Empty string when the key isn't set. Deliberately does NOT propagate
+    `get_key`'s ValueError: this whole source is optional enrichment, so an unset
+    key must degrade to "no YouTube results", never break a research call."""
+    try:
+        return get_key("YOUTUBE_DATA_API_KEY")
+    except ValueError:
+        return ""
+
+
+def search_available() -> bool:
+    """False when the key isn't configured — callers skip silently rather than
+    erroring, so a missing key degrades this to the web-search-only behaviour
+    that existed before."""
+    return bool(data_api_key())
+
+
+def _get_with_key(path: str, params: dict) -> dict:
+    """Public read authenticated by API KEY, never a user token. A separate
+    helper from `_get` on purpose: mixing the two auth modes in one function is
+    how a client's OAuth token ends up on an unrelated public read."""
+    params = dict(params, key=data_api_key())
+    response = httpx.get(f"{API_BASE}/{path.lstrip('/')}", params=params, timeout=TIMEOUT)
+    if response.status_code == 403:
+        # quotaExceeded / dailyLimitExceeded read the same to us: stop, and say
+        # which it was so the log points at the quota form rather than the code
+        raise RuntimeError(f"YouTube API key read refused (quota or key restriction): "
+                           f"{response.text[:300]}")
+    if response.status_code != 200:
+        raise RuntimeError(f"YouTube GET {path} failed: {response.status_code} {response.text[:300]}")
+    return response.json()
+
+
+def search_videos(query: str, max_results: int = SEARCH_MAX_RESULTS,
+                  published_within_days: int = SEARCH_WINDOW_DAYS,
+                  region_code: str = "IL", relevance_language: str = "he") -> list:
+    """Public videos matching a niche query — REAL titles, channels, publish
+    dates and ids, ordered by view count within the recent window.
+
+    WHAT THIS DOES NOT RETURN, and must never be presented as: **view counts,
+    subscriber counts, or a trending rank.** `search.list` exposes none of them.
+    `order=viewCount` only ranks the result set; it does not reveal any number,
+    and the ranking is not a "trend" measurement. Anything numeric said about
+    these videos would be invented.
+
+    (`list_recent_uploads` above is still the right call for a channel's OWN
+    videos at 1 unit — this is 100, justified only because there is no cheaper
+    way to discover content on channels we don't own.)
+
+    Returns [] for an empty query or a missing key. Raises on quota/HTTP errors
+    so the caller can log the reason and carry on unenriched.
+    """
+    query = (query or "").strip()
+    if not query or not search_available():
+        return []
+
+    count = increment_call_counter("youtube_search", window_days=1)
+    if count > DAILY_SEARCH_LIMIT:
+        raise RuntimeError(
+            f"YouTube daily search brake reached ({DAILY_SEARCH_LIMIT} searches = "
+            f"{DAILY_SEARCH_LIMIT * SEARCH_UNITS} units) - refusing search to protect "
+            f"the upload quota sharing the same 10,000/day pool")
+
+    published_after = (datetime.now(timezone.utc)
+                       - timedelta(days=published_within_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    data = _get_with_key("search", {
+        "part": "snippet", "type": "video", "q": query[:200],
+        "maxResults": min(max_results, 25), "order": "viewCount",
+        "publishedAfter": published_after,
+        "regionCode": region_code, "relevanceLanguage": relevance_language,
+    })
+
+    videos = []
+    for item in data.get("items", []):
+        video_id = ((item.get("id") or {}).get("videoId") or "").strip()
+        snippet = item.get("snippet") or {}
+        if not video_id:
+            continue
+        # The canonical watch URL is BUILT from an id the API returned — that is
+        # not a guessed link (contrast a model writing a plausible-looking id).
+        # These URLs are handed to competitor_research as verified sources.
+        videos.append({
+            "video_id": video_id,
+            "url": WATCH_URL.format(video_id),
+            "title": snippet.get("title", ""),
+            "channel_title": snippet.get("channelTitle", ""),
+            "channel_url": (CHANNEL_URL.format(snippet["channelId"])
+                            if snippet.get("channelId") else ""),
+            "published_at": snippet.get("publishedAt", ""),
         })
     return videos

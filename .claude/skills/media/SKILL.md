@@ -176,13 +176,21 @@ voice loaded from `support_agent.PERSONAS["media"]`, never a second cast.
   prompt forbids naming a competitor in words the owner speaks.
 
 **Access reality — read `HANDOFF-social-trend-research.md` before promising more.**
-Every social API we hold (TikTok, Meta, YouTube) is scoped to the client's OWN
-account and cannot see other creators. Web search is the only outward-looking
-source that works today. TikTok Creative Center is dormant behind the same
-pending ads account as ad-campaign research; Instagram `business_discovery` needs
-Advanced Access; a YouTube Data API key is the cheapest real unblock. So this
-feature has **no view counts, no follower counts, no "trending" ranking** — and
-the lens prompt bans inventing them. Don't let it get sold as trend analytics.
+Two sources feed the media lens today, and both stay active:
+
+1. **Anthropic web search** — the only way we see Instagram, TikTok, Facebook
+   and websites at all.
+2. **YouTube Data API search** (2026-08-03, `YOUTUBE_DATA_API_KEY`) — real
+   videos in the niche via a plain project key, no OAuth. Media lens only,
+   ≤2 searches per uncached research pass. See the youtube skill for the shared
+   10,000 units/day quota.
+
+TikTok's own API is own-account only, TikTok Creative Center is dormant behind
+the same pending ads account as ad-campaign research, and Instagram
+`business_discovery` needs Advanced Access. So this feature still has **no view
+counts, no follower counts, no "trending" ranking** — YouTube's `search.list`
+exposes none of them either, and the lens prompt bans inventing them. Don't let
+it get sold as trend analytics.
 
 ## Iron rules (generation quality)
 

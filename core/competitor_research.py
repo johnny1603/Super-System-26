@@ -52,13 +52,27 @@ The sales chat asks every prospect for their strongest competitors by name
 proposal carries a `market_reality` paragraph. Both are already on file before
 any agent generates anything, so research starts from real names the client
 gave us rather than from a cold guess at the niche.
+
+Grounding sources, all folded into the ONE web-search prompt rather than
+branching into separate research paths:
+
+| source | costs | lens |
+|---|---|---|
+| competitors the client named in the interview | nothing | all |
+| competitor domains from their paid SEO tool (seo_agent's cache) | nothing | all |
+| the proposal's market_reality paragraph | nothing | all |
+| **real YouTube videos in the niche (Data API, project key)** | **100 quota units/query, no money** | **media only** |
+
+Each one gives the search something true to start from; none of them replaces
+the search. Adding a source here reaches every consuming agent at once, which
+is the whole reason this module exists.
 """
 import json
 import os
 from datetime import datetime, timedelta, timezone
 
 from core.agent_base import log_step
-from core.claude_json import claude_web_search_call
+from core.claude_json import claude_web_search_call, safe_claude_json_call
 
 SERVICE_NAME = "competitor_research"
 ACTIVITY_TYPE = "competitor_research_completed"
@@ -116,6 +130,17 @@ register — not a copy.
 
 Look at competitors' social profiles, websites and public content. Report what you can
 actually see: shot types, settings, formats, and the messaging angles that recur.
+
+`youtube_videos_in_niche`, when present, is REAL data from the YouTube Data API: actual
+recent videos in this niche with their real titles, channel names, publish dates and real
+URLs. Treat it as a starting point that is already verified — read those titles for the
+hooks and formats that recur, and prefer those URLs for EXAMPLES. It does NOT replace your
+own searching: search as usual for what it cannot show you (Instagram, TikTok, Facebook,
+websites), and ignore any entry that is clearly not this niche — a keyword search returns
+approximate matches, not curated ones.
+CRITICAL: that data contains NO view counts, NO subscriber counts and NO trending rank —
+the API does not expose them. The ordering you receive is not a measurement you may quote.
+Never write or imply a number, a ranking, or a "trending" claim about any of these videos.
 """ + _COMMON_RULES + """
 Structure, max 18 short lines total:
 COMPETITORS: (up to 4 named, one clause each on what their content does well)
@@ -126,10 +151,11 @@ EXAMPLES: (up to 4 lines. Real, currently-public content from creators or busine
   THIS niche that is visibly doing well. One per line, exactly:
   creator or business name | full URL | one clause on what makes it work
   A specific video/post URL is best; a creator's profile page is acceptable. ONLY paste a
-  URL that appeared in your search results — NEVER build one from a username, never guess
-  a video or post id, never link a search-results page. These links are shown to a real
-  paying client, so a broken or invented one is worse than no line at all. If you found
-  none you can stand behind, write the single line: none found)
+  URL that came from `youtube_videos_in_niche` or appeared in your search results — NEVER
+  build one from a username, never guess a video or post id, never link a search-results
+  page. These links are shown to a real paying client, so a broken or invented one is worse
+  than no line at all. Mix sources when you can rather than filling all four lines from
+  YouTube alone. If you found none you can stand behind, write the single line: none found)
 GAP: (1-2 lines — what nobody in this niche is doing visually, i.e. our opening)""",
 
     "website": """You are the web strategy researcher for uallak, an Israeli marketing agency.
@@ -222,6 +248,89 @@ def _client_supplied_competitors(client_id: int) -> list:
         return []
 
 
+# ─── YouTube: the one real social API that can see other people's content ─────
+#
+# Added 2026-08-03. Every other social integration we hold (TikTok, Meta) is
+# scoped to the client's OWN account; YouTube's Data API answers PUBLIC queries
+# on a plain project API key — no client connection, no consent screen, no
+# platform review. So it slots in here as another GROUNDING SOURCE for the media
+# lens, exactly like `_tool_competitor_domains` folds in seo_agent's cached
+# competitor domains: the web search still runs, this only gives it real content
+# to start from. It is a supplement, never a replacement.
+#
+# WHAT IT PROVIDES: real video titles, channel names, publish dates and real URLs.
+# WHAT IT DOES NOT: view counts, subscriber counts, trending rank. `search.list`
+# exposes none of those, so nothing numeric may ever be said about these videos —
+# the lens prompt is told this explicitly.
+#
+# Its URLs are folded into the verification source set, so a YouTube video the
+# model quotes in EXAMPLES survives the same check every other link goes through.
+
+YOUTUBE_MAX_QUERIES = 2      # 100 quota units each — see youtube_service's quota note
+YOUTUBE_RESULTS_PER_QUERY = 5
+YOUTUBE_MAX_VIDEOS = 8
+
+YOUTUBE_QUERY_SYSTEM = """You turn ONE Israeli small business's context into YouTube search
+queries that would surface content made by OTHER businesses or creators in the SAME niche —
+the kind of video this business could learn from.
+
+Rules:
+- At most 2 queries, each at most 6 words.
+- Hebrew, unless this niche is genuinely searched in English in Israel.
+- Search the NICHE or CATEGORY. Never search this business's own name — we want what others
+  are doing, not this client's own content.
+- Aim at the content a small business actually posts (tips, demonstrations, behind the
+  scenes, before/after), not TV commercials or news coverage.
+- If the business context is too thin to write a meaningful niche query, return an empty list
+  rather than a vague one.
+
+Return JSON only:
+{"queries": ["query", "query"]}"""
+
+
+def _youtube_niche_videos(client_id: int, brief: dict) -> list:
+    """Real, recent, public videos from this client's niche — [] whenever the
+    key is unset, the quota brake trips, or anything else goes wrong. Never
+    raises: this is enrichment on top of enrichment."""
+    from core import youtube_service
+    if not youtube_service.search_available():
+        return []
+    try:
+        # Name + summary only: the query builder needs the niche in one line, not
+        # the whole sales-chat transcript `brief` also carries.
+        niche = {"name": brief.get("name", ""),
+                 "business_summary": brief.get("business_summary", "")}
+        result = safe_claude_json_call(
+            YOUTUBE_QUERY_SYSTEM, json.dumps(niche, ensure_ascii=False),
+            max_tokens=200, client_id=client_id,
+            cost_category="claude_competitor_research_media")
+        queries = [str(q).strip() for q in (result.get("queries") or []) if str(q).strip()]
+    except Exception as e:  # includes ClaudeJSONError
+        print(f"[{SERVICE_NAME}] client {client_id}: youtube query build failed: {e}")
+        return []
+
+    videos, seen = [], set()
+    for query in queries[:YOUTUBE_MAX_QUERIES]:
+        try:
+            found = youtube_service.search_videos(
+                query, max_results=YOUTUBE_RESULTS_PER_QUERY)
+        except Exception as e:
+            # Quota brake or API error: stop entirely rather than spend the next
+            # 100 units discovering the same wall.
+            print(f"[{SERVICE_NAME}] client {client_id}: youtube search stopped ({query}): {e}")
+            break
+        for video in found:
+            if video["url"] in seen:
+                continue
+            seen.add(video["url"])
+            video["found_via"] = query
+            videos.append(video)
+    if videos:
+        log_step(SERVICE_NAME, "youtube_search",
+                 f"client {client_id}: {len(videos)} video(s) from {len(queries)} query(ies)")
+    return videos[:YOUTUBE_MAX_VIDEOS]
+
+
 def _tool_competitor_domains(client_id: int) -> list:
     """Real competitor domains from the client's PAID SEO tool — read from
     seo_agent's existing cache, never by calling the tool. Costs nothing and
@@ -286,9 +395,15 @@ def _url_is_sourced(candidate: str, sourced_norms: list) -> bool:
     candidate_norm = _norm_url(candidate)
     if not candidate_norm or "/" not in candidate_norm:
         return False  # a bare domain is not an example of anything
+    # The "?" allowance exists so a clean URL still matches a sourced one that
+    # carries tracking params. It needs a floor, because on YouTube the video id
+    # LIVES in the query: without this, a bare `youtube.com/watch` would match
+    # every real watch URL and pass as an example. A profile-style single-segment
+    # path keeps working through the "/" rule above it.
+    specific_enough = candidate_norm.count("/") >= 2 or "?" in candidate_norm
     return any(source == candidate_norm
                or source.startswith(candidate_norm + "/")
-               or source.startswith(candidate_norm + "?")
+               or (specific_enough and source.startswith(candidate_norm + "?"))
                for source in sourced_norms)
 
 
@@ -430,6 +545,16 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             # the strongest of the three sources (see _client_supplied_competitors)
             "competitors_named_by_client": client_named,
         }
+        # Real videos from this client's niche, MEDIA lens only — the other two
+        # lenses are about sites and ads, and a search.list call costs 100 quota
+        # units, so they don't get to spend it. Supplements the web search below,
+        # never replaces it: both sources feed the same one prompt.
+        youtube_videos = _youtube_niche_videos(client_id, brief) if lens == "media" else []
+        if youtube_videos:
+            payload["youtube_videos_in_niche"] = [
+                {k: v.get(k, "")
+                 for k in ("title", "channel_title", "published_at", "url", "found_via")}
+                for v in youtube_videos]
         if extra_context:
             payload["additional_context"] = extra_context
 
@@ -444,6 +569,10 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             client_id=client_id,
             cost_category=f"claude_competitor_research_{lens}",
             with_sources=True)
+        # A YouTube URL came from the API itself, so it is every bit as sourced
+        # as a web-search result — fold both in and let one verifier judge them.
+        sourced = list(sourced) + [v.get("url", "") for v in youtube_videos] \
+            + [v["channel_url"] for v in youtube_videos if v.get("channel_url")]
         summary, dropped_examples = _strip_unsourced_examples(summary, sourced)
         if dropped_examples:
             log_step(SERVICE_NAME, "research",
@@ -457,7 +586,8 @@ def research(client_id: int, lens: str, extra_context: dict = None,
 
     result = {"success": True, "lens": lens, "summary": summary,
               "tool_competitors": tool_competitors,
-              "client_named_competitors": client_named, "cached": False}
+              "client_named_competitors": client_named,
+              "youtube_videos_found": len(youtube_videos), "cached": False}
     try:
         _db().table("client_activity").insert({
             "client_id": client_id,
@@ -467,14 +597,16 @@ def research(client_id: int, lens: str, extra_context: dict = None,
                         "tool_competitors": tool_competitors,
                         "client_named_competitors": client_named,
                         "grounded_in_tool_data": bool(tool_competitors),
-                        "grounded_in_client_input": bool(client_named)},
+                        "grounded_in_client_input": bool(client_named),
+                        "youtube_videos_found": len(youtube_videos)},
             "result": {},
         }).execute()
     except Exception as e:
         print(f"[{SERVICE_NAME}] cache write failed for client {client_id}: {e}")
     log_step(SERVICE_NAME, "research",
              f"client {client_id}: {lens} done ({len(summary)} chars, "
-             f"tool-grounded={bool(tool_competitors)})")
+             f"tool-grounded={bool(tool_competitors)}, "
+             f"youtube={len(youtube_videos)})")
     return result
 
 

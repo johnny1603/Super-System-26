@@ -6,18 +6,24 @@ The brief asked to "scan currently-trending creators/accounts in the client's
 niche" and to report what is feasible with **today's** access before building.
 Every integration we own was checked. The finding:
 
-> **Every social API this system holds is scoped to the client's OWN account.
-> Not one of them can see another creator's content.** The only thing that can
-> look outward today is the Anthropic server-side web search we already pay for.
+> **Every social API this system holds is scoped to the client's OWN account —
+> except YouTube's public search.** Two sources can look outward today: the
+> Anthropic web search we already pay for, and the YouTube Data API on a plain
+> project key. Both are wired in; both stay active.
+
+> **UPDATE 2026-08-03 — YouTube is now live.** `YOUTUBE_DATA_API_KEY` was set as
+> a Cloud Run secret and `search.list` is wired into the media lens. See
+> "YouTube as a second source" below. The rest of this table is unchanged.
 
 | Source | Can it discover other creators? | Status |
 |---|---|---|
-| **Anthropic web search** (`claude_web_search_call`) | **Yes** | **Works today**, already integrated, already billed per client. This is what got built on. |
+| **Anthropic web search** (`claude_web_search_call`) | **Yes** | **Works today**, already integrated, already billed per client. Still the only way we see Instagram, TikTok, Facebook or websites. |
+| **YouTube Data API `search.list`** | **Yes** | **Works today (2026-08-03)** — plain API key, no OAuth, no review. Media lens only. |
 | TikTok Content Posting API (`core/tiktok_service.py`) | No | `video.list`/`video.query` are the connected account's OWN videos. Scopes are `user.info.basic`, `video.publish`, `video.list`. Nothing outward-facing exists in this product. |
 | TikTok **Research API** (the one that could do this properly) | Yes, in principle | **Unobtainable.** Gated to academic/non-profit research; not realistically available to a commercial SaaS. Already documented in the tiktok skill as a genuine platform gap. |
 | TikTok **Creative Center / Marketing API** (trending sounds, top ads, niche breakdowns — the best trend source that exists) | Yes | **DORMANT — blocked exactly like ad-campaign research.** Needs a TikTok Business Center account + its own app registration and review. The ads account is still pending approval. |
 | Meta Graph API (`core/meta_service.py`) | No, as wired | `business_discovery` (public data on another IG Business account by username) is a real endpoint we do NOT use. It needs Instagram scopes at **Advanced Access** — App Review + Business Verification. We are on **Limited Access**, which only works on assets we admin. Dormant. |
-| YouTube Data API (`core/youtube_service.py`) | Yes, in principle | `search.list` (public, `order=viewCount`, `regionCode=IL`) is genuine niche discovery and costs **zero money** — 100 quota units of the free 10k/day. But `_get()` authenticates with a **client's** refresh token, and YouTube consent is still Google-verification-gated to test users. Dormant per client. See "If you want to unblock one thing" below. |
+| YouTube Data API (`core/youtube_service.py`) | **Yes — now wired** | ~~Dormant~~ **Done 2026-08-03.** `search.list` needed only a project API key, not the client OAuth that `_get()` uses; `_get_with_key()` was added beside it. Zero monetary cost, 100 quota units/call. |
 | Higgsfield (`core/media_gen_service.py`) | No | Generation only. No trend/discovery surface in the Cloud API. |
 
 **So: this feature is web-search-powered, and will stay that way until a social
@@ -39,6 +45,40 @@ Same lens, same prompt, same **14-day per-client cache**, same single paid
 research pass. A client generating ten assets and receiving a weekly plan still
 buys research once a fortnight. Adding a `"social_trends"` lens would have
 bought the same searches twice — that is why this is a section, not a lens.
+
+### 1b. YouTube as a second source (2026-08-03)
+
+`core/youtube_service.search_videos()` — `search.list` on a plain project key
+(`YOUTUBE_DATA_API_KEY`), through a **separate** `_get_with_key()` helper. The
+rest of that module acts as a client on their own channel via OAuth; mixing the
+two auth modes in one function is how a client token ends up on an unrelated
+public read, so they stay apart.
+
+It plugs into `competitor_research` the same way `seo_agent`'s cached competitor
+domains already do — as a **grounding source inside the existing media lens**,
+not a new lens and not a new path:
+
+- `_youtube_niche_videos()` builds ≤2 short Hebrew niche queries with one small
+  LLM call, runs them, dedupes, caps at 8 videos, and hands them to the lens as
+  `youtube_videos_in_niche`.
+- **Media lens only.** Website and ads lenses don't get to spend 100 quota units
+  on a question about content.
+- **Supplements, never replaces.** The web search still runs on the same prompt;
+  the lens is told to use YouTube as a verified starting point and to keep
+  searching for what YouTube cannot show (Instagram, TikTok, Facebook, sites),
+  and to mix sources rather than filling all four EXAMPLES lines from YouTube.
+- **Returns [] on everything**: no key, quota brake, API error, thin business
+  context. Enrichment on top of enrichment — it degrades to exactly the
+  web-search-only behaviour that shipped in the last handoff.
+- Its URLs join the verification source set (below), so a YouTube link the model
+  quotes passes the same check as everything else. Watch URLs are *built* from
+  API-returned video ids — that is not a guessed link, and it is the only place
+  a URL is assembled rather than copied.
+
+**What it does NOT provide, and must never be framed as:** view counts,
+subscriber counts, trending rank. `search.list` exposes none of them.
+`order=viewCount` ranks the result set without revealing a number, so it is not
+a measurement anyone may quote. The lens prompt says this in as many words.
 
 ### 2. Links are verified in code, because a link is a promise
 
@@ -123,15 +163,40 @@ watching five windows.
    (`user_location` is already IL), but expect empty results for a very local
    trade — and expect an empty result to send nothing.
 
+## Quota: the real cost picture for YouTube
+
+**No monetary cost at all.** The Data API bills in quota units, not money.
+
+| call | units | brake |
+|---|---|---|
+| `search.list` (niche discovery) | 100 | `DAILY_SEARCH_LIMIT = 40` → 4,000 units |
+| `videos.insert` (client uploads) | ~100 | `DAILY_UPLOAD_LIMIT = 90` → 9,000 units |
+| `playlistItems` / `videos.list` (engagement) | 1-2 | none needed |
+
+**One project pool of 10,000 units/day covers all of these** — that is the fact
+worth internalising. The two brakes nominally overlap (13,000 units), which is
+safe only because real upload volume is ~zero today. **If uploads become routine,
+lower `DAILY_SEARCH_LIMIT` first**: research degrades silently, a failed upload is
+a client deliverable. Counted under platform `youtube_search`, separate from
+uploads' `youtube` row (no migration needed — `platform` is free text).
+
+**Is it a bottleneck?** Not near-term. The media lens caches 14 days per client
+and spends ≤2 searches per uncached pass, so 40 searches/day ≈ 20 research passes
+/day ≈ **~280 media clients** before the brake binds. At the free 10,000 without
+our brake it would be ~100 searches/day.
+
+**Options when it does bind, in order:**
+1. **Request a quota increase — free**, but it is a Google *audit* form (YouTube
+   API Services compliance review), not a billing toggle. Lead time is Google's,
+   not ours, so file it before you need it.
+2. Drop to 1 query per research pass (halves the spend, modest quality cost).
+3. Lengthen the media-lens cache beyond 14 days.
+4. Cache search results separately — **last**, since the research cache already
+   absorbs most of the repeat load and a second cache is a second thing to drift.
+
 ## If you want to unblock one thing, unblock this
 
-**A YouTube Data API key** (`search.list` + `videos.list`) is by far the cheapest
-real upgrade: genuinely public discovery, no monetary cost, ~100 searches/day
-inside the free quota, no OAuth and no platform review — the current blocker is
-only that `youtube_service._get()` authenticates as a client. It would need a new
-`YOUTUBE_API_KEY` in `keys_agent.KEYS` and a key-authenticated `_get` variant.
-Deliberately **not** built here: the brief asked to report new integrations
-rather than assume them.
+~~A YouTube Data API key~~ — **done 2026-08-03**, see above.
 
 Ranked after that: **TikTok Creative Center** (the best content available for
 this, blocked on the same pending ads account as ad-campaign research), then
@@ -151,12 +216,48 @@ new lens.**
 - `dashboard/client/index.html` — unread dots, linkified history, new activity label (5 languages)
 - `.claude/skills/media/SKILL.md`, `CLAUDE.md`
 
+Added 2026-08-03 (YouTube):
+
+- `core/youtube_service.py` — `search_videos`, `_get_with_key`, `data_api_key`,
+  `search_available`, `DAILY_SEARCH_LIMIT`
+- `core/competitor_research.py` — `_youtube_niche_videos`, YouTube URLs folded
+  into the verification source set, media-lens prompt updated, one tightened
+  verifier rule (below)
+- `agents/keys_agent.py` — `YOUTUBE_DATA_API_KEY` registered
+- `.claude/skills/youtube/SKILL.md`, `.claude/skills/api-quotas/SKILL.md`,
+  `.claude/skills/deploy/SKILL.md`
+
+**One verifier rule was tightened for YouTube.** The "candidate + `?`" allowance
+(which lets a clean URL match a sourced one carrying tracking params) now
+requires the candidate to have ≥2 path segments or its own query string.
+Without it, a bare `youtube.com/watch` would prefix-match every real watch URL
+and pass as an example — because on YouTube the video id lives in the query
+string, not the path. Profile-style single-segment URLs (`tiktok.com/@x`) are
+unaffected; they match through the `/` rule instead.
+
 ## Not verified live
 
-The link-verification and parsing logic was exercised against 21 cases (invented
-video ids on real hosts, ancestor profile URLs, tracking params, http/https, old
-cached research with no EXAMPLES section, "none found") — ported to JS to run,
-since this machine has no Python. **Not yet run against a real web search**, so
-the open question on first real use is how many EXAMPLES lines survive
-verification in practice. If it is routinely zero, the fix is the lens prompt
-(tell it to search for specific posts, not round-up articles), not the verifier.
+The link-verification and parsing logic was exercised against **32 cases**
+(invented video ids on real hosts, ancestor profile URLs, tracking params,
+http/https, old cached research with no EXAMPLES section, "none found", plus the
+YouTube set: API-returned watch/channel URLs, invented watch ids, bare
+`/watch`, `youtu.be` shortlinks, mixed YouTube + web-search sections) — ported to
+JS to run, since this machine has no Python.
+
+**Neither source has been run live.** Two open questions for first real use:
+
+1. **How many EXAMPLES lines survive verification.** If routinely zero, fix the
+   lens prompt (tell it to search for specific posts, not round-up articles),
+   not the verifier. YouTube should improve this a lot, since those URLs arrive
+   pre-verified.
+2. **YouTube result quality for narrow Israeli niches.** `search.list` with
+   `regionCode=IL` + `relevanceLanguage=he` on a 90-day window may return little
+   for a very local trade, and keyword search returns approximate matches — the
+   lens is told to ignore entries that clearly aren't the niche. If results are
+   consistently off, the fix is `YOUTUBE_QUERY_SYSTEM` (the query-building
+   prompt), not the search call.
+
+Also unverified: `youtu.be` shortlinks are **not** auto-trusted — if the model
+rewrites an API-returned watch URL into short form it will be dropped. Deliberate
+(conservative), but if it shows up often in practice, normalise `youtu.be/{id}`
+to the watch form inside `_norm_url` rather than loosening the matcher.

@@ -52,9 +52,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`send_trend_examples`). Those URLs are verified in code against what the search tool
   actually returned and dropped when they can't be, because a fabricated link is a broken
   promise to a paying client; zero surviving examples means nothing is sent.
-  **Every social API we hold is scoped to the client's own account and cannot see other
-  creators** — web search is the only outward-looking source today. See
-  `HANDOFF-social-trend-research.md`.
+  Two sources ground the media lens and both stay active: web search, and **real YouTube
+  videos** (`youtube_service.search_videos`, plain `YOUTUBE_DATA_API_KEY`, no OAuth —
+  media lens only, ≤2 searches per uncached pass, sharing YouTube's 10,000 units/day
+  quota with uploads). TikTok's and Meta's APIs remain own-account-only and cannot see
+  other creators. **No source exposes view counts, follower counts or trending rank** —
+  never frame this as trend analytics. See `HANDOFF-social-trend-research.md`.
 - `agents/` — one file per agent. `agents/_template_agent.py` is the canonical structure;
   use the `new-agent` skill when creating or modifying agents.
 - `agents/onboarding_agent.py` — the sales pipeline (`run_full_onboarding`) AND the `PRICING`

@@ -77,9 +77,18 @@ end;
 $$;
 ```
 
-`platform` values in use: `google_ads`, `meta_marketing`. Rows accumulate
-indefinitely (a row per platform per calendar day) — cheap at this volume;
-no cleanup job exists yet (see Deferred).
+`platform` values in use: `google_ads`, `meta_marketing`, `youtube` (uploads,
+`DAILY_UPLOAD_LIMIT`), `youtube_search` (public niche search, `DAILY_SEARCH_LIMIT`).
+`platform` is a free-text column with no constraint, so a new counter needs **no
+migration** — just a new string. Rows accumulate indefinitely (a row per platform
+per calendar day) — cheap at this volume; no cleanup job exists yet (see Deferred).
+
+**The two YouTube counters share ONE 10,000 units/day project quota** —
+`videos.insert` and `search.list` both cost ~100 units, so their two brakes are
+sized to fit the same pool together (90 uploads + 40 searches = 13,000 units of
+headroom against 10,000 — deliberately overlapping, since real upload volume is
+near zero today). If uploads ever become routine, lower `DAILY_SEARCH_LIMIT`
+first: research degrades silently, a failed upload is a client deliverable.
 
 ## Gotchas
 
