@@ -148,6 +148,42 @@ forbids invented "viral this week" claims; research is *observed* evidence
 about the niche, which is why it is allowed to outrank generic instinct — the
 lens prompt itself bans invented metrics.
 
+## Reference examples sent to the client (2026-08-03)
+
+`send_trend_examples(client_id)` sends the client REAL links to content that is
+working in their niche — "here's how others are doing it well" — into **ליאור's
+own chat thread** (`persona_channel("media")` → `dashboard_chat:media`), with the
+voice loaded from `support_agent.PERSONAS["media"]`, never a second cast.
+
+- **Same media lens, no parallel research path.** The links come from an
+  `EXAMPLES:` section added to `core/competitor_research.py`'s existing media
+  lens — same 14-day cache, same single paid pass. A `"social_trends"` lens
+  would have bought the same searches twice.
+- **The LLM never writes a URL.** It writes the Hebrew intro/notes/closing; the
+  URLs are pasted in by code from the verified rows.
+- **Links are verified in code before anyone sees them.**
+  `claude_web_search_call(..., with_sources=True)` returns the URLs search really
+  returned, and unverifiable EXAMPLES lines are stripped *before the summary is
+  cached*. A profile URL is accepted when search returned a page under it; a URL
+  longer than any real result is rejected (that is a guessed video id).
+  **Zero surviving examples is normal and means nothing is sent** — never pad.
+- 30-day per-URL dedup (`media_trend_examples_sent` activity rows), because the
+  research cache outlives the weekly cadence.
+- Fires at the end of the Saturday check-in, fully swallowed in try/except — the
+  sacred run never fails over a bonus message. Manual: `POST /api/media/trend-examples`.
+- `create_filming_kit` now takes the same lens too: the script's hook, pacing and
+  shot list are shaped by observed niche evidence, preferring the GAP, and the
+  prompt forbids naming a competitor in words the owner speaks.
+
+**Access reality — read `HANDOFF-social-trend-research.md` before promising more.**
+Every social API we hold (TikTok, Meta, YouTube) is scoped to the client's OWN
+account and cannot see other creators. Web search is the only outward-looking
+source that works today. TikTok Creative Center is dormant behind the same
+pending ads account as ad-campaign research; Instagram `business_discovery` needs
+Advanced Access; a YouTube Data API key is the cheapest real unblock. So this
+feature has **no view counts, no follower counts, no "trending" ranking** — and
+the lens prompt bans inventing them. Don't let it get sold as trend analytics.
+
 ## Iron rules (generation quality)
 
 - **NO text inside generated images** — every model renders Hebrew badly;

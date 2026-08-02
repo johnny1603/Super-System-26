@@ -38,6 +38,12 @@ not ten times.
   asset, layout or copy.
 - **Say when there is nothing.** A niche with no findable competitors returns
   a summary that says so, rather than padding with plausible-sounding filler.
+- **Never invent a link.** The media lens also returns EXAMPLES — real content
+  in the niche that is working, which media_agent sends to the CLIENT as
+  references. Those URLs are verified in code against what the search tool
+  actually returned (`_strip_unsourced_examples`) and dropped when they can't
+  be, because a fabricated link is a broken promise to a paying client, not
+  merely a wrong answer. Zero surviving examples is a normal, honest outcome.
 
 ## Grounding: we already know who the competitors are
 
@@ -111,11 +117,19 @@ register — not a copy.
 Look at competitors' social profiles, websites and public content. Report what you can
 actually see: shot types, settings, formats, and the messaging angles that recur.
 """ + _COMMON_RULES + """
-Structure, max 14 short lines total:
+Structure, max 18 short lines total:
 COMPETITORS: (up to 4 named, one clause each on what their content does well)
 VISUAL STYLE: (up to 4 lines — lighting, setting, people vs product, polish level)
 FORMATS: (up to 3 lines — which formats/aspect ratios/lengths recur in this niche)
 MESSAGING ANGLES: (up to 3 lines — the promises/hooks that recur)
+EXAMPLES: (up to 4 lines. Real, currently-public content from creators or businesses in
+  THIS niche that is visibly doing well. One per line, exactly:
+  creator or business name | full URL | one clause on what makes it work
+  A specific video/post URL is best; a creator's profile page is acceptable. ONLY paste a
+  URL that appeared in your search results — NEVER build one from a username, never guess
+  a video or post id, never link a search-results page. These links are shown to a real
+  paying client, so a broken or invented one is worse than no line at all. If you found
+  none you can stand behind, write the single line: none found)
 GAP: (1-2 lines — what nobody in this niche is doing visually, i.e. our opening)""",
 
     "website": """You are the web strategy researcher for uallak, an Israeli marketing agency.
@@ -228,6 +242,136 @@ def _tool_competitor_domains(client_id: int) -> list:
         return []
 
 
+# ─── Example links: verified against what search actually returned ────────────
+#
+# The media lens is the only lens that emits URLs (its EXAMPLES section), because
+# it is the only one whose output is shown to the CLIENT rather than folded into
+# a generation prompt. A link is a promise: an invented one sends a paying client
+# to a 404 in the name of "here's how others do it well". So every URL the model
+# writes is checked against the URLs the server-side search really returned, and
+# anything unverifiable is dropped from the summary BEFORE it is cached — the
+# cache and every consumer therefore only ever hold links that demonstrably exist.
+#
+# Expect this to drop lines, sometimes all of them. That is the feature working:
+# an empty EXAMPLES section is an honest "nothing findable", which is exactly what
+# the module's standing "say when there is nothing" rule already demands.
+
+EXAMPLES_HEADER = "EXAMPLES:"
+MAX_EXAMPLES = 4
+_URL_PATTERN = "http"
+
+
+def _norm_url(url: str) -> str:
+    """Compare-friendly form: no scheme, no www., no trailing slash/punctuation.
+    The query string is DELIBERATELY kept — dropping it would make every
+    `youtube.com/watch?v=...` look identical, which is precisely the invented-id
+    case this is defending against."""
+    normalized = (url or "").strip().strip("<>\"'").rstrip(".,;:)]").lower()
+    for scheme in ("https://", "http://"):
+        if normalized.startswith(scheme):
+            normalized = normalized[len(scheme):]
+            break
+    if normalized.startswith("www."):
+        normalized = normalized[4:]
+    return normalized.rstrip("/")
+
+
+def _url_is_sourced(candidate: str, sourced_norms: list) -> bool:
+    """True when a real search result IS this URL, or sits underneath it.
+
+    Ancestor matching is one-directional on purpose: a creator PROFILE the model
+    quotes is accepted when search returned one of that profile's pages (the
+    profile provably exists), but a longer URL than anything search returned is
+    rejected — that is what a guessed video id looks like."""
+    candidate_norm = _norm_url(candidate)
+    if not candidate_norm or "/" not in candidate_norm:
+        return False  # a bare domain is not an example of anything
+    return any(source == candidate_norm
+               or source.startswith(candidate_norm + "/")
+               or source.startswith(candidate_norm + "?")
+               for source in sourced_norms)
+
+
+def _extract_urls(line: str) -> list:
+    return [token.strip().strip("<>\"'").rstrip(".,;:)]")
+            for token in line.replace("(", " ").replace(")", " ").split()
+            if token.lower().startswith(_URL_PATTERN)]
+
+
+def _is_section_header(line: str) -> bool:
+    """A new ALL-CAPS section starts (COMPETITORS:, GAP: ...), so EXAMPLES ends."""
+    head = line.split(":", 1)[0].strip()
+    # A URL's own "https:" colon is what keeps an example line from looking like
+    # a header: everything before it carries lowercase, so it can't be all-caps.
+    return bool(":" in line and head and head == head.upper() and len(head) < 40)
+
+
+def _strip_unsourced_examples(summary: str, sourced: list) -> tuple:
+    """Drop EXAMPLES lines whose links can't be verified. Returns
+    (cleaned_summary, dropped_count). Only the EXAMPLES section is touched —
+    prose elsewhere is the model's observation, not a clickable promise."""
+    if EXAMPLES_HEADER not in (summary or ""):
+        return summary, 0
+    sourced_norms = [_norm_url(u) for u in (sourced or [])]
+    kept_lines, dropped, in_examples = [], 0, False
+    for line in summary.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(EXAMPLES_HEADER):
+            in_examples = True
+            kept_lines.append(line)
+            continue
+        if in_examples and _is_section_header(stripped):
+            in_examples = False
+        if in_examples:
+            urls = _extract_urls(stripped)
+            if urls and not any(_url_is_sourced(u, sourced_norms) for u in urls):
+                dropped += 1
+                continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines), dropped
+
+
+def parse_examples(summary: str) -> list:
+    """The EXAMPLES section as structured rows: [{creator, url, why}].
+
+    Reads whatever survived verification, so a caller never has to re-check a
+    link. Returns [] for old cached research written before EXAMPLES existed,
+    for a "none found" answer, and for any other lens — all normal."""
+    examples, in_examples = [], False
+    for raw in (summary or "").splitlines():
+        line = raw.strip()
+        if line.startswith(EXAMPLES_HEADER):
+            in_examples = True
+            line = line[len(EXAMPLES_HEADER):].strip()
+            if not line:
+                continue
+        elif not in_examples:
+            continue
+        elif _is_section_header(line):
+            break
+        urls = _extract_urls(line)
+        if not urls:
+            continue
+        url = urls[0]
+        parts = [p.strip(" -•*|") for p in line.split("|")]
+        creator = next((p for p in parts if p and _URL_PATTERN not in p.lower()), "")
+        why = next((p for p in reversed(parts)
+                    if p and _URL_PATTERN not in p.lower() and p != creator), "")
+        examples.append({"creator": creator[:120], "url": url, "why": why[:200]})
+        if len(examples) >= MAX_EXAMPLES:
+            break
+    return examples
+
+
+def media_examples(client_id: int) -> list:
+    """Verified example links for one client's niche, from the MEDIA lens —
+    the client-facing entry point. Routes through `research()` so it shares the
+    one cached research pass every media generation already pays for, instead of
+    being a second, parallel trend-research path. [] when unavailable."""
+    result = research(client_id, "media")
+    return parse_examples(result.get("summary", "")) if result.get("success") else []
+
+
 # ─── Cache ────────────────────────────────────────────────────────────────────
 
 def _cached(client_id: int, lens: str) -> dict:
@@ -290,12 +434,21 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             payload["additional_context"] = extra_context
 
         log_step(SERVICE_NAME, "research", f"client {client_id}: {lens} lens")
-        summary = claude_web_search_call(
+        # with_sources: the URLs search actually returned. Used to verify the
+        # media lens's EXAMPLES links before they are cached or shown to a
+        # client (see _strip_unsourced_examples); harmless for other lenses.
+        summary, sourced = claude_web_search_call(
             _LENS_SYSTEMS[lens],
             json.dumps(payload, ensure_ascii=False),
             max_tokens=RESEARCH_MAX_TOKENS,
             client_id=client_id,
-            cost_category=f"claude_competitor_research_{lens}")
+            cost_category=f"claude_competitor_research_{lens}",
+            with_sources=True)
+        summary, dropped_examples = _strip_unsourced_examples(summary, sourced)
+        if dropped_examples:
+            log_step(SERVICE_NAME, "research",
+                     f"client {client_id}: dropped {dropped_examples} unverifiable "
+                     f"example link(s) from the {lens} lens")
     except Exception as e:  # includes ClaudeJSONError
         # No agent_alert: an enrichment step that fails is a degraded result,
         # not an incident, and the consuming agents log it in their own context.

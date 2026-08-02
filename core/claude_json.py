@@ -98,8 +98,37 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
         ) from e
 
 
+def _sourced_urls(response) -> list:
+    """Every URL the server-side search ACTUALLY returned, from one response.
+
+    Two places carry them: the `web_search_tool_result` blocks (the raw result
+    list) and the `citations` attached to text blocks. Both are read, because
+    a model can cite a result it found without the block shapes being
+    guaranteed stable across API versions.
+
+    This exists so a caller can VERIFY a URL the model wrote in its prose
+    against what search really found — see competitor_research's EXAMPLES
+    lines, where a fabricated link would be handed to a paying client. Every
+    lookup is defensive (getattr/duck-typing): a shape change must degrade to
+    "no sources found", never raise inside a research call.
+    """
+    urls = []
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", "") == "web_search_tool_result":
+            for item in getattr(block, "content", None) or []:
+                url = getattr(item, "url", "")
+                if url:
+                    urls.append(url)
+        for citation in getattr(block, "citations", None) or []:
+            url = getattr(citation, "url", "")
+            if url:
+                urls.append(url)
+    return urls
+
+
 def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_MODEL,
-                           client_id=None, cost_category="claude_api_search"):
+                           client_id=None, cost_category="claude_api_search",
+                           with_sources=False):
     """TEXT-mode sibling of safe_claude_json_call, for answers that need live
     web search. Deliberately a SEPARATE code path: search results attach
     citations that split the text into multiple blocks, which doesn't mix with
@@ -114,10 +143,14 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
       per-search fee (usage.server_tool_use.web_search_requests).
     - Returns the response's text blocks joined into one string; raises
       ClaudeJSONError when no text came back (callers already handle it).
+    - `with_sources=True` returns `(text, sourced_urls)` instead of just the
+      text - the URLs search actually returned, across every continuation.
+      Default False keeps every existing caller's contract unchanged.
     """
     client = Anthropic()
     messages = [{"role": "user", "content": user_message}]
     total_input = total_output = total_searches = 0
+    sourced = []
 
     response = None
     for _ in range(MAX_PAUSE_TURN_CONTINUATIONS + 1):
@@ -132,6 +165,10 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
         total_output += response.usage.output_tokens
         server_tool_use = getattr(response.usage, "server_tool_use", None)
         total_searches += getattr(server_tool_use, "web_search_requests", 0) or 0
+        # Collected per response, not just from the last one: a paused turn's
+        # searches happen in the EARLIER responses, so reading only the final
+        # one would lose most of the sources.
+        sourced.extend(_sourced_urls(response))
         if response.stop_reason != "pause_turn":
             break
         # Paused mid-turn: append the assistant turn as-is and re-send - the
@@ -155,4 +192,7 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
     if not text:
         raise ClaudeJSONError(
             f"web search call returned no text (stop_reason={response.stop_reason})")
+    if with_sources:
+        # De-duplicated, order preserved (most relevant search hits first)
+        return text, list(dict.fromkeys(sourced))
     return text

@@ -37,6 +37,13 @@ Camera coaching: `create_filming_kit` closes the sales-chat promise — a real
 script + shot list + confidence-building coaching, delivered as a doc in the
 client's Drive scripts folder and announced in their dashboard chat.
 
+Reference examples: `send_trend_examples` sends the client real links to
+content that is visibly working in THEIR niche, into the media specialist's
+own chat thread ("here's how others are doing it well"). The links come from
+the same cached competitor_research media lens the generation prompts use —
+one research path, not a parallel trend scraper — and are verified to exist
+before anyone sees them. Nothing is sent when nothing verified was found.
+
 Human approval is absolute: generated media lands in Drive for review;
 NOTHING is auto-published anywhere (same principle as PAUSED campaigns and
 draft posts). Bad creative shipped automatically costs real money and trust.
@@ -392,6 +399,12 @@ warm, practical, confidence-building. The owner will film THEMSELVES on a phone.
 complete filming kit for ONE short video on the given topic, in the CLIENT'S LANGUAGE
 (the language of their business context/brief; Hebrew default).
 
+When competitor_research is provided it is OBSERVED evidence about what visibly works in
+this exact niche — let it shape the hook, the pacing and the shot list, and prefer its
+stated GAP. Use it as DIRECTION, never as a template: never rebuild a specific competitor's
+video, and never mention a competitor by name in the script the owner will speak. Research
+absent or empty is normal — write the kit from the business context alone.
+
 Structure (hard limits — this must fit on ~1 page):
 - script: the exact words to say, 60-90 seconds of natural speech, written the way THIS
   owner would actually talk (from the business context), with a strong first-3-seconds hook.
@@ -414,6 +427,11 @@ def create_filming_kit(client_id: int, topic: str) -> dict:
         return {"success": False, "errors": ["topic is required"]}
     log_step(AGENT_NAME, "filming_kit", f"client {client_id}: {topic[:80]}")
     payload = {"business": _business_brief(client_id), "topic": topic}
+    # The script is content too, so it gets the same niche evidence the image
+    # and video prompts already get — same cached lens, no extra research pass.
+    research = competitor_research.summary_for_prompt(client_id, "media")
+    if research:
+        payload["competitor_research"] = research
     try:
         kit = timed_step(
             AGENT_NAME, "filming_kit_llm",
@@ -445,6 +463,131 @@ def create_filming_kit(client_id: int, topic: str) -> dict:
                       f'{uploaded.get("webViewLink", "")}')
     return {"success": True, "file_id": uploaded.get("id"),
             "link": uploaded.get("webViewLink", ""), "kit": kit}
+
+
+# ─── Reference examples: "here's how others in your niche are doing it" ───────
+#
+# The client asked to see what actually works in their space, not to be told
+# about it. This sends REAL links to real content from their own niche into
+# their chat, in the media specialist's voice.
+#
+# Three deliberate constraints:
+# 1. NO parallel research path. The links come out of the ONE media lens in
+#    core/competitor_research that every generation already pays for, via
+#    `media_examples()` — same cache, same fortnightly cost, no second prompt to
+#    drift. That is also why this lives in media_agent and not in a new agent.
+# 2. Links are never written by the LLM. The model writes only the Hebrew prose;
+#    the URLs are pasted in by CODE from the verified example rows, so a model
+#    that mangles or shortens a URL cannot produce a dead link.
+# 3. Nothing is sent when there is nothing verified to send. No examples, no
+#    message — never a padded "look at your competitors!" nudge with no links,
+#    which is the whole value of the message.
+
+TREND_EXAMPLES_DEDUP_DAYS = 30  # never send a client the same link twice in a month
+
+TREND_EXAMPLES_SYSTEM = """You are {name}, uallak's visual-content specialist, writing ONE
+short proactive message to an existing paying client in their private dashboard chat.
+
+YOUR VOICE: {voice} You are a member of the team wrapped around this client — never say you
+are an AI or a bot.
+
+You are given: this client's business context, and EXAMPLES of real content from other
+businesses in THEIR niche that is visibly working (each with the creator's name and a note
+on why it works). The links themselves are added afterwards by the system — do NOT write,
+repeat, or invent any URL.
+
+Write, in HEBREW (this is a Hebrew-facing dashboard):
+- intro: 1-2 sentences. Why you are sending this: you looked at what is working in their
+  space and picked a few worth watching. Warm, concrete, no hype.
+- notes: ONE note per example, in the SAME ORDER as the examples given, max 12 words each.
+  What to actually notice in it (the hook, the format, the angle) — not a summary of it.
+- closing: 1 sentence inviting them to tell you which direction appeals, so you can build
+  the next script around it.
+
+IRON RULES: never claim a view count, follower count or "trending" status — you cannot see
+those. Never suggest copying anyone; the point is direction and inspiration. Never promise
+results. No markdown, no bullet characters, no URLs.
+
+Return JSON only:
+{{"intro": "Hebrew text", "notes": ["Hebrew", "..."], "closing": "Hebrew text"}}"""
+
+
+def _recently_sent_example_urls(client_id: int) -> set:
+    """Links already sent to this client lately. The research cache (14 days)
+    outlives a weekly cadence, so without this the Saturday run would send the
+    same three links a fortnight running."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=TREND_EXAMPLES_DEDUP_DAYS)).isoformat()
+    rows = (_db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "media_trend_examples_sent")
+            .gte("created_at", cutoff).limit(20).execute().data or [])
+    return {url for row in rows for url in ((row.get("details") or {}).get("urls") or [])}
+
+
+def send_trend_examples(client_id: int) -> dict:
+    """Send the client links to content that is working in their niche, through
+    the media specialist's own chat thread.
+
+    Returns {"success", "sent": bool, "examples": [...]}. `sent: False` with no
+    error is the normal, honest outcome when research found no link it could
+    stand behind (see core/competitor_research's verification) or when every
+    link found was already sent recently — this NEVER pads a message to have
+    something to say."""
+    log_step(AGENT_NAME, "trend_examples", f"client {client_id}: gathering")
+    try:
+        examples = competitor_research.media_examples(client_id)
+    except Exception as e:  # research is enrichment; it must never raise upward
+        log_step(AGENT_NAME, "trend_examples", f"client {client_id}: research unavailable: {e}")
+        return {"success": True, "sent": False, "reason": "research_unavailable", "examples": []}
+
+    already_sent = _recently_sent_example_urls(client_id)
+    examples = [e for e in examples if e.get("url") and e["url"] not in already_sent]
+    if not examples:
+        log_step(AGENT_NAME, "trend_examples", f"client {client_id}: nothing new to send")
+        return {"success": True, "sent": False, "reason": "no_new_examples", "examples": []}
+
+    from agents.support_agent import PERSONAS, persona_channel
+    persona = PERSONAS["media"]
+    payload = {
+        "business": _business_brief(client_id),
+        "examples": [{"creator": e["creator"], "why": e["why"]} for e in examples],
+    }
+    try:
+        written = timed_step(
+            AGENT_NAME, "trend_examples_llm",
+            lambda: safe_claude_json_call(
+                TREND_EXAMPLES_SYSTEM.format(name=persona["name"], voice=persona["voice"]),
+                json.dumps(payload, ensure_ascii=False),
+                max_tokens=700, client_id=client_id, cost_category="claude_media"))
+    except Exception as e:  # includes ClaudeJSONError
+        agent_alert(AGENT_NAME, [f"client {client_id}: trend examples message failed: {e}"])
+        return {"success": False, "sent": False, "errors": [str(e)]}
+
+    # The URLs are OURS, not the model's — assembled here from the verified rows.
+    # Every model-written field is coerced: a note that comes back as a number or
+    # a nested object must not crash a message that is only ever a bonus.
+    notes = written.get("notes") or []
+    lines = [str(written.get("intro") or "").strip()]
+    for index, example in enumerate(examples):
+        note = str(notes[index] or "").strip() if index < len(notes) else ""
+        creator = example.get("creator") or ""
+        headline = " — ".join(part for part in (creator, note or example.get("why", "")) if part)
+        lines.append(f"\n{headline}\n{example['url']}" if headline else f"\n{example['url']}")
+    closing = str(written.get("closing") or "").strip()
+    if closing:
+        lines.append(f"\n{closing}")
+    message = "\n".join(line for line in lines if line).strip()
+
+    # The MEDIA specialist's own thread, not the general concierge: this is
+    # ליאור's subject, and personas keep separate conversations by channel.
+    from agents.client_agent import log_communication
+    log_communication(client_id, "outbound", persona_channel("media"), message)
+    _log_activity(client_id, "media_trend_examples_sent",
+                  {"count": len(examples), "urls": [e["url"] for e in examples],
+                   "creators": [e.get("creator", "") for e in examples]},
+                  {"channel": persona_channel("media")})
+    log_step(AGENT_NAME, "trend_examples", f"client {client_id}: sent {len(examples)} example(s)")
+    return {"success": True, "sent": True, "examples": examples, "message": message}
 
 
 # ─── The sacred Saturday-night weekly check-in ────────────────────────────────
@@ -526,6 +669,16 @@ def _checkin_for_client(client: dict, events: list) -> int:
                           f"שבוע טוב! 🌙 הנה תוכנית התוכן הוויזואלי שהכנו לשבוע הקרוב:\n{bullets}\n"
                           'אשרו מה שמתאים באזור "ממתין לאישור שלך" — ומיד נתחיל להכין. '
                           "רוצים משהו אחר? כתבו לי כאן.")
+        # Same beat, the other half of the promise: the plan says what we'll
+        # make, the examples show what is already working in their niche. The
+        # research it reads is the one this check-in just used, so it is a
+        # cache hit, not a second paid pass. Fully swallowed: an example
+        # message is a bonus, and the sacred run must never fail because of it.
+        try:
+            send_trend_examples(client_id)
+        except Exception as e:
+            log_step(AGENT_NAME, "trend_examples",
+                     f"client {client_id}: skipped during weekly check-in: {e}")
     return len(stored)
 
 

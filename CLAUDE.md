@@ -47,7 +47,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (it is tool-first: real SEMrush/Ahrefs data beats a web search); the dependency runs the
   other way — this module reads seo_agent's cached research for real competitor domains at
   zero paid units. Standing rules in every lens prompt: never invent metrics, inform never
-  copy, say plainly when nothing was findable.
+  copy, say plainly when nothing was findable. The **media** lens also returns `EXAMPLES:`
+  — real links to content working in the niche, which media_agent sends to the CLIENT
+  (`send_trend_examples`). Those URLs are verified in code against what the search tool
+  actually returned and dropped when they can't be, because a fabricated link is a broken
+  promise to a paying client; zero surviving examples means nothing is sent.
+  **Every social API we hold is scoped to the client's own account and cannot see other
+  creators** — web search is the only outward-looking source today. See
+  `HANDOFF-social-trend-research.md`.
 - `agents/` — one file per agent. `agents/_template_agent.py` is the canonical structure;
   use the `new-agent` skill when creating or modifying agents.
 - `agents/onboarding_agent.py` — the sales pipeline (`run_full_onboarding`) AND the `PRICING`

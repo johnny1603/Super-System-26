@@ -960,6 +960,26 @@ async def client_chat_history(request: Request, scope: str = "current", persona:
         "has_previous": len(history) > len(current),
     }
 
+@app.get("/api/client-chat/unread")
+def client_chat_unread(request: Request):  # plain `def`: blocking Supabase read
+    # Newest OUTBOUND message per persona thread. Agents post proactively into
+    # their own thread (media_agent's niche examples, ...) and the client is not
+    # watching five windows — the dashboard compares these against a locally
+    # stored "seen" stamp to decide where to show a dot. Read-only, no state
+    # here: a per-client read marker would be a schema change for a UI hint.
+    from agents.support_agent import PERSONAS, persona_channel
+    client_id = _require_session(request)
+    latest = {}
+    for row in get_communications(client_id, limit=200):
+        if row.get("direction") != "outbound":
+            continue
+        channel, created = row.get("channel") or "", row.get("created_at") or ""
+        if created > latest.get(channel, ""):
+            latest[channel] = created
+    data = {persona: latest.get(persona_channel(persona), "")
+            for persona in ["general"] + list(PERSONAS)}
+    return {"success": True, "data": data}
+
 @app.post("/api/client-chat/new")
 async def client_chat_new(request: Request):
     # Start a fresh conversation thread; past messages stay browsable via
@@ -2769,6 +2789,21 @@ class FilmingKitRequest(BaseModel):
 def media_filming_kit(req: FilmingKitRequest):
     from agents.media_agent import create_filming_kit
     result = create_filming_kit(req.client_id, req.topic)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+class MediaTrendExamplesRequest(BaseModel):
+    client_id: int
+
+@app.post("/api/media/trend-examples", dependencies=_admin_only)
+def media_trend_examples(req: MediaTrendExamplesRequest):
+    # Sends the client real links to content working in their niche, into the
+    # MEDIA specialist's chat thread. Plain `def` (web search + LLM, blocking).
+    # `sent: False` is a normal success — it means research found no link it
+    # could stand behind, or every link was already sent recently.
+    from agents.media_agent import send_trend_examples
+    result = send_trend_examples(req.client_id)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
