@@ -3239,7 +3239,8 @@ def admin_landing_create(req: AdminLandingCreateRequest):
     return {"success": True, "data": result}
 
 @app.post("/api/leads/capture/{token}")
-async def public_lead_capture(token: str, request: Request):
+async def public_lead_capture(token: str, request: Request,
+                              background_tasks: BackgroundTasks):
     """PUBLIC. A form on the client's own site posts a lead here; the signed
     token in the path says which client it belongs to (it grants nothing else
     - see core/session.create_lead_capture_token).
@@ -3283,6 +3284,15 @@ async def public_lead_capture(token: str, request: Request):
     result = client_leads_service.capture_lead(
         client_id, payload, source=str(payload.get("source") or "website_form"))
 
+    # OPT-IN external CRM push, AFTER the lead is safely stored and after this
+    # response is sent. A background task (never inline) because the customer is
+    # waiting on this request: a slow or broken CRM must not delay a form submit,
+    # and our row is the record either way. Clients with no CRM connected return
+    # immediately from sync_lead_safe — for them nothing changes at all.
+    if result.get("stored") and result.get("id"):
+        from agents.crm_agent import sync_lead_safe
+        background_tasks.add_task(sync_lead_safe, client_id, result["id"])
+
     # A plain <form method="post"> navigates the browser to whatever this
     # returns, so a thank-you page is how the customer gets back to the site.
     # The target is accepted ONLY when it is https and on the SAME HOST the
@@ -3299,6 +3309,46 @@ async def public_lead_capture(token: str, request: Request):
               f"{redirect_to[:120]!r} (referer host {origin.netloc!r})")
 
     return {"success": True, "stored": result["stored"]}
+
+# ─── External CRM (client-owned, opt-in) ─────────────────────────────────────
+# Session-gated client self-service, same shape as /api/website/connect and
+# /api/media/connect: the client pastes a credential for an account THEY own.
+# Plain `def` throughout — every one of these makes a blocking HTTP call.
+
+@app.get("/api/client/crm")
+def client_crm_status(request: Request):
+    client_id = _require_session(request)
+    from agents.crm_agent import get_status
+    return {"success": True, "data": get_status(client_id)}
+
+class CRMConnectRequest(BaseModel):
+    vendor: str          # a key from crm_service.VENDORS
+    credential: str      # HubSpot private-app token / Pipedrive API token
+    extra: str = ""      # vendor-specific second field (Pipedrive company domain)
+
+@app.post("/api/client/crm/connect")
+def client_crm_connect(req: CRMConnectRequest, request: Request):
+    # The credential is verified against the live CRM before it is stored, so a
+    # typo fails here rather than silently on the client's first real lead.
+    client_id = _require_session(request)
+    from agents.crm_agent import connect
+    result = connect(client_id, req.vendor, req.credential, req.extra)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "connect failed"))
+    return {"success": True, "data": result}
+
+@app.post("/api/client/crm/disconnect")
+def client_crm_disconnect(request: Request):
+    client_id = _require_session(request)
+    from agents.crm_agent import disconnect
+    return {"success": True, "data": disconnect(client_id)}
+
+@app.get("/api/crm/retry-syncs", dependencies=_admin_only)
+def crm_retry_syncs():
+    # Cron. Re-pushes leads whose CRM sync failed, up to MAX_SYNC_ATTEMPTS.
+    # Never touches leads that were never attempted — see crm_agent.
+    from agents.crm_agent import retry_failed_syncs
+    return {"success": True, "data": retry_failed_syncs()}
 
 # ─── Personal area + human support ───────────────────────────────────────────
 

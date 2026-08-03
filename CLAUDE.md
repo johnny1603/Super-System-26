@@ -94,6 +94,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   see the website skill) — the client never handles the token or an embed snippet; the
   manual snippet is now only a labelled fallback for sites we don't manage.
   See `HANDOFF-client-dashboard-nav.md` and `HANDOFF-lead-capture-autowire.md`.
+- `core/crm_service.py` + `agents/crm_agent.py` — OPT-IN sync of `client_leads` into a
+  CRM the CLIENT owns (HubSpot, Pipedrive). **A client with no CRM connected sees zero
+  change**, and our copy of the lead is always the record: capture stores the row and
+  answers the customer BEFORE any CRM call (BackgroundTasks), so a broken CRM can never
+  delay a form submit or lose an enquiry. `crm_service.VENDORS` is the only place a vendor
+  is named — adding one is a single dict entry, no endpoint or dashboard change. Zoho is
+  deliberately excluded (OAuth-only, not a paste-a-key card). Credentials reuse
+  `client_agent.upsert_account` with the vendor in `account_id`, so switching vendors
+  replaces the row instead of orphaning a key. Needs `migrations/2026-08-03-crm-sync.sql`.
+  See `.claude/skills/crm/SKILL.md` and `HANDOFF-external-crm.md`.
 - `core/landing_pages.py` + `core/landing_domains.py` + `agents/landing_page_agent.py` —
   in-code LANDING pages (lightweight, one offer, one form), deliberately NOT the WordPress
   site `website_agent` builds: no shared table, renderer or hosting path. All clients' pages

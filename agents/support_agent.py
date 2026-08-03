@@ -472,6 +472,15 @@ def _website_reads(client_id: int) -> dict:
         data["landing_pages"] = dashboard_payload(client_id)
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: landing reads failed: {e}")
+    # The external CRM connection belongs to this specialist: it is where the
+    # leads their forms capture end up. get_status is a pure READ (a stored row
+    # plus the supported-vendor registry) — it verifies nothing and pushes
+    # nothing, so the persona path stays read-only by construction.
+    try:
+        from agents.crm_agent import get_status
+        data["external_crm"] = get_status(client_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: crm reads failed: {e}")
     return data
 
 
@@ -543,7 +552,20 @@ PERSONAS = {
                        "their DNS record — if they say they added it, tell them to press "
                        "'הוספתי — בדקו עכשיו' in the דפי נחיתה section) or 'active' (running "
                        "on their own domain). If they want a page BEYOND the included "
-                       "number, never quote a price — say you'll pass it to the team."),
+                       "number, never quote a price — say you'll pass it to the team. "
+                       "'external_crm' is their OPTIONAL connection to a CRM they already "
+                       "own — leads we capture are copied there automatically, on top of "
+                       "(never instead of) the leads list in their dashboard. 'vendors' "
+                       "lists what we support today; only those. If they ask about a CRM "
+                       "that isn't in that list — Zoho, Salesforce, Monday, anything — say "
+                       "warmly that it isn't supported yet and you'll pass the request to "
+                       "the team; NEVER improvise setup steps for it. When 'connected' is "
+                       "false and they want to connect, walk them through the card in the "
+                       "לידים section using the vendor's own 'help_he' text, and be clear "
+                       "it is optional — nothing about their leads changes if they skip it. "
+                       "If 'recent' shows failures, tell them plainly that those leads ARE "
+                       "safe in uallak and only the copy to their CRM failed, and that we "
+                       "retry automatically."),
     },
     "media": {
         "name": "ליאור",

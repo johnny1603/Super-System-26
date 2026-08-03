@@ -38,6 +38,9 @@ the bundled git when the user explicitly asks for it.
 - `GET /api/leads/volume-scan` needs its own daily job (lead-volume tiers + the Supabase
   footprint alert) — see `HANDOFF-lead-volume-tiers.md`. It is scheduled rather than
   computed on page load on purpose: the ad-platform quotas are real
+- `GET /api/crm/retry-syncs` needs a job (every 6h) to re-push leads whose external-CRM
+  sync failed — see `.claude/skills/crm/SKILL.md`. Also needs
+  `migrations/2026-08-03-crm-sync.sql` applied, or nothing is recorded to retry
 - **Domain split (2026-07-28):** `uallak.com` + `www` → the WordPress marketing site
   (InstaWP, provisioned via our own website agent); the app → `app.uallak.com`.
   `me-west1` still doesn't support `gcloud run domain-mappings`, so `app.uallak.com`

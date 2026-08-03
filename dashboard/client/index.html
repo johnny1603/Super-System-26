@@ -1302,6 +1302,17 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="code-box" id="leadCaptureSnippet">…</div>
     </details>
   </div>
+
+  <!-- OPTIONAL external CRM. Additive by design: a client who ignores this card
+       sees no change anywhere. Rendered from the server's vendor registry, so
+       the dashboard never hardcodes a CRM name — adding a vendor in
+       core/crm_service.py makes it appear here with no dashboard change. -->
+  <div class="info-panel" id="crmPanel" style="margin-top:18px;display:none;">
+    <div class="info-panel-title" data-i18n="crm_title">חיבור ל-CRM חיצוני (אופציונלי)</div>
+    <div class="info-panel-text" data-i18n="crm_intro">יש לך כבר מערכת CRM? אפשר לחבר אותה, וכל ליד חדש שנקלט אצלנו יישלח גם לשם אוטומטית. הלידים ימשיכו להופיע כאן בכל מקרה — זו תוספת, לא החלפה.</div>
+    <div id="crmBody" style="margin-top:12px;"></div>
+    <div class="info-panel-text" style="margin-top:10px;" data-i18n="crm_help_chat">לא בטוח איפה למצוא את המפתח? שאלו את אורי בצ׳אט — הוא ילווה אתכם צעד־צעד.</div>
+  </div>
 </div><!-- /viewLeads -->
 
 <!-- ---------- LANDING PAGES ---------- -->
@@ -1549,6 +1560,20 @@ const DASH_I18N = {
   leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
   leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
   leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
+
+  // ── external CRM (optional, additive) ──
+  crm_title: { he:'חיבור ל-CRM חיצוני (אופציונלי)', en:'Connect an external CRM (optional)', fr:'Connecter un CRM externe (facultatif)', ar:'ربط CRM خارجي (اختياري)', ru:'Подключить внешнюю CRM (необязательно)' },
+  crm_intro: { he:'יש לך כבר מערכת CRM? אפשר לחבר אותה, וכל ליד חדש שנקלט אצלנו יישלח גם לשם אוטומטית. הלידים ימשיכו להופיע כאן בכל מקרה — זו תוספת, לא החלפה.', en:'Already using a CRM? Connect it and every new lead we capture is sent there too, automatically. Your leads keep appearing here regardless — this adds to it, it doesn’t replace it.', fr:'Vous utilisez déjà un CRM ? Connectez-le et chaque nouveau prospect y sera aussi envoyé automatiquement. Vos prospects restent visibles ici — c’est un ajout, pas un remplacement.', ar:'تستخدم CRM بالفعل؟ اربطه وسيُرسل كل عميل محتمل جديد إليه تلقائيًا. سيظل العملاء يظهرون هنا في كل الأحوال — هذه إضافة وليست بديلًا.', ru:'Уже пользуетесь CRM? Подключите её, и каждый новый лид будет автоматически отправляться туда. Лиды в любом случае продолжат появляться здесь — это дополнение, а не замена.' },
+  crm_help_chat: { he:'לא בטוח איפה למצוא את המפתח? שאלו את אורי בצ׳אט — הוא ילווה אתכם צעד־צעד.', en:'Not sure where to find the key? Ask אורי in the chat — he’ll walk you through it.', fr:'Vous ne trouvez pas la clé ? Demandez à אורי dans le chat — il vous guidera.', ar:'لا تعرف أين تجد المفتاح؟ اسأل אורי في الدردشة — سيرشدك خطوة بخطوة.', ru:'Не знаете, где найти ключ? Спросите אורי в чате — он проведёт вас по шагам.' },
+  crm_ask_btn: { he:'שאלו את אורי בצ׳אט', en:'Ask אורי in the chat', fr:'Demander à אורי', ar:'اسأل אורי في الدردشة', ru:'Спросить אורי в чате' },
+  crm_choose: { he:'בחרו מערכת', en:'Choose your CRM', fr:'Choisissez votre CRM', ar:'اختر نظام CRM', ru:'Выберите CRM' },
+  crm_connect_btn: { he:'חברו את ה-CRM', en:'Connect CRM', fr:'Connecter le CRM', ar:'اربط الـ CRM', ru:'Подключить CRM' },
+  crm_connecting: { he:'בודקים את המפתח…', en:'Checking the key…', fr:'Vérification de la clé…', ar:'جارٍ فحص المفتاح…', ru:'Проверяем ключ…' },
+  crm_connected: { he:'מחובר ל-{vendor} — לידים חדשים נשלחים לשם אוטומטית', en:'Connected to {vendor} — new leads are sent there automatically', fr:'Connecté à {vendor} — les nouveaux prospects y sont envoyés automatiquement', ar:'متصل بـ {vendor} — يتم إرسال العملاء الجدد إليه تلقائيًا', ru:'Подключено к {vendor} — новые лиды отправляются туда автоматически' },
+  crm_disconnect: { he:'ניתוק', en:'Disconnect', fr:'Déconnecter', ar:'فصل', ru:'Отключить' },
+  crm_disconnect_confirm: { he:'בטוחים? לחצו שוב לניתוק', en:'Sure? Click again to disconnect', fr:'Sûr ? Cliquez à nouveau', ar:'متأكد؟ اضغط مرة أخرى', ru:'Уверены? Нажмите ещё раз' },
+  crm_stats: { he:'{synced} לידים נשלחו · {failed} נכשלו (שמורים אצלנו, ננסה שוב)', en:'{synced} leads sent · {failed} failed (safe with us, we’ll retry)', fr:'{synced} prospects envoyés · {failed} en échec (conservés chez nous, nouvel essai)', ar:'{synced} عميل أُرسل · {failed} فشل (محفوظ لدينا وسنعيد المحاولة)', ru:'{synced} лидов отправлено · {failed} не удалось (сохранены у нас, повторим)' },
+  crm_error: { he:'החיבור נכשל — בדקו את המפתח ונסו שוב', en:'Connection failed — check the key and try again', fr:'Échec de la connexion — vérifiez la clé et réessayez', ar:'فشل الربط — تحقق من المفتاح وحاول مجددًا', ru:'Не удалось подключиться — проверьте ключ и повторите' },
 
   // ── guided connections ──
   conn_step_count: { he:'{done} מתוך {total}', en:'{done} of {total}', fr:'{done} sur {total}', ar:'{done} من {total}', ru:'{done} из {total}' },
@@ -3588,6 +3613,7 @@ async function loadLeads() {
     if (!body.success) { list.innerHTML = `<div class="empty-row">${esc(t('leads_unavailable'))}</div>`; return; }
 
     renderLeadStats(body.data.stats);
+    loadCRM();   // optional card; never blocks or breaks the list below it
     const leads = body.data.leads || [];
     if (!leads.length) {
       list.innerHTML = `<div class="empty-row">${esc(t(anyFilter ? 'leads_empty_filtered' : 'leads_empty'))}</div>`;
@@ -3598,6 +3624,135 @@ async function loadLeads() {
     console.error('leads load failed', e);
     list.innerHTML = `<div class="empty-row">${esc(t('leads_unavailable'))}</div>`;
   }
+}
+
+// ─── external CRM (optional) ─────────────────────────────────────────────────
+// Fully driven by the server's vendor registry: no CRM name, credential label
+// or help text is hardcoded here, so adding a vendor in core/crm_service.py
+// makes it appear with no change to this file.
+let crmDisconnectArmed = false;
+
+async function loadCRM() {
+  const panel = document.getElementById('crmPanel');
+  const body = document.getElementById('crmBody');
+  if (!panel || !body) return;
+  let d;
+  try {
+    const res = await fetch('/api/client/crm', { credentials: 'same-origin' });
+    if (!res.ok) return;                       // silent: this card is optional
+    const payload = await res.json();
+    if (!payload.success) return;
+    d = payload.data;
+  } catch (e) {
+    console.error('crm status failed', e);     // never blocks the leads list
+    return;
+  }
+  const t = uallakI18n.t;
+  panel.style.display = 'block';
+
+  if (d.connected) {
+    const r = d.recent || {};
+    const stats = r.available
+      ? `<div class="info-panel-text" style="margin-top:6px;">${esc(t('crm_stats', { synced: r.synced || 0, failed: r.failed || 0 }))}</div>`
+      : '';
+    body.innerHTML = `
+      <div class="info-panel-text" style="color:var(--green);font-weight:700;">
+        ${esc(t('crm_connected', { vendor: d.vendor_label || d.vendor }))}
+      </div>
+      ${stats}
+      <button class="conn-btn secondary" id="crmDisconnectBtn" style="margin-top:10px;"
+              onclick="disconnectCRM()">${esc(t('crm_disconnect'))}</button>`;
+    crmDisconnectArmed = false;
+    return;
+  }
+
+  const options = (d.vendors || []).map(v =>
+    `<option value="${esc(v.key)}">${esc(v.label_he || v.label)}</option>`).join('');
+  body.innerHTML = `
+    <select class="site-input" id="crmVendor" onchange="renderCRMFields()"
+            style="max-width:260px;">
+      <option value="">${esc(t('crm_choose'))}</option>
+      ${options}
+    </select>
+    <div id="crmFields" style="margin-top:10px;"></div>
+    <button class="conn-btn primary" id="crmConnectBtn" style="margin-top:10px;display:none;"
+            onclick="connectCRM()">${esc(t('crm_connect_btn'))}</button>
+    <div id="crmMsg" class="info-panel-text" style="margin-top:8px;"></div>
+    <button class="conn-btn secondary" style="margin-top:10px;"
+            onclick="openAgentWindow('website')">${esc(t('crm_ask_btn'))}</button>`;
+  window._crmVendors = d.vendors || [];
+}
+
+function renderCRMFields() {
+  const key = document.getElementById('crmVendor').value;
+  const vendor = (window._crmVendors || []).find(v => v.key === key);
+  const fields = document.getElementById('crmFields');
+  const btn = document.getElementById('crmConnectBtn');
+  if (!vendor) { fields.innerHTML = ''; btn.style.display = 'none'; return; }
+  // The vendor's own help text comes from the server — it names where in THAT
+  // product the credential lives, which is the part clients actually get stuck on.
+  const extra = vendor.extra_field
+    ? `<input class="site-input" id="crmExtra" dir="ltr" style="max-width:260px;margin-top:8px;"
+              placeholder="${esc(vendor.extra_label_he || vendor.extra_field)}">`
+    : '';
+  fields.innerHTML = `
+    <div class="info-panel-text">${esc(vendor.help_he || '')}</div>
+    <input class="site-input" id="crmCredential" dir="ltr" style="max-width:360px;margin-top:8px;"
+           placeholder="${esc(vendor.credential_label_he || '')}">
+    ${extra}`;
+  btn.style.display = '';
+}
+
+async function connectCRM() {
+  const t = uallakI18n.t;
+  const btn = document.getElementById('crmConnectBtn');
+  const msg = document.getElementById('crmMsg');
+  const extraEl = document.getElementById('crmExtra');
+  btn.disabled = true;
+  msg.style.color = '';
+  msg.textContent = t('crm_connecting');
+  try {
+    const res = await fetch('/api/client/crm/connect', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vendor: document.getElementById('crmVendor').value,
+        credential: document.getElementById('crmCredential').value.trim(),
+        extra: extraEl ? extraEl.value.trim() : '',
+      }),
+    });
+    const body = await res.json();
+    // Awaited: loadCRM re-renders this whole card, and if it fails we must fall
+    // through and re-enable the button rather than leave a dead disabled form.
+    if (res.ok && body.success) { await loadCRM(); return; }
+    // The server's message says WHY (bad key vs missing scope) — prefer it.
+    msg.style.color = 'var(--accent)';
+    msg.textContent = (body && body.detail) ? String(body.detail) : t('crm_error');
+  } catch (e) {
+    msg.style.color = 'var(--accent)';
+    msg.textContent = t('crm_error');
+  }
+  btn.disabled = false;
+}
+
+async function disconnectCRM() {
+  const t = uallakI18n.t;
+  const btn = document.getElementById('crmDisconnectBtn');
+  if (!crmDisconnectArmed) {
+    crmDisconnectArmed = true;
+    btn.textContent = t('crm_disconnect_confirm');
+    setTimeout(() => {
+      crmDisconnectArmed = false;
+      if (btn) btn.textContent = t('crm_disconnect');
+    }, 6000);
+    return;
+  }
+  try {
+    await fetch('/api/client/crm/disconnect', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {
+    console.error('crm disconnect failed', e);
+  }
+  await loadCRM();
 }
 
 function renderLeadStats(stats) {
