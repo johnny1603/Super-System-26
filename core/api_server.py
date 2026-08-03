@@ -3738,6 +3738,43 @@ def admin_platform_usage(request: Request):
     from core.lead_volume import get_platform_usage
     return {"success": True, "data": get_platform_usage()}
 
+# ─── uallak's own operating costs (admin-only, never client-facing) ──────────
+
+@app.get("/api/admin/operating-costs")
+def admin_operating_costs(request: Request):
+    # "What am I actually spending" across every service uallak pays for.
+    # Distinct from /api/admin/overview (revenue+margin) and from budget_agent
+    # (one client's picture). Plain `def`: blocking Supabase reads.
+    _require_admin(request)
+    from core.operating_costs import get_operating_costs
+    data = get_operating_costs()
+    # The Supabase footprint is the usage half of the Supabase cost line — shown
+    # beside it rather than duplicated, and never fatal if it can't be measured.
+    try:
+        from core.lead_volume import get_platform_usage
+        data["supabase_usage"] = get_platform_usage()
+    except Exception as e:
+        print(f"[api] supabase usage unavailable for cost view: {e}")
+        data["supabase_usage"] = None
+    return {"success": True, "data": data}
+
+class OperatingCostRequest(BaseModel):
+    amount_ils: float
+    cadence: str = "monthly"   # 'monthly' | 'yearly'
+    note: str = ""
+
+@app.put("/api/admin/operating-costs/{service_key}")
+def admin_set_operating_cost(request: Request, service_key: str, req: OperatingCostRequest):
+    # Only MANUALLY maintained services are writable — a measured or derived
+    # number must never be overridable by hand, or the label stops meaning
+    # anything (operating_costs.set_manual_cost enforces this).
+    _require_admin(request)
+    from core.operating_costs import set_manual_cost
+    result = set_manual_cost(service_key, req.amount_ils, req.cadence, req.note)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result)
+    return {"success": True, "data": result}
+
 @app.get("/api/admin/leads/{lead_id}")
 def admin_lead_detail(request: Request, lead_id: str):
     _require_admin(request)

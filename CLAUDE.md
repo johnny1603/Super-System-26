@@ -102,6 +102,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   priced by a human, never by code. Content is STRUCTURED and escaped into a fixed template
   — raw HTML is never stored, because these serve from the same origin as the dashboard
   session cookie. See `.claude/skills/landing-pages/SKILL.md`.
+- `core/operating_costs.py` — uallak's OWN company-wide spend ("what am I actually
+  spending"), admin-only. Distinct from `client_costs` (per-client AI usage, which this
+  READS and never writes) and from `budget_agent` (ONE client's picture). **No provider we
+  use exposes a readable billing API**, so every line is labelled by how its number was
+  obtained — `measured` (real token counts × list rates), `derived` (live site count ×
+  known rate), `manual` (typed, with a last-confirmed date that ages), `none` (genuinely
+  free). An unfilled manual row shows "not set", never ₪0. Adding a service = one dict in
+  `SERVICES`; only `manual` rows are ever writable. Needs
+  `migrations/2026-08-03-operating-costs.sql`; degrades honestly until it runs. See
+  `HANDOFF-operating-costs.md`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an

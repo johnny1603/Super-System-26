@@ -5,6 +5,17 @@ description: How uallak's budget/financial analyst agent works — a cross-agent
 
 # Budget agent (financial aggregator/analyst)
 
+## Not to be confused with `core/operating_costs.py`
+
+This agent is **ONE CLIENT's** financial picture — their ad spend, their tools,
+their margin. `core/operating_costs.py` (2026-08-03) is **uallak's own
+company-wide spend** — Claude, Supabase, Cloud Run, InstaWP, domains. Different
+question, different page ("עלויות תפעול" in the admin dashboard), deliberately
+not merged. It borrows this agent's honesty-label idea but uses its own
+vocabulary (`measured`/`derived`/`manual`/`none`) because the axis is *how the
+number was obtained*, not *how confident we are in it*. See
+`HANDOFF-operating-costs.md`.
+
 ## What it is, and what it deliberately is NOT
 
 `agents/budget_agent.py` sits ON TOP of every other agent — it has no vendor

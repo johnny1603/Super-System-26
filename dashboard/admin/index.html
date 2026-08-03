@@ -191,6 +191,26 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .settings-row input:focus { border-color: var(--accent); }
 .save-btn { background:var(--accent); border:none; color:white; font-family:'Heebo',sans-serif; font-weight:700; font-size:13.5px; padding:11px 26px; border-radius:10px; cursor:pointer; margin-top:16px; }
 
+/* OPERATING COSTS — every row shows how its number was obtained */
+.cost-line { padding:11px 0; border-bottom:1px solid var(--border); }
+.cost-line:last-child { border-bottom:none; }
+.cost-line-head { display:flex; align-items:center; gap:9px; font-size:13.5px; }
+.cost-name { font-weight:600; }
+.cost-badge {
+  font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:100px;
+  border:1px solid; flex-shrink:0; cursor:help;
+}
+.cost-amount { margin-inline-start:auto; font-weight:700; white-space:nowrap; }
+.cost-detail { font-size:11.5px; color:var(--gray); margin-top:4px; line-height:1.6; }
+.cost-edit { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:9px; }
+.cost-edit input, .cost-edit select {
+  background:var(--panel-2); border:1px solid var(--border); border-radius:8px; color:white;
+  font-family:'Heebo',sans-serif; font-size:12.5px; padding:6px 10px; outline:none;
+}
+.cost-edit input { width:110px; text-align:left; direction:ltr; }
+.cost-edit input:focus, .cost-edit select:focus { border-color:var(--accent); }
+.cost-age { font-size:11.5px; color:var(--gray); }
+
 /* REPORT DETAILS */
 details.report-item { border-bottom:1px solid var(--border); }
 details.report-item:last-child { border-bottom:none; }
@@ -253,6 +273,7 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <span class="nav-count" id="alertsCount" style="display:none;"></span>
     </div>
     <div class="nav-item" data-tab="reports" onclick="showTab('reports', this)"><div class="nav-item-left"><span>📊</span> דוחות שבועיים</div></div>
+    <div class="nav-item" data-tab="costs" onclick="showTab('costs', this)"><div class="nav-item-left"><span>🧾</span> עלויות תפעול</div></div>
     <div class="nav-item" data-tab="pricing" onclick="showTab('pricing', this)"><div class="nav-item-left"><span>💰</span> מחירון מלא</div></div>
     <div class="nav-item" data-tab="settings" onclick="showTab('settings', this)"><div class="nav-item-left"><span>⚙</span> הגדרות</div></div>
   </div>
@@ -302,6 +323,12 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="page-title">דוחות שבועיים</div>
       <div class="page-sub">דוחות Google Ads שנשלחו אוטומטית לצוות</div>
       <div class="table-wrap" id="reportsList"></div>
+    </div>
+
+    <div id="tab-costs" style="display:none;">
+      <div class="page-title">עלויות תפעול</div>
+      <div class="page-sub">מה uallak משלמת בפועל — כל שירות, ואיך המספר שלו נודע. אף מספר כאן אינו נשלף ממערכת החיוב של הספק.</div>
+      <div id="costsContent">טוען…</div>
     </div>
 
     <div id="tab-pricing" style="display:none;">
@@ -370,13 +397,14 @@ async function adminLogout() {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
-  ['overview','clients','leads','alerts','reports','pricing','settings'].forEach(t => {
+  ['overview','clients','leads','alerts','reports','costs','pricing','settings'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   if (name === 'leads') loadLeads();
   if (name === 'reports') loadReports();
+  if (name === 'costs') loadOperatingCosts();
   if (name === 'pricing') loadPricing();
   if (name === 'settings') loadSettings();
 }
@@ -657,6 +685,184 @@ async function loadPricing() {
   } catch (e) {
     console.error('pricing load failed', e);
     panel.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת המחירון</div>';
+  }
+}
+
+// ─── operating costs (uallak's own spend) ────────────────────────────────────
+// The whole point of this view is that it never overstates itself: every row
+// says HOW its number was obtained, and a number nobody has entered shows as
+// "not set" rather than as 0 (which would read as "free").
+const TRACKING_BADGE = {
+  measured: { text: 'מדוד', color: 'var(--green)', title: 'מחושב משימוש אמיתי שנרשם אצלנו — לא נשלף מהספק' },
+  derived:  { text: 'נגזר', color: 'var(--white)', title: 'ספירה אמיתית × מחירון ידוע' },
+  manual:   { text: 'ידני', color: 'var(--yellow)', title: 'מספר שהוזן ידנית ואושר בתאריך שמוצג' },
+  none:     { text: 'ללא עלות', color: 'var(--gray)', title: 'שירות חינמי בקנה המידה הנוכחי' },
+};
+
+function daysSince(iso) {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86400000);
+}
+
+function costRow(line) {
+  const badge = TRACKING_BADGE[line.tracking] || TRACKING_BADGE.manual;
+  const amount = line.amount_ils == null
+    ? '<span style="color:var(--yellow);">לא הוגדר</span>'
+    : ils(line.amount_ils) + (line.kind === 'variable' ? ' <span style="color:var(--gray);font-size:11px;">עד כה</span>' : '');
+
+  // Manual rows are editable inline — saving an unchanged number is meaningful:
+  // it refreshes "last confirmed", which is what keeps a stale figure visible.
+  let editor = '';
+  if (line.tracking === 'manual') {
+    const age = daysSince(line.confirmed_at);
+    const ageText = line.is_set
+      ? (age == null ? '' : (age === 0 ? 'אושר היום' : `אושר לפני ${age} ימים`))
+      : 'טרם הוזן';
+    const stale = age != null && age > 120;
+    editor = `
+      <div class="cost-edit">
+        <input id="cost-amt-${esc(line.key)}" type="number" step="0.01" min="0"
+               placeholder="₪" value="${line.raw_amount_ils == null ? '' : esc(line.raw_amount_ils)}">
+        <select id="cost-cad-${esc(line.key)}">
+          <option value="monthly" ${line.cadence === 'yearly' ? '' : 'selected'}>חודשי</option>
+          <option value="yearly" ${line.cadence === 'yearly' ? 'selected' : ''}>שנתי</option>
+        </select>
+        <button class="save-btn" style="padding:6px 12px;font-size:12px;margin:0;"
+                onclick="saveOperatingCost('${esc(line.key)}')">שמור</button>
+        <span class="cost-age" style="${stale ? 'color:var(--yellow);' : ''}">${esc(ageText)}</span>
+        <span id="cost-saved-${esc(line.key)}" style="color:var(--green);font-size:11.5px;"></span>
+      </div>`;
+  }
+
+  return `
+    <div class="cost-line">
+      <div class="cost-line-head">
+        <span class="cost-name">${esc(line.label)}</span>
+        <span class="cost-badge" style="color:${badge.color};border-color:${badge.color};"
+              title="${esc(badge.title)}">${esc(badge.text)}</span>
+        <span class="cost-amount">${amount}</span>
+      </div>
+      <div class="cost-detail">${esc(line.detail || '')}${line.note ? ' · ' + esc(line.note) : ''}</div>
+      ${line.caveat ? `<div class="cost-detail" style="color:var(--yellow);">${esc(line.caveat)}</div>` : ''}
+      ${editor}
+    </div>`;
+}
+
+async function loadOperatingCosts() {
+  const el = document.getElementById('costsContent');
+  let d;
+  try {
+    const res = await api('/api/admin/operating-costs');
+    d = res.data;
+  } catch (e) {
+    if (e.message !== 'unauthenticated') el.innerHTML = '<div class="empty-state">שגיאה בטעינת העלויות</div>';
+    return;
+  }
+  const t = d.totals || {};
+
+  const migrationBanner = d.manual_table_ready ? '' : `
+    <div class="panel-pad" style="border-color:rgba(255,193,7,0.35);">
+      <div class="drawer-label" style="color:var(--yellow);">טבלת העלויות הידניות עדיין לא נוצרה</div>
+      <div class="pricing-note">המספרים המדודים והנגזרים מוצגים כרגיל. כדי לאפשר הזנה ידנית, הרץ את
+        <code>${esc(d.migration)}</code> ב-Supabase SQL editor.</div>
+    </div>`;
+
+  const unsetBanner = (d.unset_services || []).length ? `
+    <div class="panel-pad" style="border-color:rgba(255,193,7,0.25);">
+      <div class="drawer-label" style="color:var(--yellow);">${d.unset_services.length} שירותים ללא מספר</div>
+      <div class="pricing-note">לא נכללים בסכום: ${esc(d.unset_services.join(' · '))}.
+        הסכום למטה נמוך מהמציאות עד שיוזנו.</div>
+    </div>` : '';
+
+  const catRows = (d.by_category || []).map(c =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(c.label)}</span>
+     <span>${ils(c.amount_ils)}</span></div>`).join('') ||
+    '<div class="empty-state">אין עדיין נתוני עלות</div>';
+
+  // Group the service lines under their category headings
+  const byCategory = {};
+  (d.lines || []).forEach(line => {
+    (byCategory[line.category] = byCategory[line.category] || []).push(line);
+  });
+  const groups = Object.entries(byCategory).map(([key, lines]) => `
+    <div class="panel-pad">
+      <div class="drawer-label">${esc((d.categories || {})[key] || key)}</div>
+      ${lines.map(costRow).join('')}
+    </div>`).join('');
+
+  const usage = d.supabase_usage;
+  const usageNote = usage && usage.measured
+    ? `<div class="pricing-note">Supabase בפועל: ${Number(usage.db_size_mb || 0).toLocaleString('he-IL')} MB
+       מתוך ${Number(usage.size_budget_mb || 0).toLocaleString('he-IL')} MB
+       (${esc(usage.used_pct == null ? '—' : usage.used_pct + '%')}) — אם זה מתקרב לתקרה, עלות התוכנית תשתנה.</div>`
+    : '<div class="pricing-note">נפח ה-Supabase טרם נמדד — ראה migrations/2026-07-30-supabase-size-watch.sql</div>';
+
+  el.innerHTML = `
+    ${migrationBanner}
+    ${unsetBanner}
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="stat-card">
+        <span class="label">מנויים קבועים — לחודש</span>
+        <span class="value">${ils(t.fixed_monthly_ils)}</span>
+        <span class="note">עלות חוזרת שלא תלויה בשימוש</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">שימוש משתנה — מתחילת החודש</span>
+        <span class="value" style="color:var(--accent);">${ils(t.variable_month_to_date_ils)}</span>
+        <span class="note">קריאות Claude בפועל · ${esc(d.month || '')}</span>
+      </div>
+      <div class="stat-card" style="border-color:rgba(0,201,110,0.25);">
+        <span class="label">סה״כ מתחילת החודש</span>
+        <span class="value" style="color:var(--green);">${ils(t.month_to_date_ils)}</span>
+        <span class="note">קבוע מלא + משתנה חלקי — לא תחזית לסוף החודש</span>
+      </div>
+    </div>
+
+    <div class="panel-pad">
+      <div class="drawer-label">פילוח לפי קטגוריה</div>
+      ${catRows}
+    </div>
+
+    ${groups}
+
+    <div class="panel-pad" style="margin-bottom:0;">
+      <div class="drawer-label">איך לקרוא את המספרים</div>
+      <div class="pricing-note">${esc(d.disclaimer || '')}</div>
+      ${usageNote}
+      <div class="pricing-note">עלויות פרסום של לקוחות וכלים שהם משלמים עליהם ישירות (Higgsfield, HeyGen, כלי SEO)
+        אינן עלות שלנו ואינן נכללות כאן — ראה budget_agent לתמונה הלקוחית.</div>
+    </div>`;
+}
+
+async function saveOperatingCost(key) {
+  const amountEl = document.getElementById('cost-amt-' + key);
+  const savedEl = document.getElementById('cost-saved-' + key);
+  const amount = Number(amountEl.value);
+  if (amountEl.value === '' || isNaN(amount) || amount < 0) {
+    savedEl.style.color = 'var(--yellow)';
+    savedEl.textContent = 'הזן מספר תקין';
+    return;
+  }
+  try {
+    const res = await api('/api/admin/operating-costs/' + encodeURIComponent(key), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount_ils: amount,
+        cadence: document.getElementById('cost-cad-' + key).value,
+        note: '',
+      }),
+    });
+    if (!res.success) throw new Error('save failed');
+    savedEl.style.color = 'var(--green)';
+    savedEl.textContent = 'נשמר ✓';
+    loadOperatingCosts();   // totals move with the row — reload rather than patch
+  } catch (e) {
+    if (e.message === 'unauthenticated') return;
+    savedEl.style.color = 'var(--yellow)';
+    savedEl.textContent = 'שגיאה בשמירה';
   }
 }
 
