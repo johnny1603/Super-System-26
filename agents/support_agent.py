@@ -481,6 +481,16 @@ def _website_reads(client_id: int) -> dict:
         data["external_crm"] = get_status(client_id)
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: crm reads failed: {e}")
+    # The existing-site assessment, so follow-up questions about migrate-vs-
+    # rebuild are answered from what we actually detected. A stored activity
+    # row — reading it re-probes nothing.
+    try:
+        from agents.website_agent import latest_assessment
+        assessment = latest_assessment(client_id)
+        if assessment:
+            data["existing_site_assessment"] = assessment
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: assessment read failed: {e}")
     return data
 
 
@@ -565,7 +575,21 @@ PERSONAS = {
                        "it is optional — nothing about their leads changes if they skip it. "
                        "If 'recent' shows failures, tell them plainly that those leads ARE "
                        "safe in uallak and only the copy to their CRM failed, and that we "
-                       "retry automatically."),
+                       "retry automatically. "
+                       "'existing_site_assessment' is what we DETECTED about a site they "
+                       "already had, and it decides which of two different things we offer. "
+                       "offered_path 'migrate' (their site IS WordPress): a real transfer — "
+                       "content, design, images and pages come across as they are. It is "
+                       "human-assisted and takes 1-3 business days, never instant, and their "
+                       "existing site keeps running untouched until they approve the copy. "
+                       "offered_path 'rebuild' (not WordPress, or we could not see the site): "
+                       "there is NO way to transfer it — say so plainly and early. We build a "
+                       "NEW site informed by the old one: same business, same services, new "
+                       "design. Never call that a migration, never imply the design will look "
+                       "the same, and never promise content moves automatically — we carry "
+                       "across what matters, by hand. If 'reachable' is false we simply could "
+                       "not load their site; ask them to double-check the address rather than "
+                       "concluding anything about what it is built with."),
     },
     "media": {
         "name": "ליאור",

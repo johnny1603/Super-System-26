@@ -478,6 +478,80 @@ directly (honest_note mentions it for new-site packages).
   InstaWP-dashboard step for now — clients launch on the `*.instawp.xyz`
   subdomain until done; automating the mapping API is deferred.
 
+## Existing site → migrate OR rebuild (2026-08-04)
+
+A client who ALREADY has a website gets one of two genuinely different offers,
+and keeping them distinct is the whole feature.
+
+**Detection is automatic and anonymous** — `wp.detect_wordpress(url)`, no
+credentials, so the client never has to know what their site is built with.
+Signals, in confidence order: the `/wp-json/` root exposing the `wp/v2`
+namespace (**certain** — nothing else produces that), then a generator meta tag
+/ `api.w.org` link relation / `wp-content` asset paths (**likely**), then
+**unlikely**, and **unknown** when the site could not be loaded at all.
+
+**Uncertainty routes to REBUILD, deliberately.** A wrong "yes" promises a
+migration that cannot happen; a wrong "no" only offers a rebuild the client can
+decline. `unknown` (unreachable) is never treated as "not WordPress" — the
+client is told we couldn't see it and asked to check the address.
+
+### WHY MIGRATION IS A HUMAN RUNBOOK — investigated, do not "fix" this
+
+**InstaWP's API cannot migrate a site for us.** Our integration
+(`core/instawp_service.py`) has create-from-template, task status and delete —
+that is all it has ever had, and InstaWP's v2 API exposes no migration endpoint.
+
+InstaWP's actual migration product (**InstaMigrate**) is **dashboard-driven and
+interactive**: you enter the source URL, get **redirected to log in with
+WordPress admin credentials on that site and approve the connection**, then do
+the same for the destination. That authorization step cannot be performed by our
+backend, and there is no documented endpoint that takes a URL and migrates it.
+
+The InstaMigrate **plugin** does expose REST primitives — `/db/export`,
+`/db/import` (with `source_url` for server-to-server pulls), `/files/archive`,
+`/files/download`, `/files/extract`, `/files/search-replace`, `/disk-probe` —
+authenticated by `X-Insta-Key` **or a WordPress Application Password**, which is
+exactly the credential our connect flow already collects. So full automation is
+*technically* reachable. It is deliberately NOT built:
+
+- it needs a plugin whose own docs say to delete it immediately after use,
+  installed on the client's LIVE business site;
+- the destination is **permanently overwritten, with no undo**;
+- it is a multi-step, large-payload sequence with no transactional safety, and
+  nothing about it can be tested before it runs on real client data.
+
+Same house rule as PAUSED campaigns, draft posts and Drive-review media: **a
+human makes the irreversible tap.** `request_migration()` records the request,
+sets honest expectations in chat (1-3 business days, human-assisted, their site
+stays up until they approve), and alerts Johnny with the runbook.
+
+### The rebuild path
+
+`start_rebuild_from_existing()` captures the old site's public title,
+description and headings (`wp.public_page_summary` — shallow and public-only,
+never an attempted content extraction) as `website_rebuild_reference`, then goes
+through **`request_self_provision` unchanged** — the entitlement check, the
+duplicate guard and the billable-trigger audit all still apply. It is not a
+second door into `provision_site`.
+
+That reference feeds `research_site_landscape`'s build brief as
+`existing_site_reference`, with the prompt told it is REFERENCE not a spec: carry
+across what the business IS, never reproduce the old layout or wording.
+
+### Expectation-setting lives in chat, in fixed wording
+
+Every explanation goes to **אורי's own thread** (`dashboard_chat:website`) as
+**fixed Hebrew text, not an LLM paraphrase** — it is a promise about what the
+client will and will not get, and that wording must not drift between runs. The
+assessment is also in `_website_reads`, so אורי answers follow-ups accurately
+from what was actually detected. Fixed promise, conversational follow-up.
+
+His `data_notes` forbid calling a rebuild a migration, implying the design will
+look the same, or promising content moves automatically.
+
+Endpoints (all session-gated): `POST /api/client/website/assess`,
+`POST /api/client/website/migrate-request`, `POST /api/client/website/rebuild`.
+
 ## Self-service provisioning (client dashboard, 2026-07)
 
 **Business decision (2026-07):** the dashboard's website card now offers

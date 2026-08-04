@@ -94,6 +94,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   see the website skill) — the client never handles the token or an embed snippet; the
   manual snippet is now only a labelled fallback for sites we don't manage.
   See `HANDOFF-client-dashboard-nav.md` and `HANDOFF-lead-capture-autowire.md`.
+- **Existing-site path (`website_agent.assess_existing_site`)** — a client with a site
+  gets ONE of two different offers, decided by automatic anonymous detection
+  (`wordpress_service.detect_wordpress`): WordPress → **migration**, anything else
+  *including unreachable* → **rebuild**. Uncertainty routes to rebuild on purpose.
+  **Migration is a human runbook, not an API call**: InstaWP's migration is
+  dashboard-driven and needs an interactive WP-admin authorization our backend cannot
+  perform. The rebuild path reuses `request_self_provision` (entitlement + duplicate
+  guards intact), never a second door into `provision_site`. All expectation-setting is
+  FIXED Hebrew text in אורי's chat thread — it's a promise, so it must not drift.
+  See `HANDOFF-existing-site.md`.
 - `core/crm_service.py` + `agents/crm_agent.py` — OPT-IN sync of `client_leads` into a
   CRM the CLIENT owns (HubSpot, Pipedrive). **A client with no CRM connected sees zero
   change**, and our copy of the lead is always the record: capture stores the row and

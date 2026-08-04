@@ -248,6 +248,217 @@ def connect_site(client_id: int, site_url: str, username: str, app_password: str
             "can_manage_plugins": bool(capabilities.get("install_plugins"))}
 
 
+# ─── Existing site: detect, then TWO distinct paths ───────────────────────────
+#
+# A client who already has a website gets one of two genuinely different offers,
+# and the difference is the whole point of this section:
+#
+#   WordPress  -> MIGRATION. Their content, design and media come across.
+#   Not WP     -> REBUILD. A new site informed by the old one. NOT a transfer.
+#
+# Detection is automatic (wp.detect_wordpress) so the client never has to know
+# what their site is built with. Uncertainty routes to REBUILD on purpose: a
+# wrong "yes" promises a migration that cannot happen, a wrong "no" only offers
+# a rebuild they can decline.
+#
+# ## Why migration is a HUMAN runbook and not an API call (investigated 2026-08-04)
+#
+# InstaWP's own migration (InstaMigrate) is dashboard-driven: you enter the
+# source URL, are REDIRECTED to log in with WordPress admin credentials on that
+# site, and approve the connection interactively. There is no documented
+# endpoint that takes a URL and migrates it, and that authorization step cannot
+# be performed by our backend.
+#
+# The InstaMigrate PLUGIN does expose REST primitives (/db/export, /db/import
+# with source_url, /files/archive, /files/download, /files/extract,
+# /files/search-replace, /disk-probe), authenticated by Application Password —
+# the exact credential our connect flow already collects. So a fully automated
+# migration is *technically* reachable. It is deliberately NOT built:
+#   - it requires installing a plugin whose own docs say to delete it right
+#     after use, on the client's LIVE business site;
+#   - the destination is permanently overwritten, with no undo;
+#   - it is a multi-step, large-payload sequence with no transactional safety,
+#     and nothing here can be tested before it runs on real data.
+# Same house rule as PAUSED campaigns, draft posts and Drive-review media: a
+# human makes the irreversible tap. What we automate is everything up to it.
+
+ASSESSMENT_ACTIVITY = "website_existing_assessed"
+PATH_MIGRATE = "migrate"
+PATH_REBUILD = "rebuild"
+
+# Only these confidences are allowed to offer a migration — see the module note
+# above on why uncertainty must route to rebuild.
+_MIGRATE_CONFIDENCE = ("certain", "likely")
+
+
+def _website_channel() -> str:
+    """אורי's own chat thread. Expectation-setting about the client's site is
+    his subject, and personas keep separate conversations by channel."""
+    from agents.support_agent import persona_channel
+    return persona_channel("website")
+
+
+def assess_existing_site(client_id: int, site_url: str) -> dict:
+    """Detect what the client's existing site is, record it, and explain the
+    resulting path IN CHAT. Returns the assessment plus the offered path.
+
+    The explanation is fixed Hebrew text rather than an LLM paraphrase on
+    purpose: it is a PROMISE about what the client will and will not get, and
+    that wording must never drift between runs. The assessment is also fed to
+    the website persona's reads, so אורי can answer follow-ups about it live —
+    fixed promise, conversational follow-up."""
+    from agents.client_agent import log_communication
+
+    log_step(AGENT_NAME, "assess_existing_site", f"client {client_id}: {site_url[:80]}")
+    detection = wp.detect_wordpress(site_url)
+    path = (PATH_MIGRATE
+            if detection["is_wordpress"] and detection["confidence"] in _MIGRATE_CONFIDENCE
+            else PATH_REBUILD)
+
+    _log_activity(client_id, ASSESSMENT_ACTIVITY, {
+        "site_url": detection.get("site_url", site_url),
+        "is_wordpress": detection["is_wordpress"],
+        "confidence": detection["confidence"],
+        "signals": detection["signals"],
+        "reachable": detection["reachable"],
+        "offered_path": path,
+    })
+
+    if path == PATH_MIGRATE:
+        hedge = ("" if detection["confidence"] == "certain" else
+                 "\nנאמת את זה סופית מול האתר לפני שמתחילים — אם יתברר אחרת, נעדכן אתכם מיד. ")
+        message = (
+            f'בדקנו את {detection.get("site_url", site_url)} — זה אתר וורדפרס. ✅{hedge}\n\n'
+            'זה אומר שאפשר לעשות העברה אמיתית: התוכן, העיצוב, התמונות והעמודים '
+            'שלכם עוברים כמו שהם לשרת שלנו. לא בונים מחדש — מעבירים.\n\n'
+            'מה שחשוב שתדעו מראש:\n'
+            '• זה לא מיידי. העברה נעשית בליווי אנושי שלנו ולוקחת בדרך כלל '
+            'יום עד שלושה ימי עבודה.\n'
+            '• נצטרך גישת מנהל לאתר הקיים — נסביר בדיוק איך, בלי שתצטרכו להתעסק בטכני.\n'
+            '• האתר הקיים שלכם ממשיך לעבוד כרגיל לאורך כל התהליך. לא נוגעים בו '
+            'עד שהעותק החדש מוכן ואתם מאשרים.\n\n'
+            'רוצים שנתחיל? לחצו על "בקשת העברה" בכרטיס האתר — ואני כאן לכל שאלה.')
+    elif not detection["reachable"]:
+        message = (
+            f'ניסינו לבדוק את {site_url} ולא הצלחנו להגיע אליו מהשרת שלנו. '
+            'זה קורה — לפעמים זו חומת אש, כתובת עם טעות קטנה, או אתר שחוסם בדיקות '
+            'אוטומטיות.\n\n'
+            'כדי לא להבטיח לכם משהו שלא בדקנו: בלי לראות את האתר איננו יכולים '
+            'להתחייב שהעברה אפשרית. שתי אפשרויות — תבדקו שהכתובת מדויקת ונריץ שוב, '
+            'או שנתחיל אתר חדש שבנוי בהשראת הקיים. כתבו לי כאן ונחליט יחד.')
+    else:
+        message = (
+            f'בדקנו את {detection.get("site_url", site_url)} — הוא לא בנוי על וורדפרס.\n\n'
+            'אני רוצה להיות מדויק אתכם: במקרה כזה אי אפשר "להעביר" את האתר. '
+            'מה שכן אפשר — ואנחנו עושים את זה טוב — זה לבנות אתר וורדפרס חדש '
+            'שמבוסס על הקיים: נעבור על המבנה, על התכנים ועל המסרים שלכם, ניקח מהם '
+            'את מה שעובד ונבנה מזה אתר חדש ומהיר.\n\n'
+            'מה שחשוב שתדעו מראש:\n'
+            '• זו בנייה מחדש, לא העתקה. העיצוב יהיה חדש — לא זהה לקיים.\n'
+            '• תוכן ותמונות שתרצו לשמר — נעביר ידנית את מה שרלוונטי, לא הכל אוטומטית.\n'
+            '• האתר הקיים שלכם נשאר באוויר עד שתחליטו אחרת. אנחנו לא נוגעים בו.\n\n'
+            'אם זה נשמע נכון, לחצו על "בנו לי אתר חדש" בכרטיס האתר. יש שאלות? כתבו לי כאן.')
+
+    log_communication(client_id, "outbound", _website_channel(), message)
+    return {"success": True, "path": path, "detection": detection, "message": message}
+
+
+def latest_assessment(client_id: int) -> dict:
+    """The newest existing-site assessment, for the dashboard card and for
+    אורי's persona reads. {} when the client never ran one."""
+    rows = (_db().table("client_activity").select("details,created_at")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", ASSESSMENT_ACTIVITY)
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    if not rows:
+        return {}
+    return {**(rows[0].get("details") or {}), "assessed_at": rows[0].get("created_at", "")}
+
+
+def request_migration(client_id: int) -> dict:
+    """Client asks to migrate their existing WordPress site to us.
+
+    Records the request, tells the client honestly what happens next, and
+    ALERTS Johnny with the runbook. This does NOT perform a migration — see the
+    section note above for why InstaWP's own flow needs an interactive human
+    authorization that our backend cannot provide. Everything up to the
+    irreversible step is automated; the step itself is Johnny's."""
+    from agents.client_agent import log_communication
+
+    assessment = latest_assessment(client_id)
+    if not assessment:
+        return {"success": False, "code": "ERR_NO_ASSESSMENT",
+                "errors": ["no existing-site assessment on file — run assess first"]}
+    if assessment.get("offered_path") != PATH_MIGRATE:
+        # Refusing beats quietly starting the wrong process: the client was told
+        # a rebuild is the honest option, and this endpoint must not contradict it.
+        return {"success": False, "code": "ERR_NOT_MIGRATABLE",
+                "errors": ["the assessed site is not WordPress — the offered path is a rebuild"]}
+    if is_connected(client_id):
+        return {"success": False, "code": "ERR_WEBSITE_ALREADY_CONNECTED",
+                "errors": ["client already has a connected website"]}
+
+    site_url = assessment.get("site_url", "")
+    _log_activity(client_id, "website_migration_requested",
+                  {"site_url": site_url, "confidence": assessment.get("confidence", "")})
+    log_communication(client_id, "outbound", _website_channel(),
+                      'קיבלנו את הבקשה להעברת האתר. 🚚\n'
+                      'הצוות שלנו מתחיל בתהליך ויחזור אליכם עם השלב הבא — בדרך כלל '
+                      'תוך יום עסקים. בינתיים אין שום דבר שצריך לעשות, והאתר הקיים '
+                      'שלכם ממשיך לעבוד כרגיל.')
+    agent_alert(AGENT_NAME, [
+        f"client {client_id} requested a WordPress MIGRATION of {site_url} "
+        f"(detection confidence: {assessment.get('confidence')}). "
+        f"MANUAL RUNBOOK — this is not automated: (1) provision the destination site "
+        f"via POST /api/website/provision if one doesn't exist yet; (2) in the InstaWP "
+        f"dashboard run InstaMigrate, entering {site_url} as source and authorising with "
+        f"the client's WP admin login, then the destination site and authorise; "
+        f"(3) confirm the migrated copy with the client BEFORE any DNS change. "
+        f"Note the destination is permanently overwritten. See .claude/skills/website/SKILL.md."])
+    return {"success": True, "status": "requested", "site_url": site_url}
+
+
+def start_rebuild_from_existing(client_id: int, background_tasks=None) -> dict:
+    """Non-WordPress path: build a NEW site informed by the existing one.
+
+    Deliberately routes through `request_self_provision` rather than calling
+    `provision_site` directly — that is where the entitlement check, the
+    duplicate guard and the billable-trigger audit live, and a second door into
+    a money-spending call is exactly the kind of thing that drifts. All this
+    adds is recording the existing site as REFERENCE material first, so the
+    build brief can use it."""
+    assessment = latest_assessment(client_id)
+    if assessment.get("site_url"):
+        try:
+            reference = wp.public_page_summary(assessment["site_url"])
+            _log_activity(client_id, "website_rebuild_reference",
+                          {"site_url": assessment["site_url"], "reference": reference})
+        except Exception as e:
+            # Reference material is enrichment; a rebuild proceeds without it
+            log_step(AGENT_NAME, "start_rebuild_from_existing",
+                     f"client {client_id}: reference capture failed: {e}")
+    return request_self_provision(client_id, background_tasks=background_tasks)
+
+
+def _rebuild_reference(client_id: int) -> dict:
+    """The captured reference material, for the build brief. {} when the client
+    came in through the plain "I have no site" door — which is the normal case."""
+    rows = (_db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "website_rebuild_reference")
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    if not rows:
+        return {}
+    details = rows[0].get("details") or {}
+    reference = details.get("reference") or {}
+    if not reference.get("available"):
+        return {}
+    return {"existing_site_url": details.get("site_url", ""),
+            "title": reference.get("title", ""),
+            "description": reference.get("description", ""),
+            "headings": reference.get("headings", [])}
+
+
 # ─── Overview (support chat + admin) ──────────────────────────────────────────
 
 def get_site_overview(client_id: int) -> dict:
@@ -1352,6 +1563,13 @@ into a concrete build brief for ONE Israeli small business's WordPress site.
 You receive the business context, its brand palette, and research covering competitors from
 BOTH the organic and paid results for their local searches.
 
+`existing_site_reference`, when present, is the client's CURRENT non-WordPress site — the
+public title, description and headings we could see. It is the strongest signal you have
+about what this business actually offers and how it talks about itself, so mine it for
+services, structure and language. It is REFERENCE, NOT A SPEC: the client has been told
+explicitly that this is a rebuild and the design will be new, not a copy of their old site.
+Carry across what the business IS; never try to reproduce the old layout or wording.
+
 Rules:
 - INFORM, NEVER COPY: recommend structure and direction that fits the niche, never a
   reproduction of a named competitor's layout, wording or design.
@@ -1397,6 +1615,11 @@ def research_site_landscape(client_id: int, force_refresh: bool = False) -> dict
             "brand_palette": _latest_palette(client_id),
             "competitor_research": research["summary"],
         }
+        # The client's own previous site, when they came in through the rebuild
+        # path. Empty for a client who never had one — the normal case.
+        reference = _rebuild_reference(client_id)
+        if reference:
+            payload["existing_site_reference"] = reference
         blueprint = timed_step(
             AGENT_NAME, "site_blueprint_llm",
             lambda: safe_claude_json_call(SITE_BLUEPRINT_SYSTEM,

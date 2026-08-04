@@ -1118,7 +1118,18 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <div class="site-choice-row" id="siteChoiceRow">
         <button class="conn-btn primary" id="siteBtn" onclick="openSiteFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
+        <button class="conn-btn secondary" id="siteExistingBtn" onclick="toggleExistingSiteForm()" data-i18n="site_existing_btn">יש לי אתר קיים — בדקו אותו</button>
         <button class="conn-btn secondary" id="siteCreateBtn" onclick="toggleCreateSiteForm()" data-i18n="site_create_new">אין לי אתר — הקימו לי אחד</button>
+      </div>
+      <!-- Existing-site path. We DETECT what their site is rather than asking
+           them to declare it, then offer exactly one of two genuinely different
+           things. Every explanation is delivered into אורי's chat thread — this
+           card only carries the buttons. -->
+      <div id="siteExistingForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="site_existing_note">תנו לנו את הכתובת ונבדוק בעצמנו במה האתר בנוי — אין צורך שתדעו. התשובה וההסבר המלא יגיעו אליכם בצ׳אט עם אורי.</div>
+        <input class="site-input" id="existingSiteUrl" dir="ltr" data-i18n-placeholder="site_url_ph" placeholder="כתובת האתר, למשל mysite.co.il">
+        <button class="conn-btn primary" id="existingSiteBtn" onclick="assessExistingSite()" data-i18n="site_existing_check">בדקו את האתר שלי</button>
+        <div id="existingSiteResult" style="margin-top:10px;"></div>
       </div>
       <div id="siteForm" style="display:none; margin-top:10px;">
         <input class="site-input" id="siteUrl" dir="ltr" data-i18n-placeholder="site_url_ph" placeholder="כתובת האתר, למשל mysite.co.il">
@@ -1560,6 +1571,21 @@ const DASH_I18N = {
   leads_capture_view_form: { he:'צפייה בטופס באתר ↗', en:'View the form on your site ↗', fr:'Voir le formulaire sur votre site ↗', ar:'عرض النموذج في موقعك ↗', ru:'Посмотреть форму на сайте ↗' },
   leads_capture_adv_toggle: { he:'מתקדם / למפתחים — חיבור אתר חיצוני', en:'Advanced / for developers — connect an external site', fr:'Avancé / pour développeurs — connecter un site externe', ar:'متقدم / للمطورين — ربط موقع خارجي', ru:'Продвинутое / для разработчиков — подключить внешний сайт' },
   leads_capture_adv_text: { he:'אם יש לך אתר נוסף שאנחנו לא מנהלים, אפשר להעביר את הקוד הזה למי שמתחזק אותו. זו הכתובת הפרטית שלך — אין צורך לגעת בה אם האתר שלנו כבר מחובר.', en:'If you have another site we don’t manage, hand this code to whoever maintains it. It is your private endpoint — no need to touch it if our site is already connected.', fr:'Si vous avez un autre site que nous ne gérons pas, transmettez ce code à son responsable. C’est votre adresse privée — inutile d’y toucher si notre site est déjà connecté.', ar:'إذا كان لديك موقع آخر لا نديره، سلّم هذا الكود لمن يتولى صيانته. هذا عنوانك الخاص — لا حاجة لتغييره إذا كان موقعنا متصلًا بالفعل.', ru:'Если у вас есть другой сайт, который мы не ведём, передайте этот код тому, кто его обслуживает. Это ваш приватный адрес — трогать его не нужно, если наш сайт уже подключён.' },
+
+  // ── existing site: detect, then migrate OR rebuild ──
+  site_existing_btn: { he:'יש לי אתר קיים — בדקו אותו', en:'I have a site — check it', fr:'J’ai déjà un site — vérifiez-le', ar:'لديّ موقع قائم — افحصوه', ru:'У меня есть сайт — проверьте его' },
+  site_existing_note: { he:'תנו לנו את הכתובת ונבדוק בעצמנו במה האתר בנוי — אין צורך שתדעו. התשובה וההסבר המלא יגיעו אליכם בצ׳אט עם אורי.', en:'Give us the address and we’ll check what it’s built with ourselves — you don’t need to know. The answer and the full explanation arrive in your chat with אורי.', fr:'Donnez-nous l’adresse et nous vérifierons nous-mêmes la technologie — inutile de le savoir. La réponse et l’explication complète arrivent dans votre chat avec אורי.', ar:'أعطونا العنوان وسنفحص بأنفسنا ما بُني به الموقع — لا داعي لأن تعرفوا. الإجابة والشرح الكامل يصلان في الدردشة مع אורי.', ru:'Дайте адрес — мы сами проверим, на чём сделан сайт. Ответ и полное объяснение придут в чат с אורי.' },
+  site_existing_check: { he:'בדקו את האתר שלי', en:'Check my site', fr:'Vérifier mon site', ar:'افحصوا موقعي', ru:'Проверить мой сайт' },
+  site_existing_checking: { he:'בודקים…', en:'Checking…', fr:'Vérification…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
+  site_existing_need_url: { he:'צריך כתובת אתר כדי לבדוק', en:'A site address is needed', fr:'Une adresse de site est nécessaire', ar:'نحتاج عنوان الموقع', ru:'Нужен адрес сайта' },
+  site_existing_failed: { he:'הבדיקה נכשלה — נסו שוב בעוד רגע', en:'The check failed — try again shortly', fr:'La vérification a échoué — réessayez', ar:'فشل الفحص — حاولوا لاحقًا', ru:'Проверка не удалась — повторите позже' },
+  site_existing_is_wp: { he:'זה אתר וורדפרס — אפשר להעביר אותו אלינו כמו שהוא. הפרטים בצ׳אט עם אורי.', en:'It’s a WordPress site — it can be migrated to us as it is. Details in your chat with אורי.', fr:'C’est un site WordPress — il peut être migré tel quel. Détails dans le chat avec אורי.', ar:'إنه موقع ووردبريس — يمكن نقله إلينا كما هو. التفاصيل في الدردشة مع אורי.', ru:'Это сайт на WordPress — его можно перенести к нам как есть. Подробности в чате с אורי.' },
+  site_existing_not_wp: { he:'האתר לא בנוי על וורדפרס — אי אפשר להעביר אותו, אבל אפשר לבנות חדש בהשראתו. ההסבר המלא בצ׳אט עם אורי.', en:'The site isn’t WordPress — it can’t be transferred, but we can build a new one based on it. Full explanation in your chat with אורי.', fr:'Le site n’est pas WordPress — il ne peut pas être transféré, mais nous pouvons en construire un nouveau qui s’en inspire. Explication complète dans le chat avec אורי.', ar:'الموقع ليس ووردبريس — لا يمكن نقله، لكن يمكننا بناء موقع جديد مستوحى منه. الشرح الكامل في الدردشة مع אורי.', ru:'Сайт не на WordPress — перенести нельзя, но можно построить новый на его основе. Полное объяснение в чате с אורי.' },
+  site_existing_unreachable: { he:'לא הצלחנו להגיע לאתר כדי לבדוק אותו. בדקו שהכתובת מדויקת, או שנתחיל אתר חדש — פירוט בצ׳אט עם אורי.', en:'We couldn’t reach the site to check it. Check the address is right, or we can start a new site — details in your chat with אורי.', fr:'Nous n’avons pas pu atteindre le site. Vérifiez l’adresse, ou nous pouvons créer un nouveau site — détails dans le chat avec אורי.', ar:'لم نتمكن من الوصول إلى الموقع لفحصه. تحققوا من العنوان، أو نبدأ موقعًا جديدًا — التفاصيل في الدردشة مع אורי.', ru:'Мы не смогли открыть сайт для проверки. Проверьте адрес, либо начнём новый сайт — подробности в чате с אורי.' },
+  site_existing_migrate_btn: { he:'בקשת העברה', en:'Request migration', fr:'Demander la migration', ar:'طلب النقل', ru:'Запросить перенос' },
+  site_existing_rebuild_btn: { he:'בנו לי אתר חדש', en:'Build me a new site', fr:'Créez-moi un nouveau site', ar:'ابنوا لي موقعًا جديدًا', ru:'Построить новый сайт' },
+  site_existing_sending: { he:'שולחים…', en:'Sending…', fr:'Envoi…', ar:'جارٍ الإرسال…', ru:'Отправляем…' },
+  site_existing_migrate_ok: { he:'הבקשה נשלחה — הצוות יחזור אליכם, בדרך כלל תוך יום עסקים. האתר הקיים ממשיך לעבוד כרגיל.', en:'Request sent — the team will get back to you, usually within a business day. Your existing site keeps running as normal.', fr:'Demande envoyée — l’équipe vous recontactera, généralement sous un jour ouvré. Votre site actuel continue de fonctionner.', ar:'أُرسل الطلب — سيعود إليكم الفريق عادةً خلال يوم عمل. موقعكم الحالي يستمر بالعمل كالمعتاد.', ru:'Запрос отправлен — команда свяжется с вами обычно в течение рабочего дня. Ваш сайт продолжает работать как обычно.' },
 
   // ── external CRM (optional, additive) ──
   crm_title: { he:'חיבור ל-CRM חיצוני (אופציונלי)', en:'Connect an external CRM (optional)', fr:'Connecter un CRM externe (facultatif)', ar:'ربط CRM خارجي (اختياري)', ru:'Подключить внешнюю CRM (необязательно)' },
@@ -2523,6 +2549,115 @@ function toggleCreateSiteForm() {
   const form = document.getElementById('siteCreateForm');
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
   document.getElementById('siteForm').style.display = 'none';
+  document.getElementById('siteExistingForm').style.display = 'none';
+}
+
+function toggleExistingSiteForm() {
+  const form = document.getElementById('siteExistingForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('siteForm').style.display = 'none';
+  document.getElementById('siteCreateForm').style.display = 'none';
+}
+
+// Check what the client's existing site is built with, then offer exactly ONE
+// of two different things. The card shows a one-line verdict and the button;
+// the real explanation — what will and won't happen — is written into אורי's
+// chat thread by the server, because that is a promise, not a UI label.
+async function assessExistingSite() {
+  const t = uallakI18n.t;
+  const btn = document.getElementById('existingSiteBtn');
+  const out = document.getElementById('existingSiteResult');
+  const url = document.getElementById('existingSiteUrl').value.trim();
+  if (!url) { showNotice(t('site_existing_need_url'), 'warn'); return; }
+  btn.disabled = true;
+  btn.textContent = t('site_existing_checking');
+  out.innerHTML = '';
+  try {
+    const res = await fetch('/api/client/website/assess', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_url: url }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      showNotice(uallakI18n.errorText(body, 'site_existing_failed'), 'warn');
+    } else {
+      renderExistingSiteVerdict(body.data);
+      // The full explanation is already waiting in אורי's thread — open it so
+      // the client reads it there rather than us restating it on the card.
+      openAgentWindow('website');
+    }
+  } catch (e) {
+    console.error('site assessment failed', e);
+    showNotice(t('site_existing_failed'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = t('site_existing_check');
+}
+
+function renderExistingSiteVerdict(data) {
+  const t = uallakI18n.t;
+  const out = document.getElementById('existingSiteResult');
+  const d = data.detection || {};
+  if (data.path === 'migrate') {
+    out.innerHTML = `
+      <div class="lock-note" style="color:var(--green);">${esc(t('site_existing_is_wp'))}</div>
+      <button class="conn-btn primary" style="margin-top:8px;"
+              onclick="requestMigration(this)">${esc(t('site_existing_migrate_btn'))}</button>`;
+    return;
+  }
+  // Not WordPress, or we couldn't load it — two different messages, because
+  // "it isn't WordPress" and "we couldn't see it" are not the same fact.
+  out.innerHTML = `
+    <div class="lock-note">${esc(t(d.reachable ? 'site_existing_not_wp' : 'site_existing_unreachable'))}</div>
+    <button class="conn-btn primary" style="margin-top:8px;"
+            onclick="startRebuild(this)">${esc(t('site_existing_rebuild_btn'))}</button>`;
+}
+
+async function requestMigration(btn) {
+  const t = uallakI18n.t;
+  btn.disabled = true;
+  btn.textContent = t('site_existing_sending');
+  try {
+    const res = await fetch('/api/client/website/migrate-request',
+                            { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      showNotice(t('site_existing_migrate_ok'), 'success');
+      document.getElementById('existingSiteResult').innerHTML =
+        `<div class="lock-note" style="color:var(--green);">${esc(t('site_existing_migrate_ok'))}</div>`;
+      openAgentWindow('website');
+      return;
+    }
+    showNotice(uallakI18n.errorText(body, 'site_existing_failed'), 'warn');
+  } catch (e) {
+    console.error('migration request failed', e);
+    showNotice(t('site_existing_failed'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = t('site_existing_migrate_btn');
+}
+
+async function startRebuild(btn) {
+  const t = uallakI18n.t;
+  btn.disabled = true;
+  btn.textContent = t('site_create_starting');
+  try {
+    const res = await fetch('/api/client/website/rebuild',
+                            { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) {
+      showNotice(t('site_create_started_notice'), 'success');
+      showSiteProvisionProgress();     // same in-progress + polling as a plain new build
+      return;
+    }
+    showNotice(uallakI18n.errorText(body, 'site_create_failed'), 'warn');
+  } catch (e) {
+    console.error('rebuild request failed', e);
+    showNotice(t('site_create_failed'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = t('site_existing_rebuild_btn');
 }
 
 // Client-triggered "build me a new WordPress site" — fires the background
@@ -2556,6 +2691,7 @@ function showSiteProvisionProgress() {
   document.getElementById('siteChoiceRow').style.display = 'none';
   document.getElementById('siteForm').style.display = 'none';
   document.getElementById('siteCreateForm').style.display = 'none';
+  document.getElementById('siteExistingForm').style.display = 'none';
   document.getElementById('siteCreateProgress').style.display = 'block';
   if (!window._siteProvisionPoll) {
     window._siteProvisionPoll = setInterval(loadDashboard, 15000);

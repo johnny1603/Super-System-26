@@ -2383,6 +2383,51 @@ def website_connect(req: WebsiteConnectRequest, request: Request):
         raise HTTPException(status_code=400, detail=result.get("error", "connection failed"))
     return {"success": True, "data": result}
 
+# ─── Existing site: detect, then one of TWO paths ────────────────────────────
+# Session-gated. Detection is anonymous (no credentials) so a client never has
+# to know what their own site is built with — see website_agent's section note
+# for why an uncertain result routes to a rebuild rather than a migration.
+
+class ExistingSiteRequest(BaseModel):
+    site_url: str
+
+@app.post("/api/client/website/assess")
+def client_website_assess(req: ExistingSiteRequest, request: Request):
+    # Plain `def`: several blocking HTTP probes against the client's site.
+    client_id = _require_session(request)
+    from agents.website_agent import assess_existing_site
+    if not (req.site_url or "").strip():
+        raise HTTPException(status_code=400, detail={"code": "ERR_SITE_URL_REQUIRED"})
+    return {"success": True, "data": assess_existing_site(client_id, req.site_url)}
+
+@app.post("/api/client/website/migrate-request")
+def client_website_migrate_request(request: Request):
+    # Records the request and alerts the team with the runbook. Does NOT run a
+    # migration — InstaWP's own flow needs an interactive human authorization
+    # our backend cannot perform (see the website skill).
+    client_id = _require_session(request)
+    from agents.website_agent import request_migration
+    result = request_migration(client_id)
+    if not result.get("success"):
+        code = result.get("code")
+        raise HTTPException(status_code=400,
+                            detail={"code": code} if code else result.get("errors", ["failed"]))
+    return {"success": True, "data": result}
+
+@app.post("/api/client/website/rebuild")
+def client_website_rebuild(request: Request, background_tasks: BackgroundTasks):
+    # Non-WordPress path. Captures the old site as REFERENCE, then goes through
+    # the SAME request_self_provision gate as the "I have no site" button —
+    # entitlement check, duplicate guard and billable-trigger audit included.
+    client_id = _require_session(request)
+    from agents.website_agent import start_rebuild_from_existing
+    result = start_rebuild_from_existing(client_id, background_tasks)
+    if not result.get("success"):
+        code = result.get("code")
+        detail = {"code": code} if code else result.get("errors", ["unknown error"])
+        raise HTTPException(status_code=400, detail=detail)
+    return {"success": True, "data": result}
+
 @app.post("/api/website/self-provision")
 def website_self_provision(request: Request, background_tasks: BackgroundTasks):
     # The client's "הקימו לי אתר" alternative to /connect when they have no

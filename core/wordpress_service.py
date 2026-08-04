@@ -17,6 +17,8 @@ from wordpress.org (paid plugins/themes are a client-billed decision and are
 NOT installed through here).
 """
 import base64
+import re
+
 import httpx
 
 TIMEOUT = 30
@@ -66,6 +68,151 @@ def normalize_site_url(raw: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
     return url
+
+
+# ─── Anonymous detection (no credentials — runs BEFORE a client connects) ─────
+#
+# Everything else in this file authenticates as the client. This section is the
+# opposite: an ordinary visitor's view of a site we have no access to, used to
+# answer one question — "is this WordPress?" — so a client never has to know or
+# declare it themselves.
+#
+# Confidence matters more than the boolean. A wrong "yes" sends a client down a
+# migration path that cannot work; a wrong "no" only offers a rebuild they can
+# decline. So the caller is told HOW sure we are, and anything short of certain
+# must not be treated as a migration green light (see website_agent).
+
+DETECT_TIMEOUT = 12
+DETECT_MAX_HTML_BYTES = 200_000  # enough for <head> + nav; a homepage can be huge
+
+_GENERATOR_RE = r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']WordPress\s*([0-9.]*)'
+_TITLE_RE = r"<title[^>]*>(.*?)</title>"
+
+
+def _probe_get(url: str, **kwargs):
+    """Anonymous GET that never raises — an unreachable site is a FINDING
+    ("we couldn't see it"), not an exception to handle at every call site."""
+    try:
+        return httpx.get(url, timeout=DETECT_TIMEOUT, follow_redirects=True,
+                         headers={"User-Agent": "uallak-site-check/1.0"}, **kwargs)
+    except Exception:
+        return None
+
+
+def detect_wordpress(site_url: str) -> dict:
+    """Is this public site WordPress? Anonymous, read-only, no credentials.
+
+    Returns {"reachable", "is_wordpress", "confidence", "signals", "wp_version",
+    "site_title", "rest_api_open"}. NEVER raises.
+
+    confidence:
+      certain  — the WP REST API answered with the wp/v2 namespace. Nothing
+                 else produces that.
+      likely   — a generator meta tag, the api.w.org link relation, or
+                 wp-content/wp-includes asset paths in the HTML.
+      unlikely — the page loaded and showed none of those.
+      unknown  — we could not load the site at all (DNS, TLS, firewall,
+                 bot-blocking). NOT the same as "not WordPress", and callers
+                 must not collapse the two.
+    """
+    result = {"reachable": False, "is_wordpress": False, "confidence": "unknown",
+              "signals": [], "wp_version": "", "site_title": "", "rest_api_open": False}
+    try:
+        site_url = normalize_site_url(site_url)
+    except ValueError:
+        result["signals"].append("invalid url")
+        return result
+    result["site_url"] = site_url
+
+    # 1. The REST root. A WordPress site answers with a namespaces array; this
+    #    is the only signal that cannot be faked by a theme copying WP markup.
+    rest = _probe_get(f"{site_url}/wp-json/")
+    if rest is not None and rest.status_code == 200:
+        result["reachable"] = True
+        try:
+            body = rest.json()
+        except Exception:
+            body = {}
+        if isinstance(body, dict) and "wp/v2" in (body.get("namespaces") or []):
+            result.update({
+                "is_wordpress": True, "confidence": "certain", "rest_api_open": True,
+                "site_title": str(body.get("name") or "")[:200],
+            })
+            result["signals"].append("wp-json exposes the wp/v2 namespace")
+            return result
+
+    # 2. The homepage HTML. Several independent tells, any one of which is
+    #    strong; a site can disable the REST API and still be WordPress.
+    home = _probe_get(site_url)
+    if home is None or home.status_code >= 400:
+        if not result["reachable"]:
+            result["signals"].append("site could not be loaded")
+            return result
+        result["confidence"] = "unlikely"
+        return result
+
+    result["reachable"] = True
+    html = (home.text or "")[:DETECT_MAX_HTML_BYTES]
+    lowered = html.lower()
+
+    title = re.search(_TITLE_RE, html, re.I | re.S)
+    if title:
+        result["site_title"] = re.sub(r"\s+", " ", title.group(1)).strip()[:200]
+
+    generator = re.search(_GENERATOR_RE, html, re.I)
+    if generator:
+        result["signals"].append("generator meta tag says WordPress")
+        result["wp_version"] = (generator.group(1) or "").strip()
+    if "api.w.org" in lowered or "api.w.org" in (home.headers.get("link") or "").lower():
+        result["signals"].append("api.w.org link relation present")
+    if "/wp-content/" in lowered or "/wp-includes/" in lowered:
+        result["signals"].append("wp-content / wp-includes asset paths")
+    if "wp-json" in lowered:
+        result["signals"].append("wp-json reference in the page")
+
+    if result["signals"]:
+        result["is_wordpress"] = True
+        result["confidence"] = "likely"
+    else:
+        result["confidence"] = "unlikely"
+    return result
+
+
+def public_page_summary(site_url: str) -> dict:
+    """What a visitor can see on the homepage, as REFERENCE material for a
+    rebuild: title, meta description, and the visible headings.
+
+    Deliberately shallow and public-only — this is "what is this business's
+    site about", never an attempt to extract content for a 1:1 copy (which is
+    exactly what the rebuild path promises NOT to do). Never raises."""
+    summary = {"available": False, "title": "", "description": "", "headings": []}
+    try:
+        site_url = normalize_site_url(site_url)
+    except ValueError:
+        return summary
+    home = _probe_get(site_url)
+    if home is None or home.status_code >= 400:
+        return summary
+
+    html = (home.text or "")[:DETECT_MAX_HTML_BYTES]
+    summary["available"] = True
+
+    title = re.search(_TITLE_RE, html, re.I | re.S)
+    if title:
+        summary["title"] = re.sub(r"\s+", " ", title.group(1)).strip()[:200]
+    description = re.search(
+        r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']', html, re.I | re.S)
+    if description:
+        summary["description"] = re.sub(r"\s+", " ", description.group(1)).strip()[:400]
+
+    headings = re.findall(r"<h[12][^>]*>(.*?)</h[12]>", html, re.I | re.S)
+    cleaned = []
+    for heading in headings:
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", heading)).strip()
+        if text and text not in cleaned:
+            cleaned.append(text[:120])
+    summary["headings"] = cleaned[:15]
+    return summary
 
 
 def _headers(username: str, app_password: str) -> dict:
