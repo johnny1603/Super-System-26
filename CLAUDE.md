@@ -141,6 +141,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (picture, external ad-spend transparency report, logout, account closure/transfer),
   admin dashboard `/admin` (ADMIN_PASSWORD login → signed admin_session cookie; separate
   from the X-Admin-Key header that guards server-to-server /api endpoints).
+- `dashboard/assets/` — mounted at `/assets`, shared by every page: `i18n.js` and the
+  browser mark (`favicon.svg` + `favicon.png` + `apple-touch-icon.png`, the wordmark's
+  lowercase "u" in `#FF4C1F` on `#0D0D0D`). All seven pages carry the same three `<link>`
+  tags; the generated `/lp/` client landing pages deliberately do not — those are the
+  CLIENT's brand, not ours.
 
 ## Conventions
 
@@ -171,3 +176,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   build can block the whole event loop. Prefer plain `def` for blocking endpoints.
 - Empathy analysis runs ONCE early (intro only) and is deliberately reused — do not add a
   second full-conversation empathy call; that was removed on purpose for speed.
+- **Never re-parent a DOM node from a `mousedown` handler.** `appendChild` on an
+  already-attached node is a remove + re-insert, and a subtree that leaves the document
+  between mousedown and mouseup gets no `click` event at all. This silently killed every
+  button inside the client dashboard's agent chat windows (close / minimize / new chat /
+  download / send) — see `focusWindow` in `dashboard/client/index.html`, which now raises a
+  window with CSS `order` + `z-index` instead. Reorder with CSS, not with the DOM.
+- `overflow` / `text-overflow: ellipsis` do **nothing** on an inline element. Several
+  header labels are `<span>`s and need an explicit `display: block` to actually clip
+  instead of spilling over the controls next to them.

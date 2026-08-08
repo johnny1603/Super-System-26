@@ -352,6 +352,16 @@ Other rules:
   no numbering. The flow length varies, so position labels are often wrong and read as a broken
   script.
 
+HARD LENGTH LIMITS — this is the client's longest wait in the chat, and every character you
+generate is time they spend staring at a typing indicator. Match the tight style of the chat's
+fixed questions ("צמיחה קלה", "יציב / תקוע", "בירידה"):
+- Question text: ONE sentence, max 90 characters. Reference what the client said in a few words,
+  then ask. No preamble, no restating their whole situation back to them.
+- Exactly 3 options per question, max 30 characters each. An option is a short label, not a
+  sentence — cut every "אבל", "וגם", and trailing explanation.
+- No text outside the JSON.
+Depth comes from asking the RIGHT thing, not from writing more words.
+
 Return JSON only:
 {"questions": [{"id": "dynamic_1", "text": "question in the client's language", "type": "choice", "options": ["option1", "option2", "option3"]}]}""" + LANGUAGE_RULE
 

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>uallak — הדשבורד שלך</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 
@@ -358,8 +361,11 @@ body {
   background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 15px; }
 .cw-ava svg { width: 100%; height: 100%; display: block; }
 .cw-titles { flex: 1; min-width: 0; }
-.cw-title { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cw-sub { font-size: 11px; color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* display:block is load-bearing: these are <span>s, and overflow/text-overflow
+   are inert on inline elements — the persona name and role spilled out of
+   .cw-titles and painted over the header buttons instead of ellipsising. */
+.cw-title { display: block; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-sub { display: block; font-size: 11px; color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-btn { width: 25px; height: 25px; border-radius: 7px; background: var(--panel-2);
   border: 1px solid var(--border); color: var(--gray); cursor: pointer; font-size: 12px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; font-family: inherit; }
@@ -3038,11 +3044,27 @@ function buildWindow(id) {
   return { root: root, msgsEl: msgs, inputEl: input, chipsEl: chips, minimized: false };
 }
 
-// Raise a window: moving it to the end of the row puts it rightmost on desktop;
-// on mobile (windows stacked) it puts it on top.
+// Raise a window WITHOUT moving it in the DOM.
+//
+// This used to be `chatWindows.appendChild(w.root)`, and it ran from the
+// window's own mousedown handler. appendChild on an ALREADY-attached node is a
+// remove + re-insert, so every mousedown detached the window from the document
+// and put it straight back. Chrome only fires `click` when mousedown and mouseup
+// land in the same still-attached subtree, so the click was never dispatched:
+// every button inside a chat window was dead — download, new chat, minimize,
+// close, and the send button. (Enter still sent, which is why only the header
+// controls looked broken.) Verified in Chrome before and after this change.
+//
+// CSS ordering gives the same visual result with no DOM mutation: flex `order`
+// puts the window rightmost in the desktop row, and `z-index` puts it on top in
+// the mobile stack. Both apply to flex items, so one counter drives both.
+let chatWindowTop = 0;
 function focusWindow(id) {
   const w = CHAT_WINDOWS[id];
-  if (w) document.getElementById('chatWindows').appendChild(w.root);
+  if (!w) return;
+  chatWindowTop += 1;
+  w.root.style.order = chatWindowTop;
+  w.root.style.zIndex = chatWindowTop;
 }
 function minimizeWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;

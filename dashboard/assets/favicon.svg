@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- uallak browser mark: the wordmark's lowercase "u" in the brand accent
+       (#FF4C1F) on the dashboards' near-black (#0D0D0D). Drawn as a path rather
+       than text so it renders identically without loading Heebo. -->
+  <rect width="100" height="100" rx="22" fill="#0D0D0D"/>
+  <path d="M32 28 V52 a18 18 0 0 0 36 0 V28"
+        fill="none" stroke="#FF4C1F" stroke-width="16"/>
+</svg>

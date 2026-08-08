@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>uallak — איפיון עסקי</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 :root {
@@ -621,38 +624,38 @@ function sendText() {
   }
 }
 
+// This is the client's LONGEST wait in the whole chat: they send their opening
+// message and nothing comes back until both of these LLM calls finish. They
+// used to run one after the other, which simply added the two waits together.
+//
+// Neither call reads the other's output - both derive only from the intro - so
+// they now run CONCURRENTLY and the wait is whichever is slower (the questions
+// call, by a wide margin). The RESULTS are still applied in the original order:
+// the filter drops base questions, then the dynamic ones splice in at currentQ.
+// That stays correct because the filter only ever removes base questions, which
+// all sit after the intro at index 0, so the splice point never moves.
 async function loadDynamicQuestions() {
   showTyping();
-  
-  try {
-    // שלב 1 — סנן שאלות שכבר נענו בפתיחה
-    const filterRes = await fetch('/api/filter-questions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ intro: answers['intro'], answers })
-    });
-    const filterData = await filterRes.json();
-    if (filterData.skip_ids && filterData.skip_ids.length > 0) {
-      questions = questions.filter(q => !filterData.skip_ids.includes(q.id));
-      console.log('Filtered out:', filterData.skip_ids);
-    }
-  } catch(e) {
-    console.log('Filter failed, continuing');
-  }
 
-  try {
-    // שלב 2 — הוסף שאלות דינמיות
-    const res = await fetch('/api/dynamic-questions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ intro: answers['intro'], answers })
-    });
-    const data = await res.json();
-    if (data.questions && data.questions.length > 0) {
-      questions.splice(currentQ, 0, ...data.questions);
-    }
-  } catch(e) {
-    console.log('Dynamic questions failed, continuing');
+  const body = JSON.stringify({ intro: answers['intro'], answers });
+  const post = (path, label) => fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body,
+  }).then(res => res.json())
+    .catch(() => { console.log(label + ' failed, continuing'); return {}; });
+
+  const [filterData, data] = await Promise.all([
+    post('/api/filter-questions', 'Filter'),        // שלב 1 — סנן שאלות שכבר נענו בפתיחה
+    post('/api/dynamic-questions', 'Dynamic questions'),  // שלב 2 — שאלות דינמיות
+  ]);
+
+  if (filterData.skip_ids && filterData.skip_ids.length > 0) {
+    questions = questions.filter(q => !filterData.skip_ids.includes(q.id));
+    console.log('Filtered out:', filterData.skip_ids);
+  }
+  if (data.questions && data.questions.length > 0) {
+    questions.splice(currentQ, 0, ...data.questions);
   }
 
   hideTyping();

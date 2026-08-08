@@ -19,6 +19,21 @@ WEB_SEARCH_TOOL = {
 MAX_PAUSE_TURN_CONTINUATIONS = 3
 
 
+# One Anthropic client per API key, reused for the process's lifetime.
+# Constructing a client per call meant a fresh connection pool every time, so
+# every LLM call in the app paid for a new TCP + TLS handshake to Anthropic
+# before it could even send the request. The clients are thread-safe, and
+# requests run on FastAPI's threadpool, so sharing them is the intended use.
+# Keyed by api_key because callers pass different ones (None = read from env).
+_CLIENTS = {}
+
+
+def _client(api_key=None):
+    if api_key not in _CLIENTS:
+        _CLIENTS[api_key] = Anthropic(api_key=api_key) if api_key else Anthropic()
+    return _CLIENTS[api_key]
+
+
 class ClaudeJSONError(Exception):
     """Raised when a Claude response can't be turned into JSON, even after a retry."""
 
@@ -52,7 +67,7 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
       point for JSON LLM calls, so instrumenting here covers everything).
       Pass client_id / cost_category where attribution is known.
     """
-    client = Anthropic(api_key=api_key) if api_key else Anthropic()
+    client = _client(api_key)
     total_input_tokens = total_output_tokens = 0
 
     response = client.messages.create(
@@ -147,7 +162,7 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
       text - the URLs search actually returned, across every continuation.
       Default False keeps every existing caller's contract unchanged.
     """
-    client = Anthropic()
+    client = _client()
     messages = [{"role": "user", "content": user_message}]
     total_input = total_output = total_searches = 0
     sourced = []

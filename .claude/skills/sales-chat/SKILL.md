@@ -14,6 +14,10 @@ description: How uallak's sales chat + proposal pipeline works — question flow
    business hasn't started operating yet.
 3. Frontend calls `/api/dynamic-questions` (`get_dynamic_questions`) — 4-6 personalized
    questions spliced in RIGHT AFTER the intro, BEFORE the remaining base questions.
+   **2 and 3 are fired CONCURRENTLY** (`Promise.all` in `loadDynamicQuestions`) — neither
+   reads the other's output. They are still APPLIED in this order: filter removes base
+   questions, then the dynamic ones splice in at `currentQ`. This is the client's longest
+   wait in the chat, so keep it that way; don't re-serialize them.
 4. Remaining base questions run, with client-side `applyConditionalLogic` splices:
    - `financial_status` startsWith "עסק חדש" → removes the past-oriented trio and inserts
      `new_business_expectations` + `new_business_concern` (forward-looking).
@@ -82,3 +86,10 @@ Full pipeline target < 2 minutes; response LENGTH is the main driver. Every prom
 hard output-length limits — keep them when editing, and never add a sequential LLM round-trip
 to `run_full_onboarding` without asking whether it can run in parallel or merge into an
 existing call (the empathy reuse and the merged QA review both exist for this reason).
+
+**Measured 2026-08-08** against the live service, first turn after the intro: filter 3.9s,
+dynamic questions 26.6s, 30.4s total sequential. It was not a cold start, a blocking call or
+a missing cache — the questions call is almost entirely output-token generation (1,550 chars
+of Hebrew JSON). Hence the two fixes: run the pair concurrently, and hard-cap the generated
+question/option lengths in `get_dynamic_questions`'s prompt. If this ever regresses, measure
+before theorising — the two endpoints are public, so a plain POST times them.
