@@ -2252,6 +2252,10 @@ async function loadDashboard() {
       // page load; the flag just avoids a redundant round trip.
       window._loginMomentDone = true;
       runLoginMoment();
+      // A new capability worth telling THIS client about, at most one per
+      // login. Separate from the greeting above because it lands in the owning
+      // specialist's thread, not the concierge's.
+      runFeatureAnnouncement();
     }
 
     // Progress timeline (Part 3) — derived, not separately tracked
@@ -3432,6 +3436,34 @@ async function runLoginMoment() {
     if (w) appendMsg(w.msgsEl, body.data.message, 'bot');
   } catch (e) {
     console.error('login moment failed', e);   // never block the dashboard
+  }
+}
+
+// A feature announcement arrives in the OWNING specialist's thread (אורי for a
+// site feature, ליאור for media, …) — so unlike the concierge greeting above we
+// can't append it to the general window. Refreshing the unread state is what
+// surfaces it: the specialist gets an orange dot in the launcher and the FAB,
+// and the message is waiting when they open that window.
+async function runFeatureAnnouncement() {
+  try {
+    const res = await fetch('/api/client/feature-announcement', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: uallakI18n.current() }),
+    });
+    const body = await res.json();
+    if (!body.success || !body.data.sent) return;
+    const persona = body.data.persona || 'general';
+    const w = CHAT_WINDOWS[persona];
+    if (w) {
+      // That window is already open — put it straight in rather than marking
+      // an unread dot they'd never see.
+      appendMsg(w.msgsEl, body.data.message, 'bot');
+      return;
+    }
+    await loadChatUnread();   // recomputes the dots from the server's own view
+  } catch (e) {
+    console.error('feature announcement failed', e);  // never block the dashboard
   }
 }
 

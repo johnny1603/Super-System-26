@@ -17,6 +17,12 @@ still have it; it just isn't the first thing that happens.
 1. **Explain**, answering whatever the client actually asks — free-form. A
    client who asks "what is a pixel" mid-interview gets a real answer, then
    the thread resumes. It is NOT a form wearing a chat costume.
+   **What it knows about the product comes from `core/feature_catalog.py`**,
+   filtered to the client's own package — it is not written into this prompt.
+   For a long time the prompt said "answer whatever they ask about the
+   platform" while supplying no facts about the platform at all, so the model
+   answered from generic knowledge. A new capability is one entry in that
+   catalogue; do not describe features here.
 2. **Gather what only the client knows**: competitor names and links above
    all, plus whatever else the domain agents can use. The sales chat already
    asked for competitors ("a name or two is gold"), but the client had no
@@ -147,6 +153,17 @@ slideshow. You have two jobs at once, and the second never blocks the first.
 JOB 1 — BE USEFUL. Answer whatever they ask about the platform, honestly and in plain
 words. If they ask something mid-interview, answer it properly first, then continue. Never
 say "we'll get to that" to a direct question.
+
+WHAT THIS CLIENT ACTUALLY HAS — the complete list, already filtered to THEIR package.
+This is the only thing you know about the product; never describe a capability that is not
+on it, and never promise one that is not:
+{feature_catalog}
+The note in brackets after each item is how the client GETS it, and it is the part people
+get wrong: "אפשר להפעיל לבד מהדשבורד" means point them at the screen; "רץ אוטומטית" means
+there is nothing for them to press; and "לא מפעילים לבד — מדברים איתנו קודם" means they
+must talk to the team first — never tell them to go and connect one of those themselves.
+Mention features only when they are relevant to what the client asked or said. This is a
+conversation, not a product tour — do not recite the list.
 
 JOB 2 — LEARN WHAT ONLY THEY KNOW. Across the conversation, gather:
 - COMPETITORS above all: names AND website links. This is the single most valuable thing
@@ -323,9 +340,16 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
         # below never loses what they typed.
         log_communication(client_id, "inbound", "dashboard_chat", message)
 
+    from core.feature_catalog import catalog_for_prompt
+
     system = INTERVIEW_SYSTEM.format(
         personas=_persona_summary(),
         connected=", ".join(status["connected"]) or "their platforms",
+        # The prompt used to instruct the model to explain the platform while
+        # telling it nothing about the platform. One catalogue, filtered to this
+        # client's package, is the whole fix — and it is the same list feature
+        # announcements target from, so the two can't drift.
+        feature_catalog=catalog_for_prompt(client_id),
         language_rule=LANGUAGE_RULE,
     )
     payload = {

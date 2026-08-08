@@ -569,6 +569,123 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
             "asked_for_feedback": bool(result.get("asked_for_feedback"))}
 
 
+# ─── Feature announcements: the SECOND login trigger (2026-08-08) ────────────
+# Same design rule as run_login_moment above — code decides whether to speak,
+# the LLM decides how — but three things differ, and each difference is the
+# reason this is its own function rather than another fact in
+# _collect_login_facts:
+#
+# 1. DEDUP IS PER ANNOUNCEMENT, FOREVER, not per day. A shipped feature is
+#    announced once; "already greeted today" is the wrong gate entirely.
+# 2. IT IS TARGETED. core/feature_catalog decides relevance from the client's
+#    package and live connections, so a client with no YouTube add-on never
+#    hears about a YouTube feature.
+# 3. IT GOES TO THE OWNING PERSONA'S THREAD, not the concierge's. The daily
+#    greeting is always the concierge; an announcement about the site should
+#    arrive from אורי, in אורי's chat window, which means a different channel
+#    (support_agent.persona_channel).
+#
+# Cost: at most one call per client per announcement, and zero when nothing is
+# live or nothing is relevant — which is the normal state.
+
+FEATURE_ANNOUNCEMENT_SYSTEM = """You are {persona_name}, a specialist on the uallak team,
+telling an EXISTING client about something new we have just added to the platform. They are
+already paying and already using the product — this is not an introduction.
+
+You receive: what the feature is, a note from the team about what shipped, and what this
+client's account looks like. Write ONE short message.
+
+Rules:
+- Say what it is and what it means FOR THEM specifically. A generic release note is worse
+  than saying nothing.
+- Tell them where to find it, using the location given. If the feature's access note says
+  they must talk to the team first, say that — never tell them to go and connect or enable
+  it themselves.
+- Never invent capabilities, numbers, dates, or results. Everything you may claim is in the
+  facts you were given.
+- Do not apologise for it not existing before, and do not oversell. One new thing, plainly.
+- No greeting boilerplate — they may have already been greeted today by the concierge.
+
+TONE: {persona_voice} You are a person on their team, never an AI or a bot.
+
+LANGUAGE: {language_rule}
+
+HARD LIMITS: max 3 sentences. At most one question, and only if it is genuinely useful.
+No bullet lists. At most one emoji.
+
+Return JSON only: {{"message": "the message"}}"""
+
+
+def run_feature_announcement(client_id: int, language: str = "he") -> dict:
+    """Deliver at most ONE pending feature announcement to this client.
+
+    Returns {"message", "sent", "persona"} — an empty message is the normal,
+    frequent outcome (nothing live, nothing relevant, or already told).
+    Never raises: an announcement is a nicety and must not break a dashboard
+    load, exactly like the login moment.
+    """
+    from core import feature_announcements
+    from core.feature_catalog import ACCESS_NOTE_HE, feature
+
+    try:
+        announcement = feature_announcements.next_for_client(client_id)
+    except Exception as e:
+        print(f"[{AGENT_NAME}] announcement lookup failed for client {client_id}: {e}")
+        return {"success": False, "message": "", "sent": False}
+    if not announcement:
+        return {"success": True, "message": "", "sent": False, "reason": "nothing_pending"}
+
+    entry = feature(announcement.get("feature_key", ""))
+    persona_id = entry.get("persona", "general")
+
+    from agents.client_agent import get_client, log_communication
+    from agents.onboarding_agent import LANGUAGE_RULE
+    from agents.support_agent import PERSONAS, persona_channel
+
+    persona = PERSONAS.get(persona_id) or {}
+    client = get_client(client_id) or {}
+    payload = {
+        "client_name": client.get("name", ""),
+        "ui_language": language,
+        "feature_name": entry.get("name_he", ""),
+        "what_it_does": entry.get("what_he", ""),
+        "where_to_find_it": entry.get("where_he", ""),
+        "how_they_get_it": ACCESS_NOTE_HE.get(entry.get("access", ""), ""),
+        "team_note": announcement.get("note", ""),
+        "title": announcement.get("title", ""),
+    }
+    system = FEATURE_ANNOUNCEMENT_SYSTEM.format(
+        persona_name=persona.get("name", "צוות uallak"),
+        persona_voice=persona.get("voice", "Warm, direct, practical."),
+        language_rule=LANGUAGE_RULE,
+    )
+    try:
+        result = timed_step(
+            AGENT_NAME, "feature_announcement_llm",
+            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
+                                          max_tokens=400, client_id=client_id,
+                                          cost_category="engagement_login"))
+    except Exception as e:  # includes ClaudeJSONError
+        # NOT marked as sent — a failed write must leave the announcement
+        # pending so the next login retries it.
+        print(f"[{AGENT_NAME}] announcement generation failed for client {client_id}: {e}")
+        return {"success": False, "message": "", "sent": False}
+
+    message = (result.get("message") or "").strip()
+    if not message:
+        return {"success": True, "message": "", "sent": False}
+
+    # Into the OWNING persona's thread, so it shows up as an unread dot on that
+    # specialist rather than in the concierge's window.
+    log_communication(client_id, "outbound", persona_channel(persona_id), message)
+    feature_announcements.mark_sent(client_id, announcement)
+    log_step(AGENT_NAME, "feature_announcement",
+             f"client {client_id}: #{announcement.get('id')} "
+             f"({announcement.get('feature_key')}) via {persona_id}")
+    return {"success": True, "message": message, "sent": True, "persona": persona_id,
+            "announcement_id": announcement.get("id")}
+
+
 # ─── Client feedback on uallak itself (the weekly ask's answer) ──────────────
 
 def store_feedback(client_id: int, message: str, rating=None,

@@ -923,10 +923,117 @@ async function loadSettings() {
     <span id="settingsSaved" style="color:var(--green);font-size:12.5px;margin-right:12px;"></span>
 
     <div class="pricing-block" style="margin-top:26px;">
+      <div class="pricing-block-title">עדכוני פיצ׳רים ללקוחות</div>
+      <div class="pricing-note">כשמשהו חדש מוכן — כאן מחליטים לספר עליו. המערכת שולחת רק ללקוחות
+        שהפיצ׳ר רלוונטי להם, פעם אחת לכל לקוח, בכניסה הבאה שלו לדשבורד, בקול של המומחה שאחראי עליו.</div>
+      <div id="announcementsPanel" style="margin-top:14px;">טוען…</div>
+    </div>
+
+    <div class="pricing-block" style="margin-top:26px;">
       <div class="pricing-block-title">ניצול תשתית — פנימי בלבד</div>
       <div id="platformUsage" class="pricing-note">טוען…</div>
     </div>`;
   loadPlatformUsage();
+  loadAnnouncements();
+}
+
+// ─── feature announcements ───────────────────────────────────────────────────
+// Johnny flags a shipped feature as ready to tell clients about. Who receives it
+// is NOT chosen here — core/feature_catalog.py already knows which clients each
+// feature applies to, and the dropdown below is that same catalogue.
+let _announcementFeatures = [];
+
+async function loadAnnouncements() {
+  const panel = document.getElementById('announcementsPanel');
+  if (!panel) return;
+  try {
+    const res = await api('/api/admin/feature-announcements');
+    const d = res.data || {};
+    _announcementFeatures = d.features || [];
+    if (!d.table_ready) {
+      panel.innerHTML = `<div class="pricing-note" style="color:var(--yellow);">
+        טבלת העדכונים עדיין לא נוצרה — הריצו את <code>${esc(d.migration || '')}</code>
+        ב-Supabase. עד אז אף לקוח לא יקבל עדכון, ושום דבר אחר לא נפגע.</div>`;
+      return;
+    }
+    const statusLabel = { draft: 'טיוטה', live: 'פעיל', archived: 'בארכיון' };
+    const statusColor = { draft: 'var(--gray)', live: 'var(--green)', archived: 'var(--gray)' };
+    const rows = (d.announcements || []).map(a => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <span style="font-weight:700;">${esc(a.title || a.feature_name || a.feature_key)}</span>
+          <span style="color:${statusColor[a.status] || 'var(--gray)'};font-size:12px;">
+            ${esc(statusLabel[a.status] || a.status)}</span>
+        </div>
+        <div class="pricing-note" style="margin:6px 0;">${esc(a.note || '')}</div>
+        <div class="pricing-note">
+          פיצ׳ר: ${esc(a.feature_name || a.feature_key)}
+          ${a.feature_known ? '' : ' <span style="color:var(--yellow);">— מפתח לא מוכר, לא יישלח לאף אחד</span>'}
+          · נמסר בקול: ${esc(a.persona || 'general')}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+          ${a.status !== 'live'
+            ? `<button class="alert-btn" onclick="setAnnouncementStatus(${a.id}, 'live')">הפעל — ספר ללקוחות</button>`
+            : `<button class="alert-btn" onclick="setAnnouncementStatus(${a.id}, 'archived')">עצור</button>`}
+          <button class="alert-btn" onclick="deleteAnnouncement(${a.id})" style="color:var(--gray);">מחיקה</button>
+        </div>
+      </div>`).join('') ||
+      '<div class="pricing-note">עדיין לא נוצרו עדכונים.</div>';
+
+    panel.innerHTML = rows + `
+      <div style="border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:12px;">
+        <div class="drawer-label" style="margin-bottom:8px;">עדכון חדש</div>
+        <select id="annFeature" class="auto-input" style="margin-bottom:6px;">
+          ${_announcementFeatures.map(f =>
+            `<option value="${esc(f.key)}">${esc(f.name_he)} — ${esc(f.audience)} (${esc(f.persona)})</option>`).join('')}
+        </select>
+        <input class="auto-input" id="annTitle" placeholder="כותרת קצרה (לשימוש פנימי)" style="margin-bottom:6px;">
+        <textarea class="auto-input" id="annNote" rows="3" style="margin-bottom:8px;"
+          placeholder="מה חדש, במילים שלך. זה לא נשלח כמו שהוא — המערכת מנסחת מחדש לכל לקוח בקול של המומחה."></textarea>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="alert-btn" onclick="createAnnouncement('draft')">שמור כטיוטה</button>
+          <button class="alert-btn" onclick="createAnnouncement('live')">שמור והפעל</button>
+        </div>
+        <div id="annMsg" style="font-size:12px;margin-top:6px;"></div>
+      </div>`;
+  } catch (e) {
+    panel.innerHTML = '<div class="pricing-note" style="color:var(--yellow);">שגיאה בטעינת העדכונים</div>';
+  }
+}
+
+async function createAnnouncement(status) {
+  const msg = document.getElementById('annMsg');
+  const note = document.getElementById('annNote').value.trim();
+  if (!note) { msg.textContent = 'צריך לכתוב מה חדש'; msg.style.color = 'var(--yellow)'; return; }
+  msg.textContent = 'שומר…'; msg.style.color = 'var(--gray)';
+  try {
+    await api('/api/admin/feature-announcements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        feature_key: document.getElementById('annFeature').value,
+        title: document.getElementById('annTitle').value.trim(),
+        note, status,
+      }),
+    });
+    loadAnnouncements();
+  } catch (e) {
+    msg.textContent = 'השמירה נכשלה'; msg.style.color = 'var(--accent)';
+  }
+}
+
+async function setAnnouncementStatus(id, status) {
+  await api(`/api/admin/feature-announcements/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  loadAnnouncements();
+}
+
+async function deleteAnnouncement(id) {
+  await api(`/api/admin/feature-announcements/${id}`, { method: 'DELETE' });
+  loadAnnouncements();
 }
 
 async function loadPlatformUsage() {

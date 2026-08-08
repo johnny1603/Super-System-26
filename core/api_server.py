@@ -1344,6 +1344,19 @@ def client_login_moment(req: LoginMomentRequest, request: Request):
     from agents.engagement_agent import run_login_moment
     return {"success": True, "data": run_login_moment(client_id, req.language)}
 
+class FeatureAnnouncementRequest(BaseModel):
+    language: str = "he"
+
+@app.post("/api/client/feature-announcement")
+def client_feature_announcement(req: FeatureAnnouncementRequest, request: Request):
+    # The second login trigger: at most ONE pending, relevant, not-yet-told
+    # feature announcement, delivered into the owning persona's chat thread.
+    # An empty message is the normal outcome. Plain `def`: may make one
+    # blocking LLM call.
+    client_id = _require_session(request)
+    from agents.engagement_agent import run_feature_announcement
+    return {"success": True, "data": run_feature_announcement(client_id, req.language)}
+
 class ClientFeedbackRequest(BaseModel):
     message: str = ""
     rating: int = None     # 1-5, optional — never inferred from the text
@@ -3962,6 +3975,65 @@ def admin_seo_approve_strategy(client_id: int, request: Request):
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
+
+# ─── Feature announcements — ADMIN authoring ─────────────────────────────────
+# Johnny decides when something is ready to tell clients about; nothing here is
+# created by a deploy. Targeting and persona come from core/feature_catalog.py,
+# so this surface only carries the note and the live/draft switch.
+
+@app.get("/api/admin/feature-announcements")
+def admin_list_feature_announcements(request: Request):
+    _require_admin(request)
+    from core import feature_announcements, feature_catalog
+    return {"success": True, "data": {
+        "announcements": feature_announcements.list_announcements(),
+        # The dropdown of what can be announced — the catalogue itself, so a new
+        # feature becomes announceable with no change to this endpoint.
+        "features": [{"key": f["key"], "name_he": f["name_he"], "persona": f["persona"],
+                      "audience": "כל הלקוחות" if f["relevance"].get("always")
+                                  else "לקוחות רלוונטיים בלבד"}
+                     for f in feature_catalog.FEATURES],
+        "table_ready": feature_announcements.table_ready(),
+        "migration": "migrations/2026-08-08-feature-announcements.sql",
+    }}
+
+class FeatureAnnouncementCreate(BaseModel):
+    feature_key: str
+    title: str = ""
+    note: str
+    status: str = "draft"
+
+@app.post("/api/admin/feature-announcements")
+def admin_create_feature_announcement(req: FeatureAnnouncementCreate, request: Request):
+    _require_admin(request)
+    from core import feature_announcements
+    result = feature_announcements.create_announcement(
+        req.feature_key, req.title, req.note, req.status)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return result
+
+class FeatureAnnouncementStatus(BaseModel):
+    status: str   # draft | live | archived
+
+@app.patch("/api/admin/feature-announcements/{announcement_id}")
+def admin_set_feature_announcement_status(announcement_id: int,
+                                          req: FeatureAnnouncementStatus, request: Request):
+    _require_admin(request)
+    from core import feature_announcements
+    result = feature_announcements.set_status(announcement_id, req.status)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return result
+
+@app.delete("/api/admin/feature-announcements/{announcement_id}")
+def admin_delete_feature_announcement(announcement_id: int, request: Request):
+    _require_admin(request)
+    from core import feature_announcements
+    result = feature_announcements.delete_announcement(announcement_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return result
 
 # ─── Marketing automation (ManyChat / Make) — ADMIN ONLY ─────────────────────
 # The credentials the CLIENT created and handed to Johnny, so he can sign in and

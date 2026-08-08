@@ -124,6 +124,35 @@ Triggers folded in: time-of-day greeting (Israel clock, 5 languages via
 delivered in the last 7 days acknowledged *specifically*, new lead counts, and
 the weekly satisfaction ask (`feedback_asked`, 7-day interval).
 
+## Feature announcements — the second login trigger (2026-08-08)
+
+`run_feature_announcement(client_id, language)` → `POST
+/api/client/feature-announcement`, fired from the same dashboard load. Same
+design rule as above (code decides whether, the LLM decides how), but a SEPARATE
+function because all three of its axes differ from the daily greeting:
+
+| | login moment | feature announcement |
+|---|---|---|
+| dedup | once per **day** | once per **announcement**, forever (`feature_announcement_sent` row carrying `announcement_id`) |
+| audience | every client | only clients `feature_catalog.is_relevant` says it applies to |
+| delivered to | the concierge's thread | the **owning persona's** thread (`persona_channel`) |
+
+Do not try to fold this back into `_collect_login_facts` — the daily dedup is
+the wrong gate for a one-time event, and the greeting has no way to speak as a
+specialist.
+
+**One announcement per login**, oldest first: a client returning after a quiet
+month must not be met with five product messages.
+
+**A failed LLM call does NOT mark it sent** — it stays pending for the next
+login. And `already_sent_ids` returning `None` (dedup read failed) means say
+nothing: if we cannot prove what a client already got, repeating is worse than
+waiting.
+
+Authoring is admin-only (הגדרות → עדכוני פיצ׳רים ללקוחות); nothing is created by
+a deploy. Needs `migrations/2026-08-08-feature-announcements.sql` — until then
+the whole path is inert. See `HANDOFF-feature-announcements.md`.
+
 **One honesty constraint baked into the prompt**: it may name the lead CHANNEL
 but must NOT claim organic vs paid. `client_leads.source` is a channel
 (form/phone/WhatsApp), and the utm/gclid capture that would make that

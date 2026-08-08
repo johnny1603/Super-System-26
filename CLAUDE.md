@@ -33,6 +33,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `recommended_services`, never a guess, and **fail closed** when the package can't be
   read. `note_connections_complete()` stamps the 90-day clock start once, permanently.
   See `HANDOFF-engagement-upgrade.md`.
+- `core/feature_catalog.py` — **the** list of what uallak offers a client today, one entry
+  per capability. Two readers and no second copy: `interview_agent` renders it (filtered to
+  the client's package) so the first-login conversation can actually explain the product,
+  and feature-announcement targeting decides relevance from the same entries. **Shipping a
+  client-facing capability means adding one dict here** — miss it and the interview keeps
+  describing a product that no longer matches. The `access` field (`self_serve` / `manual` /
+  `automatic`) is what stops a manual service like ManyChat/Make being described as a button.
+- `core/feature_announcements.py` + `engagement_agent.run_feature_announcement` — Johnny
+  flags a shipped feature as ready; relevant clients are told **once each**, at their next
+  login, in the owning persona's voice and in that persona's chat thread. Admin-triggered
+  only, never automatic on a deploy. Needs `migrations/2026-08-08-feature-announcements.sql`;
+  does nothing at all until it runs. See `HANDOFF-feature-announcements.md`.
 - `agents/interview_agent.py` — the onboarding conversation that replaced the static tour,
   in two phases: `connection_nudge()` at first login while integrations are missing, then
   the deep interview **gated** on every required connection being live. Explains AND
