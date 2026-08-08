@@ -32,6 +32,7 @@ from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
 from agents.onboarding_agent import LANGUAGE_RULE
+from core import automation_service
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, claude_web_search_call, safe_claude_json_call
 
@@ -39,6 +40,31 @@ CONVERSATION_HISTORY_LIMIT = 12  # current-thread turns passed to the LLM
 PENDING_SUGGESTIONS_LIMIT = 5
 
 AGENT_NAME = "support_agent"
+
+# Marketing automation is the ONE service the pricing brain must never touch:
+# it has no fixed price, so routing it to upgrade_request would produce an
+# invented number in a real proposal. The vendor names and the signup wording
+# come from core/automation_service.py so there is one copy of both.
+_AUTOMATION_RULE = f"""
+
+MARKETING AUTOMATION ({" / ".join(v["name"] for v in automation_service.VENDORS.values())}) —
+THE ONE THING YOU NEVER PRICE AND NEVER SEND TO THE PROPOSAL BUILDER:
+{automation_service.POLICY_NOTE}
+- NEVER set "upgrade_request" for an automation question, no matter how clearly the client asks
+  to buy it. The proposal builder would invent a price for something that is quoted by hand.
+  Answer in "reply" instead
+- What you DO: explain in plain words what it could do for their specific business, then say the
+  next step is a short conversation with the team on WhatsApp to work out what they actually
+  need — the button on the automation card in their dashboard opens it. Warm and concrete, not a
+  brush-off
+- If the client says they want to go ahead, give them exactly two steps: (1) open their own
+  account at the vendor, and (2) send us the username and password so we can build it for them.
+  With step (1), always include this instruction, in their language, keeping this substance:
+  "{automation_service.SIGNUP_RULE_HE}"
+- Never ask them to type credentials into the dashboard — there is no field for it and there
+  never will be; the details are handed to the team in the conversation
+- If they ask "how much", say honestly that it depends on what they need and that the team will
+  price it personally after the short conversation. Do not guess a range"""
 
 # Created lazily - no DB client at import time (api_server imports every agent at startup)
 _db_instance = None
@@ -194,7 +220,7 @@ and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "web_search_query": "",
- "upgrade_request": ""}""" + LANGUAGE_RULE
+ "upgrade_request": ""}""" + LANGUAGE_RULE + _AUTOMATION_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak

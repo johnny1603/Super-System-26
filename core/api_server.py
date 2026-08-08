@@ -3963,6 +3963,42 @@ def admin_seo_approve_strategy(client_id: int, request: Request):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
 
+# ─── Marketing automation (ManyChat / Make) — ADMIN ONLY ─────────────────────
+# The credentials the CLIENT created and handed to Johnny, so he can sign in and
+# build their automation. Deliberately admin-session only and deliberately NOT
+# mirrored on any client endpoint: unlike every other integration there is no
+# client-facing connect flow here, and the client must never be able to read
+# back a stored password. See core/automation_service.py's module docstring.
+
+@app.get("/api/admin/clients/{client_id}/automation")
+def admin_automation_credentials(client_id: int, request: Request):
+    _require_admin(request)
+    from core import automation_service
+    return {"success": True, "data": automation_service.get_credentials(client_id)}
+
+class AutomationCredsRequest(BaseModel):
+    vendor: str      # manychat | make (automation_service.VENDORS)
+    username: str
+    password: str
+
+@app.post("/api/admin/clients/{client_id}/automation")
+def admin_save_automation_credentials(client_id: int, req: AutomationCredsRequest, request: Request):
+    _require_admin(request)
+    from core import automation_service
+    result = automation_service.save_credentials(client_id, req.vendor, req.username, req.password)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
+@app.delete("/api/admin/clients/{client_id}/automation/{vendor}")
+def admin_delete_automation_credentials(client_id: int, vendor: str, request: Request):
+    _require_admin(request)
+    from core import automation_service
+    result = automation_service.remove_credentials(client_id, vendor)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
 @app.get("/api/pricing/monitor-scan", dependencies=_admin_only)
 def pricing_monitor_scan():
     """Bi-monthly cron (X-Admin-Key) - re-checks every vendor in

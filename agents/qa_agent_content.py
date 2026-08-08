@@ -11,8 +11,13 @@ version that fixes anything that fails:
 1. Professional and warm tone — not robotic, feels human and trustworthy
 2. No unrealistic promises — no "results within a week", guaranteed ROI, vague superlatives,
    or SEO results promised before 6 months
-3. self_help_tips are genuinely specific to this business type — not generic advice that could
-   apply to any business
+3. goals_90_days is mostly CONCRETE ACTIONS uallak will perform (content produced and published on
+   a schedule, campaign launches and ongoing optimization, research/audit delivery, article and
+   keyword work, lead capture, weekly reporting, automations when included) — not a list of
+   outcome projections. 5-7 items, at most 1-2 of which are pure projections. Every named action
+   must actually be contained in the packages you were given; delete any that isn't. A mention of
+   ManyChat/Make marketing automation is allowed ONLY as a possibility to explore with the team,
+   never as an included deliverable and never with a price
 4. No contradictions between business_summary and any package's recommended_services — they must
    all tell the same story
 5. risk_level is logical given the client's financial status, budget size, and situation in their answers
@@ -23,15 +28,31 @@ version that fixes anything that fails:
    - that package's benefit_value must equal its monthly_management_total x 2
    - that package's setup_fee_total must match the sum of its setup_fee_breakdown, and must never be 0
    - that package's monthly_management_total must match the sum of its monthly_breakdown
-9. If ANY package's recommended_services includes "google" or "meta" (paid advertising), honest_note
-   must clearly state that the client's actual ad spend/budget is an ADDITIONAL monthly cost on top
-   of monthly_management_total, and that it will be trackable in their dashboard
-10. ORGANIC SEO MUST NOT BE SILENTLY DROPPED — check the client's answers for "organic_interest" and
-    "organic_budget". If organic_interest is affirmative, the proposal must address organic SEO
-    somewhere: either a package recommends a tier (SEOptimer/SEMrush/Ahrefs) when organic_budget
-    meets the ~3,000 NIS/month threshold, OR honest_note explicitly explains their organic budget is
-    below the recommended minimum and states what that minimum is. If neither is present, this is a
-    failure — fix it by adding the missing tier recommendation or the missing honest_note disclosure
+9. COST_DISCLAIMERS COMPLETENESS AND ACCURACY — cost_disclaimers is the client's list of what they
+   pay for BEYOND uallak's setup and monthly fees. It must contain an item for each of these that
+   applies to the packages, and must NOT contain one that doesn't:
+   - ad spend paid directly to the platform, when any package includes google/meta/tiktok/youtube
+     advertising or sponsored articles
+   - the client's own Higgsfield subscription, when a package includes ongoing image/video
+     production
+   - the client's own HeyGen (+ ElevenLabs) costs, when a package includes the avatar add-on
+   - the domain (~80-100 NIS/year), when a package includes building a NEW website. The site's
+     HOSTING is not one of these — it is already a monthly_management_total line, so an item
+     claiming the client pays hosting separately is WRONG and must be removed
+   - when organic SEO is recommended: an item stating the OPPOSITE — that the SEO tool subscription
+     (SEOptimer/SEMrush/Ahrefs) is already included in the stated organic budget and is NOT an
+     additional payment. An item that says the client pays the SEO tool separately/directly on top
+     of the fees is WRONG and must be rewritten
+   Items must be short factual bullets with no selling or reassurance language. This list replaced
+   the old "things you can do yourself" tips — if any self-help/tip content appears in the
+   proposal, remove it
+10. NO ORGANIC SEO BUDGET FLOOR — there is no minimum organic budget. If the client's
+    organic_interest is affirmative, at least one package must recommend organic SEO with a tool
+    tier matching their organic_budget, and the plan's scope must simply be proportionate to that
+    budget. Any text telling the client their organic budget is below a threshold/minimum, that
+    organic SEO "doesn't pay off" at their level, that they should come back with a bigger budget,
+    or that quotes a minimum organic budget figure, is a FAILURE — delete it and replace it with a
+    proportionate plan. Silently dropping organic SEO when they asked for it is also a failure
 11. RECOMMENDED_SERVICES CONSISTENCY — recommended_services lists ONLY the package's ONGOING
     managed services (what the monthly fee is computed from: "google", "meta", "tiktok", organic
     SEO tier, automation). Check strict two-way agreement between monthly_breakdown's
@@ -51,8 +72,8 @@ version that fixes anything that fails:
     recommended_services (see criterion 15), but is NOT part of this platform-keyword mechanism —
     never attempt to match or flag it here
 12. HONEST_NOTE VS SCARCITY_NOTE SEPARATION — honest_note must contain ONLY factual/operational
-    disclosures (ad spend/SEO tool cost transparency, payment timeline, support model, organic SEO
-    shortfall). The payment timeline legitimately includes the FACT that month 2 carries no
+    disclosures (a one-line pointer to the external costs listed in cost_disclaimers, the payment
+    timeline, the support model). The payment timeline legitimately includes the FACT that month 2 carries no
     management fee — that sentence BELONGS in honest_note and must stay there, but phrased
     neutrally ("בחודש השני לא נגבים דמי ניהול"), never with gift/benefit words (חינם, מתנה, הטבה,
     בונוס) or offer framing. What honest_note must NEVER contain is promotional/incentive language:
@@ -70,15 +91,13 @@ version that fixes anything that fails:
     apologetic, not hedged into vagueness), and goals_90_days/kpis/packages must not contradict it
     (e.g. market_reality says 300 leads is unrealistic while a goal still promises 300 leads).
     Keep the field in the returned proposal — never drop it
-15. AVATAR ADD-ON DISCLOSURE — if ANY package's recommended_services includes "avatar" (the
-    digital-twin video add-on), honest_note must disclose that the client pays HeyGen (and
-    ElevenLabs too, if voice cloning is relevant) DIRECTLY on their own account/card, separate
-    from and additional to monthly_management_total — same disclosure pattern as criterion 9's
-    ad-spend rule. Also check this add-on is genuinely relevant to the business (personal-brand
+15. AVATAR ADD-ON RELEVANCE — if ANY package's recommended_services includes "avatar" (the
+    digital-twin video add-on), its HeyGen/ElevenLabs cost disclosure belongs in cost_disclaimers
+    (criterion 9 covers whether it is present). Here, check the add-on is genuinely relevant to the business (personal-brand
     services, or a client already comfortable on camera) rather than a random inclusion with no
     story behind it — if the package's description/business_summary give no reason for it, that's
-    a tone/consistency issue too (criterion 4), not just a missing-disclosure one. If the
-    disclosure is missing, this is a failure — fix by adding it to honest_note
+    a tone/consistency issue too (criterion 4). Fix by giving the package a real reason for it in
+    the description, or by removing the add-on when there is none
 
 Do not change the proposal's own "approved" field (business eligibility) — that is unrelated to
 this quality review. Only touch it if it is clearly inconsistent with the rest of the proposal.
@@ -126,6 +145,19 @@ def _contains_any(text: str, keywords: list) -> bool:
 
 def _enforce_invariants(proposal: dict) -> dict:
     fixes = []
+
+    # Shape guard for the field the client-facing surfaces iterate over. The old
+    # self_help_tips field was replaced by cost_disclaimers - a proposal built
+    # before this change (or an LLM run that drops the key) must still render, and
+    # a leftover tips list must never reach the client.
+    if proposal.pop("self_help_tips", None) is not None:
+        fixes.append("dropped legacy self_help_tips")
+    disclaimers = proposal.get("cost_disclaimers")
+    if not isinstance(disclaimers, list):
+        proposal["cost_disclaimers"] = []
+        fixes.append("cost_disclaimers: coerced to a list")
+    else:
+        proposal["cost_disclaimers"] = [str(d).strip() for d in disclaimers if str(d).strip()]
 
     # Criterion 12 (mechanical part): neutralize gift wording of the month-2 fact
     # in place (never delete the mandated timeline sentence), drop sentences that

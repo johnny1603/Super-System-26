@@ -138,7 +138,7 @@ const CHROME = {
   proposal_summary: { he:'📋 סיכום:', en:'📋 Summary:', fr:'📋 Résumé :', ar:'📋 ملخص:', ru:'📋 Резюме:' },
   proposal_risk: { he:'⚠️ רמת סיכון:', en:'⚠️ Risk level:', fr:'⚠️ Niveau de risque :', ar:'⚠️ مستوى المخاطرة:', ru:'⚠️ Уровень риска:' },
   proposal_goals: { he:'🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):', en:'🎯 90-day goals (experience-based estimates, not exact promises):', fr:'🎯 Objectifs à 90 jours (estimations fondées sur l\'expérience, pas des promesses) :', ar:'🎯 أهداف 90 يومًا (تقديرات مبنية على الخبرة، وليست وعودًا دقيقة):', ru:'🎯 Цели на 90 дней (оценки на основе опыта, а не точные обещания):' },
-  proposal_tips: { he:'🔧 דברים שאתה יכול לעשות לבד:', en:'🔧 Things you can do yourself:', fr:'🔧 Ce que vous pouvez faire vous-même :', ar:'🔧 أشياء يمكنك القيام بها بنفسك:', ru:'🔧 Что вы можете сделать сами:' },
+  proposal_disclaimers: { he:'💳 עלויות נוספות שחשוב לדעת עליהן:', en:'💳 Additional costs you should know about:', fr:'💳 Coûts supplémentaires à connaître :', ar:'💳 تكاليف إضافية يجب أن تعرفها:', ru:'💳 Дополнительные расходы, о которых стоит знать:' },
   pick_package: { he:'הנה כמה אפשרויות שמתאימות לך — אין כאן תשובה "לא נכונה", תבחר את מה שמרגיש הכי נכון 👇', en:'Here are options that fit you — there\'s no "wrong" answer, pick what feels right 👇', fr:'Voici des options adaptées — il n\'y a pas de « mauvaise » réponse, choisissez ce qui vous convient 👇', ar:'إليك خيارات تناسبك — لا توجد إجابة "خاطئة"، اختر ما تشعر أنه الأنسب 👇', ru:'Вот варианты, которые вам подходят — «неправильного» ответа нет, выбирайте то, что ближе 👇' },
   pkg_badge: { he:'🔥 1 מתוך 20 החודש', en:'🔥 1 of 20 this month', fr:'🔥 1 sur 20 ce mois-ci', ar:'🔥 1 من 20 هذا الشهر', ru:'🔥 1 из 20 в этом месяце' },
   pkg_price: { he:'הקמה ₪{setup} · ניהול חודשי ₪{monthly}', en:'Setup ₪{setup} · Monthly management ₪{monthly}', fr:'Mise en place ₪{setup} · Gestion mensuelle ₪{monthly}', ar:'تأسيس ₪{setup} · إدارة شهرية ₪{monthly}', ru:'Запуск ₪{setup} · Ежемесячное ведение ₪{monthly}' },
@@ -762,7 +762,13 @@ function displayProposal(data) {
   const t = uallakI18n.t;
   const risk = t(p.risk_level==='high'?'risk_high':p.risk_level==='medium'?'risk_medium':'risk_low');
   const marketBlock = p.market_reality ? `\n\n${t('proposal_market')} ${p.market_reality}` : '';
-  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${p.goals_90_days.map(g=>`  · ${g}`).join('\n')}\n\n💡 ${p.honest_note}\n\n${t('proposal_tips')}\n${p.self_help_tips.map(tip=>`  · ${tip}`).join('\n')}`;
+  // cost_disclaimers replaced the old "things you can do yourself" tips: what the
+  // client pays for beyond our fees. Both lists are defensive — a proposal built
+  // before this change has no cost_disclaimers key at all.
+  const bullets = list => (list || []).map(item => `  · ${item}`).join('\n');
+  const disclaimers = (p.cost_disclaimers || []).length
+    ? `\n\n${t('proposal_disclaimers')}\n${bullets(p.cost_disclaimers)}` : '';
+  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${bullets(p.goals_90_days)}\n\n💡 ${p.honest_note}${disclaimers}`;
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');

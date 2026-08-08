@@ -73,8 +73,12 @@ or acquisition of any kind. Johnny does that personally.
 1. **Client's own site — FREE**: `audit_site` reuses the WordPress connection
    (`wp.list_content_for_audit`, added for this) — inventory, thin/stale
    content, missing excerpts, posting cadence. 1h in-memory cache.
-2. **Market/competitors — the CLIENT-PAID tool** (PRICING seo_tiers:
-   SEOptimer level A / SEMrush level B / Ahrefs level C):
+2. **Market/competitors — the tool bought out of the ORGANIC BUDGET** (PRICING
+   seo_tiers: SEOptimer level A / SEMrush level B / Ahrefs level C). The
+   subscription comes out of the organic budget the client agreed, NOT an extra
+   payment on their own card the way ad spend is — proposals must say so
+   (`cost_disclaimers`). There is also **no minimum organic budget**: the tiers
+   pick which tool a budget can carry, never whether organic SEO is offered.
    - Key stored by ADMIN via `POST /api/seo/connect-tool` → `client_accounts`
      row `platform='seo_tool'`, `account_id`=tool slug, `access_token`=API key
      (no OAuth exists for these tools).

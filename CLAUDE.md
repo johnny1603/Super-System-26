@@ -62,8 +62,19 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   use the `new-agent` skill when creating or modifying agents.
 - `agents/onboarding_agent.py` — the sales pipeline (`run_full_onboarding`) AND the `PRICING`
   dict, which is the **single source of truth for all business/pricing rules** (setup-fee
-  floors, per-platform 350 NIS monthly fees, SEO budget pyramid, automation tier, benefit
+  floors, per-platform 350 NIS monthly fees, SEO tool tiers, automation tier, benefit
   months). Change business rules there and in its prompts, nowhere else.
+  Two rules that are easy to reintroduce by accident: **organic SEO has NO minimum budget**
+  (the tiers pick which tool a budget carries, never whether SEO is offered — a smaller
+  budget buys a smaller scope, never a refusal or a "too small" warning), and the **SEO tool
+  subscription comes out of the client's organic budget**, unlike every other external cost.
+- `core/automation_service.py` — ManyChat / Make, the one integration that is deliberately
+  NOT a self-service connect flow: no fixed price, no OAuth, no client-facing credential
+  form. The client dashboard shows informational cards that route to WhatsApp or the general
+  concierge; Johnny scopes and prices it by hand and stores the client's login in the admin
+  drawer (a `client_accounts` row per vendor, same shape as the WordPress Application
+  Password). `support_agent._AUTOMATION_RULE` must keep forbidding `upgrade_request` for
+  these — the pricing brain would invent a number. See `HANDOFF-marketing-automation.md`.
 - `agents/qa_agent.py` (numeric, no LLM) → `agents/qa_agent_content.py` (merged content +
   master review) run after `build_proposal`.
 - `core/lead_tracking.py` — the sales chat's lead lifecycle and traffic-source

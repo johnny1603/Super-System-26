@@ -177,6 +177,14 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 }
 .chat-send-row textarea:focus { border-color: var(--accent); }
 
+/* Credential fields in the drawer's marketing-automation card. Same surface as
+   the textarea above; ltr because usernames/passwords always are. */
+.auto-input {
+  width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+  color:white; font-family:'Heebo',sans-serif; font-size:13px; padding:9px 11px; outline:none;
+}
+.auto-input:focus { border-color: var(--accent); }
+
 /* SETTINGS */
 .settings-row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
 .settings-row:last-child { border-bottom:none; }
@@ -645,8 +653,9 @@ async function loadPricing() {
     </div>`;
 
     const seoBlock = `<div class="pricing-block">
-      <div class="pricing-block-title">SEO אורגני — פירמידת תקציב</div>
-      ${row('סף מינימלי להמלצה', ils(d.organic_seo_tiers.min_monthly_budget_to_recommend) + '/חודש')}
+      <div class="pricing-block-title">SEO אורגני — בחירת כלי לפי תקציב</div>
+      ${row('סף מינימלי להמלצה', 'אין — נבנית תכנית פרופורציונלית לכל תקציב')}
+      ${row('מנוי הכלי', 'כלול בתוך התקציב האורגני, לא תשלום נפרד של הלקוח')}
       ${row('רמה A', `${esc(d.organic_seo_tiers.level_a.tool)} (${esc(d.organic_seo_tiers.level_a.monthly_budget_range)} ₪)`)}
       ${row('רמה B', `${esc(d.organic_seo_tiers.level_b.tool)} (${esc(d.organic_seo_tiers.level_b.monthly_budget_range)} ₪)`)}
       ${row('רמה C', `${esc(d.organic_seo_tiers.level_c.tool)} (${esc(d.organic_seo_tiers.level_c.monthly_budget_range)} ₪)`)}
@@ -1300,6 +1309,13 @@ async function openDrawer(clientId) {
     </div>
 
     <div class="drawer-section">
+      <div class="drawer-label">אוטומציות שיווק — פרטי כניסה (ManyChat / Make)</div>
+      <div id="automationArea">
+        <div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
       <div class="drawer-label">פעילות אחרונה</div>
       ${activityRows}
     </div>`;
@@ -1307,6 +1323,96 @@ async function openDrawer(clientId) {
   loadBudgetSection(clientId);
   loadSeoStrategySection(clientId);
   loadContentDocsSection(clientId);
+  loadAutomationSection(clientId);
+}
+
+// ─── marketing automation credentials (ManyChat / Make) ──────────────────────
+// The one place in the system that shows a stored password in the clear, and it
+// exists for exactly that: Johnny copies these into the vendor's login page to
+// build the client's automation by hand. Admin-session only — there is no
+// client-facing counterpart, by design (core/automation_service.py).
+async function loadAutomationSection(clientId) {
+  const area = document.getElementById('automationArea');
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/automation`);
+    area.innerHTML = (res.data || []).map(v => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <span style="font-weight:700;">${esc(v.name)}</span>
+          <span>
+            <a href="${esc(v.login_url)}" target="_blank" rel="noopener"
+               style="color:var(--accent);font-size:12px;">כניסה ל-${esc(v.name)} ↗</a>
+            ${v.saved ? '' : ` · <a href="${esc(v.signup_url)}" target="_blank" rel="noopener"
+               style="color:var(--gray);font-size:12px;">הרשמה ↗</a>`}
+          </span>
+        </div>
+        <input class="auto-input" id="autoUser-${esc(v.slug)}" dir="ltr" placeholder="שם משתמש / אימייל"
+               value="${esc(v.username)}" style="margin-bottom:6px;">
+        <input class="auto-input" id="autoPass-${esc(v.slug)}" dir="ltr" placeholder="סיסמה"
+               value="${esc(v.password)}" style="margin-bottom:8px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="alert-btn" onclick="saveAutomation(${clientId}, '${esc(v.slug)}')">שמירה</button>
+          <button class="alert-btn" onclick="copyAutomation('autoUser-${esc(v.slug)}', this)"
+                  ${v.username ? '' : 'disabled'}>העתק משתמש</button>
+          <button class="alert-btn" onclick="copyAutomation('autoPass-${esc(v.slug)}', this)"
+                  ${v.password ? '' : 'disabled'}>העתק סיסמה</button>
+          ${v.saved ? `<button class="alert-btn" onclick="deleteAutomation(${clientId}, '${esc(v.slug)}')"
+                  style="color:var(--gray);">מחיקה</button>` : ''}
+        </div>
+        <div id="autoMsg-${esc(v.slug)}" style="font-size:12px;margin-top:6px;"></div>
+      </div>`).join('');
+  } catch (e) {
+    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת פרטי הכניסה</div>';
+  }
+}
+
+function autoMsg(slug, text, color) {
+  const el = document.getElementById(`autoMsg-${slug}`);
+  if (el) { el.textContent = text; el.style.color = color; }
+}
+
+async function saveAutomation(clientId, slug) {
+  const username = document.getElementById(`autoUser-${slug}`).value.trim();
+  const password = document.getElementById(`autoPass-${slug}`).value.trim();
+  if (!username || !password) { autoMsg(slug, 'צריך גם שם משתמש וגם סיסמה', 'var(--yellow)'); return; }
+  autoMsg(slug, 'שומר…', 'var(--gray)');
+  try {
+    await api(`/api/admin/clients/${clientId}/automation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendor: slug, username, password }),
+    });
+    autoMsg(slug, 'נשמר ✓', 'var(--green)');
+    loadAutomationSection(clientId);
+  } catch (e) {
+    autoMsg(slug, 'השמירה נכשלה', 'var(--accent)');
+  }
+}
+
+async function deleteAutomation(clientId, slug) {
+  autoMsg(slug, 'מוחק…', 'var(--gray)');
+  try {
+    await api(`/api/admin/clients/${clientId}/automation/${slug}`, { method: 'DELETE' });
+    loadAutomationSection(clientId);
+  } catch (e) {
+    autoMsg(slug, 'המחיקה נכשלה', 'var(--accent)');
+  }
+}
+
+// Clipboard API needs a secure context; the input is right there either way, so
+// fall back to selecting the text rather than failing silently.
+async function copyAutomation(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input || !input.value) return;
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    btn.textContent = 'הועתק ✓';
+  } catch (e) {
+    input.select();
+    btn.textContent = 'סמן והעתק';
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
 async function loadContentDocsSection(clientId) {

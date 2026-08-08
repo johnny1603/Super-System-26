@@ -60,6 +60,7 @@ _CLIENT_REPORT_I18N = {
     "market_title": {"he":"📊 תמונת השוק שלך","en":"📊 Your market picture","fr":"📊 Votre situation de marché","ar":"📊 صورة سوقك","ru":"📊 Картина вашего рынка"},
     "goals_title": {"he":"🎯 היעדים שלנו ל-90 יום","en":"🎯 Our 90-day goals","fr":"🎯 Nos objectifs à 90 jours","ar":"🎯 أهدافنا لـ90 يومًا","ru":"🎯 Наши цели на 90 дней"},
     "goals_sub": {"he":"הערכות מבוססות ניסיון ונתוני שוק — לא הבטחות מדויקות","en":"Estimates based on experience and market data — not exact promises","fr":"Estimations basées sur l'expérience et les données du marché — pas des promesses exactes","ar":"تقديرات مبنية على الخبرة وبيانات السوق — وليست وعودًا دقيقة","ru":"Оценки на основе опыта и рыночных данных — не точные обещания"},
+    "disclaimers_title": {"he":"💳 עלויות נוספות שחשוב לדעת עליהן","en":"💳 Additional costs you should know about","fr":"💳 Coûts supplémentaires à connaître","ar":"💳 تكاليف إضافية يجب أن تعرفها","ru":"💳 Дополнительные расходы, о которых стоит знать"},
     "packages_title": {"he":"💰 המסלולים שלך לבחירה","en":"💰 Your plans to choose from","fr":"💰 Vos formules au choix","ar":"💰 باقاتك للاختيار","ru":"💰 Пакеты на выбор"},
     "setup_label": {"he":"עלות הקמה:","en":"Setup cost:","fr":"Frais de mise en place :","ar":"تكلفة التأسيس:","ru":"Стоимость настройки:"},
     "monthly_label": {"he":"דמי ניהול חודשיים:","en":"Monthly management fee:","fr":"Frais de gestion mensuels :","ar":"رسوم الإدارة الشهرية:","ru":"Ежемесячная плата за ведение:"},
@@ -108,6 +109,10 @@ def send_client_report(client_email: str, client_name: str, proposal: dict, lang
         <p style="color:#8A8A8A;font-size:12px;margin:0 0 10px;">{t('goals_sub')}</p>
         {''.join([f'<p style="margin:8px 0;">✅ {g}</p>' for g in p.get('goals_90_days',[])])}
       </div>
+      {f'''<div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
+        <h3 style="color:#FF4C1F;margin:0 0 16px;">{t('disclaimers_title')}</h3>
+        {''.join([f'<p style="margin:8px 0;color:#3D3D3D;">• {d}</p>' for d in p.get('cost_disclaimers') or []])}
+      </div>''' if p.get('cost_disclaimers') else ''}
       <div style="background:#1A1A1A;border-radius:12px;padding:28px;margin-bottom:20px;color:white;">
         <h3 style="margin:0 0 16px;">{t('packages_title')}</h3>
         {packages_html}

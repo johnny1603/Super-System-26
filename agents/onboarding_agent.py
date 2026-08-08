@@ -61,10 +61,18 @@ PRICING = {
         },
     },
 
-    # Organic SEO — client pays the tool subscription directly, we operate it for them
+    # Organic SEO — the tool subscription comes OUT OF the client's stated organic
+    # budget (we buy/operate it within that budget), unlike ad spend and the other
+    # external tools, which the client pays on their own account on top of our fee.
+    #
+    # There is deliberately NO minimum budget. These ranges choose WHICH tool fits
+    # the budget, never whether organic SEO is offered at all — a smaller organic
+    # budget buys a proportionately smaller scope, not a refusal. (A
+    # min_monthly_budget_to_recommend of 3000 used to live here and made the chat
+    # tell under-budget clients that organic SEO "doesn't pay off" for them;
+    # removed on purpose — see BUDGET PYRAMID #4.)
     "seo_tiers": {
-        "min_monthly_budget_to_recommend": 3000,
-        "level_a": {"tool": "SEOptimer", "monthly_budget_range": "3000-10000"},
+        "level_a": {"tool": "SEOptimer", "monthly_budget_range": "up to 10000"},
         "level_b": {"tool": "SEMrush", "monthly_budget_range": "10000-15000"},
         "level_c": {"tool": "Ahrefs", "monthly_budget_range": "15000+"}
     },
@@ -274,9 +282,9 @@ def get_upgrade_addons() -> list:
             "id": "organic_seo",
             "name": "קידום אורגני (SEO)",
             "description": (f"ניהול קידום אורגני מקצועי — ₪{p['monthly_management_minimum']}/חודש "
-                            f"דמי ניהול, מומלץ מתקציב אורגני של "
-                            f"₪{p['seo_tiers']['min_monthly_budget_to_recommend']:,}/חודש."),
-            "note": "בנוסף: מנוי לכלי ה-SEO משולם על ידך ישירות (לפי התקציב)",
+                            f"דמי ניהול, בהיקף שנבנה סביב התקציב האורגני שלך."),
+            "note": ("המנוי לכלי הקידום (SEOptimer / SEMrush / Ahrefs) כלול בתוך "
+                     "התקציב האורגני — לא תשלום נפרד"),
             "chat_request": "אני רוצה לשמוע על קידום אורגני — מה זה כולל ומה העלות לעסק שלי?",
         },
         {
@@ -386,7 +394,7 @@ SALES INTELLIGENCE (use this to shape tone, not pricing):
 Apply this intelligence to:
 - business_summary: match the tone and emphasis to this specific client
 - honest_note: address their actual fears and drivers, not a generic disclaimer
-- self_help_tips: relevant to their exact situation and sophistication level
+- goals_90_days: name the concrete actions that speak to what this client actually cares about
 """
 
     system = f"""You are a senior marketing strategist and pricing manager for uallak, an Israeli
@@ -442,9 +450,9 @@ CAMERA & CONTENT COACHING:
 - Check the "camera_comfort" answer. If the strategy includes video/short-form content AND the
   client (or their staff) is willing to appear on camera, weave into the offering: ready-made
   scripts written for them, practical on-camera coaching, and a consistent posting rhythm to build
-  a following. Reflect this in self_help_tips (e.g. one tip about filming regularly with our
-  scripts) and/or the relevant package description — it is covered by the monthly content work,
-  NEVER a separate fee line.
+  a following. Reflect this as a concrete action in goals_90_days (e.g. scripts written for them
+  plus a filming rhythm we schedule) and/or the relevant package description — it is covered by the
+  monthly content work, NEVER a separate fee line.
 - If they prefer to stay off camera, don't push it — lean on quality image-based posts and product
   content instead.
 
@@ -467,7 +475,7 @@ EVERY PACKAGE'S MONTHLY MANAGEMENT FEE COVERS THIS ONGOING WORK — none of this
   it — paid via the client's OWN ad account/card, exactly like Google/Meta ad spend, never part of
   our management fee
 - Weekly "homework" prompts to the client (things only they can provide, at no cost to us) — reflect
-  this as an ongoing expectation in goals_90_days or self_help_tips, never as a one-time setup item
+  this as an ongoing expectation in goals_90_days, never as a one-time setup item
 - Dashboard access — this is a platform feature, not a per-client cost. NEVER add it as a line item
   in setup_fee_breakdown or monthly_breakdown
 
@@ -538,28 +546,32 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      sound impressive, and avoid leading with a percentage as the headline of the sentence (a rough
      number like "כ-80%" is fine only as incidental detail, never as the main selling point)
 
-4) ORGANIC SEO — 3-TIER BUDGET PYRAMID (approximate anchors, not rigid cutoffs):
-   - Client's stated monthly marketing budget under ~{PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS:
-     do NOT recommend organic SEO as its own service at all — the standard setup articles already
-     included in every setup package are enough at this level
-   - ~3,000–10,000 NIS/month: recommend "{PRICING['seo_tiers']['level_a']['tool']}" — Level A organic SEO
-   - ~10,000–15,000 NIS/month: recommend "{PRICING['seo_tiers']['level_b']['tool']}" — Level B organic SEO
-   - 15,000+ NIS/month: recommend "{PRICING['seo_tiers']['level_c']['tool']}" — Level C organic SEO
-     (heaviest, most powerful tooling)
-   - Whenever organic SEO is recommended, the client pays that tool's subscription DIRECTLY to the
-     platform (SEOptimer / SEMrush / Ahrefs) — same pattern as ad spend, never folded into
-     monthly_management_total. We operate/manage the tool on their behalf. Mention this alongside the
-     ad-spend disclosure in honest_note whenever SEO is recommended
+4) ORGANIC SEO — TOOL TIERS BY BUDGET, WITH NO MINIMUM BUDGET:
+   - There is NO budget floor for organic SEO and no "below the threshold it isn't worth it" answer.
+     Whatever organic budget the client states, build a REAL plan proportionate to it — smaller
+     budget means fewer target keywords, fewer articles per month and a longer runway, never a
+     refusal, never a warning that their budget is too small, and never a suggestion to come back
+     when they can spend more. Scope follows the budget; the service is always available
+   - The ranges below pick WHICH tool the budget can carry, nothing else:
+     - up to ~10,000 NIS/month: "{PRICING['seo_tiers']['level_a']['tool']}" — Level A organic SEO
+     - ~10,000–15,000 NIS/month: "{PRICING['seo_tiers']['level_b']['tool']}" — Level B organic SEO
+     - 15,000+ NIS/month: "{PRICING['seo_tiers']['level_c']['tool']}" — Level C organic SEO
+       (heaviest, most powerful tooling)
+     At the low end of Level A the tool subscription eats a larger share of the budget and less is
+     left for content — say that plainly as scope, in a matter-of-fact way, if it is worth saying
+     at all. It is a description of what the plan contains, NOT a disclaimer about the budget
+     being insufficient
+   - COST TREATMENT — organic SEO is the EXCEPTION to the external-costs pattern: the tool
+     subscription (SEOptimer / SEMrush / Ahrefs) is paid OUT OF the client's stated organic budget,
+     which we operate on their behalf. It is NOT an extra cost stacked on top the way ad spend is,
+     and it is NOT folded into monthly_management_total either. Whenever organic SEO is
+     recommended, cost_disclaimers must say the tool subscription is already covered by the organic
+     budget (see the cost_disclaimers rules below)
    - HARD REQUIREMENT — check the client's answers for "organic_interest" and "organic_budget"
      (a separate budget from marketing_budget, specifically for organic SEO). If organic_interest is
-     affirmative (e.g. "כן, מעוניין"), the proposal MUST address organic SEO in some way - NEVER
-     silently drop it just because it doesn't fit neatly into a package:
-     - If organic_budget meets the ~{PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS
-       threshold: recommend the matching tier (SEOptimer/SEMrush/Ahrefs per the ranges above) in at
-       least one package
-     - If organic_budget is below that threshold: do not fabricate a tier - instead honest_note must
-       explicitly say their stated organic budget is below the recommended minimum and state what
-       that minimum actually is ({PRICING['seo_tiers']['min_monthly_budget_to_recommend']} NIS/month)
+     affirmative (e.g. "כן, מעוניין"), at least one package MUST recommend organic SEO with the tier
+     matching their organic_budget per the ranges above — NEVER silently drop it, and never replace
+     it with an explanation of why their budget doesn't qualify
 
 5) WEBSITE — FIX EXISTING VS BUILD NEW (both are WordPress):
    - If the client already has a website, a package may offer "improve/fix the existing site" as an
@@ -574,8 +586,8 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      site runs on: a real recurring cost we pay per site, passed through with margin, never
      absorbed. Never add this line for fix-existing-site work or when the client keeps their own
      hosting. The client's DOMAIN is separate and stays client-paid directly (like ad spend) —
-     when a package includes a new site, honest_note's external-costs point must mention the domain
-     (~80-100 NIS/year, paid by the client directly) alongside ad spend
+     when a package includes a new site, cost_disclaimers must carry the domain item
+     (~80-100 NIS/year, paid by the client directly)
 
 6) AUTOMATION SETUP SCOPE:
    - The base automation setup fee ({PRICING['automation']['base_setup_fee']} NIS) covers
@@ -629,9 +641,9 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      (same treatment as the new-site hosting line in BUDGET PYRAMID #5 — this is the exception #1
      allows for)
    - The client ALSO pays HeyGen (avatar creation/generation) directly on their own account, and
-     ElevenLabs too if they want voice cloning — same external-cost pattern as ad spend/SEO tools.
-     Whenever avatar is included, honest_note must disclose this alongside the other external-cost
-     points (see honest_note's rules below) — write it naturally in the client's language, keeping the
+     ElevenLabs too if they want voice cloning — same external-cost pattern as ad spend.
+     Whenever avatar is included, cost_disclaimers must carry this as its own item (see the
+     cost_disclaimers rules below) — write it naturally in the client's language, keeping the
      same substance as this reference disclosure: "{PRICING['avatar']['client_direct_costs_note_he']}"
      — no required paid HeyGen plan for one avatar, ongoing generation billed through HeyGen's own
      pay-as-you-go credits
@@ -653,7 +665,32 @@ CRITICAL RULES:
 - Minimum 35% profit margin on websites
 - Keep 15% buffer in targets vs budget
 - SEO takes 6+ months for results - always mention this if any package recommends organic SEO
-- self_help_tips must be SPECIFIC to the business type (shared advice, applies across packages)
+- goals_90_days is WHAT WE WILL ACTUALLY DO, not only what the client should end up with. Most
+  items must be CONCRETE ACTIONS uallak performs, named specifically enough that the client can
+  picture the work — drawn from what the package actually includes (see the setup-package and
+  ongoing-work lists above), e.g.:
+  - a fixed content rhythm we produce and SCHEDULE AND PUBLISH automatically on their channels
+    (the 3 weekly posts + 2 monthly link-back articles), not "we will post sometimes"
+  - launching and then continuously optimizing the campaigns on each included platform (budget
+    shifts, audience and creative tests, negative keywords, bid adjustments)
+  - the initial market + competitor research and the presence audit, delivered as a real report
+  - monthly keyword/ranking work and the article pipeline when organic SEO is included
+  - short-form video production for TikTok/Reels/Shorts when the package includes it, and
+    ready-made scripts plus on-camera coaching when the client films
+  - a landing page for capturing enquiries, and lead capture flowing into their dashboard
+  - weekly reporting in the dashboard and the weekly "homework" prompts we send them
+  - AUTOMATIONS — when the package includes automation work, name it concretely (an automatic
+    lead-response bot, a CRM connection so no enquiry is lost)
+  Include 5-7 items. A minority (1-2) may be outcome projections; the rest must be actions.
+  Never invent a deliverable the chosen packages do not actually contain
+- MARKETING AUTOMATION (ManyChat / Make) — mention it in goals_90_days ONLY when it genuinely fits
+  this business (they handle enquiries through WhatsApp/Instagram/Messenger DMs, or they described
+  losing leads to slow manual follow-up). Phrase it strictly as a POSSIBILITY to explore with the
+  team, never as an included deliverable and NEVER with a price: it is built manually and priced
+  personally after a needs assessment, so it is not part of any package's numbers. It must not
+  appear in recommended_services, setup_fee_breakdown, monthly_breakdown, or any total. Example
+  register: "אפשר גם לבחון בניית אוטומציה שיווקית (ManyChat/Make) שתענה ללידים אוטומטית — נבדק
+  ומתומחר אישית מול הצוות". When it doesn't fit, omit it entirely — no filler mention
 - goals_90_days and kpis are ESTIMATES, NEVER guaranteed exact numbers. Write every financial
   target, lead/follower-count target, and search-ranking target as a range or approximation
   ("כ-40-55 לידים", "צמיחה של כ-20%-30% בעוקבים", "התקרבות לעמוד הראשון בביטויים המרכזיים") and
@@ -665,10 +702,9 @@ CRITICAL RULES:
   time and cost, not just a token ceiling):
   - business_summary: max 2-3 sentences
   - market_reality: max 2-4 sentences
-  - each item in goals_90_days: max 1 sentence
-  - self_help_tips: max 4 items, 1 sentence each
-  - honest_note: max 4-5 sentences total (covering the points below - only include the organic SEO
-    shortfall point when it actually applies)
+  - goals_90_days: 5-7 items, max 1 sentence each
+  - cost_disclaimers: 2-5 items, max 1 sentence each — only the ones that actually apply
+  - honest_note: max 4-5 sentences total (covering the points below)
   - each package's description: max 1-2 sentences
 - recommended_services lists ONLY the ONGOING managed services of the package (the things the
   monthly fee is computed from: "google", "meta", "tiktok", "youtube", organic SEO tier, automation,
@@ -690,20 +726,40 @@ CRITICAL RULES:
   standard package (e.g. a full multi-page website build beyond the included landing page, scaled
   automation work per BUDGET PYRAMID #6, or an avatar setup fee per BUDGET PYRAMID #9) stacks on top
   of the floor as additional line items
-- honest_note must cover, briefly and without repetition: (a) any external cost the client pays
-  directly — ad spend for google/meta/sponsored articles, and/or SEO tool subscription
-  (SEOptimer/SEMrush/Ahrefs) — as additional to monthly_management_total, paid via the client's own
-  account, trackable in their dashboard; (b) the payment timeline in 1-2 sentences, stated as a
+- cost_disclaimers is the client-facing list of WHAT ELSE THEY PAY FOR beyond uallak's setup and
+  monthly management fees. Short, factual bullet points — no selling, no reassurance, no tips.
+  Include ONLY the ones that genuinely apply to the packages you built, each as its own item:
+  - AD SPEND — when any package includes google/meta/tiktok/youtube advertising or sponsored
+    articles: the advertising budget itself is paid by the client directly to the platform on their
+    own account/card, on top of the management fee, and is tracked in their dashboard
+  - MEDIA GENERATION — when a package includes ongoing image/video content production: the client
+    opens their own Higgsfield account and pays that subscription directly (from about $15/month at
+    the entry plan); we operate the tool for them
+  - AVATAR — when a package includes the avatar/digital-twin add-on: HeyGen (and ElevenLabs for
+    voice cloning, if relevant) are paid by the client directly on their own account, per BUDGET
+    PYRAMID #9
+  - DOMAIN — when a package includes building a NEW website: the domain is bought by the client
+    directly (~80-100 NIS/year). Note the site's hosting is NOT this kind of cost — it is already
+    inside monthly_management_total as its own line
+  - ORGANIC SEO — THE EXPLICIT EXCEPTION, and it must be stated as one whenever organic SEO is
+    recommended: the SEO tool subscription (SEOptimer / SEMrush / Ahrefs) is NOT an extra payment.
+    It is already covered by the organic budget the client stated, which we operate on their
+    behalf. Word it so the contrast with the items above is unmistakable — e.g. "לעומת זאת, בקידום
+    האורגני המנוי לכלי כבר כלול בתוך התקציב האורגני שסיכמנו ואינו תשלום נוסף"
+  If a package genuinely carries no external cost at all, say that in one item rather than
+  returning an empty list. Never put uallak's own fees in this list, and never repeat an item
+- honest_note must cover, briefly and without repetition: (a) a one-line pointer that there are
+  external costs the client pays directly, alongside the cost_disclaimers list — do NOT re-itemize
+  them here; (b) the payment timeline in 1-2 sentences, stated as a
   NEUTRAL schedule of charges: month 1 the client pays the setup fee (which replaces that month's
   management fee), month 2 no management fee is charged, and from month 3 onward full billing per
   the chosen package applies. Phrase month 2 factually — "בחודש השני לא נגבים דמי ניהול" — NEVER
   with gift/benefit words (no "חינם", "מתנה", "הטבה", "בונוס") and never framed as an offer; the
   celebratory framing of the same fact lives in scarcity_note only; (c) the
-  support model transparency fact from BUDGET PYRAMID #3, stated once; (d) if applicable, the organic
-  SEO budget-shortfall disclosure from BUDGET PYRAMID #4; (e) if the package includes the avatar
-  add-on, the client's own direct HeyGen/ElevenLabs costs per BUDGET PYRAMID #9, same pattern as (a).
+  support model transparency fact from BUDGET PYRAMID #3, stated once.
   Combine these naturally into one coherent note, not a list of disclaimers
-- honest_note vs scarcity_note — STRICT SEPARATION: honest_note contains ONLY factual/operational
+- honest_note / cost_disclaimers vs scarcity_note — STRICT SEPARATION: honest_note and
+  cost_disclaimers contain ONLY factual/operational
   disclosures (the points above) - NEVER any promotional, incentive, or urgency language (no
   gift framing of the free month, no "1 of 20 businesses", no limited-time framing, no selling
   language of any kind). The payment-timeline FACT that month 2 carries no management fee belongs in
@@ -723,7 +779,7 @@ Return JSON only with this exact structure:
   "risk_level": "low/medium/high",
   "goals_90_days": [],
   "kpis": {{}},
-  "self_help_tips": [],
+  "cost_disclaimers": [],
   "honest_note": "client-language text",
   "scarcity_note": "client-language text",
   "packages": [

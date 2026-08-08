@@ -46,6 +46,24 @@ description: How uallak's sales chat + proposal pipeline works — question flow
   campaign.
 - **Camera coaching**: `camera_comfort` answer gates script + on-camera coaching offers —
   covered by monthly content work, never a separate fee line.
+- **Organic SEO has NO budget floor** (changed 2026-08-08): a `min_monthly_budget_to_recommend`
+  of 3,000 NIS used to sit in `PRICING["seo_tiers"]` and made the chat tell under-budget clients
+  their organic budget was below the threshold. Removed everywhere — prompt, QA criterion, admin
+  pricing screen. The tiers now only pick WHICH tool (SEOptimer / SEMrush / Ahrefs) a budget can
+  carry; scope shrinks with the budget, the service is always offered. Don't reintroduce a floor.
+- **`cost_disclaimers` replaced `self_help_tips`** (2026-08-08): the client-facing "things you can
+  do yourself" list is gone from the chat and the report email; in its place is a short factual
+  list of what the client pays for BEYOND uallak's fees — ad spend, their own Higgsfield
+  subscription, HeyGen/ElevenLabs for the avatar add-on, the domain on a new-site package. The
+  **organic SEO tool is the stated exception**: it comes out of the organic budget and is NOT an
+  extra payment, and the copy must make that contrast explicit. Site hosting is not in this list
+  either — it is already a `monthly_management_total` line. QA criterion 9 enforces the whole set;
+  `_enforce_invariants` strips any leftover `self_help_tips` and guarantees the field is a list.
+- **`goals_90_days` is mostly CONCRETE ACTIONS**, not projections: scheduled/automatic post
+  publishing, campaign launch + ongoing optimization, the research/audit deliverable, article and
+  keyword work, lead capture, weekly reporting. 5-7 items, at most 1-2 pure projections. Marketing
+  automation (ManyChat/Make) may be named here as a POSSIBILITY only — never priced, never in
+  `recommended_services` or any total (see `HANDOFF-marketing-automation.md`).
 - **Estimates, not commitments**: every goals_90_days/kpis number is a range/approximation
   ("כ-40-55"), never an exact promised figure — protects against "you promised 300" cancel
   claims. Enforced in the build prompt AND QA criterion 13.
@@ -78,6 +96,9 @@ LLM pass (chat latency) and are recorded as lead rows with `_upgrade_request` in
   `organic_budget`, `camera_comfort`, `marketing_budget`, `financial_status`).
 - Proposal JSON shape: `build_proposal` output ↔ frontend `displayProposal` ↔
   `send_client_report` email ↔ `qa_agent_content` criteria ↔ `qa_agent.qa_check` numeric rules.
+  Renaming or adding a client-facing field means touching all five — `cost_disclaimers` needed
+  the prompt, the JSON schema, the chat renderer + its i18n key, the email template + its i18n
+  key, and two QA criteria plus `_enforce_invariants`.
 - Business/pricing rules live ONLY in `PRICING` + build_proposal's prompt (CLAUDE.md rule).
 
 ## Latency guardrails
