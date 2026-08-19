@@ -19,9 +19,15 @@ Each client connects THEIR OWN Google Ads account via OAuth2 from the dashboard
    `access_token` column holds the REFRESH token)
 
 **Service accounts do NOT work with the Google Ads API** except via Workspace
-domain-wide delegation — do not build a service-account path.
-`GOOGLE_ADS_SERVICE_ACCOUNT_JSON` is registered in keys_agent but intentionally
-unused. Dev-testing uses the same OAuth flow against a Google Ads *test* account.
+domain-wide delegation, which can't reach a client-owned ad account — so there is
+no service-account path here and one must not be built. A vestigial
+`GOOGLE_ADS_SERVICE_ACCOUNT_JSON` key was registered in keys_agent (never read by
+anything) and was **removed on 2026-08-20**, env var and key deleted. If you see
+it referenced anywhere, it's stale. **Do not confuse it with
+`GOOGLE_SERVICE_ACCOUNT_JSON`** (no "ADS") — that one is LIVE and unrelated:
+`core/drive_service.py` uses it for the offboarded-client Drive archive and the
+media agent's Drive folders. Dev-testing uses the same OAuth flow against a
+Google Ads *test* account.
 
 ## File map
 

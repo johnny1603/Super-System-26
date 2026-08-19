@@ -11,7 +11,13 @@ KEYS = {
     "ADMIN_KEY": os.environ.get("ADMIN_KEY", ""),
     "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD", ""),
     "GOOGLE_ADS_DEVELOPER_TOKEN": os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
-    "GOOGLE_ADS_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_ADS_SERVICE_ACCOUNT_JSON", ""),
+    # Google Ads authenticates with the developer token + the GOOGLE_OAUTH_* pair
+    # + the CLIENT's refresh token — there is deliberately no service-account key
+    # here. The Google Ads API does not accept service accounts at all (except
+    # Workspace domain-wide delegation, which can't reach a client-owned ad
+    # account), so a GOOGLE_ADS_SERVICE_ACCOUNT_JSON was never usable and was
+    # removed on 2026-08-20. Don't re-add one. NOTE: GOOGLE_SERVICE_ACCOUNT_JSON
+    # below (no "ADS") is a DIFFERENT, live credential — Drive, not Ads.
     "GOOGLE_OAUTH_CLIENT_ID": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
     "GOOGLE_OAUTH_CLIENT_SECRET": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
     "META_APP_ID": os.environ.get("META_APP_ID", ""),
