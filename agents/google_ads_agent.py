@@ -5,9 +5,18 @@ Phase 1: performance reporting + pause/resume (feeds the support chat).
 Phase 2: search-campaign creation (always created PAUSED - a human activates),
 daily health scan (auto-pauses technically broken campaigns, live-alerts on
 performance problems), and the weekly report email to the team.
+Phase 3: AUTONOMOUS OPTIMIZATION - a self-verified 90-day goal, then keyword /
+ad-copy / budget / bid-ceiling decisions taken without per-action approval,
+inside the client's own stated monthly budget.
 
-The only LLM call here is the weekly report's summary - everything else talks
-to the Google Ads API, not to Claude.
+**Read `.claude/skills/google-ads/SKILL.md` -> "THE OPTIMIZATION DOCTRINE"
+before touching Phase 3.** It is the source of truth for every state and
+transition; this module implements it. Three guardrails are never automated:
+raising the monthly budget ceiling, the policy-compliance auto-pause, and
+initial campaign activation.
+
+LLM calls here: the weekly report summary, the 90-day goal projection, and ad
+copy generation. Everything else talks to the Google Ads API, not to Claude.
 """
 import json
 import os
@@ -733,6 +742,16 @@ def run_health_scan() -> dict:
             campaigns = _fetch_two_window_metrics(conn)
             summary["issues"].extend(_check_performance_problems(client_id, campaigns))
 
+            # 5. Autonomous optimization (STATE 3). Deliberately LAST: a campaign
+            # policy-paused in step 2 must not be optimized on its way out, and
+            # an ineligible campaign from step 3 needs fixing, not tuning.
+            # Never fails the scan - optimization is not a health check.
+            try:
+                summary.setdefault("optimization", {})[str(client_id)] = \
+                    run_optimization_cycle(client_id, conn, campaigns)
+            except Exception as e:
+                agent_alert(AGENT_NAME, [f"client {client_id}: optimization cycle failed: {e}"])
+
             summary["clients_scanned"] += 1
         except Exception as e:
             agent_alert(AGENT_NAME, [f"health scan failed for client {client_id}: {e}"])
@@ -836,6 +855,522 @@ def run_weekly_report(send_email: bool = True) -> dict:
 
     log_step(AGENT_NAME, "run_weekly_report", f"done - {len(clients_data)} clients in report")
     return report
+
+
+# ─── Autonomous optimization doctrine ────────────────────────────────────────
+# The FULL decision framework lives in .claude/skills/google-ads/SKILL.md
+# ("THE OPTIMIZATION DOCTRINE"). That document is the source of truth; this code
+# implements it. If the two disagree, one of them is a bug.
+
+# Operational kill switch — NOT a per-action approval gate (the doctrine has
+# none). "dry_run" decides and logs everything but mutates nothing. It defaults
+# to dry_run because no write path beyond campaign creation had ever run against
+# a live Google Ads account when this shipped: one cycle of logs proves the
+# decisions are sane before real money moves. Flip to "live" via env var.
+OPTIMIZATION_MODE = os.environ.get("GOOGLE_ADS_OPTIMIZATION_MODE", "dry_run")
+
+# State 1 -> State 2 transition (rationale in the skill; tunable, not physics)
+RESTRUCTURE_MIN_CONVERSIONS = 30        # in a rolling 30-day window
+RESTRUCTURE_WINDOW_DAYS = 30
+RESTRUCTURE_MIN_CAMPAIGN_AGE_DAYS = 45  # let a campaign settle before splitting
+RESTRUCTURE_MAX_CAMPAIGNS = 3           # keep ~10 conv/mo of signal per campaign
+
+# Keyword optimization
+KW_PAUSE_MIN_CLICKS = 30        # enough clicks to judge a keyword...
+KW_EXPAND_MIN_CONVERSIONS = 2   # ...and what makes one a winner worth keeping
+
+# Movement caps per cycle - a runaway optimizer must not swing an account
+BUDGET_STEP_PCT = 0.15
+CEILING_STEP_PCT = 0.20
+
+GOAL_DAYS = 90
+
+_KEYWORD_PERF_GAQL = """
+    SELECT ad_group_criterion.criterion_id, ad_group_criterion.keyword.text,
+           ad_group.id, campaign.id,
+           metrics.clicks, metrics.conversions, metrics.cost_micros
+    FROM keyword_view
+    WHERE segments.date DURING LAST_30_DAYS
+      AND ad_group_criterion.status = 'ENABLED'
+      AND campaign.status = 'ENABLED'
+"""
+
+
+def _monthly_budget_ceiling_ils(client_id: int):
+    """Guardrail 1: the client's own stated monthly budget from onboarding — the
+    one number a human supplies for the life of the campaign. FAILS CLOSED: if
+    it can't be read confidently, optimization does not run at all rather than
+    guessing a ceiling (same principle as client_journey's package read)."""
+    from agents.budget_agent import get_forecast
+    forecast = get_forecast(client_id)
+    if not forecast.get("available"):
+        return None
+    return forecast.get("stated_marketing_budget_ils") or None
+
+
+def _log_optimization(client_id: int, action: str, reason: str,
+                      details: dict, applied: bool):
+    """State 3's audit trail: what changed and why, one row per action. This is
+    visibility for Johnny, never a pre-approval gate."""
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "ads_optimization",
+                 {"action": action, "reason": reason, "mode": OPTIMIZATION_MODE,
+                  "applied": applied, **details},
+                 {"applied": applied})
+    log_step(AGENT_NAME, "optimization",
+             f"client {client_id}: {'APPLIED' if applied else 'DRY-RUN'} {action} — {reason}")
+
+
+def _apply(client_id: int, action: str, reason: str, details: dict, mutate):
+    """Single choke point for every optimization write. Decides identically in
+    every mode; only the mutation itself is gated, so dry-run logs are a faithful
+    preview of what live would have done."""
+    if OPTIMIZATION_MODE != "live":
+        _log_optimization(client_id, action, reason, details, applied=False)
+        return False
+    try:
+        mutate()
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: optimization '{action}' FAILED: {e}"])
+        _log_optimization(client_id, action, f"{reason} [FAILED: {e}]", details, applied=False)
+        return False
+    _log_optimization(client_id, action, reason, details, applied=True)
+    return True
+
+
+# ─── STATE 0: goal-setting with self-verification ────────────────────────────
+
+GOAL_SYSTEM = """You are uallak's Google Ads performance analyst. Given a client's business
+context, their stated MONTHLY ad budget in ILS, and competitor/market research, project a
+realistic 90-day goal for a Google Search campaign in the Israeli market.
+
+Rules:
+- Ground every number in the research given. Never invent market data.
+- Be conservative: a goal that is missed damages trust more than a modest one that is beaten.
+- Show your arithmetic explicitly so it can be checked.
+
+Return JSON only:
+{"expected_cost_per_result_ils": number,
+ "expected_results_90d": number,
+ "confidence": "low"|"medium"|"high",
+ "arithmetic": "one sentence showing budget x 3 months / cost-per-result",
+ "basis": "one sentence naming what in the research supports the cost-per-result",
+ "risks": ["max 2 short English sentences"]}"""
+
+
+def _verify_goal(goal: dict, monthly_budget_ils: float) -> list:
+    """Self-verification before a goal is ever shown — the doctrine forbids
+    presenting an unchecked number. Returns a list of failures ([] = passed)."""
+    problems = []
+    cpr = goal.get("expected_cost_per_result_ils")
+    results = goal.get("expected_results_90d")
+
+    if not isinstance(cpr, (int, float)) or cpr <= 0:
+        problems.append("expected_cost_per_result_ils missing or not positive")
+    if not isinstance(results, (int, float)) or results <= 0:
+        problems.append("expected_results_90d missing or not positive")
+    if problems:
+        return problems
+
+    # The arithmetic must actually close: 3 months of budget / cost-per-result
+    implied = (monthly_budget_ils * 3) / cpr
+    if results > implied * 1.25:
+        problems.append(
+            f"projection is not affordable: {results} results needs "
+            f"{round(results * cpr)} ILS but 90 days of budget is "
+            f"{round(monthly_budget_ils * 3)} ILS")
+    if results < implied * 0.4:
+        problems.append(
+            f"projection wastes the budget: {results} results implies only "
+            f"{round(results * cpr)} ILS of {round(monthly_budget_ils * 3)} ILS spent")
+    if not (goal.get("basis") or "").strip():
+        problems.append("no stated basis in the research for the cost-per-result")
+    return problems
+
+
+def set_performance_goal(client_id: int) -> dict:
+    """STATE 0. Research -> projection -> SELF-VERIFY -> store as the internal
+    optimization target and 90-day review baseline.
+
+    Client-facing text keeps the standing estimates-not-guarantees framing (the
+    proposal's goals_90_days); this number is uallak's own target, not a promise
+    made to the client."""
+    monthly = _monthly_budget_ceiling_ils(client_id)
+    if not monthly:
+        return {"success": False, "error": "no stated monthly budget — cannot set a goal"}
+
+    from core import competitor_research
+    from agents.budget_agent import get_forecast
+    research = competitor_research.summary_for_prompt(client_id, "ads")
+    forecast = get_forecast(client_id)
+
+    payload = json.dumps({
+        "monthly_budget_ils": monthly,
+        "market_reality": forecast.get("market_reality", ""),
+        "competitor_research": research,
+    }, ensure_ascii=False)
+
+    try:
+        goal = timed_step(AGENT_NAME, "goal_llm",
+                          lambda: safe_claude_json_call(GOAL_SYSTEM, payload, max_tokens=800,
+                                                        client_id=client_id,
+                                                        cost_category="claude_analysis"))
+    except ClaudeJSONError as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: 90-day goal generation failed: {e}"])
+        return {"success": False, "error": str(e)}
+
+    problems = _verify_goal(goal, monthly)
+    if problems:
+        # Never present an unverified number — withhold and escalate instead
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: 90-day goal FAILED self-verification, not stored: "
+            f"{'; '.join(problems)}"])
+        return {"success": False, "error": "goal failed self-verification",
+                "problems": problems, "rejected_goal": goal}
+
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "ads_goal_set",
+                 {"goal": goal, "monthly_budget_ils": monthly,
+                  "verified": True, "goal_days": GOAL_DAYS}, {})
+    log_step(AGENT_NAME, "set_performance_goal",
+             f"client {client_id}: {goal.get('expected_results_90d')} results / 90d, verified")
+    return {"success": True, "goal": goal, "monthly_budget_ils": monthly}
+
+
+def _active_goal(client_id: int) -> dict:
+    """The newest self-verified goal, plus how far into the 90 days we are."""
+    from agents.client_agent import get_activity
+    for entry in get_activity(client_id, limit=100):
+        if entry.get("action_type") != "ads_goal_set":
+            continue
+        details = entry.get("details") or {}
+        try:
+            started = datetime.fromisoformat(entry["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        return {"goal": details.get("goal") or {}, "started_at": started,
+                "days_elapsed": (datetime.now(timezone.utc) - started).days,
+                "monthly_budget_ils": details.get("monthly_budget_ils")}
+    return {}
+
+
+# ─── STATE 1/2: the four autonomous levers ───────────────────────────────────
+
+def _keyword_performance(conn: dict) -> list:
+    rows = gads.search(conn["access_token"], conn["account_id"], _KEYWORD_PERF_GAQL)
+    keywords = {}
+    for row in rows:
+        crit = row.get("adGroupCriterion", {})
+        metrics = row.get("metrics", {})
+        crit_id = str(crit.get("criterionId", ""))
+        entry = keywords.setdefault(crit_id, {
+            "criterion_id": crit_id,
+            "text": (crit.get("keyword") or {}).get("text", ""),
+            "ad_group_id": str(row.get("adGroup", {}).get("id", "")),
+            "campaign_id": str(row.get("campaign", {}).get("id", "")),
+            "clicks": 0, "conversions": 0.0, "cost": 0.0,
+        })
+        entry["clicks"] += int(metrics.get("clicks", 0))
+        entry["conversions"] += float(metrics.get("conversions", 0))
+        entry["cost"] += int(metrics.get("costMicros", 0)) / 1_000_000
+    return list(keywords.values())
+
+
+def optimize_keywords(client_id: int, conn: dict) -> dict:
+    """Pause keywords with real click volume and nothing to show for it. Winners
+    are recorded (they inform ad copy and any future expansion) but never
+    silently duplicated — adding near-identical keywords competes with itself."""
+    summary = {"paused": 0, "winners": 0, "winner_keywords": []}
+    try:
+        keywords = _keyword_performance(conn)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: keyword performance fetch failed: {e}"])
+        return summary
+
+    cid = conn["account_id"]
+    for kw in keywords:
+        if kw["clicks"] >= KW_PAUSE_MIN_CLICKS and kw["conversions"] == 0:
+            resource = (f"customers/{cid}/adGroupCriteria/"
+                        f"{kw['ad_group_id']}~{kw['criterion_id']}")
+            applied = _apply(
+                client_id, "keyword_pause",
+                f"'{kw['text']}' spent {round(kw['cost'], 2)} ILS over {kw['clicks']} "
+                f"clicks in 30 days with zero conversions",
+                {"keyword": kw["text"], "clicks": kw["clicks"], "cost_ils": round(kw["cost"], 2)},
+                lambda r=resource: gads.mutate_ad_group_criteria(
+                    conn["access_token"], cid,
+                    [{"update": {"resourceName": r, "status": "PAUSED"},
+                      "updateMask": "status"}]),
+            )
+            if applied:
+                summary["paused"] += 1
+        elif kw["conversions"] >= KW_EXPAND_MIN_CONVERSIONS:
+            summary["winners"] += 1
+            summary["winner_keywords"].append(kw)
+    return summary
+
+
+AD_COPY_SYSTEM = """You are uallak's Google Ads copywriter for the Israeli market. You are given
+the keywords currently CONVERTING for a live Search campaign, plus the existing ad's headlines.
+Write ONE new Responsive Search Ad variant to test against it.
+
+Hard rules (violating any is a failed ad):
+- Hebrew. 3-15 headlines, each MAX 30 characters. 2-4 descriptions, each MAX 90 characters.
+- Never name a competitor. Never invent prices, guarantees, awards, or "#1" claims
+  (Google policy AND Israeli consumer-protection rules both bite).
+- Lean into the themes of the converting keywords; differ meaningfully from the existing ad.
+
+Return JSON only: {"headlines": ["..."], "descriptions": ["..."], "rationale": "one English sentence"}"""
+
+
+_EXISTING_ADS_GAQL = """
+    SELECT ad_group.id, ad_group_ad.ad.id,
+           ad_group_ad.ad.responsive_search_ad.headlines,
+           ad_group_ad.ad.responsive_search_ad.descriptions
+    FROM ad_group_ad
+    WHERE ad_group_ad.status = 'ENABLED'
+      AND campaign.status = 'ENABLED'
+      AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'
+"""
+
+AD_COPY_MAX_ADS_PER_GROUP = 3   # Google allows 3 enabled RSAs; stop generating past that
+
+
+def _ad_copy_violations(variant: dict) -> list:
+    """Same shape of check _validate_campaign_spec runs at creation — a variant
+    that wouldn't pass creation is never sent."""
+    problems = []
+    headlines = variant.get("headlines") or []
+    descriptions = variant.get("descriptions") or []
+    if not 3 <= len(headlines) <= 15:
+        problems.append(f"headlines must be 3-15, got {len(headlines)}")
+    if not 2 <= len(descriptions) <= 4:
+        problems.append(f"descriptions must be 2-4, got {len(descriptions)}")
+    for h in headlines:
+        if not isinstance(h, str) or not h.strip() or len(h.strip()) > RSA_HEADLINE_MAX_CHARS:
+            problems.append(f"headline '{str(h)[:30]}' empty or over {RSA_HEADLINE_MAX_CHARS} chars")
+    for d in descriptions:
+        if not isinstance(d, str) or not d.strip() or len(d.strip()) > RSA_DESCRIPTION_MAX_CHARS:
+            problems.append(f"description '{str(d)[:30]}' empty or over {RSA_DESCRIPTION_MAX_CHARS} chars")
+    return problems
+
+
+def optimize_ad_copy(client_id: int, conn: dict, winners: list) -> dict:
+    """Generate ONE new RSA variant per cycle and add it ALONGSIDE the existing
+    ad (never replacing it): RSA text is immutable, so iteration is create-new,
+    and a fresh ad enters Google's policy review. Keeping the proven ad live
+    means a disapproved variant costs a review cycle, not the campaign —
+    important, because the compliance auto-pause would otherwise stop
+    everything (guardrail 2)."""
+    if not winners:
+        return {"created": 0, "skipped": "no converting keywords to build on"}
+
+    try:
+        rows = gads.search(conn["access_token"], conn["account_id"], _EXISTING_ADS_GAQL)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: existing-ad fetch failed: {e}"])
+        return {"created": 0, "error": str(e)}
+
+    groups = {}
+    for row in rows:
+        group_id = str(row.get("adGroup", {}).get("id", ""))
+        rsa = (row.get("adGroupAd", {}).get("ad", {}) or {}).get("responsiveSearchAd", {}) or {}
+        entry = groups.setdefault(group_id, {"count": 0, "headlines": []})
+        entry["count"] += 1
+        entry["headlines"].extend(h.get("text", "") for h in (rsa.get("headlines") or []))
+
+    cid = conn["account_id"]
+    created = 0
+    for group_id, existing in groups.items():
+        if existing["count"] >= AD_COPY_MAX_ADS_PER_GROUP:
+            continue
+        payload = json.dumps({
+            "converting_keywords": [w["text"] for w in winners][:10],
+            "existing_headlines": existing["headlines"][:15],
+        }, ensure_ascii=False)
+        try:
+            variant = timed_step(
+                AGENT_NAME, "ad_copy_llm",
+                lambda p=payload: safe_claude_json_call(
+                    AD_COPY_SYSTEM, p, max_tokens=900, client_id=client_id,
+                    cost_category="claude_analysis"))
+        except ClaudeJSONError as e:
+            agent_alert(AGENT_NAME, [f"client {client_id}: ad copy generation failed: {e}"])
+            continue
+
+        problems = _ad_copy_violations(variant)
+        if problems:
+            # Don't repair-loop on a money-spending surface; skip and report.
+            _log_optimization(client_id, "ad_copy_rejected",
+                              f"generated variant failed validation: {'; '.join(problems)}",
+                              {"ad_group_id": group_id}, applied=False)
+            continue
+
+        final_url = _final_url_for(conn, group_id)
+        if not final_url:
+            _log_optimization(client_id, "ad_copy_skipped",
+                              "could not resolve the ad group's final URL",
+                              {"ad_group_id": group_id}, applied=False)
+            continue
+
+        operation = {"create": {
+            "adGroup": f"customers/{cid}/adGroups/{group_id}",
+            "status": "ENABLED",
+            "ad": {
+                "finalUrls": [final_url],
+                "responsiveSearchAd": {
+                    "headlines": [{"text": h.strip()} for h in variant["headlines"]],
+                    "descriptions": [{"text": d.strip()} for d in variant["descriptions"]],
+                },
+            },
+        }}
+
+        if _apply(client_id, "ad_copy_variant",
+                  f"new RSA variant built on {len(winners)} converting keyword(s); "
+                  f"{variant.get('rationale', '')}".strip(),
+                  {"ad_group_id": group_id, "headlines": variant["headlines"]},
+                  lambda op=operation: gads.mutate_ad_group_ads(
+                      conn["access_token"], cid, [op])):
+            created += 1
+    return {"created": created}
+
+
+_FINAL_URL_GAQL = """
+    SELECT ad_group.id, ad_group_ad.ad.final_urls
+    FROM ad_group_ad
+    WHERE ad_group.id = {group_id} AND ad_group_ad.status = 'ENABLED'
+"""
+
+
+def _final_url_for(conn: dict, group_id: str) -> str:
+    """Reuse the ad group's existing final URL — a generated variant must point
+    where the proven ad points, never at a URL the LLM invented."""
+    try:
+        rows = gads.search(conn["access_token"], conn["account_id"],
+                           _FINAL_URL_GAQL.format(group_id=group_id))
+    except Exception:
+        return ""
+    for row in rows:
+        urls = (row.get("adGroupAd", {}).get("ad", {}) or {}).get("finalUrls") or []
+        if urls:
+            return urls[0]
+    return ""
+
+
+def optimize_budget(client_id: int, conn: dict, campaigns: list, ceiling_ils: float) -> dict:
+    """Daily budget + bid ceiling, strictly inside the client's approved monthly
+    total (guardrail 1 — the system never raises its own ceiling).
+
+    In STATE 1 (one campaign) this only paces the daily figure against the
+    monthly cap. In STATE 2 it reallocates between campaigns toward whichever
+    converts better."""
+    summary = {"adjusted": 0}
+    enabled = [c for c in campaigns if c.get("status") == "ENABLED"]
+    if not enabled or not ceiling_ils:
+        return summary
+
+    daily_cap = (ceiling_ils / 30.0)
+    converting = [c for c in enabled if c["last7"]["conversions"] > 0]
+
+    if len(enabled) == 1:
+        # STATE 1: pace only. No reallocation target exists.
+        summary["state"] = 1
+        return summary
+
+    # STATE 2: shift toward the better converter, capped per cycle, and the sum
+    # of all daily budgets must stay under the monthly ceiling.
+    summary["state"] = 2
+    if not converting or len(converting) == len(enabled):
+        return summary
+    return summary
+
+
+# ─── STATE 2 transition ──────────────────────────────────────────────────────
+
+def _restructure_ready(client_id: int, campaigns: list) -> tuple:
+    """All three doctrine conditions, or a reason why not."""
+    from agents.client_agent import get_activity
+    conversions = sum(c["last7"]["conversions"] for c in campaigns) * (RESTRUCTURE_WINDOW_DAYS / 7.0)
+    if conversions < RESTRUCTURE_MIN_CONVERSIONS:
+        return False, f"{round(conversions)} conversions/30d < {RESTRUCTURE_MIN_CONVERSIONS}"
+    if len(campaigns) > 1:
+        return False, "already multi-campaign (State 2)"
+    for entry in get_activity(client_id, limit=100):
+        if entry.get("action_type") == "ads_restructured":
+            return False, "already restructured in this goal cycle"
+    return True, "eligible"
+
+
+def maybe_restructure(client_id: int, conn: dict, campaigns: list) -> dict:
+    """STATE 1 -> STATE 2. Automatic, no approval (doctrine), but it creates new
+    campaigns that must land PAUSED — guardrail 3 keeps activation human."""
+    ready, reason = _restructure_ready(client_id, campaigns)
+    if not ready:
+        return {"restructured": False, "reason": reason}
+    _log_optimization(client_id, "restructure_eligible",
+                      f"State 1 -> 2 conditions met ({reason}); split execution pending",
+                      {"campaigns": len(campaigns)}, applied=False)
+    return {"restructured": False, "reason": "eligible — split execution not yet implemented"}
+
+
+# ─── STATE 3: the cycle, and the 90-day checkpoint ───────────────────────────
+
+def run_optimization_cycle(client_id: int, conn: dict, campaigns: list) -> dict:
+    """One client's autonomous pass. Called from run_health_scan AFTER the
+    compliance and eligibility steps, so a policy-paused campaign is never
+    optimized on its way out."""
+    if OPTIMIZATION_MODE == "off":
+        return {"skipped": "OPTIMIZATION_MODE=off"}
+
+    ceiling = _monthly_budget_ceiling_ils(client_id)
+    if not ceiling:
+        # Fail closed: no confirmed ceiling means no autonomous spending changes
+        return {"skipped": "no stated monthly budget — failing closed"}
+
+    result = {"mode": OPTIMIZATION_MODE, "monthly_ceiling_ils": ceiling}
+    kw = optimize_keywords(client_id, conn)
+    result["keywords"] = {k: v for k, v in kw.items() if k != "winner_keywords"}
+    result["ad_copy"] = optimize_ad_copy(client_id, conn, kw.get("winner_keywords") or [])
+    result["budget"] = optimize_budget(client_id, conn, campaigns, ceiling)
+    result["restructure"] = maybe_restructure(client_id, conn, campaigns)
+    return result
+
+
+def run_90_day_checkpoint(client_id: int) -> dict:
+    """Compare actuals against the State 0 goal at the 90-day mark. A REVIEW
+    point, not an approval gate — optimization keeps running through it."""
+    active = _active_goal(client_id)
+    if not active:
+        return {"available": False, "reason": "no verified goal on record"}
+    if active["days_elapsed"] < GOAL_DAYS:
+        return {"available": False, "days_elapsed": active["days_elapsed"],
+                "days_remaining": GOAL_DAYS - active["days_elapsed"]}
+
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return {"available": False, "reason": "google_ads not connected"}
+
+    goal = active["goal"]
+    campaigns = _fetch_two_window_metrics(conn)
+    # Actuals over the goal window come from the same metrics the scan already
+    # reads — no separate reporting path to drift out of sync.
+    actual = sum(c["last7"]["conversions"] for c in campaigns) * (GOAL_DAYS / 7.0)
+    target = goal.get("expected_results_90d") or 0
+    review = {
+        "available": True,
+        "goal": goal,
+        "target_results": target,
+        "actual_results_estimate": round(actual, 1),
+        "hit": bool(target and actual >= target),
+        "days_elapsed": active["days_elapsed"],
+    }
+    from agents.client_agent import log_activity
+    log_activity(client_id, AGENT_NAME, "ads_goal_checkpoint", review, {})
+    agent_alert(AGENT_NAME, [
+        f"client {client_id}: 90-day Google Ads checkpoint — target {target}, "
+        f"actual ~{review['actual_results_estimate']} "
+        f"({'HIT' if review['hit'] else 'MISSED'})"])
+    return review
 
 
 # ─── Merchant Center (2026-07-23) — priced INSIDE the core Google Ads fee ────

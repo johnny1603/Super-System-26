@@ -29,6 +29,131 @@ it referenced anywhere, it's stale. **Do not confuse it with
 media agent's Drive folders. Dev-testing uses the same OAuth flow against a
 Google Ads *test* account.
 
+## THE OPTIMIZATION DOCTRINE — read this before changing anything in this agent
+
+This is the complete decision framework the agent follows on its own. It is the
+source of truth: if code and this section disagree, one of them is a bug. Work on
+this agent starts here rather than being re-explained.
+
+### What the Google Ads API actually permits (these constraints SHAPED the doctrine)
+
+Three findings from the API investigation are load-bearing — the doctrine is
+built around them, so don't "fix" the design without re-checking these:
+
+1. **There are no ad-group or keyword budgets.** Budget exists only at CAMPAIGN
+   level. "Reallocate budget between ad groups" is not a thing that can be built.
+   Reallocation therefore requires MULTIPLE CAMPAIGNS — which is the entire
+   reason State 2 exists.
+2. **Maximize Clicks (`targetSpend`) sets bids automatically.** `cpcBidMicros`
+   does not apply to it; the only bid lever is `cpcBidCeilingMicros` (a ceiling,
+   not a bid). Per-keyword bidding would require Manual CPC, which this system
+   deliberately refuses — see State 1.
+3. **RSA headlines/descriptions are effectively immutable.** Copy iteration is
+   create-new-ad + retire-old, never an in-place text update. Every new ad enters
+   Google's policy review.
+
+### STATE 0 — Onboarding / goal-setting
+
+- The client's **fixed monthly budget** is explicit human input, captured at
+  onboarding. **It is the only number a human supplies for the life of the
+  campaign**, and it is never inferred.
+- The system does the groundwork itself: `core/competitor_research.py` `"ads"`
+  lens + market data → a 90-day performance goal.
+- **The goal is self-verified before it is ever shown.** Cross-check the
+  projection against the gathered research and a realistic cost-per-result for
+  the client's industry; the arithmetic must survive its own sanity check
+  (budget ÷ plausible CPA). Same rigor as `qa_agent_content` on proposals. A
+  number that fails verification is not presented — it is recomputed or the
+  goal is withheld and Johnny is alerted.
+- **Client-facing framing stays an ESTIMATE**, per the standing
+  estimates-not-guarantees rule (`proposal_goals` i18n: "הערכות מבוססות ניסיון,
+  לא הבטחות מדויקות"). The committed number is an internal optimization target
+  and the 90-day review baseline — not a promise made to an Israeli SMB. Changing
+  that is a legal decision, not an engineering one.
+
+### STATE 1 — Default: single campaign, Maximize Clicks
+
+Every new client starts here and most will stay here.
+
+**Automated bidding is deliberate and is not to be "upgraded" to Manual CPC.**
+A fresh SMB account has no conversion tracking configured, so manual bids would
+be guessed blind — precisely what this system's design avoids. Maximize Clicks
+lets Google set bids from real auction data we do not have.
+
+Autonomous in State 1, **no per-action approval**:
+- Keyword optimization — pause underperformers, add winners
+- Ad copy iteration — generate and test new RSA variants
+- Campaign daily budget, **within the approved monthly total**
+- Bid ceiling (`cpcBidCeilingMicros`)
+
+Not available in State 1, by construction: per-keyword bids (automated strategy)
+and budget reallocation (only one campaign exists).
+
+### STATE 2 — Multi-campaign, triggered by real conversion volume
+
+**Transition trigger (recommended default — see the threshold rationale below):**
+all three must hold on a daily-scan evaluation:
+- **≥ 30 conversions in a rolling 30-day window**
+- **campaign age ≥ 45 days** (don't restructure something still finding its feet)
+- **no restructure already performed in the current 90-day goal cycle** (churn guard)
+
+On trigger the system **automatically** splits the account into multiple
+campaigns along whatever the client's business naturally divides by (product
+line, service, audience segment), **capped at 3 campaigns initially** so each
+inherits ≥ ~10 conversions/month of signal rather than noise.
+
+**Bidding stays Maximize Clicks.** Conversion volume sufficient to justify
+splitting structure is NOT the same bar as trusting manual bids; that is a
+separate, higher bar and is out of scope.
+
+State 2 unlocks the real lever: **budget reallocation between campaigns**,
+shifting spend toward whichever converts better — still strictly inside the same
+already-approved monthly total. No new human approval for the restructure or for
+subsequent reallocation.
+
+### STATE 3 — Ongoing autonomous operation (States 1 and 2 alike)
+
+- Runs inside the existing daily health scan (`run_health_scan`), after the
+  compliance and eligibility steps.
+- **Every action is logged with what changed and why** — an `ads_optimization`
+  activity row per action, forming a full audit trail Johnny can read at any
+  time. This is visibility, **not** a pre-approval gate.
+
+### HARD GUARDRAILS — never automated, in any state
+
+1. **Raising the total monthly budget.** The system never lifts its own ceiling,
+   even when it believes more spend would hit the goal. It may recommend an
+   increase to Johnny; it may never execute one.
+2. **Policy-compliance auto-pause** on a Google ad disapproval — unchanged from
+   the existing implementation. Compliance, not a business decision.
+3. **Initial campaign activation** (PAUSED → ENABLED at creation) stays a human
+   step, unchanged.
+
+### 90-day checkpoint
+
+At the 90-day mark, actual results are compared against the State 0 goal and fed
+into the existing 90-day goal-cycle infrastructure. A **review point, not a new
+approval gate** — optimization keeps running through it.
+
+### Threshold rationale (why 30 / 45 / once-per-cycle)
+
+30 conversions per 30 days is the long-standing industry anchor for "enough
+conversion signal to act on" and is the level below which reallocation is
+chasing noise. Splitting at that floor with a 3-campaign cap keeps roughly 10
+conversions/month/campaign — thin but directionally usable. The 45-day age gate
+stops a campaign being restructured before its own learning has settled, and the
+once-per-cycle guard stops the account being reshaped repeatedly inside one goal
+window. **These are tunable constants, not physics** — they live at the top of
+`agents/google_ads_agent.py` and are meant to be revised once there is real data.
+
+### Operational kill switch
+
+`OPTIMIZATION_MODE` in `agents/google_ads_agent.py` is a module constant with
+three values: `"off"`, `"dry_run"` (decide and log everything, mutate nothing),
+and `"live"`. It is an operational switch, **not** a per-action approval gate —
+the doctrine's no-approval rule is unchanged. It exists because no write path
+beyond campaign creation had ever run against a live account when this shipped.
+
 ## File map
 
 - `core/google_ads_service.py` — HTTP only: consent URL, code exchange,

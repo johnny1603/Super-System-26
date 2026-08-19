@@ -271,3 +271,84 @@ def set_campaign_status(refresh_token: str, customer_id: str, campaign_id: str, 
         timeout=TIMEOUT,
     )
     return _check(response, "campaign mutate")
+
+
+# ─── Optimization mutates (autonomous doctrine — see the google-ads skill) ────
+# Field masks: REST/JSON uses lowerCamelCase field paths ("amountMicros", not
+# "amount_micros") per Google's JSON mapping rule. This is the least-verified
+# detail in this module — the existing masks in this file are single words
+# ("status"), identical in both casings, so they prove nothing either way.
+# First live run: check the error text for FIELD_MASK errors before assuming a
+# deeper problem.
+
+def update_campaign_budget(refresh_token: str, customer_id: str,
+                           budget_id: str, amount_micros: int) -> dict:
+    """Change an existing campaign budget's daily amount. The DAILY figure is
+    ours to move; the client's approved MONTHLY total is the ceiling the caller
+    must respect (guardrail 1 — this function does not know about it)."""
+    _count_operation()
+    response = httpx.post(
+        f"{ADS_BASE_URL}/customers/{customer_id}/campaignBudgets:mutate",
+        headers=_headers(refresh_token),
+        json={
+            "operations": [{
+                "update": {
+                    "resourceName": f"customers/{customer_id}/campaignBudgets/{budget_id}",
+                    "amountMicros": str(int(amount_micros)),
+                },
+                "updateMask": "amountMicros",
+            }]
+        },
+        timeout=TIMEOUT,
+    )
+    return _check(response, "campaign budget mutate")
+
+
+def set_campaign_bid_ceiling(refresh_token: str, customer_id: str,
+                             campaign_id: str, ceiling_micros: int) -> dict:
+    """Set the max-CPC ceiling on a Maximize Clicks campaign. This is the ONLY
+    bid lever available under targetSpend — per-keyword bids do not apply to an
+    automated strategy, so there is deliberately no set_keyword_bid()."""
+    _count_operation()
+    response = httpx.post(
+        f"{ADS_BASE_URL}/customers/{customer_id}/campaigns:mutate",
+        headers=_headers(refresh_token),
+        json={
+            "operations": [{
+                "update": {
+                    "resourceName": f"customers/{customer_id}/campaigns/{campaign_id}",
+                    "targetSpend": {"cpcBidCeilingMicros": str(int(ceiling_micros))},
+                },
+                "updateMask": "targetSpend.cpcBidCeilingMicros",
+            }]
+        },
+        timeout=TIMEOUT,
+    )
+    return _check(response, "campaign bid ceiling mutate")
+
+
+def mutate_ad_group_criteria(refresh_token: str, customer_id: str, operations: list) -> dict:
+    """Keyword-level changes: pause an underperformer (update + status mask),
+    or add a winner (create). Caller builds the operations."""
+    _count_operation()
+    response = httpx.post(
+        f"{ADS_BASE_URL}/customers/{customer_id}/adGroupCriteria:mutate",
+        headers=_headers(refresh_token),
+        json={"operations": operations},
+        timeout=TIMEOUT,
+    )
+    return _check(response, "ad group criteria mutate")
+
+
+def mutate_ad_group_ads(refresh_token: str, customer_id: str, operations: list) -> dict:
+    """Ad-level changes. NOTE: a Responsive Search Ad's headlines/descriptions
+    are effectively IMMUTABLE — iterating copy means create-a-new-ad (+ pause or
+    remove the old one), never an in-place update of the text."""
+    _count_operation()
+    response = httpx.post(
+        f"{ADS_BASE_URL}/customers/{customer_id}/adGroupAds:mutate",
+        headers=_headers(refresh_token),
+        json={"operations": operations},
+        timeout=TIMEOUT,
+    )
+    return _check(response, "ad group ads mutate")
