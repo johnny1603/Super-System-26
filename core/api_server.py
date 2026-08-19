@@ -1848,9 +1848,26 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
         log_activity(client_id, "google_ads_agent", "account_connected",
                      {"customer_id": customer_id, "accessible_accounts": len(customer_ids)}, {})
         return RedirectResponse(url="/dashboard/?connected=google_ads")
+    except google_ads_service.AdsApiVersionSunsetError as e:
+        # OUR outage, not this client's. Distinct branch + admin alert because
+        # the v21 sunset hid behind the generic redirect below for 13 days: the
+        # client saw "try again", which is advice that could never work.
+        from core.agent_base import agent_alert as _alert
+        print(f"[google_ads oauth] client {client_id}: API VERSION SUNSET - {e}")
+        _alert("google_ads_agent", [
+            f"GOOGLE ADS API VERSION SUNSET - every Google Ads call is failing, "
+            f"no client can connect (client {client_id} just hit it). {e}"])
+        return RedirectResponse(url="/dashboard/?connect_error=google_ads_platform")
     except Exception as e:
+        # Never swallow silently: a connect failure that only ever showed up as
+        # a redirect param is a failure nobody finds out about.
         import traceback
         traceback.print_exc()
+        from core.agent_base import agent_alert as _alert
+        print(f"[google_ads oauth] client {client_id}: connect failed - {type(e).__name__}: {e}")
+        _alert("google_ads_agent", [
+            f"client {client_id}: Google Ads connect failed after consent - "
+            f"{type(e).__name__}: {e}"])
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
 # ─── Google Tag Manager OAuth (separate consent — measurement, not ads) ─────

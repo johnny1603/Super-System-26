@@ -28,8 +28,19 @@ unused. Dev-testing uses the same OAuth flow against a Google Ads *test* account
 - `core/google_ads_service.py` — HTTP only: consent URL, code exchange,
   access-token refresh (in-memory cache), `search()` (GAQL), `set_campaign_status()`,
   `list_accessible_customers()`, daily op-limit guard. `ADS_API_VERSION` constant
-  at the top is the single place to bump versions (Google releases ~3/year, each
-  lives ~a year — a 404 on every call usually means sunset version).
+  at the top is the single place to bump versions. **Google moved to MONTHLY
+  releases in January 2026 — a major version now lives ~6 months, not ~a year**,
+  so this needs checking several times a year. Always jump to the NEWEST version,
+  not the next one up: it resets the clock. Every non-200 goes through `_check()`,
+  which raises `AdsApiVersionSunsetError` when the version itself is dead —
+  Google sunsets in two phases (400 "Version vNN is deprecated", then 404 with an
+  empty body once the path is removed) and it detects both. **v21 sunset
+  2026-08-05 and the constant sat on it for 13 days**, because every call site
+  reported the outage as that individual client's failure; that's what the
+  dedicated exception type and the admin alert in the OAuth callback exist to
+  prevent. Migrating: only the small surface we use matters (listAccessibleCustomers,
+  googleAds:search, googleAds:mutate, campaigns:mutate) — the v21→v25 review found
+  zero breaking changes touching it.
 - `agents/google_ads_agent.py` — business logic per house blueprint:
   `is_connected`, `get_campaign_performance` (5-min in-memory cache),
   `pause_campaign` / `resume_campaign`, `create_search_campaign` (validated

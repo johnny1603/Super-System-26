@@ -20,9 +20,15 @@ import httpx
 from agents.keys_agent import get_key
 from core.api_call_counters import increment_call_counter
 
-# Bump in one place when Google sunsets this version (they release ~3/year,
-# each lives ~a year)
-ADS_API_VERSION = "v21"
+# Bump in one place when Google sunsets this version. Google moved to MONTHLY
+# releases in January 2026, so a major version now lives ~6 months, not ~a year
+# - this needs checking a few times a year, not annually.
+#   v21 sunset 2026-08-05 (this constant sat on it for 13 days, silently
+#   breaking every Google Ads call - see AdsApiVersionSunsetError below, which
+#   exists so that can never be a quiet failure again)
+#   v22 sunsets 2026-10; v23 ~2027-02; v24 ~2027-05; v25 is current.
+# Always jump to the NEWEST version, not the next one up - it resets the clock.
+ADS_API_VERSION = "v25"
 ADS_BASE_URL = f"https://googleads.googleapis.com/{ADS_API_VERSION}"
 OAUTH_CONSENT_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -149,6 +155,18 @@ def _headers(refresh_token: str) -> dict:
     return headers
 
 
+class AdsApiVersionSunsetError(RuntimeError):
+    """ADS_API_VERSION points at a version Google no longer serves.
+
+    This is a PLATFORM-WIDE outage, not one client's auth problem: every Google
+    Ads call fails identically until the constant is bumped. It gets its own
+    exception type because the v21 sunset (2026-08-05) was invisible for 13 days
+    - each call site reported it as that client's failure, so nothing looked
+    like "the integration is down". Callers should say so loudly and must never
+    present it to a client as their problem.
+    """
+
+
 def _ads_error_message(response: httpx.Response) -> str:
     """Google Ads REST errors carry the useful message nested in JSON - surface
     it instead of a bare status code."""
@@ -160,6 +178,39 @@ def _ads_error_message(response: httpx.Response) -> str:
         return f"{response.status_code}: {response.text[:300]}"
 
 
+def _is_version_sunset(response: httpx.Response, message: str) -> bool:
+    """Google sunsets a version in TWO phases and this has to catch both, since
+    the first phase is what you hit on sunset day and the second is what you hit
+    weeks later (both observed on v21):
+      1. blocked  - HTTP 400, "Version vNN is deprecated. Requests to this
+                    version will be blocked."
+      2. removed  - the path itself stops existing: HTTP 404 with an EMPTY body
+                    (no Ads error envelope, because nothing routed the request).
+    A live version behaves differently on both counts - a genuine auth failure
+    is 401 WITH the error envelope - so neither branch fires on a real
+    client-side error. Both branches mean ADS_API_VERSION is what's wrong."""
+    if "deprecated" in (message or "").lower():
+        return True
+    return response.status_code == 404 and '"error"' not in (response.text or "")
+
+
+def _check(response: httpx.Response, what: str) -> dict:
+    """Shared non-200 handling for every Ads call: raise the version-sunset
+    error when the version is the problem, otherwise a normal RuntimeError
+    carrying Google's own message. Returns the parsed body on success."""
+    if response.status_code != 200:
+        message = _ads_error_message(response)
+        if _is_version_sunset(response, message):
+            raise AdsApiVersionSunsetError(
+                f"Google Ads API {ADS_API_VERSION} is no longer served by Google - "
+                f"EVERY Google Ads call is failing until ADS_API_VERSION in "
+                f"core/google_ads_service.py is bumped to the current version. "
+                f"Google said: {message}"
+            )
+        raise RuntimeError(f"{what} failed - {message}")
+    return response.json()
+
+
 def list_accessible_customers(refresh_token: str) -> list:
     """Customer IDs (as plain digit strings) the authorizing user can access."""
     _count_operation()
@@ -168,9 +219,7 @@ def list_accessible_customers(refresh_token: str) -> list:
         headers=_headers(refresh_token),
         timeout=TIMEOUT,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"listAccessibleCustomers failed - {_ads_error_message(response)}")
-    resource_names = response.json().get("resourceNames", [])
+    resource_names = _check(response, "listAccessibleCustomers").get("resourceNames", [])
     return [name.split("/")[-1] for name in resource_names]
 
 
@@ -184,9 +233,7 @@ def search(refresh_token: str, customer_id: str, gaql: str) -> list:
         json={"query": gaql},
         timeout=TIMEOUT,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"GAQL search failed - {_ads_error_message(response)}")
-    return response.json().get("results", [])
+    return _check(response, "GAQL search").get("results", [])
 
 
 def atomic_mutate(refresh_token: str, customer_id: str, mutate_operations: list) -> dict:
@@ -201,9 +248,7 @@ def atomic_mutate(refresh_token: str, customer_id: str, mutate_operations: list)
         json={"mutateOperations": mutate_operations},
         timeout=TIMEOUT,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"atomic mutate failed - {_ads_error_message(response)}")
-    return response.json()
+    return _check(response, "atomic mutate")
 
 
 def set_campaign_status(refresh_token: str, customer_id: str, campaign_id: str, status: str) -> dict:
@@ -225,6 +270,4 @@ def set_campaign_status(refresh_token: str, customer_id: str, campaign_id: str, 
         },
         timeout=TIMEOUT,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"campaign mutate failed - {_ads_error_message(response)}")
-    return response.json()
+    return _check(response, "campaign mutate")
