@@ -1287,14 +1287,41 @@ def optimize_budget(client_id: int, conn: dict, campaigns: list, ceiling_ils: fl
 
 # ─── STATE 2 transition ──────────────────────────────────────────────────────
 
-def _restructure_ready(client_id: int, campaigns: list) -> tuple:
-    """All three doctrine conditions, or a reason why not."""
+def _campaign_age_days(client_id: int):
+    """Age of the client's oldest campaign, from the campaign_created activity
+    row we already write — derived from rows that exist rather than a second API
+    call. None = no creation on record (we didn't create it, so we can't age it)."""
     from agents.client_agent import get_activity
+    oldest = None
+    for entry in get_activity(client_id, limit=200):
+        if entry.get("action_type") != "campaign_created":
+            continue
+        try:
+            created = datetime.fromisoformat(entry["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if oldest is None or created < oldest:
+            oldest = created
+    return (datetime.now(timezone.utc) - oldest).days if oldest else None
+
+
+def _restructure_ready(client_id: int, campaigns: list) -> tuple:
+    """All three doctrine conditions, or the reason one failed. Order matters
+    only for the message; every condition is required."""
+    from agents.client_agent import get_activity
+    if len(campaigns) > 1:
+        return False, "already multi-campaign (State 2)"
+
     conversions = sum(c["last7"]["conversions"] for c in campaigns) * (RESTRUCTURE_WINDOW_DAYS / 7.0)
     if conversions < RESTRUCTURE_MIN_CONVERSIONS:
         return False, f"{round(conversions)} conversions/30d < {RESTRUCTURE_MIN_CONVERSIONS}"
-    if len(campaigns) > 1:
-        return False, "already multi-campaign (State 2)"
+
+    age = _campaign_age_days(client_id)
+    if age is None:
+        return False, "no campaign_created record - cannot confirm campaign age"
+    if age < RESTRUCTURE_MIN_CAMPAIGN_AGE_DAYS:
+        return False, f"campaign is {age}d old < {RESTRUCTURE_MIN_CAMPAIGN_AGE_DAYS}d"
+
     for entry in get_activity(client_id, limit=100):
         if entry.get("action_type") == "ads_restructured":
             return False, "already restructured in this goal cycle"
