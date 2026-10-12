@@ -1929,7 +1929,7 @@ const DASH_I18N = {
   chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
-  chat_error: { he:'מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', en:'Sorry, a small glitch — could you try again? 🙏', fr:'Désolé, petit souci — pouvez-vous réessayer ? 🙏', ar:'عذرًا، حدث خلل بسيط — حاول مجددًا؟ 🙏', ru:'Извините, небольшой сбой — попробуете ещё раз? 🙏' },
+  chat_error: { he:'נראה שההודעה הזו לא הגיעה אליי — החזרתי אותה לתיבה, אפשר לשלוח שוב.', en:'Looks like that message didn\'t reach me — I put it back in the box so you can send it again.', fr:'On dirait que ce message ne m\'est pas parvenu — je l\'ai remis dans la zone de saisie pour que vous puissiez le renvoyer.', ar:'يبدو أن هذه الرسالة لم تصلني — أعدتها إلى خانة الكتابة لتتمكنوا من إرسالها مجددًا.', ru:'Похоже, это сообщение до меня не дошло — оно снова в поле ввода, можно отправить ещё раз.' },
   chat_prev: { he:'הצג שיחות קודמות', en:'Show previous conversations', fr:'Voir les discussions précédentes', ar:'عرض المحادثات السابقة', ru:'Показать прошлые беседы' },
   chat_divider: { he:'— שיחה חדשה —', en:'— new conversation —', fr:'— nouvelle discussion —', ar:'— محادثة جديدة —', ru:'— новая беседа —' },
   chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
@@ -2205,7 +2205,12 @@ async function loadDashboard() {
     document.getElementById('tourTimeBadge').textContent = uallakI18n.t('tour_time', { min: minutes });
 
     // Real activity feed
-    const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed');
+    // Internal bookkeeping rows stay out of the client's feed: chat-handoff
+    // dedup markers, and the one-click connect steps (website_connected
+    // already tells the client what happened)
+    const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed'
+      && a.agent_name !== 'chat_fallback'
+      && !String(a.action_type || '').startsWith('website_authorize_'));
     document.getElementById('activityListMain').innerHTML = feed.length
       ? feed.map(a => `<div class="activity-row">
           <div class="activity-dot"></div>
@@ -3710,6 +3715,9 @@ async function interviewTurn(text) {
     console.error('interview turn failed', e);
     typing.remove();
     interviewMode = false;   // never trap the client in a broken interview
+    // ...and never leave them staring at silence: say so, and the same window
+    // is now the ordinary chat (the server answers failures itself)
+    if (text) chatNotDelivered(w, text);
   }
 }
 
@@ -3740,16 +3748,26 @@ async function sendInWindow(personaId) {
     });
     const data = await res.json();
     typing.remove();
-    if (data.success) {
+    if (data.success && data.reply) {
+      // Server-side failures arrive HERE too, as an in-voice handoff line
+      // (core/chat_fallback) - the server never answers the chat with a 500
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
     } else {
-      appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
+      chatNotDelivered(w, text);
     }
   } catch (e) {
     console.error('support chat request failed', e);
     typing.remove();
-    appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
+    chatNotDelivered(w, text);
   }
+}
+
+// Only reached when the message never got an answer from the server (dropped
+// connection, expired session) - so nobody has been told, and the honest line
+// is "it didn't arrive". The text goes back into the box: resending is one tap.
+function chatNotDelivered(w, text) {
+  appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
+  if (!w.inputEl.value) w.inputEl.value = text;
 }
 
 // ─── concierge greeting + quick-reply chips ──────────────────────────────────

@@ -34,7 +34,8 @@ from agents.client_agent import get_client, get_activity, get_communications, lo
 from agents.onboarding_agent import LANGUAGE_RULE
 from core import automation_service
 from core.agent_base import agent_alert, log_step, timed_step
-from core.claude_json import ClaudeJSONError, claude_web_search_call, safe_claude_json_call
+from core import chat_fallback
+from core.claude_json import claude_web_search_call, safe_claude_json_call
 
 CONVERSATION_HISTORY_LIMIT = 12  # current-thread turns passed to the LLM
 PENDING_SUGGESTIONS_LIMIT = 5
@@ -151,6 +152,29 @@ def _current_thread(client_id: int, chat_started_at: str,
              "text": (r.get("content") or "")[:400]} for r in rows]
 
 
+# Shared by the concierge and every specialist persona (see core/chat_fallback
+# for the house rule). Brace-free on purpose: it is concatenated into
+# PERSONA_SYSTEM_TEMPLATE before .format(). Defined before SYSTEM, which uses it.
+HANDOFF_RULE = """
+
+WHEN YOU CAN'T ANSWER — NEVER A DEAD END, ALWAYS IN YOUR OWN VOICE:
+- OUT OF SCOPE: if the question is outside what uallak can responsibly answer at all — legal,
+  tax/accounting, medical, insurance, contracts, anything that needs a licensed professional, or
+  a decision only the team can make (refunds, exceptions to the package, promises about results)
+  — do NOT attempt an answer and never bluff. Say so honestly in one short line, the way you
+  normally talk, that this isn't something you can help with directly and you're passing it to
+  the team who will get back to them (for example: "זה לא בתחום שאני יכול לעזור בו ישירות —
+  אני מעביר את זה לצוות ויחזרו אליך", in your own grammatical gender and the client's
+  language), then offer to keep going with what you CAN help with. Set "out_of_scope" to true
+  AND "needs_human_followup" to true — that is what actually sends it to the team.
+- DATA YOU COULDN'T READ: if a data field you would need carries an "error", say plainly and
+  warmly that you're having trouble pulling it up right now and the team is already checking
+  (for example: "אני נתקל בקושי לשלוף את זה כרגע, אני כבר מעביר לצוות שיבדקו") — never error
+  codes, never "system error" / "תקלה טכנית" wording — and carry on with whatever else you can.
+- MOVE ON: name the limitation once. Don't apologize repeatedly, and if conversation_history
+  shows something was already handed to the team, don't raise it again unless the client does —
+  just keep being useful."""
+
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
 team" - never say you are an AI or a bot.
@@ -219,8 +243,8 @@ Keep replies short: 2-4 sentences max, in the client's language (the language of
 and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
-{"reply": "client-language text", "needs_human_followup": true/false, "web_search_query": "",
- "upgrade_request": ""}""" + LANGUAGE_RULE + _AUTOMATION_RULE
+{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
+ "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + LANGUAGE_RULE + _AUTOMATION_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -242,10 +266,57 @@ Rules:
   markdown headers, no link lists; mentioning a source naturally inline, like "לפי נתוני...",
   is fine)."""
 
-_FALLBACK = {
-    "reply": "מצטערים, הייתה תקלה קטנה מהצד שלנו - צוות uallak יחזור אליך בהקדם 🙏",
-    "needs_human_followup": True,
-}
+# ─── Graceful failure + handoff (core/chat_fallback — no dead-end replies) ────
+# The old _FALLBACK ("מצטערים, הייתה תקלה קטנה מהצד שלנו") is gone: it was the
+# same line in every voice, and it only fired for unparseable JSON — an API
+# timeout or overload sailed past `except ClaudeJSONError` and came back to the
+# client as a bare 500.
+
+def _client_language(client_id: int, message: str) -> str:
+    try:
+        stored = (get_client(client_id) or {}).get("language") or "he"
+    except Exception:
+        stored = "he"
+    return chat_fallback.detect_language(message, stored)
+
+
+def _technical_failure(client_id: int, persona_id: str, message: str, stage: str,
+                       error: Exception) -> dict:
+    """Something actually broke mid-turn. Fixed in-lane reply (there is no
+    model to write one), a deduped alert carrying the client's question so a
+    human can answer it, and the conversation carries on."""
+    log_step(AGENT_NAME, "technical_failure",
+             f"client {client_id} ({persona_id}) at {stage}: {type(error).__name__}: {error}")
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+        f'{stage} failed ({type(error).__name__}: {str(error)[:200]}). '
+        f'Client asked: "{message[:300]}"',
+        client_id=client_id, persona=persona_id,
+        issue_key=f"technical:{persona_id}:{stage}:{chat_fallback.question_key(message)}")
+    return {"reply": chat_fallback.technical_reply(persona_id, _client_language(client_id, message)),
+            "needs_human_followup": True}
+
+
+def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: bool):
+    """The model answered in its own voice and flagged a handoff — route it."""
+    kind = chat_fallback.KIND_OUT_OF_SCOPE if out_of_scope else chat_fallback.KIND_FOLLOWUP
+    chat_fallback.alert_handoff(kind, AGENT_NAME, f'client asked: "{message[:400]}"',
+                                client_id=client_id, persona=persona_id)
+
+
+def _degraded_reads(payload: dict) -> list:
+    """Data fields that came back carrying an error. The model tells the client
+    it's having trouble pulling them (HANDOFF_RULE); this makes that true."""
+    return [k for k, v in payload.items() if isinstance(v, dict) and v.get("error")]
+
+
+def _alert_degraded(client_id: int, persona_id: str, fields: list):
+    for field in fields:
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+            f"{field} could not be read during a chat turn — the client was told the team is checking",
+            client_id=client_id, persona=persona_id,
+            issue_key=f"technical:{persona_id}:read:{field}")
 
 
 # ─── In-chat upgrade proposals (reuses the onboarding pricing brain) ──────────
@@ -326,6 +397,20 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
 
 
 def answer_support_question(client_id: int, message: str) -> dict:
+    """The concierge turn. NEVER raises and never returns an empty reply —
+    anything that breaks becomes an in-voice technical handoff (see
+    core/chat_fallback), so the chat always gets something it can show."""
+    try:
+        result = _answer_support_question(client_id, message)
+    except Exception as e:
+        return _technical_failure(client_id, "general", message, "support_turn", e)
+    if not (result.get("reply") or "").strip():
+        return _technical_failure(client_id, "general", message, "support_turn",
+                                  RuntimeError("model returned an empty reply"))
+    return result
+
+
+def _answer_support_question(client_id: int, message: str) -> dict:
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
@@ -372,8 +457,12 @@ def answer_support_question(client_id: int, message: str) -> dict:
             performance = fetch(client_id)
         except Exception as e:
             log_step(AGENT_NAME, "platform_context",
-                     f"client {client_id}: {field} fetch failed (degrading to no data): {e}")
-            continue
+                     f"client {client_id}: {field} fetch failed (degrading): {e}")
+            # NOT dropped: an absent field reads to the model as "not connected
+            # — go press חבר עכשיו", which is wrong for a connected account
+            # whose read just failed. The error marker makes the model say it's
+            # having trouble pulling it, and _alert_degraded makes that true.
+            performance = {"connected": True, "error": "temporarily unavailable"}
         if performance.get("connected"):
             payload[field] = performance
 
@@ -385,12 +474,22 @@ def answer_support_question(client_id: int, message: str) -> dict:
             lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800,
                                           client_id=client_id, cost_category="claude_support"),
         )
-    except ClaudeJSONError as e:
-        agent_alert(AGENT_NAME, [f"answer_support_question failed for client {client_id}: {e}"])
-        return _FALLBACK
+    except Exception as e:
+        # ANY failure — unparseable JSON, but also the API timeouts/overloads
+        # that the old `except ClaudeJSONError` let through as a bare 500
+        return _technical_failure(client_id, "general", message, "llm_call", e)
 
+    _alert_degraded(client_id, "general", _degraded_reads(payload))
     reply = result.get("reply", "")
     needs_human_followup = bool(result.get("needs_human_followup", False))
+    out_of_scope = bool(result.get("out_of_scope", False))
+    if out_of_scope:
+        needs_human_followup = True
+        if not reply.strip():
+            reply = chat_fallback.out_of_scope_reply("general", _client_language(client_id, message))
+        # A handoff, not a purchase or a research question — nothing else runs
+        _handoff_alert(client_id, "general", message, out_of_scope=True)
+        return {"reply": reply, "needs_human_followup": True}
 
     # Upgrade stage: genuine purchase/upgrade intent detected - build a real
     # priced proposal with the SAME brain as onboarding (build_proposal in
@@ -403,17 +502,15 @@ def answer_support_question(client_id: int, message: str) -> dict:
             reply = timed_step(
                 AGENT_NAME, "upgrade_proposal_build",
                 lambda: _build_upgrade_proposal(client_id, client, lead, upgrade_request))
-            needs_human_followup = False  # the dedicated alert below covers the team
         except Exception as e:
-            log_step(AGENT_NAME, "upgrade_proposal", f"client {client_id}: build failed ({e})")
-            agent_alert(AGENT_NAME, [f"in-chat upgrade proposal FAILED for client {client_id} "
-                                     f"(request: {upgrade_request}): {e}"])
-            needs_human_followup = True
-            if not reply:
-                return _FALLBACK
-        if needs_human_followup:
-            agent_alert(AGENT_NAME, [f'client {client_id} needs human follow-up: "{message}"'])
-        return {"reply": reply, "needs_human_followup": needs_human_followup}
+            # The model's reply here is a HOLDING line ("מכינים לך הצעה") —
+            # showing it after the build failed would promise a proposal that
+            # is never coming. The technical handoff says what is true.
+            return _technical_failure(client_id, "general",
+                                      f"{message} [upgrade request: {upgrade_request}]",
+                                      "upgrade_proposal_build", e)
+        # _build_upgrade_proposal raised its own team alert
+        return {"reply": reply, "needs_human_followup": False}
 
     # Stage 2: the JSON model decided this needs live web information (the
     # prompt gates this to business/marketing-relevant questions only). This
@@ -437,16 +534,13 @@ def answer_support_question(client_id: int, message: str) -> dict:
             )
             needs_human_followup = False
         except Exception as e:
-            # Fall back to stage 1's holding reply; a human should still close
-            # the loop on the question the search was meant to answer
-            log_step(AGENT_NAME, "web_search", f"client {client_id}: search failed ({e})")
-            needs_human_followup = True
-            if not reply:
-                agent_alert(AGENT_NAME, [f"support web search failed for client {client_id}: {e}"])
-                return _FALLBACK
+            # Stage 1's reply is a holding line ("שנייה, בודקים את זה לעומק")
+            # — after a failed search it would promise a check that never
+            # happens. Hand the question to a human instead.
+            return _technical_failure(client_id, "general", message, "web_search", e)
 
     if needs_human_followup:
-        agent_alert(AGENT_NAME, [f'client {client_id} needs human follow-up: "{message}"'])
+        _handoff_alert(client_id, "general", message, out_of_scope=False)
 
     return {"reply": reply, "needs_human_followup": needs_human_followup}
 
@@ -664,16 +758,17 @@ warmly explain that changes go through the uallak team and the dashboard's appro
 you'll flag it for the team right away (set needs_human_followup to true) — and continue
 being helpful about what the DATA shows. Never say you did, will do, or scheduled a change.
 
-STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain (billing, upgrades,
-another platform's campaigns, general questions), give a one-line friendly redirect to the
-main uallak chat (the default assistant in this same panel) — don't attempt a full answer
-outside your domain.
+STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain but still about uallak
+(billing, upgrades, another platform's campaigns, general account questions), give a one-line
+friendly redirect to the main uallak chat (the default assistant in this same panel) — don't
+attempt a full answer outside your domain. That is a redirect, not a handoff: it is NOT
+"out_of_scope" (below), which is for things nobody at uallak's chat should answer.
 
 Keep replies short: 2-4 sentences, in the client's language (see CLIENT LANGUAGE; Hebrew
 default).
 
 Return JSON only:
-{{"reply": "client-language text", "needs_human_followup": true/false}}""" + LANGUAGE_RULE
+{{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false}}""" + HANDOFF_RULE + LANGUAGE_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
@@ -684,7 +779,19 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
     persona = PERSONAS.get(persona_id)
     if not persona:
         return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
+    # Same never-raise / never-empty contract as answer_support_question, with
+    # the failure line in THIS specialist's lane
+    try:
+        result = _answer_persona_question(client_id, persona_id, persona, message)
+    except Exception as e:
+        return _technical_failure(client_id, persona_id, message, "persona_turn", e)
+    if not (result.get("reply") or "").strip():
+        return _technical_failure(client_id, persona_id, message, "persona_turn",
+                                  RuntimeError("model returned an empty reply"))
+    return result
 
+
+def _answer_persona_question(client_id: int, persona_id: str, persona: dict, message: str) -> dict:
     log_step(AGENT_NAME, "answer_persona_question",
              f"client_id={client_id} persona={persona_id}")
     client = get_client(client_id)
@@ -701,10 +808,13 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
     try:
         payload.update(persona["reads"](client_id))
     except Exception as e:
-        # A broken platform read degrades to "no data" — the prompt handles
-        # absent fields; the chat itself must never 500 over it
+        # A broken platform read must never 500 the chat. Marked rather than
+        # dropped (same reasoning as the concierge's platform loop): the model
+        # says it's having trouble pulling the data, and _alert_degraded tells
+        # the team.
         log_step(AGENT_NAME, "persona_reads",
                  f"client {client_id}: {persona_id} reads failed (degrading): {e}")
+        payload[f"{persona_id}_data"] = {"error": "temporarily unavailable"}
 
     system = PERSONA_SYSTEM_TEMPLATE.format(
         name=persona["name"], domain=persona["domain"],
@@ -715,13 +825,17 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
             lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
                                           max_tokens=700, client_id=client_id,
                                           cost_category="claude_support"))
-    except ClaudeJSONError as e:
-        agent_alert(AGENT_NAME, [f"persona chat ({persona_id}) failed for client {client_id}: {e}"])
-        return _FALLBACK
+    except Exception as e:
+        return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)
 
-    needs_human_followup = bool(result.get("needs_human_followup", False))
+    _alert_degraded(client_id, persona_id, _degraded_reads(payload))
+    reply = result.get("reply", "")
+    out_of_scope = bool(result.get("out_of_scope", False))
+    needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
+    if out_of_scope and not reply.strip():
+        reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))
     if needs_human_followup:
-        agent_alert(AGENT_NAME, [f'client {client_id} ({persona_id} persona chat) needs human '
-                                 f'follow-up: "{message}"'])
-    # ONLY these two keys — anything else the model emitted is dropped unread
-    return {"reply": result.get("reply", ""), "needs_human_followup": needs_human_followup}
+        _handoff_alert(client_id, persona_id, message, out_of_scope)
+    # ONLY reply + needs_human_followup leave this function (out_of_scope is
+    # read above for routing, never passed on); anything else is dropped unread
+    return {"reply": reply, "needs_human_followup": needs_human_followup}

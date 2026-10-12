@@ -879,7 +879,11 @@ def handle_objection(text, packages, answers, empathy_final, api_key):
     could be an objection, a question, or hesitation. Respond like a skilled, warm
     closer who already knows this client, using their answers and empathy profile to
     address the SPECIFIC thing they said, then steer back toward picking a package
-    rather than dead-ending the conversation."""
+    rather than dead-ending the conversation.
+
+    Returns {"reply", "out_of_scope"} — the caller alerts the team on out_of_scope
+    (core/chat_fallback). Raises on failure; the endpoint turns that into the
+    in-voice technical handoff."""
     system = """You are a skilled, warm, creative closer for uallak, an Israeli marketing agency.
 A client was just shown 1-2 package options and, instead of picking one, wrote free text — an
 objection, a question, hesitation, or something else entirely. Your job is to keep the conversation
@@ -897,13 +901,20 @@ respond to what they ACTUALLY said — never a generic reassurance that could ap
   knows the space would — reasonable round ranges only, never fabricated precision, and always
   consistent with the packages' own numbers.
 
+- If it's OUTSIDE what a marketing agency's rep can responsibly answer — legal, tax/accounting,
+  medical, contracts, a guarantee of results, a custom deal or discount only the team can approve
+  — don't answer it and never bluff. Say honestly, in one short warm line, that it isn't
+  something you can answer directly and you're passing it to the team who'll get back to them
+  (for example: "זה לא בתחום שאני יכול לעזור בו ישירות — אני מעביר את זה לצוות ויחזרו אליך"),
+  and set "out_of_scope" to true. Then carry on as below — no repeated apologies.
+
 End by inviting them back to the packages — reference them briefly by name so it's easy to pick
 one, or ask one short clarifying question if that's what's genuinely needed to move forward.
 Keep it to 2-5 sentences, warm and human, not corporate. All text in the client's language
 (the language they wrote their message in — see CLIENT LANGUAGE).
 
 Return JSON only:
-{"reply": "client-language text"}""" + LANGUAGE_RULE
+{"reply": "client-language text", "out_of_scope": true/false}""" + LANGUAGE_RULE
 
     user_message = f"""Packages offered to this client:
 {json.dumps(packages, ensure_ascii=False, indent=2)}
@@ -918,7 +929,7 @@ Instead of picking a package, the client just wrote:
 "{text}"
 """
     result = safe_claude_json_call(system, user_message, max_tokens=700, api_key=api_key)
-    return result.get("reply", "")
+    return {"reply": result.get("reply", ""), "out_of_scope": bool(result.get("out_of_scope", False))}
 
 def get_reaction(question_text, answer_text, api_key):
     """Short, lightweight reactive bot message shown after a meaningful answer, to make the

@@ -170,7 +170,19 @@ def onboarding(req: OnboardingRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # The prospect just answered every question and waited minutes. Before
+        # this, nobody was told and the chat sat on a dead "something went
+        # wrong". Now: the team hears about it with the lead id (their answers
+        # are on the lead row via /api/lead/message), and the page offers a
+        # retry with the same answers (dashboard/onboarding fetchProposal).
+        from core import chat_fallback
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, "onboarding_agent",
+            f"proposal build failed for a prospect who finished the sales chat "
+            f"({type(e).__name__}: {str(e)[:200]}) — reach out if they don't retry. "
+            f"Email: {req.client_email or 'not given yet'}.",
+            persona="sales", lead_id=req.lead_id, issue_key="technical:sales:proposal")
+        raise HTTPException(status_code=503, detail={"code": "ERR_PROPOSAL_UNAVAILABLE"})
 
 @app.get("/api/leads", dependencies=_admin_only)
 async def get_leads():
@@ -338,7 +350,19 @@ async def checkout(req: CheckoutRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # A prospect who chose a package and wants to PAY hit a wall. The page
+        # tells them the team will reach out (no automatic retry: every attempt
+        # creates a client row) - and this alert is what makes that true.
+        from core import chat_fallback
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, "paypal_service",
+            f"CHECKOUT FAILED for a ready-to-pay prospect ({type(e).__name__}: {str(e)[:200]}) — "
+            f"contact them: {req.client_name}, {req.client_phone}, {req.client_email}, "
+            f"package '{req.package_name}' (₪{req.setup_fee_total} setup + "
+            f"₪{req.monthly_management_total}/mo).",
+            persona="sales", lead_id=req.lead_id,
+            issue_key=f"technical:sales:checkout:{chat_fallback.question_key(req.client_email or req.client_phone)}")
+        raise HTTPException(status_code=500, detail={"code": "ERR_CHECKOUT_FAILED"})
 
 def _mark_paid_and_notify(client_id: int, subscription_id: str = None, source: str = "unknown"):
     """Flip a client to active and send the payment confirmation email - idempotent, so it's
@@ -586,17 +610,49 @@ class ObjectionRequest(BaseModel):
     answers: dict = {}
     empathy_final: dict = {}
     packages: list = []
+    lead_id: str = ""     # who to name in a handoff alert (prospects have no client row)
+    language: str = "he"  # the sales page's UI language - tie-breaker for the fixed reply
+
+def _prospect_contact(answers: dict) -> str:
+    # Whatever the chat has collected so far, so the team can actually reach a
+    # prospect whose question was handed off - there is no client row yet
+    picked = {k: answers.get(k) for k in ("business_name", "name", "phone", "email") if answers.get(k)}
+    return f" Known so far: {picked}." if picked else ""
 
 @app.post("/api/handle-objection")
 def handle_objection_endpoint(req: ObjectionRequest):
+    # The sales chat's only free-text turn. Never a dead end: an out-of-scope
+    # question is answered in the closer's voice AND handed to the team; a
+    # failure gets the fixed in-voice handoff and the packages are shown again.
+    from core import chat_fallback
     try:
         from agents.onboarding_agent import handle_objection, get_api_key
-        reply = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
+        result = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
+        reply = (result.get("reply") or "").strip()
+        if result.get("out_of_scope"):
+            chat_fallback.alert_handoff(
+                chat_fallback.KIND_OUT_OF_SCOPE, "onboarding_agent",
+                f'prospect asked: "{req.text[:400]}".{_prospect_contact(req.answers)}',
+                persona="sales", lead_id=req.lead_id)
+            if not reply:
+                reply = chat_fallback.out_of_scope_reply(
+                    "sales", chat_fallback.detect_language(req.text, req.language))
+        if not reply:
+            raise RuntimeError("closer returned an empty reply")
         return {"success": True, "reply": reply}
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"success": False, "reply": "מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏"}
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, "onboarding_agent",
+            f'sales-chat objection reply failed ({type(e).__name__}: {str(e)[:200]}). '
+            f'Prospect wrote: "{req.text[:300]}".{_prospect_contact(req.answers)}',
+            persona="sales", lead_id=req.lead_id,
+            issue_key=f"technical:sales:objection:{chat_fallback.question_key(req.text)}")
+        # success stays True: this IS a reply the chat should show, not an error
+        return {"success": True, "degraded": True,
+                "reply": chat_fallback.technical_reply(
+                    "sales", chat_fallback.detect_language(req.text, req.language))}
 
 class ReactionRequest(BaseModel):
     question_text: str = ""
@@ -1107,9 +1163,28 @@ def client_chat(req: ClientChatRequest, request: Request):
     except HTTPException:
         raise
     except Exception as e:
+        # The agents never raise (core/chat_fallback), so this is the plumbing
+        # around them - storing the message, the import. Still never a dead
+        # end: an in-lane handoff line, an alert, and the chat carries on.
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        from core import chat_fallback
+        persona = (req.persona or "general").strip()
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, "support_agent",
+            f'client-chat endpoint failed ({type(e).__name__}: {str(e)[:200]}). '
+            f'Client asked: "{req.message[:300]}"',
+            client_id=client_id, persona=persona,
+            issue_key=f"technical:{persona}:endpoint:{chat_fallback.question_key(req.message)}")
+        # No DB read for the stored language here - the DB may be what broke
+        language = chat_fallback.detect_language(req.message)
+        reply = chat_fallback.technical_reply(persona, language)
+        try:
+            from agents.support_agent import persona_channel
+            log_communication(client_id, "outbound", persona_channel(persona), reply)
+        except Exception:
+            pass  # best effort - the history write may be the very thing failing
+        return {"success": True, "needs_human_followup": True, "reply": reply}
 
 @app.get("/api/client-chat/history")
 async def client_chat_history(request: Request, scope: str = "current", persona: str = "general"):

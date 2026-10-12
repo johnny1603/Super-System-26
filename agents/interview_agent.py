@@ -370,8 +370,16 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
             lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
                                           max_tokens=700, client_id=client_id,
                                           cost_category="claude_interview"))
-    except ClaudeJSONError as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: first-login interview turn failed: {e}"])
+    except Exception as e:
+        # Any failure, not just unparseable JSON — an API timeout used to
+        # escape as a 500 and the dashboard silently dropped the interview.
+        from core import chat_fallback
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+            f"first-login interview turn failed ({type(e).__name__}: {str(e)[:200]})"
+            + (f'. Client said: "{message[:300]}"' if message else " (opening turn)"),
+            client_id=client_id, persona="general",
+            issue_key=f"technical:interview:{chat_fallback.question_key(message or 'opening')}")
         # A first-login dead end is worse than an imperfect reply.
         fallback = ("שמחים שאתם כאן! 🙂 אני כאן לכל שאלה — ובינתיים, "
                     "אם יש לכם שמות של מתחרים שכדאי שנכיר, כתבו לי אותם כאן.")

@@ -128,7 +128,6 @@ const CHROME = {
   proc_5: { he:'התכנית שלך מוכנה!', en:'Your plan is ready!', fr:'Votre plan est prêt !', ar:'خطتك جاهزة!', ru:'Ваш план готов!' },
   proc_almost: { he:'עוד רגע ומסיימים — שמים את הנגיעות האחרונות בתכנית שלך ✨ אל תסגור את הדף', en:'Almost there — adding the final touches to your plan ✨ Please keep this page open', fr:'Presque fini — dernières touches à votre plan ✨ Gardez cette page ouverte', ar:'اقتربنا — نضيف اللمسات الأخيرة لخطتك ✨ أبقِ الصفحة مفتوحة', ru:'Почти готово — вносим финальные штрихи в ваш план ✨ Не закрывайте страницу' },
   processing_msg: { he:'תודה! המערכת עובדת עכשיו על התכנית המותאמת לך 🔄', en:'Thank you! The system is now building your tailored plan 🔄', fr:'Merci ! Le système prépare votre plan personnalisé 🔄', ar:'شكرًا! النظام يعمل الآن على خطتك المخصصة 🔄', ru:'Спасибо! Система готовит ваш персональный план 🔄' },
-  generic_error: { he:'אירעה שגיאה — נסה שוב או צור קשר בוואטסאפ 💬', en:'Something went wrong — try again or reach us on WhatsApp 💬', fr:'Une erreur est survenue — réessayez ou contactez-nous sur WhatsApp 💬', ar:'حدث خطأ — حاول مجددًا أو تواصل معنا عبر واتساب 💬', ru:'Произошла ошибка — попробуйте ещё раз или напишите нам в WhatsApp 💬' },
   reject_wrap: { he:'תודה שפנית אלינו 🙏\n\n{reason}\n\nאנחנו ממליצים לחזור אלינו כשהתנאים ישתנו — נשמח לעזור!', en:'Thank you for reaching out 🙏\n\n{reason}\n\nWe recommend coming back when things change — we\'d love to help!', fr:'Merci de nous avoir contactés 🙏\n\n{reason}\n\nRevenez quand la situation évoluera — nous serons ravis de vous aider !', ar:'شكرًا لتواصلك معنا 🙏\n\n{reason}\n\nننصح بالعودة إلينا عندما تتغير الظروف — يسعدنا مساعدتك!', ru:'Спасибо за обращение 🙏\n\n{reason}\n\nВозвращайтесь, когда условия изменятся — будем рады помочь!' },
   risk_high: { he:'גבוהה', en:'High', fr:'Élevé', ar:'مرتفع', ru:'Высокий' },
   risk_medium: { he:'בינונית', en:'Medium', fr:'Moyen', ar:'متوسط', ru:'Средний' },
@@ -152,9 +151,13 @@ const CHROME = {
   bad_email: { he:'זה לא נראה כמו כתובת מייל תקינה 🤔 תוכל לכתוב שוב?', en:'That doesn\'t look like a valid email 🤔 Could you re-type it?', fr:'Cela ne ressemble pas à un e-mail valide 🤔 Pouvez-vous réessayer ?', ar:'لا يبدو هذا بريدًا إلكترونيًا صحيحًا 🤔 هل يمكنك كتابته مجددًا؟', ru:'Это не похоже на корректный email 🤔 Напишите ещё раз?' },
   preparing_payment: { he:'רגע אחד, מכין את קישור התשלום שלך... 💳', en:'One moment, preparing your payment link… 💳', fr:'Un instant, préparation de votre lien de paiement… 💳', ar:'لحظة واحدة، نجهّز رابط الدفع الخاص بك... 💳', ru:'Секунду, готовим вашу ссылку на оплату… 💳' },
   payment_ready: { he:'הקישור מוכן! מעביר אותך לדף האישור של PayPal 🚀', en:'Ready! Taking you to PayPal to approve 🚀', fr:'C\'est prêt ! Redirection vers PayPal pour valider 🚀', ar:'الرابط جاهز! ننقلك إلى صفحة الموافقة في PayPal 🚀', ru:'Готово! Переходим на страницу подтверждения PayPal 🚀' },
-  payment_error: { he:'אירעה שגיאה בהכנת התשלום — צור קשר בוואטסאפ 💬', en:'There was a problem preparing the payment — reach us on WhatsApp 💬', fr:'Problème lors de la préparation du paiement — contactez-nous sur WhatsApp 💬', ar:'حدث خطأ في تجهيز الدفع — تواصل معنا عبر واتساب 💬', ru:'Ошибка при подготовке оплаты — напишите нам в WhatsApp 💬' },
   objection_fallback: { he:'אפשר לספר לי קצת יותר על מה שמטריד אותך?', en:'Can you tell me a bit more about what\'s on your mind?', fr:'Pouvez-vous m\'en dire un peu plus sur ce qui vous préoccupe ?', ar:'هل يمكنك إخباري أكثر عمّا يقلقك؟', ru:'Расскажите чуть подробнее, что вас беспокоит?' },
-  small_glitch: { he:'מצטערים, הייתה תקלה קטנה — אפשר לנסות שוב? 🙏', en:'Sorry, a small glitch — could you try again? 🙏', fr:'Désolé, petit souci technique — pouvez-vous réessayer ? 🙏', ar:'عذرًا، حدث خلل بسيط — هل يمكنك المحاولة مجددًا؟ 🙏', ru:'Извините, небольшой сбой — попробуете ещё раз? 🙏' },
+  proposal_trouble: { he:'יש לי כרגע קושי להשלים את התכנית שלך — הצוות כבר יודע ובודק. כל התשובות שלך שמורות אצלי, אז אין צורך להתחיל מהתחלה: אפשר לנסות שוב בלחיצה, ואם זה לא מסתדר — נחזור אליך בעצמנו.', en:'I\'m having trouble finishing your plan right now — the team already knows and is checking. All your answers are saved, so there\'s no need to start over: you can retry in one tap, and if it still doesn\'t work we\'ll get back to you ourselves.', fr:'J\'ai du mal à finaliser votre plan pour le moment — l\'équipe est déjà au courant et vérifie. Toutes vos réponses sont conservées, inutile de recommencer : vous pouvez réessayer en un clic, et sinon nous reviendrons vers vous.', ar:'أواجه صعوبة في إكمال خطتك حاليًا — الفريق على علم ويتحقق من الأمر. كل إجاباتك محفوظة، فلا داعي للبدء من جديد: يمكنك المحاولة مجددًا بنقرة، وإن لم ينجح سنعود إليك بأنفسنا.', ru:'Сейчас не получается завершить ваш план — команда уже в курсе и проверяет. Все ваши ответы сохранены, начинать заново не нужно: можно повторить одним нажатием, а если не выйдет — мы сами свяжемся с вами.' },
+  proposal_retry_btn: { he:'לנסות שוב לבנות את התכנית', en:'Try building my plan again', fr:'Relancer la création de mon plan', ar:'إعادة محاولة بناء خطتي', ru:'Попробовать собрать план ещё раз' },
+  message_not_delivered: { he:'נראה שההודעה האחרונה לא הגיעה אליי — אפשר לשלוח אותה שוב, או לבחור אחת מהאפשרויות למטה.', en:'Looks like your last message didn\'t reach me — you can send it again, or pick one of the options below.', fr:'On dirait que votre dernier message ne m\'est pas parvenu — vous pouvez le renvoyer, ou choisir une des options ci-dessous.', ar:'يبدو أن رسالتك الأخيرة لم تصلني — يمكنك إرسالها مجددًا، أو اختيار أحد الخيارات أدناه.', ru:'Похоже, ваше последнее сообщение до меня не дошло — можно отправить его ещё раз или выбрать один из вариантов ниже.' },
+  payment_handoff: { he:'משהו לא הסתדר בהכנת התשלום — לא נורא, הפרטים שלך והחבילה שבחרת כבר אצל הצוות, ונחזור אליך בהקדם כדי להשלים יחד. אם נוח לך, אפשר גם לכתוב לנו בוואטסאפ 💬', en:'Something didn\'t work out preparing the payment — no worries, your details and the package you chose are already with the team, and we\'ll get back to you shortly to finish together. You\'re also welcome to message us on WhatsApp 💬', fr:'La préparation du paiement n\'a pas abouti — pas d\'inquiétude, vos coordonnées et le forfait choisi sont déjà chez l\'équipe, qui reviendra vers vous rapidement pour finaliser. Vous pouvez aussi nous écrire sur WhatsApp 💬', ar:'لم ينجح تجهيز الدفع — لا تقلق، بياناتك والباقة التي اخترتها أصبحت لدى الفريق، وسنعود إليك قريبًا لإكمال الأمر معًا. يمكنك أيضًا مراسلتنا على واتساب 💬', ru:'Подготовить оплату не получилось — не страшно: ваши данные и выбранный пакет уже у команды, мы скоро свяжемся с вами, чтобы завершить вместе. Можно также написать нам в WhatsApp 💬' },
+  payment_not_reached: { he:'החיבור נקטע בדרך להכנת התשלום — אפשר לנסות שוב בלחיצה, הפרטים שלך עדיין כאן.', en:'The connection dropped while preparing the payment — you can retry in one tap, your details are still here.', fr:'La connexion a été interrompue pendant la préparation du paiement — vous pouvez réessayer en un clic, vos informations sont toujours là.', ar:'انقطع الاتصال أثناء تجهيز الدفع — يمكنك المحاولة مجددًا بنقرة، بياناتك ما زالت هنا.', ru:'Связь прервалась при подготовке оплаты — можно повторить одним нажатием, ваши данные на месте.' },
+  payment_retry_btn: { he:'לנסות שוב להכין את התשלום', en:'Try preparing the payment again', fr:'Relancer la préparation du paiement', ar:'إعادة محاولة تجهيز الدفع', ru:'Ещё раз подготовить оплату' },
   dashboard_btn: { he:'כניסה לדשבורד שלי →', en:'Go to my dashboard →', fr:'Accéder à mon tableau de bord →', ar:'الدخول إلى لوحة التحكم →', ru:'Перейти в мой кабинет →' },
   paid_success: { he:'התשלום התקבל בהצלחה! 🎉\n\nתודה שהצטרפת ל-uallak. שלחנו לך מייל עם כל הפרטים.\n\nהדשבורד האישי שלך מוכן — תוכל להתחבר אליו עם קוד חד-פעמי שנשלח למייל שלך, ולעקוב שם אחרי הפעילות, החיבורים ופרטי המנוי שלך. הצוות שלנו זמין בוואטסאפ לכל שאלה 💬', en:'Payment received! 🎉\n\nWelcome to uallak — we\'ve emailed you all the details.\n\nYour personal dashboard is ready: sign in with a one-time code sent to your email to follow activity, connections and your subscription. Our team is on WhatsApp for any question 💬', fr:'Paiement reçu ! 🎉\n\nBienvenue chez uallak — tous les détails sont dans votre e-mail.\n\nVotre tableau de bord est prêt : connectez-vous avec un code à usage unique envoyé par e-mail pour suivre l\'activité, les connexions et votre abonnement. Notre équipe est sur WhatsApp 💬', ar:'تم استلام الدفع بنجاح! 🎉\n\nشكرًا لانضمامك إلى uallak. أرسلنا لك بريدًا بكل التفاصيل.\n\nلوحة التحكم الشخصية جاهزة — سجّل الدخول برمز لمرة واحدة يصلك عبر البريد لمتابعة النشاط والاتصالات وتفاصيل الاشتراك. فريقنا متاح على واتساب لأي سؤال 💬', ru:'Оплата получена! 🎉\n\nСпасибо, что присоединились к uallak. Мы отправили вам письмо со всеми деталями.\n\nВаш личный кабинет готов — войдите по одноразовому коду из письма, чтобы следить за активностью, подключениями и подпиской. Наша команда на связи в WhatsApp 💬' },
   paid_error: { he:'נראה שהייתה בעיה באישור התשלום 😕\n\nאפשר לנסות שוב או לפנות אלינו בוואטסאפ ונשלים את זה ביחד 💬', en:'Looks like the payment approval hit a problem 😕\n\nTry again, or message us on WhatsApp and we\'ll finish it together 💬', fr:'Un problème est survenu lors de la validation du paiement 😕\n\nRéessayez ou écrivez-nous sur WhatsApp et nous finaliserons ensemble 💬', ar:'يبدو أن هناك مشكلة في تأكيد الدفع 😕\n\nحاول مجددًا أو راسلنا على واتساب وسننهي الأمر معًا 💬', ru:'Похоже, при подтверждении оплаты возникла проблема 😕\n\nПопробуйте ещё раз или напишите нам в WhatsApp — доведём дело вместе 💬' },
@@ -741,6 +744,9 @@ async function fetchProposal(answers) {
       body: JSON.stringify({answers, lead_id: leadTracker.id, language: uallakI18n.current()})
     });
     const data = await res.json();
+    // A failed build used to fall through to displayProposal(undefined),
+    // which threw inside the timeout and left the chat silently frozen
+    if (!res.ok || !data.success || !data.data || !data.data.proposal) throw new Error('proposal unavailable');
     hideProcessing();
     setTimeout(() => displayProposal(data.data), 1400);
   } catch(e) {
@@ -748,8 +754,40 @@ async function fetchProposal(answers) {
     procTimers.forEach(clearTimeout);
     procTimers = [];
     document.getElementById('processing').classList.remove('active');
-    addMessage(uallakI18n.t('generic_error'), 'bot');
+    // Never a dead end: the answers are all still here, so offer the build
+    // again in one tap (the server has already told the team - see /api/onboarding)
+    addMessage(uallakI18n.t('proposal_trouble'), 'bot');
+    addActionButton(uallakI18n.t('proposal_retry_btn'), () => showProcessing());
   }
+}
+
+// One tappable next step under a bot message - used where a failure would
+// otherwise leave the prospect with nothing to do
+function addActionButton(label, onClick) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = 'U';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  const grid = document.createElement('div');
+  grid.className = 'options-grid';
+  const btn = document.createElement('button');
+  btn.className = 'option-btn';
+  btn.textContent = label;
+  btn.onclick = () => {
+    btn.disabled = true;
+    btn.style.cursor = 'default';
+    onClick();
+  };
+  grid.appendChild(btn);
+  bubble.appendChild(grid);
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
 }
 
 function displayProposal(data) {
@@ -839,6 +877,8 @@ async function handleObjection(text) {
         answers,
         empathy_final: (proposalData && proposalData.empathy_final) || {},
         packages: (proposalData && proposalData.proposal && proposalData.proposal.packages) || [],
+        lead_id: leadTracker.id,
+        language: uallakI18n.current(),
       })
     });
     const data = await res.json();
@@ -849,8 +889,10 @@ async function handleObjection(text) {
       proposalData.proposal && proposalData.proposal.scarcity_note
     ), 900);
   } catch(e) {
+    // The request never got an answer (connection) - the server-side failures
+    // already come back as an in-voice reply above
     hideTyping();
-    addMessage(uallakI18n.t('small_glitch'), 'bot');
+    addMessage(uallakI18n.t('message_not_delivered'), 'bot');
     setTimeout(() => showPackageOptions(
       (proposalData.proposal && proposalData.proposal.packages) || [],
       proposalData.proposal && proposalData.proposal.scarcity_note
@@ -928,10 +970,17 @@ async function startCheckout(name, phone, address, businessName, businessTaxId, 
       addMessage(uallakI18n.t('payment_ready'), 'bot');
       setTimeout(() => { window.location.href = data.data.approve_url; }, 1200);
     } else {
-      addMessage(uallakI18n.t('payment_error'), 'bot');
+      // The server reached us and alerted the team WITH these contact details
+      // (/api/checkout) - so "they'll reach out" is true. No auto-retry: each
+      // attempt creates a client row.
+      addMessage(uallakI18n.t('payment_handoff'), 'bot');
     }
   } catch(e) {
-    addMessage(uallakI18n.t('generic_error'), 'bot');
+    // Never reached the server (connection), so nobody was told yet - here a
+    // second attempt is the right offer
+    addMessage(uallakI18n.t('payment_not_reached'), 'bot');
+    addActionButton(uallakI18n.t('payment_retry_btn'),
+      () => startCheckout(name, phone, address, businessName, businessTaxId, email));
   }
 }
 

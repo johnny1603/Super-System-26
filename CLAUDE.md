@@ -104,6 +104,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   one row per client, the conversation that sold them), so it approximates with
   Google/Meta ad conversions and always reports `complete: False`. Tier crossings
   alert admin only — nothing bills automatically. See `HANDOFF-lead-volume-tiers.md`.
+- `core/chat_fallback.py` — **no client-facing chat ever dead-ends on an error.** Two
+  distinct cases: OUT OF SCOPE (model works; it answers in its own voice, flags
+  `out_of_scope`, we alert) and TECHNICAL (something broke; FIXED per-persona,
+  per-language reply, no codes/"system error", we alert). `support_agent`'s
+  `answer_support_question` / `answer_persona_question` never raise and never return an
+  empty reply — catch `Exception`, not `ClaudeJSONError` (API timeouts aren't JSON errors).
+  Every chat alert goes through `alert_handoff()` (deduped via a `client_activity`
+  `issue_key` row, ISSUE_DEDUP_DAYS-style; prospects dedupe in memory). Don't add a raw
+  `agent_alert` or a generic "תקלה" line to a chat path. See `HANDOFF-graceful-chat.md`.
 - `core/client_auth.py` — client credentials. Auth is **custom, not Supabase Auth**:
   `/api/checkout` creates the `clients` row (before PayPal), and every login ends in the
   HMAC `session` cookie from `core/session.py`. Three ways in: emailed 6-digit code
