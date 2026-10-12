@@ -168,6 +168,87 @@ def get_client_media_link(client_id: int) -> str:
     return drive.get_link(ensure_client_media_root(client_id))
 
 
+_DRIVE_FIX = {
+    "storage_quota": ("DRIVE_MEDIA_FOLDER_ID points at a folder in a personal My Drive. Service "
+                      "accounts own no storage, so Drive refuses to create files there. Create a "
+                      "SHARED DRIVE, add the service account as Content manager, make the media "
+                      "root folder inside it and put that folder's id in DRIVE_MEDIA_FOLDER_ID."),
+    "no_access": ("The service account can't see DRIVE_MEDIA_FOLDER_ID — share that folder (or "
+                  "its shared drive) with the service account's email, or fix the id."),
+    "auth": "GOOGLE_SERVICE_ACCOUNT_JSON is rejected by Google — re-issue the key.",
+    "other": "Unexpected Drive error — see the logged text.",
+}
+_drive_alerted_at = {}  # reason -> epoch of last alert (per instance)
+DRIVE_ALERT_EVERY_SECONDS = 6 * 3600
+
+
+def _alert_drive_failure(client_id: int, reason: str, error: Exception):
+    # Called from a dashboard page load — without the throttle every client
+    # opening the Media tab during an outage would raise its own alert
+    import time
+    if time.time() - _drive_alerted_at.get(reason, 0) < DRIVE_ALERT_EVERY_SECONDS:
+        return
+    _drive_alerted_at[reason] = time.time()
+    agent_alert(AGENT_NAME, [f"client {client_id}: media Drive folder unavailable ({reason}) — "
+                             f"{_DRIVE_FIX.get(reason, '')} Error: {str(error)[:300]}"])
+
+
+def media_folder_status(client_id: int) -> dict:
+    """What the dashboard's Drive button should do, with the REASON when it
+    can't: {"status": "ok", "link"} | {"status": "not_configured"} |
+    {"status": "error", "reason"}. Never raises. Failures alert (throttled)
+    with the concrete fix — the button used to just go grey, silently."""
+    if not drive.is_media_configured():
+        return {"status": "not_configured"}
+    try:
+        return {"status": "ok", "link": get_client_media_link(client_id)}
+    except Exception as e:
+        reason = drive.classify_error(e)
+        print(f"[{AGENT_NAME}] media folder for client {client_id} failed ({reason}): {e}")
+        _alert_drive_failure(client_id, reason, e)
+        return {"status": "error", "reason": reason}
+
+
+def drive_self_test(client_id: int) -> dict:
+    """Prove the client's media folder is USABLE, not just present: the same
+    calls generation and delivery make (folder, upload, list, link), then
+    clean up. Admin-triggered. Each step reports on its own so a failure
+    names the exact call that broke."""
+    import time
+    steps = []
+
+    def step(name, fn):
+        try:
+            value = fn()
+            steps.append({"step": name, "ok": True})
+            return value
+        except Exception as e:
+            reason = drive.classify_error(e)
+            steps.append({"step": name, "ok": False, "reason": reason,
+                          "fix": _DRIVE_FIX.get(reason, ""), "error": str(e)[:300]})
+            return None
+
+    if not drive.is_media_configured():
+        return {"ok": False, "steps": [{"step": "config", "ok": False, "reason": "not_configured",
+                                        "fix": "Set GOOGLE_SERVICE_ACCOUNT_JSON and DRIVE_MEDIA_FOLDER_ID on Cloud Run."}]}
+
+    folder = step("folder (client root + self-test subfolder)",
+                  lambda: _subfolder(client_id, "self-test"))
+    uploaded = step("upload a file", lambda: drive.upload_bytes(
+        folder, f"uallak-drive-check-{int(time.time())}.txt",
+        b"uallak Drive self-test - safe to delete", "text/plain")) if folder else None
+    if uploaded:
+        listed = step("list the folder", lambda: drive.list_files(folder))
+        if listed is not None and not any(f.get("id") == uploaded.get("id") for f in listed):
+            steps.append({"step": "uploaded file visible in listing", "ok": False,
+                          "reason": "other", "fix": "", "error": "file not returned by list"})
+        step("delete the probe file", lambda: drive.delete_file(uploaded["id"]))
+    link = step("client-facing folder link", lambda: get_client_media_link(client_id)) if folder else None
+    ok = all(s["ok"] for s in steps)
+    _log_activity(client_id, "media_drive_self_test", {"ok": ok, "failed": [s["step"] for s in steps if not s["ok"]]})
+    return {"ok": ok, "steps": steps, "folder_link": link or ""}
+
+
 def sync_website_media_folders(client_id: int) -> list:
     """website-media/{page} subfolders mirroring the client's actual site
     pages (dynamic — the handoff's folder spec). No site → no-op."""

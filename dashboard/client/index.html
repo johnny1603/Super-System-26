@@ -1441,6 +1441,7 @@ a.media-item:hover { border-color: var(--accent); }
       <a class="export-btn" id="mediaFolderLink" href="#" target="_blank" rel="noopener"
          data-i18n="media_drive_btn">📁 פתיחת התיקייה ב-Drive</a>
     </div>
+    <div class="info-panel-text" id="mediaFolderNote" style="display:none;margin-top:8px;"></div>
   </div>
 </div><!-- /viewMedia -->
 
@@ -1734,6 +1735,8 @@ const DASH_I18N = {
   media_drive_title: { he:'התיקייה שלך ב-Google Drive', en:'Your Google Drive folder', fr:'Votre dossier Google Drive', ar:'مجلدك في Google Drive', ru:'Ваша папка в Google Drive' },
   media_drive_text: { he:'כל הקבצים שמורים בתיקייה פרטית ב-Drive שמשותפת איתך. אפשר לפתוח אותה ולהוריד כל קובץ בגודל המלא.', en:'Every file lives in a private Drive folder shared with you. Open it to download anything at full size.', fr:'Chaque fichier est dans un dossier Drive privé partagé avec vous.', ar:'كل الملفات في مجلد Drive خاص تمت مشاركته معك.', ru:'Все файлы — в приватной папке Drive, расшаренной вам.' },
   media_drive_btn: { he:'📁 פתיחת התיקייה ב-Drive', en:'📁 Open Drive folder', fr:'📁 Ouvrir le dossier Drive', ar:'📁 فتح مجلد Drive', ru:'📁 Открыть папку Drive' },
+  media_drive_not_ready: { he:'התיקייה שלך ב-Drive עוד לא הוקמה — זה בצד שלנו, אין צורך לחבר שום דבר. נעדכן כאן כשהיא מוכנה.', en:'Your Drive folder hasn\'t been set up yet — that\'s on our side, nothing for you to connect. We\'ll update you here when it\'s ready.', fr:'Votre dossier Drive n\'est pas encore prêt — c\'est de notre côté, rien à connecter. Nous vous tiendrons informé ici.', ar:'لم يتم إعداد مجلد Drive الخاص بك بعد — هذا من جهتنا، لا حاجة لربط أي شيء. سنبلغك هنا عندما يجهز.', ru:'Ваша папка в Drive ещё не создана — это на нашей стороне, подключать ничего не нужно. Сообщим здесь, когда будет готово.' },
+  media_drive_trouble: { he:'יש לנו כרגע קושי לגשת לתיקייה ב-Drive — הצוות כבר יודע ומטפל, ונעדכן כאן כשהיא זמינה.', en:'We\'re having trouble reaching the Drive folder right now — the team already knows and is on it, and we\'ll update you here when it\'s available.', fr:'Nous avons du mal à accéder au dossier Drive pour le moment — l\'équipe est au courant et s\'en occupe ; nous vous tiendrons informé ici.', ar:'نواجه حاليًا صعوبة في الوصول إلى مجلد Drive — الفريق على علم ويعالج الأمر، وسنبلغك هنا عندما يصبح متاحًا.', ru:'Сейчас не получается открыть папку в Drive — команда уже в курсе и разбирается; сообщим здесь, когда она будет доступна.' },
 
   // ── personal area ──
   personal_title: { he:'אזור אישי', en:'My account', fr:'Mon compte', ar:'المنطقة الشخصية', ru:'Личный кабинет' },
@@ -4471,14 +4474,27 @@ async function loadMediaAssets() {
     badge.style.display = mediaAssetsCache.length ? '' : 'none';
 
     const folderLink = document.getElementById('mediaFolderLink');
+    const folderNote = document.getElementById('mediaFolderNote');
     if (body.data.folder_link) {
       folderLink.href = body.data.folder_link;
       folderLink.removeAttribute('disabled');
+      folderLink.removeAttribute('aria-disabled');
+      folderLink.style.pointerEvents = '';
+      folderLink.style.opacity = '';
+      folderNote.style.display = 'none';
     } else {
-      // No Drive folder yet (nothing generated, or media not configured) —
-      // a dead link is worse than a disabled button
+      // No usable folder. `disabled` alone does nothing on an <a> (it still
+      // opened '#' in a new tab), so block it for real - and SAY why, instead
+      // of a silent grey button. The server has already alerted the team with
+      // the concrete fix (media_agent.media_folder_status).
       folderLink.href = '#';
       folderLink.setAttribute('disabled', 'disabled');
+      folderLink.setAttribute('aria-disabled', 'true');
+      folderLink.style.pointerEvents = 'none';
+      folderLink.style.opacity = '0.45';
+      folderNote.textContent = t(body.data.folder_status === 'not_configured'
+        ? 'media_drive_not_ready' : 'media_drive_trouble');
+      folderNote.style.display = 'block';
     }
   } catch (e) {
     console.error('media assets load failed', e);

@@ -3429,14 +3429,13 @@ def client_media_folder(request: Request):
     """Session-gated: the client's own browsable Drive folder link (created +
     shared with their email on first ask). Plain `def`: Drive HTTP calls."""
     client_id = _require_session(request)
-    if not drive_service.is_configured() or not os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
+    from agents.media_agent import media_folder_status
+    folder = media_folder_status(client_id)  # logs + alerts (throttled) with the fix
+    if folder["status"] == "not_configured":
         raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_NOT_CONFIGURED"})
-    from agents.media_agent import get_client_media_link
-    try:
-        return {"success": True, "data": {"link": get_client_media_link(client_id)}}
-    except Exception as e:
-        print(f"[media_folder] failed for client {client_id}: {e}")
-        raise HTTPException(status_code=500, detail={"code": "ERR_MEDIA_FOLDER_FAILED"})
+    if folder["status"] != "ok":
+        raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_FOLDER_FAILED"})
+    return {"success": True, "data": {"link": folder["link"]}}
 
 # ─── The client's OWN leads (client_leads - NOT uallak's `leads` funnel) ─────
 #
@@ -3924,15 +3923,17 @@ def client_media_assets(request: Request, kind: str = ""):
         counts[asset["kind"]] = counts.get(asset["kind"], 0) + 1
     # The browsable Drive folder link is best-effort: media may not be
     # configured, and that must not empty out an otherwise valid asset list.
-    folder_link = ""
+    # folder_status says WHY there is no link, so the Media tab can explain
+    # instead of showing a silently greyed-out button.
     try:
-        if drive_service.is_configured() and os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
-            from agents.media_agent import get_client_media_link
-            folder_link = get_client_media_link(client_id)
+        from agents.media_agent import media_folder_status
+        folder = media_folder_status(client_id)
     except Exception as e:
-        print(f"[media_assets] folder link unavailable for client {client_id}: {e}")
+        print(f"[media_assets] folder status unavailable for client {client_id}: {e}")
+        folder = {"status": "error", "reason": "other"}
     return {"success": True, "data": {"assets": assets, "counts": counts,
-                                      "folder_link": folder_link}}
+                                      "folder_link": folder.get("link", ""),
+                                      "folder_status": folder["status"]}}
 
 # ─── File exports (PDF / Excel / Google Doc) ─────────────────────────────────
 
@@ -4045,7 +4046,8 @@ def client_export_google_doc(dataset: str, request: Request):
     HANDOFF-client-dashboard-nav.md."""
     # Plain `def`: Drive HTTP calls
     client_id = _require_session(request)
-    if not drive_service.is_configured() or not os.environ.get("DRIVE_MEDIA_FOLDER_ID"):
+    # Media gate only - the offboarding ARCHIVE folder has nothing to do with this
+    if not drive_service.is_media_configured():
         raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_NOT_CONFIGURED"})
 
     data = _export_dataset(client_id, dataset)
@@ -4426,6 +4428,17 @@ def admin_control_room_chat_history(client_id: int, request: Request, persona: s
     _require_admin(request)
     from core import control_room
     return {"success": True, "data": control_room.chat_history(client_id, persona)}
+
+@app.post("/api/admin/control-room/{client_id}/drive-self-test")
+def admin_control_room_drive_self_test(client_id: int, request: Request):
+    # Proves the client's media folder is USABLE (folder, upload, list,
+    # delete, link) - the calls generation and delivery make - and names the
+    # exact fix when a step fails. Plain `def`: Drive HTTP calls.
+    _require_admin(request)
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    from agents.media_agent import drive_self_test
+    return {"success": True, "data": drive_self_test(client_id)}
 
 @app.post("/api/admin/control-room/feedback/{feedback_id}/reviewed")
 def admin_control_room_feedback_reviewed(feedback_id: int, request: Request):

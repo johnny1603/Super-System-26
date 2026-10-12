@@ -1909,8 +1909,10 @@ async function openControlRoom(clientId) {
         <div class="page-title">${esc(c.name)}${c.billing_exempt ? ' <span class="status-pill other">פנימי</span>' : ''}</div>
         <div class="page-sub" style="margin:0;">${esc(c.package || '—')} · ${esc(c.status || '')} · ${c.billing_exempt ? 'ללא חיוב' : (d.monthly_fee ? ils(d.monthly_fee) + '/חודש' : 'אין דמי ניהול רשומים')} · ${connLine}</div>
       </div>
+      <button class="manage-btn" onclick="crDriveSelfTest(${Number(c.id)})">בדיקת Drive</button>
       <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
     </div>
+    <div id="crDriveTest"></div>
     ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
 
     <div class="cr-grid">
@@ -2076,6 +2078,27 @@ async function crSend() {
     crState.sending = false;
     const btn = document.getElementById('crSendBtn');
     if (btn) btn.disabled = false;
+  }
+}
+
+// Runs the same Drive calls media delivery makes (folder, upload, list,
+// delete, link) and shows which one broke + the concrete fix
+async function crDriveSelfTest(clientId) {
+  const el = document.getElementById('crDriveTest');
+  el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">בודק גישה לתיקיית המדיה ב-Drive…</div>';
+  try {
+    const r = (await api(`/api/admin/control-room/${clientId}/drive-self-test`, { method: 'POST' })).data;
+    const rows = (r.steps || []).map(s => `<div class="drawer-stat-row">
+        <span class="drawer-stat-label">${s.ok ? '✓' : '✕'} ${esc(s.step)}</span>
+        <span style="color:${s.ok ? 'var(--green)' : 'var(--red)'};font-size:12px;max-width:62%;text-align:left;">${s.ok ? 'תקין' : esc(s.reason || '')}</span></div>
+        ${!s.ok && (s.fix || s.error) ? `<div style="font-size:12px;color:var(--yellow);margin:4px 0 8px;line-height:1.6;">${esc(s.fix || '')}${s.error ? `<div style="color:var(--gray);direction:ltr;text-align:left;">${esc(s.error)}</div>` : ''}</div>` : ''}`).join('');
+    el.innerHTML = `<div class="panel-pad">
+      <div class="drawer-label">${r.ok ? '✓ Drive תקין — העלאה, רשימה וקישור עובדים' : '✕ Drive לא שמיש ללקוח הזה'}</div>
+      ${rows}
+      ${r.folder_link ? `<a href="${esc(r.folder_link)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12.5px;">פתיחת התיקייה ↗</a>` : ''}
+    </div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="panel-pad" style="color:var(--red);">הבדיקה עצמה נכשלה — ראה לוגים</div>';
   }
 }
 
