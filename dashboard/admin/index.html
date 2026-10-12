@@ -229,6 +229,37 @@ details.report-item summary { padding:14px 20px; cursor:pointer; font-size:13.5p
 details.report-item summary::-webkit-details-marker { display:none; }
 details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:var(--gray); }
 
+/* CONTROL ROOM — same panel/pill vocabulary as the rest of the page */
+.cr-row { display:grid; grid-template-columns: 2fr 1.2fr 1fr 1.6fr 1.1fr 90px; align-items:center; padding:13px 20px; border-bottom:1px solid var(--border); font-size:13.5px; cursor:pointer; }
+.cr-row:hover:not(.head) { background: var(--panel-2); }
+.cr-row.head { color:var(--gray); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; padding:12px 20px; cursor:default; }
+.cr-row:last-child { border-bottom:none; }
+.health { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; }
+.health::before { content:''; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.health.attention { color: var(--red); }
+.health.stalled { color: var(--yellow); }
+.health.ok { color: var(--green); }
+.health.inactive { color: var(--gray); }
+.cr-back { background:none; border:1px solid var(--border); color:var(--gray); font-family:'Heebo',sans-serif; font-size:12.5px; padding:6px 14px; border-radius:100px; cursor:pointer; margin-bottom:14px; }
+.cr-back:hover { color:var(--white); }
+.cr-grid { display:grid; grid-template-columns: 1.35fr 1fr; gap:18px; align-items:start; }
+.cr-attn { border-inline-start:3px solid var(--red); padding:9px 12px; background:rgba(255,59,59,0.05); border-radius:8px; margin-bottom:8px; font-size:13px; }
+.cr-attn.feedback { border-color: var(--yellow); background: rgba(255,176,32,0.05); }
+.cr-attn.connections, .cr-attn.seo_strategy, .cr-attn.stalled { border-color: var(--gray); background: rgba(255,255,255,0.03); }
+.cr-attn-meta { font-size:11px; color:var(--gray); margin-top:3px; }
+.cr-split { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.cr-split > div { background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+.persona-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.persona-tab { background:var(--panel-2); border:1px solid var(--border); color:var(--gray); font-family:'Heebo',sans-serif; font-size:12.5px; font-weight:700; padding:6px 12px; border-radius:100px; cursor:pointer; }
+.persona-tab.active { background:var(--accent); border-color:var(--accent); color:white; }
+.cr-chat { height:360px; overflow-y:auto; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
+.cr-msg { margin-bottom:12px; font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+.cr-msg .who { display:block; font-size:10.5px; font-weight:700; color:var(--gray); margin-bottom:2px; }
+.cr-msg.admin .who { color: var(--accent); }
+.cr-msg.pending { color: var(--gray); font-style: italic; }
+.cr-gaps { font-size:11px; color:var(--yellow); margin-top:4px; }
+@media (max-width: 1100px) { .cr-grid { grid-template-columns: 1fr; } }
+
 /* LOGIN */
 .login-overlay {
   position: fixed; inset: 0; background: var(--bg); z-index: 500;
@@ -271,6 +302,10 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
     <div class="nav-item active" data-tab="overview" onclick="showTab('overview', this)">
       <div class="nav-item-left"><span>📈</span> סקירה כללית</div>
     </div>
+    <div class="nav-item" data-tab="control" onclick="showTab('control', this)">
+      <div class="nav-item-left"><span>🛰</span> חדר בקרה</div>
+      <span class="nav-count" id="controlCount" style="display:none;" title="לקוחות שדורשים תשומת לב"></span>
+    </div>
     <div class="nav-item" data-tab="clients" onclick="showTab('clients', this)">
       <div class="nav-item-left"><span>👥</span> לקוחות</div>
       <span class="nav-count" id="clientsCount" style="display:none;"></span>
@@ -294,6 +329,17 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="page-title">סקירה כללית</div>
       <div class="page-sub" id="overviewSub">טוען נתונים…</div>
       <div id="overviewContent"></div>
+    </div>
+
+    <!-- Control Room: its own area, not the client drawer. List = triage queue;
+         a client opens the full view (core/control_room.py) in place. -->
+    <div id="tab-control" style="display:none;">
+      <div id="crList">
+        <div class="page-title">חדר בקרה</div>
+        <div class="page-sub" id="crSub">טוען…</div>
+        <div class="table-wrap" id="crTable"></div>
+      </div>
+      <div id="crClient" style="display:none;"></div>
     </div>
 
     <div id="tab-clients" style="display:none;">
@@ -411,11 +457,12 @@ async function adminLogout() {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
-  ['overview','clients','leads','alerts','reports','costs','pricing','settings'].forEach(t => {
+  ['overview','control','clients','leads','alerts','reports','costs','pricing','settings'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
+  if (name === 'control') crShowList();
   if (name === 'leads') loadLeads();
   if (name === 'reports') loadReports();
   if (name === 'costs') loadOperatingCosts();
@@ -1763,10 +1810,290 @@ async function resetClientPassword(clientId) {
   }
 }
 
+// ─── control room ────────────────────────────────────────────────────────────
+// Own area (core/control_room.py). The chat here talks to the client's agent
+// personas ABOUT the client - the client never sees it (admin_agent_chat
+// table), and it is unrelated to the WhatsApp button and to "הודעה בצ׳אט
+// התמיכה שלו", which DOES reach the client.
+const HEALTH_LABEL = { attention: 'דורש תשומת לב', stalled: 'תקוע', ok: 'תקין', inactive: 'לא פעיל' };
+const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות' };
+const crState = { clientId: null, persona: 'general', personas: [], sending: false };
+
+function crShowList() {
+  document.getElementById('crList').style.display = 'block';
+  document.getElementById('crClient').style.display = 'none';
+  crState.clientId = null;
+  loadControlRoom();
+}
+
+async function loadControlRoom() {
+  const table = document.getElementById('crTable');
+  let rows;
+  try {
+    rows = (await api('/api/admin/control-room')).data || [];
+  } catch (e) {
+    if (e.message !== 'unauthenticated') table.innerHTML = '<div class="empty-state">שגיאה בטעינת חדר הבקרה</div>';
+    return;
+  }
+  const needs = rows.filter(r => r.health === 'attention').length;
+  const countEl = document.getElementById('controlCount');
+  countEl.textContent = needs;
+  countEl.style.display = needs ? 'inline' : 'none';
+  document.getElementById('crSub').textContent = rows.length
+    ? `${needs} דורשים תשומת לב · ${rows.filter(r => r.health === 'stalled').length} תקועים (אין פעילות סוכנים ${7}+ ימים) · ${rows.length} לקוחות`
+    : '';
+  table.innerHTML = rows.length
+    ? `<div class="cr-row head"><div>לקוח</div><div>מצב</div><div>התראות / משוב</div><div>חיבורים</div><div>פעילות אחרונה</div><div></div></div>`
+      + rows.map(r => `<div class="cr-row" onclick="openControlRoom(${Number(r.id)})">
+          <div class="client-name-cell"><div class="client-avatar">${esc(initial(r.name))}</div>
+            <div><div class="client-name">${esc(r.name)}${r.billing_exempt ? ' <span class="status-pill other">פנימי</span>' : ''}</div>
+            <div class="client-email">${esc(r.package || '—')}</div></div></div>
+          <div><span class="health ${esc(r.health)}">${esc(HEALTH_LABEL[r.health] || r.health)}</span></div>
+          <div style="font-size:12.5px;">${r.open_alerts ? `<b style="color:var(--red);">${r.open_alerts}</b> התראות` : '<span style="color:var(--gray);">0 התראות</span>'}
+            ${r.unreviewed_feedback ? ` · <b style="color:var(--yellow);">${r.unreviewed_feedback}</b> משוב` : ''}</div>
+          <div>${(r.platforms || []).map(p => `<span class="platform-tag">${esc(p)}</span>`).join('') || '<span style="color:var(--gray);font-size:12px;">אין</span>'}</div>
+          <div style="color:var(--gray);font-size:12.5px;">${fmtDate(r.last_activity)}</div>
+          <div><button class="manage-btn">פתח</button></div>
+        </div>`).join('')
+    : '<div class="empty-state">אין עדיין לקוחות</div>';
+}
+
+async function openControlRoom(clientId) {
+  // Re-opening the same client (after resolving something) keeps the chosen persona
+  if (crState.clientId !== clientId) crState.persona = 'general';
+  crState.clientId = clientId;
+  document.getElementById('crList').style.display = 'none';
+  const box = document.getElementById('crClient');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="empty-state">טוען…</div>';
+  let d;
+  try {
+    d = (await api(`/api/admin/control-room/${clientId}`)).data;
+  } catch (e) {
+    box.innerHTML = '<button class="cr-back" onclick="crShowList()">→ חזרה לרשימה</button><div class="empty-state">שגיאה בטעינת הלקוח</div>';
+    return;
+  }
+  const c = d.client;
+  crState.personas = d.personas || [];
+
+  const attention = (d.attention || []).map(a => `<div class="cr-attn ${esc(a.kind)}">
+      <div>${esc(a.text)}</div>
+      <div class="cr-attn-meta">${esc(CR_KIND_LABEL[a.kind] || a.kind)}${a.source ? ' · ' + esc(a.source) : ''}${a.at ? ' · ' + fmtDate(a.at) : ''}
+        ${a.kind === 'alert' ? ` · <a href="#" style="color:var(--accent);" onclick="crResolveAlert(${Number(a.id)});return false;">סמן כמטופל</a>` : ''}
+        ${a.kind === 'feedback' ? ` · <a href="#" style="color:var(--accent);" onclick="crFeedbackReviewed(${Number(a.id)});return false;">סמן כנקרא</a>` : ''}</div>
+    </div>`).join('') || '<div class="empty-state" style="padding:14px;">אין כרגע שום דבר שמחכה לך ✓</div>';
+
+  const activity = (d.activity || []).slice(0, 25).map(a => `<div class="drawer-stat-row">
+      <span class="drawer-stat-label">${esc(a.agent_name)} · ${esc(a.action_type)}</span>
+      <span style="color:var(--gray);font-size:11.5px;white-space:nowrap;">${fmtDate(a.created_at)}</span></div>`).join('')
+    || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין פעילות רשומה</div>';
+
+  const feedback = (d.feedback || []).map(f => `<div class="drawer-stat-row">
+      <span>${f.rating ? `<b>${Number(f.rating)}/5</b> · ` : ''}${esc(f.message || '—')}</span>
+      <span style="color:var(--gray);font-size:11.5px;white-space:nowrap;">${f.reviewed ? '✓ ' : ''}${fmtDate(f.created_at)}</span></div>`).join('')
+    || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">הלקוח עוד לא השאיר משוב</div>';
+
+  // Read-only here: open ones are resolvable from the attention list above,
+  // which also refreshes this view (the global card button doesn't)
+  const alerts = (d.alerts || []).slice(0, 12).map(a => renderAlertCard(a, false)).join('')
+    || '<div class="empty-state" style="padding:14px;">אין התראות שמזכירות את הלקוח הזה</div>';
+
+  const conn = d.connections;
+  const connLine = conn ? `${conn.done_count}/${conn.total_count} חיבורים${conn.missing && conn.missing.length ? ' · חסר: ' + esc(conn.missing.join(', ')) : ' ✓'}` : '—';
+
+  box.innerHTML = `
+    <button class="cr-back" onclick="crShowList()">→ חזרה לרשימה</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+      <div class="drawer-avatar">${esc(initial(c.name))}</div>
+      <div style="flex:1;min-width:200px;">
+        <div class="page-title">${esc(c.name)}${c.billing_exempt ? ' <span class="status-pill other">פנימי</span>' : ''}</div>
+        <div class="page-sub" style="margin:0;">${esc(c.package || '—')} · ${esc(c.status || '')} · ${c.billing_exempt ? 'ללא חיוב' : (d.monthly_fee ? ils(d.monthly_fee) + '/חודש' : 'אין דמי ניהול רשומים')} · ${connLine}</div>
+      </div>
+      <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
+    </div>
+    ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
+
+    <div class="cr-grid">
+      <div>
+        <div class="panel-pad">
+          <div class="drawer-label">🔴 דורש את תשומת הלב שלך</div>
+          ${attention}
+        </div>
+        <div class="panel-pad">
+          <div class="drawer-label">תקציב — אורגני מול ממומן</div>
+          <div id="crBudget"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען נתוני פלטפורמות…</div></div>
+        </div>
+        <div class="panel-pad">
+          <div class="drawer-label">פעילות סוכנים אחרונה</div>
+          ${activity}
+        </div>
+        <div class="panel-pad">
+          <div class="drawer-label">התראות שקשורות ללקוח</div>
+          ${alerts}
+        </div>
+        <div class="panel-pad">
+          <div class="drawer-label">משוב שהלקוח השאיר</div>
+          ${feedback}
+        </div>
+      </div>
+
+      <div class="panel-pad" style="position:sticky;top:12px;">
+        <div class="drawer-label">💬 שיחה עם הסוכנים — פרטית, הלקוח לא רואה</div>
+        <div class="persona-tabs" id="crPersonaTabs"></div>
+        <div class="cr-chat" id="crChat"></div>
+        <div class="chat-send-row">
+          <textarea id="crInput" placeholder="למשל: מה קורה עם קמפיין הגוגל? למה העלות לליד עלתה?"
+            onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();crSend();}"></textarea>
+          <button class="alert-btn" id="crSendBtn" onclick="crSend()">שאל</button>
+        </div>
+        <div style="font-size:11px;color:var(--gray);margin-top:6px;">כל תשובה נשענת על נתונים שנשלפים בזמן השאלה. מה שלא נטען — הסוכן אומר במפורש. לא מחובר לוואטסאפ ולא לצ׳אט של הלקוח.</div>
+      </div>
+    </div>`;
+
+  crRenderPersonaTabs();
+  crLoadChat();
+  crLoadBudget(clientId);
+}
+
+function crPlatformLine(label, p) {
+  if (!p || !p.connected) return `<div class="drawer-stat-row"><span class="drawer-stat-label">${label}</span><span style="color:var(--gray);">לא מחובר</span></div>`;
+  if (p.error) return `<div class="drawer-stat-row"><span class="drawer-stat-label">${label}</span><span style="color:var(--yellow);">שגיאת קריאה: ${esc(p.error)}</span></div>`;
+  return `<div class="drawer-stat-row"><span class="drawer-stat-label">${label} (30 יום)</span>
+    <span>${ils(p.cost_30d_ils)}${p.conversions_30d != null ? ` · ${esc(p.conversions_30d)} המרות` : ''}</span></div>`;
+}
+
+async function crLoadBudget(clientId) {
+  const el = document.getElementById('crBudget');
+  try {
+    const b = (await api(`/api/admin/control-room/${clientId}/budget`)).data;
+    if (crState.clientId !== clientId || !el.isConnected) return;
+    if (!b.available) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין תמונה פיננסית זמינה ללקוח זה</div>'; return; }
+    const paid = b.paid, organic = b.organic;
+    const vs = paid.vs_budget;
+    const work = Object.entries(organic.work_last_30d || {}).map(([agent, n]) =>
+      `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(agent)}</span><span>${Number(n)} פעולות</span></div>`).join('')
+      || '<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין פעילות אורגנית ב-30 הימים האחרונים</div>';
+    el.innerHTML = `<div class="cr-split">
+      <div>
+        <div class="drawer-label">ממומן ${conf('hard')}</div>
+        <div class="drawer-stat-row"><span class="drawer-stat-label">תקציב חודשי שהוצהר</span><span>${paid.stated_monthly_budget_ils ? ils(paid.stated_monthly_budget_ils) : '<span style="color:var(--gray);">לא הוצהר</span>'}</span></div>
+        ${crPlatformLine('Google Ads', paid.google_ads)}
+        ${crPlatformLine('Meta', paid.meta_ads)}
+        <div class="drawer-stat-row"><span class="drawer-stat-label"><b>סה״כ בפועל (30 יום)</b></span><span><b>${ils(paid.actual_30d_total_ils)}</b>${vs ? ` · ${vs.ratio_pct}% מהתקציב` : ''}</span></div>
+        ${vs && vs.direction !== 'on_track' ? `<div style="color:var(--accent);font-size:12px;margin-top:6px;">⚠ ${vs.direction === 'over' ? 'חריגה מהתקציב שהוצהר' : 'תת-ניצול של התקציב שהוצהר'}</div>` : ''}
+      </div>
+      <div>
+        <div class="drawer-label">אורגני ${conf('estimate')}</div>
+        <div class="drawer-stat-row"><span class="drawer-stat-label">תקציב חודשי שהוצהר</span><span>${organic.stated_monthly_budget_ils ? ils(organic.stated_monthly_budget_ils) : '<span style="color:var(--gray);">לא הוצהר</span>'}</span></div>
+        <div style="font-size:11px;color:var(--gray);margin:6px 0;">אין שורת הוצאה לאורגני במערכת — מוצגת עבודה שבוצעה:</div>
+        ${work}
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--gray);margin-top:8px;">תקציבים מוצהרים נלקחים משיחת המכירה (${esc(b.forecast_source || 'מקור לא ידוע')}) · נשלף ${fmtDate(b.generated_at)}</div>`;
+  } catch (e) {
+    if (el.isConnected) el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת התקציב</div>';
+  }
+}
+
+function crRenderPersonaTabs() {
+  document.getElementById('crPersonaTabs').innerHTML = crState.personas.map(p =>
+    `<button class="persona-tab ${p.id === crState.persona ? 'active' : ''}" onclick="crSelectPersona('${esc(p.id)}')">${esc(p.name)}</button>`).join('');
+}
+
+function crSelectPersona(persona) {
+  if (crState.sending) return;
+  crState.persona = persona;
+  crRenderPersonaTabs();
+  crLoadChat();
+}
+
+function crPersonaName(id) {
+  const p = crState.personas.find(x => x.id === id);
+  return p ? p.name : id;
+}
+
+function crAppend(role, text, extraClass) {
+  const chat = document.getElementById('crChat');
+  if (!chat) return null;
+  const div = document.createElement('div');
+  div.className = `cr-msg ${role}${extraClass ? ' ' + extraClass : ''}`;
+  div.innerHTML = `<span class="who">${role === 'admin' ? 'אתה' : esc(crPersonaName(crState.persona))}</span>`;
+  div.appendChild(document.createTextNode(text));
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+async function crLoadChat() {
+  const chat = document.getElementById('crChat');
+  const { clientId, persona } = crState;
+  chat.innerHTML = '<div class="cr-msg pending">טוען שיחה…</div>';
+  try {
+    const h = (await api(`/api/admin/control-room/${clientId}/chat?persona=${encodeURIComponent(persona)}`)).data;
+    if (crState.clientId !== clientId || crState.persona !== persona) return;
+    chat.innerHTML = h.available ? '' : '<div class="cr-msg pending">⚠ השיחות לא נשמרות עדיין — צריך להריץ את migrations/2026-10-13-admin-agent-chat.sql. אפשר לשאול בכל זאת.</div>';
+    (h.messages || []).forEach(m => crAppend(m.role, m.content));
+    if (h.available && !(h.messages || []).length) {
+      chat.innerHTML = `<div class="cr-msg pending">שאל את ${esc(crPersonaName(persona))} כל דבר על הלקוח הזה.</div>`;
+    }
+  } catch (e) {
+    chat.innerHTML = '<div class="cr-msg pending">לא הצלחתי לטעון את השיחה הקודמת.</div>';
+  }
+}
+
+async function crSend() {
+  const input = document.getElementById('crInput');
+  const text = input.value.trim();
+  if (!text || crState.sending) return;
+  const { clientId, persona } = crState;
+  const chat = document.getElementById('crChat');
+  chat.querySelectorAll('.cr-msg.pending').forEach(n => n.remove());
+  crState.sending = true;
+  document.getElementById('crSendBtn').disabled = true;
+  input.value = '';
+  crAppend('admin', text);
+  const waiting = crAppend('agent', 'שולף נתונים עדכניים ועונה…', 'pending');
+  try {
+    const res = await api(`/api/admin/control-room/${clientId}/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ persona, message: text }),
+    });
+    if (waiting) waiting.remove();
+    if (crState.clientId !== clientId || crState.persona !== persona) return;
+    if (!res.success) { crAppend('agent', 'השאלה לא נשלחה', 'pending'); input.value = text; return; }
+    const msg = crAppend('agent', res.data.reply);
+    if (msg && (res.data.data_gaps || []).length) {
+      const gaps = document.createElement('div');
+      gaps.className = 'cr-gaps';
+      gaps.textContent = 'לא נטען בזמן השאלה: ' + res.data.data_gaps.join(' · ');
+      msg.appendChild(gaps);
+    }
+  } catch (e) {
+    if (waiting) waiting.remove();
+    crAppend('agent', 'השאלה לא הגיעה לשרת — היא חזרה לתיבה.', 'pending');
+    input.value = text;
+  } finally {
+    crState.sending = false;
+    const btn = document.getElementById('crSendBtn');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function crResolveAlert(id) {
+  await api(`/api/admin/alerts/${id}/resolve`, { method: 'POST' });
+  loadAlerts();
+  if (crState.clientId) openControlRoom(crState.clientId);
+}
+
+async function crFeedbackReviewed(id) {
+  await api(`/api/admin/control-room/feedback/${id}/reviewed`, { method: 'POST' });
+  if (crState.clientId) openControlRoom(crState.clientId);
+}
+
 // ─── boot ────────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    await Promise.all([loadOverview(), loadClients(), loadLeads(), loadAlerts()]);
+    await Promise.all([loadOverview(), loadClients(), loadLeads(), loadAlerts(), loadControlRoom()]);
   } catch (e) {
     if (e.message !== 'unauthenticated') console.error(e);
   }

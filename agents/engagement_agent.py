@@ -718,12 +718,15 @@ def store_feedback(client_id: int, message: str, rating=None,
     return {"success": True, "id": (row.data or [{}])[0].get("id")}
 
 
-def list_feedback(limit: int = 100, only_unreviewed: bool = False) -> list:
-    """Johnny's review list, newest first."""
+def list_feedback(limit: int = 100, only_unreviewed: bool = False, client_id: int = None) -> list:
+    """Johnny's review list, newest first. client_id narrows it to one client
+    (the Control Room's per-client view)."""
     query = (_db().table("client_feedback").select("*")
              .order("created_at", desc=True).limit(limit))
     if only_unreviewed:
         query = query.eq("reviewed", False)
+    if client_id is not None:
+        query = query.eq("client_id", client_id)
     return query.execute().data or []
 
 

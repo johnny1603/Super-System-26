@@ -1885,6 +1885,13 @@ def _archive_and_purge_client(client_id: int, client: dict, export_json: str) ->
         except Exception as e:
             purge_errors.append(f"{table}: {e}")
     try:
+        # Johnny's Control Room conversations about this client. Outside the
+        # loop above: before migrations/2026-10-13-admin-agent-chat.sql runs
+        # the table doesn't exist, and that must not read as a failed purge.
+        db.table("admin_agent_chat").delete().eq("client_id", client_id).execute()
+    except Exception as e:
+        print(f"[offboarding] admin_agent_chat purge skipped for client {client_id}: {e}")
+    try:
         # Tombstone: id/name/package/status/created_at stay for the admin list;
         # every contact/PII field goes. An emptied email also backstops the
         # login hard-lock - request-code starts from an email lookup.
@@ -4370,6 +4377,64 @@ def admin_client_budget_narrative(client_id: int, request: Request):
     _require_admin(request)
     from agents.budget_agent import generate_narrative
     return {"success": True, "data": generate_narrative(client_id)}
+
+# ─── Control Room (core/control_room) — admin browser session only ──────────
+# Its own area of the admin dashboard. The admin<->agent chat lives in the
+# admin_agent_chat table, never in anything the client's chat or data export
+# reads; nothing here has a WhatsApp path.
+
+@app.get("/api/admin/control-room")
+def admin_control_room_list(request: Request):
+    _require_admin(request)
+    from core import control_room
+    return {"success": True, "data": control_room.list_overview()}
+
+@app.get("/api/admin/control-room/{client_id}")
+def admin_control_room_client(client_id: int, request: Request):
+    _require_admin(request)
+    from core import control_room
+    data = control_room.client_view(client_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True, "data": data}
+
+@app.get("/api/admin/control-room/{client_id}/budget")
+def admin_control_room_budget(client_id: int, request: Request):
+    # Lazy: live ad-platform reads (cached in the ad agents), kept off the
+    # main view so the page paints before Google/Meta answer
+    _require_admin(request)
+    from core import control_room
+    return {"success": True, "data": control_room.budget_split(client_id)}
+
+@app.get("/api/admin/control-room/{client_id}/chat")
+def admin_control_room_chat_history(client_id: int, request: Request, persona: str = "general"):
+    _require_admin(request)
+    from core import control_room
+    return {"success": True, "data": control_room.chat_history(client_id, persona)}
+
+@app.post("/api/admin/control-room/feedback/{feedback_id}/reviewed")
+def admin_control_room_feedback_reviewed(feedback_id: int, request: Request):
+    # Browser-session twin of /api/admin/feedback/{id}/reviewed, which is
+    # X-Admin-Key only - so until now no screen could mark feedback as read
+    _require_admin(request)
+    from agents.engagement_agent import mark_feedback_reviewed
+    return {"success": True, "data": mark_feedback_reviewed(feedback_id)}
+
+class AdminAgentChatRequest(BaseModel):
+    persona: str = "general"
+    message: str
+
+@app.post("/api/admin/control-room/{client_id}/chat")
+def admin_control_room_chat(client_id: int, req: AdminAgentChatRequest, request: Request):
+    # Plain `def`: grounding makes several blocking reads, then one LLM call
+    _require_admin(request)
+    from core import control_room
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    result = control_room.ask_agent(client_id, req.persona, req.message)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code")})
+    return {"success": True, "data": result}
 
 @app.get("/api/budget/scan", dependencies=_admin_only)
 def budget_scan():

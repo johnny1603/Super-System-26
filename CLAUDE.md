@@ -104,6 +104,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   one row per client, the conversation that sold them), so it approximates with
   Google/Meta ad conversions and always reports `complete: False`. Tier crossings
   alert admin only — nothing bills automatically. See `HANDOFF-lead-volume-tiers.md`.
+- `core/control_room.py` — the admin "חדר בקרה" (own nav tab): triage list → per-client
+  view (activity, organic-vs-paid, client-matched alerts, feedback, "needs your
+  attention") + Johnny's private chat with that client's personas. Alerts have no
+  client_id — matched on the "client {id}" text convention, so keep writing it. The chat
+  lives in `admin_agent_chat` (migration `2026-10-13-admin-agent-chat.sql`) and must
+  NEVER move to `client_communications`/`client_activity`: both reach the client (chat
+  history + data export). Answers are grounded in a per-question data block with explicit
+  `data_gaps`; read-only like the client personas. See `HANDOFF-control-room.md`.
 - `core/chat_fallback.py` — **no client-facing chat ever dead-ends on an error.** Two
   distinct cases: OUT OF SCOPE (model works; it answers in its own voice, flags
   `out_of_scope`, we alert) and TECHNICAL (something broke; FIXED per-persona,
