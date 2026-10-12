@@ -313,6 +313,81 @@ def delete_application_password(site_url: str, username: str, app_password: str,
                        username, app_password)
 
 
+def introspect_application_password(site_url: str, username: str, app_password: str) -> dict:
+    """The Application Password THIS request authenticated with (WP 5.7+) —
+    how one-click connect finds and deletes the password that travelled
+    through a URL, without touching any of the client's other ones."""
+    return rest_get(site_url, "wp/v2/users/me/application-passwords/introspect",
+                    username, app_password)
+
+
+# ─── "Authorize Application" discovery (one-click connect) ───────────────────
+#
+# WordPress core (5.6+) ships wp-admin/authorize-application.php: the logged-in
+# user sees "<app> would like to connect", clicks Approve, and WP redirects to
+# our success_url with site_url / user_login / password appended. Checked
+# against core source (2026-10-13), not assumed:
+#   - success_url / reject_url must be https (http only for local/loopback);
+#     app_id must be a UUID.
+#   - Reject redirects to reject_url AS-IS (nothing appended) — so anything we
+#     need back, like our state token, must already be inside it.
+#   - The whole feature exists only when wp_is_application_passwords_available():
+#     the site is served over HTTPS (or WP_ENVIRONMENT_TYPE=local), and no
+#     plugin filtered it off (Wordfence's "Disable application passwords"
+#     option, Solid Security, "Disable Application Passwords"-style plugins).
+#   - The ANONYMOUS REST index advertises exactly that: when available, it
+#     carries authentication.application-passwords.endpoints.authorization.
+# That last point is the official discovery mechanism, so we check it BEFORE
+# sending a client to a page that would only show them an error.
+
+def discover_authorization(site_url: str) -> dict:
+    """Anonymous: can this site do one-click Authorize Application?
+
+    Returns {"reachable", "is_wordpress", "available", "authorize_url",
+    "rest_base"}. NEVER raises.
+
+      available True  — the REST index advertises the authorization endpoint.
+      available False — it's WordPress with an open REST index but NO such
+                        entry: application passwords are off (non-HTTPS or a
+                        security plugin/host). The manual path needs the same
+                        feature, so it will fail too — the caller says so.
+      available None  — couldn't read the REST index (blocked for anonymous
+                        visitors, WAF, not JSON). Unknown, not "no": the
+                        conventional wp-admin URL is offered as a best try.
+
+    rest_base is where /wp-json/ actually answered after redirects (www vs
+    bare, http→https) — the URL the stored connection must use."""
+    result = {"reachable": False, "is_wordpress": False, "available": None,
+              "authorize_url": "", "rest_base": ""}
+    try:
+        site_url = normalize_site_url(site_url)
+    except ValueError:
+        return result
+    result["rest_base"] = site_url
+    rest = _probe_get(f"{site_url}/wp-json/")
+    if rest is None:
+        return result
+    result["reachable"] = True
+    final = str(rest.url)
+    marker = final.find("/wp-json")
+    if marker > 0:
+        result["rest_base"] = final[:marker].rstrip("/")
+    if rest.status_code != 200:
+        return result
+    try:
+        body = rest.json()
+    except Exception:
+        return result
+    if not isinstance(body, dict) or "wp/v2" not in (body.get("namespaces") or []):
+        return result
+    result["is_wordpress"] = True
+    endpoint = (((body.get("authentication") or {}).get("application-passwords") or {})
+                .get("endpoints") or {}).get("authorization") or ""
+    result["available"] = bool(endpoint)
+    result["authorize_url"] = endpoint
+    return result
+
+
 # ─── Posts + pages (content_type: 'post' → wp/v2/posts, 'page' → wp/v2/pages) ─
 
 def _collection(content_type: str) -> str:

@@ -141,6 +141,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   guards intact), never a second door into `provision_site`. All expectation-setting is
   FIXED Hebrew text in אורי's chat thread — it's a promise, so it must not drift.
   See `HANDOFF-existing-site.md`.
+- **WordPress connect is ONE-CLICK by default** (`website_agent.start_authorize_connect` /
+  `complete_authorize_connect`, `/api/website/authorize/{start,callback,rejected}`): WP
+  core's `authorize-application.php` approval screen, discovered first via the anonymous
+  REST index (`wordpress_service.discover_authorization`). The password arrives in a URL
+  query string, so it is **rotated** immediately (mint fresh over REST, delete the
+  URL-borne one) before `connect_site()` stores it exactly like a pasted one. The manual
+  Application Password form (`/api/website/connect`) stays as the fallback. See
+  `HANDOFF-wordpress-oneclick.md`.
 - `core/crm_service.py` + `agents/crm_agent.py` — OPT-IN sync of `client_leads` into a
   CRM the CLIENT owns (HubSpot, Pipedrive). **A client with no CRM connected sees zero
   change**, and our copy of the lead is always the record: capture stores the row and

@@ -37,6 +37,51 @@ Application Passwords are revocable in wp-admin at any time — the daily scan
 exists because a client (or their old webmaster) can kill the connection
 without telling us.
 
+### One-click connect — the DEFAULT since 2026-10-13
+
+WP core's "Authorize Application" screen (`wp-admin/authorize-application.php`,
+5.6+) issues the same Application Password without the client creating or
+pasting anything. Flow: card's "חיבור בלחיצה אחת" → `POST
+/api/website/authorize/start` {site_url} → `start_authorize_connect` probes the
+anonymous REST index (`wp.discover_authorization`) and returns the approval URL
+(`app_name=uallak`, fixed `app_id` UUID, success/reject URLs carrying a signed
+state) + sets a nonce cookie → client approves (logging in first if needed) →
+WP redirects to `GET /api/website/authorize/callback` with
+`user_login`/`password` → `complete_authorize_connect` → **rotation** (below) →
+`connect_site()` — identical validation + `client_accounts` row as the manual form.
+
+Verified against core source, not assumed:
+- success/reject URLs must be https; `app_id` must be a UUID.
+- On "No", WP redirects to `reject_url` with NOTHING appended — the state must
+  already be inside it. `GET /api/website/authorize/rejected` writes fixed
+  Hebrew retry guidance into אורי's thread and the dashboard reopens the card +
+  that chat (never a dead end).
+- The callback's `site_url` param is WP's `site_url()` (may differ from where
+  REST lives) and attacker-controllable — **ignored**; the site comes from our
+  signed state, which also pins client_id, and must match the session + nonce.
+- The feature exists only when `wp_is_application_passwords_available()`:
+  HTTPS (or env=local) and not filtered off. The REST index advertises
+  `authentication.application-passwords.endpoints.authorization` exactly then —
+  that's how we tell "off" (`ERR_WP_APP_PASSWORDS_DISABLED`; the manual form
+  would fail too, so we don't offer it) from "unknown" (REST index blocked → try
+  the conventional wp-admin URL, manual form one click away).
+
+**Rotation**: the password arrives in a URL query string → Cloud Run request
+log, proxy log, browser history. We use it once to mint a fresh password
+(`POST users/me/application-passwords`, same trick as provisioning), store the
+fresh one, and delete ONLY the URL-borne one (found via `.../introspect`, WP
+5.7+ — on 5.6 it lingers, logged). Never touches the client's other passwords.
+Activity: `website_authorize_started/completed/rejected` (`credential_rotated`).
+
+What can still block it (all land on the manual form or a named error):
+Wordfence's "Disable application passwords" option (reported on by default in
+some setups), Solid Security / "disable application passwords" plugins, non-HTTPS
+sites, staging sites behind HTTP basic auth (core refuses there), hosts/WAFs
+that strip the `Authorization` header (approval works but `connect_site`
+validation 401s → `?connect_error=wordpress`, manual form shown — the manual
+path hits the same wall, so the real fix is on their host), WordPress.com
+non-Business plans (no plugin-level wp-admin), WP < 5.6.
+
 ## File map
 
 - `core/wordpress_service.py` — HTTP only (mirrors meta_service):
@@ -70,7 +115,9 @@ without telling us.
 
 ## Endpoints
 
-Client-facing: `POST /api/website/connect` (session cookie), `POST
+Client-facing: `POST /api/website/authorize/start` + `GET
+/api/website/authorize/{callback,rejected}` (one-click, default), `POST
+/api/website/connect` (manual fallback; session cookie), `POST
 /api/website/self-provision` (session cookie, no body — see "Self-service
 provisioning" below).
 Admin/scheduler (X-Admin-Key): `POST /api/website/publish`,

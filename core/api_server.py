@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from supabase import create_client as _supabase_create_client, Client
 
@@ -47,6 +47,7 @@ from core.session import (
     create_admin_session_token, verify_admin_session_token,
     create_lead_capture_token, verify_lead_capture_token,
     session_token_version, create_google_login_state, verify_google_login_state,
+    create_wp_connect_state, verify_wp_connect_state,
 )
 from core import client_auth
 from core import google_ads_service
@@ -2586,6 +2587,105 @@ def website_connect(req: WebsiteConnectRequest, request: Request):
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "connection failed"))
     return {"success": True, "data": result}
+
+# One-click connect via WordPress core's "Authorize Application" screen - the
+# DEFAULT path; /api/website/connect above stays as the manual fallback. See
+# website_agent's "One-click connect" section (credential rotation) and
+# wordpress_service.discover_authorization (when the screen can't work).
+WP_CONNECT_NONCE_COOKIE = "wp_connect_nonce"
+WP_CONNECT_COOKIE_PATH = "/api/website/authorize"
+
+class WebsiteAuthorizeStartRequest(BaseModel):
+    site_url: str
+
+@app.post("/api/website/authorize/start")
+def website_authorize_start(req: WebsiteAuthorizeStartRequest, request: Request):
+    # JSON, not a redirect: the site must be probed first, and a failure needs
+    # to come back as a localized code on the card, not a dead page. Plain
+    # `def` - the probe is a blocking request to the client's site.
+    client_id = _require_session(request)
+    from urllib.parse import quote
+    from agents.website_agent import start_authorize_connect
+    from core.wordpress_service import normalize_site_url
+    if not (req.site_url or "").strip():
+        raise HTTPException(status_code=400, detail={"code": "ERR_SITE_URL_REQUIRED"})
+    try:
+        typed = normalize_site_url(req.site_url)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "ERR_SITE_URL_REQUIRED"})
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    nonce = secrets.token_urlsafe(24)
+
+    def return_urls(resolved_site: str):
+        # Signed against the site as RESOLVED by the probe (www / https
+        # redirects) - the exact URL the callback will store
+        state = quote(create_wp_connect_state(client_id, resolved_site, nonce), safe="")
+        return (f"{base}/api/website/authorize/callback?state={state}",
+                f"{base}/api/website/authorize/rejected?state={state}")
+
+    result = start_authorize_connect(client_id, typed, return_urls)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_WP_AUTHORIZE_FAILED")})
+    response = JSONResponse({"success": True, "data": {
+        "authorize_url": result["authorize_url"], "discovered": result["discovered"]}})
+    # Lax: the callback is a top-level navigation back FROM the client's site
+    response.set_cookie(WP_CONNECT_NONCE_COOKIE, nonce, max_age=30 * 60, httponly=True,
+                        secure=True, samesite="lax", path=WP_CONNECT_COOKIE_PATH)
+    return response
+
+def _wp_connect_state(request: Request, state: str):
+    # Session AND signed state AND nonce cookie must all agree - a link crafted
+    # elsewhere (carrying someone else's site + password) fails here
+    try:
+        session_client = _require_session(request)
+    except HTTPException:
+        return None
+    pinned = verify_wp_connect_state(state, request.cookies.get(WP_CONNECT_NONCE_COOKIE, ""))
+    if not pinned or pinned[0] != session_client:
+        return None
+    return pinned
+
+def _wp_connect_redirect(url: str):
+    response = RedirectResponse(url=url, status_code=303)
+    response.delete_cookie(WP_CONNECT_NONCE_COOKIE, path=WP_CONNECT_COOKIE_PATH)
+    # The request that got us here carried the password in its URL - nothing
+    # downstream gets it as a Referer
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+@app.get("/api/website/authorize/callback")
+def website_authorize_callback(request: Request, state: str = "", user_login: str = "",
+                               password: str = "", success: str = ""):
+    # WordPress appends site_url/user_login/password on approval. site_url is
+    # deliberately IGNORED - the site comes from our signed state. Plain `def`:
+    # rotation + validation are blocking calls to the client's site.
+    pinned = _wp_connect_state(request, state)
+    if not pinned:
+        return _wp_connect_redirect("/dashboard/?connect_error=wordpress_expired")
+    client_id, site_url = pinned
+    from agents.website_agent import complete_authorize_connect, record_authorize_rejected
+    if success == "false" or not password:
+        # Older/odd WP builds can bounce a denial back to success_url
+        record_authorize_rejected(client_id, site_url)
+        return _wp_connect_redirect("/dashboard/?connect_error=wordpress_rejected")
+    try:
+        result = complete_authorize_connect(client_id, site_url, user_login, password)
+    except Exception as e:
+        print(f"[wordpress authorize] client {client_id}: {type(e).__name__}: {e}")
+        alert("website_agent", [f"client {client_id}: WordPress one-click connect failed after "
+                                f"approval - {type(e).__name__}: {e}"])
+        return _wp_connect_redirect("/dashboard/?connect_error=wordpress_platform")
+    if not result.get("success"):
+        return _wp_connect_redirect("/dashboard/?connect_error=wordpress")
+    return _wp_connect_redirect("/dashboard/?connected=wordpress")
+
+@app.get("/api/website/authorize/rejected")
+def website_authorize_rejected(request: Request, state: str = ""):
+    pinned = _wp_connect_state(request, state)
+    if pinned:
+        from agents.website_agent import record_authorize_rejected
+        record_authorize_rejected(pinned[0], pinned[1])
+    return _wp_connect_redirect("/dashboard/?connect_error=wordpress_rejected")
 
 # ─── Existing site: detect, then one of TWO paths ────────────────────────────
 # Session-gated. Detection is anonymous (no credentials) so a client never has

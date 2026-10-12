@@ -84,6 +84,37 @@ def verify_google_login_state(token: str, cookie_nonce: str) -> bool:
     return bool(payload and cookie_nonce and hmac.compare_digest(str(payload.get("nonce", "")), cookie_nonce))
 
 
+WP_CONNECT_STATE_MAX_AGE_SECONDS = 30 * 60  # may include logging in to wp-admin first
+
+
+def _sign_wp_connect(payload_b64: bytes) -> str:
+    # Derived secret: this state rides inside the success/reject URLs we hand
+    # to the client's WordPress site, so it must never verify as anything else
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":wp-connect").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_wp_connect_state(client_id: int, site_url: str, nonce: str) -> str:
+    """State for WordPress one-click connect. Pins the client AND the site we
+    sent them to — the callback stores credentials for THAT site only, never a
+    site_url taken from the query string — and a nonce that is also a cookie,
+    so a forged callback link can't attach someone else's site to a victim."""
+    payload = json.dumps({"client_id": client_id, "site": site_url, "nonce": nonce,
+                          "exp": int(time.time()) + WP_CONNECT_STATE_MAX_AGE_SECONDS}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_wp_connect(payload_b64)}"
+
+
+def verify_wp_connect_state(token: str, cookie_nonce: str):
+    """(client_id, site_url) for a valid state whose nonce matches the cookie,
+    otherwise None."""
+    payload = _verify(token, _sign_wp_connect)
+    if not (payload and cookie_nonce
+            and hmac.compare_digest(str(payload.get("nonce", "")), cookie_nonce)):
+        return None
+    return payload.get("client_id"), payload.get("site", "")
+
+
 def create_oauth_state_token(client_id: int) -> str:
     """Short-lived CSRF state for OAuth redirects. Carries the client_id so the
     callback doesn't have to rely on the session cookie surviving the round-trip

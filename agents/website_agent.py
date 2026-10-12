@@ -17,9 +17,11 @@ research into a build BRIEF. It generates no content and publishes nothing —
 the pipe rule's actual purpose (content generation lives in the agent that
 owns the content) is intact. Everything else here remains LLM-free.
 
-Connection flow (no OAuth): the client fills site URL + WP username +
-Application Password in the dashboard card → POST /api/website/connect →
-connect_site() validates against the live site and stores ONE row in
+Connection flow (no OAuth): by default ONE-CLICK — the client approves us on
+WordPress's own "Authorize Application" screen (see the "One-click connect"
+section); the fallback is the manual form (site URL + WP username +
+Application Password → POST /api/website/connect). Both end in
+connect_site(), which validates against the live site and stores ONE row in
 client_accounts: platform='wordpress', account_id=site URL,
 access_token='username:app_password' (WP usernames cannot contain ':').
 
@@ -246,6 +248,154 @@ def connect_site(client_id: int, site_url: str, username: str, app_password: str
     return {"success": True, "site_url": site_url, "site_name": info.get("name", ""),
             "seo_plugin": info.get("seo_plugin"),
             "can_manage_plugins": bool(capabilities.get("install_plugins"))}
+
+
+# ─── One-click connect (WordPress "Authorize Application", core 5.6+) ────────
+#
+# The DEFAULT connect path. Only HOW the credential is obtained changes: the
+# client approves us on their own wp-admin screen instead of creating and
+# pasting an Application Password, and the result goes through connect_site()
+# exactly like a pasted one — same validation, same client_accounts row. The
+# manual form stays as the fallback (see discover_authorization for when the
+# one-click page can't work).
+#
+# One addition on top of connect_site: CREDENTIAL ROTATION. WordPress hands the
+# password back in the success_url QUERY STRING, so it lands in Cloud Run's
+# request log, the proxy's log and the browser history. We use it exactly once
+# to mint a fresh password over REST (same trick as provision_site), store the
+# fresh one, and delete the one that travelled through URLs. If rotation isn't
+# possible the original still works and is stored; the activity row says so.
+
+WP_APP_NAME = "uallak"
+# Fixed app_id (must be a UUID): every password we hold on a client's site
+# carries it, so we can tell ours from the client's own other integrations.
+WP_APP_ID = "6f1d3c2a-8b4e-4f7a-9c35-2e7d1a0b5c84"
+
+WP_REJECTED_MESSAGE = (
+    'ראיתי שהחיבור לאתר לא אושר — זה בסדר גמור, שום דבר לא השתנה באתר שלכם. 🙂\n\n'
+    'אם זה קרה בטעות (או שהחלון נסגר באמצע), אפשר לנסות שוב מתי שנוח: '
+    'בכרטיס "האתר שלך" לוחצים "חיבור בלחיצה אחת", ובמסך של וורדפרס לוחצים '
+    'על כפתור האישור (באנגלית: "Yes, I approve of this connection").\n\n'
+    'מה בדיוק אנחנו מקבלים? גישה לפרסם ולערוך תכנים באתר בשמכם. אפשר לבטל אותה '
+    'בכל רגע מתוך ניהול האתר (משתמשים ← פרופיל ← Application Passwords), '
+    'והסיסמה הרגילה שלכם לא נחשפת אלינו אף פעם.\n\n'
+    'יש התלבטות? כתבו לי כאן ואסביר.')
+
+
+def start_authorize_connect(client_id: int, site_url: str, return_urls) -> dict:
+    """Build the wp-admin "Authorize Application" URL for this client's site.
+
+    `return_urls(resolved_site_url) -> (success_url, reject_url)` is supplied
+    by the API layer (which owns the signed state + nonce cookie); it is called
+    with the site as RESOLVED here, so the state pins the URL we will actually
+    store. WordPress returns reject_url untouched, so the state must be inside
+    both URLs.
+
+    Returns {"success": True, "authorize_url", "site_url", "discovered"} or
+    {"success": False, "code": ERR_X}."""
+    from urllib.parse import urlencode
+
+    try:
+        site_url = wp.normalize_site_url(site_url)
+    except ValueError:
+        return {"success": False, "code": "ERR_SITE_URL_REQUIRED"}
+    if is_connected(client_id):
+        return {"success": False, "code": "ERR_WEBSITE_ALREADY_CONNECTED"}
+
+    found = wp.discover_authorization(site_url)
+    base = found.get("rest_base") or site_url
+    log_step(AGENT_NAME, "start_authorize_connect",
+             f"client {client_id}: {base} reachable={found['reachable']} "
+             f"wp={found['is_wordpress']} available={found['available']}")
+    if not found["reachable"]:
+        return {"success": False, "code": "ERR_SITE_UNREACHABLE"}
+    if base.startswith("http://"):
+        # Core turns application passwords off without HTTPS — neither path works
+        return {"success": False, "code": "ERR_SITE_NOT_HTTPS"}
+    if found["available"] is False:
+        # WordPress, but the feature is switched off (security plugin / host).
+        # The manual form needs the same feature, so we say so instead of
+        # pretending the fallback will help.
+        return {"success": False, "code": "ERR_WP_APP_PASSWORDS_DISABLED"}
+    if found["available"] is None and wp.detect_wordpress(base)["confidence"] == "unlikely":
+        # REST index unreadable AND the homepage shows no WordPress tells —
+        # don't send them to a wp-admin URL that would just 404
+        return {"success": False, "code": "ERR_NOT_WORDPRESS"}
+
+    endpoint = found["authorize_url"] or f"{base}/wp-admin/authorize-application.php"
+    success_url, reject_url = return_urls(base)
+    query = urlencode({"app_name": WP_APP_NAME, "app_id": WP_APP_ID,
+                       "success_url": success_url, "reject_url": reject_url})
+    joiner = "&" if "?" in endpoint else "?"
+    _log_activity(client_id, "website_authorize_started",
+                  {"site_url": base, "discovered": found["available"] is True})
+    return {"success": True, "authorize_url": f"{endpoint}{joiner}{query}",
+            "site_url": base, "discovered": found["available"] is True}
+
+
+def _rotate_authorized_password(site_url: str, username: str, password: str) -> str:
+    """Mint a replacement for the URL-borne password and delete the original.
+    Returns the new password, or "" when rotation wasn't possible (the caller
+    then stores the original). Never deletes anything but the one password
+    WordPress just issued to us."""
+    try:
+        created = wp.rest_post(site_url, "wp/v2/users/me/application-passwords",
+                               username, password,
+                               data={"name": WP_APP_NAME, "app_id": WP_APP_ID})
+    except Exception as e:
+        log_step(AGENT_NAME, "rotate_password", f"{site_url}: mint failed — {e}")
+        return ""
+    new_password, new_uuid = created.get("password") or "", created.get("uuid") or ""
+    if not new_password:
+        return ""
+    try:
+        old_uuid = (wp.introspect_application_password(site_url, username, password)
+                    .get("uuid") or "")
+        if old_uuid and old_uuid != new_uuid:
+            wp.delete_application_password(site_url, username, new_password, old_uuid)
+    except Exception as e:
+        # The new one works; the old one lingering is the pre-rotation state,
+        # not a broken connection. Logged, not alerted.
+        log_step(AGENT_NAME, "rotate_password", f"{site_url}: could not delete the original — {e}")
+    return new_password
+
+
+def complete_authorize_connect(client_id: int, site_url: str, user_login: str,
+                               password: str) -> dict:
+    """WordPress approved: rotate the credential, then store it through
+    connect_site() — the same validation and storage as the manual form.
+
+    site_url comes from OUR signed state, never from the callback's query
+    string (that one is WP's site_url(), which can differ from where the REST
+    API lives, and is attacker-controllable in a forged link)."""
+    user_login, password = (user_login or "").strip(), (password or "").strip()
+    if not user_login or not password:
+        return {"success": False, "error": "missing credentials from WordPress"}
+    rotated = _rotate_authorized_password(site_url, user_login, password)
+    result = connect_site(client_id, site_url, user_login, rotated or password)
+    if not result.get("success") and rotated:
+        # Rotation proved the credential works, so this is unusual — don't
+        # leave an orphaned password of ours behind on their site
+        try:
+            uuid = (wp.introspect_application_password(site_url, user_login, rotated)
+                    .get("uuid") or "")
+            if uuid:
+                wp.delete_application_password(site_url, user_login, rotated, uuid)
+        except Exception:
+            pass
+    _log_activity(client_id, "website_authorize_completed",
+                  {"site_url": site_url, "connected": bool(result.get("success")),
+                   "credential_rotated": bool(rotated)})
+    return result
+
+
+def record_authorize_rejected(client_id: int, site_url: str) -> None:
+    """The client clicked "No" (or the approval page bounced them back). Not a
+    dead end: אורי explains in his thread what happened and how to retry, in
+    fixed wording — the dashboard opens that thread and the retry button."""
+    from agents.client_agent import log_communication
+    _log_activity(client_id, "website_authorize_rejected", {"site_url": site_url})
+    log_communication(client_id, "outbound", _website_channel(), WP_REJECTED_MESSAGE)
 
 
 # ─── Existing site: detect, then TWO distinct paths ───────────────────────────

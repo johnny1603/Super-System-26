@@ -1141,12 +1141,21 @@ a.media-item:hover { border-color: var(--accent); }
         <button class="conn-btn primary" id="existingSiteBtn" onclick="assessExistingSite()" data-i18n="site_existing_check">בדקו את האתר שלי</button>
         <div id="existingSiteResult" style="margin-top:10px;"></div>
       </div>
+      <!-- Default: one-click "Authorize Application" (WP core 5.6+) - the client
+           approves us on their own wp-admin screen, nothing to copy. The manual
+           Application Password form below is the fallback for sites where that
+           screen can't work. -->
       <div id="siteForm" style="display:none; margin-top:10px;">
         <input class="site-input" id="siteUrl" dir="ltr" data-i18n-placeholder="site_url_ph" placeholder="כתובת האתר, למשל mysite.co.il">
-        <input class="site-input" id="siteUser" dir="ltr" data-i18n-placeholder="site_user_ph" placeholder="שם משתמש WordPress">
-        <input class="site-input" id="sitePass" dir="ltr" type="password" placeholder="Application Password">
-        <div class="lock-note" data-i18n="site_app_pw_note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
-        <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()" data-i18n="site_connect">חיבור</button>
+        <div class="lock-note" data-i18n="site_oneclick_note">נעביר אתכם למסך הניהול של האתר שלכם. אם תתבקשו — התחברו כרגיל, ואז לחצו "אישור". זה הכל, אין מה להעתיק.</div>
+        <button class="conn-btn primary" id="siteOneClickBtn" onclick="connectWebsiteOneClick()" data-i18n="site_oneclick_btn">חיבור בלחיצה אחת</button>
+        <button class="conn-btn secondary" id="siteManualToggle" style="margin-top:8px;" onclick="openSiteManualExplained()" data-i18n="site_manual_toggle">לא עובד? חיבור ידני עם Application Password</button>
+        <div id="siteManualForm" style="display:none; margin-top:10px;">
+          <input class="site-input" id="siteUser" dir="ltr" data-i18n-placeholder="site_user_ph" placeholder="שם משתמש WordPress">
+          <input class="site-input" id="sitePass" dir="ltr" type="password" placeholder="Application Password">
+          <div class="lock-note" data-i18n="site_app_pw_note">יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords</div>
+          <button class="conn-btn primary" id="siteSubmitBtn" onclick="connectWebsite()" data-i18n="site_connect">חיבור</button>
+        </div>
       </div>
       <div id="siteCreateForm" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="site_create_time_note">ההקמה כוללת שכפול אתר וורדפרס מקצועי ובדיקות תקינות ראשוניות — זה לוקח בדרך כלל כמה דקות, לא מיידי. נעדכן אתכם כאן וגם בצ'אט כשהאתר מוכן.</div>
@@ -1808,6 +1817,20 @@ const DASH_I18N = {
   site_user_ph: { he:'שם משתמש WordPress', en:'WordPress username', fr:'Nom d\'utilisateur WordPress', ar:'اسم مستخدم WordPress', ru:'Имя пользователя WordPress' },
   site_app_pw_note: { he:'יוצרים סיסמת אפליקציה באתר: משתמשים ← פרופיל ← Application Passwords', en:'Create an Application Password on your site: Users → Profile → Application Passwords', fr:'Créez un mot de passe d\'application : Utilisateurs → Profil → Application Passwords', ar:'أنشئ كلمة مرور تطبيق في موقعك: المستخدمون ← الملف الشخصي ← Application Passwords', ru:'Создайте пароль приложения на сайте: Пользователи → Профиль → Application Passwords' },
   site_connect: { he:'חיבור', en:'Connect', fr:'Connecter', ar:'ربط', ru:'Подключить' },
+  site_oneclick_note: { he:'נעביר אתכם למסך הניהול של האתר שלכם. אם תתבקשו — התחברו כרגיל, ואז לחצו "אישור". זה הכל, אין מה להעתיק.', en:'We\'ll take you to your site\'s admin screen. If asked, log in as usual, then click "Approve". That\'s it — nothing to copy.', fr:'Nous vous emmenons sur l\'écran d\'administration de votre site. Si demandé, connectez-vous normalement, puis cliquez sur « Approuver ». C\'est tout — rien à copier.', ar:'سننقلكم إلى شاشة إدارة موقعكم. إذا طُلب منكم، سجّلوا الدخول كالمعتاد ثم اضغطوا "موافقة". هذا كل شيء — لا شيء للنسخ.', ru:'Мы перенаправим вас в админку вашего сайта. Если попросят — войдите как обычно, затем нажмите «Одобрить». Всё — ничего копировать не нужно.' },
+  site_oneclick_btn: { he:'חיבור בלחיצה אחת', en:'One-click connect', fr:'Connexion en un clic', ar:'ربط بنقرة واحدة', ru:'Подключить в один клик' },
+  site_oneclick_checking: { he:'בודקים את האתר...', en:'Checking your site…', fr:'Vérification du site…', ar:'جارٍ فحص الموقع...', ru:'Проверяем сайт…' },
+  site_oneclick_failed: { he:'לא הצלחנו להתחיל את החיבור בלחיצה אחת — אפשר לנסות שוב, או להשתמש בחיבור הידני למטה', en:'We couldn\'t start one-click connect — try again, or use the manual connection below', fr:'Impossible de lancer la connexion en un clic — réessayez ou utilisez la connexion manuelle ci-dessous', ar:'تعذّر بدء الربط بنقرة واحدة — حاولوا مجددًا أو استخدموا الربط اليدوي أدناه', ru:'Не удалось запустить подключение в один клик — попробуйте снова или используйте ручное подключение ниже' },
+  site_manual_toggle: { he:'לא עובד? חיבור ידני עם Application Password', en:'Not working? Connect manually with an Application Password', fr:'Ça ne marche pas ? Connexion manuelle avec un Application Password', ar:'لا يعمل؟ اربطوا يدويًا باستخدام Application Password', ru:'Не работает? Подключите вручную через Application Password' },
+  err_site_url_required: { he:'צריך כתובת אתר כדי להתחבר', en:'A site address is needed to connect', fr:'Une adresse de site est nécessaire pour se connecter', ar:'نحتاج عنوان الموقع للربط', ru:'Для подключения нужен адрес сайта' },
+  err_not_wordpress: { he:'נראה שהאתר הזה לא בנוי על וורדפרס, אז אי אפשר לחבר אותו כך. לחצו "יש לי אתר קיים — בדקו אותו" ונציע את הדרך המתאימה', en:'This site doesn\'t look like WordPress, so it can\'t be connected this way. Click "I have an existing site — check it" and we\'ll suggest the right path', fr:'Ce site ne semble pas être sous WordPress, il ne peut donc pas être connecté ainsi. Cliquez sur « J\'ai déjà un site — vérifiez-le » et nous proposerons la bonne voie', ar:'يبدو أن هذا الموقع ليس مبنيًا على WordPress، لذا لا يمكن ربطه بهذه الطريقة. اضغطوا "لدي موقع قائم — افحصوه" وسنقترح المسار المناسب', ru:'Похоже, этот сайт не на WordPress, поэтому так его не подключить. Нажмите «У меня уже есть сайт — проверьте его», и мы предложим подходящий путь' },
+  err_site_unreachable: { he:'לא הצלחנו להגיע לאתר הזה מהשרת שלנו — בדקו שהכתובת מדויקת ונסו שוב', en:'We couldn\'t reach this site from our server — check the address and try again', fr:'Impossible d\'atteindre ce site depuis notre serveur — vérifiez l\'adresse et réessayez', ar:'تعذّر الوصول إلى هذا الموقع من خادمنا — تحققوا من العنوان وحاولوا مجددًا', ru:'Не удалось связаться с сайтом с нашего сервера — проверьте адрес и попробуйте снова' },
+  err_site_not_https: { he:'האתר לא עובד עם HTTPS (מנעול בדפדפן). וורדפרס מאפשר חיבור מאובטח רק באתר עם HTTPS — אפשר להפעיל אותו אצל חברת האחסון, ואנחנו כאן בצ׳אט לעזור', en:'Your site isn\'t served over HTTPS (the browser padlock). WordPress only allows secure app connections on HTTPS sites — your host can switch it on, and we\'re here in the chat to help', fr:'Votre site n\'est pas en HTTPS (le cadenas du navigateur). WordPress n\'autorise les connexions d\'applications qu\'en HTTPS — votre hébergeur peut l\'activer, et nous pouvons vous aider dans le chat', ar:'موقعكم لا يعمل عبر HTTPS (القفل في المتصفح). يسمح WordPress بربط التطبيقات فقط على مواقع HTTPS — يمكن لشركة الاستضافة تفعيله، ونحن هنا في الدردشة للمساعدة', ru:'Ваш сайт работает без HTTPS (замок в браузере). WordPress разрешает подключение приложений только на HTTPS — хостинг может это включить, а мы поможем в чате' },
+  err_wp_app_passwords_disabled: { he:'באתר שלכם כבויה האפשרות לחבר אפליקציות (בדרך כלל תוסף אבטחה כמו Wordfence, או הגדרה של חברת האחסון). צריך להפעיל "Application Passwords" — כתבו לנו בצ׳אט ונסביר בדיוק איפה', en:'App connections are switched off on your site (usually a security plugin like Wordfence, or a hosting setting). "Application Passwords" needs to be enabled — message us in the chat and we\'ll show you exactly where', fr:'Les connexions d\'applications sont désactivées sur votre site (souvent un plugin de sécurité comme Wordfence, ou un réglage de l\'hébergeur). Il faut activer « Application Passwords » — écrivez-nous dans le chat, nous vous montrerons où', ar:'ربط التطبيقات معطّل في موقعكم (عادةً بسبب إضافة أمان مثل Wordfence أو إعداد لدى الاستضافة). يجب تفعيل "Application Passwords" — راسلونا في الدردشة وسنوضح لكم أين بالضبط', ru:'На вашем сайте отключено подключение приложений (обычно плагин безопасности, например Wordfence, или настройка хостинга). Нужно включить «Application Passwords» — напишите нам в чат, и мы покажем, где именно' },
+  notice_wordpress: { he:'וורדפרס אישר את החיבור, אבל האתר לא אפשר לנו להיכנס איתו (לרוב חסימה של תוסף אבטחה או של חברת האחסון). נסו שוב, או השתמשו בחיבור הידני', en:'WordPress approved the connection, but the site wouldn\'t let us sign in with it (usually a security plugin or host block). Try again, or use the manual connection', fr:'WordPress a approuvé la connexion, mais le site a refusé notre accès (souvent un plugin de sécurité ou l\'hébergeur). Réessayez ou utilisez la connexion manuelle', ar:'وافق WordPress على الربط، لكن الموقع لم يسمح لنا بالدخول (غالبًا بسبب إضافة أمان أو الاستضافة). حاولوا مجددًا أو استخدموا الربط اليدوي', ru:'WordPress одобрил подключение, но сайт не пустил нас (обычно блокирует плагин безопасности или хостинг). Попробуйте снова или подключите вручную' },
+  notice_wordpress_rejected: { he:'החיבור לאתר לא אושר — שום דבר לא השתנה. אפשר לנסות שוב מתי שנוח', en:'The site connection wasn\'t approved — nothing changed. You can try again anytime', fr:'La connexion du site n\'a pas été approuvée — rien n\'a changé. Vous pouvez réessayer à tout moment', ar:'لم تتم الموافقة على ربط الموقع — لم يتغير شيء. يمكنكم المحاولة مجددًا في أي وقت', ru:'Подключение сайта не одобрено — ничего не изменилось. Можно попробовать снова в любое время' },
+  notice_wordpress_expired: { he:'תוקף החיבור פג או שהוא התחיל בדפדפן אחר — לחצו שוב על "חיבור בלחיצה אחת"', en:'The connection link expired or was started in another browser — click "One-click connect" again', fr:'Le lien de connexion a expiré ou a été lancé dans un autre navigateur — cliquez à nouveau sur « Connexion en un clic »', ar:'انتهت صلاحية رابط الربط أو بدأ في متصفح آخر — اضغطوا "ربط بنقرة واحدة" مجددًا', ru:'Ссылка подключения истекла или была открыта в другом браузере — нажмите «Подключить в один клик» ещё раз' },
+  notice_wordpress_platform: { he:'משהו השתבש אצלנו בחיבור האתר — הצוות כבר קיבל התראה. אין צורך לעשות כלום כרגע', en:'Something went wrong on our side connecting your site — the team has been alerted. Nothing for you to do right now', fr:'Un problème est survenu de notre côté — l\'équipe a été alertée. Rien à faire pour le moment', ar:'حدث خطأ من جهتنا أثناء ربط الموقع — تم تنبيه الفريق. لا حاجة لفعل شيء الآن', ru:'Что-то пошло не так с нашей стороны — команда уже уведомлена. Пока ничего делать не нужно' },
   site_fill_all: { he:'נא למלא את כל שדות החיבור של האתר', en:'Please fill in all the website connection fields', fr:'Veuillez remplir tous les champs de connexion du site', ar:'يرجى تعبئة جميع حقول ربط الموقع', ru:'Пожалуйста, заполните все поля подключения сайта' },
   site_connecting: { he:'מתחבר...', en:'Connecting…', fr:'Connexion…', ar:'جارٍ الربط...', ru:'Подключаем…' },
   site_connected_notice: { he:'האתר חובר בהצלחה ✓', en:'Website connected ✓', fr:'Site connecté ✓', ar:'تم ربط الموقع بنجاح ✓', ru:'Сайт подключён ✓' },
@@ -2552,10 +2575,16 @@ function closePreact() { document.getElementById('preactOverlay').classList.remo
 // Wrappers: explain BEFORE the form opens; closing an already-open form needs
 // no explanation. The OAuth-redirect flows (Google/Meta) stay popup-free on
 // purpose - they're a simple 1-2 click provider consent, below the rule's bar.
+// The site card's default is now WordPress's one-click approval screen - a
+// 1-2 click consent like the OAuth flows, so it opens without the popup. The
+// popup moved to the MANUAL fallback, which is the part that really needs it.
 function openSiteFormExplained() {
-  const form = document.getElementById('siteForm');
+  toggleSiteForm();
+}
+function openSiteManualExplained() {
+  const form = document.getElementById('siteManualForm');
   if (form.style.display !== 'none') { form.style.display = 'none'; return; }
-  preactExplain('wordpress', toggleSiteForm);
+  preactExplain('wordpress', () => { form.style.display = 'block'; });
 }
 function openHiggsfieldFormExplained() {
   const form = document.getElementById('higgsfieldForm');
@@ -2913,6 +2942,61 @@ async function connectWebsite() {
   btn.disabled = false;
   btn.textContent = uallakI18n.t('site_connect');
   showNotice(uallakI18n.t('site_connect_failed'), 'warn');
+}
+
+// One-click: the server probes the site (is the WordPress approval screen
+// available?) and hands back the wp-admin "Authorize Application" URL; the
+// browser goes there, the client approves, and WordPress sends them back to
+// /api/website/authorize/callback, which connects and lands on
+// ?connected=wordpress (or ?connect_error=wordpress_*).
+async function connectWebsiteOneClick() {
+  const t = uallakI18n.t;
+  const site_url = document.getElementById('siteUrl').value.trim();
+  if (!site_url) { showNotice(t('site_existing_need_url'), 'warn'); return; }
+  const btn = document.getElementById('siteOneClickBtn');
+  btn.disabled = true;
+  btn.textContent = t('site_oneclick_checking');
+  try {
+    const res = await fetch('/api/website/authorize/start', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_url }),
+    });
+    const body = await res.json();
+    if (res.ok && body.success && body.data && body.data.authorize_url) {
+      window.location.href = body.data.authorize_url;
+      return;
+    }
+    showNotice(uallakI18n.errorText(body, 'site_oneclick_failed'), 'warn');
+    // When the approval screen is the problem (not the address, not a site
+    // with the feature switched off), the manual form is the real fallback
+    const code = body && body.detail && body.detail.code;
+    if (!['ERR_SITE_URL_REQUIRED', 'ERR_SITE_UNREACHABLE', 'ERR_SITE_NOT_HTTPS', 'ERR_NOT_WORDPRESS',
+          'ERR_WP_APP_PASSWORDS_DISABLED', 'ERR_WEBSITE_ALREADY_CONNECTED'].includes(code)) {
+      document.getElementById('siteManualForm').style.display = 'block';
+    }
+  } catch (e) {
+    console.error('website one-click start failed', e);
+    showNotice(t('site_oneclick_failed'), 'warn');
+  }
+  btn.disabled = false;
+  btn.textContent = t('site_oneclick_btn');
+}
+
+// Back from WordPress without a connection: reopen the card with the retry
+// button ready, and (for a denial) open אורי's thread, where the server has
+// just explained what happened and how to try again - never a dead end.
+function handleWordpressReturn(err) {
+  const form = document.getElementById('siteForm');
+  if (form) form.style.display = 'block';
+  if (err === 'wordpress') {
+    // Approved, but the credential didn't validate against the site (REST
+    // auth blocked by a host/plugin) - the manual path is worth offering
+    document.getElementById('siteManualForm').style.display = 'block';
+  }
+  if (err === 'wordpress_rejected') openAgentWindow('website');
+  const card = document.getElementById('siteChoiceRow');
+  if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ─── chat persona (client-chosen, never inferred from name) ──────────────────
@@ -4635,6 +4719,14 @@ async function loadSupport() {
   } else if (params.get('connected') === 'merchant_center_pending') {
     showMerchantIdForm();
     showNotice(uallakI18n.t('notice_merchant_pending'), 'success');
+  } else if (params.get('connected') === 'wordpress') {
+    markWebsiteConnected();
+    showNotice(uallakI18n.t('site_connected_notice'), 'success');
+  } else if ((params.get('connect_error') || '').startsWith('wordpress')) {
+    // wordpress | wordpress_rejected | wordpress_expired | wordpress_platform
+    const err = params.get('connect_error');
+    showNotice(uallakI18n.t('notice_' + err), 'warn');
+    handleWordpressReturn(err);
   } else if (params.get('connect_error')) {
     const err = params.get('connect_error') || '';
     const errLabel = err.includes('merchant') ? 'Merchant Center'
