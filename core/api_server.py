@@ -2066,6 +2066,15 @@ def admin_archive_client(client_id: int, request: Request):
 
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
+def _log_bad_oauth_state(provider: str, state: str, error: str = ""):
+    # Every OAuth callback used to bounce a bad state back to the dashboard
+    # without a log line, so an expired (>10 min) or tampered consent round
+    # trip was indistinguishable from any other failure in Cloud Run logs.
+    # Never logs the state value itself.
+    reason = "missing" if not state else "invalid or expired (10-minute window)"
+    print(f"[{provider} oauth] state check failed: {reason}"
+          + (f" (provider error={error})" if error else ""))
+
 @app.get("/api/oauth/google-ads/start")
 async def google_ads_oauth_start(request: Request):
     client_id = _require_session(request)
@@ -2078,6 +2087,7 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
     # browser arrives here from Google's domain and the state also blocks CSRF
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("google_ads", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
     if error or not code:
         print(f"[google_ads oauth] client {client_id}: consent denied or no code (error={error})")
@@ -2141,6 +2151,7 @@ def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
     from core import gtm_service
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("gtm", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=gtm")
     if error or not code:
         print(f"[gtm oauth] client {client_id}: consent denied or no code (error={error})")
@@ -2200,6 +2211,7 @@ def youtube_oauth_callback(state: str = "", code: str = "", error: str = ""):
     from core import youtube_service
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("youtube", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=youtube")
     if error or not code:
         print(f"[youtube oauth] client {client_id}: consent denied or no code (error={error})")
@@ -2249,6 +2261,7 @@ async def merchant_center_oauth_start(request: Request):
 def merchant_center_oauth_callback(state: str = "", code: str = "", error: str = ""):
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("merchant_center", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
     if error or not code:
         print(f"[merchant center oauth] client {client_id}: consent denied or no code (error={error})")
@@ -2386,6 +2399,7 @@ def meta_oauth_callback(state: str = "", code: str = "", error: str = ""):
     # browser arrives here from Meta's domain and the state also blocks CSRF
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("meta", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=meta")
     if error or not code:
         print(f"[meta oauth] client {client_id}: consent denied or no code (error={error})")
@@ -2457,6 +2471,7 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
     # browser arrives here from TikTok's domain (same CSRF protection as Meta's)
     client_id = verify_oauth_state_token(state)
     if not client_id:
+        _log_bad_oauth_state("tiktok", state, error)
         return RedirectResponse(url="/dashboard/?connect_error=tiktok")
     if error or not code:
         print(f"[tiktok oauth] client {client_id}: consent denied or no code (error={error})")

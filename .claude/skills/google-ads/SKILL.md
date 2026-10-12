@@ -333,11 +333,19 @@ confident enough here to build against without a live account to verify
 against first — a real follow-up once one exists).
 
 **HIGHEST VERIFICATION RISK in this codebase**: the Merchant API (Content
-API for Shopping's successor) is WEEKS old (v1beta) as of this build, and
-Content API itself sunsets 2026-08-18 — `core/merchant_center_service.py`
-targets the new API from day one, but its exact endpoint shapes are the
-least-confident "docs-derived" guess in this codebase. Smoke-test against
-a real Merchant Center account before relying on any of it.
+API for Shopping's successor) was built against v1beta; moved to **v1** on
+2026-10-13 because Google shut v1beta down 2026-02-28 (the two paths used —
+`accounts/v1/accounts/{id}`, `datasources/v1/accounts/{id}/dataSources` —
+checked against the v1 reference). Still never run against a live account.
+Smoke-test against a real Merchant Center account before relying on any of it.
+
+**Token exchange gotcha (fixed 2026-10-13)**: GTM, YouTube and Merchant Center
+reuse `google_ads_service.exchange_code`, which used to always send the
+GOOGLE ADS redirect_uri — Google requires the exchange's redirect_uri to equal
+the consent's, so all three failed with `400 redirect_uri_mismatch` after a
+successful consent. Each service now wraps it with its own `redirect_uri()`.
+Any NEW Google consent on our OAuth client must do the same. Failed exchanges
+now log Google's error body (`[google oauth] token exchange failed: …`).
 
 **Scope/verification flag (business decision, same class as GTM/YouTube)**:
 `.../auth/content` is a sensitive scope requiring OAuth app-verification

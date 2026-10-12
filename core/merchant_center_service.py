@@ -30,11 +30,10 @@ sensitive scope requiring OAuth app verification (consent-screen review +
 scope justification, same class of process as the GTM/YouTube scopes added
 earlier this week) before real (non-test-user) clients can connect.
 
-VERIFICATION STATUS — HIGHEST RISK integration in this codebase: the
-Merchant API is WEEKS old (v1beta) at the time of writing, endpoint shapes
-below are best-effort from its documentation structure (modular
-sub-services: accounts, datasources, reports), NOT verified against a live
-call. Smoke-test every function here against a real Merchant Center account
+VERIFICATION STATUS — HIGHEST RISK integration in this codebase: written
+against v1beta when the Merchant API was weeks old; moved to v1 on
+2026-10-13 (v1beta was shut down 2026-02-28) with the two paths checked
+against the v1 reference, but still NOT verified against a live call. Smoke-test every function here against a real Merchant Center account
 before relying on it — more important here than the usual "docs-derived"
 caveat elsewhere in this codebase.
 """
@@ -46,10 +45,14 @@ import httpx
 from agents.keys_agent import get_key
 # Deliberate reuse (same as gtm_service/youtube_service): token exchange/
 # refresh are scope-agnostic OAuth calls — one implementation, not a third copy.
-from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_code  # noqa: F401
+from core.google_ads_service import OAUTH_CONSENT_URL, _access_token  # noqa: F401
+from core.google_ads_service import exchange_code as _google_exchange_code
 
-ACCOUNTS_BASE = "https://merchantapi.googleapis.com/accounts/v1beta"
-DATASOURCES_BASE = "https://merchantapi.googleapis.com/datasources/v1beta"
+# v1 (GA), not v1beta: Google shut v1beta down on 2026-02-28. Path shapes are
+# unchanged between the two (checked against the v1 reference 2026-10-13):
+# GET accounts/v1/accounts/{id}, GET datasources/v1/accounts/{id}/dataSources.
+ACCOUNTS_BASE = "https://merchantapi.googleapis.com/accounts/v1"
+DATASOURCES_BASE = "https://merchantapi.googleapis.com/datasources/v1"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/merchant-center/callback"
 MERCHANT_SCOPE = "https://www.googleapis.com/auth/content"
@@ -58,6 +61,12 @@ TIMEOUT = 30
 
 def redirect_uri() -> str:
     return f"{PUBLIC_APP_URL}{REDIRECT_PATH}"
+
+
+def exchange_code(code: str) -> dict:
+    # Must send THIS consent's callback — Google rejects a mismatch (see
+    # google_ads_service.exchange_code)
+    return _google_exchange_code(code, redirect_uri())
 
 
 def build_consent_url(state: str) -> str:

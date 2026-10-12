@@ -80,8 +80,15 @@ def build_consent_url(state: str) -> str:
     return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
 
 
-def exchange_code(code: str) -> dict:
-    """Authorization code -> {access_token, refresh_token, expires_in, ...}."""
+def exchange_code(code: str, redirect_uri_override: str = None) -> dict:
+    """Authorization code -> {access_token, refresh_token, expires_in, ...}.
+
+    SHARED by every Google consent on our one OAuth client (GTM, YouTube,
+    Merchant Center reuse it). Google requires the redirect_uri here to be
+    IDENTICAL to the one the consent URL used — so a caller whose consent
+    went to its own callback MUST pass that callback. Before 2026-10-13 this
+    always sent the Google Ads callback, and every non-Ads consent failed the
+    exchange with 400 redirect_uri_mismatch. Defaults to Google Ads' own."""
     response = httpx.post(
         OAUTH_TOKEN_URL,
         data={
@@ -89,10 +96,16 @@ def exchange_code(code: str) -> dict:
             "client_secret": get_key("GOOGLE_OAUTH_CLIENT_SECRET"),
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri(),
+            "redirect_uri": redirect_uri_override or redirect_uri(),
         },
         timeout=TIMEOUT,
     )
+    if response.status_code >= 400:
+        # Google's error body names the cause ("redirect_uri_mismatch",
+        # "invalid_grant", ...) and carries no secret; raise_for_status alone
+        # drops it, which is how the redirect_uri bug went undiagnosed.
+        print(f"[google oauth] token exchange failed: HTTP {response.status_code} "
+              f"redirect_uri={redirect_uri_override or redirect_uri()} body={response.text[:500]}")
     response.raise_for_status()
     return response.json()
 

@@ -34,8 +34,10 @@ import httpx
 from agents.keys_agent import get_key
 from core.api_call_counters import increment_call_counter
 # Deliberate reuse (same as gtm_service): token exchange/refresh are
-# scope-agnostic OAuth calls — one implementation, not a second copy.
-from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_code  # noqa: F401
+# scope-agnostic OAuth calls — one implementation, not a second copy. The
+# exchange is NOT redirect-agnostic, though: see exchange_code below.
+from core.google_ads_service import OAUTH_CONSENT_URL, _access_token  # noqa: F401
+from core.google_ads_service import exchange_code as _google_exchange_code
 
 API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
@@ -52,6 +54,12 @@ DAILY_UPLOAD_LIMIT = 90  # default project cap is 100 videos.insert/day - brake 
 
 def redirect_uri() -> str:
     return f"{PUBLIC_APP_URL}{REDIRECT_PATH}"
+
+
+def exchange_code(code: str) -> dict:
+    # Must send THIS consent's callback — Google rejects a mismatch (see
+    # google_ads_service.exchange_code)
+    return _google_exchange_code(code, redirect_uri())
 
 
 def build_consent_url(state: str) -> str:

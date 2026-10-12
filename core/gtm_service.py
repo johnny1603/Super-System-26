@@ -42,8 +42,10 @@ import httpx
 from agents.keys_agent import get_key
 # Deliberate reuse: token exchange/refresh are scope-agnostic OAuth calls -
 # one implementation, not a second copy (they only need our client id/secret
-# plus the code/refresh token).
-from core.google_ads_service import OAUTH_CONSENT_URL, _access_token, exchange_code  # noqa: F401
+# plus the code/refresh token). The exchange also needs THIS consent's
+# redirect_uri, though — see exchange_code below.
+from core.google_ads_service import OAUTH_CONSENT_URL, _access_token  # noqa: F401
+from core.google_ads_service import exchange_code as _google_exchange_code
 
 GTM_BASE_URL = "https://tagmanager.googleapis.com/tagmanager/v2"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
@@ -57,6 +59,12 @@ TIMEOUT = 30
 
 def redirect_uri() -> str:
     return f"{PUBLIC_APP_URL}{REDIRECT_PATH}"
+
+
+def exchange_code(code: str) -> dict:
+    # Must send THIS consent's callback — Google rejects a mismatch (see
+    # google_ads_service.exchange_code)
+    return _google_exchange_code(code, redirect_uri())
 
 
 def build_consent_url(state: str) -> str:
