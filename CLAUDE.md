@@ -104,6 +104,20 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   one row per client, the conversation that sold them), so it approximates with
   Google/Meta ad conversions and always reports `complete: False`. Tier crossings
   alert admin only — nothing bills automatically. See `HANDOFF-lead-volume-tiers.md`.
+- `core/client_auth.py` — client credentials. Auth is **custom, not Supabase Auth**:
+  `/api/checkout` creates the `clients` row (before PayPal), and every login ends in the
+  HMAC `session` cookie from `core/session.py`. Three ways in: emailed 6-digit code
+  (the original, always available), password (stdlib scrypt), Google sign-in
+  (openid/email/profile only; signs in an EXISTING client by verified email, never
+  creates one). **A password is only ever set via a fresh emailed code**
+  (`set_password_with_code`): post-payment setup, forgot-password and admin reset are
+  that one path. Password change/reset bumps `clients.session_version`, which kills
+  every other cookie. Admin "New Client" creates a **`billing_exempt`** account (no
+  PayPal, excluded from MRR/counts/margins) whose services GRANT is an
+  `account_created_by_admin` activity row that `client_journey._chosen_package` reads
+  in place of a checkout package. Credential columns are stripped by
+  `client_agent.public_client()` wherever a full row leaves the server. Needs
+  `migrations/2026-10-13-client-auth.sql`. See `HANDOFF-client-signup.md`.
 - `core/paypal_service.py` — **Sandbox base URL hardcoded**; not live.
 - `core/drive_service.py` — Google Drive archive for offboarded clients (service account
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer

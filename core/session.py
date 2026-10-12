@@ -30,12 +30,17 @@ def _sign_admin(payload_b64: bytes) -> str:
     return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
 
 
-def create_session_token(client_id: int) -> str:
+def create_session_token(client_id: int, session_version: int = 0) -> str:
     """HMAC-signed session token, stdlib-only (no extra dependency). Format is
     base64(payload_json).signature - the payload carries its own expiry so
-    verification doesn't depend on anything but the shared secret."""
+    verification doesn't depend on anything but the shared secret.
+
+    `sv` is the client's clients.session_version at issue time. Tokens are
+    stateless, so bumping that column (password change/reset) is how every
+    OTHER device gets logged out - _require_session compares the two."""
     payload = json.dumps({
         "client_id": client_id,
+        "sv": int(session_version or 0),
         "exp": int(time.time()) + SESSION_MAX_AGE_SECONDS,
     }).encode()
     payload_b64 = base64.urlsafe_b64encode(payload)
@@ -48,6 +53,35 @@ def verify_session_token(token: str):
     not expired - otherwise None. Never raises on malformed/tampered input."""
     payload = _verify(token, _sign)
     return payload.get("client_id") if payload else None
+
+
+def session_token_version(token: str) -> int:
+    """The `sv` a valid token was issued with; tokens minted before
+    session_version existed carry none and count as 0."""
+    payload = _verify(token, _sign)
+    return int(payload.get("sv", 0)) if payload else -1
+
+
+def _sign_google_login(payload_b64: bytes) -> str:
+    # Derived secret, same reasoning as the OAuth state above. Separate from it
+    # because this state carries NO client_id: it is a sign-in, not a connect.
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":google-login").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_google_login_state(nonce: str) -> str:
+    """CSRF state for Google sign-in. The nonce is ALSO set as a short-lived
+    cookie; the callback requires both to match, which binds the consent round
+    trip to the browser that started it (a forged callback link can't log a
+    victim into the attacker's account)."""
+    payload = json.dumps({"nonce": nonce, "exp": int(time.time()) + OAUTH_STATE_MAX_AGE_SECONDS}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_google_login(payload_b64)}"
+
+
+def verify_google_login_state(token: str, cookie_nonce: str) -> bool:
+    payload = _verify(token, _sign_google_login)
+    return bool(payload and cookie_nonce and hmac.compare_digest(str(payload.get("nonce", "")), cookie_nonce))
 
 
 def create_oauth_state_token(client_id: int) -> str:

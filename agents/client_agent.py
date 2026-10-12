@@ -53,6 +53,21 @@ def get_client(client_id: int) -> dict:
     return result.data[0] if result.data else {}
 
 
+# Credential/auth-state columns (core/client_auth). Never shipped to ANY
+# browser, the admin's included - strip them wherever a full row goes out.
+CLIENT_SECRET_FIELDS = ("password_hash", "google_sub", "failed_password_attempts",
+                        "password_locked_until", "session_version")
+
+
+def public_client(client: dict) -> dict:
+    if not client:
+        return client
+    out = {k: v for k, v in client.items() if k not in CLIENT_SECRET_FIELDS}
+    out["has_password"] = bool(client.get("password_hash"))
+    out["google_linked"] = bool(client.get("google_sub"))
+    return out
+
+
 def get_client_by_email(email: str) -> dict:
     result = _db().table("clients").select("*").eq("email", email).limit(1).execute()
     return result.data[0] if result.data else {}

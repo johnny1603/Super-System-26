@@ -235,6 +235,35 @@ body {
     <button class="btn" onclick="logout()" data-i18n="logout_btn">התנתקות</button>
   </div>
 
+  <!-- ---------- PASSWORD & SIGN-IN ---------- -->
+  <div class="section-head">
+    <div class="section-title" data-i18n="pw_title">סיסמה ודרכי כניסה</div>
+    <div class="section-sub" id="pwStatus"></div>
+  </div>
+  <div class="tool-card" id="pwCard" style="display:none;">
+    <!-- has a password: change it with the current one -->
+    <div id="pwChange" style="display:none;">
+      <input class="danger-input" id="pwCurrent" type="password" dir="ltr" autocomplete="current-password" data-i18n-placeholder="pw_current_ph" placeholder="הסיסמה הנוכחית">
+      <input class="danger-input" id="pwNew" type="password" dir="ltr" autocomplete="new-password" data-i18n-placeholder="pw_new_ph" placeholder="סיסמה חדשה (8 תווים לפחות)">
+      <input class="danger-input" id="pwNew2" type="password" dir="ltr" autocomplete="new-password" data-i18n-placeholder="pw_confirm_ph" placeholder="אימות הסיסמה החדשה">
+      <div class="actions-row">
+        <button class="btn" id="pwChangeBtn" onclick="changePassword()" data-i18n="pw_change_btn">עדכון סיסמה</button>
+        <button class="btn small-link" onclick="showFirstPassword()" data-i18n="pw_forgot">שכחתי את הסיסמה הנוכחית</button>
+      </div>
+    </div>
+    <!-- no password yet (or forgot it): prove the inbox with an emailed code -->
+    <div id="pwFirst" style="display:none;">
+      <div class="tool-note" style="margin:0 0 12px;" data-i18n="pw_first_note">נשלח קוד בן 6 ספרות לכתובת המייל שלך, ואיתו תגדיר/י סיסמה.</div>
+      <button class="btn" id="pwSendBtn" onclick="sendPasswordCode()" data-i18n="pw_send_code">שלחו לי קוד</button>
+      <div id="pwFirstForm" style="display:none;margin-top:12px;">
+        <input class="danger-input" id="pwCode" type="text" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="one-time-code" data-i18n-placeholder="pw_code_ph" placeholder="הקוד שקיבלת במייל">
+        <input class="danger-input" id="pwFirstNew" type="password" dir="ltr" autocomplete="new-password" data-i18n-placeholder="pw_new_ph" placeholder="סיסמה חדשה (8 תווים לפחות)">
+        <input class="danger-input" id="pwFirstNew2" type="password" dir="ltr" autocomplete="new-password" data-i18n-placeholder="pw_confirm_ph" placeholder="אימות הסיסמה החדשה">
+        <button class="btn" id="pwFirstBtn" onclick="setFirstPassword()" data-i18n="pw_save_btn">שמירת סיסמה</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ---------- DANGER ZONE ---------- -->
   <div class="section-head">
     <div class="section-title" data-i18n="end_title">סיום התקשרות</div>
@@ -290,6 +319,28 @@ const PHRASES = {
 const I18N = {
   _page_title: { he:'uallak — הפרופיל שלי', en:'uallak — My profile', fr:'uallak — Mon profil', ar:'uallak — ملفي الشخصي', ru:'uallak — Мой профиль' },
   back: { he:'→ חזרה לדשבורד', en:'→ Back to dashboard', fr:'→ Retour au tableau de bord', ar:'→ العودة إلى لوحة التحكم', ru:'→ Назад в кабинет' },
+  pw_title: { he:'סיסמה ודרכי כניסה', en:'Password & sign-in', fr:'Mot de passe et connexion', ar:'كلمة المرور وطرق الدخول', ru:'Пароль и вход' },
+  pw_status_set: { he:'יש לך סיסמה. כניסה עם קוד חד-פעמי למייל תמיד זמינה גם היא.', en:'You have a password. Signing in with a one-time email code always works too.', fr:'Vous avez un mot de passe. La connexion par code e-mail reste toujours possible.', ar:'لديك كلمة مرور. الدخول برمز لمرة واحدة عبر البريد متاح دائمًا أيضًا.', ru:'Пароль задан. Вход по одноразовому коду на почту тоже всегда доступен.' },
+  pw_status_none: { he:'עדיין לא הגדרת סיסמה — כרגע הכניסה היא עם קוד למייל.', en:'You haven’t set a password yet — for now you sign in with an email code.', fr:'Pas encore de mot de passe — vous vous connectez pour l’instant par code e-mail.', ar:'لم تعيّن كلمة مرور بعد — حاليًا تدخل برمز عبر البريد.', ru:'Пароль ещё не задан — пока вход по коду на почту.' },
+  pw_status_google: { he:' חשבון Google מקושר.', en:' A Google account is linked.', fr:' Un compte Google est associé.', ar:' حساب Google مرتبط.', ru:' Аккаунт Google привязан.' },
+  pw_current_ph: { he:'הסיסמה הנוכחית', en:'Current password', fr:'Mot de passe actuel', ar:'كلمة المرور الحالية', ru:'Текущий пароль' },
+  pw_new_ph: { he:'סיסמה חדשה (8 תווים לפחות)', en:'New password (at least 8 characters)', fr:'Nouveau mot de passe (8 caractères min.)', ar:'كلمة مرور جديدة (8 أحرف على الأقل)', ru:'Новый пароль (не менее 8 символов)' },
+  pw_confirm_ph: { he:'אימות הסיסמה החדשה', en:'Confirm the new password', fr:'Confirmer le nouveau mot de passe', ar:'تأكيد كلمة المرور الجديدة', ru:'Повторите новый пароль' },
+  pw_code_ph: { he:'הקוד שקיבלת במייל', en:'The code from your email', fr:'Le code reçu par e-mail', ar:'الرمز من بريدك', ru:'Код из письма' },
+  pw_change_btn: { he:'עדכון סיסמה', en:'Update password', fr:'Mettre à jour', ar:'تحديث كلمة المرور', ru:'Обновить пароль' },
+  pw_forgot: { he:'שכחתי את הסיסמה הנוכחית', en:'I forgot my current password', fr:'J’ai oublié mon mot de passe actuel', ar:'نسيت كلمة المرور الحالية', ru:'Забыли текущий пароль' },
+  pw_first_note: { he:'נשלח קוד בן 6 ספרות לכתובת המייל שלך, ואיתו תגדיר/י סיסמה.', en:'We’ll email you a 6-digit code to set your password with.', fr:'Nous vous enverrons un code à 6 chiffres pour définir votre mot de passe.', ar:'سنرسل رمزًا من 6 أرقام إلى بريدك لتعيين كلمة المرور.', ru:'Мы отправим на почту код из 6 цифр для установки пароля.' },
+  pw_send_code: { he:'שלחו לי קוד', en:'Send me a code', fr:'M’envoyer un code', ar:'أرسلوا لي رمزًا', ru:'Отправить код' },
+  pw_code_sent: { he:'הקוד נשלח ל-{email} — בתוקף ל-10 דקות.', en:'Code sent to {email} — valid for 10 minutes.', fr:'Code envoyé à {email} — valable 10 minutes.', ar:'تم إرسال الرمز إلى {email} — صالح لمدة 10 دقائق.', ru:'Код отправлен на {email} — действует 10 минут.' },
+  pw_save_btn: { he:'שמירת סיסמה', en:'Save password', fr:'Enregistrer', ar:'حفظ كلمة المرور', ru:'Сохранить пароль' },
+  pw_saved: { he:'הסיסמה עודכנה. מכשירים אחרים נותקו מהחשבון.', en:'Password updated. Other devices were signed out.', fr:'Mot de passe mis à jour. Les autres appareils ont été déconnectés.', ar:'تم تحديث كلمة المرور. تم تسجيل خروج الأجهزة الأخرى.', ru:'Пароль обновлён. Другие устройства вышли из аккаунта.' },
+  pw_mismatch: { he:'שתי הסיסמאות לא תואמות', en:'The two passwords don’t match', fr:'Les deux mots de passe ne correspondent pas', ar:'كلمتا المرور غير متطابقتين', ru:'Пароли не совпадают' },
+  pw_err: { he:'עדכון הסיסמה נכשל — נסו שוב', en:'Updating the password failed — please try again', fr:'La mise à jour a échoué — réessayez', ar:'فشل تحديث كلمة المرور — حاول مجددًا', ru:'Не удалось обновить пароль — попробуйте ещё раз' },
+  err_wrong_password: { he:'הסיסמה הנוכחית שגויה', en:'The current password is wrong', fr:'Le mot de passe actuel est incorrect', ar:'كلمة المرور الحالية غير صحيحة', ru:'Неверный текущий пароль' },
+  err_password_too_short: { he:'הסיסמה צריכה להכיל לפחות 8 תווים', en:'The password needs at least 8 characters', fr:'Le mot de passe doit contenir au moins 8 caractères', ar:'يجب أن تحتوي كلمة المرور على 8 أحرف على الأقل', ru:'Пароль должен содержать не менее 8 символов' },
+  err_password_too_long: { he:'הסיסמה ארוכה מדי', en:'The password is too long', fr:'Le mot de passe est trop long', ar:'كلمة المرور طويلة جدًا', ru:'Пароль слишком длинный' },
+  err_invalid_code: { he:'קוד שגוי או שפג תוקפו', en:'Wrong or expired code', fr:'Code incorrect ou expiré', ar:'رمز خاطئ أو منتهي الصلاحية', ru:'Неверный или просроченный код' },
+  err_auth_not_ready: { he:'הגדרת סיסמה עדיין לא זמינה — נסו שוב מאוחר יותר', en:'Setting a password isn’t available yet — please try later', fr:'La définition d’un mot de passe n’est pas encore disponible — réessayez plus tard', ar:'تعيين كلمة المرور غير متاح بعد — حاول لاحقًا', ru:'Установка пароля пока недоступна — попробуйте позже' },
   pic_change: { he:'החלפת תמונה', en:'Change picture', fr:'Changer la photo', ar:'تغيير الصورة', ru:'Сменить фото' },
   pic_remove: { he:'הסרת התמונה', en:'Remove picture', fr:'Supprimer la photo', ar:'إزالة الصورة', ru:'Удалить фото' },
   pkg_label: { he:'חבילה', en:'Package', fr:'Formule', ar:'الباقة', ru:'Пакет' },
@@ -566,6 +617,106 @@ async function logout() {
   window.location.href = '/login/';
 }
 
+// ─── password & sign-in ──────────────────────────────────────────────────────
+// Has a password → change it with the current one. None yet (or forgotten) →
+// the emailed-code path, the same proof of inbox ownership signup uses.
+let accountInfo = null;
+
+async function loadAccount() {
+  try {
+    const res = await fetch('/api/client/account', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) return;
+    accountInfo = body.data;
+  } catch (e) {
+    console.error('account info failed', e);
+    return;
+  }
+  renderAccount();
+}
+
+function renderAccount() {
+  if (!accountInfo) return;
+  document.getElementById('pwStatus').textContent =
+    uallakI18n.t(accountInfo.has_password ? 'pw_status_set' : 'pw_status_none') +
+    (accountInfo.google_linked ? uallakI18n.t('pw_status_google') : '');
+  document.getElementById('pwCard').style.display = 'block';
+  document.getElementById('pwChange').style.display = accountInfo.has_password ? 'block' : 'none';
+  document.getElementById('pwFirst').style.display = accountInfo.has_password ? 'none' : 'block';
+}
+
+function showFirstPassword() {
+  document.getElementById('pwChange').style.display = 'none';
+  document.getElementById('pwFirst').style.display = 'block';
+}
+
+async function changePassword() {
+  const next = document.getElementById('pwNew').value;
+  if (next !== document.getElementById('pwNew2').value) { showNotice(uallakI18n.t('pw_mismatch'), 'warn'); return; }
+  const btn = document.getElementById('pwChangeBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/client/password', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: document.getElementById('pwCurrent').value, new_password: next }),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      ['pwCurrent', 'pwNew', 'pwNew2'].forEach(id => document.getElementById(id).value = '');
+      showNotice(uallakI18n.t('pw_saved'), 'success');
+    } else {
+      showNotice(uallakI18n.errorText(body, 'pw_err'), 'warn');
+    }
+  } catch (e) {
+    showNotice(uallakI18n.t('pw_err'), 'warn');
+  }
+  btn.disabled = false;
+}
+
+async function sendPasswordCode() {
+  if (!accountInfo) return;
+  const btn = document.getElementById('pwSendBtn');
+  btn.disabled = true;
+  try {
+    await fetch('/api/signup/request-code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: accountInfo.email }),
+    });
+    document.getElementById('pwFirstForm').style.display = 'block';
+    showNotice(uallakI18n.t('pw_code_sent', { email: accountInfo.email }), 'success');
+  } catch (e) {
+    showNotice(uallakI18n.t('pw_err'), 'warn');
+  }
+  btn.disabled = false;
+}
+
+async function setFirstPassword() {
+  const next = document.getElementById('pwFirstNew').value;
+  if (next !== document.getElementById('pwFirstNew2').value) { showNotice(uallakI18n.t('pw_mismatch'), 'warn'); return; }
+  const btn = document.getElementById('pwFirstBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/signup/complete', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: accountInfo.email, code: document.getElementById('pwCode').value.trim(), password: next }),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      ['pwCode', 'pwFirstNew', 'pwFirstNew2'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('pwFirstForm').style.display = 'none';
+      showNotice(uallakI18n.t('pw_saved'), 'success');
+      loadAccount();
+    } else {
+      showNotice(uallakI18n.errorText(body, 'pw_err'), 'warn');
+    }
+  } catch (e) {
+    showNotice(uallakI18n.t('pw_err'), 'warn');
+  }
+  btn.disabled = false;
+}
+
 // ─── closure / transfer ──────────────────────────────────────────────────────
 function toggleDangerForm(id) {
   document.getElementById(id).classList.toggle('open');
@@ -622,9 +773,10 @@ uallakI18n.init(I18N);
 uallakI18n.mountSwitcher(document.getElementById('langRow'));
 // Rebuild the JS-rendered areas in the new language (server data is cached
 // ~5min by the agents, so the refetch is cheap)
-uallakI18n.onChange(() => { loadProfile(); loadCosts(); syncLanguagePreference(); });
+uallakI18n.onChange(() => { loadProfile(); loadCosts(); renderAccount(); syncLanguagePreference(); });
 loadProfile();
 loadCosts();
+loadAccount();
 
 // Keep the stored preference (outbound emails: login codes, payment
 // confirmations, weekly reports) in sync with the switcher — same one-tap

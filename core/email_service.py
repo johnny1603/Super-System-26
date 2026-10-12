@@ -3,6 +3,7 @@ import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from urllib.parse import quote
 
 # The app password previously hardcoded here leaked into git history — it must be
 # rotated in the Google account and supplied via the GMAIL_APP_PASSWORD env var.
@@ -139,8 +140,8 @@ _PAYMENT_CONFIRMATION_I18N = {
     "thanks_body": {"he":"התשלום שלך התקבל בהצלחה ואנחנו כבר מתחילים לעבוד על התכנית שלך. בקרוב תקבל עדכון ראשון על ההתקדמות.","en":"Your payment was received successfully and we're already starting to work on your plan. You'll get a first progress update soon.","fr":"Votre paiement a bien été reçu et nous commençons déjà à travailler sur votre plan. Vous recevrez bientôt une première mise à jour.","ar":"تم استلام دفعتك بنجاح ونحن نبدأ العمل بالفعل على خطتك. ستصلك قريبًا أول تحديث على التقدّم.","ru":"Ваш платёж успешно получен, и мы уже начинаем работать над вашим планом. Скоро вы получите первое обновление о прогрессе."},
     "dashboard_title": {"he":"🔑 גישה לדשבורד האישי שלך","en":"🔑 Access to your personal dashboard","fr":"🔑 Accès à votre tableau de bord personnel","ar":"🔑 الوصول إلى لوحة التحكم الشخصية","ru":"🔑 Доступ к вашему личному кабинету"},
     "client_number": {"he":"מספר הלקוח שלך:","en":"Your client number:","fr":"Votre numéro client :","ar":"رقم العميل الخاص بك:","ru":"Ваш номер клиента:"},
-    "dashboard_body": {"he":"תוכל לעקוב בזמן אמת אחרי הפעילות, החיבורים ופרטי המנוי שלך בדשבורד האישי. התחברות מהירה עם קוד חד-פעמי שיישלח לכתובת המייל הזו - בלי צורך בסיסמה:","en":"You can track your activity, connections, and subscription details in real time on your personal dashboard. Quick sign-in with a one-time code sent to this email address — no password needed:","fr":"Vous pouvez suivre en temps réel votre activité, vos connexions et les détails de votre abonnement sur votre tableau de bord personnel. Connexion rapide avec un code à usage unique envoyé à cette adresse e-mail — sans mot de passe :","ar":"يمكنك متابعة النشاط والاتصالات وتفاصيل الاشتراك في الوقت الفعلي عبر لوحة التحكم الشخصية. تسجيل دخول سريع برمز لمرة واحدة يُرسل إلى هذا البريد الإلكتروني - بلا حاجة لكلمة مرور:","ru":"Вы можете отслеживать активность, подключения и данные подписки в реальном времени в личном кабинете. Быстрый вход по одноразовому коду, отправленному на этот email — без пароля:"},
-    "dashboard_btn": {"he":"כניסה לדשבורד שלי →","en":"Go to my dashboard →","fr":"Accéder à mon tableau de bord →","ar":"الدخول إلى لوحة التحكم ←","ru":"Перейти в личный кабинет →"},
+    "dashboard_body": {"he":"תוכל לעקוב בזמן אמת אחרי הפעילות, החיבורים ופרטי המנוי שלך בדשבורד האישי. בכניסה הראשונה הגדר סיסמה או התחבר עם Google עם כתובת המייל הזו — וכניסה עם קוד חד-פעמי למייל תמיד זמינה:","en":"You can track your activity, connections, and subscription details in real time on your personal dashboard. On your first visit, set a password or continue with Google using this email address — signing in with a one-time email code always works too:","fr":"Vous pouvez suivre en temps réel votre activité, vos connexions et les détails de votre abonnement sur votre tableau de bord personnel. À la première visite, définissez un mot de passe ou continuez avec Google avec cette adresse — la connexion par code à usage unique reste toujours disponible :","ar":"يمكنك متابعة النشاط والاتصالات وتفاصيل الاشتراك في الوقت الفعلي عبر لوحة التحكم الشخصية. في أول زيارة، عيّن كلمة مرور أو تابع باستخدام Google بهذا البريد — وتسجيل الدخول برمز لمرة واحدة متاح دائمًا:","ru":"Вы можете отслеживать активность, подключения и данные подписки в реальном времени в личном кабинете. При первом входе задайте пароль или войдите через Google с этим адресом — вход по одноразовому коду на почту тоже всегда доступен:"},
+    "dashboard_btn": {"he":"הגדרת החשבון שלי →","en":"Set up my account →","fr":"Configurer mon compte →","ar":"إعداد حسابي ←","ru":"Настроить аккаунт →"},
     "whatsapp_note": {"he":"בינתיים, הצוות שלנו זמין בוואטסאפ לכל שאלה 💬","en":"In the meantime, our team is available on WhatsApp for any question 💬","fr":"En attendant, notre équipe est disponible sur WhatsApp pour toute question 💬","ar":"في هذه الأثناء، فريقنا متاح عبر واتساب لأي سؤال 💬","ru":"А пока наша команда доступна в WhatsApp по любым вопросам 💬"},
     "subject": {"he":"uallak — התשלום התקבל, מתחילים! 🚀","en":"uallak — Payment received, let's start! 🚀","fr":"uallak — Paiement reçu, c'est parti ! 🚀","ar":"uallak — تم استلام الدفع، لنبدأ! 🚀","ru":"uallak — Оплата получена, начинаем! 🚀"},
 }
@@ -167,7 +168,7 @@ def send_payment_confirmation(client_email: str, client_name: str, client_id: in
         <p style="color:rgba(255,255,255,0.75);line-height:1.7;margin:12px 0 0;">
           {t('dashboard_body')}
         </p>
-        <a href="{PUBLIC_APP_URL}/login/" style="display:inline-block;margin-top:14px;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">{t('dashboard_btn')}</a>
+        <a href="{PUBLIC_APP_URL}/login/?setup=1&email={quote(client_email or '')}" style="display:inline-block;margin-top:14px;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">{t('dashboard_btn')}</a>
       </div>
       <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
         <p style="color:#3D3D3D;margin:0;">{t('whatsapp_note')}</p>
@@ -188,12 +189,21 @@ _LOGIN_CODE_I18N = {
     "code_intro": {"he":"קוד ההתחברות שלך לדשבורד:","en":"Your dashboard sign-in code:","fr":"Votre code de connexion au tableau de bord :","ar":"رمز الدخول الخاص بك إلى لوحة التحكم:","ru":"Ваш код входа в личный кабинет:"},
     "expiry_note": {"he":"הקוד בתוקף ל-10 דקות. אם לא ביקשת קוד התחברות, אפשר להתעלם מהמייל הזה.","en":"The code is valid for 10 minutes. If you didn't request a sign-in code, you can ignore this email.","fr":"Le code est valable 10 minutes. Si vous n'avez pas demandé de code de connexion, vous pouvez ignorer cet e-mail.","ar":"الرمز صالح لمدة 10 دقائق. إذا لم تطلب رمز دخول، يمكنك تجاهل هذا البريد الإلكتروني.","ru":"Код действителен 10 минут. Если вы не запрашивали код входа, просто проигнорируйте это письмо."},
     "subject": {"he":"{code} — קוד ההתחברות שלך ל-uallak","en":"{code} — your uallak sign-in code","fr":"{code} — votre code de connexion uallak","ar":"{code} — رمز الدخول الخاص بك إلى uallak","ru":"{code} — ваш код входа в uallak"},
+    # purpose="password": the same code, used to set (or reset) a password
+    "code_intro_password": {"he":"הקוד לאימות המייל ולהגדרת הסיסמה שלך:","en":"Your code to verify your email and set your password:","fr":"Votre code pour vérifier votre e-mail et définir votre mot de passe :","ar":"رمزك للتحقق من بريدك الإلكتروني وتعيين كلمة المرور:","ru":"Ваш код для подтверждения почты и установки пароля:"},
+    "expiry_note_password": {"he":"הקוד בתוקף ל-10 דקות. אם לא ביקשת להגדיר סיסמה, אפשר להתעלם מהמייל הזה — הסיסמה הקיימת שלך לא תשתנה.","en":"The code is valid for 10 minutes. If you didn't ask to set a password, you can ignore this email — your current password won't change.","fr":"Le code est valable 10 minutes. Si vous n'avez pas demandé à définir un mot de passe, ignorez cet e-mail — votre mot de passe actuel ne changera pas.","ar":"الرمز صالح لمدة 10 دقائق. إذا لم تطلب تعيين كلمة مرور، يمكنك تجاهل هذا البريد — لن تتغير كلمة مرورك الحالية.","ru":"Код действителен 10 минут. Если вы не запрашивали установку пароля, просто проигнорируйте письмо — текущий пароль не изменится."},
+    "subject_password": {"he":"{code} — קוד להגדרת הסיסמה שלך ב-uallak","en":"{code} — your uallak password setup code","fr":"{code} — votre code de mot de passe uallak","ar":"{code} — رمز تعيين كلمة المرور في uallak","ru":"{code} — код для установки пароля uallak"},
 }
 
 
-def send_login_code(client_email: str, client_name: str, code: str, client_id: int = None, language: str = None):
+def send_login_code(client_email: str, client_name: str, code: str, client_id: int = None, language: str = None,
+                    purpose: str = "login"):
     lang = _lang_of(client_id, language)
-    t = lambda key, **v: _tr(_LOGIN_CODE_I18N, key, lang, **v)
+    suffix = "_password" if purpose == "password" else ""
+    # Only three strings differ by purpose - the rest of the template is shared
+    t = lambda key, **v: _tr(_LOGIN_CODE_I18N,
+                             key + suffix if key in ("code_intro", "expiry_note", "subject") else key,
+                             lang, **v)
     name_suffix = f" {client_name}" if client_name else ""
     html = f"""
     <div dir="{_LANG_DIR[lang]}" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
@@ -215,6 +225,50 @@ def send_login_code(client_email: str, client_name: str, code: str, client_id: i
     """
     msg = MIMEMultipart('alternative')
     msg['Subject'] = t('subject', code=code)
+    msg['From'] = GMAIL_USER
+    msg['To'] = client_email
+    msg.attach(MIMEText(html, 'html'))
+    _send(msg, client_email)
+
+
+_SETUP_INVITE_I18N = {
+    "subtitle": _LOGIN_CODE_I18N["subtitle"],
+    "greeting": _LOGIN_CODE_I18N["greeting"],
+    "welcome_body": {"he":"פתחנו עבורך חשבון ב-uallak. כדי להיכנס, הגדר/י סיסמה (או התחבר/י עם Google עם כתובת המייל הזו) — זה לוקח פחות מדקה.","en":"We've opened a uallak account for you. To sign in, set a password (or continue with Google using this email address) — it takes less than a minute.","fr":"Nous vous avons ouvert un compte uallak. Pour vous connecter, définissez un mot de passe (ou continuez avec Google avec cette adresse) — moins d'une minute.","ar":"فتحنا لك حسابًا في uallak. لتسجيل الدخول، عيّن كلمة مرور (أو تابع باستخدام Google بهذا البريد) — يستغرق أقل من دقيقة.","ru":"Мы открыли для вас аккаунт uallak. Чтобы войти, задайте пароль (или войдите через Google с этим адресом) — это меньше минуты."},
+    "reset_body": {"he":"הסיסמה לחשבון uallak שלך אופסה, וכל החיבורים הפעילים נותקו. כדי להיכנס שוב, הגדר/י סיסמה חדשה (או התחבר/י עם Google).","en":"Your uallak password was reset and all active sessions were signed out. To sign in again, set a new password (or continue with Google).","fr":"Le mot de passe de votre compte uallak a été réinitialisé et toutes les sessions ont été fermées. Pour vous reconnecter, définissez un nouveau mot de passe (ou continuez avec Google).","ar":"تمت إعادة تعيين كلمة مرور حسابك في uallak وتم تسجيل الخروج من كل الجلسات. لتسجيل الدخول مجددًا، عيّن كلمة مرور جديدة (أو تابع باستخدام Google).","ru":"Пароль вашего аккаунта uallak сброшен, все активные сеансы завершены. Чтобы войти снова, задайте новый пароль (или войдите через Google)."},
+    "button": {"he":"הגדרת סיסמה →","en":"Set my password →","fr":"Définir mon mot de passe →","ar":"تعيين كلمة المرور ←","ru":"Задать пароль →"},
+    "ignore_note": {"he":"לא ציפית למייל הזה? דבר/י איתנו בוואטסאפ.","en":"Weren't expecting this email? Talk to us on WhatsApp.","fr":"Vous n'attendiez pas cet e-mail ? Contactez-nous sur WhatsApp.","ar":"لم تكن تتوقع هذا البريد؟ تحدث معنا عبر واتساب.","ru":"Не ожидали этого письма? Напишите нам в WhatsApp."},
+    "subject_welcome": {"he":"uallak — החשבון שלך מוכן","en":"uallak — your account is ready","fr":"uallak — votre compte est prêt","ar":"uallak — حسابك جاهز","ru":"uallak — ваш аккаунт готов"},
+    "subject_reset": {"he":"uallak — הסיסמה שלך אופסה","en":"uallak — your password was reset","fr":"uallak — votre mot de passe a été réinitialisé","ar":"uallak — تمت إعادة تعيين كلمة المرور","ru":"uallak — ваш пароль сброшен"},
+}
+
+
+def send_account_setup_invite(client_email: str, client_name: str, client_id: int, reason: str = "welcome"):
+    """Admin-created account (reason='welcome') or admin password reset
+    (reason='reset'). Carries a LINK, never a code or password: the client
+    requests a fresh 10-minute code on the page, so nothing long-lived sits in
+    an inbox."""
+    lang = _lang_of(client_id)
+    t = lambda key, **v: _tr(_SETUP_INVITE_I18N, key, lang, **v)
+    name_suffix = f" {client_name}" if client_name else ""
+    body = t("reset_body") if reason == "reset" else t("welcome_body")
+    link = f"{PUBLIC_APP_URL}/login/?setup=1&email={quote(client_email)}"
+    html = f"""
+    <div dir="{_LANG_DIR[lang]}" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
+        <p style="color:#8A8A8A;margin:4px 0 0;">{t('subtitle')}</p>
+      </div>
+      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;border-top:4px solid #FF4C1F;text-align:center;">
+        <h2 style="margin:0 0 16px;color:#1A1A1A;">{t('greeting', name_suffix=name_suffix)}</h2>
+        <p style="color:#3D3D3D;line-height:1.7;margin:0 0 20px;">{body}</p>
+        <a href="{link}" style="display:inline-block;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">{t('button')}</a>
+        <p style="color:#8A8A8A;line-height:1.6;font-size:13px;margin:20px 0 0;">{t('ignore_note')}</p>
+      </div>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = t("subject_reset" if reason == "reset" else "subject_welcome")
     msg['From'] = GMAIL_USER
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))

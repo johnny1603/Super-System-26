@@ -30,6 +30,7 @@ from agents.client_agent import (
     log_activity, get_activity,
     log_communication, get_communications,
     create_login_code, get_active_login_code, increment_login_code_attempts, mark_login_code_used,
+    public_client,
 )
 from core.email_service import (
     send_client_report, send_admin_alert, send_payment_confirmation, send_login_code,
@@ -45,7 +46,9 @@ from core.session import (
     create_oauth_state_token, verify_oauth_state_token,
     create_admin_session_token, verify_admin_session_token,
     create_lead_capture_token, verify_lead_capture_token,
+    session_token_version, create_google_login_state, verify_google_login_state,
 )
+from core import client_auth
 from core import google_ads_service
 from core import meta_service
 from core import tiktok_service
@@ -649,14 +652,14 @@ class LogCommunicationRequest(BaseModel):
 async def api_create_client(req: CreateClientRequest):
     try:
         client = create_client(req.name, req.email, req.phone, req.package)
-        return {"success": True, "data": client}
+        return {"success": True, "data": public_client(client)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/clients", dependencies=_admin_only)
 async def api_list_clients(status: str = None):
     try:
-        return {"success": True, "data": list_clients(status)}
+        return {"success": True, "data": [public_client(c) for c in list_clients(status)]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -665,7 +668,7 @@ async def api_get_client(client_id: int):
     client = get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"success": True, "data": client}
+    return {"success": True, "data": public_client(client)}
 
 # ─── Client login (email + one-time code, no passwords) ──────────────────────
 
@@ -728,21 +731,24 @@ async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
         raise invalid
 
     mark_login_code_used(login_code["id"])
+    client_auth.mark_email_verified(client)
+    _set_session_cookie(response, client["id"], client.get("session_version"))
+    return {"success": True}
 
-    token = create_session_token(client["id"])
+def _set_session_cookie(response: Response, client_id: int, session_version=0):
     response.set_cookie(
         key="session",
-        value=token,
+        value=create_session_token(client_id, int(session_version or 0)),
         httponly=True,
         secure=True,
         samesite="lax",
         max_age=30 * 24 * 60 * 60,
         path="/",
     )
-    return {"success": True}
 
 def _require_session(request: Request) -> int:
-    client_id = verify_session_token(request.cookies.get("session"))
+    token = request.cookies.get("session")
+    client_id = verify_session_token(token)
     if not client_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     # Hard lock: a closed/transferred client is out even with a still-valid
@@ -752,7 +758,171 @@ def _require_session(request: Request) -> int:
     client = get_client(client_id)
     if not client or client.get("status") in OFFBOARDED_STATUSES:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # A password change/reset bumps session_version - every cookie issued
+    # before it stops working (a missing column reads as 0 = no change)
+    if session_token_version(token) != int(client.get("session_version") or 0):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     return client_id
+
+# ─── Passwords, signup and Google sign-in (core/client_auth) ─────────────────
+# "Signup" here is credential setup on the client row checkout ALREADY created
+# (name/email/phone were collected there, before PayPal) - never a second door
+# that creates accounts. An email that matches no client gets the same generic
+# answer as one that does.
+
+def _login_client(email: str) -> dict:
+    email = (email or "").strip()
+    client = get_client_by_email(email) or get_client_by_email(email.lower())
+    if not client or client.get("status") in OFFBOARDED_STATUSES:
+        return {}
+    return client
+
+_auth_not_ready_alerted_at = 0.0
+
+def _auth_not_ready(e: Exception):
+    # alert() has no dedup and every login attempt would hit this - once an hour
+    # per instance is plenty to make the missing migration impossible to miss
+    global _auth_not_ready_alerted_at
+    print(f"[client_auth] {e}")
+    if time.time() - _auth_not_ready_alerted_at > 3600:
+        _auth_not_ready_alerted_at = time.time()
+        alert("client_auth", [f"client auth unavailable - run migrations/2026-10-13-client-auth.sql: {e}"])
+    return HTTPException(status_code=503, detail={"code": "ERR_AUTH_NOT_READY"})
+
+class PasswordLoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/login/password")
+def login_password(req: PasswordLoginRequest, response: Response):
+    # Plain def: scrypt is deliberately slow and must not block the event loop
+    client = _login_client(req.email)
+    try:
+        problem = client_auth.verify_password_login(client, req.password) if client else "ERR_INVALID_CREDENTIALS"
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    if problem:
+        time.sleep(0.5)  # cheap brute-force damper on top of the per-client lockout
+        raise HTTPException(status_code=401, detail={"code": problem})
+    _set_session_cookie(response, client["id"], client.get("session_version"))
+    return {"success": True}
+
+class SignupRequestCodeRequest(BaseModel):
+    email: str
+
+@app.post("/api/signup/request-code")
+def signup_request_code(req: SignupRequestCodeRequest):
+    """Step 1 of post-payment setup AND of forgot-password: email a code that
+    step 2 trades for a password. Same login_codes table and attempt limits as
+    code login, so it opens no new guessing surface."""
+    try:
+        client = _login_client(req.email)
+        if client:
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+            create_login_code(client["id"], code, expires_at)
+            send_login_code(client["email"], client.get("name", ""), code, client["id"], purpose="password")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    return {"success": True}
+
+class SignupCompleteRequest(BaseModel):
+    email: str
+    code: str
+    password: str
+    name: str = ""
+    phone: str = ""
+
+@app.post("/api/signup/complete")
+def signup_complete(req: SignupCompleteRequest, response: Response):
+    client = _login_client(req.email)
+    if not client:
+        raise HTTPException(status_code=401, detail={"code": "ERR_INVALID_CODE"})
+    try:
+        result = client_auth.set_password_with_code(client, req.code, req.password,
+                                                    MAX_LOGIN_CODE_ATTEMPTS, req.name, req.phone)
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    if not result["success"]:
+        status = 401 if result["code"] == "ERR_INVALID_CODE" else 400
+        raise HTTPException(status_code=status, detail={"code": result["code"]})
+    _set_session_cookie(response, client["id"], result["session_version"])
+    return {"success": True}
+
+GOOGLE_LOGIN_NONCE_COOKIE = "g_login_nonce"
+
+@app.get("/api/oauth/google-login/start")
+def google_login_start():
+    nonce = secrets.token_urlsafe(24)
+    response = RedirectResponse(url=client_auth.google_login_url(create_google_login_state(nonce)))
+    # Lax, not Strict: the callback is a top-level navigation FROM Google,
+    # which Strict would strip the cookie from
+    response.set_cookie(GOOGLE_LOGIN_NONCE_COOKIE, nonce, max_age=600, httponly=True,
+                        secure=True, samesite="lax", path="/api/oauth/google-login")
+    return response
+
+@app.get("/api/oauth/google-login/callback")
+def google_login_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+    def fail(reason: str):
+        response = RedirectResponse(url=f"/login/?google_error={reason}")
+        response.delete_cookie(GOOGLE_LOGIN_NONCE_COOKIE, path="/api/oauth/google-login")
+        return response
+
+    if error or not code:
+        return fail("cancelled")
+    if not verify_google_login_state(state, request.cookies.get(GOOGLE_LOGIN_NONCE_COOKIE, "")):
+        return fail("expired")
+    try:
+        identity = client_auth.google_identity(code)
+        client = client_auth.find_client_for_google(identity)
+        if not client or client.get("status") in OFFBOARDED_STATUSES:
+            return fail("no_account")
+        client_auth.link_google(client, identity)
+        client_auth.mark_email_verified(client)
+    except client_auth.AuthNotReadyError as e:
+        _auth_not_ready(e)
+        return fail("unavailable")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        alert("client_auth", [f"Google sign-in failed after consent - {type(e).__name__}: {e}"])
+        return fail("unavailable")
+    response = RedirectResponse(url="/dashboard/")
+    response.delete_cookie(GOOGLE_LOGIN_NONCE_COOKIE, path="/api/oauth/google-login")
+    _set_session_cookie(response, client["id"], client.get("session_version"))
+    return response
+
+@app.get("/api/client/account")
+def client_account(request: Request):
+    client = get_client(_require_session(request))
+    return {"success": True, "data": {
+        "email": client.get("email", ""),
+        "has_password": client_auth.has_password(client),
+        "google_linked": bool(client.get("google_sub")),
+        "email_verified": bool(client.get("email_verified_at")),
+        "billing_exempt": bool(client.get("billing_exempt")),
+    }}
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/client/password")
+def client_change_password(req: ChangePasswordRequest, request: Request, response: Response):
+    """Change an EXISTING password (needs the current one). A client without a
+    password sets their first one through /api/signup/* with their own email -
+    the emailed code is the proof there, as everywhere else."""
+    client = get_client(_require_session(request))
+    try:
+        result = client_auth.change_password(client, req.current_password, req.new_password)
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail={"code": result["code"]})
+    # Every other device is now logged out; keep THIS one signed in
+    _set_session_cookie(response, client["id"], result["session_version"])
+    return {"success": True}
 
 @app.get("/api/dashboard")
 async def dashboard_data(request: Request):
@@ -813,6 +983,9 @@ async def dashboard_data(request: Request):
         },
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
+        # Internal no-billing account: the billing UI says so instead of
+        # showing an empty fee that looks like missing data
+        "billing_exempt": bool(client.get("billing_exempt")),
         # Never ship stored credentials to the browser - the dashboard only
         # needs platform + status to paint the connection cards
         "connections": [{"platform": a.get("platform"), "status": a.get("status")}
@@ -1645,6 +1818,7 @@ def _archive_and_purge_client(client_id: int, client: dict, export_json: str) ->
         }).eq("id", client_id).execute()
     except Exception as e:
         purge_errors.append(f"clients tombstone: {e}")
+    client_auth.wipe_credentials(client_id)
     if purge_errors:
         alert("client_offboarding",
               [f"client {client_id}: archive OK (Drive file {uploaded['id']}) but purge "
@@ -3844,6 +4018,61 @@ def admin_overview(request: Request):
 def admin_clients(request: Request):
     _require_admin(request)
     return {"success": True, "data": admin_service.list_clients_admin()}
+
+class AdminNewClientRequest(BaseModel):
+    name: str
+    email: str
+    phone: str = ""
+    business_name: str = ""
+    services: list = []        # keys of client_auth.GRANTABLE_SERVICES
+    builds_site: bool = False  # grant the new-site build (real InstaWP cost to uallak)
+    language: str = "he"
+    send_invite: bool = True
+
+@app.post("/api/admin/clients/new")
+def admin_new_client(req: AdminNewClientRequest, request: Request):
+    """The admin dashboard's "New Client": a billing-exempt account (uallak's
+    own business, internal use) that skips PayPal entirely. Same dashboard and
+    connection cards as a paying client - the services grant is what the
+    package-derived checks read (see core/client_auth)."""
+    _require_admin(request)
+    try:
+        result = client_auth.create_exempt_client(req.name, req.email, req.phone, req.business_name,
+                                                  req.services, req.builds_site, req.language)
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result)
+    client = result["client"]
+    invited = False
+    if req.send_invite:
+        try:
+            from core.email_service import send_account_setup_invite
+            send_account_setup_invite(client["email"], client.get("name", ""), client["id"], "welcome")
+            invited = True
+        except Exception as e:
+            print(f"[admin_new_client] invite email failed for client {client['id']}: {e}")
+    return {"success": True, "data": {"client": public_client(client), "invite_sent": invited}}
+
+@app.post("/api/admin/clients/{client_id}/password-reset")
+def admin_client_password_reset(client_id: int, request: Request):
+    """Clears the client's password, signs them out everywhere, and emails a
+    link to set a new one. The admin never sets or sees a password."""
+    _require_admin(request)
+    client = get_client(client_id)
+    if not client or client.get("status") in OFFBOARDED_STATUSES or not client.get("email"):
+        raise HTTPException(status_code=404, detail="Client not found or has no email")
+    try:
+        client_auth.admin_reset_password(client)
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    from core.email_service import send_account_setup_invite
+    try:
+        send_account_setup_invite(client["email"], client.get("name", ""), client_id, "reset")
+    except Exception as e:
+        # The reset itself landed; say plainly that the email didn't
+        return {"success": True, "data": {"email_sent": False, "error": str(e)}}
+    return {"success": True, "data": {"email_sent": True}}
 
 # ─── CRM: leads with source attribution ──────────────────────────────────────
 # Browser-session guarded like the rest of the admin dashboard, NOT X-Admin-Key

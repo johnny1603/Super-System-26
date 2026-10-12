@@ -95,7 +95,16 @@ def _chosen_package(client_id: int) -> dict:
             package_id = details.get("package_id")
             break
     if not package_id:
-        return {}
+        # No checkout at all: an admin-created, billing-exempt account carries
+        # an explicit services grant instead (core/client_auth). Same package
+        # shape, so every reader below works unchanged - and a client with
+        # neither still resolves to {} and fails closed.
+        try:
+            from core.client_auth import exempt_package
+            return exempt_package(client_id)
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] exempt grant lookup failed for client {client_id}: {e}")
+            return {}
     try:
         from agents.budget_agent import _lead_row
         lead, _source = _lead_row(client_id)

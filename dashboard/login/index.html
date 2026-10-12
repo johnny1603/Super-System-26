@@ -75,6 +75,16 @@ body {
 }
 .btn:hover { background: #e0431a; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--white);
+  color: #1A1A1A;
+  text-decoration: none;
+}
+.btn-google:hover { background: #e9e5de; }
 .btn-link {
   width: 100%;
   background: none;
@@ -86,6 +96,9 @@ body {
   margin-top: 14px;
   text-decoration: underline;
 }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--gray); font-size: 12.5px; margin: 18px 0; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.hint { color: var(--gray); font-size: 12.5px; margin: -10px 0 18px; line-height: 1.5; }
 .msg { font-size: 13.5px; text-align: center; margin-bottom: 16px; line-height: 1.6; }
 .msg.error { color: var(--red); }
 .msg.success { color: var(--green); }
@@ -98,13 +111,34 @@ body {
 
 <div class="card">
   <div class="logo">u<span>allak</span></div>
-  <div class="subtitle" data-i18n="subtitle">כניסה לדשבורד האישי שלך</div>
+  <div class="subtitle" id="subtitle" data-i18n="subtitle">כניסה לדשבורד האישי שלך</div>
+  <div class="msg" id="topMsg"></div>
 
-  <div class="step active" id="stepEmail">
+  <!-- Sign in: password, Google, or a one-time email code -->
+  <div class="step active" id="stepPassword">
+    <a class="btn btn-google" href="/api/oauth/google-login/start">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+      <span data-i18n="google_btn">המשך עם Google</span>
+    </a>
+    <div class="divider" data-i18n="or">או</div>
+    <label class="field-label" for="pwEmail" data-i18n="email_label">כתובת המייל שלך</label>
+    <input class="field-input" id="pwEmail" type="email" dir="ltr" placeholder="you@example.com" autocomplete="email">
+    <label class="field-label" for="pwPassword" data-i18n="password_label">סיסמה</label>
+    <input class="field-input" id="pwPassword" type="password" dir="ltr" autocomplete="current-password">
+    <div class="msg" id="pwMsg"></div>
+    <button class="btn" id="pwBtn" onclick="passwordLogin()" data-i18n="verify">כניסה</button>
+    <button class="btn-link" onclick="showStep('stepEmail')" data-i18n="use_code">כניסה עם קוד חד-פעמי למייל</button>
+    <button class="btn-link" onclick="startSetup('reset')" data-i18n="forgot">שכחתי סיסמה</button>
+    <button class="btn-link" onclick="startSetup('setup')" data-i18n="first_time">פעם ראשונה? הגדרת החשבון</button>
+  </div>
+
+  <!-- Code login (unchanged flow) -->
+  <div class="step" id="stepEmail">
     <label class="field-label" for="emailInput" data-i18n="email_label">כתובת המייל שלך</label>
     <input class="field-input" id="emailInput" type="email" dir="ltr" placeholder="you@example.com" autocomplete="email">
     <div class="msg" id="emailMsg"></div>
     <button class="btn" id="sendCodeBtn" onclick="requestCode()" data-i18n="send_code">שלח קוד התחברות</button>
+    <button class="btn-link" onclick="showStep('stepPassword')" data-i18n="use_password">כניסה עם סיסמה או Google</button>
   </div>
 
   <div class="step" id="stepCode">
@@ -114,6 +148,43 @@ body {
     <div class="msg" id="codeMsg"></div>
     <button class="btn" id="verifyBtn" onclick="verifyCode()" data-i18n="verify">כניסה</button>
     <button class="btn-link" onclick="backToEmail()" data-i18n="resend">שלח לי קוד אחר / שנה מייל</button>
+  </div>
+
+  <!-- Account setup (after payment / admin invite) and forgot-password:
+       step 1 emails a code, step 2 trades it for a password. Name and phone
+       only in setup mode - checkout already collected them, this lets the
+       client correct them. -->
+  <div class="step" id="stepSetupEmail">
+    <a class="btn btn-google" href="/api/oauth/google-login/start" id="setupGoogle">
+      <span data-i18n="google_btn">המשך עם Google</span>
+    </a>
+    <div class="hint" style="margin:8px 0 0;" id="setupGoogleHint" data-i18n="google_hint">עם אותה כתובת מייל שאיתה נרשמת</div>
+    <div class="divider" id="setupDivider" data-i18n="or_password">או הגדרת סיסמה</div>
+    <label class="field-label" for="setupEmail" data-i18n="email_label">כתובת המייל שלך</label>
+    <input class="field-input" id="setupEmail" type="email" dir="ltr" placeholder="you@example.com" autocomplete="email">
+    <div class="msg" id="setupEmailMsg"></div>
+    <button class="btn" id="setupSendBtn" onclick="requestSetupCode()" data-i18n="send_setup_code">שלח לי קוד אימות</button>
+    <button class="btn-link" onclick="showStep('stepPassword')" data-i18n="back_to_login">חזרה לכניסה</button>
+  </div>
+
+  <div class="step" id="stepSetupForm">
+    <div class="msg" style="color:var(--white);" id="setupSentMsg"></div>
+    <label class="field-label" for="setupCode" data-i18n="code_label">קוד בן 6 ספרות</label>
+    <input class="field-input code-input" id="setupCode" type="text" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="one-time-code">
+    <div id="setupProfileFields">
+      <label class="field-label" for="setupName" data-i18n="name_label">שם מלא</label>
+      <input class="field-input" id="setupName" type="text" autocomplete="name">
+      <label class="field-label" for="setupPhone" data-i18n="phone_label">מספר טלפון</label>
+      <input class="field-input" id="setupPhone" type="tel" dir="ltr" autocomplete="tel">
+      <div class="hint" data-i18n="profile_hint">אפשר להשאיר ריק — נשמור את מה שמסרת ברכישה</div>
+    </div>
+    <label class="field-label" for="setupPassword" data-i18n="new_password_label">סיסמה חדשה (8 תווים לפחות)</label>
+    <input class="field-input" id="setupPassword" type="password" dir="ltr" autocomplete="new-password">
+    <label class="field-label" for="setupPassword2" data-i18n="confirm_password_label">אימות סיסמה</label>
+    <input class="field-input" id="setupPassword2" type="password" dir="ltr" autocomplete="new-password">
+    <div class="msg" id="setupMsg"></div>
+    <button class="btn" id="setupBtn" onclick="completeSetup()" data-i18n="save_password">שמירה וכניסה</button>
+    <button class="btn-link" onclick="showStep('stepSetupEmail')" data-i18n="resend">שלח לי קוד אחר / שנה מייל</button>
   </div>
 
   <div class="lang-row" id="langRow"></div>
@@ -132,12 +203,64 @@ const I18N = {
     he: 'כניסה לדשבורד האישי שלך', en: 'Sign in to your personal dashboard',
     fr: 'Connectez-vous à votre tableau de bord', ar: 'تسجيل الدخول إلى لوحة التحكم الشخصية',
     ru: 'Вход в ваш личный кабинет' },
+  subtitle_setup: {
+    he: 'הגדרת החשבון שלך', en: 'Set up your account', fr: 'Configurez votre compte',
+    ar: 'إعداد حسابك', ru: 'Настройка аккаунта' },
+  subtitle_reset: {
+    he: 'הגדרת סיסמה חדשה', en: 'Set a new password', fr: 'Définir un nouveau mot de passe',
+    ar: 'تعيين كلمة مرور جديدة', ru: 'Новый пароль' },
+  google_btn: {
+    he: 'המשך עם Google', en: 'Continue with Google', fr: 'Continuer avec Google',
+    ar: 'المتابعة باستخدام Google', ru: 'Войти через Google' },
+  google_hint: {
+    he: 'עם אותה כתובת מייל שאיתה נרשמת', en: 'Using the same email address you signed up with',
+    fr: 'Avec la même adresse e-mail que lors de l’inscription', ar: 'بنفس البريد الإلكتروني الذي سجلت به',
+    ru: 'С тем же адресом почты, что и при регистрации' },
+  or: { he: 'או', en: 'or', fr: 'ou', ar: 'أو', ru: 'или' },
+  or_password: {
+    he: 'או הגדרת סיסמה', en: 'or set a password', fr: 'ou définir un mot de passe',
+    ar: 'أو تعيين كلمة مرور', ru: 'или задайте пароль' },
   email_label: {
     he: 'כתובת המייל שלך', en: 'Your email address', fr: 'Votre adresse e-mail',
     ar: 'بريدك الإلكتروني', ru: 'Ваш адрес электронной почты' },
+  password_label: { he: 'סיסמה', en: 'Password', fr: 'Mot de passe', ar: 'كلمة المرور', ru: 'Пароль' },
+  new_password_label: {
+    he: 'סיסמה חדשה (8 תווים לפחות)', en: 'New password (at least 8 characters)',
+    fr: 'Nouveau mot de passe (8 caractères minimum)', ar: 'كلمة مرور جديدة (8 أحرف على الأقل)',
+    ru: 'Новый пароль (не менее 8 символов)' },
+  confirm_password_label: {
+    he: 'אימות סיסמה', en: 'Confirm password', fr: 'Confirmer le mot de passe',
+    ar: 'تأكيد كلمة المرور', ru: 'Повторите пароль' },
+  name_label: { he: 'שם מלא', en: 'Full name', fr: 'Nom complet', ar: 'الاسم الكامل', ru: 'Полное имя' },
+  phone_label: { he: 'מספר טלפון', en: 'Phone number', fr: 'Numéro de téléphone', ar: 'رقم الهاتف', ru: 'Номер телефона' },
+  profile_hint: {
+    he: 'אפשר להשאיר ריק — נשמור את מה שמסרת ברכישה', en: 'You can leave these empty — we keep what you gave at checkout',
+    fr: 'Vous pouvez laisser vide — nous gardons ce que vous avez indiqué à l’achat',
+    ar: 'يمكنك تركها فارغة — سنحتفظ بما أدخلته عند الشراء',
+    ru: 'Можно оставить пустым — сохраним данные, указанные при покупке' },
+  use_code: {
+    he: 'כניסה עם קוד חד-פעמי למייל', en: 'Sign in with a one-time email code',
+    fr: 'Se connecter avec un code envoyé par e-mail', ar: 'الدخول برمز لمرة واحدة عبر البريد',
+    ru: 'Войти по одноразовому коду на почту' },
+  use_password: {
+    he: 'כניסה עם סיסמה או Google', en: 'Sign in with a password or Google',
+    fr: 'Se connecter avec un mot de passe ou Google', ar: 'الدخول بكلمة مرور أو Google',
+    ru: 'Войти с паролем или через Google' },
+  forgot: { he: 'שכחתי סיסמה', en: 'Forgot password', fr: 'Mot de passe oublié', ar: 'نسيت كلمة المرور', ru: 'Забыли пароль' },
+  first_time: {
+    he: 'פעם ראשונה? הגדרת החשבון', en: 'First time? Set up your account',
+    fr: 'Première fois ? Configurez votre compte', ar: 'أول مرة؟ إعداد الحساب',
+    ru: 'Впервые? Настройте аккаунт' },
+  back_to_login: { he: 'חזרה לכניסה', en: 'Back to sign-in', fr: 'Retour à la connexion', ar: 'العودة لتسجيل الدخول', ru: 'Назад ко входу' },
   send_code: {
     he: 'שלח קוד התחברות', en: 'Send sign-in code', fr: 'Envoyer le code de connexion',
     ar: 'إرسال رمز الدخول', ru: 'Отправить код входа' },
+  send_setup_code: {
+    he: 'שלח לי קוד אימות', en: 'Send me a verification code', fr: 'M’envoyer un code de vérification',
+    ar: 'أرسل لي رمز التحقق', ru: 'Отправить код подтверждения' },
+  save_password: {
+    he: 'שמירה וכניסה', en: 'Save and sign in', fr: 'Enregistrer et se connecter',
+    ar: 'حفظ وتسجيل الدخول', ru: 'Сохранить и войти' },
   code_label: {
     he: 'קוד בן 6 ספרות', en: '6-digit code', fr: 'Code à 6 chiffres',
     ar: 'رمز مكوّن من 6 أرقام', ru: 'Код из 6 цифр' },
@@ -153,6 +276,12 @@ const I18N = {
     fr: 'Si un compte existe pour {email}, nous lui avons envoyé un code à 6 chiffres, valable 10 minutes.',
     ar: 'إذا كان هناك حساب لـ {email}، فقد أرسلنا إليه رمزًا من 6 أرقام. الرمز صالح لمدة 10 دقائق.',
     ru: 'Если для {email} существует аккаунт, мы отправили на него код из 6 цифр. Код действителен 10 минут.' },
+  setup_code_sent: {
+    he: 'אם {email} הוא המייל שאיתו רכשת (או שנפתח עבורך חשבון), שלחנו אליו קוד בן 6 ספרות — בתוקף ל-10 דקות.',
+    en: 'If {email} is the address you purchased with (or an account was opened for you), we sent it a 6-digit code — valid for 10 minutes.',
+    fr: 'Si {email} est l’adresse utilisée lors de l’achat (ou si un compte vous a été ouvert), nous y avons envoyé un code à 6 chiffres — valable 10 minutes.',
+    ar: 'إذا كان {email} هو البريد الذي اشتريت به (أو فُتح لك حساب)، فقد أرسلنا إليه رمزًا من 6 أرقام — صالح لمدة 10 دقائق.',
+    ru: 'Если {email} — адрес, с которым вы оформили покупку (или для вас открыли аккаунт), мы отправили на него код из 6 цифр — действует 10 минут.' },
   err_no_email: {
     he: 'נא להזין כתובת מייל', en: 'Please enter an email address',
     fr: 'Veuillez saisir une adresse e-mail', ar: 'يرجى إدخال البريد الإلكتروني',
@@ -169,6 +298,37 @@ const I18N = {
     he: 'קוד שגוי או שפג תוקפו - נסה שוב', en: 'Wrong or expired code — try again',
     fr: 'Code incorrect ou expiré — réessayez', ar: 'رمز خاطئ أو منتهي الصلاحية - حاول مجددًا',
     ru: 'Неверный или просроченный код — попробуйте ещё раз' },
+  err_bad_credentials: {
+    he: 'מייל או סיסמה שגויים. עדיין לא הגדרת סיסמה? היכנס/י עם קוד למייל או הגדר/י אחת.',
+    en: 'Wrong email or password. Haven’t set a password yet? Sign in with an email code or set one up.',
+    fr: 'E-mail ou mot de passe incorrect. Pas encore de mot de passe ? Connectez-vous par code ou créez-en un.',
+    ar: 'البريد أو كلمة المرور غير صحيحة. لم تعيّن كلمة مرور بعد؟ ادخل برمز عبر البريد أو عيّن واحدة.',
+    ru: 'Неверная почта или пароль. Ещё не задали пароль? Войдите по коду или задайте его.' },
+  err_password_short: {
+    he: 'הסיסמה צריכה להכיל לפחות 8 תווים', en: 'The password needs at least 8 characters',
+    fr: 'Le mot de passe doit contenir au moins 8 caractères', ar: 'يجب أن تحتوي كلمة المرور على 8 أحرف على الأقل',
+    ru: 'Пароль должен содержать не менее 8 символов' },
+  err_password_long: {
+    he: 'הסיסמה ארוכה מדי', en: 'The password is too long', fr: 'Le mot de passe est trop long',
+    ar: 'كلمة المرور طويلة جدًا', ru: 'Пароль слишком длинный' },
+  err_password_mismatch: {
+    he: 'שתי הסיסמאות לא תואמות', en: 'The two passwords don’t match', fr: 'Les deux mots de passe ne correspondent pas',
+    ar: 'كلمتا المرور غير متطابقتين', ru: 'Пароли не совпадают' },
+  err_not_ready: {
+    he: 'כניסה עם סיסמה עדיין לא זמינה — היכנס/י בינתיים עם קוד למייל', en: 'Password sign-in isn’t available yet — please use an email code for now',
+    fr: 'La connexion par mot de passe n’est pas encore disponible — utilisez un code par e-mail',
+    ar: 'تسجيل الدخول بكلمة مرور غير متاح بعد — استخدم رمز البريد حاليًا',
+    ru: 'Вход по паролю пока недоступен — пока войдите по коду на почту' },
+  google_no_account: {
+    he: 'לא מצאנו חשבון עם כתובת ה-Google הזו. היכנס/י עם המייל שאיתו רכשת, או עם קוד למייל.',
+    en: 'We couldn’t find an account for that Google address. Sign in with the email you purchased with, or with an email code.',
+    fr: 'Aucun compte trouvé pour cette adresse Google. Connectez-vous avec l’e-mail utilisé à l’achat, ou par code.',
+    ar: 'لم نجد حسابًا لعنوان Google هذا. ادخل بالبريد الذي اشتريت به أو برمز عبر البريد.',
+    ru: 'Аккаунт с этим адресом Google не найден. Войдите с почтой, указанной при покупке, или по коду.' },
+  google_failed: {
+    he: 'הכניסה עם Google לא הושלמה — נסה/י שוב או היכנס/י עם קוד למייל', en: 'Google sign-in didn’t complete — try again or use an email code',
+    fr: 'La connexion Google n’a pas abouti — réessayez ou utilisez un code', ar: 'لم يكتمل الدخول عبر Google — حاول مجددًا أو استخدم رمز البريد',
+    ru: 'Вход через Google не завершён — попробуйте снова или войдите по коду' },
   success: {
     he: 'התחברת בהצלחה, מעביר אותך לדשבורד...', en: 'Signed in — taking you to your dashboard…',
     fr: 'Connexion réussie — redirection vers votre tableau de bord…',
@@ -180,11 +340,57 @@ uallakI18n.mountSwitcher(document.getElementById('langRow'));
 </script>
 <script>
 let currentEmail = '';
+let setupMode = 'setup';   // 'setup' | 'reset' - which subtitle/fields the setup steps show
 
 function setMsg(id, text, type) {
   const el = document.getElementById(id);
   el.textContent = text || '';
   el.className = 'msg' + (type ? ' ' + type : '');
+}
+
+function showStep(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const sub = document.getElementById('subtitle');
+  const key = id.startsWith('stepSetup') ? (setupMode === 'reset' ? 'subtitle_reset' : 'subtitle_setup') : 'subtitle';
+  sub.setAttribute('data-i18n', key);
+  sub.textContent = uallakI18n.t(key);
+}
+
+// Server errors arrive as {detail: {code: 'ERR_X'}} - map to localized text
+function errText(body, fallbackKey) {
+  const code = body && body.detail && body.detail.code;
+  return uallakI18n.t({
+    ERR_INVALID_CREDENTIALS: 'err_bad_credentials', ERR_INVALID_CODE: 'err_bad_code',
+    ERR_PASSWORD_TOO_SHORT: 'err_password_short', ERR_PASSWORD_TOO_LONG: 'err_password_long',
+    ERR_AUTH_NOT_READY: 'err_not_ready',
+  }[code] || fallbackKey);
+}
+
+function goDashboard(msgId) {
+  setMsg(msgId, uallakI18n.t('success'), 'success');
+  setTimeout(() => { window.location.href = '/dashboard/'; }, 700);
+}
+
+async function passwordLogin() {
+  const email = document.getElementById('pwEmail').value.trim();
+  const password = document.getElementById('pwPassword').value;
+  if (!email) { setMsg('pwMsg', uallakI18n.t('err_no_email'), 'error'); return; }
+  const btn = document.getElementById('pwBtn');
+  btn.disabled = true;
+  setMsg('pwMsg', '', '');
+  try {
+    const res = await fetch('/api/login/password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (res.ok) { goDashboard('pwMsg'); return; }
+    setMsg('pwMsg', errText(await res.json().catch(() => null), 'err_generic'), 'error');
+  } catch (e) {
+    setMsg('pwMsg', uallakI18n.t('err_generic'), 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function requestCode() {
@@ -203,8 +409,7 @@ async function requestCode() {
     });
     currentEmail = email;
     document.getElementById('codeSentMsg').textContent = uallakI18n.t('code_sent', { email });
-    document.getElementById('stepEmail').classList.remove('active');
-    document.getElementById('stepCode').classList.add('active');
+    showStep('stepCode');
     document.getElementById('codeInput').focus();
   } catch (e) {
     setMsg('emailMsg', uallakI18n.t('err_generic'), 'error');
@@ -228,8 +433,7 @@ async function verifyCode() {
       body: JSON.stringify({ email: currentEmail, code })
     });
     if (res.ok) {
-      setMsg('codeMsg', uallakI18n.t('success'), 'success');
-      setTimeout(() => { window.location.href = '/dashboard/'; }, 700);
+      goDashboard('codeMsg');
     } else {
       setMsg('codeMsg', uallakI18n.t('err_bad_code'), 'error');
     }
@@ -241,14 +445,99 @@ async function verifyCode() {
 }
 
 function backToEmail() {
-  document.getElementById('stepCode').classList.remove('active');
-  document.getElementById('stepEmail').classList.add('active');
+  showStep('stepEmail');
   document.getElementById('codeInput').value = '';
   setMsg('codeMsg', '', '');
 }
 
+function startSetup(mode) {
+  setupMode = mode;
+  const isSetup = mode === 'setup';
+  // Google is a sign-in alternative to SETTING UP a password; on a reset the
+  // client asked for a password specifically, so keep that screen focused
+  ['setupGoogle', 'setupGoogleHint', 'setupDivider'].forEach(id =>
+    document.getElementById(id).style.display = isSetup ? '' : 'none');
+  document.getElementById('setupProfileFields').style.display = isSetup ? '' : 'none';
+  const known = document.getElementById('pwEmail').value.trim();
+  if (known && !document.getElementById('setupEmail').value) document.getElementById('setupEmail').value = known;
+  showStep('stepSetupEmail');
+}
+
+async function requestSetupCode() {
+  const email = document.getElementById('setupEmail').value.trim();
+  if (!email) { setMsg('setupEmailMsg', uallakI18n.t('err_no_email'), 'error'); return; }
+  const btn = document.getElementById('setupSendBtn');
+  btn.disabled = true;
+  setMsg('setupEmailMsg', '', '');
+  try {
+    await fetch('/api/signup/request-code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    currentEmail = email;
+    document.getElementById('setupSentMsg').textContent = uallakI18n.t('setup_code_sent', { email });
+    showStep('stepSetupForm');
+    document.getElementById('setupCode').focus();
+  } catch (e) {
+    setMsg('setupEmailMsg', uallakI18n.t('err_generic'), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function completeSetup() {
+  const code = document.getElementById('setupCode').value.trim();
+  const password = document.getElementById('setupPassword').value;
+  if (!code) { setMsg('setupMsg', uallakI18n.t('err_no_code'), 'error'); return; }
+  if (password.length < 8) { setMsg('setupMsg', uallakI18n.t('err_password_short'), 'error'); return; }
+  if (password !== document.getElementById('setupPassword2').value) {
+    setMsg('setupMsg', uallakI18n.t('err_password_mismatch'), 'error'); return;
+  }
+  const isSetup = setupMode === 'setup';
+  const btn = document.getElementById('setupBtn');
+  btn.disabled = true;
+  setMsg('setupMsg', '', '');
+  try {
+    const res = await fetch('/api/signup/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: currentEmail, code, password,
+        name: isSetup ? document.getElementById('setupName').value.trim() : '',
+        phone: isSetup ? document.getElementById('setupPhone').value.trim() : '',
+      })
+    });
+    if (res.ok) { goDashboard('setupMsg'); return; }
+    setMsg('setupMsg', errText(await res.json().catch(() => null), 'err_generic'), 'error');
+  } catch (e) {
+    setMsg('setupMsg', uallakI18n.t('err_generic'), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Entry points: ?setup=1[&email=] from the post-payment button and the
+// invite/reset emails; ?google_error= from the Google sign-in callback
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const email = params.get('email') || '';
+  if (email) {
+    document.getElementById('pwEmail').value = email;
+    document.getElementById('setupEmail').value = email;
+    document.getElementById('emailInput').value = email;
+  }
+  const gErr = params.get('google_error');
+  if (gErr && gErr !== 'cancelled') {
+    setMsg('topMsg', uallakI18n.t(gErr === 'no_account' ? 'google_no_account' : 'google_failed'), 'error');
+  }
+  if (params.get('setup') === '1') startSetup('setup');
+})();
+
+document.getElementById('pwEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('pwPassword').focus(); });
+document.getElementById('pwPassword').addEventListener('keydown', e => { if (e.key === 'Enter') passwordLogin(); });
 document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
 document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') verifyCode(); });
+document.getElementById('setupEmail').addEventListener('keydown', e => { if (e.key === 'Enter') requestSetupCode(); });
+document.getElementById('setupPassword2').addEventListener('keydown', e => { if (e.key === 'Enter') completeSetup(); });
 </script>
 </body>
 </html>

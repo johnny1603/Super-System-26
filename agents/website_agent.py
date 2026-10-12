@@ -1838,27 +1838,15 @@ def _package_includes_hosting(client_id: int) -> bool:
 
     Package UPGRADES (get_upgrade_tiers) never add website hosting — an
     upgrade's subscription_created row has no package_id/monthly_breakdown
-    to check at all, so this only ever looks at the ORIGINAL checkout row."""
-    from agents.budget_agent import _lead_row
+    to check at all, so this only ever looks at the ORIGINAL checkout row.
+
+    The lookup itself is client_journey._chosen_package - one answer to "which
+    package did they buy", which also covers an admin-created billing-exempt
+    account's explicit grant (core/client_auth.exempt_package)."""
     from agents.onboarding_agent import PRICING
+    from core.client_journey import _chosen_package
     hosting_label = PRICING["website"]["new_site_hosting"]["label_he"]
-
-    package_id = None
-    for row in (_db().table("client_activity").select("action_type,details")
-                .eq("client_id", client_id).eq("agent_name", "paypal_service")
-                .order("created_at", desc=True).limit(50).execute().data or []):
-        if row.get("action_type") == "subscription_cancelled":
-            break
-        details = row.get("details") or {}
-        if row.get("action_type") == "subscription_created" and not details.get("upgrade"):
-            package_id = details.get("package_id")
-            break
-    if not package_id:
-        return False
-
-    lead, _source = _lead_row(client_id)
-    packages = (lead.get("proposal") or {}).get("packages") or []
-    chosen = next((p for p in packages if p.get("id") == package_id), None)
+    chosen = _chosen_package(client_id)
     if not chosen:
         return False
     return hosting_label in (chosen.get("monthly_breakdown") or {})

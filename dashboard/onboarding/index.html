@@ -950,7 +950,9 @@ function showDashboardLinkButton() {
   btn.className = 'option-btn';
   btn.style.cssText = 'background:#1A1A1A;color:white;';
   btn.textContent = uallakI18n.t('dashboard_btn');
-  btn.onclick = () => { window.location.href = '/login/'; };
+  // Just paid: straight into account setup (password or Google) on the
+  // client row checkout created - not a bare sign-in form
+  btn.onclick = () => { window.location.href = '/login/?setup=1'; };
   grid.appendChild(btn);
   bubble.appendChild(grid);
   div.appendChild(avatar);

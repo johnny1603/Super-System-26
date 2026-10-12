@@ -297,7 +297,10 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
     </div>
 
     <div id="tab-clients" style="display:none;">
-      <div class="page-title">לקוחות</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div class="page-title">לקוחות</div>
+        <button class="drawer-action-btn" style="width:auto;margin:0;" onclick="openNewClientDrawer()">+ לקוח חדש (ללא חיוב)</button>
+      </div>
       <div class="page-sub" id="clientsSub"></div>
       <div id="openAlertsBanner"></div>
       <div class="table-wrap" id="clientsTable"></div>
@@ -453,7 +456,7 @@ async function loadOverview() {
       <div class="stat-card">
         <span class="label">הכנסה חוזרת חודשית (MRR)</span>
         <span class="value">${ils(d.mrr)}</span>
-        <span class="note" style="color:var(--green);">${d.active_clients} לקוחות פעילים</span>
+        <span class="note" style="color:var(--green);">${d.active_clients} לקוחות פעילים${d.internal_accounts ? ` · ${d.internal_accounts} חשבונות פנימיים (ללא חיוב, לא נספרים)` : ''}</span>
       </div>
       <div class="stat-card">
         <span class="label">דמי הקמה שנרשמו החודש</span>
@@ -514,10 +517,11 @@ async function loadClients() {
     : '';
 
   const platformNames = { google_ads: 'Google', meta: 'Meta', tiktok: 'TikTok', youtube: 'YouTube' };
-  const statusPill = s =>
-    s === 'active' ? '<span class="status-pill active">פעיל</span>'
+  const statusPill = (s, exempt) =>
+    (s === 'active' ? '<span class="status-pill active">פעיל</span>'
     : s === 'pending_payment' ? '<span class="status-pill pending">ממתין לתשלום</span>'
-    : `<span class="status-pill other">${esc(s || '—')}</span>`;
+    : `<span class="status-pill other">${esc(s || '—')}</span>`)
+    + (exempt ? ' <span class="status-pill other" title="נוצר ידנית, ללא חיוב — לא נספר בהכנסות">פנימי</span>' : '');
 
   const rows = clientsCache.map(c => {
     const wa = waLink(c.phone);
@@ -533,7 +537,7 @@ async function loadClients() {
       </div>
       <div style="font-size:12.5px;color:var(--gray);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.address || '')}">${esc(c.address || '—')}</div>
       <div style="font-size:12.5px;">${esc(c.package || '—')}</div>
-      <div>${statusPill(c.status)}</div>
+      <div>${statusPill(c.status, c.billing_exempt)}</div>
       <div>${platforms}</div>
       <div style="color:var(--gray);font-size:12.5px;">${fmtDate(c.last_activity)}</div>
       <div class="cost-figure">${cost}</div>
@@ -1349,8 +1353,9 @@ async function openDrawer(clientId) {
       <div class="drawer-stat-row"><span class="drawer-stat-label">חבילה</span><span>${esc(c.package || '—')}${d.monthly_fee ? ' — ' + ils(d.monthly_fee) + '/חודש' : ''}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">סטטוס</span><span>${esc(c.status)}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">הצטרף</span><span>${fmtDate(c.created_at)}</span></div>
-      <div class="drawer-stat-row"><span class="drawer-stat-label">חיוב הבא</span><span>${d.next_billing ? fmtDate(d.next_billing) : '—'}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">חיוב הבא</span><span>${c.billing_exempt ? 'חשבון פנימי — ללא חיוב' : (d.next_billing ? fmtDate(d.next_billing) : '—')}</span></div>
       <div class="drawer-stat-row"><span class="drawer-stat-label">כתובת</span><span>${esc(c.address || '—')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">כניסה</span><span>${[c.has_password ? 'סיסמה' : '', c.google_linked ? 'Google' : '', 'קוד למייל'].filter(Boolean).join(' · ')}</span></div>
     </div>
 
     <div class="drawer-section">
@@ -1372,6 +1377,9 @@ async function openDrawer(clientId) {
       ${wa
         ? `<button class="drawer-action-btn secondary" onclick="window.open('${wa}','_blank')">💬 שלח הודעה בוואטסאפ</button>`
         : '<button class="drawer-action-btn secondary" disabled>💬 אין מספר טלפון לוואטסאפ</button>'}
+      ${c.email
+        ? `<button class="drawer-action-btn secondary" onclick="resetClientPassword(${Number(c.id)})">🔑 איפוס סיסמה + ניתוק מכל המכשירים</button>`
+        : ''}
     </div>
 
     <div class="drawer-section">
@@ -1659,6 +1667,100 @@ async function sendAdminChat(clientId) {
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
+}
+
+// ─── new client (billing-exempt) + password reset ───────────────────────────
+// Keys must match core/client_auth.GRANTABLE_SERVICES. The grant is what the
+// connection checklist, interview gate and website self-provision read - an
+// unticked service simply isn't part of this account's walkthrough.
+const GRANTABLE = [
+  ['website', 'אתר / SEO'], ['google_ads', 'Google Ads'], ['meta', 'Meta (פייסבוק + אינסטגרם)'],
+  ['tiktok', 'TikTok'], ['youtube', 'YouTube'], ['media', 'מדיה (Higgsfield)'], ['avatar', 'אווטאר (HeyGen)'],
+];
+
+function openNewClientDrawer() {
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = `
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    <div class="drawer-head"><div><div class="drawer-name">לקוח חדש — ללא חיוב</div>
+      <div class="drawer-email">חשבון פנימי: בלי PayPal, לא נספר בהכנסות. אותו דשבורד ואותם חיבורים כמו לקוח משלם.</div></div></div>
+    <div class="drawer-section">
+      <div class="drawer-label">פרטים</div>
+      <div class="settings-row"><span class="drawer-stat-label">שם מלא *</span><input id="nc-name"></div>
+      <div class="settings-row"><span class="drawer-stat-label">אימייל *</span><input id="nc-email" type="email" dir="ltr"></div>
+      <div class="settings-row"><span class="drawer-stat-label">טלפון</span><input id="nc-phone" type="tel" dir="ltr"></div>
+      <div class="settings-row"><span class="drawer-stat-label">שם העסק</span><input id="nc-business"></div>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-label">שירותים פעילים בחשבון</div>
+      ${GRANTABLE.map(([key, label]) => `<label class="drawer-stat-row" style="cursor:pointer;">
+          <span class="drawer-stat-label">${esc(label)}</span><input type="checkbox" class="nc-service" value="${key}"></label>`).join('')}
+      <label class="drawer-stat-row" style="cursor:pointer;">
+        <span class="drawer-stat-label">כולל הקמת אתר חדש (עלות InstaWP אמיתית על uallak)</span><input type="checkbox" id="nc-builds-site"></label>
+      <label class="drawer-stat-row" style="cursor:pointer;border:none;">
+        <span class="drawer-stat-label">לשלוח ללקוח מייל להגדרת סיסמה</span><input type="checkbox" id="nc-invite" checked></label>
+    </div>
+    <div class="drawer-section">
+      <div id="nc-msg" style="font-size:13px;margin-bottom:10px;"></div>
+      <button class="drawer-action-btn" id="nc-submit" onclick="submitNewClient()">יצירת החשבון</button>
+    </div>`;
+  drawer.classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function submitNewClient() {
+  const msg = document.getElementById('nc-msg');
+  const btn = document.getElementById('nc-submit');
+  const payload = {
+    name: document.getElementById('nc-name').value.trim(),
+    email: document.getElementById('nc-email').value.trim(),
+    phone: document.getElementById('nc-phone').value.trim(),
+    business_name: document.getElementById('nc-business').value.trim(),
+    services: [...document.querySelectorAll('.nc-service:checked')].map(i => i.value),
+    builds_site: document.getElementById('nc-builds-site').checked,
+    send_invite: document.getElementById('nc-invite').checked,
+  };
+  if (!payload.name || !payload.email) { msg.style.color = 'var(--red)'; msg.textContent = 'שם ואימייל הם חובה'; return; }
+  btn.disabled = true;
+  msg.style.color = 'var(--gray)'; msg.textContent = 'יוצר…';
+  try {
+    const res = await api('/api/admin/clients/new', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    if (!res.success) {
+      const code = (res.detail || {}).code;
+      msg.style.color = 'var(--red)';
+      msg.textContent = {
+        ERR_EMAIL_EXISTS: 'כבר קיים לקוח עם האימייל הזה',
+        ERR_NAME_EMAIL_REQUIRED: 'שם ואימייל תקין הם חובה',
+        ERR_AUTH_NOT_READY: 'צריך להריץ קודם את migrations/2026-10-13-client-auth.sql ב-Supabase',
+      }[code] || 'היצירה נכשלה';
+      btn.disabled = false;
+      return;
+    }
+    const c = res.data.client;
+    loadClients();
+    loadOverview();
+    msg.style.color = 'var(--green)';
+    msg.textContent = `נוצר לקוח #${c.id}` + (payload.send_invite
+      ? (res.data.invite_sent ? ' — נשלח מייל להגדרת סיסמה' : ' — ⚠ מייל ההזמנה לא נשלח, אפשר לשלוח שוב דרך "איפוס סיסמה"')
+      : '');
+    setTimeout(() => openDrawer(c.id), 1200);
+  } catch (e) {
+    msg.style.color = 'var(--red)'; msg.textContent = 'שגיאה — נסה שוב';
+    btn.disabled = false;
+  }
+}
+
+async function resetClientPassword(clientId) {
+  if (!confirm('לאפס את הסיסמה של הלקוח?\nהסיסמה הנוכחית תימחק, הלקוח ינותק מכל המכשירים ויקבל מייל להגדרת סיסמה חדשה.')) return;
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/password-reset`, { method: 'POST' });
+    if (!res.success) { alert('האיפוס נכשל' + ((res.detail || {}).code === 'ERR_AUTH_NOT_READY' ? ' — המיגרציה עדיין לא הורצה' : '')); return; }
+    alert(res.data.email_sent ? 'בוצע — נשלח ללקוח מייל להגדרת סיסמה חדשה' : 'הסיסמה אופסה, אבל המייל לא נשלח: ' + (res.data.error || ''));
+  } catch (e) {
+    alert('שגיאה — נסה שוב');
+  }
 }
 
 // ─── boot ────────────────────────────────────────────────────────────────────

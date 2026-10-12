@@ -92,11 +92,17 @@ def _costs_since(since_iso: str) -> list:
 def get_overview() -> dict:
     now = datetime.now(timezone.utc)
     month_start = _month_start(now)
-    clients = _db().table("clients").select("id, name, status, package, created_at").execute().data or []
+    # select("*") rather than a column list: billing_exempt may not exist yet
+    # (pre-migration), and naming it would fail the whole overview
+    clients = _db().table("clients").select("*").execute().data or []
     fees = _fee_map()
     settings = get_settings()
 
-    active = [c for c in clients if c.get("status") == "active"]
+    # Billing-exempt (admin-created, internal) accounts are NOT customers: they
+    # never enter MRR, client counts, the trend or margin math - they'd read as
+    # "a paying client at ₪0". Counted separately so they're still visible.
+    internal = [c for c in clients if c.get("billing_exempt") and c.get("status") == "active"]
+    active = [c for c in clients if c.get("status") == "active" and not c.get("billing_exempt")]
     mrr = sum(fees.get(c["id"], {}).get("monthly_fee", 0) for c in active)
 
     # Setup fees recorded at checkouts that happened this month.
@@ -156,6 +162,7 @@ def get_overview() -> dict:
     return {
         "mrr": mrr,
         "active_clients": len(active),
+        "internal_accounts": len(internal),
         "setup_fees_month": setup_fees_month,
         "new_clients_month": len(new_this_month),
         "cost_month": total_cost,
@@ -213,6 +220,9 @@ def list_clients_admin() -> list:
             "address": c.get("address", ""),
             "package": c.get("package", ""),
             "status": c.get("status", ""),
+            "billing_exempt": bool(c.get("billing_exempt")),
+            "has_password": bool(c.get("password_hash")),
+            "google_linked": bool(c.get("google_sub")),
             "platforms": platforms_by_client.get(c["id"], []),
             "last_activity": last_activity.get(c["id"]),
             "monthly_fee": fee,
@@ -257,8 +267,9 @@ def get_client_admin(client_id: int) -> dict:
         print(f"[admin_service] lead volume lookup failed for client {client_id}: {e}")
         lead_volume = None
 
+    from agents.client_agent import public_client
     return {
-        "client": client,
+        "client": public_client(client),
         "lead_volume": lead_volume,
         "monthly_fee": fee,
         "setup_fee": fees.get("setup_fee", 0),

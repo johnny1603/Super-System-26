@@ -37,9 +37,10 @@ region migration" blocker — the proxy is free and needs no LB.
       (`/api/oauth/google-ads/callback`), GTM
       (`/api/oauth/gtm/callback`), YouTube
       (`/api/oauth/youtube/callback`), Merchant Center
-      (`/api/oauth/merchant-center/callback`) — all four redirect URIs must
-      be registered on the SAME OAuth client, and all four break together
-      if `PUBLIC_APP_URL` and the registered URIs ever drift apart.
+      (`/api/oauth/merchant-center/callback`), client Google SIGN-IN
+      (`/api/oauth/google-login/callback`, added 2026-10-13) — all of these
+      redirect URIs must be registered on the SAME OAuth client, and they all
+      break together if `PUBLIC_APP_URL` and the registered URIs ever drift apart.
 - [ ] Meta App Dashboard — Facebook Login for Business → Valid OAuth
       Redirect URIs
 - [ ] TikTok Developer Portal — App settings → Redirect URI
