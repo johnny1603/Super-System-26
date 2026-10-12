@@ -65,6 +65,38 @@ Per path:
   `website_authorize_*` rows from the one-click connect work, which also
   showed raw).
 
+## Regression fix (2026-10-13, same day)
+
+Ordinary questions ("can I talk to you about my business?") were getting the
+"having trouble pulling that up, passed to the team" line. What changed in
+this handoff that caused it:
+
+1. `HANDOFF_RULE`'s data rule handed the model a ready-made sentence ("אני נתקל
+   בקושי לשלוף את זה כרגע, אני כבר מעביר לצוות שיבדקו") triggered by "a field
+   you would need carries an error" — and the model applied it loosely.
+2. Failed reads were kept IN the payload as `{"connected": true, "error": …}`
+   blocks (this handoff made thrown reads do that too). A client whose Google
+   Ads read fails on every call had an error block in front of the model on
+   every message.
+3. Older prompt lines pushed the same way: "answer… using ONLY the client data"
+   and "unrelated to their account → team follow-up"; the sales closer listed
+   "guarantee of results" and discounts as out of scope.
+
+Narrowed, not rebuilt: failed reads now leave the payload and become a bare
+`unavailable_right_now` name list (`_split_unavailable`), relevant ONLY when
+the client asks about that data; `HANDOFF_RULE` opens with "answer by default"
+(ordinary conversation listed explicitly; exceptions are rare); follow-up is
+for change requests/complaints/billing/missing account facts; the sales
+out-of-scope list is legal/tax/medical/contracts only. Fixed technical text
+still fires only on a real exception or empty reply — unchanged.
+
+Verify after deploy (not runnable here — no API key on this machine):
+ordinary → direct answer: "אפשר לדבר איתך פה על העסק שלי?", "ספר לי על
+השירותים שלכם", "how does this work?", "do you guarantee results?";
+still hands off: "האם החוזה הזה מחייב אותי משפטית?" (out_of_scope + one alert),
+"how are my Google campaigns doing?" while Google Ads fails to load (says it
+can't pull them now), and a revoked API key (fixed technical line).
+
 ## Limits
 
 - Prospect alert dedup is per Cloud Run instance (memory) — worst case one

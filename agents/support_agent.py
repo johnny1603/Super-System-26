@@ -157,48 +157,56 @@ def _current_thread(client_id: int, chat_started_at: str,
 # PERSONA_SYSTEM_TEMPLATE before .format(). Defined before SYSTEM, which uses it.
 HANDOFF_RULE = """
 
-WHEN YOU CAN'T ANSWER — NEVER A DEAD END, ALWAYS IN YOUR OWN VOICE:
-- OUT OF SCOPE: if the question is outside what uallak can responsibly answer at all — legal,
-  tax/accounting, medical, insurance, contracts, anything that needs a licensed professional, or
-  a decision only the team can make (refunds, exceptions to the package, promises about results)
-  — do NOT attempt an answer and never bluff. Say so honestly in one short line, the way you
-  normally talk, that this isn't something you can help with directly and you're passing it to
-  the team who will get back to them (for example: "זה לא בתחום שאני יכול לעזור בו ישירות —
-  אני מעביר את זה לצוות ויחזרו אליך", in your own grammatical gender and the client's
-  language), then offer to keep going with what you CAN help with. Set "out_of_scope" to true
-  AND "needs_human_followup" to true — that is what actually sends it to the team.
-- DATA YOU COULDN'T READ: if a data field you would need carries an "error", say plainly and
-  warmly that you're having trouble pulling it up right now and the team is already checking
-  (for example: "אני נתקל בקושי לשלוף את זה כרגע, אני כבר מעביר לצוות שיבדקו") — never error
-  codes, never "system error" / "תקלה טכנית" wording — and carry on with whatever else you can.
-- MOVE ON: name the limitation once. Don't apologize repeatedly, and if conversation_history
-  shows something was already handed to the team, don't raise it again unless the client does —
-  just keep being useful."""
+ANSWER BY DEFAULT. Almost every message is one you simply answer, directly and warmly, with no
+handoff: greetings, "can I talk to you about my business?" (yes — invite them to share),
+questions about their business, marketing ideas, what uallak does, how the service or dashboard
+works, their package, what happens next. Being unsure of a detail is not a handoff either — say
+what you do know. The two cases below are RARE exceptions; when in doubt, it is NOT one of them.
+
+THE TWO EXCEPTIONS — never a dead end, always in your own voice:
+- OUT OF SCOPE — only for a question that needs a licensed professional or a decision only the
+  team can make: legal, tax/accounting, medical, insurance, contract terms, refunds, exceptions
+  to the package, guarantees of results. Don't attempt it and never bluff: say in one short line,
+  the way you normally talk, that it isn't something you can help with directly and you're
+  passing it to the team, then keep going with what you CAN help with. Set "out_of_scope" AND
+  "needs_human_followup" to true — that is what actually sends it to the team.
+- DATA THAT DIDN'T LOAD — "unavailable_right_now" lists data sources that failed to load for
+  this message. It matters ONLY when the client asks about exactly that data (e.g. their
+  campaign numbers while google_ads_performance is listed). Then say plainly that you can't pull
+  those numbers up right now and the team is checking — no codes, no "system error" wording —
+  and help with the rest. For ANY other question, ignore the list completely and never mention
+  it; a failed read is not a reason to hold back an answer the message doesn't need.
+- MOVE ON: name a limitation once. Don't apologize repeatedly, and don't bring up an earlier
+  handoff from conversation_history unless the client does."""
 
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
 team" - never say you are an AI or a bot.
 
-Answer questions about their package, pricing, and how the system works, using ONLY the
-client data given to you in the user message (their package/proposal details and recent
-account activity). Never invent numbers, features, or activity not present in that data.
+Talk with them about their business, their marketing, their package, pricing and how the
+system works. For FACTS about their account (numbers, features in their package, activity),
+use ONLY the client data given to you in the user message (their package/proposal details and
+recent account activity) - never invent numbers, features, or activity not present in it.
+General conversation and marketing advice don't need data; answer those directly.
 
 Platform data: if the user message includes a "google_ads_performance" or
 "meta_ads_performance" field, that is REAL live data from the client's own ad account
 (last 30 days; "cost" values are in the account's currency, ILS for our clients;
 meta_ads_performance covers Facebook + Instagram combined) - use it to answer campaign
-questions concretely, citing the actual numbers. If it contains an "error" field, say there
-was a temporary issue reading their campaign data and the team is on it. If a platform's
-field is absent and the question needs that platform's data, that account isn't connected
-yet - warmly point them to the "חבר עכשיו" button in the dashboard. TikTok has no live
+questions concretely, citing the actual numbers. If the platform is listed in
+"unavailable_right_now", it IS connected but didn't load this time (see the rule below). If a
+platform's field is absent, not listed there, and the question needs that platform's data,
+that account isn't connected yet - warmly point them to the "חבר עכשיו" button in the
+dashboard. TikTok has no live
 connection yet; if asked about it, say so honestly and mention it's coming soon. Never
 invent campaign numbers.
 
 Website data: a "website_overview" field is REAL live data from the client's connected
 WordPress site (site name, recent posts/pages and their statuses, whether an SEO plugin is
 installed) - use it for "what's happening with my site" questions, citing actual titles and
-statuses only. Same rules as ad platforms: "error" field means a temporary read issue; no
-field means the site isn't connected yet - point them to the "האתר שלך" card in the dashboard.
+statuses only. Same rules as ad platforms: listed in "unavailable_right_now" means connected
+but didn't load; absent and not listed means the site isn't connected yet - point them to the
+"האתר שלך" card in the dashboard.
 
 Conversation: "conversation_history" holds the current chat thread (oldest first). Use it to
 resolve references ("כן", "תוסיפו גם את זה", "כמה זה יעלה?") and never re-ask something the
@@ -234,10 +242,11 @@ already provided or the account isn't connected); or questions unrelated to thei
 and marketing (news, politics, homework) - for those keep the honest behavior above. Most
 questions need no search - leave web_search_query as "".
 
-If the question is genuinely unclear, unrelated to their account, or something you can't
-answer confidently from the given data (this is different from "no platform data yet" and
-from "needs a web search") - say so honestly, tell the client a team member will follow up
-personally, and set needs_human_followup to true.
+Team follow-up (needs_human_followup) is for what you genuinely cannot resolve in chat: a
+request to CHANGE something on their account, a complaint, a billing problem, or a specific
+fact about their account that the data doesn't contain. Then say a team member will follow up
+personally and set needs_human_followup to true. General conversation about their business,
+marketing or how we work is NOT that — answer it yourself.
 
 Keep replies short: 2-4 sentences max, in the client's language (the language of their message
 and conversation_history — see CLIENT LANGUAGE; Hebrew default).
@@ -304,17 +313,39 @@ def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: 
                                 client_id=client_id, persona=persona_id)
 
 
+def _split_unavailable(payload: dict) -> list:
+    """Move every data field that came back with an error OUT of the payload
+    into one `unavailable_right_now` list of names (in place; returns it).
+
+    Regression fix (2026-10-13): the failed reads used to stay in the payload
+    as {"connected": true, "error": ...} blocks, next to a prompt rule saying
+    "you're having trouble pulling it up". A client whose Google Ads read
+    fails on every call (e.g. no API access yet) therefore had an error block
+    in front of the model on EVERY message, and the model reached for the
+    "having trouble, passed to the team" line on questions that needed no
+    data at all ("can I talk to you about my business?"). A bare list of
+    names, which HANDOFF_RULE says matters only when the question is about
+    that data, keeps "connected but didn't load" distinguishable from "not
+    connected" without dangling an error in front of every answer."""
+    names = [k for k, v in list(payload.items()) if isinstance(v, dict) and v.get("error")]
+    for name in names:
+        payload.pop(name, None)
+    if names:
+        payload["unavailable_right_now"] = names
+    return names
+
+
 def _degraded_reads(payload: dict) -> list:
-    """Data fields that came back carrying an error. The model tells the client
-    it's having trouble pulling them (HANDOFF_RULE); this makes that true."""
-    return [k for k, v in payload.items() if isinstance(v, dict) and v.get("error")]
+    """Names that failed to load this turn (set by _split_unavailable). Alerted
+    so the team knows the integration is broken, whatever the client asked."""
+    return list(payload.get("unavailable_right_now") or [])
 
 
 def _alert_degraded(client_id: int, persona_id: str, fields: list):
     for field in fields:
         chat_fallback.alert_handoff(
             chat_fallback.KIND_TECHNICAL, AGENT_NAME,
-            f"{field} could not be read during a chat turn — the client was told the team is checking",
+            f"{field} failed to load during a chat turn — the integration needs checking",
             client_id=client_id, persona=persona_id,
             issue_key=f"technical:{persona_id}:read:{field}")
 
@@ -458,13 +489,11 @@ def _answer_support_question(client_id: int, message: str) -> dict:
         except Exception as e:
             log_step(AGENT_NAME, "platform_context",
                      f"client {client_id}: {field} fetch failed (degrading): {e}")
-            # NOT dropped: an absent field reads to the model as "not connected
-            # — go press חבר עכשיו", which is wrong for a connected account
-            # whose read just failed. The error marker makes the model say it's
-            # having trouble pulling it, and _alert_degraded makes that true.
-            performance = {"connected": True, "error": "temporarily unavailable"}
+            performance = {"connected": True, "error": str(e)}
         if performance.get("connected"):
             payload[field] = performance
+
+    _split_unavailable(payload)
 
     user_message = json.dumps(payload, ensure_ascii=False)
 
@@ -646,10 +675,11 @@ PERSONAS = {
                   "plain words. Gets genuinely excited by a good click-through rate."),
         "reads": _google_reads,
         "data_notes": ("'google_ads_performance' is REAL live data from the client's own "
-                       "Google Ads account (last 30 days, cost in ILS). If it has an 'error' "
-                       "field: temporary read issue, the team is on it. If 'connected' is "
-                       "false or the field is missing: the account isn't connected — warmly "
-                       "point to the 'חבר עכשיו' button in the dashboard."),
+                       "Google Ads account (last 30 days, cost in ILS). If it is listed in "
+                       "'unavailable_right_now' it is connected but didn't load this time "
+                       "(mention that only if they ask about campaign numbers). If "
+                       "'connected' is false, or it's missing and not listed: the account "
+                       "isn't connected — warmly point to the 'חבר עכשיו' button."),
     },
     "meta": {
         "name": "מאיה",
@@ -659,9 +689,10 @@ PERSONAS = {
         "reads": _meta_reads,
         "data_notes": ("'meta_ads_performance' is REAL live paid-campaign data (last 30 days, "
                        "ILS, Facebook+Instagram combined); 'meta_organic_engagement' is REAL "
-                       "organic post/engagement data when present. 'error' field: temporary "
-                       "read issue. Fields missing/not connected: point warmly to 'חבר עכשיו' "
-                       "in the dashboard."),
+                       "organic post/engagement data when present. Listed in "
+                       "'unavailable_right_now': connected but didn't load (mention only if "
+                       "they ask about those numbers). Missing and not listed / not "
+                       "connected: point warmly to 'חבר עכשיו' in the dashboard."),
     },
     "website": {
         "name": "אורי",
@@ -814,7 +845,8 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         # the team.
         log_step(AGENT_NAME, "persona_reads",
                  f"client {client_id}: {persona_id} reads failed (degrading): {e}")
-        payload[f"{persona_id}_data"] = {"error": "temporarily unavailable"}
+        payload[f"{persona_id}_data"] = {"error": str(e)}
+    _split_unavailable(payload)  # failed reads become a name list, not error blocks
 
     system = PERSONA_SYSTEM_TEMPLATE.format(
         name=persona["name"], domain=persona["domain"],
