@@ -182,6 +182,15 @@ _DRIVE_FIX = {
     "bad_response": ("Drive answered with an empty or non-JSON body (status and the start of the "
                      "body are below) — usually a transient Google-side problem or a proxy in the "
                      "way. Retry; if it repeats, it's not a permissions issue."),
+    "file_not_found": ("Drive says this FILE doesn't exist for the service account — the media "
+                       "folder itself is fine (the steps on it passed). Right after a successful "
+                       "list this usually means the account lacks permission for this action on "
+                       "the file (e.g. a permanent delete on a Shared Drive needs Manager; a "
+                       "Content manager can only trash). Every call already sends "
+                       "supportsAllDrives=true."),
+    "file_permission": ("The service account may not do this to the file — the media folder "
+                        "itself is fine. Check its role on the Shared Drive (Content manager can "
+                        "add, edit and trash files)."),
     "other": "Unexpected Drive error — see the logged text.",
 }
 
@@ -231,6 +240,9 @@ def media_folder_status(client_id: int) -> dict:
         return {"status": "error", "reason": reason}
 
 
+PROBE_PREFIX = "uallak-drive-check-"
+
+
 def drive_self_test(client_id: int) -> dict:
     """Prove the client's media folder is USABLE, not just present: the same
     calls generation and delivery make (folder, upload, list, link), then
@@ -239,13 +251,16 @@ def drive_self_test(client_id: int) -> dict:
     import time
     steps = []
 
-    def step(name, fn):
+    # target: "folder" when the call is ON the media/client folder (a 404 there
+    # means DRIVE_MEDIA_FOLDER_ID can't be seen), "file" when it's on a file
+    # inside it (a 404 there must not blame the folder)
+    def step(name, fn, target="folder"):
         try:
             value = fn()
             steps.append({"step": name, "ok": True})
             return value
         except Exception as e:
-            reason = drive.classify_error(e)
+            reason = drive.classify_error(e, target=target)
             steps.append({"step": name, "ok": False, "reason": reason,
                           "fix": _drive_fix(reason), "error": str(e)[:300]})
             return None
@@ -267,14 +282,25 @@ def drive_self_test(client_id: int) -> dict:
     folder = step("folder (client root + self-test subfolder)",
                   lambda: _subfolder(client_id, "self-test"))
     uploaded = step("upload a file", lambda: drive.upload_bytes(
-        folder, f"uallak-drive-check-{int(time.time())}.txt",
+        folder, f"{PROBE_PREFIX}{int(time.time())}.txt",
         b"uallak Drive self-test - safe to delete", "text/plain")) if folder else None
     if uploaded:
         listed = step("list the folder", lambda: drive.list_files(folder))
         if listed is not None and not any(f.get("id") == uploaded.get("id") for f in listed):
             steps.append({"step": "uploaded file visible in listing", "ok": False,
                           "reason": "other", "fix": "", "error": "file not returned by list"})
-        step("delete the probe file", lambda: drive.delete_file(uploaded["id"]))
+        step("move the probe file to trash", lambda: drive.trash_file(uploaded["id"]), target="file")
+        if steps[-1]["ok"]:
+            # Earlier runs' probes (e.g. from the delete that 404'd) — trash
+            # them too, now that we know trashing works
+            def sweep():
+                stale = drive.find_files_by_prefix(folder, PROBE_PREFIX)
+                for f in stale:
+                    drive.trash_file(f["id"])
+                return len(stale)
+            swept = step("trash leftover probe files from earlier runs", sweep, target="file")
+            if swept is not None:
+                steps[-1]["detail"] = f"{swept} leftover probe file(s) trashed"
     link = step("client-facing folder link", lambda: get_client_media_link(client_id)) if folder else None
     ok = all(s["ok"] for s in steps)
     _record_self_test(client_id, steps)

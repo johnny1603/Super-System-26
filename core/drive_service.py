@@ -130,7 +130,7 @@ def _json(response: httpx.Response, what: str) -> dict:
         ) from None
 
 
-def classify_error(exc: Exception) -> str:
+def classify_error(exc: Exception, target: str = "folder") -> str:
     """Name the Drive failure so the alert can say what to FIX.
 
       storage_quota — "Service Accounts do not have storage quota": the root
@@ -144,6 +144,10 @@ def classify_error(exc: Exception) -> str:
       auth          — the service-account key itself is bad/revoked.
       credentials   — GOOGLE_SERVICE_ACCOUNT_JSON can't even be read as a key.
       bad_response  — Drive answered with an empty / non-JSON body.
+      file_not_found / file_permission — a 404 / 403 on a FILE (target="file"),
+                      e.g. a probe file the folder listing had just shown. The
+                      folder is fine; "no_access" (which blames
+                      DRIVE_MEDIA_FOLDER_ID) is only for calls ON the folder.
       other         — anything else (network, 5xx)."""
     if isinstance(exc, DriveCredentialError):
         return "credentials"
@@ -160,6 +164,10 @@ def classify_error(exc: Exception) -> str:
     lowered = text.lower()
     if "storagequotaexceeded" in lowered or "do not have storage quota" in lowered:
         return "storage_quota"
+    if target == "file" and (status == 404 or "notfound" in lowered):
+        return "file_not_found"
+    if target == "file" and (status == 403 or "insufficientfilepermissions" in lowered):
+        return "file_permission"
     if status in (403, 404) or "notfound" in lowered or "insufficientfilepermissions" in lowered:
         return "no_access"
     if status == 401 or "invalid_grant" in lowered or "unauthorized_client" in lowered:
@@ -308,12 +316,38 @@ def list_files(folder_id: str) -> list:
     return _json(response, "list files").get("files", [])
 
 
-def delete_file(file_id: str) -> None:
-    """Permanently delete one file we created (the Drive self-test's probe
-    file). Raises on failure."""
-    response = httpx.delete(f"{DRIVE_FILES_URL}/{file_id}", headers=_headers(),
-                            params={"supportsAllDrives": "true"}, timeout=TIMEOUT)
+def trash_file(file_id: str) -> None:
+    """Move one file we created to the trash (the Drive self-test's probe
+    file). Raises on failure.
+
+    Trash, not files.delete (2026-10-14): a PERMANENT delete of a Shared Drive
+    item requires the Manager (organizer) role, and our service account is a
+    Content manager — which may trash but not delete. Drive answered the
+    delete with 404 "File not found" on a file it had just listed (the call
+    already sent supportsAllDrives=true, so that wasn't it). Shared Drive
+    trash empties itself after 30 days."""
+    response = httpx.patch(f"{DRIVE_FILES_URL}/{file_id}",
+                           headers={**_headers(), "Content-Type": "application/json"},
+                           params={"supportsAllDrives": "true", "fields": "id,trashed"},
+                           json={"trashed": True}, timeout=TIMEOUT)
     _check(response)
+
+
+def find_files_by_prefix(folder_id: str, prefix: str) -> list:
+    """Non-trashed files in folder_id whose name starts with prefix (the
+    self-test's leftover probes). [{id, name}]"""
+    escaped = prefix.replace("\\", "\\\\").replace("'", "\\'")
+    response = httpx.get(
+        DRIVE_FILES_URL,
+        headers=_headers(),
+        params={"q": f"'{folder_id}' in parents and trashed = false and name contains '{escaped}'",
+                "fields": "files(id,name)", "pageSize": 100,
+                "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
+        timeout=TIMEOUT,
+    )
+    _check(response)
+    return [f for f in _json(response, "probe lookup").get("files", [])
+            if (f.get("name") or "").startswith(prefix)]
 
 
 def download_file(file_id: str) -> bytes:
