@@ -638,8 +638,9 @@ def get_site_overview(client_id: int) -> dict:
                 for item in items
             ]
     except Exception as e:
-        # Same contract as the ads agents: support prompt knows an "error"
-        # field means "temporary issue reading the data"
+        # Same contract as the ads agents' getters. support_agent drops an
+        # errored read before the model sees it and treats it as a same-turn
+        # failure. Not alerted here: run_health_scan covers a broken site daily.
         overview["error"] = str(e)
 
     _overview_cache[client_id] = (time.time(), overview)

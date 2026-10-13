@@ -121,6 +121,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   Every chat alert goes through `alert_handoff()` (deduped via a `client_activity`
   `issue_key` row, ISSUE_DEDUP_DAYS-style; prospects dedupe in memory). Don't add a raw
   `agent_alert` or a generic "תקלה" line to a chat path. See `HANDOFF-graceful-chat.md`.
+  **A failed data read never reaches the model** (no error blocks, no "unavailable"
+  list, no chat_fallback rows in `recent_activity`). The model labels each message's
+  `data_topic`, and code shows the fixed "can't pull that up" line only when that topic's
+  read failed in the same turn. Don't reintroduce failure state as prompt context. See
+  `HANDOFF-chat-data-availability.md`.
 - `core/client_auth.py` — client credentials. Auth is **custom, not Supabase Auth**:
   `/api/checkout` creates the `clients` row (before PayPal), and every login ends in the
   HMAC `session` cookie from `core/session.py`. Three ways in: emailed 6-digit code

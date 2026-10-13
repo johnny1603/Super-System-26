@@ -37,6 +37,12 @@ PLATFORM = "google_ads"
 # several times per conversation - don't burn a daily-capped API operation
 # on every message.
 PERF_CACHE_TTL_SECONDS = 300
+# A failed read is cached too, but briefly: a broken account must not be
+# re-queried on every chat message and dashboard load, and a fixed one should
+# recover within a couple of minutes.
+PERF_FAILURE_CACHE_TTL_SECONDS = 120
+# Its alert is deduped per client for this long (core/chat_fallback.alert_once)
+PERF_FAILURE_ALERT_DAYS = 1
 _perf_cache = {}
 
 _PERFORMANCE_GAQL = """
@@ -88,8 +94,10 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     """Last-30-days campaign metrics for the client's connected account.
     Always returns a well-formed dict - never raises into a client-facing flow."""
     cached = _perf_cache.get(client_id)
-    if cached and not force_refresh and cached[0] > time.time() - PERF_CACHE_TTL_SECONDS:
-        return cached[1]
+    if cached and not force_refresh:
+        ttl = PERF_FAILURE_CACHE_TTL_SECONDS if cached[1].get("error") else PERF_CACHE_TTL_SECONDS
+        if cached[0] > time.time() - ttl:
+            return cached[1]
 
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
@@ -102,8 +110,16 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
             lambda: gads.search(conn["access_token"], conn["account_id"], _PERFORMANCE_GAQL),
         )
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"performance fetch failed for client {client_id}: {e}"])
-        return {"connected": True, "error": str(e), "campaigns": []}
+        # Deduped: this getter runs on every chat turn and dashboard load, and
+        # a raw agent_alert here used to fire once per call for as long as the
+        # account stayed broken
+        from core.chat_fallback import alert_once
+        alert_once(AGENT_NAME, client_id, f"{PLATFORM}:performance_read_failed",
+                   f"client {client_id}: Google Ads performance fetch failed: {e}",
+                   PERF_FAILURE_ALERT_DAYS)
+        failed = {"connected": True, "error": str(e), "campaigns": []}
+        _perf_cache[client_id] = (time.time(), failed)
+        return failed
 
     campaigns = []
     for row in rows:

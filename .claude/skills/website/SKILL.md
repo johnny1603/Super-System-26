@@ -105,7 +105,8 @@ non-Business plans (no plugin-level wp-admin), WP < 5.6.
 - `core/instawp_service.py` — HTTP only, InstaWP control plane (Phase 2):
   create-from-template, task polling, delete (failure cleanup only).
 - `agents/support_agent.py` — injects `website_overview` into the LLM payload
-  when connected; `consult_platform_agent` answers "website"/"wordpress"/"site".
+  (`{"connected": false}` when not connected; left out entirely when the read
+  failed — see `HANDOFF-chat-data-availability.md`).
 - `dashboard/client/index.html` — the connect card + form
   (`connectWebsite()`), `wordpress` in the connections check, activity labels,
   PLUS the "אין לי אתר — הקימו לי אחד" self-provision button/flow

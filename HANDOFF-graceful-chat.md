@@ -90,6 +90,11 @@ for change requests/complaints/billing/missing account facts; the sales
 out-of-scope list is legal/tax/medical/contracts only. Fixed technical text
 still fires only on a real exception or empty reply — unchanged.
 
+**Superseded the same day:** the narrowing still misfired on new phrasings, so
+the name list was removed entirely. The model now never sees a failed read; it
+labels each message's `data_topic` and code decides. See
+`HANDOFF-chat-data-availability.md`.
+
 Verify after deploy (not runnable here — no API key on this machine):
 ordinary → direct answer: "אפשר לדבר איתך פה על העסק שלי?", "ספר לי על
 השירותים שלכם", "how does this work?", "do you guarantee results?";

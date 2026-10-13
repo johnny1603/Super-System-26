@@ -1,6 +1,7 @@
-# HANDOFF — Stop pre-loading "unavailable" status into every chat turn (investigation, 2026-10-13)
+# HANDOFF — Stop pre-loading "unavailable" status into every chat turn (2026-10-13)
 
-Investigation and recommendation only. Nothing is rebuilt yet.
+Investigated first (sections 1-3), then built as recommended in section 3. See
+"What was built" at the end.
 
 ## 1. How `unavailable_right_now` works today
 
@@ -125,6 +126,51 @@ and it is produced without knowing about any failure.
 **Verdict:** go with section 3. Keep tool use for later, if we ever need data fetched on
 demand for another reason, such as expensive reads we don't want to pre-fetch. It is not
 worth doing just for this bug.
+
+## What was built
+
+- **`agents/support_agent.py`**
+  - `_split_unavailable`, `_degraded_reads` and `_alert_degraded` are gone. They're
+    replaced by:
+    - `_add_reads`: leaves failed reads out and returns the failed topics.
+    - `_data_unavailable`: code's decision.
+    - `_recent_activity`: see the extra leak below.
+  - The "DATA THAT DIDN'T LOAD" rule is replaced by a DATA TOPIC labelling rule in
+    `HANDOFF_RULE`.
+  - Both JSON contracts gain `data_topic`.
+  - The concierge now passes `{"connected": false}` for unconnected platforms.
+    Before, such a platform's field was just absent, which looked the same as a
+    failed read.
+  - `consult_platform_agent` is deleted.
+- **`core/chat_fallback.py`**
+  - `data_unavailable_reply(persona, lang, topic)`: fixed text in 5 languages, with
+    the persona tails.
+  - `alert_once(...)`: the durable client dedup, usable outside a chat handoff.
+- **Google/Meta getters**
+  - Failed reads are cached for 120 s (`PERF_FAILURE_CACHE_TTL_SECONDS`).
+  - The raw `agent_alert` is replaced by `alert_once`, keyed
+    `<platform>:performance_read_failed`, once a day per client. That also covers
+    the getters' non-chat callers: dashboard, budget, lead volume, engagement.
+  - `ads_issue_detected` (`_raise_issue`) was deliberately not used. That row shows
+    in the client's activity feed as "campaign issue detected", and it would have
+    reached the chat payload.
+  - The website getter already cached failures for 5 min and doesn't alert, because
+    its daily health scan does. Unchanged apart from its comment.
+- **Alerts now**
+  - One alert per broken integration per day, from the getter. The website is
+    covered by its scan.
+  - Plus one "a client asked about X and couldn't be answered" alert, with the
+    question, per client+topic per day. It's shared by the concierge and the
+    personas (`technical:read:<topic>`).
+  - Before, every chat turn re-alerted per persona.
+- **Extra leak found and fixed**
+  - `recent_activity` (15 rows) in every chat payload included the hidden
+    `chat_fallback` dedup rows, such as `technical:general:read:google_ads_performance`.
+  - That was standing failure context in front of the model too.
+  - Both chat paths now filter `agent_name='chat_fallback'` out, as the client feed
+    already does.
+
+Not run: there's no Python on this machine, so the code was reviewed by reading only.
 
 ## Verify after building (not runnable here)
 - Google Ads broken (e.g. revoke the token on a test client):

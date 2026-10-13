@@ -153,6 +153,37 @@ def technical_reply(persona_id: str = "general", language: str = "he") -> str:
     return _compose(_TECHNICAL_OPENING, persona_id, language)
 
 
+# The client asked about live data whose read failed THIS turn. Code decides
+# this (support_agent: the model's data_topic label + a same-turn read
+# failure), never the model — so the line is fixed text, like a technical one.
+DATA_TOPICS = ("google_ads", "meta_ads", "website")
+
+_DATA_UNAVAILABLE_OPENING = {
+    "he": "אין לי גישה כרגע לנתונים של {p} — הצוות כבר בודק את זה.",
+    "en": "I can't pull up your {p} data right now — the team is already checking.",
+    "fr": "Je ne peux pas récupérer les données {p} pour le moment — l'équipe vérifie déjà.",
+    "ar": "لا أستطيع جلب بيانات {p} حاليًا — الفريق يتحقق من الأمر بالفعل.",
+    "ru": "Сейчас не получается загрузить данные {p} — команда уже проверяет.",
+}
+
+_DATA_TOPIC_NAMES = {
+    "google_ads": {"he": "Google Ads", "en": "Google Ads", "fr": "Google Ads",
+                   "ar": "Google Ads", "ru": "Google Ads"},
+    "meta_ads": {"he": "פייסבוק ואינסטגרם", "en": "Facebook and Instagram",
+                 "fr": "Facebook et Instagram", "ar": "فيسبوك وإنستغرام",
+                 "ru": "Facebook и Instagram"},
+    "website": {"he": "האתר", "en": "website", "fr": "de votre site",
+                "ar": "موقعكم", "ru": "вашего сайта"},
+}
+
+
+def data_unavailable_reply(persona_id: str, language: str, topic: str) -> str:
+    lang = language if language in SUPPORTED_LANGUAGES else "he"
+    names = _DATA_TOPIC_NAMES.get(topic) or _DATA_TOPIC_NAMES["google_ads"]
+    opening = {lang: _DATA_UNAVAILABLE_OPENING[lang].format(p=names[lang])}
+    return _compose(opening, persona_id, lang)
+
+
 def out_of_scope_reply(persona_id: str = "general", language: str = "he") -> str:
     return _compose(_OUT_OF_SCOPE_OPENING, persona_id, language)
 
@@ -176,6 +207,28 @@ def _recently_alerted(client_id: int, issue_key: str, days: int) -> bool:
             .eq("details->>issue_key", issue_key)
             .gte("created_at", cutoff).limit(1).execute().data)
     return bool(rows)
+
+
+def alert_once(source_agent: str, client_id: int, issue_key: str, message: str,
+               days: int) -> bool:
+    """One admin alert per (client, issue_key) per `days`, durably deduped by a
+    hidden chat_fallback marker row (the client feed and the chat payloads
+    both skip agent_name='chat_fallback'), the same dedup alert_handoff uses
+    for clients. For a read that runs on every chat turn and dashboard load
+    (the ads performance getters) and would otherwise alert once per call.
+    Never raises."""
+    try:
+        if _recently_alerted(client_id, issue_key, days):
+            log_step(AGENT_NAME, "alert_once", f"client {client_id}: deduped {issue_key}")
+            return False
+        agent_alert(source_agent, [message])
+        from agents.client_agent import log_activity
+        log_activity(client_id, AGENT_NAME, HANDOFF_ACTION,
+                     {"issue_key": issue_key, "source_agent": source_agent})
+        return True
+    except Exception as e:
+        print(f"[{AGENT_NAME}] could not raise alert ({issue_key}): {e}")
+        return False
 
 
 _sales_alerted = {}  # issue_key -> monotonic time of last alert (prospects have no client row)

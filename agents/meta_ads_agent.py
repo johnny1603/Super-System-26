@@ -33,6 +33,10 @@ PAGE_PLATFORM = "meta_page"  # ad creatives must be published "as" a Page
 # client_id -> (fetched_at, result). Support chat may ask about campaigns
 # several times per conversation — don't burn API calls on every message.
 PERF_CACHE_TTL_SECONDS = 300
+# Failed reads are cached briefly and alerted once a day — same reasoning as
+# google_ads_agent's PERF_FAILURE_* constants
+PERF_FAILURE_CACHE_TTL_SECONDS = 120
+PERF_FAILURE_ALERT_DAYS = 1
 _perf_cache = {}
 
 # Meta reports every action type separately ("actions" list) — these are the
@@ -104,8 +108,10 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     one platform group in our pricing). Always returns a well-formed dict —
     never raises into a client-facing flow."""
     cached = _perf_cache.get(client_id)
-    if cached and not force_refresh and cached[0] > time.time() - PERF_CACHE_TTL_SECONDS:
-        return cached[1]
+    if cached and not force_refresh:
+        ttl = PERF_FAILURE_CACHE_TTL_SECONDS if cached[1].get("error") else PERF_CACHE_TTL_SECONDS
+        if cached[0] > time.time() - ttl:
+            return cached[1]
 
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
@@ -126,8 +132,14 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
                                                date_preset="last_30d"),
         )
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"performance fetch failed for client {client_id}: {e}"])
-        return {"connected": True, "error": str(e), "campaigns": []}
+        # Deduped (was a raw agent_alert per call — see google_ads_agent)
+        from core.chat_fallback import alert_once
+        alert_once(AGENT_NAME, client_id, f"{PLATFORM}:performance_read_failed",
+                   f"client {client_id}: Meta performance fetch failed: {e}",
+                   PERF_FAILURE_ALERT_DAYS)
+        failed = {"connected": True, "error": str(e), "campaigns": []}
+        _perf_cache[client_id] = (time.time(), failed)
+        return failed
 
     insights = {row.get("campaign_id", ""): row for row in insight_rows}
     campaigns = []

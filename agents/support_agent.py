@@ -81,31 +81,6 @@ def _db():
     return _db_instance
 
 
-def consult_platform_agent(client_id: int, platform: str, question: str):
-    """Platform-specific live data for support answers. Google Ads and Meta are
-    real now (via the accounts the client connected in the dashboard); TikTok
-    still pending its execution agent."""
-    if platform in ("google", "google_ads"):
-        from agents.google_ads_agent import get_campaign_performance
-        performance = get_campaign_performance(client_id)
-        if performance.get("connected"):
-            return performance
-        return "חשבון Google Ads עדיין לא מחובר - אפשר לחבר אותו בלחיצה על 'חבר עכשיו' בדשבורד"
-    if platform in ("meta", "meta_ads", "facebook", "instagram"):
-        from agents.meta_ads_agent import get_campaign_performance
-        performance = get_campaign_performance(client_id)
-        if performance.get("connected"):
-            return performance
-        return "חשבון Meta עדיין לא מחובר - אפשר לחבר אותו בלחיצה על 'חבר עכשיו' בדשבורד"
-    if platform in ("website", "wordpress", "site"):
-        from agents.website_agent import get_site_overview
-        overview = get_site_overview(client_id)
-        if overview.get("connected"):
-            return overview
-        return "האתר עדיין לא מחובר - אפשר לחבר אותו בכרטיס 'האתר שלך' בדשבורד"
-    return f"אין עדיין חיבור לנתונים בזמן אמת של {platform} - זה יתווסף בקרוב"
-
-
 def _latest_lead(email: str) -> dict:
     """The client's original sales-chat record (answers + proposal) lives on
     their lead row, matched by email - clients/leads aren't linked by id. The
@@ -161,23 +136,26 @@ ANSWER BY DEFAULT. Almost every message is one you simply answer, directly and w
 handoff: greetings, "can I talk to you about my business?" (yes — invite them to share),
 questions about their business, marketing ideas, what uallak does, how the service or dashboard
 works, their package, what happens next. Being unsure of a detail is not a handoff either — say
-what you do know. The two cases below are RARE exceptions; when in doubt, it is NOT one of them.
+what you do know. The case below is a RARE exception; when in doubt, it is NOT one.
 
-THE TWO EXCEPTIONS — never a dead end, always in your own voice:
+THE EXCEPTION — never a dead end, always in your own voice:
 - OUT OF SCOPE — only for a question that needs a licensed professional or a decision only the
   team can make: legal, tax/accounting, medical, insurance, contract terms, refunds, exceptions
   to the package, guarantees of results. Don't attempt it and never bluff: say in one short line,
   the way you normally talk, that it isn't something you can help with directly and you're
   passing it to the team, then keep going with what you CAN help with. Set "out_of_scope" AND
   "needs_human_followup" to true — that is what actually sends it to the team.
-- DATA THAT DIDN'T LOAD — "unavailable_right_now" lists data sources that failed to load for
-  this message. It matters ONLY when the client asks about exactly that data (e.g. their
-  campaign numbers while google_ads_performance is listed). Then say plainly that you can't pull
-  those numbers up right now and the team is checking — no codes, no "system error" wording —
-  and help with the rest. For ANY other question, ignore the list completely and never mention
-  it; a failed read is not a reason to hold back an answer the message doesn't need.
 - MOVE ON: name a limitation once. Don't apologize repeatedly, and don't bring up an earlier
-  handoff from conversation_history unless the client does."""
+  handoff from conversation_history unless the client does.
+
+DATA TOPIC — label every message with "data_topic", the live account data it asks about:
+"google_ads" (their Google campaigns' numbers or results), "meta_ads" (their Facebook/Instagram
+campaigns' numbers or results), "website" (what is on or happening with their connected
+website's posts and pages), or "" for everything else — greetings, ideas, advice, strategy,
+how things work, their package, pricing, landing pages, leads. Label the QUESTION, not your
+answer: set it the same way whether or not that data is in front of you. If a platform's field
+is missing from the data entirely, you simply don't have those numbers in front of you — never
+guess them."""
 
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -193,19 +171,15 @@ Platform data: if the user message includes a "google_ads_performance" or
 "meta_ads_performance" field, that is REAL live data from the client's own ad account
 (last 30 days; "cost" values are in the account's currency, ILS for our clients;
 meta_ads_performance covers Facebook + Instagram combined) - use it to answer campaign
-questions concretely, citing the actual numbers. If the platform is listed in
-"unavailable_right_now", it IS connected but didn't load this time (see the rule below). If a
-platform's field is absent, not listed there, and the question needs that platform's data,
-that account isn't connected yet - warmly point them to the "חבר עכשיו" button in the
-dashboard. TikTok has no live
-connection yet; if asked about it, say so honestly and mention it's coming soon. Never
-invent campaign numbers.
+questions concretely, citing the actual numbers. If a platform's field says "connected": false
+and the question needs that platform's data, that account isn't connected yet - warmly point
+them to the "חבר עכשיו" button in the dashboard. TikTok has no live connection yet; if asked
+about it, say so honestly and mention it's coming soon. Never invent campaign numbers.
 
 Website data: a "website_overview" field is REAL live data from the client's connected
 WordPress site (site name, recent posts/pages and their statuses, whether an SEO plugin is
 installed) - use it for "what's happening with my site" questions, citing actual titles and
-statuses only. Same rules as ad platforms: listed in "unavailable_right_now" means connected
-but didn't load; absent and not listed means the site isn't connected yet - point them to the
+statuses only. "connected": false means the site isn't connected yet - point them to the
 "האתר שלך" card in the dashboard.
 
 Conversation: "conversation_history" holds the current chat thread (oldest first). Use it to
@@ -253,7 +227,7 @@ and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + LANGUAGE_RULE + _AUTOMATION_RULE
+ "data_topic": "", "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + LANGUAGE_RULE + _AUTOMATION_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -313,41 +287,69 @@ def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: 
                                 client_id=client_id, persona=persona_id)
 
 
-def _split_unavailable(payload: dict) -> list:
-    """Move every data field that came back with an error OUT of the payload
-    into one `unavailable_right_now` list of names (in place; returns it).
+# ─── Failed reads: the model never sees them, code decides (2026-10-13) ───────
+# History: failed reads were first kept in the payload as error blocks, then
+# narrowed to an `unavailable_right_now` name list the model was trusted to
+# ignore unless relevant. Both put failure state in front of the model on
+# EVERY turn for a client with a persistently broken integration, and new
+# phrasings kept finding new misfires ("having trouble pulling that up" on
+# "can I talk to you about my business?"). Now: a failed read is simply left
+# out of the payload; the model labels what each message asks about
+# ("data_topic", same on healthy and broken accounts); and code shows the
+# fixed "can't pull that up right now" line only when that label matches a
+# read that actually failed in this same turn.
+# See HANDOFF-chat-data-availability.md.
 
-    Regression fix (2026-10-13): the failed reads used to stay in the payload
-    as {"connected": true, "error": ...} blocks, next to a prompt rule saying
-    "you're having trouble pulling it up". A client whose Google Ads read
-    fails on every call (e.g. no API access yet) therefore had an error block
-    in front of the model on EVERY message, and the model reached for the
-    "having trouble, passed to the team" line on questions that needed no
-    data at all ("can I talk to you about my business?"). A bare list of
-    names, which HANDOFF_RULE says matters only when the question is about
-    that data, keeps "connected but didn't load" distinguishable from "not
-    connected" without dangling an error in front of every answer."""
-    names = [k for k, v in list(payload.items()) if isinstance(v, dict) and v.get("error")]
-    for name in names:
-        payload.pop(name, None)
-    if names:
-        payload["unavailable_right_now"] = names
-    return names
-
-
-def _degraded_reads(payload: dict) -> list:
-    """Names that failed to load this turn (set by _split_unavailable). Alerted
-    so the team knows the integration is broken, whatever the client asked."""
-    return list(payload.get("unavailable_right_now") or [])
+# Payload field -> data_topic. Only these three fields are live data a client
+# can ask about by name; any other failed read is dropped without a topic.
+TOPIC_FIELDS = {"google_ads_performance": "google_ads",
+                "meta_ads_performance": "meta_ads",
+                "website_overview": "website"}
+# A persona's whole reads() raising takes down its own platform's data
+PERSONA_TOPICS = {"google": "google_ads", "meta": "meta_ads", "website": "website"}
 
 
-def _alert_degraded(client_id: int, persona_id: str, fields: list):
-    for field in fields:
-        chat_fallback.alert_handoff(
-            chat_fallback.KIND_TECHNICAL, AGENT_NAME,
-            f"{field} failed to load during a chat turn — the integration needs checking",
-            client_id=client_id, persona=persona_id,
-            issue_key=f"technical:{persona_id}:read:{field}")
+def _add_reads(payload: dict, reads: dict) -> set:
+    """Merge read results into the payload, leaving out every one that came
+    back with an error. Returns the data_topics that failed this turn."""
+    failed = set()
+    for field, value in reads.items():
+        if isinstance(value, dict) and value.get("error"):
+            if field in TOPIC_FIELDS:
+                failed.add(TOPIC_FIELDS[field])
+            continue
+        payload[field] = value
+    return failed
+
+
+def _recent_activity(client_id: int) -> list:
+    """Recent activity for the chat payload, minus the hidden chat_fallback
+    alert-dedup markers: they record past failures and handoffs, and putting
+    them in front of the model is exactly the standing failure context this
+    design removes (the client feed hides them too)."""
+    return [a for a in get_activity(client_id, limit=15)
+            if a.get("agent_name") != chat_fallback.AGENT_NAME]
+
+
+def _data_unavailable(client_id: int, persona_id: str, message: str, result: dict,
+                      failed: set):
+    """Code's decision. When the model labelled the message with a topic whose
+    read failed THIS turn, return the fixed in-voice reply (and alert once a
+    day per client+topic, shared by every persona, carrying the question);
+    otherwise None and the model's reply stands. Background breakage is
+    alerted by the getters themselves (ads) and website_agent's health scan —
+    this alert is only for "a client asked and we couldn't answer"."""
+    topic = str(result.get("data_topic") or "").strip()
+    if topic not in failed:
+        return None
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+        f'client asked about {topic} data but it failed to load: "{message[:300]}"',
+        client_id=client_id, persona=persona_id,
+        issue_key=f"technical:read:{topic}")
+    return {"reply": chat_fallback.data_unavailable_reply(
+                persona_id, _client_language(client_id, message), topic),
+            "needs_human_followup": True}
 
 
 # ─── In-chat upgrade proposals (reuses the onboarding pricing brain) ──────────
@@ -453,7 +455,7 @@ def _answer_support_question(client_id: int, message: str) -> dict:
             "status": client.get("status"),
         },
         "proposal": lead.get("proposal") or {},
-        "recent_activity": get_activity(client_id, limit=15),
+        "recent_activity": _recent_activity(client_id),
         "conversation_history": _current_thread(client_id, client.get("chat_started_at")),
         "client_message": message,
     }
@@ -477,23 +479,22 @@ def _answer_support_question(client_id: int, message: str) -> dict:
     from agents.google_ads_agent import get_campaign_performance as google_performance
     from agents.meta_ads_agent import get_campaign_performance as meta_performance
     from agents.website_agent import get_site_overview as website_overview
+    reads = {}
     for field, fetch in (("google_ads_performance", google_performance),
                          ("meta_ads_performance", meta_performance),
                          ("website_overview", website_overview)):
-        # One broken integration must never take down the whole chat - a
-        # failed getter degrades to "no data for that platform" (the prompt
-        # already handles an absent field). The created_at 500 of 2026-07-16
-        # is exactly the failure mode this guards against.
+        # One broken integration must never take down the whole chat (the
+        # created_at 500 of 2026-07-16). A throw counts as a failed read, same
+        # as an error result: left out of the payload, decided on by code.
         try:
-            performance = fetch(client_id)
+            reads[field] = fetch(client_id)
         except Exception as e:
             log_step(AGENT_NAME, "platform_context",
                      f"client {client_id}: {field} fetch failed (degrading): {e}")
-            performance = {"connected": True, "error": str(e)}
-        if performance.get("connected"):
-            payload[field] = performance
-
-    _split_unavailable(payload)
+            reads[field] = {"connected": True, "error": str(e)}
+    # {"connected": false} stays in: "not connected" is a fact the model acts
+    # on (the חבר עכשיו pointer), unlike a failure
+    failed = _add_reads(payload, reads)
 
     user_message = json.dumps(payload, ensure_ascii=False)
 
@@ -508,7 +509,6 @@ def _answer_support_question(client_id: int, message: str) -> dict:
         # that the old `except ClaudeJSONError` let through as a bare 500
         return _technical_failure(client_id, "general", message, "llm_call", e)
 
-    _alert_degraded(client_id, "general", _degraded_reads(payload))
     reply = result.get("reply", "")
     needs_human_followup = bool(result.get("needs_human_followup", False))
     out_of_scope = bool(result.get("out_of_scope", False))
@@ -519,6 +519,12 @@ def _answer_support_question(client_id: int, message: str) -> dict:
         # A handoff, not a purchase or a research question — nothing else runs
         _handoff_alert(client_id, "general", message, out_of_scope=True)
         return {"reply": reply, "needs_human_followup": True}
+
+    # They asked about data whose read failed this turn: fixed line, nothing
+    # else runs (an upgrade or search wouldn't be about their numbers anyway)
+    unavailable = _data_unavailable(client_id, "general", message, result, failed)
+    if unavailable:
+        return unavailable
 
     # Upgrade stage: genuine purchase/upgrade intent detected - build a real
     # priced proposal with the SAME brain as onboarding (build_proposal in
@@ -675,11 +681,10 @@ PERSONAS = {
                   "plain words. Gets genuinely excited by a good click-through rate."),
         "reads": _google_reads,
         "data_notes": ("'google_ads_performance' is REAL live data from the client's own "
-                       "Google Ads account (last 30 days, cost in ILS). If it is listed in "
-                       "'unavailable_right_now' it is connected but didn't load this time "
-                       "(mention that only if they ask about campaign numbers). If "
-                       "'connected' is false, or it's missing and not listed: the account "
-                       "isn't connected — warmly point to the 'חבר עכשיו' button."),
+                       "Google Ads account (last 30 days, cost in ILS). If 'connected' is "
+                       "false, the account isn't connected — warmly point to the 'חבר "
+                       "עכשיו' button. If it's missing entirely, you don't have the numbers "
+                       "in front of you — never guess them."),
     },
     "meta": {
         "name": "מאיה",
@@ -689,10 +694,9 @@ PERSONAS = {
         "reads": _meta_reads,
         "data_notes": ("'meta_ads_performance' is REAL live paid-campaign data (last 30 days, "
                        "ILS, Facebook+Instagram combined); 'meta_organic_engagement' is REAL "
-                       "organic post/engagement data when present. Listed in "
-                       "'unavailable_right_now': connected but didn't load (mention only if "
-                       "they ask about those numbers). Missing and not listed / not "
-                       "connected: point warmly to 'חבר עכשיו' in the dashboard."),
+                       "organic post/engagement data when present. 'connected' false: "
+                       "point warmly to 'חבר עכשיו' in the dashboard. Missing entirely: you "
+                       "don't have those numbers in front of you — never guess them."),
     },
     "website": {
         "name": "אורי",
@@ -705,7 +709,8 @@ PERSONAS = {
                        "'seo_tool_connected' names their connected SEO tool when present. "
                        "New articles are written as DRAFTS for human review before "
                        "publishing — that's deliberate quality control, frame it that way. "
-                       "Missing/not connected: point to the 'האתר שלך' card. "
+                       "'connected' false: point to the 'האתר שלך' card. Missing entirely: "
+                       "you don't have it in front of you — never guess. "
                        "'landing_pages' is their LANDING PAGES — a separate thing from the "
                        "WordPress site: light, single-offer pages for capturing enquiries. "
                        "'included' of them come free with every package. 'domain.mode' is "
@@ -799,14 +804,16 @@ Keep replies short: 2-4 sentences, in the client's language (see CLIENT LANGUAGE
 default).
 
 Return JSON only:
-{{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false}}""" + HANDOFF_RULE + LANGUAGE_RULE
+{{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
+ "data_topic": ""}}""" + HANDOFF_RULE + LANGUAGE_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
     """The specialist-persona chat path. READ-ONLY BY CONSTRUCTION — see the
-    module docstring. Contract: only 'reply' and 'needs_human_followup' are
-    ever read from the model's output; there is no upgrade path, no web
-    search, and no action dispatch of any kind here."""
+    module docstring. Contract: only 'reply', 'needs_human_followup', and the
+    routing labels 'out_of_scope' / 'data_topic' are ever read from the
+    model's output; there is no upgrade path, no web search, and no action
+    dispatch of any kind here."""
     persona = PERSONAS.get(persona_id)
     if not persona:
         return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
@@ -831,22 +838,20 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         "client": {"name": client.get("name"), "package": client.get("package"),
                     "status": client.get("status")},
         "proposal": lead.get("proposal") or {},
-        "recent_activity": get_activity(client_id, limit=15),
+        "recent_activity": _recent_activity(client_id),
         "conversation_history": _current_thread(client_id, client.get("chat_started_at"),
                                                 channel=persona_channel(persona_id)),
         "client_message": message,
     }
     try:
-        payload.update(persona["reads"](client_id))
+        failed = _add_reads(payload, persona["reads"](client_id))
     except Exception as e:
-        # A broken platform read must never 500 the chat. Marked rather than
-        # dropped (same reasoning as the concierge's platform loop): the model
-        # says it's having trouble pulling the data, and _alert_degraded tells
-        # the team.
+        # A broken platform read must never 500 the chat. Same as the
+        # concierge: nothing about the failure reaches the model; code decides
+        # on the fixed line if the client asks about this persona's data.
         log_step(AGENT_NAME, "persona_reads",
                  f"client {client_id}: {persona_id} reads failed (degrading): {e}")
-        payload[f"{persona_id}_data"] = {"error": str(e)}
-    _split_unavailable(payload)  # failed reads become a name list, not error blocks
+        failed = {PERSONA_TOPICS[persona_id]} if persona_id in PERSONA_TOPICS else set()
 
     system = PERSONA_SYSTEM_TEMPLATE.format(
         name=persona["name"], domain=persona["domain"],
@@ -860,14 +865,18 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)
 
-    _alert_degraded(client_id, persona_id, _degraded_reads(payload))
     reply = result.get("reply", "")
     out_of_scope = bool(result.get("out_of_scope", False))
+    if not out_of_scope:
+        unavailable = _data_unavailable(client_id, persona_id, message, result, failed)
+        if unavailable:
+            return unavailable
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))
     if needs_human_followup:
         _handoff_alert(client_id, persona_id, message, out_of_scope)
-    # ONLY reply + needs_human_followup leave this function (out_of_scope is
-    # read above for routing, never passed on); anything else is dropped unread
+    # ONLY reply + needs_human_followup leave this function (out_of_scope and
+    # data_topic are read above for routing, never passed on); anything else
+    # is dropped unread
     return {"reply": reply, "needs_human_followup": needs_human_followup}
