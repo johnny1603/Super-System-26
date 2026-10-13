@@ -4438,7 +4438,18 @@ def admin_control_room_drive_self_test(client_id: int, request: Request):
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Client not found")
     from agents.media_agent import drive_self_test
-    return {"success": True, "data": drive_self_test(client_id)}
+    try:
+        return {"success": True, "data": drive_self_test(client_id)}
+    except Exception as e:
+        # Each step already catches its own Drive error; this is anything
+        # outside them (config/import/DB). Reported as a failed step so the
+        # admin sees the reason in place, never a bare 500.
+        import traceback
+        traceback.print_exc()
+        return {"success": True, "data": {"ok": False, "folder_link": "", "steps": [
+            {"step": "self-test setup", "ok": False, "reason": "other",
+             "fix": "Unexpected error before the Drive calls ran — see the Cloud Run log.",
+             "error": f"{type(e).__name__}: {str(e)[:300]}"}]}}
 
 @app.post("/api/admin/control-room/feedback/{feedback_id}/reviewed")
 def admin_control_room_feedback_reviewed(feedback_id: int, request: Request):

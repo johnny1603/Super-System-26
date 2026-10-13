@@ -245,7 +245,13 @@ def drive_self_test(client_id: int) -> dict:
         step("delete the probe file", lambda: drive.delete_file(uploaded["id"]))
     link = step("client-facing folder link", lambda: get_client_media_link(client_id)) if folder else None
     ok = all(s["ok"] for s in steps)
-    _log_activity(client_id, "media_drive_self_test", {"ok": ok, "failed": [s["step"] for s in steps if not s["ok"]]})
+    # Bookkeeping only: a failed log write must not turn five finished step
+    # results into a 500 the admin never sees
+    try:
+        _log_activity(client_id, "media_drive_self_test",
+                      {"ok": ok, "failed": [s["step"] for s in steps if not s["ok"]]})
+    except Exception as e:
+        print(f"[{AGENT_NAME}] drive self-test log write failed for client {client_id}: {e}")
     return {"ok": ok, "steps": steps, "folder_link": link or ""}
 
 
