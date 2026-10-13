@@ -375,7 +375,8 @@ body {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; font-family: inherit; }
 .cw-btn:hover { border-color: var(--accent); color: var(--accent); }
 .cw-messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.cw-input-area { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+/* flex-end: the send button stays at the bottom as the textarea grows */
+.cw-input-area { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-end; }
 
 /* Dock: minimized windows collapse to pills you can reopen or close. */
 .chat-dock { position: fixed; bottom: 26px; left: 92px; z-index: 200;
@@ -431,16 +432,25 @@ body {
 .support-msg.escalated { background: rgba(255,76,31,0.1); border: 1px solid rgba(255,76,31,0.25); align-self: flex-start; border-radius: 4px 14px 14px 14px; font-size: 12px; color: var(--accent); }
 
 .support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+/* A one-row <textarea> (Shift+Enter = new line) that grows with its content up
+   to the max-height set in autoGrowChatInput, then scrolls. The radius is a
+   fixed 19px rather than 100px so a grown, multi-line box stays a rounded
+   rectangle instead of a stretched pill. */
 .support-input {
   flex: 1;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-radius: 19px;
   padding: 10px 16px;
   color: white;
   font-family: 'Heebo', sans-serif;
   font-size: 13px;
+  line-height: 1.4;
   outline: none;
+  resize: none;
+  overflow-y: hidden;
+  display: block;
+  min-width: 0;
 }
 .support-input:focus { border-color: var(--accent); }
 .support-send {
@@ -2399,7 +2409,7 @@ function askAboutAddon(index) {
   // Add-ons route to the GENERAL concierge (the only persona with the
   // upgrade-proposal capability) — open its window and pre-fill the request.
   const w = openAgentWindow('general');
-  w.inputEl.value = addon.chat_request || '';
+  setChatInput(w.inputEl, addon.chat_request || '');
   w.inputEl.focus();
 }
 
@@ -3174,10 +3184,10 @@ function buildWindow(id) {
   if (id === 'general') { chips = document.createElement('div'); chips.className = 'chip-row'; }
   const inputArea = document.createElement('div');
   inputArea.className = 'cw-input-area';
-  const input = document.createElement('input');
-  input.className = 'support-input'; input.dir = 'auto';
+  const input = document.createElement('textarea');
+  input.className = 'support-input'; input.dir = 'auto'; input.rows = 1;
   input.placeholder = uallakI18n.t('chat_input_ph');
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendInWindow(id); });
+  wireChatInput(input, () => sendInWindow(id));
   const send = document.createElement('button');
   send.className = 'support-send';
   send.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
@@ -3192,6 +3202,52 @@ function buildWindow(id) {
   root.appendChild(inputArea);
   root.addEventListener('mousedown', () => focusWindow(id));
   return { root: root, msgsEl: msgs, inputEl: input, chipsEl: chips, minimized: false };
+}
+
+// ─── chat input: Enter sends, Shift+Enter is a new line ──────────────────────
+// Desktop: Enter sends, Shift+Enter inserts a line break. Touch devices (no
+// hover, coarse pointer): Enter is a line break and the send button sends — a
+// phone keyboard has no Shift+Enter. Enter during an IME composition (e.g.
+// confirming a candidate) never sends; keyCode 229 covers browsers that don't
+// set isComposing on that keydown.
+//
+// THE CARET RULE: nothing here, or anywhere a user might be typing, may write
+// the textarea's value. It is read on send and cleared after; the only other
+// writers are explicit one-shot pre-fills (a chip, an add-on, the automation
+// card, putting an undelivered message back into an empty box). Auto-grow
+// changes style.height only, never the value, so it cannot move the caret.
+// (Functions, not top-level consts, so a window built early in page load can
+// never hit a temporal-dead-zone error.)
+function chatInputMaxPx() { return 140; }
+function isTouchKeyboard() {
+  return Boolean(window.matchMedia
+    && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+}
+
+function autoGrowChatInput(el) {
+  const max = chatInputMaxPx();
+  el.style.height = 'auto';
+  // A hidden box (minimized window) measures 0 — leave it at its natural
+  // one-row height rather than pinning it to 0px
+  if (!el.getClientRects().length) return;
+  el.style.height = Math.min(el.scrollHeight, max) + 'px';
+  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
+}
+
+function wireChatInput(el, onSend) {
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    if (isTouchKeyboard()) return;
+    e.preventDefault();
+    onSend();
+  });
+  el.addEventListener('input', () => autoGrowChatInput(el));
+}
+
+// Programmatic value changes (send, pre-fills) fire no 'input' event
+function setChatInput(el, text) {
+  el.value = text;
+  autoGrowChatInput(el);
 }
 
 // Raise a window WITHOUT moving it in the DOM.
@@ -3223,6 +3279,7 @@ function minimizeWindow(id) {
 function restoreWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
   w.minimized = false; w.root.classList.remove('minimized'); renderDock(); focusWindow(id);
+  autoGrowChatInput(w.inputEl);   // size any text it held while hidden
 }
 function closeAgentWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
@@ -3736,7 +3793,7 @@ async function sendInWindow(personaId) {
   const text = w.inputEl.value.trim();
   if (!text) return;
   appendMsg(w.msgsEl, text, 'user');
-  w.inputEl.value = '';
+  setChatInput(w.inputEl, '');   // also shrinks a grown box back to one row
   // While the interview is running, the general window's sends are its turns
   if (interviewMode && personaId === 'general') { await interviewTurn(text); return; }
   // Typing indicator - upgrade proposals and web searches can take a while,
@@ -3770,7 +3827,7 @@ async function sendInWindow(personaId) {
 // is "it didn't arrive". The text goes back into the box: resending is one tap.
 function chatNotDelivered(w, text) {
   appendMsg(w.msgsEl, uallakI18n.t('chat_error'), 'bot');
-  if (!w.inputEl.value) w.inputEl.value = text;
+  if (!w.inputEl.value) setChatInput(w.inputEl, text);
 }
 
 // ─── concierge greeting + quick-reply chips ──────────────────────────────────
@@ -3846,7 +3903,7 @@ function renderChips() {
 
 function sendChip(text) {
   const w = openAgentWindow('general');
-  w.inputEl.value = text;
+  setChatInput(w.inputEl, text);
   sendInWindow('general');
 }
 
@@ -4638,7 +4695,7 @@ async function askAboutAutomation(vendor) {
 function chatAboutAutomation(vendor) {
   const w = openAgentWindow('general');
   if (!w) return;
-  w.inputEl.value = uallakI18n.t('automation_chat_msg', { vendor: AUTOMATION_NAMES[vendor] || vendor });
+  setChatInput(w.inputEl, uallakI18n.t('automation_chat_msg', { vendor: AUTOMATION_NAMES[vendor] || vendor }));
   sendInWindow('general');
 }
 
