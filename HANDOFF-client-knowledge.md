@@ -1,6 +1,13 @@
-# HANDOFF — Client "brain": one consolidated knowledge read for the chats (investigation, 2026-10-14)
+# HANDOFF — Client "brain": one consolidated knowledge read for the chats (2026-10-14)
 
-Investigation and design only. Nothing is built yet.
+Investigated first (sections 1-4), then built with Johnny's decisions:
+
+- Financial answers are left out.
+- Competitor research up to 90 days old is included, always dated, and treated as
+  dated background.
+- The upgrade-quote bug is fixed in a separate commit.
+
+See "What was built" at the end.
 
 ## 1. Where client knowledge lives today
 
@@ -91,7 +98,113 @@ No migration and no new table.
 
 **Size:** about half a day to a day.
 
-## Decisions for Johnny before building
+## What was built
+
+### Commit 1 (`4ec04f7`): upgrade quotes no longer read as "what they bought"
+
+`core/lead_tracking.client_sales_lead(client_id=, email=, columns=)` is now the one lookup.
+
+**How it works:**
+- It reads the client's newest 20 `leads` rows, newest first, and returns the first row
+  that is **not** an upgrade quote.
+- An upgrade quote is recognized by the existing `_is_upgrade_row` test:
+  `answers._upgrade_request` is set. That's the marker `_build_upgrade_proposal` writes,
+  and the admin CRM already uses the same test to hide those rows.
+- It matches on `client_id` first, then on email. **Both** passes skip upgrade rows.
+- It filters in Python rather than in the query, for the reason `list_leads` gives: a
+  filter on the `answers->>_upgrade_request` field can't be verified from this machine.
+- It always selects `answers`, even when the caller asks for other columns, so the marker
+  can be checked.
+
+**Lookups now routed through it:**
+- `support_agent._latest_lead(email)`. This covers:
+  - both chat paths (the concierge and the personas)
+  - the source answers for an upgrade build
+  - `seo_agent._business_context`, and through it competitor research, media, the ads
+    agents, landing pages and the avatar agent
+  - `competitor_research._market_reality`
+  - the Control Room's proposal read
+- `budget_agent._lead_row(client_id)`. This covers the budget forecast and
+  `client_journey._chosen_package`.
+- `engagement_agent._client_context`, the weekly suggestions. It had its own copy of the
+  query.
+
+Only these three places queried `leads` by client. The other `leads` queries are the
+sales chat's own lifecycle (by `lead_id`), the admin list, and the monitor scan.
+
+**Connection checklist and 90-day clock:**
+- Both read the package through `_chosen_package` → `_lead_row` → now
+  `client_sales_lead`. `connection_status` → `required_connections` → `_chosen_package`
+  now always looks for the checkout's `package_id` in the proposal the client actually
+  bought.
+- **The checklist:** fixed. With an upgrade quote picked, `package_id` wasn't among the
+  quote's packages, so the result was `{}` and `resolved: false`. The checklist showed
+  "can't tell what you bought" and never completed.
+- **The deep-interview gate (`interview_agent.readiness`):** fixed, because it reads
+  `connection_status`.
+- **The 90-day clock stamp (`note_connections_complete`):** fixed. It only stamps when the
+  status is `resolved` and `complete`, so an affected client's clock could never start.
+  An already-stamped date is permanent and unchanged.
+
+**How widespread it was:**
+- The `client_id` pass already skipped *new* upgrade quotes, because
+  `_build_upgrade_proposal` never sets `leads.client_id`. So `_lead_row`, and with it the
+  checklist and the clock, was wrong only in two cases:
+  - the client's sales lead was matched by email; or
+  - the 2026-07-28 lead-tracking migration back-filled `client_id` onto upgrade rows that
+    already existed. It set `client_id` on every row with the client's email.
+- `support_agent._latest_lead` and the engagement query were email-only, so they were
+  wrong for **every** client who had asked for a quote.
+
+### Commit 2: the knowledge module
+
+- **`core/client_knowledge.py`.** `profile(client_id, persona_id)` returns the sections
+  designed above:
+  - `business`, `in_their_words`, `competitors`, `market`, `plan` and `history`
+  - In-process cache of 5 minutes.
+  - Each source is read separately; a failed or empty one is left out without any trace.
+  - In `plan`, a failed read of the 90-day stamp says nothing. It never says "not
+    started".
+  - Sales-chat answers: the base-question allowlist, plus up to 8 dynamic answers. Contact
+    keys, `_`-prefixed keys and anything whose key looks financial are skipped
+    (revenue / profit / financ / income / loss / debt / turnover / margin / salary / cash).
+  - `financial_status`, `revenue_trend` and `recent_revenue` are always excluded.
+- **`competitor_research.latest(client_id, lens, max_age_days=90)`.** A cache-only reader
+  that never calls `research()`.
+- **`support_agent`:**
+  - Both chat paths send `client_knowledge`. The specialists get their own research lens
+    in full: ads for google/meta, website, media. The concierge gets a short slice of all
+    three. The key is left out when it's empty.
+  - `KNOWLEDGE_RULE` is shared by `SYSTEM` and `PERSONA_SYSTEM_TEMPLATE`. It tells the
+    model to:
+    - be specific and never re-ask what's already known;
+    - treat it as background, not live metrics;
+    - treat research as **dated background, framed as "when we last looked (date)", never
+      as how things stand today**;
+    - treat goals as estimates;
+    - never invent anything missing;
+    - leave `data_topic` as "" for questions about it.
+  - The raw `proposal` in the chat payload no longer duplicates `business_summary`,
+    `market_reality`, `goals_90_days` and `kpis`.
+- **Unchanged:**
+  - `data_topic`, the "can't pull that up" logic, and the read-only invariant of the
+    personas.
+  - `ads_goal_set` and the SEO strategy are not read.
+  - No failure state enters the prompt.
+
+Not run: there's no Python on this machine, so the code was reviewed by reading only.
+
+**Verify after deploy:**
+- A client who did the first-login interview: ask the concierge "who are my competitors?"
+  and expect the names they gave.
+- Ask "what are we trying to achieve?" and expect the goals as estimates plus the day N of
+  90.
+- Ask the Meta persona about the market and expect the ads-lens research, framed with its
+  date.
+- A client who has asked for an upgrade quote: the connection checklist resolves, and the
+  chat still describes the package they bought.
+
+## Decisions for Johnny before building (resolved: see the top)
 
 1. **Financial answers** (`financial_status`, `revenue_trend`, `recent_revenue`): include them or not?
    - Proposed: **leave them out** of the chat profile.

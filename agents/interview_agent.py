@@ -34,9 +34,10 @@ still have it; it just isn't the first thing that happens.
 Captured facts land in `client_activity` and are read back by
 `core/competitor_research.py`, which is already the single place the media,
 website and ads agents get market context from (and which already folds in
-the paid SEO tool's competitor domains). **No new table, no new silo.** If a
-future agent needs these facts, it should call competitor_research like the
-others do rather than reading these rows directly.
+the paid SEO tool's competitor domains). **No new table, no new silo.** The
+client chats read them (competitors AND notes) through
+`core/client_knowledge.py`; a future reader should use one of those two
+modules rather than reading these rows directly.
 
 ## Persona routing
 

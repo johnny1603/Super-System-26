@@ -45,6 +45,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   login, in the owning persona's voice and in that persona's chat thread. Admin-triggered
   only, never automatic on a deploy. Needs `migrations/2026-08-08-feature-announcements.sql`;
   does nothing at all until it runs. See `HANDOFF-feature-announcements.md`.
+- `core/client_knowledge.py` — **the** read of what we know about a client's BUSINESS
+  (sales-chat answers minus financials, interview notes + competitors, cached-only
+  competitor research up to 90 days old with its date, 90-day plan + cycle day, milestones,
+  suggestion decisions). Fed to the concierge and every persona as `client_knowledge`.
+  Read-only, no LLM/paid calls, no new storage; failed sources are left out silently. Keeps
+  OUT: financial answers, contact details, `ads_goal_set` (internal), the SEO strategy.
+  See `HANDOFF-client-knowledge.md`.
+- `core/lead_tracking.client_sales_lead` — the ONE "which lead row is this client's"
+  lookup. Skips in-chat upgrade quotes (they are `leads` rows too). Never query `leads` by
+  client email/id directly.
 - `agents/interview_agent.py` — the onboarding conversation that replaced the static tour,
   in two phases: `connection_nudge()` at first login while integrations are missing, then
   the deep interview **gated** on every required connection being live. Explains AND

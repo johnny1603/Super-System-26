@@ -507,6 +507,30 @@ def _cached(client_id: int, lens: str) -> dict:
     return {}
 
 
+def latest(client_id: int, lens: str, max_age_days: int = 90) -> dict:
+    """CACHE-ONLY read of the newest research for a lens, up to max_age_days
+    old — beyond this module's own refresh TTL on purpose, because a reader
+    like the client chats (core/client_knowledge) wants dated background, not
+    fresh research. Never researches, never spends: research() is the only
+    path that searches. {} when nothing is on file; never raises."""
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        rows = (_db().table("client_activity").select("details,created_at")
+                .eq("client_id", client_id).eq("agent_name", SERVICE_NAME)
+                .eq("action_type", ACTIVITY_TYPE)
+                .gte("created_at", cutoff)
+                .order("created_at", desc=True).limit(10).execute().data or [])
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] latest() read failed for client {client_id}: {e}")
+        return {}
+    for row in rows:
+        details = row.get("details") or {}
+        if details.get("lens") == lens and details.get("summary"):
+            return {"lens": lens, "summary": details["summary"],
+                    "researched_at": row.get("created_at", "")}
+    return {}
+
+
 # ─── The one entry point ──────────────────────────────────────────────────────
 
 def research(client_id: int, lens: str, extra_context: dict = None,

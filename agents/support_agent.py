@@ -153,14 +153,31 @@ answer: set it the same way whether or not that data is in front of you. If a pl
 is missing from the data entirely, you simply don't have those numbers in front of you — never
 guess them."""
 
+# Shared by the concierge and every persona (core/client_knowledge). Brace-free,
+# like HANDOFF_RULE: concatenated into PERSONA_SYSTEM_TEMPLATE before .format().
+KNOWLEDGE_RULE = """
+
+CLIENT KNOWLEDGE: "client_knowledge" is what the team already knows about this client's
+business — what they told us when they joined (the sales chat and the first-login
+conversation), their real competitors, their 90-day plan and where they are in it, what they
+have approved or turned down. Use it to be specific: name their actual competitors, tie advice
+to their stated goal and customers, and never re-ask something it already answers. It is
+background, not live metrics — numbers about their campaigns or site come only from the live
+platform fields. Competitor research carries the date it was done ("researched_on"): treat it
+as DATED BACKGROUND, not current fact — frame it as "when we last looked (that date)", never as
+how things stand today. The 90-day goals and kpis are estimates, never promises. Anything not in
+it you don't know yet — ask, or speak generally; never invent it. Asking about it is not live
+data: data_topic stays "" for it."""
+
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
 team" - never say you are an AI or a bot.
 
 Talk with them about their business, their marketing, their package, pricing and how the
 system works. For FACTS about their account (numbers, features in their package, activity),
-use ONLY the client data given to you in the user message (their package/proposal details and
-recent account activity) - never invent numbers, features, or activity not present in it.
+use ONLY the client data given to you in the user message (their package/proposal details,
+client_knowledge and recent account activity) - never invent numbers, features, or activity
+not present in it.
 General conversation and marketing advice don't need data; answer those directly.
 
 Platform data: if the user message includes a "google_ads_performance" or
@@ -223,7 +240,8 @@ and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": "", "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + LANGUAGE_RULE + _AUTOMATION_RULE
+ "data_topic": "", "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
+    + LANGUAGE_RULE + _AUTOMATION_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -316,6 +334,30 @@ def _add_reads(payload: dict, reads: dict) -> set:
             continue
         payload[field] = value
     return failed
+
+
+# The proposal's narrative fields now reach the chats through client_knowledge
+# (from the same sales-lead row), so the raw proposal keeps only the rest —
+# packages and prices, notes, disclaimers — instead of sending them twice.
+_KNOWLEDGE_PROPOSAL_FIELDS = ("business_summary", "market_reality", "goals_90_days", "kpis")
+
+
+def _proposal_for_chat(lead: dict) -> dict:
+    return {k: v for k, v in (lead.get("proposal") or {}).items()
+            if k not in _KNOWLEDGE_PROPOSAL_FIELDS}
+
+
+def _client_knowledge(client_id: int, persona_id: str) -> dict:
+    """Business grounding for this turn (core/client_knowledge). Read-only and
+    never raises; a failure just means no knowledge block, never a mention of
+    one."""
+    try:
+        from core import client_knowledge
+        return client_knowledge.profile(client_id, persona_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "client_knowledge",
+                 f"client {client_id}: knowledge read failed (left out): {e}")
+        return {}
 
 
 def _recent_activity(client_id: int) -> list:
@@ -450,11 +492,14 @@ def _answer_support_question(client_id: int, message: str) -> dict:
             "package": client.get("package"),
             "status": client.get("status"),
         },
-        "proposal": lead.get("proposal") or {},
+        "proposal": _proposal_for_chat(lead),
+        "client_knowledge": _client_knowledge(client_id, "general"),
         "recent_activity": _recent_activity(client_id),
         "conversation_history": _current_thread(client_id, client.get("chat_started_at")),
         "client_message": message,
     }
+    if not payload["client_knowledge"]:
+        payload.pop("client_knowledge")  # absent, never an empty block to read into
 
     # The chat owns the homework/suggestions experience - it must know what's
     # pending so it can walk the client through approving it
@@ -552,7 +597,7 @@ def _answer_support_question(client_id: int, message: str) -> dict:
         log_step(AGENT_NAME, "web_search", f"client {client_id}: '{search_query}'")
         search_payload = json.dumps({
             "client_business": payload["client"],
-            "business_summary": (payload.get("proposal") or {}).get("business_summary", ""),
+            "business_summary": ((lead.get("proposal") or {}).get("business_summary") or ""),
             "client_message": message,
             "search_focus": search_query,
         }, ensure_ascii=False)
@@ -801,7 +846,7 @@ default).
 
 Return JSON only:
 {{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": ""}}""" + HANDOFF_RULE + LANGUAGE_RULE
+ "data_topic": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
@@ -833,12 +878,15 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     payload = {
         "client": {"name": client.get("name"), "package": client.get("package"),
                     "status": client.get("status")},
-        "proposal": lead.get("proposal") or {},
+        "proposal": _proposal_for_chat(lead),
+        "client_knowledge": _client_knowledge(client_id, persona_id),
         "recent_activity": _recent_activity(client_id),
         "conversation_history": _current_thread(client_id, client.get("chat_started_at"),
                                                 channel=persona_channel(persona_id)),
         "client_message": message,
     }
+    if not payload["client_knowledge"]:
+        payload.pop("client_knowledge")
     try:
         failed = _add_reads(payload, persona["reads"](client_id))
     except Exception as e:
