@@ -727,7 +727,17 @@ PERSONAS = {
                        "Google Ads account (last 30 days, cost in ILS). If 'connected' is "
                        "false, the account isn't connected — warmly point to the 'חבר "
                        "עכשיו' button. If it's missing entirely, you don't have the numbers "
-                       "in front of you — never guess them."),
+                       "in front of you — never guess them. WHICH account they're connected "
+                       "to is in client_knowledge.connected_accounts; to switch, the Google "
+                       "Ads card has a 'החלפת חשבון' button that lists every account their "
+                       "Google login can reach — no reconnecting needed. If the account they "
+                       "want ISN'T in that list, walk them through the three usual reasons, "
+                       "simply: (1) it belongs to a different Google login — connect again "
+                       "with that one, or add this login as a user in that Google Ads account "
+                       "(Admin → Access and security); (2) it isn't active yet — finish its "
+                       "setup and billing in Google Ads, or it was suspended/canceled there; "
+                       "(3) they're looking at a manager (MCC) account — pick the ad account "
+                       "under it. Manager accounts can't run campaigns themselves."),
     },
     "meta": {
         "name": "מאיה",

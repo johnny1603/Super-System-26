@@ -177,14 +177,17 @@ def client_view(client_id: int) -> dict:
         (get_pending_strategy(client_id) or {}).get("awaiting_approval")), False)
 
     def google_ads_account():
-        # The STORED row (any status) — a DB read, no Google call. The live
-        # list of reachable accounts loads only when the admin asks to change it.
-        from agents.google_ads_agent import _stored_row
-        from core.google_ads_service import format_customer_id
-        row = _stored_row(client_id)
-        return {"connected": row.get("status") == "active" and bool(row.get("account_id")),
-                "status": row.get("status", ""),
-                "customer_id": format_customer_id(row.get("account_id") or "")} if row else {}
+        # The STORED row (any status) plus who chose it — DB reads, no Google
+        # call. The live list of reachable accounts loads only when the admin
+        # asks to change it.
+        from agents.google_ads_agent import connection_info
+        info = connection_info(client_id)
+        if not info:
+            return {}
+        return {"connected": info["status"] == "active" and bool(info["customer_id"]),
+                "status": info["status"], "customer_id": info["display_id"],
+                "name": info.get("name", ""), "chosen_by": info.get("chosen_by", ""),
+                "chosen_at": info.get("chosen_at", "")}
     google_ads = section("google ads account", google_ads_account, {})
 
     open_alerts = [a for a in client_alerts if a.get("status") == "open"]

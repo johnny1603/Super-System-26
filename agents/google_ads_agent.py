@@ -137,6 +137,13 @@ def connect_from_oauth(client_id: int, refresh_token: str) -> dict:
         return {"outcome": "no_accounts"}
     accounts = gads.describe_customers(refresh_token, ids)
     candidates = selectable_accounts(accounts)
+    # Seed the picker's cache with what we just described for THIS token, so
+    # the picker page opens without listing the same accounts again
+    for a in accounts:
+        a["display_id"] = gads.format_customer_id(a["id"])
+        a["selectable"] = a.get("status") == "ENABLED" and not a.get("manager")
+    _accounts_cache[client_id] = (time.time(), _token_fingerprint(refresh_token),
+                                  {"success": True, "accounts": accounts})
     if len(candidates) == 1:
         chosen = candidates[0]
         upsert_account(client_id, PLATFORM, chosen["id"], refresh_token, "active")
@@ -160,36 +167,88 @@ def connect_from_oauth(client_id: int, refresh_token: str) -> dict:
     return {"outcome": "choose", "accounts": candidates}
 
 
-def pending_choices(client_id: int) -> dict:
-    """What the client's picker shows: the enabled, non-manager accounts from
-    the last consent, while the connection is waiting for a choice."""
-    row = _stored_row(client_id)
-    if row.get("status") != PENDING_STATUS:
-        return {"pending": False, "accounts": []}
-    from agents.client_agent import get_activity
-    for entry in get_activity(client_id, limit=100):
-        if entry.get("agent_name") == AGENT_NAME and entry.get("action_type") == CHOICE_ACTION:
-            accounts = (entry.get("details") or {}).get("accounts") or []
-            return {"pending": True, "accounts": [
-                {"id": a["id"], "display_id": gads.format_customer_id(a["id"]),
-                 "name": a.get("name", "")} for a in selectable_accounts(accounts)]}
-    return {"pending": True, "accounts": []}
+# The ONE listing of "which accounts can this stored login reach" — the
+# client's picker and the admin's "החלף חשבון" both read it. Cached per client
+# AND per token (a reconnect brings a new token, so a stale list can never be
+# offered for it); a failed listing is cached briefly and alerted once a day.
+ACCOUNTS_CACHE_SECONDS = 300
+ACCOUNTS_FAIL_CACHE_SECONDS = 60
+_accounts_cache = {}  # client_id -> (fetched_at, token_fingerprint, result)
 
 
-def account_options(client_id: int) -> dict:
-    """Admin view: every account the STORED login can reach, live, with the
-    one currently stored. Costs one API op per account (+1 for the list)."""
+def _token_fingerprint(token: str) -> str:
+    import hashlib
+    return hashlib.sha256((token or "").encode()).hexdigest()[:16]
+
+
+def account_options(client_id: int, refresh: bool = False) -> dict:
+    """Every account the STORED login can reach, with name, status, manager
+    flag and whether it may be chosen, plus the one currently stored. One API
+    op per account (+1 for the list) on a cache miss. Never raises."""
     row = _stored_row(client_id)
     if not row.get("access_token"):
         return {"success": False, "code": "ERR_NOT_CONNECTED"}
-    accounts = gads.describe_customers(row["access_token"],
-                                       gads.list_accessible_customers(row["access_token"]))
+    fingerprint = _token_fingerprint(row["access_token"])
+    cached = _accounts_cache.get(client_id)
+    if cached and not refresh and cached[1] == fingerprint:
+        ttl = ACCOUNTS_FAIL_CACHE_SECONDS if not cached[2].get("success") else ACCOUNTS_CACHE_SECONDS
+        if cached[0] > time.time() - ttl:
+            return {**cached[2], "current": row.get("account_id") or "",
+                    "current_display": gads.format_customer_id(row.get("account_id") or ""),
+                    "status": row.get("status", "")}
+    try:
+        accounts = gads.describe_customers(row["access_token"],
+                                           gads.list_accessible_customers(row["access_token"]))
+    except Exception as e:
+        from core.chat_fallback import alert_once
+        alert_once(AGENT_NAME, client_id, f"{PLATFORM}:account_listing_failed",
+                   f"client {client_id}: listing the Google Ads accounts for the account picker "
+                   f"failed: {str(e)[:300]}", 1)
+        result = {"success": False, "code": "ERR_LISTING_FAILED"}
+        _accounts_cache[client_id] = (time.time(), fingerprint, result)
+        return result
     for a in accounts:
         a["display_id"] = gads.format_customer_id(a["id"])
         a["selectable"] = a.get("status") == "ENABLED" and not a.get("manager")
-    return {"success": True, "current": row.get("account_id") or "",
+    result = {"success": True, "accounts": accounts}
+    _accounts_cache[client_id] = (time.time(), fingerprint, result)
+    return {**result, "current": row.get("account_id") or "",
             "current_display": gads.format_customer_id(row.get("account_id") or ""),
-            "status": row.get("status", ""), "accounts": accounts}
+            "status": row.get("status", "")}
+
+
+def client_account_options(client_id: int, refresh: bool = False) -> dict:
+    """The client-facing projection of account_options: no error text, no
+    currency or internal fields."""
+    data = account_options(client_id, refresh=refresh)
+    if not data.get("success"):
+        return {"success": False, "code": data.get("code", "ERR_LISTING_FAILED")}
+    return {"success": True, "current": data["current"], "status": data["status"],
+            "accounts": [{"id": a["id"], "display_id": a["display_id"], "name": a.get("name", ""),
+                          "status": a.get("status", "UNKNOWN"), "manager": bool(a.get("manager")),
+                          "selectable": bool(a.get("selectable"))} for a in data["accounts"]]}
+
+
+def connection_info(client_id: int) -> dict:
+    """The stored connection as plain facts: id, name, and who chose it
+    (client / admin / auto when it was the only enabled account / legacy
+    first-in-list pick from before 2026-10-14). DB reads only."""
+    row = _stored_row(client_id)
+    if not row:
+        return {}
+    info = {"status": row.get("status", ""), "customer_id": row.get("account_id") or "",
+            "display_id": gads.format_customer_id(row.get("account_id") or ""),
+            "name": "", "chosen_by": ""}
+    from agents.client_agent import get_activity
+    for entry in get_activity(client_id, limit=200):
+        if entry.get("agent_name") == AGENT_NAME and entry.get("action_type") == "account_connected":
+            details = entry.get("details") or {}
+            if str(details.get("customer_id") or "") == info["customer_id"]:
+                info["name"] = details.get("account_name", "")
+                info["chosen_by"] = details.get("chosen_by") or "auto_legacy_first"
+                info["chosen_at"] = entry.get("created_at", "")
+            break
+    return info
 
 
 def select_account(client_id: int, customer_id: str, chosen_by: str) -> dict:
@@ -206,19 +265,29 @@ def select_account(client_id: int, customer_id: str, chosen_by: str) -> dict:
     row = _stored_row(client_id)
     if not row.get("access_token"):
         return {"success": False, "code": "ERR_NOT_CONNECTED"}
+
+    def reject(code: str, why: str) -> dict:
+        # Never trust an id from the browser: a mismatch is logged, not stored
+        log_step(AGENT_NAME, "select_account_rejected",
+                 f"client {client_id} ({chosen_by}): {gads.format_customer_id(cid)} — {why}")
+        return {"success": False, "code": code}
+
+    # Validated LIVE against the stored login's own list — the same token the
+    # picker listed from — not against anything the browser sent back
     if cid not in gads.list_accessible_customers(row["access_token"]):
-        return {"success": False, "code": "ERR_ACCOUNT_NOT_ACCESSIBLE"}
+        return reject("ERR_ACCOUNT_NOT_ACCESSIBLE", "not reachable by the stored login")
     info = (gads.describe_customers(row["access_token"], [cid]) or [{}])[0]
     if info.get("manager"):
-        return {"success": False, "code": "ERR_MANAGER_ACCOUNT"}
+        return reject("ERR_MANAGER_ACCOUNT", "manager account")
     if chosen_by == "client" and info.get("status") != "ENABLED":
-        return {"success": False, "code": "ERR_ACCOUNT_NOT_ENABLED"}
+        return reject("ERR_ACCOUNT_NOT_ENABLED", f"status {info.get('status')}")
     upsert_account(client_id, PLATFORM, cid, row["access_token"], "active")
     log_activity(client_id, AGENT_NAME, "account_connected",
                  {"customer_id": cid, "account_name": info.get("name", ""),
                   "account_status": info.get("status", ""), "chosen_by": chosen_by,
                   "previous_customer_id": row.get("account_id") or ""}, {})
     _perf_cache.pop(client_id, None)
+    _accounts_cache.pop(client_id, None)
     _forget_knowledge(client_id)
     return {"success": True, "customer_id": cid, "display_id": gads.format_customer_id(cid),
             "name": info.get("name", ""), "status": info.get("status", "")}

@@ -2322,10 +2322,17 @@ async function crDriveSelfTest(clientId, ev) {
 const GADS_STATUS_HE = { ENABLED: 'פעיל', NOT_ENABLED: 'לא פעיל / לא הושלם', SUSPENDED: 'מושעה',
   CANCELED: 'בוטל', CLOSED: 'סגור', UNREADABLE: 'לא נגיש', UNKNOWN: 'לא ידוע' };
 
+const GADS_CHOSEN_BY_HE = {
+  client: 'נבחר על ידי הלקוח', admin: 'נבחר על ידך (מנהל)',
+  auto_only_enabled: 'נבחר אוטומטית — החשבון הפעיל היחיד',
+  auto_legacy_first: 'נבחר אוטומטית בשיטה הישנה (הראשון ברשימה) — כדאי לוודא',
+};
 function crGadsLine(clientId, g) {
   if (!g || !g.status) return '';
-  const what = g.connected ? `מחובר לחשבון <span dir="ltr">${esc(g.customer_id)}</span>`
-    : g.status === 'pending_selection' ? 'ההרשאה ניתנה — ממתין לבחירת חשבון' : 'לא מחובר';
+  const who = g.chosen_by ? ` · <span style="color:var(--gray);">${esc(GADS_CHOSEN_BY_HE[g.chosen_by] || g.chosen_by)}${g.chosen_at ? ', ' + fmtDate(g.chosen_at) : ''}</span>` : '';
+  const what = g.connected
+    ? `מחובר לחשבון ${g.name ? esc(g.name) + ' · ' : ''}<span dir="ltr">${esc(g.customer_id)}</span>${who}`
+    : g.status === 'pending_selection' ? 'ההרשאה ניתנה — ממתין שהלקוח יבחר חשבון' : 'לא מחובר';
   return `<div class="cr-gads-line">Google Ads: ${what}
     <button type="button" class="manage-btn" onclick="crGadsLoad(${Number(clientId)})">החלף חשבון</button></div>`;
 }
