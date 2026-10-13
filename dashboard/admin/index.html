@@ -136,6 +136,7 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .bulk-confirm:empty { display:none; }
 .bulk-yes { background:var(--accent); border-color:var(--accent); }
 .bulk-done { color:var(--green); font-size:12.5px; margin:0 0 10px; }
+.cr-gads-line { display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:13px; margin:0 0 14px; }
 .alert-pick { width:16px; height:16px; margin-inline-end:8px; flex-shrink:0; cursor:pointer; vertical-align:middle; accent-color:var(--accent); }
 /* Keep the line breaks a prospect typed with Shift+Enter (text is esc()'d) */
 .transcript-msg > div { white-space:pre-wrap; word-break:break-word; }
@@ -2027,6 +2028,8 @@ async function openControlRoom(clientId) {
       <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
     </div>
     <div id="crDriveTest"></div>
+    ${crGadsLine(c.id, d.google_ads)}
+    <div id="crGadsAccounts"></div>
     ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
 
     <div class="cr-grid">
@@ -2247,6 +2250,77 @@ async function crDriveSelfTest(clientId, ev) {
   } catch (e) {
     console.error('drive self-test render failed', e);
     fail('התוצאה התקבלה אבל לא הוצגה — ראה console');
+  }
+}
+
+// ─── Google Ads: which customer account is connected ─────────────────────────
+// The stored account is shown as a plain fact. "Change account" loads, live,
+// every account the client's stored login can reach and stores the one picked —
+// no new OAuth round for the client. A not-yet-enabled account may be stored
+// on purpose (the right account whose setup isn't finished); manager accounts
+// can't run campaigns and are never offered.
+const GADS_STATUS_HE = { ENABLED: 'פעיל', NOT_ENABLED: 'לא פעיל / לא הושלם', SUSPENDED: 'מושעה',
+  CANCELED: 'בוטל', CLOSED: 'סגור', UNREADABLE: 'לא נגיש', UNKNOWN: 'לא ידוע' };
+
+function crGadsLine(clientId, g) {
+  if (!g || !g.status) return '';
+  const what = g.connected ? `מחובר לחשבון <span dir="ltr">${esc(g.customer_id)}</span>`
+    : g.status === 'pending_selection' ? 'ההרשאה ניתנה — ממתין לבחירת חשבון' : 'לא מחובר';
+  return `<div class="cr-gads-line">Google Ads: ${what}
+    <button type="button" class="manage-btn" onclick="crGadsLoad(${Number(clientId)})">החלף חשבון</button></div>`;
+}
+
+async function crGadsLoad(clientId) {
+  const box = document.getElementById('crGadsAccounts');
+  box.innerHTML = '<div class="panel-pad" style="color:var(--gray);">טוען את החשבונות שההרשאה של הלקוח רואה…</div>';
+  let body;
+  try {
+    const res = await fetch(`/api/admin/control-room/${Number(clientId)}/google-ads/accounts`, { credentials: 'same-origin' });
+    if (res.status === 401) { showLogin(); return; }
+    body = await res.json();
+  } catch (e) { body = null; }
+  const d = body && body.data;
+  if (!d || !d.success) {
+    box.innerHTML = `<div class="panel-pad" style="color:var(--red);">לא ניתן לטעון חשבונות${d && d.code ? ' — ' + esc(d.code) : ''}</div>`;
+    return;
+  }
+  const rows = d.accounts.map(a => `<div class="drawer-stat-row">
+      <span class="drawer-stat-label">${esc(a.name || '(ללא שם)')} · <span dir="ltr">${esc(a.display_id)}</span>
+        ${a.id === d.current ? ' <b style="color:var(--accent);">· מחובר כעת</b>' : ''}</span>
+      <span style="font-size:12px;">${a.manager ? 'חשבון מנהל (MCC)' : esc(GADS_STATUS_HE[a.status] || a.status)}
+        ${!a.manager && a.id !== d.current ? `<button type="button" class="manage-btn" style="margin-inline-start:8px;"
+            onclick="crGadsSelect(${Number(clientId)}, '${esc(a.id)}', ${a.selectable ? 'true' : 'false'})">חבר את זה</button>` : ''}</span>
+    </div>`).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">ההרשאה לא רואה אף חשבון</div>';
+  box.innerHTML = `<div class="panel-pad"><div class="drawer-label">חשבונות Google Ads שההרשאה של הלקוח רואה</div>${rows}
+    <div data-role="msg" style="font-size:12px;margin-top:8px;"></div></div>`;
+}
+
+async function crGadsSelect(clientId, customerId, enabled) {
+  const box = document.getElementById('crGadsAccounts');
+  const msg = box.querySelector('[data-role="msg"]');
+  if (!enabled && msg && msg.dataset.confirm !== customerId) {
+    // In-page second click instead of window.confirm
+    msg.dataset.confirm = customerId;
+    msg.innerHTML = '<span style="color:var(--yellow);">החשבון הזה לא פעיל כרגע — הנתונים לא ייטענו עד ש-Google יפעיל אותו. לחץ שוב על "חבר את זה" כדי לשמור אותו בכל זאת.</span>';
+    return;
+  }
+  if (msg) msg.innerHTML = '<span style="color:var(--gray);">שומר…</span>';
+  try {
+    const res = await fetch(`/api/admin/control-room/${Number(clientId)}/google-ads/account`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+    if (res.status === 401) { showLogin(); return; }
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      const code = body && body.detail && body.detail.code;
+      if (msg) msg.innerHTML = `<span style="color:var(--red);">לא נשמר${code ? ' — ' + esc(code) : ''}</span>`;
+      return;
+    }
+    await openControlRoom(clientId);
+  } catch (e) {
+    console.error(e);
+    if (msg) msg.innerHTML = '<span style="color:var(--red);">לא נשמר — נסה שוב</span>';
   }
 }
 

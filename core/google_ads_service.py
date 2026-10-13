@@ -236,6 +236,51 @@ def list_accessible_customers(refresh_token: str) -> list:
     return [name.split("/")[-1] for name in resource_names]
 
 
+# listAccessibleCustomers returns EVERY account the login can reach — enabled,
+# suspended, cancelled, never-finished setups and manager (MCC) accounts alike,
+# in no meaningful order. Picking one needs each account's own facts first.
+DESCRIBE_MAX_ACCOUNTS = 20
+_DESCRIBE_GAQL = ("SELECT customer.id, customer.descriptive_name, customer.status, "
+                  "customer.manager, customer.currency_code FROM customer")
+
+
+def format_customer_id(customer_id: str) -> str:
+    """1234567890 -> 123-456-7890, the way Google Ads itself shows it."""
+    digits = "".join(ch for ch in str(customer_id or "") if ch.isdigit())
+    return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}" if len(digits) == 10 else digits
+
+
+def describe_customers(refresh_token: str, customer_ids: list) -> list:
+    """Name, status and manager flag for each accessible account — one GAQL
+    operation per account (capped at DESCRIBE_MAX_ACCOUNTS). An account Google
+    refuses to query (not yet enabled, cancelled, suspended, or outside the
+    login-customer-id's reach) comes back with status NOT_ENABLED /
+    UNREADABLE instead of raising, so one dead account never hides the
+    others. A version sunset still raises: that is an outage, not an answer."""
+    accounts = []
+    for customer_id in list(customer_ids)[:DESCRIBE_MAX_ACCOUNTS]:
+        try:
+            rows = search(refresh_token, customer_id, _DESCRIBE_GAQL)
+            customer = (rows[0] if rows else {}).get("customer", {})
+            accounts.append({
+                "id": str(customer_id),
+                "name": customer.get("descriptiveName", ""),
+                "status": customer.get("status", "UNKNOWN"),
+                "manager": bool(customer.get("manager")),
+                "currency": customer.get("currencyCode", ""),
+            })
+        except AdsApiVersionSunsetError:
+            raise
+        except Exception as e:
+            message = str(e)
+            not_enabled = ("not yet enabled" in message or "deactivated" in message
+                           or "CUSTOMER_NOT_ENABLED" in message)
+            accounts.append({"id": str(customer_id), "name": "", "manager": False, "currency": "",
+                             "status": "NOT_ENABLED" if not_enabled else "UNREADABLE",
+                             "error": message[:200]})
+    return accounts
+
+
 def search(refresh_token: str, customer_id: str, gaql: str) -> list:
     """Run a GAQL query, return the raw result rows. Single page (10k rows) —
     plenty for per-client campaign reporting."""

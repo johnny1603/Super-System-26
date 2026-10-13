@@ -209,9 +209,18 @@ beyond campaign creation had ever run against a live account when this shipped.
 - **Costs come back as `costMicros` strings** — divide by 1,000,000; currency is
   the ad account's own (ILS for our clients). All numeric metrics arrive as
   JSON strings; cast them.
-- **`listAccessibleCustomers` returns ALL accounts the user can touch** — the
-  callback currently takes the first one. Multi-account clients need an
-  account-picker step (known Phase 1 limitation).
+- **`listAccessibleCustomers` returns ALL accounts the user can touch** —
+  suspended, cancelled, unfinished and manager (MCC) accounts too, in no useful
+  order. The callback used to take the first one; that stored the wrong account
+  for a client whose login reached six. Now `google_ads_agent.connect_from_oauth`
+  describes each (`google_ads_service.describe_customers`: one GAQL op per
+  account) and auto-connects ONLY when exactly one is ENABLED and non-manager.
+  Several → row parked as `pending_selection` (token kept) and the dashboard's
+  Google Ads card shows a picker (`/api/google-ads/account-choices` +
+  `/select-account`). None enabled → `connect_error=google_ads_no_enabled` +
+  admin alert. The admin can switch the stored account from the Control Room
+  (`/api/admin/control-room/{id}/google-ads/accounts|account`) without a new
+  consent, including to a not-yet-enabled account on purpose.
 - Blocking httpx calls → OAuth callback and anything calling the Ads API must be
   plain `def` endpoints (threadpool), never `async def`.
 
@@ -354,8 +363,7 @@ resubmission — "unverified app" warning + 100 test-user cap until approved.
 ## Deferred / not built
 
 Auto-creating campaigns from `build_proposal` output (proposal lacks keywords/ad
-copy — needs a generation step first), account-picker for multi-account users,
-refresh-token encryption at rest (plaintext in Supabase — flagged, accepted for
+copy — needs a generation step first), refresh-token encryption at rest (plaintext in Supabase — flagged, accepted for
 MVP), budget/bidding changes on live campaigns. Conversion-tracking IMPORT
 into Google Ads itself stays manual (website_agent's GTM work verifies/
 configures the GA4-side event; importing it as a Google Ads conversion

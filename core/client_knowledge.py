@@ -232,6 +232,24 @@ def _history(client_id: int) -> dict:
     return history
 
 
+def _connected_accounts(client_id: int) -> dict:
+    """Which ad accounts are connected — plain facts from client_accounts (no
+    platform call, no credentials, no health/status wording), so the chat can
+    answer "which account am I connected to?". Anything but an active row with
+    an id reads as connected: false."""
+    from agents.client_agent import get_accounts
+    from core.google_ads_service import format_customer_id
+    rows = {a.get("platform"): a for a in (get_accounts(client_id) or [])}
+
+    def fact(platform, fmt=lambda v: v):
+        row = rows.get(platform) or {}
+        if row.get("status") == "active" and row.get("account_id"):
+            return {"connected": True, "account_id": fmt(row["account_id"])}
+        return {"connected": False}
+    return {"google_ads": fact("google_ads", format_customer_id),
+            "meta_ads": fact("meta_ads")}
+
+
 # ─── The one read ─────────────────────────────────────────────────────────────
 
 def profile(client_id: int, persona_id: str = "general") -> dict:
@@ -258,6 +276,7 @@ def profile(client_id: int, persona_id: str = "general") -> dict:
 
     knowledge = {
         "business": _attempt(lambda: _business(client, lead, package), {}),
+        "connected_accounts": _attempt(lambda: _connected_accounts(client_id), {}),
         "in_their_words": {k: _clip(v, MAX_NOTE_CHARS)
                            for k, v in (facts.get("notes") or {}).items()},
         "competitors": _competitors(facts, tool_domains),

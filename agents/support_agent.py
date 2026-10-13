@@ -167,7 +167,9 @@ platform fields. Competitor research carries the date it was done ("researched_o
 as DATED BACKGROUND, not current fact — frame it as "when we last looked (that date)", never as
 how things stand today. The 90-day goals and kpis are estimates, never promises. Anything not in
 it you don't know yet — ask, or speak generally; never invent it. Asking about it is not live
-data: data_topic stays "" for it."""
+data: data_topic stays "" for it. That includes WHICH ad account they are connected to:
+"connected_accounts" states it (connected or not, and the account number exactly as their own
+ad platform shows it, e.g. Google Ads 123-456-7890) — answer that from there, plainly."""
 
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak

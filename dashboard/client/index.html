@@ -160,6 +160,11 @@ body {
 .conn-name { font-size: 15px; font-weight: 700; }
 .conn-status { font-size: 12px; color: var(--gray); margin-top: 2px; }
 .conn-status.connected { color: var(--green); font-weight: 600; }
+/* Google Ads account picker (several active accounts behind one login) */
+.gads-choose { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.gads-choose-title { font-size: 13px; font-weight: 700; }
+.gads-choose-text { font-size: 12px; color: var(--gray); line-height: 1.5; }
+.gads-choose .gads-choice { text-align: start; }
 .conn-btn {
   width: 100%;
   padding: 10px;
@@ -1067,6 +1072,8 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()" data-i18n="connect_now">חבר עכשיו</button>
+      <!-- Shown only when the login reaches several enabled accounts -->
+      <div class="gads-choose" id="gadsChoose" style="display:none;"></div>
     </div>
 
     <div class="conn-card unlocked">
@@ -1971,6 +1978,11 @@ const DASH_I18N = {
   sugg_rejected_notice: { he:'ההצעה נדחתה — נכין משהו אחר בשבוע הבא', en:'Rejected — we\'ll prepare something else next week', fr:'Refusé — nous préparerons autre chose la semaine prochaine', ar:'رُفض الاقتراح — سنجهز شيئًا آخر الأسبوع القادم', ru:'Отклонено — на следующей неделе подготовим другое' },
   sugg_error: { he:'משהו השתבש — נסו שוב', en:'Something went wrong — try again', fr:'Un problème est survenu — réessayez', ar:'حدث خطأ — حاول مجددًا', ru:'Что-то пошло не так — попробуйте ещё раз' },
   notice_gads_connected: { he:'חשבון Google Ads חובר בהצלחה ✓', en:'Google Ads account connected ✓', fr:'Compte Google Ads connecté ✓', ar:'تم ربط حساب Google Ads بنجاح ✓', ru:'Аккаунт Google Ads подключён ✓' },
+  gads_connected_id: { he:'מחובר · {id}', en:'Connected · {id}', fr:'Connecté · {id}', ar:'متصل · {id}', ru:'Подключено · {id}' },
+  gads_choose_title: { he:'לאיזה חשבון Google Ads לחבר?', en:'Which Google Ads account should we connect?', fr:'Quel compte Google Ads connecter ?', ar:'أي حساب Google Ads نربط؟', ru:'Какой аккаунт Google Ads подключить?' },
+  gads_choose_text: { he:'למשתמש שלכם יש גישה לכמה חשבונות פעילים. בחרו את החשבון של העסק — מספר הלקוח מופיע בראש המסך ב-Google Ads.', en:'Your login can reach several active accounts. Pick your business account — its customer ID is at the top of the screen in Google Ads.', fr:'Votre identifiant accède à plusieurs comptes actifs. Choisissez celui de votre entreprise — son numéro client figure en haut de l’écran dans Google Ads.', ar:'يمكن لحسابك الوصول إلى عدة حسابات نشطة. اختر حساب نشاطك التجاري — رقم العميل يظهر أعلى الشاشة في Google Ads.', ru:'У вашего логина есть доступ к нескольким активным аккаунтам. Выберите аккаунт вашего бизнеса — его номер клиента вверху экрана в Google Ads.' },
+  gads_choose_failed: { he:'לא הצלחנו לחבר את החשבון הזה — נסו שוב או דברו איתנו בצ׳אט', en:'We couldn’t connect that account — try again or talk to us in the chat', fr:'Impossible de connecter ce compte — réessayez ou contactez-nous via le chat', ar:'تعذّر ربط هذا الحساب — حاول مجددًا أو تحدث معنا في الدردشة', ru:'Не удалось подключить этот аккаунт — попробуйте ещё раз или напишите нам в чат' },
+  notice_connect_error_google_ads_no_enabled: { he:'אף אחד מחשבונות Google Ads שלכם עדיין לא פעיל (ההגדרה לא הושלמה, או שהחשבון מושעה/בוטל). השלימו את ההגדרה ב-Google Ads ונסו לחבר שוב — הצוות כבר יודע ויעזור.', en:'None of your Google Ads accounts is active yet (setup not finished, or the account is suspended/cancelled). Finish the setup in Google Ads and connect again — the team already knows and will help.', fr:'Aucun de vos comptes Google Ads n’est encore actif (configuration inachevée, ou compte suspendu/annulé). Terminez la configuration dans Google Ads puis reconnectez — l’équipe est déjà prévenue.', ar:'لا يوجد أي حساب Google Ads نشط بعد (الإعداد غير مكتمل أو الحساب معلق/ملغى). أكمل الإعداد في Google Ads ثم أعد الربط — الفريق على علم وسيساعدك.', ru:'Ни один из ваших аккаунтов Google Ads пока не активен (настройка не завершена или аккаунт приостановлен/закрыт). Завершите настройку в Google Ads и подключитесь снова — команда уже в курсе и поможет.' },
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
@@ -2236,6 +2248,9 @@ async function loadDashboard() {
     const conns = d.connections || [];
     if (conns.some(c => c.platform === 'google_ads' && c.status === 'active')) {
       markGoogleAdsConnected();
+      showGadsCustomerId(d.google_ads_customer_id);
+    } else if (conns.some(c => c.platform === 'google_ads' && c.status === 'pending_selection')) {
+      loadGadsChoices();   // consent done, account not chosen yet
     }
     // One Meta consent may connect the ad account, the Page, or both
     if (conns.some(c => ['meta_ads', 'meta_page'].includes(c.platform) && c.status === 'active')) {
@@ -2515,6 +2530,55 @@ async function disconnectPlatform(platformKey, link) {
 }
 
 function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
+
+// The connected account as a plain fact — the same number Google Ads shows,
+// so the client can see at a glance it's the right one
+function showGadsCustomerId(displayId) {
+  if (!displayId) return;
+  document.getElementById('gadsStatus').textContent = uallakI18n.t('gads_connected_id', { id: displayId });
+}
+
+// After consent, a login that reaches several ACTIVE accounts parks the
+// connection until the client picks one (google_ads_agent.connect_from_oauth)
+async function loadGadsChoices() {
+  const box = document.getElementById('gadsChoose');
+  try {
+    const res = await fetch('/api/google-ads/account-choices', { credentials: 'same-origin' });
+    const body = await res.json();
+    const choices = (body.success && body.data.pending) ? body.data.accounts : [];
+    if (!choices.length) { box.style.display = 'none'; return; }
+    box.innerHTML = `<div class="gads-choose-title">${esc(uallakI18n.t('gads_choose_title'))}</div>
+      <div class="gads-choose-text">${esc(uallakI18n.t('gads_choose_text'))}</div>`
+      + choices.map(a => `<button type="button" class="conn-btn gads-choice" data-id="${esc(a.id)}">
+          ${esc(a.name || a.display_id)} <span dir="ltr">· ${esc(a.display_id)}</span></button>`).join('');
+    box.querySelectorAll('.gads-choice').forEach(b => { b.onclick = () => chooseGadsAccount(b.dataset.id); });
+    box.style.display = 'flex';
+  } catch (e) {
+    console.error('google ads choices failed', e);
+  }
+}
+
+async function chooseGadsAccount(customerId) {
+  const box = document.getElementById('gadsChoose');
+  box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const res = await fetch('/api/google-ads/select-account', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('select failed');
+    box.style.display = 'none';
+    markGoogleAdsConnected();
+    showGadsCustomerId(body.data.display_id);
+    showNotice(uallakI18n.t('notice_gads_connected'), 'success');
+  } catch (e) {
+    console.error('google ads account select failed', e);
+    box.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    showNotice(uallakI18n.t('gads_choose_failed'), 'warn');
+  }
+}
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
 function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok'); }
 function markYoutubeConnected() { markPlatformConnected('youtubeStatus', 'youtubeBtn', 'youtube'); }
@@ -4784,6 +4848,10 @@ async function loadSupport() {
   if (params.get('connected') === 'google_ads') {
     markGoogleAdsConnected();
     showNotice(uallakI18n.t('notice_gads_connected'), 'success');
+  } else if (params.get('choose') === 'google_ads') {
+    loadGadsChoices();   // loadDashboard also re-offers it while still pending
+  } else if (params.get('connect_error') === 'google_ads_no_enabled') {
+    showNotice(uallakI18n.t('notice_connect_error_google_ads_no_enabled'), 'warn');
   } else if (params.get('connected') === 'meta') {
     markMetaConnected();
     showNotice(uallakI18n.t('notice_meta_connected'), 'success');

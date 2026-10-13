@@ -90,6 +90,140 @@ def is_connected(client_id: int) -> bool:
     return bool(conn.get("access_token") and conn.get("account_id"))
 
 
+# ─── Which customer account (2026-10-14) ──────────────────────────────────────
+# The OAuth callback used to store customer_ids[0] from listAccessibleCustomers.
+# That list holds every account the login can reach — suspended, cancelled,
+# unfinished and manager accounts included — in no meaningful order, so a
+# client with several accounts got whichever came first (client 27: 6 accounts,
+# the stored one wasn't theirs). Now: only an ENABLED, non-manager account is
+# ever chosen automatically, and only when it is the ONLY one; otherwise the
+# client (or the admin) picks.
+PENDING_STATUS = "pending_selection"
+CHOICE_ACTION = "account_choice_pending"
+
+
+def _forget_knowledge(client_id: int):
+    """The chats' business profile caches for 5 minutes and names the connected
+    account — drop it so "which account am I on?" is right immediately."""
+    try:
+        from core import client_knowledge
+        for key in [k for k in client_knowledge._cache if k[0] == client_id]:
+            client_knowledge._cache.pop(key, None)
+    except Exception:
+        pass
+
+
+def selectable_accounts(accounts: list) -> list:
+    """Accounts a campaign can actually run in: enabled and not a manager."""
+    return [a for a in accounts if a.get("status") == "ENABLED" and not a.get("manager")]
+
+
+def _stored_row(client_id: int) -> dict:
+    """The google_ads row in ANY status (a pending selection holds the token)."""
+    rows = (_db().table("client_accounts").select("*")
+            .eq("client_id", client_id).eq("platform", PLATFORM)
+            .order("id", desc=True).limit(1).execute().data or [])
+    return rows[0] if rows else {}
+
+
+def connect_from_oauth(client_id: int, refresh_token: str) -> dict:
+    """Decide what the OAuth callback stores. Returns {"outcome": "connected" |
+    "choose" | "no_enabled_account" | "no_accounts", ...}. The refresh token is
+    stored in every outcome except no_accounts, so a later choice (client or
+    admin) never needs another consent round."""
+    from agents.client_agent import log_activity, upsert_account
+    ids = gads.list_accessible_customers(refresh_token)
+    if not ids:
+        return {"outcome": "no_accounts"}
+    accounts = gads.describe_customers(refresh_token, ids)
+    candidates = selectable_accounts(accounts)
+    if len(candidates) == 1:
+        chosen = candidates[0]
+        upsert_account(client_id, PLATFORM, chosen["id"], refresh_token, "active")
+        log_activity(client_id, AGENT_NAME, "account_connected",
+                     {"customer_id": chosen["id"], "account_name": chosen.get("name", ""),
+                      "accessible_accounts": len(ids), "chosen_by": "auto_only_enabled"}, {})
+        _perf_cache.pop(client_id, None)
+        _forget_knowledge(client_id)
+        return {"outcome": "connected", "customer_id": chosen["id"]}
+    # Several candidates, or none enabled: store the token and ask — never guess
+    upsert_account(client_id, PLATFORM, "", refresh_token, PENDING_STATUS)
+    log_activity(client_id, AGENT_NAME, CHOICE_ACTION,
+                 {"accounts": accounts, "accessible_accounts": len(ids)}, {})
+    if not candidates:
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: connected Google Ads but none of the {len(ids)} accessible "
+            f"account(s) is enabled — " + ", ".join(
+                f"{gads.format_customer_id(a['id'])} {a.get('name') or ''} ({a['status']})"
+                for a in accounts)[:600]])
+        return {"outcome": "no_enabled_account", "accounts": accounts}
+    return {"outcome": "choose", "accounts": candidates}
+
+
+def pending_choices(client_id: int) -> dict:
+    """What the client's picker shows: the enabled, non-manager accounts from
+    the last consent, while the connection is waiting for a choice."""
+    row = _stored_row(client_id)
+    if row.get("status") != PENDING_STATUS:
+        return {"pending": False, "accounts": []}
+    from agents.client_agent import get_activity
+    for entry in get_activity(client_id, limit=100):
+        if entry.get("agent_name") == AGENT_NAME and entry.get("action_type") == CHOICE_ACTION:
+            accounts = (entry.get("details") or {}).get("accounts") or []
+            return {"pending": True, "accounts": [
+                {"id": a["id"], "display_id": gads.format_customer_id(a["id"]),
+                 "name": a.get("name", "")} for a in selectable_accounts(accounts)]}
+    return {"pending": True, "accounts": []}
+
+
+def account_options(client_id: int) -> dict:
+    """Admin view: every account the STORED login can reach, live, with the
+    one currently stored. Costs one API op per account (+1 for the list)."""
+    row = _stored_row(client_id)
+    if not row.get("access_token"):
+        return {"success": False, "code": "ERR_NOT_CONNECTED"}
+    accounts = gads.describe_customers(row["access_token"],
+                                       gads.list_accessible_customers(row["access_token"]))
+    for a in accounts:
+        a["display_id"] = gads.format_customer_id(a["id"])
+        a["selectable"] = a.get("status") == "ENABLED" and not a.get("manager")
+    return {"success": True, "current": row.get("account_id") or "",
+            "current_display": gads.format_customer_id(row.get("account_id") or ""),
+            "status": row.get("status", ""), "accounts": accounts}
+
+
+def select_account(client_id: int, customer_id: str, chosen_by: str) -> dict:
+    """Store the customer account the client or admin picked, re-using the
+    stored login (no new consent). The id must be one this login can reach
+    right now and must not be a manager account. A client may only pick an
+    ENABLED account; the admin may also store a not-yet-enabled one (e.g. the
+    right account whose setup isn't finished — it starts working the moment
+    Google enables it)."""
+    from agents.client_agent import log_activity, upsert_account
+    cid = "".join(ch for ch in str(customer_id or "") if ch.isdigit())
+    if len(cid) != 10:
+        return {"success": False, "code": "ERR_BAD_CUSTOMER_ID"}
+    row = _stored_row(client_id)
+    if not row.get("access_token"):
+        return {"success": False, "code": "ERR_NOT_CONNECTED"}
+    if cid not in gads.list_accessible_customers(row["access_token"]):
+        return {"success": False, "code": "ERR_ACCOUNT_NOT_ACCESSIBLE"}
+    info = (gads.describe_customers(row["access_token"], [cid]) or [{}])[0]
+    if info.get("manager"):
+        return {"success": False, "code": "ERR_MANAGER_ACCOUNT"}
+    if chosen_by == "client" and info.get("status") != "ENABLED":
+        return {"success": False, "code": "ERR_ACCOUNT_NOT_ENABLED"}
+    upsert_account(client_id, PLATFORM, cid, row["access_token"], "active")
+    log_activity(client_id, AGENT_NAME, "account_connected",
+                 {"customer_id": cid, "account_name": info.get("name", ""),
+                  "account_status": info.get("status", ""), "chosen_by": chosen_by,
+                  "previous_customer_id": row.get("account_id") or ""}, {})
+    _perf_cache.pop(client_id, None)
+    _forget_knowledge(client_id)
+    return {"success": True, "customer_id": cid, "display_id": gads.format_customer_id(cid),
+            "name": info.get("name", ""), "status": info.get("status", "")}
+
+
 def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dict:
     """Last-30-days campaign metrics for the client's connected account.
     Always returns a well-formed dict - never raises into a client-facing flow."""

@@ -1047,6 +1047,12 @@ async def dashboard_data(request: Request):
         # needs platform + status to paint the connection cards
         "connections": [{"platform": a.get("platform"), "status": a.get("status")}
                         for a in accounts],
+        # Which Google Ads account is connected, as the client sees it in
+        # Google Ads (123-456-7890). An account number, not a credential.
+        "google_ads_customer_id": next(
+            (google_ads_service.format_customer_id(a.get("account_id"))
+             for a in accounts if a.get("platform") == "google_ads"
+             and a.get("status") == "active" and a.get("account_id")), ""),
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -2100,20 +2106,20 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
             print(f"[google_ads oauth] client {client_id}: token exchange returned no refresh_token")
             return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
-        customer_ids = google_ads_service.list_accessible_customers(refresh_token)
-        if not customer_ids:
-            print(f"[google_ads oauth] client {client_id}: authorized user has no accessible Ads accounts")
+        # Which account: only an enabled, non-manager account is ever chosen
+        # automatically, and only when it is the only one — otherwise the
+        # client picks (google_ads_agent.connect_from_oauth). This used to take
+        # listAccessibleCustomers()[0], which stored a wrong account for a
+        # client whose login reaches six.
+        from agents.google_ads_agent import connect_from_oauth
+        outcome = connect_from_oauth(client_id, refresh_token)
+        print(f"[google_ads oauth] client {client_id}: {outcome['outcome']}")
+        if outcome["outcome"] == "no_accounts":
             return RedirectResponse(url="/dashboard/?connect_error=no_ads_account")
-
-        # MVP: first accessible account. Clients with several accounts (or an
-        # MCC) need an account-picker step - flagged as a known limitation.
-        customer_id = customer_ids[0]
-        if len(customer_ids) > 1:
-            print(f"[google_ads oauth] client {client_id}: {len(customer_ids)} accessible accounts, using {customer_id}")
-
-        upsert_account(client_id, "google_ads", customer_id, refresh_token, "active")
-        log_activity(client_id, "google_ads_agent", "account_connected",
-                     {"customer_id": customer_id, "accessible_accounts": len(customer_ids)}, {})
+        if outcome["outcome"] == "no_enabled_account":
+            return RedirectResponse(url="/dashboard/?connect_error=google_ads_no_enabled")
+        if outcome["outcome"] == "choose":
+            return RedirectResponse(url="/dashboard/?choose=google_ads")
         return RedirectResponse(url="/dashboard/?connected=google_ads")
     except google_ads_service.AdsApiVersionSunsetError as e:
         # OUR outage, not this client's. Distinct branch + admin alert because
@@ -2136,6 +2142,46 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
             f"client {client_id}: Google Ads connect failed after consent - "
             f"{type(e).__name__}: {e}"])
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
+
+# ─── Google Ads: choosing WHICH customer account ──────────────────────────────
+# After consent, a login that reaches more than one enabled account parks the
+# connection as pending_selection and the dashboard asks the client to pick.
+# Plain `def`: these call the Google Ads API.
+
+class GoogleAdsAccountChoice(BaseModel):
+    customer_id: str
+
+@app.get("/api/google-ads/account-choices")
+def google_ads_account_choices(request: Request):
+    client_id = _require_session(request)
+    from agents.google_ads_agent import pending_choices
+    return {"success": True, "data": pending_choices(client_id)}
+
+@app.post("/api/google-ads/select-account")
+def google_ads_select_account(req: GoogleAdsAccountChoice, request: Request):
+    client_id = _require_session(request)
+    from agents.google_ads_agent import select_account
+    result = select_account(client_id, req.customer_id, chosen_by="client")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_SELECT_FAILED")})
+    return {"success": True, "data": result}
+
+@app.get("/api/admin/control-room/{client_id}/google-ads/accounts")
+def admin_google_ads_accounts(client_id: int, request: Request):
+    # Live: every account the client's STORED login can reach, so the admin can
+    # correct a wrong pick without the client re-running OAuth
+    _require_admin(request)
+    from agents.google_ads_agent import account_options
+    return {"success": True, "data": account_options(client_id)}
+
+@app.post("/api/admin/control-room/{client_id}/google-ads/account")
+def admin_google_ads_select_account(client_id: int, req: GoogleAdsAccountChoice, request: Request):
+    _require_admin(request)
+    from agents.google_ads_agent import select_account
+    result = select_account(client_id, req.customer_id, chosen_by="admin")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_SELECT_FAILED")})
+    return {"success": True, "data": result}
 
 # ─── Google Tag Manager OAuth (separate consent — measurement, not ads) ─────
 

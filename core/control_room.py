@@ -176,6 +176,17 @@ def client_view(client_id: int) -> dict:
     seo_pending = section("seo strategy", lambda: bool(
         (get_pending_strategy(client_id) or {}).get("awaiting_approval")), False)
 
+    def google_ads_account():
+        # The STORED row (any status) — a DB read, no Google call. The live
+        # list of reachable accounts loads only when the admin asks to change it.
+        from agents.google_ads_agent import _stored_row
+        from core.google_ads_service import format_customer_id
+        row = _stored_row(client_id)
+        return {"connected": row.get("status") == "active" and bool(row.get("account_id")),
+                "status": row.get("status", ""),
+                "customer_id": format_customer_id(row.get("account_id") or "")} if row else {}
+    google_ads = section("google ads account", google_ads_account, {})
+
     open_alerts = [a for a in client_alerts if a.get("status") == "open"]
     unreviewed = [f for f in feedback if not f.get("reviewed")]
     last = _parse(activity[0]["created_at"]) if activity else None
@@ -207,6 +218,7 @@ def client_view(client_id: int) -> dict:
         "alerts": client_alerts[:30],
         "feedback": feedback,
         "connections": connections,
+        "google_ads": google_ads,
         "attention": attention,
         "stalled": stalled,
         "data_gaps": gaps,
