@@ -316,6 +316,56 @@ def list_files(folder_id: str) -> list:
     return _json(response, "list files").get("files", [])
 
 
+# ─── Read-only listing for the Media tab mirror (core/drive_mirror.py) ───────
+# Metadata only — these never download a file body.
+MIRROR_FILE_FIELDS = "id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLink"
+FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
+def list_children(folder_id: str, page_token: str = "", page_size: int = 40) -> dict:
+    """One page of a folder's direct children (files AND subfolders), folders
+    first then newest. {"files": [...], "next_page_token": str}."""
+    params = {"q": f"'{folder_id}' in parents and trashed = false",
+              "fields": f"nextPageToken,files({MIRROR_FILE_FIELDS})",
+              "orderBy": "folder,modifiedTime desc", "pageSize": int(page_size),
+              "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
+    if page_token:
+        params["pageToken"] = page_token
+    response = httpx.get(DRIVE_FILES_URL, headers=_headers(), params=params, timeout=TIMEOUT)
+    _check(response)
+    body = _json(response, "list folder")
+    return {"files": body.get("files", []), "next_page_token": body.get("nextPageToken", "")}
+
+
+def get_meta(file_id: str, fields: str = "id,name,mimeType,parents") -> dict:
+    """One file's metadata (never its content)."""
+    response = httpx.get(f"{DRIVE_FILES_URL}/{file_id}", headers=_headers(),
+                         params={"fields": fields, "supportsAllDrives": "true"}, timeout=TIMEOUT)
+    _check(response)
+    return _json(response, "file metadata")
+
+
+def fetch_thumbnail(thumbnail_link: str, max_bytes: int) -> tuple:
+    """GET a thumbnailLink AS the service account (for when the browser can't
+    load it directly). Returns (bytes, content_type). Refuses anything that
+    isn't an image or exceeds max_bytes."""
+    with httpx.stream("GET", thumbnail_link, headers=_headers(), timeout=20,
+                      follow_redirects=True) as response:
+        if response.status_code >= 400:
+            raise httpx.HTTPStatusError(f"thumbnail GET {response.status_code}",
+                                        request=response.request, response=response)
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            raise DriveResponseError(f"thumbnail is not an image ({content_type[:40]})")
+        chunks, total = [], 0
+        for chunk in response.iter_bytes():
+            total += len(chunk)
+            if total > max_bytes:
+                raise DriveResponseError(f"thumbnail larger than {max_bytes} bytes")
+            chunks.append(chunk)
+    return b"".join(chunks), content_type
+
+
 def trash_file(file_id: str) -> None:
     """Move one file we created to the trash (the Drive self-test's probe
     file). Raises on failure.

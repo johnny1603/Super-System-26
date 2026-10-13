@@ -807,6 +807,19 @@ body {
 .media-chip:hover { color: var(--white); }
 .media-chip.active { background: var(--accent-dim); border-color: rgba(255,76,31,0.35); color: var(--accent); }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+/* Drive mirror (live listing of the client's folder) */
+.drive-mirror { margin-bottom: 8px; }
+.drive-mirror-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.drive-mirror-title { font-size: 14px; font-weight: 700; }
+.drive-thumb { position: relative; height: 130px; margin: -2px -2px 10px; border-radius: 9px; overflow: hidden;
+  background: var(--panel-2); display: flex; align-items: center; justify-content: center; }
+.drive-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.drive-thumb-ico { position: absolute; font-size: 26px; opacity: 0.35; pointer-events: none; }
+.drive-thumb img + .drive-thumb-ico { display: none; }
+.drive-src { font-size: 11px; margin-top: 4px; }
+.drive-src.system { color: var(--green); }
+.drive-src.drive { color: var(--gray); }
+#driveMirrorMore { margin-top: 10px; }
 .media-item {
   background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
   padding: 15px 16px; display: flex; flex-direction: column; gap: 7px;
@@ -1444,6 +1457,19 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 
+  <!-- Live mirror of the client's Drive folder (core/drive_mirror.py) -->
+  <div class="drive-mirror" id="driveMirror">
+    <div class="drive-mirror-head">
+      <div class="drive-mirror-title" data-i18n="drive_mirror_title">מה יש בתיקייה שלך ב-Drive</div>
+      <button type="button" class="media-chip" id="driveMirrorRefresh" onclick="loadDriveMirror(driveMirror.folder, true)"
+              data-i18n="drive_mirror_refresh">רענון</button>
+    </div>
+    <div class="media-filters" id="driveMirrorFolders"></div>
+    <div id="driveMirrorGrid"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+    <div id="driveMirrorMore"></div>
+  </div>
+
+  <div class="section-sub" style="margin:22px 0 10px;" data-i18n="media_index_title">כל מה שהמערכת יצרה עבורך</div>
   <div class="media-filters" id="mediaFilters"></div>
   <div class="export-bar" data-export="media"></div>
 
@@ -1748,6 +1774,18 @@ const DASH_I18N = {
   media_kind_script: { he:'תסריטי צילום', en:'Filming kits', fr:'Kits de tournage', ar:'أطقم تصوير', ru:'Съёмочные наборы' },
   media_kind_document: { he:'מסמכים', en:'Documents', fr:'Documents', ar:'مستندات', ru:'Документы' },
   media_open: { he:'פתיחה ב-Drive ↗', en:'Open in Drive ↗', fr:'Ouvrir dans Drive ↗', ar:'فتح في Drive ↗', ru:'Открыть в Drive ↗' },
+  drive_mirror_title: { he:'מה יש בתיקייה שלך ב-Drive', en:'What’s in your Drive folder', fr:'Le contenu de votre dossier Drive', ar:'محتوى مجلدك في Drive', ru:'Что лежит в вашей папке Drive' },
+  drive_mirror_refresh: { he:'רענון', en:'Refresh', fr:'Actualiser', ar:'تحديث', ru:'Обновить' },
+  drive_mirror_root: { he:'הכל', en:'All', fr:'Tout', ar:'الكل', ru:'Всё' },
+  drive_mirror_up: { he:'→ חזרה', en:'← Back', fr:'← Retour', ar:'→ رجوع', ru:'← Назад' },
+  drive_mirror_empty: { he:'אין קבצים בתיקייה הזו', en:'No files in this folder', fr:'Aucun fichier dans ce dossier', ar:'لا توجد ملفات في هذا المجلد', ru:'В этой папке нет файлов' },
+  drive_mirror_none: { he:'התיקייה שלך ב-Drive עוד לא נוצרה. היא תיווצר אוטומטית כשנכין עבורך את הקובץ הראשון, וכל מה שיישמר בה יופיע כאן.', en:'Your Drive folder hasn’t been created yet. It’s created automatically with the first file we make for you, and everything in it will show up here.', fr:'Votre dossier Drive n’existe pas encore. Il sera créé automatiquement avec le premier fichier préparé pour vous, et tout son contenu s’affichera ici.', ar:'لم يُنشأ مجلدك في Drive بعد. سيُنشأ تلقائيًا مع أول ملف نعدّه لك، وكل ما فيه سيظهر هنا.', ru:'Ваша папка в Drive ещё не создана. Она появится автоматически с первым файлом, который мы для вас сделаем, и всё её содержимое будет видно здесь.' },
+  drive_mirror_unavailable: { he:'לא הצלחנו לטעון כרגע את רשימת הקבצים. אפשר לנסות שוב, או לפתוח את התיקייה ישירות ב-Drive.', en:'We couldn’t load the file list right now. Try again, or open the folder directly in Drive.', fr:'Impossible de charger la liste pour le moment. Réessayez, ou ouvrez le dossier directement dans Drive.', ar:'تعذّر تحميل قائمة الملفات حاليًا. حاول مجددًا أو افتح المجلد مباشرة في Drive.', ru:'Сейчас не удалось загрузить список файлов. Попробуйте ещё раз или откройте папку прямо в Drive.' },
+  drive_mirror_more: { he:'טעינת קבצים נוספים', en:'Load more files', fr:'Charger plus de fichiers', ar:'تحميل المزيد من الملفات', ru:'Загрузить ещё' },
+  drive_mirror_capped: { he:'מוצגים הקבצים הראשונים בלבד — את השאר אפשר לראות ב-Drive', en:'Showing the first files only — see the rest in Drive', fr:'Seuls les premiers fichiers sont affichés — le reste est dans Drive', ar:'تُعرض الملفات الأولى فقط — البقية في Drive', ru:'Показаны только первые файлы — остальные в Drive' },
+  drive_src_system: { he:'נוצר על ידי המערכת', en:'Created by uallak', fr:'Créé par uallak', ar:'أنشأه uallak', ru:'Создано uallak' },
+  drive_src_drive: { he:'נוסף ב-Drive', en:'Added in Drive', fr:'Ajouté dans Drive', ar:'أُضيف في Drive', ru:'Добавлено в Drive' },
+  media_index_title: { he:'כל מה שהמערכת יצרה עבורך', en:'Everything uallak has created for you', fr:'Tout ce que uallak a créé pour vous', ar:'كل ما أنشأه uallak لك', ru:'Всё, что uallak создал для вас' },
   media_unavailable: { he:'הקובץ נוצר אך לא נשמר ב-Drive — הצוות שלנו כבר יודע', en:'Created but not saved to Drive — our team has been alerted', fr:'Créé mais non enregistré sur Drive — notre équipe est alertée', ar:'أُنشئ لكنه لم يُحفظ في Drive — تم تنبيه فريقنا', ru:'Создано, но не сохранено в Drive — команда уведомлена' },
   media_drive_title: { he:'התיקייה שלך ב-Google Drive', en:'Your Google Drive folder', fr:'Votre dossier Google Drive', ar:'مجلدك في Google Drive', ru:'Ваша папка в Google Drive' },
   media_drive_text: { he:'כל הקבצים שמורים בתיקייה פרטית ב-Drive שמשותפת איתך. אפשר לפתוח אותה ולהוריד כל קובץ בגודל המלא.', en:'Every file lives in a private Drive folder shared with you. Open it to download anything at full size.', fr:'Chaque fichier est dans un dossier Drive privé partagé avec vous.', ar:'كل الملفات في مجلد Drive خاص تمت مشاركته معك.', ru:'Все файлы — в приватной папке Drive, расшаренной вам.' },
@@ -3998,7 +4036,7 @@ function showView(name) {
 
   if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
-  if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
+  if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); loadDriveMirror(''); }
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
 }
@@ -4589,6 +4627,7 @@ async function loadMediaAssets() {
     mediaAssetsCache = body.data.assets || [];
     renderMediaFilters(body.data.counts || {});
     renderMediaGrid();
+    if (driveMirror.data) renderDriveMirror();   // re-label "created by the system" items
 
     const badge = document.getElementById('navMediaCount');
     badge.textContent = mediaAssetsCache.length;
@@ -4641,12 +4680,157 @@ function filterMedia(kind) {
   renderMediaGrid();
 }
 
+// ─── Drive mirror: the client's folder as it is in Drive, listed live ────────
+// Server: core/drive_mirror.py (metadata only, cached ~3 min, "Refresh"
+// bypasses it). The folder is resolved from the session server-side; the
+// browser only ever names subfolders it was shown, and the server re-checks
+// them. Files that came from the system index (client_activity, matched by
+// file_id) are labelled as such and not shown twice in the index below.
+// This only touches #driveMirror — never the chat windows or their inputs.
+const driveMirror = { folder: '', path: [], data: null, files: [], folders: [], next: '', pages: 0,
+                      seenIds: new Set(), loading: false };
+
+async function loadDriveMirror(folderId, refresh) {
+  if (driveMirror.loading) return;
+  driveMirror.loading = true;
+  const grid = document.getElementById('driveMirrorGrid');
+  if (!driveMirror.files.length || folderId !== driveMirror.folder || refresh) {
+    grid.className = '';
+    grid.innerHTML = `<div class="empty-row">${esc(uallakI18n.t('loading'))}</div>`;
+  }
+  try {
+    const qs = new URLSearchParams({ folder: folderId || '', refresh: refresh ? 'true' : 'false' });
+    const res = await fetch('/api/client/media-drive?' + qs, { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    driveMirror.data = body.success ? body.data : { error: 'other' };
+    driveMirror.folder = folderId || '';
+    driveMirror.files = (driveMirror.data.files || []).slice();
+    driveMirror.folders = (driveMirror.data.folders || []).slice();
+    driveMirror.next = driveMirror.data.next_page_token || '';
+    driveMirror.pages = 1;
+  } catch (e) {
+    console.error('drive mirror load failed', e);
+    driveMirror.data = { error: 'other' };
+  } finally {
+    driveMirror.loading = false;
+  }
+  driveMirror.files.forEach(f => driveMirror.seenIds.add(f.id));
+  renderDriveMirror();
+  renderMediaGrid();   // drop index items now visible in the mirror
+}
+
+async function loadMoreDriveMirror() {
+  if (driveMirror.loading || !driveMirror.next) return;
+  driveMirror.loading = true;
+  try {
+    const qs = new URLSearchParams({ folder: driveMirror.folder, page_token: driveMirror.next,
+                                     page: String(driveMirror.pages) });
+    const body = await (await fetch('/api/client/media-drive?' + qs, { credentials: 'same-origin' })).json();
+    if (body.success && !body.data.error) {
+      driveMirror.files.push(...(body.data.files || []));
+      driveMirror.folders.push(...(body.data.folders || []));
+      driveMirror.next = body.data.next_page_token || '';
+      driveMirror.pages += 1;
+      driveMirror.data.truncated = Boolean(body.data.truncated);
+      (body.data.files || []).forEach(f => driveMirror.seenIds.add(f.id));
+    }
+  } catch (e) {
+    console.error('drive mirror page failed', e);
+  } finally {
+    driveMirror.loading = false;
+  }
+  renderDriveMirror();
+  renderMediaGrid();
+}
+
+function openDriveFolder(id, name) {
+  driveMirror.path.push({ id: driveMirror.folder, name: '' });
+  driveMirror.currentName = name;
+  loadDriveMirror(id, false);
+}
+
+function driveFolderUp() {
+  const prev = driveMirror.path.pop();
+  loadDriveMirror(prev ? prev.id : '', false);
+}
+
+// Google's own thumbnail URL first; if the browser can't load it (private
+// file, no Google session), fall back once to our size-capped proxy.
+function driveThumbError(img) {
+  if (img.dataset.fallback) { img.closest('.drive-thumb').classList.add('no-thumb'); img.remove(); return; }
+  img.dataset.fallback = '1';
+  img.src = '/api/client/media-drive/thumb/' + encodeURIComponent(img.dataset.fileId);
+}
+
+function renderDriveMirror() {
+  const t = uallakI18n.t;
+  const d = driveMirror.data;
+  const grid = document.getElementById('driveMirrorGrid');
+  const chips = document.getElementById('driveMirrorFolders');
+  const more = document.getElementById('driveMirrorMore');
+  if (!d) return;
+  more.innerHTML = '';
+  if (d.exists === false) {
+    chips.innerHTML = '';
+    grid.className = '';
+    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_none'))}</div>`;
+    return;
+  }
+  const chipHtml = [];
+  if (driveMirror.folder) {
+    chipHtml.push(`<button type="button" class="media-chip" onclick="driveFolderUp()">${esc(t('drive_mirror_up'))}</button>`);
+  }
+  driveMirror.folders.forEach(f => {
+    chipHtml.push(`<button type="button" class="media-chip" data-folder="${esc(f.id)}">📁 ${esc(f.name)}</button>`);
+  });
+  chips.innerHTML = chipHtml.join('');
+  chips.querySelectorAll('[data-folder]').forEach(b => {
+    b.onclick = () => openDriveFolder(b.dataset.folder, b.textContent.replace('📁', '').trim());
+  });
+  if (d.error) {
+    grid.className = '';
+    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_unavailable'))}</div>`;
+    return;
+  }
+  if (!driveMirror.files.length) {
+    grid.className = '';
+    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_empty'))}</div>`;
+    return;
+  }
+  const byFileId = {};
+  mediaAssetsCache.forEach(a => { if (a.file_id) byFileId[a.file_id] = a; });
+  grid.className = 'media-grid';
+  grid.innerHTML = driveMirror.files.map(f => {
+    const fromSystem = byFileId[f.id];
+    const thumb = f.thumbnail_link
+      ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(f.thumbnail_link)}"
+             data-file-id="${esc(f.id)}" onerror="driveThumbError(this)">`
+      : '';
+    return `<a class="media-item drive-item" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener">
+      <div class="drive-thumb${thumb ? '' : ' no-thumb'}" data-kind="${esc(f.kind)}">${thumb}
+        <span class="drive-thumb-ico">${MEDIA_ICONS[f.kind] || '📎'}</span></div>
+      <div class="media-item-title" dir="auto">${esc((fromSystem && fromSystem.title) || f.name)}</div>
+      <div class="media-item-meta">${esc(fmtDateTime(f.modified_time))}</div>
+      <div class="drive-src ${fromSystem ? 'system' : 'drive'}">${esc(t(fromSystem ? 'drive_src_system' : 'drive_src_drive'))}</div>
+      <div class="media-item-meta" style="color:var(--accent);">${esc(t('media_open'))}</div>
+    </a>`;
+  }).join('');
+  if (driveMirror.next && !d.truncated) {
+    more.innerHTML = `<button type="button" class="media-chip" onclick="loadMoreDriveMirror()">${esc(t('drive_mirror_more'))}</button>`;
+  } else if (d.truncated) {
+    more.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_capped'))}</div>`;
+  }
+}
+
 function renderMediaGrid() {
   const t = uallakI18n.t;
   const grid = document.getElementById('mediaGrid');
+  // Items already shown in the Drive mirror above aren't listed twice
+  const visible = mediaAssetsCache.filter(a => !(a.file_id && driveMirror.seenIds.has(a.file_id)));
   const items = mediaKindFilter
-    ? mediaAssetsCache.filter(a => a.kind === mediaKindFilter)
-    : mediaAssetsCache;
+    ? visible.filter(a => a.kind === mediaKindFilter)
+    : visible;
 
   if (!items.length) {
     grid.className = '';
@@ -4813,7 +4997,7 @@ async function loadSupport() {
     // visit anyway, in the language that is current by then).
     renderExportBars();
     if (viewLoaded.leads) { loadLeads(); loadLeadCapture(); }
-    if (viewLoaded.media) loadMediaAssets();
+    if (viewLoaded.media) { loadMediaAssets(); renderDriveMirror(); }
     if (viewLoaded.personal) loadAccount();
     if (viewLoaded.support) loadSupport();
     renderLauncher();

@@ -2025,6 +2025,7 @@ async function openControlRoom(clientId) {
         <div class="page-sub" style="margin:0;">${esc(c.package || '—')} · ${esc(c.status || '')} · ${c.billing_exempt ? 'ללא חיוב' : (d.monthly_fee ? ils(d.monthly_fee) + '/חודש' : 'אין דמי ניהול רשומים')} · ${connLine}</div>
       </div>
       <button type="button" class="manage-btn" onclick="crDriveSelfTest(${Number(c.id)}, event)">בדיקת Drive</button>
+      <button type="button" class="manage-btn" onclick="crDriveMirror(${Number(c.id)}, '')">מדיה ב-Drive</button>
       <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
     </div>
     <div id="crDriveTest"></div>
@@ -2207,6 +2208,52 @@ async function crSend() {
 // raw fetch reports its HTTP status and non-JSON bodies (502/504 from a slow
 // Drive call, a 404 from an old deploy) in the box itself, and a 401 says
 // "session expired" here as well as raising the login overlay.
+// The client's Drive media folder as the client sees it in their Media tab
+// (core/drive_mirror.py) — read-only, any client, from the Control Room.
+const crMirror = { path: [] };
+async function crDriveMirror(clientId, folderId, refresh) {
+  const el = document.getElementById('crDriveTest');
+  el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">טוען את התיקייה מ-Drive…</div>';
+  let body;
+  try {
+    const qs = new URLSearchParams({ folder: folderId || '', refresh: refresh ? 'true' : 'false' });
+    const res = await fetch(`/api/admin/control-room/${Number(clientId)}/media-drive?` + qs, { credentials: 'same-origin' });
+    if (res.status === 401) { showLogin(); return; }
+    body = await res.json();
+  } catch (e) { body = null; }
+  const d = body && body.data;
+  if (!d) { el.innerHTML = '<div class="panel-pad" style="color:var(--red);">טעינת התיקייה נכשלה</div>'; return; }
+  if (d.exists === false) { el.innerHTML = '<div class="panel-pad">ללקוח עוד אין תיקיית מדיה ב-Drive (נוצרת עם הקובץ הראשון)</div>'; return; }
+  if (!folderId) crMirror.path = [];
+  const back = crMirror.path.length
+    ? `<button type="button" class="manage-btn" onclick="crMirrorUp(${Number(clientId)})">→ חזרה</button>` : '';
+  const folders = (d.folders || []).map(f =>
+    `<button type="button" class="manage-btn" data-folder="${esc(f.id)}">📁 ${esc(f.name)}</button>`).join(' ');
+  const rows = d.error ? `<div style="color:var(--red);font-size:12.5px;">הרשימה לא נטענה (${esc(DRIVE_REASON_HE[d.error] || d.error)}) — הרץ "בדיקת Drive"</div>`
+    : (d.files || []).map(f => `<div class="drawer-stat-row">
+        <span class="drawer-stat-label" style="display:flex;align-items:center;gap:8px;">
+          ${f.thumbnail_link ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.thumbnail_link)}" alt=""
+              style="width:40px;height:40px;object-fit:cover;border-radius:6px;"
+              onerror="this.onerror=null;this.src='/api/admin/control-room/${Number(clientId)}/media-drive/thumb/${esc(f.id)}'">` : ''}
+          <span dir="auto">${esc(f.name)}</span></span>
+        <span style="font-size:12px;">${fmtDate(f.modified_time)} · <a href="${esc(f.web_view_link)}" target="_blank" rel="noopener" style="color:var(--accent);">פתיחה ↗</a></span>
+      </div>`).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין קבצים בתיקייה הזו</div>';
+  el.innerHTML = `<div class="panel-pad">
+      <div class="drawer-label">מדיה ב-Drive ${d.cached ? '(מהמטמון)' : ''}
+        <button type="button" class="manage-btn" style="margin-inline-start:8px;" onclick="crDriveMirror(${Number(clientId)}, '${esc(d.folder_id && !d.is_root ? d.folder_id : '')}', true)">רענון</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">${back}${folders}</div>
+      ${rows}
+      ${d.next_page_token ? '<div style="font-size:12px;color:var(--gray);margin-top:6px;">יש עוד קבצים — מוצגים הראשונים</div>' : ''}
+    </div>`;
+  el.querySelectorAll('[data-folder]').forEach(b => {
+    b.onclick = () => { crMirror.path.push(d.is_root ? '' : d.folder_id); crDriveMirror(clientId, b.dataset.folder); };
+  });
+}
+function crMirrorUp(clientId) {
+  const prev = crMirror.path.pop() || '';
+  crDriveMirror(clientId, prev).then(() => {});
+}
+
 // drive_service.classify_error reasons, in plain words
 const DRIVE_REASON_HE = {
   credentials: 'מפתח ה-service account לא נקרא (GOOGLE_SERVICE_ACCOUNT_JSON)',

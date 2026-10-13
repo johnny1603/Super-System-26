@@ -3952,8 +3952,62 @@ def _client_media_assets(client_id: int, limit: int = 1000) -> list:
             "link": link,
             "available": bool(link),
             "duration_seconds": details.get("duration_seconds"),
+            # Lets the Media tab merge this index with the live Drive listing
+            # (core/drive_mirror) without showing the same file twice
+            "file_id": result.get("file_id") or details.get("file_id") or "",
         })
     return assets
+
+
+# ─── Drive mirror (core/drive_mirror.py) — the client's folder, listed live ───
+# Plain `def`: Drive HTTP calls. The folder is always resolved server-side from
+# the session's client id; a folder id from the browser is only ever used
+# after drive_mirror proves it sits inside that client's own folder.
+
+def _drive_mirror_response(client_id: int, folder: str, page_token: str, page: int,
+                           refresh: bool) -> dict:
+    from core import drive_mirror
+    if page_token and not drive_mirror.page_allowed(page):
+        return {"success": True, "data": {"exists": True, "folder_id": folder, "folders": [],
+                                          "files": [], "next_page_token": "", "truncated": True}}
+    try:
+        data = drive_mirror.list_folder(client_id, folder_id=folder.strip(),
+                                        page_token=page_token.strip(), refresh=refresh)
+    except drive_mirror.NotInClientFolder:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_IN_CLIENT_FOLDER"})
+    return {"success": True, "data": data}
+
+def _drive_thumb_response(client_id: int, file_id: str) -> Response:
+    from core import drive_mirror
+    try:
+        content, content_type = drive_mirror.thumbnail(client_id, file_id)
+    except drive_mirror.NotInClientFolder:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_IN_CLIENT_FOLDER"})
+    except Exception as e:
+        print(f"[drive_mirror] thumbnail {file_id} for client {client_id} failed: {e}")
+        raise HTTPException(status_code=404, detail={"code": "ERR_NO_THUMBNAIL"})
+    return Response(content=content, media_type=content_type,
+                    headers={"Cache-Control": f"private, max-age={drive_mirror.THUMB_CACHE_SECONDS}"})
+
+@app.get("/api/client/media-drive")
+def client_media_drive(request: Request, folder: str = "", page_token: str = "",
+                       page: int = 0, refresh: bool = False):
+    return _drive_mirror_response(_require_session(request), folder, page_token, page, refresh)
+
+@app.get("/api/client/media-drive/thumb/{file_id}")
+def client_media_drive_thumb(file_id: str, request: Request):
+    return _drive_thumb_response(_require_session(request), file_id)
+
+@app.get("/api/admin/control-room/{client_id}/media-drive")
+def admin_media_drive(client_id: int, request: Request, folder: str = "", page_token: str = "",
+                      page: int = 0, refresh: bool = False):
+    _require_admin(request)
+    return _drive_mirror_response(client_id, folder, page_token, page, refresh)
+
+@app.get("/api/admin/control-room/{client_id}/media-drive/thumb/{file_id}")
+def admin_media_drive_thumb(client_id: int, file_id: str, request: Request):
+    _require_admin(request)
+    return _drive_thumb_response(client_id, file_id)
 
 @app.get("/api/client/media-assets")
 def client_media_assets(request: Request, kind: str = ""):
