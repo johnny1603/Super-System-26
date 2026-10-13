@@ -204,10 +204,9 @@ def _client_context(client: dict, events: list) -> dict:
     client_id = client["id"]
     lead = {}
     if client.get("email"):
-        rows = (_db().table("leads").select("answers,proposal")
-                .eq("client_email", client["email"])
-                .order("created_at", desc=True).limit(1).execute().data)
-        lead = rows[0] if rows else {}
+        # Never an in-chat upgrade quote (core/lead_tracking.client_sales_lead)
+        from core.lead_tracking import client_sales_lead
+        lead, _how = client_sales_lead(email=client["email"], columns="answers,proposal")
     answers = lead.get("answers") or {}
     proposal = lead.get("proposal") or {}
 

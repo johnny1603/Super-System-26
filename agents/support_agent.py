@@ -82,20 +82,16 @@ def _db():
 
 
 def _latest_lead(email: str) -> dict:
-    """The client's original sales-chat record (answers + proposal) lives on
-    their lead row, matched by email - clients/leads aren't linked by id. The
-    answers feed upgrade proposals; the proposal feeds everyday questions."""
+    """The client's original sales-chat record (answers + proposal), matched by
+    email. The answers feed upgrade proposals; the proposal feeds everyday
+    questions. NEVER an in-chat upgrade quote — those are lead rows too, and
+    reading one as "what they bought" is the bug
+    core/lead_tracking.client_sales_lead exists to prevent."""
     if not email:
         return {}
-    result = (
-        _db().table("leads")
-        .select("answers,proposal")
-        .eq("client_email", email)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    return result.data[0] if result.data else {}
+    from core.lead_tracking import client_sales_lead
+    row, _how = client_sales_lead(email=email, columns="answers,proposal")
+    return row
 
 
 def persona_channel(persona_id: str) -> str:

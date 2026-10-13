@@ -336,6 +336,53 @@ def _is_upgrade_row(row: dict) -> bool:
     return bool((row.get("answers") or {}).get("_upgrade_request"))
 
 
+# How many of a client's newest rows to scan for the sales lead. Upgrade quotes
+# are a handful per client at most; filtered in Python for the same reason
+# list_leads does (an answers->>_upgrade_request filter can't be verified from
+# the dev machine).
+SALES_LEAD_WINDOW = 20
+
+
+def client_sales_lead(client_id: int = None, email: str = "", columns: str = "*") -> tuple:
+    """The lead row a CLIENT was SOLD from: their sales-chat answers and the
+    proposal they actually checked out with. Returns (row, how_matched);
+    ({}, reason) when there is none.
+
+    Every "which lead is this client's" lookup goes through here. They used to
+    take the newest `leads` row for the email, and an in-chat upgrade quote
+    (support_agent._build_upgrade_proposal) is ALSO a `leads` row with that
+    email — so after a client merely ASKED for a quote, the chat, the content
+    agents' business context, the budget forecast and the connection checklist
+    all read the unpurchased quote as what they bought. Upgrade rows are
+    skipped here (_is_upgrade_row); they stay in `leads` as the admin's record.
+
+    Exact client_id match first (set at checkout conversion; upgrade rows never
+    carry it), then the email match. Both skip upgrade rows."""
+    db = _db()
+    # The upgrade marker lives in `answers`, so it is always selected
+    if columns != "*" and "answers" not in columns:
+        columns = f"{columns},answers"
+    if client_id:
+        try:
+            rows = (db.table("leads").select(columns).eq("client_id", client_id)
+                    .order("created_at", desc=True).limit(SALES_LEAD_WINDOW).execute().data or [])
+            row = next((r for r in rows if not _is_upgrade_row(r)), None)
+            if row:
+                return row, "client_id (exact)"
+        except Exception:
+            pass  # leads.client_id missing/unreadable — fall through to the email match
+    email = (email or "").strip()
+    if not email and client_id:
+        from agents.client_agent import get_client
+        email = ((get_client(client_id) or {}).get("email") or "").strip()
+    if not email:
+        return {}, "not found (no email on file)"
+    rows = (db.table("leads").select(columns).eq("client_email", email)
+            .order("created_at", desc=True).limit(SALES_LEAD_WINDOW).execute().data or [])
+    row = next((r for r in rows if not _is_upgrade_row(r)), None)
+    return (row, "email (newest sales lead matching this email)") if row else ({}, "not found")
+
+
 def list_leads(limit: int = 500) -> dict:
     """Every prospect, newest first, plus the counts the CRM header shows.
 

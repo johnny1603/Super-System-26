@@ -161,26 +161,13 @@ def _extract_ils_amount(text: str):
 
 
 def _lead_row(client_id: int) -> tuple:
-    """The newest `leads` row for this client, plus how it was matched. See
-    the module docstring's KNOWN GAP note — prefers an exact client_id match
-    (once that column exists in Supabase) and falls back to the email-based
-    approximate match that already exists in api_server.py's checkout."""
-    from agents.client_agent import get_client
-    db = _db()
-    try:
-        rows = (db.table("leads").select("*").eq("client_id", client_id)
-                .order("created_at", desc=True).limit(1).execute().data)
-        if rows:
-            return rows[0], "client_id (exact)"
-    except Exception:
-        pass  # the leads.client_id column doesn't exist yet — fall through to email match
-
-    email = (get_client(client_id).get("email") or "").strip()
-    if not email:
-        return {}, "not found (client has no email on file)"
-    rows = (db.table("leads").select("*").eq("client_email", email)
-            .order("created_at", desc=True).limit(1).execute().data or [])
-    return (rows[0], "email (approximate — newest lead matching this email)") if rows else ({}, "not found")
+    """The lead row this client was SOLD from, plus how it was matched: exact
+    client_id first, then the email match (module docstring's KNOWN GAP). One
+    shared lookup that skips in-chat upgrade quotes — see
+    core/lead_tracking.client_sales_lead. client_journey._chosen_package reads
+    the purchased package through this function."""
+    from core.lead_tracking import client_sales_lead
+    return client_sales_lead(client_id=client_id)
 
 
 def get_forecast(client_id: int) -> dict:
