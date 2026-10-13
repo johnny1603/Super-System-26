@@ -2207,6 +2207,17 @@ async function crSend() {
 // raw fetch reports its HTTP status and non-JSON bodies (502/504 from a slow
 // Drive call, a 404 from an old deploy) in the box itself, and a 401 says
 // "session expired" here as well as raising the login overlay.
+// drive_service.classify_error reasons, in plain words
+const DRIVE_REASON_HE = {
+  credentials: 'מפתח ה-service account לא נקרא (GOOGLE_SERVICE_ACCOUNT_JSON)',
+  no_access: 'אין גישה לתיקייה — ה-service account לא חבר ב-Shared Drive או מזהה תיקייה שגוי',
+  storage_quota: 'התיקייה ב-My Drive אישי ולא ב-Shared Drive',
+  auth: 'Google דחה את מפתח ה-service account',
+  bad_response: 'Drive החזיר תשובה ריקה / לא תקינה',
+  not_configured: 'חסרים משתני סביבה',
+  other: 'שגיאה לא צפויה',
+};
+
 async function crDriveSelfTest(clientId, ev) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   const el = document.getElementById('crDriveTest');
@@ -2240,7 +2251,7 @@ async function crDriveSelfTest(clientId, ev) {
     const r = body.data;
     const rows = (r.steps || []).map(s => `<div class="drawer-stat-row">
         <span class="drawer-stat-label">${s.ok ? '✓' : '✕'} ${esc(s.step)}</span>
-        <span style="color:${s.ok ? 'var(--green)' : 'var(--red)'};font-size:12px;max-width:62%;text-align:left;">${s.ok ? 'תקין' : esc(s.reason || '')}</span></div>
+        <span style="color:${s.ok ? 'var(--green)' : 'var(--red)'};font-size:12px;max-width:62%;text-align:left;">${s.ok ? 'תקין' + (s.detail ? ' · <span dir="ltr">' + esc(s.detail) + '</span>' : '') : esc(DRIVE_REASON_HE[s.reason] || s.reason || '')}</span></div>
         ${!s.ok && (s.fix || s.error) ? `<div style="font-size:12px;color:var(--yellow);margin:4px 0 8px;line-height:1.6;">${esc(s.fix || '')}${s.error ? `<div style="color:var(--gray);direction:ltr;text-align:left;">${esc(s.error)}</div>` : ''}</div>` : ''}`).join('');
     el.innerHTML = `<div class="panel-pad">
       <div class="drawer-label">${r.ok ? '✓ Drive תקין — העלאה, רשימה וקישור עובדים' : '✕ Drive לא שמיש ללקוח הזה'}</div>

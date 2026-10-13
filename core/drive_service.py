@@ -16,7 +16,7 @@ live rows are then purged from Supabase. Drive, not the database, is where
 closed-client history lives.
 
 Auth model: a service account (GOOGLE_SERVICE_ACCOUNT_JSON - the full JSON
-key as one env var) uploads into a folder in Johnny's own Google Drive
+key as one env var, raw or base64-encoded; see _service_account_info) uploads into a folder in Johnny's own Google Drive
 (DRIVE_ARCHIVE_FOLDER_ID) that was shared with the service account as
 Editor. A service account has no UI and its own Drive is invisible - the
 shared folder is what makes the archive show up in a human's Drive.
@@ -60,6 +60,76 @@ def is_media_configured() -> bool:
                 and os.environ.get("DRIVE_MEDIA_FOLDER_ID"))
 
 
+class DriveCredentialError(RuntimeError):
+    """GOOGLE_SERVICE_ACCOUNT_JSON can't be turned into a service-account key.
+    The message names the variable and what was wrong — NEVER its value."""
+
+
+class DriveResponseError(RuntimeError):
+    """Drive answered 2xx with a body that isn't the JSON we asked for."""
+
+
+def _service_account_info() -> dict:
+    """The service-account key from GOOGLE_SERVICE_ACCOUNT_JSON, accepted as
+    raw JSON OR base64-encoded JSON (Cloud Run holds it base64 — a value that
+    starts "ewog…", which is base64 for '{\\n').
+
+    Root cause of 2026-10-14's "Expecting value: line 1 column 1 (char 0)":
+    this used to be a bare json.loads() of the raw value, which fails on the
+    very first character of a base64 string — before any Drive call, so it
+    looked like an unexplained Drive error rather than a config one."""
+    name = "GOOGLE_SERVICE_ACCOUNT_JSON"
+    raw = (get_key(name) or "").strip()
+    if not raw:
+        raise DriveCredentialError(f"{name} is empty")
+    if raw.startswith("{"):
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError as e:
+            # e's message carries positions only ("line 5 column 3"), no content
+            raise DriveCredentialError(f"{name} looks like raw JSON but does not parse ({e.msg} "
+                                       f"at line {e.lineno} column {e.colno})") from None
+    else:
+        compact = "".join(raw.split())
+        try:
+            decoded = base64.b64decode(compact + "=" * (-len(compact) % 4),
+                                       altchars=b"-_" if ("-" in compact or "_" in compact) else None,
+                                       validate=False)
+            info = json.loads(decoded.decode("utf-8"))
+        except Exception as e:
+            raise DriveCredentialError(f"{name} is neither raw JSON nor base64-encoded JSON "
+                                       f"({type(e).__name__} while decoding it as base64)") from None
+    if not isinstance(info, dict):
+        raise DriveCredentialError(f"{name} parsed, but is not a JSON object")
+    missing = [k for k in ("type", "client_email", "private_key") if not info.get(k)]
+    if missing:
+        raise DriveCredentialError(f"{name} parsed, but is missing {', '.join(missing)} — "
+                                   f"it must be the full service-account key file")
+    if info.get("type") != "service_account":
+        raise DriveCredentialError(f"{name} is a '{info.get('type')}' key, not a service-account key")
+    return info
+
+
+def service_account_email() -> str:
+    """Which service account Drive calls run as (an address, not a secret) —
+    the one that must be Content manager on the Shared Drive."""
+    return _service_account_info().get("client_email", "")
+
+
+def _json(response: httpx.Response, what: str) -> dict:
+    """response.json() with the empty/non-JSON case made explicit: status, size
+    and the first 200 characters of the body (Drive bodies carry no secrets;
+    the request's Authorization header is never included)."""
+    try:
+        return response.json()
+    except ValueError:
+        body = (response.text or "").strip()
+        raise DriveResponseError(
+            f"Drive {what}: HTTP {response.status_code} returned "
+            + ("an EMPTY body" if not body else f"a non-JSON body ({len(body)} chars): {body[:200]!r}")
+        ) from None
+
+
 def classify_error(exc: Exception) -> str:
     """Name the Drive failure so the alert can say what to FIX.
 
@@ -72,7 +142,13 @@ def classify_error(exc: Exception) -> str:
       no_access     — 404/403 on the root: not shared with the service
                       account, or a wrong DRIVE_MEDIA_FOLDER_ID.
       auth          — the service-account key itself is bad/revoked.
+      credentials   — GOOGLE_SERVICE_ACCOUNT_JSON can't even be read as a key.
+      bad_response  — Drive answered with an empty / non-JSON body.
       other         — anything else (network, 5xx)."""
+    if isinstance(exc, DriveCredentialError):
+        return "credentials"
+    if isinstance(exc, DriveResponseError):
+        return "bad_response"
     text, status = str(exc), None
     response = getattr(exc, "response", None)
     if response is not None:
@@ -100,7 +176,7 @@ def _access_token() -> str:
         return _token_cache["token"]
     from google.oauth2 import service_account
     from google.auth.transport.requests import Request
-    info = json.loads(get_key("GOOGLE_SERVICE_ACCOUNT_JSON"))
+    info = _service_account_info()
     credentials = service_account.Credentials.from_service_account_info(
         info, scopes=[DRIVE_SCOPE])
     credentials.refresh(Request())
@@ -138,7 +214,7 @@ def ensure_folder(name: str, parent_id: str) -> str:
         timeout=TIMEOUT,
     )
     _check(response)
-    files = response.json().get("files", [])
+    files = _json(response, "folder lookup").get("files", [])
     if files:
         return files[0]["id"]
 
@@ -151,7 +227,10 @@ def ensure_folder(name: str, parent_id: str) -> str:
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json()["id"]
+    created = _json(response, "folder create")
+    if not created.get("id"):
+        raise DriveResponseError(f"Drive folder create: HTTP {response.status_code} returned no folder id")
+    return created["id"]
 
 
 def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str) -> dict:
@@ -179,7 +258,7 @@ def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str) 
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json()
+    return _json(response, "upload")
 
 
 def share_with_user(file_id: str, email: str, role: str = "reader") -> bool:
@@ -209,7 +288,7 @@ def get_link(file_id: str) -> str:
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json().get("webViewLink", "")
+    return _json(response, "get link").get("webViewLink", "")
 
 
 def list_files(folder_id: str) -> list:
@@ -226,7 +305,7 @@ def list_files(folder_id: str) -> list:
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json().get("files", [])
+    return _json(response, "list files").get("files", [])
 
 
 def delete_file(file_id: str) -> None:
@@ -299,7 +378,7 @@ def upload_google_doc(folder_id: str, filename: str, html_content: str) -> dict:
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json()
+    return _json(response, "Google Doc upload")
 
 
 def upload_json(folder_id: str, filename: str, content: str) -> dict:
@@ -331,4 +410,4 @@ def upload_json(folder_id: str, filename: str, content: str) -> dict:
         timeout=TIMEOUT,
     )
     _check(response)
-    return response.json()
+    return _json(response, "JSON upload")

@@ -176,8 +176,29 @@ _DRIVE_FIX = {
     "no_access": ("The service account can't see DRIVE_MEDIA_FOLDER_ID — share that folder (or "
                   "its shared drive) with the service account's email, or fix the id."),
     "auth": "GOOGLE_SERVICE_ACCOUNT_JSON is rejected by Google — re-issue the key.",
+    "credentials": ("GOOGLE_SERVICE_ACCOUNT_JSON can't be read as a service-account key (the "
+                    "reason is below). It may be the raw key file JSON or that JSON base64-encoded; "
+                    "fix the Cloud Run variable. No Drive call was made."),
+    "bad_response": ("Drive answered with an empty or non-JSON body (status and the start of the "
+                     "body are below) — usually a transient Google-side problem or a proxy in the "
+                     "way. Retry; if it repeats, it's not a permissions issue."),
     "other": "Unexpected Drive error — see the logged text.",
 }
+
+
+def _drive_fix(reason: str) -> str:
+    """The fix text, naming the service account for the access cases — it is
+    an address, not a secret, and it's the thing that must be on the Shared
+    Drive as Content manager."""
+    fix = _DRIVE_FIX.get(reason, "")
+    if reason in ("no_access", "storage_quota"):
+        try:
+            email = drive.service_account_email()
+            if email:
+                fix += f" Service account: {email}."
+        except Exception:
+            pass
+    return fix
 _drive_alerted_at = {}  # reason -> epoch of last alert (per instance)
 DRIVE_ALERT_EVERY_SECONDS = 6 * 3600
 
@@ -189,8 +210,9 @@ def _alert_drive_failure(client_id: int, reason: str, error: Exception):
     if time.time() - _drive_alerted_at.get(reason, 0) < DRIVE_ALERT_EVERY_SECONDS:
         return
     _drive_alerted_at[reason] = time.time()
-    agent_alert(AGENT_NAME, [f"client {client_id}: media Drive folder unavailable ({reason}) — "
-                             f"{_DRIVE_FIX.get(reason, '')} Error: {str(error)[:300]}"])
+    agent_alert(AGENT_NAME, [f"client {client_id}: media Drive folder unavailable ({reason}) "
+                             f"while opening the client's media folder — "
+                             f"{_drive_fix(reason)} Error: {str(error)[:300]}"])
 
 
 def media_folder_status(client_id: int) -> dict:
@@ -225,12 +247,22 @@ def drive_self_test(client_id: int) -> dict:
         except Exception as e:
             reason = drive.classify_error(e)
             steps.append({"step": name, "ok": False, "reason": reason,
-                          "fix": _DRIVE_FIX.get(reason, ""), "error": str(e)[:300]})
+                          "fix": _drive_fix(reason), "error": str(e)[:300]})
             return None
 
     if not drive.is_media_configured():
         return {"ok": False, "steps": [{"step": "config", "ok": False, "reason": "not_configured",
                                         "fix": "Set GOOGLE_SERVICE_ACCOUNT_JSON and DRIVE_MEDIA_FOLDER_ID on Cloud Run."}]}
+
+    # Step 0: the key itself, before any Drive call — so a config problem is
+    # reported as one, not as a failed folder (2026-10-14's base64 key showed
+    # up as an "unexpected Drive error" on the folder step)
+    account = step("credentials (read the service-account key, get a token)",
+                   lambda: (drive._access_token(), drive.service_account_email())[1])
+    if account is None:
+        _record_self_test(client_id, steps)
+        return {"ok": False, "steps": steps, "folder_link": ""}
+    steps[-1]["detail"] = f"running as {account}"
 
     folder = step("folder (client root + self-test subfolder)",
                   lambda: _subfolder(client_id, "self-test"))
@@ -245,14 +277,19 @@ def drive_self_test(client_id: int) -> dict:
         step("delete the probe file", lambda: drive.delete_file(uploaded["id"]))
     link = step("client-facing folder link", lambda: get_client_media_link(client_id)) if folder else None
     ok = all(s["ok"] for s in steps)
-    # Bookkeeping only: a failed log write must not turn five finished step
-    # results into a 500 the admin never sees
+    _record_self_test(client_id, steps)
+    return {"ok": ok, "steps": steps, "folder_link": link or ""}
+
+
+def _record_self_test(client_id: int, steps: list):
+    # Bookkeeping only: a failed log write must not turn finished step results
+    # into a 500 the admin never sees
     try:
         _log_activity(client_id, "media_drive_self_test",
-                      {"ok": ok, "failed": [s["step"] for s in steps if not s["ok"]]})
+                      {"ok": all(s["ok"] for s in steps),
+                       "failed": [s["step"] for s in steps if not s["ok"]]})
     except Exception as e:
         print(f"[{AGENT_NAME}] drive self-test log write failed for client {client_id}: {e}")
-    return {"ok": ok, "steps": steps, "folder_link": link or ""}
 
 
 def sync_website_media_folders(client_id: int) -> list:
