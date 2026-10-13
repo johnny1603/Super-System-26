@@ -4610,6 +4610,19 @@ def admin_alerts(request: Request, status: str = None):
     _require_admin(request)
     return {"success": True, "data": admin_service.list_alerts(status)}
 
+class BulkResolveRequest(BaseModel):
+    ids: list[int]
+
+# Takes the ids the admin was SHOWN, never a scope like "all open for client
+# X": a scope would also close alerts that arrived after the screen rendered.
+@app.post("/api/admin/alerts/resolve-bulk")
+def admin_resolve_alerts_bulk(req: BulkResolveRequest, request: Request):
+    _require_admin(request)
+    if len(req.ids) > admin_service.BULK_RESOLVE_MAX:
+        raise HTTPException(status_code=400, detail={"code": "ERR_TOO_MANY_IDS",
+                                                     "max": admin_service.BULK_RESOLVE_MAX})
+    return {"success": True, "data": admin_service.resolve_alerts(req.ids)}
+
 @app.post("/api/admin/alerts/{alert_id}/resolve")
 def admin_resolve_alert(alert_id: int, request: Request):
     _require_admin(request)

@@ -128,6 +128,15 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .transcript { max-height:340px; overflow-y:auto; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:13px; }
 .transcript-msg { margin-bottom:11px; font-size:12.5px; line-height:1.55; }
 .transcript-msg:last-child { margin-bottom:0; }
+/* bulk "mark handled" */
+.bulk-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 12px; padding:10px 12px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; font-size:12.5px; }
+.bulk-all { display:flex; align-items:center; gap:6px; cursor:pointer; }
+.bulk-confirm { display:flex; flex-wrap:wrap; align-items:center; gap:8px; width:100%; }
+.bulk-confirm:empty { display:none; }
+.bulk-yes { background:var(--accent); border-color:var(--accent); }
+.bulk-done { color:var(--green); font-size:12.5px; margin:0 0 10px; }
+.alert-pick { width:16px; height:16px; margin-inline-end:8px; flex-shrink:0; cursor:pointer; vertical-align:middle; accent-color:var(--accent); }
 /* Keep the line breaks a prospect typed with Shift+Enter (text is esc()'d) */
 .transcript-msg > div { white-space:pre-wrap; word-break:break-word; }
 .transcript-role { font-size:10.5px; font-weight:700; color:var(--gray); text-transform:uppercase; letter-spacing:0.4px; display:block; margin-bottom:2px; }
@@ -606,10 +615,13 @@ async function loadClients() {
 }
 
 // ─── alerts ──────────────────────────────────────────────────────────────────
-function renderAlertCard(a, withResolve) {
+// listKey (optional): the bulk-selection list this card belongs to — open
+// cards then get a checkbox (see alertBulkBar)
+function renderAlertCard(a, withResolve, listKey) {
   const issues = (a.issues || []).map(i => esc(i)).join('<br>');
   const resolved = a.status === 'resolved';
   return `<div class="alert-card ${resolved ? 'resolved' : 'warn'}">
+    ${!resolved && listKey ? alertPick(listKey, a.id) : ''}
     <div class="alert-icon">${resolved ? '✓' : '⚠️'}</div>
     <div class="alert-body">
       <div class="alert-title">${issues || '(ללא פירוט)'}</div>
@@ -629,7 +641,7 @@ async function loadAlerts() {
   countEl.style.display = open.length ? 'inline' : 'none';
 
   document.getElementById('alertsList').innerHTML = alerts.length
-    ? alerts.map(a => renderAlertCard(a, true)).join('')
+    ? alertBulkBar('all', open.map(a => a.id)) + alerts.map(a => renderAlertCard(a, true, 'all')).join('')
     : '<div class="panel-pad"><div class="empty-state">אין התראות — הטבלה תתמלא מהתראות הסוכנים החדשות</div></div>';
 
   document.getElementById('openAlertsBanner').innerHTML =
@@ -639,6 +651,105 @@ async function loadAlerts() {
 async function resolveAlert(id) {
   await api(`/api/admin/alerts/${id}/resolve`, { method: 'POST' });
   loadAlerts();
+}
+
+// ─── bulk "mark handled" ─────────────────────────────────────────────────────
+// Each list snapshots the ids of the OPEN alerts it rendered. "Mark all" sends
+// exactly that snapshot and "mark selected" only ids from it, so an alert that
+// arrives after the list was drawn is never included — it stays open until the
+// admin has actually seen it. Confirmation is in-page (not window.confirm) and
+// states the exact count that will be sent.
+const ALERT_BULK = {};          // listKey -> open alert ids shown in that list
+const ALERT_BULK_PENDING = {};  // listKey -> ids awaiting confirmation
+
+function alertBulkBar(listKey, openIds) {
+  ALERT_BULK[listKey] = openIds.map(Number);
+  delete ALERT_BULK_PENDING[listKey];
+  if (!openIds.length) return '';
+  return `<div class="bulk-bar" id="bulk-${listKey}">
+    <label class="bulk-all"><input type="checkbox" onchange="alertBulkToggleAll('${listKey}', this.checked)"> בחר הכל</label>
+    <button type="button" class="alert-btn" onclick="alertBulkAsk('${listKey}', 'selected')">סמן נבחרות כמטופלות (<span data-role="sel">0</span>)</button>
+    <button type="button" class="alert-btn" onclick="alertBulkAsk('${listKey}', 'all')">סמן את כל ${openIds.length} הפתוחות המוצגות כמטופלות</button>
+    <div class="bulk-confirm" data-role="confirm"></div>
+  </div>`;
+}
+
+function alertPick(listKey, id) {
+  return `<input type="checkbox" class="alert-pick" data-list="${listKey}" value="${Number(id)}"
+    onchange="alertBulkCount('${listKey}')" aria-label="בחירת התראה">`;
+}
+
+function alertBulkPicked(listKey) {
+  const shown = ALERT_BULK[listKey] || [];
+  return [...document.querySelectorAll(`.alert-pick[data-list="${listKey}"]:checked`)]
+    .map(c => Number(c.value)).filter(id => shown.includes(id));
+}
+
+function alertBulkCount(listKey) {
+  const bar = document.getElementById('bulk-' + listKey);
+  if (bar) bar.querySelector('[data-role="sel"]').textContent = alertBulkPicked(listKey).length;
+}
+
+function alertBulkToggleAll(listKey, on) {
+  document.querySelectorAll(`.alert-pick[data-list="${listKey}"]`).forEach(c => { c.checked = on; });
+  alertBulkCount(listKey);
+}
+
+function alertBulkAsk(listKey, mode) {
+  const bar = document.getElementById('bulk-' + listKey);
+  if (!bar) return;
+  const box = bar.querySelector('[data-role="confirm"]');
+  const ids = mode === 'all' ? (ALERT_BULK[listKey] || []).slice() : alertBulkPicked(listKey);
+  if (!ids.length) {
+    box.innerHTML = '<span style="color:var(--gray);">לא נבחרו התראות</span>';
+    return;
+  }
+  ALERT_BULK_PENDING[listKey] = ids;
+  box.innerHTML = `<span>לסמן ${ids.length} התראות כמטופלות?</span>
+    <button type="button" class="alert-btn bulk-yes" onclick="alertBulkApply('${listKey}')">כן, סמן ${ids.length}</button>
+    <button type="button" class="manage-btn" onclick="alertBulkCancel('${listKey}')">ביטול</button>`;
+}
+
+function alertBulkCancel(listKey) {
+  delete ALERT_BULK_PENDING[listKey];
+  const bar = document.getElementById('bulk-' + listKey);
+  if (bar) bar.querySelector('[data-role="confirm"]').innerHTML = '';
+}
+
+async function alertBulkApply(listKey) {
+  const ids = ALERT_BULK_PENDING[listKey] || [];
+  const bar = document.getElementById('bulk-' + listKey);
+  const box = bar && bar.querySelector('[data-role="confirm"]');
+  if (!ids.length || !box) return;
+  box.innerHTML = '<span style="color:var(--gray);">מסמן…</span>';
+  try {
+    const res = await api('/api/admin/alerts/resolve-bulk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.success) throw new Error('bulk resolve failed');
+    const done = res.data.resolved;
+    delete ALERT_BULK_PENDING[listKey];
+    // Refresh both places alerts appear; the message survives in the bar's
+    // replacement only if it is redrawn, so show it as a notice line too
+    await loadAlerts();
+    if (crState.clientId) await openControlRoom(crState.clientId);
+    const msg = done === ids.length ? `סומנו ${done} התראות כמטופלות`
+      : `סומנו ${done} מתוך ${ids.length} — השאר כבר היו מטופלות`;
+    const target = document.getElementById('bulk-' + listKey);
+    if (target) target.querySelector('[data-role="confirm"]').innerHTML = `<span style="color:var(--green);">${esc(msg)}</span>`;
+    else showBulkDone(listKey, msg);
+  } catch (e) {
+    if (e.message === 'unauthenticated') return;
+    console.error(e);
+    box.innerHTML = '<span style="color:var(--red);">הסימון נכשל — לא שונה דבר, נסה שוב</span>';
+  }
+}
+
+// When the list redraws with no open alerts left, the bar is gone — say it there
+function showBulkDone(listKey, msg) {
+  const host = listKey === 'cr' ? document.getElementById('crAttention') : document.getElementById('alertsList');
+  if (host) host.insertAdjacentHTML('afterbegin', `<div class="bulk-done">${esc(msg)}</div>`);
 }
 
 // ─── reports ─────────────────────────────────────────────────────────────────
@@ -1878,8 +1989,9 @@ async function openControlRoom(clientId) {
   const c = d.client;
   crState.personas = d.personas || [];
 
+  const attnAlertIds = (d.attention || []).filter(a => a.kind === 'alert').map(a => a.id);
   const attention = (d.attention || []).map(a => `<div class="cr-attn ${esc(a.kind)}">
-      <div>${esc(a.text)}</div>
+      <div>${a.kind === 'alert' ? alertPick('cr', a.id) : ''}${esc(a.text)}</div>
       <div class="cr-attn-meta">${esc(CR_KIND_LABEL[a.kind] || a.kind)}${a.source ? ' · ' + esc(a.source) : ''}${a.at ? ' · ' + fmtDate(a.at) : ''}
         ${a.kind === 'alert' ? ` · <a href="#" style="color:var(--accent);" onclick="crResolveAlert(${Number(a.id)});return false;">סמן כמטופל</a>` : ''}
         ${a.kind === 'feedback' ? ` · <a href="#" style="color:var(--accent);" onclick="crFeedbackReviewed(${Number(a.id)});return false;">סמן כנקרא</a>` : ''}</div>
@@ -1921,7 +2033,7 @@ async function openControlRoom(clientId) {
       <div>
         <div class="panel-pad">
           <div class="drawer-label">🔴 דורש את תשומת הלב שלך</div>
-          ${attention}
+          <div id="crAttention">${alertBulkBar('cr', attnAlertIds)}${attention}</div>
         </div>
         <div class="panel-pad">
           <div class="drawer-label">תקציב — אורגני מול ממומן</div>

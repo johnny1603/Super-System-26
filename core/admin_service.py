@@ -301,6 +301,29 @@ def resolve_alert(alert_id: int) -> dict:
     return result.data[0] if result.data else {}
 
 
+BULK_RESOLVE_MAX = 500
+
+
+def resolve_alerts(alert_ids: list) -> dict:
+    """Mark many alerts handled in ONE update. Only the given ids, and only
+    those still open — so an alert that arrived after the admin's screen was
+    rendered can never be swept up (its id was never shown), and an already
+    resolved one keeps its original resolved_at. Dedup state is untouched:
+    agents dedupe on their own activity rows, not on alert status."""
+    ids = sorted({int(i) for i in (alert_ids or [])})[:BULK_RESOLVE_MAX]
+    if not ids:
+        return {"resolved": 0, "ids": []}
+    result = (
+        _db().table("alerts")
+        .update({"status": "resolved", "resolved_at": datetime.now(timezone.utc).isoformat()})
+        .in_("id", ids)
+        .eq("status", "open")
+        .execute()
+    )
+    done = sorted(r["id"] for r in (result.data or []) if "id" in r)
+    return {"resolved": len(done), "ids": done}
+
+
 def list_weekly_reports(limit: int = 20) -> list:
     return (
         _db().table("weekly_reports")
