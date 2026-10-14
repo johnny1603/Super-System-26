@@ -426,6 +426,25 @@ def find_files_by_prefix(folder_id: str, prefix: str) -> list:
             if (f.get("name") or "").startswith(prefix)]
 
 
+def find_child_folders_by_prefix(parent_id: str, prefix: str) -> list:
+    """Non-trashed FOLDERS directly in parent_id whose name starts with
+    prefix, oldest first. Find-only (unlike ensure_folder): the Media tab's
+    read path uses it to locate a client's folder without creating one."""
+    escaped = prefix.replace("\\", "\\\\").replace("'", "\\'")
+    response = httpx.get(
+        DRIVE_FILES_URL,
+        headers=_headers(),
+        params={"q": (f"'{parent_id}' in parents and trashed = false "
+                      f"and mimeType = '{FOLDER_MIME}' and name contains '{escaped}'"),
+                "fields": "files(id,name,createdTime)", "orderBy": "createdTime", "pageSize": 20,
+                "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
+        timeout=TIMEOUT,
+    )
+    _check(response)
+    return [f for f in _json(response, "folder lookup").get("files", [])
+            if (f.get("name") or "").startswith(prefix)]
+
+
 def download_file(file_id: str) -> bytes:
     """Raw file content (alt=media). Kept simple — source clips are phone
     videos/photos, well within memory."""

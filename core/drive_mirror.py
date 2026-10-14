@@ -43,6 +43,9 @@ THUMB_MAX_BYTES = 200 * 1024
 THUMB_CACHE_ENTRIES = 400
 THUMB_CACHE_SECONDS = 3600
 
+ROOT_RESOLVE_SECONDS = 600
+
+_root_cache = {}             # client_id -> (at, root folder id under the current media root)
 _list_cache = {}             # (client_id, folder_id, page_token) -> (at, result)
 _tree_cache = {}             # client_id -> {"root": id, "folders": {ids proven inside}}
 _thumb_cache = OrderedDict() # (client_id, file_id) -> (at, bytes, content_type)
@@ -55,17 +58,56 @@ class NotInClientFolder(Exception):
 # ─── Which folder is this client's ────────────────────────────────────────────
 
 def client_root_id(client_id: int) -> str:
-    """The client's media folder id from OUR record, or "" if it was never
-    created. Never creates it (this is the read path)."""
+    """The client's media folder id, or "" if it doesn't exist yet. Never
+    creates it (this is the read path).
+
+    The authority is the `client-{id} — …` folder under the CURRENT media
+    root — the one media_agent.ensure_client_media_root writes into. The
+    `media_folder_created` activity row is only a hint: it is written ONCE,
+    so after DRIVE_MEDIA_FOLDER_ID moved (personal My Drive → Shared Drive)
+    it still named the OLD folder, and Cloud Run instances disagreed — one
+    that had run ensure_client_media_root (memory cache) listed the new
+    folder, every other instance the stale one. The hint is used only after
+    checking it sits in the current root; otherwise the folder is looked up
+    by its name prefix there. Resolved per client for ROOT_RESOLVE_SECONDS."""
     from agents import media_agent
     cached = media_agent._folder_cache.get(client_id)
     if cached and cached.get("root"):
-        return cached["root"]
+        return cached["root"]   # found/created under the current root by this process
+    hit = _root_cache.get(client_id)
+    if hit and hit[0] > time.time() - ROOT_RESOLVE_SECONDS:
+        return hit[1]
+
     rows = (media_agent._db().table("client_activity").select("details")
             .eq("client_id", client_id).eq("agent_name", media_agent.AGENT_NAME)
             .eq("action_type", "media_folder_created")
             .order("created_at", desc=True).limit(1).execute().data or [])
-    return ((rows[0].get("details") or {}).get("folder_id") or "") if rows else ""
+    hinted = ((rows[0].get("details") or {}).get("folder_id") or "") if rows else ""
+    media_root = media_agent._media_root_id()
+    if not media_root:
+        return hinted
+    root = ""
+    try:
+        if hinted:
+            meta = drive.get_meta(hinted, "id,parents,trashed")
+            if not meta.get("trashed") and media_root in (meta.get("parents") or []):
+                root = hinted
+        if not root:
+            matches = drive.find_child_folders_by_prefix(media_root, f"client-{client_id} — ")
+            if len(matches) > 1:
+                print(f"[{SERVICE_NAME}] client {client_id}: {len(matches)} folders match under the "
+                      f"media root — using the oldest, {matches[0]['id']}")
+            root = matches[0]["id"] if matches else ""
+            if hinted and root != hinted:
+                print(f"[{SERVICE_NAME}] client {client_id}: recorded folder {hinted} is not under "
+                      f"the current media root — using {root or '(none yet)'}")
+    except Exception as e:
+        # Drive trouble: not cached; the recorded folder is still THIS
+        # client's own, and list_folder reports the Drive failure itself
+        print(f"[{SERVICE_NAME}] client {client_id}: root resolve failed ({e}) — using the record")
+        return hinted
+    _root_cache[client_id] = (time.time(), root)
+    return root
 
 
 def _tree(client_id: int, root: str) -> dict:
