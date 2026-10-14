@@ -20,17 +20,23 @@ Rules this module holds:
   to the response. No Content-Length on purpose: Cloud Run caps a
   non-streamed HTTP/1 response at 32 MiB; a chunked response is exempt and
   only the service's request timeout (--timeout=300 here, on the backend AND
-  on the app.uallak.com proxy) bounds it. That timeout is why there is a
-  per-file cap (admin setting `media_download_max_mb`): above it the UI says
-  "open it in Drive", where Google serves the download itself.
+  on the app.uallak.com proxy) bounds it.
+- **Only images and documents pass through us, and only up to a cap**
+  (admin setting `media_download_max_mb`, default 20 MB; Google exports are
+  bounded by the same cap and by Drive's own 10 MB export limit). **Videos
+  never do** — no inline player, no proxied download, for any role, admin
+  included. Both cases are enforced HERE, not just hidden in the UI, and a
+  refusal is not an error: OpenInDrive → the check answers 200 with
+  `open_in_drive`, a direct request is redirected to the file in Drive,
+  where Google serves it at any size.
 - **Inline only for raster images** (jpeg/png/webp/gif) and only on request
   (?inline=1). This origin carries the dashboard session cookie, so SVG,
   HTML, XML, JS and anything unknown are attachment-only and sent as
   application/octet-stream; every response has nosniff and a sandbox CSP.
 - Google Docs/Sheets/Slides/Drawings have no bytes to download: they are
   EXPORTED (PDF by default, Office format on request). Drive's export
-  endpoint caps its output at 10 MB — larger exports get the same "too large,
-  open in Drive" answer.
+  endpoint caps its output at 10 MB — larger exports get the same "open in
+  Drive" answer.
 - **Per-client rate limit** (in memory, per instance — a soft brake against a
   runaway loop, not an accounting system) and the bytes actually sent are
   logged to client_costs (`drive_download_egress`, details.bytes) so the
@@ -52,9 +58,8 @@ SERVICE_NAME = "drive_download"
 CHUNK_BYTES = 256 * 1024
 VERIFY_SECONDS = 180
 VERIFY_CACHE_ENTRIES = 5000
-DEFAULT_MAX_MB = 100           # admin setting media_download_max_mb overrides
-MAX_MB_CEILING = 2000
-PREVIEW_MAX_BYTES = 25 * 1024 * 1024   # inline fallback preview (raster only)
+DEFAULT_MAX_MB = 20            # images + documents; admin setting media_download_max_mb
+MAX_MB_CEILING = 200
 SETTINGS_CACHE_SECONDS = 60
 EXPORT_LIMIT_BYTES = 10 * 1024 * 1024  # Drive's own files.export output cap
 
@@ -103,10 +108,10 @@ _active = {}                   # rate key -> [slot start times]
 
 
 class DownloadRefused(Exception):
-    """A request we answer with a calm message, not a crash.
-    code: not_found | too_large | not_downloadable | busy | unavailable"""
-    STATUS = {"not_found": 404, "too_large": 413, "not_downloadable": 415,
-              "busy": 429, "unavailable": 503}
+    """Something actually went wrong (or the file isn't this client's): a
+    calm message in the UI, never a code.
+    code: not_found | busy | unavailable"""
+    STATUS = {"not_found": 404, "busy": 429, "unavailable": 503}
 
     def __init__(self, code: str, **extra):
         super().__init__(code)
@@ -115,12 +120,31 @@ class DownloadRefused(Exception):
         self.extra = extra
 
 
+class OpenInDrive(Exception):
+    """Not an error: this file is served by Drive, not by us. Raised only
+    AFTER the ownership check, so the link is always the client's own file.
+    reason: video | too_large | drive_only"""
+
+    def __init__(self, reason: str, web_view_link: str = "", max_mb: int = 0):
+        super().__init__(reason)
+        self.reason = reason
+        self.web_view_link = web_view_link
+        self.max_mb = max_mb
+
+    def as_data(self) -> dict:
+        return {"ok": False, "open_in_drive": True, "reason": self.reason,
+                "web_view_link": self.web_view_link, "max_mb": self.max_mb}
+
+
 # ─── What a file is ───────────────────────────────────────────────────────────
 
 def download_kind(mime: str) -> str:
-    """"file" (alt=media), "export" (Google-native) or "none"."""
+    """"file" (alt=media), "export" (Google-native), "drive" (videos — Drive
+    only, never through us) or "none" (nothing to download)."""
     if mime in EXPORTS:
         return "export"
+    if mime.startswith("video/"):
+        return "drive"
     if not mime or mime == drive.FOLDER_MIME or mime.startswith("application/vnd.google-apps."):
         return "none"   # folders, shortcuts, Forms, Sites, Maps: nothing to download
     return "file"
@@ -177,7 +201,9 @@ def _verify_in_client_tree(client_id: int, root: str, file_id: str, parent: str)
 
 def plan(client_id: int, file_id: str, inline: bool = False, fmt: str = "pdf") -> dict:
     """Every check for one preview/download, without touching the file body.
-    Raises DownloadRefused. Returns what open_stream() needs."""
+    Raises DownloadRefused (not this client's / gone / Drive down) or, once
+    ownership is proven, OpenInDrive (video, over the cap, nothing to
+    download). Returns what open_stream() needs."""
     if not FILE_ID_RE.match(file_id or ""):
         raise DownloadRefused("not_found")
     root = drive_mirror.client_root_id(client_id)
@@ -200,30 +226,33 @@ def plan(client_id: int, file_id: str, inline: bool = False, fmt: str = "pdf") -
 
     link = meta.get("webViewLink") or ""
     kind = download_kind(mime)
-    if kind == "none":
-        raise DownloadRefused("not_downloadable", web_view_link=link)
-    size = int(meta["size"]) if str(meta.get("size") or "").isdigit() else None
     cap = max_bytes()
+    cap_mb = cap // (1024 * 1024)
+    if kind == "drive":
+        raise OpenInDrive("video", link)          # any size, any role
+    if kind == "none":
+        raise OpenInDrive("drive_only", link)
+    size = int(meta["size"]) if str(meta.get("size") or "").isdigit() else None
 
     export_mime, ext = "", ""
     if kind == "export":
         if inline:
-            raise DownloadRefused("not_downloadable", web_view_link=link)
+            raise OpenInDrive("drive_only", link)
         formats = EXPORTS[mime]
         export_mime, ext = formats.get(fmt) or formats["pdf"]
         send_mime = export_mime
-        limit = EXPORT_LIMIT_BYTES
+        limit = min(cap, EXPORT_LIMIT_BYTES)      # export size is unknown until it streams
     else:
         if inline and not is_previewable(mime):
-            raise DownloadRefused("not_downloadable", web_view_link=link)
-        limit = min(cap, PREVIEW_MAX_BYTES) if inline else cap
+            raise OpenInDrive("drive_only", link)
+        limit = cap
         if size is not None and size > limit:
-            raise DownloadRefused("too_large", web_view_link=link, max_mb=limit // (1024 * 1024))
+            raise OpenInDrive("too_large", link, cap_mb)
         send_mime = mime if (inline or mime in SAFE_ATTACHMENT_TYPES) else "application/octet-stream"
     return {"file_id": file_id, "mime": mime, "send_mime": send_mime, "size": size,
             "export_mime": export_mime, "inline": bool(inline), "limit": limit,
             "filename": safe_filename(meta.get("name") or "", ext), "web_view_link": link,
-            "max_mb": cap // (1024 * 1024)}
+            "max_mb": cap_mb}
 
 
 # ─── File names ───────────────────────────────────────────────────────────────
@@ -318,26 +347,27 @@ def open_stream(p: dict, client_id: int, by: str = "client"):
         reason = drive.classify_error(e, target="file")
         print(f"[{SERVICE_NAME}] client {client_id}: opening {p['file_id']} failed ({reason}): {e}")
         if "exportsizelimitexceeded" in text or "too large to be exported" in text:
-            raise DownloadRefused("too_large", web_view_link=p["web_view_link"],
-                                  max_mb=EXPORT_LIMIT_BYTES // (1024 * 1024))
+            raise OpenInDrive("too_large", p["web_view_link"], p["limit"] // (1024 * 1024))
         if reason in ("file_not_found", "file_permission"):
             raise DownloadRefused("not_found")
         raise DownloadRefused("unavailable")
 
     def body():
+        # A stream that can't finish must ABORT (raise), not end: a cleanly
+        # terminated chunked response would leave a truncated file that the
+        # browser reports as a completed download.
         sent, complete = 0, False
         try:
             for chunk in upstream.iter_bytes(CHUNK_BYTES):
                 sent += len(chunk)
                 if sent > p["limit"]:
-                    # Drive's size was missing or wrong: stop rather than pass the cap
-                    print(f"[{SERVICE_NAME}] client {client_id}: {p['file_id']} passed the cap mid-stream")
-                    break
+                    # Drive's size was missing (an export) or wrong: never pass the cap
+                    raise RuntimeError(f"passed the {p['limit']} byte cap mid-stream")
                 yield chunk
-            else:
-                complete = True
+            complete = True
         except Exception as e:
-            print(f"[{SERVICE_NAME}] client {client_id}: stream of {p['file_id']} broke after {sent} bytes: {e}")
+            print(f"[{SERVICE_NAME}] client {client_id}: stream of {p['file_id']} aborted after {sent} bytes: {e}")
+            raise
         finally:
             for closer in (upstream.close, http.close):
                 try:

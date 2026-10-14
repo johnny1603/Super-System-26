@@ -32,11 +32,10 @@ DEFAULT_SETTINGS = {
     # Raise this after a plan upgrade: Pro includes 8 GB -> 8000.
     "supabase_size_budget_mb": 500,
     "supabase_warn_pct": 80,
-    # Media tab direct download (core/drive_download.py): the largest file the
-    # app proxies itself. Above it the client gets "Open in Drive" — a big
-    # video through our proxy is egress we pay twice and can outlive Cloud
-    # Run's 300 s request timeout on a slow connection.
-    "media_download_max_mb": 100,
+    # Media tab (core/drive_download.py): the largest IMAGE or DOCUMENT the app
+    # previews/downloads itself. Above it the client (and admin) gets "Open in
+    # Drive". Videos never go through us at any size — that is code, not this.
+    "media_download_max_mb": 20,
 }
 
 # Created lazily - no DB client at import time

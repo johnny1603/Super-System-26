@@ -158,9 +158,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/drive_mirror.py` + `core/drive_download.py` — the Media tab's live listing of
   the client's Drive folder, and its preview/direct-download proxy. A file id from the
   browser is authorised ONLY by walking Drive `parents` up to the client's root, fresh
-  per request. Downloads stream (no Content-Length, so Cloud Run's 32 MiB cap doesn't
-  apply) and are bounded by the 300 s timeout, hence the admin `media_download_max_mb`
-  cap. **Inline only for raster images**: this origin carries the session cookie, so
+  per request. **Videos never go through our server (no player, no download, any role);
+  images/documents only up to `media_download_max_mb` (default 20)** — enforced in
+  `drive_download.plan()` (OpenInDrive → 200 `open_in_drive` / 303 to Drive), not just
+  the UI. **Inline only for raster images**: this origin carries the session cookie, so
   everything else is an attachment. Shared UI: `dashboard/assets/media-viewer.js`.
   See `HANDOFF-media-download.md`.
 - `core/client_leads.py` — the leads a CLIENT receives (`client_leads` table), fed by the

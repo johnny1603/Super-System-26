@@ -4015,18 +4015,28 @@ def _drive_thumb_response(client_id: int, file_id: str) -> Response:
 # (ownership, size, rate) and answers JSON, so the page can show a calm message
 # BEFORE starting a download; without it the file streams as an attachment
 # (?inline=1: raster images only, for the lightbox's fallback). The file id is
-# re-verified against the session's client folder on every call.
+# re-verified against the session's client folder on every call. Videos and
+# files over the cap are served by Drive, never by us — same rule for the
+# admin route: the check says open_in_drive (200, not an error) and a direct
+# request is redirected to the file in Drive.
+_DRIVE_LINK_RE = re.compile(r"^https://(drive|docs)\.google\.com/")
+
 def _drive_file_response(client_id: int, file_id: str, request: Request, by: str):
     from core import drive_download as dl
     inline = request.query_params.get("inline") == "1"
+    check = request.query_params.get("check") == "1"
     fmt = "office" if request.query_params.get("format") == "office" else "pdf"
     try:
         plan = dl.plan(client_id, file_id, inline=inline, fmt=fmt)
-        if request.query_params.get("check") == "1":
+        if check:
             dl.check_rate(f"{by}:{client_id}")
             return {"success": True, "data": {"ok": True, "filename": plan["filename"],
                                               "size": plan["size"], "max_mb": plan["max_mb"]}}
         body = dl.open_stream(plan, client_id, by)
+    except dl.OpenInDrive as e:
+        if not check and _DRIVE_LINK_RE.match(e.web_view_link):
+            return RedirectResponse(e.web_view_link, status_code=303)
+        return {"success": True, "data": e.as_data()}
     except dl.DownloadRefused as e:
         if inline:
             return Response(status_code=e.status)   # an <img> just falls back

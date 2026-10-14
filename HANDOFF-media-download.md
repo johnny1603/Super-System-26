@@ -25,12 +25,8 @@ root from our `media_folder_created` record), same service account.
    `--timeout=300`. A download must finish in 5 minutes: 100 MB needs about
    2.7 Mbit/s sustained, and a 1 GB video needs about 27 Mbit/s. Egress is
    also paid twice (me-west1 → proxy region, then proxy → internet). Hence
-   the per-file cap (default 100 MB, admin setting): above it the client gets
-   "Open in Drive", where Google serves the bytes, at any size, for free to us.
-   Videos play in Drive's own `/preview` player (Google streams them, no load
-   on us). Verified embeddable in an iframe. It plays when the viewer's browser is
-   signed in to the Google account the folder is shared with; the lightbox
-   says so.
+   the rules in the change request below: videos never go through us, and
+   images/documents only up to a cap.
 3. **Agent-created files and files added in Drive share one endpoint.** The
    download takes a Drive file id and authorises it by walking Drive's own
    `parents` up to the client's root, never by trusting a `client_activity`
@@ -39,7 +35,35 @@ root from our `media_folder_created` record), same service account.
    index grid's download button sends `file_id` from the row, and the server
    decides file vs. Google-Doc export.
 
-## What was built
+## Change request (second commit): videos Drive-only, images/documents capped
+
+- **Videos: no inline player and no download through our server, for any
+  role (admin included).** The card shows Google's thumbnail (loaded straight
+  from Google) with "Open in Drive" and the line "Videos open in Drive…" (5
+  languages). The lightbox's video-player path was removed; video cards
+  don't open the lightbox at all.
+- **Images and documents (PDF, Office, Google exports): through us only up to
+  the cap.** Above it, the card shows the thumbnail with "Open in Drive" and
+  the calm "large file" explanation, and the lightbox doesn't open.
+- **The setting:** `media_download_max_mb` was **reused** rather than adding a
+  second one. With videos never proxied, it only ever governs images and
+  documents, so a second setting would be a duplicate knob. The default
+  dropped from 100 to 20 MB (ceiling 200) and it was relabelled in Settings. No
+  value was ever saved under the old default (that commit was never
+  deployed), so 20 applies from the first deploy.
+- **Enforced in `drive_download.plan()`, not just the UI.** A video mime type,
+  a file over the cap, a non-raster `?inline=1` and a Google Form/Site all
+  raise `OpenInDrive`, and only AFTER the ownership walk, so the Drive link is
+  always the client's own file. That is not an error: `?check=1` answers
+  `200 {"ok": false, "open_in_drive": true, "reason": "video|too_large|drive_only",
+  "web_view_link", "max_mb"}`, and a direct (hand-crafted) request is
+  `303`-redirected to the file in Drive. Same code path for the admin route,
+  with no bypass. Google exports are bounded by min(cap, Drive's 10 MB).
+- A stream that has to stop mid-way (export grew past the cap, Drive dropped)
+  now ABORTS the connection instead of ending cleanly, so the browser shows a
+  failed download rather than saving a truncated file as complete.
+
+## What was built (first commit)
 
 - `core/drive_download.py`: `plan()` (all checks, no body), `open_stream()`
   (alt=media / files.export, 256 KB chunks, nothing buffered), name
@@ -62,7 +86,7 @@ root from our `media_folder_created` record), same service account.
   download helper, shared by both dashboards. It builds DOM only with
   `textContent`/`setAttribute`.
 - Client Media tab: cards have Open in Drive + Download, with "Large file —
-  download from Drive" above the cap. Messages go to a status line in the tab
+  download from Drive" above the cap (videos: see the change request). Messages go to a status line in the tab
   (never into chat). Strings exist in he/en/fr/ar/ru.
 - Control Room: the same lightbox + download per client. Settings: "גודל
   קובץ מרבי (MB)". The overview and client drawer show the month's download

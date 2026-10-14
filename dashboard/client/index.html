@@ -1822,8 +1822,7 @@ const DASH_I18N = {
   mv_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
   mv_prev: { he:'הקודם', en:'Previous', fr:'Précédent', ar:'السابق', ru:'Предыдущий' },
   mv_next: { he:'הבא', en:'Next', fr:'Suivant', ar:'التالي', ru:'Следующий' },
-  mv_play_here: { he:'הפעלה כאן', en:'Play here', fr:'Lire ici', ar:'تشغيل هنا', ru:'Смотреть здесь' },
-  mv_video_hint: { he:'הסרטון מתנגן דרך Google Drive. אם הוא לא מופיע, צריך להיות מחוברים ל-Google עם החשבון שהתיקייה שותפה איתו — או לפתוח אותו ב-Drive או להוריד.', en:'The video plays through Google Drive. If it doesn’t show, sign in to Google with the account this folder is shared with — or open it in Drive, or download it.', fr:'La vidéo est lue via Google Drive. Si elle ne s’affiche pas, connectez-vous à Google avec le compte avec lequel ce dossier est partagé — ou ouvrez-la dans Drive, ou téléchargez-la.', ar:'يُشغَّل الفيديو عبر Google Drive. إن لم يظهر، سجّل الدخول إلى Google بالحساب الذي شورك معه هذا المجلد — أو افتحه في Drive أو نزّله.', ru:'Видео воспроизводится через Google Drive. Если его не видно, войдите в Google под аккаунтом, с которым открыт доступ к папке, — или откройте его в Drive, или скачайте.' },
+  media_video_drive: { he:'סרטונים נפתחים ב-Drive — שם אפשר לצפות בהם ולהוריד אותם בגודל המלא.', en:'Videos open in Drive — you can watch and download them there at full size.', fr:'Les vidéos s’ouvrent dans Drive — vous pouvez les regarder et les télécharger en taille réelle.', ar:'تُفتح الفيديوهات في Drive — يمكنك مشاهدتها وتنزيلها هناك بالحجم الكامل.', ru:'Видео открываются в Drive — там их можно посмотреть и скачать в полном размере.' },
   mv_preview_failed: { he:'לא הצלחנו להציג את התמונה כאן. אפשר לפתוח אותה ב-Drive או להוריד אותה.', en:'We couldn’t show this image here. You can open it in Drive or download it.', fr:'Impossible d’afficher cette image ici. Vous pouvez l’ouvrir dans Drive ou la télécharger.', ar:'تعذّر عرض هذه الصورة هنا. يمكنك فتحها في Drive أو تنزيلها.', ru:'Не удалось показать изображение здесь. Его можно открыть в Drive или скачать.' },
   dl_too_large: { he:'הקובץ הזה גדול מ-{mb} MB, ולכן אי אפשר להוריד אותו ישירות מכאן. פתחו אותו ב-Drive והורידו משם — זה עובד בכל גודל.', en:'This file is larger than {mb} MB, so it can’t be downloaded directly here. Open it in Drive and download it from there — that works at any size.', fr:'Ce fichier dépasse {mb} Mo, il ne peut donc pas être téléchargé directement ici. Ouvrez-le dans Drive et téléchargez-le depuis là — cela fonctionne quelle que soit la taille.', ar:'هذا الملف أكبر من {mb} ميغابايت، لذا لا يمكن تنزيله مباشرة من هنا. افتحه في Drive ونزّله من هناك — يعمل ذلك مع أي حجم.', ru:'Этот файл больше {mb} МБ, поэтому скачать его прямо отсюда нельзя. Откройте его в Drive и скачайте оттуда — там это работает при любом размере.' },
   dl_too_large_short: { he:'קובץ גדול — ההורדה דרך Drive', en:'Large file — download it from Drive', fr:'Fichier volumineux — téléchargez-le depuis Drive', ar:'ملف كبير — نزّله من Drive', ru:'Большой файл — скачайте его в Drive' },
@@ -4957,6 +4956,10 @@ function renderDriveMirror() {
   mediaAssetsCache.forEach(a => { if (a.file_id) byFileId[a.file_id] = a; });
   grid.className = 'media-grid';
   const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
+  // Same rules as core/drive_download (which enforces them): images and
+  // documents through us up to the cap; videos and anything bigger → Drive
+  const overCap = f => (f.download === 'file' && f.size && maxBytes && f.size > maxBytes);
+  const viewable = driveMirror.files.filter(f => f.previewable && !overCap(f));
   grid.innerHTML = driveMirror.files.map((f, i) => {
     const fromSystem = byFileId[f.id];
     const label = (fromSystem && fromSystem.title) || f.name;
@@ -4966,14 +4969,17 @@ function renderDriveMirror() {
       : '';
     const thumbInner = `${thumb}<span class="drive-thumb-ico">${MEDIA_ICONS[f.kind] || '📎'}</span>
         ${f.kind === 'video' ? '<span class="drive-play">▶</span>' : ''}`;
-    // Raster images and videos open the lightbox; everything else opens in Drive
+    // Raster images under the cap open the lightbox; everything else (videos
+    // included) opens in Drive
     const thumbCls = `drive-thumb${thumb ? '' : ' no-thumb'}`;
-    const thumbEl = (f.previewable || f.kind === 'video')
-      ? `<button type="button" class="${thumbCls}" data-view="${i}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
+    const viewIdx = viewable.indexOf(f);
+    const thumbEl = viewIdx !== -1
+      ? `<button type="button" class="${thumbCls}" data-view="${viewIdx}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
       : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
-    const tooBig = f.download === 'file' && f.size && maxBytes && f.size > maxBytes;
-    const dl = f.download === 'none' ? ''
-      : tooBig ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
+    const isVideo = f.download === 'drive' || f.kind === 'video';
+    const dl = isVideo ? `<div class="drive-big-note">${esc(t('media_video_drive'))}</div>`
+      : f.download === 'none' ? ''
+      : overCap(f) ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
       : `<button type="button" class="drive-act" data-dl="${i}">${esc(t(f.download === 'export' ? 'mv_download_pdf' : 'mv_download'))}</button>`;
     return `<div class="media-item drive-item" data-kind="${esc(f.kind)}">
       ${thumbEl}
@@ -4987,7 +4993,7 @@ function renderDriveMirror() {
     </div>`;
   }).join('');
   grid.querySelectorAll('[data-view]').forEach(b => {
-    b.onclick = () => uallakMediaViewer.open(driveMirror.files, Number(b.dataset.view), mediaViewerOpts('driveMirrorNotice'));
+    b.onclick = () => uallakMediaViewer.open(viewable, Number(b.dataset.view), mediaViewerOpts('driveMirrorNotice'));
   });
   grid.querySelectorAll('[data-dl]').forEach(b => {
     b.onclick = () => {
@@ -5037,7 +5043,9 @@ function renderMediaGrid() {
     return `<div class="media-item">${inner}
       <div class="drive-actions">
         <a class="drive-act" href="${esc(asset.link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>
-        ${asset.file_id ? `<button type="button" class="drive-act" data-asset-dl="${esc(asset.file_id)}">${esc(t('mv_download'))}</button>` : ''}
+        ${['video', 'avatar'].includes(asset.kind)
+          ? `<div class="drive-big-note">${esc(t('media_video_drive'))}</div>`
+          : asset.file_id ? `<button type="button" class="drive-act" data-asset-dl="${esc(asset.file_id)}">${esc(t('mv_download'))}</button>` : ''}
       </div></div>`;
   }).join('');
   grid.querySelectorAll('[data-asset-dl]').forEach(b => {

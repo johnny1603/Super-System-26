@@ -1090,8 +1090,8 @@ async function loadSettings() {
       <input id="set-usage-warn" type="number" value="${esc(s.supabase_warn_pct)}">
     </div>
     <div class="settings-row">
-      <span class="drawer-stat-label">הורדה ישירה מלשונית המדיה — גודל קובץ מרבי (MB). מעל זה הלקוח מקבל "פתיחה ב-Drive"</span>
-      <input id="set-dl-max" type="number" min="1" max="2000" value="${esc(s.media_download_max_mb)}">
+      <span class="drawer-stat-label">לשונית המדיה — גודל מרבי לתצוגה/הורדה של תמונות ומסמכים דרך השרת (MB). מעל זה: "פתיחה ב-Drive". סרטונים תמיד רק ב-Drive</span>
+      <input id="set-dl-max" type="number" min="1" max="200" value="${esc(s.media_download_max_mb)}">
     </div>
     <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
@@ -1255,7 +1255,7 @@ async function saveSettings() {
       zero_conversion_spend_floor_ils: Number(document.getElementById('set-zero-conv').value) || 300,
       supabase_size_budget_mb: Number(document.getElementById('set-size-budget').value) || 500,
       supabase_warn_pct: Number(document.getElementById('set-usage-warn').value) || 80,
-      media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 100,
+      media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 20,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';
@@ -2246,19 +2246,23 @@ async function crDriveMirror(clientId, folderId, refresh) {
     `<button type="button" class="manage-btn" data-folder="${esc(f.id)}">📁 ${esc(f.name)}</button>`).join(' ');
   const files = d.files || [];
   const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
+  // Same rules as the client (core/drive_download enforces them for admin too)
+  const overCap = f => (f.download === 'file' && f.size && maxBytes && f.size > maxBytes);
+  const viewable = files.filter(f => f.previewable && !overCap(f));
   const rows = d.error ? `<div style="color:var(--red);font-size:12.5px;">הרשימה לא נטענה (${esc(DRIVE_REASON_HE[d.error] || d.error)}) — הרץ "בדיקת Drive"</div>`
     : files.map((f, i) => {
-        const tooBig = f.download === 'file' && f.size && maxBytes && f.size > maxBytes;
-        const dl = f.download === 'none' ? ''
-          : tooBig ? ` · <span style="color:var(--gray);">מעל ${Number(d.download_max_mb)} MB — הורדה רק דרך Drive</span>`
+        const viewIdx = viewable.indexOf(f);
+        const dl = (f.download === 'drive' || f.kind === 'video') ? ' · <span style="color:var(--gray);">סרטון — צפייה והורדה רק ב-Drive</span>'
+          : f.download === 'none' ? ''
+          : overCap(f) ? ` · <span style="color:var(--gray);">מעל ${Number(d.download_max_mb)} MB — הורדה רק דרך Drive</span>`
           : ` · <a href="#" data-dl="${i}" style="color:var(--accent);">${f.download === 'export' ? 'הורדה כ-PDF' : 'הורדה'}</a>`;
         const thumb = f.thumbnail_link ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.thumbnail_link)}" alt=""
               style="width:40px;height:40px;object-fit:cover;border-radius:6px;"
               onerror="this.onerror=null;this.src='/api/admin/control-room/${Number(clientId)}/media-drive/thumb/${esc(f.id)}'">` : '';
         return `<div class="drawer-stat-row">
         <span class="drawer-stat-label" style="display:flex;align-items:center;gap:8px;">
-          ${(f.previewable || f.kind === 'video') && thumb
-            ? `<button type="button" data-view="${i}" title="תצוגה מוגדלת" style="background:none;border:none;padding:0;cursor:zoom-in;">${thumb}</button>`
+          ${viewIdx !== -1 && thumb
+            ? `<button type="button" data-view="${viewIdx}" title="תצוגה מוגדלת" style="background:none;border:none;padding:0;cursor:zoom-in;">${thumb}</button>`
             : thumb}
           <span dir="auto">${esc(f.name)}</span></span>
         <span style="font-size:12px;">${fmtDate(f.modified_time)} · <a href="${esc(f.web_view_link)}" target="_blank" rel="noopener" style="color:var(--accent);">פתיחה ↗</a>${dl}</span>
@@ -2280,7 +2284,7 @@ async function crDriveMirror(clientId, folderId, refresh) {
   // THIS client's folder)
   const opts = crViewerOpts(clientId, d.download_max_mb || 0);
   el.querySelectorAll('[data-view]').forEach(b => {
-    b.onclick = () => uallakMediaViewer.open(files, Number(b.dataset.view), opts);
+    b.onclick = () => uallakMediaViewer.open(viewable, Number(b.dataset.view), opts);
   });
   el.querySelectorAll('[data-dl]').forEach(a => {
     a.onclick = e => { e.preventDefault(); uallakMediaViewer.download(files[Number(a.dataset.dl)], opts, '', opts.notify); };
@@ -2290,8 +2294,7 @@ async function crDriveMirror(clientId, folderId, refresh) {
 const CR_VIEWER_HE = {
   mv_open_drive: 'פתיחה ב-Drive', mv_download: 'הורדה', mv_download_pdf: 'הורדה כ-PDF',
   mv_download_office: 'הורדה כ-Office', mv_close: 'סגירה', mv_prev: 'הקודם', mv_next: 'הבא',
-  mv_play_here: 'הפעלה כאן',
-  mv_video_hint: 'הנגן של Google Drive — מתנגן רק אם הדפדפן מחובר לחשבון Google עם גישה לתיקייה.',
+  media_video_drive: 'סרטונים נפתחים ב-Drive בלבד (צפייה והורדה) — לא דרך השרת שלנו.',
   mv_preview_failed: 'התמונה לא נטענה כאן — אפשר לפתוח ב-Drive או להוריד.',
   dl_too_large: 'הקובץ גדול מ-{mb} MB (התקרה בהגדרות) — הורדה רק דרך Drive.',
   dl_gone: 'הקובץ כבר לא בתיקיית הלקוח (הועבר או נמחק) — רענן.',

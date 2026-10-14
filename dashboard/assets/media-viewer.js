@@ -11,9 +11,10 @@
  * Safety: every file name / link goes in through textContent or setAttribute,
  * never innerHTML. Images are shown only for raster types (item.previewable),
  * from Google's own thumbnail renderer first (=s1600, no load on our server)
- * and our inline endpoint only as a fallback. Videos play in Drive's own
- * preview player, loaded only when asked. The overlay is created once and only
- * ever touches its own nodes — never the chat windows or their inputs.
+ * and our inline endpoint only as a fallback, only under the size cap. Videos
+ * are NEVER played or downloaded here, for any role: thumbnail + "Open in
+ * Drive" only. The overlay is created once and only ever touches its own
+ * nodes — never the chat windows or their inputs.
  */
 (function () {
   'use strict';
@@ -45,12 +46,8 @@
       '.mv-close{width:40px;height:40px;padding:0;border-radius:50%;font-size:18px;}',
       '.mv-stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;padding:0 56px 12px;}',
       '.mv-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;}',
-      '.mv-stage iframe{width:min(100%,960px);height:min(100%,540px);border:0;border-radius:8px;background:#000;}',
-      '.mv-media{position:relative;display:flex;align-items:center;justify-content:center;max-width:100%;max-height:100%;height:100%;}',
       '.mv-doc{color:#F7F4EF;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:420px;}',
       '.mv-doc-ico{font-size:64px;opacity:.6;}',
-      '.mv-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:15px;padding:12px 20px;',
-      'background:rgba(0,0,0,.72);border-color:rgba(255,255,255,.45);}',
       '.mv-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;padding:0;font-size:22px;}',
       '.mv-nav.prev{inset-inline-start:8px;}.mv-nav.next{inset-inline-end:8px;}',
       '.mv-note{color:#F7F4EF;font-size:13px;line-height:1.6;text-align:center;padding:0 16px 14px;min-height:20px;}',
@@ -118,7 +115,7 @@
       return;
     }
     if (e.key === 'Tab') {   // keep focus inside the dialog
-      var f = Array.prototype.filter.call(state.el.o.querySelectorAll('button,a[href],iframe'),
+      var f = Array.prototype.filter.call(state.el.o.querySelectorAll('button,a[href]'),
                                           function (n) { return n.offsetParent !== null; });
       if (!f.length) return;
       var first = f[0], last = f[f.length - 1];
@@ -146,7 +143,7 @@
       a.href = item.web_view_link; a.target = '_blank'; a.rel = 'noopener noreferrer';
       target.appendChild(a);
     }
-    if (item.download === 'none') return;
+    if (item.download === 'none' || item.download === 'drive' || item.kind === 'video') return;
     if (tooBig(item, opts)) {
       if (inViewer) state.el.note.textContent = t('dl_too_large', { mb: opts.maxMb });
       return;
@@ -181,49 +178,36 @@
       var img = node('img');
       img.alt = item.name || '';
       img.referrerPolicy = 'no-referrer';
-      var fallback = opts.fileUrl(item.id) + '?inline=1';
+      // Our inline endpoint only for files under the cap; above it, Google's
+      // thumbnail or nothing (the server would refuse anyway)
+      var fallback = tooBig(item, opts) ? '' : opts.fileUrl(item.id) + '?inline=1';
       img.onerror = function () {
-        if (img.dataset.fallback) { showDoc(item, t('mv_preview_failed')); return; }
+        if (img.dataset.fallback || !fallback) {
+          showDoc(item, t(tooBig(item, opts) ? 'dl_too_large' : 'mv_preview_failed', { mb: opts.maxMb }));
+          return;
+        }
         img.dataset.fallback = '1';
         img.src = fallback;
       };
-      img.src = bigThumb(item.thumbnail_link) || fallback;
       if (!item.thumbnail_link) img.dataset.fallback = '1';
-      el.stage.appendChild(img);
-    } else if (item.kind === 'video' && ID_RE.test(item.id || '')) {
-      var box = node('div', 'mv-media');
-      if (item.thumbnail_link) {
-        var poster = node('img');
-        poster.alt = item.name || '';
-        poster.referrerPolicy = 'no-referrer';
-        poster.src = bigThumb(item.thumbnail_link);
-        poster.onerror = function () { poster.remove(); };
-        box.appendChild(poster);
+      if (bigThumb(item.thumbnail_link) || fallback) {
+        img.src = bigThumb(item.thumbnail_link) || fallback;
+        el.stage.appendChild(img);
       } else {
-        box.appendChild(node('div', 'mv-doc-ico', ICONS.video));
+        showDoc(item, t('dl_too_large', { mb: opts.maxMb }));
       }
-      var play = node('button', 'mv-btn mv-play', '▶ ' + t('mv_play_here'));
-      play.type = 'button';
-      play.onclick = function (e) {
-        e.stopPropagation();
-        // Drive's own player: the video streams from Google, not from us. It
-        // plays when the viewer's browser is signed in to the Google account
-        // the folder is shared with; the hint says what to do otherwise.
-        var frame = node('iframe');
-        frame.src = 'https://drive.google.com/file/d/' + item.id + '/preview';
-        frame.allow = 'autoplay; fullscreen';
-        frame.setAttribute('allowfullscreen', '');
-        frame.setAttribute('referrerpolicy', 'no-referrer');
-        frame.title = item.name || '';
-        el.stage.textContent = '';
-        el.stage.appendChild(frame);
-        if (multi) { el.stage.appendChild(el.prev); el.stage.appendChild(el.next); }
-        el.note.textContent = t('mv_video_hint');
-      };
-      box.appendChild(play);
-      el.stage.appendChild(box);
+    } else if (item.kind === 'video' && item.thumbnail_link) {
+      // Videos are never played or downloaded through us: Google's thumbnail
+      // only, plus "Open in Drive" (the bar) and one plain line
+      var poster = node('img');
+      poster.alt = item.name || '';
+      poster.referrerPolicy = 'no-referrer';
+      poster.src = bigThumb(item.thumbnail_link);
+      poster.onerror = function () { showDoc(item, t('media_video_drive')); };
+      el.stage.appendChild(poster);
+      el.note.textContent = t('media_video_drive');
     } else {
-      showDoc(item, '');
+      showDoc(item, item.kind === 'video' ? t('media_video_drive') : '');
     }
     if (multi) { el.stage.appendChild(el.prev); el.stage.appendChild(el.next); }
     preloadNeighbours();
@@ -280,8 +264,7 @@
   // Check first (ownership, size, rate — JSON), then let the browser download
   // the attachment. A failed check shows a calm sentence, never a code, and
   // never leaves a broken file in the downloads bar.
-  var CODE_KEYS = { not_found: 'dl_gone', too_large: 'dl_too_large', busy: 'dl_busy',
-                    not_downloadable: 'dl_not_downloadable', unavailable: 'dl_unavailable' };
+  var CODE_KEYS = { not_found: 'dl_gone', busy: 'dl_busy', unavailable: 'dl_unavailable' };
 
   async function download(item, opts, fmt, notify) {
     var t = opts.t;
@@ -296,6 +279,13 @@
       try { body = await res.json(); } catch (e) { body = null; }
     } catch (e) {
       notify(t('dl_unavailable'));
+      return;
+    }
+    var data = (body && body.data) || {};
+    if (res.ok && body && body.success && data.open_in_drive) {
+      // Not an error: Drive serves this one (a video, or over the size cap)
+      notify(data.reason === 'too_large' ? t('dl_too_large', { mb: data.max_mb || opts.maxMb || '' })
+             : data.reason === 'video' ? t('media_video_drive') : t('dl_not_downloadable'));
       return;
     }
     if (res.ok && body && body.success) {
