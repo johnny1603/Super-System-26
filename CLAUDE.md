@@ -155,6 +155,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
   exports the full client record to Drive, then purges the live rows to a PII-stripped
   tombstone; offboarded clients are hard-locked out of login.
+- `core/drive_mirror.py` + `core/drive_download.py` — the Media tab's live listing of
+  the client's Drive folder, and its preview/direct-download proxy. A file id from the
+  browser is authorised ONLY by walking Drive `parents` up to the client's root, fresh
+  per request. Downloads stream (no Content-Length, so Cloud Run's 32 MiB cap doesn't
+  apply) and are bounded by the 300 s timeout, hence the admin `media_download_max_mb`
+  cap. **Inline only for raster images**: this origin carries the session cookie, so
+  everything else is an attachment. Shared UI: `dashboard/assets/media-viewer.js`.
+  See `HANDOFF-media-download.md`.
 - `core/client_leads.py` — the leads a CLIENT receives (`client_leads` table), fed by the
   PUBLIC signed-token endpoint `POST /api/leads/capture/{token}` that a form on the client's
   own site posts to. Read the module docstring before touching it: this is NOT

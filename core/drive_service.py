@@ -366,6 +366,32 @@ def fetch_thumbnail(thumbnail_link: str, max_bytes: int) -> tuple:
     return b"".join(chunks), content_type
 
 
+def open_download_stream(file_id: str, export_mime: str = "") -> tuple:
+    """Open a STREAMED body for the Media tab download proxy
+    (core/drive_download.py): alt=media, or files.export when export_mime is
+    set (Google Docs/Sheets/Slides have no bytes of their own). Returns
+    (client, response) with the body NOT yet read; the caller iterates
+    response.iter_bytes() and must close both. Raises (with Drive's error
+    body) on a 4xx/5xx, after closing them itself."""
+    client = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0),
+                          follow_redirects=True)
+    if export_mime:
+        url, params = f"{DRIVE_FILES_URL}/{file_id}/export", {"mimeType": export_mime}
+    else:
+        url, params = f"{DRIVE_FILES_URL}/{file_id}", {"alt": "media", "supportsAllDrives": "true"}
+    try:
+        response = client.send(client.build_request("GET", url, headers=_headers(), params=params),
+                               stream=True)
+        if response.status_code >= 400:
+            response.read()   # error bodies are small JSON — needed for _check's message
+            response.close()
+            _check(response)
+    except Exception:
+        client.close()
+        raise
+    return client, response
+
+
 def trash_file(file_id: str) -> None:
     """Move one file we created to the trash (the Drive self-test's probe
     file). Raises on failure.

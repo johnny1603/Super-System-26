@@ -106,7 +106,11 @@ def _shape(item: dict) -> dict:
             else "document" if ("document" in mime or "pdf" in mime or mime.startswith("text/")
                                 or "spreadsheet" in mime or "presentation" in mime)
             else "file")
+    from core import drive_download   # imports this module; resolved lazily
     return {"id": item.get("id", ""), "name": item.get("name", ""), "kind": kind,
+            # UI hints only — the download endpoint re-checks everything
+            "download": "none" if is_folder else drive_download.download_kind(mime),
+            "previewable": drive_download.is_previewable(mime),
             "mime_type": mime, "modified_time": item.get("modifiedTime", ""),
             "size": int(item["size"]) if str(item.get("size") or "").isdigit() else None,
             "thumbnail_link": item.get("thumbnailLink", ""),

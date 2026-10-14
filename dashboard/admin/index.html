@@ -420,6 +420,7 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
 <div class="overlay" id="overlay" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer"></div>
 
+<script src="/assets/media-viewer.js"></script>
 <script>
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function esc(s) {
@@ -427,6 +428,13 @@ function esc(s) {
     ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 function ils(n) { return '₪' + Number(n || 0).toLocaleString('he-IL'); }
+// Media tab download-proxy traffic this month (core/drive_download.egress_summary)
+function egressRow(e) {
+  if (!e || !e.available || !e.bytes) return '';
+  const mb = (e.bytes / (1024 * 1024)).toLocaleString('he-IL', { maximumFractionDigits: 1 });
+  return `<div class="drawer-stat-row"><span class="drawer-stat-label">תעבורת הורדות מ-Drive דרך השרת (${Number(e.downloads || 0)} הורדות, ${Number(e.previews || 0)} תצוגות)</span>
+    <span>${mb} MB · ≈ ${ils(e.est_ils)}</span></div>`;
+}
 function fmtDate(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); }
@@ -493,10 +501,11 @@ async function loadOverview() {
     claude_api: 'קריאות Claude (הצעות, צ׳אט מכירה)',
     claude_support: 'קריאות Claude — תמיכה',
     claude_analysis: 'קריאות Claude — ניתוח ודוחות',
+    drive_download_egress: 'הורדות מלשונית המדיה (תעבורה)',
   };
-  const catRows = Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
+  const catRows = (Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
     `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(catLabels[cat] || cat)}</span><span>${ils(amount)}</span></div>`
-  ).join('') || '<div class="empty-state">אין עדיין נתוני עלות החודש</div>';
+  ).join('') || '<div class="empty-state">אין עדיין נתוני עלות החודש</div>') + egressRow(d.drive_egress);
 
   const trendRows = (d.trend || []).map((t, i, arr) =>
     `<div class="drawer-stat-row" ${i === arr.length - 1 ? 'style="border:none;"' : ''}>
@@ -1081,6 +1090,10 @@ async function loadSettings() {
       <input id="set-usage-warn" type="number" value="${esc(s.supabase_warn_pct)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">הורדה ישירה מלשונית המדיה — גודל קובץ מרבי (MB). מעל זה הלקוח מקבל "פתיחה ב-Drive"</span>
+      <input id="set-dl-max" type="number" min="1" max="2000" value="${esc(s.media_download_max_mb)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
@@ -1242,6 +1255,7 @@ async function saveSettings() {
       zero_conversion_spend_floor_ils: Number(document.getElementById('set-zero-conv').value) || 300,
       supabase_size_budget_mb: Number(document.getElementById('set-size-budget').value) || 500,
       supabase_warn_pct: Number(document.getElementById('set-usage-warn').value) || 80,
+      media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 100,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';
@@ -1484,10 +1498,11 @@ async function openDrawer(clientId) {
   const res = await api(`/api/admin/clients/${clientId}`);
   const d = res.data, c = d.client;
   const wa = waLink(c.phone);
-  const catLabels = { claude_api: 'קריאות Claude', claude_support: 'Claude — תמיכה', claude_analysis: 'Claude — ניתוח' };
-  const costRows = Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
+  const catLabels = { claude_api: 'קריאות Claude', claude_support: 'Claude — תמיכה', claude_analysis: 'Claude — ניתוח',
+                      drive_download_egress: 'הורדות מדיה (תעבורה)' };
+  const costRows = (Object.entries(d.cost_by_category || {}).map(([cat, amount]) =>
     `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(catLabels[cat] || cat)}</span><span>${ils(amount)}</span></div>`
-  ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין עלויות שנרשמו החודש</div>';
+  ).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין עלויות שנרשמו החודש</div>') + egressRow(d.drive_egress);
 
   const activityDetail = a => {
     const det = a.details || {};
@@ -2229,25 +2244,70 @@ async function crDriveMirror(clientId, folderId, refresh) {
     ? `<button type="button" class="manage-btn" onclick="crMirrorUp(${Number(clientId)})">→ חזרה</button>` : '';
   const folders = (d.folders || []).map(f =>
     `<button type="button" class="manage-btn" data-folder="${esc(f.id)}">📁 ${esc(f.name)}</button>`).join(' ');
+  const files = d.files || [];
+  const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
   const rows = d.error ? `<div style="color:var(--red);font-size:12.5px;">הרשימה לא נטענה (${esc(DRIVE_REASON_HE[d.error] || d.error)}) — הרץ "בדיקת Drive"</div>`
-    : (d.files || []).map(f => `<div class="drawer-stat-row">
-        <span class="drawer-stat-label" style="display:flex;align-items:center;gap:8px;">
-          ${f.thumbnail_link ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.thumbnail_link)}" alt=""
+    : files.map((f, i) => {
+        const tooBig = f.download === 'file' && f.size && maxBytes && f.size > maxBytes;
+        const dl = f.download === 'none' ? ''
+          : tooBig ? ` · <span style="color:var(--gray);">מעל ${Number(d.download_max_mb)} MB — הורדה רק דרך Drive</span>`
+          : ` · <a href="#" data-dl="${i}" style="color:var(--accent);">${f.download === 'export' ? 'הורדה כ-PDF' : 'הורדה'}</a>`;
+        const thumb = f.thumbnail_link ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.thumbnail_link)}" alt=""
               style="width:40px;height:40px;object-fit:cover;border-radius:6px;"
-              onerror="this.onerror=null;this.src='/api/admin/control-room/${Number(clientId)}/media-drive/thumb/${esc(f.id)}'">` : ''}
+              onerror="this.onerror=null;this.src='/api/admin/control-room/${Number(clientId)}/media-drive/thumb/${esc(f.id)}'">` : '';
+        return `<div class="drawer-stat-row">
+        <span class="drawer-stat-label" style="display:flex;align-items:center;gap:8px;">
+          ${(f.previewable || f.kind === 'video') && thumb
+            ? `<button type="button" data-view="${i}" title="תצוגה מוגדלת" style="background:none;border:none;padding:0;cursor:zoom-in;">${thumb}</button>`
+            : thumb}
           <span dir="auto">${esc(f.name)}</span></span>
-        <span style="font-size:12px;">${fmtDate(f.modified_time)} · <a href="${esc(f.web_view_link)}" target="_blank" rel="noopener" style="color:var(--accent);">פתיחה ↗</a></span>
-      </div>`).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין קבצים בתיקייה הזו</div>';
+        <span style="font-size:12px;">${fmtDate(f.modified_time)} · <a href="${esc(f.web_view_link)}" target="_blank" rel="noopener" style="color:var(--accent);">פתיחה ↗</a>${dl}</span>
+      </div>`;
+      }).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין קבצים בתיקייה הזו</div>';
   el.innerHTML = `<div class="panel-pad">
       <div class="drawer-label">מדיה ב-Drive ${d.cached ? '(מהמטמון)' : ''}
         <button type="button" class="manage-btn" style="margin-inline-start:8px;" onclick="crDriveMirror(${Number(clientId)}, '${esc(d.folder_id && !d.is_root ? d.folder_id : '')}', true)">רענון</button></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">${back}${folders}</div>
+      <div id="crMirrorNotice" role="status" style="font-size:12.5px;color:var(--yellow);margin-bottom:6px;"></div>
       ${rows}
       ${d.next_page_token ? '<div style="font-size:12px;color:var(--gray);margin-top:6px;">יש עוד קבצים — מוצגים הראשונים</div>' : ''}
     </div>`;
   el.querySelectorAll('[data-folder]').forEach(b => {
     b.onclick = () => { crMirror.path.push(d.is_root ? '' : d.folder_id); crDriveMirror(clientId, b.dataset.folder); };
   });
+  // Same lightbox + download as the client's Media tab, through the admin
+  // endpoint (any client, read-only; the server still checks the file is in
+  // THIS client's folder)
+  const opts = crViewerOpts(clientId, d.download_max_mb || 0);
+  el.querySelectorAll('[data-view]').forEach(b => {
+    b.onclick = () => uallakMediaViewer.open(files, Number(b.dataset.view), opts);
+  });
+  el.querySelectorAll('[data-dl]').forEach(a => {
+    a.onclick = e => { e.preventDefault(); uallakMediaViewer.download(files[Number(a.dataset.dl)], opts, '', opts.notify); };
+  });
+}
+// Admin UI is Hebrew-only; the viewer asks for these keys
+const CR_VIEWER_HE = {
+  mv_open_drive: 'פתיחה ב-Drive', mv_download: 'הורדה', mv_download_pdf: 'הורדה כ-PDF',
+  mv_download_office: 'הורדה כ-Office', mv_close: 'סגירה', mv_prev: 'הקודם', mv_next: 'הבא',
+  mv_play_here: 'הפעלה כאן',
+  mv_video_hint: 'הנגן של Google Drive — מתנגן רק אם הדפדפן מחובר לחשבון Google עם גישה לתיקייה.',
+  mv_preview_failed: 'התמונה לא נטענה כאן — אפשר לפתוח ב-Drive או להוריד.',
+  dl_too_large: 'הקובץ גדול מ-{mb} MB (התקרה בהגדרות) — הורדה רק דרך Drive.',
+  dl_gone: 'הקובץ כבר לא בתיקיית הלקוח (הועבר או נמחק) — רענן.',
+  dl_unavailable: 'Drive לא זמין כרגע — נסה שוב בעוד כמה דקות.',
+  dl_busy: 'יותר מדי הורדות ברצף — אפשר להמשיך בעוד כמה דקות.',
+  dl_not_downloadable: 'סוג קובץ שנפתח רק ב-Drive.',
+};
+function crViewerOpts(clientId, maxMb) {
+  return {
+    fileUrl: id => `/api/admin/control-room/${Number(clientId)}/media-drive/file/` + encodeURIComponent(id),
+    t: (key, vars) => Object.entries(vars || {}).reduce((s, [k, v]) => s.split('{' + k + '}').join(String(v)),
+                                                         CR_VIEWER_HE[key] || key),
+    maxMb,
+    notify: msg => { const n = document.getElementById('crMirrorNotice'); if (n) n.textContent = msg || ''; },
+    onUnauthorized: () => showLogin(),
+  };
 }
 function crMirrorUp(clientId) {
   const prev = crMirror.path.pop() || '';

@@ -32,6 +32,11 @@ DEFAULT_SETTINGS = {
     # Raise this after a plan upgrade: Pro includes 8 GB -> 8000.
     "supabase_size_budget_mb": 500,
     "supabase_warn_pct": 80,
+    # Media tab direct download (core/drive_download.py): the largest file the
+    # app proxies itself. Above it the client gets "Open in Drive" — a big
+    # video through our proxy is egress we pay twice and can outlive Cloud
+    # Run's 300 s request timeout on a slow connection.
+    "media_download_max_mb": 100,
 }
 
 # Created lazily - no DB client at import time
@@ -87,6 +92,11 @@ def _costs_since(since_iso: str) -> list:
         .execute()
         .data or []
     )
+
+
+def _drive_egress(since_iso: str, client_id: int = None) -> dict:
+    from core.drive_download import egress_summary
+    return egress_summary(since_iso, client_id)
 
 
 def get_overview() -> dict:
@@ -167,6 +177,9 @@ def get_overview() -> dict:
         "new_clients_month": len(new_this_month),
         "cost_month": total_cost,
         "cost_by_category": cost_by_category,
+        # Media tab download proxy traffic, in bytes (its ₪ rows are too small
+        # to survive the 2-decimal rounding above)
+        "drive_egress": _drive_egress(month_start),
         "margin_month": margin,
         "margin_pct": margin_pct,
         "trend": trend,
@@ -278,6 +291,7 @@ def get_client_admin(client_id: int) -> dict:
         "google_ads_customer_id": google_account.get("account_id"),
         "cost_month": total_cost,
         "cost_by_category": cost_by_category,
+        "drive_egress": _drive_egress(_month_start(), client_id),
         "margin_month": round(fee - total_cost, 2) if fee > 0 else None,
         "margin_pct": round((fee - total_cost) / fee * 100, 1) if fee > 0 else None,
         "activity": get_activity(client_id, limit=20),

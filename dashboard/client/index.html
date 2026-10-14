@@ -833,6 +833,19 @@ body {
 .drive-src.system { color: var(--green); }
 .drive-src.drive { color: var(--gray); }
 #driveMirrorMore { margin-top: 10px; }
+/* Preview + direct download (core/drive_download.py, /assets/media-viewer.js) */
+button.drive-thumb { width: calc(100% + 4px); border: none; padding: 0; cursor: zoom-in; font: inherit; color: inherit; }
+a.drive-thumb { text-decoration: none; color: inherit; }
+button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drive-play { position: absolute; font-size: 28px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.6); pointer-events: none; }
+.drive-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.drive-act { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); font-family: inherit;
+  font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
+.drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.drive-big-note { font-size: 11px; color: var(--gray); line-height: 1.5; }
+.drive-notice { font-size: 13px; line-height: 1.6; color: var(--white); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
+.drive-notice:empty { display: none; }
 .media-item {
   background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
   padding: 15px 16px; display: flex; flex-direction: column; gap: 7px;
@@ -1478,6 +1491,7 @@ a.media-item:hover { border-color: var(--accent); }
               data-i18n="drive_mirror_refresh">רענון</button>
     </div>
     <div class="media-filters" id="driveMirrorFolders"></div>
+    <div class="drive-notice" id="driveMirrorNotice" role="status" aria-live="polite"></div>
     <div id="driveMirrorGrid"><div class="empty-row" data-i18n="loading">טוען…</div></div>
     <div id="driveMirrorMore"></div>
   </div>
@@ -1485,6 +1499,7 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="section-sub" style="margin:22px 0 10px;" data-i18n="media_index_title">כל מה שהמערכת יצרה עבורך</div>
   <div class="media-filters" id="mediaFilters"></div>
   <div class="export-bar" data-export="media"></div>
+  <div class="drive-notice" id="mediaIndexNotice" role="status" aria-live="polite"></div>
 
   <div id="mediaGrid">
     <div class="empty-row" data-i18n="loading">טוען…</div>
@@ -1619,6 +1634,7 @@ a.media-item:hover { border-color: var(--accent); }
 </div>
 
 <script src="/assets/i18n.js"></script>
+<script src="/assets/media-viewer.js"></script>
 <script>
 // ─── i18n string table (Hebrew = source of truth + fallback) ────────────────
 const DASH_I18N = {
@@ -1798,6 +1814,23 @@ const DASH_I18N = {
   drive_mirror_capped: { he:'מוצגים הקבצים הראשונים בלבד — את השאר אפשר לראות ב-Drive', en:'Showing the first files only — see the rest in Drive', fr:'Seuls les premiers fichiers sont affichés — le reste est dans Drive', ar:'تُعرض الملفات الأولى فقط — البقية في Drive', ru:'Показаны только первые файлы — остальные в Drive' },
   drive_src_system: { he:'נוצר על ידי המערכת', en:'Created by uallak', fr:'Créé par uallak', ar:'أنشأه uallak', ru:'Создано uallak' },
   drive_src_drive: { he:'נוסף ב-Drive', en:'Added in Drive', fr:'Ajouté dans Drive', ar:'أُضيف في Drive', ru:'Добавлено в Drive' },
+  mv_view: { he:'תצוגה מוגדלת', en:'View larger', fr:'Agrandir', ar:'عرض أكبر', ru:'Увеличить' },
+  mv_open_drive: { he:'פתיחה ב-Drive', en:'Open in Drive', fr:'Ouvrir dans Drive', ar:'فتح في Drive', ru:'Открыть в Drive' },
+  mv_download: { he:'הורדה', en:'Download', fr:'Télécharger', ar:'تنزيل', ru:'Скачать' },
+  mv_download_pdf: { he:'הורדה כ-PDF', en:'Download as PDF', fr:'Télécharger en PDF', ar:'تنزيل بصيغة PDF', ru:'Скачать в PDF' },
+  mv_download_office: { he:'הורדה כקובץ Office', en:'Download as Office file', fr:'Télécharger au format Office', ar:'تنزيل كملف Office', ru:'Скачать в формате Office' },
+  mv_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
+  mv_prev: { he:'הקודם', en:'Previous', fr:'Précédent', ar:'السابق', ru:'Предыдущий' },
+  mv_next: { he:'הבא', en:'Next', fr:'Suivant', ar:'التالي', ru:'Следующий' },
+  mv_play_here: { he:'הפעלה כאן', en:'Play here', fr:'Lire ici', ar:'تشغيل هنا', ru:'Смотреть здесь' },
+  mv_video_hint: { he:'הסרטון מתנגן דרך Google Drive. אם הוא לא מופיע, צריך להיות מחוברים ל-Google עם החשבון שהתיקייה שותפה איתו — או לפתוח אותו ב-Drive או להוריד.', en:'The video plays through Google Drive. If it doesn’t show, sign in to Google with the account this folder is shared with — or open it in Drive, or download it.', fr:'La vidéo est lue via Google Drive. Si elle ne s’affiche pas, connectez-vous à Google avec le compte avec lequel ce dossier est partagé — ou ouvrez-la dans Drive, ou téléchargez-la.', ar:'يُشغَّل الفيديو عبر Google Drive. إن لم يظهر، سجّل الدخول إلى Google بالحساب الذي شورك معه هذا المجلد — أو افتحه في Drive أو نزّله.', ru:'Видео воспроизводится через Google Drive. Если его не видно, войдите в Google под аккаунтом, с которым открыт доступ к папке, — или откройте его в Drive, или скачайте.' },
+  mv_preview_failed: { he:'לא הצלחנו להציג את התמונה כאן. אפשר לפתוח אותה ב-Drive או להוריד אותה.', en:'We couldn’t show this image here. You can open it in Drive or download it.', fr:'Impossible d’afficher cette image ici. Vous pouvez l’ouvrir dans Drive ou la télécharger.', ar:'تعذّر عرض هذه الصورة هنا. يمكنك فتحها في Drive أو تنزيلها.', ru:'Не удалось показать изображение здесь. Его можно открыть в Drive или скачать.' },
+  dl_too_large: { he:'הקובץ הזה גדול מ-{mb} MB, ולכן אי אפשר להוריד אותו ישירות מכאן. פתחו אותו ב-Drive והורידו משם — זה עובד בכל גודל.', en:'This file is larger than {mb} MB, so it can’t be downloaded directly here. Open it in Drive and download it from there — that works at any size.', fr:'Ce fichier dépasse {mb} Mo, il ne peut donc pas être téléchargé directement ici. Ouvrez-le dans Drive et téléchargez-le depuis là — cela fonctionne quelle que soit la taille.', ar:'هذا الملف أكبر من {mb} ميغابايت، لذا لا يمكن تنزيله مباشرة من هنا. افتحه في Drive ونزّله من هناك — يعمل ذلك مع أي حجم.', ru:'Этот файл больше {mb} МБ, поэтому скачать его прямо отсюда нельзя. Откройте его в Drive и скачайте оттуда — там это работает при любом размере.' },
+  dl_too_large_short: { he:'קובץ גדול — ההורדה דרך Drive', en:'Large file — download it from Drive', fr:'Fichier volumineux — téléchargez-le depuis Drive', ar:'ملف كبير — نزّله من Drive', ru:'Большой файл — скачайте его в Drive' },
+  dl_gone: { he:'הקובץ הזה כבר לא נמצא בתיקייה שלך. ייתכן שהוא הועבר או נמחק — רענון יציג את מה שיש עכשיו.', en:'This file is no longer in your folder. It may have been moved or deleted — Refresh shows what’s there now.', fr:'Ce fichier n’est plus dans votre dossier. Il a peut-être été déplacé ou supprimé — Actualiser affiche le contenu actuel.', ar:'هذا الملف لم يعد في مجلدك. ربما نُقل أو حُذف — التحديث يعرض المحتوى الحالي.', ru:'Этого файла больше нет в вашей папке. Возможно, его переместили или удалили — «Обновить» покажет актуальное содержимое.' },
+  dl_unavailable: { he:'Google Drive לא זמין כרגע. כדאי לנסות שוב בעוד כמה דקות, או לפתוח את הקובץ ישירות ב-Drive.', en:'Google Drive is temporarily unavailable. Please try again in a few minutes, or open the file directly in Drive.', fr:'Google Drive est momentanément indisponible. Réessayez dans quelques minutes, ou ouvrez le fichier directement dans Drive.', ar:'Google Drive غير متاح مؤقتًا. حاول مجددًا بعد بضع دقائق، أو افتح الملف مباشرة في Drive.', ru:'Google Drive временно недоступен. Попробуйте через несколько минут или откройте файл прямо в Drive.' },
+  dl_busy: { he:'הורדתם הרבה קבצים ברצף. אפשר להמשיך בעוד כמה דקות.', en:'You’ve downloaded many files in a row. You can continue in a few minutes.', fr:'Vous avez téléchargé beaucoup de fichiers d’affilée. Vous pourrez continuer dans quelques minutes.', ar:'نزّلت ملفات كثيرة متتالية. يمكنك المتابعة بعد بضع دقائق.', ru:'Вы скачали много файлов подряд. Продолжить можно через несколько минут.' },
+  dl_not_downloadable: { he:'את סוג הקובץ הזה אפשר לפתוח רק ב-Drive.', en:'This type of file can only be opened in Drive.', fr:'Ce type de fichier ne peut être ouvert que dans Drive.', ar:'لا يمكن فتح هذا النوع من الملفات إلا في Drive.', ru:'Такой файл можно открыть только в Drive.' },
   media_index_title: { he:'כל מה שהמערכת יצרה עבורך', en:'Everything uallak has created for you', fr:'Tout ce que uallak a créé pour vous', ar:'كل ما أنشأه uallak لك', ru:'Всё, что uallak создал для вас' },
   media_unavailable: { he:'הקובץ נוצר אך לא נשמר ב-Drive — הצוות שלנו כבר יודע', en:'Created but not saved to Drive — our team has been alerted', fr:'Créé mais non enregistré sur Drive — notre équipe est alertée', ar:'أُنشئ لكنه لم يُحفظ في Drive — تم تنبيه فريقنا', ru:'Создано, но не сохранено в Drive — команда уведомлена' },
   media_drive_title: { he:'התיקייה שלך ב-Google Drive', en:'Your Google Drive folder', fr:'Votre dossier Google Drive', ar:'مجلدك في Google Drive', ru:'Ваша папка в Google Drive' },
@@ -4803,6 +4836,7 @@ async function loadDriveMirror(folderId, refresh) {
   if (driveMirror.loading) return;
   driveMirror.loading = true;
   const grid = document.getElementById('driveMirrorGrid');
+  document.getElementById('driveMirrorNotice').textContent = '';
   if (!driveMirror.files.length || folderId !== driveMirror.folder || refresh) {
     grid.className = '';
     grid.innerHTML = `<div class="empty-row">${esc(uallakI18n.t('loading'))}</div>`;
@@ -4864,6 +4898,18 @@ function driveFolderUp() {
   loadDriveMirror(prev ? prev.id : '', false);
 }
 
+// Lightbox + download (/assets/media-viewer.js → core/drive_download.py).
+// Messages land in a status line inside the Media tab — never in a chat.
+function mediaViewerOpts(noticeId) {
+  return {
+    fileUrl: id => '/api/client/media-drive/file/' + encodeURIComponent(id),
+    t: (key, vars) => uallakI18n.t(key, vars),
+    maxMb: (driveMirror.data && driveMirror.data.download_max_mb) || 0,
+    notify: msg => { const el = document.getElementById(noticeId); if (el) el.textContent = msg || ''; },
+    onUnauthorized: () => { window.location.href = '/login/'; },
+  };
+}
+
 // Google's own thumbnail URL first; if the browser can't load it (private
 // file, no Google session), fall back once to our size-capped proxy.
 function driveThumbError(img) {
@@ -4910,21 +4956,45 @@ function renderDriveMirror() {
   const byFileId = {};
   mediaAssetsCache.forEach(a => { if (a.file_id) byFileId[a.file_id] = a; });
   grid.className = 'media-grid';
-  grid.innerHTML = driveMirror.files.map(f => {
+  const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
+  grid.innerHTML = driveMirror.files.map((f, i) => {
     const fromSystem = byFileId[f.id];
+    const label = (fromSystem && fromSystem.title) || f.name;
     const thumb = f.thumbnail_link
       ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(f.thumbnail_link)}"
              data-file-id="${esc(f.id)}" onerror="driveThumbError(this)">`
       : '';
-    return `<a class="media-item drive-item" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener">
-      <div class="drive-thumb${thumb ? '' : ' no-thumb'}" data-kind="${esc(f.kind)}">${thumb}
-        <span class="drive-thumb-ico">${MEDIA_ICONS[f.kind] || '📎'}</span></div>
-      <div class="media-item-title" dir="auto">${esc((fromSystem && fromSystem.title) || f.name)}</div>
+    const thumbInner = `${thumb}<span class="drive-thumb-ico">${MEDIA_ICONS[f.kind] || '📎'}</span>
+        ${f.kind === 'video' ? '<span class="drive-play">▶</span>' : ''}`;
+    // Raster images and videos open the lightbox; everything else opens in Drive
+    const thumbCls = `drive-thumb${thumb ? '' : ' no-thumb'}`;
+    const thumbEl = (f.previewable || f.kind === 'video')
+      ? `<button type="button" class="${thumbCls}" data-view="${i}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
+      : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
+    const tooBig = f.download === 'file' && f.size && maxBytes && f.size > maxBytes;
+    const dl = f.download === 'none' ? ''
+      : tooBig ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
+      : `<button type="button" class="drive-act" data-dl="${i}">${esc(t(f.download === 'export' ? 'mv_download_pdf' : 'mv_download'))}</button>`;
+    return `<div class="media-item drive-item" data-kind="${esc(f.kind)}">
+      ${thumbEl}
+      <div class="media-item-title" dir="auto">${esc(label)}</div>
       <div class="media-item-meta">${esc(fmtDateTime(f.modified_time))}</div>
       <div class="drive-src ${fromSystem ? 'system' : 'drive'}">${esc(t(fromSystem ? 'drive_src_system' : 'drive_src_drive'))}</div>
-      <div class="media-item-meta" style="color:var(--accent);">${esc(t('media_open'))}</div>
-    </a>`;
+      <div class="drive-actions">
+        ${f.web_view_link ? `<a class="drive-act" href="${esc(f.web_view_link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>` : ''}
+        ${dl}
+      </div>
+    </div>`;
   }).join('');
+  grid.querySelectorAll('[data-view]').forEach(b => {
+    b.onclick = () => uallakMediaViewer.open(driveMirror.files, Number(b.dataset.view), mediaViewerOpts('driveMirrorNotice'));
+  });
+  grid.querySelectorAll('[data-dl]').forEach(b => {
+    b.onclick = () => {
+      const opts = mediaViewerOpts('driveMirrorNotice');
+      uallakMediaViewer.download(driveMirror.files[Number(b.dataset.dl)], opts, '', opts.notify);
+    };
+  });
   if (driveMirror.next && !d.truncated) {
     more.innerHTML = `<button type="button" class="media-chip" onclick="loadMoreDriveMirror()">${esc(t('drive_mirror_more'))}</button>`;
   } else if (d.truncated) {
@@ -4960,12 +5030,23 @@ function renderMediaGrid() {
       <div class="media-item-meta">
         ${esc(fmtDateTime(asset.created_at))}${asset.platform ? ' · ' + esc(asset.platform) : ''}
       </div>
-      ${asset.available ? `<div class="media-item-meta" style="color:var(--accent);">${esc(t('media_open'))}</div>`
-                        : `<div class="media-item-missing">${esc(t('media_unavailable'))}</div>`}`;
-    return asset.available
-      ? `<a class="media-item" href="${esc(asset.link)}" target="_blank" rel="noopener">${inner}</a>`
-      : `<div class="media-item">${inner}</div>`;
+      ${asset.available ? '' : `<div class="media-item-missing">${esc(t('media_unavailable'))}</div>`}`;
+    if (!asset.available) return `<div class="media-item">${inner}</div>`;
+    // Same download endpoint as the Drive mirror: the server checks the file
+    // id against this client's folder, whatever row it came from
+    return `<div class="media-item">${inner}
+      <div class="drive-actions">
+        <a class="drive-act" href="${esc(asset.link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>
+        ${asset.file_id ? `<button type="button" class="drive-act" data-asset-dl="${esc(asset.file_id)}">${esc(t('mv_download'))}</button>` : ''}
+      </div></div>`;
   }).join('');
+  grid.querySelectorAll('[data-asset-dl]').forEach(b => {
+    b.onclick = () => {
+      const opts = mediaViewerOpts('mediaIndexNotice');
+      // The server decides file vs. Google-Doc export; size is checked there too
+      uallakMediaViewer.download({ id: b.dataset.assetDl, download: 'file' }, opts, '', opts.notify);
+    };
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

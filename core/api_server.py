@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
+                               StreamingResponse)
 from pydantic import BaseModel
 from supabase import create_client as _supabase_create_client, Client
 
@@ -3992,6 +3993,10 @@ def _drive_mirror_response(client_id: int, folder: str, page_token: str, page: i
                                         page_token=page_token.strip(), refresh=refresh)
     except drive_mirror.NotInClientFolder:
         raise HTTPException(status_code=404, detail={"code": "ERR_NOT_IN_CLIENT_FOLDER"})
+    from core import drive_download
+    # The proxy's per-file cap, so the UI can offer "Open in Drive" up front
+    # instead of a download that would be refused
+    data = {**data, "download_max_mb": drive_download.max_bytes() // (1024 * 1024)}
     return {"success": True, "data": data}
 
 def _drive_thumb_response(client_id: int, file_id: str) -> Response:
@@ -4005,6 +4010,37 @@ def _drive_thumb_response(client_id: int, file_id: str) -> Response:
         raise HTTPException(status_code=404, detail={"code": "ERR_NO_THUMBNAIL"})
     return Response(content=content, media_type=content_type,
                     headers={"Cache-Control": f"private, max-age={drive_mirror.THUMB_CACHE_SECONDS}"})
+
+# Preview + direct download (core/drive_download.py). ?check=1 runs every check
+# (ownership, size, rate) and answers JSON, so the page can show a calm message
+# BEFORE starting a download; without it the file streams as an attachment
+# (?inline=1: raster images only, for the lightbox's fallback). The file id is
+# re-verified against the session's client folder on every call.
+def _drive_file_response(client_id: int, file_id: str, request: Request, by: str):
+    from core import drive_download as dl
+    inline = request.query_params.get("inline") == "1"
+    fmt = "office" if request.query_params.get("format") == "office" else "pdf"
+    try:
+        plan = dl.plan(client_id, file_id, inline=inline, fmt=fmt)
+        if request.query_params.get("check") == "1":
+            dl.check_rate(f"{by}:{client_id}")
+            return {"success": True, "data": {"ok": True, "filename": plan["filename"],
+                                              "size": plan["size"], "max_mb": plan["max_mb"]}}
+        body = dl.open_stream(plan, client_id, by)
+    except dl.DownloadRefused as e:
+        if inline:
+            return Response(status_code=e.status)   # an <img> just falls back
+        raise HTTPException(status_code=e.status, detail={"code": e.code, **e.extra})
+    return StreamingResponse(body, media_type=plan["send_mime"], headers=dl.response_headers(plan))
+
+@app.get("/api/client/media-drive/file/{file_id}")
+def client_media_drive_file(file_id: str, request: Request):
+    return _drive_file_response(_require_session(request), file_id, request, "client")
+
+@app.get("/api/admin/control-room/{client_id}/media-drive/file/{file_id}")
+def admin_media_drive_file(client_id: int, file_id: str, request: Request):
+    _require_admin(request)
+    return _drive_file_response(client_id, file_id, request, "admin")
 
 @app.get("/api/client/media-drive")
 def client_media_drive(request: Request, folder: str = "", page_token: str = "",
