@@ -29,9 +29,16 @@ a new article ("article_request": topic/tone/link). The model writes nothing
 and decides nothing; code (_article_draft) calls seo_agent.write_article,
 which saves a WordPress DRAFT only — weekly cap, topic dedup and the quality
 gate all enforced there — and the confirmation the client sees is fixed
-text with the draft's wp-admin link. Nothing is ever published or edited
-from the chat; the client presses Publish in WordPress. Any other action
-label stays unread.
+text with the draft's wp-admin link. Nothing is ever published from the
+chat; the client presses Publish in WordPress.
+Second label, same pattern (2026-10-17): "revision_request" (draft_id +
+the client's instruction) for a SMALL fix to one of the client's own open
+chat drafts. Code (_article_revision → seo_article.revise_draft) accepts
+only a draft_id from article_draft_from_chat rows that WordPress still
+reports as a draft, re-checks the status right before writing, verifies
+every link live, refuses a rewrite bigger than a fix, and writes it back
+with status='draft'. Published posts and other pages are never touched.
+Any other action label stays unread.
 """
 import json
 import os
@@ -688,6 +695,16 @@ def _website_reads(client_id: int) -> dict:
         data["external_crm"] = get_status(client_id)
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: crm reads failed: {e}")
+    # The client's chat-created article drafts that are STILL drafts — what a
+    # revision_request may point at. A pure read (activity rows + one WP
+    # status lookup); a failure just leaves the field out.
+    try:
+        from agents.seo_article import chat_drafts
+        drafts = chat_drafts(client_id)
+        if drafts:
+            data["open_drafts"] = drafts
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: open drafts read failed: {e}")
     # The existing-site assessment, so follow-up questions about migrate-vs-
     # rebuild are answered from what we actually detected. A stored activity
     # row — reading it re-probes nothing.
@@ -840,8 +857,10 @@ PERSONAS = {
 # are literal. Same capture-of-intent bar as the concierge's upgrade_request:
 # explicit ask only, ONE clarifying question when unclear, a holding reply that
 # code replaces, hard length caps applied in code.
-ARTICLE_EXCEPTION = " — with ONE exception, ARTICLE DRAFTS, described just below"
-ARTICLE_FIELD = ', "article_request": {"topic": "", "tone": "", "link": ""}'
+ARTICLE_EXCEPTION = (" — with ONE exception, ARTICLE DRAFTS (writing a new one, and small fixes"
+                     " to one of THEIR open_drafts), described just below")
+ARTICLE_FIELD = (', "article_request": {"topic": "", "tone": "", "link": ""}'
+                 ', "revision_request": {"draft_id": 0, "instruction": ""}')
 ARTICLE_DRAFT_RULE = """
 
 ARTICLE DRAFTS — THE ONE THING YOU CAN SET IN MOTION. When the client explicitly asks for a new
@@ -859,7 +878,25 @@ link to review it. They publish it themselves when they are happy with it.
 - website_overview "connected": false → leave it empty and point them to the 'האתר שלך' card.
 - When you fill it, "reply" is one short holding line (e.g. "מעולה, ניגש לכתוב טיוטה") — the
   system replaces it with the real outcome. Never claim the article exists or is live.
-- Publishing, editing or deleting existing content stays a team request, exactly as above."""
+
+SMALL FIXES TO AN OPEN DRAFT. "open_drafts" lists the article drafts written for this client
+through this chat that are STILL drafts (nothing published). When the client asks for a small
+change to one of them — the title, a sentence or short paragraph, a link — fill
+"revision_request": "draft_id" = that draft's draft_id copied exactly from open_drafts, and
+"instruction" = the change in the client's own words (max 400 characters, keep any URL or fact
+they wrote exactly). The system makes the change on the same draft, keeps it a draft, and tells
+them what changed.
+- Only a draft_id from open_drafts. If open_drafts is missing or empty, there is nothing you
+  can change — say so plainly and offer to write a new one.
+- Several open drafts and it is not clear which one they mean? Ask ONE short question naming
+  the drafts by title, and leave "revision_request" empty. Exactly one open draft and they say
+  "the article" / "the draft"? That one.
+- The change itself unclear (which sentence? what new title?) → ask ONE short question first.
+- Images in drafts can't be changed from the chat yet — say so and offer the text change.
+- When you fill it, "reply" is one short holding line — the system replaces it.
+- Never fill "article_request" and "revision_request" in the same reply.
+- Publishing, deleting, or changing anything that is NOT in open_drafts (published posts, other
+  pages) stays a team request, exactly as above."""
 
 ARTICLE_TOPIC_MAX, ARTICLE_TONE_MAX, ARTICLE_LINK_MAX = 150, 80, 300
 
@@ -1060,6 +1097,150 @@ def _article_outcome(client_id: int, message: str, brief: dict, lang: str, resul
             "needs_human_followup": True}
 
 
+# ─── Small fixes to an open chat draft (code-run, drafts only) ────────────────
+
+REVISION_INSTRUCTION_MAX = 400
+
+_REVISION_DONE = {
+    "he": "עודכן ✓ {summary}\nהטיוטה נשארה טיוטה — שום דבר לא עלה לאוויר:\n{url}",
+    "en": "Updated ✓ {summary}\nIt's still a draft — nothing has gone live:\n{url}",
+    "fr": "Mis à jour ✓ {summary}\nC'est toujours un brouillon — rien n'est en ligne :\n{url}",
+    "ar": "تم التحديث ✓ {summary}\nلا تزال مسودة — لم يُنشر شيء:\n{url}",
+    "ru": "Обновлено ✓ {summary}\nЭто по-прежнему черновик — ничего не опубликовано:\n{url}",
+}
+_REVISION_DONE_GENERIC = {
+    "he": "השינוי בוצע", "en": "The change is made", "fr": "La modification est faite",
+    "ar": "تم إجراء التغيير", "ru": "Изменение внесено",
+}
+_REVISION_BROKEN_LINKS = {
+    "he": "שימו לב: הסרתי קישור שלא נפתח כרגע (כדי שלא יהיה בטיוטה קישור שבור):",
+    "en": "Note: I removed a link that doesn't open right now, so the draft has no broken link:",
+    "fr": "À noter : j'ai retiré un lien qui ne s'ouvre pas actuellement, pour éviter un lien cassé :",
+    "ar": "ملاحظة: أزلت رابطًا لا يفتح حاليًا حتى لا تحتوي المسودة على رابط معطّل:",
+    "ru": "Обратите внимание: я убрал ссылку, которая сейчас не открывается, чтобы в черновике не было битых ссылок:",
+}
+_REVISION_NOT_DRAFT = {
+    "he": "המאמר הזה כבר לא טיוטה (כנראה פורסם), אז לא אשנה אותו מכאן — העברתי את הבקשה לצוות.",
+    "en": "That article is no longer a draft (it was probably published), so I won't change it from here — I've passed your request to the team.",
+    "fr": "Cet article n'est plus un brouillon (il a sans doute été publié), je ne le modifie donc pas d'ici — j'ai transmis votre demande à l'équipe.",
+    "ar": "هذا المقال لم يعد مسودة (ربما نُشر)، لذلك لن أغيّره من هنا — حوّلت طلبكم للفريق.",
+    "ru": "Эта статья уже не черновик (вероятно, опубликована), поэтому я не буду менять её отсюда — передал запрос команде.",
+}
+_REVISION_CAP = {
+    "he": "הטיוטה הזו הגיעה ל-{cap} תיקונים מהצ׳אט — את ההמשך העברתי לצוות, שיחזרו אליכם.",
+    "en": "This draft has reached {cap} fixes from the chat — I've passed the rest to the team and they'll get back to you.",
+    "fr": "Ce brouillon a atteint {cap} corrections depuis le chat — j'ai transmis la suite à l'équipe, qui reviendra vers vous.",
+    "ar": "وصلت هذه المسودة إلى {cap} تعديلات من الدردشة — حوّلت الباقي للفريق وسيعودون إليكم.",
+    "ru": "Этот черновик достиг {cap} правок из чата — остальное я передал команде, с вами свяжутся.",
+}
+_REVISION_TOO_BIG = {
+    "he": "זה כבר שכתוב גדול יותר מתיקון קטן. תוכלו לכתוב לי בדיוק איזה משפט או חלק לשנות, ולמה?",
+    "en": "That's a bigger rewrite than a quick fix. Could you tell me exactly which sentence or part to change, and to what?",
+    "fr": "C'est une réécriture plus importante qu'une petite correction. Pouvez-vous m'indiquer précisément quelle phrase ou partie modifier, et comment ?",
+    "ar": "هذا إعادة كتابة أكبر من تعديل صغير. هل يمكنكم إخباري بالضبط أي جملة أو جزء أغيّر، وإلى ماذا؟",
+    "ru": "Это уже больше, чем небольшая правка. Подскажите, какое именно предложение или часть изменить и на что?",
+}
+_REVISION_CLARIFY = {
+    "he": "רק כדי לוודא שאני משנה את הדבר הנכון — מה בדיוק לשנות, ולמה?",
+    "en": "Just to make sure I change the right thing — what exactly should change, and to what?",
+    "fr": "Pour être sûr de modifier le bon élément — que faut-il changer exactement, et comment ?",
+    "ar": "فقط للتأكد من أنني أغيّر الشيء الصحيح — ما الذي يجب تغييره بالضبط، وإلى ماذا؟",
+    "ru": "Чтобы точно изменить нужное — что именно поменять и на что?",
+}
+_REVISION_NO_IMAGES = {
+    "he": "שינוי תמונות בטיוטה עוד לא זמין מהצ׳אט — אבל טקסט, כותרת וקישורים אני יכול לתקן כאן.",
+    "en": "Changing images in a draft isn't available from the chat yet — but I can fix text, the title and links right here.",
+    "fr": "Modifier les images d'un brouillon n'est pas encore possible depuis le chat — mais je peux corriger le texte, le titre et les liens ici.",
+    "ar": "تغيير الصور في المسودة غير متاح من الدردشة بعد — لكن يمكنني تعديل النص والعنوان والروابط هنا.",
+    "ru": "Менять изображения в черновике из чата пока нельзя — но текст, заголовок и ссылки я могу поправить здесь.",
+}
+
+
+def _revision_brief(raw, open_drafts: list) -> dict:
+    """revision_request, validated in CODE: the draft_id must be one of THIS
+    client's open chat drafts (the list the persona was shown, which came from
+    article_draft_from_chat rows + a live WP status check). {} otherwise."""
+    if not isinstance(raw, dict):
+        return {}
+    try:
+        draft_id = int(raw.get("draft_id") or 0)
+    except (TypeError, ValueError):
+        return {}
+    instruction = " ".join(str(raw.get("instruction") or "").split())[:REVISION_INSTRUCTION_MAX]
+    allowed = {d.get("draft_id") for d in open_drafts}
+    if not draft_id or draft_id not in allowed or len(instruction) < 3:
+        return {}
+    return {"draft_id": draft_id, "instruction": instruction}
+
+
+def _article_revision(client_id: int, message: str, revision: dict) -> dict:
+    """Code's half of a draft revision. Runs in the chat turn (one LLM call +
+    live link checks). Every outcome is a fixed line; a real failure also
+    raises ONE deduped alert."""
+    lang = _client_language(client_id, message)
+    lang = lang if lang in _REVISION_DONE else "he"
+    post_id = revision["draft_id"]
+
+    from core import client_settings
+    cap = client_settings.get(client_id)["draft_revision_cap"]
+    done = len([r for r in get_activity(client_id, limit=200)
+                if r.get("action_type") == "article_draft_revised"
+                and (r.get("details") or {}).get("post_id") == post_id])
+    if done >= cap:
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
+            f'draft {post_id} reached its chat revision cap ({cap}). Asked: "{revision["instruction"]}"',
+            client_id=client_id, persona="website", issue_key=f"followup:website:revision_cap:{post_id}")
+        return {"reply": _REVISION_CAP[lang].format(cap=cap), "needs_human_followup": True}
+
+    log_step(AGENT_NAME, "article_revision", f"client {client_id}: post {post_id}")
+    try:
+        from agents.seo_article import revise_draft
+        from core.cost_tracker import cost_action
+        with cost_action("article_revision"):
+            result = timed_step(AGENT_NAME, "article_revision", lambda: revise_draft(
+                client_id, post_id, revision["instruction"], lang))
+    except Exception as e:
+        result = {"success": False, "reason": "failed", "errors": [f"{type(e).__name__}: {e}"]}
+
+    if result.get("success"):
+        from agents.website_agent import draft_edit_url
+        summary = result.get("summary") or _REVISION_DONE_GENERIC[lang]
+        reply = _REVISION_DONE[lang].format(summary=summary,
+                                            url=draft_edit_url(client_id, post_id) or "")
+        if result.get("broken_links"):
+            reply += "\n\n" + _REVISION_BROKEN_LINKS[lang] + "\n" + "\n".join(
+                f"• {u}" for u in result["broken_links"][:5])
+        log_activity(client_id, AGENT_NAME, "article_draft_revised",
+                     {"post_id": post_id, "instruction": revision["instruction"],
+                      "summary": summary, "title_changed": result.get("title_changed")},
+                     {"similarity": result.get("similarity"),
+                      "removed_links": result.get("removed_links"),
+                      "broken_links": result.get("broken_links")})
+        return {"reply": reply.rstrip(), "needs_human_followup": False}
+
+    reason = result.get("reason")
+    if reason == "clarify":
+        return {"reply": result.get("question") or _REVISION_CLARIFY[lang], "needs_human_followup": False}
+    if reason == "too_big":
+        return {"reply": _REVISION_TOO_BIG[lang], "needs_human_followup": False}
+    if reason == "unsupported":
+        return {"reply": _REVISION_NO_IMAGES[lang], "needs_human_followup": False}
+    if reason == "not_draft":
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
+            f'asked to change post {post_id}, which is no longer a draft: "{revision["instruction"]}"',
+            client_id=client_id, persona="website", issue_key=f"followup:website:not_draft:{post_id}")
+        return {"reply": _REVISION_NOT_DRAFT[lang], "needs_human_followup": True}
+
+    errors = "; ".join(str(x) for x in (result.get("errors") or ["unknown"]))[:300]
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+        f'draft revision failed (post {post_id}: {errors}). Asked: "{revision["instruction"]}"',
+        client_id=client_id, persona="website", issue_key="technical:website:article_revision")
+    return {"reply": chat_fallback.technical_reply("website", lang), "needs_human_followup": True}
+
+
 PERSONA_SYSTEM_TEMPLATE = """You are {name}, uallak's {domain} specialist, chatting with an
 existing, already-paying client inside their private dashboard. You are one member of the
 uallak team wrapped around this client — never say you are an AI or a bot.
@@ -1176,6 +1357,10 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
             brief = _article_brief(result.get("article_request"))
             if brief:
                 return _article_draft(client_id, message, brief, background_tasks)
+            revision = _revision_brief(result.get("revision_request"),
+                                       payload.get("open_drafts") or [])
+            if revision:
+                return _article_revision(client_id, message, revision)
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))

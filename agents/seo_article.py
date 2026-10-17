@@ -379,6 +379,184 @@ def _LINK_HREFS(content_html: str) -> list:
     return [m.group(1) for m in _LINK.finditer(content_html or "")]
 
 
+# ─── Revising an existing chat draft (minimal Part 7) ─────────────────────────
+# Same split as creation: the persona only LABELS a revision request (which
+# draft + the client's instruction); support_agent checks it is one of THIS
+# client's chat drafts; this code reloads the post, refuses anything that is no
+# longer a draft, applies a SMALL edit (title / sentence / link — no images
+# yet), verifies every link live, and writes the same post back as a draft.
+
+REVISION_MAX_CHANGE = 0.5   # SequenceMatcher ratio floor: below it the "small fix" rewrote the article
+LINK_CHECK_TIMEOUT = 10
+
+
+def chat_drafts(client_id: int, limit: int = 10) -> list:
+    """This client's drafts created through the chat flow that are STILL
+    drafts — the only posts a chat revision may ever touch. The authority is
+    the article_draft_from_chat activity row (support_agent) — the chat-to-
+    draft link — and WordPress for the current status. Raises on a WP read
+    failure (callers leave the field out; nothing about it reaches a prompt)."""
+    from agents.client_agent import _db
+    rows = (_db().table("client_activity").select("details,result,created_at")
+            .eq("client_id", client_id).eq("agent_name", "support_agent")
+            .eq("action_type", "article_draft_from_chat")
+            .order("created_at", desc=True).limit(30).execute().data or [])
+    ids, meta = [], {}
+    for row in rows:
+        post_id = (row.get("result") or {}).get("post_id")
+        if isinstance(post_id, int) and post_id not in meta:
+            ids.append(post_id)
+            meta[post_id] = row
+    if not ids:
+        return []
+    from agents.website_agent import _creds, _get_connection
+    connection = _get_connection(client_id)
+    if not connection:
+        return []
+    site_url, username, app_password = _creds(connection)
+    posts = wp.rest_get(site_url, "wp/v2/posts", username, app_password,
+                        params={"include": ",".join(str(i) for i in ids[:30]),
+                                "status": "draft,pending,publish,future,private",
+                                "per_page": 30, "context": "edit",
+                                "_fields": "id,status,title,modified"})
+    out = []
+    for post in posts or []:
+        if post.get("status") != "draft":
+            continue
+        out.append({"draft_id": post["id"],
+                    "title": ((post.get("title") or {}).get("raw") or "")[:120],
+                    "created_at": (meta[post["id"]].get("created_at") or "")[:16],
+                    "modified": (post.get("modified") or "")[:16]})
+    out.sort(key=lambda d: d["created_at"], reverse=True)
+    return out[:limit]
+
+
+def verify_url(url: str) -> bool:
+    """A link survives only if it answers 200 right now (after redirects)."""
+    try:
+        import httpx
+        response = httpx.get(url, timeout=LINK_CHECK_TIMEOUT, follow_redirects=True,
+                             headers={"User-Agent": "Mozilla/5.0 (uallak link check)"})
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def verify_links(content_html: str) -> tuple:
+    """Unwrap every link that does not answer 200. Returns (html, broken_urls)."""
+    status = {}
+    for href in set(_LINK_HREFS(content_html)):
+        status[href] = verify_url(href)
+    broken = [u for u, ok in status.items() if not ok]
+
+    def repl(match):
+        return match.group(0) if status.get(match.group(1), False) else match.group(2)
+    return _LINK.sub(repl, content_html or ""), broken
+
+
+REVISION_SYSTEM = """You are the writer of an article DRAFT on a small business's website. The
+client asked for ONE small change. Apply exactly that change and nothing else.
+
+ALLOWED: change the title; reword, add, remove or replace a sentence or a short paragraph; add,
+change or remove a link. NOT ALLOWED here: images (set "unsupported": "image"), rewriting the
+whole article, changing the topic. Everything the instruction does not mention stays EXACTLY as
+it is — same HTML, same wording, same order.
+
+""" + _NO_INVENTION + """
+A fact the CLIENT states in the instruction counts as data and may be used.
+
+LINKS: you may only link to a URL from "site_pages", a URL already in the draft, or a URL the
+client wrote in the instruction. Never write any other URL.
+
+If the instruction is ambiguous (which sentence? which link? what new title?), do not guess: set
+"needs_clarification" to ONE short question in {client_language} and return the draft unchanged.
+
+HARD LIMITS: summary is ONE line in {client_language}, max 120 characters, saying plainly what
+changed (e.g. the old and new title). Keep the HTML rules: no <h1>, no level jumps, no <img>, no
+inline styles or scripts.
+
+Return JSON only:
+{{"needs_clarification": "", "unsupported": "", "title": "", "content_html": "", "summary": ""}}"""
+
+
+def revise_draft(client_id: int, post_id: int, instruction: str, client_language: str = "he") -> dict:
+    """Apply one small client-requested change to one chat draft. Returns
+    {"success": True, summary, title, post_id, broken_links} or {"success":
+    False, "reason": not_draft|clarify|unsupported|too_big|failed, ...}.
+    NEVER changes status: the update writes status='draft' explicitly."""
+    import difflib
+    from agents.website_agent import _creds, _get_connection, content_quality_issues
+    connection = _get_connection(client_id)
+    if not connection:
+        return {"success": False, "reason": "failed", "errors": ["website not connected"]}
+    site_url, username, app_password = _creds(connection)
+    try:
+        post = wp.get_content(site_url, username, app_password, "post", post_id)
+    except Exception as e:
+        return {"success": False, "reason": "failed", "errors": [f"load draft: {e}"]}
+    if post.get("status") != "draft":
+        return {"success": False, "reason": "not_draft", "status": post.get("status")}
+
+    title = (post.get("title") or {}).get("raw", "")
+    content = (post.get("content") or {}).get("raw", "")
+    site = site_context(client_id)
+    business = grounding(client_id)
+    language_name = LANGUAGE_NAMES.get(client_language, client_language)
+    try:
+        edited = _call(REVISION_SYSTEM.format(client_language=language_name), {
+            "instruction": instruction, "title": title, "content_html": content,
+            "site_pages": site["inventory"], "business": business,
+            "article_language": LANGUAGE_NAMES.get(site["language"]["code"], site["language"]["code"])},
+            "revise_draft", client_id, 7000)
+    except ClaudeJSONError as e:
+        return {"success": False, "reason": "failed", "errors": [f"revision: {e}"]}
+
+    if (edited.get("unsupported") or "").strip():
+        return {"success": False, "reason": "unsupported", "what": edited["unsupported"][:40]}
+    question = " ".join((edited.get("needs_clarification") or "").split())[:300]
+    if question:
+        return {"success": False, "reason": "clarify", "question": question}
+
+    new_title = " ".join((edited.get("title") or title).split())[:90] or title
+    new_content = edited.get("content_html") or content
+    # Allowed link targets: the site's pages, links already in the draft, and
+    # URLs the client typed in the instruction. Then every survivor must
+    # answer 200 live — a link is never trusted because it looks right.
+    allowed = {_norm_url(i["url"]) for i in site["inventory"]}
+    allowed |= {_norm_url(h) for h in _LINK_HREFS(content)}
+    allowed |= {_norm_url(u) for u in re.findall(r"https?://[^\s<>\"']+", instruction)}
+    new_content, _kept, removed = enforce_links(new_content, allowed)
+    new_content, broken = verify_links(new_content)
+
+    ratio = difflib.SequenceMatcher(None, _text(content), _text(new_content)).ratio()
+    if ratio < REVISION_MAX_CHANGE:
+        return {"success": False, "reason": "too_big", "ratio": round(ratio, 2)}
+    issues = content_quality_issues(new_content)
+    if not new_title:
+        issues.append("title is required")
+    if issues:
+        return {"success": False, "reason": "failed", "errors": issues}
+    if new_title == title and new_content == content:
+        return {"success": False, "reason": "clarify", "question": ""}
+
+    # Re-check right before writing: the client (or Johnny) may have
+    # published it in WordPress while the edit was being written
+    try:
+        if wp.get_content(site_url, username, app_password, "post", post_id).get("status") != "draft":
+            return {"success": False, "reason": "not_draft"}
+        wp.update_content(site_url, username, app_password, "post", post_id,
+                          {"title": new_title, "content": new_content, "status": "draft"})
+    except Exception as e:
+        return {"success": False, "reason": "failed", "errors": [f"update draft: {e}"]}
+    summary = " ".join((edited.get("summary") or "").split())[:160]
+    log_step(AGENT_NAME, "revise_draft",
+             f"client {client_id}: post {post_id} revised (similarity {ratio:.2f}, "
+             f"links removed {len(removed)}, broken {len(broken)})")
+    return {"success": True, "post_id": post_id, "title": new_title, "summary": summary,
+            "title_changed": new_title != title, "removed_links": removed,
+            "broken_links": broken, "similarity": round(ratio, 3)}
+
+
 # ─── The one entry point ──────────────────────────────────────────────────────
 
 def build_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "",
