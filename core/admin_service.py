@@ -352,6 +352,10 @@ def get_settings() -> dict:
     rows = _db().table("app_settings").select("*").execute().data or []
     settings = dict(DEFAULT_SETTINGS)
     for row in rows:
+        # Per-client rows (core/client_settings) share this table but are not
+        # global settings — they have their own screen in the Control Room
+        if str(row["key"]).startswith("client_settings:"):
+            continue
         settings[row["key"]] = row["value"]
     return settings
 

@@ -122,6 +122,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   NEVER move to `client_communications`/`client_activity`: both reach the client (chat
   history + data export). Answers are grounded in a per-question data block with explicit
   `data_gaps`; read-only like the client personas. See `HANDOFF-control-room.md`.
+- `core/client_settings.py` — per-client limits (weekly article cap, package check,
+  repeat-topic block, scheduled "auto articles", draft revision cap), defaults by TIER
+  (paying keeps every brake; billing_exempt gets none and no scheduled writing). One
+  `app_settings` row per client (`client_settings:<id>`), no migration; edited in the
+  Control Room. `admin_service.get_settings` skips those keys.
 - `core/chat_fallback.py` — **no client-facing chat ever dead-ends on an error.** Two
   distinct cases: OUT OF SCOPE (model works; it answers in its own voice, flags
   `out_of_scope`, we alert) and TECHNICAL (something broke; FIXED per-persona,

@@ -2059,6 +2059,10 @@ async function openControlRoom(clientId) {
           <div id="crBudget"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען נתוני פלטפורמות…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">⚙️ הגדרות לקוח — מגבלות מאמרים ופעולות</div>
+          <div id="crSettings"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">פעילות סוכנים אחרונה</div>
           ${activity}
         </div>
@@ -2088,6 +2092,80 @@ async function openControlRoom(clientId) {
   crRenderPersonaTabs();
   crLoadChat();
   crLoadBudget(clientId);
+  crLoadSettings(clientId);
+}
+
+// ─── per-client settings (core/client_settings) ──────────────────────────────
+// Defaults come from the tier (paying vs billing-exempt); a row here only
+// stores what was overridden. "ברירת מחדל" removes the override.
+function crSettingInput(f) {
+  const id = 'crSet_' + f.name;
+  if (f.type === 'bool') {
+    return `<input type="checkbox" id="${id}" ${f.value ? 'checked' : ''}>`;
+  }
+  const v = f.value === null || f.value === undefined ? '' : Number(f.value);
+  return `<input type="number" id="${id}" value="${v}" min="${Number(f.min)}" max="${Number(f.max)}"
+            style="width:80px;" ${f.type === 'int_or_none' ? 'placeholder="∞"' : ''}>`;
+}
+function crDefaultLabel(f) {
+  if (f.type === 'bool') return f.default ? 'פעיל' : 'כבוי';
+  return f.default === null ? 'ללא הגבלה' : String(f.default);
+}
+async function crLoadSettings(clientId, notice) {
+  const el = document.getElementById('crSettings');
+  if (!el) return;
+  try {
+    const s = (await api(`/api/admin/control-room/${Number(clientId)}/settings`)).data;
+    if (crState.clientId !== clientId || !el.isConnected) return;
+    crState.settingsFields = s.fields;
+    el.innerHTML = `
+      <div style="font-size:11.5px;color:var(--gray);margin-bottom:6px;">ברירות מחדל לפי סוג הלקוח: ${s.billing_exempt ? '<b>פנימי (ללא חיוב)</b>' : '<b>משלם</b>'}</div>
+      ${s.fields.map(f => `<div class="drawer-stat-row">
+        <span class="drawer-stat-label">${esc(f.label_he)}
+          <span style="color:var(--gray);font-size:11px;">· ברירת מחדל: ${esc(crDefaultLabel(f))}${f.overridden ? ' · <b>מותאם</b>' : ''}</span></span>
+        <span style="display:flex;gap:8px;align-items:center;">${crSettingInput(f)}
+          ${f.overridden ? `<a href="#" style="color:var(--accent);font-size:11.5px;" onclick="crResetSetting(${Number(clientId)}, '${esc(f.name)}');return false;">ברירת מחדל</a>` : ''}</span>
+      </div>`).join('')}
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px;">
+        <button type="button" class="manage-btn" onclick="crSaveSettings(${Number(clientId)})">שמירה</button>
+        <span id="crSettingsMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span>
+      </div>`;
+  } catch (e) {
+    if (el.isConnected) el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת ההגדרות</div>';
+  }
+}
+async function crSaveSettings(clientId) {
+  const changes = {};
+  (crState.settingsFields || []).forEach(f => {
+    const input = document.getElementById('crSet_' + f.name);
+    if (!input) return;
+    let v;
+    if (f.type === 'bool') v = input.checked;
+    else if (input.value.trim() === '') v = f.type === 'int_or_none' ? null : f.value;
+    else v = Number(input.value);
+    if (v !== f.value) changes[f.name] = v;
+  });
+  const msg = document.getElementById('crSettingsMsg');
+  if (!Object.keys(changes).length) { if (msg) msg.textContent = 'אין שינויים'; return; }
+  try {
+    const res = await api(`/api/admin/control-room/${Number(clientId)}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changes, reset: [] }),
+    });
+    if (!res.success) throw new Error(res.detail || 'save failed');
+    crLoadSettings(clientId, 'נשמר ✓');
+  } catch (e) {
+    if (msg) msg.textContent = 'השמירה נכשלה: ' + (e.message || '');
+  }
+}
+async function crResetSetting(clientId, name) {
+  try {
+    await api(`/api/admin/control-room/${Number(clientId)}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changes: {}, reset: [name] }),
+    });
+    crLoadSettings(clientId, 'הוחזר לברירת המחדל ✓');
+  } catch (e) { /* the reload shows the real state */ }
 }
 
 function crPlatformLine(label, p) {

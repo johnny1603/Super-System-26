@@ -4651,6 +4651,31 @@ def admin_control_room_budget(client_id: int, request: Request):
     from core import control_room
     return {"success": True, "data": control_room.budget_split(client_id)}
 
+class ClientSettingsUpdate(BaseModel):
+    changes: dict = {}
+    reset: list = []
+
+@app.get("/api/admin/control-room/{client_id}/settings")
+def admin_control_room_settings(client_id: int, request: Request):
+    # Per-client limits (core/client_settings): article cap, package check,
+    # repeat-topic block, auto articles, revision cap
+    _require_admin(request)
+    from core import client_settings
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True, "data": client_settings.view(client_id)}
+
+@app.post("/api/admin/control-room/{client_id}/settings")
+def admin_control_room_settings_update(client_id: int, req: ClientSettingsUpdate, request: Request):
+    _require_admin(request)
+    from core import client_settings
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        return {"success": True, "data": client_settings.update(client_id, req.changes, req.reset)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/admin/control-room/{client_id}/chat")
 def admin_control_room_chat_history(client_id: int, request: Request, persona: str = "general"):
     _require_admin(request)

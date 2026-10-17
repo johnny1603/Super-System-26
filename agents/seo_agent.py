@@ -454,6 +454,12 @@ def _advance_pending_articles(client_id: int) -> list:
     write_article failure for ANY reason (cap reached, dedup, quality gate)
     and lets the next cycle continue — write_article already alerts on real
     failures, so nothing is silently lost."""
+    # "Auto articles" off (default for billing-exempt accounts): nothing is
+    # written on a schedule or on strategy approval — only on a chat request
+    from core import client_settings
+    if not client_settings.get(client_id)["auto_articles"]:
+        log_step(AGENT_NAME, "advance_articles", f"client {client_id}: auto articles off — skipped")
+        return []
     plan = _approved_plan(client_id)
     if not plan:
         return []
@@ -538,8 +544,24 @@ Return JSON only:
  "content_html": "<h2>...</h2><p>...</p>"}}"""
 
 
-def _articles_this_week(client_id: int) -> int:
-    return len(_recent_activity(client_id, "seo_article_generated", 7, limit=MAX_ARTICLES_PER_WEEK + 1))
+def _articles_this_week(client_id: int, cap: int = MAX_ARTICLES_PER_WEEK) -> int:
+    return len(_recent_activity(client_id, "seo_article_generated", 7, limit=cap + 1))
+
+
+def _norm_topic(topic: str) -> str:
+    return " ".join((topic or "").lower().split())
+
+
+def _similar_recent(client_id: int, topic: str) -> dict:
+    """The most recent article on the same topic in the last 60 days, or {}.
+    Same identity the old exact-match check used, made case/space-blind."""
+    wanted = _norm_topic(topic)
+    for row in _recent_activity(client_id, "seo_article_generated", 60, limit=20):
+        details, result = row.get("details") or {}, row.get("result") or {}
+        if wanted and _norm_topic(details.get("topic")) == wanted:
+            return {"title": details.get("title", ""), "link": result.get("link", ""),
+                    "post_id": result.get("post_id")}
+    return {}
 
 
 def write_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "",
@@ -559,18 +581,26 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
     if not is_connected(client_id):
         return {"success": False, "reason": "not_connected", "errors": ["website not connected"]}
 
-    used = _articles_this_week(client_id)
-    if used >= MAX_ARTICLES_PER_WEEK:
-        return {"success": False, "reason": "weekly_cap",
-                "errors": [f"weekly article cap reached ({used}/{MAX_ARTICLES_PER_WEEK}) — "
-                           "the cap is the anti-scaled-content iron rule, not a soft limit"]}
+    # Per-client limits (core/client_settings): paying clients keep the iron-
+    # rule cap and the repeat block; billing-exempt accounts default to none.
+    from core import client_settings
+    limits = client_settings.get(client_id)
+    cap = limits["article_weekly_cap"]
+    used = 0
+    if cap is not None:
+        used = _articles_this_week(client_id, cap)
+        if used >= cap:
+            return {"success": False, "reason": "weekly_cap", "cap": cap,
+                    "errors": [f"weekly article cap reached ({used}/{cap}) — "
+                               "the cap is the anti-scaled-content iron rule, not a soft limit"]}
 
-    recent = [((r.get("details") or {}).get("topic") or "")
-              for r in _recent_activity(client_id, "seo_article_generated", 60, limit=10)]
-    if any(topic.strip() == t.strip() for t in recent if t):
-        return {"success": False, "reason": "duplicate_topic",
+    similar = _similar_recent(client_id, topic)
+    if similar and limits["article_block_repeat_topic"]:
+        return {"success": False, "reason": "duplicate_topic", "similar": similar,
                 "errors": [f"an article on this exact topic was already "
                            f"written recently — pick a different angle"]}
+    recent = [((r.get("details") or {}).get("topic") or "")
+              for r in _recent_activity(client_id, "seo_article_generated", 60, limit=10)]
 
     payload = {
         "business": _business_context(client_id),
@@ -644,7 +674,9 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
              f"client {client_id}: draft {published.get('id')} created")
     return {"success": True, "post_id": published.get("id"), "title": article["title"],
             "link": published.get("link", ""), "status": "draft",
-            "articles_this_week": used + 1, "weekly_cap": MAX_ARTICLES_PER_WEEK}
+            "articles_this_week": used + 1, "weekly_cap": cap,
+            # Not blocked (exempt / switched off) but worth telling the client
+            "similar": similar}
 
 
 # ─── Cross-promotion extension point (future media agent) ─────────────────────
@@ -686,9 +718,15 @@ def run_seo_cycle() -> dict:
         .execute().data or []
     )
     summary = {"clients": len(rows), "proposed": 0, "skipped_fresh": 0,
-               "skipped_no_site": 0, "failed": 0, "articles_advanced": 0}
+               "skipped_no_site": 0, "skipped_auto_off": 0, "failed": 0, "articles_advanced": 0}
+    from core import client_settings
     for row in rows:
         client_id = row["client_id"]
+        # The whole scheduled cycle — articles AND the paid research behind a
+        # strategy refresh — is what the per-client "auto articles" switch gates
+        if not client_settings.get(client_id)["auto_articles"]:
+            summary["skipped_auto_off"] += 1
+            continue
         from agents.website_agent import is_connected
         if not is_connected(client_id):
             summary["skipped_no_site"] += 1

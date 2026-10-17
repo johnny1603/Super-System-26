@@ -893,6 +893,20 @@ _ARTICLE_DUPLICATE = {
     "ar": "كتبنا مؤخرًا مقالًا عن هذا الموضوع بالضبط. تريدون زاوية مختلفة؟ أخبروني على ماذا أركّز وسأكتب مسودة جديدة.",
     "ru": "Недавно мы уже писали статью ровно на эту тему. Хотите другой ракурс? Скажите, на чём сделать акцент, и я подготовлю новый черновик.",
 }
+_ARTICLE_NOT_IN_PACKAGE = {
+    "he": "כתיבת מאמרים לאתר צריכה להיות חלק מהחבילה שלכם — העברתי את הבקשה לצוות, ויחזרו אליכם.",
+    "en": "Writing articles for your site needs to be part of your package — I've passed your request to the team and they'll get back to you.",
+    "fr": "La rédaction d'articles pour votre site doit faire partie de votre formule — j'ai transmis votre demande à l'équipe, qui reviendra vers vous.",
+    "ar": "كتابة المقالات لموقعكم يجب أن تكون ضمن باقتكم — حوّلت طلبكم للفريق وسيعودون إليكم.",
+    "ru": "Написание статей для сайта должно входить в ваш пакет — я передал запрос команде, с вами свяжутся.",
+}
+_ARTICLE_SIMILAR_NOTE = {
+    "he": "שימו לב: כבר כתבנו לאחרונה מאמר על נושא דומה — \"{title}\"{link}",
+    "en": "Note: we recently wrote an article on a similar topic — \"{title}\"{link}",
+    "fr": "À noter : nous avons récemment écrit un article sur un sujet proche — « {title} »{link}",
+    "ar": "ملاحظة: كتبنا مؤخرًا مقالًا عن موضوع مشابه — \"{title}\"{link}",
+    "ru": "Обратите внимание: недавно мы уже писали статью на похожую тему — «{title}»{link}",
+}
 _ARTICLE_NOT_CONNECTED = {
     "he": 'כדי שאוכל לשמור טיוטה באתר, צריך קודם לחבר אותו — בכרטיס "האתר שלך" בדשבורד. אחרי החיבור כתבו לי שוב ואתחיל.',
     "en": 'To save a draft on your site, it needs to be connected first — use the "Your website" card in the dashboard. Once it\'s connected, message me again and I\'ll start.',
@@ -926,6 +940,24 @@ def _article_draft(client_id: int, message: str, brief: dict) -> dict:
     alert (write_article's own alerts are switched off for this path)."""
     lang = _client_language(client_id, message)
     lang = lang if lang in _ARTICLE_DONE else "he"
+    # Package check (paying clients; per-client switch in core/client_settings).
+    # Fails closed: an unreadable package is not proof they bought it.
+    from core import client_settings
+    if client_settings.get(client_id)["article_package_check"]:
+        try:
+            from core.client_journey import required_connections
+            entitled = any(s["key"] == "website" for s in required_connections(client_id)["steps"])
+        except Exception as e:
+            log_step(AGENT_NAME, "article_draft", f"client {client_id}: package read failed: {e}")
+            entitled = False
+        if not entitled:
+            chat_fallback.alert_handoff(
+                chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
+                f'asked for an article draft but the package does not cover website content '
+                f'(or could not be read). Topic: "{brief["topic"]}"',
+                client_id=client_id, persona="website",
+                issue_key="followup:website:article_not_in_package")
+            return {"reply": _ARTICLE_NOT_IN_PACKAGE[lang], "needs_human_followup": True}
     notes = ["Requested by the client in the dashboard chat."]
     if brief["tone"]:
         notes.append(f"Tone requested by the client: {brief['tone']}.")
@@ -944,6 +976,10 @@ def _article_draft(client_id: int, message: str, brief: dict) -> dict:
         from agents.website_agent import draft_edit_url
         url = draft_edit_url(client_id, result.get("post_id")) or result.get("link", "")
         reply = _ARTICLE_DONE[lang].format(title=result.get("title", ""), url=url or _ARTICLE_NO_URL[lang])
+        similar = result.get("similar") or {}
+        if similar.get("title"):
+            reply += "\n\n" + _ARTICLE_SIMILAR_NOTE[lang].format(
+                title=similar["title"], link=f"\n{similar['link']}" if similar.get("link") else "")
         log_activity(client_id, AGENT_NAME, "article_draft_from_chat",
                      {"topic": brief["topic"], "tone": brief["tone"], "link": brief["link"]},
                      {"post_id": result.get("post_id"), "status": "draft"})
@@ -951,8 +987,7 @@ def _article_draft(client_id: int, message: str, brief: dict) -> dict:
 
     reason = result.get("reason", "")
     if reason == "weekly_cap":
-        from agents.seo_agent import MAX_ARTICLES_PER_WEEK
-        return {"reply": _ARTICLE_WEEKLY_CAP[lang].format(cap=MAX_ARTICLES_PER_WEEK),
+        return {"reply": _ARTICLE_WEEKLY_CAP[lang].format(cap=result.get("cap", 2)),
                 "needs_human_followup": False}
     if reason == "duplicate_topic":
         return {"reply": _ARTICLE_DUPLICATE[lang], "needs_human_followup": False}
