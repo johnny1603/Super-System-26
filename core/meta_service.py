@@ -338,6 +338,21 @@ def get_campaign_insights(user_token: str, ad_account_id: str,
                      params=params, marketing=True).get("data", [])
 
 
+def get_account_daily_insights(user_token: str, ad_account_id: str, since: str, until: str) -> list:
+    """ACCOUNT-level insight rows, one per day (time_increment=1) between
+    since and until (YYYY-MM-DD, inclusive) — at most ~180 rows, so one page
+    at limit 500. Same fields and casting rules as get_campaign_insights."""
+    params = {
+        "level": "account",
+        "fields": "impressions,clicks,spend,actions",
+        "time_range": {"since": since, "until": until},
+        "time_increment": 1,
+        "limit": 500,
+    }
+    return graph_get(f"{ad_account_id}/insights", user_token,
+                     params=params, marketing=True).get("data", [])
+
+
 def get_flagged_ads(user_token: str, ad_account_id: str) -> list:
     """Ads Meta has disapproved or flagged with policy issues, with their
     campaign attached for grouping."""

@@ -142,6 +142,12 @@ const CHROME = {
   proposal_risk: { he:'⚠️ רמת סיכון:', en:'⚠️ Risk level:', fr:'⚠️ Niveau de risque :', ar:'⚠️ مستوى المخاطرة:', ru:'⚠️ Уровень риска:' },
   proposal_goals: { he:'🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):', en:'🎯 90-day goals (experience-based estimates, not exact promises):', fr:'🎯 Objectifs à 90 jours (estimations fondées sur l\'expérience, pas des promesses) :', ar:'🎯 أهداف 90 يومًا (تقديرات مبنية على الخبرة، وليست وعودًا دقيقة):', ru:'🎯 Цели на 90 дней (оценки на основе опыта, а не точные обещания):' },
   proposal_disclaimers: { he:'💳 עלויות נוספות שחשוב לדעת עליהן:', en:'💳 Additional costs you should know about:', fr:'💳 Coûts supplémentaires à connaître :', ar:'💳 تكاليف إضافية يجب أن تعرفها:', ru:'💳 Дополнительные расходы, о которых стоит знать:' },
+  // Fixed terms, shown with EVERY proposal before a package can be picked —
+  // deliberately not LLM text, so they never drift or get dropped
+  proposal_terms_title: { he:'📌 חשוב לדעת לפני שבוחרים:', en:'📌 Good to know before you choose:', fr:'📌 À savoir avant de choisir :', ar:'📌 من المهم معرفته قبل الاختيار:', ru:'📌 Важно знать перед выбором:' },
+  proposal_term_third_party: { he:'מנויי תוכנה של צד שלישי נפרדים, ומשולמים על ידך ישירות לספק — בחשבון שלך.', en:'Third-party software subscriptions are separate and paid by you directly to the vendor, on your own account.', fr:'Les abonnements à des logiciels tiers sont séparés et payés par vous directement au fournisseur, sur votre propre compte.', ar:'اشتراكات البرامج من أطراف ثالثة منفصلة، وتدفعها أنت مباشرة للمزوّد — من حسابك الخاص.', ru:'Подписки на сторонние программы оплачиваются отдельно — вами напрямую поставщику, со своего аккаунта.' },
+  proposal_term_organic_tool: { he:'בקידום האורגני, הכלי המקצועי כלול במחיר המוצג.', en:'For organic SEO, the professional tool is included in the stated price.', fr:'Pour le référencement organique, l\'outil professionnel est inclus dans le prix indiqué.', ar:'في التحسين المجاني لمحركات البحث، الأداة الاحترافية مشمولة في السعر المعروض.', ru:'В органическом продвижении профессиональный инструмент включён в указанную цену.' },
+  proposal_term_allowance: { he:'היקף התוכן החודשי תלוי במכסה החודשית שלך — מאמר עם תמונה שנוצרת במערכת צורך יותר מהמכסה ממאמר בלי תמונה.', en:'Your monthly content volume depends on your monthly allowance — an article with an image generated in the system uses more of it than one without.', fr:'Le volume de contenu mensuel dépend de votre quota mensuel — un article avec une image générée dans le système en consomme davantage qu\'un article sans image.', ar:'حجم المحتوى الشهري يعتمد على حصتك الشهرية — المقال مع صورة يولّدها النظام يستهلك منها أكثر من مقال بلا صورة.', ru:'Объём контента в месяц зависит от вашего месячного лимита — статья с изображением, созданным в системе, расходует его больше, чем статья без изображения.' },
   pick_package: { he:'הנה כמה אפשרויות שמתאימות לך — אין כאן תשובה "לא נכונה", תבחר את מה שמרגיש הכי נכון 👇', en:'Here are options that fit you — there\'s no "wrong" answer, pick what feels right 👇', fr:'Voici des options adaptées — il n\'y a pas de « mauvaise » réponse, choisissez ce qui vous convient 👇', ar:'إليك خيارات تناسبك — لا توجد إجابة "خاطئة"، اختر ما تشعر أنه الأنسب 👇', ru:'Вот варианты, которые вам подходят — «неправильного» ответа нет, выбирайте то, что ближе 👇' },
   pkg_badge: { he:'🔥 1 מתוך 20 החודש', en:'🔥 1 of 20 this month', fr:'🔥 1 sur 20 ce mois-ci', ar:'🔥 1 من 20 هذا الشهر', ru:'🔥 1 из 20 в этом месяце' },
   pkg_price: { he:'הקמה ₪{setup} · ניהול חודשי ₪{monthly}', en:'Setup ₪{setup} · Monthly management ₪{monthly}', fr:'Mise en place ₪{setup} · Gestion mensuelle ₪{monthly}', ar:'تأسيس ₪{setup} · إدارة شهرية ₪{monthly}', ru:'Запуск ₪{setup} · Ежемесячное ведение ₪{monthly}' },
@@ -185,7 +191,7 @@ const BASE_QUESTIONS = [
   { id:"media_assets_info", type:"info", text:"בעזרת כלי AI מתקדמים ניצור עבורך תמונות שיווקיות מקצועיות מתוך תמונות הבסיס שתשלח לנו — הכל כלול בדמי הניהול. בנוסף, נקים לך תיקיית Drive מסודרת שבה תוכל לעיין ולאשר את כל החומרים לפני הפרסום 📁" },
   { id:"content_creator_collab", type:"choice", text:"האם היית מעוניין בשיתופי פעולה עם יוצרי תוכן — מוצר מתנה תמורת ביקורת, או תשלום עבור סרטון שגם משמש אותנו וגם עולה אצלם — בתקציב נפרד?", options:["כן","לא","אולי בהמשך"] },
   { id:"organic_history", type:"choice", text:"האם העסק היום מקודם או קודם בעבר אורגנית בגוגל?", options:["כן, מקודם היום","קודם בעבר אבל לא היום","אף פעם לא"] },
-  { id:"organic_info", type:"info", text:"קידום אורגני זה כמו לבנות נכס דיגיטלי - בניגוד לפרסום ממומן שנעצר ברגע שמפסיקים לשלם, קידום אורגני ממשיך להביא לקוחות גם בטווח הארוך, ובונה אמון וסמכות לעסק שלך בגוגל לאורך זמן." },
+  { id:"organic_info", type:"info", text:"קידום אורגני זה כמו לבנות נכס דיגיטלי - בניגוד לפרסום ממומן שנעצר ברגע שמפסיקים לשלם, קידום אורגני ממשיך להביא לקוחות גם בטווח הארוך, ובונה אמון וסמכות לעסק שלך בגוגל לאורך זמן. אנחנו עובדים עם כלי ה-SEO המקצועיים המתקדמים ביותר בשוק." },
   { id:"organic_interest", type:"choice", text:"היית רוצה להגיע למקומות הראשונים בגוגל, וגם שהבינה המלאכותית של גוגל תמליץ על העסק שלך כשאנשים מחפשים שירות דומה?", options:["כן, מעוניין","לא כרגע"] },
   { id:"organic_followup_info", type:"info", text:"תקבל דוח חודשי שקוף על ההתקדמות. חשוב לדעת שתוצאות משמעותיות בקידום אורגני לוקחות בממוצע כ-6 חודשים להבשיל - ולכן קריטי לא לעצור באמצע התהליך, כדי לא לאבד את המומנטום שנבנה." }
 ];
@@ -274,10 +280,10 @@ const Q_I18N = {
     ar:{ text:"هل يجري تحسين محركات البحث للنشاط اليوم أو جرى سابقًا؟", options:["نعم، حاليًا","سابقًا وليس اليوم","أبدًا"] },
     ru:{ text:"Продвигается ли бизнес в поиске сейчас или продвигался раньше?", options:["Да, сейчас","Раньше, но не сейчас","Никогда"] } },
   organic_info: {
-    en:{ text:"SEO is like building a digital asset — unlike paid ads that stop the moment you stop paying, organic ranking keeps bringing customers long-term and builds trust and authority for your business on Google." },
-    fr:{ text:"Le SEO, c'est construire un actif digital — contrairement à la pub payante qui s'arrête dès qu'on cesse de payer, le référencement organique continue d'amener des clients sur le long terme et bâtit confiance et autorité sur Google." },
-    ar:{ text:"التحسين المجاني لمحركات البحث كبناء أصل رقمي — بعكس الإعلانات المدفوعة التي تتوقف عند التوقف عن الدفع، يستمر في جلب العملاء على المدى الطويل ويبني ثقة ومكانة لعملك في غوغل." },
-    ru:{ text:"SEO — это цифровой актив: в отличие от платной рекламы, которая останавливается вместе с оплатой, органическое продвижение продолжает приводить клиентов в долгую и строит доверие и авторитет вашего бизнеса в Google." } },
+    en:{ text:"SEO is like building a digital asset — unlike paid ads that stop the moment you stop paying, organic ranking keeps bringing customers long-term and builds trust and authority for your business on Google. We work with the most advanced professional SEO tools on the market." },
+    fr:{ text:"Le SEO, c'est construire un actif digital — contrairement à la pub payante qui s'arrête dès qu'on cesse de payer, le référencement organique continue d'amener des clients sur le long terme et bâtit confiance et autorité sur Google. Nous travaillons avec les outils SEO professionnels les plus avancés du marché." },
+    ar:{ text:"التحسين المجاني لمحركات البحث كبناء أصل رقمي — بعكس الإعلانات المدفوعة التي تتوقف عند التوقف عن الدفع، يستمر في جلب العملاء على المدى الطويل ويبني ثقة ومكانة لعملك في غوغل. نعمل بأكثر أدوات SEO الاحترافية تقدمًا في السوق." },
+    ru:{ text:"SEO — это цифровой актив: в отличие от платной рекламы, которая останавливается вместе с оплатой, органическое продвижение продолжает приводить клиентов в долгую и строит доверие и авторитет вашего бизнеса в Google. Мы работаем с самыми продвинутыми профессиональными SEO-инструментами на рынке." } },
   organic_interest: {
     en:{ text:"Would you like to reach top Google positions — and have Google's AI recommend your business when people search for similar services?", options:["Yes, interested","Not right now"] },
     fr:{ text:"Aimeriez-vous atteindre les premières positions Google — et que l'IA de Google recommande votre entreprise lors de recherches similaires ?", options:["Oui, intéressé","Pas pour l'instant"] },
@@ -303,11 +309,11 @@ const Q_I18N = {
     fr:{ text:"Respect pour tout gérer vous-même ! 💪 Bon à savoir — votre offre inclut aussi des automatisations intelligentes en coulisses, comme une réponse automatique immédiate aux nouveaux leads, pour qu'aucune demande ne passe à la trappe pendant que vous gérez tout." },
     ar:{ text:"احترام لأنك تدير كل شيء بنفسك! 💪 جيد أن تعرف — تشمل باقتك أيضًا أتمتة ذكية تعمل خلف الكواليس، مثل رد فوري تلقائي على العملاء الجدد، حتى لا يضيع أي استفسار بينما أنت منشغل بإدارة كل شيء." },
     ru:{ text:"Уважение — вы делаете всё сами! 💪 Знайте: в ваш пакет также входят умные автоматизации, работающие за кулисами, например мгновенный автоответ новым лидам — чтобы ни одно обращение не потерялось, пока вы заняты делом." } },
-  organic_budget: {
-    en:{ text:"Great! What monthly budget would you dedicate specifically to SEO?\n\nImportant — this is completely separate from the ad budget you mentioned. It covers our management plus the professional tool subscription (SEOptimer / SEMrush / Ahrefs, per your level), starting from ₪1,000/month." },
-    fr:{ text:"Parfait ! Quel budget mensuel consacreriez-vous spécifiquement au SEO ?\n\nImportant — c'est un budget totalement distinct du budget publicitaire mentionné. Il couvre notre gestion plus l'abonnement à l'outil professionnel (SEOptimer / SEMrush / Ahrefs, selon votre niveau), à partir de ₪1 000/mois." },
-    ar:{ text:"ممتاز! ما الميزانية الشهرية التي ستخصصها تحديدًا للتحسين المجاني؟\n\nمهم — هذه ميزانية منفصلة تمامًا عن ميزانية الإعلانات التي ذكرتها. تغطي إدارتنا واشتراك الأداة الاحترافية (SEOptimer / SEMrush / Ahrefs حسب المستوى المناسب)، وتبدأ من ₪1,000 شهريًا." },
-    ru:{ text:"Отлично! Какой месячный бюджет вы готовы выделить именно на SEO?\n\nВажно — это полностью отдельный бюджет от рекламного, о котором вы говорили. Он покрывает наше ведение и подписку на профессиональный инструмент (SEOptimer / SEMrush / Ahrefs по вашему уровню), от ₪1 000 в месяц." } },
+  organic_target_phrases: {
+    en:{ text:"Great! Which search phrases would you most like to be found for on Google?\n\nWrite them the way your customers would search — e.g. \"tax advisor in Haifa\". A few is plenty." },
+    fr:{ text:"Parfait ! Sur quelles recherches aimeriez-vous le plus être trouvé sur Google ?\n\nÉcrivez-les comme vos clients les taperaient — par ex. « conseiller fiscal à Haïfa ». Quelques-unes suffisent." },
+    ar:{ text:"ممتاز! ما عبارات البحث التي تود أكثر أن يجدك الناس من خلالها في غوغل؟\n\nاكتبها كما يبحث عملاؤك — مثلًا \"مستشار ضرائب في حيفا\". بضع عبارات تكفي." },
+    ru:{ text:"Отлично! По каким поисковым фразам вы больше всего хотите, чтобы вас находили в Google?\n\nНапишите так, как ищут ваши клиенты — например, «налоговый консультант в Хайфе». Нескольких достаточно." } },
 };
 
 // Multi-language detection of the "other / something else" option (both our
@@ -350,7 +356,7 @@ let selectedPackage = null;
 
 // שאלות "משמעותיות" שאחריהן מציגים תגובה קצרה וחמה, כדי שהצ'אט ירגיש כמו שיחה
 // ולא כמו טופס - לא אחרי כל תשובה, רק בנקודות שבאמת שווה לעצור בהן
-const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_budget', 'new_business_expectations', 'new_business_concern', 'main_goal', 'existing_digital', 'media_management', 'camera_comfort']);
+const REACTION_QUESTION_IDS = new Set(['recent_revenue', 'revenue_trend', 'financial_status', 'biggest_fear', 'organic_target_phrases', 'new_business_expectations', 'new_business_concern', 'main_goal', 'existing_digital', 'media_management', 'camera_comfort']);
 
 async function maybeReact(questionId, answerText, next) {
   if (!REACTION_QUESTION_IDS.has(questionId)) { setTimeout(next, 700); return; }
@@ -491,10 +497,12 @@ const CONDITIONAL_QUESTIONS = {
     type: 'info',
     text: 'וואו, מכבד את זה שאתה עושה הכל לבד! 💪 שווה שתדע - כחלק מהחבילה שלנו תקבל גם אוטומציות חכמות שעובדות בשבילך מאחורי הקלעים, כמו מענה אוטומטי ומיידי ללידים חדשים - כדי שאף פנייה לא תיפול בין הכיסאות בזמן שאתה עסוק בלנהל את הכל.'
   },
-  organic_budget: {
-    id: 'organic_budget',
+  // Organic is a fixed-price package now — no organic budget is ever asked.
+  // What the chat still needs is WHAT the client wants to be found for.
+  organic_target_phrases: {
+    id: 'organic_target_phrases',
     type: 'free_text',
-    text: 'מעולה! כמה תקציב חודשי היית מוכן להעמיד ספציפית לקידום האורגני?\n\nחשוב לדעת - זה תקציב נפרד לגמרי מתקציב הפרסום הממומן שציינת קודם. התקציב הזה מכסה את הניהול שלנו ואת מנוי הכלי המקצועי (SEOptimer / SEMrush / Ahrefs, בהתאם לרמה המתאימה לך), ומתחיל מ-₪1,000 לחודש ומעלה.'
+    text: 'מעולה! על אילו ביטויי חיפוש היית הכי רוצה שימצאו אותך בגוגל?\n\nכתוב אותם כמו שהלקוחות שלך היו מחפשים — למשל "יועץ מס בחיפה". כמה ביטויים זה מספיק.'
   },
 };
 
@@ -522,7 +530,7 @@ function applyConditionalLogic(questionId, optIdx) {
 
   if (questionId === 'organic_interest' && optIdx === 0) {  // "כן, מעוניין"
     questions.splice(currentQ + 1, 0,
-      localizeQuestion(CONDITIONAL_QUESTIONS.organic_budget));
+      localizeQuestion(CONDITIONAL_QUESTIONS.organic_target_phrases));
   }
 }
 
@@ -845,7 +853,8 @@ function displayProposal(data) {
   const bullets = list => (list || []).map(item => `  · ${item}`).join('\n');
   const disclaimers = (p.cost_disclaimers || []).length
     ? `\n\n${t('proposal_disclaimers')}\n${bullets(p.cost_disclaimers)}` : '';
-  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${bullets(p.goals_90_days)}\n\n💡 ${p.honest_note}${disclaimers}`;
+  const terms = `\n\n${t('proposal_terms_title')}\n${bullets([t('proposal_term_third_party'), t('proposal_term_organic_tool'), t('proposal_term_allowance')])}`;
+  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${bullets(p.goals_90_days)}\n\n💡 ${p.honest_note}${disclaimers}${terms}`;
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');

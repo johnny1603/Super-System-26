@@ -51,7 +51,7 @@ from agents.onboarding_agent import LANGUAGE_RULE
 from core import automation_service
 from core.agent_base import agent_alert, log_step, timed_step
 from core import chat_fallback
-from core.claude_json import claude_web_search_call, safe_claude_json_call
+from core.claude_json import CHAT_TURN_MODEL, claude_web_search_call, safe_claude_json_call
 
 CONVERSATION_HISTORY_LIMIT = 12  # current-thread turns passed to the LLM
 PENDING_SUGGESTIONS_LIMIT = 5
@@ -187,6 +187,28 @@ data: data_topic stays "" for it. That includes WHICH ad account they are connec
 "connected_accounts" states it (connected or not, and the account number exactly as their own
 ad platform shows it, e.g. Google Ads 123-456-7890) — answer that from there, plainly."""
 
+# Shared by the concierge and every persona. Brace-free (concatenated into
+# PERSONA_SYSTEM_TEMPLATE before .format()). Code backs it up: core/chat_guard
+# blocks a message that looks like a key or password before it reaches you.
+NO_SECRETS_RULE = """
+
+PASSWORDS AND KEYS: NEVER ask for, accept, repeat or store a password, API key, access token or
+login code in this chat. When a connection needs a key or password, tell the client to paste it
+ONLY into that connection's field in the dashboard. If they offer to send one here, tell them
+kindly not to, and that the team can help on WhatsApp if the field doesn't work."""
+
+# Concierge only. Brace-free.
+CONNECTION_HELP_RULE = """
+
+CONNECTION HELP: when the user message has a "connection_help" field, the client pressed "עזרה"
+on that connection in their dashboard. Walk them through ITS "steps" in plain, warm, encouraging
+language (short — the steps, not a lecture), make them feel they're not alone, and give ONLY the
+URLs listed in its "links" (copy them exactly; if "links" is empty, give no URL at all — never
+add one of your own). Mention "estimated_minutes" naturally if present. Say that if it doesn't
+work out, a person from the team can get back to them on WhatsApp at
+"human_support_whatsapp". Keep data_topic, web_search_query and upgrade_request empty on this
+turn."""
+
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
 team" - never say you are an AI or a bot.
@@ -259,7 +281,7 @@ and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
  "data_topic": "", "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
-    + LANGUAGE_RULE + _AUTOMATION_RULE
+    + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -485,12 +507,14 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
     return _format_proposal_reply(proposal)
 
 
-def answer_support_question(client_id: int, message: str) -> dict:
+def answer_support_question(client_id: int, message: str, help_connection: str = "") -> dict:
     """The concierge turn. NEVER raises and never returns an empty reply —
     anything that breaks becomes an in-voice technical handoff (see
-    core/chat_fallback), so the chat always gets something it can show."""
+    core/chat_fallback), so the chat always gets something it can show.
+    `help_connection`: the dashboard's "עזרה" button on one connection
+    (core/connection_help)."""
     try:
-        result = _answer_support_question(client_id, message)
+        result = _answer_support_question(client_id, message, help_connection)
     except Exception as e:
         return _technical_failure(client_id, "general", message, "support_turn", e)
     if not (result.get("reply") or "").strip():
@@ -499,7 +523,7 @@ def answer_support_question(client_id: int, message: str) -> dict:
     return result
 
 
-def _answer_support_question(client_id: int, message: str) -> dict:
+def _answer_support_question(client_id: int, message: str, help_connection: str = "") -> dict:
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
@@ -518,6 +542,14 @@ def _answer_support_question(client_id: int, message: str) -> dict:
     }
     if not payload["client_knowledge"]:
         payload.pop("client_knowledge")  # absent, never an empty block to read into
+
+    # "עזרה" on a connection: that ONE entry's steps and links, nothing else
+    from core import admin_service, connection_help
+    help_entry = connection_help.get(help_connection) if help_connection else {}
+    if help_entry:
+        payload["connection_help"] = connection_help.for_agent(
+            help_entry, _client_language(client_id, message),
+            admin_service.display_phone(admin_service.support_whatsapp_number()))
 
     # The chat owns the homework/suggestions experience - it must know what's
     # pending so it can walk the client through approving it
@@ -560,7 +592,11 @@ def _answer_support_question(client_id: int, message: str) -> dict:
     try:
         result = timed_step(
             AGENT_NAME, "llm_call",
+            # An ordinary turn: the cheaper model. The deliverables it can
+            # trigger (upgrade proposal, web-search answer) run on their own
+            # calls below at the default model.
             lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800,
+                                          model=CHAT_TURN_MODEL, effort="low",
                                           client_id=client_id, cost_category="claude_support"),
         )
     except Exception as e:
@@ -569,6 +605,11 @@ def _answer_support_question(client_id: int, message: str) -> dict:
         return _technical_failure(client_id, "general", message, "llm_call", e)
 
     reply = result.get("reply", "")
+    if help_entry:
+        # A help turn hands out ONLY this connection's configured links, and
+        # never starts a purchase or a search
+        reply = connection_help.strip_foreign_links(reply, help_entry)
+        return {"reply": reply, "needs_human_followup": False}
     needs_human_followup = bool(result.get("needs_human_followup", False))
     out_of_scope = bool(result.get("out_of_scope", False))
     if out_of_scope:
@@ -674,7 +715,8 @@ def _website_reads(client_id: int) -> dict:
     try:
         tool = get_connected_tool(client_id)
         if tool:
-            data["seo_tool_connected"] = tool
+            # A flag, never the slug: SEO vendors are never named to a client
+            data["seo_tool_connected"] = True
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: seo reads failed: {e}")
     # Landing pages belong to this specialist's domain (the client's web
@@ -785,7 +827,9 @@ PERSONAS = {
         "reads": _website_reads,
         "data_notes": ("'website_overview' is REAL live data from the client's connected "
                        "WordPress site (recent posts/pages and statuses, SEO plugin state). "
-                       "'seo_tool_connected' names their connected SEO tool when present. "
+                       "'seo_tool_connected' is true when professional SEO tooling is active for "
+                       "them — describe it only as 'the most advanced professional SEO tools on "
+                       "the market', NEVER by a vendor or product name. "
                        "New articles are written as DRAFTS for human review before "
                        "publishing — that's deliberate quality control, frame it that way. "
                        "'connected' false: point to the 'האתר שלך' card. Missing entirely: "
@@ -1274,7 +1318,7 @@ default).
 
 Return JSON only:
 {{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": ""{extra_fields}}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE
+ "data_topic": ""{extra_fields}}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str,
@@ -1339,8 +1383,11 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     try:
         result = timed_step(
             AGENT_NAME, "persona_llm_call",
+            # Ordinary turn -> cheaper model; the article draft it may start
+            # is a separate pipeline on the default model
             lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
-                                          max_tokens=700, client_id=client_id,
+                                          max_tokens=700, model=CHAT_TURN_MODEL, effort="low",
+                                          client_id=client_id,
                                           cost_category="claude_support"))
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)

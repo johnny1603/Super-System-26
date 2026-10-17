@@ -21,7 +21,8 @@ description: How uallak's sales chat + proposal pipeline works — question flow
 4. Remaining base questions run, with client-side `applyConditionalLogic` splices:
    - `financial_status` startsWith "עסק חדש" → removes the past-oriented trio and inserts
      `new_business_expectations` + `new_business_concern` (forward-looking).
-   - `organic_interest` affirmative → inserts `organic_budget`.
+   - `organic_interest` affirmative → inserts `organic_target_phrases` (which search phrases
+     they want to be found for). No organic budget is ever asked (2026-10-18).
    - `media_management` self-managed + budget → automation excitement info message.
 5. `/api/onboarding` → `run_full_onboarding`: empathy analysis (ONCE, reused — never add a
    second call), `build_proposal`, `qa_check` (numeric, no LLM), `review_and_fix_proposal`
@@ -46,17 +47,23 @@ description: How uallak's sales chat + proposal pipeline works — question flow
   campaign.
 - **Camera coaching**: `camera_comfort` answer gates script + on-camera coaching offers —
   covered by monthly content work, never a separate fee line.
-- **Organic SEO has NO budget floor** (changed 2026-08-08): a `min_monthly_budget_to_recommend`
-  of 3,000 NIS used to sit in `PRICING["seo_tiers"]` and made the chat tell under-budget clients
-  their organic budget was below the threshold. Removed everywhere — prompt, QA criterion, admin
-  pricing screen. The tiers now only pick WHICH tool (SEOptimer / SEMrush / Ahrefs) a budget can
-  carry; scope shrinks with the budget, the service is always offered. Don't reintroduce a floor.
+- **Organic SEO is ONE fixed-price package** (changed 2026-10-18): `ORGANIC_MONTHLY_PRICE_NIS`
+  (500) in onboarding_agent, exposed as `PRICING["organic_seo_monthly"]`, its own
+  "קידום אורגני (SEO)" monthly line, `"organic_seo"` in recommended_services. There is no
+  organic budget, no minimum and no tool tiers (`seo_tiers` is gone). The professional tool is
+  included in the price (one shared uallak vendor account). Tools are described only as "the most
+  advanced professional SEO tools on the market" — **never name an SEO vendor to a client**;
+  `qa_agent_content._enforce_invariants` also forces the organic line to the constant and scrubs
+  vendor names.
 - **`cost_disclaimers` replaced `self_help_tips`** (2026-08-08): the client-facing "things you can
   do yourself" list is gone from the chat and the report email; in its place is a short factual
   list of what the client pays for BEYOND uallak's fees — ad spend, their own Higgsfield
   subscription, HeyGen/ElevenLabs for the avatar add-on, the domain on a new-site package. The
-  **organic SEO tool is the stated exception**: it comes out of the organic budget and is NOT an
-  extra payment, and the copy must make that contrast explicit. Site hosting is not in this list
+  organic SEO tool is NOT in this list: it is included in the fixed organic price, and that is
+  stated by the **fixed proposal terms** (`proposal_term_*` i18n in the chat, `term_*` in the
+  report email) shown under every proposal before a package can be picked — third-party
+  subscriptions are paid directly to the vendor, the organic tool is included, and content
+  volume depends on the monthly allowance (an article with a generated image uses more). Site hosting is not in this list
   either — it is already a `monthly_management_total` line. QA criterion 9 enforces the whole set;
   `_enforce_invariants` strips any leftover `self_help_tips` and guarantees the field is a list.
 - **`goals_90_days` is mostly CONCRETE ACTIONS**, not projections: scheduled/automatic post
@@ -93,7 +100,7 @@ LLM pass (chat latency) and are recorded as lead rows with `_upgrade_request` in
 
 - Question IDs: frontend `BASE_QUESTIONS` ↔ `question_filter.BASE_QUESTION_IDS` ↔ any prompt
   that references answer keys by name (`build_proposal` reads `organic_interest`,
-  `organic_budget`, `camera_comfort`, `marketing_budget`, `financial_status`).
+  `organic_target_phrases`, `camera_comfort`, `marketing_budget`, `financial_status`).
 - Proposal JSON shape: `build_proposal` output ↔ frontend `displayProposal` ↔
   `send_client_report` email ↔ `qa_agent_content` criteria ↔ `qa_agent.qa_check` numeric rules.
   Renaming or adding a client-facing field means touching all five — `cost_disclaimers` needed

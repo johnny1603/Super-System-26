@@ -354,6 +354,67 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     return result
 
 
+# ─── Daily series (the client Performance page: 7/30/90 days + previous) ─────
+# ONE account-level query covering DAILY_SERIES_DAYS days returns one row per
+# day, so every window and its previous period come from a single call —
+# same token, same scope, same endpoint as get_campaign_performance.
+DAILY_SERIES_DAYS = 180
+DAILY_CACHE_TTL_SECONDS = 3600
+_daily_cache = {}
+
+_DAILY_GAQL = """
+    SELECT segments.date, metrics.impressions, metrics.clicks,
+           metrics.cost_micros, metrics.conversions
+    FROM customer
+    WHERE segments.date BETWEEN '{since}' AND '{until}'
+"""
+
+
+def get_daily_metrics(client_id: int, force_refresh: bool = False) -> dict:
+    """Per-day account totals for the last DAILY_SERIES_DAYS days, ending
+    yesterday (today is still incomplete). Never raises."""
+    from datetime import date, timedelta
+    cached = _daily_cache.get(client_id)
+    if cached and not force_refresh:
+        ttl = PERF_FAILURE_CACHE_TTL_SECONDS if cached[1].get("error") else DAILY_CACHE_TTL_SECONDS
+        if cached[0] > time.time() - ttl:
+            return cached[1]
+
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return {"connected": False}
+
+    until = date.today() - timedelta(days=1)
+    since = until - timedelta(days=DAILY_SERIES_DAYS - 1)
+    try:
+        rows = timed_step(AGENT_NAME, "gaql_daily", lambda: gads.search(
+            conn["access_token"], conn["account_id"],
+            _DAILY_GAQL.format(since=since.isoformat(), until=until.isoformat())))
+    except Exception as e:
+        from core.chat_fallback import alert_once
+        alert_once(AGENT_NAME, client_id, f"{PLATFORM}:daily_read_failed",
+                   f"client {client_id}: Google Ads daily metrics fetch failed: {e}",
+                   PERF_FAILURE_ALERT_DAYS)
+        failed = {"connected": True, "error": str(e), "days": []}
+        _daily_cache[client_id] = (time.time(), failed)
+        return failed
+
+    days = []
+    for row in rows:
+        metrics = row.get("metrics", {})
+        days.append({
+            "date": (row.get("segments") or {}).get("date", ""),
+            "impressions": int(metrics.get("impressions", 0)),
+            "clicks": int(metrics.get("clicks", 0)),
+            "cost": round(int(metrics.get("costMicros", 0)) / 1_000_000, 2),
+            "conversions": round(float(metrics.get("conversions", 0)), 1),
+        })
+    result = {"connected": True, "since": since.isoformat(), "until": until.isoformat(),
+              "days": days, "pulled_at": datetime.now(timezone.utc).isoformat()}
+    _daily_cache[client_id] = (time.time(), result)
+    return result
+
+
 _YESTERDAY_CONVERSIONS_GAQL = """
     SELECT metrics.conversions
     FROM campaign

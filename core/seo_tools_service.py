@@ -1,9 +1,11 @@
 """Low-level adapters for the client-paid SEO research tools.
 
-Pricing model (PRICING["seo_tiers"] in onboarding_agent — the single source of
-truth): the client pays the tool subscription DIRECTLY (SEOptimer / SEMrush /
-Ahrefs by budget tier) and uallak operates it for them. This module talks to
-whichever tool the client actually pays for — it never picks or bills a tool.
+Pricing model: CHANGED 2026-10-18 — organic is a fixed-price package
+(onboarding_agent ORGANIC_MONTHLY_PRICE_NIS) whose price includes ONE shared,
+owner-controlled uallak vendor account. This module still implements the OLD
+model (a per-client key per tool, below) and has not been rewired yet; the
+planned shared-account path is the "seo_pro" rank provider stub in
+core/rank_tracking.py. It never picks or bills a tool.
 
 The per-client API key lives in client_accounts (platform='seo_tool',
 account_id=tool slug, access_token=API key) — connected by ADMIN via

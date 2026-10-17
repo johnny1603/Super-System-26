@@ -51,12 +51,15 @@ RESEARCH_MAX_AGE_DAYS = 90
 SALES_ANSWER_FIELDS = (
     "intro", "business_age", "marketing_budget", "existing_digital", "newsletter_status",
     "main_goal", "biggest_fear", "media_management", "camera_comfort", "media_assets",
-    "content_creator_collab", "organic_history", "organic_interest",
+    "content_creator_collab", "organic_history", "organic_interest", "organic_target_phrases",
 )
 # Other answers (the sales chat's dynamic questions) are included unless they
-# are contact details, internal markers, or look financial
+# are contact details, internal markers, or look financial. organic_budget is
+# no longer asked (organic is fixed-price) — older leads still carry it, and a
+# persona must never quote it back as if it were the plan.
 _EXCLUDED_ANSWER_KEYS = {"financial_status", "revenue_trend", "recent_revenue",
-                         "name", "phone", "email", "address", "business_tax_id"}
+                         "name", "phone", "email", "address", "business_tax_id",
+                         "organic_budget"}
 _FINANCIAL_KEY = re.compile(r"revenue|profit|financ|income|loss|debt|turnover|margin|salary|cash",
                             re.IGNORECASE)
 MAX_EXTRA_ANSWERS = 8

@@ -3,6 +3,10 @@ import json
 from anthropic import Anthropic
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
+# Ordinary chat turns (a reply, no deliverable) run on the cheaper model;
+# anything that PRODUCES something (proposals, articles, research answers)
+# stays on DEFAULT_MODEL. One constant so the choice is reversible in one line.
+CHAT_TURN_MODEL = "claude-haiku-5-5"
 
 # Anthropic's server-side web search tool (the search runs on their side and
 # results come back in the same response - no client-side loop to implement).
@@ -52,8 +56,17 @@ def _extract_json(raw: str) -> str:
     return raw
 
 
+def _first_text(response) -> str:
+    """The first TEXT block. Models with thinking on by default (e.g. Haiku
+    5.5) put a thinking block first, so content[0] is not always text."""
+    for block in response.content or []:
+        if getattr(block, "type", "") == "text":
+            return block.text
+    return ""
+
+
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
-                          client_id=None, cost_category="claude_api"):
+                          client_id=None, cost_category="claude_api", effort=None):
     """Call Claude expecting a JSON object back, guarding against the response
     getting cut off mid-JSON.
 
@@ -69,12 +82,15 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
     """
     client = _client(api_key)
     total_input_tokens = total_output_tokens = 0
+    # effort is optional: only sent when a caller asks (e.g. "low" for chat turns)
+    extra = {"output_config": {"effort": effort}} if effort else {}
 
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user_message}],
+        **extra,
     )
     total_input_tokens += response.usage.input_tokens
     total_output_tokens += response.usage.output_tokens
@@ -86,6 +102,7 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
             max_tokens=max_tokens * 2,
             system=system,
             messages=[{"role": "user", "content": user_message}],
+            **extra,
         )
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
@@ -102,7 +119,7 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
     except Exception as e:
         print(f"[claude_json] cost tracking failed (non-fatal): {e}")
 
-    raw = response.content[0].text
+    raw = _first_text(response)
     cleaned = _extract_json(raw)
 
     try:

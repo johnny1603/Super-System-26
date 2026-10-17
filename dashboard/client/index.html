@@ -203,6 +203,29 @@ body {
 .conn-btn.locked-btn { background: var(--panel-2); color: var(--gray); border: 1px solid var(--border); cursor: not-allowed; }
 .conn-btn.secondary { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
 .conn-btn.secondary:hover { background: rgba(255,76,31,0.08); }
+/* Performance page */
+.perf-status { display: inline-block; font-size: 11.5px; padding: 3px 10px; border-radius: 100px;
+  margin-top: 4px; background: rgba(255,255,255,0.06); color: var(--gray); }
+.perf-status.active { background: rgba(0,201,110,0.12); color: #00C96E; }
+.perf-status.needs_attention { background: rgba(255,176,32,0.14); color: #FFB020; }
+.perf-status.connected_no_data, .perf-status.not_connected { color: var(--white); }
+.perf-note { font-size: 12px; color: var(--gray); margin-top: 8px; line-height: 1.6; }
+.perf-kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 0;
+  border-bottom: 1px solid var(--border); }
+.perf-kv:last-child { border-bottom: none; }
+.perf-table-wrap { overflow-x: auto; margin-bottom: 18px; }
+.perf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.perf-table th, .perf-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: start;
+  white-space: nowrap; }
+.perf-table th { color: var(--gray); font-weight: 600; font-size: 12px; }
+.perf-chip { font-size: 11.5px; padding: 2px 9px; border-radius: 100px; background: rgba(255,255,255,0.06); }
+.perf-chip.reached { background: rgba(0,201,110,0.12); color: #00C96E; }
+.perf-chip.improving { background: rgba(255,176,32,0.14); color: #FFB020; }
+.perf-block-title { font-weight: 700; margin: 6px 0 8px; }
+/* "עזרה" — opens the concierge with this connection's steps (core/connection_help) */
+.conn-help-btn { background: none; border: none; color: var(--gray); font: inherit; font-size: 12px;
+  text-decoration: underline; cursor: pointer; padding: 6px 0 0; display: block; }
+.conn-help-btn:hover { color: var(--accent); }
 .site-choice-row { display: flex; gap: 8px; }
 .site-choice-row .conn-btn { width: auto; flex: 1; }
 .lock-note { font-size: 11.5px; color: var(--accent); margin-top: -6px; }
@@ -1003,6 +1026,9 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item active" data-view="home" onclick="showView('home')">
     <span class="nav-ico">🏠</span><span data-i18n="nav_home">בית</span>
   </button>
+  <button class="nav-item" data-view="performance" onclick="showView('performance')">
+    <span class="nav-ico">📈</span><span data-i18n="nav_perf">ביצועים</span>
+  </button>
   <button class="nav-item" data-view="leads" onclick="showView('leads')">
     <span class="nav-ico">👥</span><span data-i18n="nav_leads">לידים</span>
     <span class="nav-count" id="navLeadsCount" style="display:none;">0</span>
@@ -1119,6 +1145,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="google_ads" style="display:none;" onclick="helpConnection('google_ads')" data-i18n="conn_help_btn">עזרה</button>
       <!-- Shown only when the login reaches several enabled accounts -->
       <div class="gads-choose" id="gadsChoose" style="display:none;"></div>
     </div>
@@ -1134,6 +1161,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="meta" style="display:none;" onclick="helpConnection('meta')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1147,6 +1175,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="tiktokBtn" onclick="connectTiktokExplained()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="tiktok" style="display:none;" onclick="helpConnection('tiktok')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1160,6 +1189,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="youtubeBtn" onclick="connectYoutube()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="youtube" style="display:none;" onclick="helpConnection('youtube')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1173,6 +1203,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <button class="conn-btn primary" id="merchantBtn" onclick="connectMerchantCenter()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="merchant_center" style="display:none;" onclick="helpConnection('merchant_center')" data-i18n="conn_help_btn">עזרה</button>
       <div id="merchantForm" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="merchant_id_note">מזהה Merchant Center נמצא ב-merchants.google.com למעלה, ליד שם החשבון (מספר בלבד)</div>
         <!-- autocomplete off + a non-contact name: Chrome was filling a phone number in here -->
@@ -1201,6 +1232,7 @@ a.media-item:hover { border-color: var(--accent); }
         <button class="conn-btn secondary" id="siteExistingBtn" onclick="toggleExistingSiteForm()" data-i18n="site_existing_btn">יש לי אתר קיים — בדקו אותו</button>
         <button class="conn-btn secondary" id="siteCreateBtn" onclick="toggleCreateSiteForm()" data-i18n="site_create_new">אין לי אתר — הקימו לי אחד</button>
       </div>
+      <button type="button" class="conn-help-btn" data-help-id="wordpress" style="display:none;" onclick="helpConnection('wordpress')" data-i18n="conn_help_btn">עזרה</button>
       <!-- Existing-site path. We DETECT what their site is rather than asking
            them to declare it, then offer exactly one of two genuinely different
            things. Every explanation is delivered into אורי's chat thread — this
@@ -1236,6 +1268,7 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <button class="conn-btn secondary" id="gtmLink" style="margin-top:8px;" onclick="connectGtm()" data-i18n="gtm_connect_btn">חיבור מדידת המרות (Google Tag Manager)</button>
       <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
+      <button type="button" class="conn-help-btn" data-help-id="tag_manager" style="display:none;" onclick="helpConnection('tag_manager')" data-i18n="conn_help_btn">עזרה</button>
       <div class="lock-note" id="gtmReconnectNote" style="display:none; margin-top:6px;" data-i18n="gtm_reconnect_note">עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.</div>
     </div>
 
@@ -1376,6 +1409,36 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
 
 </div><!-- /viewHome -->
+
+<!-- ---------- PERFORMANCE ---------- -->
+<!-- Always rendered, even when everything is zero. Data and statuses come
+     from /api/client/performance (core/performance.py) — this page only
+     paints them: no analysis, no scoring, no summaries. -->
+<div class="view" id="viewPerformance">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="perf_title">ביצועים</div>
+      <div class="section-sub" data-i18n="perf_sub">מה שנמדד בפועל בכל ערוץ — בלי הערכות</div>
+    </div>
+  </div>
+  <div class="conn-grid perf-grid" id="perfChannels"><div class="empty-row" data-i18n="perf_loading">טוען…</div></div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="paid_title">פרסום ממומן</div>
+      <div class="section-sub" data-i18n="paid_sub">כל תקופה מול התקופה הקודמת באותו אורך</div>
+    </div>
+  </div>
+  <div id="perfPaid"></div>
+
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="org_title">קידום אורגני</div>
+      <div class="section-sub" data-i18n="org_sub">מילות המפתח שסיכמנו איתך, והמיקום שלהן בגוגל</div>
+    </div>
+  </div>
+  <div id="perfOrganic"></div>
+</div><!-- /viewPerformance -->
 
 <!-- ---------- LEADS ---------- -->
 <div class="view" id="viewLeads">
@@ -2108,6 +2171,76 @@ const DASH_I18N = {
   gtm_connect_btn: { he:'חיבור מדידת המרות (Google Tag Manager)', en:'Connect conversion measurement (Google Tag Manager)', fr:'Connecter la mesure des conversions (Google Tag Manager)', ar:'ربط قياس التحويلات (Google Tag Manager)', ru:'Подключить измерение конверсий (Google Tag Manager)' },
   gtm_reconnect_btn: { he:'עדכון החיבור למדידת המרות', en:'Update the conversion measurement connection', fr:'Mettre à jour la connexion de mesure des conversions', ar:'تحديث ربط قياس التحويلات', ru:'Обновить подключение измерения конверсий' },
   gtm_reconnect_note: { he:'עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.', en:'Please update your Google Tag Manager connection: we need one more permission — to save a version of the measurement settings so they take effect. Click the button and approve on Google\'s screen. Nothing on your site has changed.', fr:'Merci de mettre à jour votre connexion Google Tag Manager : il nous faut une autorisation de plus — enregistrer une version des réglages de mesure pour qu\'ils s\'appliquent. Cliquez sur le bouton et validez sur l\'écran de Google. Rien n\'a changé sur votre site.', ar:'يرجى تحديث ربط Google Tag Manager: نحتاج إذنًا إضافيًا واحدًا — حفظ نسخة من إعدادات القياس لكي تدخل حيز التنفيذ. اضغطوا على الزر ووافقوا في شاشة Google. لم يتغير شيء في موقعكم.', ru:'Пожалуйста, обновите подключение Google Tag Manager: нужно ещё одно разрешение — сохранять версию настроек измерения, чтобы они вступили в силу. Нажмите кнопку и подтвердите на экране Google. На вашем сайте ничего не изменилось.' },
+  // Performance page
+  nav_perf: { he:'ביצועים', en:'Performance', fr:'Performance', ar:'الأداء', ru:'Результаты' },
+  perf_title: { he:'ביצועים', en:'Performance', fr:'Performance', ar:'الأداء', ru:'Результаты' },
+  perf_sub: { he:'מה שנמדד בפועל בכל ערוץ — בלי הערכות', en:'What is actually measured in each channel — no estimates', fr:'Ce qui est réellement mesuré sur chaque canal — sans estimations', ar:'ما يُقاس فعلًا في كل قناة — بلا تقديرات', ru:'То, что реально измерено в каждом канале, — без оценок' },
+  perf_loading: { he:'טוען…', en:'Loading…', fr:'Chargement…', ar:'جارٍ التحميل…', ru:'Загрузка…' },
+  perf_error: { he:'לא הצלחנו לטעון את הנתונים כרגע — נסו שוב בעוד רגע.', en:'We couldn\'t load the data right now — please try again in a moment.', fr:'Impossible de charger les données pour le moment — réessayez dans un instant.', ar:'تعذّر تحميل البيانات الآن — حاول مجددًا بعد لحظة.', ru:'Сейчас не удалось загрузить данные — попробуйте чуть позже.' },
+  ch_google_ads: { he:'Google Ads', en:'Google Ads', fr:'Google Ads', ar:'Google Ads', ru:'Google Ads' },
+  ch_meta: { he:'Meta — פייסבוק + אינסטגרם', en:'Meta — Facebook + Instagram', fr:'Meta — Facebook + Instagram', ar:'Meta — فيسبوك + إنستغرام', ru:'Meta — Facebook + Instagram' },
+  ch_tiktok: { he:'TikTok', en:'TikTok', fr:'TikTok', ar:'TikTok', ru:'TikTok' },
+  ch_organic_seo: { he:'קידום אורגני (SEO)', en:'Organic SEO', fr:'Référencement organique', ar:'التحسين المجاني لمحركات البحث', ru:'Органическое продвижение (SEO)' },
+  ch_youtube: { he:'YouTube', en:'YouTube', fr:'YouTube', ar:'YouTube', ru:'YouTube' },
+  ch_merchant_center: { he:'Merchant Center', en:'Merchant Center', fr:'Merchant Center', ar:'Merchant Center', ru:'Merchant Center' },
+  ch_website_tracking: { he:'מדידה באתר', en:'Website tracking', fr:'Suivi du site', ar:'القياس في الموقع', ru:'Аналитика сайта' },
+  ch_leads: { he:'לידים', en:'Leads', fr:'Leads', ar:'العملاء المحتملون', ru:'Лиды' },
+  st_not_in_plan: { he:'לא כלול בחבילה', en:'Not in your plan', fr:'Hors de votre formule', ar:'غير مشمول في باقتك', ru:'Не входит в пакет' },
+  st_not_in_plan_note: { he:'אפשר להוסיף בכל עת דרך הצ׳אט.', en:'You can add it any time through the chat.', fr:'Vous pouvez l\'ajouter à tout moment via le chat.', ar:'يمكن إضافته في أي وقت عبر الدردشة.', ru:'Можно добавить в любой момент через чат.' },
+  st_not_connected: { he:'עוד לא מחובר', en:'Not connected yet', fr:'Pas encore connecté', ar:'غير مرتبط بعد', ru:'Ещё не подключено' },
+  st_connected_no_data: { he:'מחובר — עוד אין נתונים', en:'Connected — no data yet', fr:'Connecté — pas encore de données', ar:'مرتبط — لا توجد بيانات بعد', ru:'Подключено — данных пока нет' },
+  st_active: { he:'פעיל', en:'Active', fr:'Actif', ar:'نشط', ru:'Активно' },
+  st_needs_attention: { he:'דורש תשומת לב', en:'Needs attention', fr:'Requiert votre attention', ar:'يحتاج إلى انتباه', ru:'Требует внимания' },
+  att_reconnect: { he:'צריך לעדכן את החיבור — לחיצה אחת בכרטיס החיבור.', en:'The connection needs a quick update — one click on its connection card.', fr:'La connexion doit être mise à jour — un clic sur sa carte de connexion.', ar:'يحتاج الربط إلى تحديث — نقرة واحدة في بطاقة الربط.', ru:'Подключение нужно обновить — один клик на его карточке.' },
+  att_choose_account: { he:'נשאר לבחור את חשבון הפרסום של העסק.', en:'Just pick your business\'s ad account.', fr:'Il reste à choisir le compte publicitaire de votre entreprise.', ar:'تبقّى اختيار الحساب الإعلاني لعملك.', ru:'Осталось выбрать рекламный аккаунт бизнеса.' },
+  att_finish_setup: { he:'נשאר שלב אחד להשלמת החיבור.', en:'One step left to finish the connection.', fr:'Il reste une étape pour finaliser la connexion.', ar:'تبقّت خطوة واحدة لإكمال الربط.', ru:'Остался один шаг, чтобы завершить подключение.' },
+  att_sync_failed: { he:'לא הצלחנו למשוך נתונים כרגע — הצוות כבר יודע ובודק.', en:'We couldn\'t pull data right now — the team already knows and is checking.', fr:'Impossible de récupérer les données pour le moment — l\'équipe est au courant et vérifie.', ar:'تعذّر سحب البيانات الآن — الفريق على علم ويتحقق.', ru:'Сейчас не удалось получить данные — команда уже в курсе и проверяет.' },
+  note_page_only: { he:'העמוד מחובר; חשבון פרסום עוד לא מחובר, ולכן אין נתוני פרסום.', en:'Your Page is connected; no ad account is connected yet, so there is no ad data.', fr:'Votre Page est connectée ; aucun compte publicitaire ne l\'est encore, donc pas de données publicitaires.', ar:'صفحتك مرتبطة؛ لا يوجد حساب إعلاني مرتبط بعد، لذلك لا توجد بيانات إعلانية.', ru:'Страница подключена; рекламный аккаунт ещё нет, поэтому рекламных данных нет.' },
+  perf_last_checked: { he:'נבדק לאחרונה: {t}', en:'Last checked: {t}', fr:'Dernière vérification : {t}', ar:'آخر فحص: {t}', ru:'Последняя проверка: {t}' },
+  perf_pulled: { he:'הנתונים נכונים ל־{t}', en:'Data as of {t}', fr:'Données au {t}', ar:'البيانات حتى {t}', ru:'Данные на {t}' },
+  perf_last30: { he:'30 הימים האחרונים', en:'Last 30 days', fr:'30 derniers jours', ar:'آخر 30 يومًا', ru:'Последние 30 дней' },
+  perf_videos_period: { he:'סרטונים שפורסמו ב־{n} הימים האחרונים', en:'Videos published in the last {n} days', fr:'Vidéos publiées ces {n} derniers jours', ar:'فيديوهات نُشرت في آخر {n} يومًا', ru:'Видео, опубликованные за последние {n} дней' },
+  metric_spend: { he:'הוצאה', en:'Spend', fr:'Dépenses', ar:'الإنفاق', ru:'Расходы' },
+  metric_impressions: { he:'חשיפות', en:'Impressions', fr:'Impressions', ar:'مرات الظهور', ru:'Показы' },
+  metric_clicks: { he:'קליקים', en:'Clicks', fr:'Clics', ar:'النقرات', ru:'Клики' },
+  metric_conversions: { he:'המרות (לפי הפלטפורמה)', en:'Conversions (platform-reported)', fr:'Conversions (selon la plateforme)', ar:'التحويلات (حسب المنصة)', ru:'Конверсии (по данным платформы)' },
+  metric_leads: { he:'לידים', en:'Leads', fr:'Leads', ar:'العملاء المحتملون', ru:'Лиды' },
+  metric_cost_per_lead: { he:'עלות לליד', en:'Cost per lead', fr:'Coût par lead', ar:'تكلفة العميل المحتمل', ru:'Стоимость лида' },
+  metric_videos: { he:'סרטונים', en:'Videos', fr:'Vidéos', ar:'الفيديوهات', ru:'Видео' },
+  metric_views: { he:'צפיות', en:'Views', fr:'Vues', ar:'المشاهدات', ru:'Просмотры' },
+  metric_likes: { he:'לייקים', en:'Likes', fr:'J\'aime', ar:'الإعجابات', ru:'Лайки' },
+  metric_comments: { he:'תגובות', en:'Comments', fr:'Commentaires', ar:'التعليقات', ru:'Комментарии' },
+  metric_shares: { he:'שיתופים', en:'Shares', fr:'Partages', ar:'المشاركات', ru:'Репосты' },
+  metric_lead_event_live: { he:'מדידת לידים פעילה באתר', en:'Lead measurement live on the site', fr:'Mesure des leads active sur le site', ar:'قياس العملاء المحتملين فعّال في الموقع', ru:'Измерение лидов на сайте активно' },
+  metric_last_n_days: { he:'{n} ימים אחרונים', en:'Last {n} days', fr:'{n} derniers jours', ar:'آخر {n} يومًا', ru:'Последние {n} дней' },
+  paid_title: { he:'פרסום ממומן', en:'Paid advertising', fr:'Publicité payante', ar:'الإعلانات المدفوعة', ru:'Платная реклама' },
+  paid_sub: { he:'כל תקופה מול התקופה הקודמת באותו אורך', en:'Each period against the previous period of the same length', fr:'Chaque période comparée à la précédente de même durée', ar:'كل فترة مقابل الفترة السابقة بالطول نفسه', ru:'Каждый период против предыдущего такой же длины' },
+  paid_none: { he:'עוד אין ערוץ ממומן פעיל עם נתונים.', en:'No active paid channel with data yet.', fr:'Pas encore de canal payant actif avec des données.', ar:'لا توجد قناة مدفوعة نشطة ببيانات بعد.', ru:'Пока нет активного платного канала с данными.' },
+  perf_window: { he:'{n} ימים', en:'{n} days', fr:'{n} jours', ar:'{n} يومًا', ru:'{n} дн.' },
+  perf_previous: { he:'קודמת', en:'Previous', fr:'Précédente', ar:'السابقة', ru:'Предыдущий' },
+  perf_leads_no_channel: { he:'שיוך לידים לערוץ עוד לא זמין, ולכן לידים ועלות לליד מוצגים כ־—.', en:'Lead-to-channel attribution isn\'t available yet, so leads and cost per lead show as —.', fr:'L\'attribution des leads par canal n\'est pas encore disponible : leads et coût par lead s\'affichent « — ».', ar:'إسناد العملاء المحتملين إلى القناة غير متاح بعد، لذا يظهر العدد والتكلفة كـ —.', ru:'Привязка лидов к каналу пока недоступна, поэтому лиды и стоимость лида показаны как —.' },
+  org_title: { he:'קידום אורגני', en:'Organic SEO', fr:'Référencement organique', ar:'التحسين المجاني لمحركات البحث', ru:'Органическое продвижение' },
+  org_sub: { he:'מילות המפתח שסיכמנו איתך, והמיקום שלהן בגוגל', en:'The keywords we agreed on with you, and where they stand on Google', fr:'Les mots-clés convenus avec vous, et leur position sur Google', ar:'الكلمات المفتاحية التي اتفقنا عليها معك، وموقعها في غوغل', ru:'Согласованные с вами ключевые слова и их позиции в Google' },
+  org_not_connected: { he:'מעקב דירוגים עדיין לא מחובר', en:'Rank tracking isn\'t connected yet', fr:'Le suivi des positions n\'est pas encore connecté', ar:'تتبّع الترتيب غير مرتبط بعد', ru:'Отслеживание позиций ещё не подключено' },
+  org_no_keywords: { he:'עוד לא הוגדרו מילות מפתח יעד.', en:'No target keywords have been set yet.', fr:'Aucun mot-clé cible n\'a encore été défini.', ar:'لم تُحدَّد كلمات مفتاحية مستهدفة بعد.', ru:'Целевые ключевые слова пока не заданы.' },
+  org_summary: { he:'{x} מתוך {y} ביעד', en:'{x} of {y} at target', fr:'{x} sur {y} à l\'objectif', ar:'{x} من {y} في الهدف', ru:'{x} из {y} на целевой позиции' },
+  col_keyword: { he:'מילת מפתח', en:'Keyword', fr:'Mot-clé', ar:'الكلمة المفتاحية', ru:'Ключевое слово' },
+  col_target: { he:'יעד', en:'Target', fr:'Objectif', ar:'الهدف', ru:'Цель' },
+  col_current: { he:'מיקום נוכחי', en:'Current position', fr:'Position actuelle', ar:'الموقع الحالي', ru:'Текущая позиция' },
+  col_current_avg: { he:'מיקום ממוצע', en:'Average position', fr:'Position moyenne', ar:'متوسط الموقع', ru:'Средняя позиция' },
+  col_change: { he:'שינוי מול לפני 30 יום', en:'Change vs 30 days ago', fr:'Évolution sur 30 jours', ar:'التغيّر مقارنة بقبل 30 يومًا', ru:'Изменение за 30 дней' },
+  col_status: { he:'סטטוס', en:'Status', fr:'Statut', ar:'الحالة', ru:'Статус' },
+  col_source: { he:'מקור', en:'Source', fr:'Source', ar:'المصدر', ru:'Источник' },
+  chip_reached: { he:'הגיע ליעד', en:'Reached', fr:'Atteint', ar:'تم الوصول', ru:'Достигнуто' },
+  chip_improving: { he:'משתפר', en:'Improving', fr:'En progression', ar:'يتحسّن', ru:'Растёт' },
+  chip_not_yet: { he:'עוד לא', en:'Not yet', fr:'Pas encore', ar:'ليس بعد', ru:'Пока нет' },
+  chip_no_data: { he:'אין נתונים', en:'No data', fr:'Pas de données', ar:'لا توجد بيانات', ru:'Нет данных' },
+  chip_average: { he:'מיקום ממוצע', en:'Average position', fr:'Position moyenne', ar:'متوسط الموقع', ru:'Средняя позиция' },
+  source_pro: { he:'כלי SEO מקצועי', en:'Professional SEO tool', fr:'Outil SEO professionnel', ar:'أداة SEO احترافية', ru:'Профессиональный SEO-инструмент' },
+  source_search_console: { he:'נתוני החיפוש של גוגל', en:'Google search data', fr:'Données de recherche Google', ar:'بيانات بحث غوغل', ru:'Поисковые данные Google' },
+  source_none: { he:'—', en:'—', fr:'—', ar:'—', ru:'—' },
+  conn_help_btn: { he:'עזרה', en:'Help', fr:'Aide', ar:'مساعدة', ru:'Помощь' },
+  conn_help_msg: { he:'אשמח לעזרה בחיבור {name}', en:'I\'d like help connecting {name}', fr:'J\'aimerais de l\'aide pour connecter {name}', ar:'أريد مساعدة في ربط {name}', ru:'Помогите, пожалуйста, подключить {name}' },
   gtm_no_site_note: { he:'מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.', en:'Measurement is installed on your website once your site is connected.', fr:'La mesure sera installée sur votre site dès qu\'il sera connecté.', ar:'سيتم تثبيت القياس على موقعكم بمجرد ربط الموقع.', ru:'Измерение будет установлено на вашем сайте, как только сайт будет подключён.' },
   gtm_connected_btn: { he:'מדידת המרות מחוברת ✓', en:'Conversion measurement connected ✓', fr:'Mesure des conversions connectée ✓', ar:'قياس التحويلات مرتبط ✓', ru:'Измерение конверсий подключено ✓' },
   notice_gtm_connected: { he:'Google Tag Manager חובר בהצלחה ✓ — מעכשיו אפשר לוודא ולהגדיר מדידת לידים באתר', en:'Google Tag Manager connected ✓ — lead measurement on your site can now be verified and configured', fr:'Google Tag Manager connecté ✓ — la mesure des leads sur votre site peut désormais être vérifiée et configurée', ar:'تم ربط Google Tag Manager ✓ — يمكن الآن التحقق من قياس العملاء المحتملين على موقعكم وإعداده', ru:'Google Tag Manager подключён ✓ — теперь можно проверять и настраивать измерение лидов на вашем сайте' },
@@ -4116,7 +4249,9 @@ async function startInterview() {
   await interviewTurn('');   // opening turn — nothing said yet
 }
 
-async function sendInWindow(personaId) {
+// `extra`: optional fields for this one message (e.g. {help_connection} from
+// a card's "עזרה" button)
+async function sendInWindow(personaId, extra) {
   const w = CHAT_WINDOWS[personaId];
   if (!w) return;
   const text = w.inputEl.value.trim();
@@ -4124,7 +4259,8 @@ async function sendInWindow(personaId) {
   appendMsg(w.msgsEl, text, 'user');
   setChatInput(w.inputEl, '');   // also shrinks a grown box back to one row
   // While the interview is running, the general window's sends are its turns
-  if (interviewMode && personaId === 'general') { await interviewTurn(text); return; }
+  // (a help request still goes to the concierge — the client asked for it)
+  if (interviewMode && personaId === 'general' && !extra) { await interviewTurn(text); return; }
   // Typing indicator - upgrade proposals and web searches can take a while,
   // the client should see the chat is working, not frozen
   const typing = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
@@ -4133,7 +4269,7 @@ async function sendInWindow(personaId) {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, persona: personaId }),
+      body: JSON.stringify(Object.assign({ message: text, persona: personaId }, extra || {})),
     });
     const data = await res.json();
     typing.remove();
@@ -4291,7 +4427,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'leads', 'landing', 'media', 'personal', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'landing', 'media', 'personal', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -4306,6 +4442,7 @@ function showView(name) {
   if (history.replaceState) history.replaceState(null, '', name === 'home' ? '#' : '#' + name);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
+  if (name === 'performance' && !viewLoaded.performance) { viewLoaded.performance = true; loadPerformance(); }
   if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); loadDriveMirror(''); }
@@ -5267,6 +5404,161 @@ async function askAboutAutomation(vendor) {
   window.open(link + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
 }
 
+// ─── Performance ("ביצועים") ────────────────────────────────────────────────
+// Paints /api/client/performance. Every status, number and "no data" decision
+// is made server-side (core/performance.py); a missing number renders as —,
+// never as 0.
+let PERF_DATA = null;
+const PERF_CHANNEL_ORDER = ['google_ads', 'meta', 'tiktok', 'organic_seo', 'youtube',
+                            'merchant_center', 'website_tracking', 'leads'];
+async function loadPerformance() {
+  try {
+    const res = await fetch('/api/client/performance', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    PERF_DATA = body.success ? body.data : null;
+  } catch (e) {
+    console.error('performance load failed', e);
+    PERF_DATA = null;
+  }
+  renderPerformance();
+}
+function perfNum(v) { return v == null ? '—' : Number(v).toLocaleString(uallakI18n.locale()); }
+function perfMoney(v) { return v == null ? '—' : ils(v); }
+function perfKv(label, value) {
+  return `<div class="perf-kv"><span>${esc(label)}</span><span dir="ltr">${esc(value)}</span></div>`;
+}
+function perfKeyNumbers(id, c) {
+  const t = uallakI18n.t, k = c.key_numbers || {};
+  if (id === 'google_ads' || id === 'meta') {
+    return `<div class="perf-note">${esc(t('perf_last30'))}</div>`
+      + perfKv(t('metric_spend'), perfMoney(k.spend)) + perfKv(t('metric_impressions'), perfNum(k.impressions))
+      + perfKv(t('metric_clicks'), perfNum(k.clicks)) + perfKv(t('metric_conversions'), perfNum(k.conversions));
+  }
+  if (id === 'tiktok' || id === 'youtube') {
+    return `<div class="perf-note">${esc(t('perf_videos_period', { n: c.period_days || 30 }))}</div>`
+      + ['videos', 'views', 'likes', 'comments', 'shares'].filter(m => k[m] != null)
+          .map(m => perfKv(t('metric_' + m), perfNum(k[m]))).join('');
+  }
+  if (id === 'website_tracking') return perfKv(t('metric_lead_event_live'), '✓');
+  if (id === 'leads') {
+    return [7, 30, 90].map(n => perfKv(t('metric_last_n_days', { n }), perfNum(k['last_' + n + '_days']))).join('');
+  }
+  if (id === 'organic_seo') return `<div class="perf-note">${esc(t('org_summary', { x: k.at_target || 0, y: k.total || 0 }))}</div>`;
+  return '';
+}
+function perfCard(id, c) {
+  const t = uallakI18n.t;
+  let body = '';
+  if (c.status === 'active') body += perfKeyNumbers(id, c);
+  if (c.status === 'needs_attention') body += `<div class="perf-note">${esc(t('att_' + (c.reason || 'sync_failed')))}</div>`;
+  if (c.status === 'not_in_plan') body += `<div class="perf-note">${esc(t('st_not_in_plan_note'))}</div>`;
+  if (c.note) body += `<div class="perf-note">${esc(t('note_' + c.note))}</div>`;
+  const when = c.status === 'active'
+    ? (c.data_pulled_at ? t('perf_pulled', { t: fmtDateTime(c.data_pulled_at) }) : '')
+    : (c.last_checked ? t('perf_last_checked', { t: fmtDateTime(c.last_checked) }) : '');
+  const connect = c.connect
+    ? `<button class="conn-btn primary" style="margin-top:10px;" onclick="perfGoConnect('${esc(c.connect)}')">${esc(t('connect_now'))}</button>` : '';
+  return `<div class="conn-card unlocked">
+      <div class="conn-name">${esc(t('ch_' + id))}</div>
+      <span class="perf-status ${esc(c.status)}">${esc(t('st_' + c.status))}</span>
+      ${body}${when ? `<div class="perf-note">${esc(when)}</div>` : ''}${connect}
+    </div>`;
+}
+function renderPaid(paid) {
+  const t = uallakI18n.t;
+  if (!paid.length) return `<div class="empty-row">${esc(t('paid_none'))}</div>`;
+  const metrics = [['spend', perfMoney], ['impressions', perfNum], ['clicks', perfNum],
+                   ['conversions', perfNum], ['leads', perfNum], ['cost_per_lead', perfMoney]];
+  return paid.map(p => {
+    const head = p.windows.map(w => `<th>${esc(t('perf_window', { n: w.days }))}</th><th>${esc(t('perf_previous'))}</th>`).join('');
+    const rows = metrics.map(([m, fmt]) => `<tr><td>${esc(t('metric_' + m))}</td>${p.windows.map(w =>
+      `<td dir="ltr">${esc(fmt(w.current[m]))}</td><td dir="ltr" style="color:var(--gray);">${esc(fmt(w.previous[m]))}</td>`).join('')}</tr>`).join('');
+    return `<div class="perf-block-title">${esc(t('ch_' + p.channel))}</div>
+      <div class="perf-table-wrap"><table class="perf-table"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+      ${p.leads_by_channel ? '' : `<div class="perf-note">${esc(t('perf_leads_no_channel'))}</div>`}
+      <div class="perf-note">${esc(t('perf_pulled', { t: fmtDateTime(p.data_pulled_at) }))}</div>`;
+  }).join('');
+}
+function renderOrganic(o) {
+  const t = uallakI18n.t;
+  const rows = o.rows || [];
+  let html = '';
+  if (!o.tracking_connected) html += `<div class="empty-row">${esc(t('org_not_connected'))}</div>`;
+  if (!rows.length) return html + `<div class="perf-note">${esc(t('org_no_keywords'))}</div>`;
+  const s = o.summary || {};
+  html += `<div class="perf-block-title">${esc(t('org_summary', { x: s.at_target || 0, y: s.total || 0 }))}</div>`;
+  // Without an exact-rank source the column is an AVERAGE position, and says so
+  const anyExact = rows.some(r => r.position_kind === 'exact');
+  const currentLabel = anyExact ? t('col_current') : t('col_current_avg');
+  html += `<div class="perf-table-wrap"><table class="perf-table"><thead><tr>
+      <th>${esc(t('col_keyword'))}</th><th>${esc(t('col_target'))}</th><th>${esc(currentLabel)}</th>
+      <th>${esc(t('col_change'))}</th><th>${esc(t('col_status'))}</th><th>${esc(t('col_source'))}</th></tr></thead><tbody>`
+    + rows.map(r => {
+      const change = r.change_30d == null ? '—' : (r.change_30d > 0 ? '▲ ' : r.change_30d < 0 ? '▼ ' : '') + Math.abs(r.change_30d);
+      const avgChip = r.position_kind === 'average' ? ` <span class="perf-chip">${esc(t('chip_average'))}</span>` : '';
+      return `<tr><td dir="auto">${esc(r.keyword)}</td><td dir="ltr">${esc(r.target_position)}</td>
+        <td dir="ltr">${esc(perfNum(r.current_position))}${avgChip}</td><td dir="ltr">${esc(change)}</td>
+        <td><span class="perf-chip ${esc(r.status)}">${esc(t('chip_' + r.status))}</span></td>
+        <td style="color:var(--gray);">${r.source ? esc(t(r.source)) : '—'}</td></tr>`;
+    }).join('') + '</tbody></table></div>';
+  return html;
+}
+function renderPerformance() {
+  const t = uallakI18n.t;
+  const chEl = document.getElementById('perfChannels');
+  const paidEl = document.getElementById('perfPaid');
+  const orgEl = document.getElementById('perfOrganic');
+  if (!PERF_DATA) {
+    chEl.innerHTML = `<div class="empty-row">${esc(t('perf_error'))}</div>`;
+    paidEl.innerHTML = ''; orgEl.innerHTML = '';
+    return;
+  }
+  const chs = PERF_DATA.channels || {};
+  chEl.innerHTML = PERF_CHANNEL_ORDER.map(id => perfCard(id, chs[id] || { status: 'not_in_plan' })).join('');
+  paidEl.innerHTML = renderPaid(PERF_DATA.paid || []);
+  orgEl.innerHTML = renderOrganic(PERF_DATA.organic || {});
+}
+// "Connect" on a Performance card goes to that card on the home view — it
+// never starts an OAuth flow by itself
+function perfGoConnect(elId) {
+  showView('home');
+  setTimeout(() => {
+    const el = document.getElementById(elId);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+  }, 300);
+}
+
+// ─── Connection help ("עזרה") ───────────────────────────────────────────────
+// Which connections have help comes from the server config (core/
+// connection_help) — a button shows only when its entry is active there.
+let CONNECTION_HELP = {};
+async function loadConnectionHelp() {
+  try {
+    const res = await fetch('/api/client/connection-help?lang=' + encodeURIComponent(uallakI18n.current()),
+                            { credentials: 'same-origin' });
+    const body = await res.json();
+    CONNECTION_HELP = {};
+    (body.success ? body.data : []).forEach(c => { CONNECTION_HELP[c.id] = c; });
+  } catch (e) {
+    console.error('connection help list failed', e);
+    CONNECTION_HELP = {};
+  }
+  document.querySelectorAll('.conn-help-btn').forEach(btn => {
+    btn.style.display = CONNECTION_HELP[btn.getAttribute('data-help-id')] ? 'block' : 'none';
+  });
+}
+// Opens the general concierge with the connection pre-seeded; the server adds
+// that connection's steps + links and nothing else
+function helpConnection(id) {
+  const entry = CONNECTION_HELP[id];
+  if (!entry) return;
+  const w = openAgentWindow('general');
+  if (!w) return;
+  setChatInput(w.inputEl, uallakI18n.t('conn_help_msg', { name: entry.title }));
+  sendInWindow('general', { help_connection: id });
+}
+
 // The general concierge, not a specialist: automation isn't ads, site or media,
 // and the concierge is the persona that knows this is a manual, unpriced service.
 function chatAboutAutomation(vendor) {
@@ -5320,11 +5612,12 @@ async function loadSupport() {
   // ~5min by the agents, so the refetches are cheap). Static text is handled
   // by the engine's applyDom.
   uallakI18n.onChange(() => {
-    loadDashboard(); loadBilling(); loadSuggestions();
+    loadDashboard(); loadBilling(); loadSuggestions(); loadConnectionHelp();
     // The nav sections are JS-built too, so re-render whichever ones the
     // client has actually opened (an unopened section re-renders on first
     // visit anyway, in the language that is current by then).
     renderExportBars();
+    if (viewLoaded.performance) renderPerformance();
     if (viewLoaded.leads) { loadLeads(); loadLeadCapture(); }
     if (viewLoaded.media) { loadMediaAssets(); renderDriveMirror(); }
     if (viewLoaded.personal) loadAccount();
@@ -5420,6 +5713,7 @@ async function loadSupport() {
   loadDashboard();
   loadBilling();
   loadSuggestions();
+  loadConnectionHelp();
 
   // A deep link (/dashboard/#leads) lands on that section; anything else, or
   // nothing, lands on home. Done last so the lazy loaders fire after the

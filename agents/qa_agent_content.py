@@ -1,6 +1,7 @@
 import json
 import re
 
+from agents.onboarding_agent import ORGANIC_MONTHLY_PRICE_NIS
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
 SYSTEM = """You are the quality reviewer and content fixer for uallak, an Israeli marketing agency.
@@ -39,23 +40,23 @@ version that fixes anything that fails:
    - the domain (~80-100 NIS/year), when a package includes building a NEW website. The site's
      HOSTING is not one of these — it is already a monthly_management_total line, so an item
      claiming the client pays hosting separately is WRONG and must be removed
-   - when organic SEO is recommended: an item stating the OPPOSITE — that the SEO tool subscription
-     (SEOptimer/SEMrush/Ahrefs) is already included in the stated organic budget and is NOT an
-     additional payment. An item that says the client pays the SEO tool separately/directly on top
-     of the fees is WRONG and must be rewritten
+   - organic SEO needs NO item: the professional SEO tool is included in the fixed organic price,
+     and fixed terms shown under every proposal already say so (as they do for the monthly content
+     allowance and third-party subscriptions in general). An item that says the client pays for an
+     SEO tool, or that names any SEO vendor/product, is WRONG and must be removed
    Items must be short factual bullets with no selling or reassurance language. This list replaced
    the old "things you can do yourself" tips — if any self-help/tip content appears in the
    proposal, remove it
-10. NO ORGANIC SEO BUDGET FLOOR — there is no minimum organic budget. If the client's
-    organic_interest is affirmative, at least one package must recommend organic SEO with a tool
-    tier matching their organic_budget, and the plan's scope must simply be proportionate to that
-    budget. Any text telling the client their organic budget is below a threshold/minimum, that
-    organic SEO "doesn't pay off" at their level, that they should come back with a bigger budget,
-    or that quotes a minimum organic budget figure, is a FAILURE — delete it and replace it with a
-    proportionate plan. Silently dropping organic SEO when they asked for it is also a failure
+10. ORGANIC SEO IS A FIXED-PRICE OPTION — there is no organic budget and no minimum. If the
+    client's organic_interest is affirmative, at least one package must include organic SEO
+    ("organic_seo" in recommended_services) with a "קידום אורגני (SEO)" monthly line of exactly
+    __ORGANIC_PRICE__ NIS. Any text that mentions an organic budget, says organic SEO only
+    pays off above some budget, tells the client to come back with a bigger budget, or names an SEO
+    vendor/product (e.g. any tool brand) is a FAILURE — delete it. Silently dropping organic SEO
+    when they asked for it is also a failure
 11. RECOMMENDED_SERVICES CONSISTENCY — recommended_services lists ONLY the package's ONGOING
-    managed services (what the monthly fee is computed from: "google", "meta", "tiktok", organic
-    SEO tier, automation). Check strict two-way agreement between monthly_breakdown's
+    managed services (what the monthly fee is computed from: "google", "meta", "tiktok",
+    "organic_seo", automation). Check strict two-way agreement between monthly_breakdown's
     platform-management lines and recommended_services: a "ניהול טיקטוק"-style monthly line whose
     platform is missing from recommended_services (or vice versa) is a failure — fix whichever
     side is wrong per the package's actual story. IMPORTANT EXEMPTION: one-time setup deliverables
@@ -117,6 +118,8 @@ Return JSON only, with this exact shape:
 Set review_approved=false if ANY criterion failed in the ORIGINAL proposal (before your fixes).
 issues must be empty when review_approved=true. Always return a complete, corrected "proposal"
 object regardless of review_approved — the corrected proposal is what actually gets sent to the client."""
+# A placeholder, not an f-string: the JSON shape above is full of braces
+SYSTEM = SYSTEM.replace("__ORGANIC_PRICE__", str(ORGANIC_MONTHLY_PRICE_NIS))
 
 
 # ─── Deterministic invariants ─────────────────────────────────────────────────
@@ -132,6 +135,13 @@ _PLATFORM_KEYWORDS = {
     "tiktok": ["טיקטוק", "טיק טוק", "tiktok"],
 }
 
+# Organic SEO's fixed-price monthly line, recognised by its label in any language
+_ORGANIC_KEYWORDS = ["אורגני", "organic", "seo", "référencement", "عضوي", "органическ"]
+# SEO vendors are never named to a client (2026-10-18). The prompts forbid it;
+# this is the last guard before the proposal ships.
+_SEO_VENDOR_RE = re.compile(r"\s*\(?\s*(?:seoptimer|semrush|ahrefs)(?:\s*/\s*(?:seoptimer|semrush|ahrefs))*\s*\)?",
+                            re.IGNORECASE)
+
 # Words the build prompt bans from honest_note outright - the neutral month-2
 # timeline sentence is phrased "לא נגבים דמי ניהול", so none of these can appear
 # in a compliant honest_note.
@@ -141,6 +151,23 @@ _PROMO_SENTENCE_MARKERS = ["מתוך 20", "20 עסקים", "הטבה", "מתנה
 def _contains_any(text: str, keywords: list) -> bool:
     text = str(text).lower()
     return any(k in text for k in keywords)
+
+
+def _scrub_seo_vendors(node) -> int:
+    """Strips SEO vendor names from every string VALUE in the proposal, in
+    place (dict keys are labels we set, left alone). Returns how many strings
+    changed."""
+    changed = 0
+    items = node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()
+    for key, value in list(items):
+        if isinstance(value, str):
+            cleaned = _SEO_VENDOR_RE.sub("", value)
+            if cleaned != value:
+                node[key] = re.sub(r"\s{2,}", " ", cleaned).strip()
+                changed += 1
+        elif isinstance(value, (dict, list)):
+            changed += _scrub_seo_vendors(value)
+    return changed
 
 
 def _enforce_invariants(proposal: dict) -> dict:
@@ -190,6 +217,29 @@ def _enforce_invariants(proposal: dict) -> dict:
                 print(f"QA/Review WARNING [{pkg.get('id', '?')}]: '{platform}' is in recommended_services "
                       f"but has no monthly_breakdown line - possible mispricing, not auto-fixable")
         pkg["recommended_services"] = services
+
+        # Organic SEO is ONE fixed price: correct a mispriced organic line and
+        # carry the difference into the total and the benefit value with it
+        for line, value in list(monthly.items()):
+            if not _contains_any(line, _ORGANIC_KEYWORDS):
+                continue
+            try:
+                current = int(value or 0)
+            except (TypeError, ValueError):
+                current = 0
+            if current != ORGANIC_MONTHLY_PRICE_NIS:
+                monthly[line] = ORGANIC_MONTHLY_PRICE_NIS
+                total = int(pkg.get("monthly_management_total", 0) or 0) + ORGANIC_MONTHLY_PRICE_NIS - current
+                pkg["monthly_management_total"] = total
+                pkg["benefit_value"] = total * 2
+                fixes.append(f"[{pkg.get('id', '?')}] organic line {current} -> {ORGANIC_MONTHLY_PRICE_NIS}")
+            if not any(_contains_any(s, _ORGANIC_KEYWORDS) for s in services):
+                services.append("organic_seo")
+                fixes.append(f"[{pkg.get('id', '?')}] recommended_services: added 'organic_seo'")
+
+    scrubbed = _scrub_seo_vendors(proposal)
+    if scrubbed:
+        fixes.append(f"removed SEO vendor names from {scrubbed} field(s)")
 
     if fixes:
         print(f"QA/Review deterministic fixes applied: {fixes}")

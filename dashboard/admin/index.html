@@ -827,12 +827,10 @@ async function loadPricing() {
     </div>`;
 
     const seoBlock = `<div class="pricing-block">
-      <div class="pricing-block-title">SEO אורגני — בחירת כלי לפי תקציב</div>
-      ${row('סף מינימלי להמלצה', 'אין — נבנית תכנית פרופורציונלית לכל תקציב')}
-      ${row('מנוי הכלי', 'כלול בתוך התקציב האורגני, לא תשלום נפרד של הלקוח')}
-      ${row('רמה A', `${esc(d.organic_seo_tiers.level_a.tool)} (${esc(d.organic_seo_tiers.level_a.monthly_budget_range)} ₪)`)}
-      ${row('רמה B', `${esc(d.organic_seo_tiers.level_b.tool)} (${esc(d.organic_seo_tiers.level_b.monthly_budget_range)} ₪)`)}
-      ${row('רמה C', `${esc(d.organic_seo_tiers.level_c.tool)} (${esc(d.organic_seo_tiers.level_c.monthly_budget_range)} ₪)`)}
+      <div class="pricing-block-title">SEO אורגני — חבילה במחיר קבוע</div>
+      ${row('מחיר חודשי', ils(d.organic_seo_monthly_ils) + '/חודש')}
+      ${row('תקציב אורגני / סף מינימלי', 'אין — לא נשאל ולא מחושב')}
+      ${row('כלי ה-SEO', 'חשבון ספק אחד משותף של uallak, כלול במחיר')}
     </div>`;
 
     const avatarTiers = d.avatar.monthly_tiers.map(t =>
@@ -2263,7 +2261,7 @@ async function crLoadBudget(clientId) {
       </div>
       <div>
         <div class="drawer-label">אורגני ${conf('estimate')}</div>
-        <div class="drawer-stat-row"><span class="drawer-stat-label">תקציב חודשי שהוצהר</span><span>${organic.stated_monthly_budget_ils ? ils(organic.stated_monthly_budget_ils) : '<span style="color:var(--gray);">לא הוצהר</span>'}</span></div>
+        <div class="drawer-stat-row"><span class="drawer-stat-label">מחיר חבילה קבוע</span><span>${organic.package_monthly_price_ils ? ils(organic.package_monthly_price_ils) + '/חודש' : '—'}</span></div>
         <div style="font-size:11px;color:var(--gray);margin:6px 0;">אין שורת הוצאה לאורגני במערכת — מוצגת עבודה שבוצעה:</div>
         ${work}
       </div>

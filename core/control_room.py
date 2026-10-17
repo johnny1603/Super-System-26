@@ -6,7 +6,7 @@ Almost everything here is REUSE, deliberately:
   - client list ............ admin_service.list_clients_admin
   - account/cost numbers ... admin_service.get_client_admin
   - money picture .......... budget_agent.get_financial_picture (paid side)
-                             + its forecast (stated organic budget)
+                             + its forecast (fixed organic package price)
   - alerts ................. the `alerts` table (agent_alert / alert())
   - feedback ............... engagement_agent.list_feedback
   - connection gaps ........ client_journey.connection_status
@@ -235,10 +235,11 @@ def budget_split(client_id: int) -> dict:
     PAID has real money: the client's stated monthly ad budget (onboarding
     answers, parsed) against live 30-day spend per platform.
     ORGANIC has no spend line anywhere in the system — it is our management
-    work, not an ad account. So it shows the stated organic budget from
-    onboarding plus the measurable proxy: agent work done in the last 30 days."""
+    work, not an ad account. So it shows the fixed organic package price
+    plus the measurable proxy: agent work done in the last 30 days."""
     from agents.budget_agent import get_financial_picture
     from agents.client_agent import get_activity
+    from agents.onboarding_agent import ORGANIC_MONTHLY_PRICE_NIS
 
     picture = get_financial_picture(client_id)
     if not picture.get("available"):
@@ -275,10 +276,9 @@ def budget_split(client_id: int) -> dict:
             "cross_platform": picture.get("cross_platform_comparison"),
         },
         "organic": {
-            "stated_monthly_budget_ils": forecast.get("stated_organic_budget_ils"),
-            "stated_text": forecast.get("stated_organic_budget_text", ""),
+            "package_monthly_price_ils": ORGANIC_MONTHLY_PRICE_NIS,
             "work_last_30d": organic_work,
-            "note": "Organic has no spend line in the system — this is the stated budget plus work done.",
+            "note": "Organic has no spend line in the system — this is the fixed package price plus work done.",
         },
         "ours": picture.get("our_revenue_and_cost"),
         "forecast_source": forecast.get("source", ""),

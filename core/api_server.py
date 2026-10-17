@@ -1167,6 +1167,24 @@ class ClientChatRequest(BaseModel):
                               # PERSONAS key (google|meta|website|media) —
                               # specialist personas are READ-ONLY by
                               # construction (see support_agent's docstring)
+    help_connection: str = ""  # a core/connection_help id — the "עזרה" button
+
+@app.get("/api/client/performance")
+def client_performance(request: Request):
+    # The "ביצועים" page: one status per channel (core/performance — the same
+    # resolver future alerts reuse), paid windows, organic keywords. Plain
+    # `def`: several platform reads; each is cached by its own reader.
+    client_id = _require_session(request)
+    from core import performance
+    return {"success": True, "data": performance.performance_page(client_id)}
+
+@app.get("/api/client/connection-help")
+def client_connection_help(request: Request, lang: str = "he"):
+    # Which connections have in-product help, so the dashboard renders the
+    # "עזרה" buttons from config (inactive entries never show)
+    _require_session(request)
+    from core import connection_help
+    return {"success": True, "data": connection_help.public_list(lang)}
 
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
@@ -1182,13 +1200,24 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
         # the general concierge and every other specialist — persisted and
         # replayed independently (see support_agent.persona_channel).
         channel = persona_channel(persona)
+        # Before anything is stored or reaches a model: a credential is never
+        # saved, an overlong message or a client past today's cap gets a fixed
+        # warm reply (core/chat_guard)
+        from core import chat_guard
+        blocked = chat_guard.check(client_id, req.message)
+        if blocked:
+            log_communication(client_id, "inbound", channel, blocked["store_as"])
+            log_communication(client_id, "outbound", channel, blocked["reply"])
+            return {"success": True, "reply": blocked["reply"], "needs_human_followup": False,
+                    "poll": False, "limited": blocked["code"]}
         log_communication(client_id, "inbound", channel, req.message)
         from core.cost_tracker import cost_action
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
         # an article draft started inside it relabels its own calls
         with cost_action(f"chat_{persona}"):
             if persona == "general":
-                result = answer_support_question(client_id, req.message)
+                result = answer_support_question(client_id, req.message,
+                                                 help_connection=req.help_connection)
             else:
                 # Specialist path: structurally read-only — no upgrade builds, no
                 # web search, no action functions reachable (support_agent enforces),
@@ -3257,7 +3286,7 @@ def website_scan():
 
 class SeoConnectToolRequest(BaseModel):
     client_id: int
-    tool: str      # seoptimer | semrush | ahrefs (the PRICING seo_tiers ladder)
+    tool: str      # seoptimer | semrush | ahrefs (old per-client-key model; see seo_tools_service)
     api_key: str
 
 @app.post("/api/seo/connect-tool", dependencies=_admin_only)
@@ -3999,14 +4028,8 @@ def client_support(request: Request):
     duplicate, and this endpoint is what lets the dashboard avoid becoming a
     third one."""
     _require_session(request)
-    number = ""
-    try:
-        number = str(admin_service.get_settings().get("whatsapp_number") or "")
-    except Exception as e:
-        # app_settings unreadable - fall back to the in-code default rather
-        # than showing the client no way to reach a human at all
-        print(f"[client_support] settings read failed ({e}) - using default")
-        number = str(admin_service.DEFAULT_SETTINGS.get("whatsapp_number") or "")
+    # Falls back to the in-code default when app_settings is unreadable
+    number = admin_service.support_whatsapp_number()
     return {"success": True, "data": {
         "whatsapp_number": number,
         "whatsapp_link": client_leads_service.whatsapp_link(number),

@@ -44,6 +44,14 @@ FIELDS = {
     "draft_revision_cap": {
         "type": "int", "paying": 10, "exempt": 10, "min": 0, "max": 100,
         "label_he": "מקסימום תיקונים לטיוטה אחת מהצ׳אט"},
+    # Chat protection (core/chat_guard). Counted across every chat thread of
+    # the client, per Israeli calendar day.
+    "chat_daily_message_cap": {
+        "type": "int_or_none", "paying": 40, "exempt": None, "min": 1, "max": 1000,
+        "label_he": "מקסימום הודעות צ׳אט ביום (ריק = ללא הגבלה)"},
+    "chat_max_message_chars": {
+        "type": "int", "paying": 2000, "exempt": 2000, "min": 100, "max": 20000,
+        "label_he": "אורך מקסימלי להודעת צ׳אט (תווים)"},
 }
 
 

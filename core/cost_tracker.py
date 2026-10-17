@@ -37,6 +37,9 @@ from datetime import datetime, timezone
 # accounting system.
 MODEL_PRICES_USD_PER_MTOK = {
     "claude-sonnet-4-6": (3.00, 15.00),
+    # Ordinary chat turns (core/claude_json.CHAT_TURN_MODEL); list price for
+    # prompts up to 100K tokens, which every chat turn is
+    "claude-haiku-5-5": (0.10, 0.50),
 }
 CLAUDE_INPUT_USD_PER_MTOK, CLAUDE_OUTPUT_USD_PER_MTOK = MODEL_PRICES_USD_PER_MTOK["claude-sonnet-4-6"]
 # Anthropic web search tool list pricing - a per-search fee on top of the

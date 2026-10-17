@@ -80,8 +80,8 @@ UNKNOWN = "unknown"
 # copy here again.
 HEYGEN_USD_PER_MIN_RANGE = tuple(THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"])
 
-# SEO tool reference LIST prices for the entry-appropriate plan per
-# PRICING["seo_tiers"]. NOT the client's verified invoice — currency,
+# SEO tool reference LIST prices per tool slug (the old PRICING["seo_tiers"]
+# ladder is gone; organic is fixed-price). NOT the client's verified invoice — currency,
 # discounts, and grandfathered plans can all differ from this. Always
 # surfaced as ESTIMATE. Derived from core/third_party_pricing.py — same
 # single-source-of-truth note as above.
@@ -180,14 +180,13 @@ def get_forecast(client_id: int) -> dict:
     answers = lead.get("answers") or {}
     proposal = lead.get("proposal") or {}
     budget_text = answers.get("marketing_budget") or ""
-    organic_text = answers.get("organic_budget") or ""
+    # No organic budget is read: organic is a fixed-price package (2026-10-18),
+    # and leads from before that may still carry a stale organic_budget answer
     return {
         "available": True,
         "source": source,
         "stated_marketing_budget_text": budget_text,
         "stated_marketing_budget_ils": _extract_ils_amount(budget_text),
-        "stated_organic_budget_text": organic_text,
-        "stated_organic_budget_ils": _extract_ils_amount(organic_text),
         "market_reality": proposal.get("market_reality", ""),
         "goals_90_days": proposal.get("goals_90_days") or [],
         "kpis": proposal.get("kpis") or {},

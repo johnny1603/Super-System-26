@@ -173,6 +173,53 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     return result
 
 
+# ─── Daily series (the client Performance page: 7/30/90 days + previous) ─────
+# One account-level call, one row per day — every window comes from it.
+DAILY_SERIES_DAYS = 180
+DAILY_CACHE_TTL_SECONDS = 3600
+_daily_cache = {}
+
+
+def get_daily_metrics(client_id: int, force_refresh: bool = False) -> dict:
+    """Per-day account totals (Facebook + Instagram) for the last
+    DAILY_SERIES_DAYS days, ending yesterday. Never raises."""
+    cached = _daily_cache.get(client_id)
+    if cached and not force_refresh:
+        ttl = PERF_FAILURE_CACHE_TTL_SECONDS if cached[1].get("error") else DAILY_CACHE_TTL_SECONDS
+        if cached[0] > time.time() - ttl:
+            return cached[1]
+
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return {"connected": False}
+
+    until = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+    since = until - timedelta(days=DAILY_SERIES_DAYS - 1)
+    try:
+        rows = timed_step(AGENT_NAME, "insights_daily", lambda: meta.get_account_daily_insights(
+            conn["access_token"], conn["account_id"], since.isoformat(), until.isoformat()))
+    except Exception as e:
+        from core.chat_fallback import alert_once
+        alert_once(AGENT_NAME, client_id, f"{PLATFORM}:daily_read_failed",
+                   f"client {client_id}: Meta daily metrics fetch failed: {e}",
+                   PERF_FAILURE_ALERT_DAYS)
+        failed = {"connected": True, "error": str(e), "days": []}
+        _daily_cache[client_id] = (time.time(), failed)
+        return failed
+
+    days = [{
+        "date": row.get("date_start", ""),
+        "impressions": int(row.get("impressions", 0)),
+        "clicks": int(row.get("clicks", 0)),
+        "cost": round(float(row.get("spend", 0)), 2),
+        "conversions": round(_conversions_from_actions(row.get("actions")), 1),
+    } for row in rows]
+    result = {"connected": True, "since": since.isoformat(), "until": until.isoformat(),
+              "days": days, "pulled_at": datetime.now(timezone.utc).isoformat()}
+    _daily_cache[client_id] = (time.time(), result)
+    return result
+
+
 def get_conversions_yesterday(client_id: int):
     """Total conversions (our CONVERSION_ACTION_TYPES sum, FB+IG combined)
     for yesterday, for the daily sales-alert email (engagement_agent).

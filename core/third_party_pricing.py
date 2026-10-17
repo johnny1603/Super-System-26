@@ -48,7 +48,7 @@ THIRD_PARTY_PRICING = {
     },
     "seoptimer": {
         "vendor": "SEOptimer",
-        "what_for": "Client-paid organic SEO tool, Level A tier (onboarding_agent PRICING['seo_tiers']).",
+        "what_for": "Candidate SEO vendor. Organic is now fixed-price with ONE shared uallak vendor account (onboarding_agent ORGANIC_MONTHLY_PRICE_NIS).",
         "pricing_url": "https://www.seoptimer.com/pricing/",
         "checked_at": "2026-07-20",
         "currency": "USD",
@@ -56,7 +56,7 @@ THIRD_PARTY_PRICING = {
     },
     "semrush": {
         "vendor": "SEMrush",
-        "what_for": "Client-paid organic SEO tool, Level B tier (onboarding_agent PRICING['seo_tiers']).",
+        "what_for": "Candidate SEO vendor. Organic is now fixed-price with ONE shared uallak vendor account (onboarding_agent ORGANIC_MONTHLY_PRICE_NIS).",
         "pricing_url": "https://www.semrush.com/pricing/",
         "checked_at": "2026-07-20",
         "currency": "USD",
@@ -64,7 +64,7 @@ THIRD_PARTY_PRICING = {
     },
     "ahrefs": {
         "vendor": "Ahrefs",
-        "what_for": "Client-paid organic SEO tool, Level C tier (onboarding_agent PRICING['seo_tiers']).",
+        "what_for": "Candidate SEO vendor. Organic is now fixed-price with ONE shared uallak vendor account (onboarding_agent ORGANIC_MONTHLY_PRICE_NIS).",
         "pricing_url": "https://ahrefs.com/pricing",
         "checked_at": "2026-07-20",
         "currency": "USD",

@@ -86,10 +86,32 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   dict, which is the **single source of truth for all business/pricing rules** (setup-fee
   floors, per-platform 350 NIS monthly fees, SEO tool tiers, automation tier, benefit
   months). Change business rules there and in its prompts, nowhere else.
-  Two rules that are easy to reintroduce by accident: **organic SEO has NO minimum budget**
-  (the tiers pick which tool a budget carries, never whether SEO is offered — a smaller
-  budget buys a smaller scope, never a refusal or a "too small" warning), and the **SEO tool
-  subscription comes out of the client's organic budget**, unlike every other external cost.
+  Organic SEO (changed 2026-10-18) is **one fixed-price package, `ORGANIC_MONTHLY_PRICE_NIS`
+  (500)** — never derived from a budget. The sales chat no longer asks for an organic budget
+  (it asks for target search phrases, `organic_target_phrases`), and there is no minimum or
+  tier. The professional SEO tool is **included in that price** (one shared, owner-controlled
+  uallak vendor account) — unlike every other external tool, which each client pays on their
+  own account. **SEO vendors are never named in client-facing text** (`qa_agent_content`
+  scrubs them as a last guard). Fixed proposal terms (third-party subscriptions, organic tool
+  included, monthly content allowance) are i18n text in the chat and the report email, not
+  LLM output.
+- `core/performance.py` — the client "ביצועים" page AND `channel_statuses()`, the ONE
+  resolver of each channel's status (not_in_plan / not_connected / connected_no_data / active /
+  needs_attention) — reuse it for alerts, never re-derive. Never a fake zero. Paid windows
+  (7/30/90 + previous) come from one daily-series call per platform
+  (`get_daily_metrics` in the ads agents, 1h cache). Leads are `client_leads`, never `leads`.
+  Organic rows come from `core/rank_tracking.py`: provider interface with stubs only
+  (`seo_pro` not implemented, `search_console` deferred — no new Google scope), target
+  keywords table PROPOSED in `migrations/2026-10-18-client-target-keywords.sql` (not applied),
+  internal soft cap `TARGET_KEYWORDS_SOFT_CAP` alerts admin only.
+- `core/chat_guard.py` — runs before a client chat message is stored or sent to a model:
+  key/password-looking messages are never stored, plus the per-client length and daily caps
+  (`client_settings`: `chat_max_message_chars`, `chat_daily_message_cap`). Ordinary chat turns
+  run on `claude_json.CHAT_TURN_MODEL` (cheaper); deliverables stay on `DEFAULT_MODEL`.
+- `core/connection_help.py` — one config entry per connection; the dashboard's "עזרה"
+  buttons render from ACTIVE entries, and the concierge may only give that entry's links
+  (`strip_foreign_links`). Every URL there already existed in the code — never add a guessed
+  one; leave `url` empty instead.
 - `core/automation_service.py` — ManyChat / Make, the one integration that is deliberately
   NOT a self-service connect flow: no fixed price, no OAuth, no client-facing credential
   form. The client dashboard shows informational cards that route to WhatsApp or the general
@@ -247,7 +269,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 
 ## Conventions
 
-- Model everywhere: `claude-sonnet-4-6` (default in `core/claude_json.py`).
+- Model: `claude-sonnet-4-6` (default in `core/claude_json.py`), except ordinary chat turns,
+  which use `CHAT_TURN_MODEL` (`claude-haiku-5-5`) at low effort.
 - Client-facing text in Hebrew; code, logs, prompts in English.
 - Secrets only via env vars, registered in `agents/keys_agent.py` `KEYS` so startup warns
   when one is missing. Never hardcode credentials (a Gmail app password leaked into git

@@ -8,6 +8,13 @@ from core.third_party_pricing import THIRD_PARTY_PRICING
 
 _HEYGEN_MIN_RANGE = THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"]
 
+# Organic SEO is ONE selectable package at a FIXED monthly price (decided
+# 2026-10-18). It is never derived from a client budget, and it includes the
+# professional SEO tool: uallak runs one shared vendor account, controlled by
+# the owner. Read it through PRICING["organic_seo_monthly"] or this constant —
+# never type the number anywhere else.
+ORGANIC_MONTHLY_PRICE_NIS = 500
+
 PRICING = {
     # Per-platform monthly management fees - summed when a package includes multiple platform
     # groups (e.g. Meta + Google = 700 NIS/month management, not one flat fee covering both).
@@ -61,21 +68,12 @@ PRICING = {
         },
     },
 
-    # Organic SEO — the tool subscription comes OUT OF the client's stated organic
-    # budget (we buy/operate it within that budget), unlike ad spend and the other
-    # external tools, which the client pays on their own account on top of our fee.
-    #
-    # There is deliberately NO minimum budget. These ranges choose WHICH tool fits
-    # the budget, never whether organic SEO is offered at all — a smaller organic
-    # budget buys a proportionately smaller scope, not a refusal. (A
-    # min_monthly_budget_to_recommend of 3000 used to live here and made the chat
-    # tell under-budget clients that organic SEO "doesn't pay off" for them;
-    # removed on purpose — see BUDGET PYRAMID #4.)
-    "seo_tiers": {
-        "level_a": {"tool": "SEOptimer", "monthly_budget_range": "up to 10000"},
-        "level_b": {"tool": "SEMrush", "monthly_budget_range": "10000-15000"},
-        "level_c": {"tool": "Ahrefs", "monthly_budget_range": "15000+"}
-    },
+    # Organic SEO — a fixed-price package (see ORGANIC_MONTHLY_PRICE_NIS). The
+    # professional SEO tool is INCLUDED in this price (uallak's one shared vendor
+    # account), unlike ad spend and every other external tool, which the client
+    # pays on their own account. There is no organic budget and no minimum: the
+    # old budget-driven tool tiers (seo_tiers) were removed 2026-10-18.
+    "organic_seo_monthly": ORGANIC_MONTHLY_PRICE_NIS,
 
     # Avatar/cinematic video tier (avatar_agent) — a DISTINCT PAID ADD-ON, never
     # part of standard platform management. Numbers are final (handoff
@@ -186,10 +184,10 @@ def get_upgrade_tiers() -> list:
         {
             "id": "full_seo",
             "name": "חבילה מקיפה + קידום אורגני",
-            "monthly_fee": full + PRICING["monthly_management_minimum"],
+            "monthly_fee": full + PRICING["organic_seo_monthly"],
             "setup_fee_addition": 0,
             "description": "הכל כלול, בתוספת ניהול קידום אורגני מקצועי",
-            "note": "+ תשלום נפרד לכלי ה-SEO (לפי התקציב)",
+            "note": "כלי הקידום המקצועי כלול במחיר",
         },
     ]
 
@@ -281,10 +279,10 @@ def get_upgrade_addons() -> list:
         {
             "id": "organic_seo",
             "name": "קידום אורגני (SEO)",
-            "description": (f"ניהול קידום אורגני מקצועי — ₪{p['monthly_management_minimum']}/חודש "
-                            f"דמי ניהול, בהיקף שנבנה סביב התקציב האורגני שלך."),
-            "note": ("המנוי לכלי הקידום (SEOptimer / SEMrush / Ahrefs) כלול בתוך "
-                     "התקציב האורגני — לא תשלום נפרד"),
+            "description": (f"ניהול קידום אורגני מקצועי — ₪{p['organic_seo_monthly']}/חודש, "
+                            f"מחיר קבוע."),
+            "note": ("כלי הקידום המקצועיים המתקדמים בשוק כלולים במחיר — "
+                     "לא תשלום נפרד"),
             "chat_request": "אני רוצה לשמוע על קידום אורגני — מה זה כולל ומה העלות לעסק שלי?",
         },
         {
@@ -426,14 +424,13 @@ BUSINESS MATURITY — ORGANIC VS PAID JUDGMENT:
 - Read business age, financial stability, and industry type from the answers, and distinguish:
   - ESTABLISHED business (operating for years, stable, especially a professional practice — law,
     accounting, clinics, established services): organic SEO is a genuine long-term asset for them;
-    recommend it per the budget pyramid when interest and budget allow.
+    recommend it per BUDGET PYRAMID #4 when they are interested.
   - BRAND-NEW or fragile business (just opened, no revenue history, survival still unproven —
-    especially a new physical shop): do NOT push a 6-month organic investment as a priority even
-    if the budget technically clears the threshold — money that only pays off in 6 months is a
-    poor fit for a business whose next 6 months are themselves uncertain. Put the budget on
-    channels with fast feedback instead, and if the client explicitly asked about organic, address
-    it honestly (in honest_note): organic is usually the SECOND step, after the business proves
-    demand.
+    especially a new physical shop): do NOT push a 6-month organic investment as the headline
+    priority — something that only pays off in 6 months is a poor fit for a business whose next
+    6 months are themselves uncertain. Put the weight on channels with fast feedback, and if the
+    client asked for organic, still include it as requested (BUDGET PYRAMID #4) and say honestly in
+    honest_note that its results build over months.
 
 THIN BUDGET VS COMPETITIVE MARKET — ALTERNATIVE STRATEGIES:
 - When the stated budget is too thin to compete meaningfully in paid search for this industry
@@ -498,18 +495,22 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      {PRICING['platform_management_fees']['meta'] + PRICING['platform_management_fees']['google']}
      NIS/month management — NEVER a flat fee covering multiple platform groups for one price, and
      NEVER the same fee for youtube as for the other three
-   - If a package includes NONE of meta/google/tiktok/youtube (e.g. an organic-only,
-     automation-only, or single-service non-ad package), monthly_management_total falls back to the
+   - ORGANIC SEO is its own fixed-price line: whenever a package includes organic SEO, add
+     "קידום אורגני (SEO)": {PRICING['organic_seo_monthly']} to monthly_breakdown and include it in
+     monthly_management_total (BUDGET PYRAMID #4)
+   - If a package includes NONE of meta/google/tiktok/youtube AND no organic SEO (e.g. an
+     automation-only or single-service non-ad package), monthly_management_total falls back to the
      {PRICING['monthly_management_minimum']} NIS minimum instead - every package still has SOME
-     monthly management fee, never zero
+     monthly management fee, never zero. An organic-only package needs no floor line: its
+     {PRICING['organic_seo_monthly']} NIS organic line is its monthly fee
    - monthly_breakdown must show ONE line item per included platform group at its fee (e.g.
      "ניהול מטא": 350, "ניהול גוגל": 350, "ניהול יוטיוב": {PRICING['platform_management_fees']['youtube']}),
-     plus the minimum-floor line only when no platform group is included, plus the ad-spend
-     surcharge line below if it applies. Do NOT add separate monthly line items for non-platform
-     services (SEO, email, organic social, automation) - those are covered by whichever
-     platform-group fee(s) or the minimum floor already present, not billed again. The ONLY other
-     monthly lines allowed are the new-site hosting line from BUDGET PYRAMID #5 and the avatar-tier
-     line from BUDGET PYRAMID #9, when either applies
+     plus the organic SEO line when included, plus the minimum-floor line only when none of those
+     apply, plus the ad-spend surcharge line below if it applies. Do NOT add separate monthly line
+     items for other non-platform services (email, organic social, automation) - those are covered
+     by whichever fee(s) are already present, not billed again. The ONLY other monthly lines allowed
+     are the new-site hosting line from BUDGET PYRAMID #5 and the avatar-tier line from BUDGET
+     PYRAMID #9, when either applies
    - YouTube is organic-only here (no paid-ads product exists for it in this system, same as
      TikTok) - it never contributes to the ad-spend surcharge below, which is about paid ad
      spend oversight specifically
@@ -546,38 +547,31 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      sound impressive, and avoid leading with a percentage as the headline of the sentence (a rough
      number like "כ-80%" is fine only as incidental detail, never as the main selling point)
 
-4) ORGANIC SEO — TOOL TIERS BY BUDGET, WITH NO MINIMUM BUDGET:
-   - There is NO budget floor for organic SEO and no "below the threshold it isn't worth it" answer.
-     Whatever organic budget the client states, build a REAL plan proportionate to it — smaller
-     budget means fewer target keywords, fewer articles per month and a longer runway, never a
-     refusal, never a warning that their budget is too small, and never a suggestion to come back
-     when they can spend more. Scope follows the budget; the service is always available
-   - The ranges below pick WHICH tool the budget can carry, nothing else:
-     - up to ~10,000 NIS/month: "{PRICING['seo_tiers']['level_a']['tool']}" — Level A organic SEO
-     - ~10,000–15,000 NIS/month: "{PRICING['seo_tiers']['level_b']['tool']}" — Level B organic SEO
-     - 15,000+ NIS/month: "{PRICING['seo_tiers']['level_c']['tool']}" — Level C organic SEO
-       (heaviest, most powerful tooling)
-     At the low end of Level A the tool subscription eats a larger share of the budget and less is
-     left for content — say that plainly as scope, in a matter-of-fact way, if it is worth saying
-     at all. It is a description of what the plan contains, NOT a disclaimer about the budget
-     being insufficient
-   - COST TREATMENT — organic SEO is the EXCEPTION to the external-costs pattern: the tool
-     subscription (SEOptimer / SEMrush / Ahrefs) is paid OUT OF the client's stated organic budget,
-     which we operate on their behalf. It is NOT an extra cost stacked on top the way ad spend is,
-     and it is NOT folded into monthly_management_total either. Whenever organic SEO is
-     recommended, cost_disclaimers must say the tool subscription is already covered by the organic
-     budget (see the cost_disclaimers rules below)
-   - HARD REQUIREMENT — check the client's answers for "organic_interest" and "organic_budget"
-     (a separate budget from marketing_budget, specifically for organic SEO). If organic_interest is
-     affirmative (e.g. "כן, מעוניין"), at least one package MUST recommend organic SEO with the tier
-     matching their organic_budget per the ranges above — NEVER silently drop it, and never replace
-     it with an explanation of why their budget doesn't qualify
+4) ORGANIC SEO — ONE FIXED-PRICE PACKAGE OPTION:
+   - Organic SEO is a normal, selectable service at a FIXED {PRICING['organic_seo_monthly']}
+     NIS/month. There is no organic budget, no minimum budget and no budget-based tiers: never ask
+     for, mention, compute or infer an "organic budget", never say organic only pays off above some
+     budget, and never tell a client their budget is too small for it
+   - When included: list "organic_seo" in recommended_services and add the
+     "קידום אורגני (SEO)": {PRICING['organic_seo_monthly']} monthly_breakdown line (BUDGET PYRAMID #1)
+   - TOOLS: describe the tooling only generically — "the most advanced professional SEO tools on the
+     market" (in the client's language). NEVER name an SEO vendor or product in any client-facing
+     text
+   - COST TREATMENT — organic SEO is the EXCEPTION to the external-costs pattern: the professional
+     SEO tool is INCLUDED in the {PRICING['organic_seo_monthly']} NIS price. It is NOT an extra
+     payment and the client opens no tool account of their own. Whenever organic SEO is
+     recommended, cost_disclaimers must say so (see the cost_disclaimers rules below)
+   - TARGET PHRASES — "organic_target_phrases" (when present) holds the search phrases the client
+     wants to be found for. Use them to make the organic package's description concrete; never
+     promise a ranking position for them
+   - HARD REQUIREMENT — if "organic_interest" is affirmative (e.g. "כן, מעוניין"), at least one
+     package MUST include organic SEO at the fixed price — NEVER silently drop it
 
 5) WEBSITE — FIX EXISTING VS BUILD NEW (both are WordPress):
    - If the client already has a website, a package may offer "improve/fix the existing site" as an
      alternative to "build a new site" when that's the more sensible path for their organic SEO needs
-   - Any such website work (new build or fix) relies on automated SEO tooling (SEMrush/Ahrefs-style
-     automated audits and fixes), never manual page-by-page human labor — we don't do manual per-page
+   - Any such website work (new build or fix) relies on automated professional SEO tooling
+     (automated audits and fixes), never manual page-by-page human labor — we don't do manual per-page
      work by hand at scale, so never describe deliverables that imply that
    - NEW-SITE HOSTING PASSTHROUGH: when (and ONLY when) a package includes building a NEW website,
      add ONE extra monthly_breakdown line —
@@ -605,9 +599,10 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      itself is left for manual scoping
 
 8) ENTRY TIER (~1,000 NIS/month) — BOTTOM OF THE PYRAMID:
-   - No automations, no organic SEO, minimal service — just ONE ad campaign on the single most
-     relevant platform for that specific business type (pick the single best-fit channel, never
-     multiple channels at this budget)
+   - No automations, minimal service — just ONE ad campaign on the single most relevant platform
+     for that specific business type (pick the single best-fit channel, never multiple channels at
+     this budget). Organic SEO is NOT excluded here: if the client asked for it, offer it at its
+     fixed price per BUDGET PYRAMID #4
    - Edge case: if this same low-budget client ALSO wants ongoing content/media maintenance (not just
      ads), still accommodate it — charge the setup fee normally, but deliver the content/creative
      portion via efficient, quality image-based posts and short videos assembled from the client's
@@ -627,7 +622,7 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      PROACTIVELY suggesting it — if the client (or upgrade_context.upgrade_request) explicitly
      asked for an avatar/digital twin by name, include it as requested regardless of the filter
      above (still apply sound judgment on the numbers, same as any explicit request)
-   - When included: list "avatar" in recommended_services (same convention as organic SEO's tier), and
+   - When included: list "avatar" in recommended_services (same convention as "organic_seo"), and
      add {PRICING['avatar']['setup_first_avatar']} NIS as its own setup_fee_breakdown line (stacked on
      top of the setup floor, same stacking pattern as BUDGET PYRAMID #6's automation scaling) —
      additional avatars ({PRICING['avatar']['setup_additional_avatar']} NIS each) are rarely relevant
@@ -707,7 +702,7 @@ CRITICAL RULES:
   - honest_note: max 4-5 sentences total (covering the points below)
   - each package's description: max 1-2 sentences
 - recommended_services lists ONLY the ONGOING managed services of the package (the things the
-  monthly fee is computed from: "google", "meta", "tiktok", "youtube", organic SEO tier, automation,
+  monthly fee is computed from: "google", "meta", "tiktok", "youtube", "organic_seo", automation,
   etc.) —
   never one-time setup deliverables. The standard setup package contents (landing page, market
   research, audit, campaign launches, the one TikTok video, the initial articles) are covered by
@@ -741,11 +736,11 @@ CRITICAL RULES:
   - DOMAIN — when a package includes building a NEW website: the domain is bought by the client
     directly (~80-100 NIS/year). Note the site's hosting is NOT this kind of cost — it is already
     inside monthly_management_total as its own line
-  - ORGANIC SEO — THE EXPLICIT EXCEPTION, and it must be stated as one whenever organic SEO is
-    recommended: the SEO tool subscription (SEOptimer / SEMrush / Ahrefs) is NOT an extra payment.
-    It is already covered by the organic budget the client stated, which we operate on their
-    behalf. Word it so the contrast with the items above is unmistakable — e.g. "לעומת זאת, בקידום
-    האורגני המנוי לכלי כבר כלול בתוך התקציב האורגני שסיכמנו ואינו תשלום נוסף"
+  - ORGANIC SEO — do NOT add an item for it. The professional SEO tool is included in the fixed
+    {PRICING['organic_seo_monthly']} NIS organic price, and the fixed terms shown under every
+    proposal already say so. Never write that the client pays for an SEO tool, and never name one
+  - Do NOT add items about the monthly content allowance or third-party subscriptions in general —
+    those are also in the fixed terms; this list is only for the package-specific items above
   If a package genuinely carries no external cost at all, say that in one item rather than
   returning an empty list. Never put uallak's own fees in this list, and never repeat an item
 - honest_note must cover, briefly and without repetition: (a) a one-line pointer that there are

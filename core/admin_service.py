@@ -360,6 +360,28 @@ def get_settings() -> dict:
     return settings
 
 
+def support_whatsapp_number() -> str:
+    """The human rep's WhatsApp number (the admin-editable setting), falling
+    back to the in-code default when app_settings can't be read — a client is
+    never left with no way to reach a human. Shared by /api/client/support,
+    the chat guard and the connection-help flow."""
+    try:
+        return str(get_settings().get("whatsapp_number") or "")
+    except Exception as e:
+        print(f"[admin_service] settings read failed ({e}) - using default WhatsApp number")
+        return str(DEFAULT_SETTINGS.get("whatsapp_number") or "")
+
+
+def display_phone(number: str) -> str:
+    """972504493725 -> 050-449-3725 (how the dashboard shows it)."""
+    digits = "".join(ch for ch in str(number or "") if ch.isdigit())
+    if digits.startswith("972"):
+        digits = "0" + digits[3:]
+    if len(digits) == 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return digits
+
+
 def update_settings(changes: dict) -> dict:
     for key, value in changes.items():
         if key not in DEFAULT_SETTINGS:
@@ -401,7 +423,7 @@ def get_pricing_reference() -> dict:
             "min_profit_margin_pct": round(p["website"]["profit_margin"] * 100, 1),
             "new_site_hosting": p["website"]["new_site_hosting"],
         },
-        "organic_seo_tiers": p["seo_tiers"],
+        "organic_seo_monthly_ils": p["organic_seo_monthly"],
         "avatar": p["avatar"],
         "raffle": p["raffle"],
         "min_monthly_budget_ils": p["min_budget"],

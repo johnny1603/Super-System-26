@@ -73,12 +73,14 @@ or acquisition of any kind. Johnny does that personally.
 1. **Client's own site — FREE**: `audit_site` reuses the WordPress connection
    (`wp.list_content_for_audit`, added for this) — inventory, thin/stale
    content, missing excerpts, posting cadence. 1h in-memory cache.
-2. **Market/competitors — the tool bought out of the ORGANIC BUDGET** (PRICING
-   seo_tiers: SEOptimer level A / SEMrush level B / Ahrefs level C). The
-   subscription comes out of the organic budget the client agreed, NOT an extra
-   payment on their own card the way ad spend is — proposals must say so
-   (`cost_disclaimers`). There is also **no minimum organic budget**: the tiers
-   pick which tool a budget can carry, never whether organic SEO is offered.
+2. **Market/competitors — the professional SEO tool.** CHANGED 2026-10-18:
+   organic is a fixed-price package (`ORGANIC_MONTHLY_PRICE_NIS`, 500/month)
+   whose price INCLUDES the tool, run on ONE shared, owner-controlled uallak
+   vendor account. There is no organic budget, no minimum and no tiers
+   (`seo_tiers` is gone). Never name the vendor to a client. The code below
+   still implements the OLD per-client-key model and has not been rewired; the
+   shared-account path is planned as the `seo_pro` provider in
+   `core/rank_tracking.py` (stub, not implemented).
    - Key stored by ADMIN via `POST /api/seo/connect-tool` → `client_accounts`
      row `platform='seo_tool'`, `account_id`=tool slug, `access_token`=API key
      (no OAuth exists for these tools).
