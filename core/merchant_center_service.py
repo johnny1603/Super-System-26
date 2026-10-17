@@ -82,13 +82,69 @@ def build_consent_url(state: str) -> str:
     return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
 
 
-def _get(refresh_token: str, base: str, path: str, params: dict = None) -> dict:
-    response = httpx.get(f"{base}/{path.lstrip('/')}",
-                         headers={"Authorization": f"Bearer {_access_token(refresh_token)}"},
-                         params=params or {}, timeout=TIMEOUT)
+class MerchantAPIError(RuntimeError):
+    """A Merchant API (or token refresh) failure, classified so callers can
+    tell the client WHY in plain words instead of one generic "failed":
+
+    - not_registered: OUR Cloud project isn't registered with the Merchant
+      API (v1 blocks every call from an unregistered project with 401
+      "GCP project ... is not registered with the merchant account"). A
+      one-time fix on our side — see register_gcp().
+    - api_disabled:   the Merchant API isn't enabled in our Cloud project.
+    - consent_expired: the stored refresh token no longer works (revoked,
+      expired, wrong scope) — the client must approve again.
+    - no_access:      the approved Google account can't see this merchant id
+      (wrong number, or a different Google login than the one with access).
+    - unavailable:    timeout / 5xx / anything else — worth retrying.
+    """
+    def __init__(self, reason: str, status: int, message: str):
+        super().__init__(f"[{reason}] {status} {message}")
+        self.reason = reason
+        self.status = status
+
+
+def _classify(status: int, text: str) -> str:
+    lowered = text.lower()
+    if "not registered" in lowered:
+        return "not_registered"
+    if status == 403 and ("service_disabled" in lowered or "has not been used in project" in lowered
+                          or "is disabled" in lowered):
+        return "api_disabled"
+    if status == 401:
+        return "consent_expired"
+    if status in (403, 404):
+        return "no_access"
+    return "unavailable"
+
+
+def _bearer(refresh_token: str) -> dict:
+    try:
+        token = _access_token(refresh_token)
+    except httpx.HTTPStatusError as e:
+        # invalid_grant & co: the grant itself is dead, not the merchant id
+        raise MerchantAPIError("consent_expired", e.response.status_code, e.response.text[:300]) from e
+    except httpx.HTTPError as e:
+        raise MerchantAPIError("unavailable", 0, f"token refresh: {e}") from e
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _request(method: str, refresh_token: str, base: str, path: str,
+             params: dict = None, json: dict = None) -> dict:
+    headers = _bearer(refresh_token)
+    try:
+        response = httpx.request(method, f"{base}/{path.lstrip('/')}", headers=headers,
+                                 params=params or {}, json=json, timeout=TIMEOUT)
+    except httpx.HTTPError as e:
+        raise MerchantAPIError("unavailable", 0, f"{method} {path}: {e}") from e
     if response.status_code != 200:
-        raise RuntimeError(f"Merchant API GET {path} failed: {response.status_code} {response.text[:300]}")
+        raise MerchantAPIError(_classify(response.status_code, response.text),
+                               response.status_code,
+                               f"Merchant API {method} {path}: {response.text[:300]}")
     return response.json()
+
+
+def _get(refresh_token: str, base: str, path: str, params: dict = None) -> dict:
+    return _request("GET", refresh_token, base, path, params=params)
 
 
 def get_account(refresh_token: str, merchant_id: str) -> dict:
@@ -108,3 +164,25 @@ def list_data_sources(refresh_token: str, merchant_id: str) -> list:
     own website/WooCommerce capabilities (see the merchant-center skill for
     why this isn't blocked by that gap)."""
     return _get(refresh_token, DATASOURCES_BASE, f"accounts/{merchant_id}/dataSources").get("dataSources", [])
+
+
+def register_gcp(refresh_token: str, merchant_id: str, developer_email: str = "") -> dict:
+    """ONE-TIME setup, not a per-client step: links OUR Google Cloud project
+    to a Merchant Center account so the Merchant API stops answering every
+    call with 401 "not registered" (docs: merchant/api/guides/quickstart/
+    registration, checked 2026-10-17). Rules from that page:
+    - once per Cloud project; a project is registered to ONE merchant
+      account at a time (a second call elsewhere -> ALREADY_REGISTERED), so
+      register uallak's OWN Merchant Center account, never a client's;
+    - the token's Google account must be ADMIN on that merchant account;
+    - production account with a verified homepage, not a test account;
+    - developer_email must be a real Google account (not a service account);
+      if it isn't already a user there, the invite must be accepted (14 days)
+      before registration completes;
+    - calls start working ~5 minutes after.
+    Whether a project registered to OUR account can then read CLIENTS'
+    accounts over their OAuth grant is the documented third-party/agency
+    model, but not confirmed against a live call here."""
+    body = {"developerEmail": developer_email} if developer_email else {}
+    return _request("POST", refresh_token, ACCOUNTS_BASE,
+                    f"accounts/{merchant_id}/developerRegistration:registerGcp", json=body)

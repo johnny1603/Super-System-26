@@ -1024,6 +1024,10 @@ async def dashboard_data(request: Request):
         from agents.website_agent import _provision_state_from_activity
         website_provision_status = _provision_state_from_activity(activity)
 
+    merchant_center_id = next(
+        (a.get("account_id") for a in accounts if a.get("platform") == "merchant_center"
+         and a.get("status") == "active" and a.get("account_id")), "")
+
     return {"success": True, "data": {
         "client": {
             "id": client.get("id"),
@@ -1055,6 +1059,13 @@ async def dashboard_data(request: Request):
              for a in accounts if a.get("platform") == "google_ads"
              and a.get("status") == "active" and a.get("account_id")), ""),
         "google_ads_account_name": _google_ads_account_name(client_id, accounts),
+        # Connected Merchant Center id + the name the Merchant API returned at
+        # link time (from activity already fetched - no API call per load)
+        "merchant_center_id": merchant_center_id,
+        "merchant_center_name": next(
+            ((e.get("details") or {}).get("account_name", "") for e in activity
+             if merchant_center_id and e.get("action_type") == "merchant_center_connected"
+             and (e.get("details") or {}).get("merchant_id") == merchant_center_id), ""),
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -2360,19 +2371,72 @@ def merchant_center_link(req: MerchantCenterLinkRequest, request: Request):
     if not pending:
         raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
     refresh_token = pending[0]["access_token"]
+    from core import merchant_center_service
     try:
-        from core import merchant_center_service
+        # Saved as connected ONLY after the Merchant API, with the client's own
+        # stored grant, actually returns this account
         account = merchant_center_service.get_account(refresh_token, merchant_id)
     except Exception as e:
+        reason = getattr(e, "reason", "unavailable")
         print(f"[merchant-center link] client {client_id}: verification failed for "
-              f"merchant_id={merchant_id}: {e}")
-        raise HTTPException(status_code=400, detail={"code": "ERR_MERCHANT_ID_NOT_ACCESSIBLE"})
+              f"merchant_id={merchant_id} ({reason}): {type(e).__name__}: {e}")
+        if reason in ("not_registered", "api_disabled", "unavailable"):
+            # OUR side (setup) or Google's side — the client can't fix it, so
+            # someone has to hear about it. not_registered: one-time
+            # POST /api/merchant-center/register-gcp (see its comment).
+            from core.agent_base import agent_alert as _alert
+            _alert("google_ads_agent", [
+                f"Merchant Center link failed for client {client_id} "
+                f"(merchant_id={merchant_id}): {reason} - {e}"])
+        if reason == "consent_expired":
+            # The parked grant is dead; drop it so the card offers a fresh consent
+            remove_accounts(client_id, ["merchant_center_pending"])
+        code = {"not_registered": "ERR_MERCHANT_SETUP_PENDING",
+                "api_disabled": "ERR_MERCHANT_SETUP_PENDING",
+                "consent_expired": "ERR_NO_PENDING_MERCHANT_CONSENT",
+                "no_access": "ERR_MERCHANT_ID_NOT_ACCESSIBLE"}.get(reason, "ERR_MERCHANT_VERIFY_UNAVAILABLE")
+        raise HTTPException(status_code=400 if reason in ("no_access", "consent_expired") else 503,
+                            detail={"code": code})
     upsert_account(client_id, "merchant_center", merchant_id, refresh_token, "active")
     remove_accounts(client_id, ["merchant_center_pending"])
     log_activity(client_id, "google_ads_agent", "merchant_center_connected",
                  {"merchant_id": merchant_id, "account_name": account.get("accountName", "")}, {})
     return {"success": True, "data": {"merchant_id": merchant_id,
                                       "account_name": account.get("accountName", "")}}
+
+class MerchantGcpRegistration(BaseModel):
+    client_id: int        # whose stored Merchant Center grant to call with
+    merchant_id: str      # uallak's OWN Merchant Center account - never a client's
+    developer_email: str = ""
+
+@app.post("/api/merchant-center/register-gcp", dependencies=_admin_only)
+def merchant_center_register_gcp(req: MerchantGcpRegistration):
+    # ONE-TIME setup. Merchant API v1 rejects every call from a Cloud project
+    # that isn't registered to a Merchant Center account ("GCP project ... is
+    # not registered with the merchant account"), which is what made every
+    # client's link attempt fail. A project registers to ONE merchant account,
+    # so: connect uallak's own Merchant Center through a test client's card
+    # (consent is enough - the pending grant works), with a Google login that
+    # is ADMIN there, then call this once with that client_id + uallak's
+    # merchant id. Rules/caveats: merchant_center_service.register_gcp.
+    merchant_id = (req.merchant_id or "").strip()
+    if not merchant_id.isdigit():
+        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_MERCHANT_ID"})
+    rows = (db.table("client_accounts").select("*").eq("client_id", req.client_id)
+            .in_("platform", ["merchant_center", "merchant_center_pending"])
+            .eq("status", "active").order("id", desc=True).limit(1).execute().data)
+    if not rows:
+        raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
+    from core import merchant_center_service
+    try:
+        result = merchant_center_service.register_gcp(rows[0]["access_token"], merchant_id,
+                                                      req.developer_email.strip())
+    except Exception as e:
+        print(f"[merchant-center register-gcp] merchant_id={merchant_id}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail={"code": "ERR_MERCHANT_REGISTRATION_FAILED",
+                                                     "reason": getattr(e, "reason", ""),
+                                                     "message": str(e)[:500]})
+    return {"success": True, "data": result}
 
 # ─── Google Ads execution (admin/scheduler only) ─────────────────────────────
 
