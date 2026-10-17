@@ -1234,7 +1234,8 @@ a.media-item:hover { border-color: var(--accent); }
       <div id="siteCreateProgress" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="site_create_in_progress">האתר החדש שלכם בהקמה כרגע — זה עשוי לקחת כמה דקות. אפשר להמשיך לגלוש בדשבורד, נעדכן כאן וגם בצ'אט ברגע שהוא מוכן.</div>
       </div>
-      <button class="conn-btn secondary" id="gtmLink" style="display:none; margin-top:8px;" onclick="connectGtm()" data-i18n="gtm_connect_btn">חיבור מדידת המרות (Google Tag Manager)</button>
+      <button class="conn-btn secondary" id="gtmLink" style="margin-top:8px;" onclick="connectGtm()" data-i18n="gtm_connect_btn">חיבור מדידת המרות (Google Tag Manager)</button>
+      <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
       <div class="lock-note" id="gtmReconnectNote" style="display:none; margin-top:6px;" data-i18n="gtm_reconnect_note">עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.</div>
     </div>
 
@@ -2107,6 +2108,7 @@ const DASH_I18N = {
   gtm_connect_btn: { he:'חיבור מדידת המרות (Google Tag Manager)', en:'Connect conversion measurement (Google Tag Manager)', fr:'Connecter la mesure des conversions (Google Tag Manager)', ar:'ربط قياس التحويلات (Google Tag Manager)', ru:'Подключить измерение конверсий (Google Tag Manager)' },
   gtm_reconnect_btn: { he:'עדכון החיבור למדידת המרות', en:'Update the conversion measurement connection', fr:'Mettre à jour la connexion de mesure des conversions', ar:'تحديث ربط قياس التحويلات', ru:'Обновить подключение измерения конверсий' },
   gtm_reconnect_note: { he:'עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.', en:'Please update your Google Tag Manager connection: we need one more permission — to save a version of the measurement settings so they take effect. Click the button and approve on Google\'s screen. Nothing on your site has changed.', fr:'Merci de mettre à jour votre connexion Google Tag Manager : il nous faut une autorisation de plus — enregistrer une version des réglages de mesure pour qu\'ils s\'appliquent. Cliquez sur le bouton et validez sur l\'écran de Google. Rien n\'a changé sur votre site.', ar:'يرجى تحديث ربط Google Tag Manager: نحتاج إذنًا إضافيًا واحدًا — حفظ نسخة من إعدادات القياس لكي تدخل حيز التنفيذ. اضغطوا على الزر ووافقوا في شاشة Google. لم يتغير شيء في موقعكم.', ru:'Пожалуйста, обновите подключение Google Tag Manager: нужно ещё одно разрешение — сохранять версию настроек измерения, чтобы они вступили в силу. Нажмите кнопку и подтвердите на экране Google. На вашем сайте ничего не изменилось.' },
+  gtm_no_site_note: { he:'מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.', en:'Measurement is installed on your website once your site is connected.', fr:'La mesure sera installée sur votre site dès qu\'il sera connecté.', ar:'سيتم تثبيت القياس على موقعكم بمجرد ربط الموقع.', ru:'Измерение будет установлено на вашем сайте, как только сайт будет подключён.' },
   gtm_connected_btn: { he:'מדידת המרות מחוברת ✓', en:'Conversion measurement connected ✓', fr:'Mesure des conversions connectée ✓', ar:'قياس التحويلات مرتبط ✓', ru:'Измерение конверсий подключено ✓' },
   notice_gtm_connected: { he:'Google Tag Manager חובר בהצלחה ✓ — מעכשיו אפשר לוודא ולהגדיר מדידת לידים באתר', en:'Google Tag Manager connected ✓ — lead measurement on your site can now be verified and configured', fr:'Google Tag Manager connecté ✓ — la mesure des leads sur votre site peut désormais être vérifiée et configurée', ar:'تم ربط Google Tag Manager ✓ — يمكن الآن التحقق من قياس العملاء المحتملين على موقعكم وإعداده', ru:'Google Tag Manager подключён ✓ — теперь можно проверять и настраивать измерение лидов на вашем сайте' },
   notice_youtube_connected: { he:'ערוץ YouTube חובר בהצלחה ✓', en:'YouTube channel connected ✓', fr:'Chaîne YouTube connectée ✓', ar:'تم ربط قناة YouTube بنجاح ✓', ru:'Канал YouTube подключён ✓' },
@@ -2395,12 +2397,14 @@ async function loadDashboard() {
     } else if (conns.some(c => c.platform === 'merchant_center_pending' && c.status === 'active')) {
       showMerchantIdForm();
     }
-    if (conns.some(c => c.platform === 'wordpress' && c.status === 'active')) {
+    // The measurement consent button is always shown; without a site the
+    // note says the tags go in once one is connected
+    const hasSite = conns.some(c => c.platform === 'wordpress' && c.status === 'active');
+    document.getElementById('gtmNoSiteNote').style.display = hasSite ? 'none' : 'block';
+    if (hasSite) {
       const wasProvisioning = !!window._siteProvisionPoll;
       markWebsiteConnected();
       if (wasProvisioning) showNotice(uallakI18n.t('site_create_done_notice'), 'success');
-      // Measurement consent link appears once a site exists to measure
-      document.getElementById('gtmLink').style.display = 'block';
     } else {
       handleSiteProvisionStatus(d.website_provision_status);
     }
@@ -2933,7 +2937,7 @@ function connectTiktokExplained() {
 }
 
 // GTM measurement consent - a SEPARATE Google consent from Google Ads (its
-// own scopes); revealed on the site card once a site is connected
+// own scopes); always on the site card, with a note while no site is connected
 function connectGtm() {
   preactExplain('gtm', () => { window.location.href = '/api/oauth/gtm/start'; });
 }

@@ -2041,9 +2041,13 @@ async function openControlRoom(clientId) {
       </div>
       <button type="button" class="manage-btn" onclick="crDriveSelfTest(${Number(c.id)}, event)">בדיקת Drive</button>
       <button type="button" class="manage-btn" onclick="crDriveMirror(${Number(c.id)}, '')">מדיה ב-Drive</button>
+      <input id="crGa4Id" dir="ltr" placeholder="G-… (אופציונלי)" title="GA4 measurement ID — ריק = מזוהה מהאתר"
+             style="width:130px;padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:transparent;color:inherit;font-size:12.5px;">
+      <button type="button" class="manage-btn" onclick="crConfigureConversion(${Number(c.id)}, event)">Install lead conversion tracking</button>
       <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
     </div>
     <div id="crDriveTest"></div>
+    <div id="crConversion"></div>
     ${crGadsLine(c.id, d.google_ads)}
     <div id="crGadsAccounts"></div>
     ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
@@ -2514,6 +2518,57 @@ async function crDriveSelfTest(clientId, ev) {
     console.error('drive self-test render failed', e);
     fail('התוצאה התקבלה אבל לא הוצגה — ראה console');
   }
+}
+
+// ─── GTM lead conversion: form submit → GA4 generate_lead, PUBLISHED ─────────
+// website_agent.configure_lead_conversion via the session twin of
+// /api/website/configure-conversion. Its refusals (no GTM consent, missing
+// scope, no GA4 id, already live) come back verbatim — shown as-is.
+async function crConfigureConversion(clientId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const el = document.getElementById('crConversion');
+  if (!el) { console.error('crConfigureConversion: #crConversion missing'); return; }
+  const fail = msg => {
+    el.innerHTML = `<div class="panel-pad" style="color:var(--red);direction:ltr;text-align:left;white-space:pre-wrap;">${esc(msg)}</div>`;
+  };
+  if (!Number.isFinite(Number(clientId))) { fail('מזהה לקוח חסר'); return; }
+  const ga4 = ((document.getElementById('crGa4Id') || {}).value || '').trim();
+  if (!confirm('ליצור ולפרסם (Publish) ב-GTM של הלקוח טריגר שליחת טופס + תג GA4 generate_lead?'
+               + (ga4 ? `\nGA4: ${ga4}` : '\nGA4: יזוהה מהאתר'))) return;
+  el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">מגדיר ומפרסם ב-GTM…</div>';
+  let res, body;
+  try {
+    res = await fetch(`/api/admin/control-room/${Number(clientId)}/configure-conversion`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ga4_measurement_id: ga4 }),
+    });
+  } catch (e) {
+    console.error('configure-conversion request failed', e);
+    fail('הבקשה לא הגיעה לשרת (רשת / timeout) — נסה שוב');
+    return;
+  }
+  if (res.status === 401) {
+    fail('פג תוקף ההתחברות לניהול — התחבר מחדש והרץ שוב');
+    showLogin();
+    return;
+  }
+  try { body = await res.json(); } catch (e) { body = null; }
+  if (!res.ok || !body || !body.success || !body.data) {
+    const d = body && body.detail;
+    const detail = Array.isArray(d) ? d.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join('\n')
+                 : d ? (typeof d === 'string' ? d : JSON.stringify(d)) : '';
+    fail(`✕ HTTP ${res.status}${detail ? '\n' + detail : ''}`);
+    return;
+  }
+  const r = body.data;
+  el.innerHTML = `<div class="panel-pad">
+    <div class="drawer-label" style="color:var(--green);">✓ Lead conversion tracking published</div>
+    <div class="drawer-stat-row"><span class="drawer-stat-label">event</span><span dir="ltr">${esc(r.event_name || '')}</span></div>
+    <div class="drawer-stat-row"><span class="drawer-stat-label">GA4</span><span dir="ltr">${esc(r.ga4_measurement_id || '')}</span></div>
+    <div class="drawer-stat-row"><span class="drawer-stat-label">live version</span><span dir="ltr">${esc(r.live_version || '')}</span></div>
+    ${r.note ? `<div style="font-size:12px;color:var(--yellow);margin-top:8px;line-height:1.6;direction:ltr;text-align:left;">${esc(r.note)}</div>` : ''}
+  </div>`;
 }
 
 // ─── Google Ads: which customer account is connected ─────────────────────────

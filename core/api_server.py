@@ -4776,6 +4776,24 @@ def admin_control_room_drive_self_test(client_id: int, request: Request):
              "fix": "Unexpected error before the Drive calls ran — see the Cloud Run log.",
              "error": f"{type(e).__name__}: {str(e)[:300]}"}]}}
 
+class AdminConfigureConversionRequest(BaseModel):
+    ga4_measurement_id: str = ""  # optional — falls back to the id detected on the site
+
+@app.post("/api/admin/control-room/{client_id}/configure-conversion")
+def admin_control_room_configure_conversion(client_id: int, req: AdminConfigureConversionRequest,
+                                            request: Request):
+    # Browser-session twin of /api/website/configure-conversion, which is
+    # X-Admin-Key only - same function, same refusals. Plain `def`: multiple
+    # GTM API calls.
+    _require_admin(request)
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    from agents.website_agent import configure_lead_conversion
+    result = configure_lead_conversion(client_id, req.ga4_measurement_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+    return {"success": True, "data": result}
+
 @app.post("/api/admin/control-room/feedback/{feedback_id}/reviewed")
 def admin_control_room_feedback_reviewed(feedback_id: int, request: Request):
     # Browser-session twin of /api/admin/feedback/{id}/reviewed, which is
