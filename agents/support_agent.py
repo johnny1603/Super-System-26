@@ -872,6 +872,20 @@ _ARTICLE_DONE = {
     "ar": 'المسودة جاهزة ✍️ "{title}" محفوظة في موقعكم كمسودة — لم يُنشر شيء. يمكنكم مراجعتها وتعديلها ونشرها متى شئتم:\n{url}',
     "ru": 'Черновик готов ✍️ «{title}» сохранён на вашем сайте как ЧЕРНОВИК — ничего не опубликовано. Просмотрите, отредактируйте и опубликуйте, когда будет удобно:\n{url}',
 }
+_ARTICLE_STARTED = {
+    "he": "מעולה, ניגש לכתוב ✍️ אני בודק מה אנשים מחפשים בנושא, עובר על האתר שלכם ואז כותב ומלטש. זה לוקח בדרך כלל כמה דקות — אכתוב לכם כאן ברגע שהטיוטה מוכנה.",
+    "en": "Great, I'm on it ✍️ I'll check what people search for on this topic, go through your site, then write and polish. It usually takes a few minutes — I'll post here as soon as the draft is ready.",
+    "fr": "Parfait, je m'y mets ✍️ Je regarde ce que les gens recherchent sur ce sujet, je parcours votre site, puis je rédige et je peaufine. Cela prend en général quelques minutes — je vous écris ici dès que le brouillon est prêt.",
+    "ar": "ممتاز، أبدأ الآن ✍️ سأتحقق مما يبحث عنه الناس في هذا الموضوع، وأراجع موقعكم، ثم أكتب وأصقل. يستغرق ذلك عادةً بضع دقائق — سأكتب لكم هنا فور جاهزية المسودة.",
+    "ru": "Отлично, берусь ✍️ Посмотрю, что ищут по этой теме, пройдусь по вашему сайту, затем напишу и отшлифую. Обычно это занимает несколько минут — напишу здесь, как только черновик будет готов.",
+}
+_ARTICLE_MISSING = {
+    "he": "כדי להשלים אותה חסרים לי כמה פרטים — סימנתי אותם בטיוטה בסוגריים מרובעים, כדי לא לנחש:",
+    "en": "To finish it I'm missing a few details — I marked them in the draft in square brackets rather than guess:",
+    "fr": "Pour le finaliser, il me manque quelques détails — je les ai signalés entre crochets dans le brouillon plutôt que de deviner :",
+    "ar": "لإكمالها تنقصني بعض التفاصيل — وضعت عليها علامة بين أقواس مربعة في المسودة بدل التخمين:",
+    "ru": "Чтобы завершить, мне не хватает нескольких деталей — я отметил их в черновике в квадратных скобках, чтобы не гадать:",
+}
 _ARTICLE_NO_URL = {
     "he": 'אפשר למצוא אותה תחת "פוסטים" בניהול האתר.',
     "en": 'You\'ll find it under "Posts" in your site\'s admin.',
@@ -932,7 +946,7 @@ def _article_brief(raw) -> dict:
     return {"topic": topic, "tone": tone, "link": link}
 
 
-def _article_draft(client_id: int, message: str, brief: dict) -> dict:
+def _article_draft(client_id: int, message: str, brief: dict, background_tasks=None) -> dict:
     """Code's half of the website persona's one action. DRAFT ONLY:
     seo_agent.write_article hard-codes status='draft' and enforces the weekly
     cap, topic dedup and quality gate. Policy refusals get their own fixed
@@ -958,32 +972,71 @@ def _article_draft(client_id: int, message: str, brief: dict) -> dict:
                 client_id=client_id, persona="website",
                 issue_key="followup:website:article_not_in_package")
             return {"reply": _ARTICLE_NOT_IN_PACKAGE[lang], "needs_human_followup": True}
-    notes = ["Requested by the client in the dashboard chat."]
-    if brief["tone"]:
-        notes.append(f"Tone requested by the client: {brief['tone']}.")
-    if brief["link"]:
-        notes.append(f"Include a natural, relevant link to {brief['link']} in the body.")
+    # Every policy gate BEFORE promising anything — a refusal is answered now,
+    # in the same turn, never minutes later
+    try:
+        from agents.seo_agent import article_preflight
+        gate = article_preflight(client_id, brief["topic"])
+    except Exception as e:
+        gate = {"ok": False, "errors": [f"preflight {type(e).__name__}: {e}"]}
+    if not gate.get("ok"):
+        return _article_outcome(client_id, message, brief, lang, {"success": False, **gate})
+
     log_step(AGENT_NAME, "article_draft", f"client {client_id}: '{brief['topic']}'")
+    if background_tasks is None:
+        return _run_article_draft(client_id, message, brief, lang, post=False)
+    # The pipeline (search intent, brief, draft, critique, revise) takes a few
+    # minutes — far past a chat request. Answer now; the outcome is posted into
+    # this persona's thread when it is ready (the window polls for it).
+    background_tasks.add_task(_run_article_draft, client_id, message, brief, lang, True)
+    return {"reply": _ARTICLE_STARTED[lang], "needs_human_followup": False, "poll": True}
+
+
+def _run_article_draft(client_id: int, message: str, brief: dict, lang: str,
+                       post: bool = True) -> dict:
+    """The writing itself. As a background job it must never raise: every
+    outcome becomes a message in the website persona's thread."""
     try:
         from agents.seo_agent import write_article
         from core.cost_tracker import cost_action
+        # A background job runs outside the chat turn's context: label its
+        # costs itself
         with cost_action("article_draft"):
-            result = timed_step(AGENT_NAME, "article_draft",
-                                lambda: write_article(client_id, brief["topic"],
-                                                      notes=" ".join(notes), alert=False))
+            result = timed_step(AGENT_NAME, "article_draft", lambda: write_article(
+                client_id, brief["topic"], notes="Requested by the client in the dashboard chat.",
+                alert=False, required_link=brief["link"], tone=brief["tone"]))
     except Exception as e:
         result = {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
+    outcome = _article_outcome(client_id, message, brief, lang, result)
+    if post:
+        try:
+            from agents.client_agent import log_communication
+            log_communication(client_id, "outbound", persona_channel("website"), outcome["reply"])
+        except Exception as e:
+            log_step(AGENT_NAME, "article_draft", f"client {client_id}: could not post outcome: {e}")
+    return outcome
 
+
+def _article_outcome(client_id: int, message: str, brief: dict, lang: str, result: dict) -> dict:
+    """write_article's result -> the fixed client-facing line (and, for a real
+    failure, ONE deduped alert). No model involved."""
     if result.get("success"):
         from agents.website_agent import draft_edit_url
         url = draft_edit_url(client_id, result.get("post_id")) or result.get("link", "")
         reply = _ARTICLE_DONE[lang].format(title=result.get("title", ""), url=url or _ARTICLE_NO_URL[lang])
+        missing = [p for p in result.get("placeholders") or [] if p][:6]
+        if missing:
+            reply += "\n\n" + _ARTICLE_MISSING[lang] + "\n" + "\n".join(f"• {p}" for p in missing)
         similar = result.get("similar") or {}
         if similar.get("title"):
             reply += "\n\n" + _ARTICLE_SIMILAR_NOTE[lang].format(
                 title=similar["title"], link=f"\n{similar['link']}" if similar.get("link") else "")
+        # THE chat-to-draft link: revisions from chat may only touch post ids
+        # recorded here for this client
         log_activity(client_id, AGENT_NAME, "article_draft_from_chat",
-                     {"topic": brief["topic"], "tone": brief["tone"], "link": brief["link"]},
+                     {"topic": brief["topic"], "tone": brief["tone"], "link": brief["link"],
+                      "title": result.get("title", ""), "language": result.get("language", ""),
+                      "placeholders": missing},
                      {"post_id": result.get("post_id"), "status": "draft"})
         return {"reply": reply, "needs_human_followup": False}
 
@@ -1043,7 +1096,8 @@ Return JSON only:
  "data_topic": ""{extra_fields}}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE
 
 
-def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
+def answer_persona_question(client_id: int, persona_id: str, message: str,
+                            background_tasks=None) -> dict:
     """The specialist-persona chat path. READ-ONLY BY CONSTRUCTION — see the
     module docstring. Contract: only 'reply', 'needs_human_followup', and the
     routing labels 'out_of_scope' / 'data_topic' are ever read from the
@@ -1056,7 +1110,8 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
     # Same never-raise / never-empty contract as answer_support_question, with
     # the failure line in THIS specialist's lane
     try:
-        result = _answer_persona_question(client_id, persona_id, persona, message)
+        result = _answer_persona_question(client_id, persona_id, persona, message,
+                                          background_tasks)
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_turn", e)
     if not (result.get("reply") or "").strip():
@@ -1065,7 +1120,8 @@ def answer_persona_question(client_id: int, persona_id: str, message: str) -> di
     return result
 
 
-def _answer_persona_question(client_id: int, persona_id: str, persona: dict, message: str) -> dict:
+def _answer_persona_question(client_id: int, persona_id: str, persona: dict, message: str,
+                             background_tasks=None) -> dict:
     log_step(AGENT_NAME, "answer_persona_question",
              f"client_id={client_id} persona={persona_id}")
     client = get_client(client_id)
@@ -1119,7 +1175,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         if drafts:
             brief = _article_brief(result.get("article_request"))
             if brief:
-                return _article_draft(client_id, message, brief)
+                return _article_draft(client_id, message, brief, background_tasks)
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))

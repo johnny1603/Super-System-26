@@ -122,6 +122,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   NEVER move to `client_communications`/`client_activity`: both reach the client (chat
   history + data export). Answers are grounded in a per-question data block with explicit
   `data_gaps`; read-only like the client personas. See `HANDOFF-control-room.md`.
+- `agents/seo_article.py` — HOW articles are written (seo_agent.write_article keeps the
+  policy gates and stays the one entry point): live site grounding (real pages/posts,
+  tone samples, primary language, translation plugin), client_knowledge + CACHED research
+  only, one web-search intent call, brief → draft → critique → revise. Code enforces links
+  (site pages + the client's requested link only) and collects `[placeholder: ...]` for
+  facts the data lacks — never invented. From chat it runs as a BackgroundTasks job; the
+  outcome is posted into אורי's thread and the window polls for it (append-only).
 - `core/client_settings.py` — per-client limits (weekly article cap, package check,
   repeat-topic block, scheduled "auto articles", draft revision cap), defaults by TIER
   (paying keeps every brake; billing_exempt gets none and no scheduled writing). One

@@ -4119,6 +4119,7 @@ async function sendInWindow(personaId) {
       // Server-side failures arrive HERE too, as an in-voice handoff line
       // (core/chat_fallback) - the server never answers the chat with a 500
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
+      if (data.poll) watchForAgentPost(personaId);
     } else {
       chatNotDelivered(w, text);
     }
@@ -4127,6 +4128,50 @@ async function sendInWindow(personaId) {
     typing.remove();
     chatNotDelivered(w, text);
   }
+}
+
+// A reply that says "I'll post here when it's ready" (an article draft runs
+// for minutes in the background): watch THIS persona's thread for the new
+// message and APPEND it. Append-only on purpose — the window, its history and
+// its input box are never re-rendered, so nothing the client is typing is lost.
+const AGENT_POST_WATCH = {};
+const AGENT_POST_EVERY_MS = 15000, AGENT_POST_MAX_TRIES = 48;   // ~12 minutes
+async function fetchThread(personaId) {
+  const res = await fetch('/api/client-chat/history?persona=' + encodeURIComponent(personaId),
+                          { credentials: 'same-origin' });
+  const data = await res.json();
+  return data.success ? (data.history || []) : [];
+}
+async function watchForAgentPost(personaId) {
+  if (AGENT_POST_WATCH[personaId]) return;
+  AGENT_POST_WATCH[personaId] = true;
+  let baseline = '';
+  try {
+    const h = await fetchThread(personaId);   // ends with the "I'm on it" reply just stored
+    baseline = h.length ? (h[h.length - 1].created_at || '') : '';
+  } catch (e) { /* the first tick re-reads */ }
+  let tries = 0;
+  const tick = async () => {
+    tries++;
+    try {
+      const fresh = (await fetchThread(personaId))
+        .filter(e => e.direction === 'outbound' && (e.created_at || '') > baseline);
+      if (fresh.length) {
+        const w = CHAT_WINDOWS[personaId];
+        if (w) {
+          fresh.forEach(e => appendMsg(w.msgsEl, e.content, 'bot'));
+          try { localStorage.setItem(seenKey(personaId), fresh[fresh.length - 1].created_at || ''); } catch (e) {}
+        } else {
+          loadChatUnread();   // window closed meanwhile: the launcher dot tells them
+        }
+        delete AGENT_POST_WATCH[personaId];
+        return;
+      }
+    } catch (e) { /* transient - keep watching */ }
+    if (tries >= AGENT_POST_MAX_TRIES) { delete AGENT_POST_WATCH[personaId]; loadChatUnread(); return; }
+    setTimeout(tick, AGENT_POST_EVERY_MS);
+  };
+  setTimeout(tick, AGENT_POST_EVERY_MS);
 }
 
 // Only reached when the message never got an answer from the server (dropped

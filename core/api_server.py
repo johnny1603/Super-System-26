@@ -1157,7 +1157,7 @@ class ClientChatRequest(BaseModel):
                               # construction (see support_agent's docstring)
 
 @app.post("/api/client-chat")
-def client_chat(req: ClientChatRequest, request: Request):
+def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
     client_id = _require_session(request)
     try:
         from agents.support_agent import (PERSONAS, answer_persona_question,
@@ -1181,9 +1181,15 @@ def client_chat(req: ClientChatRequest, request: Request):
                 # Specialist path: structurally read-only — no upgrade builds, no
                 # web search, no action functions reachable (support_agent enforces),
                 # except the website persona's code-run article DRAFT (never publish)
-                result = answer_persona_question(client_id, persona, req.message)
+                result = answer_persona_question(client_id, persona, req.message,
+                                                 background_tasks)
         log_communication(client_id, "outbound", channel, result["reply"])
-        return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}
+        # poll: work continues in the background (an article draft) and its
+        # outcome will be posted into this persona's thread — the window
+        # watches for it (appends only; never re-renders the input)
+        return {"success": True, "reply": result["reply"],
+                "needs_human_followup": result["needs_human_followup"],
+                "poll": bool(result.get("poll"))}
     except HTTPException:
         raise
     except Exception as e:
@@ -4666,6 +4672,37 @@ def admin_control_room_costs(client_id: int, request: Request):
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True, "data": client_cost_view(client_id)}
+
+@app.get("/api/admin/control-room/{client_id}/article-drafts")
+def admin_control_room_article_drafts(client_id: int, request: Request, post_id: int = 0):
+    # Review surface for articles the system wrote: the recorded pipeline
+    # findings (language, translation plugin, links, placeholders, image
+    # ideas) per draft, and with post_id the draft's FULL current text read
+    # live from WordPress. Only post ids WE created for this client.
+    _require_admin(request)
+    rows = (db.table("client_activity").select("details,result,created_at")
+            .eq("client_id", client_id).eq("agent_name", "seo_agent")
+            .eq("action_type", "seo_article_generated")
+            .order("created_at", desc=True).limit(20).execute().data or [])
+    drafts = [{"post_id": (r.get("result") or {}).get("post_id"), "created_at": r.get("created_at"),
+               **(r.get("details") or {})} for r in rows]
+    if not post_id:
+        return {"success": True, "data": drafts}
+    if post_id not in {d["post_id"] for d in drafts}:
+        raise HTTPException(status_code=404, detail="not a draft this system created for this client")
+    from agents.website_agent import _creds, _get_connection
+    from core import wordpress_service as wp
+    site_url, username, app_password = _creds(_get_connection(client_id))
+    try:
+        post = wp.get_content(site_url, username, app_password, "post", post_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"WordPress read failed: {e}")
+    return {"success": True, "data": {
+        "post_id": post_id, "status": post.get("status"), "slug": post.get("slug"),
+        "title": (post.get("title") or {}).get("raw", ""),
+        "excerpt": (post.get("excerpt") or {}).get("raw", ""),
+        "content_html": (post.get("content") or {}).get("raw", ""),
+        "pipeline": next(d for d in drafts if d["post_id"] == post_id)}}
 
 class ClientSettingsUpdate(BaseModel):
     changes: dict = {}

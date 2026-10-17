@@ -512,36 +512,10 @@ def approve_strategy(client_id: int) -> dict:
 
 # ─── Article writing (iron rules enforced; publishes as WP DRAFT) ─────────────
 
-ARTICLE_SYSTEM = f"""You are a senior Hebrew content writer for uallak, an Israeli marketing
-agency, writing ONE article for a small business's WordPress site.
-
-IRON RULES (agency standing policy — Google penalizes scaled low-quality content, not AI
-authorship; genuine quality + human review is the compliance strategy):
-- The article must be genuinely useful and SPECIFIC to this business (its services, city,
-  audience from the business context). If it could run unchanged on a competitor's site,
-  it fails.
-- Real expertise markers: concrete, practical, experience-flavored advice. Use numbers,
-  prices, or examples ONLY if they appear in the provided business context — NEVER invent
-  facts, statistics, testimonials, or credentials.
-- One clear topic per article, matching the given target keyword naturally (no stuffing).
-- It must differ substantively from the recent_titles provided.
-- When market_research is provided, use it to pick angles and sub-topics the competitors
-  named in it have NOT covered well — that differentiation is the whole point of the
-  research. Never restate a competitor's article; never mention competitors by name in the
-  article itself; never borrow a metric from the research (it is qualitative research, and
-  the no-invented-facts rule above still binds absolutely).
-
-FORMAT (violations cause automatic rejection):
-- Hebrew. {ARTICLE_WORDS_MIN}-{ARTICLE_WORDS_MAX} words.
-- HTML body only: <h2>/<h3> headings (NEVER <h1> — the title is the H1; no level jumps),
-  <p>, <ul>/<ol>. NO <img> tags, NO forms, NO inline styles.
-- End with a short, natural call-to-action paragraph pointing to the business's services.
-- excerpt: Hebrew meta-description, ONE sentence, max 150 characters.
-- slug: short English slug, words separated by hyphens.
-
-Return JSON only:
-{{"title": "Hebrew title", "slug": "english-slug", "excerpt": "Hebrew, max 150 chars",
- "content_html": "<h2>...</h2><p>...</p>"}}"""
+# The writing itself (grounding → search intent → brief → draft → critique →
+# revise, plus the code-side link/placeholder checks) lives in
+# agents/seo_article.py. This module keeps the POLICY: who may get an article,
+# how many, on which topic, and that it is only ever a draft.
 
 
 def _articles_this_week(client_id: int, cap: int = MAX_ARTICLES_PER_WEEK) -> int:
@@ -564,22 +538,17 @@ def _similar_recent(client_id: int, topic: str) -> dict:
     return {}
 
 
-def write_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "",
-                  alert: bool = True) -> dict:
-    """Generate one article and hand it to website_agent as a DRAFT (the human
-    sign-off happens in WP, same as all content). Enforces the weekly cap and
-    topic dedup in code — the iron rules are policy, not vibes.
-    alert=False: the caller raises ONE deduped alert itself (the client-chat
-    path, support_agent._article_draft) instead of one per failing step."""
-    topic = (topic or "").strip()
-    if not topic:
-        return {"success": False, "errors": ["topic is required"]}
-
-    from agents.website_agent import content_quality_issues, is_connected, publish_content
-    # "reason" on the three policy refusals: callers that talk to a client
+def article_preflight(client_id: int, topic: str) -> dict:
+    """Every POLICY gate, without writing anything — so the chat can answer a
+    refusal immediately and only start the (minutes-long) writing when it
+    will be allowed. write_article runs it again itself; nothing relies on the
+    caller having checked. {"ok": True, cap, used, similar} or {"ok": False,
+    "reason": not_connected|weekly_cap|duplicate_topic, ...}."""
+    from agents.website_agent import is_connected
+    # "reason" on the policy refusals: callers that talk to a client
     # (support_agent._article_draft) branch on it, never on the English text
     if not is_connected(client_id):
-        return {"success": False, "reason": "not_connected", "errors": ["website not connected"]}
+        return {"ok": False, "reason": "not_connected", "errors": ["website not connected"]}
 
     # Per-client limits (core/client_settings): paying clients keep the iron-
     # rule cap and the repeat block; billing-exempt accounts default to none.
@@ -590,36 +559,47 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
     if cap is not None:
         used = _articles_this_week(client_id, cap)
         if used >= cap:
-            return {"success": False, "reason": "weekly_cap", "cap": cap,
+            return {"ok": False, "reason": "weekly_cap", "cap": cap,
                     "errors": [f"weekly article cap reached ({used}/{cap}) — "
                                "the cap is the anti-scaled-content iron rule, not a soft limit"]}
 
     similar = _similar_recent(client_id, topic)
     if similar and limits["article_block_repeat_topic"]:
-        return {"success": False, "reason": "duplicate_topic", "similar": similar,
+        return {"ok": False, "reason": "duplicate_topic", "similar": similar,
                 "errors": [f"an article on this exact topic was already "
                            f"written recently — pick a different angle"]}
-    recent = [((r.get("details") or {}).get("topic") or "")
+    return {"ok": True, "cap": cap, "used": used, "similar": similar}
+
+
+def write_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "",
+                  alert: bool = True, required_link: str = "", tone: str = "") -> dict:
+    """Generate one article (agents/seo_article pipeline) and hand it to
+    website_agent as a DRAFT (the human sign-off happens later, same as all
+    content). Enforces the per-client cap and topic rule in code — the iron
+    rules are policy, not vibes.
+    alert=False: the caller raises ONE deduped alert itself (the client-chat
+    path, support_agent._article_draft) instead of one per failing step."""
+    topic = (topic or "").strip()
+    if not topic:
+        return {"success": False, "errors": ["topic is required"]}
+
+    gate = article_preflight(client_id, topic)
+    if not gate["ok"]:
+        return {"success": False, **{k: v for k, v in gate.items() if k != "ok"}}
+    cap, used, similar = gate["cap"], gate["used"], gate["similar"]
+    recent = [((r.get("details") or {}).get("title") or (r.get("details") or {}).get("topic") or "")
               for r in _recent_activity(client_id, "seo_article_generated", 60, limit=10)]
 
-    payload = {
-        "business": _business_context(client_id),
-        "topic": topic,
-        "target_keyword": target_keyword,
-        "notes": notes,
-        "recent_titles": recent[:10],
-    }
-    # The strategy that produced this topic was research-grounded; the article
-    # that fulfils it was not. Reads run_market_research's EXISTING cache (7-day
-    # TTL) rather than starting a new one — free when warm, and skipped entirely
-    # rather than paying for research just to write a single article.
+    # The SEO tool's own research, when a strategy produced this topic. Reads
+    # run_market_research's EXISTING cache (7-day TTL) — never starts one.
+    market_research = None
     cached_research = _recent_activity(client_id, "seo_research_completed",
                                        RESEARCH_CACHE_DAYS, limit=1)
     if cached_research:
         research = (cached_research[0].get("details") or {}).get("research") or {}
-        # The tool bundle is large and numeric; the article writer needs the
+        # The tool bundle is large and numeric; the writer needs the
         # qualitative shape (who competes, what they cover), not the full report.
-        payload["market_research"] = {
+        market_research = {
             "source": research.get("source", ""),
             "summary": research.get("summary", ""),
             "competitors": ((research.get("data") or {}).get("competitors") or [])[:5],
@@ -627,48 +607,43 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
         }
     log_step(AGENT_NAME, "write_article", f"client {client_id}: '{topic}'")
 
-    user_message = json.dumps(payload, ensure_ascii=False)
-    article, issues = None, []
-    for attempt in range(2):
-        try:
-            article = timed_step(
-                AGENT_NAME, "article_llm",
-                lambda: safe_claude_json_call(ARTICLE_SYSTEM, user_message, max_tokens=4000,
-                                              client_id=client_id, cost_category="claude_seo"))
-        except ClaudeJSONError as e:
-            if alert:
-                agent_alert(AGENT_NAME, [f"client {client_id}: article generation failed: {e}"])
-            return {"success": False, "errors": [str(e)]}
-        issues = content_quality_issues(article.get("content_html", ""),
-                                        require_excerpt=True,
-                                        has_excerpt=bool((article.get("excerpt") or "").strip()))
-        if not (article.get("title") or "").strip():
-            issues.append("title is required")
-        if not issues:
-            break
-        # One repair round: feed the named violations back
-        user_message = json.dumps({**payload, "previous_attempt_issues": issues},
-                                  ensure_ascii=False)
-    if issues:
+    from agents import seo_article
+    try:
+        article = seo_article.build_article(
+            client_id, topic, target_keyword=target_keyword, notes=notes,
+            required_link=required_link, tone=tone, recent_titles=recent,
+            market_research=market_research)
+    except seo_article.ArticleError as e:
         if alert:
-            agent_alert(AGENT_NAME, [f"client {client_id}: article for '{topic}' failed quality "
-                                     f"gate twice: {'; '.join(issues)}"])
-        return {"success": False, "errors": issues}
+            agent_alert(AGENT_NAME, [f"client {client_id}: article for '{topic}' failed: {e}"])
+        return {"success": False, "errors": [str(e)]}
 
+    from agents.website_agent import publish_content
     published = publish_content(client_id, {
         "kind": "post",
         "title": article["title"],
         "content": article["content_html"],
-        "excerpt": article.get("excerpt", ""),
-        "slug": article.get("slug", ""),
-        "status": "draft",  # human approves in WP — never auto-publish
+        "excerpt": article["meta_description"],  # core WP's meta-description surface
+        "slug": article["slug"],
+        "status": "draft",  # the client approves before anything goes live — never auto-publish
     }, alert=alert)
     if not published.get("success"):
         return {"success": False, "errors": published.get("errors", ["publish failed"])}
 
     _log_activity(client_id, "seo_article_generated",
                   {"topic": topic, "target_keyword": target_keyword,
-                   "title": article["title"]},
+                   "title": article["title"],
+                   "language": article["language"],
+                   "language_source": article["language_source"],
+                   "translation": article["translation"],
+                   "headings": article["headings"][:12],
+                   "internal_links": article["internal_links"],
+                   "removed_links": article["removed_links"],
+                   "image_suggestions": article["image_suggestions"],
+                   "placeholders": article["placeholders"],
+                   "facts_missing": article["facts_missing"],
+                   "words": article["words"],
+                   "critique_issues": article["critique_issues"]},
                   {"post_id": published.get("id"), "link": published.get("link", "")})
     log_step(AGENT_NAME, "write_article",
              f"client {client_id}: draft {published.get('id')} created")
@@ -676,7 +651,12 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
             "link": published.get("link", ""), "status": "draft",
             "articles_this_week": used + 1, "weekly_cap": cap,
             # Not blocked (exempt / switched off) but worth telling the client
-            "similar": similar}
+            "similar": similar,
+            # What the client must be told is missing (visible in the draft)
+            "placeholders": article["placeholders"],
+            "language": article["language"], "translation": article["translation"],
+            "image_suggestions": article["image_suggestions"],
+            "internal_links": article["internal_links"], "words": article["words"]}
 
 
 # ─── Cross-promotion extension point (future media agent) ─────────────────────
