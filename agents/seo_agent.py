@@ -732,14 +732,17 @@ def run_seo_cycle() -> dict:
             summary["skipped_no_site"] += 1
             continue
 
-        written = _advance_pending_articles(client_id)
-        summary["articles_advanced"] += len(written)
+        # Every cost of this client's scheduled pass is labelled "seo_cycle"
+        from core.cost_tracker import cost_action
+        with cost_action("seo_cycle"):
+            written = _advance_pending_articles(client_id)
+            summary["articles_advanced"] += len(written)
 
-        if _recent_activity(client_id, "seo_strategy_proposed",
-                            STRATEGY_MIN_INTERVAL_DAYS, limit=1):
-            summary["skipped_fresh"] += 1
-            continue
-        result = build_strategy(client_id)  # alerts Johnny on success AND failure paths
-        summary["proposed" if result.get("success") else "failed"] += 1
+            if _recent_activity(client_id, "seo_strategy_proposed",
+                                STRATEGY_MIN_INTERVAL_DAYS, limit=1):
+                summary["skipped_fresh"] += 1
+                continue
+            result = build_strategy(client_id)  # alerts Johnny on success AND failure paths
+            summary["proposed" if result.get("success") else "failed"] += 1
     log_step(AGENT_NAME, "seo_cycle", f"done — {summary}")
     return summary

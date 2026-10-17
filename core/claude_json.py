@@ -91,12 +91,13 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
         total_output_tokens += response.usage.output_tokens
 
     try:
-        from core.cost_tracker import claude_cost_ils, record_cost
+        from core.cost_tracker import claude_cost_ils, claude_cost_usd, record_cost
         record_cost(
             cost_category,
-            claude_cost_ils(total_input_tokens, total_output_tokens),
+            claude_cost_ils(total_input_tokens, total_output_tokens, model),
             client_id=client_id,
             details={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "model": model},
+            usd=claude_cost_usd(total_input_tokens, total_output_tokens, model),
         )
     except Exception as e:
         print(f"[claude_json] cost tracking failed (non-fatal): {e}")
@@ -191,14 +192,17 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
         messages = messages + [{"role": "assistant", "content": response.content}]
 
     try:
-        from core.cost_tracker import claude_cost_ils, record_cost, web_search_cost_ils
+        from core.cost_tracker import (claude_cost_ils, claude_cost_usd, record_cost,
+                                       web_search_cost_ils, web_search_cost_usd)
         record_cost(
             cost_category,
-            round(claude_cost_ils(total_input, total_output)
+            round(claude_cost_ils(total_input, total_output, model)
                   + web_search_cost_ils(total_searches), 4),
             client_id=client_id,
             details={"input_tokens": total_input, "output_tokens": total_output,
-                     "web_searches": total_searches, "model": model},
+                     "web_searches": total_searches, "model": model,
+                     "web_search_usd": web_search_cost_usd(total_searches)},
+            usd=claude_cost_usd(total_input, total_output, model) + web_search_cost_usd(total_searches),
         )
     except Exception as e:
         print(f"[claude_json] cost tracking failed (non-fatal): {e}")

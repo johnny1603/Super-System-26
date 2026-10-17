@@ -1171,13 +1171,17 @@ def client_chat(req: ClientChatRequest, request: Request):
         # replayed independently (see support_agent.persona_channel).
         channel = persona_channel(persona)
         log_communication(client_id, "inbound", channel, req.message)
-        if persona == "general":
-            result = answer_support_question(client_id, req.message)
-        else:
-            # Specialist path: structurally read-only — no upgrade builds, no
-            # web search, no action functions reachable (support_agent enforces),
-            # except the website persona's code-run article DRAFT (never publish)
-            result = answer_persona_question(client_id, persona, req.message)
+        from core.cost_tracker import cost_action
+        # Every LLM cost of this turn is labelled with it (core/cost_tracker);
+        # an article draft started inside it relabels its own calls
+        with cost_action(f"chat_{persona}"):
+            if persona == "general":
+                result = answer_support_question(client_id, req.message)
+            else:
+                # Specialist path: structurally read-only — no upgrade builds, no
+                # web search, no action functions reachable (support_agent enforces),
+                # except the website persona's code-run article DRAFT (never publish)
+                result = answer_persona_question(client_id, persona, req.message)
         log_communication(client_id, "outbound", channel, result["reply"])
         return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}
     except HTTPException:
@@ -4650,6 +4654,18 @@ def admin_control_room_budget(client_id: int, request: Request):
     _require_admin(request)
     from core import control_room
     return {"success": True, "data": control_room.budget_split(client_id)}
+
+@app.get("/api/admin/control-room/{client_id}/costs")
+def admin_control_room_costs(client_id: int, request: Request):
+    # What this client has cost us, by category and by action (core/
+    # cost_tracker.client_cost_view). Its own lazy endpoint: cost figures stay
+    # out of client_view, which grounds the Control Room chat — no cost
+    # information in any chat prompt.
+    _require_admin(request)
+    from core.cost_tracker import client_cost_view
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True, "data": client_cost_view(client_id)}
 
 class ClientSettingsUpdate(BaseModel):
     changes: dict = {}

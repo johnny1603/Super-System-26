@@ -2059,6 +2059,10 @@ async function openControlRoom(clientId) {
           <div id="crBudget"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען נתוני פלטפורמות…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">💰 עלויות הלקוח — לפי קטגוריה ופעולה ${conf('estimate')}</div>
+          <div id="crCosts"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">⚙️ הגדרות לקוח — מגבלות מאמרים ופעולות</div>
           <div id="crSettings"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -2093,6 +2097,63 @@ async function openControlRoom(clientId) {
   crLoadChat();
   crLoadBudget(clientId);
   crLoadSettings(clientId);
+  crLoadCosts(clientId);
+}
+
+// ─── per-client cost view (core/cost_tracker.client_cost_view) ──────────────
+// USD is what we record; ILS is at the fixed tracking rate - both estimates.
+const CR_COST_LABELS = {
+  claude_support: 'צ׳אט (Claude)', claude_support_search: 'צ׳אט + חיפוש ברשת',
+  claude_seo: 'כתיבת מאמרים / SEO', claude_api: 'Claude — כללי', claude_api_search: 'Claude + חיפוש',
+  drive_download_egress: 'הורדות מ-Drive', client_paid_media_estimate: 'מדיה (Higgsfield, הערכה)',
+  article_draft: 'טיוטת מאמר מהצ׳אט', seo_cycle: 'מחזור SEO מתוזמן',
+  chat_general: 'צ׳אט — קונסיירז׳', chat_google: 'צ׳אט — יואב', chat_meta: 'צ׳אט — מאיה',
+  chat_website: 'צ׳אט — אורי', chat_media: 'צ׳אט — ליאור',
+};
+function crCostLabel(k) { return CR_COST_LABELS[k] || k; }
+function crMoney(m) { return `$${Number(m.usd).toFixed(m.usd < 1 ? 4 : 2)} · ≈${ils(m.ils)}`; }
+function crCostRows(map) {
+  const rows = Object.entries(map || {});
+  return rows.length ? rows.map(([k, m]) => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(crCostLabel(k))}</span><span>${crMoney(m)}</span></div>`).join('')
+    : '<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין עלויות רשומות</div>';
+}
+async function crLoadCosts(clientId) {
+  const el = document.getElementById('crCosts');
+  if (!el) return;
+  try {
+    const c = (await api(`/api/admin/control-room/${Number(clientId)}/costs`)).data;
+    if (crState.clientId !== clientId || !el.isConnected) return;
+    const mtd = c.month_to_date, all = c.all_time, paid = c.client_paid_media;
+    const latest = (c.latest_actions || []).map(a => `<div class="drawer-stat-row">
+        <span class="drawer-stat-label">${esc(crCostLabel(a.action))}${a.estimate ? ' <span style="color:var(--gray);">(הערכה)</span>' : ''}
+          <span style="color:var(--gray);font-size:11px;">· ${Number(a.calls)} קריאות · ${fmtDate(a.at)}</span></span>
+        <span>${crMoney(a)}</span></div>`).join('')
+      || '<div class="drawer-stat-row" style="border:none;color:var(--gray);font-size:12px;">אין פעולות רשומות</div>';
+    el.innerHTML = `
+      <div style="font-size:12px;margin-bottom:8px;">${c.billing_exempt
+        ? '<span class="status-pill other">פנימי</span> חשבון ללא חיוב — כל הסכומים כאן הם <b>עלות פנימית</b>, אין מולם הכנסה.'
+        : 'עלות השירות ללקוח משלם (מתוך דמי הניהול).'}</div>
+      <div class="cr-split">
+        <div>
+          <div class="drawer-label">מתחילת החודש: <b>${crMoney(mtd.total)}</b></div>
+          ${crCostRows(mtd.by_category)}
+          <div class="drawer-label" style="margin-top:8px;">לפי פעולה</div>
+          ${crCostRows(mtd.by_action)}
+        </div>
+        <div>
+          <div class="drawer-label">מאז ומעולם: <b>${crMoney(all.total)}</b></div>
+          ${crCostRows(all.by_category)}
+          <div class="drawer-label" style="margin-top:8px;">לפי פעולה</div>
+          ${crCostRows(all.by_action)}
+        </div>
+      </div>
+      ${!c.billing_exempt && paid.jobs ? `<div style="font-size:12px;color:var(--gray);margin-top:8px;">מדיה שהלקוח משלם עליה ישירות (Higgsfield, <b>הערכה</b>, לא נכלל בסכומים): $${Number(paid.usd_month_to_date).toFixed(2)} החודש · $${Number(paid.usd_all_time).toFixed(2)} סה״כ · ${Number(paid.jobs)} עבודות</div>` : ''}
+      <div class="drawer-label" style="margin-top:10px;">פעולות אחרונות</div>
+      ${latest}
+      <div style="font-size:11px;color:var(--gray);margin-top:6px;">USD לפי מחירון ספקים; ₪ בשער קבוע ${Number(c.usd_to_ils)} — הערכה לצורכי מעקב, לא הנהלת חשבונות.</div>`;
+  } catch (e) {
+    if (el.isConnected) el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת העלויות</div>';
+  }
 }
 
 // ─── per-client settings (core/client_settings) ──────────────────────────────

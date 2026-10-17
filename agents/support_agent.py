@@ -966,9 +966,11 @@ def _article_draft(client_id: int, message: str, brief: dict) -> dict:
     log_step(AGENT_NAME, "article_draft", f"client {client_id}: '{brief['topic']}'")
     try:
         from agents.seo_agent import write_article
-        result = timed_step(AGENT_NAME, "article_draft",
-                            lambda: write_article(client_id, brief["topic"],
-                                                  notes=" ".join(notes), alert=False))
+        from core.cost_tracker import cost_action
+        with cost_action("article_draft"):
+            result = timed_step(AGENT_NAME, "article_draft",
+                                lambda: write_article(client_id, brief["topic"],
+                                                      notes=" ".join(notes), alert=False))
     except Exception as e:
         result = {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
 
