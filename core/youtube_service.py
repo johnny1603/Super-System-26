@@ -43,6 +43,10 @@ API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/youtube/callback"
+# THE YouTube scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it).
+# upload: videos.insert (upload_video). readonly: channels.list mine=true,
+# playlistItems.list and videos.list on the client's own — often private —
+# uploads (get_own_channel, list_recent_uploads, get_video_stats).
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",

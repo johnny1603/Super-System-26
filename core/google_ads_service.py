@@ -33,7 +33,9 @@ ADS_BASE_URL = f"https://googleads.googleapis.com/{ADS_API_VERSION}"
 OAUTH_CONSENT_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
-ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+# THE Google Ads scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it).
+# adwords is the Google Ads API's only OAuth scope.
+ADS_SCOPES = ["https://www.googleapis.com/auth/adwords"]
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/google-ads/callback"
 TIMEOUT = 20
@@ -72,7 +74,7 @@ def build_consent_url(state: str) -> str:
         "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": ADS_SCOPE,
+        "scope": " ".join(ADS_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
         "state": state,

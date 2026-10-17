@@ -1069,6 +1069,26 @@ def _gtm_connection(client_id: int) -> dict:
     return rows[0] if rows else {}
 
 
+def gtm_missing_scopes(client_id: int) -> list:
+    """GTM scopes the client's STORED grant lacks; [] when there is no GTM
+    connection or the grant covers gtm_service.GTM_SCOPES. The authority is
+    the scope list recorded at consent (gtm_api_connected, since
+    2026-10-17). A connection with no recorded list predates the
+    tagmanager.edit.containerversions scope, so it lacks it by construction —
+    publishing would 403 — and the client must reconnect."""
+    from core import gtm_service as gtm
+    if not _gtm_connection(client_id).get("access_token"):
+        return []
+    rows = (_db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "gtm_api_connected")
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    recorded = (rows[0].get("details") or {}).get("scopes") if rows else None
+    if recorded is None:
+        return [s for s in gtm.GTM_SCOPES if s.endswith("tagmanager.edit.containerversions")]
+    return gtm.missing_scopes(recorded)
+
+
 def get_conversion_tracking_status(client_id: int) -> dict:
     """Is a lead conversion event ACTUALLY LIVE in the client's GTM
     container? Reads the PUBLISHED container version (workspace contents are
@@ -1128,6 +1148,13 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
     conn = _gtm_connection(client_id)
     if not conn.get("access_token"):
         return {"success": False, "errors": ["GTM API not connected for this client"]}
+    # Refuse BEFORE creating anything: without every scope the trigger and tag
+    # would be created and then publish would 403, leaving a half-done workspace
+    missing = gtm_missing_scopes(client_id)
+    if missing:
+        return {"success": False, "reason": "gtm_reconnect_needed",
+                "errors": [f"the stored GTM grant lacks {missing} — the client must reconnect "
+                           "Tag Manager from the dashboard (the card asks for it)"]}
 
     ga4_measurement_id = (ga4_measurement_id or "").strip()
     if not ga4_measurement_id:

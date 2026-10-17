@@ -15,7 +15,7 @@ Auth model — a SEPARATE consent from Google Ads, on purpose:
   need this at all — bundling would put a scarier consent screen in front
   of every ads-only client.
 
-SCOPE/VERIFICATION REALITY (checked 2026-07-23): both scopes below are
+SCOPE/VERIFICATION REALITY (checked 2026-07-23): the scopes below are
 Google "SENSITIVE" scopes (NOT "restricted" — no third-party security
 assessment needed, unlike e.g. Gmail scopes). Consequence: they must be
 added to the OAuth consent screen in Google Cloud Console and the app's
@@ -25,10 +25,18 @@ users (up to 100) can connect — fine for development, a real timeline gate
 before client-facing rollout. Same class of process the adwords scope went
 through, not a new tier of pain.
 
-tagmanager.edit.containers — read+write workspaces/tags/triggers.
-tagmanager.publish — create_version alone does NOT make config live;
-publishing a container version is its own scope, and without it every
-"configured" conversion trigger would sit in a draft forever.
+Each scope, by the API method that requires it (Tag Manager API v2
+reference, checked 2026-10-17) — docs/GOOGLE-SCOPES.md has the full map:
+tagmanager.edit.containers — accounts.list, containers.list,
+  workspaces.list, versions.live (read) and workspaces.triggers.create /
+  workspaces.tags.create (write).
+tagmanager.edit.containerversions — workspaces.create_version. Missing
+  until 2026-10-17, so every publish_workspace call would have failed with
+  403; grants made before then lack it and must reconnect
+  (website_agent.gtm_missing_scopes).
+tagmanager.publish — versions.publish: create_version alone does NOT make
+  config live, and without it every "configured" conversion trigger would
+  sit in a draft forever.
 
 VERIFICATION STATUS: written against Google's Tag Manager API v2 reference,
 never run with a live grant — same accepted MVP state as every other
@@ -50,11 +58,21 @@ from core.google_ads_service import exchange_code as _google_exchange_code
 GTM_BASE_URL = "https://tagmanager.googleapis.com/tagmanager/v2"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/gtm/callback"
+# THE Tag Manager scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it)
 GTM_SCOPES = [
     "https://www.googleapis.com/auth/tagmanager.edit.containers",
+    "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
     "https://www.googleapis.com/auth/tagmanager.publish",
 ]
 TIMEOUT = 30
+
+
+def missing_scopes(granted) -> list:
+    """GTM_SCOPES not present in a grant. `granted` is the token response's
+    space-separated "scope" string or a list; None/"" = unknown -> all of
+    them (a grant we never recorded is treated as not proven)."""
+    have = set(granted.split() if isinstance(granted, str) else (granted or []))
+    return [s for s in GTM_SCOPES if s not in have]
 
 
 def redirect_uri() -> str:

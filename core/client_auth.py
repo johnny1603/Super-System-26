@@ -18,7 +18,7 @@ and stays the fallback for everyone.
   and it always proves the client owns the inbox. That same proof is what
   marks the email verified (`email_verified_at`).
   Changing a password from the profile page needs the CURRENT password instead.
-- **Google sign-in** (openid/email/profile only - non-sensitive scopes, so no
+- **Google sign-in** (openid + email only - non-sensitive scopes, so no
   app-verification review). It signs in an EXISTING client whose email matches
   the verified Google email; it never creates one. The Google account is linked
   by its stable `sub` on first use so a later Gmail-address change still works.
@@ -68,7 +68,10 @@ GRANTABLE_SERVICES = {
     "avatar": "avatar",
 }
 
-GOOGLE_LOGIN_SCOPE = "openid email profile"
+# THE Google sign-in scope list (one constant; docs/GOOGLE-SCOPES.md mirrors
+# it). `profile` was dropped 2026-10-17: nothing reads name/picture — sign-in
+# uses only sub, email and email_verified (find_client_for_google, link_google).
+GOOGLE_LOGIN_SCOPES = ["openid", "email"]
 GOOGLE_LOGIN_CALLBACK_PATH = "/api/oauth/google-login/callback"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
@@ -280,14 +283,14 @@ def google_login_url(state: str) -> str:
         "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
         "redirect_uri": google_login_redirect_uri(),
         "response_type": "code",
-        "scope": GOOGLE_LOGIN_SCOPE,
+        "scope": " ".join(GOOGLE_LOGIN_SCOPES),
         "prompt": "select_account",
         "state": state,
     })
 
 
 def google_identity(code: str) -> dict:
-    """Authorization code -> {sub, email, email_verified, name}. The access
+    """Authorization code -> {sub, email, email_verified}. The access
     token is used once for userinfo and discarded; nothing is stored but `sub`."""
     from agents.keys_agent import get_key
     token = httpx.post("https://oauth2.googleapis.com/token", data={

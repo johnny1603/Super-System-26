@@ -37,7 +37,10 @@ from agents.keys_agent import get_key
 
 DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
-DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
+# THE Drive scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it). Used by
+# OUR service account only — never shown to a client on a consent screen.
+# drive.file would not see files a client drops into their own media folder.
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 TIMEOUT = 60
 
 _token_cache = {"token": None, "expires_at": 0}
@@ -186,7 +189,7 @@ def _access_token() -> str:
     from google.auth.transport.requests import Request
     info = _service_account_info()
     credentials = service_account.Credentials.from_service_account_info(
-        info, scopes=[DRIVE_SCOPE])
+        info, scopes=DRIVE_SCOPES)
     credentials.refresh(Request())
     # Drive access tokens live ~1h; refresh a few minutes early
     _token_cache["token"] = credentials.token

@@ -55,7 +55,9 @@ ACCOUNTS_BASE = "https://merchantapi.googleapis.com/accounts/v1"
 DATASOURCES_BASE = "https://merchantapi.googleapis.com/datasources/v1"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/merchant-center/callback"
-MERCHANT_SCOPE = "https://www.googleapis.com/auth/content"
+# THE Merchant Center scope list (one constant; docs/GOOGLE-SCOPES.md mirrors
+# it). content is the Merchant API's only OAuth scope — there is no read-only one.
+MERCHANT_SCOPES = ["https://www.googleapis.com/auth/content"]
 TIMEOUT = 30
 
 
@@ -74,7 +76,7 @@ def build_consent_url(state: str) -> str:
         "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": MERCHANT_SCOPE,
+        "scope": " ".join(MERCHANT_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
         "state": state,

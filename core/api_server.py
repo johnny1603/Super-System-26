@@ -1028,6 +1028,17 @@ async def dashboard_data(request: Request):
         (a.get("account_id") for a in accounts if a.get("platform") == "merchant_center"
          and a.get("status") == "active" and a.get("account_id")), "")
 
+    # A GTM grant without every current scope (one made before
+    # tagmanager.edit.containerversions was requested) can read but cannot
+    # publish — the card asks for a calm reconnect instead of failing later
+    gtm_needs_reconnect = False
+    if any(a.get("platform") == "google_tagmanager" and a.get("status") == "active" for a in accounts):
+        try:
+            from agents.website_agent import gtm_missing_scopes
+            gtm_needs_reconnect = bool(gtm_missing_scopes(client_id))
+        except Exception as e:
+            print(f"[dashboard] gtm scope check failed for client {client_id}: {e}")
+
     return {"success": True, "data": {
         "client": {
             "id": client.get("id"),
@@ -1062,6 +1073,7 @@ async def dashboard_data(request: Request):
         # Connected Merchant Center id + the name the Merchant API returned at
         # link time (from activity already fetched - no API call per load)
         "merchant_center_id": merchant_center_id,
+        "gtm_needs_reconnect": gtm_needs_reconnect,
         "merchant_center_name": next(
             ((e.get("details") or {}).get("account_name", "") for e in activity
              if merchant_center_id and e.get("action_type") == "merchant_center_connected"
@@ -2274,9 +2286,16 @@ def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
             return RedirectResponse(url="/dashboard/?connect_error=gtm_no_container")
 
         upsert_account(client_id, "google_tagmanager", container["path"], refresh_token, "active")
+        # Record what Google actually GRANTED (granular consent lets a user
+        # untick a scope): website_agent.gtm_missing_scopes reads this to ask
+        # for a reconnect instead of failing at publish time
+        granted = (tokens.get("scope") or "").split()
         log_activity(client_id, "website_agent", "gtm_api_connected",
                      {"container_path": container["path"],
-                      "public_id": container.get("publicId", "")}, {})
+                      "public_id": container.get("publicId", ""),
+                      "scopes": granted}, {})
+        if gtm_service.missing_scopes(granted):
+            print(f"[gtm oauth] client {client_id}: grant lacks {gtm_service.missing_scopes(granted)}")
         return RedirectResponse(url="/dashboard/?connected=gtm")
     except Exception:
         import traceback
