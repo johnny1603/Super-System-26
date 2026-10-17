@@ -542,29 +542,35 @@ def _articles_this_week(client_id: int) -> int:
     return len(_recent_activity(client_id, "seo_article_generated", 7, limit=MAX_ARTICLES_PER_WEEK + 1))
 
 
-def write_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "") -> dict:
+def write_article(client_id: int, topic: str, target_keyword: str = "", notes: str = "",
+                  alert: bool = True) -> dict:
     """Generate one article and hand it to website_agent as a DRAFT (the human
     sign-off happens in WP, same as all content). Enforces the weekly cap and
-    topic dedup in code — the iron rules are policy, not vibes."""
+    topic dedup in code — the iron rules are policy, not vibes.
+    alert=False: the caller raises ONE deduped alert itself (the client-chat
+    path, support_agent._article_draft) instead of one per failing step."""
     topic = (topic or "").strip()
     if not topic:
         return {"success": False, "errors": ["topic is required"]}
 
     from agents.website_agent import content_quality_issues, is_connected, publish_content
+    # "reason" on the three policy refusals: callers that talk to a client
+    # (support_agent._article_draft) branch on it, never on the English text
     if not is_connected(client_id):
-        return {"success": False, "errors": ["website not connected"]}
+        return {"success": False, "reason": "not_connected", "errors": ["website not connected"]}
 
     used = _articles_this_week(client_id)
     if used >= MAX_ARTICLES_PER_WEEK:
-        return {"success": False,
+        return {"success": False, "reason": "weekly_cap",
                 "errors": [f"weekly article cap reached ({used}/{MAX_ARTICLES_PER_WEEK}) — "
                            "the cap is the anti-scaled-content iron rule, not a soft limit"]}
 
     recent = [((r.get("details") or {}).get("topic") or "")
               for r in _recent_activity(client_id, "seo_article_generated", 60, limit=10)]
     if any(topic.strip() == t.strip() for t in recent if t):
-        return {"success": False, "errors": [f"an article on this exact topic was already "
-                                             f"written recently — pick a different angle"]}
+        return {"success": False, "reason": "duplicate_topic",
+                "errors": [f"an article on this exact topic was already "
+                           f"written recently — pick a different angle"]}
 
     payload = {
         "business": _business_context(client_id),
@@ -600,7 +606,8 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
                 lambda: safe_claude_json_call(ARTICLE_SYSTEM, user_message, max_tokens=4000,
                                               client_id=client_id, cost_category="claude_seo"))
         except ClaudeJSONError as e:
-            agent_alert(AGENT_NAME, [f"client {client_id}: article generation failed: {e}"])
+            if alert:
+                agent_alert(AGENT_NAME, [f"client {client_id}: article generation failed: {e}"])
             return {"success": False, "errors": [str(e)]}
         issues = content_quality_issues(article.get("content_html", ""),
                                         require_excerpt=True,
@@ -613,8 +620,9 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
         user_message = json.dumps({**payload, "previous_attempt_issues": issues},
                                   ensure_ascii=False)
     if issues:
-        agent_alert(AGENT_NAME, [f"client {client_id}: article for '{topic}' failed quality "
-                                 f"gate twice: {'; '.join(issues)}"])
+        if alert:
+            agent_alert(AGENT_NAME, [f"client {client_id}: article for '{topic}' failed quality "
+                                     f"gate twice: {'; '.join(issues)}"])
         return {"success": False, "errors": issues}
 
     published = publish_content(client_id, {
@@ -624,7 +632,7 @@ def write_article(client_id: int, topic: str, target_keyword: str = "", notes: s
         "excerpt": article.get("excerpt", ""),
         "slug": article.get("slug", ""),
         "status": "draft",  # human approves in WP — never auto-publish
-    })
+    }, alert=alert)
     if not published.get("success"):
         return {"success": False, "errors": published.get("errors", ["publish failed"])}
 

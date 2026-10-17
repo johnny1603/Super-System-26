@@ -23,6 +23,15 @@ pause/resume/create campaigns, change budgets, publish content, or trigger a
 proposal build — asking nicely (or adversarially) cannot change that. Adding
 an action-capable function to a persona's reads is a bug by definition; keep
 this invariant when extending.
+
+THE ONE EXCEPTION (2026-10-17): the WEBSITE persona may LABEL a request for
+a new article ("article_request": topic/tone/link). The model writes nothing
+and decides nothing; code (_article_draft) calls seo_agent.write_article,
+which saves a WordPress DRAFT only — weekly cap, topic dedup and the quality
+gate all enforced there — and the confirmation the client sees is fixed
+text with the draft's wp-admin link. Nothing is ever published or edited
+from the chat; the client presses Publish in WordPress. Any other action
+label stays unread.
 """
 import json
 import os
@@ -826,6 +835,141 @@ PERSONAS = {
     },
 }
 
+# ─── The website persona's one action: an article DRAFT (code-run) ───────────
+# Substituted into PERSONA_SYSTEM_TEMPLATE as format VALUES, so braces in them
+# are literal. Same capture-of-intent bar as the concierge's upgrade_request:
+# explicit ask only, ONE clarifying question when unclear, a holding reply that
+# code replaces, hard length caps applied in code.
+ARTICLE_EXCEPTION = " — with ONE exception, ARTICLE DRAFTS, described just below"
+ARTICLE_FIELD = ', "article_request": {"topic": "", "tone": "", "link": ""}'
+ARTICLE_DRAFT_RULE = """
+
+ARTICLE DRAFTS — THE ONE THING YOU CAN SET IN MOTION. When the client explicitly asks for a new
+article / blog post to be written FOR THEIR OWN SITE (any phrasing: "תכתוב מאמר ותעלה לאתר",
+"write a post about X for my blog"), fill "article_request". The system then writes the
+article and saves it on their site as a DRAFT — never published — and tells them itself, with a
+link to review it. They publish it themselves when they are happy with it.
+- Fill it ONLY for an explicit request to write one, with a clear topic. NOT for "what should I
+  write about?", brainstorming, feedback on existing posts, or questions about their site.
+- Topic unclear? Ask ONE short question (what it should be about; tone and a link to include
+  are optional) and leave "article_request" empty. Never ask more than one question for this.
+- "topic": the subject, in the client's words, max 150 characters. "tone": only if they stated
+  one. "link": only a URL the client gave to include in the article, copied exactly. Leave
+  unknown fields "".
+- website_overview "connected": false → leave it empty and point them to the 'האתר שלך' card.
+- When you fill it, "reply" is one short holding line (e.g. "מעולה, ניגש לכתוב טיוטה") — the
+  system replaces it with the real outcome. Never claim the article exists or is live.
+- Publishing, editing or deleting existing content stays a team request, exactly as above."""
+
+ARTICLE_TOPIC_MAX, ARTICLE_TONE_MAX, ARTICLE_LINK_MAX = 150, 80, 300
+
+# Fixed client-facing outcomes (code decides which — the model never sees
+# them). Gender-neutral first person, like chat_fallback's fixed lines.
+_ARTICLE_DONE = {
+    "he": 'הטיוטה מוכנה ✍️ "{title}" נשמרה באתר שלכם כטיוטה — שום דבר לא עלה לאוויר. אפשר לעבור עליה, לערוך ולפרסם כשנוח לכם:\n{url}',
+    "en": 'Your draft is ready ✍️ "{title}" is saved on your site as a DRAFT — nothing has gone live. Review it, edit it and publish it whenever you like:\n{url}',
+    "fr": 'Votre brouillon est prêt ✍️ « {title} » est enregistré sur votre site en BROUILLON — rien n\'est en ligne. Relisez-le, modifiez-le et publiez-le quand vous voulez :\n{url}',
+    "ar": 'المسودة جاهزة ✍️ "{title}" محفوظة في موقعكم كمسودة — لم يُنشر شيء. يمكنكم مراجعتها وتعديلها ونشرها متى شئتم:\n{url}',
+    "ru": 'Черновик готов ✍️ «{title}» сохранён на вашем сайте как ЧЕРНОВИК — ничего не опубликовано. Просмотрите, отредактируйте и опубликуйте, когда будет удобно:\n{url}',
+}
+_ARTICLE_NO_URL = {
+    "he": 'אפשר למצוא אותה תחת "פוסטים" בניהול האתר.',
+    "en": 'You\'ll find it under "Posts" in your site\'s admin.',
+    "fr": 'Vous le trouverez dans « Articles » de l\'administration du site.',
+    "ar": 'ستجدونها ضمن "المقالات" في لوحة إدارة الموقع.',
+    "ru": 'Он находится в разделе «Записи» в админке сайта.',
+}
+_ARTICLE_WEEKLY_CAP = {
+    "he": "אנחנו כותבים עד {cap} מאמרים חדשים בשבוע, בכוונה — תוכן בכמויות פוגע בדירוג בגוגל. המכסה של השבוע כבר נוצלה; כתבו לי שוב בשבוע הבא ואכין טיוטה על הנושא הזה.",
+    "en": "We write up to {cap} new articles a week, on purpose — mass-produced content hurts Google rankings. This week's are already done; message me again next week and I'll draft this topic.",
+    "fr": "Nous rédigeons jusqu'à {cap} nouveaux articles par semaine, volontairement — le contenu en masse nuit au classement Google. Ceux de cette semaine sont déjà faits ; écrivez-moi la semaine prochaine et je rédigerai ce sujet.",
+    "ar": "نكتب حتى {cap} مقالات جديدة أسبوعيًا عن قصد — المحتوى بالجملة يضر بترتيب Google. مقالات هذا الأسبوع أُنجزت بالفعل؛ راسلوني الأسبوع القادم وسأكتب مسودة لهذا الموضوع.",
+    "ru": "Мы пишем до {cap} новых статей в неделю — намеренно: массовый контент вредит позициям в Google. На этой неделе лимит уже исчерпан; напишите мне на следующей неделе, и я подготовлю черновик на эту тему.",
+}
+_ARTICLE_DUPLICATE = {
+    "he": "כבר כתבנו לאחרונה מאמר על בדיוק הנושא הזה. רוצים זווית אחרת? ספרו לי במה להתמקד ואכין טיוטה חדשה.",
+    "en": "We recently wrote an article on exactly this topic. Want a different angle? Tell me what to focus on and I'll draft a new one.",
+    "fr": "Nous avons récemment écrit un article sur exactement ce sujet. Un autre angle ? Dites-moi sur quoi insister et je rédigerai un nouveau brouillon.",
+    "ar": "كتبنا مؤخرًا مقالًا عن هذا الموضوع بالضبط. تريدون زاوية مختلفة؟ أخبروني على ماذا أركّز وسأكتب مسودة جديدة.",
+    "ru": "Недавно мы уже писали статью ровно на эту тему. Хотите другой ракурс? Скажите, на чём сделать акцент, и я подготовлю новый черновик.",
+}
+_ARTICLE_NOT_CONNECTED = {
+    "he": 'כדי שאוכל לשמור טיוטה באתר, צריך קודם לחבר אותו — בכרטיס "האתר שלך" בדשבורד. אחרי החיבור כתבו לי שוב ואתחיל.',
+    "en": 'To save a draft on your site, it needs to be connected first — use the "Your website" card in the dashboard. Once it\'s connected, message me again and I\'ll start.',
+    "fr": 'Pour enregistrer un brouillon sur votre site, il faut d\'abord le connecter — via la carte « Votre site » du tableau de bord. Ensuite, écrivez-moi et je m\'y mets.',
+    "ar": 'لحفظ مسودة في موقعكم يجب ربطه أولًا — من بطاقة "موقعك" في لوحة التحكم. بعد الربط راسلوني وسأبدأ.',
+    "ru": 'Чтобы сохранить черновик на сайте, его нужно сначала подключить — карточка «Ваш сайт» в панели. После подключения напишите мне, и я начну.',
+}
+
+
+def _article_brief(raw) -> dict:
+    """The model's article_request, capped and cleaned in CODE. {} unless
+    there is a usable topic. A link survives only as a plain http(s) URL."""
+    if not isinstance(raw, dict):
+        return {}
+    topic = " ".join(str(raw.get("topic") or "").split())[:ARTICLE_TOPIC_MAX]
+    if len(topic) < 3:
+        return {}
+    tone = " ".join(str(raw.get("tone") or "").split())[:ARTICLE_TONE_MAX]
+    link = str(raw.get("link") or "").strip()
+    if not (link.startswith(("https://", "http://")) and len(link) <= ARTICLE_LINK_MAX
+            and not any(c.isspace() or c in '<>"\'' for c in link)):
+        link = ""
+    return {"topic": topic, "tone": tone, "link": link}
+
+
+def _article_draft(client_id: int, message: str, brief: dict) -> dict:
+    """Code's half of the website persona's one action. DRAFT ONLY:
+    seo_agent.write_article hard-codes status='draft' and enforces the weekly
+    cap, topic dedup and quality gate. Policy refusals get their own fixed
+    line; any other failure gets the calm technical line and ONE deduped
+    alert (write_article's own alerts are switched off for this path)."""
+    lang = _client_language(client_id, message)
+    lang = lang if lang in _ARTICLE_DONE else "he"
+    notes = ["Requested by the client in the dashboard chat."]
+    if brief["tone"]:
+        notes.append(f"Tone requested by the client: {brief['tone']}.")
+    if brief["link"]:
+        notes.append(f"Include a natural, relevant link to {brief['link']} in the body.")
+    log_step(AGENT_NAME, "article_draft", f"client {client_id}: '{brief['topic']}'")
+    try:
+        from agents.seo_agent import write_article
+        result = timed_step(AGENT_NAME, "article_draft",
+                            lambda: write_article(client_id, brief["topic"],
+                                                  notes=" ".join(notes), alert=False))
+    except Exception as e:
+        result = {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
+
+    if result.get("success"):
+        from agents.website_agent import draft_edit_url
+        url = draft_edit_url(client_id, result.get("post_id")) or result.get("link", "")
+        reply = _ARTICLE_DONE[lang].format(title=result.get("title", ""), url=url or _ARTICLE_NO_URL[lang])
+        log_activity(client_id, AGENT_NAME, "article_draft_from_chat",
+                     {"topic": brief["topic"], "tone": brief["tone"], "link": brief["link"]},
+                     {"post_id": result.get("post_id"), "status": "draft"})
+        return {"reply": reply, "needs_human_followup": False}
+
+    reason = result.get("reason", "")
+    if reason == "weekly_cap":
+        from agents.seo_agent import MAX_ARTICLES_PER_WEEK
+        return {"reply": _ARTICLE_WEEKLY_CAP[lang].format(cap=MAX_ARTICLES_PER_WEEK),
+                "needs_human_followup": False}
+    if reason == "duplicate_topic":
+        return {"reply": _ARTICLE_DUPLICATE[lang], "needs_human_followup": False}
+    if reason == "not_connected":
+        return {"reply": _ARTICLE_NOT_CONNECTED[lang], "needs_human_followup": False}
+
+    errors = "; ".join(str(x) for x in (result.get("errors") or ["unknown"]))[:300]
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+        f'article draft from chat failed ({errors}). Topic: "{brief["topic"]}". '
+        f'Client asked: "{message[:300]}"',
+        client_id=client_id, persona="website",
+        issue_key="technical:website:article_draft")
+    return {"reply": chat_fallback.technical_reply("website", lang),
+            "needs_human_followup": True}
+
+
 PERSONA_SYSTEM_TEMPLATE = """You are {name}, uallak's {domain} specialist, chatting with an
 existing, already-paying client inside their private dashboard. You are one member of the
 uallak team wrapped around this client — never say you are an AI or a bot.
@@ -841,11 +985,12 @@ Also provided: the client's package/proposal details, recent account activity, a
 re-ask what's already been said).
 
 YOU CANNOT TAKE ACTIONS — THIS IS A FACT, NOT A POLICY. You have no ability to pause/resume/
-create campaigns, change budgets, publish or edit content, or change anything on any account.
-If the client asks you to change something (any phrasing, including urgent or insistent):
-warmly explain that changes go through the uallak team and the dashboard's approval flow —
-you'll flag it for the team right away (set needs_human_followup to true) — and continue
-being helpful about what the DATA shows. Never say you did, will do, or scheduled a change.
+create campaigns, change budgets, publish or edit content, or change anything on any
+account{action_exception}. If the client asks you to change something (any phrasing, including
+urgent or insistent): warmly explain that changes go through the uallak team and the
+dashboard's approval flow — you'll flag it for the team right away (set needs_human_followup
+to true) — and continue being helpful about what the DATA shows. Never say you did, will do,
+or scheduled a change.{action_rule}
 
 STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain but still about uallak
 (billing, upgrades, another platform's campaigns, general account questions), give a one-line
@@ -858,15 +1003,16 @@ default).
 
 Return JSON only:
 {{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE
+ "data_topic": ""{extra_fields}}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str) -> dict:
     """The specialist-persona chat path. READ-ONLY BY CONSTRUCTION — see the
     module docstring. Contract: only 'reply', 'needs_human_followup', and the
     routing labels 'out_of_scope' / 'data_topic' are ever read from the
-    model's output; there is no upgrade path, no web search, and no action
-    dispatch of any kind here."""
+    model's output — plus, for the website persona only, 'article_request',
+    which code turns into a DRAFT (_article_draft). No upgrade path, no web
+    search, no other action dispatch."""
     persona = PERSONAS.get(persona_id)
     if not persona:
         return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
@@ -909,9 +1055,13 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
                  f"client {client_id}: {persona_id} reads failed (degrading): {e}")
         failed = {PERSONA_TOPICS[persona_id]} if persona_id in PERSONA_TOPICS else set()
 
+    drafts = persona_id == "website"
     system = PERSONA_SYSTEM_TEMPLATE.format(
         name=persona["name"], domain=persona["domain"],
-        voice=persona["voice"], data_notes=persona["data_notes"])
+        voice=persona["voice"], data_notes=persona["data_notes"],
+        action_exception=ARTICLE_EXCEPTION if drafts else "",
+        action_rule=ARTICLE_DRAFT_RULE if drafts else "",
+        extra_fields=ARTICLE_FIELD if drafts else "")
     try:
         result = timed_step(
             AGENT_NAME, "persona_llm_call",
@@ -927,6 +1077,12 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         unavailable = _data_unavailable(client_id, persona_id, message, result, failed)
         if unavailable:
             return unavailable
+        # The one action label (website persona only — see module docstring).
+        # The model's reply is a holding line; code writes what the client sees.
+        if drafts:
+            brief = _article_brief(result.get("article_request"))
+            if brief:
+                return _article_draft(client_id, message, brief)
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))

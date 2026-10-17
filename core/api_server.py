@@ -1175,7 +1175,8 @@ def client_chat(req: ClientChatRequest, request: Request):
             result = answer_support_question(client_id, req.message)
         else:
             # Specialist path: structurally read-only — no upgrade builds, no
-            # web search, no action functions reachable (support_agent enforces)
+            # web search, no action functions reachable (support_agent enforces),
+            # except the website persona's code-run article DRAFT (never publish)
             result = answer_persona_question(client_id, persona, req.message)
         log_communication(client_id, "outbound", channel, result["reply"])
         return {"success": True, "reply": result["reply"], "needs_human_followup": result["needs_human_followup"]}

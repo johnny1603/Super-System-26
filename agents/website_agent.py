@@ -666,9 +666,10 @@ def _validate_publish_spec(spec: dict) -> list:
     return errors
 
 
-def publish_content(client_id: int, spec: dict) -> dict:
+def publish_content(client_id: int, spec: dict, alert: bool = True) -> dict:
     """Create a post or page from already-generated content. Defaults to
-    draft — an explicit status='publish' is the human sign-off."""
+    draft — an explicit status='publish' is the human sign-off. alert=False:
+    the caller raises its own (deduped) alert — the client-chat draft path."""
     errors = _validate_publish_spec(spec)
     if errors:
         return {"success": False, "errors": errors}
@@ -689,7 +690,8 @@ def publish_content(client_id: int, spec: dict) -> dict:
             AGENT_NAME, "publish_content",
             lambda: wp.create_content(site_url, username, app_password, kind, fields))
     except wp.WordPressError as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: publish to {site_url} failed: {e}"])
+        if alert:
+            agent_alert(AGENT_NAME, [f"client {client_id}: publish to {site_url} failed: {e}"])
         return {"success": False, "errors": [str(e)]}
 
     _overview_cache.pop(client_id, None)
@@ -701,6 +703,16 @@ def publish_content(client_id: int, spec: dict) -> dict:
     log_step(AGENT_NAME, "publish_content",
              f"client {client_id}: {kind} {created.get('id')} ({fields['status']})")
     return result
+
+
+def draft_edit_url(client_id: int, post_id) -> str:
+    """wp-admin edit screen for a post we created. A DRAFT's public `link` is
+    a ?p= URL that 404s for anyone not logged in; the edit screen is where the
+    client actually reviews and presses Publish. "" when unknown."""
+    site_url = _get_connection(client_id).get("account_id") or ""
+    if not site_url or not post_id:
+        return ""
+    return f"{site_url.rstrip('/')}/wp-admin/post.php?post={int(post_id)}&action=edit"
 
 
 def update_content(client_id: int, content_type: str, content_id: int, fields: dict) -> dict:
