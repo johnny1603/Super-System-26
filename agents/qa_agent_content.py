@@ -246,14 +246,17 @@ def _enforce_invariants(proposal: dict) -> dict:
     return proposal
 
 
-def review_and_fix_proposal(proposal: dict, answers: dict) -> dict:
+def review_and_fix_proposal(proposal: dict, answers: dict, client_id: int = None) -> dict:
+    """Content QA. client_id when an existing client's proposal is reviewed;
+    a pre-signup review is attributed to its lead by the endpoint's cost_owner."""
     user_message = (
         f"Proposal:\n{json.dumps(proposal, ensure_ascii=False, indent=2)}\n\n"
         f"Client answers:\n{json.dumps(answers, ensure_ascii=False, indent=2)}"
     )
 
     try:
-        result = safe_claude_json_call(SYSTEM, user_message, max_tokens=7000)
+        result = safe_claude_json_call(SYSTEM, user_message, max_tokens=7000,
+                                       client_id=client_id, cost_category="claude_content_qa")
         print(f"QA/Review: approved={result.get('review_approved')} issues={result.get('issues', [])}")
         return {
             "proposal": _enforce_invariants(result.get("proposal") or proposal),

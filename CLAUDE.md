@@ -104,6 +104,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`seo_pro` not implemented, `search_console` deferred — no new Google scope), target
   keywords table PROPOSED in `migrations/2026-10-18-client-target-keywords.sql` (not applied),
   internal soft cap `TARGET_KEYWORDS_SOFT_CAP` alerts admin only.
+- `core/secrets_vault.py` — **every per-client credential is encrypted at rest** (AES-256-GCM,
+  key `SECRETS_ENCRYPTION_KEY`, bound to client_id+platform so a ciphertext can't decrypt for
+  another client). Written ONLY via `client_agent.add_account`/`upsert_account` (plaintext
+  column always blanked; no key → the write fails, never plaintext). Decrypted ONLY by
+  `get_client_secret()` (agents' `_get_connection` readers call `hydrate()`, which goes
+  through it). `get_accounts()` returns rows WITHOUT secrets — screens see at most
+  `secret_last4`. Client-paid vendor jobs (Higgsfield, HeyGen, ElevenLabs) take their key via
+  `use_vendor_key()`, which aborts + alerts when the same key belongs to another client
+  (except owner keys shared only between internal/billing-exempt accounts, logged). Data
+  migration: `scripts/encrypt_client_secrets.py` (dry-run default).
+- `core/redaction.py` — the ONE "looks like a key/password" definition; `redact()` runs on
+  every stored chat message (client chat, sales transcript + answers, admin agent chat) and
+  inside `log_step`/`agent_alert`/`master_agent.alert`.
+- Client ↔ sales lead is matched by **client_id only** (`lead_tracking.client_sales_lead`) —
+  the email fallback is gone; a missing link alerts admin once, never guesses.
+- Costs (`cost_tracker.record_cost`) always have an owner: client_id, `INTERNAL`, or the
+  sales-chat lead via `cost_owner()` (moved to the client on conversion), plus a metering
+  `cost_category` (chat/proposal/content/media/seo/infra). Admin view: Control Room list.
 - `core/chat_guard.py` — runs before a client chat message is stored or sent to a model:
   key/password-looking messages are never stored, plus the per-client length and daily caps
   (`client_settings`: `chat_max_message_chars`, `chat_daily_message_cap`). Ordinary chat turns

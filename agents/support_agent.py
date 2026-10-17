@@ -97,16 +97,15 @@ def _db():
     return _db_instance
 
 
-def _latest_lead(email: str) -> dict:
+def _latest_lead(client_id: int) -> dict:
     """The client's original sales-chat record (answers + proposal), matched by
-    email. The answers feed upgrade proposals; the proposal feeds everyday
-    questions. NEVER an in-chat upgrade quote — those are lead rows too, and
-    reading one as "what they bought" is the bug
-    core/lead_tracking.client_sales_lead exists to prevent."""
-    if not email:
+    client_id ONLY (never by email — see core/lead_tracking.client_sales_lead).
+    The answers feed upgrade proposals; the proposal feeds everyday questions.
+    NEVER an in-chat upgrade quote."""
+    if not client_id:
         return {}
     from core.lead_tracking import client_sales_lead
-    row, _how = client_sales_lead(email=email, columns="answers,proposal")
+    row, _how = client_sales_lead(client_id, columns="answers,proposal")
     return row
 
 
@@ -477,7 +476,9 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
         "current_monthly_fee_ils": _current_monthly_fee(client_id),
         "upgrade_request": upgrade_request,
     }
-    proposal = build_proposal(answers, get_api_key(), upgrade_context=upgrade_context)
+    # client_id: this proposal's model cost is the client's (was unattributed)
+    proposal = build_proposal(answers, get_api_key(), upgrade_context=upgrade_context,
+                              client_id=client_id)
     proposal = qa_check(proposal, answers)
 
     packages = proposal.get("packages") or []
@@ -490,6 +491,7 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
     cheapest = min(packages, key=lambda p: p.get("monthly_management_total", 0))
     _db().table("leads").insert({
         "created_at": datetime.now().isoformat(),  # leads has no default (onboarding sets it too)
+        "client_id": client_id,  # linked by id, never by email (still skipped as an upgrade row)
         "client_email": client.get("email", ""),
         "client_name": client.get("name", ""),
         "answers": {**answers, "_upgrade_request": upgrade_request},
@@ -527,7 +529,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
-    lead = _latest_lead(client.get("email", ""))
+    lead = _latest_lead(client_id)
     payload = {
         "client": {
             "name": client.get("name"),
@@ -710,11 +712,10 @@ def _website_reads(client_id: int) -> dict:
     # they can't see. Published/draft articles already show via the site
     # overview and recent_activity.
     from agents.website_agent import get_site_overview
-    from agents.seo_agent import get_connected_tool
+    from agents.seo_agent import shared_tool_active
     data = {"website_overview": get_site_overview(client_id)}
     try:
-        tool = get_connected_tool(client_id)
-        if tool:
+        if shared_tool_active():
             # A flag, never the slug: SEO vendors are never named to a client
             data["seo_tool_connected"] = True
     except Exception as e:
@@ -1350,7 +1351,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     log_step(AGENT_NAME, "answer_persona_question",
              f"client_id={client_id} persona={persona_id}")
     client = get_client(client_id)
-    lead = _latest_lead(client.get("email", ""))
+    lead = _latest_lead(client_id)
     payload = {
         "client": {"name": client.get("name"), "package": client.get("package"),
                     "status": client.get("status")},

@@ -12,8 +12,10 @@ from agents.master_agent import alert as _master_alert
 
 
 def log_step(agent_name: str, step: str, message: str = ""):
-    """Standard log line: [ISO timestamp] [AGENT_NAME] step — message."""
-    suffix = f" — {message}" if message else ""
+    """Standard log line: [ISO timestamp] [AGENT_NAME] step — message.
+    Likely secrets in the message are [REDACTED] (core/redaction)."""
+    from core.redaction import redact
+    suffix = f" — {redact(str(message))}" if message else ""
     print(f"[{datetime.now().isoformat()}] [{agent_name.upper()}] {step}{suffix}")
 
 
@@ -29,5 +31,7 @@ def timed_step(agent_name: str, step: str, fn):
 def agent_alert(agent_name: str, issues: list):
     """Flag a failure that needs human attention. Logs in the standard alert
     format and appends it to the alert history that monitor_agent's deep scan
-    reads on its next pass."""
-    _master_alert(agent_name, issues)
+    reads on its next pass. Likely secrets in an issue are [REDACTED] first —
+    alerts quote client messages and API errors."""
+    from core.redaction import redact
+    _master_alert(agent_name, [redact(str(i)) for i in (issues or [])])

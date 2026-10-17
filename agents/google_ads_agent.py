@@ -29,6 +29,7 @@ from core import google_ads_service as gads
 from core import lead_tracking
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.secrets_vault import hydrate
 
 AGENT_NAME = "google_ads_agent"
 PLATFORM = "google_ads"
@@ -82,7 +83,8 @@ def _get_connection(client_id: int) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    # Decrypted right here, for use (core/secrets_vault.get_client_secret)
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def is_connected(client_id: int) -> bool:
@@ -123,7 +125,7 @@ def _stored_row(client_id: int) -> dict:
     rows = (_db().table("client_accounts").select("*")
             .eq("client_id", client_id).eq("platform", PLATFORM)
             .order("id", desc=True).limit(1).execute().data or [])
-    return rows[0] if rows else {}
+    return hydrate(rows[0]) if rows else {}
 
 
 def connect_from_oauth(client_id: int, refresh_token: str) -> dict:
@@ -843,7 +845,9 @@ def _all_connections() -> list:
         .eq("status", "active")
         .execute()
     )
-    return [c for c in (result.data or []) if c.get("access_token") and c.get("account_id")]
+    # Each row decrypted for ITS OWN client (the ciphertext is bound to it)
+    rows = [hydrate(c) for c in (result.data or [])]
+    return [c for c in rows if c.get("access_token") and c.get("account_id")]
 
 
 def _already_alerted(client_id: int, issue_key: str) -> bool:
@@ -1046,12 +1050,12 @@ def run_health_scan() -> dict:
 # ─── Weekly report (Phase 2) ──────────────────────────────────────────────────
 
 WEEKLY_REPORT_SYSTEM = """You are the performance analyst for uallak, an Israeli marketing agency.
-You receive week-over-week Google Ads metrics for all managed client accounts (costs in ILS).
+You receive week-over-week Google Ads metrics for ONE managed client account (costs in ILS).
 
 Write for the human team (not clients): what changed, what needs attention, what to try next.
 Base every statement strictly on the numbers given - never invent data.
 
-Hard limits: max 5 highlights, max 5 recommendations, each a single short Hebrew sentence.
+Hard limits: max 3 highlights, max 3 recommendations, each a single short Hebrew sentence.
 
 Return JSON only:
 {"highlights": ["Hebrew sentence"], "recommendations": ["Hebrew sentence"]}"""
@@ -1106,22 +1110,28 @@ def run_weekly_report(send_email: bool = True) -> dict:
         "recommendations": [],
     }
 
-    if clients_data:
+    # ONE model call per client (2026-10-18): a call never sees two clients'
+    # data, and each call's cost is attributed to its own client. The
+    # combined lists keep the report/email shape, prefixed with the client.
+    for entry in clients_data:
         try:
             summary = timed_step(
                 AGENT_NAME, "weekly_report_llm",
-                lambda: safe_claude_json_call(
+                lambda e=entry: safe_claude_json_call(
                     WEEKLY_REPORT_SYSTEM,
-                    json.dumps(clients_data, ensure_ascii=False),
-                    max_tokens=1000,
+                    json.dumps(e, ensure_ascii=False),
+                    max_tokens=500,
+                    client_id=e["client_id"],
                     cost_category="claude_analysis",
                 ),
             )
-            report["highlights"] = summary.get("highlights", [])[:5]
-            report["recommendations"] = summary.get("recommendations", [])[:5]
+            entry["highlights"] = summary.get("highlights", [])[:3]
+            entry["recommendations"] = summary.get("recommendations", [])[:3]
+            report["highlights"] += [f"{entry['client_name']}: {h}" for h in entry["highlights"]]
+            report["recommendations"] += [f"{entry['client_name']}: {r}" for r in entry["recommendations"]]
         except ClaudeJSONError as e:
             # Tables still go out - the LLM garnish is optional
-            agent_alert(AGENT_NAME, [f"weekly report LLM summary failed: {e}"])
+            agent_alert(AGENT_NAME, [f"weekly report LLM summary failed for client {entry['client_id']}: {e}"])
 
     # Durable copy for the admin dashboard's reports tab - non-fatal on failure
     try:
@@ -1716,7 +1726,7 @@ def _merchant_connection(client_id: int) -> dict:
         .eq("client_id", client_id).eq("platform", MERCHANT_PLATFORM)
         .eq("status", "active").order("id", desc=True).limit(1).execute()
     )
-    return result.data[0] if result.data else {}
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def is_merchant_connected(client_id: int) -> bool:

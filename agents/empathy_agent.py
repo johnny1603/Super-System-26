@@ -33,7 +33,9 @@ _FALLBACK = {"client_profile": "", "sales_approach": "", "pricing_framing": ""}
 def analyze_client(conversation_so_far: dict) -> dict:
     user_message = f"Everything the client has said so far:\n{json.dumps(conversation_so_far, ensure_ascii=False, indent=2)}"
     try:
-        return safe_claude_json_call(SYSTEM, user_message, max_tokens=600)
+        # Attributed to the lead by the sales endpoint's cost_owner
+        return safe_claude_json_call(SYSTEM, user_message, max_tokens=600,
+                                     cost_category="claude_sales_chat")
     except ClaudeJSONError as e:
         print(f"[empathy_agent] {e} — using fallback")
         return _FALLBACK

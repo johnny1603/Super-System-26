@@ -67,6 +67,7 @@ def _check_vendor(key: str, data: dict) -> dict:
              f"Find their CURRENT public pricing and compare it against our stored reference.")
     try:
         text = claude_web_search_call(SEARCH_SYSTEM, query, max_tokens=400,
+                                      client_id="internal",  # uallak's own work
                                       cost_category="claude_price_monitor")
     except ClaudeJSONError as e:
         return {"vendor": key, "verdict": "UNCERTAIN", "detail": f"search call failed: {e}"}

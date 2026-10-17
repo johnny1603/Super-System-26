@@ -32,11 +32,64 @@ Cost discipline: every HTTP call here consumes the CLIENT'S paid API units
 (api_call_counters, fails open like the ads services), and seo_agent's 7-day
 research cache keep consumption boring.
 """
+import os
 import time
 
 import httpx
 
 from core.api_call_counters import increment_call_counter
+
+# ─── The ONE shared uallak vendor account (2026-10-18) ───────────────────────
+# Owner-controlled, read from env, never per client. Its cost is inside the
+# fixed organic price. Three env vars, all set by the owner only:
+#   SEO_PRO_TOOL     semrush | ahrefs (an IMPLEMENTED_TOOLS slug)
+#   SEO_PRO_API_KEY  the shared key (same var core/rank_tracking.SeoProProvider reads)
+#   SEO_PRO_ENABLED  "1" to allow calls. Default OFF: no vendor is called until
+#                    the owner turns it on, even when a key is present.
+SHARED_TOOL_ENV = "SEO_PRO_TOOL"
+SHARED_KEY_ENV = "SEO_PRO_API_KEY"
+SHARED_ENABLED_ENV = "SEO_PRO_ENABLED"
+
+# What per-client isolation inside the shared account needs from the vendor
+# (to VERIFY before enabling — nothing here has been called):
+# - semrush: one PROJECT per client domain (Projects API), with Position
+#   Tracking / Site Audit campaigns inside it; domain-analytics reports need no
+#   project (stateless queries by domain). Units are account-wide, so per-client
+#   usage must be counted on our side (api_call_counters keyed by client).
+# - ahrefs: one Rank Tracker / Site Audit PROJECT per client domain (API v3
+#   management endpoints, plan-dependent); Site Explorer queries are stateless.
+#   API units are account-wide — same per-client counting on our side.
+# Naming rule for every vendor-side object: client_project_name(client_id).
+ISOLATION_REQUIREMENTS = {
+    "semrush": "Projects API: one project per client domain; tracking/audit campaigns inside it",
+    "ahrefs": "API v3 management: one Rank Tracker/Site Audit project per client domain",
+}
+
+
+def client_project_name(client_id: int) -> str:
+    """The vendor-side project/campaign name for one client — the isolation
+    boundary inside the shared account. Never a client's name or email."""
+    return f"uallak-client-{int(client_id)}"
+
+
+def shared_account() -> dict:
+    """The shared account's state, WITHOUT the key: {"tool", "configured",
+    "enabled"}. Callers never see or log the key."""
+    tool = (os.environ.get(SHARED_TOOL_ENV) or "").strip().lower()
+    return {"tool": tool if tool in IMPLEMENTED_TOOLS else "",
+            "configured": bool(tool in IMPLEMENTED_TOOLS and os.environ.get(SHARED_KEY_ENV)),
+            "enabled": os.environ.get(SHARED_ENABLED_ENV) == "1"}
+
+
+def get_research_shared(client_id: int, domain: str) -> dict:
+    """Research for one client through the shared account. Refuses (returns
+    {"supported": False}) unless configured AND explicitly enabled."""
+    state = shared_account()
+    if not (state["configured"] and state["enabled"]):
+        return {"supported": False, "reason": "shared SEO account not enabled"}
+    result = get_research(state["tool"], os.environ.get(SHARED_KEY_ENV, ""), domain)
+    result["project"] = client_project_name(client_id)
+    return result
 
 SEMRUSH_BASE_URL = "https://api.semrush.com/"
 SEMRUSH_ANALYTICS_URL = "https://api.semrush.com/analytics/v1/"

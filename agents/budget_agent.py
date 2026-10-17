@@ -162,7 +162,7 @@ def _extract_ils_amount(text: str):
 
 def _lead_row(client_id: int) -> tuple:
     """The lead row this client was SOLD from, plus how it was matched: exact
-    client_id first, then the email match (module docstring's KNOWN GAP). One
+    client_id ONLY — the email fallback was removed 2026-10-18. One
     shared lookup that skips in-chat upgrade quotes — see
     core/lead_tracking.client_sales_lead. client_journey._chosen_package reads
     the purchased package through this function."""
@@ -360,24 +360,11 @@ def get_external_client_paid_costs(client_id: int) -> dict:
     else:
         result["elevenlabs"] = {"connected": False}
 
-    from agents.seo_agent import get_connected_tool
-    tool = get_connected_tool(client_id)
-    if tool:
-        list_price = SEO_TOOL_LIST_PRICE_USD_MONTH.get(tool)
-        checked_at = (THIRD_PARTY_PRICING.get(tool) or {}).get("checked_at", "unknown date")
-        result["seo_tool"] = {
-            "connected": True, "tool": tool,
-            "confidence": ESTIMATE if list_price else UNKNOWN,
-            "reference_list_price_usd_month": list_price,
-            "reference_list_price_ils_month": usd_to_ils(list_price) if list_price else None,
-            "note": (f"{tool}'s published list price for its entry-appropriate plan "
-                     f"(checked {checked_at}) — NOT verified against this client's actual "
-                     f"invoice, currency, or any discount/grandfathered plan. None of "
-                     f"these tools expose a per-account billing API to us."
-                     if list_price else f"no reference price on file for '{tool}'."),
-        }
-    else:
-        result["seo_tool"] = {"connected": False}
+    # The SEO tool is no longer a client cost: ONE shared uallak account whose
+    # cost is inside the fixed organic price (2026-10-18). connected=False
+    # keeps the profile's client-cost card from rendering (and from naming a
+    # vendor to the client).
+    result["seo_tool"] = {"connected": False, "included_in_package": True}
 
     return result
 

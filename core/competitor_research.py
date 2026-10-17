@@ -220,9 +220,8 @@ def _client_brief(client_id: int) -> dict:
 def _market_reality(client_id: int) -> str:
     """The proposal's own competitive-picture paragraph, if one was written."""
     try:
-        from agents.client_agent import get_client
         from agents.support_agent import _latest_lead
-        lead = _latest_lead((get_client(client_id) or {}).get("email", ""))
+        lead = _latest_lead(client_id)
         return ((lead.get("proposal") or {}).get("market_reality") or "")[:800]
     except Exception as e:
         print(f"[{SERVICE_NAME}] market_reality lookup failed for client {client_id}: {e}")

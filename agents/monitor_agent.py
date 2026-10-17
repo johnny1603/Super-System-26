@@ -181,6 +181,7 @@ def run_deep_scan() -> dict:
         DEEP_SCAN_SYSTEM,
         f"System snapshot:\n{json.dumps(data_summary, ensure_ascii=False, indent=2)}",
         max_tokens=2000,
+        client_id="internal", cost_category="claude_monitor",  # uallak's own work
     )
 
     # Persist newly reported issue_ids so they're not repeated next scan

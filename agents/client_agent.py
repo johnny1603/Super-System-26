@@ -97,37 +97,63 @@ def complete_onboarding(client_id: int) -> dict:
 
 # ─── Client accounts ──────────────────────────────────────────────────────────
 
+# Credentials are written ONLY here, and only ENCRYPTED (core/secrets_vault):
+# the plaintext column is always blanked. If SECRETS_ENCRYPTION_KEY is
+# missing the write raises VaultUnavailable and nothing is stored.
+
+def _require_client(client_id: int):
+    """Credentials are attached to an existing client or not at all."""
+    if not client_id or not get_client(client_id):
+        print(f"[client_agent] ADMIN: refused to store a credential for unknown client {client_id}")
+        raise ValueError(f"unknown client {client_id} - credential not stored")
+
+
 def add_account(client_id: int, platform: str, account_id: str = "",
                 access_token: str = "", status: str = "active") -> dict:
+    from core.secrets_vault import public_account, sealed_fields
+    _require_client(client_id)
     result = _db().table("client_accounts").insert({
         "client_id": client_id,
         "platform": platform,
         "account_id": account_id,
-        "access_token": access_token,
+        **sealed_fields(access_token, client_id, platform),
         "status": status,
     }).execute()
-    return result.data[0] if result.data else {}
+    return public_account(result.data[0]) if result.data else {}
 
 
 def get_accounts(client_id: int) -> list:
-    return _db().table("client_accounts").select("*").eq("client_id", client_id).execute().data or []
+    """The client's connections WITHOUT any secret (core/secrets_vault
+    .public_account) — safe for screens, prompts and logs. An integration
+    that needs the credential calls secrets_vault.get_client_secret."""
+    from core.secrets_vault import public_account
+    rows = _db().table("client_accounts").select("*").eq("client_id", client_id).execute().data or []
+    return [public_account(r) for r in rows]
 
 
 def upsert_account(client_id: int, platform: str, account_id: str = "",
                    access_token: str = "", status: str = "active") -> dict:
     """Reconnecting a platform must replace the stored credentials, not pile up
-    duplicate rows (get-connection queries assume one live row per platform)."""
+    duplicate rows (get-connection queries assume one live row per platform).
+    Matched by (client_id, platform) only — never across clients — and the
+    client must exist."""
+    from core.secrets_vault import public_account, sealed_fields
+    _require_client(client_id)
     existing = (
-        _db().table("client_accounts").select("id")
+        _db().table("client_accounts").select("id,client_id")
         .eq("client_id", client_id).eq("platform", platform)
         .limit(1).execute()
     )
-    values = {"account_id": account_id, "access_token": access_token, "status": status}
+    values = {"account_id": account_id, **sealed_fields(access_token, client_id, platform),
+              "status": status}
     if existing.data:
-        result = _db().table("client_accounts").update(values).eq("id", existing.data[0]["id"]).execute()
+        if int(existing.data[0].get("client_id") or 0) != int(client_id):
+            raise ValueError(f"client_accounts row {existing.data[0]['id']} is not client {client_id}'s")
+        result = (_db().table("client_accounts").update(values)
+                  .eq("id", existing.data[0]["id"]).eq("client_id", client_id).execute())
     else:
         result = _db().table("client_accounts").insert({"client_id": client_id, "platform": platform, **values}).execute()
-    return result.data[0] if result.data else {}
+    return public_account(result.data[0]) if result.data else {}
 
 
 def remove_accounts(client_id: int, platforms: list = None) -> int:
@@ -200,11 +226,14 @@ def get_activity(client_id: int, limit: int = 50) -> list:
 # ─── Communications ───────────────────────────────────────────────────────────
 
 def log_communication(client_id: int, direction: str, channel: str, content: str) -> dict:
+    # Every stored message passes through here: likely keys/passwords are
+    # replaced with [REDACTED] before they can reach the table (core/redaction)
+    from core.redaction import redact
     result = _db().table("client_communications").insert({
         "client_id": client_id,
         "direction": direction,
         "channel": channel,
-        "content": content,
+        "content": redact(content),
     }).execute()
     return result.data[0] if result.data else {}
 

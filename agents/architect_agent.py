@@ -18,6 +18,15 @@ def _client() -> Anthropic:
         _anthropic = Anthropic()
     return _anthropic
 
+
+def _create(**kwargs):
+    """Direct SDK call + its cost, recorded as uallak's INTERNAL work (the
+    architect is an admin tool, never a client's)."""
+    from core.cost_tracker import INTERNAL, record_claude_response
+    response = _client().messages.create(**kwargs)
+    record_claude_response(response, "claude_architect", INTERNAL, kwargs.get("model"))
+    return response
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENTS_DIR = os.path.join(BASE_DIR, "agents")
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -86,7 +95,8 @@ Return JSON only:
 }"""
 
     result = safe_claude_json_call(
-        system, f"Build an agent for this need:\n{need_description}", max_tokens=4000
+        system, f"Build an agent for this need:\n{need_description}", max_tokens=4000,
+        client_id="internal", cost_category="claude_architect"
     )
     return result["filename"], result["code"]
 
@@ -110,7 +120,7 @@ Rules:
 
 Return only valid Python code. No markdown, no explanation."""
 
-    response = _client().messages.create(
+    response = _create(
         model="claude-sonnet-4-6",
         max_tokens=6000,
         system=system,
@@ -171,7 +181,7 @@ Do not modify the test code — only fix the agent.
 
 Return only the corrected Python source code. No markdown, no JSON wrapper."""
 
-    response = _client().messages.create(
+    response = _create(
         model="claude-sonnet-4-6",
         max_tokens=4000,
         system=system,
@@ -189,7 +199,7 @@ def _generate_summary(need_description: str, agent_filename: str, agent_code: st
 Cover: what it does, its main function signature and return value, and any notable design decisions.
 Do NOT include source code. Write in English."""
 
-    response = _client().messages.create(
+    response = _create(
         model="claude-sonnet-4-6",
         max_tokens=400,
         system=system,

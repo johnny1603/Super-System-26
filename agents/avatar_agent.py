@@ -93,10 +93,11 @@ def _rows(client_id: int, action_type: str, limit: int = 20) -> list:
 
 
 def _key(client_id: int, platform: str) -> str:
-    rows = (_db().table("client_accounts").select("access_token")
-            .eq("client_id", client_id).eq("platform", platform)
-            .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    return (rows[0].get("access_token") or "") if rows else ""
+    """The client's OWN HeyGen/ElevenLabs key, decrypted for this job only —
+    "" (abort) when it can't be proven to be this client's alone
+    (core/secrets_vault.use_vendor_key)."""
+    from core.secrets_vault import use_vendor_key
+    return use_vendor_key(client_id, platform, job=f"avatar_agent:{platform}")
 
 
 # ─── Connections (client self-service, dashboard card) ────────────────────────

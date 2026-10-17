@@ -77,11 +77,13 @@ or acquisition of any kind. Johnny does that personally.
    organic is a fixed-price package (`ORGANIC_MONTHLY_PRICE_NIS`, 500/month)
    whose price INCLUDES the tool, run on ONE shared, owner-controlled uallak
    vendor account. There is no organic budget, no minimum and no tiers
-   (`seo_tiers` is gone). Never name the vendor to a client. The code below
-   still implements the OLD per-client-key model and has not been rewired; the
-   shared-account path is planned as the `seo_pro` provider in
-   `core/rank_tracking.py` (stub, not implemented).
-   - Key stored by ADMIN via `POST /api/seo/connect-tool` → `client_accounts`
+   (`seo_tiers` is gone). Never name the vendor to a client. Rewired 2026-10-18:
+   `seo_tools_service.shared_account()` reads SEO_PRO_TOOL / SEO_PRO_API_KEY and
+   calls NOTHING unless SEO_PRO_ENABLED=1. Per-client isolation inside the
+   shared account = one vendor project per client, named
+   `client_project_name(client_id)`. `connect_tool` / `POST /api/seo/connect-tool`
+   are retired (refuse). The notes below describe the RETIRED per-client model:
+   - (retired) Key stored by ADMIN via `POST /api/seo/connect-tool` → `client_accounts`
      row `platform='seo_tool'`, `account_id`=tool slug, `access_token`=API key
      (no OAuth exists for these tools).
    - Adapters implemented: **SEMrush** (analytics CSV API, database `il`) and

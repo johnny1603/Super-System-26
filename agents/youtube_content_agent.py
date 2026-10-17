@@ -41,6 +41,7 @@ from supabase import create_client as _supabase_client
 
 from core import youtube_service as yt
 from core.agent_base import agent_alert, log_step, timed_step
+from core.secrets_vault import hydrate
 
 AGENT_NAME = "youtube_content_agent"
 YOUTUBE_PLATFORM = "youtube"  # account_id=channel_id, access_token=refresh token
@@ -80,7 +81,8 @@ def _get_connection(client_id: int) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    # Decrypted right here, for use (core/secrets_vault.get_client_secret)
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def is_connected(client_id: int) -> bool:
@@ -99,7 +101,7 @@ def _get_pending_connection(client_id: int) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    return hydrate(result.data[0]) if result.data else {}
 
 
 # ─── No-channel flow: guided self-creation + auto-detection ─────────────────

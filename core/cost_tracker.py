@@ -103,26 +103,136 @@ def usd_to_ils(usd: float) -> float:
     return round(usd * USD_TO_ILS, 4)
 
 
-def record_cost(category: str, amount_ils: float, client_id: int = None, details: dict = None,
-                usd: float = None):
+# ─── Attribution (2026-10-18) ────────────────────────────────────────────────
+# Every cost has an OWNER: a client_id, a pre-signup lead/session id (moved to
+# the client on conversion — link_lead_costs), or INTERNAL (uallak's own work:
+# monitors, price checks). record_cost takes the owner explicitly; when the
+# call site can't (the two Claude choke points), the cost_owner() context the
+# endpoint opened supplies it. A cost with neither is still recorded — as
+# "unattributed", with an admin log line — never dropped.
+INTERNAL = "internal"
+_owner = contextvars.ContextVar("cost_owner", default=None)
+
+# Coarse buckets for later credit metering
+METER_CATEGORIES = ("chat", "proposal", "content", "media", "seo", "infra")
+_METER_RULES = (
+    # (substring of the fine category or action, bucket) — first match wins
+    ("chat_", "chat"), ("claude_support", "chat"), ("claude_interview", "chat"),
+    ("engagement_login", "chat"), ("sales_chat", "chat"),
+    ("proposal", "proposal"), ("upgrade", "proposal"), ("content_qa", "proposal"),
+    ("seo", "seo"),
+    ("media", "media"), ("avatar", "media"), ("drive", "media"),
+    ("landing", "content"), ("website", "content"), ("competitor", "content"),
+    ("content", "content"), ("engagement_weekly", "content"), ("google_ads", "content"),
+    ("meta_ads", "content"), ("claude_budget", "content"), ("claude_analysis", "content"),
+)
+
+
+def meter_category(category: str, action: str = "") -> str:
+    """The metering bucket for a cost row. The action label (what the work was
+    FOR) wins over the fine category (which call made it)."""
+    for text in (action or "", category or ""):
+        for needle, bucket in _METER_RULES:
+            if needle in text:
+                return bucket
+    return "infra"
+
+
+@contextmanager
+def cost_owner(client_id: int = None, lead_id: str = None, internal: bool = False):
+    """Attribute every cost recorded inside this block. Open it at the
+    request/job boundary (a sales-chat endpoint: lead_id; a scheduler job:
+    internal=True); an explicit client_id at the call site still wins."""
+    owner = ({"client_id": int(client_id)} if client_id
+             else {"lead_id": str(lead_id)} if lead_id
+             else {"internal": True} if internal else None)
+    token = _owner.set(owner)
+    try:
+        yield owner
+    finally:
+        _owner.reset(token)
+
+
+_warned_missing_columns = False
+
+
+def record_cost(category: str, amount_ils: float, client_id, details: dict = None,
+                usd: float = None, cost_category: str = None):
     """Fire-and-forget: cost tracking must never break the operation it's
-    tracking. client_id is nullable - onboarding calls happen before a client
-    row exists. The current cost_action label and a USD figure are added to
-    details (explicit keys in `details` win)."""
+    tracking. `client_id` is REQUIRED: an int, INTERNAL, or None only when a
+    cost_owner() context supplies the owner (a lead/session before signup).
+    The current cost_action label and a USD figure are added to details
+    (explicit keys in `details` win)."""
+    global _warned_missing_columns
     try:
         enriched = {"usd": round(usd if usd is not None else (amount_ils or 0) / USD_TO_ILS, 6)}
         label = _action.get()
         if label:
             enriched.update({"action": label["action"], "action_ref": label["ref"]})
         enriched.update(details or {})
-        _db().table("client_costs").insert({
-            "client_id": client_id,
-            "category": category,
-            "amount": amount_ils,
-            "details": enriched,
-        }).execute()
+
+        owner = _owner.get() or {}
+        row_client, lead_id, attribution = None, None, "unattributed"
+        if client_id == INTERNAL:
+            attribution = "internal"
+        elif client_id:
+            row_client, attribution = int(client_id), "client"
+        elif owner.get("client_id"):
+            row_client, attribution = owner["client_id"], "client"
+        elif owner.get("lead_id"):
+            lead_id, attribution = owner["lead_id"], "lead"
+        elif owner.get("internal"):
+            attribution = "internal"
+        else:
+            print(f"[cost_tracker] ADMIN: unattributed cost '{category}' "
+                  f"(action {enriched.get('action', '-')}) — no client, lead or internal owner")
+        bucket = cost_category if cost_category in METER_CATEGORIES else \
+            meter_category(category, enriched.get("action", ""))
+
+        base = {"client_id": row_client, "category": category, "amount": amount_ils, "details": enriched}
+        try:
+            _db().table("client_costs").insert({**base, "lead_id": lead_id, "attribution": attribution,
+                                                "cost_category": bucket}).execute()
+        except Exception as e:
+            # migrations/2026-10-18-cost-attribution.sql not run yet: keep the
+            # cost (attribution rides in details), say so once
+            if not _warned_missing_columns:
+                _warned_missing_columns = True
+                print(f"[cost_tracker] ADMIN: attribution columns missing ({e}) — run "
+                      f"migrations/2026-10-18-cost-attribution.sql")
+            enriched.update({"lead_id": lead_id, "attribution": attribution, "cost_category": bucket})
+            _db().table("client_costs").insert(base).execute()
     except Exception as e:
         print(f"[cost_tracker] could not record cost (non-fatal): {e}")
+
+
+def record_claude_response(response, category: str, client_id, model: str = None):
+    """For the few calls that use the SDK directly instead of the
+    claude_json choke points: records the response's token cost. Never raises."""
+    try:
+        usage = getattr(response, "usage", None)
+        tokens_in = int(getattr(usage, "input_tokens", 0) or 0)
+        tokens_out = int(getattr(usage, "output_tokens", 0) or 0)
+        model = model or getattr(response, "model", None)
+        record_cost(category, claude_cost_ils(tokens_in, tokens_out, model), client_id,
+                    {"input_tokens": tokens_in, "output_tokens": tokens_out, "model": model},
+                    usd=claude_cost_usd(tokens_in, tokens_out, model))
+    except Exception as e:
+        print(f"[cost_tracker] could not record direct Claude call (non-fatal): {e}")
+
+
+def link_lead_costs(lead_id: str, client_id: int) -> int:
+    """On conversion: the sales-chat costs recorded against this lead become
+    the new client's. Never raises; returns how many rows moved."""
+    if not (lead_id and client_id):
+        return 0
+    try:
+        result = (_db().table("client_costs").update({"client_id": int(client_id), "attribution": "client"})
+                  .eq("lead_id", lead_id).is_("client_id", "null").execute())
+        return len(result.data or [])
+    except Exception as e:
+        print(f"[cost_tracker] could not link lead {lead_id} costs to client {client_id}: {e}")
+        return 0
 
 
 def record_client_paid_media(client_id: int, usd_estimate: float, credits=None,
@@ -172,6 +282,55 @@ def _bucket(rows: list) -> dict:
     return {"total": money(total),
             "by_category": {k: money(v) for k, v in sorted(by_category.items(), key=lambda i: -i[1])},
             "by_action": {k: money(v) for k, v in sorted(by_action.items(), key=lambda i: -i[1])}}
+
+
+def costs_by_client_month(months: int = 6) -> dict:
+    """Admin view: OUR cost per owner per calendar month, split by metering
+    category. Owners are client ids plus three pseudo-owners: "internal",
+    "lead" (pre-signup chats that never converted) and "unattributed".
+    Client-paid media (a paying client's own Higgsfield) is excluded — it is
+    not our cost. Rows from before the attribution migration are bucketed
+    from their fine category."""
+    now = datetime.now(timezone.utc)
+    y, m = now.year, now.month - (months - 1)
+    while m <= 0:
+        y, m = y - 1, m + 12
+    since = datetime(y, m, 1, tzinfo=timezone.utc).isoformat()
+    cols = "client_id, category, amount, details, created_at"
+    try:
+        rows = (_db().table("client_costs").select(cols + ", cost_category, attribution")
+                .gte("created_at", since).limit(50000).execute().data or [])
+    except Exception:
+        rows = (_db().table("client_costs").select(cols)
+                .gte("created_at", since).limit(50000).execute().data or [])
+
+    table = {}
+    for row in rows:
+        details = row.get("details") or {}
+        if row.get("category") == CLIENT_PAID_MEDIA and details.get("payer") == "client":
+            continue
+        attribution = row.get("attribution") or details.get("attribution") or ""
+        owner = (str(row["client_id"]) if row.get("client_id")
+                 else "internal" if attribution == "internal"
+                 else "lead" if attribution == "lead" or details.get("lead_id")
+                 else "unattributed")
+        month = (row.get("created_at") or "")[:7]
+        bucket = (row.get("cost_category") or details.get("cost_category")
+                  or meter_category(row.get("category"), details.get("action", "")))
+        cell = table.setdefault(owner, {}).setdefault(month, {c: 0.0 for c in METER_CATEGORIES})
+        cell[bucket] = cell.get(bucket, 0.0) + _row_usd(row)
+
+    out = []
+    for owner, by_month in table.items():
+        for month, cats in sorted(by_month.items(), reverse=True):
+            total = sum(cats.values())
+            out.append({"owner": owner, "month": month,
+                        "by_category_usd": {k: round(v, 4) for k, v in cats.items()},
+                        "total_usd": round(total, 4), "total_ils": round(total * USD_TO_ILS, 2)})
+    out.sort(key=lambda r: (r["month"], -r["total_usd"]), reverse=False)
+    out.sort(key=lambda r: r["month"], reverse=True)
+    return {"since": since[:10], "categories": list(METER_CATEGORIES),
+            "usd_to_ils": USD_TO_ILS, "rows": out, "rows_read": len(rows)}
 
 
 def client_cost_view(client_id: int, latest_limit: int = 25) -> dict:

@@ -202,11 +202,9 @@ def _client_context(client: dict, events: list) -> dict:
     """Everything the weekly prompt needs about one client, kept compact —
     response length is latency, but a bloated INPUT is cost for zero gain."""
     client_id = client["id"]
-    lead = {}
-    if client.get("email"):
-        # Never an in-chat upgrade quote (core/lead_tracking.client_sales_lead)
-        from core.lead_tracking import client_sales_lead
-        lead, _how = client_sales_lead(email=client["email"], columns="answers,proposal")
+    # By client_id only, never an in-chat upgrade quote (core/lead_tracking.client_sales_lead)
+    from core.lead_tracking import client_sales_lead
+    lead, _how = client_sales_lead(client_id, columns="answers,proposal")
     answers = lead.get("answers") or {}
     proposal = lead.get("proposal") or {}
 

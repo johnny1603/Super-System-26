@@ -219,7 +219,9 @@ def record_message(lead_id: str, role: str, content: str) -> dict:
     queries, not four."""
     if role not in ("user", "assistant"):
         return {"success": False, "error": "role must be user or assistant"}
-    content = str(content or "").strip()[:MAX_MESSAGE_CHARS]
+    # Likely keys/passwords never reach the stored transcript (core/redaction)
+    from core.redaction import redact
+    content = redact(str(content or "").strip()[:MAX_MESSAGE_CHARS])
     if not content:
         return {"success": False, "error": "empty message"}
     # Guard before the update below: a null/empty key would become an
@@ -271,6 +273,10 @@ def mark_converted(lead_id: str, client_id: int, client_email: str, client_name:
         "converted_at": _now(),
         "last_activity_at": _now(),
     }).eq("lead_id", lead_id).execute()
+    # The sales chat's model costs, recorded against this lead, become the
+    # client's (core/cost_tracker attribution)
+    from core.cost_tracker import link_lead_costs
+    link_lead_costs(lead_id, client_id)
     return True
 
 
@@ -343,44 +349,49 @@ def _is_upgrade_row(row: dict) -> bool:
 SALES_LEAD_WINDOW = 20
 
 
-def client_sales_lead(client_id: int = None, email: str = "", columns: str = "*") -> tuple:
+# Admin alert for a client with no linked sales lead, at most once per week
+MISSING_LEAD_ALERT_DAYS = 7
+
+
+def client_sales_lead(client_id: int, columns: str = "*") -> tuple:
     """The lead row a CLIENT was SOLD from: their sales-chat answers and the
     proposal they actually checked out with. Returns (row, how_matched);
     ({}, reason) when there is none.
 
-    Every "which lead is this client's" lookup goes through here. They used to
-    take the newest `leads` row for the email, and an in-chat upgrade quote
-    (support_agent._build_upgrade_proposal) is ALSO a `leads` row with that
-    email — so after a client merely ASKED for a quote, the chat, the content
-    agents' business context, the budget forecast and the connection checklist
-    all read the unpurchased quote as what they bought. Upgrade rows are
-    skipped here (_is_upgrade_row); they stay in `leads` as the admin's record.
+    Every "which lead is this client's" lookup goes through here. In-chat
+    upgrade quotes (support_agent._build_upgrade_proposal) are `leads` rows
+    too and are skipped (_is_upgrade_row) — reading one as "what they bought"
+    was a real bug.
 
-    Exact client_id match first (set at checkout conversion; upgrade rows never
-    carry it), then the email match. Both skip upgrade rows."""
-    db = _db()
+    Matched by client_id ONLY (2026-10-18). The email fallback is gone: an
+    email can match another person's chat, and a wrong match hands one
+    client's answers and proposal to another. A client with no linked row
+    gets ({}, "not found") and ONE admin alert — the fix is to link the row
+    (migrations/2026-10-18-link-leads-by-client-id.sql), never to guess."""
+    if not client_id:
+        return {}, "not found (no client_id)"
     # The upgrade marker lives in `answers`, so it is always selected
     if columns != "*" and "answers" not in columns:
         columns = f"{columns},answers"
-    if client_id:
-        try:
-            rows = (db.table("leads").select(columns).eq("client_id", client_id)
-                    .order("created_at", desc=True).limit(SALES_LEAD_WINDOW).execute().data or [])
-            row = next((r for r in rows if not _is_upgrade_row(r)), None)
-            if row:
-                return row, "client_id (exact)"
-        except Exception:
-            pass  # leads.client_id missing/unreadable — fall through to the email match
-    email = (email or "").strip()
-    if not email and client_id:
-        from agents.client_agent import get_client
-        email = ((get_client(client_id) or {}).get("email") or "").strip()
-    if not email:
-        return {}, "not found (no email on file)"
-    rows = (db.table("leads").select(columns).eq("client_email", email)
-            .order("created_at", desc=True).limit(SALES_LEAD_WINDOW).execute().data or [])
+    try:
+        rows = (_db().table("leads").select(columns).eq("client_id", client_id)
+                .order("created_at", desc=True).limit(SALES_LEAD_WINDOW).execute().data or [])
+    except Exception as e:
+        print(f"[lead_tracking] client {client_id}: leads read failed ({e})")
+        return {}, "not found (leads unreadable)"
     row = next((r for r in rows if not _is_upgrade_row(r)), None)
-    return (row, "email (newest sales lead matching this email)") if row else ({}, "not found")
+    if row:
+        return row, "client_id (exact)"
+    try:
+        from core.chat_fallback import alert_once
+        alert_once("lead_tracking", client_id, "sales_lead_not_linked",
+                   f"client {client_id}: no sales lead linked by client_id — their proposal and "
+                   f"answers are unavailable to the agents. Link it (leads.client_id) via "
+                   f"migrations/2026-10-18-link-leads-by-client-id.sql; nothing was guessed.",
+                   MISSING_LEAD_ALERT_DAYS)
+    except Exception as e:
+        print(f"[lead_tracking] missing-lead alert failed for client {client_id}: {e}")
+    return {}, "not found (no lead linked to this client_id)"
 
 
 def list_leads(limit: int = 500) -> dict:

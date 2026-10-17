@@ -372,10 +372,13 @@ Return JSON only:
 {"questions": [{"id": "dynamic_1", "text": "question in the client's language", "type": "choice", "options": ["option1", "option2", "option3"]}]}""" + LANGUAGE_RULE
 
     user_message = f"Client said: {client_intro}\nAnswers so far: {json.dumps(answers, ensure_ascii=False)}"
-    result = safe_claude_json_call(system, user_message, max_tokens=3000, api_key=api_key)
+    result = safe_claude_json_call(system, user_message, max_tokens=3000, api_key=api_key,
+                                   cost_category="claude_sales_chat")
     return result.get("questions", [])
 
-def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None):
+def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None, client_id=None):
+    # client_id: set for an existing client's upgrade proposal (cost attribution);
+    # a pre-signup proposal is attributed to its lead by the endpoint's cost_owner
     # Avatar tier wired into the sales chat 2026-07-20 (was deliberately excluded
     # while unlaunched — see BUDGET PYRAMID #9 for the relevance rule that keeps
     # it out of most proposals; it's an optional add-on, not a default line).
@@ -822,7 +825,10 @@ reasoning, estimates-not-guarantees, honesty):
   confirm, and that a team member will confirm the final details with them personally"""
 
     user_message = f"Client data: {json.dumps(answers)}"
-    return safe_claude_json_call(system, user_message, max_tokens=6000, api_key=api_key)
+    return safe_claude_json_call(system, user_message, max_tokens=6000, api_key=api_key,
+                                 client_id=client_id,
+                                 cost_category="claude_upgrade_proposal" if upgrade_context
+                                 else "claude_proposal")
 
 def _timed_step(label, fn):
     start_dt = datetime.now()
@@ -925,7 +931,8 @@ Empathy/sales profile for this client:
 Instead of picking a package, the client just wrote:
 "{text}"
 """
-    result = safe_claude_json_call(system, user_message, max_tokens=700, api_key=api_key)
+    result = safe_claude_json_call(system, user_message, max_tokens=700, api_key=api_key,
+                                   cost_category="claude_sales_chat")
     return {"reply": result.get("reply", ""), "out_of_scope": bool(result.get("out_of_scope", False))}
 
 def get_reaction(question_text, answer_text, api_key):
@@ -966,6 +973,9 @@ Hard rules:
             system=system,
             messages=[{"role": "user", "content": user_message}],
         )
+        # Attributed to the lead by the endpoint's cost_owner (was unrecorded)
+        from core.cost_tracker import record_claude_response
+        record_claude_response(response, "claude_sales_chat", None, "claude-sonnet-4-6")
         return response.content[0].text.strip()
     except Exception as e:
         print(f"[get_reaction] failed ({e}), skipping reaction")

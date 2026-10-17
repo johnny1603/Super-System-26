@@ -9,6 +9,9 @@ KEYS = {
     "SESSION_SECRET_KEY": os.environ.get("SESSION_SECRET_KEY", ""),
     "GMAIL_APP_PASSWORD": os.environ.get("GMAIL_APP_PASSWORD", ""),
     "ADMIN_KEY": os.environ.get("ADMIN_KEY", ""),
+    # AES-256-GCM master key for per-client credentials (core/secrets_vault):
+    # urlsafe base64 of 32 bytes. Missing = connecting any tool fails closed.
+    "SECRETS_ENCRYPTION_KEY": os.environ.get("SECRETS_ENCRYPTION_KEY", ""),
     "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD", ""),
     "GOOGLE_ADS_DEVELOPER_TOKEN": os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
     # Google Ads authenticates with the developer token + the GOOGLE_OAUTH_* pair

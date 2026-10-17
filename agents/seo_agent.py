@@ -120,46 +120,25 @@ def _recent_activity(client_id: int, action_type: str, within_days: int, limit: 
 # ─── Tool connection (admin connects the client-paid tool's API key) ─────────
 
 def connect_tool(client_id: int, tool: str, api_key: str) -> dict:
-    """Store the client's SEO tool API key (client_accounts row, same shape as
-    every platform connection). Admin-triggered — these tools have no OAuth.
-    The key is validated by the first real research call, not here (each
-    tool's cheapest 'ping' differs and burns paid units)."""
-    tool = (tool or "").strip().lower()
-    if tool not in seo_tools.SUPPORTED_TOOLS:
-        return {"success": False,
-                "errors": [f"tool must be one of {seo_tools.SUPPORTED_TOOLS}"]}
-    if not (api_key or "").strip():
-        return {"success": False, "errors": ["api_key is required"]}
-    from agents.client_agent import upsert_account
-    upsert_account(client_id, SEO_TOOL_PLATFORM, tool, api_key.strip(), "active")
-    _log_activity(client_id, "seo_tool_connected", {"tool": tool})
-    log_step(AGENT_NAME, "connect_tool", f"client {client_id}: {tool}")
-    if tool not in seo_tools.IMPLEMENTED_TOOLS:
-        return {"success": True, "tool": tool,
-                "note": f"stored, but '{tool}' has no API adapter yet — research will "
-                        f"use the Claude fallback until one is wired (see the seo skill)"}
-    return {"success": True, "tool": tool}
+    """RETIRED 2026-10-18: there are no per-client SEO keys any more. The tool
+    is ONE shared uallak account configured by the owner through env vars
+    (core/seo_tools_service.shared_account). Nothing is stored."""
+    return {"success": False, "errors": [
+        "per-client SEO tool keys are retired — the shared uallak account is configured "
+        "by the owner via SEO_PRO_TOOL / SEO_PRO_API_KEY / SEO_PRO_ENABLED"]}
 
 
-def _get_tool_connection(client_id: int) -> dict:
-    result = (
-        _db().table("client_accounts")
-        .select("*")
-        .eq("client_id", client_id)
-        .eq("platform", SEO_TOOL_PLATFORM)
-        .eq("status", "active")
-        .order("id", desc=True)
-        .limit(1)
-        .execute()
-    )
-    return result.data[0] if result.data else {}
+def shared_tool_active() -> bool:
+    """Is the shared professional SEO tool on (configured AND enabled)?"""
+    state = seo_tools.shared_account()
+    return state["configured"] and state["enabled"]
 
 
 def get_connected_tool(client_id: int) -> str:
-    """Which research tool (if any) this client is paying for — the pull
-    point for budget_agent, which needs the tool name for a reference-price
-    lookup but never the API key itself."""
-    return _get_tool_connection(client_id).get("account_id") or ""
+    """INTERNAL ONLY: the shared tool's slug when active, else "". Same for
+    every client (one shared account). Never shown to a client — vendors are
+    never named to them."""
+    return seo_tools.shared_account()["tool"] if shared_tool_active() else ""
 
 
 def _client_domain(client_id: int) -> str:
@@ -288,14 +267,15 @@ def run_market_research(client_id: int, force_refresh: bool = False) -> dict:
         return {"success": False, "error": "website not connected — research needs the client's domain"}
 
     research = None
-    connection = _get_tool_connection(client_id)
-    tool = connection.get("account_id") or ""
-    if connection.get("access_token"):
-        log_step(AGENT_NAME, "market_research", f"client {client_id}: via {tool} for {domain}")
+    tool = get_connected_tool(client_id)
+    if tool:
+        # The shared uallak account; the client's project inside it is
+        # seo_tools.client_project_name(client_id)
+        log_step(AGENT_NAME, "market_research", f"client {client_id}: via shared {tool} for {domain}")
         try:
             result = timed_step(
                 AGENT_NAME, f"tool_research_{tool}",
-                lambda: seo_tools.get_research(tool, connection["access_token"], domain))
+                lambda: seo_tools.get_research_shared(client_id, domain))
             if result.get("supported") and result.get("usable"):
                 research = {"success": True, "source": tool, "domain": domain, "data": result}
                 if result.get("errors"):
@@ -305,9 +285,9 @@ def run_market_research(client_id: int, force_refresh: bool = False) -> dict:
                 # Key present but every report failed — likely a bad/expired key;
                 # a human should hear about it (the client pays for this tool)
                 agent_alert(AGENT_NAME, [
-                    f"client {client_id}: {tool} research returned no data "
-                    f"({'; '.join(result.get('errors', []))[:300]}) — check the API key/plan; "
-                    f"falling back to Claude research"])
+                    f"client {client_id}: shared {tool} research returned no data "
+                    f"({'; '.join(result.get('errors', []))[:300]}) — check the shared account "
+                    f"key/plan; falling back to Claude research"])
         except Exception as e:
             agent_alert(AGENT_NAME, [f"client {client_id}: {tool} research failed: {e} — "
                                      f"falling back to Claude research"])
@@ -342,7 +322,7 @@ def _business_context(client_id: int) -> dict:
     from agents.client_agent import get_client
     from agents.support_agent import _latest_lead
     client = get_client(client_id)
-    lead = _latest_lead(client.get("email", ""))
+    lead = _latest_lead(client_id)
     proposal = lead.get("proposal") or {}
     return {
         "name": client.get("name", ""),

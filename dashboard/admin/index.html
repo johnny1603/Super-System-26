@@ -350,6 +350,11 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
         <div class="page-title">חדר בקרה</div>
         <div class="page-sub" id="crSub">טוען…</div>
         <div class="table-wrap" id="crTable"></div>
+        <div id="crLegacyLogins"></div>
+        <div class="panel-pad" style="margin-top:18px;">
+          <div class="drawer-label">💰 עלות לנו לפי לקוח, חודש וקטגוריה (משוער)</div>
+          <div class="table-wrap" id="crCostsMonthly"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
       </div>
       <div id="crClient" style="display:none;"></div>
     </div>
@@ -1615,11 +1620,16 @@ async function openDrawer(clientId) {
   loadAutomationSection(clientId);
 }
 
-// ─── marketing automation credentials (ManyChat / Make) ──────────────────────
-// The one place in the system that shows a stored password in the clear, and it
-// exists for exactly that: Johnny copies these into the vendor's login page to
-// build the client's automation by hand. Admin-session only — there is no
-// client-facing counterpart, by design (core/automation_service.py).
+// ─── marketing automation (ManyChat / Make) ──────────────────────────────────
+// API token per client, encrypted server-side and NEVER shown back (at most
+// the last 4 characters). Passwords are no longer stored; an old stored login
+// is flagged "legacy" (kept, not shown) until the client moves to a token.
+// Admin-session only (core/automation_service.py).
+const AUTO_MODE_HE = {
+  token: v => `מחובר עם טוקן API${v.secret_last4 ? ' ····' + v.secret_last4 : ''}`,
+  legacy_login: () => '⚠ כניסה ישנה (שם משתמש + סיסמה) — שמורה ולא מוצגת. יש להחליף בטוקן API.',
+  none: () => 'לא מחובר',
+};
 async function loadAutomationSection(clientId) {
   const area = document.getElementById('automationArea');
   try {
@@ -1635,23 +1645,19 @@ async function loadAutomationSection(clientId) {
                style="color:var(--gray);font-size:12px;">הרשמה ↗</a>`}
           </span>
         </div>
-        <input class="auto-input" id="autoUser-${esc(v.slug)}" dir="ltr" placeholder="שם משתמש / אימייל"
-               value="${esc(v.username)}" style="margin-bottom:6px;">
-        <input class="auto-input" id="autoPass-${esc(v.slug)}" dir="ltr" placeholder="סיסמה"
-               value="${esc(v.password)}" style="margin-bottom:8px;">
+        <div style="font-size:12.5px;margin-bottom:8px;color:${v.mode === 'legacy_login' ? 'var(--yellow)' : 'var(--gray)'};">
+          ${esc((AUTO_MODE_HE[v.mode] || AUTO_MODE_HE.none)(v))}</div>
+        <input class="auto-input" id="autoToken-${esc(v.slug)}" dir="ltr" type="password" autocomplete="off"
+               placeholder="${v.mode === 'token' ? 'החלפת טוקן API' : 'טוקן API'}" style="margin-bottom:8px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="alert-btn" onclick="saveAutomation(${clientId}, '${esc(v.slug)}')">שמירה</button>
-          <button class="alert-btn" onclick="copyAutomation('autoUser-${esc(v.slug)}', this)"
-                  ${v.username ? '' : 'disabled'}>העתק משתמש</button>
-          <button class="alert-btn" onclick="copyAutomation('autoPass-${esc(v.slug)}', this)"
-                  ${v.password ? '' : 'disabled'}>העתק סיסמה</button>
           ${v.saved ? `<button class="alert-btn" onclick="deleteAutomation(${clientId}, '${esc(v.slug)}')"
                   style="color:var(--gray);">מחיקה</button>` : ''}
         </div>
         <div id="autoMsg-${esc(v.slug)}" style="font-size:12px;margin-top:6px;"></div>
       </div>`).join('');
   } catch (e) {
-    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת פרטי הכניסה</div>';
+    area.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת החיבורים</div>';
   }
 }
 
@@ -1661,16 +1667,17 @@ function autoMsg(slug, text, color) {
 }
 
 async function saveAutomation(clientId, slug) {
-  const username = document.getElementById(`autoUser-${slug}`).value.trim();
-  const password = document.getElementById(`autoPass-${slug}`).value.trim();
-  if (!username || !password) { autoMsg(slug, 'צריך גם שם משתמש וגם סיסמה', 'var(--yellow)'); return; }
+  const input = document.getElementById(`autoToken-${slug}`);
+  const api_token = input.value.trim();
+  if (!api_token) { autoMsg(slug, 'צריך להדביק טוקן API', 'var(--yellow)'); return; }
   autoMsg(slug, 'שומר…', 'var(--gray)');
   try {
     await api(`/api/admin/clients/${clientId}/automation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vendor: slug, username, password }),
+      body: JSON.stringify({ vendor: slug, api_token }),
     });
+    input.value = '';   // never keep a pasted secret on screen
     autoMsg(slug, 'נשמר ✓', 'var(--green)');
     loadAutomationSection(clientId);
   } catch (e) {
@@ -1686,22 +1693,6 @@ async function deleteAutomation(clientId, slug) {
   } catch (e) {
     autoMsg(slug, 'המחיקה נכשלה', 'var(--accent)');
   }
-}
-
-// Clipboard API needs a secure context; the input is right there either way, so
-// fall back to selecting the text rather than failing silently.
-async function copyAutomation(inputId, btn) {
-  const input = document.getElementById(inputId);
-  if (!input || !input.value) return;
-  const original = btn.textContent;
-  try {
-    await navigator.clipboard.writeText(input.value);
-    btn.textContent = 'הועתק ✓';
-  } catch (e) {
-    input.select();
-    btn.textContent = 'סמן והעתק';
-  }
-  setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
 async function loadContentDocsSection(clientId) {
@@ -1983,6 +1974,49 @@ async function loadControlRoom() {
           <div><button class="manage-btn">פתח</button></div>
         </div>`).join('')
     : '<div class="empty-state">אין עדיין לקוחות</div>';
+  const names = {};
+  rows.forEach(r => { names[String(r.id)] = r.name; });
+  crLoadLegacyLogins(names);
+  crLoadCostsMonthly(names);
+}
+
+// Clients still on a stored ManyChat/Make username+password (kept, never shown)
+async function crLoadLegacyLogins(names) {
+  const el = document.getElementById('crLegacyLogins');
+  if (!el) return;
+  try {
+    const rows = (await api('/api/admin/automation/legacy-logins')).data || [];
+    el.innerHTML = rows.length ? `<div class="panel-pad" style="margin-top:14px;">
+        <div class="drawer-label" style="color:var(--yellow);">⚠ לקוחות על כניסה ישנה (שם משתמש + סיסמה) — להחליף בטוקן API</div>
+        ${rows.map(r => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(names[String(r.client_id)] || ('#' + r.client_id))}</span><span>${esc(r.vendor)}</span></div>`).join('')}
+      </div>` : '';
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+const CR_COST_CATS = { chat: 'צ׳אט', proposal: 'הצעות', content: 'תוכן', media: 'מדיה', seo: 'SEO', infra: 'תשתית' };
+const CR_OWNER_LABEL = { internal: 'פנימי (uallak)', lead: 'שיחות מכירה שלא הומרו', unattributed: 'לא משויך ⚠' };
+async function crLoadCostsMonthly(names) {
+  const el = document.getElementById('crCostsMonthly');
+  if (!el) return;
+  try {
+    const d = (await api('/api/admin/costs/by-client-month')).data;
+    const cats = d.categories || Object.keys(CR_COST_CATS);
+    if (!(d.rows || []).length) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין עלויות רשומות בתקופה</div>'; return; }
+    const usd = v => v ? '$' + Number(v).toFixed(v < 1 ? 3 : 2) : '—';
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <thead><tr style="color:var(--gray);text-align:start;"><th style="text-align:start;padding:6px;">חודש</th><th style="text-align:start;padding:6px;">לקוח</th>
+        ${cats.map(c => `<th style="padding:6px;">${esc(CR_COST_CATS[c] || c)}</th>`).join('')}<th style="padding:6px;">סה״כ</th></tr></thead>
+      <tbody>${d.rows.map(r => `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:6px;" dir="ltr">${esc(r.month)}</td>
+        <td style="padding:6px;">${esc(CR_OWNER_LABEL[r.owner] || names[r.owner] || ('#' + r.owner))}</td>
+        ${cats.map(c => `<td style="padding:6px;text-align:center;" dir="ltr">${usd((r.by_category_usd || {})[c])}</td>`).join('')}
+        <td style="padding:6px;text-align:center;" dir="ltr"><b>${usd(r.total_usd)}</b> · ≈${ils(r.total_ils)}</td></tr>`).join('')}</tbody></table>
+      <div style="font-size:11px;color:var(--gray);margin-top:6px;">מדיה בתשלום הלקוח (Higgsfield של לקוח משלם) אינה עלות שלנו ואינה כלולה · מאז ${esc(d.since)}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת העלויות</div>';
+  }
 }
 
 async function openControlRoom(clientId) {

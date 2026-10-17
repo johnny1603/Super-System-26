@@ -33,6 +33,7 @@ from supabase import create_client as _supabase_client
 
 from core import tiktok_service as tiktok
 from core.agent_base import agent_alert, log_step, timed_step
+from core.secrets_vault import hydrate
 
 AGENT_NAME = "tiktok_content_agent"
 TIKTOK_PLATFORM = "tiktok"  # account_id=open_id, access_token='access::refresh' (see tiktok_service)
@@ -70,7 +71,8 @@ def _get_connection(client_id: int) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    # Decrypted right here, for use (core/secrets_vault.get_client_secret)
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def is_connected(client_id: int) -> bool:

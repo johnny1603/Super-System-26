@@ -312,9 +312,11 @@ def chat_history(client_id: int, persona: str, limit: int = 100) -> dict:
 
 
 def _store(client_id: int, persona: str, role: str, content: str) -> bool:
+    from core.redaction import redact
     try:
+        # Internal chat too: likely keys/passwords are stored as [REDACTED]
         _db().table("admin_agent_chat").insert({"client_id": client_id, "persona": persona,
-                                                "role": role, "content": content}).execute()
+                                                "role": role, "content": redact(content)}).execute()
         return True
     except Exception as e:
         print(f"[{AGENT_NAME}] could not store admin chat turn: {e}")
@@ -346,7 +348,7 @@ def _grounding(client_id: int, persona_id: str) -> dict:
                            "internal_cost_month_ils": admin.get("cost_month"),
                            "cost_by_category": admin.get("cost_by_category"),
                            "margin_pct": admin.get("margin_pct")}
-    attempt("proposal", lambda: (_latest_lead(client.get("email", "")).get("proposal") or {}))
+    attempt("proposal", lambda: (_latest_lead(client_id).get("proposal") or {}))
     attempt("recent_activity", lambda: _trim_activity(get_activity(client_id, limit=30)))
     attempt("open_alerts", lambda: [{"issues": a.get("issues"), "source": a.get("source"),
                                      "at": a.get("created_at")}

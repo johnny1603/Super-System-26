@@ -69,45 +69,87 @@ def vendor(slug: str) -> dict:
     return VENDORS.get((slug or "").strip().lower()) or {}
 
 
+# ─── Credentials: API token, never a password (2026-10-18) ──────────────────
+# Client PASSWORDS are no longer stored. A connection is the vendor's API
+# token, encrypted per client (core/secrets_vault) and never shown back —
+# the admin screen sees "connected" + at most the last 4 characters.
+#
+# TODO(owner-verify): the code cannot tell whether each vendor issues a token
+# that is enough for HOW Johnny builds automations. Verify per vendor:
+#   ManyChat — that a per-account API key exists on the client's plan (it is a
+#     Pro feature), where it is created, whether it can be revoked, and whether
+#     it lets you BUILD flows or only read/send via the API. If building needs
+#     a dashboard login, the right model is the client inviting Johnny as a
+#     team member (their own login stays theirs) — not a stored password.
+#   Make — whether the client's plan allows API tokens, which scopes building/
+#     editing scenarios needs, token expiry, and whether "invite a team member
+#     to the organization" is the better path than a token.
+# Until verified, tokens are stored but nothing in the system USES them.
+TOKEN_ACCOUNT_ID = "api_token"
+
+
+def _mode(row: dict) -> str:
+    if not row:
+        return "none"
+    return "token" if row.get("account_id") == TOKEN_ACCOUNT_ID else "legacy_login"
+
+
 def get_credentials(client_id: int) -> list:
-    """ADMIN ONLY — the stored username/password per vendor, in the clear,
-    because the admin UI exists to copy-paste them into the vendor's login page.
-    Never call this from a client-session endpoint."""
+    """ADMIN ONLY — connection state per vendor, WITHOUT any secret.
+    A legacy username/password row is reported as legacy (kept, not shown,
+    not deleted) so the admin can move the client to a token."""
     from agents.client_agent import get_accounts
 
     rows = {r.get("platform"): r for r in get_accounts(client_id)}
     result = []
     for slug, v in VENDORS.items():
         row = rows.get(slug) or {}
+        mode = _mode(row)
         result.append({
             "slug": slug,
             "name": v["name"],
             "login_url": v["login_url"],
             "signup_url": v["signup_url"],
-            "username": row.get("account_id") or "",
-            "password": row.get("access_token") or "",
-            "saved": bool(row.get("account_id") or row.get("access_token")),
+            "mode": mode,
+            "saved": mode != "none",
+            "secret_last4": (row.get("secret_last4") or "") if mode == "token" else "",
         })
     return result
 
 
-def save_credentials(client_id: int, slug: str, username: str, password: str) -> dict:
-    """Store (or replace) one vendor's credentials for a client. upsert_account
-    replaces the existing row rather than stacking a second one, so re-sending
-    corrected credentials can't leave a stale password behind."""
+def save_token(client_id: int, slug: str, api_token: str) -> dict:
+    """Store (or replace) one vendor's API token for a client — encrypted by
+    upsert_account. Replaces a legacy login row in place."""
     from agents.client_agent import upsert_account
 
     v = vendor(slug)
     if not v:
         return {"success": False, "errors": [f"unknown automation vendor: {slug}"]}
-    username, password = (username or "").strip(), (password or "").strip()
-    if not username or not password:
-        return {"success": False, "errors": ["username and password are both required"]}
-
-    upsert_account(client_id, slug, account_id=username, access_token=password)
-    # Deliberately logs the vendor and never the credentials themselves.
-    log_step(AGENT_NAME, "credentials_saved", f"client {client_id}: {v['name']}")
+    api_token = (api_token or "").strip()
+    if not api_token:
+        return {"success": False, "errors": ["api_token is required"]}
+    upsert_account(client_id, slug, account_id=TOKEN_ACCOUNT_ID, access_token=api_token)
+    # Deliberately logs the vendor and never the token itself.
+    log_step(AGENT_NAME, "token_saved", f"client {client_id}: {v['name']}")
     return {"success": True, "vendor": v["name"]}
+
+
+def save_credentials(client_id: int, slug: str, username: str, password: str) -> dict:
+    """RETIRED: passwords are no longer stored. Kept so an old caller gets a
+    clear refusal instead of silently storing a password."""
+    return {"success": False, "errors": [
+        "client passwords are no longer stored — save the vendor's API token instead"]}
+
+
+def legacy_logins() -> list:
+    """ADMIN ONLY — every client still on a stored username/password login
+    (vendor + client only, never the login itself)."""
+    from agents.client_agent import _db
+    rows = (_db().table("client_accounts").select("client_id,platform,account_id")
+            .in_("platform", list(VENDORS)).execute().data or [])
+    return sorted(({"client_id": r["client_id"], "vendor": VENDORS[r["platform"]]["name"]}
+                   for r in rows if r.get("account_id") != TOKEN_ACCOUNT_ID),
+                  key=lambda r: (r["client_id"], r["vendor"]))
 
 
 def remove_credentials(client_id: int, slug: str) -> dict:

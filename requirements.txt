@@ -11,3 +11,5 @@ google-auth==2.43.0
 requests==2.32.5
 pydantic==2.13.4
 pillow==11.3.0
+# AES-256-GCM for per-client secrets at rest (core/secrets_vault.py)
+cryptography==44.0.2

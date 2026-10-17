@@ -46,6 +46,7 @@ from supabase import create_client as _supabase_client
 from core import wordpress_service as wp
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import safe_claude_json_call
+from core.secrets_vault import get_client_secret, hydrate
 
 AGENT_NAME = "website_agent"
 WORDPRESS_PLATFORM = "wordpress"
@@ -173,7 +174,8 @@ def _get_connection(client_id: int) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    # Decrypted right here, for use (core/secrets_vault.get_client_secret)
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def _creds(connection: dict):
@@ -1000,10 +1002,11 @@ def get_tracking_status(client_id: int) -> dict:
         from agents.client_agent import get_accounts
         meta_row = next((a for a in get_accounts(client_id)
                          if a.get("platform") == "meta_ads" and a.get("status") == "active"), None)
-        if meta_row:
+        meta_token = get_client_secret(client_id, "meta_ads") if meta_row else ""
+        if meta_row and meta_token:
             from core import meta_service
             expected_pixels = meta_service.get_ad_account_pixels(
-                meta_row["access_token"], meta_row["account_id"])
+                meta_token, meta_row["account_id"])
             expected_ids = {p.get("id") for p in expected_pixels}
             if detected["meta_pixel_id"] and expected_ids and detected["meta_pixel_id"] not in expected_ids:
                 issues.append(f"installed Meta Pixel {detected['meta_pixel_id']} does not "
@@ -1066,7 +1069,7 @@ def _gtm_connection(client_id: int) -> dict:
     rows = (_db().table("client_accounts").select("*")
             .eq("client_id", client_id).eq("platform", GTM_PLATFORM)
             .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    return rows[0] if rows else {}
+    return hydrate(rows[0]) if rows else {}
 
 
 def gtm_missing_scopes(client_id: int) -> list:
@@ -2176,7 +2179,9 @@ def run_health_scan() -> dict:
         .execute().data or []
     )
     summary = {"sites_scanned": 0, "issues": 0}
-    for connection in rows:
+    for raw in rows:
+        # Each row decrypted for ITS OWN client (the ciphertext is bound to it)
+        connection = hydrate(raw)
         client_id = connection["client_id"]
         site_url, username, app_password = _creds(connection)
         summary["sites_scanned"] += 1

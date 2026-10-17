@@ -22,6 +22,7 @@ from supabase import create_client as _supabase_client
 
 from core import meta_service as meta
 from core.agent_base import agent_alert, log_step, timed_step
+from core.secrets_vault import hydrate
 
 AGENT_NAME = "meta_content_agent"
 PAGE_PLATFORM = "meta_page"            # account_id=Page id, access_token=Page token
@@ -80,7 +81,8 @@ def _get_connection(client_id: int, platform: str) -> dict:
         .limit(1)
         .execute()
     )
-    return result.data[0] if result.data else {}
+    # Decrypted right here, for use (core/secrets_vault.get_client_secret)
+    return hydrate(result.data[0]) if result.data else {}
 
 
 def is_connected(client_id: int) -> bool:

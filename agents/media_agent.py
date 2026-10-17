@@ -362,10 +362,11 @@ def connect_generation_account(client_id: int, api_key: str) -> dict:
 
 
 def _generation_key(client_id: int) -> str:
-    rows = (_db().table("client_accounts").select("access_token")
-            .eq("client_id", client_id).eq("platform", HIGGSFIELD_PLATFORM)
-            .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    return (rows[0].get("access_token") or "") if rows else ""
+    """The client's OWN Higgsfield key, decrypted for this job only — ""
+    (abort) when it can't be proven to be this client's alone; an owner key
+    is reachable only from internal accounts (core/secrets_vault.use_vendor_key)."""
+    from core.secrets_vault import use_vendor_key
+    return use_vendor_key(client_id, HIGGSFIELD_PLATFORM, job="media_agent:generation")
 
 
 _NO_ACCOUNT_ERROR = ("client's Higgsfield account is not connected - the client connects it "

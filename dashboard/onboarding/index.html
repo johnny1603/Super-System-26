@@ -366,7 +366,8 @@ async function maybeReact(questionId, answerText, next) {
     const res = await fetch('/api/reaction', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ question_text: q ? q.text : '', answer_text: String(answerText) })
+      body: JSON.stringify({ question_text: q ? q.text : '', answer_text: String(answerText),
+                             lead_id: leadTracker.id || '' })
     });
     const data = await res.json();
     hideTyping();
@@ -687,7 +688,9 @@ function sendText() {
 async function loadDynamicQuestions() {
   showTyping();
 
-  const body = JSON.stringify({ intro: answers['intro'], answers });
+  // lead_id: the model cost of these calls is attributed to this chat session
+  // (core/cost_tracker) and moves to the client if they sign up
+  const body = JSON.stringify({ intro: answers['intro'], answers, lead_id: leadTracker.id || '' });
   const post = (path, label) => fetch(path, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

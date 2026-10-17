@@ -44,6 +44,10 @@ def _persist_alert(label: str, issues: list):
 
 
 def alert(label: str, issues: list):
+    # Every alert path ends here: likely secrets are [REDACTED] before the
+    # log, the local history file and the alerts table (core/redaction)
+    from core.redaction import redact
+    issues = [redact(str(i)) for i in (issues or [])]
     ts = datetime.now().isoformat()
     print(f"[{ts}] ALERT [{label}] NOT APPROVED")
     for issue in issues:

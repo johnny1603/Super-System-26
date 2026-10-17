@@ -124,10 +124,23 @@ class OnboardingRequest(BaseModel):
     lead_id: str = ""     # the lead the chat opened on arrival (core/lead_tracking); empty
                           # when tracking never started, which must not lose the proposal
 
+def _sales_cost_owner(lead_id: str):
+    """Pre-signup model cost belongs to the chat session: its lead id, or an
+    anonymous session id when tracking never started (core/cost_tracker; the
+    lead's costs move to the client on conversion)."""
+    from core.cost_tracker import cost_owner
+    import uuid as _uuid
+    return cost_owner(lead_id=(lead_id or "").strip() or f"anon-{_uuid.uuid4().hex[:12]}")
+
 @app.post("/api/onboarding")
 def onboarding(req: OnboardingRequest):
+    # The answers are stored on the lead row and sent to the models: a key or
+    # password typed into any answer is [REDACTED] first (core/redaction)
+    from core.redaction import redact_obj
+    req.answers = redact_obj(req.answers)
     try:
-        result = run_full_onboarding(req.answers)
+        with _sales_cost_owner(req.lead_id):
+            result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
         review = result.get("review", {})
         if is_agent_active("master_agent") and not review.get("approved", True):
@@ -626,9 +639,17 @@ def handle_objection_endpoint(req: ObjectionRequest):
     # question is answered in the closer's voice AND handed to the team; a
     # failure gets the fixed in-voice handoff and the packages are shown again.
     from core import chat_fallback
+    from core.redaction import looks_like_secret, redact_obj
+    if looks_like_secret(req.text):
+        # A key/password pasted into the sales chat: warm fixed reply, no
+        # model call, nothing of it forwarded anywhere
+        from core.chat_guard import secret_reply
+        return {"success": True, "reply": secret_reply(req.text)}
+    req.answers = redact_obj(req.answers)
     try:
         from agents.onboarding_agent import handle_objection, get_api_key
-        result = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
+        with _sales_cost_owner(req.lead_id):
+            result = handle_objection(req.text, req.packages, req.answers, req.empathy_final, get_api_key())
         reply = (result.get("reply") or "").strip()
         if result.get("out_of_scope"):
             chat_fallback.alert_handoff(
@@ -658,12 +679,14 @@ def handle_objection_endpoint(req: ObjectionRequest):
 class ReactionRequest(BaseModel):
     question_text: str = ""
     answer_text: str = ""
+    lead_id: str = ""   # cost attribution (core/cost_tracker)
 
 @app.post("/api/reaction")
 def reaction_endpoint(req: ReactionRequest):
     try:
         from agents.onboarding_agent import get_reaction, get_api_key
-        reaction = get_reaction(req.question_text, req.answer_text, get_api_key())
+        with _sales_cost_owner(req.lead_id):
+            reaction = get_reaction(req.question_text, req.answer_text, get_api_key())
         return {"success": True, "reaction": reaction}
     except Exception as e:
         import traceback
@@ -1748,22 +1771,25 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     """Revoke our access at the provider (best-effort - the grant may already
     be dead) and DELETE the stored client_accounts rows. Only OUR access is
     removed; the client's ad accounts / Pages / site are never touched."""
+    from core.secrets_vault import get_client_secret
     rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
+    # The token is decrypted only here, for the revoke call itself
+    tokens = {r.get("platform"): get_client_secret(client_id, r.get("platform"), any_status=True)
+              for r in rows if r.get("has_secret")}
 
     revoked = None
     if platform in ("google_ads", "gtm", "youtube", "merchant_center"):
         # Same Google OAuth infrastructure — revoking the refresh token kills
         # the grant regardless of which scopes it carried
-        for row in rows:
-            if row.get("access_token"):
-                revoked = google_ads_service.revoke_token(row["access_token"])
+        for token in tokens.values():
+            if token:
+                revoked = google_ads_service.revoke_token(token)
     elif platform == "meta":
         # Any of the group's tokens traces back to the same user grant; prefer
         # the user token on the meta_ads row, fall back to whatever exists
-        token_row = (next((r for r in rows if r.get("platform") == "meta_ads" and r.get("access_token")), None)
-                     or next((r for r in rows if r.get("access_token")), None))
-        if token_row:
-            revoked = meta_service.revoke_permissions(token_row["access_token"])
+        token = tokens.get("meta_ads") or next((t for t in tokens.values() if t), "")
+        if token:
+            revoked = meta_service.revoke_permissions(token)
     # wordpress: nothing to revoke remotely - the Application Password lives in
     # the client's own wp-admin (we tell them they can delete it there too);
     # deleting our stored copy of it IS the disconnect.
@@ -2427,9 +2453,11 @@ def merchant_center_link(req: MerchantCenterLinkRequest, request: Request):
     pending = (db.table("client_accounts").select("*")
               .eq("client_id", client_id).eq("platform", "merchant_center_pending")
               .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    if not pending:
+    from core.secrets_vault import get_client_secret
+    refresh_token = (get_client_secret(client_id, "merchant_center_pending", row=pending[0])
+                     if pending else "")
+    if not refresh_token:
         raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
-    refresh_token = pending[0]["access_token"]
     from core import merchant_center_service
     try:
         # Saved as connected ONLY after the Merchant API, with the client's own
@@ -2484,11 +2512,14 @@ def merchant_center_register_gcp(req: MerchantGcpRegistration):
     rows = (db.table("client_accounts").select("*").eq("client_id", req.client_id)
             .in_("platform", ["merchant_center", "merchant_center_pending"])
             .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    if not rows:
+    from core.secrets_vault import get_client_secret
+    token = (get_client_secret(req.client_id, rows[0].get("platform"), row=rows[0])
+             if rows else "")
+    if not token:
         raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
     from core import merchant_center_service
     try:
-        result = merchant_center_service.register_gcp(rows[0]["access_token"], merchant_id,
+        result = merchant_center_service.register_gcp(token, merchant_id,
                                                       req.developer_email.strip())
     except Exception as e:
         print(f"[merchant-center register-gcp] merchant_id={merchant_id}: {type(e).__name__}: {e}")
@@ -4939,16 +4970,30 @@ def admin_automation_credentials(client_id: int, request: Request):
     from core import automation_service
     return {"success": True, "data": automation_service.get_credentials(client_id)}
 
-class AutomationCredsRequest(BaseModel):
+class AutomationTokenRequest(BaseModel):
     vendor: str      # manychat | make (automation_service.VENDORS)
-    username: str
-    password: str
+    api_token: str   # encrypted per client; passwords are no longer accepted
 
-@app.post("/api/admin/clients/{client_id}/automation")
-def admin_save_automation_credentials(client_id: int, req: AutomationCredsRequest, request: Request):
+@app.get("/api/admin/costs/by-client-month")
+def admin_costs_by_client_month(request: Request, months: int = 6):
+    # OUR cost per client per month, by metering category (core/cost_tracker)
+    _require_admin(request)
+    from core.cost_tracker import costs_by_client_month
+    return {"success": True, "data": costs_by_client_month(max(1, min(int(months), 24)))}
+
+@app.get("/api/admin/automation/legacy-logins")
+def admin_automation_legacy_logins(request: Request):
+    # Clients still on a stored username/password (kept, never shown) — to be
+    # moved to an API token
     _require_admin(request)
     from core import automation_service
-    result = automation_service.save_credentials(client_id, req.vendor, req.username, req.password)
+    return {"success": True, "data": automation_service.legacy_logins()}
+
+@app.post("/api/admin/clients/{client_id}/automation")
+def admin_save_automation_credentials(client_id: int, req: AutomationTokenRequest, request: Request):
+    _require_admin(request)
+    from core import automation_service
+    result = automation_service.save_token(client_id, req.vendor, req.api_token)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
@@ -5025,13 +5070,15 @@ async def health():
 class DynamicQRequest(BaseModel):
     intro: str
     answers: dict
+    lead_id: str = ""   # cost attribution (core/cost_tracker)
 
 @app.post("/api/dynamic-questions")
 def dynamic_questions(req: DynamicQRequest):
     try:
         from agents.onboarding_agent import get_dynamic_questions, get_api_key
         api_key = os.environ.get("ANTHROPIC_API_KEY", "") or get_api_key()
-        questions = get_dynamic_questions(req.intro, req.answers, api_key)
+        with _sales_cost_owner(req.lead_id):
+            questions = get_dynamic_questions(req.intro, req.answers, api_key)
         return {"questions": questions}
     except Exception as e:
         return {"questions": []}
@@ -5039,12 +5086,14 @@ def dynamic_questions(req: DynamicQRequest):
 class FilterRequest(BaseModel):
     intro: str
     answers: dict
+    lead_id: str = ""   # cost attribution (core/cost_tracker)
 
 @app.post("/api/filter-questions")
 def filter_questions_endpoint(req: FilterRequest):
     try:
         from agents.question_filter import get_skip_ids
-        return {"skip_ids": get_skip_ids(req.intro)}
+        with _sales_cost_owner(req.lead_id):
+            return {"skip_ids": get_skip_ids(req.intro)}
     except Exception as e:
         import traceback
         print(f"Filter error: {e}")

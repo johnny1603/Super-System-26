@@ -55,7 +55,8 @@ def get_skip_ids(intro: str, api_key: str = None) -> list:
         return []
     try:
         result = safe_claude_json_call(
-            SYSTEM, f"Client opening message: {intro}", max_tokens=200, api_key=api_key
+            SYSTEM, f"Client opening message: {intro}", max_tokens=200, api_key=api_key,
+            cost_category="claude_sales_chat",  # the lead, via the endpoint's cost_owner
         )
         skip_ids = [i for i in result.get("skip_ids", []) if i in BASE_QUESTION_IDS]
         if skip_ids:

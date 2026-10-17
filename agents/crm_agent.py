@@ -101,7 +101,9 @@ def _connection(client_id: int) -> dict:
     except Exception as e:
         print(f"[{AGENT_NAME}] connection lookup failed for client {client_id}: {e}")
         return {}
-    return rows[0] if rows else {}
+    from core.secrets_vault import hydrate
+    # Decrypted for use; get_status only ever ships the vendor + non-secret extra
+    return hydrate(rows[0]) if rows else {}
 
 
 def _creds(connection: dict) -> tuple:
