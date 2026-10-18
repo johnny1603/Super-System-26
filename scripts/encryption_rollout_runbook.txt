@@ -1,0 +1,194 @@
+ENCRYPTION ROLLOUT RUNBOOK - steps 3 to 10
+==========================================
+
+How to use this file:
+- Do the steps in order. Do not skip ahead.
+- Each step has ONE block. Copy everything between the "----- copy" lines and paste it.
+- SQL blocks go in the Supabase SQL editor (Supabase > SQL Editor > New query > Run).
+- SHELL blocks go in Google Cloud Shell (console.cloud.google.com > the >_ icon, top right).
+- Read the "Pass:" line before you paste, then compare it with what you see.
+- If you do not see the pass, STOP. Copy the full output and send it to Claude.
+- Never paste any key or password into a chat, an email or this file.
+
+
+STEP 3 - SQL - Preview which sales leads would be linked to a client (changes nothing)
+Pass: a table appears (it may be empty). Save a screenshot of it - it is the undo list.
+If ANY row says 'will link', do step 4. If there are no rows at all, skip step 4.
+Rows saying 'AMBIGUOUS - link by hand' are left alone; send them to Claude later.
+----- copy from here -----
+select c.id as client_id,
+       min(l.id) as lead_row_id,
+       count(l.id) as candidate_leads,
+       case when count(l.id) = 1 then 'will link'
+            else 'AMBIGUOUS - link by hand' end as action
+from clients c
+join leads l
+  on lower(l.client_email) = lower(c.email)
+ and l.client_id is null
+ and (l.answers ->> '_upgrade_request') is null
+where c.email is not null and c.email <> ''
+  and not exists (select 1 from leads x where x.client_id = c.id
+                  and (x.answers ->> '_upgrade_request') is null)
+group by c.id
+order by c.id;
+----- copy until here -----
+
+
+STEP 4 - SQL - Link the 'will link' leads (ONLY if step 3 showed a 'will link' row)
+Pass: "Success" with a number of rows equal to the 'will link' rows from step 3.
+----- copy from here -----
+with candidates as (
+  select c.id as client_id, min(l.id) as lead_row_id, count(l.id) as n
+  from clients c
+  join leads l
+    on lower(l.client_email) = lower(c.email)
+   and l.client_id is null
+   and (l.answers ->> '_upgrade_request') is null
+  where c.email is not null and c.email <> ''
+    and not exists (select 1 from leads x where x.client_id = c.id
+                    and (x.answers ->> '_upgrade_request') is null)
+  group by c.id
+)
+update leads l
+   set client_id = cand.client_id
+  from candidates cand
+ where l.id = cand.lead_row_id
+   and cand.n = 1
+   and l.client_id is null;
+----- copy until here -----
+
+
+STEP 5 - SHELL - Create the encryption key in Secret Manager. Do this ONE time only, ever.
+Pass: the last line says "Created the key - version 1".
+If it says "ALREADY EXISTS", that is fine: do NOT recreate it, do NOT add a version.
+Just go to step 6. A second key would make every encrypted secret unreadable.
+The key is never shown on screen, and you never need to see it.
+----- copy from here -----
+gcloud config set project super-system-500410
+gcloud services enable secretmanager.googleapis.com
+if gcloud secrets describe SECRETS_ENCRYPTION_KEY >/dev/null 2>&1; then
+  echo "ALREADY EXISTS - do not recreate. Go to step 6."
+else
+  python3 -c "import base64,secrets;print(base64.urlsafe_b64encode(secrets.token_bytes(32))\
+.decode(),end='')" | gcloud secrets create SECRETS_ENCRYPTION_KEY \
+    --replication-policy=automatic --data-file=- \
+  && echo "Created the key - version 1"
+fi
+----- copy until here -----
+
+
+STEP 6 - SHELL - Let Cloud Run read the key, then attach it to the live service
+Pass: "Updated IAM policy" appears, and the last line says the new revision
+"has been deployed and is serving 100 percent of traffic".
+----- copy from here -----
+gcloud config set project super-system-500410
+SA=$(gcloud run services describe super-system --region me-west1 \
+  --format='value(spec.template.spec.serviceAccountName)')
+if [ -z "$SA" ]; then
+  SA="$(gcloud projects describe super-system-500410 \
+    --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+fi
+echo "Cloud Run runs as: $SA"
+gcloud secrets add-iam-policy-binding SECRETS_ENCRYPTION_KEY \
+  --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+gcloud run services update super-system --region me-west1 \
+  --update-secrets=SECRETS_ENCRYPTION_KEY=SECRETS_ENCRYPTION_KEY:1
+----- copy until here -----
+
+
+STEP 7 - SHELL - Prepare Cloud Shell for the encryption script (latest code + settings)
+Pass: three lines say "set" (SUPABASE_URL, SUPABASE_SERVICE_KEY, SECRETS_ENCRYPTION_KEY),
+then "key: ok". No value is printed - only "set" or "MISSING".
+Steps 8 and 9 must run in this SAME Cloud Shell tab. If Cloud Shell disconnects or you
+open a new tab, paste step 7 again before continuing.
+----- copy from here -----
+gcloud config set project super-system-500410
+cd /home/johnosaki94/super-system && git pull
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -q -r requirements.txt
+eval "$(gcloud run services describe super-system --region me-west1 --format=json \
+  | python3 -c '
+import json, shlex, sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+for e in env:
+    if e["name"] in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY") and "value" in e:
+        print("export %s=%s" % (e["name"], shlex.quote(e["value"])))
+')"
+export SECRETS_ENCRYPTION_KEY="$(gcloud secrets versions access 1 \
+  --secret=SECRETS_ENCRYPTION_KEY)"
+for v in SUPABASE_URL SUPABASE_SERVICE_KEY SECRETS_ENCRYPTION_KEY; do
+  if [ -n "${!v}" ]; then echo "$v: set"; else echo "$v: MISSING"; fi
+done
+python -c "from core import secrets_vault as v; v._key(); print('key: ok')"
+----- copy until here -----
+
+
+STEP 8 - SHELL - Dry run of the encryption script (counts only, changes nothing)
+Pass: first line "mode: dry_run", then a list of counts, and "changed: 0".
+Write down the number next to "plaintext_only" - that is how many secrets step 9 encrypts.
+----- copy from here -----
+python scripts/encrypt_client_secrets.py
+----- copy until here -----
+
+
+STEP 9 - SHELL - Encrypt, check nothing is left, then prove every secret decrypts
+Pass, in three parts:
+  1. "mode: apply" with "changed:" equal to the plaintext_only number from step 8.
+  2. "mode: dry_run" with "plaintext_only: 0".
+  3. "mode: verify" with "decrypt_failed: 0" and "plaintext_mismatch: 0".
+If any of those numbers is different, STOP and send the whole output to Claude.
+(The old plaintext copy is kept on purpose - it is the undo path. Nothing is deleted.)
+----- copy from here -----
+python scripts/encrypt_client_secrets.py --apply
+python scripts/encrypt_client_secrets.py
+python scripts/encrypt_client_secrets.py --verify
+----- copy until here -----
+
+
+STEP 10 - Post-checks (four small checks: 10a, 10b, 10c, 10d)
+
+STEP 10a - SHELL - The live service is healthy and has the key
+Pass: {"status":"ok","service":"uallak-super-system"}, then NOTHING else
+(any line containing "SECRETS_ENCRYPTION_KEY is" means the key is not reaching the service).
+----- copy from here -----
+URL=$(gcloud run services describe super-system --region me-west1 \
+  --format='value(status.url)')
+curl -s "$URL/health"; echo
+gcloud logging read 'resource.type="cloud_run_revision"
+  AND textPayload:"SECRETS_ENCRYPTION_KEY is"' \
+  --limit 5 --freshness=1h --format='value(textPayload)'
+----- copy until here -----
+
+STEP 10b - SQL - Reconnect one tool, then check it was stored encrypted only
+First, in the dashboard, disconnect and reconnect ONE tool (e.g. WordPress) on your
+own account. Then in the query below replace 123 with that client id and wordpress
+with that tool's name, and run it.
+Pass: the row shows plain_len = 0 and enc_start = v1.
+----- copy from here -----
+select id, client_id, platform,
+       length(coalesce(access_token, '')) as plain_len,
+       left(access_token_enc, 3) as enc_start
+from client_accounts
+where client_id = 123 and platform = 'wordpress';
+----- copy until here -----
+
+STEP 10c - BROWSER - Channels still work
+Open the client dashboard, go to the "ביצועים" page.
+Pass: every channel that was connected before shows as active (not "not connected").
+
+STEP 10d - SQL - A key pasted in chat is never stored
+First, in the client dashboard chat, send exactly this FAKE key (it is not real):
+    my api key is sk-FAKE0000TEST1111KEY2222
+Then replace 123 with that client id and run the query below.
+Pass: the newest "inbound" row shows [REDACTED] and does NOT show sk-FAKE0000...
+----- copy from here -----
+select id, direction, content
+from client_communications
+where client_id = 123
+order by id desc
+limit 2;
+----- copy until here -----
+
+
+DONE. The rollout ends here. Do NOT run anything else from scripts/ without Claude.
