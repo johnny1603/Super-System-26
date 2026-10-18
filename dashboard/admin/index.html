@@ -1860,7 +1860,8 @@ async function downloadDeleteBackup() {
   const msg = document.getElementById('delBackupMsg');
   msg.style.color = 'var(--gray)'; msg.textContent = 'מכין גיבוי…';
   try {
-    const res = await fetch(`/api/admin/clients/${Number(delState.clientId)}/delete-backup`, { credentials: 'same-origin' });
+    const res = await fetchWithTimeout(`/api/admin/clients/${Number(delState.clientId)}/delete-backup`,
+                                       { credentials: 'same-origin' }, CHUNK_TIMEOUT_MS);
     if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
@@ -2242,7 +2243,8 @@ async function downloadBulkBackup() {
   msg.style.color = 'var(--gray)'; msg.textContent = 'מכין גיבוי…';
   try {
     const ids = bulkDel.preview.items.filter(i => i.found && !i.protected).map(i => Number(i.id));
-    const res = await fetch(`/api/admin/bulk/clients/backup?ids=${encodeURIComponent(ids.join(','))}`, { credentials: 'same-origin' });
+    const res = await fetchWithTimeout(`/api/admin/bulk/clients/backup?ids=${encodeURIComponent(ids.join(','))}`,
+                                       { credentials: 'same-origin' }, CHUNK_TIMEOUT_MS);
     if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
@@ -2255,7 +2257,10 @@ async function downloadBulkBackup() {
     msg.style.color = 'var(--green)'; msg.textContent = DEL_TXT.backupDone;
   } catch (e) {
     console.error('bulk backup failed', e);
-    msg.style.color = 'var(--accent)'; msg.textContent = DEL_TXT.backupFail;
+    msg.style.color = 'var(--accent)';
+    msg.textContent = e.timeout
+      ? `הגיבוי לקח יותר מ-${CHUNK_TIMEOUT_MS / 1000} שניות ונעצר. אפשר לנסות שוב עם פחות לקוחות, או לסמן "מחק בלי גיבוי".`
+      : DEL_TXT.backupFail;
   }
   updateBulkButton();
 }
