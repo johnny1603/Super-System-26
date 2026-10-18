@@ -44,6 +44,11 @@ _REPEATABLE = {"GET", "HEAD", "OPTIONS", "PATCH", "DELETE"}
 
 _installed = False
 
+# Checks run once per Supabase request, before the first attempt (never
+# retried); a hook refuses a request by raising. core/deletion_guard
+# registers the "client is being deleted" write guard here.
+PRE_SEND_HOOKS = []
+
 
 def _supabase_host() -> str:
     try:
@@ -69,6 +74,8 @@ def install():
         host = _supabase_host()
         if not host or (request.url.host or "").lower() != host:
             return original_send(self, request, *args, **kwargs)
+        for hook in PRE_SEND_HOOKS:
+            hook(request)
         for attempt in range(RETRIES + 1):
             try:
                 return original_send(self, request, *args, **kwargs)

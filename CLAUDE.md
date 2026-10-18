@@ -121,9 +121,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`attribution='deleted_client'`) so totals don't move; resumable via the
   `app_settings` row `client_deletion:<id>`; the clients row goes LAST. Never touches
   external resources (site hosting, domains, Drive, ad accounts, PayPal) — it lists them.
-  **A new table with a client_id column must be added to `DATA_TABLES` there.**
-- `core/bulk_delete.py` — admin bulk delete for clients (via `delete_client_full`, one at a
-  time), sales leads (a lead linked to a client is protected), a client's own leads, and
+  `delete_clients()` is the one engine (single delete = a chunk of one): lock per client →
+  status `deleting` + marker → parallel revokes (5 s + 1 retry) BEFORE any connection row is
+  deleted → batched statements per table → verification pass (re-delete + re-verify) → clients
+  row last → id-only tombstone. The table list comes from the SCHEMA (`client_tables()`,
+  PostgREST OpenAPI) plus `DATA_TABLES` as the known floor. `[client_delete_timing]` log
+  lines carry ids + durations only.
+- `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
+  POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
+  in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.
+- `core/bulk_delete.py` — admin bulk delete for clients (via `delete_clients`, one chunk
+  per request, the chunk's clients together), sales leads (a lead linked to a client is protected), a client's own leads, and
   alerts (deletion audit entries are protected). Typed phrase "מחק N", cap
   `BULK_DELETE_MAX` (50), per-item deleted/failed/skipped, one `bulk_delete` audit alert per
   batch. The admin UI only ever batches rows that are currently rendered.

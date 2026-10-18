@@ -8,38 +8,44 @@ keeps a PII-stripped tombstone and a Drive archive. This removes the client
 row itself. It is admin-only and refuses, SERVER-SIDE, internal
 (billing_exempt) accounts and the owner's own accounts.
 
-## Order (no cross-table transaction exists over the Supabase REST API, so
-## every step is idempotent and progress is recorded — re-running a failed
-## deletion resumes it)
+## Order
 
- 1. connections   revoke at the platform where the disconnect code supports it
-                  (api_server._disconnect_platform), then delete every
-                  client_accounts row — the encrypted secrets go with the rows
- 2. costs         client_costs rows (and pre-signup rows of their sales leads)
-                  are folded into ANONYMOUS monthly aggregates (month,
-                  category, metering bucket, payer, amount — no client id, no
-                  lead id, no details), then the originals are deleted, so
-                  historical totals don't move
- 3. data tables   DATA_TABLES below, deleted by client_id
- 4. sales leads   leads rows with this client_id + their lead_messages
- 5. settings      app_settings "client_settings:<id>"
- 6. client row    clients — LAST, so a failed run can always be resumed
- 7. caches        in-memory caches in this process
- 8. audit         one alert row: who, when, id, name, counts (no other PII)
+See delete_clients() — the one implementation behind the single delete and
+every bulk chunk. In short: lock → mark "deleting" (core/deletion_guard
+refuses new rows) → revoke every provider grant (parallel, 5 s + one retry)
+→ delete connection rows → costs into ANONYMOUS monthly aggregates (month,
+category, metering bucket, payer, amount — no client id, no lead id, no
+details) so historical totals don't move → every client_id table found in
+the SCHEMA (client_tables) → sales leads + transcripts → settings → verify
+every table, delete leftovers once more, verify again → the clients row
+LAST → audit. No cross-table transaction exists over the Supabase REST API,
+so every step is idempotent and progress is recorded — a re-run resumes.
+
+## Speed (2026-10-19)
+
+The work is the same; the round trips are fewer. Each step is ONE statement
+per table for the whole chunk (`client_id in (...)`), independent tables run
+TABLE_WORKERS at a time, deletes ask for no rows back, the revokes all run
+at once, and the preview snapshot is read while they do. Every step is timed
+— one "[client_delete_timing] id=N total=… steps: …" log line per client.
 
 External resources (hosted site, domains, Drive folders, ad accounts and
 running campaigns, PayPal billing) are NEVER touched — the preview lists
 them and the owner handles each one separately.
 """
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 
 SERVICE_NAME = "client_deletion"
 PROGRESS_PREFIX = "client_deletion:"
 BACKUP_VALID_HOURS = 6
 
-# Tables deleted by client_id in step 3. OPTIONAL = created by a migration
-# that may not have run; a missing optional table is "skipped", not a failure.
+# The KNOWN client_id tables (beyond client_accounts / client_costs / leads).
+# The deletion clears every client_id table the schema reports (client_tables)
+# PLUS these. OPTIONAL = created by a migration that may not have run; a
+# missing optional table is "skipped", not a failure — but only when the
+# database says it doesn't exist, never because a preview counted 0 rows.
 DATA_TABLES = (
     ("client_activity", False),
     ("client_communications", False),
@@ -503,65 +509,504 @@ def _save_progress(client_id: int, value: dict):
         on_conflict="key").execute()
 
 
-# ─── Step 2: costs -> anonymous monthly aggregates ───────────────────────────
+# ─── Which tables: every table with an integer client_id column ──────────────
+# Discovered from the database's own description (PostgREST's OpenAPI document
+# at /rest/v1/), not from a list someone has to remember to update. The known
+# list below is ALWAYS included on top (a required table is never dropped
+# because discovery missed it); when discovery itself fails, the known list is
+# used alone and that is reported in the result.
 
-def _anonymize_costs(client_id: int, progress: dict) -> dict:
-    """Fold this client's cost rows (and the pre-signup rows of their sales
-    leads) into rows with NO client id, NO lead id and NO details beyond the
-    aggregate itself, then delete the originals. Totals per month/category
-    are unchanged. Resumable: the exact row ids are recorded before the
-    aggregate insert, so a re-run never aggregates the same rows twice."""
-    db = _db()
-    ids = progress.get("cost_row_ids")
-    if ids is None:
-        rows = (db.table("client_costs").select("*").eq("client_id", client_id)
-                .limit(50000).execute().data or [])
-        lead_ids = _lead_ids(client_id)
-        if lead_ids:
+# Tables with their own step instead of the generic delete-by-client_id
+SPECIAL_TABLES = ("client_accounts", "client_costs", "leads")
+KNOWN_CLIENT_TABLES = SPECIAL_TABLES + tuple(t for t, _o in DATA_TABLES)
+_OPTIONAL = {t for t, optional in DATA_TABLES if optional}
+SCHEMA_TTL = 600
+_schema = {"at": 0.0, "tables": None}
+
+
+def _discover_tables():
+    """Set of table names with an INTEGER client_id column that accept a
+    DELETE, or None when the description can't be read. Read with the service
+    key, which is never logged."""
+    import httpx
+    url = os.environ.get("SUPABASE_URL", "").rstrip("/") + "/rest/v1/"
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    try:
+        response = httpx.get(url, headers={"apikey": key, "Authorization": f"Bearer {key}",
+                                           "Accept": "application/openapi+json"}, timeout=10)
+        if response.status_code != 200:
+            print(f"[client_deletion] schema discovery: HTTP {response.status_code} — using the known table list")
+            return None
+        spec = response.json()
+    except Exception as e:
+        print(f"[client_deletion] schema discovery failed ({type(e).__name__}) — using the known table list")
+        return None
+    definitions, paths = spec.get("definitions") or {}, spec.get("paths") or {}
+    found = set()
+    for name, definition in definitions.items():
+        column = ((definition or {}).get("properties") or {}).get("client_id") or {}
+        if column.get("type") == "integer" and "delete" in (paths.get(f"/{name}") or {}):
+            found.add(name)
+    found.discard("clients")
+    return found
+
+
+def client_tables() -> tuple:
+    """(tables, discovered). `tables` = every client_id table to clear."""
+    import time
+    if _schema["tables"] is None or time.monotonic() - _schema["at"] > SCHEMA_TTL:
+        _schema["tables"], _schema["at"] = _discover_tables(), time.monotonic()
+    found = _schema["tables"]
+    if found is None:
+        return list(KNOWN_CLIENT_TABLES), False
+    known = [t for t in KNOWN_CLIENT_TABLES if t not in _OPTIONAL or t in found]
+    return known + sorted(found - set(known)), True
+
+
+def _missing_table(error: Exception) -> bool:
+    text = str(error)
+    return any(m in text for m in ("PGRST205", "42P01", "Could not find the table", "does not exist"))
+
+
+def _delete_query(table: str):
+    """DELETE that returns no rows back (the default sends every deleted row
+    over the wire — the slowest part of clearing a big activity table)."""
+    try:
+        from postgrest.types import ReturningMethod
+        return _db().table(table).delete(returning=ReturningMethod.minimal)
+    except Exception:
+        return _db().table(table).delete()
+
+
+# ─── Timing ([client_delete_timing] log lines: ids and durations only) ───────
+
+class _Timer:
+    def __init__(self):
+        import time
+        self._clock = time.monotonic
+        self.started = self._clock()
+        self.steps = []
+
+    def step(self, name: str):
+        timer = self
+
+        class _Step:
+            def __enter__(self):
+                self.t = timer._clock()
+
+            def __exit__(self, *exc):
+                timer.steps.append((name, timer._clock() - self.t))
+                return False
+        return _Step()
+
+    def total(self) -> float:
+        return self._clock() - self.started
+
+    def text(self) -> str:
+        return " ".join(f"{name}={seconds:.2f}s" for name, seconds in self.steps)
+
+
+# ─── Parallel helpers ────────────────────────────────────────────────────────
+TABLE_WORKERS = 5      # concurrent table statements within one chunk
+REVOKE_TIMEOUT = 5     # seconds per provider revoke attempt (one retry)
+
+
+def _parallel(fn, items, workers: int = TABLE_WORKERS) -> dict:
+    """{item: (ok, value | exception)} — every item runs, none is dropped."""
+    from concurrent.futures import ThreadPoolExecutor
+    items = list(items)
+    if not items:
+        return {}
+    out = {}
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(items))),
+                            thread_name_prefix="client-delete") as pool:
+        futures = {item: pool.submit(fn, item) for item in items}
+        for item, future in futures.items():
             try:
-                rows += (db.table("client_costs").select("*").in_("lead_id", lead_ids)
-                         .is_("client_id", "null").limit(50000).execute().data or [])
-            except Exception:
-                pass  # lead_id column not migrated — nothing attributed by lead
-        ids = sorted({r["id"] for r in rows})
-        aggregates = {}
-        for r in rows:
-            details = r.get("details") or {}
-            key = ((r.get("created_at") or "")[:7], r.get("category") or "other",
-                   r.get("cost_category") or details.get("cost_category") or "",
-                   details.get("payer") or "")
-            agg = aggregates.setdefault(key, {"amount": 0.0, "usd": 0.0, "rows": 0})
-            agg["amount"] += float(r.get("amount") or 0)
-            agg["usd"] += float(details.get("usd") if details.get("usd") is not None
-                                else (r.get("amount") or 0) / 3.40)
-            agg["rows"] += 1
-        progress = {**progress, "cost_row_ids": ids, "cost_aggregates": [
-            {"month": k[0], "category": k[1], "cost_category": k[2], "payer": k[3],
+                out[item] = (True, future.result())
+            except Exception as e:
+                out[item] = (False, e)
+    return out
+
+
+def _paged_rows(table: str, select: str, column: str, values: list, extra=None) -> list:
+    rows = []
+    for start in range(0, len(values), 100):
+        chunk = values[start:start + 100]
+
+        def q(chunk=chunk):
+            query = _db().table(table).select(select).in_(column, chunk)
+            return extra(query) if extra else query
+        rows += _paged(q)[0]
+    return rows
+
+
+# ─── Lock: one deletion per client at a time ─────────────────────────────────
+# The progress row doubles as the lock: a compare-and-set on its updated_at
+# (or the unique key, for a first insert), so two requests — on any instance —
+# can never both hold it. The lock expires after LOCK_SECONDS (the proxy's
+# request limit), so a crashed request never locks a client forever.
+LOCK_SECONDS = 290
+_inproc = set()
+_inproc_lock = threading.Lock()
+
+
+def _inproc_guard():
+    return _inproc_lock
+
+
+def _acquire(client_id: int, token: str):
+    """The client's progress dict with our lock in it, or None when another
+    deletion of this client is running."""
+    with _inproc_guard():
+        if client_id in _inproc:
+            return None
+        _inproc.add(client_id)
+    got = None
+    try:
+        got = _acquire_row(client_id, token)
+    except Exception as e:
+        print(f"[client_deletion] lock for client {client_id} not taken ({type(e).__name__})")
+    if got is None:
+        _release_inproc(client_id)
+    return got
+
+
+def _release_inproc(client_id: int):
+    with _inproc_guard():
+        _inproc.discard(client_id)
+
+
+def _acquire_row(client_id: int, token: str):
+    db, key = _db(), f"{PROGRESS_PREFIX}{int(client_id)}"
+    now = datetime.now(timezone.utc)
+    lock = {"token": token, "until": (now + timedelta(seconds=LOCK_SECONDS)).isoformat()}
+    rows = db.table("app_settings").select("value,updated_at").eq("key", key).limit(1).execute().data or []
+    if not rows:
+        # Unique key: of two simultaneous first inserts, exactly one succeeds
+        value = {"lock": lock}
+        db.table("app_settings").insert({"key": key, "value": value, "updated_at": _now()}).execute()
+        return value
+    value = rows[0].get("value") if isinstance(rows[0].get("value"), dict) else {}
+    held = value.get("lock") or {}
+    if held.get("token") and held.get("token") != token and str(held.get("until") or "") > now.isoformat():
+        return None
+    value = {**value, "lock": lock}
+    query = db.table("app_settings").update({"value": value, "updated_at": _now()}).eq("key", key)
+    stamp = rows[0].get("updated_at")
+    query = query.eq("updated_at", stamp) if stamp else query.is_("updated_at", "null")
+    return value if (query.execute().data or []) else None
+
+
+def _save_many(values: dict):
+    """One upsert for several clients' progress rows."""
+    if values:
+        _db().table("app_settings").upsert(
+            [{"key": f"{PROGRESS_PREFIX}{int(cid)}", "value": value, "updated_at": _now()}
+             for cid, value in values.items()], on_conflict="key").execute()
+
+
+# ─── Connections: revoke FIRST, then delete the rows (secrets go with them) ──
+
+def _revoke_once(fn):
+    """(ok, value). Runs fn in its own thread and waits REVOKE_TIMEOUT."""
+    import threading
+    box = {}
+
+    def run():
+        try:
+            box["value"] = fn()
+        except Exception as e:
+            box["error"] = type(e).__name__
+    worker = threading.Thread(target=run, daemon=True, name="client-delete-revoke")
+    worker.start()
+    worker.join(REVOKE_TIMEOUT)
+    if worker.is_alive():
+        return False, "timeout"
+    if "error" in box:
+        return False, box["error"]
+    return True, box.get("value")
+
+
+def _revoke_group(client_id: int, group: str, rows: list, revoke) -> dict:
+    """One provider grant: up to 2 attempts of REVOKE_TIMEOUT each."""
+    import time
+    started, error = time.monotonic(), "not_confirmed"
+    for attempt in (1, 2):
+        ok, value = _revoke_once(lambda: revoke(client_id, group, rows))
+        if ok and value is not False:
+            return {"platform": group, "revoked": value, "attempts": attempt,
+                    "seconds": round(time.monotonic() - started, 2)}
+        error = value if not ok else "not_confirmed"
+    return {"platform": group, "revoked": False, "error": error, "attempts": 2,
+            "seconds": round(time.monotonic() - started, 2)}
+
+
+def _accounts(ids: list) -> list:
+    from core.secrets_vault import public_account
+    return [public_account(r) for r in
+            _paged(lambda: _db().table("client_accounts").select("*").in_("client_id", ids))[0]]
+
+
+def _revoke_rows(rows: list, revoke, groups: dict, results: dict, seen: set):
+    """Revoke every (client, group) that has a row not seen before, all in
+    parallel. Appends to results[cid]; adds the row ids to `seen`."""
+    group_of = {platform: group for group, platforms in groups.items() for platform in platforms}
+    todo = {}
+    for row in rows:
+        if row.get("id") in seen:
+            continue
+        group = group_of.get(row.get("platform"))
+        if group:
+            todo.setdefault((row["client_id"], group), []).append(row)
+    done = _parallel(lambda key: _revoke_group(key[0], key[1], todo[key], revoke), todo, workers=16)
+    for (cid, group), (ok, value) in done.items():
+        results.setdefault(cid, []).append(value if ok else {"platform": group, "revoked": False,
+                                                             "error": type(value).__name__})
+    seen.update(r.get("id") for r in rows)
+
+
+def _clear_accounts(ids: list, revoke, groups: dict, results: dict, seen: set, rows: list = None):
+    """Revoke, then re-read (a row written in the guard's cross-instance window
+    is revoked too), then delete every client_accounts row of these clients."""
+    if rows is None:
+        rows = _accounts(ids)
+    _revoke_rows(rows, revoke, groups, results, seen)
+    late = [r for r in _accounts(ids) if r.get("id") not in seen]
+    if late:
+        _revoke_rows(late, revoke, groups, results, seen)
+    _delete_query("client_accounts").in_("client_id", ids).execute()
+
+
+# ─── Costs -> anonymous monthly aggregates (one pass per chunk) ──────────────
+
+def _aggregate(rows: list) -> list:
+    """Per month / category / metering bucket / payer — no client id, no lead
+    id, no details beyond the aggregate itself. Same math as before."""
+    aggregates = {}
+    for r in rows:
+        details = r.get("details") or {}
+        key = ((r.get("created_at") or "")[:7], r.get("category") or "other",
+               r.get("cost_category") or details.get("cost_category") or "",
+               details.get("payer") or "")
+        agg = aggregates.setdefault(key, {"amount": 0.0, "usd": 0.0, "rows": 0})
+        agg["amount"] += float(r.get("amount") or 0)
+        agg["usd"] += float(details.get("usd") if details.get("usd") is not None
+                            else (r.get("amount") or 0) / 3.40)
+        agg["rows"] += 1
+    return [{"month": k[0], "category": k[1], "cost_category": k[2], "payer": k[3],
              "amount": round(v["amount"], 4), "usd": round(v["usd"], 6), "rows": v["rows"]}
-            for k, v in aggregates.items()]}
-        _save_progress(client_id, progress)
+            for k, v in aggregates.items()]
 
-    if not progress.get("costs_aggregated"):
-        for agg in progress.get("cost_aggregates", []):
-            month = agg["month"] or datetime.now(timezone.utc).strftime("%Y-%m")
-            base = {"client_id": None, "category": agg["category"], "amount": agg["amount"],
-                    "created_at": f"{month}-01T00:00:00+00:00",
-                    "details": {"aggregate": True, "deleted_client": True, "rows": agg["rows"],
-                                "usd": agg["usd"], "payer": agg["payer"] or None,
-                                "cost_category": agg["cost_category"] or None}}
+
+def _insert_aggregates(aggregates: list):
+    rows = []
+    for agg in aggregates:
+        month = agg["month"] or datetime.now(timezone.utc).strftime("%Y-%m")
+        rows.append({"client_id": None, "category": agg["category"], "amount": agg["amount"],
+                     "created_at": f"{month}-01T00:00:00+00:00",
+                     "details": {"aggregate": True, "deleted_client": True, "rows": agg["rows"],
+                                 "usd": agg["usd"], "payer": agg["payer"] or None,
+                                 "cost_category": agg["cost_category"] or None},
+                     "_bucket": agg["cost_category"] or None})
+    if not rows:
+        return
+    db = _db()
+    try:
+        db.table("client_costs").insert([{**{k: v for k, v in r.items() if k != "_bucket"},
+                                          "attribution": "deleted_client", "cost_category": r["_bucket"]}
+                                         for r in rows]).execute()
+    except Exception:
+        # attribution columns not migrated (one statement: nothing was inserted)
+        db.table("client_costs").insert([{k: v for k, v in r.items() if k != "_bucket"}
+                                         for r in rows]).execute()
+
+
+def _cost_rows(ids: list, lead_owner: dict) -> dict:
+    """{client_id: [rows]} — their own rows plus the pre-signup rows of their
+    sales leads (lead_id set, client_id empty). Paged: no 1,000-row ceiling."""
+    out = {cid: [] for cid in ids}
+    for r in _paged(lambda: _db().table("client_costs").select("*").in_("client_id", ids))[0]:
+        out.setdefault(r["client_id"], []).append(r)
+    if lead_owner:
+        try:
+            for r in _paged_rows("client_costs", "*", "lead_id", list(lead_owner),
+                                 lambda q: q.is_("client_id", "null")):
+                out.setdefault(lead_owner.get(r.get("lead_id")), []).append(r)
+        except Exception:
+            pass  # lead_id column not migrated — nothing attributed by lead
+    out.pop(None, None)
+    return out
+
+
+def _legacy_cost_progress(progress: dict) -> dict:
+    """A run interrupted under the previous version left cost_row_ids /
+    cost_aggregates / costs_aggregated: carried over as the pending set."""
+    if "cost_row_ids" in progress and "cost_pending" not in progress and not progress.get("costs_done"):
+        progress["cost_pending"] = {"ids": progress.get("cost_row_ids") or [],
+                                    "aggregates": progress.get("cost_aggregates") or [],
+                                    "inserted": bool(progress.get("costs_aggregated"))}
+    for k in ("cost_row_ids", "cost_aggregates", "costs_aggregated"):
+        progress.pop(k, None)
+    return progress
+
+
+def _settle_costs(ids: list, progress: dict, lead_owner: dict):
+    """Fold every cost row of these clients into anonymous aggregates, then
+    delete the originals. Resumable: the exact row ids and their aggregates
+    are recorded BEFORE the insert, and the insert is marked done before the
+    delete, so a re-run never counts a row twice. Repeats until no row is
+    left (a row that lands mid-way is folded in on the next round)."""
+    for cid in ids:
+        _legacy_cost_progress(progress[cid])
+    for _round in range(5):
+        pending = {cid: progress[cid]["cost_pending"] for cid in ids if progress[cid].get("cost_pending")}
+        to_insert = [cid for cid, p in pending.items() if not p.get("inserted")]
+        if to_insert:
+            _insert_aggregates([agg for cid in to_insert for agg in pending[cid].get("aggregates") or []])
+            for cid in to_insert:
+                pending[cid]["inserted"] = True
+            _save_many({cid: progress[cid] for cid in to_insert})
+        row_ids = sorted({i for p in pending.values() for i in p.get("ids") or []})
+        for start in range(0, len(row_ids), 200):
+            _delete_query("client_costs").in_("id", row_ids[start:start + 200]).execute()
+        if pending:
+            for cid in pending:
+                progress[cid].pop("cost_pending", None)
+            _save_many({cid: progress[cid] for cid in pending})
+
+        remaining = {cid: rows for cid, rows in _cost_rows(ids, lead_owner).items() if rows and cid in progress}
+        if not remaining:
+            for cid in ids:
+                progress[cid]["costs_done"] = True
+            return
+        for cid, rows in remaining.items():
+            progress[cid]["cost_pending"] = {"ids": sorted({r["id"] for r in rows}),
+                                             "aggregates": _aggregate(rows), "inserted": False}
+        _save_many({cid: progress[cid] for cid in remaining})
+    raise RuntimeError("costs_not_settled")
+
+
+# ─── Generic tables, sales leads, settings ───────────────────────────────────
+
+def _clear_tables(tables: list, ids: list, discovered: bool) -> tuple:
+    """Delete every row of these clients in every table: one statement per
+    table for the whole chunk, TABLE_WORKERS at a time. A statement that fails
+    is retried after the others (a foreign key between two of them resolves
+    once the referencing table is empty), then per client, so one client's
+    problem is reported against that client only.
+    Returns ({cid: [failures]}, [tables that don't exist])."""
+    failures, missing = {cid: [] for cid in ids}, []
+
+    def one(table, scope=ids):
+        _delete_query(table).in_("client_id", scope).execute()
+
+    errors = {t: v for t, (ok, v) in _parallel(one, tables).items() if not ok}
+    for table, error in list(errors.items()):
+        if _missing_table(error) and (table in _OPTIONAL or not discovered):
+            missing.append(table)
+            errors.pop(table)
+            continue
+        try:
+            one(table)
+            errors.pop(table)
+        except Exception as e:
+            errors[table] = e
+    for table in errors:
+        for cid in ids:
             try:
-                db.table("client_costs").insert({**base, "attribution": "deleted_client",
-                                                 "cost_category": agg["cost_category"] or None}).execute()
-            except Exception:
-                db.table("client_costs").insert(base).execute()  # attribution columns not migrated
-        progress = {**progress, "costs_aggregated": True}
-        _save_progress(client_id, progress)
+                one(table, [cid])
+            except Exception as e:
+                failures[cid].append({"step": table, "error": type(e).__name__})
+    return failures, missing
 
-    for start in range(0, len(ids), 200):
-        chunk = ids[start:start + 200]
-        if chunk:
-            db.table("client_costs").delete().in_("id", chunk).execute()
-    return {**progress, "costs_done": True}
+
+def _lead_owner(ids: list) -> dict:
+    """{lead_id: client_id} for the sales-funnel leads linked to these clients."""
+    rows = _paged(lambda: _db().table("leads").select("client_id,lead_id").in_("client_id", ids))[0]
+    return {r["lead_id"]: r["client_id"] for r in rows if r.get("lead_id")}
+
+
+def _clear_leads(ids: list, lead_owner: dict):
+    """Transcripts first (they hang off lead_id), then the leads rows."""
+    lead_ids = list(lead_owner)
+    for start in range(0, len(lead_ids), 100):
+        _delete_query("lead_messages").in_("lead_id", lead_ids[start:start + 100]).execute()
+    _delete_query("leads").in_("client_id", ids).execute()
+
+
+def _clear_settings(ids: list):
+    _delete_query("app_settings").in_("key", [f"client_settings:{int(i)}" for i in ids]).execute()
+
+
+# ─── Verification: count what is left, per client, per table ─────────────────
+
+def _verify(tables: list, ids: list, lead_owner: dict, missing: list) -> tuple:
+    """({cid: {table: n}} for anything still present, [unverifiable tables]).
+    One batched query per table for the whole chunk, in parallel."""
+    left, unverified = {}, []
+
+    def count(table):
+        if table == "lead_messages":
+            rows = _paged_rows("lead_messages", "lead_id", "lead_id", list(lead_owner))
+            return [lead_owner.get(r.get("lead_id")) for r in rows]
+        if table == "client_costs:lead":
+            try:
+                rows = _paged_rows("client_costs", "lead_id", "lead_id", list(lead_owner),
+                                   lambda q: q.is_("client_id", "null"))
+            except Exception:
+                return []  # lead_id column not migrated
+            return [lead_owner.get(r.get("lead_id")) for r in rows]
+        if table == "app_settings":
+            rows = (_db().table("app_settings").select("key")
+                    .in_("key", [f"client_settings:{int(i)}" for i in ids]).execute().data or [])
+            return [int(r["key"].split(":", 1)[1]) for r in rows]
+        return [r["client_id"] for r in
+                _paged(lambda: _db().table(table).select("client_id").in_("client_id", ids))[0]]
+
+    checks = [t for t in tables if t not in missing] + ["lead_messages", "client_costs:lead", "app_settings"]
+    for table, (ok, value) in _parallel(count, checks).items():
+        if not ok:
+            unverified.append(table)
+            continue
+        for cid in value:
+            if cid is not None:
+                name = "client_costs" if table == "client_costs:lead" else table
+                left.setdefault(cid, {})[name] = left.get(cid, {}).get(name, 0) + 1
+    return left, unverified
+
+
+def _fix(left: dict, tables: list, discovered: bool, progress: dict, lead_owner: dict,
+         revoke, groups: dict, revokes: dict, seen: set) -> dict:
+    """One more delete for exactly what verification found. {cid: [failures]}."""
+    failures = {}
+    by_table = {}
+    for cid, found in left.items():
+        for table in found:
+            by_table.setdefault(table, []).append(cid)
+
+    def note(cids, step, error):
+        for cid in cids:
+            failures.setdefault(cid, []).append({"step": step, "error": type(error).__name__})
+
+    for table, cids in by_table.items():
+        try:
+            if table == "client_accounts":
+                _clear_accounts(cids, revoke, groups, revokes, seen)
+            elif table == "client_costs":
+                _settle_costs(cids, progress, {k: v for k, v in lead_owner.items() if v in cids})
+            elif table in ("leads", "lead_messages"):
+                fresh = _lead_owner(cids)
+                lead_owner.update(fresh)
+                _clear_leads(cids, {k: v for k, v in lead_owner.items() if v in cids})
+            elif table == "app_settings":
+                _clear_settings(cids)
+            else:
+                for cid, fails in _clear_tables([table], cids, discovered)[0].items():
+                    failures.setdefault(cid, []).extend(fails)
+        except Exception as e:
+            note(cids, table, e)
+    return failures
 
 
 # ─── The deletion ────────────────────────────────────────────────────────────
@@ -593,14 +1038,16 @@ def _drop_caches(client_id: int):
             pass
 
 
-def delete_client_full(client_id: int, confirm: str, skip_backup: bool,
-                       disconnect, disconnect_groups: dict, subscription_info) -> dict:
-    """THE deletion. Returns {"success", "removed": {table: n}, "revoke": [...],
-    "failed": [...], "not_removed": [...external...]}. Raises ValueError for a
-    refusal (unknown client, hard stop, bad confirmation, no backup)."""
-    from agents.client_agent import get_client, remove_accounts
-    from agents.master_agent import alert
+# Steps reported to the bulk modal while a chunk runs (on_step)
+STEPS = ("lock", "mark", "revoke", "accounts", "costs", "tables", "leads", "verify", "client_row", "audit")
 
+
+def delete_client_full(client_id: int, confirm: str, skip_backup: bool,
+                       revoke, revoke_groups: dict, subscription_info=None) -> dict:
+    """THE single deletion. Raises ValueError for a refusal (not_found,
+    hard_stop:<reasons>, confirm_mismatch, backup_required, in_progress);
+    otherwise returns this client's result (see delete_clients)."""
+    from agents.client_agent import get_client
     client = get_client(client_id)
     if not client:
         raise ValueError("not_found")
@@ -609,106 +1056,298 @@ def delete_client_full(client_id: int, confirm: str, skip_backup: bool,
         raise ValueError("hard_stop:" + ",".join(stops))
     if not confirm_matches(client, confirm):
         raise ValueError("confirm_mismatch")
-    if not skip_backup and not _backup_is_fresh(client_id):
-        raise ValueError("backup_required")
+    outcome = delete_clients([client_id], skip_backup, revoke, revoke_groups)[client_id]
+    if outcome.get("refused"):
+        raise ValueError(outcome["refused"])
+    return outcome
 
-    name = client.get("name") or ""
-    # light: the "left for you to handle" list needs no provider calls — the
-    # delete must never wait on PayPal or an ad platform before it starts
-    external = (preview(client_id, light=True).get("warnings") or [])
-    external = next((w["items"] for w in external if w["code"] == "external"), [])
-    before = counts(client_id)
-    progress = {**_progress(client_id), "started_at": _progress(client_id).get("started_at") or _now()}
-    _save_progress(client_id, progress)
-    result = {"success": False, "removed": {}, "revoke": [], "failed": [], "not_removed": external}
 
-    # 1. Connections: revoke where supported, then delete every row (secrets included)
-    for platform in disconnect_groups:
-        try:
-            outcome = disconnect(client_id, platform)
-            if outcome.get("removed"):
-                result["revoke"].append({"platform": platform,
-                                         "revoked": outcome.get("revoked")})
-        except Exception as e:
-            result["revoke"].append({"platform": platform, "revoked": False,
-                                     "error": type(e).__name__})
+def delete_clients(ids: list, skip_backup: bool, revoke, revoke_groups: dict, on_step=None) -> dict:
+    """Delete several clients TOGETHER (one bulk chunk, or one client): every
+    step runs once for the whole group, not once per client. Returns
+    {client_id: result}; a refused client has {"refused": reason} and was not
+    touched at all.
+
+    Order (no cross-table transaction exists over the Supabase REST API, so
+    every step is idempotent and progress is recorded — a re-run resumes):
+      lock        one deletion per client at a time (any instance)
+      mark        status 'deleting' + marker: logins, sessions, schedulers,
+                  webhooks and every writer refuse new rows (core/deletion_guard)
+      revoke      every provider grant, in parallel, 5 s + one retry each —
+                  BEFORE any connection row or secret is deleted
+      accounts    re-read (late rows revoked too), then delete client_accounts
+      costs       anonymous monthly aggregates, then the originals
+      tables      every client_id table from the schema, batched + parallel
+      leads       sales-funnel transcripts, then the leads rows; settings row
+      verify      count what is left in EVERY table; delete it once more;
+                  count again — leftovers are reported, never hidden
+      client_row  clients — LAST, only for a client with no failure and
+                  nothing left; then one more sweep for anything written
+                  meanwhile
+      audit       one alert per client: id, name, counts, revoke failures,
+                  leftovers (no other personal data)
+    External resources (site hosting, domains, Drive, ad accounts, PayPal) are
+    never touched — they are listed in not_removed."""
+    import uuid
+    from agents.master_agent import alert
+    from core import deletion_guard
+    ids = [int(i) for i in dict.fromkeys(ids)]
+    timer, results = _Timer(), {}
+    step_no = [0]
+
+    def stage(name):
+        step_no[0] += 1
+        if on_step:
+            try:
+                on_step(name, step_no[0], len(STEPS))
+            except Exception:
+                pass
+        return timer.step(name)
+
+    # Refusals first — a refused client is never touched
+    with stage("lock"):
+        clients = {c["id"]: c for c in (_db().table("clients").select("*").in_("id", ids).execute().data or [])}
+        token, progress = uuid.uuid4().hex, {}
+        candidates = []
+        for cid in ids:
+            client = clients.get(cid)
+            if not client:
+                results[cid] = {"refused": "not_found"}
+            elif hard_stops(client):
+                results[cid] = {"refused": "hard_stop:" + ",".join(hard_stops(client))}
+            else:
+                candidates.append(cid)
+        for cid, (ok, value) in _parallel(lambda cid: _acquire(cid, token), candidates).items():
+            if not ok or value is None:
+                results[cid] = {"refused": "in_progress"}
+            elif not skip_backup and not _fresh(value.get("backup_at")):
+                results[cid] = {"refused": "backup_required"}
+                _release(cid, value)
+            else:
+                progress[cid] = value
+    work = [cid for cid in ids if cid in progress]
+    if not work:
+        return results
+
     try:
-        remove_accounts(client_id)   # catch-all: CRM, domains, automation, anything else
-        result["removed"]["client_accounts"] = before.get("client_accounts", 0)
-    except Exception as e:
-        result["failed"].append({"step": "client_accounts", "error": type(e).__name__})
+        return _delete_locked(work, clients, progress, results, timer, stage,
+                              revoke, revoke_groups, alert, deletion_guard)
+    except Exception:
+        # Unexpected stop: keep what was recorded (incl. "deleting"), drop the
+        # lock so a re-run can resume at once instead of after LOCK_SECONDS
+        for cid in work:
+            _release(cid, progress[cid])
+        raise
+    finally:
+        for cid in work:
+            _release_inproc(cid)
 
-    # 2. Costs -> anonymous aggregates
-    if not progress.get("costs_done"):
-        try:
-            progress = _anonymize_costs(client_id, progress)
-            _save_progress(client_id, progress)
-            result["removed"]["client_costs"] = before.get("client_costs", 0)
-        except Exception as e:
-            result["failed"].append({"step": "client_costs", "error": type(e).__name__})
 
-    # 3. Data tables
-    for table, optional in DATA_TABLES:
-        if before.get(table) == -1 and optional:
-            continue   # table not migrated — nothing to delete
-        try:
-            _db().table(table).delete().eq("client_id", client_id).execute()
-            result["removed"][table] = max(before.get(table, 0), 0)
-        except Exception as e:
-            if not optional:
-                result["failed"].append({"step": table, "error": type(e).__name__})
-
-    # 4. Sales leads + their transcripts
-    lead_ids = _lead_ids(client_id)
+def _fresh(backup_at) -> bool:
+    if not backup_at:
+        return False
     try:
-        if lead_ids:
-            _db().table("lead_messages").delete().in_("lead_id", lead_ids).execute()
-        result["removed"]["lead_messages"] = max(before.get("lead_messages", 0), 0)
-    except Exception as e:
-        result["failed"].append({"step": "lead_messages", "error": type(e).__name__})
+        when = datetime.fromisoformat(str(backup_at).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - when < timedelta(hours=BACKUP_VALID_HOURS)
+
+
+def _release(client_id: int, value: dict):
     try:
-        _db().table("leads").delete().eq("client_id", client_id).execute()
-        result["removed"]["leads"] = max(before.get("leads", 0), 0)
-    except Exception as e:
-        result["failed"].append({"step": "leads", "error": type(e).__name__})
+        _save_many({client_id: {k: v for k, v in value.items() if k != "lock"}})
+    except Exception:
+        pass  # the lock expires on its own after LOCK_SECONDS
+    _release_inproc(client_id)
 
-    # 5. Per-client settings
-    try:
-        _db().table("app_settings").delete().eq("key", f"client_settings:{int(client_id)}").execute()
-        result["removed"]["app_settings"] = max(before.get("app_settings", 0), 0)
-    except Exception as e:
-        result["failed"].append({"step": "app_settings", "error": type(e).__name__})
 
-    # 6. The client row — only when everything before it worked, so a failed
-    # run stays findable and resumable from the admin list
-    if not result["failed"]:
+def _delete_locked(work, clients, progress, results, timer, stage,
+                   revoke, revoke_groups, alert, deletion_guard) -> dict:
+    import threading
+    failures = {cid: [] for cid in work}
+    revokes, seen = {}, set()
+
+    def fail(cids, step, error):
+        for cid in cids:
+            failures[cid].append({"step": step, "error": type(error).__name__})
+
+    def each(cids, fn, step):
+        """The batched statement first; if it fails, client by client, so one
+        client's problem is reported against that client only."""
         try:
-            _db().table("clients").delete().eq("id", client_id).execute()
-            result["removed"]["clients"] = 1
-        except Exception as e:
-            result["failed"].append({"step": "clients", "error": type(e).__name__})
-
-    # 7. Caches in this process
-    _drop_caches(client_id)
-
-    result["success"] = not result["failed"]
-    if result["success"]:
-        try:
-            _db().table("app_settings").delete().eq("key", f"{PROGRESS_PREFIX}{int(client_id)}").execute()
+            fn(cids)
         except Exception:
-            pass
+            for cid in cids:
+                try:
+                    fn([cid])
+                except Exception as e:
+                    fail([cid], step, e)
 
-    # 8. Audit — id + name + counts only
-    # revoked None = nothing to revoke at that platform (our copy deleted is
-    # the whole disconnect); only an explicit failure or an error is flagged
-    revoke_failed = [r["platform"] for r in result["revoke"]
-                     if r.get("revoked") is False or r.get("error")]
-    result["revoke_failed"] = revoke_failed
-    alert("client_deleted", [
-        f"client {client_id} ({name}) {'DELETED' if result['success'] else 'PARTIALLY deleted'} "
-        f"by admin at {_now()}: removed {result['removed']}"
-        + (f"; revoke not confirmed for {revoke_failed}" if revoke_failed else "")
-        + (f"; FAILED steps {[f['step'] for f in result['failed']]} — re-run to resume"
-           if result["failed"] else "")
-        + (f"; external resources NOT removed: {len(external)}" if external else "")])
-    return result
+    # mark: the marker row other instances read, then this instance's guard
+    # (exact, immediate), then the status every login/session/scheduler checks
+    with stage("mark"):
+        for cid in work:
+            progress[cid].update({"deleting": True,
+                                  "started_at": progress[cid].get("started_at") or _now()})
+            progress[cid].setdefault("status_before", clients[cid].get("status"))
+        _save_many(progress)
+        deletion_guard.mark(work)
+        try:
+            _db().table("clients").update({"status": "deleting"}).in_("id", work).execute()
+        except Exception as e:
+            print(f"[client_deletion] status 'deleting' not set ({type(e).__name__}) — the marker row still guards")
+        for cid in work:
+            _drop_caches(cid)
+
+    tables, discovered = client_tables()
+    # The snapshot ("what will be removed", external resources) is read while
+    # the revokes run. It only fills the REPORT: no step is ever skipped
+    # because of it — every table is cleared and then verified.
+    snapshot = {}
+
+    def take_snapshot():
+        try:
+            snapshot.update({p["id"]: p for p in batch_preview(work)})
+            extra = [t for t in tables if t not in KNOWN_CLIENT_TABLES]
+            for table, (ok, value) in _parallel(lambda t: _tally(t, work)[0], extra).items():
+                for cid in work:
+                    if ok and value is not None and snapshot.get(cid):
+                        snapshot[cid].setdefault("counts", {})[table] = value.get(cid, 0)
+        except Exception as e:
+            print(f"[client_deletion] snapshot failed ({type(e).__name__}) — counts in the report will be partial")
+    snap_thread = threading.Thread(target=take_snapshot, daemon=True, name="client-delete-snapshot")
+    snap_thread.start()
+
+    with stage("revoke"):
+        try:
+            rows = _accounts(work)
+            _revoke_rows(rows, revoke, revoke_groups, revokes, seen)
+        except Exception as e:
+            rows = None
+            fail(work, "revoke", e)
+    snap_thread.join(60)
+
+    with stage("accounts"):
+        if rows is not None:
+            # rows already revoked are in `seen`; only late rows revoke again
+            each(work, lambda c: _clear_accounts(c, revoke, revoke_groups, revokes, seen,
+                                                 rows=[r for r in rows if r.get("client_id") in c]),
+                 "client_accounts")
+
+    lead_owner = None
+    with stage("costs"):
+        try:
+            lead_owner = _lead_owner(work)
+        except Exception as e:
+            fail(work, "client_costs", e)   # without the lead list, lead cost rows can't be found
+        if lead_owner is not None:
+            each(work, lambda c: _settle_costs(c, progress, {k: v for k, v in lead_owner.items() if v in c}),
+                 "client_costs")
+    lead_owner = lead_owner or {}
+
+    generic = [t for t in tables if t not in SPECIAL_TABLES]
+    missing = []
+    with stage("tables"):
+        per_client, missing = _clear_tables(generic, work, discovered)
+        for cid, fails in per_client.items():
+            failures[cid].extend(fails)
+
+    with stage("leads"):
+        try:
+            lead_owner.update(_lead_owner(work))
+        except Exception as e:
+            fail(work, "leads", e)
+        else:
+            each(work, lambda c: _clear_leads(c, {k: v for k, v in lead_owner.items() if v in c}), "leads")
+        each(work, _clear_settings, "app_settings")
+
+    leftovers, unverified = {}, []
+    with stage("verify"):
+        if rows is not None:
+            left, unverified = _verify(tables, work, lead_owner, missing)
+            if left:
+                for cid, fails in _fix(left, tables, discovered, progress, lead_owner,
+                                       revoke, revoke_groups, revokes, seen).items():
+                    failures[cid].extend(fails)
+                leftovers, unverified = _verify(tables, work, lead_owner, missing)
+
+    with stage("client_row"):
+        ready = [cid for cid in work if not failures[cid] and not leftovers.get(cid) and not unverified]
+        if ready:
+            try:
+                _delete_query("clients").in_("id", ready).execute()
+            except Exception:
+                for cid in list(ready):
+                    try:
+                        _delete_query("clients").eq("id", cid).execute()
+                    except Exception as e:
+                        fail([cid], "clients", e)
+                        ready.remove(cid)
+        late = {}
+        if ready:
+            # Anything a job in flight wrote between the last check and the
+            # clients row going (the tombstone blocks writes from here on)
+            mine = {k: v for k, v in lead_owner.items() if v in ready}
+            found, _u = _verify(tables, ready, mine, missing)
+            found = {cid: left for cid, left in found.items() if cid in ready}
+            if found:
+                late = found
+                _fix(found, tables, discovered, progress, mine, revoke, revoke_groups, revokes, seen)
+                again, _u = _verify(tables, ready, mine, missing)
+                for cid, left in again.items():
+                    if cid in ready:
+                        leftovers[cid] = left
+        for cid in work:
+            _drop_caches(cid)
+        final = {}
+        for cid in work:
+            if cid in ready:
+                final[cid] = {"deleted": True, "deleted_at": _now()}   # id-only tombstone
+            else:
+                final[cid] = {k: v for k, v in progress[cid].items() if k != "lock"}
+        try:
+            _save_many(final)
+        except Exception as e:
+            print(f"[client_deletion] final progress save failed ({type(e).__name__})")
+
+    with stage("audit"):
+        for cid in work:
+            snap = snapshot.get(cid) or {}
+            counts_before = snap.get("counts") or {}
+            removed = {t: max(n, 0) for t, n in counts_before.items() if isinstance(n, int)}
+            success = cid in ready and not leftovers.get(cid)
+            if cid in ready:
+                removed["clients"] = 1
+            external = next((w["items"] for w in snap.get("warnings") or [] if w.get("code") == "external"), [])
+            client_revokes = revokes.get(cid, [])
+            revoke_failed = [r["platform"] for r in client_revokes if r.get("revoked") is False or r.get("error")]
+            fails = failures[cid] + [{"step": f"verify:{t}", "error": "unverified"} for t in unverified]
+            results[cid] = {"success": success, "removed": removed,
+                            "revoke": [{k: v for k, v in r.items() if k != "seconds"} for r in client_revokes],
+                            "revoke_failed": revoke_failed, "failed": fails,
+                            "leftovers": leftovers.get(cid) or {}, "late_rows": late.get(cid) or {},
+                            "not_removed": external, "tables_from_schema": discovered,
+                            "missing_tables": missing}
+            details = ", ".join(f"{r['platform']} ({r.get('error') or 'not_confirmed'})"
+                                for r in client_revokes if r["platform"] in revoke_failed)
+            try:
+                alert("client_deleted", [
+                    f"client {cid} ({clients[cid].get('name') or ''}) "
+                    f"{'DELETED' if success else 'PARTIALLY deleted'} by admin at {_now()}: removed {removed}"
+                    + (f"; revoke NOT confirmed for client {cid}: {details}" if details else "")
+                    + (f"; rows STILL PRESENT after verification: {leftovers[cid]}" if leftovers.get(cid) else "")
+                    + (f"; rows written during the deletion, removed: {late[cid]}" if late.get(cid) else "")
+                    + (f"; FAILED steps {[f['step'] for f in fails]} — re-run to resume" if fails else "")
+                    + ("" if discovered else "; table list NOT read from the schema (known list used)")
+                    + (f"; external resources NOT removed: {len(external)}" if external else "")])
+            except Exception as e:
+                print(f"[client_deletion] audit alert for client {cid} failed ({type(e).__name__})")
+
+    total = timer.total()
+    for cid in work:
+        own = max((r.get("seconds") or 0 for r in revokes.get(cid, [])), default=0)
+        results[cid]["timing"] = {"total": round(total, 2), "steps": {n: round(s, 2) for n, s in timer.steps},
+                                  "own_revoke": own, "chunk_size": len(work)}
+        print(f"[client_delete_timing] id={cid} total={total:.2f}s steps: {timer.text()} "
+              f"own_revoke={own:.2f}s chunk_size={len(work)}")
+    return results

@@ -106,6 +106,10 @@ def _require_client(client_id: int):
     if not client_id or not get_client(client_id):
         print(f"[client_agent] ADMIN: refused to store a credential for unknown client {client_id}")
         raise ValueError(f"unknown client {client_id} - credential not stored")
+    from core.deletion_guard import is_deleting
+    if is_deleting(client_id):
+        print(f"[client_agent] refused to store a credential for client {client_id} - deletion in progress")
+        raise ValueError(f"client {client_id} is being deleted - credential not stored")
 
 
 def add_account(client_id: int, platform: str, account_id: str = "",

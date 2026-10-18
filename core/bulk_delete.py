@@ -11,9 +11,11 @@ CHUNK_MAX. No request does work proportional to the whole selection.
 
 - The server re-validates EVERYTHING: the ids, the cap (BULK_DELETE_MAX,
   default 50), the typed phrase ("מחק N" with the exact count), protection.
-- Items are processed ONE AT A TIME through the single-item logic; one
-  failure never stops the batch. Each item comes back deleted / failed /
-  skipped with a plain reason code.
+- Items go through the single-item logic; one failure never stops the
+  batch. Each item comes back deleted / failed / skipped with a plain reason
+  code. Clients: a chunk is deleted TOGETHER by
+  client_deletion.delete_clients (the same code as the single delete), so
+  each step is one statement for the whole chunk instead of one per client.
 - Safe to run twice: an item that is already gone is "skipped: not_found".
 - ONE audit entry per batch (alerts table): kind, who (admin), when, the ids
   and the counts. Names only for clients (as the single delete does); never
@@ -23,7 +25,7 @@ CHUNK_MAX. No request does work proportional to the whole selection.
 
 ## Kinds
 
-  clients       core/client_deletion.delete_client_full, per client
+  clients       core/client_deletion.delete_clients, per chunk
   leads         uallak's own sales funnel rows (+ their transcript); a lead
                 LINKED to a client is protected — it goes with the client
   client_leads  one client's own leads (their customers), via
@@ -217,10 +219,20 @@ def _save_batch(batch_id: str, record: dict):
 
 
 def run(kind: str, ids, confirm: str, batch_id: str, batch_ids, skip_backup: bool = False,
-        client_id: int = None, disconnect=None, disconnect_groups=None, subscription_info=None) -> dict:
+        client_id: int = None, revoke=None, revoke_groups=None, subscription_info=None) -> dict:
     """Delete ONE chunk of a batch. Returns the chunk's per-item results and
     the batch progress; the batch's single audit entry is written when the
     last item is done."""
+    import time
+    timer = {"started": time.monotonic(), "steps": []}
+
+    def timed(name, fn):
+        t = time.monotonic()
+        try:
+            return fn()
+        finally:
+            timer["steps"].append((name, time.monotonic() - t))
+
     batch = validate(kind, batch_ids, confirm, client_id=client_id)
     chunk = _clean_ids(kind, ids)
     if not chunk:
@@ -230,31 +242,41 @@ def run(kind: str, ids, confirm: str, batch_id: str, batch_ids, skip_backup: boo
     if any(item not in batch for item in chunk):
         raise ValueError("not_in_batch")
 
-    record = batch_status(batch_id)
+    record = timed("batch_read", lambda: batch_status(batch_id))
     if record and (record.get("kind") != kind or record.get("ids") != batch):
         raise ValueError("batch_mismatch")
     if not record:
         record = {"kind": kind, "ids": batch, "client_id": client_id or None, "results": {},
                   "started_at": datetime.now(timezone.utc).isoformat()}
 
-    results = []
+    results, outcomes, todo = [], {}, []
     for item_id in chunk:
         done = record["results"].get(str(item_id))
         if done and done.get("status") in ("deleted", "skipped"):
-            results.append({"id": item_id, **done, "repeat": True})   # already handled
-            continue
-        try:
-            if kind == "clients":
-                outcome = _run_client(item_id, skip_backup, disconnect, disconnect_groups, subscription_info)
-            elif kind == "leads":
-                outcome = _delete_sales_lead(item_id)
-            elif kind == "client_leads":
-                outcome = _delete_client_lead(client_id, item_id)
-            else:
-                outcome = _delete_alert(item_id)
-        except Exception as e:
-            outcome = {"status": "failed", "reason": type(e).__name__}
-        record["results"][str(item_id)] = {k: v for k, v in outcome.items() if k in ("status", "reason")}
+            outcomes[item_id] = {**done, "repeat": True}   # already handled
+        else:
+            todo.append(item_id)
+
+    if kind == "clients" and todo:
+        # The whole chunk TOGETHER: every step runs once for all of them
+        outcomes.update(timed("clients", lambda: _run_clients(
+            todo, skip_backup, revoke, revoke_groups, batch_id, record)))
+    else:
+        for item_id in todo:
+            try:
+                if kind == "leads":
+                    outcome = _delete_sales_lead(item_id)
+                elif kind == "client_leads":
+                    outcome = _delete_client_lead(client_id, item_id)
+                else:
+                    outcome = _delete_alert(item_id)
+            except Exception as e:
+                outcome = {"status": "failed", "reason": type(e).__name__}
+            outcomes[item_id] = outcome
+    for item_id in chunk:
+        outcome = outcomes[item_id]
+        if not outcome.get("repeat"):
+            record["results"][str(item_id)] = {k: v for k, v in outcome.items() if k in ("status", "reason")}
         results.append({"id": item_id, **outcome})
 
     handled = len(record["results"])
@@ -262,35 +284,55 @@ def run(kind: str, ids, confirm: str, batch_id: str, batch_ids, skip_backup: boo
     if finished and not record.get("audited"):
         summary = {s: [i for i in batch if record["results"].get(str(i), {}).get("status") == s]
                    for s in ("deleted", "failed", "skipped")}
-        _audit(kind, batch, summary, client_id)
+        timed("audit", lambda: _audit(kind, batch, summary, client_id))
         record["audited"] = True
-    _save_batch(batch_id, record)
+    record.pop("live", None)
+    timed("batch_save", lambda: _save_batch(batch_id, record))
+    if kind == "clients":
+        print(f"[client_delete_timing] bulk chunk n={len(chunk)} "
+              f"total={time.monotonic() - timer['started']:.2f}s steps: "
+              + " ".join(f"{n}={s:.2f}s" for n, s in timer["steps"]))
     return {"kind": kind, "results": results, "progress": {"done": handled, "total": len(batch)},
             "finished": finished}
 
 
-def _run_client(client_id: int, skip_backup: bool, disconnect, groups, subscription_info) -> dict:
-    """Reuses delete_client_full unchanged. The batch phrase ("מחק N") was
-    already checked, so the per-client confirmation is its own id; every other
-    refusal (protected, no fresh backup) is re-checked inside."""
-    from core.client_deletion import delete_client_full
+def _run_clients(client_ids: list, skip_backup: bool, revoke, groups, batch_id: str, record: dict) -> dict:
+    """One chunk of clients through client_deletion.delete_clients — the same
+    code as the single delete. The batch phrase ("מחק N") was already checked;
+    every per-client refusal (protected, no fresh backup, already running) is
+    re-checked inside. While it runs, the current step is written to the
+    batch record ("live"), which the modal polls."""
+    import time
+    from core.client_deletion import delete_clients
+    started = time.monotonic()
+
+    def on_step(name, index, total):
+        record["live"] = {"ids": client_ids, "step": name, "index": index, "total": total,
+                          "elapsed": round(time.monotonic() - started, 1),
+                          "at": datetime.now(timezone.utc).isoformat()}
+        _save_batch(batch_id, record)
+
     try:
-        out = delete_client_full(client_id, str(client_id), skip_backup,
-                                 disconnect=disconnect, disconnect_groups=groups,
-                                 subscription_info=subscription_info)
-    except ValueError as e:
-        reason = str(e)
-        if reason == "not_found":
-            return {"status": "skipped", "reason": "not_found"}
+        outs = delete_clients(client_ids, skip_backup, revoke, groups, on_step=on_step)
+    except Exception as e:
+        return {cid: {"status": "failed", "reason": type(e).__name__} for cid in client_ids}
+    return {cid: _client_outcome(outs.get(cid) or {"refused": "not_found"}) for cid in client_ids}
+
+
+def _client_outcome(out: dict) -> dict:
+    reason = out.get("refused")
+    if reason:
         if reason.startswith("hard_stop:"):
             return {"status": "skipped", "reason": "protected"}
+        if reason == "in_progress":
+            return {"status": "failed", "reason": "in_progress"}
         return {"status": "skipped", "reason": reason}
+    extra = {"not_removed": out.get("not_removed"), "revoke_failed": out.get("revoke_failed"),
+             "revoke": out.get("revoke"), "leftovers": out.get("leftovers"), "timing": out.get("timing")}
     if out.get("success"):
-        return {"status": "deleted", "removed": out.get("removed"), "not_removed": out.get("not_removed"),
-                "revoke_failed": out.get("revoke_failed")}
-    return {"status": "failed", "reason": "partial",
-            "failed_steps": [f["step"] for f in out.get("failed", [])],
-            "not_removed": out.get("not_removed")}
+        return {"status": "deleted", "removed": out.get("removed"), **extra}
+    return {"status": "failed", "reason": "leftovers" if out.get("leftovers") else "partial",
+            "failed_steps": [f["step"] for f in out.get("failed", [])], **extra}
 
 
 def _audit(kind: str, ids: list, summary: dict, client_id: int = None):

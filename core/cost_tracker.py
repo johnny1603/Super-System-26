@@ -188,6 +188,14 @@ def record_cost(category: str, amount_ils: float, client_id, details: dict = Non
                   f"(action {enriched.get('action', '-')}) — no client, lead or internal owner")
         bucket = cost_category if cost_category in METER_CATEGORIES else \
             meter_category(category, enriched.get("action", ""))
+        if row_client:
+            from core.deletion_guard import is_deleting
+            if is_deleting(row_client):
+                # A cost still landing while (or after) the client is deleted:
+                # kept so totals don't move, but anonymous from the start — the
+                # same shape client_deletion folds the client's history into
+                row_client, attribution = None, "deleted_client"
+                enriched = {"usd": enriched.get("usd"), "deleted_client": True, "cost_category": bucket}
 
         base = {"client_id": row_client, "category": category, "amount": amount_ils, "details": enriched}
         try:

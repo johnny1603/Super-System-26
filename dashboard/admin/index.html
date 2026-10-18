@@ -1727,7 +1727,9 @@ const DEL_TXT = {
     ERR_CONFIRM_MISMATCH: 'השם/המספר שהוקלד לא תואם בדיוק. שום דבר לא נמחק.',
     ERR_BACKUP_REQUIRED: 'צריך להוריד גיבוי (או לסמן "מחק בלי גיבוי") לפני המחיקה. שום דבר לא נמחק.',
     ERR_PROTECTED_CLIENT: 'זה חשבון מוגן (פנימי או של הבעלים) — לא ניתן למחוק מכאן. שום דבר לא נמחק.',
+    ERR_DELETE_IN_PROGRESS: 'מחיקה של הלקוח הזה כבר רצה כרגע (אולי בחלון אחר). חכה/י דקה ופתח/י שוב — שום דבר לא יימחק פעמיים.',
   },
+  leftovers: 'נשארו אחרי בדיקת האימות',
   stops: {
     internal: 'חשבון פנימי (ללא חיוב) — לא ניתן למחוק מהמסך הזה בכלל.',
     owner: 'זה חשבון של הבעלים — לא ניתן למחוק מהמסך הזה בכלל.',
@@ -1887,6 +1889,10 @@ async function runDeleteClient() {
   updateDeleteButton();
   const msg = document.getElementById('delMsg');
   msg.style.color = 'var(--gray)'; msg.textContent = DEL_TXT.deleting;
+  // A running seconds counter: the request is one call, so this is what
+  // shows it is still alive
+  const t0 = Date.now();
+  const tick = setInterval(() => { msg.textContent = `${DEL_TXT.deleting} (${Math.round((Date.now() - t0) / 1000)} שנ׳)`; }, 1000);
   let res, data;
   try {
     res = await fetchWithTimeout(`/api/admin/clients/${Number(c.id)}/delete`, {
@@ -1894,6 +1900,7 @@ async function runDeleteClient() {
       body: JSON.stringify({ confirm: confirmText, skip_backup: skip }),
     }, CHUNK_TIMEOUT_MS);
   } catch (e) {
+    clearInterval(tick);
     delState.busy = false; updateDeleteButton();
     msg.style.color = 'var(--accent)';
     // A timed-out delete may have finished on the server: the safe next step
@@ -1903,6 +1910,7 @@ async function runDeleteClient() {
       : DEL_TXT.netFail;
     return;
   }
+  clearInterval(tick);
   if (res.status === 401) { delState.busy = false; closeDeleteClient(); showLogin(); return; }
   try { data = await res.json(); } catch (e) { data = null; }
   delState.busy = false;
@@ -1917,13 +1925,19 @@ async function runDeleteClient() {
   loadClients();
 }
 
+// {table: rows still present} -> "פעילות: 3, הודעות צ׳אט: 1"
+function leftoverText(left) {
+  return Object.entries(left || {}).map(([t, n]) => `${esc(DEL_TXT.countLabels[t] || t)}: ${Number(n)}`).join(', ');
+}
+
 function renderDeleteResult(r, c) {
   const removed = Object.entries(r.removed || {}).map(([t, n]) =>
     `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(DEL_TXT.countLabels[t] || t)}</span><span>${Number(n)}</span></div>`).join('');
   const revoke = (r.revoke || []).map(x => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(x.platform)}</span>
       <span style="color:${x.revoked === true ? 'var(--green)' : (x.revoked === false || x.error) ? 'var(--yellow)' : 'var(--gray)'};">
       ${esc(x.revoked === true ? DEL_TXT.revokeOk : (x.revoked === false || x.error) ? DEL_TXT.revokeFail : DEL_TXT.revokeNone)}</span></div>`).join('');
-  const failed = (r.failed || []).map(f => `· ${esc(DEL_TXT.countLabels[f.step] || f.step)} (${esc(f.error)})`).join('<br>');
+  const failed = (r.failed || []).map(f => `· ${esc(DEL_TXT.countLabels[f.step] || f.step)} (${esc(f.error)})`).join('<br>')
+    + (Object.keys(r.leftovers || {}).length ? `<br>· ${esc(DEL_TXT.leftovers)}: ${leftoverText(r.leftovers)}` : '');
   const external = (r.not_removed || []).map(x => `· ${esc(DEL_TXT.ext[x.kind] || x.kind)}${x.ref ? ` — <span dir="ltr">${esc(x.ref)}</span>` : ''}`).join('<br>');
   document.getElementById('delBody').innerHTML = `
     <div class="del-title">${esc(r.success ? DEL_TXT.doneTitle : DEL_TXT.partialTitle)}</div>
@@ -1958,6 +1972,8 @@ const BULK_REASON = {
   not_found: 'כבר לא קיים (אולי נמחק קודם)', linked_to_client: 'מקושר ללקוח — נמחק רק יחד עם הלקוח',
   audit_entry: 'רשומת ביקורת — לא נמחקת', protected: 'חשבון מוגן (פנימי / בעלים)',
   backup_required: 'אין גיבוי בתוקף ולא סומן "מחק בלי גיבוי"', partial: 'נמחק חלקית — אפשר להריץ שוב',
+  in_progress: 'מחיקה של הלקוח הזה כבר רצה (אולי בחלון אחר) — אפשר לנסות שוב בעוד דקה',
+  leftovers: 'נשארו רשומות אחרי האימות — הלקוח לא נמחק, אפשר להריץ שוב',
 };
 const BULK_ERRORS = {
   ERR_TOO_MANY: max => `אפשר למחוק עד ${max} פריטים בפעם אחת — צמצם/י את הבחירה. שום דבר לא נמחק.`,
@@ -2308,24 +2324,93 @@ async function resumeBulkDelete() {
   runBulkJob(job, results);
 }
 
-function renderBulkProgress(job, results, note) {
+// The steps of one client chunk (client_deletion.STEPS), as the modal shows them
+const BULK_STEP_HE = {
+  lock: 'בדיקות ונעילה', mark: 'סימון "בתהליך מחיקה" — חסימת כתיבה חדשה',
+  revoke: 'ביטול הרשאות בפלטפורמות', accounts: 'מחיקת חיבורים ומפתחות',
+  costs: 'עלויות → מצטבר חודשי אנונימי', tables: 'מחיקת הנתונים מכל הטבלאות',
+  leads: 'שיחות מכירה והגדרות', verify: 'אימות — בודק שלא נשאר כלום',
+  client_row: 'מחיקת פרופיל הלקוח', audit: 'רישום ביקורת',
+};
+const BULK_POLL_MS = 2000;
+let bulkTick = null;
+
+function bulkElapsed(job) {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(job.started_at || '')) / 1000)) || 0;
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} דק׳` : `${s} שנ׳`;
+}
+
+function bulkStopTicker() { if (bulkTick) { clearInterval(bulkTick); bulkTick = null; } }
+
+function bulkStartTicker(job) {
+  bulkStopTicker();
+  bulkTick = setInterval(() => {
+    const el = document.getElementById('bulkElapsed');
+    if (el) el.textContent = `זמן שעבר: ${bulkElapsed(job)}`;
+    else bulkStopTicker();
+  }, 1000);
+}
+
+function renderBulkProgress(job, results, note, live, chunk) {
   const total = job.batch_ids.length, n = Object.keys(results).length;
   const pct = total ? Math.round(n / total * 100) : 100;
+  const names = job.names || {};
+  const nameOf = id => esc(names[String(id)] || ('#' + id));
+  const label = { deleted: '✓ נמחק', failed: '✗ נכשל', skipped: '— דולג' };
+  // The chunk running now: its clients, the current step, steps done
+  const current = (live && live.ids && live.ids.length) ? live.ids : (chunk || []);
+  const step = live && live.step ? `שלב ${Number(live.index) || 0}/${Number(live.total) || 0} · ${esc(BULK_STEP_HE[live.step] || live.step)}` : 'מתחיל…';
+  const stepPct = live && live.total ? Math.round((Number(live.index) || 0) / Number(live.total) * 100) : 0;
+  const liveHtml = current.length ? `
+    <div class="del-warn" style="margin-top:6px;">
+      <b>${job.kind === 'clients' ? 'מוחק כעת (יחד, באותה בקשה)' : 'מעבד כעת'}:</b> ${current.map(nameOf).join(', ')}<br>
+      ${job.kind === 'clients' ? `<span>${step}</span>
+      <div style="height:6px;border-radius:4px;background:var(--panel-2);overflow:hidden;margin-top:6px;">
+        <div style="height:100%;width:${stepPct}%;background:var(--yellow);transition:width .3s;"></div></div>` : ''}
+    </div>` : '';
+  const doneRows = Object.values(results).map(x => `<div class="drawer-stat-row" style="padding:4px 0;">
+      <span>${nameOf(x.id)}</span><span>${esc(label[x.status] || x.status)}</span></div>`).join('');
   document.getElementById('delBody').innerHTML = `
     <div class="del-title">מוחק ${total} ${esc(BULK_KIND_LABEL[job.kind])}…</div>
-    <div class="del-sub">${n} מתוך ${total} טופלו · אפשר לסגור — המחיקה תוצע להמשך בפעם הבאה</div>
+    <div class="del-sub">${n} מתוך ${total} טופלו · <span id="bulkElapsed">זמן שעבר: ${bulkElapsed(job)}</span></div>
     <div style="height:10px;border-radius:6px;background:var(--panel-2);overflow:hidden;margin:10px 0;">
       <div style="height:100%;width:${pct}%;background:var(--red);transition:width .3s;"></div></div>
-    ${note ? `<div class="del-sub">${esc(note)}</div>` : ''}`;
+    ${liveHtml}
+    ${note ? `<div class="del-sub">${esc(note)}</div>` : ''}
+    ${doneRows}
+    <div class="del-sub" style="margin-top:8px;">אפשר לסגור — המחיקה תוצע להמשך בפעם הבאה</div>`;
+}
+
+// While a chunk request runs, the server writes its current step into the
+// batch record; poll it so the modal moves with the work instead of sitting still
+function bulkPollLive(job, results, chunk) {
+  let busy = false, stopped = false;
+  const timer = setInterval(async () => {
+    if (busy || stopped) return;
+    busy = true;
+    try {
+      const res = await fetchWithTimeout(`/api/admin/bulk/batch/${encodeURIComponent(job.batch_id)}`,
+                                         { credentials: 'same-origin' }, 10000);
+      const data = res.ok ? await res.json() : null;
+      const live = data && data.success && data.data.live;
+      if (!stopped && live && (live.ids || []).some(id => chunk.map(String).includes(String(id)))) {
+        renderBulkProgress(job, results, '', live, chunk);
+      }
+    } catch (e) { /* a missed poll is fine — the next one comes in 2 s */ }
+    busy = false;
+  }, BULK_POLL_MS);
+  return () => { stopped = true; clearInterval(timer); };
 }
 
 async function runBulkJob(job, results) {
   bulkDel = Object.assign(bulkDel || {}, { kind: job.kind, busy: true, clientId: job.client_id });
   const size = BULK_CHUNK[job.kind] || 5;
   const remaining = job.batch_ids.filter(id => !results[String(id)]);
+  bulkStartTicker(job);
   for (let start = 0; start < remaining.length; start += size) {
     const chunk = remaining.slice(start, start + size);
-    renderBulkProgress(job, results, `מעבד ${chunk.length} פריטים…`);
+    renderBulkProgress(job, results, '', null, chunk);
+    const stopPoll = bulkPollLive(job, results, chunk);
     let res, data;
     try {
       res = await fetchWithTimeout(`/api/admin/bulk/${job.kind}/delete`, {
@@ -2334,16 +2419,19 @@ async function runBulkJob(job, results) {
                                confirm: job.confirm, skip_backup: job.skip_backup, client_id: job.client_id }),
       }, CHUNK_TIMEOUT_MS);
     } catch (e) {
+      stopPoll(); bulkStopTicker();
       bulkDel.busy = false;
       renderBulkResult(job, results, e.timeout
         ? 'חלק מהמחיקה לקח יותר מדי זמן ונעצר. מה שכבר נמחק — נמחק. אפשר להמשיך; פריטים שכבר טופלו ידולגו.'
         : 'החיבור לשרת נקטע באמצע. מה שכבר נמחק — נמחק. אפשר להמשיך.', true);
       return;
     }
-    if (res.status === 401) { bulkDel.busy = false; closeDeleteClient(); showLogin(); return; }
+    stopPoll();
+    if (res.status === 401) { bulkStopTicker(); bulkDel.busy = false; closeDeleteClient(); showLogin(); return; }
     try { data = await res.json(); } catch (e) { data = null; }
     if (!res.ok || !data || !data.success) {
       const d = data && data.detail || {};
+      bulkStopTicker();
       bulkDel.busy = false;
       renderBulkResult(job, results, BULK_ERRORS[d.code] ? BULK_ERRORS[d.code](d.max)
         : `השרת עצר את המחיקה (HTTP ${res.status}). מה שכבר נמחק — נמחק. אפשר להמשיך.`, res.status >= 500);
@@ -2351,6 +2439,7 @@ async function runBulkJob(job, results) {
     }
     (data.data.results || []).forEach(r => { results[String(r.id)] = r; });
   }
+  bulkStopTicker();
   bulkDel.busy = false;
   // Failures keep the job, so "לנסות שוב" (or the list bar) retries just them
   const failed = Object.values(results).some(r => r.status === 'failed');
@@ -2374,7 +2463,9 @@ function renderBulkResult(job, resultsMap, stopNote, canResume) {
   const rows = (r.results || []).map(x => `<div class="drawer-stat-row" style="padding:6px 0;">
       <span>${esc(names[String(x.id)] || ('#' + x.id))}</span>
       <span style="color:${color[x.status] || 'var(--gray)'};">${esc(label[x.status] || x.status)}${x.reason
-        ? ' · ' + esc(BULK_REASON[x.reason] || x.reason) : ''}</span></div>`).join('');
+        ? ' · ' + esc(BULK_REASON[x.reason] || x.reason) : ''}</span></div>`
+    + ((x.revoke_failed || []).length ? `<div class="del-sub" style="color:var(--yellow);">${esc(DEL_TXT.revoked)}: ${esc(DEL_TXT.revokeFail)} — <span dir="ltr">${esc(x.revoke_failed.join(', '))}</span></div>` : '')
+    + (Object.keys(x.leftovers || {}).length ? `<div class="del-sub" style="color:var(--red);">${esc(DEL_TXT.leftovers)}: ${leftoverText(x.leftovers)}</div>` : '')).join('');
   const external = (r.results || []).filter(x => (x.not_removed || []).length).map(x =>
     `<div style="margin-top:6px;"><b>${esc(names[String(x.id)] || ('#' + x.id))}</b><br>`
     + x.not_removed.map(e => `· ${esc(DEL_TXT.ext[e.kind] || e.kind)}${e.ref ? ` — <span dir="ltr">${esc(e.ref)}</span>` : ''}`).join('<br>')

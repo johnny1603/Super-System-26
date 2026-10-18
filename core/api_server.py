@@ -16,6 +16,9 @@ from pydantic import BaseModel
 # connections (httpx RemoteProtocolError / ConnectionTerminated), every module
 from core import db_retry
 db_retry.install()
+# ...and, on that same choke point, no new rows for a client being deleted
+from core import deletion_guard
+deletion_guard.install()
 
 from supabase import create_client as _supabase_create_client, Client
 
@@ -520,7 +523,11 @@ async def paypal_webhook(request: Request):
         if client_id_raw:
             try:
                 client_id = int(client_id_raw)
-                if event_type in ACTIVATION_EVENTS:
+                if deletion_guard.is_deleting(client_id):
+                    # Admin deletion in progress / done: nothing may re-activate
+                    # or re-create anything for this id. Acknowledged, not acted on.
+                    print(f"[paypal webhook] client {client_id} is being deleted - {event_type} ignored")
+                elif event_type in ACTIVATION_EVENTS:
                     _mark_paid_and_notify(client_id, resource.get("id"), source="paypal_webhook")
                 elif event_type in CANCELLATION_EVENTS:
                     client = get_client(client_id)
@@ -562,6 +569,8 @@ async def paypal_webhook(request: Request):
         if not client_id:
             print(f"[paypal webhook] {event_type}: could not recover client_id from "
                   f"invoice_number={invoice_number!r} - skipping")
+        elif deletion_guard.is_deleting(client_id):
+            print(f"[paypal webhook] client {client_id} is being deleted - {event_type} ignored")
         elif event_type in INVOICE_PAID_EVENTS:
             paid_amount = (resource.get("amount") or {}).get("value")
             log_activity(client_id, "paypal_service", "invoice_paid",
@@ -767,13 +776,19 @@ class LoginRequestCodeRequest(BaseModel):
 # data export was attached to the closure/transfer confirmation email.
 OFFBOARDED_STATUSES = ("closed", "transferred")
 
+def _locked_out(client: dict) -> bool:
+    """No login and no session: offboarded, or an admin deletion has started
+    (status 'deleting', or the deletion marker when that status write failed)."""
+    return (not client or client.get("status") in OFFBOARDED_STATUSES + ("deleting",)
+            or deletion_guard.is_deleting(client.get("id")))
+
 @app.post("/api/login/request-code")
 async def login_request_code(req: LoginRequestCodeRequest):
     try:
         client = get_client_by_email(req.email.strip())
         # Same generic response for an offboarded account as for an unknown
         # email - no code is sent, and nothing is revealed
-        if client and client.get("status") in OFFBOARDED_STATUSES:
+        if client and _locked_out(client):
             client = None
         if client:
             code = f"{secrets.randbelow(1_000_000):06d}"
@@ -797,7 +812,7 @@ async def login_verify_code(req: LoginVerifyCodeRequest, response: Response):
     invalid = HTTPException(status_code=401, detail={"code": "ERR_INVALID_CODE"})
 
     client = get_client_by_email(req.email.strip())
-    if not client or client.get("status") in OFFBOARDED_STATUSES:
+    if _locked_out(client):
         raise invalid
 
     login_code = get_active_login_code(client["id"])
@@ -843,7 +858,7 @@ def _require_session(request: Request) -> int:
     # is what actually ends access everywhere). One extra DB read per request -
     # fine at current volume.
     client = get_client(client_id)
-    if not client or client.get("status") in OFFBOARDED_STATUSES:
+    if _locked_out(client):
         raise HTTPException(status_code=401, detail="Not authenticated")
     # A password change/reset bumps session_version - every cookie issued
     # before it stops working (a missing column reads as 0 = no change)
@@ -860,7 +875,7 @@ def _require_session(request: Request) -> int:
 def _login_client(email: str) -> dict:
     email = (email or "").strip()
     client = get_client_by_email(email) or get_client_by_email(email.lower())
-    if not client or client.get("status") in OFFBOARDED_STATUSES:
+    if _locked_out(client):
         return {}
     return client
 
@@ -963,7 +978,7 @@ def google_login_callback(request: Request, state: str = "", code: str = "", err
     try:
         identity = client_auth.google_identity(code)
         client = client_auth.find_client_for_google(identity)
-        if not client or client.get("status") in OFFBOARDED_STATUSES:
+        if _locked_out(client):
             return fail("no_account")
         client_auth.link_google(client, identity)
         client_auth.mark_email_verified(client)
@@ -1773,12 +1788,20 @@ _DISCONNECT_GROUPS = {
     "avatar": ["heygen", "elevenlabs"],
 }
 
-def _disconnect_platform(client_id: int, platform: str) -> dict:
-    """Revoke our access at the provider (best-effort - the grant may already
-    be dead) and DELETE the stored client_accounts rows. Only OUR access is
-    removed; the client's ad accounts / Pages / site are never touched."""
+# Groups whose grant can be revoked at the provider; every other group's
+# disconnect is deleting our stored copy (see the notes in _revoke_grant)
+_REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta")
+
+def _revoke_grant(client_id: int, platform: str, rows: list = None):
+    """Revoke our access at the provider for ONE disconnect group. Never
+    deletes a row. True = revoked (or already dead), False = not confirmed,
+    None = nothing to revoke remotely. `rows`: the client's accounts in this
+    group (read here when not given)."""
     from core.secrets_vault import get_client_secret
-    rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
+    if platform not in _REVOCABLE_GROUPS:
+        return None
+    if rows is None:
+        rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
     # The token is decrypted only here, for the revoke call itself
     tokens = {r.get("platform"): get_client_secret(client_id, r.get("platform"), any_status=True)
               for r in rows if r.get("has_secret")}
@@ -1786,10 +1809,12 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     revoked = None
     if platform in ("google_ads", "gtm", "youtube", "merchant_center"):
         # Same Google OAuth infrastructure — revoking the refresh token kills
-        # the grant regardless of which scopes it carried
+        # the grant regardless of which scopes it carried. Every token must
+        # be confirmed, not just the last one tried.
         for token in tokens.values():
             if token:
-                revoked = google_ads_service.revoke_token(token)
+                ok = google_ads_service.revoke_token(token)
+                revoked = ok if revoked is None else (revoked and ok)
     elif platform == "meta":
         # Any of the group's tokens traces back to the same user grant; prefer
         # the user token on the meta_ads row, fall back to whatever exists
@@ -1802,6 +1827,14 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     # higgsfield: same as wordpress - the API key lives on the client's own
     # Higgsfield account; they can revoke it themselves at
     # cloud.higgsfield.ai/api-keys, and deleting our stored copy is our half.
+    return revoked
+
+def _disconnect_platform(client_id: int, platform: str) -> dict:
+    """Revoke our access at the provider (best-effort - the grant may already
+    be dead) and DELETE the stored client_accounts rows. Only OUR access is
+    removed; the client's ad accounts / Pages / site are never touched."""
+    rows = [a for a in get_accounts(client_id) if a.get("platform") in _DISCONNECT_GROUPS[platform]]
+    revoked = _revoke_grant(client_id, platform, rows)
 
     removed = remove_accounts(client_id, _DISCONNECT_GROUPS[platform])
 
@@ -2208,6 +2241,7 @@ _DELETE_REFUSALS = {
     "not_found": (404, "ERR_CLIENT_NOT_FOUND"),
     "confirm_mismatch": (400, "ERR_CONFIRM_MISMATCH"),
     "backup_required": (400, "ERR_BACKUP_REQUIRED"),
+    "in_progress": (409, "ERR_DELETE_IN_PROGRESS"),
 }
 
 @app.post("/api/admin/clients/{client_id}/delete")
@@ -2218,8 +2252,7 @@ def admin_delete_client(client_id: int, req: AdminDeleteClientRequest, request: 
     try:
         result = client_deletion.delete_client_full(
             client_id, req.confirm, req.skip_backup,
-            disconnect=_disconnect_platform, disconnect_groups=_DISCONNECT_GROUPS,
-            subscription_info=_client_subscription_info)
+            revoke=_revoke_grant, revoke_groups=_DISCONNECT_GROUPS)
     except ValueError as e:
         reason = str(e)
         if reason.startswith("hard_stop:"):
@@ -2280,8 +2313,7 @@ def admin_bulk_delete(kind: str, req: BulkDeleteRequest, request: Request):
         return {"success": True, "data": bulk_delete.run(
             kind, req.ids, req.confirm, req.batch_id, req.batch_ids,
             skip_backup=req.skip_backup, client_id=req.client_id,
-            disconnect=_disconnect_platform, disconnect_groups=_DISCONNECT_GROUPS,
-            subscription_info=_client_subscription_info)}
+            revoke=_revoke_grant, revoke_groups=_DISCONNECT_GROUPS)}
     except ValueError as e:
         raise _bulk_refusal(e)
 
@@ -2297,7 +2329,9 @@ def admin_bulk_batch_status(batch_id: str, request: Request):
     return {"success": True, "data": {"found": bool(record), "kind": record.get("kind"),
                                       "total": len(record.get("ids") or []),
                                       "results": record.get("results") or {},
-                                      "audited": bool(record.get("audited"))}}
+                                      "audited": bool(record.get("audited")),
+                                      # the chunk running right now: ids + current step
+                                      "live": record.get("live")}}
 
 @app.get("/api/admin/bulk/clients/backup")
 def admin_bulk_clients_backup(request: Request, ids: str = ""):
@@ -4090,6 +4124,10 @@ async def public_lead_capture(token: str, request: Request,
     client_id = verify_lead_capture_token(token)
     if not client_id:
         raise HTTPException(status_code=404, detail={"code": "ERR_INVALID_CAPTURE_TOKEN"})
+    if deletion_guard.is_deleting(client_id):
+        # Same 200 contract as a capped submit: the customer never sees an
+        # error, nothing is stored for a client being deleted
+        return {"success": True, "stored": False}
 
     # Body parsed by hand rather than with request.form(): Starlette's form
     # parsing asserts on `python-multipart`, which is NOT in requirements.txt,
