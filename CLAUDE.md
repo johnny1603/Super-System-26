@@ -122,6 +122,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `app_settings` row `client_deletion:<id>`; the clients row goes LAST. Never touches
   external resources (site hosting, domains, Drive, ad accounts, PayPal) — it lists them.
   **A new table with a client_id column must be added to `DATA_TABLES` there.**
+- `core/bulk_delete.py` — admin bulk delete for clients (via `delete_client_full`, one at a
+  time), sales leads (a lead linked to a client is protected), a client's own leads, and
+  alerts (deletion audit entries are protected). Typed phrase "מחק N", cap
+  `BULK_DELETE_MAX` (50), per-item deleted/failed/skipped, one `bulk_delete` audit alert per
+  batch. The admin UI only ever batches rows that are currently rendered.
 - `core/redaction.py` — the ONE "looks like a key/password" definition; `redact()` runs on
   every stored chat message (client chat, sales transcript + answers, admin agent chat) and
   inside `log_step`/`agent_alert`/`master_agent.alert`.

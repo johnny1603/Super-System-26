@@ -2223,6 +2223,90 @@ def admin_delete_client(client_id: int, req: AdminDeleteClientRequest, request: 
         raise HTTPException(status_code=status, detail={"code": code})
     return {"success": True, "data": result}
 
+# ─── Admin: bulk delete (core/bulk_delete.py) ────────────────────────────────
+# One preview + one delete route per list kind (clients | leads |
+# client_leads | alerts). Everything is re-validated here and in the module:
+# the ids, the cap, protection and the typed "מחק N".
+
+class BulkDeleteRequest(BaseModel):
+    ids: list
+    confirm: str = ""
+    skip_backup: bool = False    # clients only
+    client_id: int = 0           # client_leads only: whose leads
+
+_BULK_REFUSALS = {
+    "unknown_kind": (404, "ERR_UNKNOWN_KIND"),
+    "empty_selection": (400, "ERR_EMPTY_SELECTION"),
+    "too_many": (400, "ERR_TOO_MANY"),
+    "confirm_mismatch": (400, "ERR_CONFIRM_MISMATCH"),
+    "client_required": (400, "ERR_CLIENT_REQUIRED"),
+}
+
+def _bulk_refusal(e: ValueError):
+    from core.bulk_delete import BULK_DELETE_MAX
+    status, code = _BULK_REFUSALS.get(str(e), (400, "ERR_BULK_REFUSED"))
+    return HTTPException(status_code=status, detail={"code": code, "max": BULK_DELETE_MAX})
+
+@app.post("/api/admin/bulk/{kind}/preview")
+def admin_bulk_preview(kind: str, req: BulkDeleteRequest, request: Request):
+    # Plain `def`: a client preview reads PayPal + the ad platforms
+    _require_admin(request)
+    from core import bulk_delete
+    try:
+        return {"success": True, "data": bulk_delete.preview(
+            kind, req.ids, subscription_info=_client_subscription_info, client_id=req.client_id)}
+    except ValueError as e:
+        raise _bulk_refusal(e)
+
+@app.post("/api/admin/bulk/{kind}/delete")
+def admin_bulk_delete(kind: str, req: BulkDeleteRequest, request: Request):
+    _require_admin(request)
+    from core import bulk_delete
+    try:
+        return {"success": True, "data": bulk_delete.run(
+            kind, req.ids, req.confirm, skip_backup=req.skip_backup, client_id=req.client_id,
+            disconnect=_disconnect_platform, disconnect_groups=_DISCONNECT_GROUPS,
+            subscription_info=_client_subscription_info)}
+    except ValueError as e:
+        raise _bulk_refusal(e)
+
+@app.get("/api/admin/bulk/clients/backup")
+def admin_bulk_clients_backup(request: Request, ids: str = ""):
+    # ONE combined JSON for the selected clients, no secrets (same content as
+    # the single pre-deletion backup). Marks each client's backup as taken.
+    _require_admin(request)
+    from core import bulk_delete, client_deletion
+    from core.redaction import redact_obj
+    try:
+        clean = bulk_delete.validate("clients", ids.split(","))
+    except ValueError as e:
+        raise _bulk_refusal(e)
+    combined = {"backup_kind": "pre_bulk_deletion", "exported_at": datetime.now(timezone.utc).isoformat(),
+                "clients": []}
+    for cid in clean:
+        if not get_client(cid):
+            continue
+        combined["clients"].append({**_build_client_export(cid), **client_deletion.extra_backup(cid)})
+        client_deletion.mark_backup(cid)
+    return Response(
+        content=json.dumps(redact_obj(combined), ensure_ascii=False, indent=2, default=str),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="uallak-clients-backup.json"'})
+
+@app.get("/api/admin/clients/{client_id}/client-leads")
+def admin_client_leads(client_id: int, request: Request):
+    # The leads THIS client received (their customers) — read-only list for
+    # the admin drawer, where bulk delete lives
+    _require_admin(request)
+    try:
+        rows = client_leads_service.list_leads(client_id, limit=500)
+    except Exception:
+        rows = []   # table not migrated yet
+    return {"success": True, "data": [
+        {"id": r.get("id"), "name": r.get("name") or "", "phone": r.get("phone") or "",
+         "email": r.get("email") or "", "status": r.get("status") or "", "source": r.get("source") or "",
+         "created_at": r.get("created_at")} for r in rows]}
+
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
 def _log_bad_oauth_state(provider: str, state: str, error: str = ""):

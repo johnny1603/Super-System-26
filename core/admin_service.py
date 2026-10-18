@@ -191,6 +191,14 @@ def get_overview() -> dict:
     }
 
 
+def _hard_stops(client: dict) -> list:
+    from core.client_deletion import hard_stops
+    try:
+        return hard_stops(client)
+    except Exception:
+        return ["unknown"]   # can't tell -> treat as protected (fail closed)
+
+
 def list_clients_admin() -> list:
     clients = _db().table("clients").select("*").order("created_at", desc=True).execute().data or []
     fees = _fee_map()
@@ -233,6 +241,9 @@ def list_clients_admin() -> list:
             "package": c.get("package", ""),
             "status": c.get("status", ""),
             "billing_exempt": bool(c.get("billing_exempt")),
+            # Internal / owner accounts: never deletable (core/client_deletion
+            # .hard_stops — the same rule the delete endpoints enforce)
+            "protected": bool(_hard_stops(c)),
             "has_password": bool(c.get("password_hash")),
             "google_linked": bool(c.get("google_sub")),
             "platforms": platforms_by_client.get(c["id"], []),
