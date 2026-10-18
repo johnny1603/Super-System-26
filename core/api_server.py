@@ -2229,10 +2229,12 @@ def admin_delete_client(client_id: int, req: AdminDeleteClientRequest, request: 
 # the ids, the cap, protection and the typed "מחק N".
 
 class BulkDeleteRequest(BaseModel):
-    ids: list
+    ids: list                    # preview: the selection; delete: THIS chunk
     confirm: str = ""
     skip_backup: bool = False    # clients only
     client_id: int = 0           # client_leads only: whose leads
+    batch_id: str = ""           # delete: the batch this chunk belongs to
+    batch_ids: list = []         # delete: the WHOLE batch, re-validated every chunk
 
 _BULK_REFUSALS = {
     "unknown_kind": (404, "ERR_UNKNOWN_KIND"),
@@ -2240,6 +2242,10 @@ _BULK_REFUSALS = {
     "too_many": (400, "ERR_TOO_MANY"),
     "confirm_mismatch": (400, "ERR_CONFIRM_MISMATCH"),
     "client_required": (400, "ERR_CLIENT_REQUIRED"),
+    "chunk_too_large": (400, "ERR_CHUNK_TOO_LARGE"),
+    "not_in_batch": (400, "ERR_NOT_IN_BATCH"),
+    "batch_mismatch": (409, "ERR_BATCH_MISMATCH"),
+    "bad_batch_id": (400, "ERR_BAD_BATCH_ID"),
 }
 
 def _bulk_refusal(e: ValueError):
@@ -2262,13 +2268,30 @@ def admin_bulk_preview(kind: str, req: BulkDeleteRequest, request: Request):
 def admin_bulk_delete(kind: str, req: BulkDeleteRequest, request: Request):
     _require_admin(request)
     from core import bulk_delete
+    # ONE chunk (at most bulk_delete.CHUNK_MAX[kind] items) per request, so no
+    # request comes near the 300 s Cloud Run timeout
     try:
         return {"success": True, "data": bulk_delete.run(
-            kind, req.ids, req.confirm, skip_backup=req.skip_backup, client_id=req.client_id,
+            kind, req.ids, req.confirm, req.batch_id, req.batch_ids,
+            skip_backup=req.skip_backup, client_id=req.client_id,
             disconnect=_disconnect_platform, disconnect_groups=_DISCONNECT_GROUPS,
             subscription_info=_client_subscription_info)}
     except ValueError as e:
         raise _bulk_refusal(e)
+
+@app.get("/api/admin/bulk/batch/{batch_id}")
+def admin_bulk_batch_status(batch_id: str, request: Request):
+    # Resume after a closed window: which items of the batch are done
+    _require_admin(request)
+    from core import bulk_delete
+    try:
+        record = bulk_delete.batch_status(batch_id)
+    except ValueError as e:
+        raise _bulk_refusal(e)
+    return {"success": True, "data": {"found": bool(record), "kind": record.get("kind"),
+                                      "total": len(record.get("ids") or []),
+                                      "results": record.get("results") or {},
+                                      "audited": bool(record.get("audited"))}}
 
 @app.get("/api/admin/bulk/clients/backup")
 def admin_bulk_clients_backup(request: Request, ids: str = ""):

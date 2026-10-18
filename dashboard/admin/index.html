@@ -1752,11 +1752,12 @@ function delWarningHtml(w) {
   const items = w.items || [];
   if (w.code === 'connections') return `🔌 חיבורים: ${esc(items.join(', '))} — ההרשאות יבוטלו בפלטפורמה כשזה אפשרי, והמפתחות המוצפנים יימחקו.`;
   if (w.code === 'billing') return '💳 חיוב:<br>' + items.map(b => b.kind === 'subscription'
-      ? `· מנוי PayPal ${esc(b.id)} — סטטוס ${esc(b.status)}${b.monthly_fee ? ` (${ils(b.monthly_fee)}/חודש)` : ''}. <b>המחיקה לא מבטלת את המנוי</b> — יש לבטל ב-PayPal, אחרת החיוב ימשיך.`
+      ? `· מנוי PayPal ${esc(b.id)} — סטטוס ${esc(b.status === 'not_checked' ? 'לא נבדק' : b.status)}${b.monthly_fee ? ` (${ils(b.monthly_fee)}/חודש)` : ''}. <b>המחיקה לא מבטלת את המנוי</b> — יש לבטל ב-PayPal, אחרת החיוב ימשיך.`
       : `· חשבונית ${esc(b.id)} לא שולמה.`).join('<br>')
     + '<br>ייתכן שחובה לשמור רשומות חיוב וחשבוניות מסיבות חוקיות/מס — מומלץ להוריד גיבוי לפני המחיקה.';
   if (w.code === 'external') return '🌐 משאבים חיצוניים שלא יימחקו אוטומטית — יש לטפל בכל אחד בנפרד:<br>'
-    + items.map(x => `· ${esc(DEL_TXT.ext[x.kind] || x.kind)}${x.ref ? ` — <span dir="ltr">${esc(x.ref)}</span>` : ''}`).join('<br>');
+    + items.map(x => `· ${esc(DEL_TXT.ext[x.kind] || x.kind)}${x.ref === 'not_checked' ? ' — לא נבדק'
+        : x.ref ? ` — <span dir="ltr">${esc(x.ref)}</span>` : ''}`).join('<br>');
   if (w.code === 'recent_activity') return `🕒 ${esc(items[0])} פעולות ב-30 הימים האחרונים — הלקוח פעיל.`;
   if (w.code === 'client_leads') return `👥 ${esc(items[0])} לידים של הלקוח (פרטי הלקוחות שלו) יימחקו — מומלץ לגבות.`;
   if (w.code === 'undelivered') return `📦 ${esc(items[0])} פריטים שממתינים לאישור או למסירה ללקוח.`;
@@ -1787,9 +1788,12 @@ async function openDeleteClient(clientId) {
   body.innerHTML = `<div class="del-sub">${esc(DEL_TXT.loading)}</div>`;
   let res, data;
   try {
-    res = await fetch(`/api/admin/clients/${Number(clientId)}/delete-preview`, { credentials: 'same-origin' });
+    res = await fetchWithTimeout(`/api/admin/clients/${Number(clientId)}/delete-preview`,
+                                 { credentials: 'same-origin' }, PREVIEW_TIMEOUT_MS);
   } catch (e) {
-    body.innerHTML = `<div class="del-stop">${esc(DEL_TXT.netFail)}</div><div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    if (!delState) return;
+    bulkModalMessage(e.timeout ? 'הטעינה לקחה יותר מדי זמן ונעצרה. שום דבר לא נמחק.' : DEL_TXT.netFail,
+                     `openDeleteClient(${Number(clientId)})`);
     return;
   }
   if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
@@ -1884,13 +1888,18 @@ async function runDeleteClient() {
   msg.style.color = 'var(--gray)'; msg.textContent = DEL_TXT.deleting;
   let res, data;
   try {
-    res = await fetch(`/api/admin/clients/${Number(c.id)}/delete`, {
+    res = await fetchWithTimeout(`/api/admin/clients/${Number(c.id)}/delete`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirm: confirmText, skip_backup: skip }),
-    });
+    }, CHUNK_TIMEOUT_MS);
   } catch (e) {
     delState.busy = false; updateDeleteButton();
-    msg.style.color = 'var(--accent)'; msg.textContent = DEL_TXT.netFail;
+    msg.style.color = 'var(--accent)';
+    // A timed-out delete may have finished on the server: the safe next step
+    // is to re-open the client — a re-run resumes, never doubles
+    msg.textContent = e.timeout
+      ? 'המחיקה לקחה יותר מדי זמן. ייתכן שחלק כבר נמחק — סגור/י ופתח/י שוב את המחיקה כדי להשלים (זה בטוח).'
+      : DEL_TXT.netFail;
     return;
   }
   if (res.status === 401) { delState.busy = false; closeDeleteClient(); showLogin(); return; }
@@ -1956,6 +1965,40 @@ const BULK_ERRORS = {
   ERR_CLIENT_REQUIRED: () => 'חסר הלקוח שהלידים שלו נבחרו — פתח/י שוב את כרטיס הלקוח. שום דבר לא נמחק.',
 };
 let bulkDel = null;
+// Server cap per batch (bulk_delete.BULK_DELETE_MAX); refreshed from replies
+let BULK_MAX = 50;
+// Items per delete REQUEST (bulk_delete.CHUNK_MAX) — keeps every request far
+// below Cloud Run's 300 s timeout
+const BULK_CHUNK = { clients: 5, leads: 25, client_leads: 25, alerts: 50 };
+const PREVIEW_TIMEOUT_MS = 30000;
+const CHUNK_TIMEOUT_MS = 120000;
+const BULK_PENDING_KEY = 'uallak_bulk_pending';
+
+// fetch() that always ends: rejects with err.timeout = true after `ms`
+async function fetchWithTimeout(url, opts, ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, Object.assign({}, opts || {}, { signal: ctl.signal }));
+  } catch (e) {
+    if (e && e.name === 'AbortError') { const t = new Error('timeout'); t.timeout = true; throw t; }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function bulkPendingRead() {
+  try { return JSON.parse(localStorage.getItem(BULK_PENDING_KEY) || 'null'); } catch (e) { return null; }
+}
+function bulkPendingWrite(v) {
+  try { if (v) localStorage.setItem(BULK_PENDING_KEY, JSON.stringify(v)); else localStorage.removeItem(BULK_PENDING_KEY); }
+  catch (e) { /* storage blocked: resume just isn't offered */ }
+}
+function bulkNewId() {
+  try { return crypto.randomUUID(); } catch (e) {
+    return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+}
 
 function bulkSelected(kind) {
   const b = BULK[kind];
@@ -2013,47 +2056,118 @@ function bulkUpdateBar(kind) {
   const bar = document.getElementById('bulkbar-' + kind);
   if (!bar) return;
   const n = bulkSelected(kind).length;
-  bar.classList.toggle('on', n > 0);
-  bar.innerHTML = n ? `<b>נבחרו ${n}</b>
+  const pending = bulkPendingRead();
+  const resume = pending && pending.kind === kind
+    ? `<span style="color:var(--yellow);">⚠ מחיקה קודמת של ${pending.batch_ids.length} פריטים לא הסתיימה</span>
+       <button class="alert-btn" onclick="resumeBulkDelete()">להמשיך את המחיקה</button>
+       <button class="alert-btn" onclick="bulkPendingWrite(null);bulkUpdateBar('${kind}')" style="color:var(--gray);">לא להמשיך</button>` : '';
+  bar.classList.toggle('on', n > 0 || !!resume);
+  if (n > BULK_MAX) {
+    bar.innerHTML = `<b>נבחרו ${n}</b>
+      <span style="color:var(--yellow);">אפשר למחוק עד ${BULK_MAX} בפעם אחת.</span>
+      <button class="alert-btn" onclick="bulkTrim('${kind}')">להשאיר רק את ${BULK_MAX} הראשונים</button>
+      <button class="alert-btn" onclick="bulkClear('${kind}')">ניקוי בחירה</button>${resume}`;
+    return;
+  }
+  bar.innerHTML = (n ? `<b>נבחרו ${n}</b>
       <button class="del-danger" onclick="openBulkDelete('${kind}')">מחק נבחרים</button>
-      <button class="alert-btn" onclick="bulkClear('${kind}')">ניקוי בחירה</button>` : '';
+      <button class="alert-btn" onclick="bulkClear('${kind}')">ניקוי בחירה</button>` : '') + resume;
+}
+// Keep the first BULK_MAX selected rows, in on-screen order
+function bulkTrim(kind) {
+  const b = BULK[kind];
+  const keep = new Set(b.visible.filter(id => bulkSelected(kind).includes(id)).slice(0, BULK_MAX));
+  if (b.dom) {
+    document.querySelectorAll('.alert-pick[data-list="all"]').forEach(c => { if (!keep.has(String(c.value))) c.checked = false; });
+    alertBulkCount('all');
+  } else {
+    b.sel = keep;
+    document.querySelectorAll(`.bulk-pick-del[data-kind="${kind}"]`).forEach(c => { c.checked = keep.has(String(c.value)); });
+  }
+  bulkUpdateBar(kind);
 }
 function bulkPayloadIds(kind, ids) { return kind === 'leads' ? ids : ids.map(Number); }
+
+function bulkModalMessage(text, retry) {
+  document.getElementById('delBody').innerHTML = `<div class="del-stop">${esc(text)}</div>
+    <div class="del-actions">
+      ${retry ? `<button class="alert-btn" onclick="${retry}">נסה שוב</button>` : ''}
+      <button class="alert-btn" id="delCancelBtn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+  document.getElementById('delCancelBtn').focus();
+}
 
 async function openBulkDelete(kind) {
   const ids = bulkSelected(kind);
   if (!ids.length) return;
-  bulkDel = { kind, ids: bulkPayloadIds(kind, ids), preview: null, backupDone: false, busy: false,
-              clientId: kind === 'client_leads' ? BULK.client_leads.clientId : 0 };
   document.getElementById('delOverlay').classList.add('open');
   document.getElementById('delModal').classList.add('open');
-  const body = document.getElementById('delBody');
-  body.innerHTML = `<div class="del-sub">${esc(DEL_TXT.loading)}</div>`;
-  let res, data;
-  try {
-    res = await fetch(`/api/admin/bulk/${kind}/preview`, {
-      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: bulkDel.ids, client_id: bulkDel.clientId || 0 }),
-    });
-  } catch (e) {
-    body.innerHTML = `<div class="del-stop">${esc(DEL_TXT.netFail)}</div><div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+  if (ids.length > BULK_MAX) {
+    // Never sent: the server would refuse it anyway — say so plainly
+    bulkDel = { kind, busy: false };
+    bulkModalMessage(`נבחרו ${ids.length} — אפשר למחוק עד ${BULK_MAX} בפעם אחת. סגור/י, לחץ/י "להשאיר רק את ${BULK_MAX} הראשונים" בפס הבחירה, ונסה/י שוב.`);
     return;
   }
+  bulkDel = { kind, ids: bulkPayloadIds(kind, ids), preview: null, backupDone: false, busy: false,
+              clientId: kind === 'client_leads' ? BULK.client_leads.clientId : 0 };
+  document.getElementById('delBody').innerHTML =
+    `<div class="del-sub">טוען ${ids.length} ${esc(BULK_KIND_LABEL[kind])}… שום דבר עוד לא נמחק</div>`;
+  let res, data;
+  try {
+    res = await fetchWithTimeout(`/api/admin/bulk/${kind}/preview`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: bulkDel.ids, client_id: bulkDel.clientId || 0 }),
+    }, PREVIEW_TIMEOUT_MS);
+  } catch (e) {
+    if (!bulkDel) return;   // closed while loading
+    bulkModalMessage(e.timeout
+      ? `הטעינה לקחה יותר מ-${PREVIEW_TIMEOUT_MS / 1000} שניות ונעצרה. שום דבר לא נמחק. אפשר לנסות שוב, או לבחור פחות פריטים.`
+      : DEL_TXT.netFail, `openBulkDelete('${kind}')`);
+    return;
+  }
+  if (!bulkDel) return;
   if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
   try { data = await res.json(); } catch (e) { data = null; }
   if (!res.ok || !data || !data.success) {
     const d = data && data.detail || {};
-    const msg = BULK_ERRORS[d.code] ? BULK_ERRORS[d.code](d.max) : `טעינת התצוגה המקדימה נכשלה (HTTP ${res.status}). שום דבר לא נמחק.`;
-    body.innerHTML = `<div class="del-stop">${esc(msg)}</div><div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    if (d.max) BULK_MAX = d.max;
+    bulkModalMessage(BULK_ERRORS[d.code] ? BULK_ERRORS[d.code](d.max)
+      : `טעינת התצוגה המקדימה נכשלה (HTTP ${res.status}). שום דבר לא נמחק.`, `openBulkDelete('${kind}')`);
     return;
   }
+  if (data.data.max) BULK_MAX = data.data.max;
   bulkDel.preview = data.data;
   bulkDel.backupDone = kind === 'clients' && data.data.items.filter(i => i.found && !i.protected)
     .every(i => i.backup_downloaded_at);
   renderBulkDelete();
 }
 
-function renderBulkDelete() {
+// "בדוק": the full single-client preview (PayPal + ad platforms, each bounded
+// server-side) for ONE client of the batch, replacing its "לא נבדק" warnings
+async function bulkCheckClient(clientId) {
+  if (!bulkDel || !bulkDel.preview) return;
+  const item = bulkDel.preview.items.find(i => Number(i.id) === Number(clientId));
+  if (!item) return;
+  const typed = (document.getElementById('delConfirmInput') || {}).value || '';
+  const skip = !!((document.getElementById('delSkipBackup') || {}).checked);
+  item.checking = true; renderBulkDelete(typed, skip);
+  try {
+    const res = await fetchWithTimeout(`/api/admin/clients/${Number(clientId)}/delete-preview`,
+                                       { credentials: 'same-origin' }, PREVIEW_TIMEOUT_MS);
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error('HTTP ' + res.status);
+    item.warnings = data.data.warnings || [];
+    item.external_checked = true;
+    item.check_error = '';
+  } catch (e) {
+    item.check_error = e.timeout ? 'הבדיקה לקחה יותר מדי זמן — אפשר לנסות שוב' : 'הבדיקה נכשלה — אפשר לנסות שוב';
+  }
+  item.checking = false;
+  if (bulkDel && bulkDel.preview) renderBulkDelete(
+    (document.getElementById('delConfirmInput') || {}).value || typed,
+    ((document.getElementById('delSkipBackup') || {}).checked) || skip);
+}
+
+function renderBulkDelete(keepTyped, keepSkip) {
   const p = bulkDel.preview, kind = bulkDel.kind;
   const items = p.items || [];
   const tag = i => !i.found ? ' — <span style="color:var(--gray);">לא נמצא, יידלג</span>'
@@ -2067,10 +2181,19 @@ function renderBulkDelete() {
     + (kind === 'clients' ? `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(DEL_TXT.countLabels.clients)}</span><span>${Number(p.deletable)}</span></div>` : '');
   let warnings = '';
   if (kind === 'clients') {
+    // External checks (PayPal status, running campaigns) are skipped in the
+    // bulk preview to keep it fast — "בדוק" runs them for one client
+    const check = i => i.external_checked ? '<span style="color:var(--green);font-size:12px;">✓ נבדק</span>'
+      : i.checking ? '<span style="color:var(--gray);font-size:12px;">בודק…</span>'
+      : `<a href="#" style="color:var(--accent);font-size:12px;" onclick="bulkCheckClient(${Number(i.id)});return false;">בדוק</a>`
+        + (i.check_error ? ` <span style="color:var(--yellow);font-size:12px;">${esc(i.check_error)}</span>` : '');
     warnings = items.filter(i => i.found && !i.protected && (i.warnings || []).length).map(i =>
-      `<details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;">⚠ ${esc(i.name)} — ${i.warnings.length} אזהרות</summary>
+      `<details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;">⚠ ${esc(i.name)} — ${i.warnings.length} אזהרות · ${check(i)}</summary>
         ${i.warnings.map(w => `<div class="del-warn">${delWarningHtml(w)}</div>`).join('')}</details>`).join('')
       || `<div class="del-sub">${esc(DEL_TXT.none)}</div>`;
+    if ((items[0] || {}).partial_counts && items[0].partial_counts.length) {
+      warnings += `<div class="del-sub">חלק מהספירות חלקיות (יותר מדי שורות לספירה מהירה): ${esc(items[0].partial_counts.join(', '))}</div>`;
+    }
   }
   const head = `<div class="del-title" id="delTitle">מחיקת ${items.length} ${esc(BULK_KIND_LABEL[kind])}</div>
     <div class="del-sub">תצוגה מקדימה — עוד לא נמחק כלום. ${p.deletable} מתוך ${items.length} יימחקו.</div>`;
@@ -2099,7 +2222,10 @@ function renderBulkDelete() {
          <button class="del-danger" id="delGoBtn" disabled onclick="runBulkDelete()">${esc(DEL_TXT.del)}</button>
        </div>`;
   document.getElementById('delConfirmInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
-  document.getElementById('delCancelBtn').focus();
+  if (keepTyped) document.getElementById('delConfirmInput').value = keepTyped;
+  if (keepSkip && document.getElementById('delSkipBackup')) document.getElementById('delSkipBackup').checked = true;
+  updateBulkButton();
+  if (keepTyped === undefined) document.getElementById('delCancelBtn').focus();
 }
 
 function updateBulkButton() {
@@ -2134,48 +2260,110 @@ async function downloadBulkBackup() {
   updateBulkButton();
 }
 
-async function runBulkDelete() {
+// The batch is deleted in CHUNKS (BULK_CHUNK[kind] items per request). The
+// whole job is kept in localStorage until it finishes, so a closed window
+// shows "להמשיך את המחיקה" next time; the server skips what is already done.
+function runBulkDelete() {
   const confirmText = (document.getElementById('delConfirmInput').value || '').trim();
   const skip = document.getElementById('delSkipBackup');
-  bulkDel.busy = true;
-  updateBulkButton();
-  const msg = document.getElementById('delMsg');
-  msg.style.color = 'var(--gray)'; msg.textContent = DEL_TXT.deleting;
-  let res, data;
-  try {
-    res = await fetch(`/api/admin/bulk/${bulkDel.kind}/delete`, {
-      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: bulkDel.ids, confirm: confirmText, skip_backup: !!(skip && skip.checked),
-                             client_id: bulkDel.clientId || 0 }),
-    });
-  } catch (e) {
-    bulkDel.busy = false; updateBulkButton();
-    msg.style.color = 'var(--accent)'; msg.textContent = DEL_TXT.netFail;
-    return;
-  }
-  if (res.status === 401) { bulkDel.busy = false; closeDeleteClient(); showLogin(); return; }
-  try { data = await res.json(); } catch (e) { data = null; }
-  bulkDel.busy = false;
-  if (!res.ok || !data || !data.success) {
-    const d = data && data.detail || {};
-    updateBulkButton();
-    msg.style.color = 'var(--accent)';
-    msg.textContent = BULK_ERRORS[d.code] ? BULK_ERRORS[d.code](d.max)
-      : `המחיקה נעצרה (HTTP ${res.status}) — שום דבר לא אושר כנמחק. אפשר לנסות שוב.`;
-    return;
-  }
-  renderBulkResult(data.data);
-  const kind = bulkDel.kind, clientId = bulkDel.clientId;
-  bulkClear(kind);
-  if (kind === 'clients') loadClients();
-  else if (kind === 'leads') loadLeads();
-  else if (kind === 'alerts') loadAlerts();
-  else if (kind === 'client_leads' && clientId) loadClientLeadsSection(clientId);
-}
-
-function renderBulkResult(r) {
   const names = {};
   (bulkDel.preview.items || []).forEach(i => { names[String(i.id)] = i.name || ('#' + i.id); });
+  const job = { batch_id: bulkNewId(), kind: bulkDel.kind, batch_ids: bulkDel.ids, confirm: confirmText,
+                skip_backup: !!(skip && skip.checked), client_id: bulkDel.clientId || 0, names,
+                started_at: new Date().toISOString() };
+  bulkPendingWrite(job);
+  bulkClear(job.kind);
+  runBulkJob(job, {});
+}
+
+async function resumeBulkDelete() {
+  const job = bulkPendingRead();
+  if (!job) return;
+  bulkDel = { kind: job.kind, busy: true, clientId: job.client_id };
+  document.getElementById('delOverlay').classList.add('open');
+  document.getElementById('delModal').classList.add('open');
+  document.getElementById('delBody').innerHTML = '<div class="del-sub">בודק מה כבר נמחק…</div>';
+  let done = {};
+  try {
+    const res = await fetchWithTimeout(`/api/admin/bulk/batch/${encodeURIComponent(job.batch_id)}`,
+                                       { credentials: 'same-origin' }, PREVIEW_TIMEOUT_MS);
+    if (res.status === 401) { bulkDel.busy = false; closeDeleteClient(); showLogin(); return; }
+    const data = await res.json();
+    if (data.success && data.data.found) done = data.data.results || {};
+  } catch (e) {
+    bulkDel.busy = false;
+    bulkModalMessage(e.timeout ? 'בדיקת ההתקדמות לקחה יותר מדי זמן.' : DEL_TXT.netFail, 'resumeBulkDelete()');
+    return;
+  }
+  // Already-finished items come back from the server as they were recorded
+  const results = {};
+  Object.entries(done).forEach(([id, r]) => {
+    if (r.status === 'deleted' || r.status === 'skipped') results[id] = { id, ...r };
+  });
+  runBulkJob(job, results);
+}
+
+function renderBulkProgress(job, results, note) {
+  const total = job.batch_ids.length, n = Object.keys(results).length;
+  const pct = total ? Math.round(n / total * 100) : 100;
+  document.getElementById('delBody').innerHTML = `
+    <div class="del-title">מוחק ${total} ${esc(BULK_KIND_LABEL[job.kind])}…</div>
+    <div class="del-sub">${n} מתוך ${total} טופלו · אפשר לסגור — המחיקה תוצע להמשך בפעם הבאה</div>
+    <div style="height:10px;border-radius:6px;background:var(--panel-2);overflow:hidden;margin:10px 0;">
+      <div style="height:100%;width:${pct}%;background:var(--red);transition:width .3s;"></div></div>
+    ${note ? `<div class="del-sub">${esc(note)}</div>` : ''}`;
+}
+
+async function runBulkJob(job, results) {
+  bulkDel = Object.assign(bulkDel || {}, { kind: job.kind, busy: true, clientId: job.client_id });
+  const size = BULK_CHUNK[job.kind] || 5;
+  const remaining = job.batch_ids.filter(id => !results[String(id)]);
+  for (let start = 0; start < remaining.length; start += size) {
+    const chunk = remaining.slice(start, start + size);
+    renderBulkProgress(job, results, `מעבד ${chunk.length} פריטים…`);
+    let res, data;
+    try {
+      res = await fetchWithTimeout(`/api/admin/bulk/${job.kind}/delete`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: chunk, batch_ids: job.batch_ids, batch_id: job.batch_id,
+                               confirm: job.confirm, skip_backup: job.skip_backup, client_id: job.client_id }),
+      }, CHUNK_TIMEOUT_MS);
+    } catch (e) {
+      bulkDel.busy = false;
+      renderBulkResult(job, results, e.timeout
+        ? 'חלק מהמחיקה לקח יותר מדי זמן ונעצר. מה שכבר נמחק — נמחק. אפשר להמשיך; פריטים שכבר טופלו ידולגו.'
+        : 'החיבור לשרת נקטע באמצע. מה שכבר נמחק — נמחק. אפשר להמשיך.', true);
+      return;
+    }
+    if (res.status === 401) { bulkDel.busy = false; closeDeleteClient(); showLogin(); return; }
+    try { data = await res.json(); } catch (e) { data = null; }
+    if (!res.ok || !data || !data.success) {
+      const d = data && data.detail || {};
+      bulkDel.busy = false;
+      renderBulkResult(job, results, BULK_ERRORS[d.code] ? BULK_ERRORS[d.code](d.max)
+        : `השרת עצר את המחיקה (HTTP ${res.status}). מה שכבר נמחק — נמחק. אפשר להמשיך.`, res.status >= 500);
+      return;
+    }
+    (data.data.results || []).forEach(r => { results[String(r.id)] = r; });
+  }
+  bulkDel.busy = false;
+  // Failures keep the job, so "לנסות שוב" (or the list bar) retries just them
+  const failed = Object.values(results).some(r => r.status === 'failed');
+  bulkPendingWrite(failed ? job : null);
+  renderBulkResult(job, results, '', false);
+  if (job.kind === 'clients') loadClients();
+  else if (job.kind === 'leads') loadLeads();
+  else if (job.kind === 'alerts') loadAlerts();
+  else if (job.kind === 'client_leads' && job.client_id) loadClientLeadsSection(job.client_id);
+}
+
+function renderBulkResult(job, resultsMap, stopNote, canResume) {
+  const names = job.names || {};
+  const r = { results: Object.values(resultsMap) };
+  const c = { deleted: 0, failed: 0, skipped: 0 };
+  r.results.forEach(x => { if (c[x.status] !== undefined) c[x.status] += 1; });
+  r.counts = c;
+  const notDone = job.batch_ids.length - r.results.length;
   const label = { deleted: '✓ נמחק', failed: '✗ נכשל', skipped: '— דולג' };
   const color = { deleted: 'var(--green)', failed: 'var(--red)', skipped: 'var(--gray)' };
   const rows = (r.results || []).map(x => `<div class="drawer-stat-row" style="padding:6px 0;">
@@ -2186,14 +2374,19 @@ function renderBulkResult(r) {
     `<div style="margin-top:6px;"><b>${esc(names[String(x.id)] || ('#' + x.id))}</b><br>`
     + x.not_removed.map(e => `· ${esc(DEL_TXT.ext[e.kind] || e.kind)}${e.ref ? ` — <span dir="ltr">${esc(e.ref)}</span>` : ''}`).join('<br>')
     + '</div>').join('');
-  const c = r.counts || {};
+  const stopped = !!stopNote || notDone > 0;
+  const title = stopped ? '⚠ המחיקה נעצרה באמצע' : c.failed ? '⚠ המחיקה הסתיימה עם כשלים' : '✓ המחיקה הסתיימה';
+  const again = (stopped && canResume !== false) || c.failed;
   document.getElementById('delBody').innerHTML = `
-    <div class="del-title">${c.failed ? '⚠ המחיקה הסתיימה עם כשלים' : '✓ המחיקה הסתיימה'}</div>
-    <div class="del-sub">נמחקו ${Number(c.deleted || 0)} · נכשלו ${Number(c.failed || 0)} · דולגו ${Number(c.skipped || 0)}</div>
-    ${c.failed ? '<div class="del-stop">אפשר לבחור שוב את מה שנכשל ולהריץ — המחיקה בטוחה להרצה חוזרת.</div>' : ''}
+    <div class="del-title">${title}</div>
+    <div class="del-sub">נמחקו ${c.deleted} · נכשלו ${c.failed} · דולגו ${c.skipped}${notDone > 0 ? ` · עוד לא טופלו ${notDone}` : ''}</div>
+    ${stopNote ? `<div class="del-stop">${esc(stopNote)}</div>` : ''}
+    ${!stopNote && c.failed ? '<div class="del-stop">אפשר להריץ שוב את מה שנכשל — פריטים שכבר נמחקו ידולגו.</div>' : ''}
     ${rows}
     ${external ? `<div class="del-warn" style="margin-top:12px;"><b>${esc(DEL_TXT.external)}</b>${external}</div>` : ''}
-    <div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    <div class="del-actions">
+      ${again ? `<button class="alert-btn" onclick="resumeBulkDelete()">${notDone > 0 ? 'להמשיך את המחיקה' : 'לנסות שוב את מה שנכשל'}</button>` : ''}
+      <button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
 }
 
 // The leads THIS client received — listed in the drawer so they can be bulk-deleted

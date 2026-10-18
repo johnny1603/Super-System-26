@@ -1,6 +1,12 @@
 """Admin bulk delete — one batch of selected rows, one confirmation, one audit
 entry, and a per-item result.
 
+## Speed (2026-10-19)
+
+Previews are batched (one query per table for the whole selection, no
+provider calls) and deletes run in small chunks, one request each — see
+CHUNK_MAX. No request does work proportional to the whole selection.
+
 ## The contract every kind follows
 
 - The server re-validates EVERYTHING: the ids, the cap (BULK_DELETE_MAX,
@@ -80,16 +86,10 @@ def preview(kind: str, ids, subscription_info=None, client_id: int = None) -> di
     clean = validate(kind, ids, client_id=client_id)
     items = []
     if kind == "clients":
-        from core.client_deletion import preview as client_preview
-        for cid in clean:
-            p = client_preview(cid, subscription_info) if subscription_info else {"found": False}
-            if not p.get("found"):
-                items.append({"id": cid, "found": False})
-                continue
-            items.append({"id": cid, "found": True, "name": p["client"]["name"],
-                          "protected": bool(p["hard_stops"]), "hard_stops": p["hard_stops"],
-                          "warnings": p["warnings"], "counts": p["counts"],
-                          "backup_downloaded_at": p.get("backup_downloaded_at")})
+        # Batched reads for the whole selection, no provider calls (the
+        # per-client "בדוק" uses the single preview with bounded checks)
+        from core.client_deletion import batch_preview
+        items = batch_preview(clean)
     elif kind == "leads":
         rows = (_db().table("leads").select("lead_id,client_id,client_name,client_email,status")
                 .in_("lead_id", clean).execute().data or [])
@@ -185,28 +185,88 @@ def _delete_client_lead(client_id: int, lead_id: int) -> dict:
 
 # ─── The batch ───────────────────────────────────────────────────────────────
 
-def run(kind: str, ids, confirm: str, skip_backup: bool = False, client_id: int = None,
-        disconnect=None, disconnect_groups=None, subscription_info=None) -> dict:
-    clean = validate(kind, ids, confirm, client_id=client_id)
+# ─── Chunked batches (2026-10-19) ────────────────────────────────────────────
+# A batch is deleted in CHUNKS, one request each, so no single request can
+# approach Cloud Run's 300 s request timeout (a client delete revokes tokens
+# at the providers and touches ~20 tables). The FULL batch is sent with every
+# chunk and re-validated each time (cap, phrase "מחק N" for the whole batch,
+# chunk ⊆ batch); progress lives in app_settings "bulk_delete:<batch_id>", so
+# a closed window resumes where it stopped and a repeated chunk is a no-op.
+CHUNK_MAX = {"clients": 5, "leads": 25, "client_leads": 25, "alerts": 50}
+PROGRESS_PREFIX = "bulk_delete:"
+
+
+def _batch_key(batch_id: str) -> str:
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9\-]{8,64}", batch_id or ""):
+        raise ValueError("bad_batch_id")
+    return f"{PROGRESS_PREFIX}{batch_id}"
+
+
+def batch_status(batch_id: str) -> dict:
+    rows = (_db().table("app_settings").select("value").eq("key", _batch_key(batch_id))
+            .limit(1).execute().data or [])
+    value = rows[0].get("value") if rows else None
+    return value if isinstance(value, dict) else {}
+
+
+def _save_batch(batch_id: str, record: dict):
+    _db().table("app_settings").upsert(
+        {"key": _batch_key(batch_id), "value": record,
+         "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="key").execute()
+
+
+def run(kind: str, ids, confirm: str, batch_id: str, batch_ids, skip_backup: bool = False,
+        client_id: int = None, disconnect=None, disconnect_groups=None, subscription_info=None) -> dict:
+    """Delete ONE chunk of a batch. Returns the chunk's per-item results and
+    the batch progress; the batch's single audit entry is written when the
+    last item is done."""
+    batch = validate(kind, batch_ids, confirm, client_id=client_id)
+    chunk = _clean_ids(kind, ids)
+    if not chunk:
+        raise ValueError("empty_selection")
+    if len(chunk) > CHUNK_MAX[kind]:
+        raise ValueError("chunk_too_large")
+    if any(item not in batch for item in chunk):
+        raise ValueError("not_in_batch")
+
+    record = batch_status(batch_id)
+    if record and (record.get("kind") != kind or record.get("ids") != batch):
+        raise ValueError("batch_mismatch")
+    if not record:
+        record = {"kind": kind, "ids": batch, "client_id": client_id or None, "results": {},
+                  "started_at": datetime.now(timezone.utc).isoformat()}
+
     results = []
-    for item_id in clean:
+    for item_id in chunk:
+        done = record["results"].get(str(item_id))
+        if done and done.get("status") in ("deleted", "skipped"):
+            results.append({"id": item_id, **done, "repeat": True})   # already handled
+            continue
         try:
             if kind == "clients":
-                results.append({"id": item_id, **_run_client(item_id, skip_backup, disconnect,
-                                                             disconnect_groups, subscription_info)})
+                outcome = _run_client(item_id, skip_backup, disconnect, disconnect_groups, subscription_info)
             elif kind == "leads":
-                results.append({"id": item_id, **_delete_sales_lead(item_id)})
+                outcome = _delete_sales_lead(item_id)
             elif kind == "client_leads":
-                results.append({"id": item_id, **_delete_client_lead(client_id, item_id)})
-            elif kind == "alerts":
-                results.append({"id": item_id, **_delete_alert(item_id)})
+                outcome = _delete_client_lead(client_id, item_id)
+            else:
+                outcome = _delete_alert(item_id)
         except Exception as e:
-            results.append({"id": item_id, "status": "failed", "reason": type(e).__name__})
+            outcome = {"status": "failed", "reason": type(e).__name__}
+        record["results"][str(item_id)] = {k: v for k, v in outcome.items() if k in ("status", "reason")}
+        results.append({"id": item_id, **outcome})
 
-    summary = {s: [r["id"] for r in results if r["status"] == s] for s in ("deleted", "failed", "skipped")}
-    _audit(kind, clean, results, summary, client_id)
-    return {"kind": kind, "results": results,
-            "counts": {s: len(v) for s, v in summary.items()}}
+    handled = len(record["results"])
+    finished = handled >= len(batch)
+    if finished and not record.get("audited"):
+        summary = {s: [i for i in batch if record["results"].get(str(i), {}).get("status") == s]
+                   for s in ("deleted", "failed", "skipped")}
+        _audit(kind, batch, summary, client_id)
+        record["audited"] = True
+    _save_batch(batch_id, record)
+    return {"kind": kind, "results": results, "progress": {"done": handled, "total": len(batch)},
+            "finished": finished}
 
 
 def _run_client(client_id: int, skip_backup: bool, disconnect, groups, subscription_info) -> dict:
@@ -233,7 +293,7 @@ def _run_client(client_id: int, skip_backup: bool, disconnect, groups, subscript
             "not_removed": out.get("not_removed")}
 
 
-def _audit(kind: str, ids: list, results: list, summary: dict, client_id: int = None):
+def _audit(kind: str, ids: list, summary: dict, client_id: int = None):
     """One entry per batch: kind, who, when, ids, counts — ids only (each
     deleted client also gets its own client_deleted entry with its name,
     written by delete_client_full). Never other personal data."""

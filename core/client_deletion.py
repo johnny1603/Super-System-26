@@ -149,49 +149,64 @@ def _unpaid_invoices(activity: list) -> list:
     return unpaid
 
 
-def preview(client_id: int, subscription_info) -> dict:
-    """Everything the confirmation modal shows. Changes NOTHING.
-    subscription_info: api_server._client_subscription_info (passed in to
-    avoid importing the app module)."""
-    from agents.client_agent import get_accounts, get_client
-    client = get_client(client_id)
-    if not client:
-        return {"found": False}
+# ─── External checks: always bounded ─────────────────────────────────────────
+# PayPal (subscription status) and the ad platforms (running campaigns) are
+# HTTP calls to other companies. Each runs with its own EXTERNAL_CHECK_TIMEOUT;
+# a slow or failing provider becomes "not_checked", never a hung preview. The
+# BULK preview skips them entirely (the owner can "בדוק" one client).
+EXTERNAL_CHECK_TIMEOUT = 5
+_checks_pool = None
 
-    accounts = get_accounts(client_id)
-    active = [a for a in accounts if a.get("status") == "active"]
-    activity = _activity(client_id)
-    warnings = []
 
-    # 1. Connections
-    if accounts:
-        warnings.append({"code": "connections",
-                         "items": sorted({a.get("platform") for a in accounts})})
-
-    # 2. Billing
-    billing = []
-    sub = {}
+def _bounded(fn, timeout: float = EXTERNAL_CHECK_TIMEOUT):
+    """(ok, value). The worker thread may finish later; we stop waiting."""
+    global _checks_pool
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+    if _checks_pool is None:
+        _checks_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="delete-preview")
+    future = _checks_pool.submit(fn)
     try:
-        sub = subscription_info(client_id) or {}
+        return True, future.result(timeout=timeout)
+    except FutureTimeout:
+        return False, "timeout"
     except Exception:
-        pass
+        return False, "error"
+
+
+def _subscription_from_activity(activity: list) -> dict:
+    """Same rule as api_server._client_subscription_info, from rows already
+    read: the newest subscription_created, unless a newer cancel stops it."""
+    for e in activity:   # newest first
+        if e.get("agent_name") != "paypal_service":
+            continue
+        if e.get("action_type") == "subscription_cancelled":
+            return {}
+        if e.get("action_type") == "subscription_created":
+            details = e.get("details") or {}
+            return {"subscription_id": (e.get("result") or {}).get("subscription_id"),
+                    "monthly_fee": details.get("monthly_management_total") or 0}
+    return {}
+
+
+def _build_warnings(accounts: list, activity: list, recent: int, c: dict, pending: int,
+                    unreviewed: int, sub: dict, paypal_status: str, running) -> list:
+    """The warning list, from data already read. paypal_status / running
+    are "not_checked" when the external check was skipped or timed out."""
+    active = [a for a in accounts if a.get("status") == "active"]
+    warnings = []
+    if accounts:
+        warnings.append({"code": "connections", "items": sorted({a.get("platform") for a in accounts})})
+
+    billing = []
     if sub.get("subscription_id"):
-        status = "UNKNOWN"
-        try:
-            from core.paypal_service import get_subscription_status
-            status = get_subscription_status(sub["subscription_id"]).get("status") or "UNKNOWN"
-        except Exception:
-            pass
-        billing.append({"kind": "subscription", "id": sub["subscription_id"], "status": status,
+        billing.append({"kind": "subscription", "id": sub["subscription_id"], "status": paypal_status,
                         "monthly_fee": sub.get("monthly_fee")})
     for number in _unpaid_invoices(activity):
         billing.append({"kind": "unpaid_invoice", "id": number})
     if billing:
         warnings.append({"code": "billing", "items": billing})
 
-    # 3. External resources deletion does NOT remove
-    external = []
-    by_platform = {}
+    external, by_platform = [], {}
     for a in active:
         by_platform.setdefault(a.get("platform"), []).append(a)
     for a in by_platform.get("wordpress", []):
@@ -208,39 +223,67 @@ def preview(client_id: int, subscription_info) -> dict:
                            ("merchant_center", "merchant_center"), ("google_tagmanager", "gtm_container")):
         for a in by_platform.get(platform, []):
             external.append({"kind": kind, "ref": a.get("account_id")})
-    running = 0
-    for platform, module in (("google_ads", "agents.google_ads_agent"), ("meta_ads", "agents.meta_ads_agent")):
-        if platform not in by_platform:
-            continue
-        try:
-            import importlib
-            perf = importlib.import_module(module).get_campaign_performance(client_id)
-            running += sum(1 for c in perf.get("campaigns", [])
-                           if str(c.get("status", "")).upper() in ("ENABLED", "ACTIVE"))
-        except Exception:
-            pass
-    if running:
-        external.append({"kind": "running_campaigns", "ref": str(running)})
+    if by_platform.get("google_ads") or by_platform.get("meta_ads"):
+        if running == "not_checked":
+            external.append({"kind": "running_campaigns", "ref": "not_checked"})
+        elif running:
+            external.append({"kind": "running_campaigns", "ref": str(running)})
     if external:
         warnings.append({"code": "external", "items": external})
 
-    # 4. Recent activity, the client's customers' data, undelivered work
-    month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    recent = sum(1 for e in activity if (e.get("created_at") or "") >= month_ago)
     if recent:
         warnings.append({"code": "recent_activity", "items": [str(recent)]})
-    c = counts(client_id)
     if c.get("client_leads", 0) > 0:
         warnings.append({"code": "client_leads", "items": [str(c["client_leads"])]})
-    pending = _count_where("client_suggestions", client_id, "status", "pending")
     if pending > 0:
         warnings.append({"code": "undelivered", "items": [str(pending)]})
     if c.get("landing_pages", 0) > 0:
         warnings.append({"code": "landing_pages", "items": [str(c["landing_pages"])]})
-    unreviewed = _count_where("client_feedback", client_id, "reviewed", False)
     if unreviewed > 0:
         warnings.append({"code": "feedback", "items": [str(unreviewed)]})
+    return warnings
 
+
+def preview(client_id: int, subscription_info=None, light: bool = False) -> dict:
+    """ONE client, everything the confirmation modal shows. Changes NOTHING.
+    light=True skips the external HTTP checks (used by the delete itself);
+    otherwise each external check is bounded by EXTERNAL_CHECK_TIMEOUT."""
+    from agents.client_agent import get_accounts, get_client
+    client = get_client(client_id)
+    if not client:
+        return {"found": False}
+    accounts = get_accounts(client_id)
+    activity = _activity(client_id)
+    sub = _subscription_from_activity(activity)
+
+    paypal_status, running = "not_checked", "not_checked"
+    if not light:
+        if sub.get("subscription_id"):
+            from core.paypal_service import get_subscription_status
+            ok, value = _bounded(lambda: get_subscription_status(sub["subscription_id"]).get("status"))
+            paypal_status = (value or "UNKNOWN") if ok else "not_checked"
+        active_platforms = {a.get("platform") for a in accounts if a.get("status") == "active"}
+        if active_platforms & {"google_ads", "meta_ads"}:
+            def count_running():
+                import importlib
+                total = 0
+                for platform, module in (("google_ads", "agents.google_ads_agent"),
+                                         ("meta_ads", "agents.meta_ads_agent")):
+                    if platform in active_platforms:
+                        perf = importlib.import_module(module).get_campaign_performance(client_id)
+                        total += sum(1 for c in perf.get("campaigns", [])
+                                     if str(c.get("status", "")).upper() in ("ENABLED", "ACTIVE"))
+                return total
+            ok, value = _bounded(count_running, timeout=EXTERNAL_CHECK_TIMEOUT * 2)
+            running = value if ok else "not_checked"
+
+    month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    recent = sum(1 for e in activity if (e.get("created_at") or "") >= month_ago)
+    c = counts(client_id)
+    warnings = _build_warnings(accounts, activity, recent, c,
+                               _count_where("client_suggestions", client_id, "status", "pending"),
+                               _count_where("client_feedback", client_id, "reviewed", False),
+                               sub, paypal_status, running)
     return {
         "found": True,
         "client": {"id": client["id"], "name": client.get("name") or "",
@@ -248,8 +291,139 @@ def preview(client_id: int, subscription_info) -> dict:
         "hard_stops": hard_stops(client),
         "warnings": warnings,
         "counts": c,
+        "external_checked": not light,
         "backup_downloaded_at": _progress(client_id).get("backup_at"),
     }
+
+
+# ─── Bulk preview: batched, no external calls ────────────────────────────────
+# The single preview costs ~25 database round trips plus up to 3 external HTTP
+# calls per client. Run sequentially for 50 clients that was ~1,250 round
+# trips + ~150 provider calls in ONE request — far past Cloud Run's 300 s.
+# Here: ONE paged query per table for the whole batch (`client_id in (...)`),
+# and no provider calls at all.
+PAGE_ROWS = 1000
+MAX_PAGES = 50   # per table; past it the count is reported as a lower bound
+
+_EVENT_ACTIONS = ("subscription_created", "subscription_cancelled", "invoice_sent", "invoice_paid",
+                  "invoice_cancelled", "website_provisioned", "media_folder_created")
+
+
+def _paged(make_query) -> tuple:
+    """(rows, truncated). make_query() must return a FRESH query builder."""
+    rows, start = [], 0
+    for _ in range(MAX_PAGES):
+        batch = make_query().range(start, start + PAGE_ROWS - 1).execute().data or []
+        rows += batch
+        if len(batch) < PAGE_ROWS:
+            return rows, False
+        start += PAGE_ROWS
+    return rows, True
+
+
+def _tally(table: str, ids: list, extra=None) -> tuple:
+    """({client_id: n}, truncated) — or (None, False) when the table is unavailable."""
+    def q():
+        query = _db().table(table).select("client_id").in_("client_id", ids)
+        return extra(query) if extra else query
+    try:
+        rows, truncated = _paged(q)
+    except Exception:
+        return None, False
+    out = {}
+    for r in rows:
+        out[r["client_id"]] = out.get(r["client_id"], 0) + 1
+    return out, truncated
+
+
+def batch_preview(ids: list) -> list:
+    """The bulk modal's per-client preview for up to BULK_DELETE_MAX clients,
+    in a bounded number of queries (~20 + paging), whatever the batch size.
+    External checks are reported as "not_checked"."""
+    ids = [int(i) for i in ids]
+    db = _db()
+    clients = {c["id"]: c for c in (db.table("clients").select("id,name,email,status,billing_exempt")
+                                     .in_("id", ids).execute().data or [])}
+    found = [i for i in ids if i in clients]
+    if not found:
+        return [{"id": i, "found": False} for i in ids]
+
+    accounts = {}
+    for a in _paged(lambda: db.table("client_accounts").select("client_id,platform,status,account_id")
+                    .in_("client_id", found))[0]:
+        accounts.setdefault(a["client_id"], []).append(a)
+    events = {}
+    for e in _paged(lambda: db.table("client_activity")
+                    .select("client_id,agent_name,action_type,details,result,created_at")
+                    .in_("client_id", found).in_("action_type", list(_EVENT_ACTIONS))
+                    .order("created_at", desc=True))[0]:
+        events.setdefault(e["client_id"], []).append(e)
+    month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    recent, _ = _tally("client_activity", found, lambda q: q.gte("created_at", month_ago))
+
+    per_table, partial = {}, set()
+    for table in ["client_accounts", "client_costs"] + [t for t, _o in DATA_TABLES]:
+        tally, truncated = _tally(table, found)
+        per_table[table] = tally
+        if truncated:
+            partial.add(table)
+    pending, _ = _tally("client_suggestions", found, lambda q: q.eq("status", "pending"))
+    unreviewed, _ = _tally("client_feedback", found, lambda q: q.eq("reviewed", False))
+
+    leads_by_client, lead_owner = {}, {}
+    try:
+        for r in _paged(lambda: db.table("leads").select("client_id,lead_id").in_("client_id", found))[0]:
+            leads_by_client[r["client_id"]] = leads_by_client.get(r["client_id"], 0) + 1
+            if r.get("lead_id"):
+                lead_owner[r["lead_id"]] = r["client_id"]
+    except Exception:
+        leads_by_client = None
+    messages_by_client = {}
+    lead_ids = list(lead_owner)
+    try:
+        for start in range(0, len(lead_ids), 100):
+            chunk = lead_ids[start:start + 100]
+            for r in _paged(lambda: db.table("lead_messages").select("lead_id").in_("lead_id", chunk))[0]:
+                owner = lead_owner.get(r["lead_id"])
+                messages_by_client[owner] = messages_by_client.get(owner, 0) + 1
+    except Exception:
+        messages_by_client = None
+    settings = set()
+    backups = {}
+    try:
+        keys = [f"client_settings:{i}" for i in found] + [f"{PROGRESS_PREFIX}{i}" for i in found]
+        for r in db.table("app_settings").select("key,value").in_("key", keys).execute().data or []:
+            key = r["key"]
+            if key.startswith("client_settings:"):
+                settings.add(int(key.split(":", 1)[1]))
+            else:
+                value = r.get("value") if isinstance(r.get("value"), dict) else {}
+                backups[int(key.split(":", 1)[1])] = value.get("backup_at")
+    except Exception:
+        pass
+
+    def n(tally, cid):
+        return -1 if tally is None else tally.get(cid, 0)
+
+    out = []
+    for cid in ids:
+        client = clients.get(cid)
+        if not client:
+            out.append({"id": cid, "found": False})
+            continue
+        c = {table: n(tally, cid) for table, tally in per_table.items()}
+        c["leads"] = n(leads_by_client, cid)
+        c["lead_messages"] = n(messages_by_client, cid)
+        c["app_settings"] = 1 if cid in settings else 0
+        client_events = events.get(cid, [])
+        warnings = _build_warnings(accounts.get(cid, []), client_events, max(n(recent, cid), 0), c,
+                                   max(n(pending, cid), 0), max(n(unreviewed, cid), 0),
+                                   _subscription_from_activity(client_events), "not_checked", "not_checked")
+        out.append({"id": cid, "found": True, "name": client.get("name") or "",
+                    "protected": bool(hard_stops(client)), "hard_stops": hard_stops(client),
+                    "warnings": warnings, "counts": c, "partial_counts": sorted(partial),
+                    "external_checked": False, "backup_downloaded_at": backups.get(cid)})
+    return out
 
 
 def _count_where(table: str, client_id: int, column: str, value) -> int:
@@ -439,7 +613,9 @@ def delete_client_full(client_id: int, confirm: str, skip_backup: bool,
         raise ValueError("backup_required")
 
     name = client.get("name") or ""
-    external = (preview(client_id, subscription_info).get("warnings") or [])
+    # light: the "left for you to handle" list needs no provider calls — the
+    # delete must never wait on PayPal or an ad platform before it starts
+    external = (preview(client_id, light=True).get("warnings") or [])
     external = next((w["items"] for w in external if w["code"] == "external"), [])
     before = counts(client_id)
     progress = {**_progress(client_id), "started_at": _progress(client_id).get("started_at") or _now()}
