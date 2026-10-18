@@ -354,7 +354,8 @@ def get_settings() -> dict:
     for row in rows:
         # Per-client rows (core/client_settings) share this table but are not
         # global settings — they have their own screen in the Control Room
-        if str(row["key"]).startswith("client_settings:"):
+        # (client_deletion: progress rows of a client deletion — same reason)
+        if str(row["key"]).startswith(("client_settings:", "client_deletion:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

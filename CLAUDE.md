@@ -114,6 +114,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `use_vendor_key()`, which aborts + alerts when the same key belongs to another client
   (except owner keys shared only between internal/billing-exempt accounts, logged). Data
   migration: `scripts/encrypt_client_secrets.py` (dry-run default).
+- `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
+  typed name/id → `delete_client_full()`. Refuses internal (billing_exempt) and owner
+  (`OWNER_EMAILS` + ADMIN_EMAIL/GMAIL_USER) accounts SERVER-side. Reuses
+  `_disconnect_platform` for revokes; cost rows become anonymous monthly aggregates
+  (`attribution='deleted_client'`) so totals don't move; resumable via the
+  `app_settings` row `client_deletion:<id>`; the clients row goes LAST. Never touches
+  external resources (site hosting, domains, Drive, ad accounts, PayPal) — it lists them.
+  **A new table with a client_id column must be added to `DATA_TABLES` there.**
 - `core/redaction.py` — the ONE "looks like a key/password" definition; `redact()` runs on
   every stored chat message (client chat, sales transcript + answers, admin agent chat) and
   inside `log_step`/`agent_alert`/`master_agent.alert`.

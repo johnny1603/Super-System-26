@@ -312,6 +312,8 @@ def costs_by_client_month(months: int = 6) -> dict:
         attribution = row.get("attribution") or details.get("attribution") or ""
         owner = (str(row["client_id"]) if row.get("client_id")
                  else "internal" if attribution == "internal"
+                 # anonymous aggregates of a deleted client (core/client_deletion)
+                 else "deleted_client" if attribution == "deleted_client" or details.get("deleted_client")
                  else "lead" if attribution == "lead" or details.get("lead_id")
                  else "unattributed")
         month = (row.get("created_at") or "")[:7]

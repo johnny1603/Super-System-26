@@ -162,6 +162,29 @@ body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--whi
 .drawer-stat-label { color: var(--gray); }
 .drawer-label { font-size: 11.5px; color: var(--gray); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
 
+/* DELETE CLIENT modal (core/client_deletion.py) */
+.del-btn { background: transparent; border: 1px solid rgba(255,59,59,0.4); color: var(--red); font-family:'Heebo',sans-serif;
+  font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 8px; cursor: pointer; margin-inline-start: 6px; }
+.del-btn:hover { background: rgba(255,59,59,0.12); }
+.del-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 560px; max-width: 94vw;
+  max-height: 88vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  z-index: 401; padding: 22px 24px; display: none; }
+.del-modal.open { display: block; }
+.del-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 400; display: none; }
+.del-overlay.open { display: block; }
+.del-title { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+.del-sub { font-size: 12.5px; color: var(--gray); margin-bottom: 14px; }
+.del-warn { border-inline-start: 3px solid var(--yellow); background: rgba(255,176,32,0.06); padding: 9px 12px;
+  border-radius: 8px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; }
+.del-stop { border-inline-start: 3px solid var(--red); background: rgba(255,59,59,0.08); padding: 12px 14px;
+  border-radius: 8px; margin-bottom: 12px; font-size: 14px; font-weight: 700; color: var(--red); }
+.del-input { width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; color: var(--white);
+  font-family: 'Heebo', sans-serif; font-size: 14px; padding: 10px 12px; margin: 8px 0; }
+.del-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.del-danger { background: var(--red); border: none; color: white; font-family:'Heebo',sans-serif; font-size: 13px;
+  font-weight: 800; padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+.del-danger:disabled { opacity: 0.35; cursor: not-allowed; }
+
 /* DRAWER */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 .overlay.open { opacity: 1; pointer-events: all; }
@@ -291,6 +314,12 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
 </style>
 </head>
 <body>
+
+<!-- Delete client: preview -> warnings -> backup -> typed confirmation -->
+<div class="del-overlay" id="delOverlay"></div>
+<div class="del-modal" id="delModal" role="dialog" aria-modal="true" aria-labelledby="delTitle">
+  <div id="delBody"></div>
+</div>
 
 <div class="login-overlay" id="loginOverlay" style="display:none;">
   <div class="login-box">
@@ -617,7 +646,7 @@ async function loadClients() {
       <div>${wa
         ? `<button class="wa-quick-btn" onclick="window.open('${wa}','_blank');event.stopPropagation();">💬</button>`
         : '<button class="wa-quick-btn" disabled title="אין מספר טלפון">💬</button>'}</div>
-      <div><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button></div>
+      <div style="white-space:nowrap;"><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button><button class="del-btn" onclick="openDeleteClient(${Number(c.id)});event.stopPropagation();" title="מחיקה מלאה של הלקוח">מחיקת לקוח</button></div>
     </div>`;
   }).join('');
 
@@ -1620,6 +1649,241 @@ async function openDrawer(clientId) {
   loadAutomationSection(clientId);
 }
 
+// ─── delete client (full removal, core/client_deletion.py) ───────────────────
+// Preview first (nothing changes), warnings never block on their own, a
+// backup or an explicit "delete without backup", then the owner types the
+// client's exact name or id. Default focus is "ביטול"; Enter never deletes.
+// Internal and owner accounts are a hard stop (re-checked server-side).
+// Admin UI is Hebrew-only (project rule) — every string lives here.
+const DEL_TXT = {
+  loading: 'טוען תצוגה מקדימה… שום דבר עוד לא נמחק',
+  title: 'מחיקת לקוח לצמיתות',
+  sub: 'תצוגה מקדימה — עוד לא נמחק כלום. קרא/י את האזהרות והחליט/י.',
+  counts: 'מה יימחק',
+  warnings: 'אזהרות — הן לא חוסמות, ההחלטה שלך',
+  none: 'לא נמצאו אזהרות מיוחדות.',
+  backup: 'הורדת גיבוי',
+  backupNote: 'גיבוי JSON של כל המידע על הלקוח — בלי מפתחות או סיסמאות (רק "היה מחובר").',
+  backupDone: '✓ הגיבוי ירד',
+  backupEarlier: '✓ גיבוי הורד קודם (בתוקף ל-6 שעות)',
+  backupFail: 'הורדת הגיבוי נכשלה — אפשר לנסות שוב, או לסמן "מחק בלי גיבוי".',
+  skip: 'מחק בלי גיבוי',
+  confirmLabel: (name, id) => `כדי לאשר, הקלד/י את שם הלקוח בדיוק: "${name}" (או את המספר ${id})`,
+  cancel: 'ביטול',
+  del: 'מחק לצמיתות',
+  deleting: 'מוחק… לא לסגור את החלון',
+  close: 'סגירה',
+  retry: 'להריץ שוב את המחיקה (ממשיך מאיפה שעצר)',
+  doneTitle: '✓ הלקוח נמחק',
+  partialTitle: '⚠ המחיקה הושלמה חלקית',
+  partialNote: 'הלקוח עדיין ברשימה כדי שאפשר יהיה להשלים. אפשר להריץ שוב — המחיקה ממשיכה מאיפה שעצרה.',
+  removed: 'מה נמחק',
+  revoked: 'ביטול הרשאות בפלטפורמות',
+  revokeOk: 'בוטל', revokeNone: 'אין מה לבטל מרחוק — העותק שלנו נמחק', revokeFail: 'לא אושר — כדאי לבטל ידנית',
+  failed: 'שלבים שנכשלו',
+  external: 'לא נמחק אוטומטית — לטיפול שלך בנפרד',
+  netFail: 'הבקשה לא הגיעה לשרת (רשת / timeout). שום דבר לא אושר כנמחק — אפשר לנסות שוב.',
+  errors: {
+    ERR_CLIENT_NOT_FOUND: 'הלקוח לא נמצא — אולי כבר נמחק. רענן/י את הרשימה.',
+    ERR_CONFIRM_MISMATCH: 'השם/המספר שהוקלד לא תואם בדיוק. שום דבר לא נמחק.',
+    ERR_BACKUP_REQUIRED: 'צריך להוריד גיבוי (או לסמן "מחק בלי גיבוי") לפני המחיקה. שום דבר לא נמחק.',
+    ERR_PROTECTED_CLIENT: 'זה חשבון מוגן (פנימי או של הבעלים) — לא ניתן למחוק מכאן. שום דבר לא נמחק.',
+  },
+  stops: {
+    internal: 'חשבון פנימי (ללא חיוב) — לא ניתן למחוק מהמסך הזה בכלל.',
+    owner: 'זה חשבון של הבעלים — לא ניתן למחוק מהמסך הזה בכלל.',
+  },
+  countLabels: {
+    client_accounts: 'חיבורים (כולל מפתחות מוצפנים)', client_costs: 'רשומות עלות (יהפכו למצטבר חודשי אנונימי)',
+    client_activity: 'פעילות', client_communications: 'הודעות צ׳אט', client_suggestions: 'הצעות / משימות',
+    client_agents: 'סוכנים משויכים', client_leads: 'לידים של הלקוח (הלקוחות שלו)', client_feedback: 'משוב',
+    client_lead_volume: 'נפח לידים', landing_pages: 'דפי נחיתה', admin_agent_chat: 'שיחות חדר בקרה',
+    client_target_keywords: 'מילות מפתח יעד', login_codes: 'קודי כניסה', leads: 'רשומות שיחת המכירה',
+    lead_messages: 'הודעות שיחת המכירה', app_settings: 'הגדרות לקוח', clients: 'פרופיל הלקוח',
+  },
+  ext: {
+    website: 'אתר (WordPress)', hosted_site: 'אתר שמתארח אצלנו (InstaWP) — האחסון ממשיך לעלות עד שיבוטל',
+    domain: 'דומיין לדף נחיתה (Cloudflare)', drive_folder: 'תיקיית Drive של הלקוח', ad_account_google: 'חשבון Google Ads',
+    ad_account_meta: 'חשבון פרסום Meta', youtube_channel: 'ערוץ YouTube', tiktok_account: 'חשבון TikTok',
+    merchant_center: 'Merchant Center', gtm_container: 'מכולת Tag Manager', running_campaigns: 'קמפיינים שרצים עכשיו',
+  },
+};
+
+function delWarningHtml(w) {
+  const items = w.items || [];
+  if (w.code === 'connections') return `🔌 חיבורים: ${esc(items.join(', '))} — ההרשאות יבוטלו בפלטפורמה כשזה אפשרי, והמפתחות המוצפנים יימחקו.`;
+  if (w.code === 'billing') return '💳 חיוב:<br>' + items.map(b => b.kind === 'subscription'
+      ? `· מנוי PayPal ${esc(b.id)} — סטטוס ${esc(b.status)}${b.monthly_fee ? ` (${ils(b.monthly_fee)}/חודש)` : ''}. <b>המחיקה לא מבטלת את המנוי</b> — יש לבטל ב-PayPal, אחרת החיוב ימשיך.`
+      : `· חשבונית ${esc(b.id)} לא שולמה.`).join('<br>')
+    + '<br>ייתכן שחובה לשמור רשומות חיוב וחשבוניות מסיבות חוקיות/מס — מומלץ להוריד גיבוי לפני המחיקה.';
+  if (w.code === 'external') return '🌐 משאבים חיצוניים שלא יימחקו אוטומטית — יש לטפל בכל אחד בנפרד:<br>'
+    + items.map(x => `· ${esc(DEL_TXT.ext[x.kind] || x.kind)}${x.ref ? ` — <span dir="ltr">${esc(x.ref)}</span>` : ''}`).join('<br>');
+  if (w.code === 'recent_activity') return `🕒 ${esc(items[0])} פעולות ב-30 הימים האחרונים — הלקוח פעיל.`;
+  if (w.code === 'client_leads') return `👥 ${esc(items[0])} לידים של הלקוח (פרטי הלקוחות שלו) יימחקו — מומלץ לגבות.`;
+  if (w.code === 'undelivered') return `📦 ${esc(items[0])} פריטים שממתינים לאישור או למסירה ללקוח.`;
+  if (w.code === 'landing_pages') return `🎯 ${esc(items[0])} דפי נחיתה — יפסיקו להיות זמינים מיד.`;
+  if (w.code === 'feedback') return `💬 ${esc(items[0])} משובים מהלקוח שעוד לא נקראו.`;
+  return esc(w.code);
+}
+
+let delState = null;
+
+function closeDeleteClient() {
+  document.getElementById('delModal').classList.remove('open');
+  document.getElementById('delOverlay').classList.remove('open');
+  delState = null;
+}
+document.getElementById('delOverlay').addEventListener('click', () => { if (!delState || !delState.busy) closeDeleteClient(); });
+
+async function openDeleteClient(clientId) {
+  delState = { clientId, preview: null, backupDone: false, busy: false };
+  document.getElementById('delOverlay').classList.add('open');
+  document.getElementById('delModal').classList.add('open');
+  const body = document.getElementById('delBody');
+  body.innerHTML = `<div class="del-sub">${esc(DEL_TXT.loading)}</div>`;
+  let res, data;
+  try {
+    res = await fetch(`/api/admin/clients/${Number(clientId)}/delete-preview`, { credentials: 'same-origin' });
+  } catch (e) {
+    body.innerHTML = `<div class="del-stop">${esc(DEL_TXT.netFail)}</div><div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    return;
+  }
+  if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!res.ok || !data || !data.success) {
+    const code = data && data.detail && data.detail.code;
+    body.innerHTML = `<div class="del-stop">${esc(DEL_TXT.errors[code] || ('שגיאה בטעינת התצוגה המקדימה (HTTP ' + res.status + '). שום דבר לא נמחק.'))}</div>
+      <div class="del-actions"><button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    return;
+  }
+  delState.preview = data.data;
+  delState.backupDone = !!data.data.backup_downloaded_at;
+  renderDeleteClient();
+}
+
+function renderDeleteClient() {
+  const p = delState.preview, c = p.client;
+  const body = document.getElementById('delBody');
+  const head = `<div class="del-title" id="delTitle">${esc(DEL_TXT.title)}</div>
+    <div class="del-sub">${esc(c.name)} · <span dir="ltr">${esc(c.email || '—')}</span> · #${Number(c.id)} · ${esc(DEL_TXT.sub)}</div>`;
+  if ((p.hard_stops || []).length) {
+    body.innerHTML = head + p.hard_stops.map(s => `<div class="del-stop">⛔ ${esc(DEL_TXT.stops[s] || s)}</div>`).join('')
+      + `<div class="del-actions"><button class="alert-btn" id="delCancelBtn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button></div>`;
+    document.getElementById('delCancelBtn').focus();
+    return;
+  }
+  const counts = Object.entries(p.counts || {}).filter(([, n]) => n !== 0).map(([t, n]) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(DEL_TXT.countLabels[t] || t)}</span><span>${n < 0 ? '—' : Number(n)}</span></div>`).join('')
+    + `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(DEL_TXT.countLabels.clients)}</span><span>1</span></div>`;
+  const warnings = (p.warnings || []).map(w => `<div class="del-warn">${delWarningHtml(w)}</div>`).join('')
+    || `<div class="del-sub">${esc(DEL_TXT.none)}</div>`;
+  body.innerHTML = head
+    + `<div class="drawer-label" style="margin-top:6px;">${esc(DEL_TXT.warnings)}</div>${warnings}`
+    + `<div class="drawer-label" style="margin-top:14px;">${esc(DEL_TXT.counts)}</div>${counts}`
+    + `<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+         <button class="alert-btn" onclick="downloadDeleteBackup()">${esc(DEL_TXT.backup)}</button>
+         <span id="delBackupMsg" style="font-size:12px;color:var(--green);">${delState.backupDone ? esc(DEL_TXT.backupEarlier) : ''}</span>
+       </div>
+       <div class="del-sub" style="margin:6px 0 0;">${esc(DEL_TXT.backupNote)}</div>
+       <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-top:8px;cursor:pointer;">
+         <input type="checkbox" id="delSkipBackup" onchange="updateDeleteButton()"> ${esc(DEL_TXT.skip)}</label>
+       <div style="font-size:13px;margin-top:14px;">${esc(DEL_TXT.confirmLabel(c.name, c.id))}</div>
+       <input class="del-input" id="delConfirmInput" dir="auto" autocomplete="off" oninput="updateDeleteButton()">
+       <div id="delMsg" style="font-size:12.5px;"></div>
+       <div class="del-actions">
+         <button class="alert-btn" id="delCancelBtn" onclick="closeDeleteClient()">${esc(DEL_TXT.cancel)}</button>
+         <button class="del-danger" id="delGoBtn" disabled onclick="runDeleteClient()">${esc(DEL_TXT.del)}</button>
+       </div>`;
+  // Enter never deletes — only a deliberate click on the red button does
+  document.getElementById('delConfirmInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  document.getElementById('delCancelBtn').focus();
+}
+
+function updateDeleteButton() {
+  if (!delState || !delState.preview) return;
+  const c = delState.preview.client;
+  const typed = (document.getElementById('delConfirmInput').value || '').trim();
+  const matches = typed && (typed === (c.name || '').trim() || typed === String(c.id));
+  const backupOk = delState.backupDone || document.getElementById('delSkipBackup').checked;
+  document.getElementById('delGoBtn').disabled = !(matches && backupOk) || delState.busy;
+}
+
+async function downloadDeleteBackup() {
+  const msg = document.getElementById('delBackupMsg');
+  msg.style.color = 'var(--gray)'; msg.textContent = 'מכין גיבוי…';
+  try {
+    const res = await fetch(`/api/admin/clients/${Number(delState.clientId)}/delete-backup`, { credentials: 'same-origin' });
+    if (res.status === 401) { closeDeleteClient(); showLogin(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `uallak-client-${Number(delState.clientId)}-backup.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    delState.backupDone = true;
+    msg.style.color = 'var(--green)'; msg.textContent = DEL_TXT.backupDone;
+  } catch (e) {
+    console.error('backup download failed', e);
+    msg.style.color = 'var(--accent)'; msg.textContent = DEL_TXT.backupFail;
+  }
+  updateDeleteButton();
+}
+
+async function runDeleteClient() {
+  const c = delState.preview.client;
+  const confirmText = (document.getElementById('delConfirmInput').value || '').trim();
+  const skip = document.getElementById('delSkipBackup').checked;
+  delState.busy = true;
+  updateDeleteButton();
+  const msg = document.getElementById('delMsg');
+  msg.style.color = 'var(--gray)'; msg.textContent = DEL_TXT.deleting;
+  let res, data;
+  try {
+    res = await fetch(`/api/admin/clients/${Number(c.id)}/delete`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: confirmText, skip_backup: skip }),
+    });
+  } catch (e) {
+    delState.busy = false; updateDeleteButton();
+    msg.style.color = 'var(--accent)'; msg.textContent = DEL_TXT.netFail;
+    return;
+  }
+  if (res.status === 401) { delState.busy = false; closeDeleteClient(); showLogin(); return; }
+  try { data = await res.json(); } catch (e) { data = null; }
+  delState.busy = false;
+  if (!res.ok || !data || !data.success) {
+    const code = data && data.detail && data.detail.code;
+    updateDeleteButton();
+    msg.style.color = 'var(--accent)';
+    msg.textContent = DEL_TXT.errors[code] || `המחיקה נעצרה (HTTP ${res.status}) — שום דבר לא אושר כנמחק. אפשר לנסות שוב.`;
+    return;
+  }
+  renderDeleteResult(data.data, c);
+  loadClients();
+}
+
+function renderDeleteResult(r, c) {
+  const removed = Object.entries(r.removed || {}).map(([t, n]) =>
+    `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(DEL_TXT.countLabels[t] || t)}</span><span>${Number(n)}</span></div>`).join('');
+  const revoke = (r.revoke || []).map(x => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(x.platform)}</span>
+      <span style="color:${x.revoked === true ? 'var(--green)' : (x.revoked === false || x.error) ? 'var(--yellow)' : 'var(--gray)'};">
+      ${esc(x.revoked === true ? DEL_TXT.revokeOk : (x.revoked === false || x.error) ? DEL_TXT.revokeFail : DEL_TXT.revokeNone)}</span></div>`).join('');
+  const failed = (r.failed || []).map(f => `· ${esc(DEL_TXT.countLabels[f.step] || f.step)} (${esc(f.error)})`).join('<br>');
+  const external = (r.not_removed || []).map(x => `· ${esc(DEL_TXT.ext[x.kind] || x.kind)}${x.ref ? ` — <span dir="ltr">${esc(x.ref)}</span>` : ''}`).join('<br>');
+  document.getElementById('delBody').innerHTML = `
+    <div class="del-title">${esc(r.success ? DEL_TXT.doneTitle : DEL_TXT.partialTitle)}</div>
+    <div class="del-sub">${esc(c.name)} · #${Number(c.id)}</div>
+    ${r.success ? '' : `<div class="del-stop">${esc(DEL_TXT.partialNote)}<br><span style="font-weight:400;">${failed}</span></div>`}
+    <div class="drawer-label">${esc(DEL_TXT.removed)}</div>${removed || '<div class="del-sub">—</div>'}
+    ${revoke ? `<div class="drawer-label" style="margin-top:12px;">${esc(DEL_TXT.revoked)}</div>${revoke}` : ''}
+    ${external ? `<div class="del-warn" style="margin-top:12px;"><b>${esc(DEL_TXT.external)}</b><br>${external}</div>` : ''}
+    <div class="del-actions">
+      ${r.success ? '' : `<button class="alert-btn" onclick="openDeleteClient(${Number(c.id)})">${esc(DEL_TXT.retry)}</button>`}
+      <button class="alert-btn" onclick="closeDeleteClient()">${esc(DEL_TXT.close)}</button>
+    </div>`;
+}
+
 // ─── marketing automation (ManyChat / Make) ──────────────────────────────────
 // API token per client, encrypted server-side and NEVER shown back (at most
 // the last 4 characters). Passwords are no longer stored; an old stored login
@@ -1996,7 +2260,8 @@ async function crLoadLegacyLogins(names) {
 }
 
 const CR_COST_CATS = { chat: 'צ׳אט', proposal: 'הצעות', content: 'תוכן', media: 'מדיה', seo: 'SEO', infra: 'תשתית' };
-const CR_OWNER_LABEL = { internal: 'פנימי (uallak)', lead: 'שיחות מכירה שלא הומרו', unattributed: 'לא משויך ⚠' };
+const CR_OWNER_LABEL = { internal: 'פנימי (uallak)', lead: 'שיחות מכירה שלא הומרו', unattributed: 'לא משויך ⚠',
+                         deleted_client: 'לקוחות שנמחקו (מצטבר אנונימי)' };
 async function crLoadCostsMonthly(names) {
   const el = document.getElementById('crCostsMonthly');
   if (!el) return;

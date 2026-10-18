@@ -2161,6 +2161,68 @@ def admin_archive_client(client_id: int, request: Request):
                              ensure_ascii=False, indent=2, default=str)
     return {"success": True, "data": _archive_and_purge_client(client_id, client, export_json)}
 
+# ─── Admin: delete a client completely (core/client_deletion.py) ─────────────
+# Admin-session only, never mirrored on a client endpoint. Preview first (no
+# changes), backup download, then the delete itself with the typed
+# confirmation — every refusal is re-checked here, not only in the UI.
+
+@app.get("/api/admin/clients/{client_id}/delete-preview")
+def admin_delete_preview(client_id: int, request: Request):
+    # Plain `def`: reads PayPal + the ad platforms for the warnings
+    _require_admin(request)
+    from core import client_deletion
+    data = client_deletion.preview(client_id, _client_subscription_info)
+    if not data.get("found"):
+        raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_FOUND"})
+    return {"success": True, "data": data}
+
+@app.get("/api/admin/clients/{client_id}/delete-backup")
+def admin_delete_backup(client_id: int, request: Request):
+    # Everything about the client EXCEPT secrets (connections are platform +
+    # account id + status only; every string is redacted). Downloading it is
+    # what unlocks the delete without "delete without backup".
+    _require_admin(request)
+    from core import client_deletion
+    from core.redaction import redact_obj
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_FOUND"})
+    backup = {"backup_kind": "pre_deletion", **_build_client_export(client_id),
+              **client_deletion.extra_backup(client_id)}
+    client_deletion.mark_backup(client_id)
+    return Response(
+        content=json.dumps(redact_obj(backup), ensure_ascii=False, indent=2, default=str),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="uallak-client-{client_id}-backup.json"'})
+
+class AdminDeleteClientRequest(BaseModel):
+    confirm: str             # the client's exact name, or their id
+    skip_backup: bool = False  # the explicit "delete without backup" tick
+
+_DELETE_REFUSALS = {
+    "not_found": (404, "ERR_CLIENT_NOT_FOUND"),
+    "confirm_mismatch": (400, "ERR_CONFIRM_MISMATCH"),
+    "backup_required": (400, "ERR_BACKUP_REQUIRED"),
+}
+
+@app.post("/api/admin/clients/{client_id}/delete")
+def admin_delete_client(client_id: int, req: AdminDeleteClientRequest, request: Request):
+    # Plain `def`: provider revokes + many deletes are blocking calls
+    _require_admin(request)
+    from core import client_deletion
+    try:
+        result = client_deletion.delete_client_full(
+            client_id, req.confirm, req.skip_backup,
+            disconnect=_disconnect_platform, disconnect_groups=_DISCONNECT_GROUPS,
+            subscription_info=_client_subscription_info)
+    except ValueError as e:
+        reason = str(e)
+        if reason.startswith("hard_stop:"):
+            raise HTTPException(status_code=403, detail={"code": "ERR_PROTECTED_CLIENT",
+                                                         "reasons": reason.split(":", 1)[1].split(",")})
+        status, code = _DELETE_REFUSALS.get(reason, (400, "ERR_DELETE_REFUSED"))
+        raise HTTPException(status_code=status, detail={"code": code})
+    return {"success": True, "data": result}
+
 # ─── Google Ads OAuth (client connects their own ad account) ─────────────────
 
 def _log_bad_oauth_state(provider: str, state: str, error: str = ""):
