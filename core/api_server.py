@@ -11,6 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
                                StreamingResponse)
 from pydantic import BaseModel
+
+# Before ANY Supabase client exists: short retry for dropped Supabase
+# connections (httpx RemoteProtocolError / ConnectionTerminated), every module
+from core import db_retry
+db_retry.install()
+
 from supabase import create_client as _supabase_create_client, Client
 
 from agents.keys_agent import inject_all_keys, validate_keys
