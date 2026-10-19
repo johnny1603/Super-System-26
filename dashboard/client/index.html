@@ -1219,6 +1219,22 @@ a.media-item:hover { border-color: var(--accent); }
 
     <div class="conn-card unlocked">
       <div class="conn-top">
+        <div class="conn-icon" style="background:#246FDB;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2.5l9.5 9.5-9.5 9.5L2.5 12z"/><circle cx="12" cy="12" r="2.5" fill="white" stroke="none"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="gtm_card">מדידת המרות (Google Tag Manager)</div>
+          <div class="conn-status" id="gtmStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="gtmBtn" onclick="connectGtm()" data-i18n="connect_now">חבר עכשיו</button>
+      <button type="button" class="conn-help-btn" data-help-id="tag_manager" style="display:none;" onclick="helpConnection('tag_manager')" data-i18n="conn_help_btn">עזרה</button>
+      <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
+      <div class="lock-note" id="gtmReconnectNote" style="display:none; margin-top:6px;" data-i18n="gtm_reconnect_note">עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.</div>
+    </div>
+
+    <div class="conn-card unlocked">
+      <div class="conn-top">
         <div class="conn-icon" style="background:#464646;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
         </div>
@@ -1266,10 +1282,6 @@ a.media-item:hover { border-color: var(--accent); }
       <div id="siteCreateProgress" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="site_create_in_progress">האתר החדש שלכם בהקמה כרגע — זה עשוי לקחת כמה דקות. אפשר להמשיך לגלוש בדשבורד, נעדכן כאן וגם בצ'אט ברגע שהוא מוכן.</div>
       </div>
-      <button class="conn-btn secondary" id="gtmLink" style="margin-top:8px;" onclick="connectGtm()" data-i18n="gtm_connect_btn">חיבור מדידת המרות (Google Tag Manager)</button>
-      <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
-      <button type="button" class="conn-help-btn" data-help-id="tag_manager" style="display:none;" onclick="helpConnection('tag_manager')" data-i18n="conn_help_btn">עזרה</button>
-      <div class="lock-note" id="gtmReconnectNote" style="display:none; margin-top:6px;" data-i18n="gtm_reconnect_note">עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.</div>
     </div>
 
     <div class="conn-card unlocked">
@@ -2168,6 +2180,7 @@ const DASH_I18N = {
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
+  gtm_card: { he:'מדידת המרות (Google Tag Manager)', en:'Conversion measurement (Google Tag Manager)', fr:'Mesure des conversions (Google Tag Manager)', ar:'قياس التحويلات (Google Tag Manager)', ru:'Измерение конверсий (Google Tag Manager)' },
   gtm_connect_btn: { he:'חיבור מדידת המרות (Google Tag Manager)', en:'Connect conversion measurement (Google Tag Manager)', fr:'Connecter la mesure des conversions (Google Tag Manager)', ar:'ربط قياس التحويلات (Google Tag Manager)', ru:'Подключить измерение конверсий (Google Tag Manager)' },
   gtm_reconnect_btn: { he:'עדכון החיבור למדידת המרות', en:'Update the conversion measurement connection', fr:'Mettre à jour la connexion de mesure des conversions', ar:'تحديث ربط قياس التحويلات', ru:'Обновить подключение измерения конверсий' },
   gtm_reconnect_note: { he:'עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.', en:'Please update your Google Tag Manager connection: we need one more permission — to save a version of the measurement settings so they take effect. Click the button and approve on Google\'s screen. Nothing on your site has changed.', fr:'Merci de mettre à jour votre connexion Google Tag Manager : il nous faut une autorisation de plus — enregistrer une version des réglages de mesure pour qu\'ils s\'appliquent. Cliquez sur le bouton et validez sur l\'écran de Google. Rien n\'a changé sur votre site.', ar:'يرجى تحديث ربط Google Tag Manager: نحتاج إذنًا إضافيًا واحدًا — حفظ نسخة من إعدادات القياس لكي تدخل حيز التنفيذ. اضغطوا على الزر ووافقوا في شاشة Google. لم يتغير شيء في موقعكم.', ru:'Пожалуйста, обновите подключение Google Tag Manager: нужно ещё одно разрешение — сохранять версию настроек измерения, чтобы они вступили в силу. Нажмите кнопку и подтвердите на экране Google. На вашем сайте ничего не изменилось.' },
@@ -2530,8 +2543,8 @@ async function loadDashboard() {
     } else if (conns.some(c => c.platform === 'merchant_center_pending' && c.status === 'active')) {
       showMerchantIdForm();
     }
-    // The measurement consent button is always shown; without a site the
-    // note says the tags go in once one is connected
+    // The measurement card is always usable; without a site its note says
+    // the tags go in once one is connected
     const hasSite = conns.some(c => c.platform === 'wordpress' && c.status === 'active');
     document.getElementById('gtmNoSiteNote').style.display = hasSite ? 'none' : 'block';
     if (hasSite) {
@@ -3070,31 +3083,24 @@ function connectTiktokExplained() {
 }
 
 // GTM measurement consent - a SEPARATE Google consent from Google Ads (its
-// own scopes); always on the site card, with a note while no site is connected
+// own scopes), on its own card; usable without a site, with a note saying
+// the tags go in once one is connected
 function connectGtm() {
   preactExplain('gtm', () => { window.location.href = '/api/oauth/gtm/start'; });
 }
 function markGtmConnected() {
-  const link = document.getElementById('gtmLink');
-  link.style.display = 'block';
-  link.textContent = uallakI18n.t('gtm_connected_btn');
-  link.removeAttribute('data-i18n');
-  link.className = 'conn-btn connected-btn';
-  link.onclick = null;
-  link.style.marginTop = '8px';
+  markPlatformConnected('gtmStatus', 'gtmBtn', 'gtm');
   document.getElementById('gtmReconnectNote').style.display = 'none';
 }
 // The stored Tag Manager grant predates a permission we now need (saving a
 // version of the measurement setup). Nothing is broken on their site - one
 // more approval on Google's screen and it's complete.
 function markGtmNeedsReconnect() {
-  const link = document.getElementById('gtmLink');
-  link.style.display = 'block';
-  link.textContent = uallakI18n.t('gtm_reconnect_btn');
-  link.removeAttribute('data-i18n');
-  link.className = 'conn-btn secondary';
-  link.onclick = () => { window.location.href = '/api/oauth/gtm/start'; };
-  link.style.marginTop = '8px';
+  markPlatformConnected('gtmStatus', 'gtmBtn', 'gtm');
+  const btn = document.getElementById('gtmBtn');
+  btn.textContent = uallakI18n.t('gtm_reconnect_btn');
+  btn.className = 'conn-btn primary';
+  btn.onclick = () => { window.location.href = '/api/oauth/gtm/start'; };
   document.getElementById('gtmReconnectNote').style.display = 'block';
 }
 
