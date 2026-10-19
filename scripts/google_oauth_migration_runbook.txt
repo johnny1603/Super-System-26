@@ -1,0 +1,407 @@
+GOOGLE OAUTH MIGRATION RUNBOOK
+Move all Google sign-in / connect flows from project 554652696367 to super-system-500410
+=======================================================================================
+
+How to use this file:
+- Copy everything between the "----- copy" lines and paste it. Nothing else.
+- SHELL blocks go in Google Cloud Shell (console.cloud.google.com > the >_ icon).
+- SQL blocks go in the Supabase SQL editor (SQL Editor > New query > Run).
+- CONSOLE steps are clicks in console.cloud.google.com, with super-system-500410 selected
+  in the project picker at the top of the page. Check the project name before every click.
+- If you do not see the "Pass:", STOP and send the whole output to Claude.
+- Never paste a client secret, key or password into a chat, an email or this file.
+
+What the code does today (checked in the code, 2026-10-19):
+- ONE Google OAuth client is shared by five flows: Google sign-in, Google Ads, YouTube,
+  Tag Manager and Merchant Center. Its ID/secret come from two env vars (section 4).
+- Every redirect URI is built from PUBLIC_APP_URL (default https://app.uallak.com).
+- The code does NOT use Google Analytics or Search Console APIs or scopes at all.
+  Do not enable or add them now - unused scopes make Google verification harder.
+- No code change is needed for this move. Only settings change.
+
+
+ORDER OF WORK (do it in this order)
+-----------------------------------
+ A. Section 4, step 4a - inventory (read-only). Section 5, step 5a - who must reconnect.
+ B. Section 1 - enable the APIs.
+ C. Section 2 - consent screen (Google Auth Platform) + scopes.
+ D. Section 3 - create the new OAuth client with the redirect URIs.
+ E. Section 6, item 6a - check the Google Ads developer token BEFORE switching.
+ F. Section 4, step 4b - the switch (store the secret, attach to Cloud Run).
+ G. Section 4, step 4c - test. Section 4, step 4d - Merchant Center registration.
+ H. Section 5 - clients reconnect. Section 6 - verification submission.
+ Rollback at any time: section 4, step 4e.
+
+
+=======================================================================================
+SECTION 1 - Google APIs that must be ENABLED in super-system-500410
+=======================================================================================
+
+  Google Ads API ............ googleads.googleapis.com     (Google Ads connect + all Ads work)
+  YouTube Data API v3 ....... youtube.googleapis.com       (upload, stats, niche search key)
+  Tag Manager API ........... tagmanager.googleapis.com    (conversion tag setup)
+  Merchant API .............. merchantapi.googleapis.com   (Merchant Center feed status)
+  Google Drive API .......... drive.googleapis.com         (service-account media folders)
+  Secret Manager API ........ secretmanager.googleapis.com (stores the new client secret)
+  API Keys API .............. apikeys.googleapis.com       (only for step 4f, YouTube key)
+
+Google sign-in (openid, email) needs no API to be enabled.
+Drive is used by a SERVICE ACCOUNT, not the OAuth client. It must be enabled in the
+service account's own project; enabling it here too is harmless (step 4a shows that project).
+
+STEP 1 - SHELL - Enable all of them
+Pass: "Operation ... finished successfully" (or no output if they were already enabled).
+----- copy from here -----
+gcloud services enable googleads.googleapis.com youtube.googleapis.com \
+  tagmanager.googleapis.com merchantapi.googleapis.com drive.googleapis.com \
+  secretmanager.googleapis.com apikeys.googleapis.com --project=super-system-500410
+----- copy until here -----
+
+
+=======================================================================================
+SECTION 2 - OAuth scopes the code requests (for the consent screen "Data access" page)
+=======================================================================================
+
+Each flow is a SEPARATE consent that asks only for its own scopes.
+
+  Flow             Scope                                                    Class
+  ---------------  -------------------------------------------------------  -------------
+  Google sign-in   openid                                                   non-sensitive
+  Google sign-in   https://www.googleapis.com/auth/userinfo.email (email)   non-sensitive
+  Google Ads       https://www.googleapis.com/auth/adwords                  sensitive
+  Merchant Center  https://www.googleapis.com/auth/content                  sensitive
+  YouTube          https://www.googleapis.com/auth/youtube.upload           sensitive
+  YouTube          https://www.googleapis.com/auth/youtube.readonly         sensitive
+  Tag Manager      https://www.googleapis.com/auth/tagmanager.edit.containers         sensitive
+  Tag Manager      https://www.googleapis.com/auth/tagmanager.edit.containerversions  sensitive
+  Tag Manager      https://www.googleapis.com/auth/tagmanager.publish                 sensitive
+
+- No RESTRICTED scope is requested by any consent flow.
+- The Drive scope (https://www.googleapis.com/auth/drive) is used ONLY by the service
+  account. It is NOT a user consent - do NOT add it to the consent screen.
+- When you add each scope, the console shows its class. If the console's class differs
+  from this table, the console is right - note it and tell Claude.
+- The written justification for every scope is in docs/GOOGLE-SCOPES.md (repo).
+
+STEP 2 - CONSOLE - Set up the consent screen in super-system-500410
+Menu: APIs & Services > OAuth consent screen (also called "Google Auth Platform").
+  1. Branding: copy app name, support email, logo, home page, privacy policy URL and
+     terms URL EXACTLY as they are in the old project's consent screen (see section 6).
+     Terms page in our app: https://app.uallak.com/terms/
+  2. Authorized domains: uallak.com
+  3. Audience: User type = External. Publishing status = In production
+     ("Testing" only lets listed test users in, and their Google grants expire after 7 days).
+  4. Data access: "Add or remove scopes" - add exactly the 9 scopes in the table above
+     (paste the full URLs into "Manually add scopes"). Nothing else.
+Pass: the Data access page lists exactly those 9 scopes, sorted into the classes above.
+
+
+=======================================================================================
+SECTION 3 - The new OAuth client: redirect URIs and JavaScript origins
+=======================================================================================
+
+STEP 3a - SHELL - Print the exact URIs for this service (read-only)
+Pass: a list of 5 URIs on app.uallak.com, then the same 5 on each Cloud Run URL.
+----- copy from here -----
+gcloud run services describe super-system --region me-west1 \
+  --project=super-system-500410 --format=json | python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+urls = ["https://app.uallak.com"]
+ann = s["metadata"].get("annotations", {}).get("run.googleapis.com/urls", "")
+urls += json.loads(ann) if ann else [s["status"]["url"]]
+paths = ["google-login", "google-ads", "youtube", "gtm", "merchant-center"]
+for u in urls:
+    for p in paths:
+        print(u.rstrip("/") + "/api/oauth/" + p + "/callback")
+'
+----- copy until here -----
+
+For reference, the five on app.uallak.com (the ones actually used today) are:
+  https://app.uallak.com/api/oauth/google-login/callback
+  https://app.uallak.com/api/oauth/google-ads/callback
+  https://app.uallak.com/api/oauth/youtube/callback
+  https://app.uallak.com/api/oauth/gtm/callback
+  https://app.uallak.com/api/oauth/merchant-center/callback
+The Cloud Run copies are a fallback: they are only used if PUBLIC_APP_URL is ever changed
+to the Cloud Run URL. (/api/oauth/meta and /api/oauth/tiktok are NOT Google - leave out.)
+
+Authorized JavaScript origins: NONE. The code never signs in from the browser with a
+Google script; every flow is a server redirect. Leave that list empty.
+
+STEP 3b - CONSOLE - Create the client
+Menu: APIs & Services > Credentials > Create credentials > OAuth client ID.
+  Application type: Web application.  Name: uallak web.
+  Authorized JavaScript origins: leave empty.
+  Authorized redirect URIs: add every line printed by step 3a (one per row).
+  Click Create. Copy the Client ID into a note for step 4b.
+  Download the JSON or keep the dialog open for the Client secret - do NOT paste it
+  anywhere except the hidden prompt in step 4b.
+Pass: the client appears under "OAuth 2.0 Client IDs" and starts with the number of
+super-system-500410 (step 4a prints that number), NOT 554652696367.
+
+
+=======================================================================================
+SECTION 4 - Env vars, where they live, and the switch
+=======================================================================================
+
+Env vars the code reads for Google (agents/keys_agent.py and core/*_service.py):
+  GOOGLE_OAUTH_CLIENT_ID ........ OAuth client ID (all 5 flows)              -> CHANGES
+  GOOGLE_OAUTH_CLIENT_SECRET .... OAuth client secret (all 5 flows)          -> CHANGES
+  GOOGLE_ADS_DEVELOPER_TOKEN .... Google Ads developer token (not OAuth)     -> stays
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID .. optional Ads manager account id            -> stays
+  YOUTUBE_DATA_API_KEY .......... plain API key, YouTube niche search        -> step 4f
+  GOOGLE_SERVICE_ACCOUNT_JSON ... Drive service account (not OAuth)          -> stays
+  PUBLIC_APP_URL ................ base of every redirect URI                 -> stays
+Whether each is a plain Cloud Run env var or a Secret Manager reference is NOT in the
+code - step 4a prints it from the live service.
+
+STEP 4a - SHELL - Inventory (read-only; prints no secret value)
+Pass: one line per variable saying "plain env var", "Secret Manager: ..." or "NOT SET",
+plus the project number of the OAuth client in use today (expect 554652696367).
+----- copy from here -----
+gcloud projects describe super-system-500410 --format='value(projectNumber)' \
+  | sed 's/^/super-system-500410 project number: /'
+gcloud run services describe super-system --region me-west1 \
+  --project=super-system-500410 --format=json | python3 -c '
+import json, sys
+spec = json.load(sys.stdin)["spec"]["template"]["spec"]
+env = {e["name"]: e for e in spec["containers"][0].get("env", [])}
+print("Cloud Run runs as:", spec.get("serviceAccountName") or "default compute account")
+for n in ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
+          "GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+          "YOUTUBE_DATA_API_KEY", "GOOGLE_SERVICE_ACCOUNT_JSON", "PUBLIC_APP_URL"):
+    e = env.get(n)
+    if not e:
+        print(n, "-> NOT SET")
+    elif "value" in e:
+        print(n, "-> plain env var")
+    else:
+        r = e["valueFrom"]["secretKeyRef"]
+        print(n, "-> Secret Manager:", r["name"], "version", r["key"])
+cid = env.get("GOOGLE_OAUTH_CLIENT_ID", {}).get("value", "")
+print("OAuth client project number today:", cid.split("-")[0] if cid else "unknown")
+print("PUBLIC_APP_URL:", env.get("PUBLIC_APP_URL", {}).get("value", "default app.uallak.com"))
+sa = env.get("GOOGLE_SERVICE_ACCOUNT_JSON", {}).get("value", "")
+if sa:
+    j = json.loads(sa)
+    print("Drive service account project:", j.get("project_id"), "-", j.get("client_email"))
+'
+----- copy until here -----
+
+STEP 4b - SHELL - THE SWITCH. Stores the new secret and points Cloud Run at the new client.
+Do this at a quiet hour. From here until clients reconnect, Google connections are down.
+It asks for the Client ID (shown) and the Client secret (hidden - nothing appears while
+you paste; press Enter). The secret is never printed.
+Pass: "ROLLBACK revision: ..." (WRITE IT DOWN), "Created version [1]", "Updated IAM
+policy", and the last line says the revision "is serving 100 percent of traffic".
+If it says "V2 SECRET ALREADY EXISTS", stop and ask Claude - do not create another.
+----- copy from here -----
+P=super-system-500410
+OLD_REV=$(gcloud run services describe super-system --region me-west1 --project=$P \
+  --format='value(status.latestReadyRevisionName)')
+echo "ROLLBACK revision: $OLD_REV"
+if gcloud secrets describe GOOGLE_OAUTH_CLIENT_SECRET_V2 --project=$P >/dev/null 2>&1
+then
+  echo "V2 SECRET ALREADY EXISTS - stop and ask Claude."
+else
+  read -rp "Paste the NEW Client ID, then Enter: " CID
+  read -rsp "Paste the NEW Client secret (hidden), then Enter: " CS; echo
+  printf '%s' "$CS" | gcloud secrets create GOOGLE_OAUTH_CLIENT_SECRET_V2 --project=$P \
+    --replication-policy=automatic --data-file=-
+  unset CS
+  SA=$(gcloud run services describe super-system --region me-west1 --project=$P \
+    --format='value(spec.template.spec.serviceAccountName)')
+  if [ -z "$SA" ]; then
+    SA="$(gcloud projects describe $P \
+      --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+  fi
+  gcloud secrets add-iam-policy-binding GOOGLE_OAUTH_CLIENT_SECRET_V2 --project=$P \
+    --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+  FLAGS=$(gcloud run services describe super-system --region me-west1 --project=$P \
+    --format=json | python3 -c '
+import json, sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+out = []
+for e in env:
+    if e["name"] == "GOOGLE_OAUTH_CLIENT_SECRET" and "value" in e:
+        out.append("--remove-env-vars=GOOGLE_OAUTH_CLIENT_SECRET")
+    if e["name"] == "GOOGLE_OAUTH_CLIENT_ID" and "valueFrom" in e:
+        out.append("--remove-secrets=GOOGLE_OAUTH_CLIENT_ID")
+print(" ".join(out))
+')
+  if [ -n "$FLAGS" ]; then
+    gcloud run services update super-system --region me-west1 --project=$P $FLAGS
+  fi
+  gcloud run services update super-system --region me-west1 --project=$P \
+    --update-env-vars="GOOGLE_OAUTH_CLIENT_ID=$CID" \
+    --update-secrets=GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET_V2:1
+fi
+----- copy until here -----
+
+STEP 4c - Test right after the switch (use YOUR OWN accounts first)
+  1. Open https://app.uallak.com/login and use "Sign in with Google".
+     Pass: you land on the dashboard. The Google screen shows the NEW app's consent.
+  2. On your own client dashboard, connect Google Ads, YouTube, Tag Manager and
+     Merchant Center one by one. Pass: each returns with "connected" (no error banner).
+  3. Then paste this - Pass: it prints nothing.
+----- copy from here -----
+gcloud logging read 'resource.type="cloud_run_revision"
+  AND (textPayload:"redirect_uri_mismatch" OR textPayload:"invalid_client"
+  OR textPayload:"DEVELOPER_TOKEN_PROHIBITED")' --project=super-system-500410 \
+  --limit 10 --freshness=1h --format='value(textPayload)'
+----- copy until here -----
+
+STEP 4d - SHELL - Register the new project with uallak's OWN Merchant Center (one time)
+The Merchant API refuses every call from a project that is not registered, and the old
+registration belongs to the old project. Before pasting:
+  - On a TEST client's dashboard, connect Merchant Center with a Google login that is
+    ADMIN on uallak's own Merchant Center account (approving consent is enough).
+  - In the block, replace 123 with that test client's id, 1234567 with uallak's own
+    Merchant Center id, and YOUR_GOOGLE_EMAIL with your Google email.
+Pass: {"success":true, ...}. Calls start working about 5 minutes later.
+----- copy from here -----
+AK=$(gcloud run services describe super-system --region me-west1 \
+  --project=super-system-500410 --format=json | python3 -c '
+import json, sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+print(next((e.get("value", "") for e in env if e["name"] == "ADMIN_KEY"), ""))
+')
+if [ -z "$AK" ]; then read -rsp "Paste ADMIN_KEY (hidden), then Enter: " AK; echo; fi
+curl -s -X POST https://app.uallak.com/api/merchant-center/register-gcp \
+  -H "X-Admin-Key: $AK" -H "Content-Type: application/json" \
+  -d '{"client_id": 123, "merchant_id": "1234567", "developer_email": "YOUR_GOOGLE_EMAIL"}'
+echo; unset AK
+----- copy until here -----
+
+STEP 4e - SHELL - ROLLBACK (only if step 4c fails and you want the old client back)
+Replace OLD_REVISION with the name step 4b printed.
+Pass: "OLD_REVISION ... 100" traffic. Connections made with the NEW client stop working
+again after a rollback; connections made before the switch work again.
+----- copy from here -----
+gcloud run services update-traffic super-system --region me-west1 \
+  --project=super-system-500410 --to-revisions=OLD_REVISION=100
+----- copy until here -----
+
+STEP 4f - SHELL - (Optional, any time) Move the YouTube search API key into our project
+Only needed if YOUTUBE_DATA_API_KEY was created in the old project. Unsure? Do it - it is
+harmless. The key is never printed. Run it ONCE.
+Pass: "Created version [1]" and the revision "is serving 100 percent of traffic".
+----- copy from here -----
+P=super-system-500410
+gcloud services api-keys create --project=$P --display-name="uallak youtube search" \
+  --api-target=service=youtube.googleapis.com >/dev/null 2>&1
+KEY=$(gcloud services api-keys list --project=$P \
+  --filter='displayName="uallak youtube search"' --format='value(name)' | head -n1)
+gcloud services api-keys get-key-string "$KEY" --format='value(keyString)' \
+  | tr -d '\n' | gcloud secrets create YOUTUBE_DATA_API_KEY_V2 --project=$P \
+    --replication-policy=automatic --data-file=-
+SA=$(gcloud run services describe super-system --region me-west1 --project=$P \
+  --format='value(spec.template.spec.serviceAccountName)')
+if [ -z "$SA" ]; then
+  SA="$(gcloud projects describe $P \
+    --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+fi
+gcloud secrets add-iam-policy-binding YOUTUBE_DATA_API_KEY_V2 --project=$P \
+  --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+PLAIN=$(gcloud run services describe super-system --region me-west1 --project=$P \
+  --format=json | python3 -c '
+import json, sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+print("yes" if any(e["name"] == "YOUTUBE_DATA_API_KEY" and "value" in e for e in env) else "")
+')
+if [ -n "$PLAIN" ]; then
+  gcloud run services update super-system --region me-west1 --project=$P \
+    --remove-env-vars=YOUTUBE_DATA_API_KEY
+fi
+gcloud run services update super-system --region me-west1 --project=$P \
+  --update-secrets=YOUTUBE_DATA_API_KEY=YOUTUBE_DATA_API_KEY_V2:1
+----- copy until here -----
+
+
+=======================================================================================
+SECTION 5 - What clients must do, and what is broken until they do
+=======================================================================================
+
+Why: a Google grant belongs to the OAuth client that created it. After the switch, every
+stored Google refresh token (made with the old client) is rejected. Nothing is lost on
+our side - the client just has to approve again.
+
+STEP 5a - SQL - Who must reconnect what (run BEFORE the switch; save the result)
+----- copy from here -----
+select client_id, string_agg(platform, ', ' order by platform) as must_reconnect
+from client_accounts
+where platform in ('google_ads', 'youtube', 'youtube_pending', 'google_tagmanager',
+                   'merchant_center', 'merchant_center_pending')
+group by client_id
+order by client_id;
+----- copy until here -----
+
+What each client does: open the dashboard, and on each Google card listed for them press
+Connect / Reconnect. If the card only offers Disconnect, press Disconnect, then Connect.
+  - Google Ads: may ask again which ad account to manage.
+  - Merchant Center: they type their Merchant Center id again.
+  - YouTube, Tag Manager: approve and done.
+  - Google sign-in: nothing to do. It keeps working (Google identifies the person the
+    same way across projects); they see the new consent screen once.
+Optional for clients: remove the old "uallak" entry at
+https://myaccount.google.com/permissions (Disconnect in our dashboard also removes it).
+
+What STOPS working for a client until they reconnect:
+  - Google Ads: dashboard numbers, weekly report, sales-alert emails, keyword/ad-copy
+    optimization, campaign creation, AND the health scan that auto-pauses campaigns with
+    disapproved ads (a safety net - reconnect clients with live ad spend FIRST).
+  - YouTube: publishing videos, view/like/comment counts.
+  - Tag Manager: setting up or checking the lead conversion tag. Tags that are ALREADY
+    published in their container keep working - they live in Google, not with us.
+  - Merchant Center: feed status.
+  - Expect a burst of admin alerts about failed Google tokens - that is this, not a bug.
+What keeps working: Google sign-in, Drive media folders (service account), YouTube niche
+search (API key), Meta, TikTok, WordPress and everything else.
+
+
+=======================================================================================
+SECTION 6 - Google verification: what depends on the old project and must be redone
+=======================================================================================
+
+Everything below belongs to a Cloud PROJECT. None of it moves. It is all redone in
+super-system-500410, and the old project's approvals do not count.
+
+6a. Google Ads developer token - CHECK BEFORE THE SWITCH.
+    The token belongs to the Ads manager account, but Google can tie it to the Cloud
+    project it was first used with; then calls from another project fail with
+    DEVELOPER_TOKEN_PROHIBITED. Before step 4b: Google Ads manager account > Admin >
+    API Center - note the token's access level, and if Google lists a linked project,
+    request the change to super-system-500410 via Google Ads API support. If step 4c.3
+    shows DEVELOPER_TOKEN_PROHIBITED, roll back (step 4e) until Google confirms.
+6b. Consent screen branding: app name, logo, support email, home page URL, privacy
+    policy URL, terms URL - re-enter (step 2). Google re-runs BRAND verification for the
+    name and logo (usually a few days). Copy the old values exactly; take screenshots of
+    the old project's Branding page first, if you can still open it.
+6c. Privacy policy / terms URLs: must be on the authorized domain uallak.com. Terms in
+    the app: https://app.uallak.com/terms/. The app has no separate privacy page in the
+    code - reuse the privacy URL the old consent screen listed.
+6d. Domain verification: uallak.com must be verified in Google Search Console by a
+    Google account that is Owner or Editor of super-system-500410. If the same Google
+    account verified it for the old project, it carries over (it is per account);
+    otherwise verify again (Search Console > add property > DNS TXT record).
+6e. Sensitive-scope verification: submit again from super-system-500410 (Verification
+    Center) with the 7 sensitive scopes from section 2 and the justifications in
+    docs/GOOGLE-SCOPES.md. Until approved, clients see "Google hasn't verified this
+    app" when connecting Ads/YouTube/Tag Manager/Merchant Center, and at most 100 new
+    users can grant those scopes. Sign-in (openid/email) is not affected.
+6f. Demo video: must be RE-RECORDED. Google checks that the consent screen in the video
+    shows the NEW client ID in the browser address bar (client_id=...). Record it after
+    step 4b, showing each of the four connect flows and what the app does with the data.
+6g. YouTube API Services audit: the YouTube quota (default 10,000 units/day; one upload
+    costs about 1,600) is per project. Any quota extension or completed audit on the old
+    project must be requested again for super-system-500410. Until the new project passes
+    the audit, Google keeps videos uploaded through the API locked PRIVATE (clients can't
+    make them public).
+6h. Merchant Center: the project registration - step 4d.
+6i. The old OAuth client in project 554652696367: if you can open that project, delete
+    the old client once every client has reconnected (that kills all old grants). If you
+    cannot open it, the old grants stay valid at Google until each client disconnects or
+    removes "uallak" at myaccount.google.com/permissions.
+
+DONE.
