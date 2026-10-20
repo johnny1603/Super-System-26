@@ -379,8 +379,8 @@ super-system-500410, and the old project's approvals do not count.
     name and logo (usually a few days). Copy the old values exactly; take screenshots of
     the old project's Branding page first, if you can still open it.
 6c. Privacy policy / terms URLs: must be on the authorized domain uallak.com. Terms in
-    the app: https://app.uallak.com/terms/. The app has no separate privacy page in the
-    code - reuse the privacy URL the old consent screen listed.
+    the app: https://app.uallak.com/terms/. Privacy policy (added 2026-10-21, public, no
+    login): https://app.uallak.com/privacy/ (Hebrew: https://app.uallak.com/privacy/he/).
 6d. Domain verification: uallak.com must be verified in Google Search Console by a
     Google account that is Owner or Editor of super-system-500410. If the same Google
     account verified it for the old project, it carries over (it is per account);

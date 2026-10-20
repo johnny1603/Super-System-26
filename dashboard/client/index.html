@@ -233,6 +233,12 @@ body {
    meant for a short one-line hint; the marketing-automation cards carry a real
    paragraph, and a paragraph in orange reads as a warning. */
 .conn-note { font-size: 11.5px; color: var(--gray); line-height: 1.55; margin: 2px 0 10px; }
+/* Google Ads staff-access consent: the client ticks it before connecting
+   (the privacy policy's "who at uallak can see your data" rests on it) */
+.conn-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 11.5px; color: var(--gray);
+  line-height: 1.55; margin: 2px 0 10px; cursor: pointer; }
+.conn-consent input { margin-top: 3px; flex-shrink: 0; }
+.conn-consent a { color: inherit; text-decoration: underline; }
 .site-input {
   width: 100%;
   padding: 9px 10px;
@@ -1144,6 +1150,10 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="gadsStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
+      <label class="conn-consent" id="gadsConsentRow">
+        <input type="checkbox" id="gadsConsent">
+        <span data-i18n-html="gads_consent">אני מאשר/ת שאנשי צוות מורשים של uallak יראו את חשבון Google Ads שלי ואת ביצועי הקמפיינים (בדשבורד הניהול ובדוח שבועי פנימי) וינהלו בו קמפיינים עבורי, כמתואר ב<a href="/privacy/he/" target="_blank" rel="noopener">מדיניות הפרטיות</a>.</span>
+      </label>
       <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()" data-i18n="connect_now">חבר עכשיו</button>
       <button type="button" class="conn-help-btn" data-help-id="google_ads" style="display:none;" onclick="helpConnection('google_ads')" data-i18n="conn_help_btn">עזרה</button>
       <!-- Shown only when the login reaches several enabled accounts -->
@@ -2003,6 +2013,13 @@ const DASH_I18N = {
   connected_status: { he:'מחובר', en:'Connected', fr:'Connecté', ar:'متصل', ru:'Подключено' },
   connected_btn: { he:'מחובר ✓', en:'Connected ✓', fr:'Connecté ✓', ar:'متصل ✓', ru:'Подключено ✓' },
   connect_now: { he:'חבר עכשיו', en:'Connect now', fr:'Connecter', ar:'اربط الآن', ru:'Подключить' },
+  gads_consent: {
+    he:'אני מאשר/ת שאנשי צוות מורשים של uallak יראו את חשבון Google Ads שלי ואת ביצועי הקמפיינים (בדשבורד הניהול ובדוח שבועי פנימי) וינהלו בו קמפיינים עבורי, כמתואר ב<a href="/privacy/he/" target="_blank" rel="noopener">מדיניות הפרטיות</a>.',
+    en:'I agree that authorized uallak staff will see my Google Ads account and campaign performance (in the admin dashboard and an internal weekly report) and manage campaigns in it for me, as described in the <a href="/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.',
+    fr:'J\'accepte que le personnel autorisé de uallak voie mon compte Google Ads et les performances de mes campagnes (dans le tableau de bord d\'administration et un rapport hebdomadaire interne) et y gère des campagnes pour moi, comme décrit dans la <a href="/privacy/" target="_blank" rel="noopener">Politique de confidentialité</a>.',
+    ar:'أوافق على أن يطّلع موظفو uallak المخوَّلون على حساب Google Ads الخاص بي وأداء الحملات (في لوحة الإدارة وفي تقرير أسبوعي داخلي) وأن يديروا فيه الحملات نيابةً عني، كما هو موضّح في <a href="/privacy/" target="_blank" rel="noopener">سياسة الخصوصية</a>.',
+    ru:'Я согласен(на), что уполномоченные сотрудники uallak будут видеть мой аккаунт Google Ads и результаты кампаний (в панели администратора и во внутреннем еженедельном отчёте) и управлять в нём кампаниями от моего имени, как описано в <a href="/privacy/" target="_blank" rel="noopener">Политике конфиденциальности</a>.' },
+  gads_consent_required: { he:'כדי לחבר את Google Ads צריך לסמן את תיבת האישור שמעל הכפתור', en:'To connect Google Ads, tick the consent box above the button', fr:'Pour connecter Google Ads, cochez la case de consentement au-dessus du bouton', ar:'لربط Google Ads، ضع علامة في مربع الموافقة فوق الزر', ru:'Чтобы подключить Google Ads, отметьте согласие над кнопкой' },
   locked: { he:'נעול', en:'Locked', fr:'Verrouillé', ar:'مقفل', ru:'Закрыто' },
   lock_note: { he:'שדרג חבילה כדי לפתוח', en:'Upgrade your package to unlock', fr:'Changez de formule pour débloquer', ar:'قم بترقية الباقة للفتح', ru:'Улучшите пакет, чтобы открыть' },
   meta_card: { he:'Meta — פייסבוק + אינסטגרם', en:'Meta — Facebook + Instagram', fr:'Meta — Facebook + Instagram', ar:'Meta — فيسبوك + إنستغرام', ru:'Meta — Facebook + Instagram' },
@@ -2742,8 +2759,18 @@ async function confirmUpgrade() {
 }
 
 // ─── platform connect ────────────────────────────────────────────────────────
+// The consent version travels to the server, which records it and refuses
+// a start without it (GOOGLE_ADS_STAFF_CONSENT in api_server)
+const GADS_CONSENT_VERSION = 'staff_access_v1';
+
 function connectGoogleAds() {
-  window.location.href = '/api/oauth/google-ads/start';
+  const box = document.getElementById('gadsConsent');
+  if (box && !box.checked) {
+    showNotice(uallakI18n.t('gads_consent_required'), 'warn');
+    box.focus();
+    return;
+  }
+  window.location.href = '/api/oauth/google-ads/start?consent=' + GADS_CONSENT_VERSION;
 }
 
 function connectMeta() {
@@ -2808,7 +2835,11 @@ async function disconnectPlatform(platformKey, link) {
   showNotice(uallakI18n.t('disconnect_failed'), 'warn');
 }
 
-function markGoogleAdsConnected() { markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads'); }
+function markGoogleAdsConnected() {
+  markPlatformConnected('gadsStatus', 'gadsBtn', 'google_ads');
+  const consentRow = document.getElementById('gadsConsentRow');
+  if (consentRow) consentRow.style.display = 'none';  // already given at connect time
+}
 
 // ─── Google Ads: which account (the client chooses) ──────────────────────────
 // The listing is the SAME one the admin's "החלף חשבון" uses
@@ -5698,6 +5729,8 @@ async function loadSupport() {
     const err = params.get('connect_error');
     showNotice(uallakI18n.t('notice_' + err), 'warn');
     handleWordpressReturn(err);
+  } else if (params.get('connect_error') === 'google_ads_consent') {
+    showNotice(uallakI18n.t('gads_consent_required'), 'warn');
   } else if (params.get('connect_error')) {
     const err = params.get('connect_error') || '';
     const errLabel = err.includes('merchant') ? 'Merchant Center'

@@ -91,6 +91,10 @@ app.add_middleware(
 
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
+# Public, no login: the privacy policy URL on the Google OAuth consent screen
+# (English at /privacy/, Hebrew at /privacy/he/). Scope disclosures must match
+# docs/GOOGLE-SCOPES.md.
+app.mount("/privacy", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "privacy"), html=True), name="privacy")
 app.mount("/dashboard", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "client"), html=True), name="client_dashboard")
 app.mount("/login", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "login"), html=True), name="login")
 app.mount("/admin", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "admin"), html=True), name="admin")
@@ -111,7 +115,7 @@ def _bare_path_redirect(page: str):
         return RedirectResponse(url=f"{page}/{query}")
     return _redirect
 
-for _page in ("/chat", "/terms", "/dashboard", "/login", "/admin", "/profile"):
+for _page in ("/chat", "/terms", "/privacy", "/dashboard", "/login", "/admin", "/profile"):
     app.get(_page, include_in_schema=False)(_bare_path_redirect(_page))
 
 def _require_admin_key(request: Request):
@@ -1979,9 +1983,10 @@ def client_data_export(request: Request):
 # Live tables that get purged once the Drive archive is verified durable.
 # client_accounts is normally already empty (the disconnect step deletes it) -
 # it's listed anyway as a catch-all for stray rows from platforms outside the
-# disconnect groups. Deliberately NOT purged: alerts (system-level history),
-# weekly_reports (aggregate business documents), leads (pre-client sales
-# funnel records).
+# disconnect groups. Not purged here: leads (pre-client sales funnel records).
+# The client's alerts and weekly_reports entries are removed earlier in the
+# run by google_data_purge.end_of_client, together with every Google-bearing
+# live row, so none of that depends on the archive succeeding.
 _ARCHIVE_PURGE_TABLES = ("client_accounts", "client_agents", "client_activity",
                           "client_communications", "client_suggestions",
                           "client_costs", "login_codes", "client_leads")
@@ -2051,11 +2056,13 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
     again), then platform access is revoked, then the record flips. Raises if
     the PayPal cancel fails - we must never report success while billing might
     continue. mode: 'closure' -> status 'closed', 'transfer' -> 'transferred'."""
+    from core import google_data_purge
     client = get_client(client_id)
     if not client:
         raise HTTPException(status_code=401, detail="Not authenticated")
     if client.get("status") in ("closed", "transferred"):
         return {"status": client["status"], "already_offboarded": True}
+    run_started = google_data_purge.now()   # alerts from here on are this run's own record
 
     # 1 - stop billing
     sub = _client_subscription_info(client_id)
@@ -2111,11 +2118,15 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
                   "disconnected": disconnected}, {})
 
     # 5 - build the final export NOW (it must capture the offboarding activity
-    # rows just logged, and it must exist before the purge below deletes them)
+    # rows just logged, and it must exist before the purge below deletes them).
+    # Google-sourced data is left out of it (core/google_data_purge): it goes
+    # to the long-term Drive archive and through our own mailbox, and the
+    # client's Google data stays in their Google accounts anyway.
     export_json = ""
     try:
-        export_json = json.dumps(_build_client_export(client_id, performance_snapshot),
-                                 ensure_ascii=False, indent=2, default=str)
+        export_json = json.dumps(
+            google_data_purge.archive_safe_export(_build_client_export(client_id, performance_snapshot)),
+            ensure_ascii=False, indent=2, default=str)
     except Exception as e:
         alert("client_offboarding",
               [f"client {client_id}: export build failed during {mode}: {e}"])
@@ -2134,6 +2145,16 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
     except Exception as e:
         print(f"[offboarding] confirmation email failed for client {client_id} (non-fatal): {e}")
 
+    # 6b - Google-sourced data goes NOW, whatever happens to the archive below:
+    # Google-bearing live rows, the client's weekly-report entries and alerts,
+    # each verified (privacy policy section 9)
+    google = google_data_purge.end_of_client(client_id, run_started)
+    if google["leftovers"] or google["unverified"] or google["error"]:
+        alert("client_offboarding", [
+            f"client {client_id}: Google data NOT fully removed during {mode} - "
+            f"still present: {google['leftovers'] or '-'}, unverified: {google['unverified'] or '-'}, "
+            f"error: {google['error'] or '-'}. Re-run with POST /api/admin/clients/{client_id}/archive."])
+
     # 7 - long-term archive to Drive, then purge the live rows (skipped, with
     # an alert, if the export could not be built or Drive isn't configured)
     if export_json:
@@ -2146,11 +2167,14 @@ def _offboard_client(client_id: int, mode: str, reason: str = "") -> dict:
         f"subscription {'cancelled' if subscription_cancelled else 'was not live'}, "
         f"disconnected: {', '.join(disconnected) or 'nothing was connected'}, "
         f"archive: {'Drive file ' + archive['drive_file_id'] if archive.get('archived') else 'FAILED - ' + str(archive.get('reason'))}, "
+        f"google data: {'removed' if not (google['leftovers'] or google['unverified']) else 'LEFTOVERS - see alert'}, "
         f"reason: {reason or '-'}"
     ])
 
     return {"status": new_status, "subscription_cancelled": subscription_cancelled,
-            "disconnected": disconnected, "archive": archive}
+            "disconnected": disconnected, "archive": archive,
+            "google_data": {"removed": google["removed"],
+                            "complete": not (google["leftovers"] or google["unverified"])}}
 
 class OffboardRequest(BaseModel):
     confirm_phrase: str
@@ -2196,9 +2220,13 @@ def admin_archive_client(client_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Client not found")
     if client.get("status") not in OFFBOARDED_STATUSES:
         raise HTTPException(status_code=400, detail="Client is not offboarded - archive is for closed/transferred clients only")
-    export_json = json.dumps(_build_client_export(client_id),
+    from core import google_data_purge
+    # Also the retry for a closure whose Google step left something behind
+    google = google_data_purge.end_of_client(client_id, google_data_purge.now())
+    export_json = json.dumps(google_data_purge.archive_safe_export(_build_client_export(client_id)),
                              ensure_ascii=False, indent=2, default=str)
-    return {"success": True, "data": _archive_and_purge_client(client_id, client, export_json)}
+    return {"success": True, "data": {**_archive_and_purge_client(client_id, client, export_json),
+                                      "google_data": google}}
 
 # ─── Admin: delete a client completely (core/client_deletion.py) ─────────────
 # Admin-session only, never mirrored on a client endpoint. Preview first (no
@@ -2220,13 +2248,17 @@ def admin_delete_backup(client_id: int, request: Request):
     # Everything about the client EXCEPT secrets (connections are platform +
     # account id + status only; every string is redacted). Downloading it is
     # what unlocks the delete without "delete without backup".
+    # Google-sourced data is left out (core/google_data_purge): this file
+    # outlives the client on the admin's machine, and the privacy policy
+    # promises no Google data survives a deletion.
     _require_admin(request)
-    from core import client_deletion
+    from core import client_deletion, google_data_purge
     from core.redaction import redact_obj
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_FOUND"})
-    backup = {"backup_kind": "pre_deletion", **_build_client_export(client_id),
-              **client_deletion.extra_backup(client_id)}
+    backup = {"backup_kind": "pre_deletion",
+              **google_data_purge.archive_safe_export(_build_client_export(client_id)),
+              **google_data_purge.backup_safe_extra(client_deletion.extra_backup(client_id))}
     client_deletion.mark_backup(client_id)
     return Response(
         content=json.dumps(redact_obj(backup), ensure_ascii=False, indent=2, default=str),
@@ -2381,9 +2413,20 @@ def _log_bad_oauth_state(provider: str, state: str, error: str = ""):
     print(f"[{provider} oauth] state check failed: {reason}"
           + (f" (provider error={error})" if error else ""))
 
+# The dashboard's Google Ads card makes the client tick a staff-access consent
+# (authorized uallak staff see the account + campaign performance and manage
+# it) before connecting; the privacy policy's "who at uallak can see your
+# data" section rests on it. Bump the version whenever that card text changes.
+GOOGLE_ADS_STAFF_CONSENT = "staff_access_v1"
+
 @app.get("/api/oauth/google-ads/start")
-async def google_ads_oauth_start(request: Request):
+def google_ads_oauth_start(request: Request, consent: str = ""):
+    # Plain `def`: the consent record is a blocking DB write
     client_id = _require_session(request)
+    if consent != GOOGLE_ADS_STAFF_CONSENT:
+        return RedirectResponse(url="/dashboard/?connect_error=google_ads_consent")
+    log_activity(client_id, "client_agent", "google_ads_staff_access_consent",
+                 {"version": GOOGLE_ADS_STAFF_CONSENT}, {})
     state = create_oauth_state_token(client_id)
     return RedirectResponse(url=google_ads_service.build_consent_url(state))
 

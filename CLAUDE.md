@@ -127,6 +127,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   row last → id-only tombstone. The table list comes from the SCHEMA (`client_tables()`,
   PostgREST OpenAPI) plus `DATA_TABLES` as the known floor. `[client_delete_timing]` log
   lines carry ids + durations only.
+- `core/google_data_purge.py` — the privacy policy's promise that **no Google-sourced data
+  outlives a client**, for both ends: self-closure (`_offboard_client` → `end_of_client()` before
+  the archive) and admin delete (`google_records` step + its verify). `archive_safe_export()` is
+  what the Drive archive, the closure email and the admin pre-deletion backup carry: no Google Ads
+  numbers, no Google account ids, no outbound messages, activity only from an ALLOWLIST
+  (`ARCHIVE_ACTIVITY_AGENTS` / `ARCHIVE_ACTIVITY_ACTIONS`) — a new agent's rows stay out until
+  added there. Also scrubs the two places with no client_id column: `weekly_reports`
+  (report.clients[] + "<name>: ..." lines) and `alerts` (the "client {id}" convention; audit
+  sources and alerts written after the run started stay). Leftovers block the clients-row delete.
+  The Google Ads card's staff-access consent (`GOOGLE_ADS_STAFF_CONSENT`, required by
+  `/api/oauth/google-ads/start`) is what the policy's human-access section rests on.
 - `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
   POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
   in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.
@@ -296,7 +307,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
   exportable dataset means one branch in `api_server._export_dataset`, nothing else.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
-  terms `/terms/`, login `/login`, client dashboard `/dashboard`, client profile `/profile`
+  terms `/terms/`, privacy policy `/privacy/` (English, static, no JS — the URL on the Google
+  OAuth consent screen; Hebrew twin at `/privacy/he/`; its Google-data sections must stay in step
+  with `docs/GOOGLE-SCOPES.md`), login `/login`, client dashboard `/dashboard`, client profile `/profile`
   (picture, external ad-spend transparency report, logout, account closure/transfer),
   admin dashboard `/admin` (ADMIN_PASSWORD login → signed admin_session cookie; separate
   from the X-Admin-Key header that guards server-to-server /api endpoints).

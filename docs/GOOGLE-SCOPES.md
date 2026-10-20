@@ -3,7 +3,9 @@
 Source of truth for Google OAuth verification (scope justifications and the
 demo-video script). Every statement here is taken from the code; file and
 function names are given so each one can be checked. **If a scope list changes
-in code, change this file in the same commit.**
+in code, change this file in the same commit** — and the public privacy policy
+(`dashboard/privacy/index.html` + `dashboard/privacy/he/index.html`, served at
+`/privacy/`), whose "Google user data" sections are written from this file.
 
 ## Summary
 

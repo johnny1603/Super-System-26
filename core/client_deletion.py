@@ -37,6 +37,8 @@ import os
 import threading
 from datetime import datetime, timedelta, timezone
 
+from core import google_data_purge
+
 SERVICE_NAME = "client_deletion"
 PROGRESS_PREFIX = "client_deletion:"
 BACKUP_VALID_HOURS = 6
@@ -1039,7 +1041,8 @@ def _drop_caches(client_id: int):
 
 
 # Steps reported to the bulk modal while a chunk runs (on_step)
-STEPS = ("lock", "mark", "revoke", "accounts", "costs", "tables", "leads", "verify", "client_row", "audit")
+STEPS = ("lock", "mark", "revoke", "accounts", "costs", "tables", "leads", "google_records", "verify",
+         "client_row", "audit")
 
 
 def delete_client_full(client_id: int, confirm: str, skip_backup: bool,
@@ -1079,13 +1082,16 @@ def delete_clients(ids: list, skip_backup: bool, revoke, revoke_groups: dict, on
       costs       anonymous monthly aggregates, then the originals
       tables      every client_id table from the schema, batched + parallel
       leads       sales-funnel transcripts, then the leads rows; settings row
-      verify      count what is left in EVERY table; delete it once more;
-                  count again — leftovers are reported, never hidden
+      google_records  the client's entries in weekly_reports and their alerts
+                  (no client_id column there — core/google_data_purge)
+      verify      count what is left in EVERY table (and weekly_reports /
+                  alerts); delete it once more; count again — leftovers are
+                  reported, never hidden
       client_row  clients — LAST, only for a client with no failure and
                   nothing left; then one more sweep for anything written
                   meanwhile
-      audit       one alert per client: id, name, counts, revoke failures,
-                  leftovers (no other personal data)
+      audit       one alert per client: id, counts, revoke failures,
+                  leftovers (id-only — no name, no other personal data)
     External resources (site hosting, domains, Drive, ad accounts, PayPal) are
     never touched — they are listed in not_removed."""
     import uuid
@@ -1261,6 +1267,17 @@ def _delete_locked(work, clients, progress, results, timer, stage,
             each(work, lambda c: _clear_leads(c, {k: v for k, v in lead_owner.items() if v in c}), "leads")
         each(work, _clear_settings, "app_settings")
 
+    # Alerts written since the FIRST attempt started are this deletion's own
+    # record and stay; everything older that names the client goes
+    run_started = min(str(progress[cid].get("started_at") or _now()) for cid in work)
+    with stage("google_records"):
+        try:
+            google_data_purge.scrub(work, run_started)
+        except Exception as e:
+            # Not a failure by itself: verify below scrubs once more, and
+            # whatever is still there then blocks the clients row
+            print(f"[client_deletion] google_records scrub failed ({type(e).__name__}) — verify retries")
+
     leftovers, unverified = {}, []
     with stage("verify"):
         if rows is not None:
@@ -1270,6 +1287,18 @@ def _delete_locked(work, clients, progress, results, timer, stage,
                                        revoke, revoke_groups, revokes, seen).items():
                     failures[cid].extend(fails)
                 leftovers, unverified = _verify(tables, work, lead_owner, missing)
+        # weekly_reports + alerts: verified (and re-scrubbed once) the same way
+        g_left, g_unverified = google_data_purge.verify(work, run_started)
+        if g_left:
+            try:
+                google_data_purge.scrub(list(g_left), run_started)
+            except Exception as e:
+                print(f"[client_deletion] google_records re-scrub failed ({type(e).__name__})")
+            g_left, g_unverified = google_data_purge.verify(work, run_started)
+        for cid, found in g_left.items():
+            if cid in work:
+                leftovers.setdefault(cid, {}).update(found)
+        unverified = list(unverified) + [t for t in g_unverified if t not in unverified]
 
     with stage("client_row"):
         ready = [cid for cid in work if not failures[cid] and not leftovers.get(cid) and not unverified]
@@ -1331,8 +1360,9 @@ def _delete_locked(work, clients, progress, results, timer, stage,
             details = ", ".join(f"{r['platform']} ({r.get('error') or 'not_confirmed'})"
                                 for r in client_revokes if r["platform"] in revoke_failed)
             try:
+                # id-only: this audit entry is the one record that outlives the client
                 alert("client_deleted", [
-                    f"client {cid} ({clients[cid].get('name') or ''}) "
+                    f"client {cid} "
                     f"{'DELETED' if success else 'PARTIALLY deleted'} by admin at {_now()}: removed {removed}"
                     + (f"; revoke NOT confirmed for client {cid}: {details}" if details else "")
                     + (f"; rows STILL PRESENT after verification: {leftovers[cid]}" if leftovers.get(cid) else "")
