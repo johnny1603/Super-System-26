@@ -98,12 +98,44 @@ def build_consent_url(state: str) -> str:
     return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
 
 
+API_NAME = "tagmanager.googleapis.com"
+
+
+class GtmApiError(RuntimeError):
+    """A non-200 from the Tag Manager API, with what a caller needs to decide
+    what it means: the HTTP status and Google's own reason code (e.g.
+    SERVICE_DISABLED = the Tag Manager API is not enabled in the OAuth
+    client's Cloud project; ACCESS_TOKEN_SCOPE_INSUFFICIENT; PERMISSION_DENIED).
+    The message keeps the old "GTM GET <path> failed: <status> ..." shape."""
+
+    def __init__(self, method: str, path: str, response: httpx.Response):
+        self.status = response.status_code
+        self.api = API_NAME
+        self.google_reason = _google_reason(response)
+        super().__init__(f"GTM {method} {path} failed: {self.status} {response.text[:300]}")
+
+
+def _google_reason(response: httpx.Response) -> str:
+    """Google's machine-readable reason from an error body ("" if none)."""
+    try:
+        error = response.json().get("error") or {}
+    except Exception:
+        return ""
+    for detail in error.get("details") or []:
+        if detail.get("reason"):
+            return str(detail["reason"])
+    for item in error.get("errors") or []:
+        if item.get("reason"):
+            return str(item["reason"])
+    return str(error.get("status") or "")
+
+
 def _get(refresh_token: str, path: str, params: dict = None) -> dict:
     response = httpx.get(f"{GTM_BASE_URL}/{path.lstrip('/')}",
                          headers={"Authorization": f"Bearer {_access_token(refresh_token)}"},
                          params=params or {}, timeout=TIMEOUT)
     if response.status_code != 200:
-        raise RuntimeError(f"GTM GET {path} failed: {response.status_code} {response.text[:300]}")
+        raise GtmApiError("GET", path, response)
     return response.json()
 
 
@@ -112,7 +144,7 @@ def _post(refresh_token: str, path: str, json_body: dict = None, params: dict = 
                           headers={"Authorization": f"Bearer {_access_token(refresh_token)}"},
                           json=json_body or {}, params=params or {}, timeout=TIMEOUT)
     if response.status_code != 200:
-        raise RuntimeError(f"GTM POST {path} failed: {response.status_code} {response.text[:300]}")
+        raise GtmApiError("POST", path, response)
     return response.json()
 
 
@@ -164,8 +196,8 @@ def get_live_version(refresh_token: str, container_path: str) -> dict:
     was ever published (a fresh container)."""
     try:
         return _get(refresh_token, f"{container_path}/versions:live")
-    except RuntimeError as e:
-        if "404" in str(e):
+    except GtmApiError as e:
+        if e.status == 404:
             return {}
         raise
 

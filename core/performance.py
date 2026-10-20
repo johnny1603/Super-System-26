@@ -28,6 +28,7 @@ agents' daily readers, the TikTok/YouTube engagement summaries, client_leads.
   channel by their recorded source_platform. Not the `leads` table — that is
   uallak's own sales funnel (CLAUDE.md).
 """
+import json
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -216,6 +217,61 @@ def _engagement_card(client_id: int, channel: str, platforms: set) -> dict:
                  period_days=summary.get("period_days"))
 
 
+def _warn(message: str, **fields):
+    """A real WARNING in Cloud Run logging (JSON line with `severity`); a bare
+    print() lands as DEFAULT and is invisible to a severity>=WARNING filter —
+    which is how a failed Tag Manager read went unnoticed. Never pass tokens;
+    the message is redacted anyway (an exception text can carry a URL with an
+    access_token query parameter, e.g. Graph API)."""
+    from core.redaction import redact
+    print(json.dumps({"severity": "WARNING", "message": redact(message), "service": SERVICE_NAME,
+                      **fields}, ensure_ascii=False, default=str), flush=True)
+
+
+# Google's reason codes that mean our access is not (yet) set up on Google's
+# side — the API is not enabled in the OAuth client's Cloud project, or the
+# app's access is still pending. Nothing the client can do; we must act.
+_ACCESS_PENDING_REASONS = ("SERVICE_DISABLED", "accessNotConfigured", "API_DISABLED",
+                           "CONSUMER_INVALID", "USER_PROJECT_DENIED")
+# The client's own grant no longer covers the call — a reconnect fixes it
+_RECONNECT_REASONS = ("ACCESS_TOKEN_SCOPE_INSUFFICIENT", "insufficientPermissions",
+                      "PERMISSION_DENIED", "forbidden")
+
+
+def _classify_google_failure(e: Exception, api: str) -> dict:
+    """{reason, http_status, google_reason, api} for a failed Google read.
+    reason is the client-safe card code: access_pending | reconnect |
+    temporary | sync_failed."""
+    import httpx
+    status, google_reason = None, ""
+    if isinstance(e, httpx.HTTPStatusError):
+        # The OAuth token refresh itself (oauth2.googleapis.com/token)
+        api = "oauth2.googleapis.com/token"
+        status = e.response.status_code
+        try:
+            google_reason = str((e.response.json() or {}).get("error") or "")
+        except Exception:
+            google_reason = ""
+    elif isinstance(e, (httpx.TimeoutException, httpx.TransportError)):
+        return {"reason": "temporary", "http_status": None, "google_reason": type(e).__name__, "api": api}
+    else:
+        status = getattr(e, "status", None)
+        google_reason = getattr(e, "google_reason", "") or ""
+        api = getattr(e, "api", api)
+
+    if google_reason in _ACCESS_PENDING_REASONS:
+        reason = "access_pending"
+    elif google_reason in ("invalid_grant", "unauthorized_client") or google_reason in _RECONNECT_REASONS:
+        reason = "reconnect"
+    elif status in (429, 500, 502, 503, 504):
+        reason = "temporary"
+    elif status == 403:
+        reason = "access_pending"   # 403 without a known reason: treat as our access, not theirs
+    else:
+        reason = "sync_failed"
+    return {"reason": reason, "http_status": status, "google_reason": google_reason, "api": api}
+
+
 def _tracking_card(client_id: int, platforms: set) -> dict:
     if "google_tagmanager" not in platforms:
         return _card("not_connected")
@@ -225,8 +281,21 @@ def _tracking_card(client_id: int, platforms: set) -> dict:
             return _card("needs_attention", reason="reconnect", last_checked=_now())
         status, pulled = _cached(("gtm", client_id), lambda: get_conversion_tracking_status(client_id))
     except Exception as e:
-        print(f"[{SERVICE_NAME}] tracking status failed for client {client_id}: {e}")
-        return _card("needs_attention", reason="sync_failed", last_checked=_now())
+        failure = _classify_google_failure(e, "tagmanager.googleapis.com")
+        _warn(f"website_tracking read failed for client {client_id}: {failure['api']} "
+              f"HTTP {failure['http_status']} {failure['google_reason'] or type(e).__name__} "
+              f"-> card reason {failure['reason']}",
+              client_id=client_id, channel="website_tracking", **failure)
+        # The card tells the client "the team knows" — make that true, once a day
+        try:
+            from core.chat_fallback import alert_once
+            alert_once(SERVICE_NAME, client_id, f"perf_website_tracking:{failure['reason']}",
+                       f"client {client_id}: Performance → מדידה באתר failed: {failure['api']} "
+                       f"HTTP {failure['http_status']} {failure['google_reason'] or type(e).__name__} "
+                       f"(card shows: {failure['reason']})", 1)
+        except Exception:
+            pass
+        return _card("needs_attention", reason=failure["reason"], last_checked=_now())
     if status.get("configured_live"):
         return _card("active", data_pulled_at=pulled,
                      key_numbers={"lead_event_live": True,
@@ -299,7 +368,8 @@ def channel_statuses(client_id: int, _organic: dict = None, _leads: dict = None,
         try:
             card = resolvers[channel]()
         except Exception as e:
-            print(f"[{SERVICE_NAME}] {channel} status failed for client {client_id}: {e}")
+            _warn(f"{channel} status failed for client {client_id}: {type(e).__name__}: {str(e)[:300]}",
+                  client_id=client_id, channel=channel)
             card = _card("needs_attention", reason="sync_failed", last_checked=_now())
         if card["status"] == "not_connected" and channel in CONNECT_TARGET:
             card["connect"] = CONNECT_TARGET[channel]
