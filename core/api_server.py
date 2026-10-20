@@ -89,6 +89,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# StaticFiles sends Last-Modified + ETag but no Cache-Control, so browsers
+# apply HEURISTIC freshness (10% of the file's age) and reuse an old page for
+# hours without asking us — after a deploy the admin kept running a /admin/
+# that predated the Control Room demo buttons. "no-cache" = revalidate on
+# every load; the ETag makes that a cheap 304 when nothing changed.
+@app.middleware("http")
+async def _revalidate_pages(request: Request, call_next):
+    response = await call_next(request)
+    if ("cache-control" not in response.headers
+            and (response.headers.get("content-type", "").startswith("text/html")
+                 or request.url.path.startswith("/assets/"))):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 app.mount("/chat", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "onboarding"), html=True), name="chat")
 app.mount("/terms", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "terms"), html=True), name="terms")
 # Public, no login: the privacy policy URL on the Google OAuth consent screen
