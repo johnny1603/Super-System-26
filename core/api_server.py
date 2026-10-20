@@ -1072,10 +1072,6 @@ async def dashboard_data(request: Request):
         from agents.website_agent import _provision_state_from_activity
         website_provision_status = _provision_state_from_activity(activity)
 
-    merchant_center_id = next(
-        (a.get("account_id") for a in accounts if a.get("platform") == "merchant_center"
-         and a.get("status") == "active" and a.get("account_id")), "")
-
     # A GTM grant without every current scope (one made before
     # tagmanager.edit.containerversions was requested) can read but cannot
     # publish — the card asks for a calm reconnect instead of failing later
@@ -1118,14 +1114,7 @@ async def dashboard_data(request: Request):
              for a in accounts if a.get("platform") == "google_ads"
              and a.get("status") == "active" and a.get("account_id")), ""),
         "google_ads_account_name": _google_ads_account_name(client_id, accounts),
-        # Connected Merchant Center id + the name the Merchant API returned at
-        # link time (from activity already fetched - no API call per load)
-        "merchant_center_id": merchant_center_id,
         "gtm_needs_reconnect": gtm_needs_reconnect,
-        "merchant_center_name": next(
-            ((e.get("details") or {}).get("account_name", "") for e in activity
-             if merchant_center_id and e.get("action_type") == "merchant_center_connected"
-             and (e.get("details") or {}).get("merchant_id") == merchant_center_id), ""),
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -2448,6 +2437,8 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
         if not refresh_token:
             print(f"[google_ads oauth] client {client_id}: token exchange returned no refresh_token")
             return RedirectResponse(url="/dashboard/?connect_error=google_ads")
+        # Evidence for scope verification: must equal google_ads_service.ADS_SCOPES
+        print(f"[google_ads oauth] client {client_id}: granted scopes {(tokens.get('scope') or '').split()}")
 
         # Which account: only an enabled, non-manager account is ever chosen
         # automatically, and only when it is the only one — otherwise the
@@ -2646,139 +2637,43 @@ def youtube_oauth_callback(state: str = "", code: str = "", error: str = ""):
             print(f"[youtube oauth] client {client_id}: no channel yet - guided + parked for detection")
             return RedirectResponse(url="/dashboard/?connected=youtube_no_channel")
         upsert_account(client_id, "youtube", channel["channel_id"], refresh_token, "active")
+        # What Google actually GRANTED, as evidence for scope verification
+        # (must equal youtube_service.YOUTUBE_SCOPES — never the full youtube scope)
+        granted = (tokens.get("scope") or "").split()
+        print(f"[youtube oauth] client {client_id}: granted scopes {granted}")
         log_activity(client_id, "youtube_content_agent", "account_connected",
-                     {"channel_id": channel["channel_id"], "title": channel.get("title", "")}, {})
+                     {"channel_id": channel["channel_id"], "title": channel.get("title", ""),
+                      "scopes": granted}, {})
         return RedirectResponse(url="/dashboard/?connected=youtube")
     except Exception:
         import traceback
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=youtube")
 
-# ─── Merchant Center OAuth (separate consent; merchant id linked afterward) ──
-# Two-step by design (see core/merchant_center_service.py's docstring on why
-# account discovery isn't trusted): consent grants the token, parked on a
-# pending row; the client then types their own numeric Merchant Center id
-# (visible in their own account settings) and we VERIFY access to exactly
-# that id before storing the real connection — same "park token, verify
-# later" shape as meta_content_agent's no-Page flow.
+# ─── Merchant Center: RETIRED 2026-10-21 ─────────────────────────────────────
+# It never had a feature a client could see (no feed-status screen, the scan
+# was never scheduled), so the `content` scope it requested could not pass
+# Google's least-privilege review. The connect flow and the scope are gone.
+# Grants made before that still sit in client_accounts: this one-time admin
+# call revokes each at Google and deletes the rows (the same
+# _disconnect_platform a client's own Disconnect uses). Safe to re-run.
 
-@app.get("/api/oauth/merchant-center/start")
-async def merchant_center_oauth_start(request: Request):
-    client_id = _require_session(request)
-    state = create_oauth_state_token(client_id)
-    from core import merchant_center_service
-    return RedirectResponse(url=merchant_center_service.build_consent_url(state))
-
-@app.get("/api/oauth/merchant-center/callback")
-def merchant_center_oauth_callback(state: str = "", code: str = "", error: str = ""):
-    client_id = verify_oauth_state_token(state)
-    if not client_id:
-        _log_bad_oauth_state("merchant_center", state, error)
-        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
-    if error or not code:
-        print(f"[merchant center oauth] client {client_id}: consent denied or no code (error={error})")
-        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
-    try:
-        from core import merchant_center_service
-        tokens = merchant_center_service.exchange_code(code)
-        refresh_token = tokens.get("refresh_token")
-        if not refresh_token:
-            print(f"[merchant center oauth] client {client_id}: token exchange returned no refresh_token")
-            return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
-        upsert_account(client_id, "merchant_center_pending", "pending_id", refresh_token, "active")
-        return RedirectResponse(url="/dashboard/?connected=merchant_center_pending")
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        return RedirectResponse(url="/dashboard/?connect_error=merchant_center")
-
-class MerchantCenterLinkRequest(BaseModel):
-    merchant_id: str
-
-@app.post("/api/merchant-center/link")
-def merchant_center_link(req: MerchantCenterLinkRequest, request: Request):
-    # Plain `def`: verification makes a blocking call to the Merchant API
-    client_id = _require_session(request)
-    merchant_id = (req.merchant_id or "").strip()
-    if not merchant_id.isdigit():
-        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_MERCHANT_ID"})
-    pending = (db.table("client_accounts").select("*")
-              .eq("client_id", client_id).eq("platform", "merchant_center_pending")
-              .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    from core.secrets_vault import get_client_secret
-    refresh_token = (get_client_secret(client_id, "merchant_center_pending", row=pending[0])
-                     if pending else "")
-    if not refresh_token:
-        raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
-    from core import merchant_center_service
-    try:
-        # Saved as connected ONLY after the Merchant API, with the client's own
-        # stored grant, actually returns this account
-        account = merchant_center_service.get_account(refresh_token, merchant_id)
-    except Exception as e:
-        reason = getattr(e, "reason", "unavailable")
-        print(f"[merchant-center link] client {client_id}: verification failed for "
-              f"merchant_id={merchant_id} ({reason}): {type(e).__name__}: {e}")
-        if reason in ("not_registered", "api_disabled", "unavailable"):
-            # OUR side (setup) or Google's side — the client can't fix it, so
-            # someone has to hear about it. not_registered: one-time
-            # POST /api/merchant-center/register-gcp (see its comment).
-            from core.agent_base import agent_alert as _alert
-            _alert("google_ads_agent", [
-                f"Merchant Center link failed for client {client_id} "
-                f"(merchant_id={merchant_id}): {reason} - {e}"])
-        if reason == "consent_expired":
-            # The parked grant is dead; drop it so the card offers a fresh consent
-            remove_accounts(client_id, ["merchant_center_pending"])
-        code = {"not_registered": "ERR_MERCHANT_SETUP_PENDING",
-                "api_disabled": "ERR_MERCHANT_SETUP_PENDING",
-                "consent_expired": "ERR_NO_PENDING_MERCHANT_CONSENT",
-                "no_access": "ERR_MERCHANT_ID_NOT_ACCESSIBLE"}.get(reason, "ERR_MERCHANT_VERIFY_UNAVAILABLE")
-        raise HTTPException(status_code=400 if reason in ("no_access", "consent_expired") else 503,
-                            detail={"code": code})
-    upsert_account(client_id, "merchant_center", merchant_id, refresh_token, "active")
-    remove_accounts(client_id, ["merchant_center_pending"])
-    log_activity(client_id, "google_ads_agent", "merchant_center_connected",
-                 {"merchant_id": merchant_id, "account_name": account.get("accountName", "")}, {})
-    return {"success": True, "data": {"merchant_id": merchant_id,
-                                      "account_name": account.get("accountName", "")}}
-
-class MerchantGcpRegistration(BaseModel):
-    client_id: int        # whose stored Merchant Center grant to call with
-    merchant_id: str      # uallak's OWN Merchant Center account - never a client's
-    developer_email: str = ""
-
-@app.post("/api/merchant-center/register-gcp", dependencies=_admin_only)
-def merchant_center_register_gcp(req: MerchantGcpRegistration):
-    # ONE-TIME setup. Merchant API v1 rejects every call from a Cloud project
-    # that isn't registered to a Merchant Center account ("GCP project ... is
-    # not registered with the merchant account"), which is what made every
-    # client's link attempt fail. A project registers to ONE merchant account,
-    # so: connect uallak's own Merchant Center through a test client's card
-    # (consent is enough - the pending grant works), with a Google login that
-    # is ADMIN there, then call this once with that client_id + uallak's
-    # merchant id. Rules/caveats: merchant_center_service.register_gcp.
-    merchant_id = (req.merchant_id or "").strip()
-    if not merchant_id.isdigit():
-        raise HTTPException(status_code=400, detail={"code": "ERR_INVALID_MERCHANT_ID"})
-    rows = (db.table("client_accounts").select("*").eq("client_id", req.client_id)
-            .in_("platform", ["merchant_center", "merchant_center_pending"])
-            .eq("status", "active").order("id", desc=True).limit(1).execute().data)
-    from core.secrets_vault import get_client_secret
-    token = (get_client_secret(req.client_id, rows[0].get("platform"), row=rows[0])
-             if rows else "")
-    if not token:
-        raise HTTPException(status_code=400, detail={"code": "ERR_NO_PENDING_MERCHANT_CONSENT"})
-    from core import merchant_center_service
-    try:
-        result = merchant_center_service.register_gcp(token, merchant_id,
-                                                      req.developer_email.strip())
-    except Exception as e:
-        print(f"[merchant-center register-gcp] merchant_id={merchant_id}: {type(e).__name__}: {e}")
-        raise HTTPException(status_code=502, detail={"code": "ERR_MERCHANT_REGISTRATION_FAILED",
-                                                     "reason": getattr(e, "reason", ""),
-                                                     "message": str(e)[:500]})
-    return {"success": True, "data": result}
+@app.post("/api/admin/merchant-center/retire", dependencies=_admin_only)
+def merchant_center_retire():
+    # Plain `def`: one blocking revoke call per connected client
+    rows = (db.table("client_accounts").select("client_id")
+            .in_("platform", _DISCONNECT_GROUPS["merchant_center"]).execute().data or [])
+    results = {}
+    for client_id in sorted({r["client_id"] for r in rows if r.get("client_id")}):
+        try:
+            outcome = _disconnect_platform(client_id, "merchant_center")
+            log_activity(client_id, "client_agent", "account_disconnected",
+                         {"platform": "merchant_center", "revoked": outcome["revoked"],
+                          "reason": "merchant_center_retired"}, {})
+            results[client_id] = {"removed": outcome["removed"], "revoked": outcome["revoked"]}
+        except Exception as e:
+            results[client_id] = {"error": type(e).__name__}
+    return {"success": True, "data": {"clients": results, "count": len(results)}}
 
 # ─── Google Ads execution (admin/scheduler only) ─────────────────────────────
 
@@ -2836,22 +2731,6 @@ def google_ads_weekly_report():
     from agents.google_ads_agent import run_weekly_report
     try:
         return {"success": True, "data": run_weekly_report()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/google-ads/merchant-status", dependencies=_admin_only)
-def google_ads_merchant_status(client_id: int):
-    from agents.google_ads_agent import get_feed_status
-    try:
-        return {"success": True, "data": get_feed_status(client_id)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/google-ads/merchant-scan", dependencies=_admin_only)
-def google_ads_merchant_scan():
-    from agents.google_ads_agent import run_merchant_center_scan
-    try:
-        return {"success": True, "data": run_merchant_center_scan()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -4607,8 +4486,8 @@ def client_export_google_doc(dataset: str, request: Request):
     is created by OUR service account, in uallak's Drive, and then shared with
     the client's email as a writer. It is not created IN the client's own
     Drive, because no client-side Google OAuth in this codebase carries a
-    Drive scope - the client Google flows (Ads, GTM, YouTube, Merchant Center)
-    request advertising scopes only. The client can 'Make a copy' to own it
+    Drive scope - the client Google flows (Ads, GTM, YouTube) request
+    advertising scopes only. The client can 'Make a copy' to own it
     outright. Closing that gap needs a new consent screen + Drive scope; see
     HANDOFF-client-dashboard-nav.md."""
     # Plain `def`: Drive HTTP calls

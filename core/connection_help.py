@@ -175,7 +175,8 @@ CONNECTIONS = [
                    "url": "https://merchants.google.com"}],
         "estimated_minutes": 4,
         "needs_api_key": False,
-        "active": True,
+        # Retired 2026-10-21 with the Merchant Center connection (no `content` scope)
+        "active": False,
     },
     {
         "id": "tag_manager",

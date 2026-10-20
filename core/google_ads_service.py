@@ -85,8 +85,8 @@ def build_consent_url(state: str) -> str:
 def exchange_code(code: str, redirect_uri_override: str = None) -> dict:
     """Authorization code -> {access_token, refresh_token, expires_in, ...}.
 
-    SHARED by every Google consent on our one OAuth client (GTM, YouTube,
-    Merchant Center reuse it). Google requires the redirect_uri here to be
+    SHARED by every Google consent on our one OAuth client (GTM and YouTube
+    reuse it). Google requires the redirect_uri here to be
     IDENTICAL to the one the consent URL used — so a caller whose consent
     went to its own callback MUST pass that callback. Before 2026-10-13 this
     always sent the Google Ads callback, and every non-Ads consent failed the

@@ -71,7 +71,10 @@ GRANTABLE_SERVICES = {
 # THE Google sign-in scope list (one constant; docs/GOOGLE-SCOPES.md mirrors
 # it). `profile` was dropped 2026-10-17: nothing reads name/picture — sign-in
 # uses only sub, email and email_verified (find_client_for_google, link_google).
-GOOGLE_LOGIN_SCOPES = ["openid", "email"]
+# The full userinfo.email URL, not the "email" alias: Google treats them as the
+# same scope, but the Console lists the URL and verification wants an exact
+# string match between code and Console (2026-10-21).
+GOOGLE_LOGIN_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 GOOGLE_LOGIN_CALLBACK_PATH = "/api/oauth/google-login/callback"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 

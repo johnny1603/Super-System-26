@@ -67,15 +67,19 @@ Each flow is a SEPARATE consent that asks only for its own scopes.
   Flow             Scope                                                    Class
   ---------------  -------------------------------------------------------  -------------
   Google sign-in   openid                                                   non-sensitive
-  Google sign-in   https://www.googleapis.com/auth/userinfo.email (email)   non-sensitive
+  Google sign-in   https://www.googleapis.com/auth/userinfo.email           non-sensitive
   Google Ads       https://www.googleapis.com/auth/adwords                  sensitive
-  Merchant Center  https://www.googleapis.com/auth/content                  sensitive
   YouTube          https://www.googleapis.com/auth/youtube.upload           sensitive
   YouTube          https://www.googleapis.com/auth/youtube.readonly         sensitive
   Tag Manager      https://www.googleapis.com/auth/tagmanager.edit.containers         sensitive
   Tag Manager      https://www.googleapis.com/auth/tagmanager.edit.containerversions  sensitive
   Tag Manager      https://www.googleapis.com/auth/tagmanager.publish                 sensitive
 
+- UPDATED 2026-10-21: 8 scopes, not 9. Merchant Center (https://www.googleapis.com/auth/content)
+  was removed from the code (no client-visible feature) - remove it from the console, and
+  skip every Merchant Center step below (4d, its API in section 1, its reconnect in section 5).
+  The full https://www.googleapis.com/auth/youtube scope is NOT requested - the console must
+  list youtube.upload instead. Final list + console diff: docs/GOOGLE-SCOPES.md.
 - No RESTRICTED scope is requested by any consent flow.
 - The Drive scope (https://www.googleapis.com/auth/drive) is used ONLY by the service
   account. It is NOT a user consent - do NOT add it to the consent screen.
@@ -91,9 +95,9 @@ Menu: APIs & Services > OAuth consent screen (also called "Google Auth Platform"
   2. Authorized domains: uallak.com
   3. Audience: User type = External. Publishing status = In production
      ("Testing" only lets listed test users in, and their Google grants expire after 7 days).
-  4. Data access: "Add or remove scopes" - add exactly the 9 scopes in the table above
+  4. Data access: "Add or remove scopes" - add exactly the 8 scopes in the table above
      (paste the full URLs into "Manually add scopes"). Nothing else.
-Pass: the Data access page lists exactly those 9 scopes, sorted into the classes above.
+Pass: the Data access page lists exactly those 8 scopes, sorted into the classes above.
 
 
 =======================================================================================
@@ -252,7 +256,9 @@ gcloud logging read 'resource.type="cloud_run_revision"
   --limit 10 --freshness=1h --format='value(textPayload)'
 ----- copy until here -----
 
-STEP 4d - SHELL - Register the new project with uallak's OWN Merchant Center (one time)
+STEP 4d - OBSOLETE since 2026-10-21 (Merchant Center removed; the endpoint below no longer
+exists). Kept for history only - do not run.
+STEP 4d (old) - SHELL - Register the new project with uallak's OWN Merchant Center (one time)
 The Merchant API refuses every call from a project that is not registered, and the old
 registration belongs to the old project. Before pasting:
   - On a TEST client's dashboard, connect Merchant Center with a Google login that is
@@ -386,7 +392,7 @@ super-system-500410, and the old project's approvals do not count.
     account verified it for the old project, it carries over (it is per account);
     otherwise verify again (Search Console > add property > DNS TXT record).
 6e. Sensitive-scope verification: submit again from super-system-500410 (Verification
-    Center) with the 7 sensitive scopes from section 2 and the justifications in
+    Center) with the 6 sensitive scopes from section 2 (Merchant Center removed) and the justifications in
     docs/GOOGLE-SCOPES.md. Until approved, clients see "Google hasn't verified this
     app" when connecting Ads/YouTube/Tag Manager/Merchant Center, and at most 100 new
     users can grant those scopes. Sign-in (openid/email) is not affected.

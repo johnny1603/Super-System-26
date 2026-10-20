@@ -105,7 +105,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     <tbody>
       <tr>
         <td>התחברות עם Google</td>
-        <td><code>openid</code><br><code>email</code></td>
+        <td><code>openid</code><br><code>https://www.googleapis.com/auth/userinfo.email</code></td>
         <td>מזהה חשבון Google שלכם, כתובת האימייל, והאם Google אימתה אותה. איננו מבקשים שם, תמונת
         פרופיל, אנשי קשר או כל מידע פרופיל אחר.</td>
       </tr>
@@ -116,12 +116,6 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
         מנהל); ובחשבון שבחרתם: קמפיינים (שם, סטטוס, תקציב), ביצועי קמפיינים (חשיפות, קליקים, עלות,
         המרות לפי יום), מילות מפתח והביצועים שלהן, טקסטים של מודעות (כותרות, תיאורים), כתובות דפי
         הנחיתה של המודעות, וסטטוס המדיניות והאישור של המודעות.</td>
-      </tr>
-      <tr>
-        <td>Google Merchant Center</td>
-        <td><code>https://www.googleapis.com/auth/content</code></td>
-        <td>עבור מזהה חשבון Merchant Center שהזנתם: שם החשבון, ושם וסטטוס העיבוד של כל מקור נתוני
-        מוצרים (פיד). איננו קוראים או משנים מוצרים, מחירים או הגדרות.</td>
       </tr>
       <tr>
         <td>YouTube</td>
@@ -144,7 +138,8 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   </div>
 
   <p><strong>למה איננו ניגשים.</strong> uallak אינה מבקשת גישה ל-Gmail, ליומן Google, לאנשי הקשר,
-  ל-Google Analytics, ל-Google Search Console, ל-Google Business Profile או ל-Google Drive האישי שלכם.</p>
+  ל-Google Analytics, ל-Google Search Console, ל-Google Business Profile, ל-Google Merchant Center או
+  ל-Google Drive האישי שלכם.</p>
   <p><strong>לגבי Google Drive.</strong> uallak שומרת את המדיה והמסמכים שהיא מכינה עבורכם בתיקיות
   Google Drive של uallak עצמה, באמצעות חשבון שירות של uallak. זו אינה גישה לחשבון Google שלכם: איננו
   מבקשים הרשאת Drive בחשבון שלכם ואיננו יכולים לראות את ה-Drive האישי שלכם. כשאנחנו משתפים איתכם תיקייה
@@ -156,7 +151,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <p>אנחנו משתמשים במידע משתמשי Google רק כדי לספק ולשפר את היכולות שלהלן, שאתם רואים בדשבורד של
   uallak. איננו משתמשים בו לשום מטרה אחרת.</p>
 
-  <h3>התחברות עם Google (<code>openid</code>, <code>email</code>)</h3>
+  <h3>התחברות עם Google (<code>openid</code>, <code>userinfo.email</code>)</h3>
   <ul>
     <li>כדי להכניס אתכם לחשבון uallak קיים. אנחנו מתאימים את מזהה חשבון Google, או את האימייל שאומת
     ב-Google, לחשבון ה-uallak שלכם ושומרים את המזהה כדי שהתחברויות הבאות יעבדו. התחברות עם Google
@@ -175,13 +170,6 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     <li><strong>שקיפות תקציב:</strong> הצגת ההוצאה שלכם ב-Google Ads לצד תקציב השיווק שסיפרתם לנו
     עליו.</li>
     <li><strong>הצעות:</strong> שימוש בסיכומי הקמפיינים האחרונים בהכנת הצעות השיווק השבועיות עבורכם.</li>
-  </ul>
-
-  <h3>Google Merchant Center (<code>content</code>)</h3>
-  <ul>
-    <li>כדי לוודא שמזהה חשבון Merchant Center שהזנתם הוא חשבון שיש לכם גישה אליו, ולהציג ולנטר אם
-    פידי המוצרים מעובדים כראוי ל-Google Shopping, כדי שנתריע כשיש בעיה בפיד. איננו כותבים דבר לחשבון
-    Merchant Center שלכם.</li>
   </ul>
 
   <h3>YouTube (<code>youtube.readonly</code>, <code>youtube.upload</code>)</h3>
@@ -266,7 +254,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <ul>
     <li><strong>טוקני גישה של Google</strong> (טוקני רענון): נשמרים מוצפנים רק כל עוד החיבור פעיל. הם
     מבוטלים מול Google ונמחקים כשאתם מנתקים חיבור, סוגרים את החשבון או מבקשים למחוק את המידע.</li>
-    <li><strong>מידע Google חי</strong> (נתוני קמפיינים, מספרי YouTube, סטטוס פידים, סטטוס Tag
+    <li><strong>מידע Google חי</strong> (נתוני קמפיינים, מספרי YouTube, סטטוס Tag
     Manager): נקרא מ-Google כשיכולת צריכה אותו ומוחזק בזיכרון השרת שעה לכל היותר.</li>
     <li><strong>רשומות שנגזרות ממידע Google</strong> (מזהה ושם החשבון המחובר, מזהה חשבון Google
     להתחברות, תשובות בצ'אט על הקמפיינים, היסטוריית פעילות כמו "סרטון הועלה" או "קמפיין הושהה", הצעות
@@ -279,7 +267,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <h2><span class="num">9.</span>ניתוק, מחיקה ושאר האפשרויות שלכם</h2>
   <ul>
     <li><strong>אפשר לנתק כל חיבור Google בכל עת</strong> מהדשבורד של uallak (ל-Google Ads,
-    Merchant Center, YouTube ו-Tag Manager יש לכל אחד כפתור "ניתוק" משלו). הניתוק מבטל את הטוקן של
+    YouTube ו-Tag Manager יש לכל אחד כפתור "ניתוק" משלו). הניתוק מבטל את הטוקן של
     uallak מול Google ומוחק את החיבור השמור. הוא לא משנה דבר בחשבונות Google שלכם: הקמפיינים, הסרטונים
     והתגים נשארים כפי שהם.</li>
     <li>אפשר גם להסיר את הגישה של uallak מחשבון Google שלכם בכל עת בכתובת

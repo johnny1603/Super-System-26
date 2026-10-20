@@ -1204,31 +1204,6 @@ a.media-item:hover { border-color: var(--accent); }
 
     <div class="conn-card unlocked">
       <div class="conn-top">
-        <div class="conn-icon" style="background:#34A853;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M6 2l1 5M18 2l-1 5"/><path d="M3.5 7h17l-1.5 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><circle cx="9.5" cy="12.5" r="1" fill="white" stroke="none"/><circle cx="14.5" cy="12.5" r="1" fill="white" stroke="none"/></svg>
-        </div>
-        <div>
-          <div class="conn-name" data-i18n="merchant_card">Merchant Center — קניות בגוגל</div>
-          <div class="conn-status" id="merchantStatus" data-i18n="not_connected">לא מחובר</div>
-        </div>
-      </div>
-      <button class="conn-btn primary" id="merchantBtn" onclick="connectMerchantCenter()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="merchant_center" style="display:none;" onclick="helpConnection('merchant_center')" data-i18n="conn_help_btn">עזרה</button>
-      <div id="merchantForm" style="display:none; margin-top:10px;">
-        <div class="lock-note" data-i18n="merchant_id_note">מזהה Merchant Center נמצא ב-merchants.google.com למעלה, ליד שם החשבון (מספר בלבד)</div>
-        <!-- autocomplete off + a non-contact name: Chrome was filling a phone number in here -->
-        <input class="site-input" id="merchantIdInput" name="merchant_center_id" dir="ltr" placeholder="Merchant Center ID"
-               autocomplete="off" inputmode="numeric" spellcheck="false"
-               onkeydown="if (event.key === 'Enter') linkMerchantCenter()">
-        <button class="conn-btn primary" id="merchantSubmitBtn" onclick="linkMerchantCenter()" data-i18n="site_connect">חיבור</button>
-      </div>
-      <!-- The link result lives IN the card: the top-of-page notice banner is
-           off-screen down here, which made a failed link look like a dead button -->
-      <div class="conn-result" id="merchantResult" role="status" aria-live="polite" style="display:none;"></div>
-    </div>
-
-    <div class="conn-card unlocked">
-      <div class="conn-top">
         <div class="conn-icon" style="background:#246FDB;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2.5l9.5 9.5-9.5 9.5L2.5 12z"/><circle cx="12" cy="12" r="2.5" fill="white" stroke="none"/></svg>
         </div>
@@ -2212,7 +2187,6 @@ const DASH_I18N = {
   ch_tiktok: { he:'TikTok', en:'TikTok', fr:'TikTok', ar:'TikTok', ru:'TikTok' },
   ch_organic_seo: { he:'קידום אורגני (SEO)', en:'Organic SEO', fr:'Référencement organique', ar:'التحسين المجاني لمحركات البحث', ru:'Органическое продвижение (SEO)' },
   ch_youtube: { he:'YouTube', en:'YouTube', fr:'YouTube', ar:'YouTube', ru:'YouTube' },
-  ch_merchant_center: { he:'Merchant Center', en:'Merchant Center', fr:'Merchant Center', ar:'Merchant Center', ru:'Merchant Center' },
   ch_website_tracking: { he:'מדידה באתר', en:'Website tracking', fr:'Suivi du site', ar:'القياس في الموقع', ru:'Аналитика сайта' },
   ch_leads: { he:'לידים', en:'Leads', fr:'Leads', ar:'العملاء المحتملون', ru:'Лиды' },
   st_not_in_plan: { he:'לא כלול בחבילה', en:'Not in your plan', fr:'Hors de votre formule', ar:'غير مشمول في باقتك', ru:'Не входит в пакет' },
@@ -2278,24 +2252,6 @@ const DASH_I18N = {
   notice_youtube_no_channel: { he:'חשבון גוגל אושר, אבל עוד אין ערוץ YouTube — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (דקה אחת)', en:'Google account authorized, but there\'s no YouTube channel yet — we sent the chat a short guide for creating one (takes a minute)', fr:'Compte Google autorisé, mais pas encore de chaîne YouTube — nous avons envoyé dans le chat un petit guide pour en créer une (une minute)', ar:'تمت الموافقة على حساب غوغل، لكن لا توجد قناة YouTube بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (دقيقة واحدة)', ru:'Аккаунт Google авторизован, но канала YouTube ещё нет — мы отправили в чат короткую инструкцию, как его создать (одна минута)' },
   preact_youtube_channel_title: { he:'חסר רק ערוץ YouTube', en:'Only a YouTube channel is missing', fr:'Il ne manque qu\'une chaîne YouTube', ar:'ينقص فقط قناة YouTube', ru:'Не хватает только канала YouTube' },
   preact_youtube_channel_body: { he:'החיבור עצמו הצליח! כדי שנוכל לפרסם בשבילכם, צריך ערוץ YouTube — ורק בעל החשבון יכול ליצור אותו, לכן החלק הקצר הזה אצלכם (דקה אחת, כמה קליקים ביוטיוב). שלחנו לצ\'אט הוראות מדויקות. ברגע שהערוץ קיים — נזהה אותו אוטומטית ונשלים את החיבור לבד, בלי שום פעולה נוספת מכם.', en:'The connection itself succeeded! To publish for you we need a YouTube channel — and only the account owner can create one, so this short part is yours (a minute, a few clicks on YouTube). We sent exact instructions to the chat. The moment the channel exists we\'ll detect it automatically and finish the connection ourselves — no further action from you.', fr:'La connexion elle-même a réussi ! Pour publier pour vous, il faut une chaîne YouTube — et seul le propriétaire du compte peut la créer, donc cette courte étape vous revient (une minute, quelques clics sur YouTube). Nous avons envoyé des instructions précises dans le chat. Dès que la chaîne existe, nous la détectons automatiquement et terminons la connexion nous-mêmes — aucune autre action de votre part.', ar:'الربط نفسه نجح! لكي ننشر نيابةً عنكم نحتاج إلى قناة YouTube — وصاحب الحساب وحده يستطيع إنشاءها، لذا هذا الجزء القصير لكم (دقيقة واحدة، بضع نقرات في يوتيوب). أرسلنا تعليمات دقيقة إلى الدردشة. بمجرد وجود القناة سنكتشفها تلقائيًا ونكمل الربط بأنفسنا — دون أي إجراء إضافي منكم.', ru:'Само подключение прошло успешно! Чтобы публиковать за вас, нужен канал YouTube — создать его может только владелец аккаунта, поэтому эта короткая часть за вами (одна минута, несколько кликов на YouTube). Точные инструкции мы отправили в чат. Как только канал появится, мы обнаружим его автоматически и сами завершим подключение — больше ничего делать не нужно.' },
-  merchant_card: { he:'Merchant Center — קניות בגוגל', en:'Merchant Center — Google Shopping', fr:'Merchant Center — Google Shopping', ar:'Merchant Center — تسوق Google', ru:'Merchant Center — Google Покупки' },
-  merchant_id_note: { he:'מזהה Merchant Center נמצא ב-merchants.google.com למעלה, ליד שם החשבון (מספר בלבד)', en:'Find your Merchant Center ID at merchants.google.com, top of the page next to the account name (numbers only)', fr:'Trouvez votre identifiant Merchant Center sur merchants.google.com, en haut de la page à côté du nom du compte (chiffres uniquement)', ar:'تجدون معرّف Merchant Center في merchants.google.com أعلى الصفحة بجانب اسم الحساب (أرقام فقط)', ru:'Найдите свой ID Merchant Center на merchants.google.com, вверху страницы рядом с названием аккаунта (только цифры)' },
-  merchant_pending_status: { he:'ממתין למזהה החשבון', en:'Waiting for account id', fr:'En attente de l\'identifiant du compte', ar:'بانتظار معرّف الحساب', ru:'Ожидание ID аккаунта' },
-  notice_merchant_pending: { he:'ההרשאה אושרה — נשאר רק להזין את מזהה ה-Merchant Center שלכם', en:'Consent approved — just enter your Merchant Center id to finish', fr:'Consentement approuvé — il ne reste qu\'à saisir votre identifiant Merchant Center', ar:'تمت الموافقة — تبقى فقط إدخال معرّف Merchant Center الخاص بكم', ru:'Согласие получено — осталось ввести ваш ID Merchant Center' },
-  notice_merchant_connected: { he:'Merchant Center חובר בהצלחה ✓', en:'Merchant Center connected ✓', fr:'Merchant Center connecté ✓', ar:'تم ربط Merchant Center بنجاح ✓', ru:'Merchant Center подключён ✓' },
-  merchant_link_failed: { he:'החיבור נכשל — ודאו שהמזהה נכון ושהחשבון שאישרתם הוא בעל גישה אליו', en:'Connection failed — check the id is correct and the account you approved has access to it', fr:'Échec de connexion — vérifiez que l\'identifiant est correct et que le compte approuvé y a accès', ar:'فشل الربط — تحققوا من صحة المعرّف ومن أن الحساب الذي وافقتم عليه لديه صلاحية الوصول', ru:'Подключение не удалось — проверьте правильность ID и что одобренный аккаунт имеет к нему доступ' },
-  err_invalid_merchant_id: { he:'מזהה Merchant Center צריך להיות מספר בלבד', en:'Merchant Center id must be numbers only', fr:'L\'identifiant Merchant Center doit être uniquement numérique', ar:'يجب أن يكون معرّف Merchant Center أرقامًا فقط', ru:'ID Merchant Center должен состоять только из цифр' },
-  err_no_pending_merchant_consent: { he:'ההרשאה פגה — לחצו שוב על חבר עכשיו', en:'The consent expired — click Connect now again', fr:'Le consentement a expiré — cliquez à nouveau sur Connecter', ar:'انتهت صلاحية الموافقة — اضغطوا على ربط الآن مرة أخرى', ru:'Согласие истекло — нажмите «Подключить» снова' },
-  merchant_checking: { he:'בודקים מול Google את החשבון…', en:'Checking the account with Google…', fr:'Vérification du compte auprès de Google…', ar:'نتحقق من الحساب لدى Google…', ru:'Проверяем аккаунт в Google…' },
-  merchant_connected_named: { he:'מחובר ✓ {name} · {id}', en:'Connected ✓ {name} · {id}', fr:'Connecté ✓ {name} · {id}', ar:'متصل ✓ {name} · {id}', ru:'Подключено ✓ {name} · {id}' },
-  merchant_connected_id: { he:'מחובר ✓ חשבון {id}', en:'Connected ✓ account {id}', fr:'Connecté ✓ compte {id}', ar:'متصل ✓ الحساب {id}', ru:'Подключено ✓ аккаунт {id}' },
-  merchant_session_expired: { he:'פג תוקף הכניסה לדשבורד — רעננו את העמוד, היכנסו שוב ונסו שוב', en:'Your dashboard sign-in expired — refresh the page, sign in and try again', fr:'Votre session a expiré — actualisez la page, reconnectez-vous et réessayez', ar:'انتهت جلسة الدخول — حدّثوا الصفحة وسجّلوا الدخول ثم حاولوا مجددًا', ru:'Сессия истекла — обновите страницу, войдите и попробуйте снова' },
-  merchant_network_error: { he:'לא הצלחנו להגיע לשרת — בדקו את החיבור לאינטרנט ונסו שוב', en:'We couldn’t reach the server — check your internet connection and try again', fr:'Impossible de joindre le serveur — vérifiez votre connexion et réessayez', ar:'تعذّر الوصول إلى الخادم — تحققوا من الاتصال بالإنترنت وحاولوا مجددًا', ru:'Не удалось связаться с сервером — проверьте интернет и попробуйте снова' },
-  err_merchant_setup_pending: { he:'זה לא בגללכם: בצד שלנו חסר עדיין שלב הגדרה חד-פעמי מול Google. הצוות שלנו כבר קיבל התראה — נסו שוב מאוחר יותר עם אותו מספר', en:'This isn’t on your side: a one-time setup step with Google is still missing on ours. Our team has already been alerted — try again later with the same number', fr:'Ce n’est pas de votre côté : une étape de configuration unique avec Google manque encore du nôtre. Notre équipe est déjà alertée — réessayez plus tard avec le même numéro', ar:'المشكلة ليست لديكم: ما زالت خطوة إعداد لمرة واحدة مع Google ناقصة لدينا. فريقنا تلقى تنبيهًا — حاولوا لاحقًا بنفس الرقم', ru:'Дело не в вас: на нашей стороне ещё не завершена разовая настройка с Google. Наша команда уже получила уведомление — попробуйте позже с тем же номером' },
-  err_merchant_verify_unavailable: { he:'Google לא ענה בזמן לבדיקת החשבון — נסו שוב בעוד כמה דקות', en:'Google didn’t answer the account check in time — try again in a few minutes', fr:'Google n’a pas répondu à temps — réessayez dans quelques minutes', ar:'لم تستجب Google للتحقق في الوقت المناسب — حاولوا مجددًا بعد بضع دقائق', ru:'Google не ответил вовремя — попробуйте снова через несколько минут' },
-  err_merchant_id_not_accessible: { he:'החשבון שאישרתם אין לו גישה למזהה הזה — בדקו את המספר', en:'The account you approved has no access to this id — double-check the number', fr:'Le compte approuvé n\'a pas accès à cet identifiant — vérifiez le numéro', ar:'الحساب الذي وافقتم عليه ليس لديه صلاحية الوصول لهذا المعرّف — تحققوا من الرقم', ru:'У одобренного аккаунта нет доступа к этому ID — проверьте номер' },
-  preact_merchant_center_title: { he:'רגע לפני חיבור Merchant Center', en:'Before connecting Merchant Center', fr:'Avant de connecter Merchant Center', ar:'قبل ربط Merchant Center', ru:'Перед подключением Merchant Center' },
-  preact_merchant_center_body: { he:'כדי לנהל את פרסום המוצרים שלכם בגוגל (Google Shopping), נצטרך גישה לחשבון ה-Merchant Center שלכם. יש כאן שני שלבים: קודם אישור בגוגל, ואז הזנת מספר מזהה החשבון (תמצאו אותו בקלות ב-merchants.google.com) — כי רק בעל החשבון יכול לאשר את שניהם. אם עדיין אין לכם עדיין הזנת מוצרים (feed) בחשבון, כדאי לוודא שיש מקור מוצרים לפני שממשיכים.', en:'To manage your product listings on Google (Google Shopping) we need access to your Merchant Center account. There are two steps: first Google\'s consent, then entering your account id number (easy to find at merchants.google.com) — only the account owner can approve both. If you don\'t have a product feed in the account yet, make sure you have a product source before continuing.', fr:'Pour gérer vos annonces produits sur Google (Google Shopping), nous avons besoin d\'accéder à votre compte Merchant Center. Il y a deux étapes : d\'abord le consentement Google, puis la saisie du numéro d\'identifiant de votre compte (facile à trouver sur merchants.google.com) — seul le propriétaire du compte peut approuver les deux. Si vous n\'avez pas encore de flux de produits dans le compte, assurez-vous d\'avoir une source de produits avant de continuer.', ar:'لإدارة قوائم منتجاتكم على غوغل (Google Shopping)، نحتاج إلى الوصول لحساب Merchant Center الخاص بكم. هناك خطوتان: أولًا موافقة غوغل، ثم إدخال رقم معرّف الحساب (يسهل إيجاده في merchants.google.com) — فقط صاحب الحساب يستطيع الموافقة على الاثنين. إذا لم يكن لديكم بعد خلاصة منتجات في الحساب، تأكدوا من وجود مصدر منتجات قبل المتابعة.', ru:'Чтобы управлять вашими товарными объявлениями в Google (Google Покупки), нам нужен доступ к вашему аккаунту Merchant Center. Есть два шага: сначала согласие Google, затем ввод номера ID вашего аккаунта (легко найти на merchants.google.com) — только владелец аккаунта может одобрить оба. Если у вас ещё нет фида товаров в аккаунте, убедитесь, что у вас есть источник товаров, прежде чем продолжить.' },
   preact_gtm_title: { he:'רגע לפני חיבור המדידה', en:'Before connecting measurement', fr:'Avant de connecter la mesure', ar:'قبل ربط القياس', ru:'Перед подключением измерения' },
   preact_gtm_body: { he:'כדי לדעת אילו קמפיינים באמת מביאים לכם לידים, אנחנו צריכים גישה ל-Google Tag Manager שלכם — מערכת המדידה של האתר. זו הרשאה נפרדת מחיבור Google Ads, כי מדובר בהרשאה אחרת אצל גוגל, ורק בעל החשבון יכול לאשר אותה. אנחנו נשתמש בה רק להגדרת מדידת המרות (למשל: שליחת טופס יצירת קשר) — לא נשנה שום דבר אחר.', en:'To know which campaigns actually bring you leads, we need access to your Google Tag Manager — the site\'s measurement system. It\'s a separate consent from your Google Ads connection because Google treats it as a different permission, and only the account owner can grant it. We\'ll use it only for conversion measurement setup (e.g. contact form submissions) — nothing else gets changed.', fr:'Pour savoir quelles campagnes vous apportent réellement des leads, nous avons besoin d\'accéder à votre Google Tag Manager — le système de mesure du site. C\'est un consentement distinct de votre connexion Google Ads car Google le traite comme une autorisation différente, et seul le propriétaire du compte peut l\'accorder. Nous l\'utiliserons uniquement pour configurer la mesure des conversions (ex. envoi du formulaire de contact) — rien d\'autre ne sera modifié.', ar:'لمعرفة أي الحملات تجلب لكم عملاء محتملين فعلًا، نحتاج إلى الوصول إلى Google Tag Manager الخاص بكم — نظام قياس الموقع. هذه موافقة منفصلة عن ربط Google Ads لأن غوغل تعاملها كصلاحية مختلفة، وصاحب الحساب وحده يستطيع منحها. سنستخدمها فقط لإعداد قياس التحويلات (مثل إرسال نموذج التواصل) — لن يتغير أي شيء آخر.', ru:'Чтобы знать, какие кампании действительно приносят вам лиды, нам нужен доступ к вашему Google Tag Manager — системе измерения сайта. Это отдельное согласие от подключения Google Ads, потому что Google считает это другим разрешением, и дать его может только владелец аккаунта. Мы используем его только для настройки измерения конверсий (например, отправка контактной формы) — больше ничего не изменится.' },
   upgrade_addons_title: { he:'תוספות ושירותים נוספים — הצעה מדויקת בצ\'אט', en:'Add-ons & extra services — get an exact quote in the chat', fr:'Options et services supplémentaires — devis précis dans le chat', ar:'إضافات وخدمات أخرى — عرض دقيق في الدردشة', ru:'Дополнения и услуги — точное предложение в чате' },
@@ -2554,11 +2510,6 @@ async function loadDashboard() {
     }
     if (conns.some(c => c.platform === 'youtube' && c.status === 'active')) {
       markYoutubeConnected();
-    }
-    if (conns.some(c => c.platform === 'merchant_center' && c.status === 'active')) {
-      markMerchantConnected(d.merchant_center_id, d.merchant_center_name);
-    } else if (conns.some(c => c.platform === 'merchant_center_pending' && c.status === 'active')) {
-      showMerchantIdForm();
     }
     // The measurement card is always usable; without a site its note says
     // the tags go in once one is connected
@@ -2971,92 +2922,6 @@ function markYoutubeConnected() { markPlatformConnected('youtubeStatus', 'youtub
 // Meta/TikTok connect (a simple 1-2 click provider consent, below the
 // universal explanation rule's bar; see preactExplain's own comment).
 function connectYoutube() { window.location.href = '/api/oauth/youtube/start'; }
-
-// Merchant Center: OAuth THEN a manual id-entry step - genuinely more than
-// 1-2 clicks (find the id in their own Merchant Center settings), so this
-// DOES get the pre-action popup unlike the plain-OAuth platforms above.
-function connectMerchantCenter() {
-  preactExplain('merchant_center', () => { window.location.href = '/api/oauth/merchant-center/start'; });
-}
-function markMerchantConnected(merchantId, name) {
-  markPlatformConnected('merchantStatus', 'merchantBtn', 'merchant_center');
-  document.getElementById('merchantBtn').style.display = '';
-  document.getElementById('merchantForm').style.display = 'none';
-  if (merchantId) {
-    document.getElementById('merchantStatus').textContent = name
-      ? uallakI18n.t('gads_connected_named', { name, id: merchantId })
-      : uallakI18n.t('gads_connected_id', { id: merchantId });
-  }
-}
-function showMerchantIdForm() {
-  document.getElementById('merchantForm').style.display = 'block';
-  document.getElementById('merchantBtn').style.display = 'none';
-  document.getElementById('merchantStatus').textContent = uallakI18n.t('merchant_pending_status');
-  document.getElementById('merchantStatus').removeAttribute('data-i18n');
-}
-// kind: 'busy' (spinner) | 'ok' | 'warn' | null (hide)
-function setMerchantResult(kind, text) {
-  const box = document.getElementById('merchantResult');
-  if (!kind) { box.style.display = 'none'; box.textContent = ''; return; }
-  box.className = 'conn-result ' + kind;
-  box.innerHTML = (kind === 'busy' ? '<span class="conn-spinner" aria-hidden="true"></span>' : '')
-    + `<span>${esc(text)}</span>`;
-  box.style.display = 'flex';
-}
-async function linkMerchantCenter() {
-  const t = uallakI18n.t;
-  const input = document.getElementById('merchantIdInput');
-  // People paste "123-456-789" or "123 456 789" from the Merchant Center header
-  const merchant_id = input.value.replace(/[\s-]/g, '');
-  if (!merchant_id) { setMerchantResult('warn', t('site_fill_all')); input.focus(); return; }
-  if (!/^\d+$/.test(merchant_id)) { setMerchantResult('warn', t('err_invalid_merchant_id')); input.focus(); return; }
-  const btn = document.getElementById('merchantSubmitBtn');
-  if (btn.disabled) return;   // Enter key while a check is already running
-  btn.disabled = true;
-  btn.textContent = t('site_connecting');
-  setMerchantResult('busy', t('merchant_checking'));
-  // The server refreshes the token AND calls the Merchant API; never let a
-  // hung request leave the spinner running forever
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 75000);
-  try {
-    const res = await fetch('/api/merchant-center/link', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ merchant_id }),
-      signal: ctrl.signal,
-    });
-    if (res.status === 401) { setMerchantResult('warn', t('merchant_session_expired')); return; }
-    let body = null;
-    try { body = await res.json(); } catch (_) { /* proxy/HTML error page */ }
-    if (res.ok && body && body.success) {
-      const d = body.data || {};
-      markMerchantConnected(d.merchant_id, d.account_name);
-      setMerchantResult('ok', d.account_name
-        ? t('merchant_connected_named', { name: d.account_name, id: d.merchant_id })
-        : t('merchant_connected_id', { id: d.merchant_id }));
-      return;
-    }
-    const code = body && body.detail && body.detail.code;
-    if (code === 'ERR_NO_PENDING_MERCHANT_CONSENT') {
-      // Grant is gone - put the consent button back so there's a next step
-      document.getElementById('merchantForm').style.display = 'none';
-      const mBtn = document.getElementById('merchantBtn');
-      mBtn.style.display = '';
-      document.getElementById('merchantStatus').textContent = t('not_connected');
-    }
-    // A bare 5xx (proxy/timeout page, no code) says nothing about the id
-    setMerchantResult('warn', uallakI18n.errorText(body,
-      res.status >= 500 ? 'err_merchant_verify_unavailable' : 'merchant_link_failed'));
-  } catch (e) {
-    console.error('merchant center link failed', e);
-    setMerchantResult('warn', t(e && e.name === 'AbortError' ? 'err_merchant_verify_unavailable' : 'merchant_network_error'));
-  } finally {
-    clearTimeout(timer);
-    btn.disabled = false;
-    btn.textContent = t('site_connect');
-  }
-}
 
 // ─── pre-action explanation (universal pattern) ─────────────────────────────
 // House rule (2026-07-22): before ANY action that needs more than a 1-2 click
@@ -5447,7 +5312,7 @@ async function askAboutAutomation(vendor) {
 // never as 0.
 let PERF_DATA = null;
 const PERF_CHANNEL_ORDER = ['google_ads', 'meta', 'tiktok', 'organic_seo', 'youtube',
-                            'merchant_center', 'website_tracking', 'leads'];
+                            'website_tracking', 'leads'];
 async function loadPerformance() {
   try {
     const res = await fetch('/api/client/performance', { credentials: 'same-origin' });
@@ -5718,9 +5583,6 @@ async function loadSupport() {
     // happening and why this part is theirs), same pattern as meta_no_page
     showNotice(uallakI18n.t('notice_youtube_no_channel'), 'warn');
     preactExplain('youtube_channel', null);
-  } else if (params.get('connected') === 'merchant_center_pending') {
-    showMerchantIdForm();
-    showNotice(uallakI18n.t('notice_merchant_pending'), 'success');
   } else if (params.get('connected') === 'wordpress') {
     markWebsiteConnected();
     showNotice(uallakI18n.t('site_connected_notice'), 'success');
@@ -5733,8 +5595,7 @@ async function loadSupport() {
     showNotice(uallakI18n.t('gads_consent_required'), 'warn');
   } else if (params.get('connect_error')) {
     const err = params.get('connect_error') || '';
-    const errLabel = err.includes('merchant') ? 'Merchant Center'
-      : err.includes('gtm') ? 'Google Tag Manager'
+    const errLabel = err.includes('gtm') ? 'Google Tag Manager'
       : err.includes('youtube') ? 'YouTube'
       : err.includes('tiktok') ? 'TikTok' : err.includes('meta') ? 'Meta' : 'Google Ads';
     // '_platform' suffix = the outage is ours; don't tell them to retry

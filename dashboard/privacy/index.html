@@ -61,7 +61,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   </div>
 
   <h1>uallak Privacy Policy</h1>
-  <p class="updated">Last updated: October 21, 2026</p>
+  <p class="updated">Last updated: October 21, 2026 (Merchant Center connection removed)</p>
 
   <div class="summary">
     <p><strong>In short:</strong> uallak connects to a client's Google accounts only when the client
@@ -107,7 +107,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     <tbody>
       <tr>
         <td>Sign in with Google</td>
-        <td><code>openid</code><br><code>email</code></td>
+        <td><code>openid</code><br><code>https://www.googleapis.com/auth/userinfo.email</code></td>
         <td>Your Google account identifier, your email address and whether Google has verified that
         email. We do not request your name, profile photo, contacts or any other profile data.</td>
       </tr>
@@ -118,13 +118,6 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
         it is a manager account); in the account you select: campaigns (name, status, budget), campaign
         performance (impressions, clicks, cost, conversions by day), keywords and their performance,
         ad text (headlines, descriptions), ads' landing-page URLs, and ad policy and approval status.</td>
-      </tr>
-      <tr>
-        <td>Google Merchant Center</td>
-        <td><code>https://www.googleapis.com/auth/content</code></td>
-        <td>For the Merchant Center account id you enter: the account name, and the name and
-        processing (fetch) status of each product data source (feed). We do not read or change your
-        products, prices or settings.</td>
       </tr>
       <tr>
         <td>YouTube</td>
@@ -148,8 +141,8 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   </div>
 
   <p><strong>What we do not access.</strong> uallak does not request access to your Gmail, Google
-  Calendar, Google Contacts, Google Analytics, Google Search Console, Google Business Profile, or your
-  personal Google Drive.</p>
+  Calendar, Google Contacts, Google Analytics, Google Search Console, Google Business Profile, Google
+  Merchant Center, or your personal Google Drive.</p>
   <p><strong>A note on Google Drive.</strong> uallak stores the media and documents it prepares for you
   in uallak's own Google Drive folders, using uallak's own service account. This is not access to your
   Google account: we never ask for a Drive permission on your account and cannot see your personal
@@ -162,7 +155,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <p>We use Google user data only to provide and improve the user-facing features below, which you see
   in your uallak dashboard. We do not use it for any other purpose.</p>
 
-  <h3>Sign in with Google (<code>openid</code>, <code>email</code>)</h3>
+  <h3>Sign in with Google (<code>openid</code>, <code>userinfo.email</code>)</h3>
   <ul>
     <li>To sign you in to an existing uallak account. We match your Google account identifier, or your
     Google-verified email address, to your uallak account and remember the identifier so future
@@ -184,13 +177,6 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     marketing budget you told us about.</li>
     <li><strong>Suggestions:</strong> using your recent campaign totals when preparing weekly
     marketing suggestions for you.</li>
-  </ul>
-
-  <h3>Google Merchant Center (<code>content</code>)</h3>
-  <ul>
-    <li>To confirm that the Merchant Center account id you entered is one you can access, and to show
-    and monitor whether your product feeds are processing correctly for Google Shopping, so we can alert
-    you when a feed has a problem. We never write to your Merchant Center account.</li>
   </ul>
 
   <h3>YouTube (<code>youtube.readonly</code>, <code>youtube.upload</code>)</h3>
@@ -282,7 +268,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     <li><strong>Google access tokens</strong> (refresh tokens): kept, encrypted, only while the
     connection is active. They are revoked at Google and deleted when you disconnect, close your account
     or ask us to delete your data.</li>
-    <li><strong>Live Google data</strong> (campaign numbers, YouTube counts, feed status, Tag Manager
+    <li><strong>Live Google data</strong> (campaign numbers, YouTube counts, Tag Manager
     status): read from Google when a feature needs it and held in server memory for at most one hour.</li>
     <li><strong>Records derived from Google data</strong> (the connected account's id and name, your
     Google account identifier for sign-in, chat answers about your campaigns, activity history such as
@@ -297,7 +283,7 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <h2><span class="num">9.</span>Disconnecting, deleting and your other choices</h2>
   <ul>
     <li><strong>Disconnect any Google connection at any time</strong> from your uallak dashboard
-    (Google Ads, Merchant Center, YouTube and Tag Manager each have their own "Disconnect" button).
+    (Google Ads, YouTube and Tag Manager each have their own "Disconnect" button).
     Disconnecting revokes uallak's token at Google and deletes the stored connection. It changes nothing
     in your Google accounts: your campaigns, videos and tags stay as they are.</li>
     <li>You can also remove uallak's access from your Google Account at any time at

@@ -34,7 +34,7 @@ from datetime import date, datetime, timedelta, timezone
 SERVICE_NAME = "performance"
 
 CHANNELS = ("google_ads", "meta", "tiktok", "organic_seo", "youtube",
-            "merchant_center", "website_tracking", "leads")
+            "website_tracking", "leads")
 PAID_CHANNELS = ("google_ads", "meta")
 WINDOWS = (7, 30, 90)
 
@@ -43,7 +43,7 @@ LEAD_SOURCE_PLATFORM = {"google_ads": "google_ads", "meta": "meta"}
 
 # The dashboard card each "connect" action points at
 CONNECT_TARGET = {"google_ads": "gadsBtn", "meta": "metaBtn", "tiktok": "tiktokBtn",
-                  "youtube": "youtubeBtn", "merchant_center": "merchantBtn",
+                  "youtube": "youtubeBtn",
                   "organic_seo": "siteBtn", "website_tracking": "gtmLink"}
 
 # Reads that have no cache of their own (TikTok/YouTube engagement, the GTM
@@ -92,7 +92,6 @@ def _plan(client_id: int) -> dict:
         "tiktok": "tiktok" in steps,
         "youtube": "youtube" in steps,
         "organic_seo": has("seo", "organic", "אורגני"),
-        "merchant_center": has("merchant", "shopping"),
         "website_tracking": "website" in steps,
         "leads": True,   # every package captures leads (landing page + site form)
     }
@@ -255,15 +254,6 @@ def _organic_card(platforms: set, organic: dict) -> dict:
     return _card("connected_no_data", last_checked=_now())
 
 
-def _merchant_card(platforms: set) -> dict:
-    if "merchant_center_pending" in platforms and "merchant_center" not in platforms:
-        return _card("needs_attention", reason="finish_setup", last_checked=_now())
-    if "merchant_center" not in platforms:
-        return _card("not_connected")
-    # No Merchant Center metrics reader exists — connected is all we can say
-    return _card("connected_no_data", last_checked=_now())
-
-
 def channel_statuses(client_id: int, _organic: dict = None, _leads: dict = None,
                      _keep_daily: bool = False) -> dict:
     """THE status resolution for every channel. Never raises: a channel whose
@@ -288,7 +278,6 @@ def channel_statuses(client_id: int, _organic: dict = None, _leads: dict = None,
         "tiktok": lambda: _engagement_card(client_id, "tiktok", platforms),
         "youtube": lambda: _engagement_card(client_id, "youtube", platforms),
         "organic_seo": lambda: _organic_card(platforms, _organic),
-        "merchant_center": lambda: _merchant_card(platforms),
         "website_tracking": lambda: _tracking_card(client_id, platforms),
         "leads": lambda: _leads_card(leads),
     }
@@ -297,7 +286,6 @@ def channel_statuses(client_id: int, _organic: dict = None, _leads: dict = None,
         "meta": bool(platforms & {"meta_ads", "meta_page"}),
         "tiktok": "tiktok" in platforms, "youtube": "youtube" in platforms,
         "organic_seo": False,
-        "merchant_center": bool(platforms & {"merchant_center", "merchant_center_pending"}),
         "website_tracking": "google_tagmanager" in platforms, "leads": True,
     }
     cards = {}

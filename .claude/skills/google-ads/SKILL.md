@@ -300,6 +300,13 @@ Scheduler jobs follow the monitor_agent pattern (`/api/monitor/scan`), e.g.:
 
 ## Merchant Center (2026-07-23 — priced INSIDE the core Google Ads fee, not a separate add-on)
 
+> **RETIRED 2026-10-21.** The connection, `core/merchant_center_service.py`, the
+> `content` scope and the dashboard card were removed: no feature showed the client
+> anything, so the scope could not pass Google's least-privilege review. Old grants are
+> revoked by `POST /api/admin/merchant-center/retire`. The text below is history — if
+> Merchant Center comes back, it must ship WITH a client-visible feed-status screen and a
+> scheduled scan, and the scope goes back into `docs/GOOGLE-SCOPES.md` + the Console.
+
 Extends this agent (not a new one): same "Google-side platform management"
 business bucket as Ads, covered by `PRICING["platform_management_fees"]
 ["google"]` — no separate line item, same principle as Meta bundling FB+IG.
