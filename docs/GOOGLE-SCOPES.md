@@ -90,7 +90,7 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 | Scope | User-facing feature | Exact API calls | Narrower scope possible? |
 |---|---|---|---|
 | `openid` + `userinfo.email` | "Sign in with Google" on `/login` | OpenID userinfo (`sub`, `email`, `email_verified`) | No — the minimum for sign-in. `profile` was dropped 2026-10-17. |
-| `adwords` | Performance page + chat answers (reads); campaign creation, auto-pause of disapproved campaigns, keyword/ad-copy optimization (writes) | `customers:listAccessibleCustomers`, `googleAds:search` (GAQL), `googleAds:mutate`, `campaigns:mutate`, `adGroupCriteria:mutate`, `adGroupAds:mutate` | No — `adwords` is the Google Ads API's only OAuth scope; no read-only variant exists. |
+| `adwords` | Account picker, performance page + chat answers (reads); search-campaign creation, always PAUSED (write) | `customers:listAccessibleCustomers`, `googleAds:search` (GAQL), `googleAds:mutate` | No — `adwords` is the Google Ads API's only OAuth scope; no read-only variant exists. |
 | `youtube.upload` | Publishing a video uallak produced to the client's channel, always Private | `videos.insert` (resumable) | Already the narrowest for uploads. The full `youtube` scope (manage/delete all videos, playlists, comments) is NOT requested. |
 | `youtube.readonly` | Channel identification on connect; view/like/comment counts on the performance page | `channels.list mine=true`, `playlistItems.list`, `videos.list part=snippet,statistics,status` | No — `youtube.upload` cannot call `channels.list`/`videos.list`, and our uploads are Private, so the public API key cannot see them. |
 | `tagmanager.edit.containers` | Lead-conversion tracking: find the site's container, check the live version, add a form-submit trigger + GA4 `generate_lead` tag | `accounts.list`, `containers.list`, `workspaces.list`, `versions.live`, `workspaces.triggers.create`, `workspaces.tags.create` | No — `tagmanager.readonly` cannot create triggers or tags. |
@@ -99,7 +99,7 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 
 ## Justifications (paste into the Console, one per scope)
 
-**https://www.googleapis.com/auth/adwords** — uallak is a managed digital-marketing service: small businesses connect their own Google Ads account so that we can report on and manage their campaigns. The app reads the accounts the user can access (so the user picks which account we manage), campaign settings and daily performance (impressions, clicks, cost, conversions), keyword performance, ad text and ad approval status, and shows them on the user's performance page and in the dashboard assistant's answers. It also writes to the account at the user's direction: it creates search campaigns (always created paused, so nothing spends until the user enables it), pauses a campaign whose ads Google disapproved, pauses keywords that spend without converting, and adds new ad-text variations. The Google Ads API offers only this one OAuth scope; there is no narrower or read-only alternative.
+**https://www.googleapis.com/auth/adwords** — uallak is a managed digital-marketing service: small businesses connect their own Google Ads account so that we can report on and run their campaigns. The app reads the Google Ads accounts the user's login can access (customers:listAccessibleCustomers), so the user picks which account we manage, and reads that account's campaigns and their performance (impressions, clicks, cost, conversions) with googleAds:search, which it shows on the user's performance page and in the dashboard assistant's answers. It also creates search campaigns in that account (googleAds:mutate: budget, campaign, ad group, keywords and one responsive search ad). A campaign is always created paused, so nothing is spent until the user enables it. The Google Ads API offers only this one OAuth scope; there is no narrower or read-only alternative.
 
 **https://www.googleapis.com/auth/youtube.upload** — uallak produces marketing videos for the user's business. With this scope the app uploads a finished video to the user's own YouTube channel (videos.insert), always with privacy status Private, so the user reviews it in YouTube Studio and decides whether to publish it. This is the narrowest scope that allows uploading; we deliberately do not request the full youtube scope, because the app never edits, deletes or manages existing videos, playlists or comments.
 
@@ -136,7 +136,7 @@ consent URL). Speak in English.
 7. Open the dashboard chat and ask "How are my Google Ads campaigns doing?". Show the answer quoting the same numbers.
 8. Open the admin dashboard (`/admin`) → Control Room → the test client → click **"יצירת קמפיין בדיקה ב-Google Ads"** and confirm. Show the success panel with the campaign name ("uallak verification test …"), campaign ID and account. Say: "uallak staff create campaigns in the user's account through the same code path as the real feature; a campaign is always created paused." (The button exists only for internal test clients; it runs `google_ads_agent.create_search_campaign`, the function behind real campaign creation.)
 9. Open `ads.google.com` → the test account → Campaigns. Show the new campaign, its name and status Paused. Say: "The write is reflected in the user's Google Ads account."
-10. **NOT DEMONSTRABLE ON DEMAND:** auto-pausing a campaign with disapproved ads (needs a real disapproval) and keyword/ad-copy optimization (`GOOGLE_ADS_OPTIMIZATION_MODE` defaults to `dry_run`, so no live writes). Either leave these out of the video and the justification, or set up the conditions first.
+10. Nothing else to show for `adwords`: the justification and the privacy policy claim only the reads in steps 5–7 and the paused-campaign creation in steps 8–9. Auto-pausing disapproved campaigns and keyword/ad-copy optimization are NOT claimed; both run only when `GOOGLE_ADS_OPTIMIZATION_MODE=live`, and production must stay on the default `dry_run` (decide + log, no write). Switching it to `live` means updating the justification, the policy and this video first.
 
 **YouTube — `youtube.upload`, `youtube.readonly`**
 11. Dashboard → Connections → YouTube → "Connect now". On the consent screen, zoom on the address bar (`youtube.upload` and `youtube.readonly`, NOT `youtube`) and the two permission lines. Approve. Show the card turning "Connected" with the channel.
@@ -193,10 +193,13 @@ creates an account.
 
 ## Google Ads — `https://www.googleapis.com/auth/adwords`
 
-Feature: uallak manages the client's own Google Ads account — reporting,
-creating search campaigns (always created PAUSED), pausing campaigns whose ads
-are disapproved, and optimizing keywords and ad copy. `adwords` is the Google
-Ads API's only OAuth scope. All calls: `core/google_ads_service.py` (REST,
+Feature: uallak manages the client's own Google Ads account — reporting, and
+creating search campaigns (always created PAUSED). That is everything the
+justification and the privacy policy claim. Automatic pausing of disapproved
+campaigns and keyword/ad-copy optimization exist in code but are gated on
+`GOOGLE_ADS_OPTIMIZATION_MODE=live`; on the default `dry_run` they only decide,
+log and alert, and make no write. `adwords` is the Google Ads API's only OAuth
+scope. All calls: `core/google_ads_service.py` (REST,
 `googleads.googleapis.com/v25`); business logic: `agents/google_ads_agent.py`.
 
 **Read**
@@ -216,9 +219,14 @@ Ads API's only OAuth scope. All calls: `core/google_ads_service.py` (REST,
 | Function | Call | What changes |
 |---|---|---|
 | `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also the Control Room demo button on internal test clients) |
-| `google_ads_agent.pause_campaign` / `resume_campaign` → `set_campaign_status` | `campaigns:mutate` | campaign status PAUSED / ENABLED (the health scan auto-pauses a campaign with disapproved ads) |
-| `google_ads_agent.optimize_keywords` → `mutate_ad_group_criteria` | `adGroupCriteria:mutate` | status PAUSED on a keyword with ≥ threshold clicks and zero conversions (only when `GOOGLE_ADS_OPTIMIZATION_MODE=live`; default `dry_run`) |
-| `google_ads_agent.optimize_ad_copy` → `mutate_ad_group_ads` | `adGroupAds:mutate` | creates a new responsive search ad variant (same mode switch) |
+
+**Gated off — not claimed to Google** (write only when
+`GOOGLE_ADS_OPTIMIZATION_MODE=live`; production stays on the default `dry_run`):
+| Function | Call | What it would change |
+|---|---|---|
+| `google_ads_agent.pause_campaign` → `set_campaign_status` (← `run_health_scan`, disapproved ads) | `campaigns:mutate` | campaign status PAUSED. On `dry_run` the scan only alerts ("NOT paused"). `resume_campaign` has no caller. |
+| `google_ads_agent.optimize_keywords` → `mutate_ad_group_criteria` | `adGroupCriteria:mutate` | status PAUSED on a keyword with ≥ threshold clicks and zero conversions |
+| `google_ads_agent.optimize_ad_copy` → `mutate_ad_group_ads` | `adGroupAds:mutate` | creates a new responsive search ad variant |
 
 Defined but not called by any code path today:
 `google_ads_service.update_campaign_budget`, `set_campaign_bid_ceiling`.

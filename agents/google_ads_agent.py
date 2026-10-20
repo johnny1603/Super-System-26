@@ -957,9 +957,10 @@ def _check_performance_problems(client_id: int, campaigns: list) -> list:
 
 
 def run_health_scan() -> dict:
-    """Daily scan over every connected account: pause technically broken
-    campaigns (disapproved ads), alert on account/eligibility/performance
-    problems. Designed for a Cloud Scheduler hit on /api/google-ads/scan."""
+    """Daily scan over every connected account: alert on disapproved ads (and
+    pause those campaigns only when OPTIMIZATION_MODE=live), alert on
+    account/eligibility/performance problems. Designed for a Cloud Scheduler
+    hit on /api/google-ads/scan."""
     connections = _all_connections()
     log_step(AGENT_NAME, "run_health_scan", f"{len(connections)} connected accounts")
     summary = {"clients_scanned": 0, "issues": [], "campaigns_paused": []}
@@ -988,12 +989,20 @@ def run_health_scan() -> dict:
                 broken = broken_campaigns.setdefault(cid, {"name": campaign.get("name", ""), "ads": 0, "topics": set()})
                 broken["ads"] += 1
                 broken["topics"].update(t for t in topics if t)
+            # The pause itself is behind the same kill switch as optimization
+            # (OPTIMIZATION_MODE, default dry_run): outside "live" the scan only
+            # alerts. The Google verification texts claim no automatic pause.
             for cid, broken in broken_campaigns.items():
-                pause_result = pause_campaign(client_id, cid)
-                paused = pause_result.get("success", False)
+                if OPTIMIZATION_MODE == "live":
+                    pause_result = pause_campaign(client_id, cid)
+                    paused = pause_result.get("success", False)
+                    outcome = "auto-PAUSED" if paused else "PAUSE FAILED, check manually"
+                else:
+                    paused = False
+                    outcome = f"NOT paused (OPTIMIZATION_MODE={OPTIMIZATION_MODE}), check manually"
                 msg = (f"campaign '{broken['name']}' ({cid}) has {broken['ads']} DISAPPROVED ad(s) "
                        f"[policy: {', '.join(sorted(broken['topics'])) or 'unspecified'}] - "
-                       f"{'auto-PAUSED' if paused else 'PAUSE FAILED, check manually'}")
+                       f"{outcome}")
                 newly_raised = _raise_issue(client_id, f"disapproved_{cid}", msg, auto_paused=paused)
                 summary["issues"].append(msg)
                 if paused:
