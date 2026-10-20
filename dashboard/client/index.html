@@ -233,6 +233,12 @@ body {
    meant for a short one-line hint; the marketing-automation cards carry a real
    paragraph, and a paragraph in orange reads as a warning. */
 .conn-note { font-size: 11.5px; color: var(--gray); line-height: 1.55; margin: 2px 0 10px; }
+/* Tag Manager card: the connected container and whether the site loads it */
+.gtm-info { font-size: 12px; color: var(--gray); line-height: 1.6; margin: 8px 0 4px; }
+.gtm-info .gtm-container { color: inherit; }
+.gtm-match { margin-top: 3px; font-weight: 500; }
+.gtm-match.match { color: #2E9E5B; }
+.gtm-match.mismatch, .gtm-match.no_gtm_on_site { color: #D9534F; }
 /* Google Ads staff-access consent: the client ticks it before connecting
    (the privacy policy's "who at uallak can see your data" rests on it) */
 .conn-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 11.5px; color: var(--gray);
@@ -1215,6 +1221,10 @@ a.media-item:hover { border-color: var(--accent); }
       <button class="conn-btn primary" id="gtmBtn" onclick="connectGtm()" data-i18n="connect_now">חבר עכשיו</button>
       <button type="button" class="conn-help-btn" data-help-id="tag_manager" style="display:none;" onclick="helpConnection('tag_manager')" data-i18n="conn_help_btn">עזרה</button>
       <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
+      <!-- Which container is connected + does the site load it (core/gtm_connection) -->
+      <div class="gtm-info" id="gtmInfo" style="display:none;"></div>
+      <div class="gads-choose" id="gtmChoose" style="display:none;"></div>
+      <div class="lock-note" id="gtmTokenDeadNote" style="display:none; margin-top:6px;" data-i18n="gtm_token_dead_note">החיבור ל-Google Tag Manager הפסיק לעבוד (ההרשאה בוטלה או פגה). לוחצים על "חיבור מחדש" ומאשרים במסך של Google — שום דבר באתר שלכם לא השתנה.</div>
       <div class="lock-note" id="gtmReconnectNote" style="display:none; margin-top:6px;" data-i18n="gtm_reconnect_note">עדכנו בבקשה את החיבור ל-Google Tag Manager: אנחנו צריכים עוד אישור אחד — לשמור גרסה של הגדרות המדידה כדי שהן ייכנסו לפעולה. לוחצים על הכפתור ומאשרים במסך של Google. שום דבר באתר שלכם לא השתנה.</div>
     </div>
 
@@ -2247,6 +2257,28 @@ const DASH_I18N = {
   source_none: { he:'—', en:'—', fr:'—', ar:'—', ru:'—' },
   conn_help_btn: { he:'עזרה', en:'Help', fr:'Aide', ar:'مساعدة', ru:'Помощь' },
   conn_help_msg: { he:'אשמח לעזרה בחיבור {name}', en:'I\'d like help connecting {name}', fr:'J\'aimerais de l\'aide pour connecter {name}', ar:'أريد مساعدة في ربط {name}', ru:'Помогите, пожалуйста, подключить {name}' },
+  gtm_container_label: { he:'קונטיינר מחובר', en:'Connected container', fr:'Conteneur connecté', ar:'الحاوية المرتبطة', ru:'Подключённый контейнер' },
+  gtm_container_unknown: { he:'לא ידוע כרגע', en:'Unknown right now', fr:'Inconnu pour le moment', ar:'غير معروف حاليًا', ru:'Пока неизвестно' },
+  gtm_match_ok: { he:'✓ זה הקונטיינר שנטען באתר שלכם', en:'✓ This is the container your website loads', fr:'✓ C\'est le conteneur chargé par votre site', ar:'✓ هذه هي الحاوية التي يحمّلها موقعكم', ru:'✓ Именно этот контейнер загружается на вашем сайте' },
+  gtm_match_mismatch: { he:'הקונטיינר שנבחר שונה מזה שנטען באתר ({site}) — בחרו את הקונטיינר הנכון. עד אז לא נשנה דבר ב-Tag Manager.', en:'The chosen container differs from the one your website loads ({site}) — choose the right one. Until then we change nothing in Tag Manager.', fr:'Le conteneur choisi diffère de celui chargé par votre site ({site}) — choisissez le bon. D\'ici là, nous ne modifions rien dans Tag Manager.', ar:'الحاوية المختارة تختلف عن التي يحمّلها موقعكم ({site}) — اختاروا الحاوية الصحيحة. حتى ذلك الحين لن نغيّر شيئًا في Tag Manager.', ru:'Выбранный контейнер отличается от загружаемого на сайте ({site}) — выберите правильный. До тех пор мы ничего не меняем в Tag Manager.' },
+  gtm_match_none: { he:'לא נמצא קוד GTM באתר', en:'No GTM code found on the website', fr:'Aucun code GTM trouvé sur le site', ar:'لم يُعثر على كود GTM في الموقع', ru:'Код GTM на сайте не найден' },
+  gtm_match_no_site: { he:'האתר עוד לא מחובר — נבדוק התאמה כשיחובר', en:'Your website isn\'t connected yet — we\'ll check the match once it is', fr:'Votre site n\'est pas encore connecté — nous vérifierons ensuite', ar:'الموقع غير مرتبط بعد — سنتحقق من التطابق عند ربطه', ru:'Сайт ещё не подключён — проверим соответствие после подключения' },
+  gtm_match_unknown: { he:'לא הצלחנו לבדוק כרגע איזה קונטיינר נטען באתר', en:'We couldn\'t check right now which container your website loads', fr:'Impossible de vérifier pour l\'instant quel conteneur votre site charge', ar:'تعذّر التحقق الآن من الحاوية التي يحمّلها الموقع', ru:'Сейчас не удалось проверить, какой контейнер загружает сайт' },
+  gtm_container_unavailable: { he:'אין כרגע גישה לקונטיינר הזה מהחשבון שאישרתם — בחרו קונטיינר אחר או חברו מחדש', en:'The account you approved can\'t reach this container right now — choose another or reconnect', fr:'Le compte approuvé n\'accède plus à ce conteneur — choisissez-en un autre ou reconnectez', ar:'الحساب الذي وافقتم عليه لا يصل إلى هذه الحاوية الآن — اختاروا أخرى أو أعيدوا الربط', ru:'Одобренный аккаунт сейчас не имеет доступа к контейнеру — выберите другой или переподключите' },
+  gtm_change: { he:'החלפת קונטיינר', en:'Change container', fr:'Changer de conteneur', ar:'تغيير الحاوية', ru:'Сменить контейнер' },
+  gtm_choose_title: { he:'איזה קונטיינר לחבר?', en:'Which container should we connect?', fr:'Quel conteneur connecter ?', ar:'أي حاوية نربط؟', ru:'Какой контейнер подключить?' },
+  gtm_choose_text: { he:'אלה הקונטיינרים שהחשבון שאישרתם יכול לגשת אליהם. בחרו את זה שמותקן באתר שלכם.', en:'These are the containers the account you approved can reach. Pick the one installed on your website.', fr:'Voici les conteneurs accessibles au compte approuvé. Choisissez celui installé sur votre site.', ar:'هذه الحاويات التي يصل إليها الحساب الذي وافقتم عليه. اختاروا المثبتة في موقعكم.', ru:'Это контейнеры, доступные одобренному аккаунту. Выберите тот, что установлен на сайте.' },
+  gtm_on_site_badge: { he:'נטען באתר', en:'On your website', fr:'Sur votre site', ar:'في موقعكم', ru:'На сайте' },
+  gtm_current: { he:'מחובר עכשיו', en:'Connected now', fr:'Connecté', ar:'المرتبط حاليًا', ru:'Подключён сейчас' },
+  gtm_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
+  gtm_none: { he:'לא נמצאו קונטיינרים בחשבון שאישרתם.', en:'No containers found in the account you approved.', fr:'Aucun conteneur trouvé dans le compte approuvé.', ar:'لم يُعثر على حاويات في الحساب الذي وافقتم عليه.', ru:'В одобренном аккаунте нет контейнеров.' },
+  gtm_list_failed: { he:'לא הצלחנו לטעון את רשימת הקונטיינרים כרגע.', en:'We couldn\'t load the container list right now.', fr:'Impossible de charger la liste des conteneurs pour le moment.', ar:'تعذّر تحميل قائمة الحاويات الآن.', ru:'Сейчас не удалось загрузить список контейнеров.' },
+  gtm_select_failed: { he:'השמירה לא הצליחה — נסו שוב.', en:'Saving didn\'t work — please try again.', fr:'L\'enregistrement a échoué — réessayez.', ar:'لم ينجح الحفظ — حاولوا مجددًا.', ru:'Не удалось сохранить — попробуйте ещё раз.' },
+  notice_gtm_container_saved: { he:'הקונטיינר נשמר ✓', en:'Container saved ✓', fr:'Conteneur enregistré ✓', ar:'تم حفظ الحاوية ✓', ru:'Контейнер сохранён ✓' },
+  gtm_status_reconnect: { he:'צריך לחבר מחדש', en:'Needs reconnecting', fr:'À reconnecter', ar:'يحتاج إلى إعادة ربط', ru:'Нужно переподключить' },
+  gtm_reconnect_now: { he:'חיבור מחדש', en:'Reconnect', fr:'Reconnecter', ar:'إعادة الربط', ru:'Переподключить' },
+  gtm_token_dead_note: { he:'החיבור ל-Google Tag Manager הפסיק לעבוד (ההרשאה בוטלה או פגה). לוחצים על "חיבור מחדש" ומאשרים במסך של Google — שום דבר באתר שלכם לא השתנה.', en:'The Google Tag Manager connection stopped working (the permission was revoked or expired). Click "Reconnect" and approve on Google\'s screen — nothing on your website changed.', fr:'La connexion à Google Tag Manager ne fonctionne plus (autorisation révoquée ou expirée). Cliquez sur « Reconnecter » et validez chez Google — rien n\'a changé sur votre site.', ar:'توقف ربط Google Tag Manager عن العمل (أُلغي الإذن أو انتهى). اضغطوا "إعادة الربط" ووافقوا في شاشة Google — لم يتغير شيء في موقعكم.', ru:'Подключение к Google Tag Manager перестало работать (разрешение отозвано или истекло). Нажмите «Переподключить» и подтвердите в Google — на сайте ничего не изменилось.' },
+  act_gtm_container_selected: { he:'נבחר קונטיינר Google Tag Manager', en:'Google Tag Manager container selected', fr:'Conteneur Google Tag Manager choisi', ar:'تم اختيار حاوية Google Tag Manager', ru:'Выбран контейнер Google Tag Manager' },
   gtm_no_site_note: { he:'מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.', en:'Measurement is installed on your website once your site is connected.', fr:'La mesure sera installée sur votre site dès qu\'il sera connecté.', ar:'سيتم تثبيت القياس على موقعكم بمجرد ربط الموقع.', ru:'Измерение будет установлено на вашем сайте, как только сайт будет подключён.' },
   gtm_connected_btn: { he:'מדידת המרות מחוברת ✓', en:'Conversion measurement connected ✓', fr:'Mesure des conversions connectée ✓', ar:'قياس التحويلات مرتبط ✓', ru:'Измерение конверсий подключено ✓' },
   notice_gtm_connected: { he:'Google Tag Manager חובר בהצלחה ✓ — מעכשיו אפשר לוודא ולהגדיר מדידת לידים באתר', en:'Google Tag Manager connected ✓ — lead measurement on your site can now be verified and configured', fr:'Google Tag Manager connecté ✓ — la mesure des leads sur votre site peut désormais être vérifiée et configurée', ar:'تم ربط Google Tag Manager ✓ — يمكن الآن التحقق من قياس العملاء المحتملين على موقعكم وإعداده', ru:'Google Tag Manager подключён ✓ — теперь можно проверять и настраивать измерение лидов на вашем сайте' },
@@ -2527,6 +2559,8 @@ async function loadDashboard() {
     if (conns.some(c => c.platform === 'google_tagmanager' && c.status === 'active')) {
       if (d.gtm_needs_reconnect) markGtmNeedsReconnect();
       else markGtmConnected();
+      // Container + site match + REAL token health, after the page is up
+      loadGtmConnection(false);
     }
     if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
       markHiggsfieldConnected();
@@ -3000,6 +3034,128 @@ function markGtmNeedsReconnect() {
   btn.className = 'conn-btn primary';
   btn.onclick = () => { window.location.href = '/api/oauth/gtm/start'; };
   document.getElementById('gtmReconnectNote').style.display = 'block';
+}
+
+// ─── Tag Manager: which container (core/gtm_connection) ─────────────────────
+// The card says WHICH container is connected (name + GTM-XXXX), whether the
+// website really loads that one, and — from a live check of the stored grant —
+// whether the connection still works at all. "Change container" lists, through
+// the client's own stored login, every container it can reach; no new consent.
+const GTM_MATCH_KEYS = { match: 'gtm_match_ok', mismatch: 'gtm_match_mismatch',
+  no_gtm_on_site: 'gtm_match_none', no_site: 'gtm_match_no_site', unknown: 'gtm_match_unknown' };
+
+async function loadGtmConnection(refresh) {
+  try {
+    const res = await fetch('/api/gtm/connection' + (refresh ? '?refresh=true' : ''),
+                            { credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) renderGtmConnection(body.data);
+  } catch (e) {
+    console.error('gtm connection status failed', e);   // the card keeps its basic state
+  }
+}
+
+function renderGtmConnection(v) {
+  const t = uallakI18n.t;
+  const info = document.getElementById('gtmInfo');
+  if (!v || !v.connected) { info.style.display = 'none'; return; }
+  if (v.token && v.token.state === 'token_dead') { info.style.display = 'none'; markGtmTokenDead(); return; }
+  const c = v.container || {};
+  const label = c.public_id ? (c.name ? `${c.name} · ${c.public_id}` : c.public_id) : t('gtm_container_unknown');
+  const unavailable = v.token && v.token.state === 'container_unavailable';
+  const matchLine = unavailable
+    ? `<div class="gtm-match mismatch">${esc(t('gtm_container_unavailable'))}</div>`
+    : `<div class="gtm-match ${esc(v.match || '')}">${esc(t(GTM_MATCH_KEYS[v.match] || 'gtm_match_unknown',
+        { site: (v.site && v.site.gtm_id) || '' }))}</div>`;
+  info.innerHTML = `<div>${esc(t('gtm_container_label'))}: <span class="gtm-container" dir="ltr">${esc(label)}</span></div>
+    ${matchLine}
+    <button type="button" class="gads-link" onclick="openGtmPicker()">${esc(t('gtm_change'))}</button>`;
+  info.style.display = 'block';
+}
+
+// The stored grant no longer works (invalid_grant): never "מחובר ✓"
+function markGtmTokenDead() {
+  const t = uallakI18n.t;
+  const status = document.getElementById('gtmStatus');
+  status.textContent = t('gtm_status_reconnect');
+  status.classList.remove('connected');
+  const btn = document.getElementById('gtmBtn');
+  btn.textContent = t('gtm_reconnect_now');
+  btn.className = 'conn-btn primary';
+  btn.onclick = () => { window.location.href = '/api/oauth/gtm/start'; };
+  document.getElementById('gtmReconnectNote').style.display = 'none';
+  document.getElementById('gtmTokenDeadNote').style.display = 'block';
+  document.getElementById('gtmChoose').style.display = 'none';
+}
+
+async function openGtmPicker() {
+  const box = document.getElementById('gtmChoose');
+  box.style.display = 'flex';
+  box.innerHTML = `<div class="gads-choose-text">${esc(uallakI18n.t('loading'))}</div>`;
+  let d = null;
+  try {
+    const res = await fetch('/api/gtm/containers', { credentials: 'same-origin' });
+    const body = await res.json();
+    d = body && body.success ? body.data : null;
+  } catch (e) {
+    console.error('gtm container list failed', e);
+  }
+  renderGtmPicker(d);
+}
+
+function renderGtmPicker(d) {
+  const t = uallakI18n.t;
+  const box = document.getElementById('gtmChoose');
+  const closeBtn = `<button type="button" class="gads-link" onclick="closeGtmPicker()">${esc(t('gtm_close'))}</button>`;
+  if (!d || !d.success) {
+    if (d && d.state === 'token_dead') { markGtmTokenDead(); return; }
+    box.innerHTML = `<div class="gads-choose-text">${esc(t('gtm_list_failed'))}</div>
+      <button type="button" class="conn-btn gads-choice-plain" onclick="openGtmPicker()">${esc(t('gads_retry'))}</button>${closeBtn}`;
+    return;
+  }
+  const rows = [];
+  (d.accounts || []).forEach(a => (a.containers || []).forEach(c => rows.push({ ...c, account_name: a.account_name })));
+  if (!rows.length) {
+    box.innerHTML = `<div class="gads-choose-text">${esc(t('gtm_none'))}</div>${closeBtn}`;
+    return;
+  }
+  box.innerHTML = `<div class="gads-choose-title">${esc(t('gtm_choose_title'))}</div>
+    <div class="gads-choose-text">${esc(t('gtm_choose_text'))}</div>
+    ${rows.map(c => {
+      const current = c.path === d.current;
+      const onSite = d.site_gtm_id && c.public_id && c.public_id.toUpperCase() === d.site_gtm_id.toUpperCase();
+      return `<button type="button" class="gads-acct${current ? ' current' : ''}" data-path="${esc(c.path)}">
+        <span class="gads-acct-name" dir="auto">${esc(c.name || c.public_id)}</span>
+        <span class="gads-acct-meta"><span dir="ltr">${esc(c.public_id)}</span> · <span dir="auto">${esc(c.account_name || '')}</span>
+          ${onSite ? ' · <span class="gads-st ok">' + esc(t('gtm_on_site_badge')) + '</span>' : ''}
+          ${current ? ' · <b>' + esc(t('gtm_current')) + '</b>' : ''}</span>
+      </button>`;
+    }).join('')}
+    ${closeBtn}`;
+  box.querySelectorAll('.gads-acct').forEach(b => { b.onclick = () => chooseGtmContainer(b.dataset.path); });
+}
+
+function closeGtmPicker() { document.getElementById('gtmChoose').style.display = 'none'; }
+
+async function chooseGtmContainer(path) {
+  const box = document.getElementById('gtmChoose');
+  box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const res = await fetch('/api/gtm/select-container', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ container_path: path }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('select failed');
+    closeGtmPicker();
+    renderGtmConnection(body.data);
+    showNotice(uallakI18n.t('notice_gtm_container_saved'), 'success');
+  } catch (e) {
+    console.error('gtm container select failed', e);
+    box.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    showNotice(uallakI18n.t('gtm_select_failed'), 'warn');
+  }
 }
 
 function markWebsiteConnected() {
@@ -5576,6 +5732,9 @@ async function loadSupport() {
     showNotice(uallakI18n.t('notice_tiktok_connected'), 'success');
   } else if (params.get('connected') === 'gtm') {
     showNotice(uallakI18n.t('notice_gtm_connected'), 'success');
+    // Right after consent: show every container this login can reach, the
+    // default preselected, so the client sees and confirms (or changes) it
+    if (params.get('choose') === 'gtm') openGtmPicker();
   } else if (params.get('connected') === 'youtube') {
     markYoutubeConnected();
     showNotice(uallakI18n.t('notice_youtube_connected'), 'success');

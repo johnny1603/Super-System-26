@@ -937,8 +937,14 @@ def _clear_leads(ids: list, lead_owner: dict):
     _delete_query("leads").in_("client_id", ids).execute()
 
 
+def _settings_keys(ids: list) -> list:
+    """The client's own app_settings rows: per-client limits and the Tag
+    Manager token-health record (core/gtm_connection)."""
+    return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}")]
+
+
 def _clear_settings(ids: list):
-    _delete_query("app_settings").in_("key", [f"client_settings:{int(i)}" for i in ids]).execute()
+    _delete_query("app_settings").in_("key", _settings_keys(ids)).execute()
 
 
 # ─── Verification: count what is left, per client, per table ─────────────────
@@ -961,7 +967,7 @@ def _verify(tables: list, ids: list, lead_owner: dict, missing: list) -> tuple:
             return [lead_owner.get(r.get("lead_id")) for r in rows]
         if table == "app_settings":
             rows = (_db().table("app_settings").select("key")
-                    .in_("key", [f"client_settings:{int(i)}" for i in ids]).execute().data or [])
+                    .in_("key", _settings_keys(ids)).execute().data or [])
             return [int(r["key"].split(":", 1)[1]) for r in rows]
         return [r["client_id"] for r in
                 _paged(lambda: _db().table(table).select("client_id").in_("client_id", ids))[0]]

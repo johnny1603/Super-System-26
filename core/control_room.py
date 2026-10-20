@@ -190,6 +190,16 @@ def client_view(client_id: int) -> dict:
                 "chosen_at": info.get("chosen_at", "")}
     google_ads = section("google ads account", google_ads_account, {})
 
+    def gtm():
+        # Same view the client's card shows (core/gtm_connection) + when the
+        # stored grant last worked. Never a token.
+        from core import gtm_connection
+        view = gtm_connection.connection_view(client_id)
+        if not view.get("connected"):
+            return {}
+        return {**view, "health": gtm_connection.health(client_id)}
+    gtm_view = section("tag manager", gtm, {})
+
     open_alerts = [a for a in client_alerts if a.get("status") == "open"]
     unreviewed = [f for f in feedback if not f.get("reviewed")]
     last = _parse(activity[0]["created_at"]) if activity else None
@@ -222,6 +232,7 @@ def client_view(client_id: int) -> dict:
         "feedback": feedback,
         "connections": connections,
         "google_ads": google_ads,
+        "gtm": gtm_view,
         "attention": attention,
         "stalled": stalled,
         "data_gaps": gaps,

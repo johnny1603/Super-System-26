@@ -138,6 +138,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   sources and alerts written after the run started stay). Leftovers block the clients-row delete.
   The Google Ads card's staff-access consent (`GOOGLE_ADS_STAFF_CONSENT`, required by
   `/api/oauth/google-ads/start`) is what the policy's human-access section rests on.
+- `core/gtm_connection.py` — the Tag Manager card's truth: WHICH container is connected
+  (name + GTM-XXXX; the client picks it after consent and can change it via
+  `/api/gtm/containers` + `/api/gtm/select-container`, listed live through their own grant —
+  no new consent, no new scope), whether the site's homepage loads that container
+  (match / mismatch / no GTM / no site), and REAL token health from a live `containers.get`
+  (`invalid_grant` → the card says "צריך לחבר מחדש", never "מחובר ✓"). Health lives in
+  `app_settings` `gtm_token:<id>` (NOT client_activity — the client's feed shows unknown action
+  types raw); client_deletion clears it. `configure_lead_conversion` refuses to publish on a
+  mismatch or a dead grant. Control Room shows the same view + last OK time.
 - `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
   POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
   in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.

@@ -1158,6 +1158,20 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
         return {"success": False, "reason": "gtm_reconnect_needed",
                 "errors": [f"the stored GTM grant lacks {missing} — the client must reconnect "
                            "Tag Manager from the dashboard (the card asks for it)"]}
+    # Never publish into a container the website does not load, or with a dead
+    # grant (core/gtm_connection, checked fresh)
+    from core import gtm_connection
+    blocked = gtm_connection.publish_block_reason(client_id)
+    if blocked == "gtm_container_mismatch":
+        view = gtm_connection.connection_view(client_id)
+        return {"success": False, "reason": blocked,
+                "errors": [f"the connected container ({view['container'].get('public_id') or '?'}) "
+                           f"is not the one the website loads ({view['site'].get('gtm_id') or '?'}) — "
+                           "the client must choose the right container (החלפת קונטיינר) first"]}
+    if blocked == "gtm_token_dead":
+        return {"success": False, "reason": blocked,
+                "errors": ["the stored Tag Manager grant no longer works (invalid_grant) — the "
+                           "client must reconnect Tag Manager from the dashboard"]}
 
     ga4_measurement_id = (ga4_measurement_id or "").strip()
     if not ga4_measurement_id:

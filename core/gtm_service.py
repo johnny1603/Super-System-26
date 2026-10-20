@@ -160,6 +160,12 @@ def list_containers(refresh_token: str, account_path: str) -> list:
     return _get(refresh_token, f"{account_path}/containers").get("container", [])
 
 
+def get_container(refresh_token: str, container_path: str) -> dict:
+    """One container (name, publicId, ...) — also the cheapest live proof that
+    the stored grant still works for THIS container (tagmanager.edit.containers)."""
+    return _get(refresh_token, container_path)
+
+
 def find_container_by_public_id(refresh_token: str, public_id: str) -> dict:
     """The container matching a GTM-XXXXXX public id across every account the
     grant can see — how the callback links the consent to the container that

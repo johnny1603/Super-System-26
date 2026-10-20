@@ -1833,6 +1833,8 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
 
     # Drop stale in-memory caches so a reconnect doesn't serve the old account's data
     from agents import google_ads_agent, meta_ads_agent, website_agent
+    from core import gtm_connection
+    gtm_connection.forget(client_id)
     google_ads_agent._perf_cache.pop(client_id, None)
     meta_ads_agent._perf_cache.pop(client_id, None)
     website_agent._overview_cache.pop(client_id, None)
@@ -2516,6 +2518,36 @@ def google_ads_select_account(req: GoogleAdsAccountChoice, request: Request):
         raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_SELECT_FAILED")})
     return {"success": True, "data": result}
 
+# ─── Tag Manager: which container (the client sees and chooses) ──────────────
+# core/gtm_connection. Plain `def`: Tag Manager API + homepage fetch.
+
+@app.get("/api/gtm/connection")
+def gtm_connection_status(request: Request, refresh: bool = False):
+    # The GTM card's live state, loaded AFTER the dashboard: container name +
+    # GTM-XXXX, does the site load it, does the stored grant still work
+    client_id = _require_session(request)
+    from core import gtm_connection
+    return {"success": True, "data": gtm_connection.connection_view(client_id, refresh=refresh)}
+
+@app.get("/api/gtm/containers")
+def gtm_containers(request: Request):
+    client_id = _require_session(request)
+    from core import gtm_connection
+    return {"success": True, "data": gtm_connection.container_options(client_id)}
+
+class GtmContainerChoice(BaseModel):
+    container_path: str
+
+@app.post("/api/gtm/select-container")
+def gtm_select_container(req: GtmContainerChoice, request: Request):
+    client_id = _require_session(request)
+    from core import gtm_connection
+    result = gtm_connection.select_container(client_id, (req.container_path or "").strip())
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_SELECT_FAILED"),
+                                                     "state": result.get("state")})
+    return {"success": True, "data": result["view"]}
+
 @app.get("/api/admin/control-room/{client_id}/google-ads/accounts")
 def admin_google_ads_accounts(client_id: int, request: Request, refresh: bool = False):
     # Every account the client's STORED login can reach, so the admin can
@@ -2559,10 +2591,11 @@ def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
             print(f"[gtm oauth] client {client_id}: token exchange returned no refresh_token")
             return RedirectResponse(url="/dashboard/?connect_error=gtm")
 
+        # A DEFAULT only — the dashboard opens the container picker right after
+        # this (?choose=gtm), showing it preselected (core/gtm_connection).
         # Prefer the container actually INSTALLED on the client's site (the
-        # GTM-XXX id the tracking audit sees in the homepage HTML) — falls
-        # back to the first container the grant can see (first-asset MVP,
-        # same as Ads/Meta account picking)
+        # GTM-XXX id the tracking audit sees in the homepage HTML), else the
+        # first container the grant can see.
         container = {}
         try:
             from agents.website_agent import get_tracking_status
@@ -2591,10 +2624,13 @@ def gtm_oauth_callback(state: str = "", code: str = "", error: str = ""):
         log_activity(client_id, "website_agent", "gtm_api_connected",
                      {"container_path": container["path"],
                       "public_id": container.get("publicId", ""),
+                      "container_name": container.get("name", ""),
                       "scopes": granted}, {})
         if gtm_service.missing_scopes(granted):
             print(f"[gtm oauth] client {client_id}: grant lacks {gtm_service.missing_scopes(granted)}")
-        return RedirectResponse(url="/dashboard/?connected=gtm")
+        from core import gtm_connection
+        gtm_connection.forget(client_id)
+        return RedirectResponse(url="/dashboard/?connected=gtm&choose=gtm")
     except Exception:
         import traceback
         traceback.print_exc()

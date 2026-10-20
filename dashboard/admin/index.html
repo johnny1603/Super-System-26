@@ -2977,6 +2977,7 @@ async function openControlRoom(clientId) {
     <div id="crConversion"></div>
     ${crGadsLine(c.id, d.google_ads)}
     <div id="crGadsAccounts"></div>
+    ${crGtmLine(d.gtm)}
     ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
 
     <div class="cr-grid">
@@ -3576,6 +3577,26 @@ function crGadsLine(clientId, g) {
     : g.status === 'pending_selection' ? 'ההרשאה ניתנה — ממתין שהלקוח יבחר חשבון' : 'לא מחובר';
   return `<div class="cr-gads-line">Google Ads: ${what}
     <button type="button" class="manage-btn" onclick="crGadsLoad(${Number(clientId)})">החלף חשבון</button></div>`;
+}
+
+// Tag Manager: connected container, does the site load it, last time the
+// stored grant worked (core/gtm_connection — the client card's own view)
+const GTM_MATCH_HE = { match: '✓ תואם לאתר', mismatch: '✕ שונה מהקונטיינר שנטען באתר',
+  no_gtm_on_site: '✕ אין קוד GTM באתר', no_site: 'אין אתר מחובר', unknown: 'לא נבדק (האתר לא נקרא)' };
+const GTM_TOKEN_HE = { ok: 'תקין', token_dead: '✕ ההרשאה מתה (invalid_grant) — הלקוח צריך לחבר מחדש',
+  container_unavailable: '✕ אין גישה לקונטיינר', access_pending: 'ממתין לגישה מול Google (API / אישור)',
+  unavailable: 'לא נבדק כרגע (תקלה זמנית)' };
+function crGtmLine(g) {
+  if (!g || !g.connected) return '';
+  const c = g.container || {};
+  const token = (g.token || {}).state || 'unavailable';
+  const lastOk = (g.health || {}).last_ok_at;
+  const matchColor = g.match === 'match' ? 'var(--green)' : (g.match === 'mismatch' || g.match === 'no_gtm_on_site') ? 'var(--red)' : 'var(--gray)';
+  return `<div class="cr-gads-line">Tag Manager: ${c.name ? esc(c.name) + ' · ' : ''}<span dir="ltr">${esc(c.public_id || '?')}</span>
+    ${c.account_name ? ` <span style="color:var(--gray);">(${esc(c.account_name)})</span>` : ''}
+    · <span style="color:${matchColor};">${esc(GTM_MATCH_HE[g.match] || g.match || '')}${g.site && g.site.gtm_id && g.match === 'mismatch' ? ' <span dir="ltr">(' + esc(g.site.gtm_id) + ')</span>' : ''}</span>
+    · טוקן: <span style="color:${token === 'ok' ? 'var(--green)' : 'var(--red)'};">${esc(GTM_TOKEN_HE[token] || token)}</span>
+    · נבדק תקין לאחרונה: ${lastOk ? esc(fmtDate(lastOk)) : '—'}</div>`;
 }
 
 async function crGadsLoad(clientId) {
