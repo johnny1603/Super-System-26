@@ -2968,6 +2968,11 @@ async function openControlRoom(clientId) {
       <button type="button" class="manage-btn" onclick="crConfigureConversion(${Number(c.id)}, event)">Install lead conversion tracking</button>
       <button class="manage-btn" onclick="openDrawer(${Number(c.id)})">כרטיס לקוח מלא</button>
     </div>
+    ${c.billing_exempt ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:-6px 0 14px;">
+      <button type="button" class="manage-btn" onclick="crDemoAction(${Number(c.id)}, 'google-ads-campaign', event)">יצירת קמפיין בדיקה ב-Google Ads</button>
+      <button type="button" class="manage-btn" onclick="crDemoAction(${Number(c.id)}, 'youtube-upload', event)">העלאת סרטון בדיקה ל-YouTube</button>
+    </div>` : ''}
+    <div id="crDemo"></div>
     <div id="crDriveTest"></div>
     <div id="crConversion"></div>
     ${crGadsLine(c.id, d.google_ads)}
@@ -3491,6 +3496,62 @@ async function crConfigureConversion(clientId, ev) {
     <div class="drawer-stat-row"><span class="drawer-stat-label">live version</span><span dir="ltr">${esc(r.live_version || '')}</span></div>
     ${r.note ? `<div style="font-size:12px;color:var(--yellow);margin-top:8px;line-height:1.6;direction:ltr;text-align:left;">${esc(r.note)}</div>` : ''}
   </div>`;
+}
+
+// ─── Google verification demo (internal test clients only) ───────────────────
+// One real write each, for the OAuth demo video: a PAUSED test campaign in the
+// client's Google Ads account, or a PRIVATE test video on their YouTube
+// channel. The server refuses any client that is not billing_exempt.
+const CR_DEMO = {
+  'google-ads-campaign': {
+    confirm: 'ליצור בחשבון Google Ads של לקוח הבדיקה קמפיין בדיקה מושהה (PAUSED, 5 ₪ ליום, לא רץ)?',
+    busy: 'יוצר קמפיין בדיקה ב-Google Ads…',
+    ok: r => `<div class="drawer-label" style="color:var(--green);">✓ קמפיין הבדיקה נוצר — מושהה</div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">שם הקמפיין</span><span dir="ltr">${esc(r.campaign_name || '')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">Campaign ID</span><span dir="ltr">${esc(r.campaign_id || '')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">חשבון</span><span dir="ltr">${esc([r.account_name, r.customer_id].filter(Boolean).join(' · '))}</span></div>
+      <div style="font-size:12.5px;margin-top:8px;">פתחו את <a href="https://ads.google.com/aw/campaigns" target="_blank" rel="noopener" style="color:var(--accent);">Google Ads ↗</a> בחשבון הזה כדי להראות את הקמפיין.</div>`,
+  },
+  'youtube-upload': {
+    confirm: 'להעלות לערוץ YouTube של לקוח הבדיקה את הסרטון הקטן ביותר מתיקיית המדיה שלו (כפרטי)?',
+    busy: 'מוריד מ-Drive ומעלה ל-YouTube… (עלול לקחת דקה-שתיים)',
+    ok: r => `<div class="drawer-label" style="color:var(--green);">✓ הסרטון הועלה — פרטי (Private)</div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">כותרת</span><span dir="ltr">${esc(r.title || '')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">Video ID</span><span dir="ltr">${esc(r.video_id || '')}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">קובץ מקור</span><span dir="ltr">${esc(r.source_file || '')}</span></div>
+      ${r.studio_url ? `<div style="font-size:12.5px;margin-top:8px;"><a href="${esc(r.studio_url)}" target="_blank" rel="noopener" style="color:var(--accent);">פתיחה ב-YouTube Studio ↗</a></div>` : ''}`,
+  },
+};
+
+async function crDemoAction(clientId, action, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const el = document.getElementById('crDemo');
+  const spec = CR_DEMO[action];
+  if (!el || !spec) { console.error('crDemoAction: missing target or action', action); return; }
+  const fail = msg => {
+    el.innerHTML = `<div class="panel-pad" style="color:var(--red);direction:ltr;text-align:left;white-space:pre-wrap;">${esc(msg)}</div>`;
+  };
+  if (!confirm(spec.confirm)) return;
+  el.innerHTML = `<div class="panel-pad" style="color:var(--gray);">${esc(spec.busy)}</div>`;
+  let res, body;
+  try {
+    res = await fetch(`/api/admin/control-room/${Number(clientId)}/demo/${action}`,
+                      { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {
+    console.error('demo action request failed', e);
+    fail('הבקשה לא הגיעה לשרת (רשת / timeout) — בדקו ב-Google לפני שמנסים שוב');
+    return;
+  }
+  if (res.status === 401) { fail('פג תוקף ההתחברות לניהול — התחבר מחדש'); showLogin(); return; }
+  try { body = await res.json(); } catch (e) { body = null; }
+  if (!res.ok || !body || !body.success || !body.data) {
+    const d = body && body.detail;
+    const detail = Array.isArray(d) ? d.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join('\n')
+                 : d ? (typeof d === 'string' ? d : JSON.stringify(d)) : '';
+    fail(`✕ HTTP ${res.status}${detail ? '\n' + detail : ''}`);
+    return;
+  }
+  el.innerHTML = `<div class="panel-pad">${spec.ok(body.data)}</div>`;
 }
 
 // ─── Google Ads: which customer account is connected ─────────────────────────

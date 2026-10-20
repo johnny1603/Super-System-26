@@ -115,8 +115,10 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 
 ## Demo video — shot list (one continuous recording)
 
-Record after deploying this commit, on `https://app.uallak.com`, with a test
-client whose package includes Google Ads, YouTube and website measurement, a
+Record after deploying this commit, on `https://app.uallak.com`, with an
+INTERNAL (billing-exempt, admin "New Client") test client — the two demo
+buttons in step 8 and 12 refuse any other client — whose package includes
+Google Ads, YouTube and website measurement, a
 Google account that owns a test Google Ads account, a test YouTube channel and
 a Tag Manager container installed on the test client's website. Keep the
 browser address bar visible throughout (Google checks the `client_id=` in the
@@ -132,14 +134,14 @@ consent URL). Speak in English.
 5. Back in the dashboard: if the login reaches several accounts, pick the test account in the account picker. Say: "We list the accounts this login can access so the user chooses which one we manage."
 6. Open the Performance page. Show the Google Ads card's spend, clicks and conversions. Say: "Read access: campaign performance shown to the user."
 7. Open the dashboard chat and ask "How are my Google Ads campaigns doing?". Show the answer quoting the same numbers.
-8. **NOT IN THE APP UI YET — admin API only.** Create a campaign: in Cloud Shell run the admin `POST /api/google-ads/draft-campaign`, then `POST /api/google-ads/create-campaign` with the draft (both need `X-Admin-Key`). Say: "Campaign creation is run by uallak staff; the campaign is always created paused."
+8. Open the admin dashboard (`/admin`) → Control Room → the test client → click **"יצירת קמפיין בדיקה ב-Google Ads"** and confirm. Show the success panel with the campaign name ("uallak verification test …"), campaign ID and account. Say: "uallak staff create campaigns in the user's account through the same code path as the real feature; a campaign is always created paused." (The button exists only for internal test clients; it runs `google_ads_agent.create_search_campaign`, the function behind real campaign creation.)
 9. Open `ads.google.com` → the test account → Campaigns. Show the new campaign, its name and status Paused. Say: "The write is reflected in the user's Google Ads account."
 10. **NOT DEMONSTRABLE ON DEMAND:** auto-pausing a campaign with disapproved ads (needs a real disapproval) and keyword/ad-copy optimization (`GOOGLE_ADS_OPTIMIZATION_MODE` defaults to `dry_run`, so no live writes). Either leave these out of the video and the justification, or set up the conditions first.
 
 **YouTube — `youtube.upload`, `youtube.readonly`**
 11. Dashboard → Connections → YouTube → "Connect now". On the consent screen, zoom on the address bar (`youtube.upload` and `youtube.readonly`, NOT `youtube`) and the two permission lines. Approve. Show the card turning "Connected" with the channel.
-12. **NOT IN THE APP UI YET — admin API only.** Upload: in Cloud Shell run `POST /api/youtube-content/publish` with the test client id, a video file id from the client's media folder, a title and a description (needs `X-Admin-Key`). Say: "uallak uploads a video it produced, always as Private."
-13. Open `studio.youtube.com` → Content. Show the new video, its title, and visibility **Private**. Say: "The upload is reflected in the user's YouTube Studio; the user decides whether to publish."
+12. Before recording, put a short video (up to 50 MB) in the test client's Drive media folder (Control Room → "מדיה ב-Drive"). In the Control Room click **"העלאת סרטון בדיקה ל-YouTube"** and confirm. Show the success panel with the title ("uallak verification test …"), video ID and the YouTube Studio link. Say: "uallak uploads a video it produced, always as Private." (It runs `youtube_content_agent.publish`, the real publishing path, with the smallest video in the client's media folder.)
+13. Click the YouTube Studio link from the success panel (or `studio.youtube.com` → Content). Show the new video, its title, and visibility **Private**. Say: "The upload is reflected in the user's YouTube Studio; the user decides whether to publish."
 14. Back in the dashboard → Performance → YouTube card: show the view, like and comment counts. Say: "Read access: counts for the user's own, private uploads."
 
 **Tag Manager — the three `tagmanager` scopes**
@@ -213,7 +215,7 @@ Ads API's only OAuth scope. All calls: `core/google_ads_service.py` (REST,
 **Written**
 | Function | Call | What changes |
 |---|---|---|
-| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key only — no UI button) |
+| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also the Control Room demo button on internal test clients) |
 | `google_ads_agent.pause_campaign` / `resume_campaign` → `set_campaign_status` | `campaigns:mutate` | campaign status PAUSED / ENABLED (the health scan auto-pauses a campaign with disapproved ads) |
 | `google_ads_agent.optimize_keywords` → `mutate_ad_group_criteria` | `adGroupCriteria:mutate` | status PAUSED on a keyword with ≥ threshold clicks and zero conversions (only when `GOOGLE_ADS_OPTIMIZATION_MODE=live`; default `dry_run`) |
 | `google_ads_agent.optimize_ad_copy` → `mutate_ad_group_ads` | `adGroupAds:mutate` | creates a new responsive search ad variant (same mode switch) |
@@ -233,7 +235,7 @@ Studio) — and reports views/likes/comment counts. Calls:
 | `youtube.readonly` | `youtube_service.get_own_channel` | `channels.list` `mine=true` | channel id, title, uploads playlist id (on connect, `run_channel_detection_scan`, engagement) |
 | `youtube.readonly` | `youtube_service.list_recent_uploads` | `playlistItems.list` (uploads playlist) | ids of the channel's newest uploads |
 | `youtube.readonly` | `youtube_service.get_video_stats` | `videos.list` `part=snippet,statistics,status` | title, publish date, privacy status, view/like/comment COUNTS. Needed with OAuth because the uploads are private. Comment text is never read. |
-| `youtube.upload` | `youtube_service.upload_video` (← `youtube_content_agent.publish`, admin-triggered `POST /api/youtube-content/publish`, admin key only — no UI button) | `videos.insert` (resumable) | **writes** one video with title, description, `privacyStatus=private`, `selfDeclaredMadeForKids=false` |
+| `youtube.upload` | `youtube_service.upload_video` (← `youtube_content_agent.publish`, admin-triggered `POST /api/youtube-content/publish`, admin key; for the verification video also the Control Room demo button on internal test clients) | `videos.insert` (resumable) | **writes** one video with title, description, `privacyStatus=private`, `selfDeclaredMadeForKids=false` |
 
 ## Tag Manager — `tagmanager.edit.containers`, `tagmanager.edit.containerversions`, `tagmanager.publish`
 
