@@ -499,6 +499,9 @@ body {
 .chat-action .row .ok { background: var(--accent); color: white; }
 .chat-action .row .no { background: transparent; color: var(--gray); border: 1px solid var(--border); }
 .chat-action .note { margin-top: 6px; font-size: 12px; color: var(--gray); }
+.chat-action .details { margin-top: 8px; font-size: 12.5px; display: grid; gap: 3px; word-break: break-word; }
+.chat-action .details summary { cursor: pointer; }
+.chat-action .details .desc { white-space: pre-line; margin-top: 4px; color: var(--gray); }
 
 .support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
 /* A one-row <textarea> (Shift+Enter = new line) that grows with its content up
@@ -2134,6 +2137,12 @@ const DASH_I18N = {
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
   action_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Подтвердить' },
+  action_d_file: { he:'קובץ', en:'File', fr:'Fichier', ar:'الملف', ru:'Файл' },
+  action_d_title: { he:'כותרת', en:'Title', fr:'Titre', ar:'العنوان', ru:'Название' },
+  action_d_desc: { he:'תיאור', en:'Description', fr:'Description', ar:'الوصف', ru:'Описание' },
+  action_d_hashtags: { he:'האשטגים', en:'Hashtags', fr:'Hashtags', ar:'الوسوم', ru:'Хэштеги' },
+  action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
+  action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
   action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
   action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
   action_with_team: { he:'נשלח לצוות לאישור — נעדכן כאן כשזה בוצע.', en:'Sent to the team for approval — we\'ll update you here when it\'s done.', fr:'Envoyé à l\'équipe pour validation — nous vous tiendrons au courant ici.', ar:'أُرسل إلى الفريق للموافقة — سنبلغكم هنا عند التنفيذ.', ru:'Отправлено команде на подтверждение — сообщим здесь, когда будет готово.' },
@@ -4064,6 +4073,7 @@ function appendActionCard(personaId, a) {
   const note = document.createElement('div');
   note.className = 'note';
   el.append(title, what);
+  if (a.details) el.appendChild(actionDetails(a.details));
   if (a.can_decide) {
     const row = document.createElement('div');
     row.className = 'row';
@@ -4085,6 +4095,39 @@ function appendActionCard(personaId, a) {
   el.appendChild(note);
   w.msgsEl.appendChild(el);
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+
+// The exact metadata the click sends (e.g. a YouTube upload's title,
+// description, hashtags, tags, links). Every value is set as TEXT — it came
+// from a model, so it is never parsed as HTML. The description starts folded.
+function actionDetails(d) {
+  const t = uallakI18n.t;
+  const box = document.createElement('div');
+  box.className = 'details';
+  const row = (labelKey, value) => {
+    if (!value) return;
+    const line = document.createElement('div');
+    const label = document.createElement('b');
+    label.textContent = t(labelKey) + ': ';
+    line.append(label, document.createTextNode(value));
+    box.appendChild(line);
+  };
+  row('action_d_file', d.file);
+  row('action_d_title', d.title);
+  if (d.description) {
+    const fold = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = t('action_d_desc') + ': ' + d.description.split('\n')[0].slice(0, 90) + '…';
+    const full = document.createElement('div');
+    full.className = 'desc';
+    full.textContent = d.description;
+    fold.append(summary, full);
+    box.appendChild(fold);
+  }
+  row('action_d_hashtags', (d.hashtags || []).join(' '));
+  row('action_d_tags', (d.tags || []).join(', '));
+  (d.links || []).forEach(l => row('action_d_link', (l.label ? l.label + ' — ' : '') + l.url));
+  return box;
 }
 
 async function decideAction(id, decision, el) {

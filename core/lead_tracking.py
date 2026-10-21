@@ -99,6 +99,29 @@ META_URL_TAGS = (
     "&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}"
 )
 
+# Links WE put in a YouTube video description (agents/youtube_metadata). No
+# platform macro exists there, so the values are fixed at write time: the
+# source is YouTube, the medium organic video, and utm_content names the video
+# (a slug of its title) so a lead can be traced to the exact video. On the
+# read side this lands as a tagged referral (classify_source: utm, not paid).
+YOUTUBE_UTM_SOURCE = "youtube"
+YOUTUBE_UTM_MEDIUM = "video"
+YOUTUBE_UTM_CAMPAIGN = "youtube_description"
+
+
+def tag_youtube_link(url: str, video_label: str) -> str:
+    """`url` with the YouTube-description UTM tags added (existing query
+    parameters kept; any utm_* already on the URL replaced, never doubled)."""
+    from urllib.parse import parse_qsl, urlencode, urlunsplit
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+             if not k.lower().startswith("utm_")]
+    slug = "-".join("".join(ch if ch.isalnum() else " " for ch in (video_label or "").lower()).split())[:60]
+    query += [("utm_source", YOUTUBE_UTM_SOURCE), ("utm_medium", YOUTUBE_UTM_MEDIUM),
+              ("utm_campaign", YOUTUBE_UTM_CAMPAIGN), ("utm_content", slug or "video")]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+
+
 _db_instance = None
 
 

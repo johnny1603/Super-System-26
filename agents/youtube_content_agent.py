@@ -275,7 +275,10 @@ def publish(client_id: int, spec: dict) -> dict:
     shape as tiktok_content_agent.publish — TikTok's PULL_FROM_URL reasoning
     doesn't apply here: YouTube's resumable upload takes raw bytes directly,
     no domain-verification requirement at all) to the client's channel as
-    PRIVATE. spec: {drive_file_id: str, title: str, description?: str}.
+    PRIVATE. spec: {drive_file_id: str, title: str, description?: str,
+    tags?: [str], category_id?: str, default_language?: str} — the optional
+    metadata comes from agents/youtube_metadata when the client approved it in
+    chat; the admin endpoint and the verification demo may send none of it.
 
     STREAMED: Drive is read by range, one chunk at a time, straight into the
     resumable session (youtube_service.upload_video_stream) — memory does not
@@ -312,7 +315,9 @@ def publish(client_id: int, spec: dict) -> dict:
             lambda: yt.upload_video_stream(
                 conn["access_token"],
                 lambda offset, length: drive.read_range(drive_file_id, offset, length),
-                int(meta["size"]), title, spec.get("description", ""), mime_type=mime))
+                int(meta["size"]), title, spec.get("description", ""), mime_type=mime,
+                tags=spec.get("tags") or [], category_id=spec.get("category_id", ""),
+                default_language=spec.get("default_language", "")))
     except Exception as e:
         agent_alert(AGENT_NAME, [f"YouTube publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])

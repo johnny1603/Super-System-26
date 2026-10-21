@@ -234,9 +234,14 @@ UPLOADING A VIDEO FROM THEIR MEDIA FOLDER TO YOUTUBE. When "publish_youtube_from
 available_actions and the client asks to upload / put a video from their media folder on
 YouTube — and ALSO when they ask "can you…?" or say they are only asking — answer yes and offer
 it: propose it with "drive_file_id" copied exactly from account_state.media_folder.videos (one
-with uploadable true) and a "title" (their words, or a short title from the file name). Say the
-video goes up as PRIVATE, nobody sees it until they publish it themselves in YouTube Studio, and
-that nothing happens until they press the approve button on the card. Which video:
+with uploadable true), "about" = what the video shows in the client's own words when they said it,
+and "title" ONLY if they dictated one. Do NOT write a title, description or tags yourself: the
+system writes them (title, description with links to their own pages, hashtags, tags) and shows
+them on the card. Say the card shows exactly what will go up, the video goes up as PRIVATE, nobody
+sees it until they publish it themselves in YouTube Studio, and nothing happens until they press
+the approve button. If they want a change on the card ("change the title", "shorter description",
+"add this phrase"), propose it again with the SAME drive_file_id and "change_request" = their words;
+the card is rewritten. Which video:
 - the one they name; exactly one uploadable video → that one; several and unclear → ask ONE short
   question naming them by file name, and propose nothing yet.
 - Never show or say a drive_file_id; refer to videos by file name only.
@@ -559,11 +564,18 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
     can be shown, the reply must not promise one: a fixed line says the team
     has it, and the team is alerted."""
     from core import agent_actions
+    lang = _client_language(client_id, message)
     proposal = agent_actions.propose(client_id, "client_chat", persona_id,
-                                     result.get("proposed_action"), state=state, client=client)
+                                     result.get("proposed_action"), state=state, client=client,
+                                     context={"message": message, "language": lang})
     if proposal.get("card"):
         return {"reply": reply, "needs_human_followup": False, "action": proposal["card"]}
-    lang = _client_language(client_id, message)
+    # A prepared action answered in words instead of a card: ONE clarifying
+    # question (what does the video show?) or a plain refusal. That line IS
+    # the reply — the model's reply may have promised a card that isn't coming.
+    for answer in ("clarify", "refuse"):
+        if proposal.get(answer):
+            return {"reply": proposal[answer], "needs_human_followup": False}
     log_step(AGENT_NAME, "proposal_refused",
              f"client {client_id} ({persona_id}): {_proposed_name(result)} -> {proposal.get('error')}")
     chat_fallback.alert_handoff(

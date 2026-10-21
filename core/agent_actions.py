@@ -209,27 +209,62 @@ def _run_demo(fn_name: str):
     return run
 
 
+def _v_short_text(value, limit: int):
+    text = " ".join(_TITLE_DROP.sub(" ", str(value or "")).split())[:limit].strip()
+    if len(text) < 2:
+        raise ValueError("text too short")
+    return text
+
+
+def _prepare_publish(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """The metadata step before the card (agents/youtube_metadata): the title,
+    description, hashtags, tags, category and language the client approves."""
+    from agents import youtube_metadata
+    return youtube_metadata.prepare_publish(
+        client_id, params, {**(context or {}), "file_name": _media_name(client_id, params["drive_file_id"])},
+        rows)
+
+
+def _validate_publish_stored(client_id: int, params: dict) -> dict:
+    """The STORED proposal, re-checked at proposal time and again at the
+    click: the metadata exactly as validation allows (youtube_metadata) and
+    the file still a video in the client's own media folder."""
+    from agents import youtube_metadata
+    youtube_metadata.revalidate_stored(client_id, params)
+    _v_media_video(params.get("drive_file_id"), client_id)
+    return params
+
+
+def _publish_details(client_id: int, params: dict) -> dict:
+    """What the client sees on the card — everything that will go to YouTube."""
+    return {"file": _media_name(client_id, params.get("drive_file_id", "")),
+            "title": params.get("title", ""), "description": params.get("description", ""),
+            "hashtags": params.get("hashtags") or [], "tags": params.get("tags") or [],
+            "links": [{"label": l.get("label", ""), "url": l.get("page", "")} for l in params.get("links") or []],
+            "revision": params.get("revision", 0)}
+
+
 def _run_publish_youtube_from_media(client_id: int, params: dict, background_tasks):
     """youtube_content_agent.publish — the function behind
-    POST /api/youtube-content/publish and core/verification_demo. Privacy is
-    not a param anywhere on this path: publish() never forwards one and
-    youtube_service.upload_video defaults to private."""
+    POST /api/youtube-content/publish and core/verification_demo — with the
+    metadata exactly as the client approved it (params are the STORED,
+    re-validated proposal). Privacy is not a param anywhere on this path:
+    youtube_service.upload_video_stream always uploads private."""
     from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, publish, uploads_today
     if uploads_today(client_id) >= DAILY_UPLOADS_PER_CLIENT:
         raise ActionFailed("daily_cap", f"{DAILY_UPLOADS_PER_CLIENT} uploads today")
     file_id = params["drive_file_id"]
     name = _media_name(client_id, file_id)
-    title = params.get("title") or _v_title(_file_stem(name) or "Video", client_id)
-    result = publish(client_id, {"drive_file_id": file_id, "title": title, "description": ""})
+    title = params["title"]
+    result = publish(client_id, {"drive_file_id": file_id, "title": title,
+                                 "description": params["description"], "tags": params.get("tags") or [],
+                                 "category_id": params.get("category_id", ""),
+                                 "default_language": params.get("default_language", "")})
     if not result.get("success"):
         raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
     video_id = result.get("video_id", "")
     return {"video_id": video_id, "title": title, "privacy_status": "private", "source_file": name,
             "studio_url": f"https://studio.youtube.com/video/{video_id}/edit" if video_id else ""}
-
-
-def _file_stem(name: str) -> str:
-    return name.rsplit(".", 1)[0] if "." in (name or "") else (name or "")
 
 
 def _run_approve_suggestion(client_id: int, params: dict, background_tasks):
@@ -463,14 +498,26 @@ ACTIONS = {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "does": "Uploads ONE video from the client's Drive media folder (account_state.media_folder.videos, "
                 "uploadable=true) to their YouTube channel as PRIVATE — never public or unlisted; they "
-                "publish it themselves in YouTube Studio when they like. Max 3 uploads per client per day.",
+                "publish it themselves in YouTube Studio when they like. The system writes its title, "
+                "description (with links to their own pages), hashtags and tags for the card — you do "
+                "not. Max 3 uploads per client per day.",
+        # What the CHAT MODEL may send. The stored proposal is different: the
+        # metadata pipeline (agents/youtube_metadata) turns these into the
+        # exact title/description/tags the client approves — see "prepare".
         "params": {"drive_file_id": {"required": True, "validate": _v_media_video,
                                      "hint": "drive_file_id copied exactly from account_state.media_folder.videos "
                                              "(never shown to the client)"},
                    "title": {"required": False, "validate": _v_title,
-                             "hint": "the video title, up to 100 characters — the client's words, or a short "
-                                     "title from the file name; empty = the file name"}},
+                             "hint": "ONLY a title the client dictated; otherwise leave it out"},
+                   "about": {"required": False, "validate": lambda v, cid: _v_short_text(v, 300),
+                             "hint": "what the video shows, in the client's own words, if they said; else leave out"},
+                   "change_request": {"required": False, "validate": lambda v, cid: _v_short_text(v, 400),
+                                      "hint": "on an OPEN card for this video: the client's change "
+                                              "(\"shorter description\", \"add this phrase\") copied in their words"}},
         "available": _youtube_upload_possible,
+        "prepare": lambda client_id, params, context, rows: _prepare_publish(client_id, params, context, rows),
+        "validate_stored": lambda client_id, params: _validate_publish_stored(client_id, params),
+        "details": lambda client_id, params: _publish_details(client_id, params),
         "run": _run_publish_youtube_from_media,
         "display": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))
                                               or "—", "title": params.get("title") or ""},
@@ -643,10 +690,17 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
                 what = what.replace("{" + key + "}", str(value))
         except Exception:
             pass
+    details = None
+    if spec.get("details"):
+        # Everything the click will send, for the client to read before approving
+        try:
+            details = spec["details"](row.get("client_id"), params)
+        except Exception:
+            details = None
     return {"id": row.get("id"), "action": row.get("action"), "status": row.get("status"),
             "persona": row.get("persona", "general"), "origin": row.get("origin"),
             "title": _pick(spec.get("title") or {"he": row.get("action", "")}, lang),
-            "what": what, "params": params if actor == "admin" else {},
+            "what": what, "params": params if actor == "admin" else {}, "details": details,
             "approver": row.get("approver"), "kind": spec.get("kind", "execute"),
             "can_decide": row.get("status") in OPEN_STATUSES and row.get("approver") == actor,
             "created_at": row.get("created_at")}
@@ -684,9 +738,16 @@ def open_cards(client_id: int, actor: str, persona: str = None) -> list:
 # ─── Propose ─────────────────────────────────────────────────────────────────
 
 def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
-            client: dict = None, dry_run: bool = False) -> dict:
+            client: dict = None, dry_run: bool = False, context: dict = None) -> dict:
     """The model's proposed_action -> a stored proposal + card, or
-    {"error": code}. Everything is checked here; nothing runs."""
+    {"error": code}. Everything is checked here; nothing runs.
+
+    An action with a "prepare" hook (publish_youtube_from_media) turns the
+    model's params into the proposal the client approves — and may instead
+    answer {"clarify": question} or {"refuse": text}, plain lines the chat
+    shows in place of a card. The prepared params are checked by the action's
+    "validate_stored" before anything is stored. `context`: {"message",
+    "language"} from the chat turn."""
     if not isinstance(raw, dict):
         return {"error": "malformed"}
     name = str(raw.get("name") or "").strip()
@@ -713,10 +774,32 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
 
     status = "proposed" if spec["approver"] == actor else "awaiting_staff"
     lang = _lang(client_id) if actor == "client" else "he"
-    for row in _open_rows(client_id):
-        # Same action + params already open: show that card, don't stack a second
-        if row.get("action") == name and (row.get("params") or {}) == params and not _expired(row):
-            return {"card": card(row, actor, lang), "status": row.get("status")}
+    open_rows = [r for r in _open_rows(client_id) if r.get("action") == name and not _expired(r)]
+    supersedes = None
+    if spec.get("prepare"):
+        try:
+            prepared = spec["prepare"](client_id, params, {"language": lang, **(context or {})}, open_rows)
+        except Exception as e:
+            _log(f"client {client_id}: preparing {name} failed: {type(e).__name__}: {str(e)[:300]}",
+                 severity="WARNING", client_id=client_id)
+            return {"error": "prepare_failed"}
+        for answer in ("clarify", "refuse"):
+            if prepared.get(answer):
+                return {answer: prepared[answer]}
+        if prepared.get("existing"):
+            return {"card": card(prepared["existing"], actor, lang), "status": prepared["existing"].get("status")}
+        params, supersedes = prepared["params"], prepared.get("supersedes")
+        try:
+            params = spec["validate_stored"](client_id, params)
+        except ValueError as e:
+            _log(f"client {client_id}: prepared {name} failed validation: {e}", severity="WARNING",
+                 client_id=client_id)
+            return {"error": "invalid_params"}
+    else:
+        for row in open_rows:
+            # Same action + params already open: show that card, don't stack a second
+            if (row.get("params") or {}) == params:
+                return {"card": card(row, actor, lang), "status": row.get("status")}
     try:
         rows = _db().table(TABLE).insert({
             "client_id": int(client_id), "action": name, "params": params, "origin": origin,
@@ -729,6 +812,10 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     if not rows:
         return {"error": "storage_unavailable"}
     row = rows[0]
+    if supersedes:
+        # The client's change produced a new card; the old one can no longer be clicked
+        _claim(supersedes, OPEN_STATUSES, {"status": "cancelled", "finished_at": _now().isoformat(),
+                                           "outcome": "superseded"})
     _log(f"client {client_id}: proposed {name} ({status}) from {origin}/{persona}",
          client_id=client_id, proposal=row.get("id"), action=name, status=status)
     if status == "awaiting_staff":
@@ -803,7 +890,9 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
                                             "finished_at": stamp, "outcome": "refused_internal_only"})
         return _refuse("internal_only", 403)
     try:
-        params = validate_params(spec, row.get("params"), client_id)
+        # A prepared action's stored params have their own shape and validator
+        params = (spec["validate_stored"](client_id, row.get("params"))
+                  if spec.get("validate_stored") else validate_params(spec, row.get("params"), client_id))
     except ValueError as e:
         _log(f"client {client_id}: {row['action']} params refused at approval: {e}",
              severity="WARNING", client_id=client_id, proposal=proposal_id)

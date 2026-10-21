@@ -247,6 +247,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `youtube_content_agent.DAILY_UPLOADS_PER_CLIENT` (3) per client per UTC day — refused with its
   own plain line (`refusals`), no alert. The card names the file from Drive's metadata, never the
   model's words; the done line carries the YouTube Studio link.
+- `agents/youtube_metadata.py` — the title, description (1-3 links to the client's OWN pages,
+  tagged with `lead_tracking.tag_youtube_link`), 3-5 hashtags, tags, category and language that
+  `publish_youtube_from_media`'s card shows and the click uploads. One entry point
+  (`prepare_publish`, the action's `prepare` hook), seo_article's shape: ground (request, file
+  name, client_knowledge + organic_target_phrases, CACHED research, live page inventory, at most
+  one cached `search_videos`) → draft or ONE clarifying question → critique → one revise; code
+  then enforces every limit and rule, and `revalidate_stored` re-checks the STORED proposal at
+  the click. Client changes in chat re-propose (`change_request`, max 3 per proposal). The
+  metadata is written from context ONLY — no frames, audio, transcript or video analysis.
+  **"Watching the video" is a deliberate future premium-tier feature, not built — do not add
+  frame extraction, ffmpeg, transcription or video analysis to this path by accident.**
 - `agents/seo_article.py` — HOW articles are written (seo_agent.write_article keeps the
   policy gates and stays the one entry point): live site grounding (real pages/posts,
   tone samples, primary language, translation plugin), client_knowledge + CACHED research

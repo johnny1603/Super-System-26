@@ -60,12 +60,16 @@ class FakeYouTube:
     `faults` maps a PUT index (0-based, data PUTs and status PUTs alike) to
     "500" | "503" | "transport" | "403" | ("partial", n_bytes)."""
 
-    def __init__(self, total, faults=None):
+    def __init__(self, total, faults=None, reject_language=False):
         self.total, self.stored, self.faults = total, 0, dict(faults or {})
         self.puts, self.metadata, self.chunk_sizes, self.corrupt = 0, None, [], False
+        self.reject_language, self.initiations = reject_language, []
 
     def post(self, url, params=None, headers=None, json=None, timeout=None):
         self.metadata, self.init_headers = json, headers
+        self.initiations.append(json)
+        if self.reject_language and "defaultLanguage" in json["snippet"]:
+            return Response(400, text='{"error": {"message": "Invalid default language"}}')
         return Response(200, {"location": "https://upload.example/session-1"})
 
     def _range(self):
@@ -155,6 +159,40 @@ class Upload(unittest.TestCase):
         params = inspect.signature(yt.upload_video_stream).parameters
         self.assertFalse([p for p in params if "privacy" in p.lower()])
         self.assertFalse(hasattr(yt, "upload_video"))     # the whole-file version is gone
+
+    def test_metadata_goes_in_the_snippet_and_status_stays_private(self):
+        server = FakeYouTube(CHUNK)
+        FAKE_HTTPX.post, FAKE_HTTPX.put = server.post, server.put
+        yt.upload_video_stream("refresh", pattern, CHUNK, "כותרת", "תיאור", tags=["נעליים", "עיצוב"],
+                               category_id="26", default_language="he", _sleep=self.sleeps.append)
+        snippet, status = server.metadata["snippet"], server.metadata["status"]
+        self.assertEqual(snippet["tags"], ["נעליים", "עיצוב"])
+        self.assertEqual(snippet["categoryId"], "26")
+        self.assertEqual((snippet["defaultLanguage"], snippet["defaultAudioLanguage"]), ("he", "he"))
+        self.assertEqual(status, {"privacyStatus": "private", "selfDeclaredMadeForKids": False})
+
+    def test_oversize_metadata_is_cut_to_youtube_limits(self):
+        server = FakeYouTube(CHUNK)
+        FAKE_HTTPX.post, FAKE_HTTPX.put = server.post, server.put
+        yt.upload_video_stream("refresh", pattern, CHUNK, "t" * 300, "ד" * 9000,
+                               tags=[f"tag number {i}" for i in range(80)], category_id="abc",
+                               _sleep=self.sleeps.append)
+        snippet = server.metadata["snippet"]
+        self.assertEqual(len(snippet["title"]), vl.TITLE_MAX)
+        self.assertLessEqual(len(snippet["description"].encode("utf-8")), vl.DESCRIPTION_MAX_BYTES)
+        self.assertLessEqual(vl.tags_length(snippet["tags"]), vl.TAGS_TOTAL_MAX)
+        self.assertNotIn("categoryId", snippet)                 # not a numeric YouTube category
+
+    def test_a_rejected_language_code_never_loses_the_upload(self):
+        server = FakeYouTube(CHUNK, reject_language=True)
+        FAKE_HTTPX.post, FAKE_HTTPX.put = server.post, server.put
+        with contextlib.redirect_stdout(open(os.devnull, "w")):
+            result = yt.upload_video_stream("refresh", pattern, CHUNK, "t", default_language="xx",
+                                            _sleep=self.sleeps.append)
+        self.assertEqual(result, {"id": "vid1"})
+        self.assertEqual(len(server.initiations), 2)
+        self.assertNotIn("defaultLanguage", server.initiations[1]["snippet"])
+        self.assertEqual(server.initiations[1]["status"]["privacyStatus"], "private")
 
     def test_resumes_after_a_5xx(self):
         # PUT #1 (second chunk) fails; the status query that follows (#2) says where to resume

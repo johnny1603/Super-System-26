@@ -123,8 +123,30 @@ def _received_up_to(response) -> int:
         raise UploadFailed(f"unreadable Range header from YouTube: {rng[:60]}")
 
 
+def _snippet(title: str, description: str, tags, category_id: str, default_language: str) -> dict:
+    """videos.insert snippet, cut to YouTube's own limits as the last guard
+    (the metadata was already validated upstream — this is not where it is
+    made acceptable, only where it can never be oversize)."""
+    from core.video_limits import DESCRIPTION_MAX_BYTES, TAGS_MAX, TAGS_TOTAL_MAX, TITLE_MAX, tags_length
+    snippet = {"title": (title or "")[:TITLE_MAX],
+               "description": (description or "").encode("utf-8")[:DESCRIPTION_MAX_BYTES]
+               .decode("utf-8", "ignore")}
+    clean_tags = [str(t).replace("<", "").replace(">", "").strip() for t in (tags or [])][:TAGS_MAX]
+    clean_tags = [t for t in clean_tags if t]
+    while clean_tags and tags_length(clean_tags) > TAGS_TOTAL_MAX:
+        clean_tags.pop()
+    if clean_tags:
+        snippet["tags"] = clean_tags
+    if category_id and str(category_id).isdigit():
+        snippet["categoryId"] = str(category_id)
+    if default_language:
+        snippet["defaultLanguage"] = snippet["defaultAudioLanguage"] = default_language
+    return snippet
+
+
 def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: str,
                         description: str = "", mime_type: str = "video/mp4",
+                        tags: list = None, category_id: str = "", default_language: str = "",
                         _sleep=None) -> dict:
     """STREAMED resumable upload (videos.insert, uploadType=resumable):
     initiate with the metadata and the total size, then PUT the bytes in
@@ -138,6 +160,12 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
     it stands (`Content-Range: bytes */total`) and continues from that byte —
     MAX_UPLOAD_RETRIES consecutive failures, with backoff, then UploadFailed.
 
+    Metadata: title, description, tags, categoryId, defaultLanguage and
+    defaultAudioLanguage go in the snippet (_snippet cuts them to YouTube's
+    limits as a last guard). If YouTube rejects the language code, the session
+    is initiated once more without it — the upload never fails over that one
+    field. selfDeclaredMadeForKids is always false.
+
     Always PRIVATE: there is no privacy parameter — a human makes the video
     public in YouTube Studio (same final-tap principle as PAUSED campaigns,
     WordPress drafts, TikTok's inbox)."""
@@ -150,18 +178,29 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
     if count > DAILY_UPLOAD_LIMIT:
         raise RuntimeError(f"YouTube daily upload brake reached ({DAILY_UPLOAD_LIMIT}) - refusing upload")
 
-    metadata = {
-        "snippet": {"title": title[:100], "description": description[:4900]},
-        "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
-    }
-    initiate = httpx.post(
-        f"{UPLOAD_BASE}/videos",
-        params={"uploadType": "resumable", "part": "snippet,status"},
-        headers={"Authorization": f"Bearer {_access_token(refresh_token)}",
-                 "Content-Type": "application/json; charset=UTF-8",
-                 "X-Upload-Content-Type": mime_type,
-                 "X-Upload-Content-Length": str(total_size)},
-        json=metadata, timeout=TIMEOUT)
+    def initiate_session(snippet: dict):
+        return httpx.post(
+            f"{UPLOAD_BASE}/videos",
+            params={"uploadType": "resumable", "part": "snippet,status"},
+            headers={"Authorization": f"Bearer {_access_token(refresh_token)}",
+                     "Content-Type": "application/json; charset=UTF-8",
+                     "X-Upload-Content-Type": mime_type,
+                     "X-Upload-Content-Length": str(total_size)},
+            # Private, always — there is no way to pass anything else in
+            json={"snippet": snippet,
+                  "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False}},
+            timeout=TIMEOUT)
+
+    snippet = _snippet(title, description, tags, category_id, default_language)
+    initiate = initiate_session(snippet)
+    if (initiate.status_code == 400 and "defaultLanguage" in snippet
+            and "language" in (initiate.text or "").lower()):
+        # The language code is the one metadata field YouTube may reject on
+        # its own list (i18nLanguages); losing it must not lose the upload
+        print(f"[youtube_service] defaultLanguage '{snippet['defaultLanguage']}' rejected — "
+              f"uploading without it")
+        snippet = {k: v for k, v in snippet.items() if k not in ("defaultLanguage", "defaultAudioLanguage")}
+        initiate = initiate_session(snippet)
     if initiate.status_code != 200:
         raise UploadFailed(f"upload initiate failed: {initiate.status_code} {initiate.text[:300]}")
     session_url = initiate.headers.get("location") or initiate.headers.get("Location")

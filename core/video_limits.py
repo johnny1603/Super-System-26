@@ -26,6 +26,23 @@ VIDEO_UPLOAD_MAX_BYTES = VIDEO_UPLOAD_MAX_MB * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 
+# YouTube's own metadata limits (videos.insert snippet). The description limit
+# is 5,000 bytes; we stop at 4,900 characters of mostly-ASCII-or-Hebrew text
+# and youtube_service re-cuts on bytes as the last guard.
+TITLE_MAX = 100
+DESCRIPTION_MAX = 4900
+DESCRIPTION_MAX_BYTES = 5000
+TAGS_TOTAL_MAX = 500
+TAGS_MAX = 15
+
+
+def tags_length(tags: list) -> int:
+    """Characters YouTube counts against the 500 tag limit: each tag, plus the
+    comma between tags, plus 2 quote marks for a tag that contains a space."""
+    tags = [str(t) for t in tags or []]
+    return sum(len(t) + (2 if " " in t else 0) for t in tags) + max(len(tags) - 1, 0)
+
+
 def fits(size_bytes) -> bool:
     try:
         size = int(size_bytes or 0)
