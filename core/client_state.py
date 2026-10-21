@@ -19,6 +19,7 @@ from the readers that already exist:
   website ........ website_agent.get_site_overview
   landing_pages .. landing_page_agent.dashboard_payload
   media .......... media_agent.get_monthly_usage
+  media_folder ... drive_mirror.list_folder (what is in their Drive media folder)
   package ........ client_journey.required_connections
 
 Rules:
@@ -43,13 +44,13 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "client_state"
 
-SECTION_TTL = {"channels": 300, "website": 300}
+SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300}
 DEFAULT_TTL = 120
 
 # section -> the data_topic a client question about it is labelled with
 SECTION_TOPIC = {
     "channels": "account", "connections": "account", "budget": "account",
-    "approvals": "account", "media": "account", "package": "account",
+    "approvals": "account", "media": "account", "media_folder": "account", "package": "account",
     "tracking": "tracking", "leads": "leads",
     "google_campaigns": "google_ads", "meta_campaigns": "meta_ads",
     "website": "website", "landing_pages": "website",
@@ -253,6 +254,35 @@ def _media(client_id: int) -> dict:
     return get_monthly_usage(client_id)
 
 
+MEDIA_SUBFOLDERS_READ = 8
+
+
+def _media_folder(client_id: int) -> dict:
+    """What is IN the client's Drive media folder (the Media tab's own
+    listing, drive_mirror — cached there too): counts by kind and the newest
+    video names. Without it, "can you upload a video from my media?" had no
+    fact to answer from (2026-10-22 production bug)."""
+    from core import drive_mirror
+    root = drive_mirror.list_folder(client_id)
+    if not root.get("exists"):
+        return {"exists": False}
+    _ok(root)
+    files = list(root.get("files") or [])
+    folders = root.get("folders") or []
+    for folder in folders[:MEDIA_SUBFOLDERS_READ]:
+        page = drive_mirror.list_folder(client_id, folder["id"])
+        if not page.get("error"):
+            files += page.get("files") or []
+    counts = {}
+    for f in files:
+        counts[f.get("kind", "file")] = counts.get(f.get("kind", "file"), 0) + 1
+    videos = sorted((f for f in files if f.get("kind") == "video"),
+                    key=lambda f: f.get("modified_time") or "", reverse=True)
+    return {"exists": True, "counts": counts,
+            "newest_videos": [v.get("name", "") for v in videos[:5]],
+            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
+
+
 def _package(client_id: int) -> dict:
     from core.client_journey import required_connections
     checklist = required_connections(client_id)
@@ -303,6 +333,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("website", lambda: _website(client_id))
     take("landing_pages", lambda: _landing_pages(client_id))
     take("media", lambda: _media(client_id))
+    take("media_folder", lambda: _media_folder(client_id))
     take("package", lambda: _package(client_id))
     state["_failed"] = failed
     return state

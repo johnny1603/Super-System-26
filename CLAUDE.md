@@ -19,7 +19,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/api_server.py` — FastAPI app, ALL routes. **The root `/` static mount must stay the
   last registration in the file** or it swallows `/api/*` (caused a real outage once).
 - `core/claude_json.py` — `safe_claude_json_call()`: the required helper for every LLM call
-  that expects JSON (truncation-aware retry, fence stripping, `ClaudeJSONError`).
+  that expects JSON (truncation-aware retry, fence stripping, `ClaudeJSONError`). An EMPTY
+  completion (Haiku 5.5 thinks by default and can end a turn with thinking blocks only) is
+  retried once on the same model, then once on `DEFAULT_MODEL`, logging stop_reason/usage/block
+  types only; text is joined from ALL text blocks.
   `claude_web_search_call()` is its TEXT-mode sibling for answers that need live web search
   (server-side web_search tool, pause_turn handling, per-search fee tracked in client_costs) —
   search + citations don't mix with strict JSON output, hence two paths. Used by the support

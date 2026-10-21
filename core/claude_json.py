@@ -56,70 +56,98 @@ def _extract_json(raw: str) -> str:
     return raw
 
 
-def _first_text(response) -> str:
-    """The first TEXT block. Models with thinking on by default (e.g. Haiku
-    5.5) put a thinking block first, so content[0] is not always text."""
-    for block in response.content or []:
-        if getattr(block, "type", "") == "text":
-            return block.text
-    return ""
+def _text(response) -> str:
+    """All TEXT blocks, joined. Models with thinking on by default (Haiku 5.5:
+    adaptive thinking, display "omitted") return thinking blocks next to the
+    text, so content[0] is not always text — and a turn can end (end_turn)
+    with thinking blocks and NO text block at all."""
+    return "".join(getattr(block, "text", "") or "" for block in (response.content or [])
+                   if getattr(block, "type", "") == "text")
+
+
+def _shape(response) -> str:
+    """For logs: stop_reason, usage and block TYPES — never content."""
+    usage = getattr(response, "usage", None)
+    types = [getattr(b, "type", "?") for b in (response.content or [])]
+    return (f"stop_reason={response.stop_reason} blocks={types} "
+            f"input_tokens={getattr(usage, 'input_tokens', '?')} "
+            f"output_tokens={getattr(usage, 'output_tokens', '?')}")
+
+
+def _record(cost_category, model, input_tokens, output_tokens, client_id):
+    try:
+        from core.cost_tracker import claude_cost_ils, claude_cost_usd, record_cost
+        record_cost(
+            cost_category,
+            claude_cost_ils(input_tokens, output_tokens, model),
+            client_id=client_id,
+            details={"input_tokens": input_tokens, "output_tokens": output_tokens, "model": model},
+            usd=claude_cost_usd(input_tokens, output_tokens, model),
+        )
+    except Exception as e:
+        print(f"[claude_json] cost tracking failed (non-fatal): {e}")
+
+
+def _complete(client, system, user_message, max_tokens, model, extra, client_id, cost_category):
+    """One answer from ONE model: a truncated turn is retried once with double
+    max_tokens (a certainty from stop_reason, not a guess from a parse
+    failure). Its cost is recorded against that model."""
+    def create(tokens):
+        return client.messages.create(model=model, max_tokens=tokens, system=system,
+                                      messages=[{"role": "user", "content": user_message}], **extra)
+
+    response = create(max_tokens)
+    input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
+    if response.stop_reason == "max_tokens":
+        print(f"[claude_json] response truncated at max_tokens={max_tokens}, retrying with {max_tokens * 2}")
+        response = create(max_tokens * 2)
+        input_tokens += response.usage.input_tokens
+        output_tokens += response.usage.output_tokens
+    _record(cost_category, model, input_tokens, output_tokens, client_id)
+    return response
 
 
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
                           client_id=None, cost_category="claude_api", effort=None):
     """Call Claude expecting a JSON object back, guarding against the response
-    getting cut off mid-JSON.
+    getting cut off mid-JSON or coming back EMPTY.
 
     - Detects truncation from response.stop_reason == "max_tokens" (a certainty,
       not a guess from a JSON parse failure) and retries once with double max_tokens.
+    - An EMPTY completion (no text at all — e.g. a thinking-only turn that ended
+      with end_turn) is retryable, not a parse error: one more try on the same
+      model with the same input, then one on DEFAULT_MODEL. Each empty one is
+      logged with stop_reason, usage and block types (never content). Only if
+      all of them are empty does it raise ClaudeJSONError — which is what sends
+      a chat to core/chat_fallback.
     - Strips markdown fences / stray preamble before parsing, and parses with
       strict=False to tolerate literal newlines inside long text fields.
     - Raises ClaudeJSONError (with the raw response attached) if parsing still
       fails, instead of a cryptic JSONDecodeError.
-    - Records the call's token cost to client_costs (this is the single choke
-      point for JSON LLM calls, so instrumenting here covers everything).
-      Pass client_id / cost_category where attribution is known.
+    - Records every call's token cost to client_costs, against the model that
+      ran it (this is the single choke point for JSON LLM calls, so
+      instrumenting here covers everything). Pass client_id / cost_category
+      where attribution is known.
     """
     client = _client(api_key)
-    total_input_tokens = total_output_tokens = 0
     # effort is optional: only sent when a caller asks (e.g. "low" for chat turns)
     extra = {"output_config": {"effort": effort}} if effort else {}
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-        **extra,
-    )
-    total_input_tokens += response.usage.input_tokens
-    total_output_tokens += response.usage.output_tokens
-
-    if response.stop_reason == "max_tokens":
-        print(f"[claude_json] response truncated at max_tokens={max_tokens}, retrying with {max_tokens * 2}")
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens * 2,
-            system=system,
-            messages=[{"role": "user", "content": user_message}],
-            **extra,
-        )
-        total_input_tokens += response.usage.input_tokens
-        total_output_tokens += response.usage.output_tokens
-
-    try:
-        from core.cost_tracker import claude_cost_ils, claude_cost_usd, record_cost
-        record_cost(
-            cost_category,
-            claude_cost_ils(total_input_tokens, total_output_tokens, model),
-            client_id=client_id,
-            details={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "model": model},
-            usd=claude_cost_usd(total_input_tokens, total_output_tokens, model),
-        )
-    except Exception as e:
-        print(f"[claude_json] cost tracking failed (non-fatal): {e}")
-
-    raw = _first_text(response)
+    attempts = [model, model] + ([DEFAULT_MODEL] if model != DEFAULT_MODEL else [])
+    raw, response = "", None
+    for number, attempt_model in enumerate(attempts, start=1):
+        response = _complete(client, system, user_message, max_tokens, attempt_model, extra,
+                             client_id, cost_category)
+        raw = _text(response)
+        if raw.strip():
+            break
+        print(f"[claude_json] EMPTY completion from {attempt_model} "
+              f"(attempt {number}/{len(attempts)}, cost_category={cost_category}, "
+              f"client_id={client_id}): {_shape(response)}")
+    if not raw.strip():
+        raise ClaudeJSONError(
+            f"Empty completion from Claude after {len(attempts)} attempts "
+            f"({' -> '.join(attempts)}; last {_shape(response)})", raw_response="")
     cleaned = _extract_json(raw)
 
     try:
