@@ -2531,7 +2531,8 @@ async function loadDashboard() {
     // already tells the client what happened)
     const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed'
       && a.agent_name !== 'chat_fallback'
-      && !String(a.action_type || '').startsWith('website_authorize_'));
+      && !String(a.action_type || '').startsWith('website_authorize_')
+      && !String(a.action_type || '').startsWith('google_link_'));
     document.getElementById('activityListMain').innerHTML = feed.length
       ? feed.map(a => `<div class="activity-row">
           <div class="activity-dot"></div>

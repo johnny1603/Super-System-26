@@ -20,8 +20,11 @@ and stays the fallback for everyone.
   Changing a password from the profile page needs the CURRENT password instead.
 - **Google sign-in** (openid + email only - non-sensitive scopes, so no
   app-verification review). It signs in an EXISTING client whose email matches
-  the verified Google email; it never creates one. The Google account is linked
-  by its stable `sub` on first use so a later Gmail-address change still works.
+  the verified Google email; it never creates one. The FIRST time a Google
+  identity reaches an account, it is linked only after the emailed login code
+  is entered (start_google_link / complete_google_link) — the code is the
+  security gate. After that the stable `sub` signs in directly, so a later
+  Gmail-address change still works. A different `sub` is never re-linked.
 - **session_version**: changing/resetting a password bumps it, which kills every
   other session cookie (tokens are stateless, so this is the revocation lever).
 - **billing_exempt** accounts (admin-created, e.g. uallak's own business): no
@@ -339,6 +342,76 @@ def link_google(client: dict, identity: dict):
         return
     _update_client(client["id"], {"google_sub": identity["sub"]})
     _log(client["id"], "google_login_linked", {"google_email": identity.get("email", "")})
+
+
+# ─── First Google sign-in: the emailed code is the gate (2026-10-22) ─────────
+# A verified Google email matching a client's address used to sign in AND link
+# on the spot. Product decision: the first link of a Google identity to an
+# account must also prove the account's INBOX — the same emailed 6-digit code
+# as code login (login_codes: same expiry, same attempt limit). Until that code
+# is entered, nothing is linked and no session is set. Once linked, Google
+# sign-in is one click again. No new scope, no new consent.
+
+GOOGLE_LINK_CODE_MINUTES = 10
+
+
+def google_callback_outcome(client: dict, identity: dict) -> str:
+    """What the callback does with a client find_client_for_google returned:
+    'login' (this exact Google identity is already linked), 'link_code' (an
+    email match not yet linked — prove the inbox first), or 'refuse' (no
+    client; find_client_for_google already returns none for an account linked
+    to a DIFFERENT Google identity)."""
+    if not client:
+        return "refuse"
+    sub = identity.get("sub")
+    if sub and client.get("google_sub") == sub:
+        return "login"
+    if client.get("google_sub"):
+        return "refuse"    # linked elsewhere — never re-linked from here
+    return "link_code"
+
+
+def start_google_link(client: dict, identity: dict) -> dict:
+    """Emails the standard login code (purpose google_link) and returns what
+    the pending token must carry. The code is never returned, logged or put in
+    an alert."""
+    from agents.client_agent import create_login_code
+    from core.email_service import send_login_code
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires_at = (_now() + timedelta(minutes=GOOGLE_LINK_CODE_MINUTES)).isoformat()
+    row = create_login_code(client["id"], code, expires_at)
+    if not row.get("id"):
+        raise RuntimeError("login code not stored")
+    send_login_code(client["email"], client.get("name", ""), code, client["id"], purpose="google_link")
+    _log(client["id"], "google_link_code_sent", {})
+    return {"client_id": client["id"], "sub": identity["sub"], "code_id": row["id"]}
+
+
+def complete_google_link(client: dict, sub: str, code_id, code: str, max_attempts: int) -> dict:
+    """The code step. Single-use by construction: the pending token names the
+    login_codes row it was issued with, and only while that row is the
+    client's ACTIVE code (unused, not superseded by a newer code, not burnt by
+    too many wrong guesses) can it succeed. A correct code burns the row, so
+    replaying the same pending token can never link twice.
+    -> {"success": True} | {"success": False, "code": ERR_INVALID_CODE (try
+    again) | ERR_LINK_EXPIRED (start over with Google) | ERR_GOOGLE_LINKED_ELSEWHERE}"""
+    from agents.client_agent import get_active_login_code
+    if client.get("google_sub") and client["google_sub"] != sub:
+        return {"success": False, "code": "ERR_GOOGLE_LINKED_ELSEWHERE"}
+    active = get_active_login_code(client["id"])
+    if not active or str(active.get("id")) != str(code_id) or active.get("failed_attempts", 0) >= max_attempts:
+        return {"success": False, "code": "ERR_LINK_EXPIRED"}
+    expires_at = datetime.fromisoformat(str(active["expires_at"]).replace("Z", "+00:00"))
+    if expires_at < _now():
+        return {"success": False, "code": "ERR_LINK_EXPIRED"}
+    if not consume_login_code(client, code, max_attempts):
+        still = get_active_login_code(client["id"])
+        expired = not still or str(still.get("id")) != str(code_id)
+        return {"success": False, "code": "ERR_LINK_EXPIRED" if expired else "ERR_INVALID_CODE"}
+    link_google(client, {"sub": sub})
+    mark_email_verified(client)
+    _log(client["id"], "google_link_verified", {})
+    return {"success": True}
 
 
 # ─── Admin-created, billing-exempt accounts ──────────────────────────────────

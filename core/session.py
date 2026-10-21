@@ -84,6 +84,40 @@ def verify_google_login_state(token: str, cookie_nonce: str) -> bool:
     return bool(payload and cookie_nonce and hmac.compare_digest(str(payload.get("nonce", "")), cookie_nonce))
 
 
+GOOGLE_LINK_MAX_AGE_SECONDS = 10 * 60
+
+
+def _sign_google_link(payload_b64: bytes) -> str:
+    # Derived secret: a pending-link token must never verify as a session, a
+    # sign-in state, or anything else signed from the same base secret
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":google-link").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_google_link_token(client_id: int, sub: str, code_id, nonce: str) -> str:
+    """The pending first-Google-link step (core/client_auth.complete_google_link):
+    which client, which Google identity, and WHICH emailed code row — set as a
+    short-lived HttpOnly cookie, never put in a URL. Bound to the sign-in nonce
+    cookie, so it only works in the browser that did the Google round trip.
+    Grants nothing by itself: a session is set only after the code checks out."""
+    payload = json.dumps({"client_id": int(client_id), "sub": str(sub), "code_id": code_id,
+                          "nonce": nonce, "purpose": "google_link",
+                          "exp": int(time.time()) + GOOGLE_LINK_MAX_AGE_SECONDS}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_google_link(payload_b64)}"
+
+
+def verify_google_link_token(token: str, cookie_nonce: str):
+    """{"client_id", "sub", "code_id"} for a valid, unexpired token whose nonce
+    matches the cookie — otherwise None."""
+    payload = _verify(token, _sign_google_link)
+    if not (payload and payload.get("purpose") == "google_link" and cookie_nonce
+            and hmac.compare_digest(str(payload.get("nonce", "")), cookie_nonce)):
+        return None
+    return {"client_id": payload.get("client_id"), "sub": payload.get("sub"),
+            "code_id": payload.get("code_id")}
+
+
 WP_CONNECT_STATE_MAX_AGE_SECONDS = 30 * 60  # may include logging in to wp-admin first
 
 

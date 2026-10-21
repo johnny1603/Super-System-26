@@ -111,7 +111,7 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 
 **https://www.googleapis.com/auth/tagmanager.publish** — The app publishes that container version (versions.publish) so the lead-conversion tag goes live on the user's website and the user's leads are actually counted. Without publishing, the setup would sit unused in a workspace. Publishing requires exactly this scope; no narrower scope allows it.
 
-**openid, https://www.googleapis.com/auth/userinfo.email** (non-sensitive) — "Sign in with Google" for existing uallak customers: the app reads the user's Google account identifier and verified email address once, to match them to their existing account. It never creates an account and requests no profile data.
+**openid, https://www.googleapis.com/auth/userinfo.email** (non-sensitive) — "Sign in with Google" for existing uallak customers: the app reads the user's Google account identifier and verified email address once, to match them to their existing account. The first time a Google account is used with a uallak account, the user also enters a one-time code we email to that account's address before the two are linked. It never creates an account and requests no profile data.
 
 ## Demo video — shot list (one continuous recording)
 
@@ -126,7 +126,7 @@ consent URL). Speak in English.
 
 **Opening**
 1. Show `https://app.uallak.com/privacy/` for a few seconds. Say: "This is uallak, a managed marketing service for small businesses. This video shows every Google scope the app requests and what it does with each."
-2. Sign out, open `/login`, click "Sign in with Google". On Google's consent screen, zoom on the app name and the requested permissions (email only). Say: "Sign-in uses openid and userinfo.email only, to match an existing customer account." Land on the dashboard.
+2. Sign out, open `/login`, click "Sign in with Google". On Google's consent screen, zoom on the app name and the requested permissions (email only). Say: "Sign-in uses openid and userinfo.email only, to match an existing customer account." If this Google account was never used to sign in to the test client before, the login page asks for the code emailed to the client's address — show the email arriving and enter it ("the first Google sign-in is confirmed with a code sent to the account's email"). Land on the dashboard.
 
 **Google Ads — `adwords`**
 3. In the dashboard, scroll to Connections → Google Ads. Tick the staff-access consent box (read it aloud), click "Connect now".
@@ -187,7 +187,12 @@ creates an account.
   OpenID userinfo endpoint once (`GOOGLE_USERINFO_URL`).
 - **Read:** `sub`, `email`, `email_verified` — used by `find_client_for_google`
   (match by stored `sub`, else by the VERIFIED email) and `link_google`
-  (stores `sub` on the client row; logs the Google email in the activity log).
+  (stores `sub` on the client row).
+- **First sign-in to an account (2026-10-22):** an email match that is not yet
+  linked is NOT signed in. uallak emails the account's standard 6-digit login
+  code; only after it is entered does `complete_google_link` store `sub` and
+  set the session. Already-linked `sub` → straight in; a different `sub` →
+  refused. No extra scope or consent — the gate is our own email code.
 - **Written:** nothing at Google. Stored by us: `clients.google_sub`.
 - `profile` (name, picture) was removed on 2026-10-17 because nothing reads it.
 

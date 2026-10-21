@@ -57,6 +57,7 @@ from core.session import (
     create_admin_session_token, verify_admin_session_token,
     create_lead_capture_token, verify_lead_capture_token,
     session_token_version, create_google_login_state, verify_google_login_state,
+    create_google_link_token, verify_google_link_token,
     create_wp_connect_state, verify_wp_connect_state,
 )
 from core import client_auth
@@ -971,34 +972,59 @@ def signup_complete(req: SignupCompleteRequest, response: Response):
     return {"success": True}
 
 GOOGLE_LOGIN_NONCE_COOKIE = "g_login_nonce"
+# The pending first-link step (core/client_auth.complete_google_link). Same
+# path as the nonce cookie, so both reach only the google-login endpoints.
+GOOGLE_LINK_COOKIE = "g_link_pending"
+GOOGLE_LOGIN_COOKIE_PATH = "/api/oauth/google-login"
+
+def _google_login_cookie(response, name: str, value: str):
+    # Lax, not Strict: the callback is a top-level navigation FROM Google,
+    # which Strict would strip the cookie from
+    response.set_cookie(name, value, max_age=600, httponly=True, secure=True,
+                        samesite="lax", path=GOOGLE_LOGIN_COOKIE_PATH)
+
+def _clear_google_login_cookies(response):
+    for name in (GOOGLE_LOGIN_NONCE_COOKIE, GOOGLE_LINK_COOKIE):
+        response.delete_cookie(name, path=GOOGLE_LOGIN_COOKIE_PATH)
 
 @app.get("/api/oauth/google-login/start")
 def google_login_start():
     nonce = secrets.token_urlsafe(24)
     response = RedirectResponse(url=client_auth.google_login_url(create_google_login_state(nonce)))
-    # Lax, not Strict: the callback is a top-level navigation FROM Google,
-    # which Strict would strip the cookie from
-    response.set_cookie(GOOGLE_LOGIN_NONCE_COOKIE, nonce, max_age=600, httponly=True,
-                        secure=True, samesite="lax", path="/api/oauth/google-login")
+    _google_login_cookie(response, GOOGLE_LOGIN_NONCE_COOKIE, nonce)
     return response
 
 @app.get("/api/oauth/google-login/callback")
 def google_login_callback(request: Request, state: str = "", code: str = "", error: str = ""):
     def fail(reason: str):
+        # cancelled | expired | no_account | unavailable — the login page
+        # words each one precisely
         response = RedirectResponse(url=f"/login/?google_error={reason}")
-        response.delete_cookie(GOOGLE_LOGIN_NONCE_COOKIE, path="/api/oauth/google-login")
+        _clear_google_login_cookies(response)
         return response
 
     if error or not code:
         return fail("cancelled")
-    if not verify_google_login_state(state, request.cookies.get(GOOGLE_LOGIN_NONCE_COOKIE, "")):
+    nonce = request.cookies.get(GOOGLE_LOGIN_NONCE_COOKIE, "")
+    if not verify_google_login_state(state, nonce):
         return fail("expired")
     try:
         identity = client_auth.google_identity(code)
         client = client_auth.find_client_for_google(identity)
         if _locked_out(client):
             return fail("no_account")
-        client_auth.link_google(client, identity)
+        outcome = client_auth.google_callback_outcome(client, identity)
+        if outcome == "refuse":
+            return fail("no_account")
+        if outcome == "link_code":
+            # First Google sign-in to this account: nothing is linked and no
+            # session is set until the emailed code proves the inbox
+            pending = client_auth.start_google_link(client, identity)
+            response = RedirectResponse(url="/login/?google_link=1")
+            _google_login_cookie(response, GOOGLE_LINK_COOKIE, create_google_link_token(
+                pending["client_id"], pending["sub"], pending["code_id"], nonce))
+            _google_login_cookie(response, GOOGLE_LOGIN_NONCE_COOKIE, nonce)   # 10 more minutes
+            return response
         client_auth.mark_email_verified(client)
     except client_auth.AuthNotReadyError as e:
         _auth_not_ready(e)
@@ -1006,12 +1032,45 @@ def google_login_callback(request: Request, state: str = "", code: str = "", err
     except Exception as e:
         import traceback
         traceback.print_exc()
-        alert("client_auth", [f"Google sign-in failed after consent - {type(e).__name__}: {e}"])
+        # The exception CLASS tells "migration pending" (AuthNotReadyError,
+        # handled above) from a Google/SMTP/DB failure; never the code or a token
+        alert("client_auth", [f"Google sign-in failed after consent - {type(e).__name__}: {str(e)[:300]}"])
         return fail("unavailable")
     response = RedirectResponse(url="/dashboard/")
-    response.delete_cookie(GOOGLE_LOGIN_NONCE_COOKIE, path="/api/oauth/google-login")
+    _clear_google_login_cookies(response)
     _set_session_cookie(response, client["id"], client.get("session_version"))
     return response
+
+class GoogleLinkCodeRequest(BaseModel):
+    code: str
+
+@app.post("/api/oauth/google-login/verify-code")
+def google_login_verify_code(req: GoogleLinkCodeRequest, request: Request, response: Response):
+    """Step 2 of a FIRST Google sign-in: the emailed code links the Google
+    identity and signs in. The pending token comes only from its HttpOnly
+    cookie (bound to the sign-in nonce cookie); wrong codes count against the
+    same login_codes attempt limit as code login."""
+    pending = verify_google_link_token(request.cookies.get(GOOGLE_LINK_COOKIE, ""),
+                                       request.cookies.get(GOOGLE_LOGIN_NONCE_COOKIE, ""))
+    if not pending:
+        raise HTTPException(status_code=401, detail={"code": "ERR_LINK_EXPIRED"})
+    client = get_client(pending["client_id"])
+    if _locked_out(client):
+        raise HTTPException(status_code=401, detail={"code": "ERR_LINK_EXPIRED"})
+    try:
+        result = client_auth.complete_google_link(client, pending["sub"], pending["code_id"],
+                                                  req.code, MAX_LOGIN_CODE_ATTEMPTS)
+    except client_auth.AuthNotReadyError as e:
+        raise _auth_not_ready(e)
+    if not result["success"]:
+        failed = JSONResponse(status_code=401, content={"detail": {"code": result["code"]}})
+        if result["code"] != "ERR_INVALID_CODE":
+            # Nothing left to try with this token — start over with Google
+            _clear_google_login_cookies(failed)
+        return failed
+    _clear_google_login_cookies(response)
+    _set_session_cookie(response, client["id"], client.get("session_version"))
+    return {"success": True, "redirect": "/dashboard/"}
 
 @app.get("/api/client/account")
 def client_account(request: Request):

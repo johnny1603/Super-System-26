@@ -202,13 +202,19 @@ _LOGIN_CODE_I18N = {
     "code_intro_password": {"he":"הקוד לאימות המייל ולהגדרת הסיסמה שלך:","en":"Your code to verify your email and set your password:","fr":"Votre code pour vérifier votre e-mail et définir votre mot de passe :","ar":"رمزك للتحقق من بريدك الإلكتروني وتعيين كلمة المرور:","ru":"Ваш код для подтверждения почты и установки пароля:"},
     "expiry_note_password": {"he":"הקוד בתוקף ל-10 דקות. אם לא ביקשת להגדיר סיסמה, אפשר להתעלם מהמייל הזה — הסיסמה הקיימת שלך לא תשתנה.","en":"The code is valid for 10 minutes. If you didn't ask to set a password, you can ignore this email — your current password won't change.","fr":"Le code est valable 10 minutes. Si vous n'avez pas demandé à définir un mot de passe, ignorez cet e-mail — votre mot de passe actuel ne changera pas.","ar":"الرمز صالح لمدة 10 دقائق. إذا لم تطلب تعيين كلمة مرور، يمكنك تجاهل هذا البريد — لن تتغير كلمة مرورك الحالية.","ru":"Код действителен 10 минут. Если вы не запрашивали установку пароля, просто проигнорируйте письмо — текущий пароль не изменится."},
     "subject_password": {"he":"{code} — קוד להגדרת הסיסמה שלך ב-uallak","en":"{code} — your uallak password setup code","fr":"{code} — votre code de mot de passe uallak","ar":"{code} — رمز تعيين كلمة المرور في uallak","ru":"{code} — код для установки пароля uallak"},
+    # purpose="google_link": the first Google sign-in to an account (client_auth.start_google_link)
+    "code_intro_google": {"he":"מישהו מנסה להתחבר לחשבון שלך ב-uallak עם Google בפעם הראשונה. כדי לחבר את חשבון Google, הזינו את הקוד:","en":"Someone is signing in to your uallak account with Google for the first time. To link that Google account, enter this code:","fr":"Quelqu'un se connecte à votre compte uallak avec Google pour la première fois. Pour associer ce compte Google, saisissez ce code :","ar":"يحاول شخص ما تسجيل الدخول إلى حسابك في uallak باستخدام Google لأول مرة. لربط حساب Google هذا، أدخل هذا الرمز:","ru":"Кто-то впервые входит в ваш аккаунт uallak через Google. Чтобы привязать этот аккаунт Google, введите код:"},
+    "expiry_note_google": {"he":"הקוד בתוקף ל-10 דקות. אם זה לא את/ה — אל תזינו את הקוד, ושום דבר לא יחובר לחשבון שלך.","en":"The code is valid for 10 minutes. If this wasn't you, don't enter it — nothing will be linked to your account.","fr":"Le code est valable 10 minutes. Si ce n'est pas vous, ne le saisissez pas — rien ne sera associé à votre compte.","ar":"الرمز صالح لمدة 10 دقائق. إذا لم تكن أنت، فلا تُدخله — لن يُربط أي شيء بحسابك.","ru":"Код действителен 10 минут. Если это были не вы, не вводите его — к вашему аккаунту ничего не будет привязано."},
+    "subject_google": {"he":"{code} — קוד לחיבור Google לחשבון ה-uallak שלך","en":"{code} — code to link Google to your uallak account","fr":"{code} — code pour associer Google à votre compte uallak","ar":"{code} — رمز ربط Google بحسابك في uallak","ru":"{code} — код для привязки Google к аккаунту uallak"},
 }
+
+_LOGIN_CODE_SUFFIX = {"password": "_password", "google_link": "_google"}
 
 
 def send_login_code(client_email: str, client_name: str, code: str, client_id: int = None, language: str = None,
                     purpose: str = "login"):
     lang = _lang_of(client_id, language)
-    suffix = "_password" if purpose == "password" else ""
+    suffix = _LOGIN_CODE_SUFFIX.get(purpose, "")
     # Only three strings differ by purpose - the rest of the template is shared
     t = lambda key, **v: _tr(_LOGIN_CODE_I18N,
                              key + suffix if key in ("code_intro", "expiry_note", "subject") else key,

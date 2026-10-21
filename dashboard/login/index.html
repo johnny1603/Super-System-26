@@ -150,6 +150,18 @@ body {
     <button class="btn-link" onclick="backToEmail()" data-i18n="resend">שלח לי קוד אחר / שנה מייל</button>
   </div>
 
+  <!-- First Google sign-in to an account: the emailed code links it. The
+       pending step lives in an HttpOnly cookie; this page only sends the code. -->
+  <div class="step" id="stepGoogleLink">
+    <div class="msg" style="color:var(--white);" data-i18n="google_link_sent">שלחנו קוד למייל שלך כדי לחבר את חשבון ה-Google</div>
+    <label class="field-label" for="googleLinkCode" data-i18n="code_label">קוד בן 6 ספרות</label>
+    <input class="field-input code-input" id="googleLinkCode" type="text" inputmode="numeric" maxlength="6" placeholder="------" autocomplete="one-time-code">
+    <div class="msg" id="googleLinkMsg"></div>
+    <button class="btn" id="googleLinkBtn" onclick="verifyGoogleLink()" data-i18n="google_link_verify">חיבור וכניסה</button>
+    <a class="btn-link" href="/api/oauth/google-login/start" style="display:block;text-align:center;" data-i18n="google_link_restart">שלחו לי קוד חדש (התחלה מחדש עם Google)</a>
+    <button class="btn-link" onclick="showStep('stepPassword')" data-i18n="back_to_login">חזרה לכניסה</button>
+  </div>
+
   <!-- Account setup (after payment / admin invite) and forgot-password:
        step 1 emails a code, step 2 trades it for a password. Name and phone
        only in setup mode - checkout already collected them, this lets the
@@ -329,6 +341,43 @@ const I18N = {
     he: 'הכניסה עם Google לא הושלמה — נסה/י שוב או היכנס/י עם קוד למייל', en: 'Google sign-in didn’t complete — try again or use an email code',
     fr: 'La connexion Google n’a pas abouti — réessayez ou utilisez un code', ar: 'لم يكتمل الدخول عبر Google — حاول مجددًا أو استخدم رمز البريد',
     ru: 'Вход через Google не завершён — попробуйте снова или войдите по коду' },
+  // One line per ?google_error= value the callback sends
+  google_cancelled: {
+    he: 'הכניסה עם Google בוטלה — אפשר לנסות שוב, או להיכנס עם סיסמה או קוד למייל.',
+    en: 'Google sign-in was cancelled — you can try again, or use a password or an email code.',
+    fr: 'La connexion Google a été annulée — réessayez, ou utilisez un mot de passe ou un code par e-mail.',
+    ar: 'تم إلغاء الدخول عبر Google — يمكنك المحاولة مجددًا أو استخدام كلمة مرور أو رمز عبر البريد.',
+    ru: 'Вход через Google отменён — попробуйте снова или войдите с паролем или по коду.' },
+  google_expired: {
+    he: 'החלון של הכניסה עם Google פג תוקף (או נפתח בדפדפן אחר) — לחצו שוב על "המשך עם Google".',
+    en: 'The Google sign-in window expired (or was opened in another browser) — click “Continue with Google” again.',
+    fr: 'La fenêtre de connexion Google a expiré (ou a été ouverte dans un autre navigateur) — cliquez à nouveau sur « Continuer avec Google ».',
+    ar: 'انتهت صلاحية نافذة الدخول عبر Google (أو فُتحت في متصفح آخر) — اضغط مجددًا على "المتابعة باستخدام Google".',
+    ru: 'Окно входа через Google истекло (или открыто в другом браузере) — нажмите «Войти через Google» ещё раз.' },
+  google_unavailable: {
+    he: 'הכניסה עם Google לא זמינה כרגע מהצד שלנו — הצוות קיבל התראה. בינתיים אפשר להיכנס עם סיסמה או קוד למייל.',
+    en: 'Google sign-in isn’t available on our side right now — the team has been alerted. Meanwhile, use a password or an email code.',
+    fr: 'La connexion Google n’est pas disponible de notre côté pour le moment — l’équipe est prévenue. En attendant, utilisez un mot de passe ou un code.',
+    ar: 'الدخول عبر Google غير متاح من جهتنا حاليًا — تم تنبيه الفريق. في الأثناء استخدم كلمة مرور أو رمزًا عبر البريد.',
+    ru: 'Вход через Google сейчас недоступен с нашей стороны — команда уже уведомлена. Пока войдите с паролем или по коду.' },
+  google_link_sent: {
+    he: 'שלחנו קוד למייל שלך כדי לחבר את חשבון ה-Google. בכניסה הראשונה עם Google צריך לאשר עם הקוד — הקוד בתוקף ל-10 דקות.',
+    en: 'We sent a code to your email to link your Google account. The first Google sign-in needs this code — it is valid for 10 minutes.',
+    fr: 'Nous avons envoyé un code à votre e-mail pour associer votre compte Google. La première connexion Google exige ce code — valable 10 minutes.',
+    ar: 'أرسلنا رمزًا إلى بريدك لربط حساب Google. أول دخول عبر Google يحتاج هذا الرمز — صالح لمدة 10 دقائق.',
+    ru: 'Мы отправили код на вашу почту, чтобы привязать аккаунт Google. Первый вход через Google требует этот код — он действует 10 минут.' },
+  google_link_verify: {
+    he: 'חיבור וכניסה', en: 'Link and sign in', fr: 'Associer et se connecter', ar: 'ربط وتسجيل الدخول', ru: 'Привязать и войти' },
+  google_link_restart: {
+    he: 'שלחו לי קוד חדש (התחלה מחדש עם Google)', en: 'Send me a new code (start again with Google)',
+    fr: 'M’envoyer un nouveau code (recommencer avec Google)', ar: 'أرسل لي رمزًا جديدًا (البدء من جديد مع Google)',
+    ru: 'Прислать новый код (начать заново через Google)' },
+  google_link_expired: {
+    he: 'שלב החיבור פג תוקף או שהקוד כבר נוצל — לחצו על "שלחו לי קוד חדש".',
+    en: 'This linking step expired or its code was already used — click “Send me a new code”.',
+    fr: 'Cette étape a expiré ou son code a déjà été utilisé — cliquez sur « M’envoyer un nouveau code ».',
+    ar: 'انتهت صلاحية خطوة الربط أو استُخدم رمزها — اضغط على "أرسل لي رمزًا جديدًا".',
+    ru: 'Шаг привязки истёк или код уже использован — нажмите «Прислать новый код».' },
   success: {
     he: 'התחברת בהצלחה, מעביר אותך לדשבורד...', en: 'Signed in — taking you to your dashboard…',
     fr: 'Connexion réussie — redirection vers votre tableau de bord…',
@@ -363,7 +412,8 @@ function errText(body, fallbackKey) {
   return uallakI18n.t({
     ERR_INVALID_CREDENTIALS: 'err_bad_credentials', ERR_INVALID_CODE: 'err_bad_code',
     ERR_PASSWORD_TOO_SHORT: 'err_password_short', ERR_PASSWORD_TOO_LONG: 'err_password_long',
-    ERR_AUTH_NOT_READY: 'err_not_ready',
+    ERR_AUTH_NOT_READY: 'err_not_ready', ERR_LINK_EXPIRED: 'google_link_expired',
+    ERR_GOOGLE_LINKED_ELSEWHERE: 'google_no_account',
   }[code] || fallbackKey);
 }
 
@@ -439,6 +489,29 @@ async function verifyCode() {
     }
   } catch (e) {
     setMsg('codeMsg', uallakI18n.t('err_generic'), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// First Google sign-in: the code from the email links the Google account.
+// The pending step travels in its HttpOnly cookie, never in this page.
+async function verifyGoogleLink() {
+  const code = document.getElementById('googleLinkCode').value.trim();
+  if (!code) { setMsg('googleLinkMsg', uallakI18n.t('err_no_code'), 'error'); return; }
+  const btn = document.getElementById('googleLinkBtn');
+  btn.disabled = true;
+  setMsg('googleLinkMsg', '', '');
+  try {
+    const res = await fetch('/api/oauth/google-login/verify-code', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    if (res.ok) { goDashboard('googleLinkMsg'); return; }
+    setMsg('googleLinkMsg', errText(await res.json().catch(() => null), 'err_bad_code'), 'error');
+  } catch (e) {
+    setMsg('googleLinkMsg', uallakI18n.t('err_generic'), 'error');
   } finally {
     btn.disabled = false;
   }
@@ -526,8 +599,12 @@ async function completeSetup() {
     document.getElementById('emailInput').value = email;
   }
   const gErr = params.get('google_error');
-  if (gErr && gErr !== 'cancelled') {
-    setMsg('topMsg', uallakI18n.t(gErr === 'no_account' ? 'google_no_account' : 'google_failed'), 'error');
+  const G_ERR_KEYS = { cancelled: 'google_cancelled', expired: 'google_expired',
+                       no_account: 'google_no_account', unavailable: 'google_unavailable' };
+  if (gErr) setMsg('topMsg', uallakI18n.t(G_ERR_KEYS[gErr] || 'google_failed'), gErr === 'cancelled' ? '' : 'error');
+  if (params.get('google_link') === '1') {
+    showStep('stepGoogleLink');
+    document.getElementById('googleLinkCode').focus();
   }
   if (params.get('setup') === '1') startSetup('setup');
 })();
@@ -536,6 +613,7 @@ document.getElementById('pwEmail').addEventListener('keydown', e => { if (e.key 
 document.getElementById('pwPassword').addEventListener('keydown', e => { if (e.key === 'Enter') passwordLogin(); });
 document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
 document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') verifyCode(); });
+document.getElementById('googleLinkCode').addEventListener('keydown', e => { if (e.key === 'Enter') verifyGoogleLink(); });
 document.getElementById('setupEmail').addEventListener('keydown', e => { if (e.key === 'Enter') requestSetupCode(); });
 document.getElementById('setupPassword2').addEventListener('keydown', e => { if (e.key === 'Enter') completeSetup(); });
 </script>

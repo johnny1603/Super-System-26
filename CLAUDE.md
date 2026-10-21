@@ -258,8 +258,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `/api/checkout` creates the `clients` row (before PayPal), and every login ends in the
   HMAC `session` cookie from `core/session.py`. Three ways in: emailed 6-digit code
   (the original, always available), password (stdlib scrypt), Google sign-in
-  (openid/email/profile only; signs in an EXISTING client by verified email, never
-  creates one). **A password is only ever set via a fresh emailed code**
+  (openid + userinfo.email only; signs in an EXISTING client by verified email, never
+  creates one). **The FIRST Google sign-in to an account links nothing until the emailed
+  login code is entered** (`google_callback_outcome` → `start_google_link` → POST
+  `/api/oauth/google-login/verify-code` → `complete_google_link`): the pending step is a
+  10-minute HttpOnly cookie (`session.create_google_link_token`, bound to the sign-in nonce
+  cookie and to the exact `login_codes` row, which is what makes it single-use); same code
+  expiry and attempt limit as code login. A linked `sub` signs in directly; a different `sub`
+  is refused. Activity rows `google_link_code_sent` / `google_link_verified` (no code, ever)
+  are hidden from the client feed. **A password is only ever set via a fresh emailed code**
   (`set_password_with_code`): post-payment setup, forgot-password and admin reset are
   that one path. Password change/reset bumps `clients.session_version`, which kills
   every other cookie. Admin "New Client" creates a **`billing_exempt`** account (no
