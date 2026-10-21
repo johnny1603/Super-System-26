@@ -1008,14 +1008,27 @@ def google_login_callback(request: Request, state: str = "", code: str = "", err
     nonce = request.cookies.get(GOOGLE_LOGIN_NONCE_COOKIE, "")
     if not verify_google_login_state(state, nonce):
         return fail("expired")
+    def no_account(identity: dict):
+        # One deduped admin alert saying WHY: masked email, verified flag,
+        # what matched and that client's status — never the full address,
+        # a token or a code. A failure here must not change the redirect.
+        try:
+            line = client_auth.no_account_alert_text(
+                client_auth.google_no_account_diagnosis(identity, _locked_out))
+            if line:
+                alert("client_auth", [line])
+        except Exception as e:
+            print(f"[google_login] no_account diagnosis failed: {type(e).__name__}")
+        return fail("no_account")
+
     try:
         identity = client_auth.google_identity(code)
         client = client_auth.find_client_for_google(identity)
         if _locked_out(client):
-            return fail("no_account")
+            return no_account(identity)
         outcome = client_auth.google_callback_outcome(client, identity)
         if outcome == "refuse":
-            return fail("no_account")
+            return no_account(identity)
         if outcome == "link_code":
             # First Google sign-in to this account: nothing is linked and no
             # session is set until the emailed code proves the inbox

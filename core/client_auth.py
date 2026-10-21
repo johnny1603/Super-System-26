@@ -42,6 +42,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -335,6 +336,79 @@ def find_client_for_google(identity: dict) -> dict:
     if client and client.get("google_sub") and client["google_sub"] != sub:
         return {}
     return client or {}
+
+
+def mask_email(email: str) -> str:
+    """First character + domain ("d***@example.com") — enough to recognise
+    which address it was, never the address itself."""
+    email = (email or "").strip()
+    if not email:
+        return "(none)"
+    if "@" not in email:
+        return email[:1] + "***"
+    local, domain = email.rsplit("@", 1)
+    return f"{local[:1]}***@{domain}"
+
+
+NO_ACCOUNT_ALERT_WINDOW = 3600
+_no_account_alerted = {}   # (email hash, reason) -> last alert time (per instance)
+
+
+def google_no_account_diagnosis(identity: dict, locked_out=None) -> dict:
+    """WHY a Google sign-in found no account — the same two lookups as
+    find_client_for_google, without its refusals, so the alert says what
+    actually matched. `locked_out(client) -> bool` is the callback's own
+    lockout check. Never raises; never the full email, a token or a code."""
+    sub = identity.get("sub") or ""
+    email = (identity.get("email") or "").strip()
+    verified = identity.get("email_verified") in (True, "true")
+    by_sub, by_email = {}, {}
+    try:
+        if sub:
+            rows = _db().table("clients").select("*").eq("google_sub", sub).limit(1).execute().data
+            by_sub = rows[0] if rows else {}
+    except Exception:
+        pass
+    try:
+        if email:
+            from agents.client_agent import get_client_by_email
+            by_email = get_client_by_email(email) or get_client_by_email(email.lower()) or {}
+    except Exception:
+        pass
+    client = by_sub or by_email
+    locked = bool(client) and bool(locked_out and locked_out(client))
+    linked_elsewhere = bool(by_email.get("google_sub")) and by_email.get("google_sub") != sub
+    if client and locked:
+        reason = "account_closed_or_being_deleted"
+    elif linked_elsewhere and not by_sub:
+        reason = "account_linked_to_another_google_account"
+    elif by_email and not verified and not by_sub:
+        reason = "google_email_not_verified"
+    elif not client:
+        reason = "no_client_with_this_email"
+    else:
+        reason = "unexpected"
+    return {"email": mask_email(email), "email_verified": verified,
+            "matched_by_email": bool(by_email), "matched_by_sub": bool(by_sub),
+            "client_id": client.get("id"), "client_status": client.get("status") if client else None,
+            "reason": reason, "_key": (hashlib.sha256(email.lower().encode()).hexdigest()[:16], reason)}
+
+
+def no_account_alert_text(diagnosis: dict):
+    """The admin alert line, or None while the same address + reason was
+    already alerted within NO_ACCOUNT_ALERT_WINDOW (a client retrying the
+    button five times is one alert, not five)."""
+    key = diagnosis.get("_key")
+    now = time.time()
+    if key and now - _no_account_alerted.get(key, 0) < NO_ACCOUNT_ALERT_WINDOW:
+        return None
+    if key:
+        _no_account_alerted[key] = now
+    who = f"client {diagnosis['client_id']}" if diagnosis.get("client_id") else "no client"
+    return (f"Google sign-in found no account ({diagnosis['reason']}) — {who}; "
+            f"google_email={diagnosis['email']} email_verified={diagnosis['email_verified']} "
+            f"matched_by_email={diagnosis['matched_by_email']} matched_by_sub={diagnosis['matched_by_sub']} "
+            f"client_status={diagnosis['client_status']}")
 
 
 def link_google(client: dict, identity: dict):

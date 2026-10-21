@@ -267,6 +267,68 @@ class PendingToken(unittest.TestCase):
         self.assertIsNone(ss.verify_session_token(link))
 
 
+class NoAccountDiagnosis(unittest.TestCase):
+    LOCKED = staticmethod(lambda c: c.get("status") in ("closed", "transferred", "deleting"))
+
+    def setUp(self):
+        STORE.__init__()
+        ca._no_account_alerted.clear()
+
+    def diagnose(self, email, verified=True, sub="sub-new"):
+        return ca.google_no_account_diagnosis(
+            {"sub": sub, "email": email, "email_verified": verified}, self.LOCKED)
+
+    def assert_safe(self, text, email, sub="sub-new"):
+        self.assertNotIn(email, text)
+        self.assertNotIn(email.split("@")[0], text)
+        self.assertNotIn(sub, text)
+
+    def test_unknown_email(self):
+        d = self.diagnose("stranger@example.com")
+        self.assertEqual(d["reason"], "no_client_with_this_email")
+        self.assertFalse(d["matched_by_email"] or d["matched_by_sub"])
+        text = ca.no_account_alert_text(d)
+        self.assertIn("google_email=s***@example.com", text)
+        self.assertIn("no client", text)
+        self.assert_safe(text, "stranger@example.com")
+
+    def test_unverified_google_email(self):
+        STORE.add_client(27, "dana@example.com")
+        d = self.diagnose("dana@example.com", verified=False)
+        self.assertEqual(d["reason"], "google_email_not_verified")
+        self.assertTrue(d["matched_by_email"])
+        text = ca.no_account_alert_text(d)
+        self.assertIn("client 27", text)
+        self.assertIn("email_verified=False", text)
+        self.assertIn("client_status=active", text)
+        self.assert_safe(text, "dana@example.com")
+
+    def test_linked_to_another_google_account(self):
+        STORE.add_client(27, "dana@example.com", sub="sub-OTHER")
+        d = self.diagnose("dana@example.com")
+        self.assertEqual(d["reason"], "account_linked_to_another_google_account")
+        self.assertNotIn("sub-OTHER", ca.no_account_alert_text(d))
+
+    def test_closed_account_matched_by_sub(self):
+        STORE.add_client(27, "dana@example.com", sub="sub-new", status="closed")
+        d = self.diagnose("dana@example.com")
+        self.assertEqual(d["reason"], "account_closed_or_being_deleted")
+        self.assertTrue(d["matched_by_sub"])
+        self.assertIn("client_status=closed", ca.no_account_alert_text(d))
+
+    def test_retries_are_one_alert(self):
+        d = self.diagnose("stranger@example.com")
+        self.assertIsNotNone(ca.no_account_alert_text(d))
+        self.assertIsNone(ca.no_account_alert_text(self.diagnose("stranger@example.com")))
+        self.assertIsNone(ca.no_account_alert_text(self.diagnose("STRANGER@example.com")))
+        self.assertIsNotNone(ca.no_account_alert_text(self.diagnose("other@example.com")))
+
+    def test_mask(self):
+        self.assertEqual(ca.mask_email("dana@example.com"), "d***@example.com")
+        self.assertEqual(ca.mask_email(""), "(none)")
+        self.assertEqual(ca.mask_email("weird"), "w***")
+
+
 def tearDownModule():
     for name, module in _saved.items():
         if module is None:
