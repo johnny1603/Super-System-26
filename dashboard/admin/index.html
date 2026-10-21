@@ -304,6 +304,11 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
 .cr-msg.admin .who { color: var(--accent); }
 .cr-msg.pending { color: var(--gray); font-style: italic; }
 .cr-gaps { font-size:11px; color:var(--yellow); margin-top:4px; }
+.cr-action { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin:6px 0 12px; font-size:12.5px; line-height:1.6; white-space:normal; }
+.cr-action .t { font-weight:700; margin-bottom:2px; }
+.cr-action .p { direction:ltr; text-align:left; color:var(--gray); font-size:11.5px; }
+.cr-action .row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.cr-action .out { margin-top:8px; white-space:pre-wrap; }
 @media (max-width: 1100px) { .cr-grid { grid-template-columns: 1fr; } }
 
 /* LOGIN */
@@ -2823,7 +2828,7 @@ async function resetClientPassword(clientId) {
 // table), and it is unrelated to the WhatsApp button and to "הודעה בצ׳אט
 // התמיכה שלו", which DOES reach the client.
 const HEALTH_LABEL = { attention: 'דורש תשומת לב', stalled: 'תקוע', ok: 'תקין', inactive: 'לא פעיל' };
-const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות' };
+const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות', action_request: 'בקשת פעולה' };
 const crState = { clientId: null, persona: 'general', personas: [], sending: false };
 
 function crShowList() {
@@ -2973,6 +2978,10 @@ async function openControlRoom(clientId) {
       <button type="button" class="manage-btn" onclick="crDemoAction(${Number(c.id)}, 'youtube-upload', event)">העלאת סרטון בדיקה ל-YouTube</button>
     </div>` : ''}
     <div id="crDemo"></div>
+    <div id="crActions">${(d.actions || []).filter(a => a.status === 'awaiting_staff')
+      .map(a => crActionCardHtml(c.id, a)).join('')}</div>
+    <div style="margin:-4px 0 12px;"><button type="button" class="manage-btn" onclick="crCapabilityCheck(${Number(c.id)}, event)">בדיקת יכולות סוכנים (10 שאלות, בלי לשמור)</button></div>
+    <div id="crCapCheck"></div>
     <div id="crDriveTest"></div>
     <div id="crConversion"></div>
     ${crGadsLine(c.id, d.google_ads)}
@@ -3243,6 +3252,13 @@ async function crLoadChat() {
     if (h.available && !(h.messages || []).length) {
       chat.innerHTML = `<div class="cr-msg pending">שאל את ${esc(crPersonaName(persona))} כל דבר על הלקוח הזה.</div>`;
     }
+    // Open cards this persona proposed survive a reload (the text is in history)
+    try {
+      const open = (await api(`/api/admin/control-room/${clientId}/actions`)).data || [];
+      if (crState.clientId !== clientId || crState.persona !== persona) return;
+      open.filter(a => a.origin === 'admin_chat' && (a.persona || 'general') === persona)
+          .forEach(a => crAppendCard(clientId, a));
+    } catch (e) { /* cards are a convenience on reload; the chat itself loaded */ }
   } catch (e) {
     chat.innerHTML = '<div class="cr-msg pending">לא הצלחתי לטעון את השיחה הקודמת.</div>';
   }
@@ -3275,6 +3291,7 @@ async function crSend() {
       gaps.textContent = 'לא נטען בזמן השאלה: ' + res.data.data_gaps.join(' · ');
       msg.appendChild(gaps);
     }
+    if (res.data.action) crAppendCard(clientId, res.data.action);
   } catch (e) {
     if (waiting) waiting.remove();
     crAppend('agent', 'השאלה לא הגיעה לשרת — היא חזרה לתיבה.', 'pending');
@@ -3283,6 +3300,98 @@ async function crSend() {
     crState.sending = false;
     const btn = document.getElementById('crSendBtn');
     if (btn) btn.disabled = false;
+  }
+}
+
+// ─── Agent action cards (core/agent_actions) ─────────────────────────────────
+// An agent only PROPOSES; the card says what will happen and this click is
+// what runs it. The server re-checks every guard from the stored proposal —
+// only its id and the decision are sent.
+const CR_ACTION_STATUS = { proposed: 'ממתין לאישור שלך', awaiting_staff: 'בקשת לקוח — ממתין לאישור שלך',
+  running: 'רץ…', done: 'בוצע', failed: 'נכשל', cancelled: 'בוטל', expired: 'פג תוקף' };
+
+function crActionCardHtml(clientId, a) {
+  const params = a.params && Object.keys(a.params).length
+    ? `<div class="p">${esc(Object.entries(a.params).map(([k, v]) => k + ': ' + v).join(' · '))}</div>` : '';
+  const buttons = a.can_decide ? `<div class="row">
+      <button type="button" class="alert-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'approve', this)">אשר והרץ</button>
+      <button type="button" class="manage-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'cancel', this)">ביטול</button>
+    </div>` : '';
+  return `<div class="cr-action" data-action-id="${Number(a.id)}">
+    <div class="t">⚡ ${esc(a.title || a.action)}</div>
+    <div>${esc(a.what || '')}</div>${params}
+    <div class="cr-attn-meta">${esc(CR_ACTION_STATUS[a.status] || a.status)}</div>
+    ${buttons}<div class="out"></div></div>`;
+}
+
+function crAppendCard(clientId, a) {
+  const chat = document.getElementById('crChat');
+  if (!chat || chat.querySelector(`.cr-action[data-action-id="${Number(a.id)}"]`)) return;
+  chat.insertAdjacentHTML('beforeend', crActionCardHtml(clientId, a));
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function crDecideAction(clientId, proposalId, decision, btn) {
+  const cardEl = btn.closest('.cr-action');
+  const out = cardEl.querySelector('.out');
+  cardEl.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  out.style.color = 'var(--gray)';
+  out.textContent = decision === 'approve' ? 'מריץ… (עלול לקחת דקה-שתיים)' : 'מבטל…';
+  let res, body;
+  try {
+    res = await fetch(`/api/admin/control-room/${Number(clientId)}/actions/${Number(proposalId)}/decide`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    });
+  } catch (e) {
+    out.style.color = 'var(--red)';
+    out.textContent = 'הבקשה לא הגיעה לשרת — בדקו בפלטפורמה לפני שמנסים שוב (הרצה כפולה חסומה בשרת).';
+    cardEl.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    return;
+  }
+  if (res.status === 401) { out.textContent = 'פג תוקף ההתחברות לניהול — התחבר מחדש'; showLogin(); return; }
+  try { body = await res.json(); } catch (e) { body = null; }
+  if (!res.ok || !body || !body.success) {
+    const d = body && body.detail;
+    out.style.color = 'var(--red)';
+    out.textContent = `✕ HTTP ${res.status} ${d ? (typeof d === 'string' ? d : JSON.stringify(d)) : ''}`;
+    return;
+  }
+  const r = body.data || {};
+  const facts = r.result ? Object.entries(r.result)
+    .filter(([k, v]) => v && typeof v !== 'object' && ['campaign_name', 'campaign_id', 'status', 'customer_id', 'account_name',
+      'video_id', 'title', 'privacy_status', 'studio_url', 'event_name', 'live_version', 'ga4_measurement_id'].includes(k))
+    .map(([k, v]) => `${k}: ${v}`).join('\n') : '';
+  out.style.color = r.status === 'failed' ? 'var(--red)' : r.status === 'done' ? 'var(--green)' : 'var(--gray)';
+  out.textContent = (r.already ? `כבר טופל קודם (${CR_ACTION_STATUS[r.status] || r.status}).` : (r.message || CR_ACTION_STATUS[r.status] || ''))
+    + (facts ? '\n' + facts : '');
+  const meta = cardEl.querySelector('.cr-attn-meta');
+  if (meta) meta.textContent = CR_ACTION_STATUS[r.status] || r.status || '';
+  cardEl.querySelector('.row') && cardEl.querySelector('.row').remove();
+}
+
+// Dry run: what the client's agents would answer right now, flagged when a
+// reply dead-ends ("can't see", "go check", "I'll pass it on"). Stores nothing.
+async function crCapabilityCheck(clientId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const el = document.getElementById('crCapCheck');
+  if (!el) return;
+  el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">שואל את הסוכנים 10 שאלות… (כדקה)</div>';
+  try {
+    const r = (await api(`/api/admin/control-room/${Number(clientId)}/capability-check`, { method: 'POST' })).data;
+    const rows = (r.answers || []).map(a => `<div class="drawer-stat-row" style="display:block;">
+        <div><b>${esc(a.persona)}</b> · ${esc(a.question)}</div>
+        <div style="margin:4px 0;white-space:pre-wrap;">${esc(a.reply)}</div>
+        <div style="font-size:11.5px;color:${a.forbidden_phrases.length ? 'var(--red)' : 'var(--green)'};">
+          ${a.forbidden_phrases.length ? '✕ ניסוח אסור: ' + esc(a.forbidden_phrases.join(', '))
+            + (a.topic_read_failed ? ' (הקריאה של הנושא באמת נכשלה עכשיו)' : '') : '✓ תשובה ענינית'}
+          ${a.proposed_action ? ' · הוצע: ' + esc(a.proposed_action) : ''}</div></div>`).join('');
+    el.innerHTML = `<div class="panel-pad">
+      <div class="drawer-label">${r.flagged ? `✕ ${r.flagged}/${r.total} תשובות עם ניסוח אסור` : `✓ ${r.total}/${r.total} תשובות בלי "לא רואה" / "תיכנס ל…"`}</div>
+      ${(r.state_failed_sections || []).length ? `<div class="cr-gaps">חלקים שלא נקראו: ${esc(r.state_failed_sections.join(' · '))}</div>` : ''}
+      ${rows}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="panel-pad" style="color:var(--red);">הבדיקה נכשלה — ראו את הלוג של Cloud Run</div>';
   }
 }
 

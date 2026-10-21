@@ -491,6 +491,14 @@ body {
 .support-msg.bot { background: var(--panel-2); align-self: flex-start; border-radius: 4px 14px 14px 14px; }
 .support-msg.user { background: var(--accent); color: white; align-self: flex-end; border-radius: 14px 4px 14px 14px; }
 .support-msg.escalated { background: rgba(255,76,31,0.1); border: 1px solid rgba(255,76,31,0.25); align-self: flex-start; border-radius: 4px 14px 14px 14px; font-size: 12px; color: var(--accent); }
+/* An agent's proposed action: what will happen + the one click that runs it */
+.chat-action { align-self: flex-start; max-width: 82%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5; background: var(--panel-2); }
+.chat-action .t { font-weight: 700; margin-bottom: 2px; }
+.chat-action .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.chat-action .row button { border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: inherit; }
+.chat-action .row .ok { background: var(--accent); color: white; }
+.chat-action .row .no { background: transparent; color: var(--gray); border: 1px solid var(--border); }
+.chat-action .note { margin-top: 6px; font-size: 12px; color: var(--gray); }
 
 .support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
 /* A one-row <textarea> (Shift+Enter = new line) that grows with its content up
@@ -2125,6 +2133,11 @@ const DASH_I18N = {
   chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
+  action_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Подтвердить' },
+  action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
+  action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
+  action_with_team: { he:'נשלח לצוות לאישור — נעדכן כאן כשזה בוצע.', en:'Sent to the team for approval — we\'ll update you here when it\'s done.', fr:'Envoyé à l\'équipe pour validation — nous vous tiendrons au courant ici.', ar:'أُرسل إلى الفريق للموافقة — سنبلغكم هنا عند التنفيذ.', ru:'Отправлено команде на подтверждение — сообщим здесь, когда будет готово.' },
+  action_not_sent: { he:'זה לא הגיע אלינו — נסו שוב בעוד רגע.', en:'That didn\'t reach us — please try again in a moment.', fr:'Cela ne nous est pas parvenu — réessayez dans un instant.', ar:'لم يصلنا ذلك — حاولوا مرة أخرى بعد لحظة.', ru:'Запрос не дошёл — попробуйте ещё раз чуть позже.' },
   chat_error: { he:'נראה שההודעה הזו לא הגיעה אליי — החזרתי אותה לתיבה, אפשר לשלוח שוב.', en:'Looks like that message didn\'t reach me — I put it back in the box so you can send it again.', fr:'On dirait que ce message ne m\'est pas parvenu — je l\'ai remis dans la zone de saisie pour que vous puissiez le renvoyer.', ar:'يبدو أن هذه الرسالة لم تصلني — أعدتها إلى خانة الكتابة لتتمكنوا من إرسالها مجددًا.', ru:'Похоже, это сообщение до меня не дошло — оно снова в поле ввода, можно отправить ещё раз.' },
   chat_prev: { he:'הצג שיחות קודמות', en:'Show previous conversations', fr:'Voir les discussions précédentes', ar:'عرض المحادثات السابقة', ru:'Показать прошлые беседы' },
   chat_divider: { he:'— שיחה חדשה —', en:'— new conversation —', fr:'— nouvelle discussion —', ar:'— محادثة جديدة —', ru:'— новая беседа —' },
@@ -3993,8 +4006,98 @@ async function loadWindowHistory(personaId) {
     for (const entry of data.history) {
       appendMsg(w.msgsEl, entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
     }
+    loadWindowActions(personaId);
   } catch (e) {
     console.error('failed to load window history', e);
+  }
+}
+
+// ─── Action cards ────────────────────────────────────────────────────────────
+// An agent never does anything by itself: it PROPOSES, and this card says
+// what will happen. The client's click is what runs it — the server
+// re-checks everything from the stored proposal (only its id is sent).
+// A card the team must approve shows no buttons, just where it stands.
+async function loadWindowActions(personaId) {
+  try {
+    const res = await fetch('/api/client/actions?persona=' + encodeURIComponent(personaId),
+                            { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.success) (data.data || []).forEach(a => appendActionCard(personaId, a));
+  } catch (e) { /* the history itself loaded; cards come back on the next open */ }
+}
+
+function appendActionCard(personaId, a) {
+  const w = CHAT_WINDOWS[personaId];
+  if (!w || !a || !Number.isFinite(Number(a.id))) return;
+  if (w.msgsEl.querySelector(`.chat-action[data-action-id="${Number(a.id)}"]`)) return;
+  const el = document.createElement('div');
+  el.className = 'chat-action';
+  el.dir = 'auto';
+  el.dataset.actionId = String(Number(a.id));
+  const title = document.createElement('div');
+  title.className = 't';
+  title.textContent = a.title || '';
+  const what = document.createElement('div');
+  what.textContent = a.what || '';
+  const note = document.createElement('div');
+  note.className = 'note';
+  el.append(title, what);
+  if (a.can_decide) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'ok';
+    ok.textContent = uallakI18n.t('action_approve');
+    ok.onclick = () => decideAction(a.id, 'approve', el);
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'no';
+    no.textContent = uallakI18n.t('action_cancel');
+    no.onclick = () => decideAction(a.id, 'cancel', el);
+    row.append(ok, no);
+    el.appendChild(row);
+  } else if (a.status === 'awaiting_staff') {
+    note.textContent = uallakI18n.t('action_with_team');
+  }
+  el.appendChild(note);
+  w.msgsEl.appendChild(el);
+  w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+
+async function decideAction(id, decision, el) {
+  const note = el.querySelector('.note');
+  const buttons = el.querySelectorAll('button');
+  buttons.forEach(b => { b.disabled = true; });
+  note.textContent = uallakI18n.t('action_working');
+  let data;
+  try {
+    const res = await fetch(`/api/client/actions/${Number(id)}/decide`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    });
+    data = await res.json();
+    if (!res.ok || !data.success) throw new Error('decide refused');
+  } catch (e) {
+    console.error('action decision failed', e);
+    note.textContent = uallakI18n.t('action_not_sent');
+    buttons.forEach(b => { b.disabled = false; });
+    return;
+  }
+  const r = data.data || {};
+  const row = el.querySelector('.row');
+  if (row) row.remove();
+  note.textContent = r.message || '';
+  if (r.redirect && r.redirect.startsWith('/api/oauth/')) {
+    window.location.href = r.redirect;   // the provider's own consent screen
+  } else if (r.focus) {
+    const target = document.getElementById(r.focus);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.outline = '2px solid var(--accent)';
+      setTimeout(() => { target.style.outline = ''; }, 4000);
+    }
   }
 }
 
@@ -4337,6 +4440,7 @@ async function sendInWindow(personaId, extra) {
       // Server-side failures arrive HERE too, as an in-voice handoff line
       // (core/chat_fallback) - the server never answers the chat with a 500
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
+      if (data.action) appendActionCard(personaId, data.action);
       if (data.poll) watchForAgentPost(personaId);
     } else {
       chatNotDelivered(w, text);

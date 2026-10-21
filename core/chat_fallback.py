@@ -156,14 +156,16 @@ def technical_reply(persona_id: str = "general", language: str = "he") -> str:
 # The client asked about live data whose read failed THIS turn. Code decides
 # this (support_agent: the model's data_topic label + a same-turn read
 # failure), never the model — so the line is fixed text, like a technical one.
-DATA_TOPICS = ("google_ads", "meta_ads", "website")
+DATA_TOPICS = ("google_ads", "meta_ads", "website", "tracking", "leads", "account")
 
+# Says WHAT could not be read this moment (never "I have no access" — the
+# agents do see the account; this is one read that failed just now)
 _DATA_UNAVAILABLE_OPENING = {
-    "he": "אין לי גישה כרגע לנתונים של {p} — הצוות כבר בודק את זה.",
-    "en": "I can't pull up your {p} data right now — the team is already checking.",
-    "fr": "Je ne peux pas récupérer les données {p} pour le moment — l'équipe vérifie déjà.",
-    "ar": "لا أستطيع جلب بيانات {p} حاليًا — الفريق يتحقق من الأمر بالفعل.",
-    "ru": "Сейчас не получается загрузить данные {p} — команда уже проверяет.",
+    "he": "לא הצלחתי לשלוף ממש עכשיו את הנתונים של {p} — הצוות כבר בודק את זה.",
+    "en": "I couldn't pull up your {p} data just now — the team is already checking.",
+    "fr": "Je n'ai pas pu récupérer les données {p} à l'instant — l'équipe vérifie déjà.",
+    "ar": "لم أتمكن من جلب بيانات {p} الآن — الفريق يتحقق من الأمر بالفعل.",
+    "ru": "Не удалось только что загрузить данные {p} — команда уже проверяет.",
 }
 
 _DATA_TOPIC_NAMES = {
@@ -174,12 +176,18 @@ _DATA_TOPIC_NAMES = {
                  "ru": "Facebook и Instagram"},
     "website": {"he": "האתר", "en": "website", "fr": "de votre site",
                 "ar": "موقعكم", "ru": "вашего сайта"},
+    "tracking": {"he": "המדידה באתר", "en": "website tracking", "fr": "de suivi du site",
+                 "ar": "قياس الموقع", "ru": "аналитики сайта"},
+    "leads": {"he": "הלידים", "en": "leads", "fr": "de prospects",
+              "ar": "العملاء المحتملين", "ru": "по заявкам"},
+    "account": {"he": "החשבון", "en": "account", "fr": "du compte",
+                "ar": "الحساب", "ru": "аккаунта"},
 }
 
 
 def data_unavailable_reply(persona_id: str, language: str, topic: str) -> str:
     lang = language if language in SUPPORTED_LANGUAGES else "he"
-    names = _DATA_TOPIC_NAMES.get(topic) or _DATA_TOPIC_NAMES["google_ads"]
+    names = _DATA_TOPIC_NAMES.get(topic) or _DATA_TOPIC_NAMES["account"]
     opening = {lang: _DATA_UNAVAILABLE_OPENING[lang].format(p=names[lang])}
     return _compose(opening, persona_id, lang)
 

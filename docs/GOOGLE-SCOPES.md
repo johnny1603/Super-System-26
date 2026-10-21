@@ -218,7 +218,7 @@ scope. All calls: `core/google_ads_service.py` (REST,
 **Written**
 | Function | Call | What changes |
 |---|---|---|
-| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also the Control Room demo button on internal test clients) |
+| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also `core/verification_demo.create_test_campaign`, reached from the Control Room demo button or an approved Control Room chat card, internal test clients only) |
 
 **Gated off — not claimed to Google** (write only when
 `GOOGLE_ADS_OPTIMIZATION_MODE=live`; production stays on the default `dry_run`):

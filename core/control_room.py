@@ -25,7 +25,9 @@ Two genuinely new things:
    both of which reach the client (their chat history and their data export).
    No WhatsApp path touches it. Read-only by construction, exactly like the
    client-facing personas: the grounding below calls getters only, and the
-   model's output is read for "reply" and nothing else.
+   model's output is read for "reply" and "proposed_action" — the latter is
+   only ever STORED as a proposal by core/agent_actions; Johnny's click on its
+   card is what runs it, re-checked server-side.
 
 How grounding works (why the agent doesn't guess): before the LLM call we
 build ONE data block per source, each stamped with when it was fetched, and
@@ -200,6 +202,11 @@ def client_view(client_id: int) -> dict:
         return {**view, "health": gtm_connection.health(client_id)}
     gtm_view = section("tag manager", gtm, {})
 
+    def open_actions():
+        from core import agent_actions
+        return agent_actions.open_cards(client_id, actor="admin")
+    actions = section("agent actions", open_actions, [])
+
     open_alerts = [a for a in client_alerts if a.get("status") == "open"]
     unreviewed = [f for f in feedback if not f.get("reviewed")]
     last = _parse(activity[0]["created_at"]) if activity else None
@@ -218,6 +225,10 @@ def client_view(client_id: int) -> dict:
     if seo_pending:
         attention.append({"kind": "seo_strategy", "text": "אסטרטגיית SEO ממתינה לאישור שלך",
                           "source": "seo_agent", "at": None})
+    attention += [{"kind": "action_request", "id": a["id"],
+                   "text": f"הלקוח ביקש בצ'אט: {a['title']} — לאישור שלך בכרטיס הפעולה",
+                   "source": "agent_actions", "at": a.get("created_at")}
+                  for a in actions if a.get("status") == "awaiting_staff"]
     if stalled:
         attention.append({"kind": "stalled",
                           "text": f"אין פעילות סוכנים {STALLED_DAYS}+ ימים" if last else "אין פעילות סוכנים בכלל",
@@ -233,6 +244,7 @@ def client_view(client_id: int) -> dict:
         "connections": connections,
         "google_ads": google_ads,
         "gtm": gtm_view,
+        "actions": actions,
         "attention": attention,
         "stalled": stalled,
         "data_gaps": gaps,
@@ -381,6 +393,20 @@ def _grounding(client_id: int, persona_id: str) -> dict:
     if persona_id in ("general", "google", "meta"):
         attempt("money", lambda: budget_split(client_id))
 
+    # The same snapshot the client's agents answer from (core/client_state),
+    # plus what may be proposed from here (core/agent_actions). `_state` is
+    # code-only: ask_agent pops it before the model sees DATA.
+    try:
+        from core import agent_actions, client_state
+        state = client_state.snapshot(client_id)
+        data["account_state"] = client_state.for_model(state)
+        gaps.extend(f"account_state.{s}: read failed just now" for s in client_state.failed_sections(state))
+        data["available_actions"] = agent_actions.available(client_id, "admin_chat", state, client=client)
+        data["_state"] = state
+    except Exception as e:
+        gaps.append(f"account_state: {type(e).__name__}: {str(e)[:160]}")
+        data["available_actions"] = []
+
     data["data_gaps"] = gaps
     return data
 
@@ -401,13 +427,28 @@ for this client. If the answer needs something DATA doesn't have, say exactly wh
 is absent because a platform isn't connected, say it's not connected. Quote the time window a
 number covers (most ad numbers are the last 30 days).
 
-You have no ability to change anything — you can't pause, publish, edit budgets or message the
-client. If Johnny asks you to, tell him where in the system he does it.
+ACCOUNT STATE: DATA.account_state is the same snapshot the client's own agents answer from —
+connections and their health, website tracking (container, match with the site snippet, missing
+permissions, lead event live in the published version), campaigns, spend vs stated budget,
+leads/CRM, pending approvals, site, landing pages, media usage. Answer from it exactly.
+
+ACTIONS — YOU PROPOSE, JOHNNY CLICKS. You run nothing yourself. DATA.available_actions lists what
+can be run for this client from here (name, what it does, params). When Johnny asks for one of
+them ("create the test campaign", "upload the test video", "set up conversion tracking"), fill
+"proposed_action": "name" copied exactly from available_actions, "params" only the params listed
+for it (values from DATA — never invented; leave out what you don't have), "summary" one line of
+what will happen. The Control Room then shows a confirmation card; only his click runs it, and the
+server re-checks every guard (internal test client, PAUSED, Private, container match, expired
+connection, already live). In "reply", say what the card will do and anything in DATA that will
+make it refuse (e.g. the site loads a different container). If what he asks is not in
+available_actions, say so and why from DATA (not an internal test client, not connected, already
+live) — never pretend it ran, never invent a way around it. Pausing campaigns, budgets and
+messaging the client are not actions here: tell him where he does those.
 
 Reply in Hebrew unless Johnny writes in another language. Plain text, short paragraphs or short
 bullet lines, no markdown headers.
 
-Return JSON only: {{"reply": "text"}}"""
+Return JSON only: {{"reply": "text", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}}}"""
 
 
 def ask_agent(client_id: int, persona_id: str, message: str) -> dict:
@@ -431,6 +472,7 @@ def ask_agent(client_id: int, persona_id: str, message: str) -> dict:
     log_step(AGENT_NAME, "ask_agent", f"client {client_id} persona={persona_id}")
     try:
         grounding = timed_step(AGENT_NAME, "grounding", lambda: _grounding(client_id, persona_id))
+        state = grounding.pop("_state", None)
         system = ADMIN_AGENT_SYSTEM.format(name=persona["name"], domain=persona["domain"],
                                            voice=persona["voice"])
         payload = {"conversation_so_far": [{"from": "johnny" if m["role"] == "admin" else "you",
@@ -453,7 +495,19 @@ def ask_agent(client_id: int, persona_id: str, message: str) -> dict:
         return {"success": True, "reply": reply, "degraded": True, "persisted": stored,
                 "data_gaps": []}
 
+    # A proposed action becomes a stored proposal + card; nothing runs until
+    # Johnny clicks it (core/agent_actions re-checks every guard then)
+    action, refused = None, ""
+    raw = result.get("proposed_action")
+    if isinstance(raw, dict) and str(raw.get("name") or "").strip():
+        from core import agent_actions
+        proposal = agent_actions.propose(client_id, "admin_chat", persona_id, raw, state=state)
+        action = proposal.get("card")
+        if not action:
+            refused = proposal.get("error") or "unknown"
+            reply += f"\n\n(לא נוצר כרטיס פעולה ל-{str(raw.get('name'))[:60]}: {refused})"
+
     _store(client_id, persona_id, "agent", reply)
-    return {"success": True, "reply": reply, "persisted": stored,
+    return {"success": True, "reply": reply, "persisted": stored, "action": action,
             "data_gaps": grounding.get("data_gaps", []),
             "data_fetched_at": grounding.get("data_fetched_at")}

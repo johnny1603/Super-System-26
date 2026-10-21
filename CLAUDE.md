@@ -203,6 +203,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   NEVER move to `client_communications`/`client_activity`: both reach the client (chat
   history + data export). Answers are grounded in a per-question data block with explicit
   `data_gaps`; read-only like the client personas. See `HANDOFF-control-room.md`.
+- `core/client_state.py` — **the** read-only account snapshot every agent answers from
+  (client concierge, every persona, the Control Room): connections + health, website tracking
+  (container, site match, missing scopes, lead event live), campaigns, spend vs stated budget,
+  leads/CRM, approvals, site, landing pages, media. Built ONLY from existing readers
+  (`performance.channel_statuses`, `gtm_connection.connection_view`, …), cached per section
+  (`SECTION_TTL`), failures never cached and never shown to a model — they become data topics
+  (`failed_topics`) for the fixed line, or Control Room `data_gaps`. Agents must never answer
+  "I can't see it / go check / I'll pass it on" for anything in it (`ACCOUNT_STATE_RULE`).
+- `core/agent_actions.py` — the ONLY way an agent sets something in motion: model returns
+  `proposed_action` → `propose()` validates against the `ACTIONS` whitelist (who may propose,
+  `internal_only`, availability from client_state, every param) and stores a proposal + card →
+  only a human click (`decide()`) runs it, re-checked from the STORED row, claimed by
+  compare-and-set (double click = one run). Runners are the SAME functions the fallback
+  buttons call (`core/verification_demo` for the Google demo, `configure_lead_conversion`,
+  `decide_suggestion`, OAuth start routes). `approver` client = one click; admin = staff
+  request in the Control Room. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
+  holds no Google data. Adding an action = one dict in `ACTIONS` + a test in
+  `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
 - `agents/seo_article.py` — HOW articles are written (seo_agent.write_article keeps the
   policy gates and stays the one entry point): live site grounding (real pages/posts,
   tone samples, primary language, translation plugin), client_knowledge + CACHED research

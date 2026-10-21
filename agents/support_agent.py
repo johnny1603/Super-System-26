@@ -39,6 +39,17 @@ reports as a draft, re-checks the status right before writing, verifies
 every link live, refuses a rewrite bigger than a fix, and writes it back
 with status='draft'. Published posts and other pages are never touched.
 Any other action label stays unread.
+
+ACCOUNT STATE + ACTION CARDS (2026-10-21), for the concierge AND every
+persona: each turn carries `account_state` (core/client_state — the one
+read-only snapshot of connections, tracking, campaigns, spend, leads,
+approvals, site) and `available_actions` (core/agent_actions — the whitelist
+filtered to what this chat may offer this client now). The model may return
+`proposed_action`; code validates it and stores a PROPOSAL with a
+confirmation card. Still nothing runs from model output: only the human
+click on that card (POST /api/client/actions/{id}/decide) runs the action,
+re-validated server-side. The read-only-by-construction invariant above
+therefore holds unchanged — an agent can describe and propose, never do.
 """
 import json
 import os
@@ -162,11 +173,59 @@ THE EXCEPTION — never a dead end, always in your own voice:
 DATA TOPIC — label every message with "data_topic", the live account data it asks about:
 "google_ads" (their Google campaigns' numbers or results), "meta_ads" (their Facebook/Instagram
 campaigns' numbers or results), "website" (what is on or happening with their connected
-website's posts and pages), or "" for everything else — greetings, ideas, advice, strategy,
-how things work, their package, pricing, landing pages, leads. Label the QUESTION, not your
-answer: set it the same way whether or not that data is in front of you. If a platform's field
-is missing from the data entirely, you simply don't have those numbers in front of you — never
-guess them."""
+website's posts and pages, or their landing pages), "tracking" (whether their website's
+lead tracking / measurement works), "leads" (how many leads they got, from where, their CRM),
+"account" (what is connected, what is running, what waits for their approval, spend against
+budget, media usage), or "" for everything else — greetings, ideas, advice, strategy, how things
+work, their package, pricing. Label the QUESTION, not your answer: set it the same way whether
+or not that data is in front of you. If a field is missing from the data entirely, you simply
+don't have it in front of you this time — never guess it."""
+
+# Shared by the concierge and every persona (core/client_state + core/agent_actions).
+# Brace-free: concatenated into PERSONA_SYSTEM_TEMPLATE before .format().
+ACCOUNT_STATE_RULE = """
+
+ACCOUNT STATE — YOU SEE THE WHOLE ACCOUNT. "account_state" is a snapshot of this client's
+account that our system read moments ago ("as_of"): which connections are live and healthy;
+website lead tracking ("tracking": the Tag Manager container's name and id, whether it matches
+the snippet on their homepage, whether the lead event is live in the published version, whether
+the connection needs renewing); campaigns and their status; spend against their stated budget;
+leads in the last 7/30/90 days and their CRM; what waits for their approval; their website,
+landing pages and media usage. It is YOUR knowledge — answer from it directly and specifically,
+with the actual names, numbers and states, translated into plain words. It covers every
+specialist's area: for a quick factual question outside your lane, answer it from here.
+
+FORBIDDEN ANSWERS while account_state or your other data holds the answer: "I can't see that",
+"I don't have access", "check it yourself", "go to screen X / log in to Y", "I'll pass it to the
+team". The client is not technical and never has to look anything up — you are their staff.
+- A field genuinely absent from account_state was not read this time: say plainly WHICH thing
+  you can't confirm right now (in their words, e.g. "how many leads came in") — never guess it.
+- A dead, expired, half-set-up or mismatched connection is a FACT, not a gap: say in one plain
+  sentence what it means for them (e.g. "the link to your site's measurement has expired, so new
+  leads aren't being counted"), then offer the fix as an action (below), not as instructions.
+- Plain, non-technical words: never "token", "scope", "OAuth", "API", "workspace", "container
+  path". A container's name, and its GTM- id once if it helps, are fine.
+- tracking.matches_site: "match" = the container we manage is the one their homepage loads;
+  "mismatch" = their site loads a different one (so our setup would measure nothing — the team
+  fixes this); "no_gtm_on_site" = their homepage has no Tag Manager snippet. lead_event_live:
+  true = leads are being measured, false = not set up yet, null = not confirmed on this read.
+
+ACTIONS — PROPOSE, NEVER DO. "available_actions" lists what can be set in motion for this client
+right now: name, what it does, its params, and who approves it. You run nothing yourself. When
+the client asks for one of them, or one of them is the fix for a problem you just described,
+fill "proposed_action": "name" copied exactly from available_actions, "params" holding ONLY the
+params listed for it (values copied from the data — never invented; leave a param out when you
+don't have its value), and "summary" one plain sentence of what will happen. The system shows a
+confirmation card under your reply; only a human click runs it.
+- approver "client": they approve it themselves — tell them to press the approve button on the
+  card below.
+- approver "staff": it changes something live (publishing, spend), so the team approves it — say
+  plainly that you've sent it to the team for approval and what happens once it's approved.
+- Only a name from available_actions; if the list is empty or nothing fits, there is nothing to
+  propose. Then state what the current situation is and, for a change only the team can make,
+  say the team will handle it (needs_human_followup true).
+- Never claim an action ran, will run or is scheduled. At most one proposed_action per reply;
+  otherwise leave its name ""."""
 
 # Shared by the concierge and every persona (core/client_knowledge). Brace-free,
 # like HANDOFF_RULE: concatenated into PERSONA_SYSTEM_TEMPLATE before .format().
@@ -224,15 +283,15 @@ Platform data: if the user message includes a "google_ads_performance" or
 (last 30 days; "cost" values are in the account's currency, ILS for our clients;
 meta_ads_performance covers Facebook + Instagram combined) - use it to answer campaign
 questions concretely, citing the actual numbers. If a platform's field says "connected": false
-and the question needs that platform's data, that account isn't connected yet - warmly point
-them to the "חבר עכשיו" button in the dashboard. TikTok has no live connection yet; if asked
-about it, say so honestly and mention it's coming soon. Never invent campaign numbers.
+and the question needs that platform's data, that account isn't connected yet - say so plainly
+and offer its connect action from available_actions. TikTok has no live connection yet; if
+asked about it, say so honestly and mention it's coming soon. Never invent campaign numbers.
 
 Website data: a "website_overview" field is REAL live data from the client's connected
 WordPress site (site name, recent posts/pages and their statuses, whether an SEO plugin is
 installed) - use it for "what's happening with my site" questions, citing actual titles and
-statuses only. "connected": false means the site isn't connected yet - point them to the
-"האתר שלך" card in the dashboard.
+statuses only. "connected": false means the site isn't connected yet - connecting a site needs
+its address from them, so that one step is theirs: the "האתר שלך" card.
 
 Conversation: "conversation_history" holds the current chat thread (oldest first). Use it to
 resolve references ("כן", "תוסיפו גם את זה", "כמה זה יעלה?") and never re-ask something the
@@ -241,8 +300,10 @@ client already told you in this thread.
 Pending suggestions: "pending_suggestions" lists items waiting for the client's approval in
 the dashboard's "ממתין לאישור שלך" area (the team's weekly homework/ideas for them). When the
 client asks what's waiting, what's new, or what they should do - walk them through the items
-warmly by title, explain that approving is what lets the team start executing, and point them
-to approve/reject each one in that area. Be a concierge driving action, not a card reader.
+warmly by title and explain that approving is what lets the team start executing. When they
+want to approve one, propose "approve_suggestion" with its suggestion_id (from
+account_state.approvals) so they approve it right here. Be a concierge driving action, not a
+card reader.
 
 Upgrades: when the client shows GENUINE purchase/upgrade intent - asking to add a platform or
 service, expand scope, or get pricing for more work (not casual curiosity; if unsure, ask ONE
@@ -269,18 +330,21 @@ and marketing (news, politics, homework) - for those keep the honest behavior ab
 questions need no search - leave web_search_query as "".
 
 Team follow-up (needs_human_followup) is for what you genuinely cannot resolve in chat: a
-request to CHANGE something on their account, a complaint, a billing problem, or a specific
-fact about their account that the data doesn't contain. Then say a team member will follow up
-personally and set needs_human_followup to true. General conversation about their business,
-marketing or how we work is NOT that — answer it yourself.
+request to CHANGE something on their account that no available action covers, a complaint, a
+billing problem. Then state the current situation from the data, say a team member will handle
+it personally, and set needs_human_followup to true. A question about their account's state is
+NOT that — account_state answers it. General conversation about their business, marketing or
+how we work is NOT that either — answer it yourself. When "proposed_action" is set,
+"upgrade_request" and "web_search_query" must be "".
 
 Keep replies short: 2-4 sentences max, in the client's language (the language of their message
 and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": "", "web_search_query": "", "upgrade_request": ""}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
-    + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
+ "data_topic": "", "web_search_query": "", "upgrade_request": "",
+ "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
+    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are presented as "the uallak
@@ -409,7 +473,7 @@ def _recent_activity(client_id: int) -> list:
 
 
 def _data_unavailable(client_id: int, persona_id: str, message: str, result: dict,
-                      failed: set):
+                      failed: set, alert: bool = True):
     """Code's decision. When the model labelled the message with a topic whose
     read failed THIS turn, return the fixed in-voice reply (and alert once a
     day per client+topic, shared by every persona, carrying the question);
@@ -419,14 +483,80 @@ def _data_unavailable(client_id: int, persona_id: str, message: str, result: dic
     topic = str(result.get("data_topic") or "").strip()
     if topic not in failed:
         return None
-    chat_fallback.alert_handoff(
-        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
-        f'client asked about {topic} data but it failed to load: "{message[:300]}"',
-        client_id=client_id, persona=persona_id,
-        issue_key=f"technical:read:{topic}")
+    if alert:
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+            f'client asked about {topic} data but it failed to load: "{message[:300]}"',
+            client_id=client_id, persona=persona_id,
+            issue_key=f"technical:read:{topic}")
     return {"reply": chat_fallback.data_unavailable_reply(
                 persona_id, _client_language(client_id, message), topic),
             "needs_human_followup": True}
+
+
+def _account_context(client_id: int, client: dict, payload: dict) -> dict:
+    """core/client_state + the actions this chat may offer, into the payload.
+    Returns the snapshot (with its code-only `_failed`). Never raises: no
+    snapshot means no account_state and an empty action list, never an error
+    block in front of the model."""
+    try:
+        from core import agent_actions, client_state
+        state = client_state.snapshot(client_id)
+        payload["account_state"] = client_state.for_model(state)
+        payload["available_actions"] = agent_actions.available(client_id, "client_chat", state,
+                                                               client=client)
+        return state
+    except Exception as e:
+        log_step(AGENT_NAME, "account_context",
+                 f"client {client_id}: account state failed (left out): {type(e).__name__}: {e}")
+        payload["available_actions"] = []
+        return {}
+
+
+def _proposed_name(result: dict) -> str:
+    raw = result.get("proposed_action")
+    return str(raw.get("name") or "").strip() if isinstance(raw, dict) else ""
+
+
+def _route_proposal(client_id: int, persona_id: str, message: str, result: dict, reply: str,
+                    state: dict, client: dict) -> dict:
+    """The model's proposed_action through core/agent_actions (which checks
+    everything and runs nothing). A card goes back with the reply. If no card
+    can be shown, the reply must not promise one: a fixed line says the team
+    has it, and the team is alerted."""
+    from core import agent_actions
+    proposal = agent_actions.propose(client_id, "client_chat", persona_id,
+                                     result.get("proposed_action"), state=state, client=client)
+    if proposal.get("card"):
+        return {"reply": reply, "needs_human_followup": False, "action": proposal["card"]}
+    lang = _client_language(client_id, message)
+    log_step(AGENT_NAME, "proposal_refused",
+             f"client {client_id} ({persona_id}): {_proposed_name(result)} -> {proposal.get('error')}")
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
+        f'agent proposed "{_proposed_name(result)}" but no card could be shown '
+        f'({proposal.get("error")}). Client asked: "{message[:300]}"',
+        client_id=client_id, persona=persona_id,
+        issue_key=f"followup:{persona_id}:proposal:{_proposed_name(result)}")
+    return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
+            "needs_human_followup": True}
+
+
+def _dry_result(client_id: int, persona_id: str, message: str, result: dict, failed: set,
+                state: dict, client: dict) -> dict:
+    """The capability check's view of a turn: what the client WOULD see, with
+    no proposal stored, no alert, no upgrade build and no search."""
+    from core import agent_actions
+    unavailable = _data_unavailable(client_id, persona_id, message, result, failed, alert=False)
+    reply = unavailable["reply"] if unavailable else result.get("reply", "")
+    proposal = agent_actions.propose(client_id, "client_chat", persona_id,
+                                     result.get("proposed_action"), state=state, client=client,
+                                     dry_run=True)
+    return {"reply": reply, "needs_human_followup": bool(result.get("needs_human_followup")),
+            "data_topic": str(result.get("data_topic") or ""),
+            "proposed_action": (proposal.get("action") if proposal.get("dry_run")
+                                else (f"{_proposed_name(result)} (refused: {proposal.get('error')})"
+                                      if proposal.get("error") else ""))}
 
 
 # ─── In-chat upgrade proposals (reuses the onboarding pricing brain) ──────────
@@ -509,14 +639,16 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
     return _format_proposal_reply(proposal)
 
 
-def answer_support_question(client_id: int, message: str, help_connection: str = "") -> dict:
+def answer_support_question(client_id: int, message: str, help_connection: str = "",
+                            dry_run: bool = False) -> dict:
     """The concierge turn. NEVER raises and never returns an empty reply —
     anything that breaks becomes an in-voice technical handoff (see
     core/chat_fallback), so the chat always gets something it can show.
     `help_connection`: the dashboard's "עזרה" button on one connection
-    (core/connection_help)."""
+    (core/connection_help). `dry_run`: the admin capability check — no
+    proposal, alert, upgrade build or search (core/agent_actions)."""
     try:
-        result = _answer_support_question(client_id, message, help_connection)
+        result = _answer_support_question(client_id, message, help_connection, dry_run)
     except Exception as e:
         return _technical_failure(client_id, "general", message, "support_turn", e)
     if not (result.get("reply") or "").strip():
@@ -525,7 +657,8 @@ def answer_support_question(client_id: int, message: str, help_connection: str =
     return result
 
 
-def _answer_support_question(client_id: int, message: str, help_connection: str = "") -> dict:
+def _answer_support_question(client_id: int, message: str, help_connection: str = "",
+                             dry_run: bool = False) -> dict:
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
@@ -586,10 +719,13 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
                      f"client {client_id}: {field} fetch failed (degrading): {e}")
             reads[field] = {"connected": True, "error": str(e)}
     # {"connected": false} stays in: "not connected" is a fact the model acts
-    # on (the חבר עכשיו pointer), unlike a failure
+    # on (the connect action), unlike a failure
     failed = _add_reads(payload, reads)
+    from core import client_state
+    state = _account_context(client_id, client, payload)
+    failed |= client_state.failed_topics(state)
 
-    user_message = json.dumps(payload, ensure_ascii=False)
+    user_message = json.dumps(payload, ensure_ascii=False, default=str)
 
     try:
         result = timed_step(
@@ -606,6 +742,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         # that the old `except ClaudeJSONError` let through as a bare 500
         return _technical_failure(client_id, "general", message, "llm_call", e)
 
+    if dry_run:
+        return _dry_result(client_id, "general", message, result, failed, state, client)
     reply = result.get("reply", "")
     if help_entry:
         # A help turn hands out ONLY this connection's configured links, and
@@ -627,6 +765,12 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     unavailable = _data_unavailable(client_id, "general", message, result, failed)
     if unavailable:
         return unavailable
+
+    # Action stage: the model proposed one of available_actions. Code checks
+    # and stores it; the client's click on the card is what runs it. Takes
+    # priority over an upgrade or a search (the prompt keeps them exclusive).
+    if _proposed_name(result):
+        return _route_proposal(client_id, "general", message, result, reply, state, client)
 
     # Upgrade stage: genuine purchase/upgrade intent detected - build a real
     # priced proposal with the SAME brain as onboarding (build_proposal in
@@ -794,8 +938,8 @@ PERSONAS = {
         "reads": _google_reads,
         "data_notes": ("'google_ads_performance' is REAL live data from the client's own "
                        "Google Ads account (last 30 days, cost in ILS). If 'connected' is "
-                       "false, the account isn't connected — warmly point to the 'חבר "
-                       "עכשיו' button. If it's missing entirely, you don't have the numbers "
+                       "false, the account isn't connected — say so and offer the "
+                       "connect_google_ads action. If it's missing entirely, you don't have the numbers "
                        "in front of you — never guess them. WHICH account they're connected "
                        "to is in client_knowledge.connected_accounts; to switch, the Google "
                        "Ads card has a 'החלפת חשבון' button that lists every account their "
@@ -817,7 +961,7 @@ PERSONAS = {
         "data_notes": ("'meta_ads_performance' is REAL live paid-campaign data (last 30 days, "
                        "ILS, Facebook+Instagram combined); 'meta_organic_engagement' is REAL "
                        "organic post/engagement data when present. 'connected' false: "
-                       "point warmly to 'חבר עכשיו' in the dashboard. Missing entirely: you "
+                       "say so and offer the connect_meta action. Missing entirely: you "
                        "don't have those numbers in front of you — never guess them."),
     },
     "website": {
@@ -833,6 +977,13 @@ PERSONAS = {
                        "the market', NEVER by a vendor or product name. "
                        "New articles are written as DRAFTS for human review before "
                        "publishing — that's deliberate quality control, frame it that way. "
+                       "Website lead tracking / measurement is YOURS too: answer it from "
+                       "account_state.tracking (container, match with the site, lead event "
+                       "live, connection health) and account_state.leads — e.g. 'tracking is "
+                       "connected to <container name>, matches your site, and leads are being "
+                       "counted' or 'the measurement link expired — approve the reconnect "
+                       "below'. To SET UP lead tracking, propose configure_conversion (the team "
+                       "approves it, since it publishes). "
                        "'connected' false: point to the 'האתר שלך' card. Missing entirely: "
                        "you don't have it in front of you — never guess. "
                        "'landing_pages' is their LANDING PAGES — a separate thing from the "
@@ -1300,13 +1451,13 @@ Also provided: the client's package/proposal details, recent account activity, a
 "conversation_history" (current thread, oldest first — use it to resolve references and never
 re-ask what's already been said).
 
-YOU CANNOT TAKE ACTIONS — THIS IS A FACT, NOT A POLICY. You have no ability to pause/resume/
-create campaigns, change budgets, publish or edit content, or change anything on any
-account{action_exception}. If the client asks you to change something (any phrasing, including
-urgent or insistent): warmly explain that changes go through the uallak team and the
-dashboard's approval flow — you'll flag it for the team right away (set needs_human_followup
-to true) — and continue being helpful about what the DATA shows. Never say you did, will do,
-or scheduled a change.{action_rule}
+YOU EXECUTE NOTHING YOURSELF — THIS IS A FACT, NOT A POLICY. You have no code path to pause/
+resume/create campaigns, change budgets, publish or edit content, or change anything on any
+account{action_exception}. What you CAN do is propose one of "available_actions" (see ACTIONS
+below) — a human click on its card runs it. For any other change (any phrasing, including
+urgent or insistent): state the current situation plainly from account_state, say the team will
+make the change (set needs_human_followup to true), and keep being helpful. Never say you did,
+will do, or scheduled a change.{action_rule}
 
 STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain but still about uallak
 (billing, upgrades, another platform's campaigns, general account questions), give a one-line
@@ -1319,17 +1470,19 @@ default).
 
 Return JSON only:
 {{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": ""{extra_fields}}}""" + HANDOFF_RULE + KNOWLEDGE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE
+ "data_topic": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
+    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str,
-                            background_tasks=None) -> dict:
+                            background_tasks=None, dry_run: bool = False) -> dict:
     """The specialist-persona chat path. READ-ONLY BY CONSTRUCTION — see the
-    module docstring. Contract: only 'reply', 'needs_human_followup', and the
-    routing labels 'out_of_scope' / 'data_topic' are ever read from the
-    model's output — plus, for the website persona only, 'article_request',
-    which code turns into a DRAFT (_article_draft). No upgrade path, no web
-    search, no other action dispatch."""
+    module docstring. Contract: only 'reply', 'needs_human_followup', the
+    routing labels 'out_of_scope' / 'data_topic', and 'proposed_action'
+    (validated + stored as a PROPOSAL by core/agent_actions — it runs only on
+    the client's click) are ever read from the model's output — plus, for the
+    website persona only, 'article_request', which code turns into a DRAFT
+    (_article_draft). No upgrade path, no web search."""
     persona = PERSONAS.get(persona_id)
     if not persona:
         return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
@@ -1337,7 +1490,7 @@ def answer_persona_question(client_id: int, persona_id: str, message: str,
     # the failure line in THIS specialist's lane
     try:
         result = _answer_persona_question(client_id, persona_id, persona, message,
-                                          background_tasks)
+                                          background_tasks, dry_run)
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_turn", e)
     if not (result.get("reply") or "").strip():
@@ -1347,7 +1500,7 @@ def answer_persona_question(client_id: int, persona_id: str, message: str,
 
 
 def _answer_persona_question(client_id: int, persona_id: str, persona: dict, message: str,
-                             background_tasks=None) -> dict:
+                             background_tasks=None, dry_run: bool = False) -> dict:
     log_step(AGENT_NAME, "answer_persona_question",
              f"client_id={client_id} persona={persona_id}")
     client = get_client(client_id)
@@ -1373,6 +1526,9 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         log_step(AGENT_NAME, "persona_reads",
                  f"client {client_id}: {persona_id} reads failed (degrading): {e}")
         failed = {PERSONA_TOPICS[persona_id]} if persona_id in PERSONA_TOPICS else set()
+    from core import client_state
+    state = _account_context(client_id, client, payload)
+    failed |= client_state.failed_topics(state)
 
     drafts = persona_id == "website"
     system = PERSONA_SYSTEM_TEMPLATE.format(
@@ -1386,13 +1542,15 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
             AGENT_NAME, "persona_llm_call",
             # Ordinary turn -> cheaper model; the article draft it may start
             # is a separate pipeline on the default model
-            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
+            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False, default=str),
                                           max_tokens=700, model=CHAT_TURN_MODEL, effort="low",
                                           client_id=client_id,
                                           cost_category="claude_support"))
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)
 
+    if dry_run:
+        return _dry_result(client_id, persona_id, message, result, failed, state, client)
     reply = result.get("reply", "")
     out_of_scope = bool(result.get("out_of_scope", False))
     if not out_of_scope:
@@ -1409,6 +1567,10 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
                                        payload.get("open_drafts") or [])
             if revision:
                 return _article_revision(client_id, message, revision)
+        # A proposed action: stored as a proposal with a card; the client's
+        # click runs it (core/agent_actions). Never run from here.
+        if _proposed_name(result):
+            return _route_proposal(client_id, persona_id, message, result, reply, state, client)
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))
