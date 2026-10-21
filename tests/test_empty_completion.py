@@ -151,8 +151,8 @@ STATE = {
                      "videos": [{"drive_file_id": "1AbCdEfGhIjKlMnOp", "name": "promo-autumn.mp4",
                                  "size_mb": 12.0, "uploadable": True},
                                 {"drive_file_id": "1QrStUvWxYz012345", "name": "intro.mp4",
-                                 "size_mb": 80.0, "uploadable": False}],
-                     "upload_max_mb": 50, "youtube_uploads_today": 0, "youtube_daily_upload_cap": 3,
+                                 "size_mb": 800.0, "uploadable": False}],
+                     "upload_max_mb": 512, "youtube_uploads_today": 0, "youtube_daily_upload_cap": 3,
                      "complete": True},
     "_failed": [],
 }

@@ -25,7 +25,7 @@ OWN_VIDEO, OWN_BIG, OWN_IMAGE, OWN_TRASHED = "1OwnVideoAbcdef", "1OwnBigVideoXyz
 FOREIGN = "1SomeoneElseVid"
 DRIVE = {
     OWN_VIDEO: {"id": OWN_VIDEO, "name": "promo-autumn.mp4", "mimeType": "video/mp4", "size": str(12 * MB)},
-    OWN_BIG: {"id": OWN_BIG, "name": "wedding.mov", "mimeType": "video/quicktime", "size": str(400 * MB)},
+    OWN_BIG: {"id": OWN_BIG, "name": "wedding.mov", "mimeType": "video/quicktime", "size": str(600 * MB)},
     OWN_IMAGE: {"id": OWN_IMAGE, "name": "logo.png", "mimeType": "image/png", "size": str(MB)},
     OWN_TRASHED: {"id": OWN_TRASHED, "name": "old.mp4", "mimeType": "video/mp4", "size": str(MB), "trashed": True},
     FOREIGN: {"id": FOREIGN, "name": "not-yours.mp4", "mimeType": "video/mp4", "size": str(MB)},

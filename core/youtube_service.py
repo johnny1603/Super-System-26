@@ -105,20 +105,54 @@ def get_own_channel(refresh_token: str) -> dict:
     }
 
 
-def upload_video(refresh_token: str, content: bytes, title: str,
-                 description: str = "", privacy_status: str = "private",
-                 mime_type: str = "video/mp4") -> dict:
-    """Resumable upload in two steps (initiate with JSON metadata → PUT the
-    bytes to the returned session URL). privacy_status='private' is the
-    house default — a human flips it public in YouTube Studio (same
-    final-tap principle as PAUSED campaigns / WP drafts / TikTok inbox)."""
+MAX_UPLOAD_RETRIES = 5            # consecutive failed attempts before giving up
+RETRYABLE_UPLOAD_STATUS = (500, 502, 503, 504)
+
+
+class UploadFailed(RuntimeError):
+    pass
+
+
+def _received_up_to(response) -> int:
+    """The next byte YouTube wants, from a 308's `Range: bytes=0-N` (no header =
+    nothing stored yet)."""
+    rng = response.headers.get("range") or response.headers.get("Range") or ""
+    try:
+        return int(rng.split("-")[-1]) + 1 if rng else 0
+    except ValueError:
+        raise UploadFailed(f"unreadable Range header from YouTube: {rng[:60]}")
+
+
+def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: str,
+                        description: str = "", mime_type: str = "video/mp4",
+                        _sleep=None) -> dict:
+    """STREAMED resumable upload (videos.insert, uploadType=resumable):
+    initiate with the metadata and the total size, then PUT the bytes in
+    UPLOAD_CHUNK_BYTES pieces, each with `Content-Range: bytes a-b/total`.
+    `read_chunk(offset, length) -> bytes` supplies them (Drive range reads,
+    drive_service.read_range), so at most ONE chunk is in memory, whatever the
+    file size.
+
+    Resume: a 308 says how much YouTube stored (its Range header) and the next
+    chunk starts there; a 5xx or a dropped connection asks the session where
+    it stands (`Content-Range: bytes */total`) and continues from that byte —
+    MAX_UPLOAD_RETRIES consecutive failures, with backoff, then UploadFailed.
+
+    Always PRIVATE: there is no privacy parameter — a human makes the video
+    public in YouTube Studio (same final-tap principle as PAUSED campaigns,
+    WordPress drafts, TikTok's inbox)."""
+    import time
+    from core.video_limits import UPLOAD_CHUNK_BYTES, fits
+    sleep = _sleep or time.sleep
+    if not fits(total_size):
+        raise UploadFailed(f"video size {total_size} is outside the upload limit")
     count = increment_call_counter("youtube", window_days=1)
     if count > DAILY_UPLOAD_LIMIT:
         raise RuntimeError(f"YouTube daily upload brake reached ({DAILY_UPLOAD_LIMIT}) - refusing upload")
 
     metadata = {
         "snippet": {"title": title[:100], "description": description[:4900]},
-        "status": {"privacyStatus": privacy_status, "selfDeclaredMadeForKids": False},
+        "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
     }
     initiate = httpx.post(
         f"{UPLOAD_BASE}/videos",
@@ -126,21 +160,52 @@ def upload_video(refresh_token: str, content: bytes, title: str,
         headers={"Authorization": f"Bearer {_access_token(refresh_token)}",
                  "Content-Type": "application/json; charset=UTF-8",
                  "X-Upload-Content-Type": mime_type,
-                 "X-Upload-Content-Length": str(len(content))},
+                 "X-Upload-Content-Length": str(total_size)},
         json=metadata, timeout=TIMEOUT)
     if initiate.status_code != 200:
-        raise RuntimeError(f"upload initiate failed: {initiate.status_code} {initiate.text[:300]}")
+        raise UploadFailed(f"upload initiate failed: {initiate.status_code} {initiate.text[:300]}")
     session_url = initiate.headers.get("location") or initiate.headers.get("Location")
     if not session_url:
-        raise RuntimeError("upload initiate returned no session Location header")
+        raise UploadFailed("upload initiate returned no session Location header")
 
-    upload = httpx.put(session_url, content=content,
-                       headers={"Content-Type": mime_type,
-                                "Content-Length": str(len(content))},
-                       timeout=UPLOAD_TIMEOUT)
-    if upload.status_code not in (200, 201):
-        raise RuntimeError(f"video upload failed: {upload.status_code} {upload.text[:300]}")
-    return upload.json()
+    def put(content: bytes, content_range: str):
+        try:
+            return httpx.put(session_url, content=content, timeout=UPLOAD_TIMEOUT, headers={
+                "Authorization": f"Bearer {_access_token(refresh_token)}",
+                "Content-Type": mime_type, "Content-Length": str(len(content)),
+                "Content-Range": content_range})
+        except httpx.TransportError:
+            return None   # treated like a 5xx: ask the session where it stands
+
+    offset, failures = 0, 0
+    while True:
+        if offset < total_size:
+            length = min(UPLOAD_CHUNK_BYTES, total_size - offset)
+            chunk = read_chunk(offset, length)
+            if len(chunk) != length:
+                raise UploadFailed(f"source returned {len(chunk)} of {length} bytes at {offset}")
+            response = put(chunk, f"bytes {offset}-{offset + length - 1}/{total_size}")
+            del chunk
+        else:
+            response = put(b"", f"bytes */{total_size}")   # everything sent: ask for the result
+
+        if response is not None and response.status_code in (200, 201):
+            return response.json()
+        if response is not None and response.status_code == 308:
+            offset, failures = _received_up_to(response), 0
+            continue
+        if response is not None and response.status_code not in RETRYABLE_UPLOAD_STATUS:
+            raise UploadFailed(f"video upload failed: {response.status_code} {response.text[:300]}")
+
+        failures += 1
+        if failures > MAX_UPLOAD_RETRIES:
+            raise UploadFailed(f"video upload gave up after {MAX_UPLOAD_RETRIES} retries at byte {offset}")
+        sleep(min(2 ** failures, 30))
+        status = put(b"", f"bytes */{total_size}")
+        if status is not None and status.status_code in (200, 201):
+            return status.json()
+        if status is not None and status.status_code == 308:
+            offset = _received_up_to(status)
 
 
 def list_recent_uploads(refresh_token: str, uploads_playlist_id: str,

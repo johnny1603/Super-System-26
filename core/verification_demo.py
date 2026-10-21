@@ -15,8 +15,9 @@ refused here, not in the callers, for any client that is not billing_exempt
 import os
 from datetime import datetime, timezone
 
+from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits
+
 DEMO_PREFIX = "uallak verification test"
-DEMO_VIDEO_MAX_MB = 50
 
 
 class DemoRefused(Exception):
@@ -73,8 +74,8 @@ def create_test_campaign(client_id: int) -> dict:
 
 def _demo_video_file(client_id: int) -> dict:
     """The smallest video in the client's own Drive media folder (root or one
-    level down), up to DEMO_VIDEO_MAX_MB — the same source a real publish
-    uses. {} when there is none."""
+    level down), within core/video_limits — the same source and limit a real
+    publish uses. {} when there is none."""
     from core import drive_mirror, drive_service
     root = drive_mirror.client_root_id(client_id)
     if not root:
@@ -85,9 +86,8 @@ def _demo_video_file(client_id: int) -> dict:
             folders.append(item["id"])
     for folder in folders:
         for f in drive_service.list_files(folder):
-            size = int(f.get("size") or 0)
-            if (f.get("mimeType") or "").startswith("video/") and 0 < size <= DEMO_VIDEO_MAX_MB * 1024 * 1024:
-                candidates.append({**f, "size": size})
+            if (f.get("mimeType") or "").startswith("video/") and fits(f.get("size")):
+                candidates.append({**f, "size": int(f["size"])})
     return min(candidates, key=lambda f: f["size"]) if candidates else {}
 
 
@@ -101,7 +101,7 @@ def upload_test_video(client_id: int) -> dict:
     except Exception as e:
         raise DemoRefused(502, f"Drive media folder could not be read: {e}")
     if not video:
-        raise DemoRefused(400, f"No video up to {DEMO_VIDEO_MAX_MB} MB in this client's Drive media "
+        raise DemoRefused(400, f"No video up to {VIDEO_UPLOAD_MAX_MB} MB in this client's Drive media "
                                "folder - upload a short clip there first (Control Room → מדיה ב-Drive)")
     from agents.youtube_content_agent import publish
     title = f"{DEMO_PREFIX} {_stamp()}"

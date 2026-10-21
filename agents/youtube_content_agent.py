@@ -275,9 +275,15 @@ def publish(client_id: int, spec: dict) -> dict:
     shape as tiktok_content_agent.publish — TikTok's PULL_FROM_URL reasoning
     doesn't apply here: YouTube's resumable upload takes raw bytes directly,
     no domain-verification requirement at all) to the client's channel as
-    PRIVATE. spec: {drive_file_id: str, title: str, description?: str}."""
+    PRIVATE. spec: {drive_file_id: str, title: str, description?: str}.
+
+    STREAMED: Drive is read by range, one chunk at a time, straight into the
+    resumable session (youtube_service.upload_video_stream) — memory does not
+    grow with the file. Refuses a non-video or anything over
+    core/video_limits.VIDEO_UPLOAD_MAX_MB, whichever path called it."""
     from agents.client_agent import log_activity
     from core import drive_service as drive
+    from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits
 
     drive_file_id = (spec.get("drive_file_id") or "").strip()
     title = (spec.get("title") or "").strip()
@@ -292,12 +298,21 @@ def publish(client_id: int, spec: dict) -> dict:
 
     log_step(AGENT_NAME, "publish", f"client_id={client_id} file={drive_file_id}")
     try:
-        video_bytes = timed_step(AGENT_NAME, "download_from_drive",
-                                 lambda: drive.download_file(drive_file_id))
+        meta = drive.get_meta(drive_file_id, "id,mimeType,size,trashed")
+    except Exception as e:
+        return {"success": False, "errors": [f"Drive file unreadable: {e}"]}
+    mime = str(meta.get("mimeType") or "")
+    if meta.get("trashed") or not mime.startswith("video/"):
+        return {"success": False, "errors": ["the Drive file is not an available video"]}
+    if not fits(meta.get("size")):
+        return {"success": False, "errors": [f"video must be up to {VIDEO_UPLOAD_MAX_MB} MB"]}
+    try:
         result = timed_step(
-            AGENT_NAME, "youtube_upload",
-            lambda: yt.upload_video(conn["access_token"], video_bytes, title,
-                                    spec.get("description", "")))
+            AGENT_NAME, "youtube_upload_stream",
+            lambda: yt.upload_video_stream(
+                conn["access_token"],
+                lambda offset, length: drive.read_range(drive_file_id, offset, length),
+                int(meta["size"]), title, spec.get("description", ""), mime_type=mime))
     except Exception as e:
         agent_alert(AGENT_NAME, [f"YouTube publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])

@@ -448,9 +448,57 @@ def find_child_folders_by_prefix(parent_id: str, prefix: str) -> list:
             if (f.get("name") or "").startswith(prefix)]
 
 
+RANGE_READ_RETRIES = 3
+
+
+class ShortRangeRead(RuntimeError):
+    """Drive's body ended before `length` bytes (a dropped stream) — retryable."""
+
+
+def read_range(file_id: str, start: int, length: int, _sleep=time.sleep) -> bytes:
+    """Exactly `length` bytes of a file from byte `start` (alt=media + an HTTP
+    Range header) — the Drive half of the STREAMED Drive → YouTube upload, so
+    a video is never held whole in memory. The body is read as a stream and
+    cut at `length`, so even a server that ignores Range (200 + the whole
+    file) costs one chunk, not the file. A 5xx or a dropped connection is
+    retried RANGE_READ_RETRIES times with backoff; a 4xx is raised at once."""
+    if length <= 0:
+        return b""
+    attempt = 0
+    while True:
+        try:
+            with httpx.stream("GET", f"{DRIVE_FILES_URL}/{file_id}",
+                              headers={**_headers(), "Range": f"bytes={start}-{start + length - 1}"},
+                              params={"alt": "media", "supportsAllDrives": "true"},
+                              follow_redirects=True,
+                              timeout=httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0)) as response:
+                if response.status_code >= 400:
+                    response.read()
+                    _check(response)
+                if response.status_code == 200 and start:
+                    raise RuntimeError("Drive ignored the Range header for a mid-file read")
+                buf = bytearray()
+                for piece in response.iter_bytes():
+                    buf += piece[:length - len(buf)]
+                    if len(buf) >= length:
+                        break
+            if len(buf) != length:
+                raise ShortRangeRead(f"Drive range read returned {len(buf)} of {length} bytes")
+            return bytes(buf)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code < 500 or attempt >= RANGE_READ_RETRIES:
+                raise
+        except (httpx.TransportError, ShortRangeRead):
+            if attempt >= RANGE_READ_RETRIES:
+                raise
+        attempt += 1
+        _sleep(min(2 ** attempt, 10))
+
+
 def download_file(file_id: str) -> bytes:
-    """Raw file content (alt=media). Kept simple — source clips are phone
-    videos/photos, well within memory."""
+    """Raw file content (alt=media), WHOLE in memory — for small files only
+    (avatar photos/voice samples, TikTok clips). Drive → YouTube uploads use
+    read_range, chunk by chunk, instead."""
     response = httpx.get(
         f"{DRIVE_FILES_URL}/{file_id}",
         headers=_headers(),

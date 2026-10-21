@@ -128,8 +128,8 @@ _media_meta = {}   # (client_id, file_id) -> (time, {name, mimeType, size}) — 
 
 
 def _media_upload_max_mb() -> int:
-    from core.verification_demo import DEMO_VIDEO_MAX_MB   # one cap for every Drive→YouTube upload
-    return DEMO_VIDEO_MAX_MB
+    from core.video_limits import VIDEO_UPLOAD_MAX_MB   # one cap for every Drive→YouTube upload
+    return VIDEO_UPLOAD_MAX_MB
 
 
 def _v_media_video(value, client_id: int):
@@ -158,8 +158,8 @@ def _v_media_video(value, client_id: int):
         raise ValueError("the file is in the trash")
     if not str(meta.get("mimeType") or "").startswith("video/"):
         raise ValueError("not a video")
-    size = int(meta.get("size") or 0)
-    if not 0 < size <= _media_upload_max_mb() * 1048576:
+    from core.video_limits import fits
+    if not fits(meta.get("size")):
         raise ValueError(f"video must be up to {_media_upload_max_mb()} MB")
     _media_meta[(client_id, file_id)] = (time.time(), meta)
     return file_id
@@ -351,7 +351,7 @@ ACTIONS = {
     },
     "demo_youtube_upload": {
         "approver": "admin", "client_requestable": False, "internal_only": True, "kind": "execute",
-        "does": "Google verification demo: uploads the smallest video (<= 50 MB) from the client's Drive "
+        "does": "Google verification demo: uploads the smallest video (within the upload size limit) from the client's Drive "
                 "media folder to their YouTube channel as PRIVATE. Internal test clients only.",
         "params": {},
         "available": _connected("youtube"),

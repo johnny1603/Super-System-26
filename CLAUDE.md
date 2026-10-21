@@ -150,6 +150,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `app_settings` `gtm_token:<id>` (NOT client_activity — the client's feed shows unknown action
   types raw); client_deletion clears it. `configure_lead_conversion` refuses to publish on a
   mismatch or a dead grant. Control Room shows the same view + last OK time.
+- `core/video_limits.py` — THE Drive → YouTube upload size limit (`VIDEO_UPLOAD_MAX_MB`, 512)
+  and chunk size, read by client_state, agent_actions, verification_demo and
+  `youtube_content_agent.publish` (the root guard). Uploads STREAM: `drive_service.read_range`
+  reads one 8 MiB range at a time into `youtube_service.upload_video_stream`'s resumable session
+  (Content-Range per chunk, resume from the server's offset on 308/5xx/dropped connection,
+  bounded retries) — memory never grows with the file, and there is no privacy parameter
+  (always Private). What bounds the size now is the ~300 s request timeout of a chat click;
+  raising it further means moving the upload to a background job first.
 - `core/google_ads_health.py` — the same token-health model for Google Ads: the token refresh
   raises `google_ads_service.GrantRevoked` on a 400 `invalid_grant`/`unauthorized_client` (code
   read from the body, never the token); the readers record it per client + grant
@@ -233,7 +241,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
   `publish_youtube_from_media` is the first client-approved action that WRITES to Google: a
   video from the client's own Drive media folder (`drive_file_id` re-proven by drive_mirror's
-  parents walk at proposal AND at approval; video MIME, ≤ 50 MB) → `youtube_content_agent.publish`,
+  parents walk at proposal AND at approval; video MIME, within `core/video_limits`) →
+  `youtube_content_agent.publish`,
   always Private (no privacy param exists on the path), max
   `youtube_content_agent.DAILY_UPLOADS_PER_CLIENT` (3) per client per UTC day — refused with its
   own plain line (`refusals`), no alert. The card names the file from Drive's metadata, never the

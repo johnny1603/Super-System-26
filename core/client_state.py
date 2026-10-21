@@ -266,7 +266,7 @@ def _media_folder(client_id: int) -> dict:
     YouTube uploads against the per-client cap. Without it, "can you upload a
     video from my media?" had no fact to answer from (2026-10-22)."""
     from core import drive_mirror
-    from core.verification_demo import DEMO_VIDEO_MAX_MB
+    from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits
     root = drive_mirror.list_folder(client_id)
     if not root.get("exists"):
         return {"exists": False}
@@ -285,9 +285,9 @@ def _media_folder(client_id: int) -> dict:
     out = {"exists": True, "counts": counts,
            "videos": [{"drive_file_id": v.get("id", ""), "name": v.get("name", ""),
                        "size_mb": round(v["size"] / 1048576, 1) if v.get("size") else None,
-                       "uploadable": bool(v.get("size")) and v["size"] <= DEMO_VIDEO_MAX_MB * 1048576}
+                       "uploadable": fits(v.get("size"))}
                       for v in videos[:MEDIA_VIDEOS_LISTED]],
-           "upload_max_mb": DEMO_VIDEO_MAX_MB,
+           "upload_max_mb": VIDEO_UPLOAD_MAX_MB,
            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
     try:
         from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, uploads_today
