@@ -2290,6 +2290,7 @@ const DASH_I18N = {
   notice_gtm_container_saved: { he:'הקונטיינר נשמר ✓', en:'Container saved ✓', fr:'Conteneur enregistré ✓', ar:'تم حفظ الحاوية ✓', ru:'Контейнер сохранён ✓' },
   gtm_status_reconnect: { he:'צריך לחבר מחדש', en:'Needs reconnecting', fr:'À reconnecter', ar:'يحتاج إلى إعادة ربط', ru:'Нужно переподключить' },
   gtm_reconnect_now: { he:'חיבור מחדש', en:'Reconnect', fr:'Reconnecter', ar:'إعادة الربط', ru:'Переподключить' },
+  gads_status_reconnect: { he:'הגישה ל-Google Ads פגה — צריך לחבר מחדש', en:'Google Ads access expired — needs reconnecting', fr:'L\'accès Google Ads a expiré — à reconnecter', ar:'انتهت صلاحية الوصول إلى Google Ads — يلزم إعادة الربط', ru:'Доступ к Google Ads истёк — нужно переподключить' },
   gtm_token_dead_note: { he:'החיבור ל-Google Tag Manager הפסיק לעבוד (ההרשאה בוטלה או פגה). לוחצים על "חיבור מחדש" ומאשרים במסך של Google — שום דבר באתר שלכם לא השתנה.', en:'The Google Tag Manager connection stopped working (the permission was revoked or expired). Click "Reconnect" and approve on Google\'s screen — nothing on your website changed.', fr:'La connexion à Google Tag Manager ne fonctionne plus (autorisation révoquée ou expirée). Cliquez sur « Reconnecter » et validez chez Google — rien n\'a changé sur votre site.', ar:'توقف ربط Google Tag Manager عن العمل (أُلغي الإذن أو انتهى). اضغطوا "إعادة الربط" ووافقوا في شاشة Google — لم يتغير شيء في موقعكم.', ru:'Подключение к Google Tag Manager перестало работать (разрешение отозвано или истекло). Нажмите «Переподключить» и подтвердите в Google — на сайте ничего не изменилось.' },
   act_gtm_container_selected: { he:'נבחר קונטיינר Google Tag Manager', en:'Google Tag Manager container selected', fr:'Conteneur Google Tag Manager choisi', ar:'تم اختيار حاوية Google Tag Manager', ru:'Выбран контейнер Google Tag Manager' },
   gtm_no_site_note: { he:'מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.', en:'Measurement is installed on your website once your site is connected.', fr:'La mesure sera installée sur votre site dès qu\'il sera connecté.', ar:'سيتم تثبيت القياس على موقعكم بمجرد ربط الموقع.', ru:'Измерение будет установлено на вашем сайте, как только сайт будет подключён.' },
@@ -2544,6 +2545,7 @@ async function loadDashboard() {
     if (conns.some(c => c.platform === 'google_ads' && c.status === 'active')) {
       markGoogleAdsConnected();
       showGadsConnected(d.google_ads_customer_id, d.google_ads_account_name);
+      if (d.google_ads_needs_reconnect) markGadsNeedsReconnect();
     } else if (conns.some(c => c.platform === 'google_ads' && c.status === 'pending_selection')
                && document.getElementById('gadsChoose').style.display === 'none') {
       openGadsPicker(false);   // consent done, account not chosen yet
@@ -2871,6 +2873,25 @@ function showGadsConnected(displayId, name) {
 }
 // Kept for callers from before the name existed
 function showGadsCustomerId(displayId) { showGadsConnected(displayId, ''); }
+
+// Google no longer accepts the stored access (revoked/expired —
+// core/google_ads_health): never "connected ✓". The reconnect goes through the
+// normal connect flow, so the staff-access consent box comes back with it.
+function markGadsNeedsReconnect() {
+  const t = uallakI18n.t;
+  const status = document.getElementById('gadsStatus');
+  status.textContent = t('gads_status_reconnect');
+  status.classList.remove('connected');
+  const btn = document.getElementById('gadsBtn');
+  btn.textContent = t('gtm_reconnect_now');
+  btn.className = 'conn-btn primary';
+  btn.disabled = false;
+  btn.onclick = connectGoogleAds;
+  const consentRow = document.getElementById('gadsConsentRow');
+  if (consentRow) consentRow.style.display = '';
+  const change = document.getElementById('gadsChange');
+  if (change) change.style.display = 'none';
+}
 
 async function openGadsPicker(asChange, refresh) {
   gadsPicker.asChange = Boolean(asChange);

@@ -147,6 +147,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `app_settings` `gtm_token:<id>` (NOT client_activity — the client's feed shows unknown action
   types raw); client_deletion clears it. `configure_lead_conversion` refuses to publish on a
   mismatch or a dead grant. Control Room shows the same view + last OK time.
+- `core/google_ads_health.py` — the same token-health model for Google Ads: the token refresh
+  raises `google_ads_service.GrantRevoked` on a 400 `invalid_grant`/`unauthorized_client` (code
+  read from the body, never the token); the readers record it per client + grant
+  (`app_settings` `gads_token:<id>`, grant = token fingerprint), stop calling Google for it
+  (one re-probe per 6 h), answer `needs_reconnect` (Performance card needs_attention/reconnect,
+  client_state fact, connect_google_ads card), and ONE plain admin alert per dead grant. A new
+  grant (OAuth callback → `forget_grant`) clears it. Deletion and the deletion guard cover the row.
 - `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
   POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
   in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.

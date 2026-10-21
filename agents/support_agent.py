@@ -284,7 +284,10 @@ Platform data: if the user message includes a "google_ads_performance" or
 meta_ads_performance covers Facebook + Instagram combined) - use it to answer campaign
 questions concretely, citing the actual numbers. If a platform's field says "connected": false
 and the question needs that platform's data, that account isn't connected yet - say so plainly
-and offer its connect action from available_actions. TikTok has no live connection yet; if
+and offer its connect action from available_actions. "needs_reconnect": true means the
+connection exists but Google no longer accepts our access (revoked or expired), so its numbers
+can't be read until they reconnect - say exactly that and offer the connect action. TikTok has
+no live connection yet; if
 asked about it, say so honestly and mention it's coming soon. Never invent campaign numbers.
 
 Website data: a "website_overview" field is REAL live data from the client's connected
@@ -431,7 +434,9 @@ def _add_reads(payload: dict, reads: dict) -> set:
     back with an error. Returns the data_topics that failed this turn."""
     failed = set()
     for field, value in reads.items():
-        if isinstance(value, dict) and value.get("error"):
+        # needs_reconnect (a dead grant, core/google_ads_health) is a FACT the
+        # model states and offers the reconnect card for — not a failed read
+        if isinstance(value, dict) and value.get("error") and not value.get("needs_reconnect"):
             if field in TOPIC_FIELDS:
                 failed.add(TOPIC_FIELDS[field])
             continue
@@ -939,7 +944,10 @@ PERSONAS = {
         "data_notes": ("'google_ads_performance' is REAL live data from the client's own "
                        "Google Ads account (last 30 days, cost in ILS). If 'connected' is "
                        "false, the account isn't connected — say so and offer the "
-                       "connect_google_ads action. If it's missing entirely, you don't have the numbers "
+                       "connect_google_ads action. If 'needs_reconnect' is true, Google no longer "
+                       "accepts our access to their account (it was revoked or expired), so no "
+                       "numbers can be read until they reconnect — say exactly that, plainly, and "
+                       "propose connect_google_ads. If it's missing entirely, you don't have the numbers "
                        "in front of you — never guess them. WHICH account they're connected "
                        "to is in client_knowledge.connected_accounts; to switch, the Google "
                        "Ads card has a 'החלפת חשבון' button that lists every account their "

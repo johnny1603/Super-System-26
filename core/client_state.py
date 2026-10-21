@@ -157,6 +157,8 @@ def _connections(client_id: int) -> dict:
         if info:
             out["google_ads_account"] = {"id": info.get("display_id", ""), "name": info.get("name", ""),
                                          "status": info.get("status", "")}
+            from agents.google_ads_agent import grant_needs_reconnect
+            out["google_ads_account"]["needs_reconnect"] = bool(grant_needs_reconnect(client_id))
     except Exception as e:
         _warn(f"client {client_id}: google ads connection_info failed: {type(e).__name__}",
               client_id=client_id)
@@ -164,6 +166,10 @@ def _connections(client_id: int) -> dict:
 
 
 def _campaigns(perf: dict) -> dict:
+    if isinstance(perf, dict) and perf.get("needs_reconnect"):
+        # A dead grant is a FACT the agents state (and offer the reconnect
+        # card for), not a failed read behind the "can't pull that up" line
+        return {"connected": True, "needs_reconnect": True}
     perf = _ok(perf)
     if not perf.get("connected"):
         return {"connected": False}

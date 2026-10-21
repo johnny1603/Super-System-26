@@ -186,6 +186,10 @@ def _ads_card(client_id: int, channel: str, platforms: set, accounts: list) -> d
     daily = get_daily_metrics(client_id)
     if not daily.get("connected"):
         return _card("not_connected")
+    if daily.get("needs_reconnect"):
+        # The stored grant is dead (core/google_ads_health): a fact with one
+        # fix — a new consent — not a sync failure to retry
+        return _card("needs_attention", reason="reconnect", last_checked=_now())
     if daily.get("error"):
         return _card("needs_attention", reason="sync_failed", last_checked=_now())
     pulled = daily.get("pulled_at") or _now()

@@ -939,8 +939,10 @@ def _clear_leads(ids: list, lead_owner: dict):
 
 def _settings_keys(ids: list) -> list:
     """The client's own app_settings rows: per-client limits and the Tag
-    Manager token-health record (core/gtm_connection)."""
-    return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}")]
+    Manager / Google Ads token-health records (core/gtm_connection,
+    core/google_ads_health)."""
+    return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}",
+                                     f"gads_token:{int(i)}")]
 
 
 def _clear_settings(ids: list):

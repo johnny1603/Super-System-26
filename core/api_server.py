@@ -1096,6 +1096,15 @@ async def dashboard_data(request: Request):
             gtm_needs_reconnect = bool(gtm_missing_scopes(client_id))
         except Exception as e:
             print(f"[dashboard] gtm scope check failed for client {client_id}: {e}")
+    # A dead Google Ads grant (core/google_ads_health): the card must say
+    # "reconnect", never "connected ✓". DB reads only, no Google call.
+    google_ads_needs_reconnect = False
+    if any(a.get("platform") == "google_ads" and a.get("status") == "active" for a in accounts):
+        try:
+            from agents.google_ads_agent import grant_needs_reconnect
+            google_ads_needs_reconnect = grant_needs_reconnect(client_id)
+        except Exception as e:
+            print(f"[dashboard] google ads health check failed for client {client_id}: {type(e).__name__}")
 
     return {"success": True, "data": {
         "client": {
@@ -1129,6 +1138,7 @@ async def dashboard_data(request: Request):
              and a.get("status") == "active" and a.get("account_id")), ""),
         "google_ads_account_name": _google_ads_account_name(client_id, accounts),
         "gtm_needs_reconnect": gtm_needs_reconnect,
+        "google_ads_needs_reconnect": google_ads_needs_reconnect,
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -2463,9 +2473,13 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
         # client picks (google_ads_agent.connect_from_oauth). This used to take
         # listAccessibleCustomers()[0], which stored a wrong account for a
         # client whose login reaches six.
-        from agents.google_ads_agent import connect_from_oauth
+        from agents.google_ads_agent import connect_from_oauth, forget_grant
         outcome = connect_from_oauth(client_id, refresh_token)
         print(f"[google_ads oauth] client {client_id}: {outcome['outcome']}")
+        if outcome["outcome"] != "no_accounts":
+            # A NEW grant is stored: a dead record for the old one no longer
+            # applies (core/google_ads_health) — clear it and the cached reads
+            forget_grant(client_id)
         # Zero usable accounts is not an error the client caused: the
         # dashboard explains it plainly (create/finish an account, or talk to
         # us) instead of a "connection failed" notice

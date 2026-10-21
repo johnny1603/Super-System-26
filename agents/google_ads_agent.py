@@ -92,6 +92,42 @@ def is_connected(client_id: int) -> bool:
     return bool(conn.get("access_token") and conn.get("account_id"))
 
 
+# ─── Grant health (core/google_ads_health) ────────────────────────────────────
+# A revoked/expired grant is a FACT about the connection, not a read failure:
+# the readers answer needs_reconnect (no retry loop, no per-fetch alert) and
+# stop calling Google for that grant until it is reconnected.
+RECONNECT_NEEDED = "reconnect_needed"
+
+
+def _grant(conn: dict) -> str:
+    return _token_fingerprint(conn.get("access_token") or "")
+
+
+def _reconnect_result(**extra) -> dict:
+    # "error" stays for the callers that only know error-or-not (never a fake
+    # zero); "needs_reconnect" is what the status/agent layers act on
+    return {"connected": True, "needs_reconnect": True, "error": RECONNECT_NEEDED, **extra}
+
+
+def forget_grant(client_id: int):
+    """A new grant was stored (OAuth callback): clear the old grant's health
+    and every cached answer read with it, so the card, the Performance page
+    and the agents see the reconnect immediately (not after a cache TTL)."""
+    from core import client_state, google_ads_health
+    google_ads_health.clear(client_id)
+    _perf_cache.pop(client_id, None)
+    _daily_cache.pop(client_id, None)
+    _accounts_cache.pop(client_id, None)
+    client_state.forget(client_id)
+
+
+def grant_needs_reconnect(client_id: int) -> bool:
+    """The stored grant is recorded dead (dashboard card). DB reads only."""
+    from core import google_ads_health
+    conn = _get_connection(client_id)
+    return bool(conn.get("access_token")) and google_ads_health.needs_reconnect(client_id, _grant(conn))
+
+
 # ─── Which customer account (2026-10-14) ──────────────────────────────────────
 # The OAuth callback used to store customer_ids[0] from listAccessibleCustomers.
 # That list holds every account the login can reach — suspended, cancelled,
@@ -201,6 +237,12 @@ def account_options(client_id: int, refresh: bool = False) -> dict:
     try:
         accounts = gads.describe_customers(row["access_token"],
                                            gads.list_accessible_customers(row["access_token"]))
+    except gads.GrantRevoked as e:
+        from core import google_ads_health
+        google_ads_health.record_dead(client_id, fingerprint, e.google_reason)
+        result = {"success": False, "code": "ERR_RECONNECT_NEEDED"}
+        _accounts_cache[client_id] = (time.time(), fingerprint, result)
+        return result
     except Exception as e:
         from core.chat_fallback import alert_once
         alert_once(AGENT_NAME, client_id, f"{PLATFORM}:account_listing_failed",
@@ -307,6 +349,10 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         return {"connected": False}
+    from core import google_ads_health
+    grant = _grant(conn)
+    if google_ads_health.should_skip(client_id, grant):
+        return _reconnect_result(campaigns=[])
 
     log_step(AGENT_NAME, "get_campaign_performance", f"client_id={client_id} customer_id={conn['account_id']}")
     try:
@@ -314,6 +360,12 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
             AGENT_NAME, "gaql_search",
             lambda: gads.search(conn["access_token"], conn["account_id"], _PERFORMANCE_GAQL),
         )
+    except gads.GrantRevoked as e:
+        # One plain alert per dead grant comes from record_dead, not from here
+        google_ads_health.record_dead(client_id, grant, e.google_reason)
+        failed = _reconnect_result(campaigns=[])
+        _perf_cache[client_id] = (time.time(), failed)
+        return failed
     except Exception as e:
         # Deduped: this getter runs on every chat turn and dashboard load, and
         # a raw agent_alert here used to fire once per call for as long as the
@@ -340,6 +392,7 @@ def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dic
             "conversions": round(float(metrics.get("conversions", 0)), 1),
         })
 
+    google_ads_health.record_ok(client_id, grant)
     result = {
         "connected": True,
         "period": "last_30_days",
@@ -385,6 +438,10 @@ def get_daily_metrics(client_id: int, force_refresh: bool = False) -> dict:
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         return {"connected": False}
+    from core import google_ads_health
+    grant = _grant(conn)
+    if google_ads_health.should_skip(client_id, grant):
+        return _reconnect_result(days=[])
 
     until = date.today() - timedelta(days=1)
     since = until - timedelta(days=DAILY_SERIES_DAYS - 1)
@@ -392,6 +449,11 @@ def get_daily_metrics(client_id: int, force_refresh: bool = False) -> dict:
         rows = timed_step(AGENT_NAME, "gaql_daily", lambda: gads.search(
             conn["access_token"], conn["account_id"],
             _DAILY_GAQL.format(since=since.isoformat(), until=until.isoformat())))
+    except gads.GrantRevoked as e:
+        google_ads_health.record_dead(client_id, grant, e.google_reason)
+        failed = _reconnect_result(days=[])
+        _daily_cache[client_id] = (time.time(), failed)
+        return failed
     except Exception as e:
         from core.chat_fallback import alert_once
         alert_once(AGENT_NAME, client_id, f"{PLATFORM}:daily_read_failed",
@@ -401,6 +463,7 @@ def get_daily_metrics(client_id: int, force_refresh: bool = False) -> dict:
         _daily_cache[client_id] = (time.time(), failed)
         return failed
 
+    google_ads_health.record_ok(client_id, grant)
     days = []
     for row in rows:
         metrics = row.get("metrics", {})
@@ -965,8 +1028,14 @@ def run_health_scan() -> dict:
     log_step(AGENT_NAME, "run_health_scan", f"{len(connections)} connected accounts")
     summary = {"clients_scanned": 0, "issues": [], "campaigns_paused": []}
 
+    from core import google_ads_health
     for conn in connections:
         client_id = conn["client_id"]
+        grant = _grant(conn)
+        if google_ads_health.should_skip(client_id, grant):
+            # Known dead grant: already alerted once; nothing to scan until reconnect
+            summary["issues"].append(f"client {client_id}: Google Ads needs reconnect")
+            continue
         try:
             # 1. Account-level status (suspended/canceled = nothing serves)
             rows = gads.search(conn["access_token"], conn["account_id"], _ACCOUNT_STATUS_GAQL)
@@ -1046,6 +1115,10 @@ def run_health_scan() -> dict:
                 agent_alert(AGENT_NAME, [f"client {client_id}: optimization cycle failed: {e}"])
 
             summary["clients_scanned"] += 1
+            google_ads_health.record_ok(client_id, grant)
+        except gads.GrantRevoked as e:
+            google_ads_health.record_dead(client_id, grant, e.google_reason)
+            summary["issues"].append(f"client {client_id}: Google Ads needs reconnect")
         except Exception as e:
             agent_alert(AGENT_NAME, [f"health scan failed for client {client_id}: {e}"])
             summary["issues"].append(f"client {client_id}: scan failed - {e}")

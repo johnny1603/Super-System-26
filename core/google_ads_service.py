@@ -134,6 +134,27 @@ def revoke_token(refresh_token: str) -> bool:
         return False
 
 
+class GrantRevoked(httpx.HTTPStatusError):
+    """The client's refresh token is dead — revoked, expired, or issued to
+    another OAuth client. Only a new consent fixes it (core/google_ads_health).
+    Carries Google's error CODE only: never the token, never the body. Still
+    an HTTPStatusError, so every existing `except` keeps working."""
+
+    def __init__(self, google_reason: str, response):
+        super().__init__(f"Google Ads access revoked or expired ({google_reason})",
+                         request=response.request, response=response)
+        self.google_reason = google_reason
+        self.status = response.status_code
+        self.api = "oauth2.googleapis.com/token"
+
+
+def _oauth_error_body(response):
+    try:
+        return response.json()
+    except Exception:
+        return None
+
+
 def _access_token(refresh_token: str) -> str:
     cached = _access_token_cache.get(refresh_token)
     if cached and cached[1] > time.time():
@@ -149,6 +170,17 @@ def _access_token(refresh_token: str) -> str:
         },
         timeout=TIMEOUT,
     )
+    if response.status_code >= 400:
+        from core.google_ads_health import dead_reason
+        body = _oauth_error_body(response)
+        reason = dead_reason(response.status_code, body)
+        if reason:
+            _access_token_cache.pop(refresh_token, None)
+            raise GrantRevoked(reason, response)
+        # The error CODE only (e.g. invalid_client = OUR OAuth client config)
+        code = str((body or {}).get("error") or "") if isinstance(body, dict) else ""
+        print(f"[google_ads_service] token refresh failed: HTTP {response.status_code} "
+              f"error={code[:60] or 'unknown'}")
     response.raise_for_status()
     data = response.json()
     # 60s safety margin so we never send a token that expires mid-request

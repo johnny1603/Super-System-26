@@ -12,7 +12,8 @@ every writer, present and future:
 
   POST / PATCH whose JSON body carries `client_id` = a deleting client   refused
   PATCH filtered by `client_id=eq.N` / `in.(…N…)`                       refused
-  POST / PATCH of app_settings "client_settings:<N>"                     refused
+  POST / PATCH of app_settings "client_settings:<N>" (and the per-client
+    token-health rows "gtm_token:<N>", "gads_token:<N>")                 refused
   PATCH of clients id=N, unless it only sets status='deleting'          refused
   DELETE / GET / HEAD                                                    allowed
 
@@ -35,6 +36,9 @@ import time
 
 MARK_TTL = 5
 PROGRESS_PREFIX = "client_deletion:"
+# app_settings keys that belong to ONE client ("<prefix><client_id>") —
+# the same rows client_deletion._settings_keys clears
+CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}
@@ -131,7 +135,7 @@ def check(request):
         except (TypeError, ValueError, AttributeError):
             pass
         key = str(row.get("key") or "") if isinstance(row, dict) else ""
-        if table == "app_settings" and key.startswith("client_settings:"):
+        if table == "app_settings" and key.startswith(CLIENT_SETTING_PREFIXES):
             try:
                 if int(key.split(":", 1)[1]) in ids:
                     hit = int(key.split(":", 1)[1])
@@ -147,7 +151,7 @@ def check(request):
                 hit = next(iter(named))
         if table == "app_settings":
             key = params.get("key", "")
-            if key.startswith("eq.client_settings:"):
+            if key.startswith(tuple("eq." + p for p in CLIENT_SETTING_PREFIXES)):
                 try:
                     if int(key.split(":", 1)[1]) in ids:
                         hit = int(key.split(":", 1)[1])
