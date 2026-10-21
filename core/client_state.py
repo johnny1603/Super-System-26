@@ -255,14 +255,18 @@ def _media(client_id: int) -> dict:
 
 
 MEDIA_SUBFOLDERS_READ = 8
+MEDIA_VIDEOS_LISTED = 10
 
 
 def _media_folder(client_id: int) -> dict:
     """What is IN the client's Drive media folder (the Media tab's own
-    listing, drive_mirror — cached there too): counts by kind and the newest
-    video names. Without it, "can you upload a video from my media?" had no
-    fact to answer from (2026-10-22 production bug)."""
+    listing, drive_mirror — cached there too): counts by kind, the newest
+    videos (with the Drive id an upload proposal must name — never shown to
+    the client — and whether each fits the upload size cap), and today's
+    YouTube uploads against the per-client cap. Without it, "can you upload a
+    video from my media?" had no fact to answer from (2026-10-22)."""
     from core import drive_mirror
+    from core.verification_demo import DEMO_VIDEO_MAX_MB
     root = drive_mirror.list_folder(client_id)
     if not root.get("exists"):
         return {"exists": False}
@@ -278,9 +282,20 @@ def _media_folder(client_id: int) -> dict:
         counts[f.get("kind", "file")] = counts.get(f.get("kind", "file"), 0) + 1
     videos = sorted((f for f in files if f.get("kind") == "video"),
                     key=lambda f: f.get("modified_time") or "", reverse=True)
-    return {"exists": True, "counts": counts,
-            "newest_videos": [v.get("name", "") for v in videos[:5]],
-            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
+    out = {"exists": True, "counts": counts,
+           "videos": [{"drive_file_id": v.get("id", ""), "name": v.get("name", ""),
+                       "size_mb": round(v["size"] / 1048576, 1) if v.get("size") else None,
+                       "uploadable": bool(v.get("size")) and v["size"] <= DEMO_VIDEO_MAX_MB * 1048576}
+                      for v in videos[:MEDIA_VIDEOS_LISTED]],
+           "upload_max_mb": DEMO_VIDEO_MAX_MB,
+           "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
+    try:
+        from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, uploads_today
+        out["youtube_uploads_today"] = uploads_today(client_id)
+        out["youtube_daily_upload_cap"] = DAILY_UPLOADS_PER_CLIENT
+    except Exception as e:
+        _warn(f"client {client_id}: uploads_today failed: {type(e).__name__}", client_id=client_id)
+    return out
 
 
 def _package(client_id: int) -> dict:

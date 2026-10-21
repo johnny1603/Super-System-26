@@ -231,6 +231,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   request in the Control Room. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
   holds no Google data. Adding an action = one dict in `ACTIONS` + a test in
   `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
+  `publish_youtube_from_media` is the first client-approved action that WRITES to Google: a
+  video from the client's own Drive media folder (`drive_file_id` re-proven by drive_mirror's
+  parents walk at proposal AND at approval; video MIME, ≤ 50 MB) → `youtube_content_agent.publish`,
+  always Private (no privacy param exists on the path), max
+  `youtube_content_agent.DAILY_UPLOADS_PER_CLIENT` (3) per client per UTC day — refused with its
+  own plain line (`refusals`), no alert. The card names the file from Drive's metadata, never the
+  model's words; the done line carries the YouTube Studio link.
 - `agents/seo_article.py` — HOW articles are written (seo_agent.write_article keeps the
   policy gates and stays the one entry point): live site grounding (real pages/posts,
   tone samples, primary language, translation plugin), client_knowledge + CACHED research

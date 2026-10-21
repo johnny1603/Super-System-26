@@ -4110,7 +4110,8 @@ async function decideAction(id, decision, el) {
   const r = data.data || {};
   const row = el.querySelector('.row');
   if (row) row.remove();
-  note.textContent = r.message || '';
+  // linkify() escapes first — the outcome may carry a link (YouTube Studio)
+  note.innerHTML = linkify(r.message || '');
   if (r.redirect && r.redirect.startsWith('/api/oauth/')) {
     window.location.href = r.redirect;   // the provider's own consent screen
   } else if (r.focus) {

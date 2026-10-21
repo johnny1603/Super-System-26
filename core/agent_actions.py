@@ -32,6 +32,7 @@ Control Room.
 """
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 SERVICE_NAME = "agent_actions"
@@ -88,6 +89,16 @@ def _post_admin_message(client_id: int, persona: str, text: str):
     control_room._store(client_id, persona, "agent", text)
 
 
+def _forget_state(client_id: int):
+    """After an action changed something, the next turn reads fresh (e.g.
+    today's upload count)."""
+    try:
+        from core import client_state
+        client_state.forget(client_id)
+    except Exception:
+        pass
+
+
 # ─── Param validators (value, client_id) -> normalized value | ValueError ────
 
 _GA4_RE = re.compile(r"^G-[A-Z0-9]{4,15}$")
@@ -111,6 +122,73 @@ def _v_pending_suggestion(value, client_id: int):
     return sid
 
 
+_DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,128}$")
+MEDIA_META_TTL = 600
+_media_meta = {}   # (client_id, file_id) -> (time, {name, mimeType, size}) — display + re-checks
+
+
+def _media_upload_max_mb() -> int:
+    from core.verification_demo import DEMO_VIDEO_MAX_MB   # one cap for every Drive→YouTube upload
+    return DEMO_VIDEO_MAX_MB
+
+
+def _v_media_video(value, client_id: int):
+    """A video in THIS client's Drive media folder, proven by Drive's own
+    parents chain (drive_mirror's walk, fresh for files), never by what the
+    model or the browser said; a video MIME type, not trashed, within the
+    upload size cap (the upload is read into memory)."""
+    file_id = str(value or "").strip()
+    if not _DRIVE_ID_RE.match(file_id):
+        raise ValueError("drive_file_id is not a Drive id")
+    from core import drive_mirror, drive_service
+    root = drive_mirror.client_root_id(client_id)
+    if not root or file_id == root:
+        raise ValueError("no media folder / not a file")
+    try:
+        drive_mirror._assert_in_client_tree(client_id, root, file_id)
+    except drive_mirror.NotInClientFolder:
+        raise ValueError("drive_file_id is not in this client's media folder")
+    except Exception as e:
+        raise ValueError(f"could not verify the file ({type(e).__name__})")
+    try:
+        meta = drive_service.get_meta(file_id, "id,name,mimeType,size,trashed")
+    except Exception as e:
+        raise ValueError(f"could not read the file ({type(e).__name__})")
+    if meta.get("trashed"):
+        raise ValueError("the file is in the trash")
+    if not str(meta.get("mimeType") or "").startswith("video/"):
+        raise ValueError("not a video")
+    size = int(meta.get("size") or 0)
+    if not 0 < size <= _media_upload_max_mb() * 1048576:
+        raise ValueError(f"video must be up to {_media_upload_max_mb()} MB")
+    _media_meta[(client_id, file_id)] = (time.time(), meta)
+    return file_id
+
+
+_TITLE_DROP = re.compile(r"[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩<>]")
+YOUTUBE_TITLE_MAX = 100   # YouTube's own limit; it also rejects < and >
+
+
+def _v_title(value, client_id: int):
+    title = " ".join(_TITLE_DROP.sub(" ", str(value or "")).split())[:YOUTUBE_TITLE_MAX].strip()
+    if len(title) < 2:
+        raise ValueError("title too short")
+    return title
+
+
+def _media_name(client_id: int, file_id: str) -> str:
+    hit = _media_meta.get((client_id, file_id))
+    if hit and hit[0] > time.time() - MEDIA_META_TTL:
+        return hit[1].get("name", "")
+    try:
+        from core import drive_service
+        meta = drive_service.get_meta(file_id, "id,name,mimeType,size,trashed")
+        _media_meta[(client_id, file_id)] = (time.time(), meta)
+        return meta.get("name", "")
+    except Exception:
+        return ""
+
+
 # ─── Runners: the SAME functions the fallback buttons call ───────────────────
 
 def _run_configure_conversion(client_id: int, params: dict, background_tasks):
@@ -129,6 +207,29 @@ def _run_demo(fn_name: str):
         except verification_demo.DemoRefused as e:
             raise ActionFailed("refused_by_action", str(e))
     return run
+
+
+def _run_publish_youtube_from_media(client_id: int, params: dict, background_tasks):
+    """youtube_content_agent.publish — the function behind
+    POST /api/youtube-content/publish and core/verification_demo. Privacy is
+    not a param anywhere on this path: publish() never forwards one and
+    youtube_service.upload_video defaults to private."""
+    from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, publish, uploads_today
+    if uploads_today(client_id) >= DAILY_UPLOADS_PER_CLIENT:
+        raise ActionFailed("daily_cap", f"{DAILY_UPLOADS_PER_CLIENT} uploads today")
+    file_id = params["drive_file_id"]
+    name = _media_name(client_id, file_id)
+    title = params.get("title") or _v_title(_file_stem(name) or "Video", client_id)
+    result = publish(client_id, {"drive_file_id": file_id, "title": title, "description": ""})
+    if not result.get("success"):
+        raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
+    video_id = result.get("video_id", "")
+    return {"video_id": video_id, "title": title, "privacy_status": "private", "source_file": name,
+            "studio_url": f"https://studio.youtube.com/video/{video_id}/edit" if video_id else ""}
+
+
+def _file_stem(name: str) -> str:
+    return name.rsplit(".", 1)[0] if "." in (name or "") else (name or "")
 
 
 def _run_approve_suggestion(client_id: int, params: dict, background_tasks):
@@ -174,6 +275,21 @@ def _connected(platform: str):
 
 def _has_pending_suggestions(state: dict, client: dict) -> bool:
     return bool(((state or {}).get("approvals") or {}).get("waiting_for_client"))
+
+
+def _youtube_upload_possible(state: dict, client: dict) -> bool:
+    """YouTube connected with a working grant, at least one video in the media
+    folder within the size cap, and today's cap not reached (when known)."""
+    youtube = _cards(state).get("youtube") or {}
+    if youtube.get("status") not in ("active", "connected_no_data"):
+        return False
+    if not _connected("youtube")(state, client):
+        return False
+    media = (state or {}).get("media_folder") or {}
+    if not any(v.get("uploadable") for v in media.get("videos") or []):
+        return False
+    cap = media.get("youtube_daily_upload_cap")
+    return cap is None or (media.get("youtube_uploads_today") or 0) < cap
 
 
 # ─── The whitelist ───────────────────────────────────────────────────────────
@@ -340,6 +456,47 @@ ACTIONS = {
                      "Approuvé ✓ L'équipe s'en occupe.", "تمت الموافقة ✓ الفريق يعمل على ذلك.",
                      "Одобрено ✓ Команда приступает."),
     },
+    "publish_youtube_from_media": {
+        # The client's own click is the approval: the upload lands PRIVATE, so
+        # nothing becomes public without a second, deliberate step in YouTube
+        # Studio. Daily cap: youtube_content_agent.DAILY_UPLOADS_PER_CLIENT.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Uploads ONE video from the client's Drive media folder (account_state.media_folder.videos, "
+                "uploadable=true) to their YouTube channel as PRIVATE — never public or unlisted; they "
+                "publish it themselves in YouTube Studio when they like. Max 3 uploads per client per day.",
+        "params": {"drive_file_id": {"required": True, "validate": _v_media_video,
+                                     "hint": "drive_file_id copied exactly from account_state.media_folder.videos "
+                                             "(never shown to the client)"},
+                   "title": {"required": False, "validate": _v_title,
+                             "hint": "the video title, up to 100 characters — the client's words, or a short "
+                                     "title from the file name; empty = the file name"}},
+        "available": _youtube_upload_possible,
+        "run": _run_publish_youtube_from_media,
+        "display": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))
+                                              or "—", "title": params.get("title") or ""},
+        "title": _txt("העלאת סרטון ליוטיוב (פרטי)", "Upload a video to YouTube (private)",
+                      "Mettre une vidéo sur YouTube (privée)", "رفع فيديو إلى YouTube (خاص)",
+                      "Загрузить видео на YouTube (приватно)"),
+        "what": _txt("הסרטון \"{file}\" מתיקיית המדיה שלכם יעלה לערוץ היוטיוב שלכם כפרטי — אף אחד לא יראה אותו עד שתפרסמו אותו בעצמכם ב-YouTube Studio.",
+                     "\"{file}\" from your media folder will be uploaded to your YouTube channel as private — nobody sees it until you publish it yourself in YouTube Studio.",
+                     "« {file} » de votre dossier média sera mise en ligne sur votre chaîne YouTube en privé — personne ne la voit avant que vous la publiiez dans YouTube Studio.",
+                     "سيتم رفع \"{file}\" من مجلد الوسائط إلى قناتكم على YouTube كفيديو خاص — لن يراه أحد حتى تنشروه بأنفسكم في YouTube Studio.",
+                     "«{file}» из вашей папки медиа будет загружено на ваш канал YouTube как приватное — никто его не увидит, пока вы сами не опубликуете его в YouTube Studio."),
+        "done": _txt("הסרטון עלה ליוטיוב כפרטי ✓ אפשר לפרסם אותו מתי שנוח לכם.",
+                     "Uploaded to YouTube as private ✓ Publish it whenever you like.",
+                     "Mise en ligne sur YouTube en privé ✓ Publiez-la quand vous voulez.",
+                     "تم الرفع إلى YouTube كفيديو خاص ✓ انشروه متى شئتم.",
+                     "Загружено на YouTube как приватное ✓ Опубликуйте, когда будет удобно."),
+        "done_message": lambda result, lang: (
+            _pick(ACTIONS["publish_youtube_from_media"]["done"], lang)
+            + (f"\n{result['studio_url']}" if result.get("studio_url") else "")),
+        "refusals": {"daily_cap": _txt(
+            "הגעתם למכסת ההעלאות ליוטיוב להיום (3 ביום). אפשר להעלות שוב מחר — שום דבר לא השתנה.",
+            "You've reached today's YouTube upload limit (3 a day). You can upload again tomorrow — nothing was changed.",
+            "Vous avez atteint la limite de mises en ligne YouTube du jour (3 par jour). Réessayez demain — rien n'a été modifié.",
+            "وصلتم إلى حد الرفع إلى YouTube لهذا اليوم (3 يوميًا). يمكنكم الرفع مجددًا غدًا — لم يتغير شيء.",
+            "Достигнут дневной лимит загрузок на YouTube (3 в день). Загрузить снова можно завтра — ничего не изменено.")},
+    },
 }
 
 # Fixed lines for every other outcome (code decides, the model never writes them)
@@ -479,6 +636,13 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
     what = _pick(spec.get("what") or {"he": ""}, lang)
     if "{title}" in what:
         what = what.replace("{title}", _suggestion_title(row.get("client_id"), params.get("suggestion_id")))
+    if spec.get("display"):
+        # Display values come from OUR read (e.g. Drive's file name), never the model
+        try:
+            for key, value in spec["display"](row.get("client_id"), params).items():
+                what = what.replace("{" + key + "}", str(value))
+        except Exception:
+            pass
     return {"id": row.get("id"), "action": row.get("action"), "status": row.get("status"),
             "persona": row.get("persona", "general"), "origin": row.get("origin"),
             "title": _pick(spec.get("title") or {"he": row.get("action", "")}, lang),
@@ -670,6 +834,13 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
                                            "outcome": code})
         _log(f"client {client_id}: {row['action']} FAILED ({code}): {type(e).__name__}: {e}",
              severity="WARNING", client_id=client_id, proposal=proposal_id)
+        refusal = (spec.get("refusals") or {}).get(code)
+        if refusal:
+            # An expected, explained refusal (e.g. the daily cap): its own
+            # plain line, no alert — nothing is broken
+            text = _pick(refusal, lang)
+            _post(row, text, to_client=row.get("origin") == "client_chat")
+            return {"success": True, "status": "failed", "code": code, "message": text}
         if actor == "admin":
             detail = f"✕ {_pick(spec['title'], 'he')} — לא בוצע: {str(e)[:400]}"
             if row.get("origin") == "admin_chat":
@@ -684,9 +855,12 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
 
     _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
                                        "outcome": "done"})
-    message = _pick(spec["done"], lang if actor == "client" else "he")
+    _forget_state(client_id)
+    done_text = (spec["done_message"] if spec.get("done_message")
+                 else (lambda _result, language: _pick(spec["done"], language)))
+    message = done_text(result, lang if actor == "client" else "he")
     if row.get("origin") == "client_chat":
-        _post(row, _pick(spec["done"], lang), to_client=True)
+        _post(row, done_text(result, lang), to_client=True)
     elif row.get("origin") == "admin_chat":
         _post_admin_message(client_id, row.get("persona", "general"), _admin_summary(spec, result))
     return {"success": True, "status": "done", "message": message,

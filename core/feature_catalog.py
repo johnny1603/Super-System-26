@@ -115,6 +115,15 @@ FEATURES = [
         "relevance": {"always": True},
     },
     {
+        "key": "youtube_upload_from_media",
+        "name_he": "העלאת סרטון ליוטיוב מהצ׳אט",
+        "what_he": "מבקשים בצ׳אט להעלות סרטון מתיקיית המדיה, מאשרים בלחיצה אחת בכרטיס — והסרטון עולה לערוץ היוטיוב שלכם כפרטי. אף אחד לא רואה אותו עד שתפרסמו אותו בעצמכם ב-YouTube Studio. עד 3 העלאות ביום.",
+        "where_he": "בצ׳אט, בכרטיס האישור מתחת לתשובה",
+        "access": "self_serve",
+        "persona": "media",
+        "relevance": {"connections": ["youtube"]},
+    },
+    {
         "key": "human_support",
         "name_he": "תמיכה אנושית בוואטסאפ",
         "what_he": "מעבר לצ׳אט — לחיצה אחת פותחת שיחת וואטסאפ עם בנאדם מהצוות.",

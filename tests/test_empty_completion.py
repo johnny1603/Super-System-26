@@ -148,7 +148,12 @@ STATE = {
     "tracking": {"connected": True, "needs_reconnect": False, "lead_event_live": True},
     "approvals": {"waiting_for_client": []},
     "media_folder": {"exists": True, "counts": {"video": 2, "image": 5},
-                     "newest_videos": ["promo-autumn.mp4", "intro.mp4"], "complete": True},
+                     "videos": [{"drive_file_id": "1AbCdEfGhIjKlMnOp", "name": "promo-autumn.mp4",
+                                 "size_mb": 12.0, "uploadable": True},
+                                {"drive_file_id": "1QrStUvWxYz012345", "name": "intro.mp4",
+                                 "size_mb": 80.0, "uploadable": False}],
+                     "upload_max_mb": 50, "youtube_uploads_today": 0, "youtube_daily_upload_cap": 3,
+                     "complete": True},
     "_failed": [],
 }
 
@@ -240,11 +245,14 @@ class ProductionQuestion(unittest.TestCase):
         self.assertIn("WHEN NO ACTION FITS", system)
         self.assertIn("I'm\nonly asking", system)
         self.assertIn("Never propose one that is not listed there", system)
-        self.assertEqual(payload["account_state"]["media_folder"]["newest_videos"][0], "promo-autumn.mp4")
+        self.assertEqual(payload["account_state"]["media_folder"]["videos"][0]["name"], "promo-autumn.mp4")
         self.assertNotIn("_failed", payload["account_state"])
         offered = {a["name"] for a in payload["available_actions"]}
         self.assertNotIn("demo_youtube_upload", offered)          # admin-only, never from client chat
         self.assertNotIn("demo_google_ads_campaign", offered)
+        # The real client action IS offered for this question (YouTube healthy, an uploadable video)
+        self.assertIn("publish_youtube_from_media", offered)
+        self.assertIn("UPLOADING A VIDEO FROM THEIR MEDIA FOLDER", system)
 
     def test_a_wrongly_proposed_admin_action_never_becomes_a_card(self):
         result, _ = self.ask([self.model_answer("לחצו אישור", name="demo_youtube_upload")])

@@ -253,6 +253,23 @@ def run_channel_detection_scan() -> dict:
 
 # ─── Publishing ─────────────────────────────────────────────────────────────
 
+# One upload costs 1,600 of the 10,000 YouTube Data API units/day that every
+# client shares (core/youtube_service). Client-approved uploads from chat
+# (core/agent_actions publish_youtube_from_media) stop at this many per client
+# per UTC day; every upload path counts toward it.
+DAILY_UPLOADS_PER_CLIENT = 3
+
+
+def uploads_today(client_id: int) -> int:
+    """Uploads to this client's channel since 00:00 UTC (content_published rows)."""
+    midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = (_db().table("client_activity").select("id")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "content_published")
+            .gte("created_at", midnight.isoformat()).limit(50).execute().data or [])
+    return len(rows)
+
+
 def publish(client_id: int, spec: dict) -> dict:
     """Uploads an already-generated video (Drive file_id, same pull-point
     shape as tiktok_content_agent.publish — TikTok's PULL_FROM_URL reasoning
