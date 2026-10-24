@@ -207,6 +207,12 @@ def client_view(client_id: int) -> dict:
         return agent_actions.open_cards(client_id, actor="admin")
     actions = section("agent actions", open_actions, [])
 
+    def php2shell():
+        # PHP2Shell per WordPress site: the stored last check (core/php_exposure)
+        from core import php_exposure
+        return php_exposure.client_view(client_id)
+    php_view = section("PHP2Shell", php2shell, {})
+
     open_alerts = [a for a in client_alerts if a.get("status") == "open"]
     unreviewed = [f for f in feedback if not f.get("reviewed")]
     last = _parse(activity[0]["created_at"]) if activity else None
@@ -229,6 +235,13 @@ def client_view(client_id: int) -> dict:
                    "text": f"הלקוח ביקש בצ'אט: {a['title']} — לאישור שלך בכרטיס הפעולה",
                    "source": "agent_actions", "at": a.get("created_at")}
                   for a in actions if a.get("status") == "awaiting_staff"]
+    php_label = {"vulnerable": "מדווח גרסת PHP פגיעה", "unknown": "גרסת PHP לא ידועה — לשאול את האחסון",
+                 "not_checked": "עוד לא נבדק"}
+    attention += [{"kind": "php2shell",
+                   "text": f"PHP2Shell — {s['site_url']}: {php_label[s['status']]}"
+                           + (f" ({s['php_version']})" if s.get("php_version") else ""),
+                   "source": "php_exposure", "at": s.get("checked_at")}
+                  for s in (php_view.get("sites") or []) if s.get("status") in php_label]
     if stalled:
         attention.append({"kind": "stalled",
                           "text": f"אין פעילות סוכנים {STALLED_DAYS}+ ימים" if last else "אין פעילות סוכנים בכלל",
@@ -245,6 +258,7 @@ def client_view(client_id: int) -> dict:
         "google_ads": google_ads,
         "gtm": gtm_view,
         "actions": actions,
+        "php2shell": php_view,
         "attention": attention,
         "stalled": stalled,
         "data_gaps": gaps,

@@ -5203,6 +5203,48 @@ def admin_capability_check(client_id: int, request: Request):
     from core import agent_actions
     return {"success": True, "data": agent_actions.capability_check(client_id)}
 
+# ─── PHP2Shell exposure (core/php_exposure, docs/INCIDENT-PHP2SHELL.md) ─────
+# Admin only. The scan is ONE ordinary anonymous HEAD/GET of each known
+# WordPress homepage, reading response headers — never a probe or payload.
+
+@app.get("/api/admin/php-exposure")
+def admin_php_exposure(request: Request):
+    _require_admin(request)
+    from core import php_exposure
+    return {"success": True, "data": php_exposure.overview()}
+
+@app.post("/api/admin/php-exposure/scan")
+def admin_php_exposure_scan(request: Request, client_id: int = 0):
+    # Plain `def`: one HTTP request (two at most) per known site
+    _require_admin(request)
+    from core import php_exposure
+    return {"success": True, "data": php_exposure.run_scan(client_id or None)}
+
+@app.get("/api/website/php-exposure-scan", dependencies=_admin_only)
+def website_php_exposure_scan():
+    # Scheduler twin of the admin button (X-Admin-Key), like /api/website/scan
+    from core import php_exposure
+    return {"success": True, "data": php_exposure.run_scan()}
+
+class AdminProposeActionRequest(BaseModel):
+    name: str
+
+@app.post("/api/admin/control-room/{client_id}/actions/propose")
+def admin_propose_action(client_id: int, req: AdminProposeActionRequest, request: Request):
+    # A Control Room button that PROPOSES a no-param admin action (e.g.
+    # rotate_wordpress_password from the PHP2Shell panel) — the same propose()
+    # the admin chat uses, every guard included; it still runs only on the
+    # card's approve click (decide).
+    _require_admin(request)
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    from core import agent_actions, client_state
+    result = agent_actions.propose(client_id, "admin_chat", "website", {"name": req.name, "params": {}},
+                                   state=client_state.snapshot(client_id))
+    if not result.get("card"):
+        raise HTTPException(status_code=400, detail={"code": result.get("error") or "not_proposed"})
+    return {"success": True, "data": result}
+
 @app.post("/api/admin/control-room/feedback/{feedback_id}/reviewed")
 def admin_control_room_feedback_reviewed(feedback_id: int, request: Request):
     # Browser-session twin of /api/admin/feedback/{id}/reviewed, which is

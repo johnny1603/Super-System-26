@@ -335,31 +335,85 @@ def start_authorize_connect(client_id: int, site_url: str, return_urls) -> dict:
             "site_url": base, "discovered": found["available"] is True}
 
 
-def _rotate_authorized_password(site_url: str, username: str, password: str) -> str:
-    """Mint a replacement for the URL-borne password and delete the original.
-    Returns the new password, or "" when rotation wasn't possible (the caller
-    then stores the original). Never deletes anything but the one password
-    WordPress just issued to us."""
+def _mint_password(site_url: str, username: str, password: str) -> tuple:
+    """Mint a fresh Application Password of ours (WP_APP_ID), authenticating
+    with `password`. (new_password, new_uuid), or ("", "") when the site
+    refused. Never logs either password."""
     try:
         created = wp.rest_post(site_url, "wp/v2/users/me/application-passwords",
                                username, password,
                                data={"name": WP_APP_NAME, "app_id": WP_APP_ID})
     except Exception as e:
         log_step(AGENT_NAME, "rotate_password", f"{site_url}: mint failed — {e}")
-        return ""
-    new_password, new_uuid = created.get("password") or "", created.get("uuid") or ""
-    if not new_password:
-        return ""
+        return "", ""
+    return created.get("password") or "", created.get("uuid") or ""
+
+
+def _revoke_password(site_url: str, username: str, old_password: str,
+                     new_password: str, new_uuid: str) -> bool:
+    """Delete exactly the password `old_password` is (found by introspecting
+    it), authenticated with the new one. True when it is gone."""
     try:
-        old_uuid = (wp.introspect_application_password(site_url, username, password)
+        old_uuid = (wp.introspect_application_password(site_url, username, old_password)
                     .get("uuid") or "")
         if old_uuid and old_uuid != new_uuid:
             wp.delete_application_password(site_url, username, new_password, old_uuid)
+            return True
     except Exception as e:
         # The new one works; the old one lingering is the pre-rotation state,
         # not a broken connection. Logged, not alerted.
         log_step(AGENT_NAME, "rotate_password", f"{site_url}: could not delete the original — {e}")
+    return False
+
+
+def _rotate_authorized_password(site_url: str, username: str, password: str) -> str:
+    """Mint a replacement for the URL-borne password and delete the original.
+    Returns the new password, or "" when rotation wasn't possible (the caller
+    then stores the original). Never deletes anything but the one password
+    WordPress just issued to us."""
+    new_password, new_uuid = _mint_password(site_url, username, password)
+    if not new_password:
+        return ""
+    _revoke_password(site_url, username, password, new_password, new_uuid)
     return new_password
+
+
+def rotate_stored_password(client_id: int) -> dict:
+    """Replace the Application Password we STORE for this client's site (the
+    PHP2Shell response — core/php_exposure; reached only through the
+    admin-approved agent_actions 'rotate_wordpress_password').
+
+    Same mint/delete primitives as one-click connect, in the order that can
+    never strand the connection: mint → prove the new one works → store it
+    (encrypted, client_agent.upsert_account) → only then delete the old one.
+    If any step before the store fails, the stored password is unchanged.
+    Neither password is ever logged or returned."""
+    site_url, username, old_password = _creds(_get_connection(client_id))
+    if not site_url or not username or not old_password:
+        return {"success": False, "errors": ["no connected WordPress site with a stored password"]}
+    log_step(AGENT_NAME, "rotate_stored_password", f"client {client_id}: {site_url}")
+    new_password, new_uuid = _mint_password(site_url, username, old_password)
+    if not new_password:
+        return {"success": False, "errors": [
+            "the site did not issue a new Application Password (stored one rejected, REST API "
+            "blocked, or application passwords switched off) — the stored password is unchanged"]}
+    try:
+        wp.get_current_user(site_url, username, new_password)
+    except Exception as e:
+        try:   # don't leave an unusable password of ours on their site
+            if new_uuid:
+                wp.delete_application_password(site_url, username, old_password, new_uuid)
+        except Exception:
+            pass
+        return {"success": False, "errors": [f"the new password did not work ({type(e).__name__}) "
+                                              "— the stored password is unchanged"]}
+    from agents.client_agent import upsert_account
+    upsert_account(client_id, WORDPRESS_PLATFORM, site_url, f"{username}:{new_password}", "active")
+    _overview_cache.pop(client_id, None)
+    old_revoked = _revoke_password(site_url, username, old_password, new_password, new_uuid)
+    log_step(AGENT_NAME, "rotate_stored_password",
+             f"client {client_id}: {site_url} new password stored, old revoked={old_revoked}")
+    return {"success": True, "site_url": site_url, "old_revoked": old_revoked}
 
 
 def complete_authorize_connect(client_id: int, site_url: str, user_login: str,

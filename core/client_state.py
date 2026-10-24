@@ -21,6 +21,8 @@ from the readers that already exist:
   media .......... media_agent.get_monthly_usage
   media_folder ... drive_mirror.list_folder (what is in their Drive media folder)
   package ........ client_journey.required_connections
+  site_security .. php_exposure.site_security_fact (PHP2Shell: the STORED last
+                   check per WordPress site — no request to the site here)
 
 Rules:
 - Read-only. Nothing here writes to a platform; no new platform call exists
@@ -53,7 +55,7 @@ SECTION_TOPIC = {
     "approvals": "account", "media": "account", "media_folder": "account", "package": "account",
     "tracking": "tracking", "leads": "leads",
     "google_campaigns": "google_ads", "meta_campaigns": "meta_ads",
-    "website": "website", "landing_pages": "website",
+    "website": "website", "landing_pages": "website", "site_security": "website",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -304,6 +306,14 @@ def _package(client_id: int) -> dict:
     return {"readable": bool(checklist.get("resolved")), "services": checklist.get("services") or []}
 
 
+def _site_security(client_id: int) -> dict:
+    """PHP2Shell status of the client's WordPress site(s) as last checked —
+    patched / vulnerable / unknown / not_checked. verified_safe is always
+    False: the check reads a header, which is the host's claim, not proof."""
+    from core import php_exposure
+    return php_exposure.site_security_fact(client_id)
+
+
 # ─── The snapshot ────────────────────────────────────────────────────────────
 
 def _section(client_id: int, name: str, fetch, refresh: bool):
@@ -350,6 +360,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("media", lambda: _media(client_id))
     take("media_folder", lambda: _media_folder(client_id))
     take("package", lambda: _package(client_id))
+    take("site_security", lambda: _site_security(client_id))
     state["_failed"] = failed
     return state
 

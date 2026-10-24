@@ -165,6 +165,19 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (one re-probe per 6 h), answer `needs_reconnect` (Performance card needs_attention/reconnect,
   client_state fact, connect_google_ads card), and ONE plain admin alert per dead grant. A new
   grant (OAuth callback → `forget_grant`) clears it. Deletion and the deletion guard cover the row.
+- `core/php_exposure.py` + `core/php_advisory.py` — **PHP2Shell incident** (CVE-2026-109618/
+  109619, see `docs/INCIDENT-PHP2SHELL.md`). Our runtime has no PHP; the WordPress sites we build
+  (InstaWP) and connect to do. `php_advisory` is the ONE place the fixed versions live.
+  `inventory()` = client_accounts `wordpress` rows + `website_provisioned` + assessed/migration
+  sites (never a secret, only `has_app_password`). The check is ONE ordinary anonymous HEAD (GET
+  fallback) of the homepage reading `X-Powered-By`/`Server` — **never a probe or payload**; the
+  `_fetch` seam refuses other methods. `patched` means the site REPORTS a fixed release (a claim,
+  not proof — `verified_safe` is always false); vendor builds of old releases and hidden
+  versions are `unknown`. Record in `app_settings` `php_exposure:<id>` (deletion clears it, the
+  guard covers it); one admin alert per site per status change. Control Room panel (list +
+  client), `client_state.site_security` for agents (ACCOUNT_STATE_RULE: never call a site safe),
+  admin action `rotate_wordpress_password` (`website_agent.rotate_stored_password`: mint →
+  verify → store → revoke old). InstaWP has no documented PHP-version API — manual runbook.
 - `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
   POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
   in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.
@@ -224,7 +237,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/client_state.py` — **the** read-only account snapshot every agent answers from
   (client concierge, every persona, the Control Room): connections + health, website tracking
   (container, site match, missing scopes, lead event live), campaigns, spend vs stated budget,
-  leads/CRM, approvals, site, landing pages, media. Built ONLY from existing readers
+  leads/CRM, approvals, site, landing pages, media, site security (PHP2Shell, stored check only). Built ONLY from existing readers
   (`performance.channel_statuses`, `gtm_connection.connection_view`, …), cached per section
   (`SECTION_TTL`), failures never cached and never shown to a model — they become data topics
   (`failed_topics`) for the fixed line, or Control Room `data_gaps`. Agents must never answer

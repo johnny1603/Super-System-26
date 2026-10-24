@@ -395,6 +395,7 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
         <div class="page-title">חדר בקרה</div>
         <div class="page-sub" id="crSub">טוען…</div>
         <div class="table-wrap" id="crTable"></div>
+        <div id="crPhp"></div>
         <div id="crLegacyLogins"></div>
         <div class="panel-pad" style="margin-top:18px;">
           <div class="drawer-label">💰 עלות לנו לפי לקוח, חודש וקטגוריה (משוער)</div>
@@ -2828,7 +2829,7 @@ async function resetClientPassword(clientId) {
 // table), and it is unrelated to the WhatsApp button and to "הודעה בצ׳אט
 // התמיכה שלו", which DOES reach the client.
 const HEALTH_LABEL = { attention: 'דורש תשומת לב', stalled: 'תקוע', ok: 'תקין', inactive: 'לא פעיל' };
-const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות', action_request: 'בקשת פעולה' };
+const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות', action_request: 'בקשת פעולה', php2shell: 'אבטחת אתר' };
 const crState = { clientId: null, persona: 'general', personas: [], sending: false };
 
 function crShowList() {
@@ -2872,6 +2873,111 @@ async function loadControlRoom() {
   rows.forEach(r => { names[String(r.id)] = r.name; });
   crLoadLegacyLogins(names);
   crLoadCostsMonthly(names);
+  crLoadPhp();
+}
+
+// ─── PHP2Shell exposure (core/php_exposure) ──────────────────────────────────
+// Status per WordPress site from ONE ordinary anonymous HEAD/GET of its
+// homepage (response headers only). "patched" = the site REPORTS a fixed
+// release — the host's claim, not a verification.
+const PHP_STATUS_HE = { vulnerable: '✕ פגיע (לפי הגרסה המדווחת)', unknown: '? לא ידוע — לשאול את האחסון',
+  not_checked: 'עוד לא נבדק', patched: '✓ מדווח גרסה מתוקנת' };
+const PHP_STATUS_COLOR = { vulnerable: 'var(--red)', unknown: 'var(--yellow)', not_checked: 'var(--gray)', patched: 'var(--green)' };
+const PHP_ORIGIN_HE = { instawp: 'InstaWP (אצלנו)', client_host_connected: 'אחסון של הלקוח · מחובר',
+  client_host_assessed: 'אחסון של הלקוח · נבדק בלבד' };
+
+function crPhpSiteRow(s, withClient, clientId) {
+  const rotate = clientId && s.connected && s.has_app_password
+    ? ` <button type="button" class="manage-btn" onclick="crPhpRotate(${Number(clientId)}, event)">החלפת סיסמת וורדפרס (כרטיס לאישור)</button>` : '';
+  return `<div class="drawer-stat-row" style="flex-wrap:wrap;gap:6px;">
+      <span class="drawer-stat-label">${withClient ? `<a href="#" style="color:var(--accent);" onclick="openControlRoom(${Number(s.client_id)});return false;">${esc(s.client_name || ('#' + s.client_id))}</a> · ` : ''}<span dir="ltr">${esc(s.site_url)}</span>
+        <span style="color:var(--gray);font-size:11.5px;"> · ${esc(PHP_ORIGIN_HE[s.origin] || s.origin)} · ${s.has_app_password ? 'יש לנו סיסמת אפליקציה' : 'אין לנו סיסמה'}</span></span>
+      <span><span style="color:${PHP_STATUS_COLOR[s.status] || 'var(--gray)'};">${esc(PHP_STATUS_HE[s.status] || s.status)}</span>
+        ${s.php_version ? ` · <span dir="ltr">PHP ${esc(s.php_version)}</span>` : ''}${s.reason_text ? ` <span style="color:var(--gray);font-size:11.5px;">(${esc(s.reason_text)})</span>` : ''}
+        <span style="color:var(--gray);font-size:11.5px;"> · נבדק: ${s.checked_at ? esc(fmtDate(s.checked_at)) : '—'}${s.password_rotated_at ? ' · סיסמה הוחלפה ' + esc(fmtDate(s.password_rotated_at)) + (s.old_password_revoked === false ? ' (הישנה לא נמחקה!)' : '') : ''}</span>${rotate}</span>
+    </div>`;
+}
+
+function crPhpHeader(a) {
+  return a ? `<div style="font-size:11.5px;color:var(--gray);margin-bottom:6px;">${esc(a.name)} · ${esc((a.cves || []).join(' + '))} · גרסאות מתוקנות: <span dir="ltr">${esc(a.fixed)}</span> · מתחת ל-${esc(a.oldest_fixed_branch)} אין תיקון רשמי · בדיקה = בקשת HEAD/GET רגילה לדף הבית בלבד, קריאת כותרות</div>` : '';
+}
+
+async function crLoadPhp() {
+  const el = document.getElementById('crPhp');
+  if (!el) return;
+  let d;
+  try {
+    d = (await api('/api/admin/php-exposure')).data;
+  } catch (e) {
+    el.innerHTML = '';
+    return;
+  }
+  const n = d.counts || {};
+  el.innerHTML = `<div class="panel-pad" style="margin-top:14px;">
+      <div class="drawer-label">🛡️ PHP2Shell exposure — כל אתרי הוורדפרס שאנחנו מכירים
+        <button type="button" class="manage-btn" onclick="crPhpScan(0, event)">בדוק עכשיו</button></div>
+      ${crPhpHeader(d.advisory)}
+      <div style="font-size:12.5px;margin-bottom:6px;"><b style="color:var(--red);">${Number(n.vulnerable || 0)}</b> פגיעים ·
+        <b style="color:var(--yellow);">${Number(n.unknown || 0)}</b> לא ידוע · ${Number(n.not_checked || 0)} לא נבדקו ·
+        <b style="color:var(--green);">${Number(n.patched || 0)}</b> מדווחים גרסה מתוקנת</div>
+      <div id="crPhpOut"></div>
+      ${(d.sites || []).map(s => crPhpSiteRow(s, true, 0)).join('') || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין אתרי וורדפרס במערכת</div>'}
+    </div>`;
+}
+
+function crPhpPanel(clientId, p) {
+  if (!p || !(p.sites || []).length) return '';
+  return `<div class="panel-pad" style="margin-bottom:12px;">
+      <div class="drawer-label">🛡️ PHP2Shell exposure
+        <button type="button" class="manage-btn" onclick="crPhpScan(${Number(clientId)}, event)">בדוק עכשיו</button></div>
+      ${crPhpHeader(p.advisory)}
+      <div id="crPhpOut"></div>
+      ${p.sites.map(s => crPhpSiteRow(s, false, clientId)).join('')}
+    </div>`;
+}
+
+async function crPhpScan(clientId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const btn = ev && ev.target;
+  if (btn) btn.disabled = true;
+  const out = document.getElementById('crPhpOut');
+  if (out) { out.style.color = 'var(--gray)'; out.textContent = 'בודק…'; }
+  try {
+    await api(`/api/admin/php-exposure/scan${clientId ? '?client_id=' + Number(clientId) : ''}`, { method: 'POST' });
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = 'הבדיקה נכשלה — נסה שוב'; }
+    if (btn) btn.disabled = false;
+    return;
+  }
+  if (clientId) openControlRoom(Number(clientId)); else crLoadPhp();
+}
+
+// Proposes the admin action (same propose() as the chat); it runs only when
+// the card's approve button is clicked.
+async function crPhpRotate(clientId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const out = document.getElementById('crPhpOut');
+  let res, body;
+  try {
+    res = await fetch(`/api/admin/control-room/${Number(clientId)}/actions/propose`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'rotate_wordpress_password' }),
+    });
+    body = await res.json();
+  } catch (e) {
+    body = null;
+  }
+  if (!res || !res.ok || !body || !body.success) {
+    const d = body && body.detail;
+    if (out) { out.style.color = 'var(--red)'; out.textContent = `✕ לא נוצר כרטיס: ${d ? (typeof d === 'string' ? d : JSON.stringify(d)) : 'שגיאה'}`; }
+    return;
+  }
+  const card = body.data.card;
+  const box = document.getElementById('crActions');
+  if (box && card && !box.querySelector(`.cr-action[data-action-id="${Number(card.id)}"]`)) {
+    box.insertAdjacentHTML('beforeend', crActionCardHtml(clientId, card));
+  }
+  if (out) { out.style.color = 'var(--gray)'; out.textContent = 'נוצר כרטיס לאישור למעלה — הוא ירוץ רק אחרי "אשר והרץ".'; }
 }
 
 // Clients still on a stored ManyChat/Make username+password (kept, never shown)
@@ -2987,6 +3093,7 @@ async function openControlRoom(clientId) {
     ${crGadsLine(c.id, d.google_ads)}
     <div id="crGadsAccounts"></div>
     ${crGtmLine(d.gtm)}
+    ${crPhpPanel(c.id, d.php2shell)}
     ${(d.data_gaps || []).length ? `<div class="cr-gaps">לא נטען: ${esc(d.data_gaps.join(' · '))}</div>` : ''}
 
     <div class="cr-grid">

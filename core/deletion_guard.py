@@ -13,7 +13,8 @@ every writer, present and future:
   POST / PATCH whose JSON body carries `client_id` = a deleting client   refused
   PATCH filtered by `client_id=eq.N` / `in.(…N…)`                       refused
   POST / PATCH of app_settings "client_settings:<N>" (and the per-client
-    token-health rows "gtm_token:<N>", "gads_token:<N>")                 refused
+    token-health rows "gtm_token:<N>", "gads_token:<N>", and the
+    PHP2Shell record "php_exposure:<N>")                                 refused
   PATCH of clients id=N, unless it only sets status='deleting'          refused
   DELETE / GET / HEAD                                                    allowed
 
@@ -38,7 +39,7 @@ MARK_TTL = 5
 PROGRESS_PREFIX = "client_deletion:"
 # app_settings keys that belong to ONE client ("<prefix><client_id>") —
 # the same rows client_deletion._settings_keys clears
-CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:")
+CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "php_exposure:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

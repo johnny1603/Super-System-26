@@ -267,6 +267,27 @@ def _run_publish_youtube_from_media(client_id: int, params: dict, background_tas
             "studio_url": f"https://studio.youtube.com/video/{video_id}/edit" if video_id else ""}
 
 
+def _run_rotate_wordpress_password(client_id: int, params: dict, background_tasks):
+    """website_agent.rotate_stored_password — the same mint/delete code as
+    one-click connect. The audit record is this action's own row (who
+    approved, when, outcome); neither password ever reaches it or the log."""
+    from agents.website_agent import rotate_stored_password
+    result = rotate_stored_password(client_id)
+    if not result.get("success"):
+        raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
+    try:
+        from core import php_exposure
+        php_exposure.note_rotated(client_id, result["site_url"], result.get("old_revoked"))
+    except Exception as e:
+        _log(f"client {client_id}: rotation not noted on the PHP2Shell record: {type(e).__name__}",
+             severity="WARNING", client_id=client_id)
+    _log(f"client {client_id}: WordPress Application Password rotated on {result['site_url']} "
+         f"(old revoked: {bool(result.get('old_revoked'))})", client_id=client_id, action="rotate_wordpress_password")
+    return {"site_url": result["site_url"],
+            "old_password_revoked": "yes" if result.get("old_revoked")
+            else "NO — delete the older 'uallak' Application Password in wp-admin → Users → Profile"}
+
+
 def _run_approve_suggestion(client_id: int, params: dict, background_tasks):
     from agents.engagement_agent import decide_suggestion
     result = decide_suggestion(client_id, params["suggestion_id"], "approved", background_tasks)
@@ -401,6 +422,30 @@ ACTIONS = {
                      "Самое маленькое видео из папки медиа загружается на канал как приватное."),
         "done": _txt("הסרטון הועלה — פרטי ✓", "Video uploaded — private ✓", "Vidéo mise en ligne — privée ✓",
                      "تم رفع الفيديو — خاص ✓", "Видео загружено — приватное ✓"),
+    },
+    "rotate_wordpress_password": {
+        # PHP2Shell response (core/php_exposure, docs/INCIDENT-PHP2SHELL.md):
+        # its memory-disclosure half can leak request headers, and ours carry
+        # this password. Admin-only; the client is never asked or shown it.
+        "approver": "admin", "client_requestable": False, "internal_only": False, "kind": "execute",
+        "does": "Replaces the WordPress Application Password we store for the client's site: mints a new "
+                "one on the site, checks it works, stores it encrypted, then deletes the old one there. "
+                "For sites that may have run a PHP version vulnerable to PHP2Shell. Best after the host "
+                "has updated PHP — on a still-vulnerable server the new one can leak the same way.",
+        "params": {},
+        "available": _connected("wordpress"),
+        "run": _run_rotate_wordpress_password,
+        "title": _txt("החלפת סיסמת האפליקציה של וורדפרס", "Rotate the stored WordPress password",
+                      "Renouveler le mot de passe WordPress enregistré", "تجديد كلمة مرور WordPress المخزّنة",
+                      "Заменить сохранённый пароль WordPress"),
+        "what": _txt("ניצור באתר סיסמת אפליקציה חדשה, נוודא שהיא עובדת, נשמור אותה מוצפנת ונמחק את הישנה מהאתר. החיבור לאתר לא נקטע.",
+                     "We mint a new application password on the site, check it works, store it encrypted and delete the old one there. The site connection is not interrupted.",
+                     "Nous créons un nouveau mot de passe d'application sur le site, le vérifions, l'enregistrons chiffré et supprimons l'ancien. La connexion n'est pas interrompue.",
+                     "ننشئ كلمة مرور تطبيق جديدة في الموقع، نتحقق منها، نخزنها مشفّرة ونحذف القديمة. الاتصال بالموقع لا ينقطع.",
+                     "Создаём на сайте новый пароль приложения, проверяем его, сохраняем в зашифрованном виде и удаляем старый. Подключение к сайту не прерывается."),
+        "done": _txt("סיסמת האפליקציה של וורדפרס הוחלפה ✓", "WordPress application password rotated ✓",
+                     "Mot de passe d'application WordPress renouvelé ✓", "تم تجديد كلمة مرور تطبيق WordPress ✓",
+                     "Пароль приложения WordPress заменён ✓"),
     },
     "connect_tag_manager": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
@@ -960,7 +1005,8 @@ def _admin_summary(spec: dict, result: dict) -> str:
     """The admin's own record of what ran — ids included (admin_agent_chat is
     purged with the client's Google data)."""
     keys = ("campaign_name", "campaign_id", "status", "customer_id", "video_id", "title",
-            "privacy_status", "studio_url", "event_name", "live_version", "ga4_measurement_id")
+            "privacy_status", "studio_url", "event_name", "live_version", "ga4_measurement_id",
+            "site_url", "old_password_revoked")
     facts = " · ".join(f"{k}: {result[k]}" for k in keys if result.get(k))
     return f"✓ {_pick(spec['done'], 'he')}" + (f"\n{facts}" if facts else "")
 
