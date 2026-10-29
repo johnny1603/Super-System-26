@@ -14,7 +14,7 @@
  *   <html dir> and <html lang>, which cascades to the whole layout.
  * - Choice persists in localStorage ('uallak_lang') across all pages. With
  *   nothing stored yet, the browser's own language picks the starting one
- *   (Hebrew if it asks for anything we don't carry).
+ *   (English if it asks only for languages we don't carry).
  */
 (function () {
   'use strict';
@@ -50,17 +50,22 @@
 
   // First visit only (nothing stored yet): follow the browser's own language
   // list, so a non-Hebrew visitor lands on a page they can actually read
-  // instead of always getting Hebrew. Hebrew remains the fallback whenever the
-  // browser asks for a language we don't carry.
+  // instead of always getting Hebrew. A browser that asks only for languages
+  // we don't carry (German, Chinese, ...) gets ENGLISH — the one a foreign
+  // visitor or a platform reviewer is likeliest to read. Hebrew stays the
+  // fallback when the browser reports nothing at all, and per missing KEY (t()).
   function browserLang() {
     try {
       var candidates = navigator.languages || [navigator.language];
+      var asked = false;
       for (var i = 0; i < candidates.length; i++) {
         if (!candidates[i]) continue;
+        asked = true;
         var base = String(candidates[i]).toLowerCase().split('-')[0];
         if (base === 'iw') base = 'he'; // legacy Hebrew tag, still sent by some browsers
         if (SUPPORTED.indexOf(base) !== -1) return base;
       }
+      if (asked) return 'en';
     } catch (e) { /* no navigator (SSR, odd embed) — fall through */ }
     return 'he';
   }

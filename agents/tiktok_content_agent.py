@@ -21,7 +21,9 @@ own TikTok inbox and THEY tap publish inside the app. Two reasons, not one:
 Engagement is real but narrower than Meta's: TikTok's public API has no
 comment-CONTENT reading (that lives behind the separately-gated Research
 API, not realistically obtainable for a commercial tool) - only aggregate
-counts (likes/comments/shares/views) via video.list. There is also no
+counts (likes/comments/shares/views) via video.list — and even that is
+switched off today (tiktok_service.ENGAGEMENT_READS_ENABLED; the scope is
+not requested until a Display API review). There is also no
 comment-inbox / reply_to_comment here, unlike meta_content_agent - that's a
 genuine platform gap, not an oversight.
 """
@@ -184,10 +186,17 @@ def publish(client_id: int, spec: dict) -> dict:
 def get_engagement_summary(client_id: int, window_days: int = ENGAGEMENT_WINDOW_DAYS) -> dict:
     """Aggregate like/comment/share/view counts on the account's public
     videos published in the window. No comment CONTENT, no inbox — TikTok's
-    public API doesn't expose either (see the module docstring)."""
+    public API doesn't expose either (see the module docstring).
+
+    While tiktok_service.ENGAGEMENT_READS_ENABLED is off (video.list not
+    requested), a connected account answers engagement_available=False with
+    NO TikTok call at all — not even the token refresh — and no alert: it is
+    a known state, not a failure."""
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         return {"connected": False}
+    if not tiktok.ENGAGEMENT_READS_ENABLED:
+        return {"connected": True, "engagement_available": False}
 
     log_step(AGENT_NAME, "get_engagement_summary", f"client_id={client_id}")
     try:

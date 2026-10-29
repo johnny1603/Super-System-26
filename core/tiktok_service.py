@@ -5,7 +5,8 @@ for the access-tier reality this integration lives under.
 
 Auth model: each client authorizes THEIR OWN TikTok account via OAuth
 ("Connect Now" in the dashboard, same pattern as Meta/Google Ads). ONE
-consent covers publishing + basic stats:
+consent covers identity + publishing (engagement stats are behind
+ENGAGEMENT_READS_ENABLED, off):
   platform='tiktok'  account_id=open_id (TikTok's user id),
                      access_token='{access_token}::{refresh_token}' (see
                      _split_tokens — TikTok has no analog to Meta's
@@ -46,11 +47,23 @@ TIMEOUT = 60  # video chunk uploads can be slow on the client's connection... no
               # generous timeout since video bytes can be several MB
 
 # video.publish: Content Posting API (both inbox and direct-post init calls).
-# video.list: engagement counts (query/list endpoints) - the closest thing to
-# "engagement visibility" the public API offers (see the skill for why real
-# comment CONTENT reading isn't available, unlike Meta).
 # user.info.basic: added by default with Login Kit; needed for get_user_info.
-OAUTH_SCOPES = ["user.info.basic", "video.publish", "video.list"]
+#
+# ENGAGEMENT_READS_ENABLED is THE switch for video.list (Display API: the
+# video/list + video/query engagement counts). OFF since 2026-10-29: TikTok's
+# app review approves only scopes the submitted demo actually shows, so the
+# app requests just login + publishing. While off, video.list is not in the
+# consent URL and list_videos/query_videos refuse before any HTTP call;
+# tiktok_content_agent.get_engagement_summary answers "not available yet"
+# without touching TikTok. To turn it back on after a Display API review:
+# flip this flag, add video.list in the TikTok developer portal, and have
+# each client reconnect (older grants never carried it). Accounts that were
+# connected while video.list was requested keep working for publishing —
+# their extra scope is simply unused.
+ENGAGEMENT_READS_ENABLED = False
+ENGAGEMENT_SCOPE = "video.list"
+OAUTH_SCOPES = ["user.info.basic", "video.publish"] + (
+    [ENGAGEMENT_SCOPE] if ENGAGEMENT_READS_ENABLED else [])
 
 TOKEN_DELIMITER = "::"  # see the module docstring - composite access_token storage
 
@@ -276,11 +289,27 @@ def get_post_status(access_token: str, publish_id: str) -> dict:
 VIDEO_STAT_FIELDS = "id,create_time,title,like_count,comment_count,share_count,view_count"
 
 
+class EngagementReadsDisabled(TikTokAPIError):
+    """video.list is not requested (ENGAGEMENT_READS_ENABLED is off), so a
+    stats call would only fail at TikTok — refused here, before any HTTP."""
+
+    def __init__(self):
+        super().__init__(f"{ENGAGEMENT_SCOPE} is not requested (ENGAGEMENT_READS_ENABLED is off)",
+                         code="scope_not_requested")
+
+
+def _require_engagement_scope():
+    if not ENGAGEMENT_READS_ENABLED:
+        raise EngagementReadsDisabled()
+
+
 def list_videos(access_token: str, cursor: int = None, max_count: int = 20) -> dict:
     """The account's own PUBLIC videos, newest first — {videos, cursor,
     has_more}. This is how engagement tracking works despite inbox uploads
     never returning a video_id: list what's public now and sum what's in the
-    window, same shape as meta_content_agent.get_engagement_summary."""
+    window, same shape as meta_content_agent.get_engagement_summary.
+    Needs video.list — see ENGAGEMENT_READS_ENABLED."""
+    _require_engagement_scope()
     body = {"max_count": max_count}
     if cursor:
         body["cursor"] = cursor
@@ -289,7 +318,9 @@ def list_videos(access_token: str, cursor: int = None, max_count: int = 20) -> d
 
 
 def query_videos(access_token: str, video_ids: list) -> dict:
-    """Stats for up to 20 SPECIFIC known video ids."""
+    """Stats for up to 20 SPECIFIC known video ids. Needs video.list — see
+    ENGAGEMENT_READS_ENABLED."""
+    _require_engagement_scope()
     return api_post("video/query/", access_token,
                     json_body={"filters": {"video_ids": video_ids[:20]}},
                     params={"fields": VIDEO_STAT_FIELDS})

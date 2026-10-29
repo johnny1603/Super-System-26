@@ -390,6 +390,19 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
   exportable dataset means one branch in `api_server._export_dataset`, nothing else.
+- `core/tiktok_service.py` — TikTok asks for **`user.info.basic` + `video.publish` only**
+  (TikTok app review approves only scopes the demo shows; rejected 2026-10-29). `video.list`
+  (engagement counts) sits behind ONE flag, `ENGAGEMENT_READS_ENABLED` (off): while off,
+  `list_videos`/`query_videos` refuse before any HTTP, `tiktok_content_agent.get_engagement_summary`
+  answers `engagement_available: False` with no TikTok call, and the Performance card /
+  client_state carry note `engagement_counts_not_available_yet` — never `sync_failed`. Turning
+  it on needs a Display API review + clients reconnecting. See the tiktok skill.
+- **The public landing `/` is reviewed by platforms (Google, TikTok)**: it must stay readable
+  without sign-in in English (i18n.js gives English to any browser that asks only for
+  languages we don't carry), explain each service literally (Services section — keep it true
+  to the code: TikTok is inbox upload, never paid ads or auto-posting), show the pricing
+  STRUCTURE (no numbers — those live in `PRICING`), contact `johnny_support@uallak.com`, and
+  footer links to `/terms/` and `/privacy/` (Hebrew: `/privacy/he/`) in every language.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
   terms `/terms/`, privacy policy `/privacy/` (English, static, no JS — the URL on the Google
   OAuth consent screen; Hebrew twin at `/privacy/he/`; its Google-data sections must stay in step

@@ -211,6 +211,11 @@ def _engagement_card(client_id: int, channel: str, platforms: set) -> dict:
     summary, pulled = _cached((channel, client_id), lambda: get_engagement_summary(client_id))
     if not summary.get("connected"):
         return _card("not_connected")
+    if summary.get("engagement_available") is False:
+        # TikTok's video.list scope is not requested (tiktok_service.
+        # ENGAGEMENT_READS_ENABLED) — a known state, never sync_failed
+        return _card("connected_no_data", note="engagement_counts_not_available_yet",
+                     last_checked=pulled)
     if summary.get("error"):
         return _card("needs_attention", reason="sync_failed", last_checked=pulled)
     if not summary.get("videos"):

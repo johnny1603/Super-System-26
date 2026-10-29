@@ -214,6 +214,9 @@ by our team").
   "mismatch" = their site loads a different one (so our setup would measure nothing — the team
   fixes this); "no_gtm_on_site" = their homepage has no Tag Manager snippet. lead_event_live:
   true = leads are being measured, false = not set up yet, null = not confirmed on this read.
+- A channel note "engagement_counts_not_available_yet" (TikTok): the account IS connected and
+  videos can be sent to their TikTok; view/like counts are simply not something we read yet. Say
+  that plainly — never call it a fault, a broken connection or a reason to reconnect.
 
 SITE SECURITY ("site_security") — a serious security flaw in PHP, the software WordPress sites run
 on, was published in October 2026. Only the HOSTING provider can fix it by updating PHP; updating

@@ -15,7 +15,8 @@ Meta's organic side exactly:
 - `core/tiktok_service.py` — HTTP only: OAuth flow, token exchange/refresh,
   Content Posting API (`init_inbox_upload`, `init_direct_post`,
   `upload_video_chunk`, `get_post_status`), `user/info`, `video/list` +
-  `video/query` for stats. `TikTokAPIError` carries TikTok's `code`/`log_id`;
+  `video/query` for stats (behind `ENGAGEMENT_READS_ENABLED`, off — see
+  "Engagement tracking"). `TikTokAPIError` carries TikTok's `code`/`log_id`;
   `is_token_error()` spots the two expiry error codes.
 - `agents/tiktok_content_agent.py` — the pipe from already-generated media
   (a Drive `file_id` from `media_agent`) to the client's TikTok account.
@@ -49,7 +50,11 @@ ONE `client_accounts` row:
   is returned, or the next call would refresh with a dead refresh token.
 - Redirect URI must be registered in the TikTok app's settings:
   `{PUBLIC_APP_URL}/api/oauth/tiktok/callback`.
-- Scopes requested: `user.info.basic`, `video.publish`, `video.list`.
+- Scopes requested: `user.info.basic`, `video.publish` — nothing else.
+  `video.list` was dropped 2026-10-29: TikTok's app review rejected the
+  submission partly because it asked for scopes the demo didn't show, and the
+  engagement counts aren't part of what we demonstrate. See "Engagement
+  tracking" below for the switch that brings it back.
 
 ## Publishing: Upload-to-Inbox, deliberately never Direct Post
 
@@ -106,7 +111,28 @@ Three real gates, layered:
    (`video.list`/`video.query`) are available; this is a genuine platform
    gap versus Meta, not an oversight.
 
-## Engagement tracking — via video.list, not a tracked video_id
+## Engagement tracking — via video.list, not a tracked video_id (OFF today)
+
+**Switched off.** `tiktok_service.ENGAGEMENT_READS_ENABLED = False` is the
+one flag. While it is off:
+- `video.list` is not in `OAUTH_SCOPES` (so not in the consent URL);
+- `list_videos` / `query_videos` raise `EngagementReadsDisabled` before any
+  HTTP call;
+- `get_engagement_summary()` returns `{"connected": True,
+  "engagement_available": False}` for a connected account with no TikTok
+  call at all (not even the token refresh) and no alert;
+- the Performance card is `connected_no_data` with note
+  `engagement_counts_not_available_yet` (dashboard text says publishing works
+  as usual), and client_state carries the same note to the agents
+  (`support_agent.ACCOUNT_STATE_RULE` tells them it is not a fault).
+
+Turning it back on (after a separate Display API review): flip the flag, add
+`video.list` to the app in the TikTok developer portal, and have each client
+reconnect — grants made while it was off don't carry the scope. Accounts
+connected BEFORE 2026-10-29 still hold `video.list` in their grant; that
+changes nothing (unused), and their login/publishing is unaffected.
+
+The design below is what runs when the flag is on.
 
 Upload-to-Inbox never returns a durable video_id for the eventual published
 post (the client controls if/when it's actually posted). So
