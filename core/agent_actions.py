@@ -1212,6 +1212,9 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
             "what": what, "params": params if actor == "admin" else {}, "details": details,
             "approver": row.get("approver"), "kind": spec.get("kind", "execute"),
             "can_decide": row.get("status") in OPEN_STATUSES and row.get("approver") == actor,
+            # The admin "enter as client" view offers its staff button only here
+            "staff_may_decide": (row.get("status") in OPEN_STATUSES and row.get("approver") == "client"
+                                 and staff_may_decide(spec)),
             "created_at": row.get("created_at")}
 
 
@@ -1364,8 +1367,19 @@ def _post(row: dict, text: str, to_client: bool):
              severity="WARNING", client_id=row.get("client_id"))
 
 
+def staff_may_decide(spec: dict) -> bool:
+    """Whether staff may decide a client-chat card from the admin "enter as
+    client" view (core/admin_view): only actions staff can already approve in
+    the Control Room (approver admin, or admin_proposable). Every other client
+    action — sending e-mail from the client's Gmail, publishing to their
+    YouTube or TikTok, ... — stays the client's own click."""
+    return spec.get("approver") == "admin" or bool(spec.get("admin_proposable"))
+
+
 def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
-           background_tasks=None) -> dict:
+           background_tasks=None, staff: bool = False) -> dict:
+    """`staff`: a client-chat card decided by staff from the admin view,
+    explicitly marked as a staff action — recorded as decided_by 'staff'."""
     if actor not in ("client", "admin"):
         return _refuse("bad_actor", 403)
     if decision not in ("approve", "cancel"):
@@ -1383,6 +1397,9 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         return _refuse("unknown_action")
     if row.get("approver") != actor:
         return _refuse("not_your_decision", 403)
+    if staff and (actor != "client" or not staff_may_decide(spec)):
+        return _refuse("client_only", 403)
+    by = "staff" if staff else actor
     client_id = int(row["client_id"])
     lang = _lang(client_id)
     if row.get("status") not in OPEN_STATUSES:
@@ -1396,10 +1413,10 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
 
     if decision == "cancel":
         if not _claim(proposal_id, OPEN_STATUSES, {"status": "cancelled", "decided_at": stamp,
-                                                   "decided_by": actor, "finished_at": stamp,
+                                                   "decided_by": by, "finished_at": stamp,
                                                    "outcome": "cancelled"}):
             return {"success": True, "already": True, "status": (_get(proposal_id) or {}).get("status")}
-        _log(f"client {client_id}: {row['action']} cancelled by {actor}", client_id=client_id,
+        _log(f"client {client_id}: {row['action']} cancelled by {by}", client_id=client_id,
              proposal=proposal_id)
         _post(row, _pick(_CANCELLED, lang), to_client=row.get("origin") == "client_chat")
         return {"success": True, "status": "cancelled", "message": _pick(_CANCELLED, lang)}
@@ -1407,7 +1424,7 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
     # Re-check everything from the STORED row before claiming it
     client = _client(client_id)
     if spec["internal_only"] and not _is_internal(client):
-        _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": actor,
+        _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": by,
                                             "finished_at": stamp, "outcome": "refused_internal_only"})
         return _refuse("internal_only", 403)
     try:
@@ -1417,13 +1434,13 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
     except ValueError as e:
         _log(f"client {client_id}: {row['action']} params refused at approval: {e}",
              severity="WARNING", client_id=client_id, proposal=proposal_id)
-        _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": actor,
+        _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": by,
                                             "finished_at": stamp, "outcome": "invalid_params"})
         return _refuse("invalid_params")
     if not _claim(proposal_id, OPEN_STATUSES, {"status": "running", "decided_at": stamp,
-                                               "decided_by": actor}):
+                                               "decided_by": by}):
         return {"success": True, "already": True, "status": (_get(proposal_id) or {}).get("status")}
-    _log(f"client {client_id}: {row['action']} approved by {actor}", client_id=client_id,
+    _log(f"client {client_id}: {row['action']} approved by {by}", client_id=client_id,
          proposal=proposal_id)
 
     if spec["kind"] in ("link", "focus"):

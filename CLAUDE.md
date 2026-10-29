@@ -179,6 +179,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   client), `client_state.site_security` for agents (ACCOUNT_STATE_RULE: never call a site safe),
   admin action `rotate_wordpress_password` (`website_agent.rotate_stored_password`: mint →
   verify → store → revoke old). InstaWP has no documented PHP-version API — manual runbook.
+- `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
+  the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
+  resolved first inside `_require_session` and allowed only for endpoints in
+  `READ_ENDPOINTS` (an allowlist — a new client endpoint is blocked there until added).
+  Never a client session; the client's password/login codes/session_version are never
+  touched. A card can be decided only with `staff_action` AND only if
+  `agent_actions.staff_may_decide` (Control-Room-approvable) → `decided_by='staff'`. Start,
+  stop and each staff decision are audited to `alerts` source `admin_view` (protected in
+  `bulk_delete.AUDIT_SOURCES`); no audit row → no view / no decision. Access modes per
+  platform (client invites vs uallak opens): `docs/ACCESS-MODES.md`.
 - `core/deletion_guard.py` — while a client is being deleted (and after), every Supabase
   POST/PATCH carrying that client_id is refused at the one HTTP choke point (a pre-send hook
   in `core/db_retry.py`); sessions/logins, the PayPal webhook and lead capture check it too.

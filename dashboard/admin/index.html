@@ -408,9 +408,13 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
     <div id="tab-clients" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div class="page-title">לקוחות</div>
-        <button class="drawer-action-btn" style="width:auto;margin:0;" onclick="openNewClientDrawer()">+ לקוח חדש (ללא חיוב)</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="drawer-action-btn" style="width:auto;margin:0;" onclick="toggleViewAsAudit()">יומן "כניסה כלקוח"</button>
+          <button class="drawer-action-btn" style="width:auto;margin:0;" onclick="openNewClientDrawer()">+ לקוח חדש (ללא חיוב)</button>
+        </div>
       </div>
       <div class="page-sub" id="clientsSub"></div>
+      <div id="viewAsAudit" style="display:none;margin:10px 0;padding:12px;border:1px solid var(--border);border-radius:10px;font-size:12.5px;max-height:320px;overflow-y:auto;"></div>
       <div id="openAlertsBanner"></div>
       <div class="bulk-del-bar" id="bulkbar-clients"></div>
       <div class="table-wrap" id="clientsTable"></div>
@@ -667,7 +671,7 @@ async function loadClients() {
       <div>${wa
         ? `<button class="wa-quick-btn" onclick="window.open('${wa}','_blank');event.stopPropagation();">💬</button>`
         : '<button class="wa-quick-btn" disabled title="אין מספר טלפון">💬</button>'}</div>
-      <div style="white-space:nowrap;"><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button><button class="del-btn" onclick="openDeleteClient(${Number(c.id)});event.stopPropagation();" title="מחיקה מלאה של הלקוח">מחיקת לקוח</button></div>
+      <div style="white-space:nowrap;"><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button><button class="manage-btn" style="margin-inline-start:6px;" onclick="enterAsClient(${Number(c.id)});event.stopPropagation();" title="פתיחת הדשבורד של הלקוח כפי שהוא רואה אותו — קריאה בלבד, נרשם ביומן">כניסה כלקוח</button><button class="del-btn" onclick="openDeleteClient(${Number(c.id)});event.stopPropagation();" title="מחיקה מלאה של הלקוח">מחיקת לקוח</button></div>
     </div>`;
   }).join('');
 
@@ -678,6 +682,35 @@ async function loadClients() {
       </div>${rows}`
     : '<div class="empty-state">אין עדיין לקוחות במערכת</div>';
   bulkRegister('clients', clientsCache.filter(c => !c.protected).map(c => c.id));
+}
+
+// ─── enter as client (core/admin_view) ───────────────────────────────────────
+// Read-only view of the client's own dashboard; the server audits the start
+// before it sets the view cookie. No client session is created.
+async function enterAsClient(clientId) {
+  try {
+    const res = await api(`/api/admin/clients/${Number(clientId)}/view-as`, { method: 'POST' });
+    if (res.success && res.redirect) { window.location.href = res.redirect; return; }
+    const code = res.detail && res.detail.code;
+    const box = document.getElementById('viewAsAudit');
+    box.style.display = 'block';
+    box.textContent = code === 'ERR_AUDIT_UNAVAILABLE' ? 'יומן הביקורת לא זמין — הכניסה לא נפתחה.'
+                      : 'לא ניתן לפתוח את הדשבורד של הלקוח הזה.';
+  } catch (e) { /* api() already showed the login on 401 */ }
+}
+
+async function toggleViewAsAudit() {
+  const box = document.getElementById('viewAsAudit');
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.textContent = 'טוען…';
+  try {
+    const res = await api('/api/admin/view-as/audit');
+    const rows = res.data || [];
+    box.innerHTML = rows.length
+      ? rows.map(r => `<div style="padding:4px 0;border-bottom:1px solid var(--border);" dir="ltr">${esc(r.entry || '')}</div>`).join('')
+      : '<div style="color:var(--gray);">אין עדיין רשומות.</div>';
+  } catch (e) { box.textContent = 'היומן לא זמין כרגע.'; }
 }
 
 // ─── alerts ──────────────────────────────────────────────────────────────────

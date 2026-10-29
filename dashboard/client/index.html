@@ -74,6 +74,29 @@ body {
 }
 .avatar:hover { border-color: var(--accent); }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.logout-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--gray);
+  font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 100px;
+  cursor: pointer; font-family: 'Heebo', sans-serif; white-space: nowrap;
+}
+.logout-btn:hover { border-color: var(--accent); color: var(--white); }
+/* Admin "enter as client" (core/admin_view): impossible to miss, always on top */
+.admin-view-banner {
+  position: sticky; top: 0; z-index: 900; display: none; align-items: center; justify-content: center;
+  gap: 12px; flex-wrap: wrap; padding: 9px 16px; background: #FFB020; color: #0D0D0D;
+  font-size: 13.5px; font-weight: 800; text-align: center;
+}
+.admin-view-banner button {
+  background: #0D0D0D; color: #fff; border: none; border-radius: 100px; padding: 6px 16px;
+  font-family: 'Heebo', sans-serif; font-size: 12.5px; font-weight: 800; cursor: pointer;
+}
+.chat-action .staff-mark { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: #FFB020; }
+/* Phones: the top bar wraps instead of pushing the logout button off-screen */
+@media (max-width: 640px) {
+  .topbar { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
+  .topbar-right { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .upgrade-btn, .logout-btn { padding: 6px 10px; font-size: 11.5px; }
+}
 .disconnect-link {
   background: none; border: none; color: var(--gray);
   font-size: 11.5px; text-decoration: underline; cursor: pointer;
@@ -1032,6 +1055,12 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
 </div>
 
+<!-- Admin "enter as client" only — shown when /api/dashboard says admin_view -->
+<div class="admin-view-banner" id="adminViewBanner" role="status">
+  <span>👁 צפייה בתור <span id="adminViewName"></span> — מנהל · קריאה בלבד</span>
+  <button type="button" onclick="exitAdminView()">יציאה</button>
+</div>
+
 <div class="topbar">
   <div class="logo">u<span>allak</span></div>
   <div class="topbar-right">
@@ -1040,6 +1069,7 @@ a.media-item:hover { border-color: var(--accent); }
     <button class="upgrade-btn" onclick="toggleUpgradePanel()" data-i18n="upgrade_btn">⬆ שדרוג חבילה</button>
     <button class="help-btn" onclick="openWelcome(false)" data-i18n-title="help_title" title="סיור היכרות">?</button>
     <a class="avatar" id="avatarInitial" href="/profile/" data-i18n-title="profile_title" title="הפרופיל שלי">·</a>
+    <button type="button" class="logout-btn" id="logoutBtn" onclick="logout()" data-i18n="logout_btn">התנתקות</button>
   </div>
 </div>
 
@@ -2003,6 +2033,7 @@ const DASH_I18N = {
   support_unavailable: { he:'מספר התמיכה לא זמין כרגע — אפשר לפנות אלינו בצ׳אט והצוות יחזור אליכם.', en:'The support number is unavailable right now — use the chat and the team will get back to you.', fr:"Le numéro n'est pas disponible — utilisez le chat.", ar:'رقم الدعم غير متاح حاليًا — استخدم الدردشة.', ru:'Номер поддержки сейчас недоступен — напишите в чат.' },
 
   upgrade_btn: { he:'⬆ שדרוג חבילה', en:'⬆ Upgrade package', fr:'⬆ Changer de formule', ar:'⬆ ترقية الباقة', ru:'⬆ Улучшить пакет' },
+  logout_btn: { he:'התנתקות', en:'Log out', fr:'Se déconnecter', ar:'تسجيل الخروج', ru:'Выйти' },
   help_title: { he:'סיור היכרות', en:'Welcome tour', fr:'Visite guidée', ar:'جولة تعريفية', ru:'Ознакомительный тур' },
   profile_title: { he:'הפרופיל שלי', en:'My profile', fr:'Mon profil', ar:'ملفي الشخصي', ru:'Мой профиль' },
   greeting_sub: { he:'הנה מה שקורה בעסק שלך היום', en:'Here\'s what\'s happening in your business today', fr:'Voici ce qui se passe dans votre entreprise aujourd\'hui', ar:'إليك ما يحدث في عملك اليوم', ru:'Вот что происходит в вашем бизнесе сегодня' },
@@ -2522,6 +2553,51 @@ function platformsInPackage(pkg) {
   return Math.max(count, 1);
 }
 
+// ─── logout + admin "enter as client" ────────────────────────────────────────
+async function logout() {
+  try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); }
+  catch (e) { /* cookie may already be gone - proceed either way */ }
+  window.location.href = '/login/';
+}
+
+// Staff viewing this dashboard (core/admin_view). The SERVER enforces
+// read-only; this only keeps the page honest about it: writes are not sent
+// and say why, except the staff decision and Exit.
+let ADMIN_VIEW = false;
+const ADMIN_VIEW_SILENT = ['/api/client/login-moment', '/api/client/feature-announcement',
+                           '/api/client/connection-nudge', '/api/client/tour-completed',
+                           '/api/client/interview'];
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = function (input, init) {
+  const method = String((init && init.method) || 'GET').toUpperCase();
+  const url = typeof input === 'string' ? input : ((input && input.url) || '');
+  const path = url.replace(/^https?:\/\/[^/]+/, '');
+  if (ADMIN_VIEW && method !== 'GET' && method !== 'HEAD'
+      && !/^\/api\/client\/actions\/\d+\/decide$/.test(path) && path !== '/api/admin/view-as/exit') {
+    if (!ADMIN_VIEW_SILENT.some(p => path.startsWith(p))) {
+      showNotice('צפייה כמנהל — קריאה בלבד. הפעולה לא נשלחה.', 'warn');
+    }
+    return Promise.resolve(new Response(
+      JSON.stringify({ success: false, detail: { code: 'ERR_ADMIN_VIEW_READ_ONLY' } }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }));
+  }
+  return _nativeFetch(input, init);
+};
+
+function enterAdminViewMode(clientName) {
+  ADMIN_VIEW = true;
+  document.getElementById('adminViewName').textContent = clientName || '';
+  document.getElementById('adminViewBanner').style.display = 'flex';
+  // Exit lives in the banner; the client's logout is not the admin's
+  document.getElementById('logoutBtn').style.display = 'none';
+}
+
+async function exitAdminView() {
+  try { await fetch('/api/admin/view-as/exit', { method: 'POST', credentials: 'same-origin' }); }
+  catch (e) { /* the cookie dies with the admin session anyway */ }
+  window.location.href = '/admin/';
+}
+
 // ─── dashboard data ──────────────────────────────────────────────────────────
 // Activity labels live in DASH_I18N as act_<action_type> keys (all languages)
 function actLabel(actionType) {
@@ -2537,6 +2613,7 @@ async function loadDashboard() {
     if (!body.success) return;
     dashboardData = body.data;
     const d = dashboardData;
+    if (d.admin_view) enterAdminViewMode((d.client && d.client.name) || '');
 
     const name = (d.client && d.client.name) || '';
     document.getElementById('greeting').textContent =
@@ -4152,7 +4229,12 @@ function appendActionCard(personaId, a) {
   note.className = 'note';
   el.append(title, what);
   if (a.details) el.appendChild(actionDetails(a.details));
-  if (a.can_decide) {
+  if (ADMIN_VIEW && (a.can_decide || a.staff_may_decide)) {
+    // Staff in the client's dashboard: a client-only action stays the
+    // client's click; a staff-approvable one needs the explicit staff mark
+    if (a.staff_may_decide) el.appendChild(staffDecisionRow(a, el, personaId));
+    else note.textContent = 'רק הלקוח יכול לאשר את הפעולה הזו.';
+  } else if (a.can_decide) {
     const row = document.createElement('div');
     row.className = 'row';
     const ok = document.createElement('button');
@@ -4208,7 +4290,32 @@ function actionDetails(d) {
   return box;
 }
 
-async function decideAction(id, decision, el, personaId) {
+// Admin view: the buttons stay disabled until the staff box is ticked, and
+// the request carries staff_action — the server refuses it otherwise
+function staffDecisionRow(a, el, personaId) {
+  const wrap = document.createElement('div');
+  const mark = document.createElement('label');
+  mark.className = 'staff-mark';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  mark.append(box, document.createTextNode('זו פעולת צוות (נרשמת ביומן הביקורת)'));
+  const row = document.createElement('div');
+  row.className = 'row';
+  const ok = document.createElement('button');
+  ok.type = 'button'; ok.className = 'ok'; ok.disabled = true;
+  ok.textContent = 'אישור כפעולת צוות';
+  ok.onclick = () => decideAction(a.id, 'approve', el, personaId, true);
+  const no = document.createElement('button');
+  no.type = 'button'; no.className = 'no'; no.disabled = true;
+  no.textContent = 'ביטול כפעולת צוות';
+  no.onclick = () => decideAction(a.id, 'cancel', el, personaId, true);
+  box.onchange = () => { ok.disabled = no.disabled = !box.checked; };
+  row.append(ok, no);
+  wrap.append(mark, row);
+  return wrap;
+}
+
+async function decideAction(id, decision, el, personaId, staffAction = false) {
   const note = el.querySelector('.note');
   const buttons = el.querySelectorAll('button');
   buttons.forEach(b => { b.disabled = true; });
@@ -4218,7 +4325,7 @@ async function decideAction(id, decision, el, personaId) {
     const res = await fetch(`/api/client/actions/${Number(id)}/decide`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision }),
+      body: JSON.stringify(staffAction ? { decision, staff_action: true } : { decision }),
     });
     data = await res.json();
     if (!res.ok || !data.success) throw new Error('decide refused');

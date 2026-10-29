@@ -226,6 +226,44 @@ def verify_admin_session_token(token: str) -> bool:
     return bool(payload and payload.get("admin") is True)
 
 
+ADMIN_VIEW_MAX_AGE_SECONDS = 2 * 60 * 60
+
+
+def _sign_admin_view(payload_b64: bytes) -> str:
+    # Derived secret: an "enter as client" token must never verify as a client
+    # session (it is NOT one — core/admin_view) or as the admin session itself
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":admin-view").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def admin_session_fingerprint(admin_token: str) -> str:
+    """Short, non-reversible id of one admin session, for the audit log and to
+    bind an admin-view token to the session that started it."""
+    return hashlib.sha256((admin_token or "").encode()).hexdigest()[:16]
+
+
+def create_admin_view_token(client_id: int, admin_token: str) -> str:
+    """The admin "enter as client" cookie: which client, bound to the admin
+    session that opened it (logging out of admin ends it), 2 hours at most."""
+    payload = json.dumps({"client_id": int(client_id), "purpose": "admin_view",
+                          "as": admin_session_fingerprint(admin_token),
+                          "exp": int(time.time()) + ADMIN_VIEW_MAX_AGE_SECONDS}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_admin_view(payload_b64)}"
+
+
+def verify_admin_view_token(token: str, admin_token: str):
+    """The viewed client_id, only while the SAME admin session is still valid —
+    otherwise None. Never raises."""
+    if not verify_admin_session_token(admin_token):
+        return None
+    payload = _verify(token, _sign_admin_view)
+    if not (payload and payload.get("purpose") == "admin_view"
+            and hmac.compare_digest(str(payload.get("as", "")), admin_session_fingerprint(admin_token))):
+        return None
+    return payload.get("client_id")
+
+
 def _verify(token: str, sign_fn):
     """Returns the decoded payload dict for a well-signed, unexpired token -
     otherwise None. Never raises on malformed/tampered input."""

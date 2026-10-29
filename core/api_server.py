@@ -59,7 +59,9 @@ from core.session import (
     session_token_version, create_google_login_state, verify_google_login_state,
     create_google_link_token, verify_google_link_token,
     create_wp_connect_state, verify_wp_connect_state,
+    create_admin_view_token, verify_admin_view_token, admin_session_fingerprint,
 )
+from core import admin_view
 from core import client_auth
 from core import google_ads_service
 from core import meta_service
@@ -867,7 +869,34 @@ def _set_session_cookie(response: Response, client_id: int, session_version=0):
         path="/",
     )
 
+def _admin_view_client(request: Request):
+    """The client an admin is viewing through "enter as client"
+    (core/admin_view), or None. Valid only with the admin session that opened it."""
+    token = request.cookies.get(admin_view.COOKIE)
+    if not token:
+        return None
+    return verify_admin_view_token(token, request.cookies.get("admin_session"))
+
+def _request_ip(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return forwarded or (request.client.host if request.client else "")
+
+def _admin_view_audit(request: Request, event: str, client_id: int, detail: str = ""):
+    admin_view.audit(event, client_id, admin_session_fingerprint(request.cookies.get("admin_session")),
+                     _request_ip(request), detail)
+
 def _require_session(request: Request) -> int:
+    # Admin "enter as client" first: READ-ONLY, by endpoint allowlist. It is
+    # never a client session — the client's own cookie, password and login
+    # codes are untouched (core/admin_view).
+    viewed = _admin_view_client(request)
+    if viewed is not None:
+        endpoint = getattr(request.scope.get("endpoint"), "__name__", "")
+        if not admin_view.allowed(endpoint, request.method):
+            raise HTTPException(status_code=403, detail={"code": "ERR_ADMIN_VIEW_READ_ONLY"})
+        if _locked_out(get_client(viewed)):
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return int(viewed)
     token = request.cookies.get("session")
     client_id = verify_session_token(token)
     if not client_id:
@@ -1214,6 +1243,9 @@ async def dashboard_data(request: Request):
         # Google verification round 2 cards: hidden unless their flag is on
         # (core/round2_flags; Gmail also needs the Gmail agent package)
         "features": _round2_features(client_id),
+        # Admin "enter as client": the page shows the banner + Exit and turns
+        # approve buttons into explicit staff buttons (core/admin_view)
+        "admin_view": _admin_view_client(request) is not None,
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -4650,7 +4682,9 @@ def _drive_file_response(client_id: int, file_id: str, request: Request, by: str
 
 @app.get("/api/client/media-drive/file/{file_id}")
 def client_media_drive_file(file_id: str, request: Request):
-    return _drive_file_response(_require_session(request), file_id, request, "client")
+    client_id = _require_session(request)
+    by = "admin" if _admin_view_client(request) is not None else "client"
+    return _drive_file_response(client_id, file_id, request, by)
 
 @app.get("/api/admin/control-room/{client_id}/media-drive/file/{file_id}")
 def admin_media_drive_file(client_id: int, file_id: str, request: Request):
@@ -4695,7 +4729,10 @@ def client_media_assets(request: Request, kind: str = ""):
     # instead of showing a silently greyed-out button.
     try:
         from agents.media_agent import media_folder_status
-        folder = media_folder_status(client_id)
+        # media_folder_status creates + shares the folder on first ask — a
+        # write the admin view must not trigger (core/admin_view)
+        folder = ({"status": "admin_view"} if _admin_view_client(request) is not None
+                  else media_folder_status(client_id))
     except Exception as e:
         print(f"[media_assets] folder status unavailable for client {client_id}: {e}")
         folder = {"status": "error", "reason": "other"}
@@ -4974,6 +5011,7 @@ def admin_login(req: AdminLoginRequest, response: Response):
 @app.post("/api/admin/logout")
 async def admin_logout(response: Response):
     response.delete_cookie("admin_session", path="/")
+    response.delete_cookie(admin_view.COOKIE, path="/")   # dead without the session anyway
     return {"success": True}
 
 @app.get("/api/admin/overview")
@@ -4985,6 +5023,49 @@ def admin_overview(request: Request):
 def admin_clients(request: Request):
     _require_admin(request)
     return {"success": True, "data": admin_service.list_clients_admin()}
+
+# ─── Admin "enter as client" (core/admin_view) ───────────────────────────────
+# Read-only view of the client's own dashboard. Sets ONLY the admin_view
+# cookie; never a client session, never touches the client's credentials.
+
+@app.post("/api/admin/clients/{client_id}/view-as")
+def admin_view_as_start(client_id: int, request: Request, response: Response):
+    _require_admin(request)
+    client = get_client(client_id)
+    if _locked_out(client):
+        raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_VIEWABLE"})
+    try:
+        _admin_view_audit(request, "view_as_start", client_id)
+    except admin_view.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+    response.set_cookie(
+        key=admin_view.COOKIE,
+        value=create_admin_view_token(client_id, request.cookies.get("admin_session")),
+        httponly=True, secure=True, samesite="lax",
+        max_age=2 * 60 * 60, path="/",
+    )
+    return {"success": True, "redirect": "/dashboard/"}
+
+@app.post("/api/admin/view-as/exit")
+def admin_view_as_exit(request: Request, response: Response):
+    # Always clears the cookie; the stop is audited when there was a live view
+    viewed = _admin_view_client(request)
+    if viewed is not None:
+        try:
+            _admin_view_audit(request, "view_as_stop", viewed)
+        except admin_view.AuditUnavailable:
+            alert("admin_view", [f"client {viewed}: admin view ended but the stop was not audited"])
+    response.delete_cookie(admin_view.COOKIE, path="/")
+    return {"success": True, "redirect": "/admin/"}
+
+@app.get("/api/admin/view-as/audit")
+def admin_view_as_audit(request: Request, limit: int = 100):
+    _require_admin(request)
+    try:
+        return {"success": True, "data": admin_view.recent(max(1, min(int(limit), 500)))}
+    except Exception as e:
+        print(f"[admin_view] audit read failed: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
 
 class AdminNewClientRequest(BaseModel):
     name: str
@@ -5338,6 +5419,8 @@ def admin_demo_youtube_upload(client_id: int, request: Request):
 
 class ActionDecisionRequest(BaseModel):
     decision: str   # approve | cancel
+    # Admin "enter as client" only: the explicit "this is a staff action" mark
+    staff_action: bool = False
 
 @app.get("/api/client/actions")
 def client_open_actions(request: Request, persona: str = "general"):
@@ -5353,8 +5436,27 @@ def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: 
     # Plain `def`: an approved action may make blocking calls
     client_id = _require_session(request)
     from core import agent_actions
+    staff = _admin_view_client(request) is not None
+    if staff:
+        # Staff in the client's dashboard: only an explicitly marked staff
+        # action, audited BEFORE it runs (no audit → nothing runs)
+        if not req.staff_action:
+            raise HTTPException(status_code=403, detail={"code": "ERR_STAFF_ACTION_REQUIRED"})
+        try:
+            _admin_view_audit(request, "staff_action_requested", client_id,
+                              f"proposal {proposal_id} {req.decision}")
+        except admin_view.AuditUnavailable:
+            raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
     result = agent_actions.decide(proposal_id, actor="client", actor_client_id=client_id,
-                                  decision=req.decision, background_tasks=background_tasks)
+                                  decision=req.decision, background_tasks=background_tasks, staff=staff)
+    if staff:
+        try:
+            _admin_view_audit(request, "staff_action_result", client_id,
+                              f"proposal {proposal_id} {req.decision}: "
+                              f"{result.get('status') or result.get('code')}")
+        except admin_view.AuditUnavailable:
+            alert("admin_view", [f"client {client_id}: staff action on proposal {proposal_id} ran "
+                                 f"but its result was not audited"])
     if not result.get("success"):
         raise HTTPException(status_code=result.get("http", 400), detail={"code": result.get("code")})
     return {"success": True, "data": result}
