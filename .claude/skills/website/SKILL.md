@@ -265,12 +265,25 @@ lead-event tags (`gaawe` with a `LEAD_EVENT_NAMES` event) and their trigger
 types; "no published version at all" is its own explicit state.
 
 **Configure — v1 scope = the single common case**
-(`configure_lead_conversion`, `POST /api/website/configure-conversion`,
-admin): standard HTML form submission → GA4 `generate_lead` event
+(`configure_lead_conversion`; the client's own chat card `configure_conversion`
+— client-approved since 2026-10-30 — plus `POST /api/website/configure-conversion`
+(admin key), the Control Room button, and `scripts/gtm_lead_tracking_check.sh`
+for a live check): standard HTML form submission → GA4 `generate_lead` event
 (GA4's own recommended lead event, importable by Google Ads as a conversion
-action), created in the default workspace and PUBLISHED in the same call.
-Double-count guard: refuses when the live container already has a lead tag.
-GA4 id falls back to what the site's homepage declares when not passed.
+action), PUBLISHED in the same call.
+- Workspace: created in a NEW workspace of our own (`gtm_service.lead_workspace`).
+  That way the version holds only our trigger and tag, never someone's drafts.
+  Fallback: the default workspace, only when it has no unpublished change;
+  otherwise `gtm_workspace_busy`.
+- Failed run: deletes only what it created (`_undo_gtm_drafts`).
+- Compiler errors: `compilerError` from create_version/publish is a failure,
+  not a success.
+- Every failure returns a `reason`, explained to the client in plain words
+  (`core/agent_actions` refusals; tests in `tests/test_google_scope_flows.py`).
+- Double-count guard: refuses when the live container already has a lead tag.
+- GA4 id: falls back to what the site's homepage declares when not passed.
+- NOT yet run against a live container — see docs/GOOGLE-SCOPES.md "Audit
+  findings".
 
 **v1 limits, stated not hidden**: (a) GTM's built-in Form Submission
 trigger catches standard submits — heavily-AJAXed form builders need a

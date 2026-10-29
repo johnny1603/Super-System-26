@@ -27,9 +27,11 @@ through, not a new tier of pain.
 
 Each scope, by the API method that requires it (Tag Manager API v2
 reference, checked 2026-10-17) — docs/GOOGLE-SCOPES.md has the full map:
-tagmanager.edit.containers — accounts.list, containers.list,
-  workspaces.list, versions.live (read) and workspaces.triggers.create /
-  workspaces.tags.create (write).
+tagmanager.edit.containers — accounts.list, containers.list, containers.get,
+  workspaces.list, workspaces.getStatus, versions.live (read) and
+  workspaces.create / workspaces.delete / workspaces.triggers.create /
+  workspaces.tags.create / triggers.delete / tags.delete (write; the deletes
+  only remove what this flow itself just created, after a failed run).
 tagmanager.edit.containerversions — workspaces.create_version. Missing
   until 2026-10-17, so every publish_workspace call would have failed with
   403; grants made before then lack it and must reconnect
@@ -148,6 +150,26 @@ def _post(refresh_token: str, path: str, json_body: dict = None, params: dict = 
     return response.json()
 
 
+def _delete(refresh_token: str, path: str):
+    response = httpx.delete(f"{GTM_BASE_URL}/{path.lstrip('/')}",
+                            headers={"Authorization": f"Bearer {_access_token(refresh_token)}"},
+                            timeout=TIMEOUT)
+    if response.status_code not in (200, 204):
+        raise GtmApiError("DELETE", path, response)
+
+
+class GtmCompilerError(RuntimeError):
+    """create_version / publish answered compilerError: GTM could not build
+    the container (e.g. a broken tag someone else left in it). Nothing went
+    live."""
+
+
+class GtmWorkspaceBusy(RuntimeError):
+    """No workspace of our own could be created (free GTM containers allow 3)
+    and the default one holds someone's unpublished changes — versioning it
+    would publish their drafts too, so we stop."""
+
+
 # ─── Discovery ────────────────────────────────────────────────────────────────
 
 def list_accounts(refresh_token: str) -> list:
@@ -184,6 +206,49 @@ def default_workspace_path(refresh_token: str, container_path: str) -> str:
     if not workspaces:
         raise RuntimeError(f"container {container_path} has no workspaces")
     return workspaces[0]["path"]
+
+
+def workspace_has_changes(refresh_token: str, workspace_path: str) -> bool:
+    """workspaces.getStatus: any unpublished change or merge conflict."""
+    status = _get(refresh_token, f"{workspace_path}/status")
+    return bool(status.get("workspaceChange") or status.get("mergeConflict"))
+
+
+WORKSPACE_NAME = "uallak lead tracking"
+
+
+def lead_workspace(refresh_token: str, container_path: str) -> tuple:
+    """(workspace_path, ours). A NEW workspace is based on the latest
+    container version, so the version made from it carries only our trigger
+    and tag — never drafts someone left in the default workspace — and GTM
+    deletes it when the version is created. If one can't be created (the
+    workspace limit), the default workspace is used only when it holds no
+    unpublished change; otherwise GtmWorkspaceBusy. Auth/permission errors
+    (401/403) are re-raised: the default workspace would fail the same way."""
+    try:
+        created = _post(refresh_token, f"{container_path}/workspaces",
+                        json_body={"name": WORKSPACE_NAME,
+                                   "description": "Created by uallak to add lead tracking; "
+                                                  "removed by Tag Manager when the version is created."})
+        if created.get("path"):
+            return created["path"], True
+    except GtmApiError as e:
+        if e.status in (401, 403):
+            raise
+    path = default_workspace_path(refresh_token, container_path)
+    if workspace_has_changes(refresh_token, path):
+        raise GtmWorkspaceBusy(f"{path} has unpublished changes and no new workspace could be created")
+    return path, False
+
+
+def delete_workspace(refresh_token: str, workspace_path: str):
+    _delete(refresh_token, workspace_path)
+
+
+def delete_entity(refresh_token: str, entity_path: str):
+    """A trigger or tag we created in a shared workspace (cleanup after a
+    failed run, so no half-done draft stays behind)."""
+    _delete(refresh_token, entity_path)
 
 
 # ─── Read (verification) ─────────────────────────────────────────────────────
@@ -249,8 +314,14 @@ def publish_workspace(refresh_token: str, workspace_path: str,
     create_version freezes the workspace into a version, publish makes it
     the live one. Returns the publish response (contains containerVersion)."""
     created = _post(refresh_token, f"{workspace_path}:create_version",
-                    json_body={"name": version_name})
+                    json_body={"name": version_name,
+                               "notes": "uallak: form-submission trigger + GA4 generate_lead tag"})
+    if created.get("compilerError"):
+        raise GtmCompilerError("create_version: Tag Manager could not compile the workspace")
     version_path = (created.get("containerVersion") or {}).get("path")
     if not version_path:
         raise RuntimeError(f"create_version returned no version path: {str(created)[:300]}")
-    return _post(refresh_token, f"{version_path}:publish")
+    published = _post(refresh_token, f"{version_path}:publish")
+    if published.get("compilerError"):
+        raise GtmCompilerError(f"publish: Tag Manager could not compile {version_path}")
+    return published

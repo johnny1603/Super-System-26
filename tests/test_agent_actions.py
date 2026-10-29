@@ -212,11 +212,31 @@ class ProposeGuards(ActionTestCase):
         self.assertEqual(self.rows()[0]["approver"], "admin")
 
     def test_client_request_for_staff_action_awaits_staff_and_alerts(self):
-        result = self.propose(40, "client_chat", "configure_conversion")
+        result = self.propose(40, "client_chat", "rotate_wordpress_password")
+        self.assertEqual(result["error"], "not_allowed_here")       # not client_requestable
+        saved = aa.ACTIONS["rotate_wordpress_password"]["client_requestable"]
+        aa.ACTIONS["rotate_wordpress_password"]["client_requestable"] = True
+        try:
+            state = {**STATE_READY, "connections": {"active_platforms": ["wordpress"]}}
+            result = self.propose(40, "client_chat", "rotate_wordpress_password", state=state)
+        finally:
+            aa.ACTIONS["rotate_wordpress_password"]["client_requestable"] = saved
         self.assertEqual(result["status"], "awaiting_staff")
         self.assertFalse(result["card"]["can_decide"])     # no client button
         self.assertEqual(len(self.alerts), 1)
         self.assertIn("client 40", self.alerts[0])
+
+    def test_lead_tracking_is_the_clients_own_click(self):
+        result = self.propose(40, "client_chat", "configure_conversion")
+        self.assertEqual(result["status"], "proposed")
+        self.assertTrue(result["card"]["can_decide"])
+        self.assertEqual(self.rows()[0]["approver"], "client")
+        self.assertEqual(self.alerts, [])
+
+    def test_lead_tracking_from_the_control_room_is_approved_there(self):
+        result = self.propose(27, "admin_chat", "configure_conversion")
+        self.assertEqual(result["status"], "proposed")
+        self.assertEqual(self.rows()[0]["approver"], "admin")
 
     def test_same_open_proposal_is_not_duplicated(self):
         first = self.propose(27, "admin_chat", "demo_google_ads_campaign")
@@ -389,9 +409,14 @@ class Availability(ActionTestCase):
         names = self.names(27, "client_chat", STATE_READY)
         self.assertFalse({"demo_google_ads_campaign", "demo_youtube_upload"} & names)
 
-    def test_staff_actions_are_labelled_staff_for_the_client_model(self):
+    def test_client_approved_actions_are_labelled_client_for_the_model(self):
         offered = {a["name"]: a for a in aa.available(40, "client_chat", STATE_READY, client=CLIENTS[40])}
-        self.assertEqual(offered["configure_conversion"]["approver"], "staff")
+        self.assertEqual(offered["configure_conversion"]["approver"], "client")
+
+    def test_test_campaign_card_only_for_internal_clients_in_their_own_chat(self):
+        self.assertIn("google_ads_test_campaign", self.names(27, "client_chat", STATE_READY))
+        self.assertNotIn("google_ads_test_campaign", self.names(40, "client_chat", STATE_READY))
+        self.assertNotIn("google_ads_test_campaign", self.names(27, "admin_chat", STATE_READY))
 
 
 # ─── verification_demo: the internal-client refusal itself ───────────────────

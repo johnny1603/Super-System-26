@@ -8,7 +8,7 @@ the same commit** — and the public privacy policy (`dashboard/privacy/index.ht
 + `dashboard/privacy/he/index.html`, served at `/privacy/`), whose "Google user
 data" sections are written from this file.
 
-## Every scope string in the code (grep, 2026-10-21)
+## Every scope string in the code (grep, 2026-10-30)
 
 The ONLY places a Google OAuth scope string exists (one constant per flow; every
 consent URL is built from its constant with `" ".join(...)`, never by hand):
@@ -20,9 +20,9 @@ consent URL is built from its constant with `" ".join(...)`, never by hand):
 | `core/google_ads_service.py:38` | `ADS_SCOPES` | `https://www.googleapis.com/auth/adwords` |
 | `core/youtube_service.py:51` | `YOUTUBE_SCOPES` | `https://www.googleapis.com/auth/youtube.upload` |
 | `core/youtube_service.py:52` | `YOUTUBE_SCOPES` | `https://www.googleapis.com/auth/youtube.readonly` |
-| `core/gtm_service.py:63` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containers` |
-| `core/gtm_service.py:64` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containerversions` |
-| `core/gtm_service.py:65` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.publish` |
+| `core/gtm_service.py:65` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containers` |
+| `core/gtm_service.py:66` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containerversions` |
+| `core/gtm_service.py:67` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.publish` |
 | `core/drive_service.py:43` | `DRIVE_SCOPES` | `https://www.googleapis.com/auth/drive` — **service account only, never a user consent; not on the consent screen** |
 
 Consent-URL builders: `client_auth.google_login_url`,
@@ -85,17 +85,45 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 `youtube.readonly`, `tagmanager.edit.containers`,
 `tagmanager.edit.containerversions`, `tagmanager.publish`.
 
-## Least privilege, scope by scope
+## Evidence matrix
 
-| Scope | User-facing feature | Exact API calls | Narrower scope possible? |
-|---|---|---|---|
-| `openid` + `userinfo.email` | "Sign in with Google" on `/login` | OpenID userinfo (`sub`, `email`, `email_verified`) | No — the minimum for sign-in. `profile` was dropped 2026-10-17. |
-| `adwords` | Account picker, performance page + chat answers (reads); search-campaign creation, always PAUSED (write) | `customers:listAccessibleCustomers`, `googleAds:search` (GAQL), `googleAds:mutate` | No — `adwords` is the Google Ads API's only OAuth scope; no read-only variant exists. |
-| `youtube.upload` | Publishing a video to the client's channel, always Private — one uallak produced, or one from the client's media folder that the client approved in chat | `videos.insert` (resumable) | Already the narrowest for uploads. The full `youtube` scope (manage/delete all videos, playlists, comments) is NOT requested. |
-| `youtube.readonly` | Channel identification on connect; view/like/comment counts on the performance page | `channels.list mine=true`, `playlistItems.list`, `videos.list part=snippet,statistics,status` | No — `youtube.upload` cannot call `channels.list`/`videos.list`, and our uploads are Private, so the public API key cannot see them. |
-| `tagmanager.edit.containers` | Lead-conversion tracking: find the site's container, check the live version, add a form-submit trigger + GA4 `generate_lead` tag | `accounts.list`, `containers.list`, `workspaces.list`, `versions.live`, `workspaces.triggers.create`, `workspaces.tags.create` | No — `tagmanager.readonly` cannot create triggers or tags. |
-| `tagmanager.edit.containerversions` | Same feature: turn the workspace change into a version | `workspaces.create_version` | No — creating a version requires exactly this scope. |
-| `tagmanager.publish` | Same feature: make the version live so leads are counted | `versions.publish` | No — publishing requires exactly this scope. Without it the tag would sit unpublished and nothing would be measured. |
+One row per scope (audit 2026-10-30). "Requested in" is the only place the
+string exists; every consent URL is built from that constant. Client-chat
+flows are `core/agent_actions` actions: the agent proposes, the client
+approves on the card, the server runs the named function.
+
+| Scope | Requested in (code) | API calls that use it (code) | User-facing feature | Why a narrower scope is not enough |
+|---|---|---|---|---|
+| `openid` | `core/client_auth.py` `GOOGLE_LOGIN_SCOPES` → `google_login_url` | OpenID userinfo `sub` (`client_auth.google_identity`) | "Sign in with Google" on `/login` for an existing customer | Already the minimum: the stable account id is what links a Google login to one uallak account. `profile` was dropped 2026-10-17. |
+| `userinfo.email` | `core/client_auth.py` `GOOGLE_LOGIN_SCOPES` | OpenID userinfo `email`, `email_verified` (`client_auth.google_identity` → `find_client_for_google`) | Same sign-in: the verified email finds the account the first time; a one-time emailed code confirms the link | Non-sensitive and the narrowest that returns a verified address; `openid` alone has no email. |
+| `adwords` | `core/google_ads_service.py` `ADS_SCOPES` → `build_consent_url` (start route `/api/oauth/google-ads/start`, which refuses without the staff-access consent tick) | `customers:listAccessibleCustomers` (`list_accessible_customers`); `googleAds:search` GAQL (`google_ads_agent.get_campaign_performance` and the reads listed under Google Ads below); `googleAds:mutate` (`google_ads_agent.create_search_campaign` → `atomic_mutate`) | Account picker; Performance page + chat answers with the account's numbers; chat card **"Create a paused test campaign in Google Ads"** (`google_ads_test_campaign`, internal test clients) and staff-drafted campaigns for real clients — every campaign is created PAUSED | The Google Ads API has exactly one OAuth scope. No read-only or per-campaign variant exists. |
+| `youtube.upload` | `core/youtube_service.py` `YOUTUBE_SCOPES` → `build_consent_url` | `videos.insert` resumable (`youtube_service.upload_video_stream` ← `youtube_content_agent.publish`) | Chat card **"Upload a video to YouTube (private)"** (`publish_youtube_from_media`): the card shows the file, title, description, hashtags and tags; the upload is always Private | Already the narrowest scope that can upload. The full `youtube` scope (edit/delete videos, playlists, comments) is not requested and never was. |
+| `youtube.readonly` | `core/youtube_service.py` `YOUTUBE_SCOPES` | `channels.list mine=true` (`get_own_channel`), `playlistItems.list` (`list_recent_uploads`), `videos.list part=snippet,statistics,status` (`get_video_stats`) | Shows which channel is connected; view/like/comment counts of the client's own uploads on the Performance page | `youtube.upload` cannot call any read method, and our uploads are Private, so a public API key cannot see them. Read-only is the narrowest scope that can. |
+| `tagmanager.edit.containers` | `core/gtm_service.py` `GTM_SCOPES` → `build_consent_url` | `accounts.list`, `containers.list`, `containers.get`, `workspaces.list`, `workspaces.getStatus`, `versions.live` (reads); `workspaces.create`, `workspaces.triggers.create`, `workspaces.tags.create`, and `workspaces.delete` / `triggers.delete` / `tags.delete` only for what this flow just created when a run fails (`gtm_service.lead_workspace`, `create_form_submit_trigger`, `create_ga4_lead_event_tag`, `website_agent._undo_gtm_drafts`) | Chat card **"Turn on lead tracking on your website"** (`configure_conversion`): adds one form-submission trigger and one GA4 `generate_lead` tag, so every lead from the site is counted | `tagmanager.readonly` cannot create a workspace, trigger or tag; `edit.containers` is the narrowest write scope. |
+| `tagmanager.edit.containerversions` | `core/gtm_service.py` `GTM_SCOPES` | `workspaces.create_version` (`gtm_service.publish_workspace`) | Same card: the new trigger and tag become a container version | Versioning is excluded from `edit.containers` by design, and only this scope allows `create_version`. |
+| `tagmanager.publish` | `core/gtm_service.py` `GTM_SCOPES` | `versions.publish` (`gtm_service.publish_workspace`) | Same card: the version goes live, so the tag actually fires on the site | Only this scope can publish. Without it the tag sits in a draft, and the site counts nothing. |
+
+## Audit findings (2026-10-30)
+
+- **Requested but unused:** none. Every scope above has at least one call,
+  and each call is reachable from a client-facing flow.
+- **Used but not requested:** none. `drive` belongs to uallak's own service
+  account and never appears on a consent screen (see Drive below).
+- **Defined but uncalled helpers:** `gtm_service.list_workspace_tags` and
+  `list_workspace_triggers`, plus `google_ads_service.update_campaign_budget`
+  and `set_campaign_bid_ceiling`. They need no extra scope and are not
+  claimed in the justifications.
+- **Not yet run against a live container:** the Tag Manager writes have only
+  been exercised against tests (`tests/test_google_scope_flows.py`, an
+  in-memory Tag Manager API). Before recording, run
+  `bash scripts/gtm_lead_tracking_check.sh 27` (read only), then
+  `bash scripts/gtm_lead_tracking_check.sh 27 G-XXXXXXX apply`, and confirm in
+  `tagmanager.google.com` that the tag and version are live. If it can't be
+  made to work reliably, remove the three `tagmanager.*` scopes from
+  `GTM_SCOPES`, this file and the Console instead of showing them.
+- `tests/test_google_scope_flows.py` `ScopeAudit` fails if a scope string
+  appears in `core/` or `agents/` that is not on the final list, or if a
+  scope loses its row here.
 
 ## Justifications (paste into the Console, one per scope)
 
@@ -105,7 +133,7 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 
 **https://www.googleapis.com/auth/youtube.readonly** — When the user connects YouTube, the app identifies the user's own channel (channels.list with mine=true) and its uploads playlist, and afterwards shows the view, like and comment counts of the user's recent uploads on their performance page (playlistItems.list, videos.list). The videos we upload are Private, so their statistics are visible only through the owner's authorization, not through a public API key. youtube.upload cannot call these read methods, and the read-only scope is the narrowest that can. Comment text, subscribers and watch history are never read.
 
-**https://www.googleapis.com/auth/tagmanager.edit.containers** — uallak measures the leads that the user's website produces. The app finds the Google Tag Manager container installed on the user's site (accounts.list, containers.list, workspaces.list), checks whether a lead-conversion tag is already live (versions.live), and if not, adds one form-submission trigger and one Google Analytics 4 generate_lead event tag to the container's workspace (workspaces.triggers.create, workspaces.tags.create). tagmanager.readonly cannot create triggers or tags, so this is the narrowest scope that can perform the setup. Existing tags are never changed or removed.
+**https://www.googleapis.com/auth/tagmanager.edit.containers** — uallak measures the leads that the user's website produces. The app finds the Google Tag Manager container installed on the user's site (accounts.list, containers.list, workspaces.list) and checks whether a lead-conversion tag is already live (versions.live). When the user asks in the dashboard chat to turn on lead tracking and approves the confirmation card, the app creates a workspace of its own (workspaces.create), so no unpublished change of anyone else is ever published, and adds one form-submission trigger and one Google Analytics 4 generate_lead event tag to it (workspaces.triggers.create, workspaces.tags.create). If a step fails, the app deletes only the workspace, trigger or tag it just created. tagmanager.readonly cannot create workspaces, triggers or tags, so this is the narrowest scope that can perform the setup. Existing tags are never changed or removed.
 
 **https://www.googleapis.com/auth/tagmanager.edit.containerversions** — After adding the trigger and tag, the app creates a container version from the workspace (workspaces.create_version) so the change can be published. Creating a version requires exactly this scope; no narrower scope allows it.
 
@@ -113,48 +141,212 @@ Sensitive scopes to submit for verification (6): `adwords`, `youtube.upload`,
 
 **openid, https://www.googleapis.com/auth/userinfo.email** (non-sensitive) — "Sign in with Google" for existing uallak customers: the app reads the user's Google account identifier and verified email address once, to match them to their existing account. The first time a Google account is used with a uallak account, the user also enters a one-time code we email to that account's address before the two are linked. It never creates an account and requests no profile data.
 
-## Demo video — shot list (one continuous recording)
+## Demo video v3 — shot list and narration (one continuous recording)
 
-Record after deploying this commit, on `https://app.uallak.com`, with an
-INTERNAL (billing-exempt, admin "New Client") test client — the two demo
-buttons in step 8 and 12 refuse any other client — whose package includes
-Google Ads, YouTube and website measurement, a
-Google account that owns a test Google Ads account, a test YouTube channel and
-a Tag Manager container installed on the test client's website. Keep the
-browser address bar visible throughout (Google checks the `client_id=` in the
-consent URL). Speak in English.
+Google's second reply (round 1) asked for: every scope justified by a
+user-facing feature, why no narrower scope works, the consent screen with
+the description of every scope, and Tag Manager API calls that are actually
+seen. So, for EVERY scope the video shows the same three beats:
 
-**Opening**
-1. Show `https://app.uallak.com/privacy/` for a few seconds. Say: "This is uallak, a managed marketing service for small businesses. This video shows every Google scope the app requests and what it does with each."
-2. Sign out, open `/login`, click "Sign in with Google". On Google's consent screen, zoom on the app name and the requested permissions (email only). Say: "Sign-in uses openid and userinfo.email only, to match an existing customer account." If this Google account was never used to sign in to the test client before, the login page asks for the code emailed to the client's address — show the email arriving and enter it ("the first Google sign-in is confirmed with a code sent to the account's email"). Land on the dashboard.
+1. **Consent:** Google's consent screen, zoomed in on that scope's line and
+   its description (also the address bar: `client_id=` and `scope=`).
+2. **Feature:** the user-facing feature using it, from the client's own chat
+   (agent proposes → the client presses Approve → it runs), then the result
+   inside Google's own product.
+3. **Narrower scope:** one spoken sentence on why a narrower scope would not
+   work (the last column of the evidence matrix above).
 
-**Google Ads — `adwords`**
-3. In the dashboard, scroll to Connections → Google Ads. Tick the staff-access consent box (read it aloud), click "Connect now".
-4. On Google's consent screen, zoom on the address bar (`scope=https://www.googleapis.com/auth/adwords`, `client_id=...`) and the permission line. Approve.
-5. Back in the dashboard: if the login reaches several accounts, pick the test account in the account picker. Say: "We list the accounts this login can access so the user chooses which one we manage."
-6. Open the Performance page. Show the Google Ads card's spend, clicks and conversions. Say: "Read access: campaign performance shown to the user."
-7. Open the dashboard chat and ask "How are my Google Ads campaigns doing?". Show the answer quoting the same numbers.
-8. Open the admin dashboard (`/admin`) → Control Room → the test client → click **"יצירת קמפיין בדיקה ב-Google Ads"** and confirm. Show the success panel with the campaign name ("uallak verification test …"), campaign ID and account. Say: "uallak staff create campaigns in the user's account through the same code path as the real feature; a campaign is always created paused." (The button exists only for internal test clients; it runs `google_ads_agent.create_search_campaign`, the function behind real campaign creation.)
-9. Open `ads.google.com` → the test account → Campaigns. Show the new campaign, its name and status Paused. Say: "The write is reflected in the user's Google Ads account."
-10. Nothing else to show for `adwords`: the justification and the privacy policy claim only the reads in steps 5–7 and the paused-campaign creation in steps 8–9. Auto-pausing disapproved campaigns and keyword/ad-copy optimization are NOT claimed; both run only when `GOOGLE_ADS_OPTIMIZATION_MODE=live`, and production must stay on the default `dry_run` (decide + log, no write). Switching it to `live` means updating the justification, the policy and this video first.
+Nothing is shown that does not really execute. Speak in English. Keep the
+address bar visible throughout. The descriptions below are Google's wording
+for each scope as of this writing; read whatever the screen actually shows.
 
-**YouTube — `youtube.upload`, `youtube.readonly`**
-11. Dashboard → Connections → YouTube → "Connect now". On the consent screen, zoom on the address bar (`youtube.upload` and `youtube.readonly`, NOT `youtube`) and the two permission lines. Approve. Show the card turning "Connected" with the channel.
-12. Before recording, put a short video (a few MB is plenty; the limit is 512 MB) in the test client's Drive media folder (Control Room → "מדיה ב-Drive"). In the Control Room click **"העלאת סרטון בדיקה ל-YouTube"** and confirm. Show the success panel with the title ("uallak verification test …"), video ID and the YouTube Studio link. Say: "uallak uploads a video it produced, always as Private." (It runs `youtube_content_agent.publish`, the real publishing path, with the smallest video in the client's media folder.)
-13. Click the YouTube Studio link from the success panel (or `studio.youtube.com` → Content). Show the new video, its title, and visibility **Private**. Say: "The upload is reflected in the user's YouTube Studio; the user decides whether to publish."
-14. Back in the dashboard → Performance → YouTube card: show the view, like and comment counts. Say: "Read access: counts for the user's own, private uploads."
+### Before recording
 
-**Tag Manager — the three `tagmanager` scopes**
-15. Dashboard → Connections → measurement card → connect Google Tag Manager. On the consent screen, zoom on the address bar (the three `tagmanager.*` scopes) and the permission lines. Approve. Show the card connected with the container id (GTM-XXXX).
-16. In Tag Manager (`tagmanager.google.com`), show the container's current published version: no `generate_lead` tag yet.
-17. Open the admin dashboard (`/admin`) → Control Room → the test client → "configure conversion" button. Run it and show the success result. Say: "This adds one form-submission trigger and one GA4 generate_lead tag, creates a version and publishes it."
-18. Back in Tag Manager: refresh. Show Versions → the new version published by the app, and Tags → the new GA4 event tag `generate_lead` with its form-submission trigger. Say: "edit.containers created the tag and trigger, edit.containerversions created the version, publish made it live."
-19. Back in the client dashboard → Performance → website measurement card: show it reporting the lead tag as live.
+1. **Deploy this commit.** The chat cards for the test campaign and the lead
+   tag, and the Tag Manager cleanup, are new in it.
+2. **Test client 27** (internal, `billing_exempt`; nothing is billed). Its
+   package must include Google Ads, YouTube and website measurement.
+3. **Language.** The cards follow the client's stored `clients.language`.
+   Client 27 is Hebrew, and the dashboard's language switch does not change
+   it. For an English video, set client 27's `clients.language` to `en` in
+   the Supabase table editor (back to `he` afterwards).
+4. **Google account:**
+   - Owns a test Google Ads account and a test YouTube channel.
+   - Has **Publish** permission on the Tag Manager container installed on
+     client 27's website.
+   - Know the site's GA4 measurement ID (`G-…`).
+5. **Tag Manager container:**
+   - No `generate_lead` tag live yet.
+   - Fewer than 3 workspaces (the flow creates its own), or a default
+     workspace with no unpublished changes.
+6. **Media folder:** a short video (a few MB) in client 27's Drive media
+   folder (Control Room → "מדיה ב-Drive").
+7. **Disconnect first: Google Ads, YouTube and Tag Manager.**
+   - Dashboard → each card → "Disconnect" (click twice). This revokes the
+     token at Google.
+   - Then check that `myaccount.google.com/permissions` no longer lists
+     uallak. This makes every consent screen in the video a fresh one.
+8. **Dry-run the real Tag Manager API** in Cloud Shell, before
+   disconnecting:
+   - `bash scripts/gtm_lead_tracking_check.sh 27` must answer
+     `gtm_api_connected: True`.
+   - If a full live run has never been done, do one, then roll it back
+     (see "After approval"): `bash scripts/gtm_lead_tracking_check.sh 27
+     G-XXXXXXX apply`.
+   - Do not record the Tag Manager part until that apply has succeeded once.
+     If it can't, remove the three `tagmanager.*` scopes from code, this
+     file and the Console instead.
+9. Signed out of uallak, in a fresh browser window, at `https://app.uallak.com`.
 
-**Disconnect**
-20. Dashboard → each Google card → "Disconnect" (click twice to confirm). Then open `myaccount.google.com/permissions` and show uallak no longer listed. Say: "Disconnecting revokes the token at Google and deletes it from our database."
+### Opening
 
-**Merchant Center:** not in the video — the `content` scope was removed from the app and must be removed from the Console.
+1. Show `https://app.uallak.com/` and then `/privacy/` for a few seconds.
+   Say: "uallak is a managed marketing service for small businesses. This
+   video shows each Google permission the app asks for, the feature that
+   uses it, and why a narrower permission would not work."
+
+### Sign-in — `openid`, `userinfo.email` (non-sensitive)
+
+2. **Consent.**
+   - Sign out → `/login` → "Sign in with Google".
+   - Zoom on the app name and the two lines: "Associate you with your
+     personal info on Google" and "See your primary Google Account email
+     address".
+3. **Feature.**
+   - The dashboard opens for the existing test account. If this Google
+     account was never linked, enter the code emailed to the account's
+     address first.
+   - Say: "Sign-in matches an existing customer by their verified email."
+4. **Narrower scope.** Say: "These two are the minimum for sign-in; no
+   profile data is requested."
+
+### Google Ads — `adwords`
+
+5. **Feature start (chat).**
+   - Open the dashboard chat with the Google specialist and type "Connect my
+     Google Ads".
+   - The card **"Connect Google Ads"** appears. Press **Approve**.
+   - The dashboard scrolls to the Google Ads card.
+6. **Staff-access consent.**
+   - Zoom on the checkbox text (authorized uallak staff see the account and
+     campaign performance and manage it). Read it aloud, tick it, click
+     "Connect now".
+   - The connect button refuses to start without it.
+7. **Consent.**
+   - Zoom on the address bar
+     (`scope=https://www.googleapis.com/auth/adwords`) and on the permission
+     line "See, edit, create, and delete your Google Ads accounts and data".
+     Approve.
+   - If the login reaches several accounts, pick the test account in the
+     picker.
+   - Say: "We list the accounts this login can access so the user picks the
+     one we manage."
+8. **Feature — read.**
+   - Performance page → Google Ads card: spend, clicks, conversions.
+   - Then ask in chat "How are my Google Ads campaigns doing?" and show the
+     same numbers in the answer.
+9. **Feature — write.**
+   - In the chat type "Create a test campaign in my Google Ads".
+   - The card **"Create a paused test campaign in Google Ads"** says it is
+     created PAUSED, 5 ILS/day, and spends nothing unless enabled. Hold on
+     it, press **Approve**.
+   - The chat answers with the campaign name, ID and `Status: PAUSED`.
+10. **Proof.**
+    - `ads.google.com` → the test account → Campaigns. Show
+      "uallak verification test …" with status Paused.
+11. **Narrower scope.** Say: "The Google Ads API offers only this one scope;
+    there is no read-only or narrower alternative."
+
+### YouTube — `youtube.upload`, `youtube.readonly`
+
+12. **Feature start (chat).** Ask the media specialist "Connect my YouTube
+    channel". Card **"Connect your YouTube channel"** → **Approve**.
+13. **Consent.**
+    - Zoom on the address bar (`youtube.upload` and `youtube.readonly`, not
+      `youtube`).
+    - Zoom on each line: "Manage your YouTube videos" (upload) and "View your
+      YouTube account" (readonly). Approve.
+    - The YouTube card shows the channel name. Say: "readonly identifies the
+      user's own channel."
+14. **Feature — upload.**
+    - In the chat type "Upload <file name> to my YouTube".
+    - The card **"Upload a video to YouTube (private)"** shows the file, the
+      title, description, hashtags and tags. Hold on it, press **Approve**.
+    - The chat says it was uploaded as private, with the Studio link.
+15. **Proof.** Open the link: the video in YouTube Studio with visibility
+    **Private**.
+16. **Feature — read.** Performance → YouTube card: views, likes and comment
+    counts of the user's own uploads.
+17. **Narrower scope.** Say: "youtube.upload is the narrowest scope that can
+    upload; we don't ask for full YouTube management. youtube.readonly is
+    the narrowest that can read the channel and the statistics of private
+    uploads, which the upload scope cannot read."
+
+### Tag Manager — `tagmanager.edit.containers`, `tagmanager.edit.containerversions`, `tagmanager.publish`
+
+18. **Feature start (chat).**
+    - Ask the website specialist "Connect my Tag Manager".
+    - Card **"Reconnect your website tracking"** → **Approve**.
+19. **Consent.**
+    - Zoom on the address bar (the three `tagmanager.*` scopes) and on each
+      line:
+      - "Manage your Google Tag Manager container and its subcomponents,
+        excluding versioning and publishing" (edit.containers).
+      - "Manage your Google Tag Manager container versions"
+        (edit.containerversions).
+      - "Publish your Google Tag Manager container versions" (publish).
+    - Approve.
+    - The measurement card shows the connected container (GTM-XXXX).
+20. **Before.** In `tagmanager.google.com` → the container: show Versions
+    (the current live version) and Tags (no `generate_lead` tag).
+21. **Feature.**
+    - In the chat type "Track the leads from my website".
+    - The card **"Turn on lead tracking on your website"** says one
+      form-submission tracker (`generate_lead`) is added and published, and
+      existing tags stay. Hold on it, press **Approve**.
+    - The chat answers "Lead tracking on your site is live ✓" with the tag
+      name and the version.
+22. **Proof — the API calls, seen in Tag Manager.** Refresh
+    `tagmanager.google.com` and show, one by one:
+    - **Tags:** "uallak — GA4 generate_lead" (GA4 event, `generate_lead`,
+      the site's G- id).
+    - **Triggers:** "uallak — form submission".
+    - **Versions:** a new version "uallak conversion tracking", **Live**,
+      published by the connected account, with the note "uallak:
+      form-submission trigger + GA4 generate_lead tag".
+    Say: "edit.containers created the workspace, trigger and tag;
+    edit.containerversions created this version; publish made it live."
+23. **After.** Dashboard → Performance → website measurement card: the lead
+    event is live.
+24. **Narrower scope.** Say: "tagmanager.readonly cannot create a trigger or
+    tag, and edit.containers deliberately excludes versioning and publishing.
+    Creating a version and publishing it each require their own scope, and
+    without publishing the tag would never run."
+
+### Disconnect
+
+25. Dashboard → each Google card → "Disconnect" (click twice). Then
+    `myaccount.google.com/permissions`: uallak is no longer listed. Say:
+    "Disconnecting revokes the token at Google and deletes it from our
+    database."
+
+### After approval (cleanup, after Google approves; not in the video)
+
+- **Google Ads:** `ads.google.com` → Campaigns → "uallak verification test
+  …" → Remove.
+- **YouTube:** YouTube Studio → Content → the test video → Delete forever.
+- **Tag Manager:**
+  - Either: Versions → the version before "uallak conversion tracking" → ⋮
+    → Publish (rollback).
+  - Or: delete the tag "uallak — GA4 generate_lead" and the trigger "uallak
+    — form submission", then Submit → Publish.
+  - Check the live version no longer has the tag:
+    `bash scripts/gtm_lead_tracking_check.sh 27`.
+- **Client 27:** `clients.language` back to `he` if it was changed.
+- Optionally reconnect the three cards for day-to-day testing.
+
+**Merchant Center:** not in the video. The `content` scope was removed from
+the app and must be removed from the Console.
 
 ## Storage and revocation
 
@@ -223,7 +415,7 @@ scope. All calls: `core/google_ads_service.py` (REST,
 **Written**
 | Function | Call | What changes |
 |---|---|---|
-| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also `core/verification_demo.create_test_campaign`, reached from the Control Room demo button or an approved Control Room chat card, internal test clients only) |
+| `google_ads_agent.create_search_campaign` → `google_ads_service.atomic_mutate` | `googleAds:mutate` | one campaign budget, one search campaign created **PAUSED**, location/language criteria, one ad group, keywords, one responsive search ad (admin-triggered: `POST /api/google-ads/create-campaign`, admin key; for the verification video also `core/verification_demo.create_test_campaign`, reached from the client's own chat card `google_ads_test_campaign` (the client approves), the Control Room demo button or an approved Control Room chat card — internal test clients only) |
 
 **Gated off — not claimed to Google** (write only when
 `GOOGLE_ADS_OPTIMIZATION_MODE=live`; production stays on the default `dry_run`):
@@ -260,19 +452,34 @@ publishes them, so leads from the client's site are counted. Calls:
 | Scope (API method that requires it) | Function | Call | Data |
 |---|---|---|---|
 | `tagmanager.edit.containers` | `gtm_service.list_accounts`, `list_containers`, `find_container_by_public_id` | `accounts.list`, `accounts.containers.list` | account/container paths and public ids (GTM-XXXX) — on connect, to find the container installed on the client's site |
-| `tagmanager.edit.containers` | `gtm_service.default_workspace_path` | `workspaces.list` | the container's workspaces (first one is used) |
+| `tagmanager.edit.containers` | `gtm_service.lead_workspace` | `workspaces.create` (fallback: `workspaces.list` + `workspaces.getStatus`) | **writes** a workspace of our own, "uallak lead tracking", based on the latest version, so only our trigger and tag get published. GTM deletes it when the version is created. If one can't be created (free containers allow 3), the default workspace is used, but only when it has no unpublished changes; otherwise the flow stops. |
+| `tagmanager.edit.containers` | `website_agent._undo_gtm_drafts` | `workspaces.delete`, `triggers.delete`, `tags.delete` | after a FAILED run only: removes the workspace (ours) or the trigger/tag this run created (shared workspace) — never anything else |
 | `tagmanager.edit.containers` | `gtm_service.get_live_version` (← `website_agent.get_conversion_tracking_status`) | `versions.live` | the published version's tags and triggers — is a lead event already live? |
 | `tagmanager.edit.containers` | `gtm_service.create_form_submit_trigger` | `workspaces.triggers.create` | **writes** one trigger, type `formSubmission` |
 | `tagmanager.edit.containers` | `gtm_service.create_ga4_lead_event_tag` | `workspaces.tags.create` | **writes** one GA4 event tag (`gaawe`, event `generate_lead`, the client's G- measurement id) |
 | `tagmanager.edit.containerversions` | `gtm_service.publish_workspace` | `workspaces.create_version` | **writes** a container version from the workspace |
 | `tagmanager.publish` | `gtm_service.publish_workspace` | `versions.publish` | **publishes** that version (makes it live) |
 
-All writes run from `website_agent.configure_lead_conversion` — from the admin
-Control Room's "configure conversion" button
-(`POST /api/admin/control-room/{client_id}/configure-conversion`) or
-`POST /api/website/configure-conversion` (admin key). It refuses if a lead-event
-tag is already live and if the stored grant lacks any of the three scopes
-(`website_agent.gtm_missing_scopes`). The callback records the scopes Google
+All writes run from `website_agent.configure_lead_conversion`. The
+user-facing path is the client chat card `configure_conversion` (the client
+approves it; since 2026-10-30, before that staff approved it). The same
+function backs the Control Room button
+(`POST /api/admin/control-room/{client_id}/configure-conversion`),
+`POST /api/website/configure-conversion` (admin key) and
+`scripts/gtm_lead_tracking_check.sh`. It refuses, before any write, when:
+- a lead-event tag is already live;
+- the stored grant lacks any of the three scopes
+  (`website_agent.gtm_missing_scopes`);
+- the grant is dead;
+- the site loads a different container;
+- no GA4 id is known.
+
+Every failure carries a `reason`, and the chat answers it with a plain line
+in the client's language (Hebrew by default; `core/agent_actions`
+`configure_conversion` refusals): reconnect (plus the reconnect card),
+wrong container, missing G- id, already live, no Publish permission in GTM,
+workspace busy. Our own failures (API disabled in the Cloud project, compiler
+error, anything else) get the generic line and an alert. The callback records the scopes Google
 actually granted (`gtm_api_connected` activity, `scopes`); a grant with no
 record predates `tagmanager.edit.containerversions` and the dashboard card asks
 the client to reconnect.

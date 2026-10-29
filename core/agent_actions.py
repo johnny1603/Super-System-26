@@ -23,12 +23,15 @@ The shape (propose → approve → execute):
 5. The outcome is written to the audit row (a short code — no Google data, see
    the migration) and posted into the chat thread it came from.
 
-Who approves: "client" actions are low-risk and the client approves them
-with one click (a reconnect, approving their own pending suggestion).
-Anything that publishes or can spend is "admin": proposed from the client
-chat it becomes a staff request (status awaiting_staff, the team is alerted,
-the client is told plainly what happens next) and is approved in the
-Control Room.
+Who approves: "client" actions change only the client's OWN accounts, in a
+way the card spells out, and the client approves them with one click (a
+reconnect, their own pending suggestion, a PRIVATE YouTube upload, a TikTok
+draft, the lead-tracking tag in their own Tag Manager, a PAUSED test
+campaign on an internal test client). "admin" actions are approved in the
+Control Room: proposed from the client chat they become a staff request
+(status awaiting_staff, the team is alerted, the client is told plainly
+what happens next). "admin_proposable": a client action the Control Room
+chat may also propose — staff then approve it there.
 """
 import json
 import re
@@ -202,11 +205,20 @@ def _media_name(client_id: int, file_id: str) -> str:
 
 # ─── Runners: the SAME functions the fallback buttons call ───────────────────
 
+# configure_lead_conversion's reason → the refusal the chat explains (the rest
+# — gtm_error, gtm_api_disabled, gtm_compiler_error — are ours: _FAILED + alert)
+_GTM_REFUSAL_CODES = {"gtm_not_connected": "gtm_reconnect", "gtm_reconnect_needed": "gtm_reconnect",
+                      "gtm_token_dead": "gtm_reconnect", "gtm_container_mismatch": "gtm_container_mismatch",
+                      "no_ga4_id": "no_ga4_id", "already_live": "already_live",
+                      "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy"}
+
+
 def _run_configure_conversion(client_id: int, params: dict, background_tasks):
     from agents.website_agent import configure_lead_conversion
     result = configure_lead_conversion(client_id, params.get("ga4_measurement_id", ""))
     if not result.get("success"):
-        raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
+        raise ActionFailed(_GTM_REFUSAL_CODES.get(result.get("reason"), "refused_by_action"),
+                           "; ".join(map(str, result.get("errors") or ["unknown"])))
     return result
 
 
@@ -430,7 +442,13 @@ def _txt(he, en, fr, ar, ru):
 
 ACTIONS = {
     "configure_conversion": {
-        "approver": "admin", "client_requestable": True, "internal_only": False, "kind": "execute",
+        # The client's own click approves it: it is THEIR container, the card
+        # says exactly what is added, and the guards (container match, scopes,
+        # dead grant, already live, own workspace) refuse before any write.
+        # The Control Room chat may propose it too (admin_proposable), then
+        # staff approve it there.
+        "approver": "client", "admin_proposable": True, "client_requestable": True,
+        "internal_only": False, "kind": "execute",
         "does": "Adds ONE form-submission trigger and ONE GA4 generate_lead event tag to the client's "
                 "Tag Manager container, creates a version and PUBLISHES it, so leads from their site "
                 "are counted. Refused if the site loads a different container, the connection needs "
@@ -452,6 +470,49 @@ ACTIONS = {
                      "Le suivi des prospects est actif ✓ Chaque envoi de formulaire est désormais compté.",
                      "قياس العملاء المحتملين فعّال ✓ من الآن يُحتسب كل إرسال نموذج.",
                      "Учёт заявок на сайте включён ✓ Теперь считается каждая отправка формы."),
+        "done_message": lambda result, lang: (
+            _pick(ACTIONS["configure_conversion"]["done"], lang)
+            + (f"\nTag Manager: {result['tag_name']} · {result['live_version']}"
+               if result.get("tag_name") and result.get("live_version") else "")),
+        "refusals": {
+            "gtm_reconnect": _txt(
+                "החיבור ל-Tag Manager צריך חידוש לפני שאפשר להוסיף את המדידה — שום דבר לא השתנה באתר. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, מול Google), ואז נסו שוב.",
+                "Your Tag Manager connection needs renewing before tracking can be added — nothing on your site changed. Tap the button to reconnect (once, with Google), then try again.",
+                "Votre connexion Tag Manager doit être renouvelée — rien n'a changé sur votre site. Touchez le bouton pour reconnecter (une fois, avec Google), puis réessayez.",
+                "يجب تجديد الربط مع Tag Manager قبل إضافة القياس — لم يتغير شيء في موقعكم. اضغطوا على الزر لإعادة الربط (مرة واحدة مع Google) ثم حاولوا مجددًا.",
+                "Подключение Tag Manager нужно обновить — на сайте ничего не изменилось. Нажмите кнопку, чтобы переподключить (один раз, через Google), и повторите."),
+            "gtm_container_mismatch": _txt(
+                "ה-Tag Manager שחובר הוא לא זה שמותקן באתר שלכם, אז לא הוספנו כלום. בכרטיס \"מדידה באתר\" בחרו את הקונטיינר הנכון (החלפת קונטיינר), ואז נסו שוב.",
+                "The connected Tag Manager container isn't the one installed on your site, so nothing was added. In the website measurement card, choose the right container, then try again.",
+                "Le conteneur Tag Manager connecté n'est pas celui de votre site — rien n'a été ajouté. Choisissez le bon conteneur dans la carte de mesure, puis réessayez.",
+                "حاوية Tag Manager المرتبطة ليست المثبتة في موقعكم، لذلك لم نُضف شيئًا. اختاروا الحاوية الصحيحة في بطاقة القياس ثم حاولوا مجددًا.",
+                "Подключён не тот контейнер Tag Manager, что стоит на сайте, — ничего не добавлено. Выберите нужный контейнер в карточке аналитики и повторите."),
+            "no_ga4_id": _txt(
+                "חסר לנו מזהה Google Analytics של האתר (מתחיל ב-G-), אז לא הוספנו כלום. אם יש לכם אותו — כתבו לי אותו כאן, ואכין את זה שוב.",
+                "We need your site's Google Analytics ID (it starts with G-), so nothing was added. If you have it, write it here and I'll set this up again.",
+                "Il nous faut l'identifiant Google Analytics du site (commence par G-) — rien n'a été ajouté. Écrivez-le ici et je relance.",
+                "نحتاج معرّف Google Analytics للموقع (يبدأ بـ G-)، لذلك لم نُضف شيئًا. اكتبوه هنا وسأجهز ذلك مجددًا.",
+                "Нужен идентификатор Google Analytics сайта (начинается с G-) — ничего не добавлено. Напишите его здесь, и я подготовлю заново."),
+            "already_live": _txt(
+                "מדידת לידים כבר פעילה ב-Tag Manager של האתר — לא הוספנו עוד אחת, כדי שכל ליד ייספר פעם אחת בלבד.",
+                "Lead tracking is already live in your site's Tag Manager — we didn't add a second one, so every lead is counted once.",
+                "Le suivi des prospects est déjà actif — nous n'en ajoutons pas un second, pour compter chaque prospect une seule fois.",
+                "قياس العملاء المحتملين فعّال بالفعل — لم نُضف قياسًا ثانيًا كي يُحتسب كل عميل مرة واحدة.",
+                "Учёт заявок уже работает — второй не добавлен, чтобы каждая заявка считалась один раз."),
+            "gtm_no_permission": _txt(
+                "לחשבון Google שחיברתם אין הרשאת פרסום בקונטיינר הזה ב-Tag Manager, אז לא השתנה כלום. בעל הקונטיינר צריך לתת לו הרשאת \"Publish\" (ב-Tag Manager: Admin ← User Management), ואז נסו שוב.",
+                "The Google account you connected can't publish in this Tag Manager container, so nothing changed. The container owner needs to give it Publish permission (Tag Manager → Admin → User Management), then try again.",
+                "Le compte Google connecté ne peut pas publier dans ce conteneur — rien n'a changé. Le propriétaire doit lui donner le droit Publier (Admin → Gestion des utilisateurs), puis réessayez.",
+                "حساب Google المرتبط لا يملك صلاحية النشر في هذه الحاوية، لذلك لم يتغير شيء. يجب أن يمنحه مالك الحاوية صلاحية Publish (Admin ← User Management) ثم حاولوا مجددًا.",
+                "У подключённого аккаунта Google нет права публикации в этом контейнере — ничего не изменилось. Владелец должен выдать право Publish (Admin → User Management), затем повторите."),
+            "gtm_workspace_busy": _txt(
+                "ב-Tag Manager של האתר יש שינויים שעוד לא פורסמו, ואין מקום לסביבת עבודה נוספת — כדי לא לפרסם שינויים של מישהו אחר, לא נגענו בכלום. פרסמו או בטלו את השינויים ב-Tag Manager (או מחקו סביבת עבודה שלא בשימוש), ואז נסו שוב.",
+                "Your site's Tag Manager has unpublished changes and no room for another workspace — to avoid publishing someone else's changes, we touched nothing. Publish or discard those changes (or delete an unused workspace), then try again.",
+                "Le Tag Manager du site a des modifications non publiées et aucun espace de travail libre — nous n'avons rien touché. Publiez-les ou annulez-les (ou supprimez un espace inutilisé), puis réessayez.",
+                "في Tag Manager تغييرات غير منشورة ولا مكان لمساحة عمل إضافية — كي لا ننشر تغييرات غيرنا لم نلمس شيئًا. انشروا التغييرات أو ألغوها (أو احذفوا مساحة غير مستخدمة) ثم حاولوا مجددًا.",
+                "В Tag Manager есть неопубликованные изменения и нет места для ещё одного рабочего пространства — чтобы не опубликовать чужое, мы ничего не трогали. Опубликуйте или отмените их (или удалите лишнее пространство) и повторите."),
+        },
+        "follow_up": {"gtm_reconnect": "connect_tag_manager"},
     },
     "demo_google_ads_campaign": {
         "approver": "admin", "client_requestable": False, "internal_only": True, "kind": "execute",
@@ -472,6 +533,39 @@ ACTIONS = {
         "done": _txt("קמפיין הבדיקה נוצר — מושהה ✓", "Test campaign created — paused ✓",
                      "Campagne test créée — en pause ✓", "تم إنشاء حملة الاختبار — متوقفة ✓",
                      "Тестовая кампания создана — на паузе ✓"),
+    },
+    "google_ads_test_campaign": {
+        # The CLIENT-chat twin of demo_google_ads_campaign, for the Google
+        # verification video: the account owner asks in their own chat and
+        # approves with their own click. Internal test clients only (the
+        # campaign is a fixed test one); real clients' campaigns are drafted
+        # and created by staff (google_ads_agent.create_search_campaign), and
+        # every campaign, this one included, is created PAUSED.
+        "approver": "client", "client_requestable": True, "internal_only": True, "kind": "execute",
+        "does": "Creates ONE test search campaign in the client's connected Google Ads account, "
+                "created PAUSED with a 5 ILS/day budget, so it spends nothing unless they enable it "
+                "in Google Ads. The client approves it on the card.",
+        "params": {},
+        "available": _connected("google_ads"),
+        "run": _run_demo("create_test_campaign"),
+        "title": _txt("יצירת קמפיין בדיקה מושהה ב-Google Ads", "Create a paused test campaign in Google Ads",
+                      "Créer une campagne test en pause dans Google Ads",
+                      "إنشاء حملة اختبار متوقفة في Google Ads", "Создать тестовую кампанию на паузе в Google Ads"),
+        "what": _txt("ייווצר בחשבון Google Ads שלכם קמפיין חיפוש אחד בשם \"uallak verification test\", במצב מושהה (PAUSED) ובתקציב 5 ₪ ליום. הוא לא רץ ולא מוציא כסף, אלא אם תפעילו אותו בעצמכם ב-Google Ads.",
+                     "One search campaign named \"uallak verification test\" will be created in your Google Ads account, PAUSED, with a 5 ILS/day budget. It doesn't run or spend unless you enable it yourself in Google Ads.",
+                     "Une campagne de recherche « uallak verification test » sera créée dans votre compte Google Ads, en PAUSE, budget 5 ILS/jour. Elle ne tourne pas sauf si vous l'activez.",
+                     "ستُنشأ في حساب Google Ads حملة بحث واحدة باسم \"uallak verification test\" بحالة متوقفة وميزانية 5 شيكل يوميًا. لا تعمل ولا تنفق إلا إذا فعّلتموها بأنفسكم.",
+                     "В вашем Google Ads будет создана поисковая кампания «uallak verification test» в статусе PAUSED, 5 ILS/день. Она не работает и не тратит, пока вы сами её не включите."),
+        "done": _txt("קמפיין הבדיקה נוצר בחשבון Google Ads שלכם — מושהה ✓ הוא לא רץ ולא מוציא כסף.",
+                     "The test campaign was created in your Google Ads account — paused ✓ It doesn't run or spend.",
+                     "La campagne test a été créée — en pause ✓ Elle ne dépense rien.",
+                     "تم إنشاء حملة الاختبار في حساب Google Ads — متوقفة ✓ لا تعمل ولا تنفق.",
+                     "Тестовая кампания создана в Google Ads — на паузе ✓ Она не тратит деньги."),
+        "done_message": lambda result, lang: (
+            _pick(ACTIONS["google_ads_test_campaign"]["done"], lang)
+            + "".join(f"\n{label}: {result[key]}" for key, label in
+                      (("campaign_name", "Campaign"), ("campaign_id", "ID"), ("status", "Status"))
+                      if result.get(key))),
     },
     "demo_youtube_upload": {
         "approver": "admin", "client_requestable": False, "internal_only": True, "kind": "execute",
@@ -794,8 +888,14 @@ def _actor_for(origin: str) -> str:
 
 def _may_propose(spec: dict, actor: str) -> bool:
     if actor == "admin":
-        return spec["approver"] == "admin"
+        return spec["approver"] == "admin" or spec.get("admin_proposable", False)
     return spec["approver"] == "client" or spec.get("client_requestable", False)
+
+
+def _approver_for(spec: dict, actor: str) -> str:
+    """Who clicks: a Control Room proposal is always approved in the Control
+    Room; a client-chat one by its spec's approver."""
+    return "admin" if actor == "admin" else spec["approver"]
 
 
 def _is_internal(client: dict) -> bool:
@@ -976,7 +1076,8 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     if dry_run:
         return {"dry_run": True, "action": name, "params": params}
 
-    status = "proposed" if spec["approver"] == actor else "awaiting_staff"
+    approver = _approver_for(spec, actor)
+    status = "proposed" if approver == actor else "awaiting_staff"
     lang = _lang(client_id) if actor == "client" else "he"
     open_rows = [r for r in _open_rows(client_id) if r.get("action") == name and not _expired(r)]
     supersedes = None
@@ -1018,7 +1119,7 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     try:
         rows = _db().table(TABLE).insert({
             "client_id": int(client_id), "action": name, "params": params, "origin": origin,
-            "persona": persona or "general", "approver": spec["approver"], "status": status,
+            "persona": persona or "general", "approver": approver, "status": status,
         }).execute().data or []
     except Exception as e:
         _log(f"client {client_id}: proposal {name} not stored: {type(e).__name__}: {e}",
@@ -1183,7 +1284,8 @@ def _admin_summary(spec: dict, result: dict) -> str:
     """The admin's own record of what ran — ids included (admin_agent_chat is
     purged with the client's Google data)."""
     keys = ("campaign_name", "campaign_id", "status", "customer_id", "video_id", "title",
-            "privacy_status", "studio_url", "event_name", "live_version", "ga4_measurement_id",
+            "privacy_status", "studio_url", "event_name", "live_version", "live_version_id",
+            "tag_name", "ga4_measurement_id",
             "site_url", "old_password_revoked")
     facts = " · ".join(f"{k}: {result[k]}" for k in keys if result.get(k))
     return f"✓ {_pick(spec['done'], 'he')}" + (f"\n{facts}" if facts else "")

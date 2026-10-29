@@ -1191,6 +1191,44 @@ def get_conversion_tracking_status(client_id: int) -> dict:
     }
 
 
+def gtm_failure_reason(error: Exception) -> str:
+    """A failed GTM write → the short code the chat explains in plain words
+    (core/agent_actions configure_conversion refusals). gtm_error,
+    gtm_api_disabled and gtm_compiler_error are ours to fix (alerted)."""
+    from core import gtm_service as gtm
+    if isinstance(error, gtm.GtmWorkspaceBusy):
+        return "gtm_workspace_busy"
+    if isinstance(error, gtm.GtmCompilerError):
+        return "gtm_compiler_error"
+    if isinstance(error, gtm.GtmApiError):
+        if error.google_reason in ("SERVICE_DISABLED", "accessNotConfigured"):
+            return "gtm_api_disabled"
+        if error.google_reason == "ACCESS_TOKEN_SCOPE_INSUFFICIENT" or error.status == 401:
+            return "gtm_reconnect_needed"
+        if error.status == 403:
+            # The Google user who connected lacks Edit/Publish on this container
+            return "gtm_no_permission"
+    if "invalid_grant" in str(error):
+        return "gtm_reconnect_needed"
+    return "gtm_error"
+
+
+def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: bool, created: list):
+    """After a failed run, leave the container as it was: our own workspace is
+    deleted whole; in a shared workspace only the trigger/tag we created are.
+    Best effort — a cleanup failure is logged, never raised."""
+    from core import gtm_service as gtm
+    try:
+        if ours and workspace:
+            gtm.delete_workspace(refresh_token, workspace)
+        else:
+            for path in reversed([p for p in created if p]):
+                gtm.delete_entity(refresh_token, path)
+    except Exception as e:
+        log_step(AGENT_NAME, "configure_lead_conversion",
+                 f"client {client_id}: cleanup after failure incomplete: {e}")
+
+
 def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> dict:
     """V1 conversion configuration — THE single common case: standard HTML
     form submission → GA4 'generate_lead' event, created in the default
@@ -1204,7 +1242,8 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
 
     conn = _gtm_connection(client_id)
     if not conn.get("access_token"):
-        return {"success": False, "errors": ["GTM API not connected for this client"]}
+        return {"success": False, "reason": "gtm_not_connected",
+                "errors": ["GTM API not connected for this client"]}
     # Refuse BEFORE creating anything: without every scope the trigger and tag
     # would be created and then publish would 403, leaving a half-done workspace
     missing = gtm_missing_scopes(client_id)
@@ -1238,13 +1277,13 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
             except Exception:
                 pass
     if not ga4_measurement_id:
-        return {"success": False, "errors": [
+        return {"success": False, "reason": "no_ga4_id", "errors": [
             "no ga4_measurement_id given and none detectable on the site — a GA4 "
             "property id (G-...) is required for the event tag"]}
 
     status = get_conversion_tracking_status(client_id)
     if status.get("configured_live"):
-        return {"success": False, "errors": [
+        return {"success": False, "reason": "already_live", "errors": [
             f"live container already has lead-event tag(s) "
             f"({[t['tag_name'] for t in status['lead_event_tags']]}) — configuring another "
             "would double-count leads; change the existing one in GTM instead"]}
@@ -1252,19 +1291,28 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
     refresh_token, container_path = conn["access_token"], conn["account_id"]
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: {container_path} → {ga4_measurement_id}")
+    workspace, ours, created = "", False, []
     try:
-        workspace = gtm.default_workspace_path(refresh_token, container_path)
+        # Our own workspace: the published version carries ONLY our trigger
+        # and tag, never someone's drafts (gtm_service.lead_workspace)
+        workspace, ours = gtm.lead_workspace(refresh_token, container_path)
         trigger = timed_step(AGENT_NAME, "gtm_create_trigger",
                              lambda: gtm.create_form_submit_trigger(refresh_token, workspace))
+        created.append(trigger.get("path", ""))
         tag = timed_step(AGENT_NAME, "gtm_create_tag",
                          lambda: gtm.create_ga4_lead_event_tag(
                              refresh_token, workspace, ga4_measurement_id,
                              trigger["triggerId"]))
+        created.append(tag.get("path", ""))
         published = timed_step(AGENT_NAME, "gtm_publish",
                                lambda: gtm.publish_workspace(refresh_token, workspace))
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed: {e}"])
-        return {"success": False, "errors": [str(e)]}
+        reason = gtm_failure_reason(e)
+        _undo_gtm_drafts(client_id, refresh_token, workspace, ours, created)
+        if reason in ("gtm_error", "gtm_api_disabled", "gtm_compiler_error"):
+            agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed "
+                                     f"({reason}): {e}"])
+        return {"success": False, "reason": reason, "errors": [str(e)]}
 
     version = (published.get("containerVersion") or {})
     _log_activity(client_id, "website_conversion_configured",
@@ -1276,6 +1324,8 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
     return {"success": True, "event_name": "generate_lead",
             "ga4_measurement_id": ga4_measurement_id,
             "live_version": version.get("name", ""),
+            "live_version_id": version.get("containerVersionId", ""),
+            "tag_name": tag.get("name", ""), "trigger_name": trigger.get("name", ""),
             "note": ("Form submissions now fire GA4 'generate_lead'. Remaining manual "
                      "platform steps: mark generate_lead as a key event in GA4 and import "
                      "it as a conversion action in Google Ads (no public API for either "

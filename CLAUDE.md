@@ -249,7 +249,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   compare-and-set (double click = one run). Runners are the SAME functions the fallback
   buttons call (`core/verification_demo` for the Google demo, `configure_lead_conversion`,
   `decide_suggestion`, OAuth start routes). `approver` client = one click; admin = staff
-  request in the Control Room. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
+  request in the Control Room; `admin_proposable` = a client action the Control Room chat may
+  also propose (staff approve it there). Google verification v3 (2026-10-30): every sensitive
+  Google scope has a client-approved chat card — `google_ads_test_campaign` (PAUSED, internal
+  test clients), `publish_youtube_from_media` (Private), `configure_conversion` (lead tag in
+  the client's own GTM, client-approved; each failure `reason` → its own plain-language
+  refusal). docs/GOOGLE-SCOPES.md holds the evidence matrix and the video v3 script;
+  `tests/test_google_scope_flows.py` guards both. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
   holds no Google data. Adding an action = one dict in `ACTIONS` + a test in
   `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
   `publish_youtube_from_media` is the first client-approved action that WRITES to Google: a
