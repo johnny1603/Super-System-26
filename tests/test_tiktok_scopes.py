@@ -1,5 +1,6 @@
 """TikTok scopes after the 2026-10-29 app-review rejection: only
-user.info.basic + video.publish are requested, and the engagement reads
+user.info.basic + video.upload (Upload-to-Inbox drafts) are requested —
+never video.publish (Direct Post) — and the engagement reads
 (video.list) sit behind tiktok_service.ENGAGEMENT_READS_ENABLED. Also the
 public landing page's review checklist (links, contact, no invisible
 characters, every string has an English version).
@@ -88,13 +89,73 @@ class Scopes(TikTokCase):
     def test_flag_is_off(self):
         self.assertFalse(self.service.ENGAGEMENT_READS_ENABLED)
 
-    def test_only_login_and_publish_scopes(self):
-        self.assertEqual(self.service.OAUTH_SCOPES, ["user.info.basic", "video.publish"])
+    def test_exactly_login_and_inbox_upload_scopes(self):
+        self.assertEqual(self.service.OAUTH_SCOPES, ["user.info.basic", "video.upload"])
 
-    def test_consent_url_does_not_ask_for_video_list(self):
+    def test_consent_url_asks_for_exactly_the_two(self):
         query = parse_qs(urlparse(self.service.build_consent_url("st")).query)
-        self.assertEqual(query["scope"], ["user.info.basic,video.publish"])
-        self.assertNotIn("video.list", query["scope"][0])
+        self.assertEqual(query["scope"], ["user.info.basic,video.upload"])
+        for scope in ("video.publish", "video.list"):
+            self.assertNotIn(scope, query["scope"][0])
+
+    def test_missing_scopes(self):
+        self.assertEqual(self.service.missing_scopes("user.info.basic,video.upload"), [])
+        # an old grant: video.publish never stands in for video.upload
+        self.assertEqual(self.service.missing_scopes("user.info.basic,video.publish,video.list"),
+                         ["video.upload"])
+        self.assertEqual(self.service.missing_scopes(""), [])   # unknown, not "nothing granted"
+
+
+class OldGrant(TikTokCase):
+    """A grant from before 2026-10-29 (video.publish, no video.upload)."""
+
+    def setUp(self):
+        super().setUp()
+        service = self.service
+        self.saved = (service.refresh_access_token, service.init_inbox_upload)
+        service.refresh_access_token = lambda rt: {"access_token": "acc2", "refresh_token": "ref2"}
+
+        def refused(*a, **k):
+            raise service.TikTokAPIError("401 (code scope_not_authorized): ...",
+                                         code="scope_not_authorized")
+        service.init_inbox_upload = refused
+        sys.modules["core.drive_service"] = _module("core.drive_service",
+                                                    download_file=lambda fid: b"video-bytes")
+        self.agent_client = sys.modules["agents.client_agent"]
+        self.agent_client.log_activity = lambda *a, **k: None
+        self.agent_client.get_client = lambda cid: {}
+        self.agent_client.log_communication = lambda *a, **k: None
+
+    def tearDown(self):
+        self.service.refresh_access_token, self.service.init_inbox_upload = self.saved
+        sys.modules.pop("core.drive_service", None)
+
+    def test_identity_refresh_still_works(self):
+        # token refresh needs no posting scope: the old grant keeps working for login
+        self.assertEqual(self.agent._live_access_token(27, self.agent._get_connection(27)), "acc2")
+
+    def test_upload_is_needs_reconnect_not_a_raw_error(self):
+        result = self.agent.publish(27, {"drive_file_id": "f1"})
+        self.assertFalse(result["success"])
+        self.assertTrue(result["needs_reconnect"])
+        self.assertIn("video.upload", result["errors"][0])
+        self.assertEqual(len(self.alerts), 1)
+
+    def test_reconnect_asks_for_the_new_list(self):
+        query = parse_qs(urlparse(self.service.build_consent_url("st")).query)
+        self.assertEqual(query["scope"], [",".join(self.service.OAUTH_SCOPES)])
+        self.assertIn("video.upload", query["scope"][0])
+
+
+class DirectPostUnreachable(unittest.TestCase):
+    def test_nothing_calls_init_direct_post(self):
+        callers = []
+        for folder in ("agents", "core"):
+            for name in os.listdir(os.path.join(ROOT, folder)):
+                if name.endswith(".py") and name != "tiktok_service.py":
+                    if "init_direct_post" in _read(folder, name):
+                        callers.append(f"{folder}/{name}")
+        self.assertEqual(callers, [])
 
 
 class EngagementOff(TikTokCase):
@@ -120,7 +181,7 @@ class EngagementOff(TikTokCase):
         self.assertEqual(self.agent.get_engagement_summary(27), {"connected": False})
 
     def test_publishing_path_does_not_touch_the_flag(self):
-        # init_inbox_upload / get_post_status are video.publish calls: they
+        # init_inbox_upload / get_post_status are video.upload calls: they
         # must keep going out while engagement reads are off
         self.service.init_inbox_upload("acc", video_size=10, chunk_size=10, total_chunk_count=1)
         self.service.get_post_status("acc", "pub-1")

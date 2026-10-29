@@ -50,11 +50,22 @@ ONE `client_accounts` row:
   is returned, or the next call would refresh with a dead refresh token.
 - Redirect URI must be registered in the TikTok app's settings:
   `{PUBLIC_APP_URL}/api/oauth/tiktok/callback`.
-- Scopes requested: `user.info.basic`, `video.publish` — nothing else.
+- Scopes requested: **`user.info.basic`, `video.upload`** — nothing else
+  (`tiktok_service.OAUTH_SCOPES`; the TikTok developer portal is configured
+  with exactly these two). `video.upload` is Upload-to-Inbox's scope;
+  `video.publish` is Direct Post's and is deliberately NOT requested.
   `video.list` was dropped 2026-10-29: TikTok's app review rejected the
-  submission partly because it asked for scopes the demo didn't show, and the
-  engagement counts aren't part of what we demonstrate. See "Engagement
-  tracking" below for the switch that brings it back.
+  submission partly because it asked for scopes the demo didn't show. See
+  "Engagement tracking" below for the switch that brings it back. Review text
+  and demo shot list: `docs/TIKTOK-REVIEW.md`.
+- **Grants from before 2026-10-29** carry `user.info.basic` + `video.publish`
+  (+ `video.list`), not `video.upload`. Identity and token refresh keep
+  working; an inbox upload is refused by TikTok with a scope error
+  (`tiktok_service.SCOPE_ERROR_CODES`), which `publish()` returns as
+  `needs_reconnect: True` with one admin alert. Reconnecting asks for the
+  current `OAUTH_SCOPES`. The callback logs (scope names only) when the user
+  unticked a scope (`missing_scopes`). Nothing stores or compares scopes per
+  account.
 
 ## Publishing: Upload-to-Inbox, deliberately never Direct Post
 
@@ -68,8 +79,9 @@ approval, timeline not in our control.
 The agent sidesteps this by using **Upload to Inbox** (`init_inbox_upload`)
 exclusively: the video lands in the *client's own* TikTok inbox and they tap
 publish themselves inside the app. `init_direct_post` exists in
-`tiktok_service.py` for a possible future decision but the agent never calls
-it. Two independent reasons this is the right default, not just a
+`tiktok_service.py` for a possible future decision but is unreachable: nothing
+calls it, and it would need `video.publish` (not requested, not configured in
+the portal) plus the content audit. Two independent reasons this is the right default, not just a
 workaround:
 
 1. It has **no SELF_ONLY restriction at all** — a client publishing this way
@@ -170,8 +182,9 @@ Admin (X-Admin-Key): `POST /api/tiktok-content/publish`,
 
 ## Deferred / not built
 
-Direct Post (implemented in `tiktok_service.init_direct_post`, unused —
-needs the business decision on pursuing the content audit), comment
+Direct Post (implemented in `tiktok_service.init_direct_post`, unreachable —
+needs the business decision on pursuing the content audit, then
+`video.publish` in the portal + `OAUTH_SCOPES` + its own review + reconnects), comment
 reading/replying (no public API surface — genuine platform gap), asset
 picker for multiple TikTok accounts per client (first-asset MVP, same as
 Google/Meta), token encryption at rest (same accepted MVP debt as

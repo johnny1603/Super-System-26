@@ -46,24 +46,46 @@ TIMEOUT = 60  # video chunk uploads can be slow on the client's connection... no
               # WE do the upload server-side (Drive -> TikTok), but keep a
               # generous timeout since video bytes can be several MB
 
-# video.publish: Content Posting API (both inbox and direct-post init calls).
-# user.info.basic: added by default with Login Kit; needed for get_user_info.
+# user.info.basic: Login Kit; needed for get_user_info (open_id + display name).
+# video.upload: Content Posting API, Upload-to-Inbox ONLY
+#   (post/publish/inbox/video/init/ + post/publish/status/fetch/) — the video
+#   lands in the owner's TikTok inbox as a draft and THEY publish it in-app.
+#   This is the only posting scope the app is configured for in the TikTok
+#   developer portal (2026-10-29).
+# video.publish is deliberately NOT requested: it is Direct Post's scope
+#   (init_direct_post), which needs TikTok's content audit first. Requesting
+#   it would also put a scope on the consent screen the demo never shows.
 #
 # ENGAGEMENT_READS_ENABLED is THE switch for video.list (Display API: the
 # video/list + video/query engagement counts). OFF since 2026-10-29: TikTok's
-# app review approves only scopes the submitted demo actually shows, so the
-# app requests just login + publishing. While off, video.list is not in the
-# consent URL and list_videos/query_videos refuse before any HTTP call;
-# tiktok_content_agent.get_engagement_summary answers "not available yet"
-# without touching TikTok. To turn it back on after a Display API review:
-# flip this flag, add video.list in the TikTok developer portal, and have
-# each client reconnect (older grants never carried it). Accounts that were
-# connected while video.list was requested keep working for publishing —
-# their extra scope is simply unused.
+# app review approves only scopes the submitted demo actually shows. While
+# off, video.list is not in the consent URL and list_videos/query_videos
+# refuse before any HTTP call; tiktok_content_agent.get_engagement_summary
+# answers "not available yet" without touching TikTok. To turn it back on
+# after a Display API review: flip this flag, add video.list in the TikTok
+# developer portal, and have each client reconnect (older grants never
+# carried it).
+#
+# Grants made before 2026-10-29 carry user.info.basic + video.publish (+
+# video.list), not video.upload: identity and token refresh keep working, but
+# an inbox upload is refused by TikTok with a scope error — publish() turns
+# that into needs_reconnect (SCOPE_ERROR_CODES), and the reconnect asks for
+# exactly OAUTH_SCOPES.
 ENGAGEMENT_READS_ENABLED = False
 ENGAGEMENT_SCOPE = "video.list"
-OAUTH_SCOPES = ["user.info.basic", "video.publish"] + (
+UPLOAD_SCOPE = "video.upload"
+OAUTH_SCOPES = ["user.info.basic", UPLOAD_SCOPE] + (
     [ENGAGEMENT_SCOPE] if ENGAGEMENT_READS_ENABLED else [])
+
+
+def missing_scopes(granted: str) -> list:
+    """OAUTH_SCOPES the token response's comma-separated `scope` did NOT
+    grant (TikTok lets the user untick a scope on the consent screen).
+    An absent/empty `scope` field is treated as unknown, not as nothing."""
+    if not granted:
+        return []
+    have = {s.strip() for s in str(granted).split(",") if s.strip()}
+    return [s for s in OAUTH_SCOPES if s not in have]
 
 TOKEN_DELIMITER = "::"  # see the module docstring - composite access_token storage
 
@@ -139,6 +161,15 @@ def is_token_error(exc) -> bool:
     return isinstance(exc, TikTokAPIError) and exc.code in TOKEN_ERROR_CODES
 
 
+# The grant doesn't cover the call — e.g. a pre-2026-10-29 grant (video.publish,
+# no video.upload) hitting the inbox endpoint. Only a new consent fixes it.
+SCOPE_ERROR_CODES = {"scope_not_authorized", "scope_permission_missed"}
+
+
+def is_scope_error(exc) -> bool:
+    return isinstance(exc, TikTokAPIError) and exc.code in SCOPE_ERROR_CODES
+
+
 # ─── OAuth flow ─────────────────────────────────────────────────────────────
 
 def redirect_uri() -> str:
@@ -211,7 +242,7 @@ def get_user_info(access_token: str) -> dict:
 
 def init_inbox_upload(access_token: str, video_size: int, chunk_size: int,
                       total_chunk_count: int) -> dict:
-    """'Upload to Inbox' (Creator Post): sends the video to the CLIENT's own
+    """Scope: video.upload. 'Upload to Inbox' (Creator Post): sends the video to the CLIENT's own
     TikTok inbox for them to review/caption/publish themselves in-app. No
     SELF_ONLY/audit visibility restriction applies (that restriction is a
     Direct Post concept) — see the skill for why this is the mode
@@ -230,14 +261,15 @@ def init_inbox_upload(access_token: str, video_size: int, chunk_size: int,
 def init_direct_post(access_token: str, video_size: int, chunk_size: int,
                      total_chunk_count: int, privacy_level: str = "SELF_ONLY",
                      title: str = "") -> dict:
-    """Direct Post: publishes straight to the client's profile — but every
-    post from an UNAUDITED app is forced to privacy_level=SELF_ONLY
-    (visible only to the account owner) regardless of what's requested here;
-    lifting that needs a TikTok content-audit (see the skill). NOT called by
-    tiktok_content_agent today (see publish()'s docstring for why inbox is
-    the house choice) — kept here for a future business decision once/if
-    the audit is pursued and Direct Post's forced-private v1 result is
-    judged worth building UI/flow around anyway."""
+    """UNREACHABLE TODAY — nothing calls it, and it could not succeed: Direct
+    Post needs the video.publish scope, which OAUTH_SCOPES deliberately does
+    not request and the TikTok app is not configured for. Using it needs, in
+    order: TikTok's content audit (until then every post from an unaudited
+    app is forced to privacy_level=SELF_ONLY), video.publish added in the
+    developer portal + OAUTH_SCOPES + its own app review, and clients
+    reconnecting. Kept only for that future business decision; house policy
+    (a human makes the final publish tap) is Upload-to-Inbox — see
+    tiktok_content_agent.publish()."""
     return api_post("post/publish/video/init/", access_token, json_body={
         "post_info": {"title": title, "privacy_level": privacy_level},
         "source_info": {

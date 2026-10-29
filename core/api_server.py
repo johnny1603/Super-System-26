@@ -2973,6 +2973,12 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
             print(f"[tiktok oauth] client {client_id}: no open_id in user info response")
             return RedirectResponse(url="/dashboard/?connect_error=tiktok")
 
+        # The user can untick a scope on TikTok's consent screen. Stored
+        # anyway (identity works); publish() reports needs_reconnect if
+        # video.upload is the one missing. Scope names only, never a token.
+        missing = tiktok_service.missing_scopes(tokens.get("scope", ""))
+        if missing:
+            print(f"[tiktok oauth] client {client_id}: consent did not grant {missing}")
         stored_token = tiktok_service.join_tokens(access_token, refresh_token)
         upsert_account(client_id, "tiktok", open_id, stored_token, "active")
         log_activity(client_id, "tiktok_content_agent", "account_connected",

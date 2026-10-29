@@ -390,8 +390,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
   exportable dataset means one branch in `api_server._export_dataset`, nothing else.
-- `core/tiktok_service.py` — TikTok asks for **`user.info.basic` + `video.publish` only**
-  (TikTok app review approves only scopes the demo shows; rejected 2026-10-29). `video.list`
+- `core/tiktok_service.py` — TikTok asks for **`user.info.basic` + `video.upload` only**
+  (Upload-to-Inbox = drafts the owner publishes; `video.publish` is Direct Post's scope and is
+  NOT requested — `init_direct_post` is unreachable until a content audit). TikTok app review
+  approves only scopes the demo shows (rejected 2026-10-29); review text + shot list in
+  `docs/TIKTOK-REVIEW.md`. Older grants without `video.upload` → `publish()` returns
+  `needs_reconnect`. `video.list`
   (engagement counts) sits behind ONE flag, `ENGAGEMENT_READS_ENABLED` (off): while off,
   `list_videos`/`query_videos` refuse before any HTTP, `tiktok_content_agent.get_engagement_summary`
   answers `engagement_available: False` with no TikTok call, and the Performance card /

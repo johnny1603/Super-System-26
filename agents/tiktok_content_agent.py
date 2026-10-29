@@ -161,6 +161,14 @@ def publish(client_id: int, spec: dict) -> dict:
         final = timed_step(AGENT_NAME, "await_delivery",
                            lambda: _wait_for_inbox_delivery(access_token, publish_id))
     except Exception as e:
+        if tiktok.is_scope_error(e):
+            # A grant from before 2026-10-29 (video.publish, no video.upload):
+            # a fact with one fix — reconnect, which asks for OAUTH_SCOPES
+            agent_alert(AGENT_NAME, [f"TikTok publish for client {client_id}: the connected "
+                                     f"account's grant lacks {tiktok.UPLOAD_SCOPE} — client "
+                                     f"must reconnect TikTok"])
+            return {"success": False, "needs_reconnect": True,
+                    "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
         agent_alert(AGENT_NAME, [f"TikTok publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])
         return {"success": False, "errors": [str(e)]}
