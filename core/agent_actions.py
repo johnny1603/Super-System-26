@@ -165,6 +165,17 @@ def _v_media_video(value, client_id: int):
     return file_id
 
 
+def _v_tiktok_video(value, client_id: int):
+    """_v_media_video's proof (the client's own folder, a video, not trashed)
+    plus TikTok's own cap: the inbox upload is ONE chunk (core/video_limits)."""
+    file_id = _v_media_video(value, client_id)
+    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
+    hit = _media_meta.get((client_id, file_id))
+    if not hit or not fits_tiktok((hit[1] or {}).get("size")):
+        raise ValueError(f"video must be up to {TIKTOK_INBOX_MAX_MB} MB for TikTok")
+    return file_id
+
+
 _TITLE_DROP = re.compile(r"[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩<>]")
 YOUTUBE_TITLE_MAX = 100   # YouTube's own limit; it also rejects < and >
 
@@ -267,6 +278,50 @@ def _run_publish_youtube_from_media(client_id: int, params: dict, background_tas
             "studio_url": f"https://studio.youtube.com/video/{video_id}/edit" if video_id else ""}
 
 
+def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """Before the card: the same video already has an open card → that card;
+    then the grant, checked LIVE when nothing is recorded yet (one token
+    refresh, tiktok_content_agent.check_grant). A missing, dead or
+    video.upload-less grant never gets a send card the click would fail on —
+    it switches to the connect_tiktok card with a plain line saying why."""
+    for row in rows:
+        if (row.get("params") or {}).get("drive_file_id") == params["drive_file_id"]:
+            return {"existing": row}
+    from agents.tiktok_content_agent import check_grant
+    grant = check_grant(client_id)
+    if grant in ("not_connected", "missing_upload", "dead"):
+        notice = _TIKTOK_CONNECT_FIRST if grant == "not_connected" else _TIKTOK_RECONNECT_FIRST
+        text = _pick(notice, (context or {}).get("language") or "he")
+        return {"switch_to": "connect_tiktok",
+                "notice": text.replace("{file}", _media_name(client_id, params["drive_file_id"]) or "—")}
+    return {"params": {"drive_file_id": params["drive_file_id"]}}
+
+
+def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
+    params = params or {}
+    if set(params) != {"drive_file_id"}:
+        raise ValueError("stored TikTok proposal has unexpected params")
+    return {"drive_file_id": _v_tiktok_video(params.get("drive_file_id"), client_id)}
+
+
+def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks):
+    """tiktok_content_agent.publish — the function behind
+    POST /api/tiktok-content/publish: Upload-to-Inbox (video.upload), then
+    status polling until SEND_TO_USER_INBOX. There is no Direct Post on this
+    path and no caption: the owner writes it and publishes inside TikTok."""
+    from agents.tiktok_content_agent import publish
+    file_id = params["drive_file_id"]
+    name = _media_name(client_id, file_id)
+    result = publish(client_id, {"drive_file_id": file_id})
+    if not result.get("success"):
+        for flag in ("needs_reconnect", "pending_limit", "too_large"):
+            if result.get(flag):
+                raise ActionFailed(flag, "; ".join(map(str, result.get("errors") or [flag])))
+        raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
+    return {"publish_id": result.get("publish_id", ""), "status": result.get("status", ""),
+            "source_file": name}
+
+
 def _run_rotate_wordpress_password(client_id: int, params: dict, background_tasks):
     """website_agent.rotate_stored_password — the same mint/delete code as
     one-click connect. The audit record is this action's own row (who
@@ -346,6 +401,19 @@ def _youtube_upload_possible(state: dict, client: dict) -> bool:
         return False
     cap = media.get("youtube_daily_upload_cap")
     return cap is None or (media.get("youtube_uploads_today") or 0) < cap
+
+
+def _tiktok_send_possible(state: dict, client: dict) -> bool:
+    """TikTok is in the client's plan or connected (any status but
+    not_in_plan), and a video in the media folder fits the inbox upload.
+    Deliberately NOT gated on a healthy connection: asking to send with a
+    missing or broken one must reach _prepare_tiktok, which answers with the
+    reconnect card and a plain line instead of silence."""
+    tiktok = _cards(state).get("tiktok") or {}
+    if not tiktok or tiktok.get("status") == "not_in_plan":
+        return False
+    media = (state or {}).get("media_folder") or {}
+    return any(v.get("tiktok_uploadable") for v in media.get("videos") or [])
 
 
 # ─── The whitelist ───────────────────────────────────────────────────────────
@@ -517,6 +585,24 @@ ACTIONS = {
         "done": _txt("פותח את כרטיס החיבור…", "Opening the connection card…", "Ouverture de la carte…",
                      "جارٍ فتح البطاقة…", "Открываю карточку…"),
     },
+    "connect_tiktok": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
+        "link": "/api/oauth/tiktok/start",
+        "does": "Opens TikTok's approval screen to (re)connect the client's TikTok account — the fix "
+                "when TikTok is not connected or the connection needs renewing (also offered "
+                "automatically when a TikTok send can't go through).",
+        "params": {},
+        "available": _channel_needs_connect("tiktok"),
+        "title": _txt("חיבור חשבון טיקטוק", "Connect your TikTok account", "Connecter votre compte TikTok",
+                      "ربط حساب تيك توك", "Подключить аккаунт TikTok"),
+        "what": _txt("ייפתח מסך האישור של טיקטוק — מאשרים פעם אחת, וחוזרים לכאן.",
+                     "TikTok's approval screen opens — approve once and you're back here.",
+                     "L'écran d'autorisation TikTok s'ouvre — validez une fois et revenez ici.",
+                     "ستفتح شاشة موافقة تيك توك — وافقوا مرة واحدة وتعودون إلى هنا.",
+                     "Откроется окно подтверждения TikTok — подтвердите один раз и вернитесь сюда."),
+        "done": _txt("פותח את מסך האישור של טיקטוק…", "Opening TikTok's approval screen…",
+                     "Ouverture de l'écran TikTok…", "جارٍ فتح شاشة موافقة تيك توك…", "Открываю окно TikTok…"),
+    },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "does": "Approves ONE of the client's own pending suggestions (approvals.waiting_for_client) — "
@@ -589,7 +675,80 @@ ACTIONS = {
             "وصلتم إلى حد الرفع إلى YouTube لهذا اليوم (3 يوميًا). يمكنكم الرفع مجددًا غدًا — لم يتغير شيء.",
             "Достигнут дневной лимит загрузок на YouTube (3 в день). Загрузить снова можно завтра — ничего не изменено.")},
     },
+    "send_tiktok_to_inbox": {
+        # The client's own click is the approval: the video lands in THEIR
+        # TikTok inbox as a draft (Upload-to-Inbox, scope video.upload) and
+        # nothing is public until they publish it inside TikTok themselves.
+        # No Direct Post, no caption, no privacy setting exists on this path.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Sends ONE video from the client's Drive media folder (account_state.media_folder.videos, "
+                "tiktok_uploadable=true) to THEIR OWN TikTok inbox as a draft. Nothing is posted: they "
+                "open TikTok, add their caption and publish it themselves. If TikTok isn't connected or "
+                "the connection needs renewing, proposing this shows the reconnect button instead.",
+        "params": {"drive_file_id": {"required": True, "validate": _v_tiktok_video,
+                                     "hint": "drive_file_id copied exactly from account_state.media_folder.videos "
+                                             "(tiktok_uploadable=true; never shown to the client)"}},
+        "available": _tiktok_send_possible,
+        "prepare": lambda client_id, params, context, rows: _prepare_tiktok(client_id, params, context, rows),
+        "validate_stored": lambda client_id, params: _validate_tiktok_stored(client_id, params),
+        "details": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))},
+        "run": _run_send_tiktok_to_inbox,
+        "display": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))
+                                              or "—"},
+        "title": _txt("שליחת סרטון לטיוטות בטיקטוק", "Send a video to your TikTok drafts",
+                      "Envoyer une vidéo dans vos brouillons TikTok", "إرسال فيديو إلى مسودات تيك توك",
+                      "Отправить видео в черновики TikTok"),
+        "what": _txt("הסרטון \"{file}\" מתיקיית המדיה שלכם יישלח לתיבת הנכנסים בחשבון הטיקטוק שלכם כטיוטה. שום דבר לא מתפרסם — אתם מוסיפים כיתוב ומפרסמים בעצמכם באפליקציה.",
+                     "\"{file}\" from your media folder will be sent to your TikTok inbox as a draft. Nothing is posted — you add the caption and publish it yourself in the app.",
+                     "« {file} » de votre dossier média sera envoyée dans votre boîte TikTok en brouillon. Rien n'est publié — vous ajoutez la légende et publiez vous-même dans l'application.",
+                     "سيُرسل \"{file}\" من مجلد الوسائط إلى صندوق الوارد في حساب تيك توك كمسودة. لا يُنشر شيء — تضيفون النص وتنشرون بأنفسكم في التطبيق.",
+                     "«{file}» из вашей папки медиа будет отправлено во входящие TikTok как черновик. Ничего не публикуется — подпись и публикацию вы делаете сами в приложении."),
+        "done": _txt("הסרטון \"{file}\" נשלח לטיוטות שלכם בטיקטוק ✓\nעכשיו פתחו את אפליקציית טיקטוק — מחכה לכם התראה על סרטון בתיבת הנכנסים. שם מוסיפים כיתוב ולוחצים 'פרסם' מתי שנוח לכם. אנחנו לא מפרסמים בשמכם.",
+                     "\"{file}\" was sent to your TikTok drafts ✓\nNow open the TikTok app — a notification about the video is waiting in your inbox. Add your caption there and tap Post whenever you like. We never post for you.",
+                     "« {file} » a été envoyée dans vos brouillons TikTok ✓\nOuvrez maintenant l'application TikTok — une notification vous attend dans la boîte de réception. Ajoutez votre légende et publiez quand vous voulez. Nous ne publions jamais à votre place.",
+                     "تم إرسال \"{file}\" إلى مسودات تيك توك ✓\nافتحوا الآن تطبيق تيك توك — بانتظاركم إشعار عن الفيديو في صندوق الوارد. أضيفوا النص وانشروا متى شئتم. نحن لا ننشر نيابة عنكم.",
+                     "«{file}» отправлено в черновики TikTok ✓\nТеперь откройте приложение TikTok — во входящих вас ждёт уведомление о видео. Добавьте подпись и опубликуйте, когда удобно. Мы никогда не публикуем за вас."),
+        "done_message": lambda result, lang: _pick(ACTIONS["send_tiktok_to_inbox"]["done"], lang)
+            .replace("{file}", result.get("source_file") or "—"),
+        "refusals": {
+            "needs_reconnect": _txt(
+                "החיבור לטיקטוק צריך חידוש לפני שאפשר לשלוח סרטונים — שום דבר לא נשלח. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, דרך טיקטוק).",
+                "Your TikTok connection needs renewing before videos can be sent — nothing was sent. Tap the button to reconnect (once, through TikTok).",
+                "Votre connexion TikTok doit être renouvelée avant d'envoyer des vidéos — rien n'a été envoyé. Touchez le bouton pour reconnecter (une fois, via TikTok).",
+                "يجب تجديد الربط مع تيك توك قبل إرسال الفيديوهات — لم يُرسل شيء. اضغطوا على الزر لإعادة الربط (مرة واحدة، عبر تيك توك).",
+                "Подключение к TikTok нужно обновить, прежде чем отправлять видео — ничего не отправлено. Нажмите кнопку, чтобы переподключить (один раз, через TikTok)."),
+            "pending_limit": _txt(
+                "בתיבת הנכנסים שלכם בטיקטוק כבר מחכים כמה סרטונים שעוד לא פורסמו, וטיקטוק לא מקבלת עוד כרגע. פרסמו או מחקו חלק מהם באפליקציה, ואז אפשר לשלוח שוב — שום דבר לא נשלח.",
+                "Several unpublished videos are already waiting in your TikTok inbox, and TikTok won't take more right now. Publish or delete some of them in the app, then you can send again — nothing was sent.",
+                "Plusieurs vidéos non publiées attendent déjà dans votre boîte TikTok, et TikTok n'en accepte pas d'autres pour l'instant. Publiez-en ou supprimez-en dans l'application, puis renvoyez — rien n'a été envoyé.",
+                "توجد عدة فيديوهات غير منشورة في صندوق الوارد في تيك توك، ولا يقبل تيك توك المزيد حاليًا. انشروا بعضها أو احذفوه في التطبيق ثم أرسلوا مجددًا — لم يُرسل شيء.",
+                "Во входящих TikTok уже ждут несколько неопубликованных видео, и сейчас TikTok больше не принимает. Опубликуйте или удалите часть из них в приложении и отправьте снова — ничего не отправлено."),
+            "too_large": _txt(
+                "הסרטון גדול מדי לשליחה לטיקטוק (עד 64MB) — שום דבר לא נשלח. אפשר לבחור גרסה קצרה או דחוסה יותר מתיקיית המדיה.",
+                "This video is too large to send to TikTok (up to 64 MB) — nothing was sent. Pick a shorter or more compressed version from your media folder.",
+                "Cette vidéo est trop lourde pour TikTok (64 Mo max) — rien n'a été envoyé. Choisissez une version plus courte ou plus compressée.",
+                "الفيديو كبير جدًا للإرسال إلى تيك توك (حتى 64MB) — لم يُرسل شيء. اختاروا نسخة أقصر أو مضغوطة أكثر.",
+                "Видео слишком большое для TikTok (до 64 МБ) — ничего не отправлено. Выберите более короткую или сжатую версию."),
+        },
+        # After an explained refusal, the card that fixes it (shown right away)
+        "follow_up": {"needs_reconnect": "connect_tiktok"},
+    },
 }
+
+# Lines a TikTok send shows INSTEAD of its card when the connection can't
+# carry it (_prepare_tiktok) — paired with the connect_tiktok card
+_TIKTOK_CONNECT_FIRST = _txt(
+    "כדי לשלוח את \"{file}\" לטיוטות בטיקטוק צריך קודם לחבר את חשבון הטיקטוק שלכם. לחצו על הכפתור — זה פעם אחת, דרך טיקטוק, ואז אכין את השליחה.",
+    "To send \"{file}\" to your TikTok drafts, your TikTok account needs to be connected first. Tap the button — it's once, through TikTok — and then I'll set up the send.",
+    "Pour envoyer « {file} » dans vos brouillons TikTok, connectez d'abord votre compte TikTok. Touchez le bouton — une seule fois, via TikTok — puis je prépare l'envoi.",
+    "لإرسال \"{file}\" إلى مسودات تيك توك يجب أولًا ربط حساب تيك توك. اضغطوا على الزر — مرة واحدة عبر تيك توك — ثم أجهّز الإرسال.",
+    "Чтобы отправить «{file}» в черновики TikTok, сначала подключите аккаунт TikTok. Нажмите кнопку — один раз, через TikTok, — и я подготовлю отправку.")
+_TIKTOK_RECONNECT_FIRST = _txt(
+    "החיבור לטיקטוק צריך חידוש לפני שאפשר לשלוח את \"{file}\" לטיוטות — שום דבר לא נשלח. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, דרך טיקטוק), ואז אכין את השליחה.",
+    "Your TikTok connection needs renewing before \"{file}\" can go to your drafts — nothing was sent. Tap the button to reconnect (once, through TikTok), and then I'll set up the send.",
+    "Votre connexion TikTok doit être renouvelée avant d'envoyer « {file} » — rien n'a été envoyé. Touchez le bouton pour reconnecter (une fois, via TikTok), puis je prépare l'envoi.",
+    "يجب تجديد الربط مع تيك توك قبل إرسال \"{file}\" إلى المسودات — لم يُرسل شيء. اضغطوا على الزر لإعادة الربط (مرة واحدة عبر تيك توك)، ثم أجهّز الإرسال.",
+    "Подключение к TikTok нужно обновить, прежде чем отправить «{file}» в черновики — ничего не отправлено. Нажмите кнопку, чтобы переподключить (один раз, через TikTok), и я подготовлю отправку.")
 
 # Fixed lines for every other outcome (code decides, the model never writes them)
 _STAFF_REQUEST = _txt(
@@ -831,6 +990,17 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
         for answer in ("clarify", "refuse"):
             if prepared.get(answer):
                 return {answer: prepared[answer]}
+        if prepared.get("switch_to"):
+            # The action can't go through as things stand, and another action
+            # fixes that (send_tiktok_to_inbox → connect_tiktok): show THAT
+            # card, with the prepared line in place of the model's reply.
+            # state=None: the fix is offered because of what prepare just
+            # learned, which the turn's snapshot may not know yet.
+            switched = propose(client_id, origin, persona, {"name": prepared["switch_to"], "params": {}},
+                               client=client, context=context)
+            if switched.get("card"):
+                return {**switched, "notice": prepared.get("notice", "")}
+            return {"refuse": prepared.get("notice")} if prepared.get("notice") else switched
         if prepared.get("existing"):
             return {"card": card(prepared["existing"], actor, lang), "status": prepared["existing"].get("status")}
         params, supersedes = prepared["params"], prepared.get("supersedes")
@@ -974,7 +1144,15 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
             # plain line, no alert — nothing is broken
             text = _pick(refusal, lang)
             _post(row, text, to_client=row.get("origin") == "client_chat")
-            return {"success": True, "status": "failed", "code": code, "message": text}
+            out = {"success": True, "status": "failed", "code": code, "message": text}
+            follow = (spec.get("follow_up") or {}).get(code)
+            if follow:
+                # The card that fixes it, right under the refusal (e.g. reconnect TikTok)
+                fix = propose(client_id, row.get("origin") or "client_chat", row.get("persona", "general"),
+                              {"name": follow, "params": {}}, client=client)
+                if fix.get("card"):
+                    out["next_card"] = fix["card"]
+            return out
         if actor == "admin":
             detail = f"✕ {_pick(spec['title'], 'he')} — לא בוצע: {str(e)[:400]}"
             if row.get("origin") == "admin_chat":

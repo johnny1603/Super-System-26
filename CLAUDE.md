@@ -394,8 +394,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (Upload-to-Inbox = drafts the owner publishes; `video.publish` is Direct Post's scope and is
   NOT requested — `init_direct_post` is unreachable until a content audit). TikTok app review
   approves only scopes the demo shows (rejected 2026-10-29); review text + shot list in
-  `docs/TIKTOK-REVIEW.md`. Older grants without `video.upload` → `publish()` returns
-  `needs_reconnect`. `video.list`
+  `docs/TIKTOK-REVIEW.md`. What each grant covers is recorded in `core/tiktok_grant`
+  (`tiktok_grant:<id>`, from the callback and every token refresh); a grant without
+  `video.upload` or dead → `needs_reconnect` everywhere and the `connect_tiktok` card. The
+  client sends a video to their TikTok drafts with the agent_actions card
+  `send_tiktok_to_inbox` (client-approved, ≤ 64 MB `video_limits.TIKTOK_INBOX_MAX_MB`, never
+  Direct Post, no caption). `video.list`
   (engagement counts) sits behind ONE flag, `ENGAGEMENT_READS_ENABLED` (off): while off,
   `list_videos`/`query_videos` refuse before any HTTP, `tiktok_content_agent.get_engagement_summary`
   answers `engagement_available: False` with no TikTok call, and the Performance card /

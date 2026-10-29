@@ -367,9 +367,9 @@ def get_settings() -> dict:
         # global settings — they have their own screen in the Control Room
         # (client_deletion: progress rows of a client deletion — same reason)
         # (gtm_token / gads_token: per-client token health — core/gtm_connection,
-        # core/google_ads_health) (php_exposure: per-client PHP2Shell record)
+        # core/google_ads_health, core/tiktok_grant) (php_exposure: per-client PHP2Shell record)
         if str(row["key"]).startswith(("client_settings:", "client_deletion:", "bulk_delete:",
-                                       "gtm_token:", "gads_token:", "php_exposure:")):
+                                       "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

@@ -1,4 +1,5 @@
-"""THE size limit for a Drive → YouTube upload — one constant, read by every
+"""THE size limits for Drive → YouTube and Drive → TikTok-inbox uploads
+(TIKTOK_INBOX_MAX_MB below). The YouTube one is one constant, read by every
 place that decides or enforces it, so they can never disagree:
 
   core/client_state ........ media_folder.videos[].uploadable, upload_max_mb
@@ -49,3 +50,20 @@ def fits(size_bytes) -> bool:
     except (TypeError, ValueError):
         return False
     return 0 < size <= VIDEO_UPLOAD_MAX_BYTES
+
+
+# Drive → TikTok inbox (tiktok_content_agent.publish): ONE FILE_UPLOAD chunk,
+# read whole into memory. TikTok takes a single-chunk upload only up to 64 MB
+# (bigger needs multi-chunk, not built — see the tiktok skill). Read by
+# client_state (media_folder.videos[].tiktok_uploadable), the
+# send_tiktok_to_inbox validator, and publish() as the root guard.
+TIKTOK_INBOX_MAX_MB = 64
+TIKTOK_INBOX_MAX_BYTES = TIKTOK_INBOX_MAX_MB * 1024 * 1024
+
+
+def fits_tiktok(size_bytes) -> bool:
+    try:
+        size = int(size_bytes or 0)
+    except (TypeError, ValueError):
+        return False
+    return 0 < size <= TIKTOK_INBOX_MAX_BYTES

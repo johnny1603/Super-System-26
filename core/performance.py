@@ -68,6 +68,12 @@ def _cached(key: tuple, fetch):
     return value, pulled
 
 
+def forget_engagement(client_id: int, channel: str):
+    """After a reconnect (OAuth callback) the cached engagement summary may
+    still say "reconnect" — drop it so the next read is fresh."""
+    _local_cache.pop((channel, client_id), None)
+
+
 def _card(status: str, **extra) -> dict:
     return {"status": status, **extra}
 
@@ -211,6 +217,10 @@ def _engagement_card(client_id: int, channel: str, platforms: set) -> dict:
     summary, pulled = _cached((channel, client_id), lambda: get_engagement_summary(client_id))
     if not summary.get("connected"):
         return _card("not_connected")
+    if summary.get("needs_reconnect"):
+        # TikTok grant recorded dead or without video.upload (core/tiktok_grant):
+        # one fix, a new consent — agent_actions offers connect_tiktok
+        return _card("needs_attention", reason="reconnect", last_checked=pulled)
     if summary.get("engagement_available") is False:
         # TikTok's video.list scope is not requested (tiktok_service.
         # ENGAGEMENT_READS_ENABLED) — a known state, never sync_failed

@@ -2974,13 +2974,20 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
             return RedirectResponse(url="/dashboard/?connect_error=tiktok")
 
         # The user can untick a scope on TikTok's consent screen. Stored
-        # anyway (identity works); publish() reports needs_reconnect if
-        # video.upload is the one missing. Scope names only, never a token.
+        # anyway (identity works); core/tiktok_grant records what THIS grant
+        # covers, replacing any record of the previous grant, so a reconnect
+        # clears "needs reconnect" at once. Scope names only, never a token.
         missing = tiktok_service.missing_scopes(tokens.get("scope", ""))
         if missing:
             print(f"[tiktok oauth] client {client_id}: consent did not grant {missing}")
         stored_token = tiktok_service.join_tokens(access_token, refresh_token)
         upsert_account(client_id, "tiktok", open_id, stored_token, "active")
+        from core import performance, tiktok_grant
+        tiktok_grant.clear(client_id)
+        tiktok_grant.record_scopes(client_id, tokens.get("scope", ""))
+        performance.forget_engagement(client_id, "tiktok")
+        from core import client_state
+        client_state.forget(client_id)
         log_activity(client_id, "tiktok_content_agent", "account_connected",
                      {"open_id": open_id, "display_name": user.get("display_name", "")}, {})
         return RedirectResponse(url="/dashboard/?connected=tiktok")

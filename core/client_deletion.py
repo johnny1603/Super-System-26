@@ -940,9 +940,11 @@ def _clear_leads(ids: list, lead_owner: dict):
 def _settings_keys(ids: list) -> list:
     """The client's own app_settings rows: per-client limits, the Tag
     Manager / Google Ads token-health records (core/gtm_connection,
-    core/google_ads_health) and the PHP2Shell site record (core/php_exposure)."""
+    core/google_ads_health), the TikTok grant record (core/tiktok_grant) and
+    the PHP2Shell site record (core/php_exposure)."""
     return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}",
-                                     f"gads_token:{int(i)}", f"php_exposure:{int(i)}")]
+                                     f"gads_token:{int(i)}", f"tiktok_grant:{int(i)}",
+                                     f"php_exposure:{int(i)}")]
 
 
 def _clear_settings(ids: list):

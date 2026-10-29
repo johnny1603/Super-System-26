@@ -124,6 +124,11 @@ def _raise_api_error(response: httpx.Response):
         err = body.get("error", {})
     except Exception:
         raise TikTokAPIError(f"{response.status_code}: {response.text[:300]}")
+    if isinstance(err, str):
+        # The OAuth token endpoint's shape: {"error": "invalid_grant",
+        # "error_description": ..., "log_id": ...} — a string, not an object
+        raise TikTokAPIError(f"{response.status_code} (code {err}): {body.get('error_description', '')}",
+                             code=err, log_id=body.get("log_id"))
     code = err.get("code", "")
     if code and code != "ok":
         raise TikTokAPIError(
@@ -170,6 +175,26 @@ def is_scope_error(exc) -> bool:
     return isinstance(exc, TikTokAPIError) and exc.code in SCOPE_ERROR_CODES
 
 
+# A token refresh refused with one of these: the grant itself is gone
+# (revoked in TikTok, expired after 365 days unused, replaced). Only a new
+# consent fixes it.
+DEAD_GRANT_CODES = {"invalid_grant"} | TOKEN_ERROR_CODES
+
+
+def is_dead_grant(exc) -> bool:
+    return isinstance(exc, TikTokAPIError) and exc.code in DEAD_GRANT_CODES
+
+
+# Upload-to-Inbox: TikTok caps how many shares may sit unpublished in a
+# user's inbox at once (per its Content Posting docs). Not a fault — the owner
+# publishes or deletes some drafts in the app.
+PENDING_LIMIT_CODES = {"spam_risk_too_many_pending_share"}
+
+
+def is_pending_limit(exc) -> bool:
+    return isinstance(exc, TikTokAPIError) and exc.code in PENDING_LIMIT_CODES
+
+
 # ─── OAuth flow ─────────────────────────────────────────────────────────────
 
 def redirect_uri() -> str:
@@ -214,7 +239,8 @@ def exchange_code(code: str) -> dict:
 def refresh_access_token(refresh_token: str) -> dict:
     """A dead/aging access token -> a fresh one, using the 365-day refresh
     token. Returns a NEW refresh_token too (TikTok rotates it) — callers
-    must re-store both, not just the access token."""
+    must re-store both, not just the access token. The answer also carries
+    `scope` — what this grant covers (core/tiktok_grant records it)."""
     response = httpx.post(
         f"{API_BASE}/oauth/token/",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -228,7 +254,13 @@ def refresh_access_token(refresh_token: str) -> dict:
     )
     if response.status_code != 200:
         _raise_api_error(response)
-    return response.json()
+    body = response.json()
+    err = body.get("error")
+    if isinstance(err, str) and err not in ("", "ok"):
+        # The token endpoint can answer 200 with an OAuth error in the body
+        raise TikTokAPIError(f"token refresh failed: {body.get('error_description', err)}",
+                             code=err, log_id=body.get("log_id"))
+    return body
 
 
 def get_user_info(access_token: str) -> dict:

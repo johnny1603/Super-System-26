@@ -22,13 +22,58 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 _STUBBED = ("httpx", "supabase", "agents.keys_agent", "core.agent_base", "core.secrets_vault",
-            "agents.client_agent", "core.tiktok_service", "agents.tiktok_content_agent")
+            "agents.client_agent", "core.drive_service", "core.tiktok_service",
+            "agents.tiktok_content_agent")
 
 
 def _module(name, **attrs):
     m = types.ModuleType(name)
     m.__dict__.update(attrs)
     return m
+
+
+class _SettingsQuery:
+    def __init__(self, db):
+        self.db, self.op, self.key, self.payload = db, "select", None, None
+
+    def select(self, *_a):
+        return self
+
+    def eq(self, _col, val):
+        self.key = val
+        return self
+
+    def limit(self, _n):
+        return self
+
+    def upsert(self, row, on_conflict=None):
+        self.op, self.payload = "upsert", row
+        return self
+
+    def delete(self):
+        self.op = "delete"
+        return self
+
+    def execute(self):
+        if self.op == "upsert":
+            self.db.rows[self.payload["key"]] = dict(self.payload)
+            return types.SimpleNamespace(data=[self.payload])
+        if self.op == "delete":
+            self.db.rows.pop(self.key, None)
+            return types.SimpleNamespace(data=[])
+        hit = self.db.rows.get(self.key)
+        return types.SimpleNamespace(data=[hit] if hit else [])
+
+
+class FakeSettings:
+    """app_settings only — what core/tiktok_grant reads and writes."""
+
+    def __init__(self):
+        self.rows = {}
+
+    def table(self, name):
+        assert name == "app_settings", name
+        return _SettingsQuery(self)
 
 
 class _Response:
@@ -61,16 +106,25 @@ class TikTokCase(unittest.TestCase):
                                        timed_step=lambda agent, step, fn: fn()),
             "core.secrets_vault": _module("core.secrets_vault", hydrate=lambda row: row),
             "agents.client_agent": _module("agents.client_agent",
-                                           upsert_account=lambda *a: cls.upserts.append(a)),
+                                           upsert_account=lambda *a: cls.upserts.append(a),
+                                           log_activity=lambda *a, **k: None,
+                                           get_client=lambda cid: {},
+                                           log_communication=lambda *a, **k: None),
+            "core.drive_service": _module("core.drive_service", download_file=lambda fid: b"video-bytes"),
         })
         for name in ("core.tiktok_service", "agents.tiktok_content_agent"):
             sys.modules.pop(name, None)
         import core.tiktok_service as service
         import agents.tiktok_content_agent as agent
-        cls.service, cls.agent = service, agent
+        from core import tiktok_grant
+        cls.service, cls.agent, cls.grant = service, agent, tiktok_grant
+        cls._saved_grant = (tiktok_grant._db, tiktok_grant._alert)
+        tiktok_grant._alert = lambda issue: cls.alerts.append([issue])
 
     @classmethod
     def tearDownClass(cls):
+        cls.grant._db, cls.grant._alert = cls._saved_grant
+        cls.grant._memory.clear()
         for name, module in cls._saved_modules.items():
             if module is None:
                 sys.modules.pop(name, None)
@@ -81,6 +135,9 @@ class TikTokCase(unittest.TestCase):
         self.http_calls.clear()
         self.alerts.clear()
         self.upserts.clear()
+        self.settings = FakeSettings()
+        self.grant._db = lambda: self.settings
+        self.grant._memory.clear()
         self.agent._get_connection = lambda cid: {"client_id": cid, "account_id": "open-id-1",
                                                   "access_token": "acc::ref"}
 
@@ -119,16 +176,9 @@ class OldGrant(TikTokCase):
             raise service.TikTokAPIError("401 (code scope_not_authorized): ...",
                                          code="scope_not_authorized")
         service.init_inbox_upload = refused
-        sys.modules["core.drive_service"] = _module("core.drive_service",
-                                                    download_file=lambda fid: b"video-bytes")
-        self.agent_client = sys.modules["agents.client_agent"]
-        self.agent_client.log_activity = lambda *a, **k: None
-        self.agent_client.get_client = lambda cid: {}
-        self.agent_client.log_communication = lambda *a, **k: None
 
     def tearDown(self):
         self.service.refresh_access_token, self.service.init_inbox_upload = self.saved
-        sys.modules.pop("core.drive_service", None)
 
     def test_identity_refresh_still_works(self):
         # token refresh needs no posting scope: the old grant keeps working for login
@@ -145,6 +195,120 @@ class OldGrant(TikTokCase):
         query = parse_qs(urlparse(self.service.build_consent_url("st")).query)
         self.assertEqual(query["scope"], [",".join(self.service.OAUTH_SCOPES)])
         self.assertIn("video.upload", query["scope"][0])
+
+
+class GrantRecord(TikTokCase):
+    """core/tiktok_grant: what a grant covers, learned from token answers."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved_refresh = self.service.refresh_access_token
+        self.inits = []
+        self.saved_init = self.service.init_inbox_upload
+        self.service.init_inbox_upload = lambda *a, **k: self.inits.append(a) or {
+            "publish_id": "p1", "upload_url": "https://up"}
+
+    def tearDown(self):
+        self.service.refresh_access_token = self.saved_refresh
+        self.service.init_inbox_upload = self.saved_init
+
+    def refresh_with(self, scope):
+        self.service.refresh_access_token = lambda rt: {"access_token": "a2", "refresh_token": "r2",
+                                                        "scope": scope}
+
+    def test_old_grant_is_learned_on_refresh_and_never_uploads(self):
+        self.refresh_with("user.info.basic,video.publish,video.list")
+        result = self.agent.publish(27, {"drive_file_id": "f1"})
+        self.assertTrue(result["needs_reconnect"])
+        self.assertEqual(self.inits, [])                       # no upload attempted
+        self.assertEqual(self.grant.state(27), "missing_upload")
+        self.assertEqual(len(self.alerts), 1)                  # one alert, on the transition
+        self.agent.publish(27, {"drive_file_id": "f1"})        # known bad: refused before any call
+        self.assertEqual(len(self.alerts), 1)
+
+    def test_new_grant_is_ok(self):
+        self.refresh_with("user.info.basic,video.upload")
+        self.assertEqual(self.agent.check_grant(27), "ok")
+        self.assertEqual(self.alerts, [])
+
+    def test_known_record_costs_no_refresh(self):
+        self.grant.record_scopes(27, "user.info.basic,video.upload")
+        self.service.refresh_access_token = lambda rt: self.fail("refreshed although known")
+        self.assertEqual(self.agent.check_grant(27), "ok")
+
+    def test_dead_refresh_is_recorded(self):
+        def dead(rt):
+            raise self.service.TikTokAPIError("invalid", code="invalid_grant")
+        self.service.refresh_access_token = dead
+        self.assertEqual(self.agent.check_grant(27), "dead")
+
+    def test_network_failure_stays_unknown(self):
+        def down(rt):
+            raise OSError("connection reset")
+        self.service.refresh_access_token = down
+        self.assertEqual(self.agent.check_grant(27), "unknown")
+        self.assertEqual(self.alerts, [])
+
+    def test_not_connected(self):
+        self.agent._get_connection = lambda cid: {}
+        self.assertEqual(self.agent.check_grant(27), "not_connected")
+
+    def test_reconnect_replaces_the_record(self):
+        self.grant.record_missing_upload(27)
+        self.grant.clear(27)                                   # what the OAuth callback does
+        self.grant.record_scopes(27, "user.info.basic,video.upload")
+        self.assertEqual(self.grant.state(27), "ok")
+        self.assertNotIn("token", str(self.settings.rows))     # scope names only
+
+    def test_bad_grant_makes_the_summary_say_reconnect_without_a_call(self):
+        self.grant.record_missing_upload(27)
+        summary = self.agent.get_engagement_summary(27)
+        self.assertTrue(summary["needs_reconnect"])
+        self.assertEqual(self.http_calls, [])
+
+    def test_oauth_string_error_is_parsed(self):
+        class R:
+            status_code = 400
+
+            def json(self):
+                return {"error": "invalid_grant", "error_description": "expired", "log_id": "L"}
+        with self.assertRaises(self.service.TikTokAPIError) as caught:
+            self.service._raise_api_error(R())
+        self.assertEqual(caught.exception.code, "invalid_grant")
+        self.assertTrue(self.service.is_dead_grant(caught.exception))
+
+
+class GrantCard(unittest.TestCase):
+    def setUp(self):
+        self.saved = sys.modules.get("agents.tiktok_content_agent")
+        sys.modules["agents.tiktok_content_agent"] = _module(
+            "agents.tiktok_content_agent",
+            get_engagement_summary=lambda cid: {"connected": True, "needs_reconnect": True})
+        from core import performance
+        self.performance = performance
+        performance._local_cache.clear()
+
+    def tearDown(self):
+        self.performance._local_cache.clear()
+        if self.saved is None:
+            sys.modules.pop("agents.tiktok_content_agent", None)
+        else:
+            sys.modules["agents.tiktok_content_agent"] = self.saved
+
+    def test_performance_card_says_reconnect(self):
+        card = self.performance._engagement_card(27, "tiktok", {"tiktok"})
+        self.assertEqual((card["status"], card["reason"]), ("needs_attention", "reconnect"))
+
+    def test_forget_engagement_drops_the_cache(self):
+        self.performance._local_cache[("tiktok", 27)] = (0, {}, "")
+        self.performance.forget_engagement(27, "tiktok")
+        self.assertNotIn(("tiktok", 27), self.performance._local_cache)
+
+    def test_deletion_covers_the_grant_record(self):
+        from core import deletion_guard
+        self.assertIn("tiktok_grant:", deletion_guard.CLIENT_SETTING_PREFIXES)
+        self.assertIn("tiktok_grant:27", _read("core", "client_deletion.py").replace(
+            'f"tiktok_grant:{int(i)}"', "tiktok_grant:27"))
 
 
 class DirectPostUnreachable(unittest.TestCase):

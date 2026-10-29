@@ -88,13 +88,42 @@ def _live_access_token(client_id: int, conn: dict) -> str:
     normal path. Re-stores both rotated tokens (TikTok rotates the refresh
     token too) before returning the fresh access token."""
     from agents.client_agent import upsert_account
+    from core import tiktok_grant
     access_token, refresh_token = tiktok.split_tokens(conn["access_token"])
-    refreshed = tiktok.refresh_access_token(refresh_token)
+    try:
+        refreshed = tiktok.refresh_access_token(refresh_token)
+    except Exception as e:
+        if tiktok.is_dead_grant(e):
+            tiktok_grant.record_dead(client_id, e.code)
+        raise
     new_access = refreshed.get("access_token", access_token)
     new_refresh = refreshed.get("refresh_token", refresh_token)
     upsert_account(client_id, TIKTOK_PLATFORM, conn["account_id"],
                    tiktok.join_tokens(new_access, new_refresh), "active")
+    # The refresh answer says what this grant covers — how an OLD grant
+    # (video.publish, no video.upload) is learned without a failed upload
+    tiktok_grant.record_scopes(client_id, refreshed.get("scope", ""))
     return new_access
+
+
+def check_grant(client_id: int) -> str:
+    """"ok" | "missing_upload" | "dead" | "not_connected" | "unknown" — for
+    the send_tiktok_to_inbox proposal, before a card is shown. A grant with
+    no record yet costs ONE token refresh (which also records its scopes);
+    a known record costs nothing. "unknown" = the refresh failed for some
+    other reason (network, TikTok down): the click will tell."""
+    from core import tiktok_grant
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return "not_connected"
+    known = tiktok_grant.state(client_id)
+    if known != "unknown":
+        return known
+    try:
+        _live_access_token(client_id, conn)
+    except Exception as e:
+        log_step(AGENT_NAME, "check_grant", f"client {client_id}: refresh failed ({type(e).__name__})")
+    return tiktok_grant.state(client_id)
 
 
 # ─── Publishing ─────────────────────────────────────────────────────────────
@@ -134,6 +163,8 @@ def publish(client_id: int, spec: dict) -> dict:
     generated caption isn't just lost."""
     from agents.client_agent import log_activity, get_client, log_communication
     from core import drive_service as drive
+    from core import tiktok_grant
+    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
 
     drive_file_id = (spec.get("drive_file_id") or "").strip()
     if not drive_file_id:
@@ -141,15 +172,28 @@ def publish(client_id: int, spec: dict) -> dict:
 
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
-        return {"success": False, "errors": ["no connected TikTok account"]}
+        return {"success": False, "needs_reconnect": True, "errors": ["no connected TikTok account"]}
+    if tiktok_grant.needs_reconnect(client_id):
+        # Known bad grant: don't call TikTok with it (the record already alerted)
+        return {"success": False, "needs_reconnect": True,
+                "errors": [f"TikTok connection must be renewed ({tiktok_grant.state(client_id)})"]}
 
     log_step(AGENT_NAME, "publish", f"client_id={client_id} file={drive_file_id}")
     try:
         access_token = timed_step(AGENT_NAME, "refresh_token",
                                   lambda: _live_access_token(client_id, conn))
+        if tiktok_grant.needs_reconnect(client_id):
+            # The refresh just learned this grant has no video.upload
+            return {"success": False, "needs_reconnect": True,
+                    "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
         video_bytes = timed_step(AGENT_NAME, "download_from_drive",
                                  lambda: drive.download_file(drive_file_id))
         size = len(video_bytes)
+        if not fits_tiktok(size):
+            # The root guard: one FILE_UPLOAD chunk, whatever path called this
+            return {"success": False, "too_large": True,
+                    "errors": [f"video is {round(size / 1048576, 1)} MB; the TikTok inbox upload "
+                               f"takes up to {TIKTOK_INBOX_MAX_MB} MB"]}
         init = timed_step(
             AGENT_NAME, "init_inbox_upload",
             lambda: tiktok.init_inbox_upload(access_token, video_size=size,
@@ -163,12 +207,17 @@ def publish(client_id: int, spec: dict) -> dict:
     except Exception as e:
         if tiktok.is_scope_error(e):
             # A grant from before 2026-10-29 (video.publish, no video.upload):
-            # a fact with one fix — reconnect, which asks for OAUTH_SCOPES
-            agent_alert(AGENT_NAME, [f"TikTok publish for client {client_id}: the connected "
-                                     f"account's grant lacks {tiktok.UPLOAD_SCOPE} — client "
-                                     f"must reconnect TikTok"])
+            # a fact with one fix — reconnect, which asks for OAUTH_SCOPES.
+            # The record alerts once, on the transition.
+            tiktok_grant.record_missing_upload(client_id)
             return {"success": False, "needs_reconnect": True,
                     "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
+        if tiktok.is_dead_grant(e):
+            return {"success": False, "needs_reconnect": True,
+                    "errors": [f"TikTok connection must be renewed ({e.code})"]}
+        if tiktok.is_pending_limit(e):
+            # Too many unpublished drafts already waiting in their TikTok inbox
+            return {"success": False, "pending_limit": True, "errors": [str(e)]}
         agent_alert(AGENT_NAME, [f"TikTok publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])
         return {"success": False, "errors": [str(e)]}
@@ -203,6 +252,10 @@ def get_engagement_summary(client_id: int, window_days: int = ENGAGEMENT_WINDOW_
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         return {"connected": False}
+    from core import tiktok_grant
+    if tiktok_grant.needs_reconnect(client_id):
+        # A recorded fact (no TikTok call): the Performance card says reconnect
+        return {"connected": True, "needs_reconnect": True, "grant_state": tiktok_grant.state(client_id)}
     if not tiktok.ENGAGEMENT_READS_ENABLED:
         return {"connected": True, "engagement_available": False}
 

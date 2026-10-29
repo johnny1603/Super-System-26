@@ -4082,12 +4082,12 @@ function appendActionCard(personaId, a) {
     ok.type = 'button';
     ok.className = 'ok';
     ok.textContent = uallakI18n.t('action_approve');
-    ok.onclick = () => decideAction(a.id, 'approve', el);
+    ok.onclick = () => decideAction(a.id, 'approve', el, personaId);
     const no = document.createElement('button');
     no.type = 'button';
     no.className = 'no';
     no.textContent = uallakI18n.t('action_cancel');
-    no.onclick = () => decideAction(a.id, 'cancel', el);
+    no.onclick = () => decideAction(a.id, 'cancel', el, personaId);
     row.append(ok, no);
     el.appendChild(row);
   } else if (a.status === 'awaiting_staff') {
@@ -4131,7 +4131,7 @@ function actionDetails(d) {
   return box;
 }
 
-async function decideAction(id, decision, el) {
+async function decideAction(id, decision, el, personaId) {
   const note = el.querySelector('.note');
   const buttons = el.querySelectorAll('button');
   buttons.forEach(b => { b.disabled = true; });
@@ -4156,6 +4156,9 @@ async function decideAction(id, decision, el) {
   if (row) row.remove();
   // linkify() escapes first — the outcome may carry a link (YouTube Studio)
   note.innerHTML = linkify(r.message || '');
+  // An explained refusal may come with the card that fixes it (e.g. a TikTok
+  // send that needs a reconnect → the reconnect card, right below)
+  if (r.next_card && personaId) appendActionCard(personaId, r.next_card);
   if (r.redirect && r.redirect.startsWith('/api/oauth/')) {
     window.location.href = r.redirect;   // the provider's own consent screen
   } else if (r.focus) {

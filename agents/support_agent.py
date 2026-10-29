@@ -267,6 +267,17 @@ uploadable video (none in the folder, or each is over upload_max_mb), YouTube no
 its connection needs renewing (offer connect_youtube when listed), or today's limit is reached
 (youtube_uploads_today has reached youtube_daily_upload_cap — they can upload again tomorrow).
 
+SENDING A VIDEO FROM THEIR MEDIA FOLDER TO THEIR TIKTOK DRAFTS. When "send_tiktok_to_inbox" is in
+available_actions and the client asks to send / put / upload a video to TikTok (also "can you…?"),
+propose it with "drive_file_id" copied exactly from account_state.media_folder.videos (one with
+tiktok_uploadable true). Say plainly: the video goes to THEIR TikTok inbox as a draft, nothing is
+posted, they add the caption and publish it themselves in the TikTok app, and nothing happens until
+they press the approve button. Never promise it will be posted, scheduled or captioned by us. Pick
+the video the same way as for YouTube (named / the only one / ask ONE question by file name). If the
+TikTok connection is missing or needs renewing, still propose it — the system then shows the
+reconnect button with its own line. If it is NOT in available_actions: no video fits
+(tiktok_uploadable false = over tiktok_upload_max_mb, or no videos), or TikTok is not in their plan.
+
 WHEN NO ACTION FITS — including "can you…?", "is it possible to…?", and "don't do it now, I'm
 only asking". This is the normal case for anything the team does by hand (posting to social
 media, publishing a site page, campaign changes). Always answer, in this order:
@@ -586,7 +597,11 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
                                      result.get("proposed_action"), state=state, client=client,
                                      context={"message": message, "language": lang})
     if proposal.get("card"):
-        return {"reply": reply, "needs_human_followup": False, "action": proposal["card"]}
+        # A prepared action that switched to the card fixing it (a TikTok send
+        # with no working connection → connect_tiktok) carries its own fixed
+        # line: the model's reply promised the other card
+        return {"reply": proposal.get("notice") or reply, "needs_human_followup": False,
+                "action": proposal["card"]}
     # A prepared action answered in words instead of a card: ONE clarifying
     # question (what does the video show?) or a plain refusal. That line IS
     # the reply — the model's reply may have promised a card that isn't coming.

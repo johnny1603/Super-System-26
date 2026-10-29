@@ -64,8 +64,29 @@ ONE `client_accounts` row:
   (`tiktok_service.SCOPE_ERROR_CODES`), which `publish()` returns as
   `needs_reconnect: True` with one admin alert. Reconnecting asks for the
   current `OAUTH_SCOPES`. The callback logs (scope names only) when the user
-  unticked a scope (`missing_scopes`). Nothing stores or compares scopes per
-  account.
+  unticked a scope (`missing_scopes`).
+- **What a grant covers is recorded** in `core/tiktok_grant` (app_settings
+  `tiktok_grant:<id>`, scope names only): written by the OAuth callback (which
+  clears the old record first), by every token refresh (TikTok's refresh
+  answer carries `scope`), `record_dead` on an `invalid_grant` refresh,
+  `record_missing_upload` on a scope error. Bad state → Performance card
+  needs_attention/reconnect → `connect_tiktok` card; `publish()` refuses a
+  known-bad grant before any call. One admin alert per transition. Deletion
+  and the deletion guard cover the row.
+
+## Client-approved send: `send_tiktok_to_inbox` (core/agent_actions)
+
+The client asks in chat → the media persona proposes it with a
+`drive_file_id` from `account_state.media_folder.videos`
+(`tiktok_uploadable`: ≤ `video_limits.TIKTOK_INBOX_MAX_MB`, 64 — one
+FILE_UPLOAD chunk) → a card naming the file (Drive's name) → the client's
+Approve click runs `publish()` and the chat says, in the client's language,
+to open TikTok and publish from the drafts. The prepare step checks the grant
+live when nothing is recorded (`check_grant`, one refresh); without a working
+grant it shows the `connect_tiktok` card with a fixed line instead. Refusals
+with their own lines: `needs_reconnect` (+ the connect card), `pending_limit`
+(TikTok's too-many-unpublished-drafts code), `too_large`. Tests:
+`tests/test_tiktok_inbox_action.py`. Demo: `docs/TIKTOK-REVIEW.md`.
 
 ## Publishing: Upload-to-Inbox, deliberately never Direct Post
 
