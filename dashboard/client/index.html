@@ -777,6 +777,39 @@ body {
   border-radius: 100px; cursor: pointer;
 }
 .lead-note-btn:hover { color: var(--white); border-color: var(--accent); }
+
+/* ---------- OUTREACH ---------- */
+.or-remove-why {
+  background: rgba(255,76,31,0.10); border: 1.5px solid var(--accent); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 13.5px; line-height: 1.6;
+}
+.or-remove-why b { color: var(--accent); }
+.or-off { background: var(--panel-2); border: 1px dashed var(--border); border-radius: 12px;
+  padding: 11px 16px; margin-bottom: 16px; font-size: 13px; color: var(--gray); }
+.or-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;
+  font-size: 12.5px; color: var(--gray); }
+.or-card { display: flex; gap: 12px; align-items: flex-start; }
+.or-card > input[type=checkbox] { margin-top: 4px; width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
+.or-body { flex: 1; min-width: 0; }
+.or-status { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 100px;
+  background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap; }
+.or-status.s-replied { color: var(--green); border-color: var(--green); }
+.or-status.s-removed, .or-status.s-failed { color: var(--accent); border-color: var(--accent); }
+.or-status.s-no_response { color: #E0B341; border-color: #E0B341; }
+.or-line { font-size: 12.5px; color: var(--gray); margin-top: 4px; word-break: break-word; }
+.or-line a { color: var(--gray); }
+.or-line a:hover { color: var(--accent); }
+.or-btn-remove { background: var(--accent); color: #fff; border: none; border-radius: 100px;
+  font-family: 'Heebo', sans-serif; font-size: 12px; font-weight: 800; padding: 7px 14px; cursor: pointer; }
+.or-btn-remove:hover { filter: brightness(1.08); }
+.or-export { position: relative; display: inline-block; }
+.or-export-menu { display: none; position: absolute; top: calc(100% + 6px); inset-inline-start: 0; z-index: 20;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 6px; min-width: 210px; }
+.or-export.open .or-export-menu { display: block; }
+.or-export-menu button { display: block; width: 100%; text-align: start; background: none; border: none;
+  color: var(--white); font-family: 'Heebo', sans-serif; font-size: 13px; padding: 9px 12px;
+  border-radius: 8px; cursor: pointer; }
+.or-export-menu button:hover { background: var(--panel-2); color: var(--accent); }
 .lead-note-area { display: none; margin-top: 10px; }
 .lead-note-area.open { display: block; }
 .lead-note-area textarea {
@@ -1085,6 +1118,9 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="leads" onclick="showView('leads')">
     <span class="nav-ico">👥</span><span data-i18n="nav_leads">לידים</span>
     <span class="nav-count" id="navLeadsCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="outreach" id="navOutreach" onclick="showView('outreach')" style="display:none;">
+    <span class="nav-ico">✉️</span><span>פניות לעסקים</span>
   </button>
   <button class="nav-item" data-view="landing" onclick="showView('landing')">
     <span class="nav-ico">🎯</span><span data-i18n="nav_landing">דפי נחיתה</span>
@@ -1596,6 +1632,64 @@ a.media-item:hover { border-color: var(--accent); }
     <div class="info-panel-text" style="margin-top:10px;" data-i18n="crm_help_chat">לא בטוח איפה למצוא את המפתח? שאלו את אורי בצ׳אט — הוא ילווה אתכם צעד־צעד.</div>
   </div>
 </div><!-- /viewLeads -->
+
+<!-- ---------- OUTREACH ---------- -->
+<!-- Businesses the Gmail agent found / drafted for / wrote to (core/outreach_tracker).
+     We can SEND from the client's Gmail but never read it, so replies and
+     removal requests are known only from the client's own clicks here. -->
+<div class="view" id="viewOutreach">
+  <div class="section-head">
+    <div>
+      <div class="section-title">פניות לעסקים</div>
+      <div class="section-sub">העסקים שהסוכן מצא ופנה אליהם במייל בשמך — כל מייל נשלח רק אחרי שאישרת אותו</div>
+    </div>
+  </div>
+
+  <div class="lead-stats" id="orStats"></div>
+  <div class="or-off" id="orOff" style="display:none;"></div>
+
+  <div class="or-remove-why">
+    <b>מישהו ענה לך "תורידו אותי"?</b> לחצו "ביקשו להסיר" ליד העסק — זה החוק, ומרגע הלחיצה המערכת לא תשלח לעסק הזה שום מייל נוסף, לעולם.
+    <div style="margin-top:6px;color:var(--gray);font-size:12.5px;">ענו לך? לחצו "ענו" — כך לא נציע לשלוח להם מייל מעקב. אנחנו לא קוראים את תיבת המייל שלך, ולכן רק הלחיצות שלך מעדכנות את הסטטוס.</div>
+  </div>
+
+  <div class="filter-bar">
+    <input class="filter-input" id="orSearch" placeholder="חיפוש בשם העסק, עיר, מייל או נושא…" oninput="renderOutreach()">
+    <select class="filter-select" id="orStatusFilter" onchange="renderOutreach()">
+      <option value="">כל הסטטוסים</option>
+      <option value="found">נמצא</option>
+      <option value="draft_pending">טיוטה ממתינה לאישור</option>
+      <option value="approved">אושר, בשליחה</option>
+      <option value="sent">נשלח</option>
+      <option value="no_response">אין תגובה</option>
+      <option value="replied">ענו</option>
+      <option value="removed">ביקשו להסיר</option>
+      <option value="failed">חזר / נכשל</option>
+    </select>
+    <div class="or-export" id="orExport">
+      <button class="export-btn" type="button" onclick="toggleOutreachExport(event)">⬇ ייצוא</button>
+      <div class="or-export-menu">
+        <button type="button" onclick="exportOutreach('csv')">CSV (לאקסל)</button>
+        <button type="button" onclick="exportOutreach('xlsx')">Excel (‎.xlsx)</button>
+        <button type="button" onclick="exportOutreach('sheets')">Google Sheets (קובץ לייבוא)</button>
+        <button type="button" onclick="exportOutreach('pdf')">PDF (סיכום להדפסה)</button>
+        <button type="button" onclick="exportOutreach('docx')">Word (‎.docx)</button>
+        <div class="or-line" id="orExportScope" style="padding:4px 12px 6px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="or-bulk" id="orBulk">
+    <label><input type="checkbox" id="orSelectAll" onchange="selectAllOutreach(this.checked)"> בחירת הכל</label>
+    <span id="orSelCount"></span>
+    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'replied')">סימון: ענו</button>
+    <button class="or-btn-remove" type="button" onclick="markOutreach(null, 'removed')">סימון: ביקשו להסיר</button>
+    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'bounced')">סימון: חזר</button>
+    <button class="lead-note-btn" type="button" onclick="deleteOutreach(null)">מחיקה מהרשימה</button>
+  </div>
+
+  <div id="orList"><div class="empty-row">טוען…</div></div>
+</div><!-- /viewOutreach -->
 
 <!-- ---------- LANDING PAGES ---------- -->
 <!-- Lightweight conversion pages, built in code and served from ONE shared
@@ -4242,6 +4336,9 @@ function appendActionCard(personaId, a) {
     ok.className = 'ok';
     ok.textContent = uallakI18n.t('action_approve');
     ok.onclick = () => decideAction(a.id, 'approve', el, personaId);
+    // A draft the client can read and keep, but not send yet (e.g. sending
+    // is not switched on) — the server refuses the approve too
+    if (a.blocked) { ok.disabled = true; note.textContent = a.blocked; }
     const no = document.createElement('button');
     no.type = 'button';
     no.className = 'no';
@@ -4336,6 +4433,13 @@ async function decideAction(id, decision, el, personaId, staffAction = false) {
     return;
   }
   const r = data.data || {};
+  if (r.status === 'blocked') {
+    // Nothing ran and the card is still open: keep it, explain why
+    note.textContent = r.message || '';
+    buttons.forEach(b => { b.disabled = b.classList.contains('ok'); });
+    if (r.next_card && personaId) appendActionCard(personaId, r.next_card);
+    return;
+  }
   const row = el.querySelector('.row');
   if (row) row.remove();
   // linkify() escapes first — the outcome may carry a link (YouTube Studio)
@@ -4845,7 +4949,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'landing', 'media', 'personal', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'personal', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -4862,6 +4966,7 @@ function showView(name) {
 
   if (name === 'performance' && !viewLoaded.performance) { viewLoaded.performance = true; loadPerformance(); }
   if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
+  if (name === 'outreach' && !viewLoaded.outreach) { viewLoaded.outreach = true; loadOutreach(); }
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); loadDriveMirror(''); }
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
@@ -4912,6 +5017,285 @@ async function exportGoogleDoc(dataset, btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = original;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OUTREACH — businesses the Gmail agent found / drafted for / wrote to
+// ═══════════════════════════════════════════════════════════════════════════
+// Status is derived on the server (core/outreach_tracker). We hold gmail.send
+// only and never read the inbox, so "replied" / "asked to be removed" /
+// "bounced" exist only because the client clicks them here. Filtering is
+// client-side over the one list; the export sends the same filter (or the
+// selection) and the server rebuilds the rows for THIS session's client.
+let OUTREACH = null;
+const orSelected = new Set();
+let orDeleteArmed = false;
+
+async function fetchOutreach() {
+  const res = await fetch('/api/client/outreach', { credentials: 'same-origin' });
+  if (res.status === 401) { window.location.href = '/login/'; return null; }
+  const body = await res.json().catch(() => ({}));
+  return res.ok && body.success ? body.data : null;
+}
+
+// The nav entry shows for clients whose package has the Gmail agent, or who
+// already have rows (a client who left the package can still mark "removed")
+async function probeOutreachNav() {
+  try {
+    const d = await fetchOutreach();
+    if (!d) return;
+    OUTREACH = d;
+    if (d.in_plan || (d.rows || []).length) document.getElementById('navOutreach').style.display = '';
+    if (viewLoaded.outreach) renderOutreach();
+  } catch (e) { /* optional entry; the rest of the page is unaffected */ }
+}
+
+async function loadOutreach() {
+  const list = document.getElementById('orList');
+  try {
+    const d = await fetchOutreach();
+    if (!d) { list.innerHTML = '<div class="empty-row">לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.</div>'; return; }
+    OUTREACH = d;
+    document.getElementById('navOutreach').style.display = '';
+    renderOutreach();
+  } catch (e) {
+    console.error('outreach load failed', e);
+    list.innerHTML = '<div class="empty-row">לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.</div>';
+  }
+}
+
+function orFilters() {
+  return { status: document.getElementById('orStatusFilter').value,
+           q: document.getElementById('orSearch').value.trim() };
+}
+
+function orVisibleRows() {
+  const f = orFilters();
+  const needle = f.q.toLowerCase();
+  return (OUTREACH && OUTREACH.rows || []).filter(r =>
+    (!f.status || r.status === f.status)
+    && (!needle || [r.business_name, r.area, r.to_email, r.subject].join(' ').toLowerCase().includes(needle)));
+}
+
+function orSafeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : ''; }
+
+function renderOutreach() {
+  if (!OUTREACH) return;
+  const d = OUTREACH;
+  const c = d.counters || {};
+  const gaps = (d.gaps || []).length > 0;
+  const capLine = d.sending_enabled
+    ? `נשלחו היום: ${Number(d.cap.sent_today || 0)} מתוך ${Number(d.cap.limit || 0)}`
+    : `עד ${Number(d.cap.limit || 0)} מיילים ביום`;
+  // A record we could not read is never shown as a zero
+  const num = v => gaps ? '—' : Number(v || 0);
+  document.getElementById('orStats').innerHTML = [
+    ['נמצאו', num(c.found)], ['נשלחו', num(c.sent)], ['ענו', num(c.replied)],
+    ['ביקשו להסיר', num(c.removed)], ['מגבלה יומית', capLine],
+  ].map(([label, val]) => `
+    <div class="lead-stat">
+      <div class="lead-stat-val" style="${typeof val === 'string' && val !== '—' ? 'font-size:14px;padding-top:5px;' : ''}">${esc(val)}</div>
+      <div class="lead-stat-lbl">${esc(label)}</div>
+    </div>`).join('');
+
+  const off = document.getElementById('orOff');
+  const notes = [];
+  if (!d.sending_enabled) notes.push('שליחת המיילים עוד לא הופעלה. אפשר כבר לראות את העסקים שנמצאו ואת הטיוטות — האישור והשליחה ייפתחו כשהשליחה תופעל.');
+  if (gaps) notes.push('חלק מהנתונים לא נטענו כרגע, ולכן הרשימה עלולה להיות חסרה. נסו לרענן בעוד רגע.');
+  off.style.display = notes.length ? '' : 'none';
+  off.innerHTML = notes.map(esc).join('<br>');
+
+  const rows = orVisibleRows();
+  const visibleKeys = new Set(rows.map(r => r.key));
+  [...orSelected].forEach(k => { if (!visibleKeys.has(k)) orSelected.delete(k); });
+  const list = document.getElementById('orList');
+  if (!rows.length) {
+    const anyFilter = orFilters().status || orFilters().q;
+    list.innerHTML = `<div class="empty-row">${anyFilter ? 'אין עסקים שמתאימים לסינון.'
+      : 'עוד אין כאן עסקים. כשהסוכן ימצא עסקים ויכין טיוטות, הם יופיעו כאן.'}</div>`;
+  } else {
+    list.innerHTML = rows.map(renderOutreachRow).join('');
+  }
+  orSyncSelection(rows);
+}
+
+function renderOutreachRow(r) {
+  const k = esc(r.key);
+  const site = orSafeUrl(r.source_url);
+  const gmail = orSafeUrl(r.gmail_link);
+  const lines = [];
+  const where = [r.area, r.source_label, r.found_date ? 'נמצא ב-' + r.found_date : ''].filter(Boolean).join(' · ');
+  if (where) lines.push(esc(where));
+  lines.push('מייל: <span dir="ltr">' + esc(r.to_email) + '</span>'
+    + (site ? ` · נלקח מהעמוד: <a href="${esc(site)}" target="_blank" rel="noopener" dir="ltr">${esc(site)}</a>` : ''));
+  if (r.subject) lines.push('נושא: ' + esc(r.subject));
+  if (r.sent_date) lines.push('נשלח ב-' + esc(r.sent_date)
+    + (gmail ? ` · <a href="${esc(gmail)}" target="_blank" rel="noopener">לפתוח ב-Gmail</a>` : ''));
+  if (r.followup_label) lines.push(esc(r.followup_label) + (r.followup_date ? ' ב-' + esc(r.followup_date) : ''));
+  if (r.status === 'draft_pending') lines.push('הטיוטה מחכה לאישורך בצ׳אט עם הסוכן.');
+  if (r.followup_due) lines.push(`עברו ${Number(OUTREACH.no_response_days || 7)} ימים בלי תגובה — אפשר לבקש מהסוכן בצ׳אט מייל מעקב אחד. גם אותו תאשרו לפני שליחה.`);
+
+  const can = r.can_mark || [];
+  const buttons = [];
+  if (can.includes('replied') && r.status !== 'replied') buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="replied" data-key="${k}">ענו</button>`);
+  if (can.includes('removed')) buttons.push(`<button class="or-btn-remove" type="button" data-or-mark="removed" data-key="${k}">ביקשו להסיר</button>`);
+  if (can.includes('bounced')) buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="bounced" data-key="${k}">חזר</button>`);
+  if (r.can_delete) buttons.push(`<button class="lead-note-btn" type="button" data-or-delete data-key="${k}">מחיקה מהרשימה</button>`);
+
+  return `
+    <div class="lead-card or-card">
+      <input type="checkbox" data-or-select data-key="${k}" ${orSelected.has(r.key) ? 'checked' : ''} aria-label="בחירה">
+      <div class="or-body">
+        <div class="lead-head">
+          <div class="lead-name">${esc(r.business_name || r.to_email)}</div>
+          <span class="or-status s-${esc(r.status)}">${esc(r.status_label)}</span>
+        </div>
+        ${lines.map(l => `<div class="or-line">${l}</div>`).join('')}
+        ${buttons.length ? `<div class="lead-actions">${buttons.join('')}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function orSyncSelection(rows) {
+  rows = rows || orVisibleRows();
+  const n = orSelected.size;
+  document.getElementById('orSelCount').textContent = n ? `נבחרו ${n}` : '';
+  document.getElementById('orSelectAll').checked = rows.length > 0 && n === rows.length;
+  document.getElementById('orExportScope').textContent = n
+    ? `ייוצאו ${n} השורות שבחרת` : `ייוצאו ${rows.length} השורות שמוצגות עכשיו`;
+}
+
+function selectAllOutreach(on) {
+  orSelected.clear();
+  if (on) orVisibleRows().forEach(r => orSelected.add(r.key));
+  document.querySelectorAll('#orList [data-or-select]').forEach(cb => { cb.checked = on; });
+  orSyncSelection();
+}
+
+document.addEventListener('click', e => {
+  const exp = document.getElementById('orExport');
+  if (exp && !exp.contains(e.target)) exp.classList.remove('open');
+  const t = e.target;
+  if (!t.closest || !t.closest('#orList')) return;
+  if (t.matches('[data-or-select]')) {
+    if (t.checked) orSelected.add(t.dataset.key); else orSelected.delete(t.dataset.key);
+    orSyncSelection();
+  } else if (t.matches('[data-or-mark]')) {
+    markOutreach([t.dataset.key], t.dataset.orMark);
+  } else if (t.matches('[data-or-delete]')) {
+    deleteOutreach([t.dataset.key]);
+  }
+});
+
+function orTargets(keys) {
+  const list = keys || [...orSelected];
+  if (!list.length) showNotice('בחרו קודם עסק אחד או יותר מהרשימה.', 'warn');
+  return list;
+}
+
+function orReport(result, doneText) {
+  const done = (result.done || []).length;
+  const failed = result.failed || [];
+  if (done) showNotice(doneText(done), 'success');
+  if (failed.length) {
+    const kept = failed.filter(f => f.code === 'has_send_record').length;
+    showNotice(kept
+      ? `${kept} עסקים כבר קיבלו מייל ולכן נשארים ברשימה — זה התיעוד של מה שנשלח.`
+      : `${failed.length} עסקים לא עודכנו (הסימון לא מתאים לסטטוס שלהם, או שלא נשמר). נסו שוב.`, 'warn');
+  }
+}
+
+async function markOutreach(keys, mark) {
+  const list = orTargets(keys);
+  if (!list.length) return;
+  try {
+    const res = await fetch('/api/client/outreach/mark', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: list, mark }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) {
+      showNotice(res.status === 503
+        ?'הסימון עוד לא זמין — אנחנו משלימים הגדרה בצד שלנו. נסו שוב מאוחר יותר.'
+        : 'הסימון לא נשמר. נסו שוב בעוד רגע.', 'warn');
+      return;
+    }
+    orSelected.clear();
+    orReport(body.data, n => mark === 'removed'
+      ? `סומן "ביקשו להסיר" (${n}). המערכת לא תשלח להם יותר שום מייל.`
+      : mark === 'replied' ? `סומן "ענו" (${n}).` : `סומן "חזר" (${n}).`);
+  } catch (e) {
+    showNotice('הסימון לא נשמר. נסו שוב בעוד רגע.', 'warn');
+    return;
+  }
+  loadOutreach();
+}
+
+async function deleteOutreach(keys) {
+  const list = orTargets(keys);
+  if (!list.length) return;
+  // Two clicks, like the CRM disconnect: no browser confirm() dialog
+  if (!orDeleteArmed) {
+    orDeleteArmed = true;
+    showNotice(`למחוק ${list.length} עסקים מהרשימה? לחצו שוב על "מחיקה" תוך 5 שניות לאישור. עסק שכבר קיבל מייל לא נמחק.`, 'warn');
+    setTimeout(() => { orDeleteArmed = false; }, 5000);
+    return;
+  }
+  orDeleteArmed = false;
+  try {
+    const res = await fetch('/api/client/outreach/delete', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: list }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) { showNotice('המחיקה לא בוצעה. נסו שוב בעוד רגע.', 'warn'); return; }
+    orSelected.clear();
+    orReport(body.data, n => `נמחקו ${n} עסקים מהרשימה.`);
+  } catch (e) {
+    showNotice('המחיקה לא בוצעה. נסו שוב בעוד רגע.', 'warn');
+    return;
+  }
+  loadOutreach();
+}
+
+function toggleOutreachExport(e) {
+  e.stopPropagation();
+  orSyncSelection();
+  document.getElementById('orExport').classList.toggle('open');
+}
+
+// No Google API and no new permission: Sheets / Docs open these files by import
+async function exportOutreach(format) {
+  document.getElementById('orExport').classList.remove('open');
+  const f = orFilters();
+  const payload = { format, status: f.status, q: f.q, keys: [...orSelected] };
+  // Opened inside the click, before any await, so a popup blocker allows it
+  const printWin = format === 'pdf' ? window.open('', '_blank') : null;
+  try {
+    const res = await fetch('/api/client/outreach/export', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('export refused');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    if (printWin) {
+      printWin.location.href = url;
+    } else {
+      const m = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = m ? m[1] : 'uallak-outreach';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (format === 'sheets') showNotice('הקובץ ירד. ב-Google Sheets: קובץ ← ייבוא ← העלאה, ובחרו את הקובץ.', 'success');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    if (printWin) printWin.close();
+    showNotice('הייצוא לא הצליח. נסו שוב בעוד רגע.', 'warn');
   }
 }
 
@@ -6071,6 +6455,7 @@ async function loadSupport() {
   // with the query string
   const initialView = (window.location.hash || '').replace('#', '');
   renderExportBars();
+  probeOutreachNav();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('connected') === 'google_ads') {

@@ -20,8 +20,14 @@ The shape (core/agent_actions action `send_outreach_email`):
    and records the send in `outreach_sends`.
 
 Nothing here reads a mailbox: replies and opt-outs arrive in the client's own
-inbox, and an opt-out is added to the suppression list by a human
-(outreach_policy.suppress).
+inbox, and the client tells us with one click on the Outreach page
+(core/outreach_tracker.mark — "asked to be removed" writes the suppression
+list first).
+
+4. ONE follow-up per business (`prepare_followup` / `send_followup_approved`,
+   action `send_outreach_followup`): proposed by the agent, approved by the
+   client like the first message, only after 7 days with no mark
+   (outreach_policy.followup_refusal), recorded with kind 'followup'.
 """
 import re
 from datetime import datetime, timezone
@@ -88,6 +94,15 @@ def _connection(client_id: int) -> dict:
             .eq("platform", PLATFORM).eq("status", "active").order("id", desc=True)
             .limit(1).execute().data or [])
     return hydrate(rows[0]) if rows else {}
+
+
+def connected(client_id: int) -> bool:
+    """An active Gmail-send connection exists (no secret is decrypted)."""
+    try:
+        return bool(_db().table("client_accounts").select("id").eq("client_id", int(client_id))
+                    .eq("platform", PLATFORM).eq("status", "active").limit(1).execute().data)
+    except Exception:
+        return False
 
 
 def _now() -> str:
@@ -218,7 +233,6 @@ def send_approved(client_id: int, params: dict, proposal_id=None) -> dict:
     from core.round2_flags import gmail_send_enabled
     if not gmail_send_enabled():
         raise SendFailed("send_disabled")
-    from core import gmail_service
     # The HARD daily cap, from the send record itself (fails closed) — the
     # api_call_counters brake in check_before_send fails open by design
     if sent_today(client_id) >= plan.MESSAGES_PER_CLIENT_PER_DAY:
@@ -231,6 +245,13 @@ def send_approved(client_id: int, params: dict, proposal_id=None) -> dict:
         raise SendFailed(e.code, str(e))
     except plan.BudgetExhausted as e:
         raise SendFailed("budget", str(e))
+    return _send_and_record(client_id, params, proposal_id, "first")
+
+
+def _send_and_record(client_id: int, params: dict, proposal_id, kind: str) -> dict:
+    """users.messages.send from the client's own Gmail, then the record. Every
+    rule has already run (send_approved / send_followup_approved)."""
+    from core import gmail_service
     conn = _connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         raise SendFailed("needs_reconnect", "no gmail_send connection")
@@ -246,14 +267,116 @@ def send_approved(client_id: int, params: dict, proposal_id=None) -> dict:
               "business_name": params["business_name"], "subject": params["subject"],
               "body": params["body"], "source_url": params["source_url"],
               "from_email": conn["account_id"], "gmail_message_id": sent.get("id", ""),
-              "proposal_id": proposal_id, "sent_at": _now()}
+              "proposal_id": proposal_id, "sent_at": _now(), "kind": kind}
     try:
         _db().table(SENDS_TABLE).insert(record).execute()
     except Exception as e:
         # Sent but not recorded: the one-message-per-business rule would not
         # see it — loud, so a human records it by hand
         from core.agent_base import agent_alert
-        agent_alert("gmail_outreach", [f"client {client_id}: e-mail SENT to {params['to_email']} but not "
-                                       f"recorded in {SENDS_TABLE}: {type(e).__name__}"])
+        agent_alert("gmail_outreach", [f"client {client_id}: e-mail ({kind}) SENT to {params['to_email']} but "
+                                       f"not recorded in {SENDS_TABLE}: {type(e).__name__}"])
     return {"to_email": params["to_email"], "business_name": params["business_name"],
             "from_email": conn["account_id"], "message_id": sent.get("id", "")}
+
+
+# ─── Found businesses (the Outreach page's "found" rows) ────────────────────
+
+def record_found(client_id: int, email: str, source_url: str, business_name: str = "",
+                 area: str = "", place_id: str = "", source: str = "chat") -> bool:
+    """Remember a business we found, once per address. OUR data only:
+    `business_name` as the business writes it on its own site (or in our
+    draft), `area` = the search area WE chose — never Google Places content
+    (docs/PROSPECTING.md §3; only place_id may be stored). Best effort: False
+    when the table is missing (migration not run) — never blocks a draft."""
+    email = (email or "").strip().lower()
+    if not email or source not in ("places", "chat"):
+        return False
+    try:
+        existing = (_db().table("prospect_contacts").select("id").eq("client_id", int(client_id))
+                    .eq("email", email).limit(1).execute().data or [])
+        if existing:
+            return True
+        _db().table("prospect_contacts").insert({
+            "client_id": int(client_id), "email": email, "source_url": (source_url or "")[:500],
+            "business_name": (business_name or "")[:120], "area": (area or "")[:80],
+            "place_id": (place_id or "")[:200], "source": source, "found_at": _now()}).execute()
+        return True
+    except Exception as e:
+        print(f"[gmail_outreach] found business not recorded for client {client_id}: {type(e).__name__}")
+        return False
+
+
+# ─── The ONE follow-up (outreach_policy.followup_refusal) ───────────────────
+
+FOLLOWUP_KEYS = STORED_KEYS
+
+
+def _first_send(client_id: int, email: str) -> dict:
+    rows = (_db().table(SENDS_TABLE).select("*").eq("client_id", int(client_id))
+            .eq("to_email", email).execute().data or [])
+    first = [r for r in rows if (r.get("kind") or "first") == "first"]
+    return first[0] if first else {}
+
+
+def prepare_followup(client_id: int, params: dict, language: str, open_rows: list) -> dict:
+    """The model's follow-up draft → the exact stored params. The business
+    name, address and source come from OUR record of the first message, never
+    from the model. Raises DraftRefused(code)."""
+    from core import outreach_policy as policy
+    to_email = str(params.get("to_email") or "").strip().lower()
+    if not _EMAIL_RE.match(to_email):
+        raise DraftRefused("bad_address")
+    if any((r.get("params") or {}).get("to_email") == to_email for r in open_rows or []):
+        raise DraftRefused("followup_pending")
+    refusal = policy.followup_refusal(client_id, to_email)
+    if refusal:
+        raise DraftRefused(refusal)
+    try:
+        first = _first_send(client_id, to_email)
+    except Exception:
+        raise DraftRefused("record_unavailable")
+    language = language if language in policy.OPT_OUT else "he"
+    business_name = first.get("business_name") or ""
+    subject = " ".join(str(params.get("subject") or "").split())[:policy.SUBJECT_MAX] \
+        or f"בהמשך לפנייה: {first.get('subject', '')}"[:policy.SUBJECT_MAX]
+    body = policy.with_opt_out(str(params.get("body") or "").strip()[:policy.BODY_MAX], language)
+    problems = []
+    if not business_name or policy._norm(business_name) not in policy._norm(body):
+        problems.append("the follow-up does not name the business")
+    def core(text):   # the text without its opt-out line
+        return policy._norm(str(text or "").replace(policy.opt_out_line(language), ""))
+    if core(body) == core(first.get("body", "")):
+        problems.append("the follow-up repeats the first message")
+    if problems:
+        raise DraftRefused("not_personal", "; ".join(problems))
+    return {"to_email": to_email, "business_name": business_name, "subject": subject, "body": body,
+            "language": language, "source_url": first.get("source_url", "")}
+
+
+def send_followup_approved(client_id: int, params: dict, proposal_id=None) -> dict:
+    """The follow-up's rules again at the click — suppression first, then the
+    one-follow-up and 7-day rules, the hard daily cap, entitlement, the
+    counters, the budget — then the send, recorded as kind 'followup'."""
+    from core import gmail_agent_plan as plan
+    from core import outreach_policy as policy
+    from core.round2_flags import gmail_send_enabled
+    if not gmail_send_enabled():
+        raise SendFailed("send_disabled")
+    refusal = policy.followup_refusal(client_id, params["to_email"])
+    if refusal:
+        raise SendFailed("suppressed" if refusal == "suppressed" else "followup_not_allowed", refusal)
+    if policy.opt_out_line(params["language"]) not in params["body"]:
+        raise SendFailed("no_opt_out")
+    if sent_today(client_id) >= plan.MESSAGES_PER_CLIENT_PER_DAY:
+        raise SendFailed("daily_cap", "messages_client")
+    if not plan.entitled(client_id):
+        raise SendFailed("not_entitled")
+    try:
+        plan.take_message(client_id)
+        plan.require_budget(client_id, 0.0)
+    except plan.CapReached as e:
+        raise SendFailed("daily_cap", e.which)
+    except plan.BudgetExhausted as e:
+        raise SendFailed("budget", str(e))
+    return _send_and_record(client_id, params, proposal_id, "followup")

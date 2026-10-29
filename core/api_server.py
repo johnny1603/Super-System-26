@@ -4878,6 +4878,121 @@ def client_export_google_doc(dataset: str, request: Request):
     return {"success": True, "data": {"link": uploaded.get("webViewLink", ""),
                                       "shared_with": client.get("email", "")}}
 
+# ─── Outreach page (core/outreach_tracker) ───────────────────────────────────
+# One row per business the client's Gmail agent found / drafted for / wrote
+# to. The client's marks ("replied", "asked to be removed", "bounced") are the
+# only way we learn about replies: we hold gmail.send and never read mail.
+
+class OutreachKeysRequest(BaseModel):
+    keys: list[str] = []
+    mark: str = ""
+
+class OutreachExportRequest(BaseModel):
+    format: str = "csv"          # csv | sheets | xlsx | pdf | docx
+    status: str = ""
+    q: str = ""
+    keys: list[str] = []         # the selected rows (else: the filtered ones)
+    client_id: int | None = None  # admin export only
+
+_OUTREACH_FORMATS = {
+    "csv": ("csv", "text/csv; charset=utf-8"),
+    "sheets": ("google-sheets.csv", "text/csv; charset=utf-8"),
+    "xlsx": ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    "docx": ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    "pdf": (None, "text/html; charset=utf-8"),
+}
+
+def _outreach_file(fmt: str, subtitle: str, columns: list, rows: list, summary: list) -> Response:
+    """The same rows in every format. No Google API is involved: Sheets/Docs
+    open these files by import — no Drive/Sheets/Docs scope."""
+    if fmt not in _OUTREACH_FORMATS:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_FORMAT"})
+    title = "פניות לעסקים"
+    extension, media_type = _OUTREACH_FORMATS[fmt]
+    if fmt == "pdf":
+        return Response(content=export_service.print_html(title, subtitle, columns, rows, summary=summary),
+                        media_type=media_type)
+    if fmt in ("csv", "sheets"):
+        content = export_service.to_csv(columns, rows, bom=(fmt == "csv"))
+    elif fmt == "xlsx":
+        content = export_service.to_xlsx(title, columns, rows)
+    else:
+        content = export_service.to_docx(title, subtitle, columns, rows, summary=summary)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(content=content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="uallak-outreach-{stamp}.{extension}"'})
+
+@app.get("/api/client/outreach")
+def client_outreach(request: Request):
+    # Plain `def`: several blocking Supabase reads
+    client_id = _require_session(request)
+    from core import gmail_agent_plan, outreach_tracker
+    data = outreach_tracker.page(client_id)
+    return {"success": True, "data": {**data, "in_plan": gmail_agent_plan.entitled(client_id)}}
+
+@app.post("/api/client/outreach/mark")
+def client_outreach_mark(req: OutreachKeysRequest, request: Request):
+    # No package check on purpose: a client who left the package must still
+    # be able to say "asked to be removed"
+    client_id = _require_session(request)
+    from core import outreach_tracker
+    try:
+        result = outreach_tracker.mark(client_id, req.keys[:200], req.mark, by="client")
+    except outreach_tracker.OutreachError as e:
+        raise HTTPException(status_code=503 if e.code == "not_ready" else 400, detail={"code": e.code})
+    return {"success": True, "data": result}
+
+@app.post("/api/client/outreach/delete")
+def client_outreach_delete(req: OutreachKeysRequest, request: Request):
+    client_id = _require_session(request)
+    from core import outreach_tracker
+    return {"success": True, "data": outreach_tracker.delete(client_id, req.keys[:200])}
+
+@app.post("/api/client/outreach/export")
+def client_outreach_export(req: OutreachExportRequest, request: Request):
+    # Tenant isolation: rows are built for the SESSION's client only; the
+    # selection is applied after that, so another client's key matches nothing
+    client_id = _require_session(request)
+    from core import outreach_tracker
+    data = outreach_tracker.page(client_id)
+    rows = outreach_tracker.filter_rows(data["rows"], req.status, req.q, req.keys or None,
+                                        client_id=client_id)
+    columns, table = outreach_tracker.export_table(rows)
+    client = get_client(client_id) or {}
+    return _outreach_file(req.format, client.get("business_name") or client.get("name") or "",
+                          columns, table, outreach_tracker.summary_lines(rows, data["cap"]))
+
+def _outreach_client_names(rows: list) -> dict:
+    names = {}
+    for cid in {r["client_id"] for r in rows}:
+        client = get_client(cid) or {}
+        names[cid] = client.get("business_name") or client.get("name") or ""
+    return names
+
+@app.get("/api/admin/outreach")
+def admin_outreach(request: Request, client_id: int | None = None):
+    _require_admin(request)
+    from core import outreach_tracker
+    data = outreach_tracker.collect(client_id)
+    names = _outreach_client_names(data["rows"])
+    for row in data["rows"]:
+        row["client_name"] = names.get(row["client_id"], "")
+    return {"success": True, "data": {"rows": data["rows"], "gaps": data["gaps"],
+                                      "counters": outreach_tracker.counters(data["rows"]),
+                                      "sending_enabled": outreach_tracker._sending_enabled()}}
+
+@app.post("/api/admin/outreach/export")
+def admin_outreach_export(req: OutreachExportRequest, request: Request):
+    _require_admin(request)
+    from core import outreach_tracker
+    data = outreach_tracker.collect(req.client_id)
+    rows = outreach_tracker.filter_rows(data["rows"], req.status, req.q, req.keys or None,
+                                        client_id=req.client_id)
+    columns, table = outreach_tracker.export_table(rows, admin=True,
+                                                   client_names=_outreach_client_names(rows))
+    subtitle = f"לקוח #{req.client_id}" if req.client_id else "כל הלקוחות"
+    return _outreach_file(req.format, subtitle, columns, table, outreach_tracker.summary_lines(rows))
+
 # ─── Proactive engagement (suggestions, sales alerts, urgent notifications) ──
 
 @app.get("/api/client/suggestions")

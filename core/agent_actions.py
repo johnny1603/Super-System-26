@@ -341,12 +341,20 @@ def _prepare_outreach(client_id: int, params: dict, context: dict, rows: list) -
     added). A draft that can't pass becomes a plain line, never a card."""
     from core import gmail_outreach
     lang = (context or {}).get("language") or "he"
+    to_email = str((params or {}).get("to_email") or "").strip().lower()
+    for row in rows or []:
+        if (row.get("params") or {}).get("to_email") == to_email:
+            return {"existing": row}          # one open draft per business
     try:
-        return {"params": gmail_outreach.prepare_draft(client_id, params, lang, rows)}
+        prepared = gmail_outreach.prepare_draft(client_id, params, lang, rows)
     except gmail_outreach.DraftRefused as e:
         _log(f"client {client_id}: outreach draft refused ({e.code}): {e}", client_id=client_id)
         return {"refuse": _pick(_OUTREACH_DRAFT_REFUSALS.get(e.code, _OUTREACH_DRAFT_REFUSALS["not_personal"]),
                                 lang)}
+    # The Outreach page's "found" row (best effort; our own data only)
+    gmail_outreach.record_found(client_id, prepared["to_email"], prepared["source_url"],
+                                prepared["business_name"], source="chat")
+    return {"params": prepared}
 
 
 def _validate_outreach_stored(client_id: int, params: dict) -> dict:
@@ -364,9 +372,50 @@ def _run_send_outreach_email(client_id: int, params: dict, background_tasks):
         raise ActionFailed(e.code if e.code in _OUTREACH_SEND_REFUSAL_CODES else "refused_by_action", str(e))
 
 
-def _gmail_outreach_possible(state: dict, client: dict) -> bool:
+def _prepare_followup(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """The ONE follow-up (gmail_outreach.prepare_followup): name, address and
+    source from our record of the first message; refused with a plain line
+    when outreach_policy.followup_refusal says no."""
+    from core import gmail_outreach
+    lang = (context or {}).get("language") or "he"
+    try:
+        return {"params": gmail_outreach.prepare_followup(client_id, params, lang, rows)}
+    except gmail_outreach.DraftRefused as e:
+        _log(f"client {client_id}: follow-up draft refused ({e.code}): {e}", client_id=client_id)
+        return {"refuse": _pick(_FOLLOWUP_DRAFT_REFUSALS.get(e.code, _OUTREACH_DRAFT_REFUSALS["not_personal"]),
+                                lang)}
+
+
+def _run_send_outreach_followup(client_id: int, params: dict, background_tasks):
+    from core import gmail_outreach
+    try:
+        return gmail_outreach.send_followup_approved(client_id, params)
+    except gmail_outreach.SendFailed as e:
+        raise ActionFailed(e.code if e.code in _OUTREACH_SEND_REFUSAL_CODES else "refused_by_action", str(e))
+
+
+def _outreach_drafts_possible(state: dict, client: dict) -> bool:
+    """Drafts need only the Gmail agent package (server-side, fails closed) —
+    NOT the send flag or a Gmail connection: the client sees and approves
+    nothing until sending is on (`_outreach_send_blocked` keeps the approve
+    button off), but the draft is real and shows on the Outreach page."""
+    from core import gmail_agent_plan
+    return gmail_agent_plan.entitled(int((client or {}).get("id") or 0))
+
+
+def _followup_possible(state: dict, client: dict) -> bool:
+    return bool(((state or {}).get("outreach") or {}).get("followup_due")) and _outreach_drafts_possible(state, client)
+
+
+def _outreach_send_blocked(client_id: int) -> str:
+    """Why Approve can't run right now ('' = it can): sending switched off,
+    or no Gmail connection. Checked at the card AND at the click, before the
+    card is claimed — a blocked click leaves the draft as it was."""
     from core.round2_flags import gmail_send_enabled
-    return gmail_send_enabled() and _connected("gmail_send")(state, client)
+    if not gmail_send_enabled():
+        return "send_disabled"
+    from core import gmail_outreach
+    return "" if gmail_outreach.connected(client_id) else "needs_reconnect"
 
 
 def _gmail_connect_needed(state: dict, client: dict) -> bool:
@@ -920,7 +969,8 @@ ACTIONS = {
                                "hint": "short, honest subject"},
                    "body": {"required": True, "validate": lambda v, cid: str(v or "").strip()[:1500],
                             "hint": "the e-mail text: names the business, uses the hook, asks if they'd like details"}},
-        "available": _gmail_outreach_possible,
+        "available": _outreach_drafts_possible,
+        "approve_blocked": _outreach_send_blocked,
         "prepare": lambda client_id, params, context, rows: _prepare_outreach(client_id, params, context, rows),
         "validate_stored": lambda client_id, params: _validate_outreach_stored(client_id, params),
         "details": lambda client_id, params: {"to": params.get("to_email", ""),
@@ -944,6 +994,50 @@ ACTIONS = {
                      "تم إرسال الرسالة إلى {business} ✓ أي رد سيصل إلى بريد Gmail الخاص بكم.",
                      "Письмо в {business} отправлено ✓ Ответ придёт в ваш Gmail."),
         "done_message": lambda result, lang: _pick(ACTIONS["send_outreach_email"]["done"], lang)
+            .replace("{business}", result.get("business_name") or "—"),
+        "refusals": {},          # filled below (_OUTREACH_SEND_REFUSALS)
+        "follow_up": {"needs_reconnect": "connect_gmail_send"},
+    },
+    "send_outreach_followup": {
+        # ONE follow-up per business, ever, 7+ days after the first e-mail with
+        # no reply / removal / bounce marked (outreach_policy.followup_refusal).
+        # Proposed by the agent, never automatic; the client approves it.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Sends the ONE follow-up e-mail to a business that got the first e-mail 7+ days ago and has not "
+                "answered (only businesses listed in account_state.outreach.followup_due). Short and polite: "
+                "names the business, refers to the first e-mail, no pressure. The system adds the opt-out line. "
+                "Never a second follow-up; never to a business that replied or asked to be removed.",
+        "params": {"to_email": {"required": True, "validate": lambda v, cid: _v_short_text(v, 254),
+                                "hint": "the address from outreach.followup_due"},
+                   "subject": {"required": False, "validate": lambda v, cid: _v_short_text(v, 120),
+                               "hint": "optional; default: 'בהמשך לפנייה: <first subject>'"},
+                   "body": {"required": True, "validate": lambda v, cid: str(v or "").strip()[:1500],
+                            "hint": "the follow-up text: names the business, refers to the first e-mail"}},
+        "available": _followup_possible,
+        "approve_blocked": _outreach_send_blocked,
+        "prepare": lambda client_id, params, context, rows: _prepare_followup(client_id, params, context, rows),
+        "validate_stored": lambda client_id, params: _validate_outreach_stored(client_id, params),
+        "details": lambda client_id, params: {"to": params.get("to_email", ""),
+                                              "business": params.get("business_name", ""),
+                                              "subject": params.get("subject", ""),
+                                              "body": params.get("body", ""),
+                                              "source": params.get("source_url", "")},
+        "run": _run_send_outreach_followup,
+        "display": lambda client_id, params: {"business": params.get("business_name") or "—",
+                                              "to": params.get("to_email") or "—"},
+        "title": _txt("מייל מעקב (אחד ויחיד)", "Follow-up e-mail (the only one)", "E-mail de relance (unique)",
+                      "رسالة متابعة (واحدة فقط)", "Повторное письмо (единственное)"),
+        "what": _txt("{business} ({to}) לא ענו כבר שבוע. המייל למטה הוא מעקב אחד ויחיד — לא נשלח עוד אחד אחריו. בסופו שורת הסרה.",
+                     "{business} ({to}) hasn't answered for a week. The e-mail below is the one and only follow-up — none after it. It ends with an opt-out line.",
+                     "{business} ({to}) n'a pas répondu depuis une semaine. L'e-mail ci-dessous est l'unique relance. Il se termine par une ligne de désinscription.",
+                     "{business} ({to}) لم يردّوا منذ أسبوع. الرسالة أدناه هي المتابعة الوحيدة — لن تتبعها أخرى. في نهايتها سطر إلغاء الاشتراك.",
+                     "{business} ({to}) не отвечает неделю. Письмо ниже — единственное напоминание, других не будет. В конце — строка для отказа."),
+        "done": _txt("מייל המעקב אל {business} נשלח ✓ זה היה המעקב היחיד — לא נשלח עוד.",
+                     "The follow-up to {business} was sent ✓ That was the only one — nothing more will be sent.",
+                     "La relance à {business} est partie ✓ C'était la seule.",
+                     "تم إرسال المتابعة إلى {business} ✓ كانت الوحيدة.",
+                     "Напоминание для {business} отправлено ✓ Оно было единственным."),
+        "done_message": lambda result, lang: _pick(ACTIONS["send_outreach_followup"]["done"], lang)
             .replace("{business}", result.get("business_name") or "—"),
         "refusals": {},          # filled below (_OUTREACH_SEND_REFUSALS)
         "follow_up": {"needs_reconnect": "connect_gmail_send"},
@@ -1031,8 +1125,56 @@ _OUTREACH_SEND_REFUSALS = {
                           "إرسال الرسائل غير مفعّل بعد — لم يُرسل شيء.",
                           "Отправка писем ещё не включена — ничего не отправлено."),
 }
+_OUTREACH_SEND_REFUSALS["followup_not_allowed"] = _txt(
+    "אי אפשר לשלוח את המעקב: או שכבר נשלח מעקב לעסק הזה, או שהם כבר ענו / ביקשו להסיר / המייל חזר, או שעוד לא עבר שבוע. לא נשלח כלום.",
+    "The follow-up can't go: one was already sent, or they replied / asked to be removed / it bounced, or a week hasn't passed. Nothing was sent.",
+    "La relance ne peut pas partir (déjà envoyée, réponse, désinscription, rejet, ou moins d'une semaine). Rien n'est parti.",
+    "لا يمكن إرسال المتابعة (أُرسلت من قبل، أو ردّوا/طلبوا الإزالة/ارتدّت، أو لم يمر أسبوع). لم يُرسل شيء.",
+    "Напоминание отправить нельзя (уже было, ответили/просили не писать/письмо вернулось, или не прошла неделя). Ничего не отправлено.")
+_OUTREACH_SEND_REFUSALS["no_opt_out"] = _txt(
+    "במייל חסרה שורת ההסרה מרשימת התפוצה, אז הוא לא נשלח.", "The opt-out line is missing, so it wasn't sent.",
+    "La ligne de désinscription manque — rien n'est parti.", "سطر إلغاء الاشتراك مفقود، لذلك لم تُرسل.",
+    "Нет строки для отказа от писем — не отправлено.")
 _OUTREACH_SEND_REFUSAL_CODES = set(_OUTREACH_SEND_REFUSALS)
 ACTIONS["send_outreach_email"]["refusals"] = _OUTREACH_SEND_REFUSALS
+ACTIONS["send_outreach_followup"]["refusals"] = _OUTREACH_SEND_REFUSALS
+
+_FOLLOWUP_DRAFT_REFUSALS = {
+    **_OUTREACH_DRAFT_REFUSALS,
+    "followup_pending": _txt("כבר יש טיוטת מעקב לעסק הזה שמחכה לאישור שלכם.",
+                             "There's already a follow-up draft for this business waiting for your approval.",
+                             "Une relance pour cette entreprise attend déjà votre accord.",
+                             "توجد مسودة متابعة لهذا العمل بانتظار موافقتكم.",
+                             "Черновик напоминания для этой компании уже ждёт вашего подтверждения."),
+    "too_soon": _txt("עוד לא עבר שבוע מהמייל הראשון — מעקב אפשר רק אחרי 7 ימים בלי תשובה.",
+                     "A week hasn't passed since the first e-mail — a follow-up is possible only after 7 days without an answer.",
+                     "Moins d'une semaine depuis le premier e-mail — relance possible après 7 jours sans réponse.",
+                     "لم يمر أسبوع على الرسالة الأولى — المتابعة ممكنة بعد 7 أيام دون رد.",
+                     "С первого письма не прошла неделя — напоминание возможно через 7 дней без ответа."),
+    "no_first_message": _txt("לעסק הזה עוד לא נשלח מייל ראשון, אז אין למה לשלוח מעקב.",
+                             "No first e-mail went to this business yet, so there's nothing to follow up.",
+                             "Aucun premier e-mail n'est parti vers cette entreprise.",
+                             "لم تُرسل رسالة أولى لهذا العمل بعد.",
+                             "Первое письмо этой компании ещё не отправлялось."),
+    "followup_already_sent": _txt("כבר נשלח מעקב לעסק הזה. שולחים מעקב אחד בלבד — לא יותר.",
+                                  "A follow-up was already sent to this business. We send one follow-up only — never more.",
+                                  "Une relance a déjà été envoyée. Une seule, jamais plus.",
+                                  "أُرسلت متابعة لهذا العمل من قبل. متابعة واحدة فقط.",
+                                  "Напоминание уже отправлялось. Только одно — не больше."),
+    "marked_replied": _txt("סימנתם שהעסק הזה ענה — אז לא שולחים מעקב. ההמשך איתם הוא אצלכם ב-Gmail.",
+                           "You marked that this business replied — so no follow-up. The conversation continues in your Gmail.",
+                           "Vous avez indiqué une réponse — pas de relance.", "أشرتم إلى أنهم ردّوا — لا متابعة.",
+                           "Вы отметили, что ответили — напоминания не будет."),
+    "marked_bounced": _txt("המייל לעסק הזה חזר, אז לא שולחים אליו מעקב.",
+                           "The e-mail to this business bounced, so no follow-up goes to it.",
+                           "L'e-mail a été rejeté — pas de relance.", "ارتدّت الرسالة — لا متابعة.",
+                           "Письмо вернулось — напоминания не будет."),
+    "record_unavailable": _txt("לא הצלחתי לקרוא את רישום השליחות כרגע, אז לא הכנתי מעקב. נסו שוב בעוד רגע.",
+                               "I couldn't read the send record right now, so I didn't prepare a follow-up. Try again shortly.",
+                               "Je n'ai pas pu lire l'historique d'envoi — réessayez bientôt.",
+                               "تعذّرت قراءة سجل الإرسال — حاولوا بعد قليل.",
+                               "Не удалось прочитать историю отправок — попробуйте чуть позже."),
+}
 
 # Lines a TikTok send shows INSTEAD of its card when the connection can't
 # carry it (_prepare_tiktok) — paired with the connect_tiktok card
@@ -1186,6 +1328,18 @@ def _expired(row: dict) -> bool:
     return _now() - created > timedelta(hours=PROPOSAL_TTL_HOURS)
 
 
+def _approve_blocked(spec: dict, client_id) -> str:
+    hook = spec.get("approve_blocked")
+    if not hook:
+        return ""
+    try:
+        return hook(int(client_id or 0)) or ""
+    except Exception as e:
+        _log(f"client {client_id}: approve_blocked check failed ({type(e).__name__}) — blocking",
+             severity="WARNING", client_id=client_id)
+        return "send_disabled"
+
+
 def card(row: dict, actor: str, lang: str = "he") -> dict:
     spec = ACTIONS.get(row.get("action")) or {}
     params = row.get("params") or {}
@@ -1215,6 +1369,10 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
             # The admin "enter as client" view offers its staff button only here
             "staff_may_decide": (row.get("status") in OPEN_STATUSES and row.get("approver") == "client"
                                  and staff_may_decide(spec)),
+            # Approve stays off, with this plain reason (e.g. sending not on yet)
+            "blocked": (_pick((spec.get("refusals") or {}).get(code) or _FAILED, lang)
+                        if row.get("status") in OPEN_STATUSES
+                        and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             "created_at": row.get("created_at")}
 
 
@@ -1420,6 +1578,20 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
              proposal=proposal_id)
         _post(row, _pick(_CANCELLED, lang), to_client=row.get("origin") == "client_chat")
         return {"success": True, "status": "cancelled", "message": _pick(_CANCELLED, lang)}
+
+    # Approve can't run right now (outreach while sending is off / Gmail not
+    # connected): say why and leave the card exactly as it was — nothing claimed
+    blocked = _approve_blocked(spec, client_id)
+    if blocked:
+        text = _pick((spec.get("refusals") or {}).get(blocked) or _FAILED, lang)
+        out = {"success": True, "status": "blocked", "code": blocked, "message": text}
+        follow = (spec.get("follow_up") or {}).get(blocked)
+        if follow and blocked != "send_disabled":
+            fix = propose(client_id, row.get("origin") or "client_chat", row.get("persona", "general"),
+                          {"name": follow, "params": {}})
+            if fix.get("card"):
+                out["next_card"] = fix["card"]
+        return out
 
     # Re-check everything from the STORED row before claiming it
     client = _client(client_id)

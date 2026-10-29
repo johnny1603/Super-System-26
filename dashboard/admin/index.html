@@ -371,6 +371,9 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       <div class="nav-item-left"><span>🧲</span> לידים</div>
       <span class="nav-count" id="leadsCount" style="display:none;"></span>
     </div>
+    <div class="nav-item" data-tab="outreach" onclick="showTab('outreach', this)">
+      <div class="nav-item-left"><span>✉️</span> פניות לעסקים</div>
+    </div>
     <div class="nav-item" data-tab="alerts" onclick="showTab('alerts', this)">
       <div class="nav-item-left"><span>🚨</span> התראות</div>
       <span class="nav-count" id="alertsCount" style="display:none;"></span>
@@ -440,6 +443,39 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
       </div>
       <div class="bulk-del-bar" id="bulkbar-leads"></div>
       <div class="table-wrap" id="leadsTable"></div>
+    </div>
+
+    <!-- Outreach across clients (core/outreach_tracker). Read + export only:
+         replied / removed marks are the CLIENT's knowledge from their inbox. -->
+    <div id="tab-outreach" style="display:none;">
+      <div class="page-title">פניות לעסקים</div>
+      <div class="page-sub" id="orSub">טוען…</div>
+      <div class="filter-bar">
+        <select id="orClientFilter" onchange="loadOutreach()"><option value="">כל הלקוחות</option></select>
+        <select id="orStatusFilter" onchange="renderOutreach()">
+          <option value="">כל הסטטוסים</option>
+          <option value="found">נמצא</option>
+          <option value="draft_pending">טיוטה ממתינה לאישור</option>
+          <option value="approved">אושר, בשליחה</option>
+          <option value="sent">נשלח</option>
+          <option value="no_response">אין תגובה</option>
+          <option value="replied">ענו</option>
+          <option value="removed">ביקשו להסיר</option>
+          <option value="failed">חזר / נכשל</option>
+        </select>
+        <input id="orSearch" type="search" placeholder="חיפוש עסק, עיר, מייל או נושא" oninput="renderOutreach()">
+        <div class="spacer"></div>
+        <span id="orSelCount" style="font-size:12.5px;color:var(--gray);"></span>
+        <select id="orExportFormat">
+          <option value="csv">CSV (UTF-8)</option>
+          <option value="xlsx">Excel</option>
+          <option value="sheets">Google Sheets (CSV לייבוא)</option>
+          <option value="pdf">PDF (סיכום)</option>
+          <option value="docx">Word</option>
+        </select>
+        <button class="sort-btn" onclick="exportOutreach()">⬇ ייצוא</button>
+      </div>
+      <div class="table-wrap" id="orTable"></div>
     </div>
 
     <div id="tab-alerts" style="display:none;">
@@ -535,13 +571,14 @@ async function adminLogout() {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
-  ['overview','control','clients','leads','alerts','reports','costs','pricing','settings'].forEach(t => {
+  ['overview','control','clients','leads','outreach','alerts','reports','costs','pricing','settings'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === name) ? 'block' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   if (name === 'control') crShowList();
   if (name === 'leads') loadLeads();
+  if (name === 'outreach') loadOutreach();
   if (name === 'reports') loadReports();
   if (name === 'costs') loadOperatingCosts();
   if (name === 'pricing') loadPricing();
@@ -1460,6 +1497,125 @@ function renderLeads() {
   }).join('') : '<div class="empty-state">אין לידים שמתאימים לסינון</div>');
   // Only the rows this filter shows can be in a batch
   bulkRegister('leads', rows.filter(l => !l.client_id).map(l => l.lead_id));
+}
+
+// ─── outreach (all clients) ──────────────────────────────────────────────────
+let orRows = [];
+const orSelected = new Set();   // "client_id|email" — two clients may share an address
+const OR_STATUS_CLS = { replied: 'active', removed: 'bad', failed: 'bad', no_response: 'pending',
+                        draft_pending: 'pending' };
+
+async function loadOutreach() {
+  const clientId = document.getElementById('orClientFilter').value;
+  const res = await api('/api/admin/outreach' + (clientId ? '?client_id=' + encodeURIComponent(clientId) : ''));
+  const d = res.data || {};
+  orRows = d.rows || [];
+  orSelected.clear();
+  const c = d.counters || {};
+  const gaps = (d.gaps || []).length ? ` · ⚠ לא נקרא: ${(d.gaps || []).join(', ')}` : '';
+  document.getElementById('orSub').textContent =
+    `${c.found || 0} עסקים · ${c.sent || 0} נשלחו · ${c.replied || 0} ענו · ${c.removed || 0} ביקשו להסיר`
+    + (d.sending_enabled ? '' : ' · השליחה כבויה (GMAIL_SEND_ENABLED)') + gaps;
+  // The client filter lists every client (not only those with rows), from the clients tab's list
+  const sel = document.getElementById('orClientFilter');
+  if (sel.options.length <= 1) {
+    if (!clientsCache.length) { try { await loadClients(); } catch (e) { /* filter stays "all" */ } }
+    sel.innerHTML = '<option value="">כל הלקוחות</option>' + clientsCache
+      .map(cl => `<option value="${Number(cl.id)}">${esc(cl.business_name || cl.name || cl.email || '')} (#${Number(cl.id)})</option>`).join('');
+    sel.value = clientId;
+  }
+  renderOutreach();
+}
+
+function orVisible() {
+  const status = document.getElementById('orStatusFilter').value;
+  const term = document.getElementById('orSearch').value.trim().toLowerCase();
+  return orRows.filter(r => (!status || r.status === status)
+    && (!term || [r.business_name, r.area, r.to_email, r.subject].join(' ').toLowerCase().includes(term)));
+}
+
+function orKey(r) { return `${Number(r.client_id)}|${r.key}`; }
+
+function renderOutreach() {
+  const rows = orVisible();
+  const safe = u => /^https?:\/\//i.test(u || '') ? u : '';
+  const all = rows.length > 0 && rows.every(r => orSelected.has(orKey(r)));
+  document.getElementById('orTable').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <tr style="color:var(--gray);text-align:start;">
+        <th style="padding:8px;"><input type="checkbox" ${all ? 'checked' : ''} onchange="orSelectAll(this.checked)"></th>
+        <th style="padding:8px;text-align:start;">לקוח</th><th style="padding:8px;text-align:start;">עסק</th>
+        <th style="padding:8px;text-align:start;">עיר / אזור</th><th style="padding:8px;text-align:start;">מייל ומקור</th>
+        <th style="padding:8px;text-align:start;">נושא</th><th style="padding:8px;text-align:start;">נשלח</th>
+        <th style="padding:8px;text-align:start;">סטטוס</th>
+      </tr>
+      ${rows.length ? rows.map(r => {
+        const site = safe(r.source_url), gmail = safe(r.gmail_link), k = orKey(r);
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px;"><input type="checkbox" data-or-key="${esc(k)}" ${orSelected.has(k) ? 'checked' : ''} onchange="orToggle(this)"></td>
+          <td style="padding:8px;">${esc(r.client_name || '')} <span style="color:var(--gray);">#${Number(r.client_id)}</span></td>
+          <td style="padding:8px;">${esc(r.business_name || '—')}</td>
+          <td style="padding:8px;">${esc(r.area || '—')}<div style="color:var(--gray);">${esc(r.source_label || '')}</div></td>
+          <td style="padding:8px;"><span dir="ltr">${esc(r.to_email)}</span>
+            ${site ? `<div><a href="${esc(site)}" target="_blank" rel="noopener" style="color:var(--gray);" dir="ltr">${esc(site)}</a></div>` : ''}</td>
+          <td style="padding:8px;">${esc(r.subject || '—')}</td>
+          <td style="padding:8px;">${esc(r.sent_date || '—')}${gmail ? `<div><a href="${esc(gmail)}" target="_blank" rel="noopener" style="color:var(--gray);">Gmail</a></div>` : ''}</td>
+          <td style="padding:8px;"><span class="status-pill ${OR_STATUS_CLS[r.status] || 'other'}">${esc(r.status_label)}</span>
+            ${r.followup_label ? `<div style="color:var(--gray);margin-top:3px;">${esc(r.followup_label)}</div>` : ''}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="8" class="empty-state">אין פניות שמתאימות לסינון</td></tr>'}
+    </table>`;
+  orSyncCount(rows);
+}
+
+function orSyncCount(rows) {
+  const n = orSelected.size;
+  document.getElementById('orSelCount').textContent =
+    n ? `ייוצאו ${n} שורות שנבחרו` : `ייוצאו ${(rows || orVisible()).length} השורות המוצגות`;
+}
+
+function orToggle(cb) {
+  if (cb.checked) orSelected.add(cb.dataset.orKey); else orSelected.delete(cb.dataset.orKey);
+  orSyncCount();
+}
+
+function orSelectAll(on) {
+  orSelected.clear();
+  if (on) orVisible().forEach(r => orSelected.add(orKey(r)));
+  renderOutreach();
+}
+
+async function exportOutreach() {
+  const format = document.getElementById('orExportFormat').value;
+  const clientId = document.getElementById('orClientFilter').value;
+  const payload = { format, status: document.getElementById('orStatusFilter').value,
+                    q: document.getElementById('orSearch').value.trim(), keys: [...orSelected],
+                    client_id: clientId ? Number(clientId) : null };
+  const printWin = format === 'pdf' ? window.open('', '_blank') : null;
+  try {
+    const res = await fetch('/api/admin/outreach/export', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) { showLogin(); throw new Error('unauthenticated'); }
+    if (!res.ok) throw new Error('export refused');
+    const url = URL.createObjectURL(await res.blob());
+    if (printWin) {
+      printWin.location.href = url;
+    } else {
+      const m = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = m ? m[1] : 'uallak-outreach';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    if (printWin) printWin.close();
+    document.getElementById('orSub').textContent += ' · ✕ הייצוא נכשל';
+  }
 }
 
 async function setLeadStatus(leadId, status) {

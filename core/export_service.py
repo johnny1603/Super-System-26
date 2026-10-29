@@ -164,11 +164,14 @@ def _table_html(columns: list, rows: list) -> str:
 
 
 def print_html(title: str, subtitle: str, columns: list, rows: list,
-               rtl: bool = True, lang: str = "he") -> str:
+               rtl: bool = True, lang: str = "he", summary: list = None) -> str:
     """A standalone page styled for paper, which prints itself on load. The
     client's browser turns this into the PDF — see the module docstring for
-    why the PDF is not rendered server-side."""
+    why the PDF is not rendered server-side. `summary`: short lines (counters)
+    shown above the table."""
     direction = "rtl" if rtl else "ltr"
+    summary_html = ("<div class=\"summary\">" + "".join(
+        f"<span>{_xml_escape(line)}</span>" for line in summary) + "</div>") if summary else ""
     return f"""<!DOCTYPE html>
 <html lang="{_xml_escape(lang)}" dir="{direction}">
 <head>
@@ -195,6 +198,9 @@ def print_html(title: str, subtitle: str, columns: list, rows: list,
   thead {{ display: table-header-group; }}  /* repeat headers on every printed page */
   tr {{ break-inside: avoid; }}
   footer {{ margin-top: 16px; font-size: 10.5px; color: #999; }}
+  .summary {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }}
+  .summary span {{ border: 1px solid #ddd; border-radius: 8px; padding: 6px 12px; font-size: 12.5px;
+                   font-weight: 700; background: #f4f2ef; }}
   .toolbar {{ margin-bottom: 16px; }}
   .toolbar button {{ font: inherit; font-size: 13px; padding: 8px 18px; cursor: pointer;
                      border: 0; border-radius: 8px; background: #FF4C1F; color: #fff;
@@ -214,6 +220,7 @@ def print_html(title: str, subtitle: str, columns: list, rows: list,
     <div class="generated">הופק ב-{_stamp()}</div>
   </div>
 </header>
+{summary_html}
 {_table_html(columns, rows)}
 <footer>הופק אוטומטית ממערכת uallak · הנתונים נכונים לרגע ההפקה</footer>
 <script>
@@ -223,6 +230,86 @@ def print_html(title: str, subtitle: str, columns: list, rows: list,
 </script>
 </body>
 </html>"""
+
+
+# ─── CSV (Excel and Google Sheets) ───────────────────────────────────────────
+
+def _csv_safe(value) -> str:
+    """Text a spreadsheet will not run as a formula (CSV injection): a cell
+    starting with = + - @ gets a leading apostrophe."""
+    text = "" if value is None else str(value)
+    text = _ILLEGAL_XML.sub("", text)
+    return "'" + text if text[:1] in ("=", "+", "-", "@") else text
+
+
+def to_csv(columns: list, rows: list, bom: bool = True) -> bytes:
+    """UTF-8 CSV. bom=True for Excel (without the BOM Excel reads UTF-8 Hebrew
+    as gibberish); bom=False for Google Sheets' File → Import, which would
+    otherwise keep the BOM as a stray character in the first header."""
+    import csv
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow([header for _key, header in columns])
+    for row in rows:
+        writer.writerow([_csv_safe(row.get(key)) for key, _header in columns])
+    return ("﻿" if bom else "").encode("utf-8") + buffer.getvalue().encode("utf-8")
+
+
+# ─── Word (.docx) ─────────────────────────────────────────────────────────────
+
+_DOCX_CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>"""
+
+_DOCX_ROOT_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"""
+
+
+def _docx_paragraph(text, bold: bool = False, size: int = 20, rtl: bool = True) -> str:
+    run_props = ("<w:b/>" if bold else "") + f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>' \
+        + ("<w:rtl/>" if rtl else "")
+    return (f'<w:p><w:pPr>{"<w:bidi/>" if rtl else ""}</w:pPr><w:r><w:rPr>{run_props}</w:rPr>'
+            f'<w:t xml:space="preserve">{_xml_escape(text)}</w:t></w:r></w:p>')
+
+
+def to_docx(title: str, subtitle: str, columns: list, rows: list, summary: list = None,
+            rtl: bool = True) -> bytes:
+    """A Word report (stdlib zipfile, like to_xlsx): title, summary lines
+    (counters), then the table — right-to-left, landscape A4."""
+    border = '<w:{0} w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    borders = "".join(border.format(side) for side in ("top", "left", "bottom", "right", "insideH", "insideV"))
+    grid = "".join('<w:gridCol w:w="1500"/>' for _ in columns)
+
+    def cell(text, header=False):
+        shade = '<w:shd w:val="clear" w:color="auto" w:fill="F4F2EF"/>' if header else ""
+        return f"<w:tc><w:tcPr>{shade}</w:tcPr>{_docx_paragraph(text or '', bold=header, size=18, rtl=rtl)}</w:tc>"
+
+    table = (f'<w:tbl><w:tblPr>{"<w:bidiVisual/>" if rtl else ""}<w:tblW w:w="0" w:type="auto"/>'
+             f'<w:tblBorders>{borders}</w:tblBorders></w:tblPr><w:tblGrid>{grid}</w:tblGrid>'
+             '<w:tr><w:trPr><w:tblHeader/></w:trPr>' + "".join(cell(h, True) for _k, h in columns) + "</w:tr>"
+             + "".join("<w:tr>" + "".join(cell(row.get(k)) for k, _h in columns) + "</w:tr>" for row in rows)
+             + "</w:tbl>")
+    body = (_docx_paragraph(title, bold=True, size=32, rtl=rtl)
+            + _docx_paragraph(subtitle, size=20, rtl=rtl)
+            + _docx_paragraph(f"הופק ב-{_stamp()} · uallak", size=16, rtl=rtl)
+            + "".join(_docx_paragraph(line, bold=True, size=20, rtl=rtl) for line in summary or [])
+            + (table if rows else _docx_paragraph("אין נתונים להצגה", rtl=rtl)))
+    document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                f'<w:body>{body}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>'
+                '<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="0" '
+                'w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", _DOCX_CONTENT_TYPES)
+        archive.writestr("_rels/.rels", _DOCX_ROOT_RELS)
+        archive.writestr("word/document.xml", document)
+    return buffer.getvalue()
 
 
 def doc_html(title: str, subtitle: str, columns: list, rows: list) -> str:

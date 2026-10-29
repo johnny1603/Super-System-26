@@ -14,8 +14,15 @@ Round 2 adds two separate consents, each behind its own flag:
 
 While a flag is off: the consent URL builder raises, both OAuth routes and the Search Console
 endpoints answer 404 before reading the session, the dashboard card stays hidden
-(`features` in the dashboard payload is false), no chat card is offered, the rank provider
+(`features` in the dashboard payload is false), no connect card is offered, the rank provider
 reports "not connected", and `gmail_outreach.send_approved` refuses before reading anything.
+One exception, on purpose (2026-10-30): a client whose package includes the Gmail agent may
+still get a `send_outreach_email` DRAFT card in chat — it shows the exact email and appears on
+the "פניות לעסקים" page — but its Approve button is disabled ("sending is not switched on
+yet") and `agent_actions.decide` refuses the approve BEFORE claiming the card
+(`approve_blocked` → status `blocked`, code `send_disabled`), so the draft stays open and no
+Google call can happen. The same block answers `needs_reconnect` while the flag is on but
+Gmail is not connected. Nothing about this touches a scope.
 The scope therefore never appears on any consent screen until the flag is set. Neither flow
 uses `include_granted_scopes`, so a round-2 grant never widens a round-1 token or vice versa.
 

@@ -2,8 +2,15 @@
 so no prompt and no caller can skip them.
 
 - The FIRST message to a business is a CONSENT REQUEST (the Communications
-  Law's one-time approach to a business), ONE per business, ever, unless it
-  replied.
+  Law's one-time approach to a business), ONE per business, ever.
+- ONE follow-up per business, ever, and only by the client's approval of
+  that exact message: at least FOLLOWUP_AFTER_DAYS after the first message,
+  with no reply / removal / bounce marked, never to a suppressed address
+  (`followup_refusal`). Owner's decision 2026-10-30 — it goes beyond the
+  strict "one-time approach" reading in docs/PROSPECTING.md §6, so it is a
+  lawyer question (§6 Q2) before GMAIL_SEND_ENABLED is switched on.
+- The client's marks (core/outreach_tracker): "replied", "bounced", and
+  "asked to be removed" — the last one writes the suppression list FIRST.
 - The opt-out line is mandatory: `with_opt_out` appends it, `validate_draft`
   refuses a draft without it.
 - Personalized, never generic: the business's name AND a specific hook that
@@ -33,6 +40,10 @@ def sending_enabled() -> bool:
 
 
 
+FOLLOWUP_AFTER_DAYS = 7
+MAX_FOLLOWUPS = 1
+MARKS_TABLE = "outreach_marks"
+MARKS = ("replied", "removed", "bounced")
 SIMILARITY_MAX = 0.8         # a draft this close to an earlier one is "generic"
 HOOK_MIN_CHARS = 8
 SUBJECT_MAX = 120
@@ -142,9 +153,11 @@ def suppress(key_type: str, key_value: str, reason: str, source: str, added_by: 
         value = re.sub(r"\D", "", value)
     if not value:
         raise ValueError("empty key_value")
-    if is_suppressed(**{"email": value} if key_type == "email" else
-                     {"phone": value} if key_type == "phone" else
-                     {"place_id": value} if key_type == "place_id" else {}) and key_type != "domain":
+    # The exact entry already there (any key type, domains included — the
+    # table is unique on (key_type, key_value), so a second insert would fail)
+    existing = (_db().table(SUPPRESSION_TABLE).select("id").eq("key_type", key_type)
+                .eq("key_value", value).limit(1).execute().data or [])
+    if existing:
         return {"added": False, "already": True}
     row = {"key_type": key_type, "key_value": value, "reason": (reason or "")[:300],
            "source": (source or "")[:300], "added_by": added_by[:60],
@@ -154,6 +167,45 @@ def suppress(key_type: str, key_value: str, reason: str, source: str, added_by: 
 
 
 # ─── Before ANY send ─────────────────────────────────────────────────────────
+
+def latest_mark(client_id: int, email: str) -> str:
+    """The client's newest mark for this address ('' = none). Raises when
+    unreadable — callers decide which way to fail."""
+    rows = (_db().table(MARKS_TABLE).select("mark,marked_at").eq("client_id", int(client_id))
+            .eq("to_email", (email or "").strip().lower()).order("marked_at", desc=True)
+            .limit(1).execute().data or [])
+    return rows[0].get("mark", "") if rows else ""
+
+
+def followup_refusal(client_id: int, email: str, now: datetime = None) -> str:
+    """'' when ONE follow-up to this address is allowed now, else the reason
+    code. Fails CLOSED on anything unreadable. Suppression first."""
+    email = (email or "").strip().lower()
+    if not email or is_suppressed(email=email):
+        return "suppressed"
+    try:
+        sends = (_db().table("outreach_sends").select("*").eq("client_id", int(client_id))
+                 .eq("to_email", email).execute().data or [])
+        mark = latest_mark(client_id, email)
+    except Exception:
+        return "record_unavailable"
+    if mark == "removed":
+        return "suppressed"
+    if mark in ("replied", "bounced"):
+        return f"marked_{mark}"
+    first = [s for s in sends if (s.get("kind") or "first") == "first"]
+    if not first:
+        return "no_first_message"
+    if len([s for s in sends if s.get("kind") == "followup"]) >= MAX_FOLLOWUPS:
+        return "followup_already_sent"
+    try:
+        sent_at = datetime.fromisoformat(str(first[0].get("sent_at")).replace("Z", "+00:00"))
+    except Exception:
+        return "record_unavailable"
+    if ((now or datetime.now(timezone.utc)) - sent_at).days < FOLLOWUP_AFTER_DAYS:
+        return "too_soon"
+    return ""
+
 
 def already_contacted(client_id: int, place_id: str, email: str) -> bool:
     """One message per business, ever: a done send to this place or address —

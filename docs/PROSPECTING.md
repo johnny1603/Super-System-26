@@ -164,12 +164,36 @@ What I could confirm (secondary legal sources, read 2026-10-22 — **not legal a
 7. **Audit:** each proposal/approval/send/refusal is already an `agent_actions` row; the
    send step will add the message id and the suppression check result.
 
+### What was built on top of this (2026-10-30)
+
+- **The client approves, not Johnny**, per message: the Gmail agent's `send_outreach_email`
+  card (client approver, one card = one e-mail, from the client's own Gmail; hard cap 10 per
+  client per day from the send record). See `docs/GOOGLE-ROUND2.md`.
+- **ONE follow-up per business, ever — owner's decision, needs the lawyer (Q2 below).** The
+  agent may PROPOSE it (card `send_outreach_followup`, client approves the exact text) only
+  when the first message is at least 7 days old and the client marked no reply, removal or
+  bounce; never to a suppressed address; inside the same daily cap; with the opt-out line.
+  Rules in `outreach_policy.followup_refusal`, re-checked at the click. This goes beyond the
+  strict "one-time approach" reading of point 5 above, so it must be cleared with the lawyer
+  before `GMAIL_SEND_ENABLED` is switched on.
+- **The Outreach page** ("פניות לעסקים", `core/outreach_tracker`): one row per business,
+  status derived at read time. We hold `gmail.send` only and never read mail, so a reply or
+  a removal request is known only when the client presses "ענו" / "ביקשו להסיר". The latter
+  writes the suppression list FIRST (address; the business's own domain when the address is
+  on it — never a free-mail domain; `place_id` when known), then cancels any open card.
+- **Places terms (§3) on that page and its exports:** no Places content is stored or
+  exported. The business name is as written on the business's own site / in our draft, the
+  area is the search area WE chose, and "Google Maps" appears only as the label of how a
+  business was found. Only `place_id` is kept.
+
 ### Questions to ask the lawyer
 
 1. Does a **B2B partnership proposal** ("let's refer customers to each other") count as a
    "דבר פרסומת" under §30A at all?
 2. Does our first message fit the **one-time approach to a business** exception as drafted
-   in §6.6? What must it contain, and what must it NOT contain, to stay inside it?
+   in §6.6? What must it contain, and what must it NOT contain, to stay inside it? **Is ONE
+   follow-up after 7 days without an answer (client-approved, with the opt-out line) still
+   inside it, or does it need prior consent?** (built, off — see "What was built" above)
 3. Who is the **"מפרסם"** — our client (the business on whose behalf we write), uallak (who
    drafts and sends), or both? Who is liable for a breach?
 4. Is a **sole proprietor** (עוסק פטור/מורשה with a personal name) a "business" recipient

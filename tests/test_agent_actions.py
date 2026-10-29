@@ -456,7 +456,7 @@ class ClientStateFailures(unittest.TestCase):
                       and n in ("_channels", "_connections", "_tracking", "_google_campaigns",
                                 "_meta_campaigns", "_budget", "_leads", "_approvals", "_website",
                                 "_landing_pages", "_media", "_media_folder", "_package",
-                                "_site_security", "_warn")}
+                                "_site_security", "_outreach", "_warn")}
         for name in self.saved:
             setattr(cs, name, lambda *a, **k: {"ok": True})
         cs._warn = lambda *a, **k: None

@@ -56,6 +56,9 @@ SECTION_TOPIC = {
     "tracking": "tracking", "leads": "leads",
     "google_campaigns": "google_ads", "meta_campaigns": "meta_ads",
     "website": "website", "landing_pages": "website", "site_security": "website",
+    # Its own topic: an unreadable outreach record (migration not run yet)
+    # must not turn every "account" question into the can't-read line
+    "outreach": "outreach",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -363,8 +366,20 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("media_folder", lambda: _media_folder(client_id))
     take("package", lambda: _package(client_id))
     take("site_security", lambda: _site_security(client_id))
+    take("outreach", lambda: _outreach(client_id))
     state["_failed"] = failed
     return state
+
+
+def _outreach(client_id: int) -> dict:
+    """The Gmail agent's outreach (core/outreach_tracker.for_agent): counts,
+    drafts waiting, and the businesses a follow-up may be PROPOSED for. Only
+    for clients with the Gmail agent package."""
+    from core import gmail_agent_plan
+    if not gmail_agent_plan.entitled(client_id):
+        return {"in_plan": False}
+    from core import outreach_tracker
+    return {"in_plan": True, **outreach_tracker.for_agent(client_id)}
 
 
 def for_model(state: dict) -> dict:

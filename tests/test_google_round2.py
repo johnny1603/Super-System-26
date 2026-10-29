@@ -254,12 +254,22 @@ class FlagsOff(Services):
         features = _function_source("core/api_server.py", "_round2_features")
         self.assertIn("if gmail_send_enabled():", features)
 
-    def test_no_round2_chat_action_is_offered(self):
+    def test_no_round2_connect_or_send_is_offered(self):
+        # Flags off: no connect card, and no send. A Gmail-agent client may
+        # still get a DRAFT card (it shows on the Outreach page), but its
+        # Approve is blocked with send_disabled — see OutreachCard below.
+        from core import gmail_agent_plan
         from test_agent_actions import CLIENTS
-        state = {"channels": {"by_channel": {"organic_seo": {"status": "connected_no_data"}}},
-                 "connections": {"active_platforms": ["gmail_send"]}}
-        names = {a["name"] for a in aa.available(27, "client_chat", state, client=CLIENTS[27])}
-        self.assertFalse({"send_outreach_email", "connect_gmail_send", "connect_search_console"} & names)
+        saved = gmail_agent_plan.entitled
+        gmail_agent_plan.entitled = lambda cid: True
+        try:
+            state = {"channels": {"by_channel": {"organic_seo": {"status": "connected_no_data"}}},
+                     "connections": {"active_platforms": ["gmail_send"]}}
+            names = {a["name"] for a in aa.available(27, "client_chat", state, client=CLIENTS[27])}
+        finally:
+            gmail_agent_plan.entitled = saved
+        self.assertFalse({"connect_gmail_send", "connect_search_console", "send_outreach_followup"} & names)
+        self.assertEqual(aa._outreach_send_blocked(27), "send_disabled")
 
 
 # ─── Flags on ────────────────────────────────────────────────────────────────
@@ -578,9 +588,13 @@ class OutreachCard(ActionTestCase):
         super().setUp()
         self._saved_env = {f: os.environ.pop(f, None) for f in FLAGS}
         os.environ["GMAIL_SEND_ENABLED"] = "true"
-        from core import gmail_outreach
-        self.go = gmail_outreach
-        self.saved_go = (gmail_outreach.prepare_draft, gmail_outreach.send_approved)
+        from core import gmail_agent_plan, gmail_outreach
+        self.go, self.plan = gmail_outreach, gmail_agent_plan
+        self.saved_go = (gmail_outreach.prepare_draft, gmail_outreach.send_approved,
+                         gmail_outreach.connected, gmail_outreach.record_found, gmail_agent_plan.entitled)
+        gmail_outreach.connected = lambda cid: True
+        gmail_outreach.record_found = lambda *a, **k: None
+        gmail_agent_plan.entitled = lambda cid: True
         self.stored = {"to_email": "hello@liabridal.co.il", "business_name": "Lia Bridal Studio",
                        "subject": "Shoes for your brides", "language": "he", "source_url": "https://liabridal.co.il/",
                        "body": "שלום Lia Bridal Studio ...\n\n" + __import__("core.outreach_policy").outreach_policy.opt_out_line("he")}
@@ -590,7 +604,8 @@ class OutreachCard(ActionTestCase):
             "business_name": params["business_name"], "to_email": params["to_email"]}
 
     def tearDown(self):
-        self.go.prepare_draft, self.go.send_approved = self.saved_go
+        (self.go.prepare_draft, self.go.send_approved, self.go.connected, self.go.record_found,
+         self.plan.entitled) = self.saved_go
         for flag, value in self._saved_env.items():
             os.environ.pop(flag, None)
             if value is not None:
@@ -668,7 +683,32 @@ class OutreachCard(ActionTestCase):
         self.assertIn("connect_gmail_send", names27)
         self.assertNotIn("connect_gmail_send", names40)          # no Gmail agent package
         self.assertIn("connect_search_console", names27)
-        self.assertNotIn("send_outreach_email", names27)          # not connected yet
+        # Drafting needs only the package; sending needs the connection
+        self.assertIn("send_outreach_email", names27)
+        self.assertNotIn("send_outreach_email", names40)
+
+    def test_unconnected_draft_card_cannot_be_approved_and_stays_open(self):
+        self.go.connected = lambda cid: False
+        card = self.propose()["card"]
+        self.assertEqual(card["blocked"], aa._OUTREACH_SEND_REFUSALS["needs_reconnect"]["he"])
+        result = aa.decide(card["id"], "client", 40, "approve")
+        self.assertEqual((result["status"], result["code"]), ("blocked", "needs_reconnect"))
+        self.assertEqual(result["next_card"]["action"], "connect_gmail_send")
+        self.assertEqual(self.sends, [])
+        self.assertEqual(self.rows()[0]["status"], "proposed")      # not claimed: approvable later
+
+    def test_flag_off_draft_card_is_shown_but_approve_is_blocked(self):
+        os.environ.pop("GMAIL_SEND_ENABLED", None)
+        card = self.propose()["card"]
+        self.assertEqual(card["details"]["body"], self.stored["body"])
+        self.assertEqual(card["blocked"], aa._OUTREACH_SEND_REFUSALS["send_disabled"]["he"])
+        result = aa.decide(card["id"], "client", 40, "approve")
+        self.assertEqual((result["status"], result["code"]), ("blocked", "send_disabled"))
+        self.assertNotIn("next_card", result)
+        self.assertEqual(self.sends, [])
+        self.assertEqual(self.rows()[0]["status"], "proposed")
+        # Cancelling still works while sending is off
+        self.assertEqual(aa.decide(card["id"], "client", 40, "cancel")["status"], "cancelled")
 
 
 # ─── The docs ────────────────────────────────────────────────────────────────

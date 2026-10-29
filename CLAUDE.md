@@ -272,7 +272,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   site, opt-out line, 10/day per client from `outreach_sends`, suppression first) and Search
   Console read (`core/search_console_service.py`), behind `GMAIL_SEND_ENABLED` /
   `SEARCH_CONSOLE_ENABLED` (`core/round2_flags.py`). Off = never requested, routes 404, cards
-  hidden. Needs `migrations/2026-10-30-gmail-outreach.sql` before switching on. Round-1 scope
+  hidden. Needs `migrations/2026-10-30-gmail-outreach.sql` before switching on.
+  **Outreach page** (`core/outreach_tracker`, client view "פניות לעסקים" + admin tab + export):
+  one row per business, status DERIVED at read time from prospect_contacts / agent_actions /
+  outreach_sends / outreach_marks / suppression. We never read mail, so "ענו" / "ביקשו להסיר" /
+  "חזר" are the client's clicks; "ביקשו להסיר" writes the suppression list FIRST. One
+  client-approved follow-up per business ever (`send_outreach_followup`,
+  `outreach_policy.followup_refusal`, lawyer question before switching on). With the flag
+  off, a draft card still appears but its Approve is blocked without claiming it
+  (`approve_blocked`). Export (CSV ± BOM, xlsx, docx, print-PDF) is built for the SESSION's
+  client only, Hebrew columns only, no Google API. Tests: `tests/test_outreach_tracker.py`. Round-1 scope
   lists must not change — `tests/test_google_round2.py`; doc `docs/GOOGLE-ROUND2.md`. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
   holds no Google data. Adding an action = one dict in `ACTIONS` + a test in
   `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
