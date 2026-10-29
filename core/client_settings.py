@@ -52,6 +52,19 @@ FIELDS = {
     "chat_max_message_chars": {
         "type": "int", "paying": 2000, "exempt": 2000, "min": 100, "max": 20000,
         "label_he": "אורך מקסימלי להודעת צ׳אט (תווים)"},
+    # Gmail agent (core/gmail_agent_plan, docs/PROSPECTING.md). A PAYING
+    # client's monthly cost budget is the fixed margin constant in PRICING and
+    # is not editable here; these two apply to INTERNAL accounts only (uallak's
+    # own client acquisition runs on an admin-controlled quota).
+    "gmail_agent_internal_access": {
+        "type": "bool", "paying": False, "exempt": False,
+        "label_he": "סוכן ג׳ימייל — גישה לחשבון פנימי (אין השפעה על לקוח משלם)"},
+    "gmail_agent_internal_budget_nis": {
+        "type": "int", "paying": 0, "exempt": 100, "min": 0, "max": 2000,
+        "label_he": "סוכן ג׳ימייל — תקציב עלות חודשי לחשבון פנימי (₪)"},
+    "prospecting_radius_km": {
+        "type": "int", "paying": 10, "exempt": 10, "min": 1, "max": 50,
+        "label_he": "רדיוס ניתוח אזור (ק״מ)"},
 }
 
 

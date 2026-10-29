@@ -58,6 +58,11 @@ def _stored_summary(data: dict) -> str:
     price_range = data.get("generation_usd_per_min_range")
     if price_range:
         return f"pay-as-you-go ${price_range[0]}-${price_range[1]}/min"
+    skus = data.get("skus")
+    if skus:
+        # Per-request APIs (Google Places): first paid tier + monthly free allowance
+        return ", ".join(f"{name} ${sku['usd_per_1000']}/1000 (free {sku['free_per_month']}/mo)"
+                         for name, sku in skus.items())
     return "no flat reference stored"
 
 

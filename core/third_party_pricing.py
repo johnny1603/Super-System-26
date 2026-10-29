@@ -80,6 +80,29 @@ THIRD_PARTY_PRICING = {
         "currency": "USD",
         "plans": {"starter": 5, "plus": 9, "pro": 15, "turbo": 25, "elite": 45},
     },
+    "google_places": {
+        "vendor": "Google Maps Platform — Places API (New)",
+        "what_for": ("OUR cost for the Gmail agent package's market/partner research "
+                     "(core/places_service). Billed per request at the HIGHEST tier of any field "
+                     "in the field mask. Recorded per client at LIST price even inside the free "
+                     "allowance, so the true marginal cost is visible."),
+        "pricing_url": "https://developers.google.com/maps/billing-and-pricing/pricing",
+        # Read on the live page (its own "Last updated 2026-10-21 UTC") on 2026-10-22
+        "checked_at": "2026-10-22",
+        "currency": "USD",
+        # sku -> first paid volume tier (0-100k) USD per 1,000 requests, and the
+        # monthly free allowance (per BILLING ACCOUNT, shared by every client)
+        "skus": {
+            "text_search_ids_only":    {"usd_per_1000": 0.0,  "free_per_month": None},  # listed as unlimited
+            "text_search_pro":         {"usd_per_1000": 32.0, "free_per_month": 5000},
+            "text_search_enterprise":  {"usd_per_1000": 35.0, "free_per_month": 1000},
+            "nearby_search_pro":       {"usd_per_1000": 32.0, "free_per_month": 5000},
+            "nearby_search_enterprise": {"usd_per_1000": 35.0, "free_per_month": 1000},
+            "place_details_essentials": {"usd_per_1000": 5.0, "free_per_month": 10000},
+            "place_details_pro":       {"usd_per_1000": 17.0, "free_per_month": 5000},
+            "place_details_enterprise": {"usd_per_1000": 20.0, "free_per_month": 1000},
+        },
+    },
 }
 
 

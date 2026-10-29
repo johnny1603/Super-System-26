@@ -32,6 +32,11 @@ KEYS = {
     # the GOOGLE_OAUTH_* pair that publishes to a client's own channel. Absent is
     # a SUPPORTED state: niche research falls back to web search alone.
     "YOUTUBE_DATA_API_KEY": os.environ.get("YOUTUBE_DATA_API_KEY", ""),
+    # Google Places API (New) — an API KEY, no user consent/OAuth scope
+    # (core/places_service, docs/PROSPECTING.md). Project super-system-500410,
+    # restricted in the Cloud Console to Places API (New) only; the value lives
+    # in Secret Manager and reaches Cloud Run as this env var.
+    "GOOGLE_PLACES_API_KEY": os.environ.get("GOOGLE_PLACES_API_KEY", ""),
     # Drive integrations (core/drive_service.py): the service-account JSON key,
     # the offboarded-client archive folder, and the media agent's root folder
     "GOOGLE_SERVICE_ACCOUNT_JSON": os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", ""),

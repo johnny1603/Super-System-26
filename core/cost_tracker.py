@@ -114,9 +114,12 @@ INTERNAL = "internal"
 _owner = contextvars.ContextVar("cost_owner", default=None)
 
 # Coarse buckets for later credit metering
-METER_CATEGORIES = ("chat", "proposal", "content", "media", "seo", "infra")
+METER_CATEGORIES = ("chat", "proposal", "content", "media", "seo", "research", "infra")
 _METER_RULES = (
-    # (substring of the fine category or action, bucket) — first match wins
+    # (substring of the fine category or action, bucket) — first match wins.
+    # gmail_agent first: its LLM drafts run inside chat turns, and they belong
+    # to the package's cost budget, not to chat
+    ("gmail_agent", "research"), ("places_api", "research"),
     ("chat_", "chat"), ("claude_support", "chat"), ("claude_interview", "chat"),
     ("engagement_login", "chat"), ("sales_chat", "chat"),
     ("proposal", "proposal"), ("upgrade", "proposal"), ("content_qa", "proposal"),

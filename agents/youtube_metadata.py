@@ -41,6 +41,7 @@ import time
 from urllib.parse import urlsplit
 
 from core.agent_base import log_step, timed_step
+from core.domains import registered_domain
 from core.video_limits import DESCRIPTION_MAX, TAGS_MAX, TAGS_TOTAL_MAX, TITLE_MAX, tags_length
 
 AGENT_NAME = "youtube_metadata"
@@ -70,9 +71,6 @@ DEFAULT_CATEGORY = "22"
 # Never in a client's video metadata: our vendors, our tools, ourselves
 VENDOR_NAMES = ("uallak", "semrush", "ahrefs", "seoptimer", "higgsfield", "heygen", "elevenlabs",
                 "instawp", "anthropic", "claude", "chatgpt", "openai", "manychat", "make.com")
-
-# Two-label public suffixes we meet (Israel first); everything else is eTLD+1
-_SECOND_LEVEL = {"co", "org", "net", "ac", "gov", "muni", "k12", "com", "edu", "ltd", "plc", "idf"}
 
 _CONTROL = re.compile(r"[\u0000-\u0008\u000b-\u001f\u007f​-‏‪-‮⁦-⁩]")
 _HTML = re.compile(r"<[^>]{0,200}>")
@@ -179,13 +177,6 @@ def _search_videos(query: str, language: str) -> list:
 
 
 # ─── Grounding ───────────────────────────────────────────────────────────────
-
-def registered_domain(host: str) -> str:
-    labels = [l for l in (host or "").lower().strip(".").split(".") if l]
-    if len(labels) >= 3 and labels[-2] in _SECOND_LEVEL and len(labels[-1]) == 2:
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
-
 
 def _norm_url(url: str) -> str:
     return (url or "").strip().split("#")[0].rstrip("/").lower()

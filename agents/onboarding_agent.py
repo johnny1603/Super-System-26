@@ -15,6 +15,22 @@ _HEYGEN_MIN_RANGE = THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"
 # never type the number anywhere else.
 ORGANIC_MONTHLY_PRICE_NIS = 500
 
+# The "Gmail agent" package (market/partner research + personalized outreach
+# drafts — docs/PROSPECTING.md), decided 2026-10-22.
+#   price ......................................... 50 NIS / month / client
+#   margin floor .................................. 40%  -> cost may be at most 50 × 0.60 = 30
+#   payment-fee allowance ......................... 3    (PayPal IL on a 50 NIS charge, roughly
+#                                                         3.9% + 1.20 ≈ 3.15 — UNVERIFIED rate,
+#                                                         re-check the PayPal fee page)
+#   => monthly COST budget per client ............. 30 − 3 = 27 NIS
+# The budget, not request counts, is what protects the margin: every paid call
+# this package makes for a client is costed and checked against it first
+# (core/gmail_agent_plan). Billing stays OFF until e-mail sending exists
+# (gmail.send approved) — the package is not offered or charged before then.
+GMAIL_AGENT_MONTHLY_PRICE_NIS = 50
+GMAIL_AGENT_MONTHLY_COST_BUDGET_NIS = 27
+GMAIL_AGENT_BILLING_ENABLED = False
+
 PRICING = {
     # Per-platform monthly management fees - summed when a package includes multiple platform
     # groups (e.g. Meta + Google = 700 NIS/month management, not one flat fee covering both).
@@ -112,6 +128,17 @@ PRICING = {
     },
 
     "raffle": {"setup_and_management": 250},
+
+    # Gmail agent — see the derivation above GMAIL_AGENT_MONTHLY_COST_BUDGET_NIS.
+    # "sellable": False keeps it OUT of every proposal (build_proposal drops
+    # non-sellable entries) until billing is enabled.
+    "gmail_agent": {
+        "monthly_ils": GMAIL_AGENT_MONTHLY_PRICE_NIS,
+        "monthly_cost_budget_ils": GMAIL_AGENT_MONTHLY_COST_BUDGET_NIS,
+        "label_he": "סוכן ג׳ימייל — מחקר שוק ושותפים",
+        "service_token": "gmail agent",
+        "sellable": GMAIL_AGENT_BILLING_ENABLED,
+    },
 
     # Lead-volume add-on: a VALUE-based price set by how many leads a client's
     # campaigns produce, layered on top of the campaign-level attribution that
@@ -382,7 +409,10 @@ def build_proposal(answers, api_key, empathy_analysis=None, upgrade_context=None
     # Avatar tier wired into the sales chat 2026-07-20 (was deliberately excluded
     # while unlaunched — see BUDGET PYRAMID #9 for the relevance rule that keeps
     # it out of most proposals; it's an optional add-on, not a default line).
-    pricing_str = json.dumps(PRICING)
+    # A package that is not sellable yet (e.g. the Gmail agent before sending
+    # exists) is never shown to the pricing brain — it cannot propose it
+    pricing_str = json.dumps({key: value for key, value in PRICING.items()
+                              if not (isinstance(value, dict) and value.get("sellable") is False)})
 
     empathy_block = ""
     if empathy_analysis:

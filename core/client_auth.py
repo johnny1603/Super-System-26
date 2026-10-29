@@ -70,6 +70,7 @@ GRANTABLE_SERVICES = {
     "youtube": "youtube",
     "media": "media",
     "avatar": "avatar",
+    "gmail_agent": "gmail agent",   # PRICING["gmail_agent"]["service_token"]
 }
 
 # THE Google sign-in scope list (one constant; docs/GOOGLE-SCOPES.md mirrors
