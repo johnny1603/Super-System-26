@@ -103,8 +103,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   needs_attention) — reuse it for alerts, never re-derive. Never a fake zero. Paid windows
   (7/30/90 + previous) come from one daily-series call per platform
   (`get_daily_metrics` in the ads agents, 1h cache). Leads are `client_leads`, never `leads`.
-  Organic rows come from `core/rank_tracking.py`: provider interface with stubs only
-  (`seo_pro` not implemented, `search_console` deferred — no new Google scope), target
+  Organic rows come from `core/rank_tracking.py`: provider interface (`seo_pro` not
+  implemented; `search_console` implemented behind `SEARCH_CONSOLE_ENABLED`, off — average
+  position + clicks + impressions per target keyword, 28 days, 6 h cache), target
   keywords table PROPOSED in `migrations/2026-10-18-client-target-keywords.sql` (not applied),
   internal soft cap `TARGET_KEYWORDS_SOFT_CAP` alerts admin only.
 - `core/secrets_vault.py` — **every per-client credential is encrypted at rest** (AES-256-GCM,
@@ -255,7 +256,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   test clients), `publish_youtube_from_media` (Private), `configure_conversion` (lead tag in
   the client's own GTM, client-approved; each failure `reason` → its own plain-language
   refusal). docs/GOOGLE-SCOPES.md holds the evidence matrix and the video v3 script;
-  `tests/test_google_scope_flows.py` guards both. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
+  `tests/test_google_scope_flows.py` guards both. **Google round 2 (built 2026-10-30, OFF)**:
+  Gmail send (`core/gmail_service.py` send-only + `core/gmail_outreach.py`, card
+  `send_outreach_email`, client-approved per email, address must be on the business's own
+  site, opt-out line, 10/day per client from `outreach_sends`, suppression first) and Search
+  Console read (`core/search_console_service.py`), behind `GMAIL_SEND_ENABLED` /
+  `SEARCH_CONSOLE_ENABLED` (`core/round2_flags.py`). Off = never requested, routes 404, cards
+  hidden. Needs `migrations/2026-10-30-gmail-outreach.sql` before switching on. Round-1 scope
+  lists must not change — `tests/test_google_round2.py`; doc `docs/GOOGLE-ROUND2.md`. Table `agent_actions` (migrations/2026-10-21-agent-actions.sql)
   holds no Google data. Adding an action = one dict in `ACTIONS` + a test in
   `tests/test_agent_actions.py` (stdlib unittest, runnable without deps).
   `publish_youtube_from_media` is the first client-approved action that WRITES to Google: a

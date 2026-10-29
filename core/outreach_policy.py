@@ -14,9 +14,10 @@ so no prompt and no caller can skip them.
   client_id column on purpose: client deletion clears every table that has
   one (schema discovery), and a refusal must outlive the lead and the client.
   Rows are only ever added; nothing here deletes one.
-- Sending itself is DISABLED until Google approves gmail.send
-  (SENDING_ENABLED); `check_before_send` still runs every other check first,
-  so those are exercised today.
+- Sending itself is DISABLED until Google approves gmail.send: the switch is
+  GMAIL_SEND_ENABLED (core/gmail_service, off by default), read through
+  `sending_enabled()`. `check_before_send` still runs every other check
+  first, so those are exercised either way.
 """
 import difflib
 import re
@@ -24,7 +25,14 @@ from datetime import datetime, timezone
 
 from core.domains import email_domain, registered_domain
 
-SENDING_ENABLED = False      # flips only when gmail.send is approved AND billing is on
+
+def sending_enabled() -> bool:
+    """Flips only when gmail.send is approved AND GMAIL_SEND_ENABLED is set."""
+    from core.round2_flags import gmail_send_enabled
+    return gmail_send_enabled()
+
+
+
 SIMILARITY_MAX = 0.8         # a draft this close to an earlier one is "generic"
 HOOK_MIN_CHARS = 8
 SUBJECT_MAX = 120
@@ -148,13 +156,19 @@ def suppress(key_type: str, key_value: str, reason: str, source: str, added_by: 
 # ─── Before ANY send ─────────────────────────────────────────────────────────
 
 def already_contacted(client_id: int, place_id: str, email: str) -> bool:
-    """One message per business, ever: a done send to this place or address."""
+    """One message per business, ever: a done send to this place or address —
+    from prospecting's contacts or from a recorded Gmail send
+    (core/gmail_outreach, table outreach_sends)."""
     try:
         rows = (_db().table("prospect_contacts").select("contacted_at,email,place_id")
                 .eq("client_id", int(client_id)).execute().data or [])
+        sent = ((_db().table("outreach_sends").select("id").eq("client_id", int(client_id))
+                 .eq("to_email", email.lower()).limit(1).execute().data or []) if email else [])
     except Exception:
         return True   # can't prove it's the first message → don't send
-    return any(r.get("contacted_at") and (r.get("place_id") == place_id or
+    if sent:
+        return True
+    return any(r.get("contacted_at") and ((place_id and r.get("place_id") == place_id) or
                                           (email and r.get("email") == email.lower()))
                for r in rows)
 
@@ -176,5 +190,5 @@ def check_before_send(client_id: int, params: dict, language: str = "he"):
         plan.take_message(client_id)
     except plan.CapReached as e:
         raise SendRefused("daily_cap", e.which)
-    if not SENDING_ENABLED:
+    if not sending_enabled():
         raise SendRefused("send_disabled", "sending is not enabled until Google approves gmail.send")

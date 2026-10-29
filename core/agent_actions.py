@@ -334,6 +334,58 @@ def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks):
             "source_file": name}
 
 
+def _prepare_outreach(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """The chat's draft → the exact e-mail the client approves
+    (core/gmail_outreach.prepare_draft: the business's own site is read, the
+    address must be on it, the draft must be personal; the opt-out line is
+    added). A draft that can't pass becomes a plain line, never a card."""
+    from core import gmail_outreach
+    lang = (context or {}).get("language") or "he"
+    try:
+        return {"params": gmail_outreach.prepare_draft(client_id, params, lang, rows)}
+    except gmail_outreach.DraftRefused as e:
+        _log(f"client {client_id}: outreach draft refused ({e.code}): {e}", client_id=client_id)
+        return {"refuse": _pick(_OUTREACH_DRAFT_REFUSALS.get(e.code, _OUTREACH_DRAFT_REFUSALS["not_personal"]),
+                                lang)}
+
+
+def _validate_outreach_stored(client_id: int, params: dict) -> dict:
+    from core import gmail_outreach
+    return gmail_outreach.revalidate_stored(params)
+
+
+def _run_send_outreach_email(client_id: int, params: dict, background_tasks):
+    """gmail_outreach.send_approved: every outreach rule again, the cost-budget
+    guard, then users.messages.send from the client's own Gmail, recorded."""
+    from core import gmail_outreach
+    try:
+        return gmail_outreach.send_approved(client_id, params)
+    except gmail_outreach.SendFailed as e:
+        raise ActionFailed(e.code if e.code in _OUTREACH_SEND_REFUSAL_CODES else "refused_by_action", str(e))
+
+
+def _gmail_outreach_possible(state: dict, client: dict) -> bool:
+    from core.round2_flags import gmail_send_enabled
+    return gmail_send_enabled() and _connected("gmail_send")(state, client)
+
+
+def _gmail_connect_needed(state: dict, client: dict) -> bool:
+    """Flag on, not connected, and the client has the Gmail agent package
+    (gmail_agent_plan.entitled — server-side, fails closed)."""
+    from core.round2_flags import gmail_send_enabled
+    if not gmail_send_enabled() or _connected("gmail_send")(state, client):
+        return False
+    from core import gmail_agent_plan
+    return gmail_agent_plan.entitled(int((client or {}).get("id") or 0))
+
+
+def _search_console_connect_needed(state: dict, client: dict) -> bool:
+    from core.round2_flags import search_console_enabled
+    if not search_console_enabled() or _connected("search_console")(state, client):
+        return False
+    return (_cards(state).get("organic_seo") or {}).get("status") not in (None, "not_in_plan")
+
+
 def _run_rotate_wordpress_password(client_id: int, params: dict, background_tasks):
     """website_agent.rotate_stored_password — the same mint/delete code as
     one-click connect. The audit record is this action's own row (who
@@ -827,7 +879,160 @@ ACTIONS = {
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
     },
+    # ── Google verification ROUND 2 (docs/GOOGLE-ROUND2.md) — every entry
+    # below is unavailable while its flag is off (core/round2_flags) ──
+    "connect_gmail_send": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
+        "link": "/api/oauth/gmail/start",
+        "does": "Opens Google's approval screen so the client's own Gmail can SEND the outreach e-mails "
+                "they approve one by one (send only — the mailbox is never read).",
+        "params": {},
+        "available": _gmail_connect_needed,
+        "title": _txt("חיבור Gmail לשליחת פניות", "Connect Gmail to send outreach",
+                      "Connecter Gmail pour envoyer vos prises de contact", "ربط Gmail لإرسال رسائل التواصل",
+                      "Подключить Gmail для отправки писем"),
+        "what": _txt("ייפתח מסך האישור של Google. נבקש הרשאת שליחה בלבד — לא נקרא אף מייל בתיבה שלכם. כל מייל יישלח רק אחרי שתאשרו אותו כאן.",
+                     "Google's approval screen opens. We ask for permission to send only — we never read your mailbox. Each e-mail is sent only after you approve it here.",
+                     "L'écran Google s'ouvre. Nous demandons uniquement l'envoi — nous ne lisons jamais votre boîte. Chaque e-mail part seulement après votre accord ici.",
+                     "ستفتح شاشة موافقة Google. نطلب صلاحية الإرسال فقط — لا نقرأ بريدكم أبدًا. كل رسالة تُرسل فقط بعد موافقتكم هنا.",
+                     "Откроется окно Google. Мы просим только право отправки — почту мы не читаем. Каждое письмо уходит только после вашего подтверждения здесь."),
+        "done": _txt("פותח את מסך האישור של Google…", "Opening Google's approval screen…",
+                     "Ouverture de l'écran Google…", "جارٍ فتح شاشة موافقة Google…", "Открываю окно Google…"),
+    },
+    "send_outreach_email": {
+        # The client approves EACH e-mail (one card = one message, no bulk):
+        # it goes from their own Gmail, to one business, with the opt-out line.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Sends ONE outreach e-mail from the client's own Gmail to ONE business. You write the draft "
+                "for that specific business: its name, one concrete detail from its own website (hook), "
+                "and why it fits the client — never a generic text. The system reads the business's site, "
+                "checks the address is published there, adds the opt-out line and shows the exact e-mail "
+                "on the card. Max 10 a day; one e-mail per business, ever.",
+        "params": {"to_email": {"required": True, "validate": lambda v, cid: _v_short_text(v, 254),
+                                "hint": "the address exactly as published on the business's own site"},
+                   "business_name": {"required": True, "validate": lambda v, cid: _v_short_text(v, 120),
+                                     "hint": "the business's name, as it writes it"},
+                   "business_url": {"required": True, "validate": lambda v, cid: _v_short_text(v, 300),
+                                    "hint": "the business's own website (https://…)"},
+                   "hook": {"required": True, "validate": lambda v, cid: _v_short_text(v, 200),
+                            "hint": "one concrete detail copied from their site, also used in the body"},
+                   "subject": {"required": True, "validate": lambda v, cid: _v_short_text(v, 120),
+                               "hint": "short, honest subject"},
+                   "body": {"required": True, "validate": lambda v, cid: str(v or "").strip()[:1500],
+                            "hint": "the e-mail text: names the business, uses the hook, asks if they'd like details"}},
+        "available": _gmail_outreach_possible,
+        "prepare": lambda client_id, params, context, rows: _prepare_outreach(client_id, params, context, rows),
+        "validate_stored": lambda client_id, params: _validate_outreach_stored(client_id, params),
+        "details": lambda client_id, params: {"to": params.get("to_email", ""),
+                                              "business": params.get("business_name", ""),
+                                              "subject": params.get("subject", ""),
+                                              "body": params.get("body", ""),
+                                              "source": params.get("source_url", "")},
+        "run": _run_send_outreach_email,
+        "display": lambda client_id, params: {"business": params.get("business_name") or "—",
+                                              "to": params.get("to_email") or "—"},
+        "title": _txt("שליחת מייל פנייה", "Send an outreach e-mail", "Envoyer un e-mail de prise de contact",
+                      "إرسال رسالة تواصل", "Отправить письмо"),
+        "what": _txt("המייל למטה יישלח מה-Gmail שלכם אל {business} ({to}) — רק המייל הזה, פעם אחת. בסופו שורת הסרה מרשימת התפוצה.",
+                     "The e-mail below will be sent from your Gmail to {business} ({to}) — only this one, once. It ends with an opt-out line.",
+                     "L'e-mail ci-dessous partira de votre Gmail vers {business} ({to}) — uniquement celui-ci, une fois. Il se termine par une ligne de désinscription.",
+                     "الرسالة أدناه ستُرسل من Gmail الخاص بكم إلى {business} ({to}) — هذه فقط ومرة واحدة. في نهايتها سطر لإلغاء الاشتراك.",
+                     "Письмо ниже уйдёт с вашего Gmail в {business} ({to}) — только оно и один раз. В конце — строка для отказа от писем."),
+        "done": _txt("המייל נשלח אל {business} ✓ תשובה, אם תגיע, תגיע לתיבת ה-Gmail שלכם.",
+                     "The e-mail to {business} was sent ✓ Any reply arrives in your own Gmail inbox.",
+                     "L'e-mail à {business} est parti ✓ Une réponse éventuelle arrivera dans votre Gmail.",
+                     "تم إرسال الرسالة إلى {business} ✓ أي رد سيصل إلى بريد Gmail الخاص بكم.",
+                     "Письмо в {business} отправлено ✓ Ответ придёт в ваш Gmail."),
+        "done_message": lambda result, lang: _pick(ACTIONS["send_outreach_email"]["done"], lang)
+            .replace("{business}", result.get("business_name") or "—"),
+        "refusals": {},          # filled below (_OUTREACH_SEND_REFUSALS)
+        "follow_up": {"needs_reconnect": "connect_gmail_send"},
+    },
+    "connect_search_console": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
+        "link": "/api/oauth/search-console/start",
+        "does": "Opens Google's approval screen for READ-ONLY access to the client's Google Search Console, "
+                "so the organic section shows their real keyword positions, clicks and impressions.",
+        "params": {},
+        "available": _search_console_connect_needed,
+        "title": _txt("חיבור Google Search Console (קריאה בלבד)", "Connect Google Search Console (read only)",
+                      "Connecter Google Search Console (lecture seule)", "ربط Google Search Console (قراءة فقط)",
+                      "Подключить Google Search Console (только чтение)"),
+        "what": _txt("ייפתח מסך האישור של Google. הגישה לקריאה בלבד: נראה את מילות החיפוש, הקליקים והמיקומים של האתר שלכם — ולא נשנה שום דבר.",
+                     "Google's approval screen opens. Access is read only: we see your site's search keywords, clicks and positions — and change nothing.",
+                     "L'écran Google s'ouvre. Accès en lecture seule : mots-clés, clics et positions de votre site — sans rien modifier.",
+                     "ستفتح شاشة موافقة Google. الوصول للقراءة فقط: نرى كلمات البحث والنقرات والمواقع لموقعكم — ولا نغيّر شيئًا.",
+                     "Откроется окно Google. Доступ только для чтения: ключевые слова, клики и позиции сайта — ничего не меняем."),
+        "done": _txt("פותח את מסך האישור של Google…", "Opening Google's approval screen…",
+                     "Ouverture de l'écran Google…", "جارٍ فتح شاشة موافقة Google…", "Открываю окно Google…"),
+    },
 }
+
+_OUTREACH_DRAFT_REFUSALS = {
+    "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",
+                        "Cette adresse e-mail n'est pas valide — pas de brouillon.", "عنوان البريد غير صالح، لذلك لم أجهّز مسودة.",
+                        "Адрес некорректен — черновик не подготовлен."),
+    "suppressed": _txt("העסק הזה ביקש לא לקבל מאיתנו פניות, אז לא נשלח אליו כלום.",
+                       "This business asked not to be contacted, so nothing will be sent to it.",
+                       "Cette entreprise a demandé à ne pas être contactée — rien ne lui sera envoyé.",
+                       "طلب هذا العمل عدم التواصل معه، لذلك لن يُرسل إليه شيء.",
+                       "Эта компания просила не писать ей — ничего отправлено не будет."),
+    "already_contacted": _txt("כבר פנינו לעסק הזה פעם אחת — לא שולחים פנייה שנייה.",
+                              "We've already written to this business once — we don't send a second approach.",
+                              "Nous avons déjà écrit à cette entreprise une fois — pas de seconde prise de contact.",
+                              "تواصلنا مع هذا العمل مرة من قبل — لا نرسل رسالة ثانية.",
+                              "Мы уже писали этой компании — второе письмо не отправляем."),
+    "site_unreadable": _txt("לא הצלחתי לקרוא את האתר של העסק, אז אין לי במה לבסס פנייה אישית. אפשר לבדוק את הכתובת ולנסות שוב.",
+                            "I couldn't read the business's website, so there's nothing to base a personal message on. Check the address and try again.",
+                            "Je n'ai pas pu lire le site de l'entreprise — vérifiez l'adresse et réessayez.",
+                            "لم أتمكن من قراءة موقع العمل — تحققوا من العنوان وحاولوا مجددًا.",
+                            "Не удалось прочитать сайт компании — проверьте адрес и попробуйте снова."),
+    "bad_site": _txt("כתובת האתר של העסק צריכה להתחיל ב-https://.", "The business's website address must start with https://.",
+                     "L'adresse du site doit commencer par https://.", "يجب أن يبدأ عنوان الموقع بـ https://.",
+                     "Адрес сайта должен начинаться с https://."),
+    "address_not_on_site": _txt("כתובת המייל הזו לא מופיעה באתר של העסק. אנחנו כותבים רק לכתובת שהעסק עצמו פרסם — לא מנחשים כתובות.",
+                                "That address doesn't appear on the business's own website. We only write to an address the business published itself — never a guessed one.",
+                                "Cette adresse n'apparaît pas sur le site de l'entreprise. Nous n'écrivons qu'à une adresse publiée par l'entreprise.",
+                                "هذا العنوان غير موجود في موقع العمل. نكتب فقط لعنوان نشره العمل بنفسه.",
+                                "Этого адреса нет на сайте компании. Пишем только на адрес, опубликованный самой компанией."),
+    "not_personal": _txt("הטיוטה עוד לא אישית מספיק: היא צריכה לציין את שם העסק ופרט מסוים שבאמת מופיע באתר שלו, ולא להיות דומה לפנייה קודמת. אכתוב גרסה חדשה.",
+                         "The draft isn't personal enough yet: it must name the business and use a specific detail that really appears on its site, and not repeat an earlier message. I'll write a new version.",
+                         "Le brouillon n'est pas assez personnel : il doit nommer l'entreprise et citer un détail réel de son site. Je réécris.",
+                         "المسودة ليست شخصية بما يكفي: يجب أن تذكر اسم العمل وتفصيلًا حقيقيًا من موقعه. سأكتب نسخة جديدة.",
+                         "Черновик недостаточно личный: нужно название компании и конкретная деталь с её сайта. Перепишу."),
+}
+
+_OUTREACH_SEND_REFUSALS = {
+    "daily_cap": _txt("הגעתם למכסת המיילים להיום (עד 10 ביום). המייל לא נשלח — אפשר לאשר אותו שוב מחר.",
+                      "You've reached today's e-mail limit (up to 10 a day). It wasn't sent — you can approve it again tomorrow.",
+                      "Limite d'e-mails du jour atteinte (10 par jour). Rien n'est parti — réessayez demain.",
+                      "وصلتم إلى حد الرسائل اليومي (حتى 10). لم تُرسل — يمكن الموافقة مجددًا غدًا.",
+                      "Дневной лимит писем исчерпан (до 10). Не отправлено — повторите завтра."),
+    "budget": _txt("תקציב סוכן ה-Gmail לחודש הזה נוצל, אז המייל לא נשלח. הוא מתחדש בתחילת החודש.",
+                   "This month's Gmail agent budget is used up, so the e-mail wasn't sent. It renews at the start of the month.",
+                   "Le budget mensuel de l'agent Gmail est épuisé — rien n'est parti. Il se renouvelle en début de mois.",
+                   "ميزانية وكيل Gmail لهذا الشهر نفدت، لذلك لم تُرسل الرسالة. تتجدد في بداية الشهر.",
+                   "Месячный бюджет Gmail-агента исчерпан — письмо не отправлено. Он обновится в начале месяца."),
+    "not_entitled": _txt("שליחת מיילים כלולה בחבילת סוכן ה-Gmail, שאינה בחבילה שלכם — המייל לא נשלח.",
+                         "Sending e-mails is part of the Gmail agent package, which isn't in your plan — nothing was sent.",
+                         "L'envoi d'e-mails fait partie du forfait agent Gmail, absent de votre offre — rien n'est parti.",
+                         "إرسال الرسائل جزء من باقة وكيل Gmail غير المشمولة في خطتكم — لم يُرسل شيء.",
+                         "Отправка писем входит в пакет Gmail-агента, которого нет в вашем тарифе — ничего не отправлено."),
+    "suppressed": _OUTREACH_DRAFT_REFUSALS["suppressed"],
+    "already_contacted": _OUTREACH_DRAFT_REFUSALS["already_contacted"],
+    "needs_reconnect": _txt("החיבור ל-Gmail צריך חידוש — המייל לא נשלח. לחצו על הכפתור כדי לחבר מחדש, ואז אשרו שוב.",
+                            "Your Gmail connection needs renewing — the e-mail wasn't sent. Tap the button to reconnect, then approve again.",
+                            "Votre connexion Gmail doit être renouvelée — rien n'est parti. Reconnectez puis validez à nouveau.",
+                            "يجب تجديد الربط مع Gmail — لم تُرسل الرسالة. أعيدوا الربط ثم وافقوا مجددًا.",
+                            "Подключение Gmail нужно обновить — письмо не отправлено. Переподключите и подтвердите снова."),
+    "send_disabled": _txt("שליחת מיילים עדיין לא פעילה במערכת — שום דבר לא נשלח.",
+                          "E-mail sending isn't switched on yet — nothing was sent.",
+                          "L'envoi d'e-mails n'est pas encore activé — rien n'est parti.",
+                          "إرسال الرسائل غير مفعّل بعد — لم يُرسل شيء.",
+                          "Отправка писем ещё не включена — ничего не отправлено."),
+}
+_OUTREACH_SEND_REFUSAL_CODES = set(_OUTREACH_SEND_REFUSALS)
+ACTIONS["send_outreach_email"]["refusals"] = _OUTREACH_SEND_REFUSALS
 
 # Lines a TikTok send shows INSTEAD of its card when the connection can't
 # carry it (_prepare_tiktok) — paired with the connect_tiktok card

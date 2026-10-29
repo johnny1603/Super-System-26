@@ -50,6 +50,13 @@ deleted by `POST /api/admin/merchant-center/retire` (admin key, safe to re-run).
 Google treats them as the same scope (same consent text, same token); the full
 URL is what the Console lists, so code and Console now match string-for-string.
 
+**Round 2 (built 2026-10-30, OFF):** `gmail.send` (`core/gmail_service.py`) and
+`webmasters.readonly` (`core/search_console_service.py`) exist in the code behind
+`GMAIL_SEND_ENABLED` / `SEARCH_CONSOLE_ENABLED`, both off by default. While off they
+are never requested (consent builders raise, routes 404) and are NOT part of this
+round. They are documented separately in `docs/GOOGLE-ROUND2.md`; the list below
+is unchanged.
+
 ## Final list — exactly what the code requests
 
 ```

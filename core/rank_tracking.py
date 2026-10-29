@@ -13,9 +13,9 @@ Registered now, NONE of them connected:
                      price). Will read its key from SEO_PRO_API_KEY. Not
                      implemented: no vendor is called and no key is added.
 - "search_console" — Google Search Console (average position, clicks and
-                     impressions). DEFERRED: it needs a new Google OAuth scope,
-                     and nothing new is requested until Google finishes
-                     reviewing the current scope submission.
+                     impressions). Built for Google verification ROUND 2 and
+                     OFF until SEARCH_CONSOLE_ENABLED is set (its scope,
+                     webmasters.readonly, is not requested before that).
 - "none"           — the explicit "no source" provider.
 
 ## Display rules (enforced here, not in the page)
@@ -77,17 +77,76 @@ class SeoProProvider(RankProvider):
 
 
 class SearchConsoleProvider(RankProvider):
-    """Deferred: needs a new Google OAuth scope (not requested)."""
+    """Google Search Console (core/search_console_service, scope
+    webmasters.readonly) — Google verification ROUND 2, behind
+    SEARCH_CONSOLE_ENABLED (off by default: never connected, never calls).
+
+    Reads the client's chosen property (client_accounts platform
+    'search_console', account_id=siteUrl) for a 28-day window ending
+    `as_of` (default: DATA_LAG_DAYS ago — Search Console's final data trails
+    by ~3 days) and matches each TARGET keyword to the search query with the
+    same normalized text. Position is Google's AVERAGE position; clicks and
+    impressions ride along. Readings are cached CACHE_SECONDS per window."""
     id = "search_console"
     label_key = "source_search_console"
     capabilities = {"exact_rank": False, "history": True,
                     "competitors": False, "clicks_impressions": True}
+    WINDOW_DAYS = 28
+    DATA_LAG_DAYS = 3
+    CACHE_SECONDS = 6 * 3600
+
+    def __init__(self):
+        self._cache = {}
+
+    def _connection(self, client_id: int) -> dict:
+        from agents.client_agent import _db
+        from core.secrets_vault import hydrate
+        rows = (_db().table("client_accounts").select("*").eq("client_id", client_id)
+                .eq("platform", self.id).eq("status", "active").order("id", desc=True)
+                .limit(1).execute().data or [])
+        return hydrate(rows[0]) if rows else {}
 
     def is_connected(self, client_id: int) -> bool:
-        return False
+        from core.round2_flags import search_console_enabled
+        if not search_console_enabled():
+            return False
+        conn = self._connection(client_id)
+        return bool(conn.get("access_token") and conn.get("account_id"))
 
     def get_positions(self, client_id: int, keywords: list, as_of: str = None) -> dict:
-        raise NotImplementedError("search_console rank provider is deferred")
+        import time
+        from datetime import date, timedelta
+        from core import search_console_service
+        end = date.fromisoformat(as_of) if as_of else date.today() - timedelta(days=self.DATA_LAG_DAYS)
+        start = end - timedelta(days=self.WINDOW_DAYS - 1)
+        key = (client_id, end.isoformat())
+        hit = self._cache.get(key)
+        if hit and hit[0] > time.time() - self.CACHE_SECONDS:
+            by_query = hit[1]
+        else:
+            conn = self._connection(client_id)
+            rows = search_console_service.query_by_keyword(conn["access_token"], conn["account_id"],
+                                                           start.isoformat(), end.isoformat())
+            by_query = {normalize_keyword(r["query"]): r for r in rows}
+            self._cache[key] = (time.time(), by_query)
+        out = {}
+        for keyword in keywords:
+            row = by_query.get(normalize_keyword(keyword))
+            out[keyword] = ({"position": round(float(row["position"]), 1), "date": end.isoformat(),
+                             "clicks": int(row.get("clicks") or 0),
+                             "impressions": int(row.get("impressions") or 0)}
+                            if row and row.get("position") is not None
+                            else {"position": None, "date": None})
+        return out
+
+    def forget(self, client_id: int):
+        for key in [k for k in self._cache if k[0] == client_id]:
+            self._cache.pop(key, None)
+
+
+def normalize_keyword(text: str) -> str:
+    """Case and whitespace don't make a different keyword."""
+    return " ".join(str(text or "").lower().split())
 
 
 # Preference order = "best source" order
@@ -191,6 +250,8 @@ def organic_table(client_id: int) -> dict:
             "change_30d": (round(previous - current["position"], 1) if previous is not None else None),
             "status": status, "source": provider.label_key,
             "position_kind": "exact" if provider.capabilities.get("exact_rank") else "average",
+            # Only a source with clicks_impressions fills these (Search Console)
+            "clicks": current.get("clicks"), "impressions": current.get("impressions"),
         })
     base["rows"] = rows
     base["summary"] = {"at_target": at_target, "total": len(keywords)}

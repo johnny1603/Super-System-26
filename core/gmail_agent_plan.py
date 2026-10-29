@@ -29,7 +29,7 @@ ADMIN_FEATURE = "gmail_agent_admin"
 
 PLACES_PER_CLIENT_PER_DAY = 60
 PLACES_GLOBAL_PER_DAY = 600
-MESSAGES_PER_CLIENT_PER_DAY = 5
+MESSAGES_PER_CLIENT_PER_DAY = 10   # Gmail send hard cap (Google round 2 brief: ~10/day per client)
 MESSAGES_GLOBAL_PER_DAY = 20
 
 

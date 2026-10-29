@@ -329,6 +329,10 @@ FINAL_USER_SCOPES = {
     "https://www.googleapis.com/auth/tagmanager.publish",
 }
 SERVICE_ACCOUNT_ONLY = {"https://www.googleapis.com/auth/drive"}
+# Google verification ROUND 2 (docs/GOOGLE-ROUND2.md): behind flags, off by
+# default, and each may appear ONLY in its own service module
+ROUND2_SCOPES = {"https://www.googleapis.com/auth/gmail.send": {"core/gmail_service.py"},
+                 "https://www.googleapis.com/auth/webmasters.readonly": {"core/search_console_service.py"}}
 
 
 def _read(*parts):
@@ -347,9 +351,14 @@ class ScopeAudit(unittest.TestCase):
         return found
 
     def test_code_requests_exactly_the_final_list(self):
-        found = set(self.code_scopes()) - SERVICE_ACCOUNT_ONLY
+        found = set(self.code_scopes()) - SERVICE_ACCOUNT_ONLY - set(ROUND2_SCOPES)
         self.assertEqual(found, FINAL_USER_SCOPES - {"openid"})
         self.assertIn('"openid"', _read("core", "client_auth.py"))
+
+    def test_round2_scopes_live_only_in_their_own_modules(self):
+        found = self.code_scopes()
+        for scope, allowed in ROUND2_SCOPES.items():
+            self.assertEqual(found.get(scope, set()), allowed, scope)
 
     def test_full_youtube_and_content_scopes_are_gone(self):
         for scope in ("https://www.googleapis.com/auth/youtube", "https://www.googleapis.com/auth/content"):

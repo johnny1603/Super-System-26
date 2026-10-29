@@ -51,7 +51,8 @@ SERVICE_NAME = "google_data_purge"
 
 # client_accounts platforms that hold a Google grant
 GOOGLE_PLATFORMS = ("google_ads", "youtube", "youtube_pending", "google_tagmanager",
-                    "merchant_center", "merchant_center_pending")
+                    "merchant_center", "merchant_center_pending",
+                    "gmail_send", "search_console")   # round 2, flags off by default
 
 # The ONLY activity rows that may outlive a client in the archive: billing and
 # account lifecycle, none of which carries data read from a Google API. An
@@ -65,7 +66,8 @@ BACKUP_GOOGLE_DERIVED = ("client_suggestions", "client_lead_volume")
 
 # Live rows deleted at closure BEFORE the archive is written (whatever happens
 # to the archive afterwards, these do not survive the run)
-LIVE_GOOGLE_DERIVED_TABLES = ("client_suggestions", "client_lead_volume", "admin_agent_chat")
+LIVE_GOOGLE_DERIVED_TABLES = ("client_suggestions", "client_lead_volume", "admin_agent_chat",
+                              "outreach_sends")   # Gmail message ids (round 2)
 
 PAGE_ROWS = 1000
 MAX_PAGES = 50

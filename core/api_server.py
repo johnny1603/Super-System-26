@@ -1211,6 +1211,9 @@ async def dashboard_data(request: Request):
         "google_ads_account_name": _google_ads_account_name(client_id, accounts),
         "gtm_needs_reconnect": gtm_needs_reconnect,
         "google_ads_needs_reconnect": google_ads_needs_reconnect,
+        # Google verification round 2 cards: hidden unless their flag is on
+        # (core/round2_flags; Gmail also needs the Gmail agent package)
+        "features": _round2_features(client_id),
         "website_provision_status": website_provision_status,  # None | 'requested' | 'failed'
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
@@ -1877,11 +1880,14 @@ _DISCONNECT_GROUPS = {
     # credentials; like wordpress/higgsfield, the keys live on the client's
     # own accounts and are revocable there - deleting our copy is our half)
     "avatar": ["heygen", "elevenlabs"],
+    # Google verification round 2 (flags off by default)
+    "gmail": ["gmail_send"],
+    "search_console": ["search_console"],
 }
 
 # Groups whose grant can be revoked at the provider; every other group's
 # disconnect is deleting our stored copy (see the notes in _revoke_grant)
-_REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta")
+_REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta", "gmail", "search_console")
 
 def _revoke_grant(client_id: int, platform: str, rows: list = None):
     """Revoke our access at the provider for ONE disconnect group. Never
@@ -1898,7 +1904,7 @@ def _revoke_grant(client_id: int, platform: str, rows: list = None):
               for r in rows if r.get("has_secret")}
 
     revoked = None
-    if platform in ("google_ads", "gtm", "youtube", "merchant_center"):
+    if platform in ("google_ads", "gtm", "youtube", "merchant_center", "gmail", "search_console"):
         # Same Google OAuth infrastructure — revoking the refresh token kills
         # the grant regardless of which scopes it carried. Every token must
         # be confirmed, not just the last one tried.
@@ -1936,6 +1942,11 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
     google_ads_agent._perf_cache.pop(client_id, None)
     meta_ads_agent._perf_cache.pop(client_id, None)
     website_agent._overview_cache.pop(client_id, None)
+    if platform == "search_console":
+        from core import rank_tracking
+        for provider in rank_tracking.PROVIDERS:
+            if provider.id == "search_console":
+                provider.forget(client_id)
 
     return {"removed": removed, "revoked": revoked}
 
@@ -2582,6 +2593,16 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
             f"{type(e).__name__}: {e}"])
         return RedirectResponse(url="/dashboard/?connect_error=google_ads")
 
+def _round2_features(client_id: int) -> dict:
+    """Which Google round-2 cards the dashboard may show. Both False while
+    the flags are off — then nothing else is read."""
+    from core.round2_flags import gmail_send_enabled, search_console_enabled
+    gmail = False
+    if gmail_send_enabled():
+        from core import gmail_agent_plan
+        gmail = gmail_agent_plan.entitled(client_id)
+    return {"gmail_send": gmail, "search_console": search_console_enabled()}
+
 def _google_ads_account_name(client_id: int, accounts: list) -> str:
     """The connected account's name for the Connections card ("" if unknown).
     Only looked up when an active Google Ads row exists; never raises."""
@@ -2787,6 +2808,156 @@ def youtube_oauth_callback(state: str = "", code: str = "", error: str = ""):
         import traceback
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=youtube")
+
+# ─── Google verification ROUND 2 (docs/GOOGLE-ROUND2.md) ─────────────────────
+# Both flows are OFF unless their flag is set (core/round2_flags). Off = every
+# route below answers 404 and no consent URL is ever built, so round 1's scope
+# submission is untouched.
+
+def _round2_or_404(enabled: bool):
+    if not enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+
+@app.get("/api/oauth/gmail/start")
+def gmail_oauth_start(request: Request):
+    from core import gmail_agent_plan, gmail_service
+    from core.round2_flags import gmail_send_enabled
+    _round2_or_404(gmail_send_enabled())
+    client_id = _require_session(request)
+    if not gmail_agent_plan.entitled(client_id):
+        return RedirectResponse(url="/dashboard/?connect_error=gmail_not_entitled")
+    return RedirectResponse(url=gmail_service.build_consent_url(create_oauth_state_token(client_id)))
+
+@app.get("/api/oauth/gmail/callback")
+def gmail_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import gmail_service
+    from core.round2_flags import gmail_send_enabled
+    _round2_or_404(gmail_send_enabled())
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        _log_bad_oauth_state("gmail", state, error)
+        return RedirectResponse(url="/dashboard/?connect_error=gmail")
+    if error or not code:
+        print(f"[gmail oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=gmail")
+    try:
+        tokens = gmail_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        granted = (tokens.get("scope") or "").split()
+        if not refresh_token or gmail_service.SEND_SCOPE not in granted:
+            print(f"[gmail oauth] client {client_id}: no refresh_token or gmail.send not granted ({granted})")
+            if refresh_token:
+                google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=gmail")
+        sender = gmail_service.sender_address(refresh_token)
+        if not sender:
+            google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=gmail")
+        upsert_account(client_id, "gmail_send", sender, refresh_token, "active")
+        print(f"[gmail oauth] client {client_id}: granted scopes {granted}")
+        log_activity(client_id, "gmail_outreach", "account_connected", {"scopes": granted}, {})
+        return RedirectResponse(url="/dashboard/?connected=gmail")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=gmail")
+
+@app.get("/api/oauth/search-console/start")
+def search_console_oauth_start(request: Request):
+    from core import search_console_service
+    from core.round2_flags import search_console_enabled
+    _round2_or_404(search_console_enabled())
+    client_id = _require_session(request)
+    return RedirectResponse(url=search_console_service.build_consent_url(create_oauth_state_token(client_id)))
+
+def _client_site_domain(client_id: int) -> str:
+    from urllib.parse import urlparse
+    site = next((a.get("account_id") for a in get_accounts(client_id)
+                 if a.get("platform") == "wordpress" and a.get("status") == "active"), "") or ""
+    return urlparse(site).netloc.lower() if site.startswith(("http://", "https://")) else ""
+
+@app.get("/api/oauth/search-console/callback")
+def search_console_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import search_console_service as sc
+    from core.round2_flags import search_console_enabled
+    _round2_or_404(search_console_enabled())
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        _log_bad_oauth_state("search_console", state, error)
+        return RedirectResponse(url="/dashboard/?connect_error=search_console")
+    if error or not code:
+        print(f"[search_console oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=search_console")
+    try:
+        tokens = sc.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            return RedirectResponse(url="/dashboard/?connect_error=search_console")
+        sites = sc.list_verified_sites(refresh_token)
+        if not sites:
+            # Nothing we could read — keep no grant we can't use
+            google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=search_console_no_sites")
+        domain = _client_site_domain(client_id)
+        chosen = next((s["site_url"] for s in sites if sc.site_matches_domain(s["site_url"], domain)),
+                      sites[0]["site_url"])
+        upsert_account(client_id, "search_console", chosen, refresh_token, "active")
+        granted = (tokens.get("scope") or "").split()
+        print(f"[search_console oauth] client {client_id}: granted scopes {granted}")
+        log_activity(client_id, "rank_tracking", "account_connected",
+                     {"scopes": granted, "sites": len(sites)}, {})
+        return RedirectResponse(url="/dashboard/?connected=search_console")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=search_console")
+
+def _search_console_row(client_id: int) -> dict:
+    return next((a for a in get_accounts(client_id)
+                 if a.get("platform") == "search_console" and a.get("status") == "active"), {})
+
+@app.get("/api/client/search-console/sites")
+def client_search_console_sites(request: Request):
+    # The client's verified Search Console properties, and which one we read
+    from core import search_console_service as sc
+    from core.round2_flags import search_console_enabled
+    from core.secrets_vault import get_client_secret
+    _round2_or_404(search_console_enabled())
+    client_id = _require_session(request)
+    row = _search_console_row(client_id)
+    if not row:
+        return {"success": True, "data": {"connected": False, "sites": [], "selected": ""}}
+    try:
+        sites = sc.list_verified_sites(get_client_secret(client_id, "search_console"))
+    except Exception as e:
+        print(f"[search_console] client {client_id}: sites.list failed: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail={"code": "ERR_SEARCH_CONSOLE"})
+    return {"success": True, "data": {"connected": True, "selected": row.get("account_id", ""),
+                                      "sites": [s["site_url"] for s in sites]}}
+
+class SearchConsoleSiteRequest(BaseModel):
+    site_url: str
+
+@app.post("/api/client/search-console/site")
+def client_search_console_choose(req: SearchConsoleSiteRequest, request: Request):
+    from core import rank_tracking
+    from core import search_console_service as sc
+    from core.round2_flags import search_console_enabled
+    from core.secrets_vault import get_client_secret
+    _round2_or_404(search_console_enabled())
+    client_id = _require_session(request)
+    if not _search_console_row(client_id):
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_CONNECTED"})
+    refresh_token = get_client_secret(client_id, "search_console")
+    # Only a property this grant really can read — never a typed-in URL
+    if req.site_url not in [s["site_url"] for s in sc.list_verified_sites(refresh_token)]:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_SITE"})
+    # One row per (client, platform): this replaces the property we read
+    upsert_account(client_id, "search_console", req.site_url, refresh_token, "active")
+    for provider in rank_tracking.PROVIDERS:
+        if provider.id == "search_console":
+            provider.forget(client_id)
+    return {"success": True}
 
 # ─── Merchant Center: RETIRED 2026-10-21 ─────────────────────────────────────
 # It never had a feature a client could see (no feed-status screen, the scan
