@@ -100,3 +100,44 @@ Keys go ONLY into the dashboard cards (never chat, never a script, never logs).
     `MEDIA_SPEAK_PATH` / `MEDIA_SPEAK_MODEL` and `HIGGSFIELD_AVATAR_VIDEO_ENABLED=true` as Cloud
     Run env vars, then `bash scripts/creative_tools_live_test.sh video 27 recording FILE_ID`
     after choosing Higgsfield in the provider card (and an image in `avatar-source`).
+11. Chat cards (UX pass 1): as client 27, ask the media chat to clone the voice, then for a
+    presenter video. Each card must answer the click at once with a progress card, keep it
+    after a reload, and turn into the result (video: Drive link). Only after this passes,
+    set `internal_only` False on `clone_voice` / `make_presenter_video`.
+
+## 6. UX pass 1 (2026-10-30) — staff, not software
+
+Rules: never an empty form, one decision at a time, vendor names invisible to clients,
+waiting is never a spinner, provider failures never surface to the client.
+Tests: `tests/test_ux_vision.py`.
+
+**Names.** The client reads capabilities, never vendors: ElevenLabs → "הקול שלך"; HeyGen →
+"הדמות שבסרטונים — דמות מצולמת שלך"; Higgsfield → "הדמות שבסרטונים — דמות AI"
+(`vendor_tools.client_label`, 5 languages; the provider card says "דמות מצולמת שלך" / "דמות AI").
+Covered: dashboard + profile i18n, card markup, `missing_block`, `avatar_video` labels and
+refusals, connect errors, avatar_agent chat lines, `feature_catalog`, `client_state` labels,
+agent_actions card texts, the support prompt, and a code-level `scrub_vendor_names` on every
+client chat reply (except while the client is inside that tool's own help flow). Internal
+names stay in code, logs, admin UI, cost rows, `elevenlabs_service.plain_he` (staff-facing)
+and the onboarding sales cost disclosure. The vendor is named only inside the help guide,
+where the client must open an account there.
+
+**Help is the default.** Each tool card's primary button opens a guided flow
+(`connection_help.guide_view`, `GET /api/client/connection-help/{id}`): steps with what the
+screen looks like and a direct link (only links from the entry), where the key is, then
+"כבר יש לי מפתח" (the key field) or "נתקעתי — עשו את זה איתי"
+(`POST /api/client/connection-help/{id}/assist` → one deduped admin alert per tool per day).
+The HeyGen and ElevenLabs guides link to the vendor homepage/pricing only — their API-key
+screen descriptions are from public docs, **not verified on a live account**.
+
+**Waiting is a card.** An action with a `slow` spec (`{"minutes", "eta"}`) answers the Approve
+click with `status: running` + a progress card (what runs, how long it usually takes, "we'll
+write here when it's ready") and runs in FastAPI BackgroundTasks; the dashboard polls
+`GET /api/client/actions/{id}` (8 s, ×1.5 backoff to 30 s) and replaces the same card with
+the result. Failure → the fixed `_FAILED` line + admin alert, never the provider's error; a
+known refusal → its plain line. A run older than 2× its minutes shows "the team is checking"
+and alerts once. Slow today: `configure_conversion`, `publish_youtube_from_media`,
+`send_tiktok_to_inbox`, `clone_voice`, `make_presenter_video`.
+
+**New cards `clone_voice` and `make_presenter_video`** (client-approved) are
+**internal_only** until step 11 above passes — they have never run live.

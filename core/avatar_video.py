@@ -54,7 +54,7 @@ def _refuse(code: str, message_he: str, **extra) -> VideoRefused:
 class HeyGenProvider:
     id = "heygen"
     tool = "heygen"
-    label_he = "HeyGen — אווטאר בדמות שלך"
+    label_he = "דמות מצולמת שלך"   # client-facing: never the vendor's name
     live_tested = False
 
     @staticmethod
@@ -69,13 +69,13 @@ class HeyGenProvider:
         if not avatar_id:
             ready = list_ready_avatars(client_id)
             if len(ready) > 1:
-                raise _refuse("choose_avatar", "יש לך כמה אווטארים מוכנים — צריך לבחור באיזה להשתמש.",
+                raise _refuse("choose_avatar", "יש לך כמה דמויות מצולמות מוכנות — צריך לבחור באיזו להשתמש.",
                               choices=[{"avatar_id": a["avatar_id"], "name": a["avatar_name"]} for a in ready])
             if not ready:
-                raise _refuse("no_avatar", "עוד אין אווטאר מוכן בחשבון ה-HeyGen שלך. כשהוא יסיים להתאמן נעדכן אותך.")
+                raise _refuse("no_avatar", "הדמות המצולמת שלך עוד לא מוכנה. כשהיא תהיה מוכנה נעדכן אותך.")
             avatar_id = ready[0]["avatar_id"]
         if not audio_url and not options.get("heygen_voice_id"):
-            raise _refuse("no_voice", "צריך לבחור קול לסרטון: הקלטה שהעלית, הקול המשובט שלך, או קול מוכן של HeyGen.")
+            raise _refuse("no_voice", "צריך לבחור קול לסרטון: הקלטה שהעלית, הקול המשובט שלך, או קול מוכן.")
         video_id = hg.generate_avatar_video(key, avatar_id, script, voice_id=options.get("heygen_voice_id", ""),
                                             audio_url=audio_url)
         done = hg.wait_for_video(key, video_id)
@@ -86,7 +86,7 @@ class HeyGenProvider:
 class HiggsfieldProvider:
     id = "higgsfield"
     tool = "higgsfield"
-    label_he = "Higgsfield — דמות / משפיען AI"
+    label_he = "דמות AI"   # client-facing: never the vendor's name
     live_tested = False
 
     @staticmethod
@@ -98,7 +98,7 @@ class HiggsfieldProvider:
     def render(client_id: int, key: str, audio_url: str, script: str, options: dict) -> dict:
         from core import media_gen_service as mg
         if not audio_url:
-            raise _refuse("no_voice", "סרטון דמות ב-Higgsfield צריך קול: הקלטה שהעלית או הקול המשובט שלך.")
+            raise _refuse("no_voice", "סרטון עם דמות AI צריך קול: הקלטה שהעלית או הקול המשובט שלך.")
         image_url = options.get("image_url") or _character_image(client_id)
         if not image_url:
             raise _refuse("no_character", "כדי ליצור סרטון דמות צריך תמונה של הדמות. מעלים תמונה לתיקיית avatar-source ב-Drive.")
@@ -147,8 +147,8 @@ def _audio_from_clone(client_id: int, script: str) -> tuple:
     from core import vendor_tools
     from core.secrets_vault import use_vendor_key
     if not has_consent(client_id, "voice"):
-        raise _refuse("no_voice_consent", "כדי להשתמש בקול משובט צריך קודם לאשר את הסכמת שיבוט הקול בכרטיס ElevenLabs.",
-                      buttons=[{"tool": "elevenlabs", "label": "לכרטיס ElevenLabs",
+        raise _refuse("no_voice_consent", "כדי להשתמש בקול משובט צריך קודם לאשר את הסכמת שיבוט הקול בכרטיס \"הקול שלך\".",
+                      buttons=[{"tool": "elevenlabs", "label": "לכרטיס \"הקול שלך\"",
                                 "focus": vendor_tools.focus_id("elevenlabs")}])
     voice_id = current_voice_id(client_id)
     if not voice_id:
@@ -185,8 +185,8 @@ def make_video(client_id: int, script: str = "", voice: dict = None, provider: s
         return {"success": False, "code": "unknown_provider", "message_he": "כלי הווידאו שנבחר לא מוכר."}
     if not spec.enabled():
         return {"success": False, "code": "provider_not_ready",
-                "message_he": f"יצירת סרטון דמות ב-{vendor_tools.TOOLS[spec.tool]['label']} עוד לא הופעלה אצלנו — "
-                              f"היא תיפתח אחרי בדיקה חיה. בינתיים אפשר להשתמש ב-HeyGen."}
+                "message_he": f"סרטונים עם \"{spec.label_he}\" עוד לא הופעלו אצלנו — "
+                              f"הם ייפתחו אחרי בדיקה חיה. בינתיים אפשר להשתמש בדמות המצולמת שלך."}
     voice = voice or {}
     kind = voice.get("kind") or ""
     if kind and kind not in VOICE_KINDS:

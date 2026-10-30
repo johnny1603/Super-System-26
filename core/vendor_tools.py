@@ -31,24 +31,68 @@ with a button that opens only that tool's card (`focus_id`).
 
 Keys are pasted ONLY into the tool's card. They never pass through chat
 (core/chat_guard refuses key-looking messages) and never reach a log.
+
+NAMES: `label` is the vendor's name — code, logs, admin UI and cost rows
+only. Everything a CLIENT reads uses `client_label` (capability language:
+"your voice", "your video presenter — filmed likeness of you" / "— an AI
+presenter"). The vendor is named to a client only inside the connection help
+flow, where they must open an account there (core/connection_help).
 """
+import re
 from datetime import datetime, timezone
 
 import httpx
 
 RECORD_PREFIX = "creative_tools:"
 
+
+def _t(he, en, fr, ar, ru) -> dict:
+    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
+
+
 TOOLS = {
     "heygen": {"label": "HeyGen", "platform": "heygen", "help_id": "heygen",
-               "what_he": "סרטוני אווטאר בדמות שלך",
+               "client_label": _t("הדמות שבסרטונים — דמות מצולמת שלך",
+                                  "Your video presenter — a filmed likeness of you",
+                                  "Votre présentateur vidéo — votre image filmée",
+                                  "الشخصية في الفيديوهات — شخصيتك المصوَّرة",
+                                  "Ведущий ваших видео — ваш снятый образ"),
+               "what_he": "סרטונים שבהם הדמות המצולמת שלך מדברת",
                "consent": "likeness", "consent_required": True},
     "elevenlabs": {"label": "ElevenLabs", "platform": "elevenlabs", "help_id": "elevenlabs",
+                   "client_label": _t("הקול שלך", "Your voice", "Votre voix", "صوتك", "Ваш голос"),
                    "what_he": "שיבוט הקול שלך והקראה בקול שלך",
                    "consent": "voice", "consent_required": False},
     "higgsfield": {"label": "Higgsfield", "platform": "higgsfield", "help_id": "higgsfield",
-                   "what_he": "תמונות, סרטונים ודמויות שנוצרות במחשב",
+                   "client_label": _t("הדמות שבסרטונים — דמות AI",
+                                      "Your video presenter — an AI presenter",
+                                      "Votre présentateur vidéo — un présentateur IA",
+                                      "الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي",
+                                      "Ведущий ваших видео — ИИ-ведущий"),
+                   "what_he": "דמות AI, תמונות וסרטונים שנוצרים במחשב",
                    "consent": None, "consent_required": False},
 }
+
+
+def client_label(tool: str, lang: str = "he") -> str:
+    """What the client reads for a tool — never the vendor's name."""
+    labels = (TOOLS.get(tool) or {}).get("client_label") or {}
+    return labels.get(lang) or labels.get("he") or ""
+
+
+_VENDOR_RE = re.compile(r"\b(heygen|eleven\s?labs|higgsfield)(?:'s)?\b", re.IGNORECASE)
+_VENDOR_TOOL = {"heygen": "heygen", "elevenlabs": "elevenlabs", "higgsfield": "higgsfield"}
+
+
+def scrub_vendor_names(text: str, lang: str = "he") -> str:
+    """The code-level backstop for a chat reply: a vendor name the model wrote
+    anyway becomes the tool's client label. Not applied to the connection
+    help flow for these tools — there the vendor must be named (the client
+    opens an account there)."""
+    def swap(match):
+        tool = _VENDOR_TOOL.get(re.sub(r"\s", "", match.group(1).lower()), "")
+        return client_label(tool, lang) or match.group(0)
+    return _VENDOR_RE.sub(swap, text or "")
 CONNECTED = ("connected", "connected_unverified")
 PROBE_TIMEOUT = 15
 
@@ -174,7 +218,8 @@ def statuses(client_id: int) -> dict:
     for tool, spec in TOOLS.items():
         row = accounts.get(spec["platform"]) or {}
         health = (record.get("health") or {}).get(tool) or {}
-        out[tool] = {"tool": tool, "label": spec["label"], "what_he": spec["what_he"],
+        out[tool] = {"tool": tool, "label": spec["label"], "client_label": client_label(tool),
+                     "what_he": spec["what_he"],
                      "status": status(client_id, tool, accounts, record),
                      "last4": row.get("secret_last4", "") if row else "",
                      "checked_at": health.get("checked_at"),
@@ -195,13 +240,13 @@ def missing(client_id: int, tools: list) -> list:
 
 
 def missing_message(tools: list) -> str:
-    names = [TOOLS[t]["label"] for t in tools if t in TOOLS]
+    names = [f"\"{client_label(t)}\"" for t in tools if t in TOOLS]
     if not names:
         return ""
     if len(names) == 1:
-        return f"כדי לעשות את זה חסר חיבור ל-{names[0]}. לוחצים על הכפתור ומחברים רק אותו."
-    return (f"כדי לעשות את זה חסרים חיבורים ל-{', ל-'.join(names[:-1])} ול-{names[-1]}. "
-            f"כל אחד מתחבר בכרטיס משלו.")
+        return f"כדי לעשות את זה צריך קודם לחבר את {names[0]}. לוחצים על הכפתור, ונעבור על זה יחד צעד אחר צעד."
+    return (f"כדי לעשות את זה צריך קודם לחבר את {', את '.join(names[:-1])} ואת {names[-1]}. "
+            f"כל אחד מתחבר בכרטיס משלו, עם הדרכה צעד אחר צעד.")
 
 
 def focus_id(tool: str) -> str:
@@ -214,7 +259,7 @@ def missing_block(tools: list) -> dict:
     message and one button per missing tool."""
     return {"success": False, "code": "missing_tool", "missing": list(tools),
             "message_he": missing_message(tools),
-            "buttons": [{"tool": t, "label": f"לחיבור {TOOLS[t]['label']}", "focus": focus_id(t)}
+            "buttons": [{"tool": t, "label": f"לחיבור \"{client_label(t)}\"", "focus": focus_id(t)}
                         for t in tools if t in TOOLS]}
 
 

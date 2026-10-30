@@ -1354,6 +1354,37 @@ def client_connection_help(request: Request, lang: str = "he"):
     from core import connection_help
     return {"success": True, "data": connection_help.public_list(lang)}
 
+@app.get("/api/client/connection-help/{connection_id}")
+def client_connection_guide(connection_id: str, request: Request, lang: str = "he"):
+    # The card's PRIMARY connect path: numbered steps, what the screen looks
+    # like, direct links (from the config only), where the key is
+    _require_session(request)
+    from core import connection_help
+    view = connection_help.guide_view(connection_id, lang)
+    if not view:
+        raise HTTPException(status_code=404, detail={"code": "no_guide"})
+    return {"success": True, "data": view}
+
+@app.post("/api/client/connection-help/{connection_id}/assist")
+def client_connection_assist(connection_id: str, request: Request):
+    # "Stuck? we'll do it with you": a staff request (admin alert, one per
+    # client + connection a day), so the client is never left alone with a key
+    client_id = _require_session(request)
+    from core import chat_fallback, connection_help
+    entry = connection_help.get(connection_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail={"code": "no_guide"})
+    try:
+        from agents.client_agent import get_client
+        name = (get_client(client_id) or {}).get("name", "")
+    except Exception:
+        name = ""
+    alerted = chat_fallback.alert_once(
+        "connection_help", client_id, f"assist:{connection_id}",
+        f"client {client_id} ({name}) is stuck connecting '{connection_id}' and pressed "
+        f"\"we'll do it with you\" — contact them and connect it together", days=1)
+    return {"success": True, "data": {"requested": True, "alerted": alerted}}
+
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
     client_id = _require_session(request)
@@ -1392,6 +1423,11 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
                 # except the website persona's code-run article DRAFT (never publish)
                 result = answer_persona_question(client_id, persona, req.message,
                                                  background_tasks)
+        # Vendor names never reach a client (core/vendor_tools) — except the
+        # connection help for those very tools, which must name the vendor
+        from core import agent_actions, vendor_tools
+        if req.help_connection not in vendor_tools.TOOLS:
+            result["reply"] = vendor_tools.scrub_vendor_names(result["reply"], agent_actions._lang(client_id))
         log_communication(client_id, "outbound", channel, result["reply"])
         # poll: work continues in the background (an article draft) and its
         # outcome will be posted into this persona's thread — the window
@@ -4141,7 +4177,7 @@ def avatar_list(client_id: int):
 _TOOL_ERRORS_HE = {
     "unknown_tool": "הכלי הזה לא מוכר.",
     "empty_key": "צריך להדביק את המפתח לפני החיבור.",
-    "consent_required": "כדי לחבר את HeyGen צריך לסמן את האישור לשימוש בדמות שלך.",
+    "consent_required": "כדי לחבר את הדמות המצולמת שלך צריך לסמן את האישור לשימוש בדמות שלך.",
     "key_rejected": "הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.",
     "not_connected": "הכלי הזה עוד לא מחובר.",
     "unknown_provider": "ספק הווידאו הזה לא מוכר.",
@@ -4273,7 +4309,13 @@ def client_voice_delete(req: VoiceDeleteRequest, request: Request):
         raise HTTPException(status_code=503, detail={"code": "storage", "message_he": vr.PLAIN_HE["storage"]})
     if req.delete_clone:
         from agents.avatar_agent import delete_voice_clone
-        result["clone"] = delete_voice_clone(client_id)
+        clone = delete_voice_clone(client_id)
+        if clone.get("success") is False:
+            # The client asked to delete their voice: a failure is the TEAM's
+            # job now (alert); the client reads only "the team is on it"
+            alert("avatar_agent", [f"client {client_id}: asked to delete the voice clone but it was not "
+                                   f"deleted ({clone.get('code', 'error')}) — delete it from their account by hand"])
+        result["clone"] = {"success": clone.get("success"), "deleted": clone.get("deleted", False)}
     _creative_state_changed(client_id)
     return {"success": True, "data": result}
 
@@ -5704,6 +5746,17 @@ def client_open_actions(request: Request, persona: str = "general"):
     from core import agent_actions
     return {"success": True, "data": agent_actions.open_cards(client_id, actor="client",
                                                               persona=(persona or "general").strip())}
+
+@app.get("/api/client/actions/{proposal_id}")
+def client_action_status(proposal_id: int, request: Request):
+    # A progress card polls this until the slow action finished; another
+    # client's proposal is answered exactly like a missing one
+    client_id = _require_session(request)
+    from core import agent_actions
+    view = agent_actions.status_card(proposal_id, client_id)
+    if not view:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return {"success": True, "data": view}
 
 @app.post("/api/client/actions/{proposal_id}/decide")
 def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: Request,

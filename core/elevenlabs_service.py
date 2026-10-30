@@ -10,8 +10,11 @@ Voice Cloning (v1/voices/add) is available on their standard paid plans.
 Errors: every failure raises ElevenLabsError(status, code) — `code` is
 ElevenLabs' own `detail.status` when it sends one (invalid_api_key,
 quota_exceeded, missing_permissions, voice_limit_reached, …). `plain_he()`
-turns it into one plain Hebrew sentence for the client. Neither the key nor
-the response body is ever put in a message or a log.
+turns it into one plain Hebrew sentence for STAFF (admin endpoints, admin
+alerts) — it names the vendor on purpose. A client never sees it: a provider
+failure reaches the client only as "the team is on it" (core/agent_actions
+_FAILED). Neither the key nor the response body is ever put in a message or
+a log.
 
 VERIFICATION STATUS: written against the public docs (this API has been
 stable for years), never run with a live key. The first live test is the
@@ -58,7 +61,7 @@ _PLAIN_HE = {
 
 
 def plain_he(error: Exception) -> str:
-    """One plain Hebrew sentence for the client — never a code or a body."""
+    """One plain Hebrew sentence for staff — never a code or a body."""
     if not isinstance(error, ElevenLabsError):
         return "לא הצלחנו להגיע ל-ElevenLabs כרגע. ננסה שוב בקרוב."
     if error.code in _PLAIN_HE:

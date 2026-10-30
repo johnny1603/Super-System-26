@@ -135,6 +135,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   folder `voice` is the one record (duration in appProperties), `client_state.voice` for agents.
   Nothing here has run against a live vendor; live test path for client 27 in
   `docs/CREATIVE-TOOLS.md` + `scripts/creative_tools_live_test.sh`.
+  **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
+  `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
+  guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the
+  click with a progress card that becomes the result (BackgroundTasks + poll). Guarded by
+  `tests/test_ux_vision.py`.
 - `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
   typed name/id → `delete_client_full()`. Refuses internal (billing_exempt) and owner
   (`OWNER_EMAILS` + ADMIN_EMAIL/GMAIL_USER) accounts SERVER-side. Reuses

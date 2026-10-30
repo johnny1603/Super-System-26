@@ -279,15 +279,16 @@ class MissingToolMessage(unittest.TestCase):
     def test_names_exactly_the_missing_tool(self):
         block = vt.missing_block(["elevenlabs"])
         self.assertEqual(block["code"], "missing_tool")
-        self.assertIn("ElevenLabs", block["message_he"])
-        self.assertNotIn("HeyGen", block["message_he"])
-        self.assertEqual(block["buttons"], [{"tool": "elevenlabs", "label": "לחיבור ElevenLabs",
+        # Named by what the client reads (the capability), never the vendor
+        self.assertIn("הקול שלך", block["message_he"])
+        self.assertNotIn("הדמות", block["message_he"])
+        self.assertEqual(block["buttons"], [{"tool": "elevenlabs", "label": "לחיבור \"הקול שלך\"",
                                              "focus": "toolCard-elevenlabs"}])
 
     def test_two_missing_tools_two_buttons(self):
         block = vt.missing_block(["heygen", "elevenlabs"])
-        self.assertIn("HeyGen", block["message_he"])
-        self.assertIn("ElevenLabs", block["message_he"])
+        self.assertIn("דמות מצולמת שלך", block["message_he"])
+        self.assertIn("הקול שלך", block["message_he"])
         self.assertEqual([b["focus"] for b in block["buttons"]], ["toolCard-heygen", "toolCard-elevenlabs"])
 
 
@@ -323,7 +324,7 @@ class ProviderChoice(ToolCase):
         ACCOUNTS[(27, "heygen")] = KEY_H
         result = av.make_video(27, "שלום", {"kind": "clone"})
         self.assertEqual(result["missing"], ["elevenlabs"])
-        self.assertIn("ElevenLabs", result["message_he"])
+        self.assertIn("הקול שלך", result["message_he"])
 
     def test_recording_needs_no_cloning_consent(self):
         ACCOUNTS[(27, "heygen")] = KEY_H

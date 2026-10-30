@@ -119,6 +119,13 @@ body {
 .voice-row button { background: none; border: none; color: var(--gray); text-decoration: underline; cursor: pointer;
   font: inherit; font-size: 11.5px; min-height: 32px; padding: 0 4px; }
 .voice-row button.arm { color: var(--accent); font-weight: 700; }
+/* The guided connect flow (core/connection_help guide) */
+.tool-guide { margin-top: 10px; font-size: 13px; line-height: 1.55; }
+.tool-guide-eta { color: var(--gray); font-size: 12px; margin-bottom: 6px; }
+.tool-guide-steps { margin: 0; padding-inline-start: 20px; display: grid; gap: 10px; }
+.tool-guide-steps .do { font-weight: 600; }
+.tool-guide-steps .see { color: var(--gray); font-size: 12.5px; margin-top: 2px; }
+.tool-guide-link { display: inline-block; margin-top: 4px; color: var(--accent); font-size: 12.5px; word-break: break-all; }
 
 /* ---------- LAYOUT (single page, no sidebar) ---------- */
 .main { flex: 1; padding: 32px 40px; max-width: 960px; margin: 0 auto; width: 100%; }
@@ -541,6 +548,11 @@ body {
 .chat-action .details { margin-top: 8px; font-size: 12.5px; display: grid; gap: 3px; word-break: break-word; }
 .chat-action .details summary { cursor: pointer; }
 .chat-action .details .desc { white-space: pre-line; margin-top: 4px; color: var(--gray); }
+/* A slow action's progress card: words, not a spinner */
+.chat-action .progress { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--panel);
+  border-inline-start: 3px solid var(--accent); font-size: 12.5px; }
+.chat-action .progress .ago { color: var(--gray); font-size: 11.5px; margin-top: 2px; }
+.chat-action .progress.stalled { border-inline-start-color: #FFB020; }
 
 .support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
 /* A one-row <textarea> (Shift+Enter = new line) that grows with its content up
@@ -1408,21 +1420,28 @@ a.media-item:hover { border-color: var(--accent); }
     <!-- Creative tools: ONE card per tool (core/vendor_tools, /api/client/tools/*).
          Each has its own key, Connect, Test, status, Disconnect (only that
          tool's key), help and consent — one can be connected without the
-         other. The key is pasted ONLY here, never in the chat. -->
+         other. The key is pasted ONLY here, never in the chat.
+         What the client READS is the capability ("your voice", "your video
+         presenter"), never the vendor: the vendor is named only inside the
+         guide (core/connection_help), where they open the account. The
+         PRIMARY action is that guide (steps → what the screen looks like →
+         direct link → where the key is → "stuck? we'll do it with you");
+         the key field is the secondary "I already have a key". -->
     <div class="conn-card unlocked" id="toolCard-higgsfield">
       <div class="conn-top">
         <div class="conn-icon" style="background:#7C3AED;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z"/><path d="M19 14l.8 2.4L22 17.2l-2.2.8L19 20.4l-.8-2.4L16 17.2l2.2-.8z"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="higgsfield_card">יצירת מדיה (תמונות/סרטונים)</div>
+          <div class="conn-name" data-i18n="higgsfield_card">הדמות שבסרטונים — דמות AI</div>
           <div class="conn-status" id="toolStatus-higgsfield" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="openToolForm('higgsfield')" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="openToolGuide('higgsfield')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
+      <div class="tool-guide" id="toolGuide-higgsfield" style="display:none;"></div>
       <div id="toolForm-higgsfield" style="display:none; margin-top:10px;">
-        <div class="lock-note" data-i18n="higgsfield_signup_note">נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.</div>
-        <input class="site-input" id="toolKey-higgsfield" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="higgsfield_key_ph" placeholder="Higgsfield API Key">
+        <div class="lock-note" data-i18n="higgsfield_signup_note">מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.</div>
+        <input class="site-input" id="toolKey-higgsfield" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="higgsfield_key_ph" placeholder="מדביקים כאן את המפתח">
         <button class="conn-btn primary" id="toolConnectBtn-higgsfield" onclick="connectTool('higgsfield')" data-i18n="site_connect">חיבור</button>
       </div>
       <div class="tool-row" id="toolManage-higgsfield" style="display:none;">
@@ -1438,17 +1457,18 @@ a.media-item:hover { border-color: var(--accent); }
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/><path d="M17 3.5l1 1M20 6l1 .5"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="tool_heygen_card">HeyGen — אווטאר בדמות שלך</div>
+          <div class="conn-name" data-i18n="tool_heygen_card">הדמות שבסרטונים — דמות מצולמת שלך</div>
           <div class="conn-status" id="toolStatus-heygen" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="toolOpenBtn-heygen" onclick="openToolForm('heygen')" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="toolOpenBtn-heygen" onclick="openToolGuide('heygen')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
+      <div class="tool-guide" id="toolGuide-heygen" style="display:none;"></div>
       <div id="toolForm-heygen" style="display:none; margin-top:10px;">
-        <div class="conn-note" data-i18n="tool_heygen_note">שירות בתשלום נפרד מדמי הניהול. נרשמים ל-HeyGen בחשבון שלכם ובאמצעי התשלום שלכם, יוצרים מפתח API בהגדרות החשבון ומדביקים אותו כאן. התשלום ל-HeyGen עובר ישירות דרככם.</div>
-        <input class="site-input" id="toolKey-heygen" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="avatar_heygen_ph" placeholder="HeyGen API Key">
+        <div class="conn-note" data-i18n="tool_heygen_note">שירות בתשלום נפרד מדמי הניהול. מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על הסרטונים עובר ישירות מהחשבון שלכם.</div>
+        <input class="site-input" id="toolKey-heygen" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="avatar_heygen_ph" placeholder="מדביקים כאן את המפתח">
         <label class="conn-consent">
           <input type="checkbox" id="toolConsent-heygen">
-          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
         </label>
         <button class="conn-btn primary" id="toolConnectBtn-heygen" onclick="connectTool('heygen')" data-i18n="site_connect">חיבור</button>
       </div>
@@ -1466,14 +1486,15 @@ a.media-item:hover { border-color: var(--accent); }
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="tool_eleven_card">ElevenLabs — הקול שלך</div>
+          <div class="conn-name" data-i18n="tool_eleven_card">הקול שלך</div>
           <div class="conn-status" id="toolStatus-elevenlabs" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="toolOpenBtn-elevenlabs" onclick="openToolForm('elevenlabs')" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="toolOpenBtn-elevenlabs" onclick="openToolGuide('elevenlabs')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
+      <div class="tool-guide" id="toolGuide-elevenlabs" style="display:none;"></div>
       <div id="toolForm-elevenlabs" style="display:none; margin-top:10px;">
-        <div class="conn-note" data-i18n="tool_eleven_note">נרשמים ל-ElevenLabs בחשבון שלכם (שיבוט קול דורש מסלול בתשלום אצלם), יוצרים מפתח API ומדביקים אותו כאן. התשלום ל-ElevenLabs עובר ישירות דרככם.</div>
-        <input class="site-input" id="toolKey-elevenlabs" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="tool_eleven_ph" placeholder="ElevenLabs API Key">
+        <div class="conn-note" data-i18n="tool_eleven_note">מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. שיבוט קול דורש מסלול בתשלום בחשבון שפתחתם; התשלום עובר ישירות מכם.</div>
+        <input class="site-input" id="toolKey-elevenlabs" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="tool_eleven_ph" placeholder="מדביקים כאן את המפתח">
         <button class="conn-btn primary" id="toolConnectBtn-elevenlabs" onclick="connectTool('elevenlabs')" data-i18n="site_connect">חיבור</button>
       </div>
       <div class="tool-row" id="toolManage-elevenlabs" style="display:none;">
@@ -1485,7 +1506,7 @@ a.media-item:hover { border-color: var(--accent); }
       <div id="toolVoiceConsentBox" style="margin-top:10px;">
         <label class="conn-consent">
           <input type="checkbox" id="toolConsent-elevenlabs">
-          <span data-i18n="tool_voice_consent">אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+          <span data-i18n="tool_voice_consent">אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון שפתחתי לשם כך, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
         </label>
         <button class="conn-btn secondary" id="toolConsentBtn-elevenlabs" onclick="saveVoiceConsent()" data-i18n="tool_voice_consent_btn">אישור הסכמת שיבוט קול</button>
       </div>
@@ -1494,19 +1515,19 @@ a.media-item:hover { border-color: var(--accent); }
       <button type="button" class="conn-help-btn" data-help-id="elevenlabs" style="display:none;" onclick="helpConnection('elevenlabs')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
-    <!-- Which video tool makes the client's character videos (core/avatar_video);
-         a single video may still override it -->
+    <!-- Which presenter fronts the client's videos (core/avatar_video): a
+         filmed likeness of them or an AI presenter; one video may override it -->
     <div class="conn-card unlocked" id="providerCard">
       <div class="conn-top">
         <div class="conn-icon" style="background:#464646;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="provider_card">כלי הווידאו לסרטוני דמות</div>
+          <div class="conn-name" data-i18n="provider_card">איזו דמות תופיע בסרטונים</div>
           <div class="conn-status" id="providerStatus"></div>
         </div>
       </div>
-      <div class="conn-note" data-i18n="provider_note">באיזה כלי ניצור את סרטוני הדמות שלכם. הקול זהה בשניהם: הקלטה שהעליתם או הקול המשובט שלכם.</div>
+      <div class="conn-note" data-i18n="provider_note">דמות מצולמת שלך — את/ה, מצולם/ת; או דמות AI. הקול זהה בשתיהן: הקלטה שהעליתם או הקול המשובט שלכם.</div>
       <select class="site-input" id="providerSelect" onchange="chooseProvider(this.value)"></select>
     </div>
 
@@ -1523,7 +1544,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="voiceSummary"></div>
         </div>
       </div>
-      <div class="conn-note" data-i18n="voice_note">מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס ElevenLabs.</div>
+      <div class="conn-note" data-i18n="voice_note">מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס "הקול שלך".</div>
       <input type="file" id="voiceFile" accept=".mp3,.m4a,.wav,.webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/webm" style="display:none;" onchange="uploadVoiceFile(this.files[0])">
       <div class="tool-row">
         <button class="conn-btn primary" id="voiceUploadBtn" onclick="document.getElementById('voiceFile').click()" data-i18n="voice_upload_btn">העלאת הקלטה</button>
@@ -2312,56 +2333,62 @@ const DASH_I18N = {
   err_website_not_in_package: { he:'הקמת אתר חדש אינה כלולה בחבילה הנוכחית שלכם — דברו איתנו בצ\'אט כדי להוסיף את השירות', en:'Building a new site isn\'t included in your current package — talk to us in the chat to add it', fr:'La création d\'un nouveau site n\'est pas incluse dans votre formule actuelle — contactez-nous via le chat pour l\'ajouter', ar:'إنشاء موقع جديد غير مشمول في باقتكم الحالية — تحدثوا معنا في الدردشة لإضافة الخدمة', ru:'Создание нового сайта не входит в ваш текущий пакет — напишите нам в чат, чтобы добавить услугу' },
   err_website_already_connected: { he:'כבר יש לכם אתר מחובר — נתקו אותו קודם אם אתם רוצים אתר חדש', en:'You already have a connected website — disconnect it first if you want a new one', fr:'Vous avez déjà un site connecté — déconnectez-le d\'abord si vous en voulez un nouveau', ar:'لديكم بالفعل موقع مرتبط — افصلوه أولاً إذا أردتم موقعًا جديدًا', ru:'У вас уже есть подключённый сайт — сначала отключите его, если хотите новый' },
   err_website_provision_in_progress: { he:'כבר מקימים לכם אתר — אין צורך ללחוץ שוב', en:'We\'re already building your site — no need to click again', fr:'Nous créons déjà votre site — pas besoin de cliquer à nouveau', ar:'نحن بالفعل نُنشئ موقعكم — لا داعٍ للنقر مرة أخرى', ru:'Мы уже создаём ваш сайт — не нужно нажимать снова' },
-  higgsfield_card: { he:'יצירת מדיה (תמונות/סרטונים)', en:'Media generation (images/videos)', fr:'Génération de médias (images/vidéos)', ar:'إنشاء الوسائط (صور/فيديوهات)', ru:'Генерация медиа (изображения/видео)' },
-  higgsfield_signup_note: { he:'נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.', en:'Sign up with your own payment method at higgsfield.ai, then create an API key in your account\'s API Keys area (cloud.higgsfield.ai/api-keys) — payment for generation itself goes directly through you, we just operate the tool for you.', fr:'Inscrivez-vous avec votre propre moyen de paiement sur higgsfield.ai, puis créez une clé API dans la section API Keys de votre compte (cloud.higgsfield.ai/api-keys) — le paiement de la génération passe directement par vous, nous opérons simplement l\'outil pour vous.', ar:'سجّل بوسيلة الدفع الخاصة بك على higgsfield.ai، ثم أنشئ مفتاح API في قسم API Keys بحسابك (cloud.higgsfield.ai/api-keys) — الدفع مقابل الإنشاء نفسه يتم مباشرة من خلالك، نحن فقط نشغّل الأداة نيابة عنك.', ru:'Зарегистрируйтесь на higgsfield.ai со своим способом оплаты, затем создайте API-ключ в разделе API Keys вашего аккаунта (cloud.higgsfield.ai/api-keys) — оплата за саму генерацию идёт напрямую от вас, мы лишь управляем инструментом от вашего имени.' },
-  higgsfield_key_ph: { he:'Higgsfield API Key', en:'Higgsfield API Key', fr:'Clé API Higgsfield', ar:'مفتاح API الخاص بـ Higgsfield', ru:'API-ключ Higgsfield' },
+  higgsfield_card: { he:'הדמות שבסרטונים — דמות AI', en:'Your video presenter — an AI presenter', fr:'Votre présentateur vidéo — un présentateur IA', ar:'الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي', ru:'Ведущий ваших видео — ИИ-ведущий' },
+  higgsfield_signup_note: { he:'מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.', en:'Paste the key you copied following the guide. Creation is paid directly by you to the tool — we only operate it for you.', fr:'Collez ici la clé copiée en suivant le guide. La création est payée directement par vous à l\'outil — nous l\'utilisons seulement pour vous.', ar:'الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. الدفع مقابل الإنشاء يتم مباشرة منكم للأداة — نحن فقط نشغّلها لكم.', ru:'Вставьте ключ, скопированный по инструкции. Создание оплачивается вами напрямую инструменту — мы только управляем им за вас.' },
+  higgsfield_key_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
   higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
-  higgsfield_connected_notice: { he:'חשבון יצירת המדיה חובר בהצלחה ✓', en:'Media generation account connected ✓', fr:'Compte de génération de médias connecté ✓', ar:'تم ربط حساب إنشاء الوسائط بنجاح ✓', ru:'Аккаунт генерации медиа подключён ✓' },
   higgsfield_connect_failed: { he:'החיבור נכשל — ודאו שהמפתח תקין ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the key is correct and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez la clé et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تأكد من صحة المفتاح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключ и попробуйте снова, или напишите нам в чат' },
-  avatar_card: { he:'אווטאר דיגיטלי (תוספת בתשלום)', en:'Digital avatar (paid add-on)', fr:'Avatar numérique (option payante)', ar:'أفاتار رقمي (إضافة مدفوعة)', ru:'Цифровой аватар (платное дополнение)' },
-  avatar_signup_note: { he:'שירות בתשלום נפרד מדמי הניהול. נרשמים בחשבונכם ובאמצעי התשלום שלכם ל-HeyGen — יצירת האווטאר אפשרית בכל מסלול, כולל החינמי (אווטאר אחד; נוספים דורשים מסלול בתשלום), והפקת הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-1-4$ לדקת וידאו) — ולרצון גם ל-ElevenLabs לשיבוט קול. יוצרים מפתחות API בהגדרות החשבון ומדביקים כאן. התשלום לכלים מתבצע ישירות דרככם, לא דרכנו.', en:'A service billed separately from your management fee. Sign up for HeyGen with your own account and payment method — avatar creation works on any plan, including the free one (one avatar; additional ones need a paid plan), and video generation is paid with usage-based API credits (top up from $5, roughly $1-4 per video minute) — and optionally ElevenLabs for voice cloning. Create API keys in your account settings and paste them here. Payment for the tools goes directly through you, not through us.', fr:'Service facturé séparément de vos frais de gestion. Inscrivez-vous à HeyGen avec votre propre compte et moyen de paiement — la création d\'avatar fonctionne avec toutes les formules, y compris la gratuite (un avatar ; les suivants nécessitent une formule payante), et la génération de vidéos se paie en crédits API à l\'usage (recharge dès 5 $, environ 1-4 $ par minute de vidéo) — et si vous le souhaitez à ElevenLabs pour le clonage vocal. Créez des clés API dans les paramètres du compte et collez-les ici. Le paiement des outils passe directement par vous, pas par nous.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. سجّل في HeyGen بحسابك ووسيلة دفعك الخاصة — إنشاء الأفاتار متاح في جميع الباقات بما فيها المجانية (أفاتار واحد؛ الإضافي يتطلب باقة مدفوعة)، وإنتاج الفيديوهات يُدفع برصيد API حسب الاستخدام (شحن ابتداءً من 5$، نحو 1-4$ لكل دقيقة فيديو) — واختياريًا في ElevenLabs لاستنساخ الصوت. أنشئ مفاتيح API في إعدادات الحساب والصقها هنا. الدفع مقابل الأدوات يتم مباشرة من خلالك، لا من خلالنا.', ru:'Услуга оплачивается отдельно от платы за ведение. Зарегистрируйтесь в HeyGen со своим аккаунтом и способом оплаты — создание аватара доступно на любом тарифе, включая бесплатный (один аватар; дополнительные требуют платного тарифа), а генерация видео оплачивается API-кредитами по использованию (пополнение от $5, примерно $1-4 за минуту видео) — и по желанию в ElevenLabs для клонирования голоса. Создайте API-ключи в настройках аккаунта и вставьте их сюда. Оплата инструментов идёт напрямую через вас, не через нас.' },
-  avatar_heygen_ph: { he:'HeyGen API Key', en:'HeyGen API Key', fr:'Clé API HeyGen', ar:'مفتاح HeyGen API', ru:'API-ключ HeyGen' },
-  avatar_eleven_ph: { he:'ElevenLabs API Key (אופציונלי)', en:'ElevenLabs API Key (optional)', fr:'Clé API ElevenLabs (facultatif)', ar:'مفتاح ElevenLabs API (اختياري)', ru:'API-ключ ElevenLabs (необязательно)' },
-  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a digital avatar of my likeness on my own HeyGen account, and to produce videos for my business with it. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer un avatar numérique à mon image sur mon propre compte HeyGen, et à produire des vidéos pour mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء أفاتار رقمي يمثل شكلي في حساب HeyGen الخاص بي، ولإنتاج فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания цифрового аватара с моей внешностью в моём собственном аккаунте HeyGen и на производство видео для моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
-  avatar_consent_voice: { he:'(רק אם חיברתם ElevenLabs) אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'(Only if connecting ElevenLabs) I explicitly consent to the voice recordings I upload being used to create a digital voice clone on my own ElevenLabs account, for use in videos for my business. I can request that this use stop at any time.', fr:'(Uniquement si vous connectez ElevenLabs) Je consens explicitement à ce que les enregistrements vocaux que je téléverse servent à créer un clone vocal numérique sur mon propre compte ElevenLabs, pour des vidéos de mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'(فقط إذا ربطت ElevenLabs) أوافق صراحةً على استخدام التسجيلات الصوتية التي أرفعها لإنشاء نسخة رقمية من صوتي في حساب ElevenLabs الخاص بي، لاستخدامها في فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'(Только при подключении ElevenLabs) Я явно соглашаюсь на использование загруженных мной аудиозаписей для создания цифрового клона моего голоса в моём собственном аккаунте ElevenLabs для видео моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
-  avatar_fill_heygen: { he:'נא להזין את מפתח ה-HeyGen', en:'Please enter the HeyGen API key', fr:'Veuillez saisir la clé API HeyGen', ar:'يرجى إدخال مفتاح HeyGen', ru:'Пожалуйста, введите ключ HeyGen' },
+  avatar_heygen_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
+  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a filmed digital likeness of me on the account I opened for it, and to produce videos for my business with it. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer mon image numérique filmée sur le compte que j\'ai ouvert à cet effet, et à produire des vidéos pour mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء شخصية رقمية مصوَّرة لي في الحساب الذي فتحته لذلك، ولإنتاج فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания моего цифрового снятого образа в аккаунте, открытом для этого, и на производство видео для моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
   avatar_need_consent: { he:'כדי להמשיך יש לאשר את הסכמת השימוש בדמות — זו דרישה מחייבת', en:'You must confirm the likeness consent to continue — it\'s a mandatory requirement', fr:'Vous devez confirmer le consentement d\'utilisation de votre image — c\'est obligatoire', ar:'يجب تأكيد الموافقة على استخدام صورتك للمتابعة — هذا شرط إلزامي', ru:'Для продолжения необходимо подтвердить согласие на использование образа — это обязательное требование' },
-  avatar_need_voice_consent: { he:'חיברתם ElevenLabs — יש לאשר גם את הסכמת שיבוט הקול', en:'You added an ElevenLabs key — please also confirm the voice-cloning consent', fr:'Vous avez ajouté une clé ElevenLabs — veuillez aussi confirmer le consentement vocal', ar:'أضفت مفتاح ElevenLabs — يرجى تأكيد موافقة استنساخ الصوت أيضًا', ru:'Вы добавили ключ ElevenLabs — подтвердите также согласие на клонирование голоса' },
-  avatar_connected_notice: { he:'חשבונות האווטאר חוברו וההסכמה נרשמה ✓', en:'Avatar accounts connected and consent recorded ✓', fr:'Comptes avatar connectés et consentement enregistré ✓', ar:'تم ربط حسابات الأفاتار وتسجيل الموافقة ✓', ru:'Аккаунты аватара подключены, согласие зафиксировано ✓' },
-  tool_heygen_card: { he:'HeyGen — אווטאר בדמות שלך', en:'HeyGen — an avatar in your likeness', fr:'HeyGen — un avatar à votre image', ar:'HeyGen — أفاتار بصورتك', ru:'HeyGen — аватар с вашей внешностью' },
-  tool_heygen_note: { he:'שירות בתשלום נפרד מדמי הניהול. נרשמים ל-HeyGen בחשבון שלכם ובאמצעי התשלום שלכם, יוצרים מפתח API בהגדרות החשבון ומדביקים אותו כאן. התשלום ל-HeyGen עובר ישירות דרככם.', en:'A service billed separately from your management fee. Sign up for HeyGen with your own account and payment method, create an API key in your account settings and paste it here. HeyGen is paid directly by you.', fr:'Service facturé séparément de vos frais de gestion. Inscrivez-vous à HeyGen avec votre compte et votre moyen de paiement, créez une clé API dans les paramètres et collez-la ici. HeyGen est payé directement par vous.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. سجّل في HeyGen بحسابك ووسيلة دفعك، أنشئ مفتاح API في إعدادات الحساب والصقه هنا. الدفع لـ HeyGen يتم مباشرة من خلالك.', ru:'Услуга оплачивается отдельно от ведения. Зарегистрируйтесь в HeyGen со своим аккаунтом и способом оплаты, создайте API-ключ в настройках и вставьте его сюда. HeyGen оплачивается напрямую вами.' },
-  tool_eleven_card: { he:'ElevenLabs — הקול שלך', en:'ElevenLabs — your voice', fr:'ElevenLabs — votre voix', ar:'ElevenLabs — صوتك', ru:'ElevenLabs — ваш голос' },
-  tool_eleven_note: { he:'נרשמים ל-ElevenLabs בחשבון שלכם (שיבוט קול דורש מסלול בתשלום אצלם), יוצרים מפתח API ומדביקים אותו כאן. התשלום ל-ElevenLabs עובר ישירות דרככם.', en:'Sign up for ElevenLabs on your own account (voice cloning needs one of their paid plans), create an API key and paste it here. ElevenLabs is paid directly by you.', fr:'Inscrivez-vous à ElevenLabs sur votre compte (le clonage de voix nécessite une formule payante), créez une clé API et collez-la ici. ElevenLabs est payé directement par vous.', ar:'سجّل في ElevenLabs بحسابك (استنساخ الصوت يتطلب باقة مدفوعة لديهم)، أنشئ مفتاح API والصقه هنا. الدفع لـ ElevenLabs يتم مباشرة من خلالك.', ru:'Зарегистрируйтесь в ElevenLabs на свой аккаунт (для клонирования голоса нужен платный тариф), создайте API-ключ и вставьте его сюда. ElevenLabs оплачивается напрямую вами.' },
-  tool_eleven_ph: { he:'ElevenLabs API Key', en:'ElevenLabs API Key', fr:'Clé API ElevenLabs', ar:'مفتاح ElevenLabs API', ru:'API-ключ ElevenLabs' },
-  tool_voice_consent: { he:'אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the voice recordings I upload being used to create a digital voice clone on my own ElevenLabs account, for use in videos for my business. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les enregistrements vocaux que je téléverse servent à créer un clone vocal numérique sur mon propre compte ElevenLabs, pour des vidéos de mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام التسجيلات الصوتية التي أرفعها لإنشاء نسخة رقمية من صوتي في حساب ElevenLabs الخاص بي، لاستخدامها في فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной аудиозаписей для создания цифрового клона моего голоса в моём собственном аккаунте ElevenLabs для видео моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
+  tool_heygen_card: { he:'הדמות שבסרטונים — דמות מצולמת שלך', en:'Your video presenter — a filmed likeness of you', fr:'Votre présentateur vidéo — votre image filmée', ar:'الشخصية في الفيديوهات — شخصيتك المصوَّرة', ru:'Ведущий ваших видео — ваш снятый образ' },
+  tool_heygen_note: { he:'שירות בתשלום נפרד מדמי הניהול. מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על הסרטונים עובר ישירות מהחשבון שלכם.', en:'A service billed separately from your management fee. Paste the key you copied following the guide. Videos are paid directly from your own account.', fr:'Service facturé séparément de vos frais de gestion. Collez la clé copiée en suivant le guide. Les vidéos sont payées directement depuis votre compte.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. تُدفع الفيديوهات مباشرة من حسابكم.', ru:'Услуга оплачивается отдельно от ведения. Вставьте ключ, скопированный по инструкции. Видео оплачиваются напрямую с вашего аккаунта.' },
+  tool_eleven_card: { he:'הקול שלך', en:'Your voice', fr:'Votre voix', ar:'صوتك', ru:'Ваш голос' },
+  tool_eleven_note: { he:'מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. שיבוט קול דורש מסלול בתשלום בחשבון שפתחתם; התשלום עובר ישירות מכם.', en:'Paste the key you copied following the guide. Voice cloning needs a paid plan on the account you opened; you pay it directly.', fr:'Collez la clé copiée en suivant le guide. Le clonage de voix nécessite une formule payante sur le compte ouvert ; vous la payez directement.', ar:'الصقوا المفتاح الذي نسختموه حسب الإرشاد. استنساخ الصوت يتطلب باقة مدفوعة في الحساب الذي فتحتموه؛ الدفع مباشرة منكم.', ru:'Вставьте ключ, скопированный по инструкции. Для клонирования голоса нужен платный тариф в открытом аккаунте; оплата напрямую от вас.' },
+  tool_eleven_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
+  tool_voice_consent: { he:'אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון שפתחתי לשם כך, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the voice recordings I upload being used to create a digital voice clone on the account I opened for it, for use in videos for my business. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les enregistrements vocaux que je téléverse servent à créer un clone vocal numérique sur le compte que j\'ai ouvert à cet effet, pour des vidéos de mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام التسجيلات الصوتية التي أرفعها لإنشاء نسخة رقمية من صوتي في الحساب الذي فتحته لذلك، لاستخدامها في فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной аудиозаписей для создания цифрового клона моего голоса в аккаунте, открытом для этого, для видео моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
   tool_voice_consent_btn: { he:'אישור הסכמת שיבוט קול', en:'Confirm voice-cloning consent', fr:'Confirmer le consentement de clonage', ar:'تأكيد موافقة استنساخ الصوت', ru:'Подтвердить согласие на клонирование' },
   tool_voice_consent_on: { he:'הסכמת שיבוט הקול נרשמה ✓', en:'Voice-cloning consent recorded ✓', fr:'Consentement de clonage enregistré ✓', ar:'سُجلت موافقة استنساخ الصوت ✓', ru:'Согласие на клонирование голоса зафиксировано ✓' },
   tool_voice_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת ההסכמה', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
+  tool_name_heygen: { he:'הדמות המצולמת שלך', en:'your filmed presenter', fr:'votre présentateur filmé', ar:'شخصيتك المصوَّرة', ru:'ваш снятый ведущий' },
+  tool_name_higgsfield: { he:'דמות ה-AI', en:'your AI presenter', fr:'votre présentateur IA', ar:'شخصية الذكاء الاصطناعي', ru:'ваш ИИ-ведущий' },
+  tool_name_elevenlabs: { he:'הקול שלך', en:'your voice', fr:'votre voix', ar:'صوتك', ru:'ваш голос' },
+  tool_start_guide: { he:'חיבור עם הדרכה צעד אחר צעד', en:'Connect with a step-by-step guide', fr:'Connecter avec un guide pas à pas', ar:'الربط مع إرشاد خطوة بخطوة', ru:'Подключить с пошаговой инструкцией' },
+  tool_have_key: { he:'יש לי כבר מפתח', en:'I already have a key', fr:'J\'ai déjà une clé', ar:'لديّ مفتاح بالفعل', ru:'У меня уже есть ключ' },
+  tool_stuck_btn: { he:'נתקעתי — תעשו את זה איתי', en:'Stuck? Do it with me', fr:'Bloqué ? Faisons-le ensemble', ar:'علقت — افعلوا ذلك معي', ru:'Застрял(а) — сделайте со мной' },
+  tool_stuck_sent: { he:'קיבלנו ✓ מישהו מהצוות יחזור אליכם ויעשה את החיבור יחד איתכם. אין צורך לעשות שום דבר עד אז.', en:'Got it ✓ Someone from the team will get back to you and do the connection together with you. Nothing to do until then.', fr:'C\'est noté ✓ Quelqu\'un de l\'équipe vous recontacte pour faire la connexion avec vous. Rien à faire d\'ici là.', ar:'تم ✓ سيتواصل معكم أحد أعضاء الفريق لإتمام الربط معكم. لا حاجة لفعل شيء حتى ذلك الحين.', ru:'Принято ✓ Сотрудник команды свяжется с вами и сделает подключение вместе. До этого ничего делать не нужно.' },
+  tool_stuck_failed: { he:'לא הצלחנו לשלוח את הבקשה כרגע. אפשר לכתוב לנו בוואטסאפ (בתחתית העמוד) ונעשה את זה יחד.', en:'We couldn\'t send the request right now. Message us on WhatsApp (bottom of the page) and we\'ll do it together.', fr:'Impossible d\'envoyer la demande pour le moment. Écrivez-nous sur WhatsApp (en bas de page) et nous le ferons ensemble.', ar:'تعذّر إرسال الطلب الآن. راسلونا على واتساب (أسفل الصفحة) وسنفعل ذلك معًا.', ru:'Сейчас не удалось отправить запрос. Напишите нам в WhatsApp (внизу страницы), и мы сделаем это вместе.' },
+  tool_guide_step: { he:'שלב {n}', en:'Step {n}', fr:'Étape {n}', ar:'الخطوة {n}', ru:'Шаг {n}' },
+  tool_guide_see: { he:'מה תראו:', en:'What you\'ll see:', fr:'Ce que vous verrez :', ar:'ما ستشاهدونه:', ru:'Что вы увидите:' },
+  tool_guide_key_where: { he:'איפה המפתח:', en:'Where the key is:', fr:'Où est la clé :', ar:'أين المفتاح:', ru:'Где ключ:' },
+  tool_guide_minutes: { he:'בערך {n} דקות, בלי ידע טכני.', en:'About {n} minutes, no technical knowledge needed.', fr:'Environ {n} minutes, sans connaissances techniques.', ar:'نحو {n} دقائق، دون معرفة تقنية.', ru:'Около {n} минут, без технических знаний.' },
+  tool_guide_error: { he:'לא הצלחנו לטעון את ההדרכה כרגע. אפשר ללחוץ "נתקעתי" ונעשה את זה יחד.', en:'We couldn\'t load the guide right now. Click "Stuck?" and we\'ll do it together.', fr:'Impossible de charger le guide pour le moment. Cliquez sur « Bloqué ? » et nous le ferons ensemble.', ar:'تعذّر تحميل الإرشاد الآن. اضغطوا "علقت" وسنفعل ذلك معًا.', ru:'Сейчас не удалось загрузить инструкцию. Нажмите «Застрял(а)», и мы сделаем это вместе.' },
+  action_started_ago: { he:'התחיל לפני {n} דק׳', en:'Started {n} min ago', fr:'Commencé il y a {n} min', ar:'بدأ قبل {n} دقيقة', ru:'Начато {n} мин назад' },
   tool_test_btn: { he:'בדיקת חיבור', en:'Test connection', fr:'Tester la connexion', ar:'فحص الاتصال', ru:'Проверить подключение' },
   tool_testing: { he:'בודקים…', en:'Testing…', fr:'Test…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
   tool_replace_key: { he:'החלפת מפתח', en:'Replace key', fr:'Remplacer la clé', ar:'استبدال المفتاح', ru:'Заменить ключ' },
   tool_st_connected: { he:'מחובר ✓', en:'Connected ✓', fr:'Connecté ✓', ar:'متصل ✓', ru:'Подключено ✓' },
   tool_st_unverified: { he:'מחובר (ייבדק ביצירה הראשונה)', en:'Connected (checked on the first job)', fr:'Connecté (vérifié à la première création)', ar:'متصل (يُفحص عند أول إنشاء)', ru:'Подключено (проверится при первой задаче)' },
   tool_st_rejected: { he:'המפתח נדחה — צריך מפתח חדש', en:'Key rejected — a new key is needed', fr:'Clé refusée — une nouvelle clé est nécessaire', ar:'المفتاح مرفوض — يلزم مفتاح جديد', ru:'Ключ отклонён — нужен новый ключ' },
-  tool_connected_notice: { he:'{name} חובר ✓', en:'{name} connected ✓', fr:'{name} connecté ✓', ar:'تم ربط {name} ✓', ru:'{name} подключён ✓' },
-  tool_connected_unverified_notice: { he:'{name} חובר. לא הצלחנו לבדוק את המפתח מראש, הוא ייבדק ביצירה הראשונה.', en:'{name} connected. We couldn\'t check the key in advance; it will be checked on the first job.', fr:'{name} connecté. La clé n\'a pas pu être vérifiée à l\'avance ; elle le sera à la première création.', ar:'تم ربط {name}. لم نتمكن من فحص المفتاح مسبقًا، وسيُفحص عند أول إنشاء.', ru:'{name} подключён. Проверить ключ заранее не удалось — он проверится при первой задаче.' },
-  tool_disconnected_notice: { he:'{name} נותק. שאר הכלים נשארו מחוברים.', en:'{name} disconnected. Your other tools stay connected.', fr:'{name} déconnecté. Vos autres outils restent connectés.', ar:'تم فصل {name}. باقي الأدوات بقيت متصلة.', ru:'{name} отключён. Остальные инструменты остаются подключены.' },
-  tool_test_ok: { he:'{name}: המפתח תקין ✓', en:'{name}: the key works ✓', fr:'{name} : la clé fonctionne ✓', ar:'{name}: المفتاح يعمل ✓', ru:'{name}: ключ работает ✓' },
-  tool_test_unreachable: { he:'לא הצלחנו להגיע ל-{name} כרגע. החיבור לא השתנה, אפשר לנסות שוב בעוד רגע.', en:'We couldn\'t reach {name} right now. Nothing changed; try again in a moment.', fr:'Impossible de joindre {name} pour le moment. Rien n\'a changé ; réessayez dans un instant.', ar:'لم نتمكن من الوصول إلى {name} الآن. لم يتغير شيء، حاول بعد لحظة.', ru:'Сейчас не удалось связаться с {name}. Ничего не изменилось — попробуйте чуть позже.' },
+  tool_connected_notice: { he:'"{name}" חובר ✓', en:'"{name}" connected ✓', fr:'« {name} » connecté ✓', ar:'تم ربط "{name}" ✓', ru:'«{name}» подключён ✓' },
+  tool_connected_unverified_notice: { he:'"{name}" חובר. לא הצלחנו לבדוק את המפתח מראש — הוא ייבדק ביצירה הראשונה.', en:'"{name}" connected. We couldn\'t check the key in advance; it will be checked on the first job.', fr:'« {name} » connecté. La clé n\'a pas pu être vérifiée à l\'avance ; elle le sera à la première création.', ar:'تم ربط "{name}". لم نتمكن من فحص المفتاح مسبقًا، وسيُفحص عند أول إنشاء.', ru:'«{name}» подключён. Проверить ключ заранее не удалось — он проверится при первой задаче.' },
+  tool_disconnected_notice: { he:'"{name}" נותק. שאר הכלים נשארו מחוברים.', en:'"{name}" disconnected. Your other tools stay connected.', fr:'« {name} » déconnecté. Vos autres outils restent connectés.', ar:'تم فصل "{name}". باقي الأدوات بقيت متصلة.', ru:'«{name}» отключён. Остальные инструменты остаются подключены.' },
+  tool_test_ok: { he:'"{name}": המפתח תקין ✓', en:'"{name}": the key works ✓', fr:'« {name} » : la clé fonctionne ✓', ar:'"{name}": المفتاح يعمل ✓', ru:'«{name}»: ключ работает ✓' },
+  tool_test_unreachable: { he:'לא הצלחנו לבדוק את "{name}" כרגע. החיבור לא השתנה, אפשר לנסות שוב בעוד רגע.', en:'We couldn\'t check "{name}" right now. Nothing changed; try again in a moment.', fr:'Impossible de vérifier « {name} » pour le moment. Rien n\'a changé ; réessayez dans un instant.', ar:'لم نتمكن من فحص "{name}" الآن. لم يتغير شيء، حاولوا بعد لحظة.', ru:'Сейчас не удалось проверить «{name}». Ничего не изменилось — попробуйте чуть позже.' },
   tool_err_key_rejected: { he:'הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.', en:'The tool rejected the key. Copy it again from your account and try again.', fr:'L\'outil a refusé la clé. Copiez-la à nouveau depuis votre compte et réessayez.', ar:'رفضت الأداة المفتاح. انسخه مجددًا من حسابك وحاول مرة أخرى.', ru:'Инструмент отклонил ключ. Скопируйте его ещё раз из аккаунта и попробуйте снова.' },
   tool_err_empty_key: { he:'צריך להדביק את המפתח לפני החיבור.', en:'Paste the key before connecting.', fr:'Collez la clé avant de connecter.', ar:'الصق المفتاح قبل الربط.', ru:'Вставьте ключ перед подключением.' },
-  tool_err_consent_required: { he:'כדי לחבר את HeyGen צריך לסמן את האישור לשימוש בדמות שלך.', en:'To connect HeyGen, tick the likeness consent.', fr:'Pour connecter HeyGen, cochez le consentement d\'utilisation de votre image.', ar:'لربط HeyGen حدّد موافقة استخدام صورتك.', ru:'Чтобы подключить HeyGen, отметьте согласие на использование образа.' },
+  tool_err_consent_required: { he:'כדי לחבר את הדמות המצולמת שלך צריך לסמן את האישור לשימוש בדמות שלך.', en:'To connect your filmed presenter, tick the likeness consent.', fr:'Pour connecter votre présentateur filmé, cochez le consentement d\'utilisation de votre image.', ar:'لربط شخصيتك المصوَّرة حدّد موافقة استخدام صورتك.', ru:'Чтобы подключить снятого ведущего, отметьте согласие на использование образа.' },
   tool_err_not_connected: { he:'הכלי הזה עוד לא מחובר.', en:'This tool isn\'t connected yet.', fr:'Cet outil n\'est pas encore connecté.', ar:'هذه الأداة غير متصلة بعد.', ru:'Этот инструмент ещё не подключён.' },
-  tool_err_unknown_provider: { he:'ספק הווידאו הזה לא מוכר.', en:'Unknown video provider.', fr:'Fournisseur vidéo inconnu.', ar:'مزوّد الفيديو غير معروف.', ru:'Неизвестный видеосервис.' },
-  provider_card: { he:'כלי הווידאו לסרטוני דמות', en:'Video tool for character videos', fr:'Outil vidéo pour les vidéos de personnage', ar:'أداة الفيديو لمقاطع الشخصية', ru:'Видеоинструмент для роликов с персонажем' },
-  provider_note: { he:'באיזה כלי ניצור את סרטוני הדמות שלכם. הקול זהה בשניהם: הקלטה שהעליתם או הקול המשובט שלכם.', en:'Which tool makes your character videos. The voice is the same in both: a recording you uploaded or your cloned voice.', fr:'L\'outil qui crée vos vidéos de personnage. La voix est la même dans les deux : un enregistrement téléversé ou votre voix clonée.', ar:'بأي أداة ننشئ مقاطع الشخصية الخاصة بكم. الصوت نفسه في الحالتين: تسجيل رفعتموه أو صوتكم المستنسخ.', ru:'Каким инструментом делать ваши ролики с персонажем. Голос в обоих одинаковый: загруженная запись или ваш клонированный голос.' },
-  provider_heygen: { he:'HeyGen — אווטאר בדמות שלך', en:'HeyGen — avatar in your likeness', fr:'HeyGen — avatar à votre image', ar:'HeyGen — أفاتار بصورتك', ru:'HeyGen — аватар с вашей внешностью' },
-  provider_higgsfield: { he:'Higgsfield — דמות / משפיען AI', en:'Higgsfield — AI character / influencer', fr:'Higgsfield — personnage / influenceur IA', ar:'Higgsfield — شخصية / مؤثر بالذكاء الاصطناعي', ru:'Higgsfield — ИИ-персонаж / инфлюенсер' },
+  tool_err_unknown_provider: { he:'הבחירה הזו לא מוכרת.', en:'Unknown choice.', fr:'Choix inconnu.', ar:'اختيار غير معروف.', ru:'Неизвестный вариант.' },
+  provider_card: { he:'איזו דמות תופיע בסרטונים', en:'Who presents your videos', fr:'Qui présente vos vidéos', ar:'من يقدّم فيديوهاتكم', ru:'Кто ведёт ваши видео' },
+  provider_note: { he:'דמות מצולמת שלך — את/ה, מצולם/ת; או דמות AI. הקול זהה בשתיהן: הקלטה שהעליתם או הקול המשובט שלכם.', en:'A filmed likeness of you, or an AI presenter. The voice is the same in both: a recording you uploaded or your cloned voice.', fr:'Votre image filmée, ou un présentateur IA. La voix est la même : un enregistrement téléversé ou votre voix clonée.', ar:'شخصيتك المصوَّرة أو شخصية بالذكاء الاصطناعي. الصوت نفسه في الحالتين: تسجيل رفعتموه أو صوتكم المستنسخ.', ru:'Ваш снятый образ или ИИ-ведущий. Голос одинаковый: загруженная запись или ваш клонированный голос.' },
+  provider_heygen: { he:'דמות מצולמת שלך', en:'A filmed likeness of you', fr:'Votre image filmée', ar:'شخصيتك المصوَّرة', ru:'Ваш снятый образ' },
+  provider_higgsfield: { he:'דמות AI', en:'An AI presenter', fr:'Un présentateur IA', ar:'شخصية بالذكاء الاصطناعي', ru:'ИИ-ведущий' },
   provider_not_ready: { he:'עוד לא פעיל', en:'not available yet', fr:'pas encore disponible', ar:'غير متاح بعد', ru:'пока недоступно' },
-  provider_needs_tool: { he:'צריך לחבר את {name}', en:'{name} needs connecting', fr:'{name} doit être connecté', ar:'يلزم ربط {name}', ru:'Нужно подключить {name}' },
+  provider_needs_tool: { he:'צריך לחבר את "{name}"', en:'"{name}" needs connecting', fr:'« {name} » doit être connecté', ar:'يلزم ربط "{name}"', ru:'Нужно подключить «{name}»' },
   provider_saved: { he:'הבחירה נשמרה ✓', en:'Choice saved ✓', fr:'Choix enregistré ✓', ar:'تم حفظ الاختيار ✓', ru:'Выбор сохранён ✓' },
   voice_card: { he:'הקלטות קול', en:'Voice recordings', fr:'Enregistrements vocaux', ar:'تسجيلات صوتية', ru:'Записи голоса' },
-  voice_note: { he:'מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס ElevenLabs.', en:'Upload a recording of your voice (mp3, m4a, wav or webm, up to 25MB) — that\'s all. We decide how to use it in your videos. Your voice is cloned only if you confirmed the voice-cloning consent on the ElevenLabs card.', fr:'Téléversez un enregistrement de votre voix (mp3, m4a, wav ou webm, jusqu\'à 25 Mo) — c\'est tout. Nous décidons comment l\'utiliser. Votre voix n\'est clonée que si vous avez confirmé le consentement sur la carte ElevenLabs.', ar:'ارفع تسجيلًا لصوتك (mp3 أو m4a أو wav أو webm، حتى 25MB) — وهذا كل شيء. نحن نقرر كيف نستخدمه في الفيديوهات. يُستنسخ صوتك فقط إذا أكدت موافقة الاستنساخ في بطاقة ElevenLabs.', ru:'Загрузите запись своего голоса (mp3, m4a, wav или webm, до 25 МБ) — и всё. Как её использовать в роликах, решаем мы. Голос клонируется, только если вы подтвердили согласие на карточке ElevenLabs.' },
+  voice_note: { he:'מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס "הקול שלך".', en:'Upload a recording of your voice (mp3, m4a, wav or webm, up to 25MB) — that\'s all. We decide how to use it in your videos. Your voice is cloned only if you confirmed the voice-cloning consent on the "Your voice" card.', fr:'Téléversez un enregistrement de votre voix (mp3, m4a, wav ou webm, jusqu\'à 25 Mo) — c\'est tout. Nous décidons comment l\'utiliser. Votre voix n\'est clonée que si vous avez confirmé le consentement sur la carte « Votre voix ».', ar:'ارفع تسجيلًا لصوتك (mp3 أو m4a أو wav أو webm، حتى 25MB) — وهذا كل شيء. نحن نقرر كيف نستخدمه في الفيديوهات. يُستنسخ صوتك فقط إذا أكدت موافقة الاستنساخ في بطاقة "صوتك".', ru:'Загрузите запись своего голоса (mp3, m4a, wav или webm, до 25 МБ) — и всё. Как её использовать в роликах, решаем мы. Голос клонируется, только если вы подтвердили согласие на карточке «Ваш голос».' },
   voice_upload_btn: { he:'העלאת הקלטה', en:'Upload a recording', fr:'Téléverser un enregistrement', ar:'رفع تسجيل', ru:'Загрузить запись' },
   voice_record_btn: { he:'הקלטה מהדפדפן', en:'Record in the browser', fr:'Enregistrer dans le navigateur', ar:'تسجيل من المتصفح', ru:'Записать в браузере' },
   voice_stop_btn: { he:'⏹ עצירה ושמירה', en:'⏹ Stop and save', fr:'⏹ Arrêter et enregistrer', ar:'⏹ إيقاف وحفظ', ru:'⏹ Остановить и сохранить' },
@@ -2375,7 +2402,7 @@ const DASH_I18N = {
   voice_delete_all: { he:'מחיקת כל ההקלטות והקול המשובט', en:'Delete all recordings and the cloned voice', fr:'Supprimer tous les enregistrements et la voix clonée', ar:'حذف كل التسجيلات والصوت المستنسخ', ru:'Удалить все записи и клон голоса' },
   voice_delete_all_confirm: { he:'בטוחים? לחיצה נוספת מוחקת הכל', en:'Sure? Click again to delete everything', fr:'Sûr ? Cliquez encore pour tout supprimer', ar:'متأكد؟ اضغط مجددًا لحذف الكل', ru:'Уверены? Нажмите ещё раз, чтобы удалить всё' },
   voice_all_deleted: { he:'כל ההקלטות נמחקו, וגם הקול המשובט (אם היה)', en:'All recordings were deleted, and the cloned voice too (if there was one)', fr:'Tous les enregistrements ont été supprimés, ainsi que la voix clonée (le cas échéant)', ar:'حُذفت كل التسجيلات، والصوت المستنسخ أيضًا (إن وُجد)', ru:'Все записи удалены, а также клон голоса (если он был)' },
-  voice_clone_not_deleted: { he:'ההקלטות נמחקו, אבל את הקול המשובט לא הצלחנו למחוק מחשבון ה-ElevenLabs שלך. אפשר למחוק אותו בעצמך באתר ElevenLabs, בעמוד הקולות, או לחבר שוב את הכרטיס ולנסות שוב.', en:'The recordings were deleted, but we couldn\'t delete the cloned voice from your ElevenLabs account. You can delete it yourself on ElevenLabs\' Voices page, or reconnect the card and try again.', fr:'Les enregistrements ont été supprimés, mais la voix clonée n\'a pas pu être supprimée de votre compte ElevenLabs. Supprimez-la vous-même dans la page Voices d\'ElevenLabs, ou reconnectez la carte et réessayez.', ar:'حُذفت التسجيلات، لكن لم نتمكن من حذف الصوت المستنسخ من حساب ElevenLabs. يمكنك حذفه بنفسك في صفحة الأصوات في ElevenLabs، أو إعادة ربط البطاقة والمحاولة مجددًا.', ru:'Записи удалены, но клон голоса из вашего аккаунта ElevenLabs удалить не удалось. Удалите его сами на странице Voices в ElevenLabs или переподключите карточку и повторите.' },
+  voice_clone_not_deleted: { he:'ההקלטות נמחקו. את הקול המשובט עוד לא הצלחנו למחוק — הצוות קיבל התראה, ימחק אותו ויעדכן אתכם.', en:'The recordings were deleted. We couldn\'t delete the cloned voice yet — the team has been alerted, will delete it and let you know.', fr:'Les enregistrements ont été supprimés. La voix clonée n\'a pas encore pu l\'être — l\'équipe a été alertée, la supprimera et vous préviendra.', ar:'حُذفت التسجيلات. لم نتمكن بعد من حذف الصوت المستنسخ — تم تنبيه الفريق وسيحذفه ويبلغكم.', ru:'Записи удалены. Клон голоса пока удалить не удалось — команда уведомлена, удалит его и сообщит вам.' },
   voice_duration_unknown: { he:'משך לא ידוע', en:'length unknown', fr:'durée inconnue', ar:'المدة غير معروفة', ru:'длительность неизвестна' },
   voice_list_error: { he:'לא הצלחנו להציג את ההקלטות כרגע', en:'We couldn\'t show the recordings right now', fr:'Impossible d\'afficher les enregistrements pour le moment', ar:'لم نتمكن من عرض التسجيلات الآن', ru:'Сейчас не удалось показать записи' },
   voice_record_unsupported: { he:'הדפדפן הזה לא תומך בהקלטה. אפשר להקליט בטלפון ולהעלות את הקובץ.', en:'This browser can\'t record. Record on your phone and upload the file.', fr:'Ce navigateur ne peut pas enregistrer. Enregistrez avec votre téléphone et téléversez le fichier.', ar:'هذا المتصفح لا يدعم التسجيل. سجّل بالهاتف وارفع الملف.', ru:'Этот браузер не умеет записывать. Запишите на телефон и загрузите файл.' },
@@ -2649,12 +2676,6 @@ const DASH_I18N = {
   preact_cancel: { he:'אולי אחר כך', en:'Maybe later', fr:'Plus tard', ar:'ربما لاحقًا', ru:'Может, позже' },
   preact_wordpress_title: { he:'רגע לפני שמחברים את האתר', en:'Before connecting your site', fr:'Avant de connecter votre site', ar:'قبل ربط موقعكم', ru:'Перед подключением сайта' },
   preact_wordpress_body: { he:'כדי לעבוד על האתר בצורה מאובטחת, וורדפרס דורש "סיסמת אפליקציה" — סיסמה נפרדת שרק אתם יכולים ליצור, מתוך ניהול האתר שלכם (משתמשים ← פרופיל ← Application Passwords). זו לא הסיסמה הרגילה שלכם, ואפשר לבטל אותה בכל רגע. ניצור אתכם שלב-שלב בטופס הבא.', en:'To work on your site securely, WordPress requires an "Application Password" — a separate password only YOU can create, from your own site admin (Users → Profile → Application Passwords). It\'s not your regular password, and you can revoke it anytime. The next form walks you through it step by step.', fr:'Pour travailler sur votre site en toute sécurité, WordPress exige un « Application Password » — un mot de passe distinct que vous seul pouvez créer, depuis l\'admin de votre site (Utilisateurs → Profil → Application Passwords). Ce n\'est pas votre mot de passe habituel, et il est révocable à tout moment. Le formulaire suivant vous guide pas à pas.', ar:'للعمل على موقعكم بأمان، يتطلب WordPress "كلمة مرور تطبيق" — كلمة مرور منفصلة أنتم وحدكم من يستطيع إنشاءها، من إدارة موقعكم (المستخدمون ← الملف الشخصي ← Application Passwords). ليست كلمة المرور العادية، ويمكن إلغاؤها في أي وقت. النموذج التالي يرشدكم خطوة بخطوة.', ru:'Для безопасной работы с сайтом WordPress требует «пароль приложения» — отдельный пароль, который можете создать только вы, в админке своего сайта (Пользователи → Профиль → Application Passwords). Это не ваш обычный пароль, и его можно отозвать в любой момент. Следующая форма проведёт вас по шагам.' },
-  preact_higgsfield_title: { he:'רגע לפני חיבור יצירת המדיה', en:'Before connecting media generation', fr:'Avant de connecter la génération de médias', ar:'قبل ربط إنشاء الوسائط', ru:'Перед подключением генерации медиа' },
-  preact_higgsfield_body: { he:'יצירת התמונות והסרטונים רצה על חשבון Higgsfield שלכם — כך התשלום על היצירה עובר ישירות דרככם, בשקיפות מלאה, ולא דרכנו. לכן את מפתח ה-API רק אתם יכולים ליצור, בחשבון שלכם (cloud.higgsfield.ai/api-keys). בטופס הבא פשוט מדביקים אותו — ומכאן אנחנו מפעילים הכל בשבילכם.', en:'Image and video generation runs on YOUR Higgsfield account — so payment for generation goes directly through you, fully transparently, not through us. That\'s why only you can create the API key, in your own account (cloud.higgsfield.ai/api-keys). In the next form you just paste it — and from there we operate everything for you.', fr:'La génération d\'images et de vidéos tourne sur VOTRE compte Higgsfield — le paiement de la génération passe donc directement par vous, en toute transparence, pas par nous. C\'est pourquoi vous seul pouvez créer la clé API, dans votre compte (cloud.higgsfield.ai/api-keys). Dans le formulaire suivant, collez-la simplement — et nous opérons tout pour vous.', ar:'إنشاء الصور والفيديوهات يعمل على حساب Higgsfield الخاص بكم — فيمر الدفع مقابل الإنشاء مباشرة من خلالكم وبشفافية كاملة، وليس من خلالنا. لذلك أنتم وحدكم من يستطيع إنشاء مفتاح API، في حسابكم (cloud.higgsfield.ai/api-keys). في النموذج التالي الصقوه فقط — ومن هناك نشغّل كل شيء نيابة عنكم.', ru:'Генерация изображений и видео работает на ВАШЕМ аккаунте Higgsfield — оплата за генерацию идёт напрямую от вас, полностью прозрачно, а не через нас. Поэтому только вы можете создать API-ключ, в своём аккаунте (cloud.higgsfield.ai/api-keys). В следующей форме просто вставьте его — а дальше мы всё делаем за вас.' },
-  preact_elevenlabs_title: { he:'רגע לפני חיבור ElevenLabs', en:'Before connecting ElevenLabs', fr:'Avant de connecter ElevenLabs', ar:'قبل ربط ElevenLabs', ru:'Перед подключением ElevenLabs' },
-  preact_elevenlabs_body: { he:'הקול שלכם נשאר בחשבון ה-ElevenLabs שלכם, לא אצלנו — לכן את מפתח ה-API רק אתם יכולים ליצור, בחשבון שלכם. החיבור הזה נפרד מ-HeyGen ומ-Higgsfield. שיבוט הקול עצמו נעשה רק אחרי שתאשרו את הסכמת שיבוט הקול בכרטיס; בלי ההסכמה, הקלטות משמשות רק כפסקול כמו שהן.', en:'Your voice stays on YOUR ElevenLabs account, not with us — so only you can create the API key, in your own account. This connection is separate from HeyGen and Higgsfield. Your voice is cloned only after you confirm the voice-cloning consent on the card; without it, recordings are used only as an audio track, as they are.', fr:'Votre voix reste sur VOTRE compte ElevenLabs, pas chez nous — vous seul pouvez donc créer la clé API. Cette connexion est indépendante de HeyGen et Higgsfield. Le clonage n\'a lieu qu\'après votre consentement sur la carte ; sans lui, les enregistrements servent uniquement de piste audio.', ar:'صوتك يبقى في حساب ElevenLabs الخاص بك وليس لدينا — لذلك أنت وحدك من ينشئ مفتاح API. هذا الربط منفصل عن HeyGen وHiggsfield. لا يُستنسخ صوتك إلا بعد تأكيد موافقة الاستنساخ في البطاقة؛ بدونها تُستخدم التسجيلات كمسار صوتي فقط.', ru:'Ваш голос остаётся в ВАШЕМ аккаунте ElevenLabs, а не у нас — поэтому API-ключ можете создать только вы. Это подключение отдельно от HeyGen и Higgsfield. Голос клонируется только после согласия на карточке; без него записи используются лишь как звуковая дорожка.' },
-  preact_avatar_title: { he:'רגע לפני שמתחילים עם האווטאר', en:'Before starting your avatar', fr:'Avant de commencer votre avatar', ar:'قبل البدء بالأفاتار', ru:'Перед созданием аватара' },
-  preact_avatar_body: { he:'האווטאר הדיגיטלי נוצר על חשבון HeyGen שלכם — הפנים והקול שלכם נשארים בבעלותכם, בחשבון שלכם, ולא אצלנו. לכן שני שלבים הם רק שלכם: יצירת מפתח API בחשבון, ובהמשך — יצירת האווטאר עצמו באתר HeyGen (כמה קליקים, עובד גם במסלול החינמי; נשלח הוראות מדויקות). וגם: נבקש הסכמה מפורשת לשימוש בדמות — בלי זה שום דבר לא רץ.', en:'Your digital avatar is created on YOUR HeyGen account — your face and voice stay yours, in your account, never held by us. That\'s why two steps are yours alone: creating an API key in your account, and later creating the avatar itself on HeyGen\'s site (a few clicks, works on the free plan too; we\'ll send exact instructions). Also: we\'ll ask for explicit consent to use your likeness — nothing runs without it.', fr:'Votre avatar numérique est créé sur VOTRE compte HeyGen — votre visage et votre voix restent à vous, dans votre compte, jamais chez nous. C\'est pourquoi deux étapes vous reviennent : créer une clé API dans votre compte, puis créer l\'avatar lui-même sur le site HeyGen (quelques clics, fonctionne aussi avec l\'offre gratuite ; nous enverrons des instructions précises). Aussi : nous demanderons un consentement explicite pour utiliser votre image — rien ne tourne sans cela.', ar:'يُنشأ الأفاتار الرقمي على حساب HeyGen الخاص بكم — وجهكم وصوتكم يبقيان ملككم، في حسابكم، وليس لدينا أبدًا. لذلك خطوتان لكم وحدكم: إنشاء مفتاح API في الحساب، ولاحقًا إنشاء الأفاتار نفسه في موقع HeyGen (بضع نقرات، يعمل أيضًا في الخطة المجانية؛ سنرسل تعليمات دقيقة). وأيضًا: سنطلب موافقة صريحة على استخدام صورتكم — لا شيء يعمل بدونها.', ru:'Ваш цифровой аватар создаётся на ВАШЕМ аккаунте HeyGen — ваше лицо и голос остаются вашими, в вашем аккаунте, а не у нас. Поэтому два шага только ваши: создание API-ключа в аккаунте, а позже — создание самого аватара на сайте HeyGen (несколько кликов, работает и на бесплатном тарифе; мы пришлём точные инструкции). И ещё: мы запросим явное согласие на использование вашего образа — без него ничего не запускается.' },
   preact_tiktok_title: { he:'רגע לפני חיבור טיקטוק', en:'Before connecting TikTok', fr:'Avant de connecter TikTok', ar:'قبل ربط تيك توك', ru:'Перед подключением TikTok' },
   preact_tiktok_body: { he:'חשוב לדעת מראש איך זה עובד: סרטונים שנכין לכם לא מתפרסמים לבד — הם מגיעים לתיבת הדואר הנכנס שלכם באפליקציית טיקטוק, ואתם פותחים, מוסיפים כיתוב (נשלח לכם הצעה מוכנה) ומפרסמים בלחיצה. ככה טיקטוק בנויה, וככה גם המילה האחרונה על כל פרסום נשארת אצלכם.', en:'Worth knowing up front how this works: videos we prepare don\'t publish by themselves — they arrive in your inbox inside the TikTok app, where you open, add a caption (we\'ll send you a ready-to-paste one) and publish with a tap. That\'s how TikTok is built, and it also keeps the final word on every post with you.', fr:'Bon à savoir d\'avance : les vidéos que nous préparons ne se publient pas toutes seules — elles arrivent dans votre boîte de réception dans l\'appli TikTok, où vous ouvrez, ajoutez une légende (nous vous en enverrons une prête à coller) et publiez d\'un geste. C\'est ainsi que TikTok fonctionne, et le dernier mot sur chaque publication reste le vôtre.', ar:'من المهم معرفة كيفية العمل مسبقًا: الفيديوهات التي نجهزها لا تُنشر من تلقاء نفسها — تصل إلى صندوق الوارد لديكم داخل تطبيق تيك توك، فتفتحونها وتضيفون تعليقًا (سنرسل لكم اقتراحًا جاهزًا) وتنشرون بنقرة. هكذا بُني تيك توك، وهكذا تبقى الكلمة الأخيرة في كل نشر لكم.', ru:'Важно знать заранее, как это работает: подготовленные нами видео не публикуются сами — они приходят в ваш входящий ящик в приложении TikTok, где вы открываете, добавляете подпись (мы пришлём готовую) и публикуете одним нажатием. Так устроен TikTok, и так последнее слово о каждой публикации остаётся за вами.' },
   preact_meta_page_title: { he:'חסר רק עמוד עסקי בפייסבוק', en:'Only a Facebook business Page is missing', fr:'Il ne manque qu\'une Page professionnelle Facebook', ar:'ينقص فقط صفحة أعمال على فيسبوك', ru:'Не хватает только бизнес-страницы Facebook' },
@@ -3788,13 +3809,14 @@ function handleSiteProvisionStatus(status) {
 }
 
 // ─── Creative tools: ONE card per tool (core/vendor_tools) ──────────────────
-// HeyGen, ElevenLabs and Higgsfield each connect, test and disconnect on
-// their own. The key is checked with the vendor before it is stored (a key
-// the vendor rejects is never saved); Higgsfield has no key check, so its
-// first real generation is the check. Keys never come back from the server.
+// Each tool connects, tests and disconnects on its own. The key is checked
+// with the vendor before it is stored (a key the vendor rejects is never
+// saved); the AI-presenter tool has no key check, so its first real
+// generation is the check. Keys never come back from the server.
+// The ids below are internal; what the client READS is toolName() — the
+// capability, never the vendor's name.
 const CREATIVE_TOOLS = ['higgsfield', 'heygen', 'elevenlabs'];
-const TOOL_LABELS = { higgsfield: 'Higgsfield', heygen: 'HeyGen', elevenlabs: 'ElevenLabs' };
-const TOOL_PREACT = { higgsfield: 'higgsfield', heygen: 'avatar', elevenlabs: 'elevenlabs' };
+function toolName(tool) { return uallakI18n.t('tool_name_' + tool); }
 const TOOL_STATUS_KEYS = { connected: 'tool_st_connected', connected_unverified: 'tool_st_unverified',
   key_rejected: 'tool_st_rejected', not_connected: 'not_connected' };
 let toolState = { tools: {}, providers: [] };
@@ -3831,6 +3853,7 @@ function paintTool(tool) {
   st.className = 'conn-status' + ({ connected: ' connected', connected_unverified: ' unverified',
                                      key_rejected: ' rejected' }[t.status] || '');
   document.getElementById('toolOpenBtn-' + tool).style.display = stored ? 'none' : '';
+  if (stored) document.getElementById('toolGuide-' + tool).style.display = 'none';
   document.getElementById('toolManage-' + tool).style.display = stored ? 'flex' : 'none';
   document.getElementById('toolDisc-' + tool).style.display = stored ? 'block' : 'none';
   const testBtn = document.getElementById('toolTestBtn-' + tool);
@@ -3846,11 +3869,115 @@ function paintTool(tool) {
   }
 }
 
-function openToolForm(tool, replacing) {
+// The key field: the guide's "I already have a key", or "replace key"
+function openToolForm(tool) {
   const form = document.getElementById('toolForm-' + tool);
   if (form.style.display !== 'none') { form.style.display = 'none'; return; }
-  const show = () => { form.style.display = 'block'; document.getElementById('toolKey-' + tool).focus(); };
-  if (replacing) show(); else preactExplain(TOOL_PREACT[tool], show);
+  form.style.display = 'block';
+  document.getElementById('toolKey-' + tool).focus();
+}
+
+// The PRIMARY connect path: the guide from core/connection_help — numbered
+// steps, what the screen looks like, a direct link, where the key is — then
+// "stuck? we'll do it with you" (a staff request) and "I already have a key".
+// Every value is set as TEXT; links come only from the server's config.
+async function openToolGuide(tool) {
+  const t = uallakI18n.t;
+  const box = document.getElementById('toolGuide-' + tool);
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.textContent = '';
+  let guide = null;
+  try {
+    const res = await fetch('/api/client/connection-help/' + encodeURIComponent(tool) + '?lang='
+                            + encodeURIComponent(uallakI18n.current()), { credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) guide = body.data;
+  } catch (e) {
+    console.error('tool guide load failed', e);
+  }
+  if (!guide) {
+    const err = document.createElement('div');
+    err.className = 'lock-note';
+    err.textContent = t('tool_guide_error');
+    box.appendChild(err);
+  } else {
+    if (guide.estimated_minutes) {
+      const eta = document.createElement('div');
+      eta.className = 'tool-guide-eta';
+      eta.textContent = t('tool_guide_minutes', { n: guide.estimated_minutes });
+      box.appendChild(eta);
+    }
+    const list = document.createElement('ol');
+    list.className = 'tool-guide-steps';
+    (guide.steps || []).forEach(step => {
+      const li = document.createElement('li');
+      const what = document.createElement('div');
+      what.className = 'do';
+      what.textContent = step.do || '';
+      li.appendChild(what);
+      if (step.see) {
+        const see = document.createElement('div');
+        see.className = 'see';
+        const label = document.createElement('b');
+        label.textContent = t('tool_guide_see') + ' ';
+        see.append(label, document.createTextNode(step.see));
+        li.appendChild(see);
+      }
+      if (step.link && /^https:\/\//.test(step.link.url || '')) {
+        const a = document.createElement('a');
+        a.className = 'tool-guide-link';
+        a.href = step.link.url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = (step.link.label || step.link.url) + ' ↗';
+        li.appendChild(a);
+      }
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    if (guide.key_where) {
+      const where = document.createElement('div');
+      where.className = 'conn-note';
+      const label = document.createElement('b');
+      label.textContent = t('tool_guide_key_where') + ' ';
+      where.append(label, document.createTextNode(guide.key_where));
+      box.appendChild(where);
+    }
+  }
+  const row = document.createElement('div');
+  row.className = 'tool-row';
+  const have = document.createElement('button');
+  have.type = 'button';
+  have.className = 'conn-btn primary';
+  have.textContent = t('tool_have_key');
+  have.onclick = () => openToolForm(tool);
+  const stuck = document.createElement('button');
+  stuck.type = 'button';
+  stuck.className = 'conn-btn secondary';
+  stuck.textContent = t('tool_stuck_btn');
+  stuck.onclick = () => requestToolAssist(tool, stuck);
+  row.append(have, stuck);
+  box.appendChild(row);
+}
+
+// "Stuck? we'll do it with you": the team is alerted and comes to the client
+async function requestToolAssist(tool, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/client/connection-help/' + encodeURIComponent(tool) + '/assist',
+                            { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      showNotice(uallakI18n.t('tool_stuck_sent'), 'success');
+      btn.textContent = uallakI18n.t('tool_stuck_sent');
+      return;
+    }
+  } catch (e) {
+    console.error('assist request failed', e);
+  }
+  btn.disabled = false;
+  showNotice(uallakI18n.t('tool_stuck_failed'), 'warn');
 }
 
 async function connectTool(tool) {
@@ -3873,7 +4000,7 @@ async function connectTool(tool) {
     if (res.ok && body.success) {
       input.value = '';
       showNotice(uallakI18n.t(body.data && body.data.status === 'connected_unverified'
-        ? 'tool_connected_unverified_notice' : 'tool_connected_notice', { name: TOOL_LABELS[tool] }), 'success');
+        ? 'tool_connected_unverified_notice' : 'tool_connected_notice', { name: toolName(tool) }), 'success');
       await loadCreativeTools();
     } else {
       showNotice(codeText('tool_err_', body, 'higgsfield_connect_failed'), 'warn');
@@ -3895,8 +4022,8 @@ async function testTool(tool) {
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.success) {
       const d = body.data || {};
-      if (d.reachable === false) showNotice(uallakI18n.t('tool_test_unreachable', { name: TOOL_LABELS[tool] }), 'warn');
-      else if (d.status === 'connected') showNotice(uallakI18n.t('tool_test_ok', { name: TOOL_LABELS[tool] }), 'success');
+      if (d.reachable === false) showNotice(uallakI18n.t('tool_test_unreachable', { name: toolName(tool) }), 'warn');
+      else if (d.status === 'connected') showNotice(uallakI18n.t('tool_test_ok', { name: toolName(tool) }), 'success');
       else showNotice(uallakI18n.t('tool_err_key_rejected'), 'warn');
       await loadCreativeTools();
     } else {
@@ -3924,7 +4051,7 @@ async function disconnectTool(tool, link) {
     const res = await fetch('/api/client/tools/' + tool + '/disconnect', { method: 'POST', credentials: 'same-origin' });
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.success) {
-      showNotice(uallakI18n.t('tool_disconnected_notice', { name: TOOL_LABELS[tool] }), 'success');
+      showNotice(uallakI18n.t('tool_disconnected_notice', { name: toolName(tool) }), 'success');
       await loadCreativeTools();
     } else {
       showNotice(uallakI18n.t('disconnect_failed'), 'warn');
@@ -3977,7 +4104,7 @@ function paintProviders() {
   status.textContent = !chosen ? ''
     : !chosen.ready ? uallakI18n.t('provider_not_ready')
     : chosen.connected ? uallakI18n.t('connected_status')
-    : uallakI18n.t('provider_needs_tool', { name: TOOL_LABELS[chosen.tool] || chosen.tool });
+    : uallakI18n.t('provider_needs_tool', { name: toolName(chosen.tool) });
 }
 
 async function chooseProvider(provider) {
@@ -4804,7 +4931,67 @@ function appendActionCard(personaId, a) {
   }
   el.appendChild(note);
   w.msgsEl.appendChild(el);
+  // A slow action still running (e.g. after a reload): its progress card
+  if (a.status === 'running' && a.progress) {
+    paintActionProgress(el, a.progress);
+    watchActionCard(el, a.id);
+  }
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+
+// ─── Progress cards (core/agent_actions "slow") ─────────────────────────────
+// Waiting is a card, not a spinner: what is running, how long it usually
+// takes, and that the client will be told — the SAME card then turns into
+// the result. The UI never blocks; the card polls quietly with backoff.
+function paintActionProgress(el, progress) {
+  let box = el.querySelector('.progress');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'progress';
+    el.insertBefore(box, el.querySelector('.note'));
+  }
+  box.classList.toggle('stalled', !!progress.stalled);
+  box.textContent = '';
+  const text = document.createElement('div');
+  text.textContent = progress.text || '';
+  box.appendChild(text);
+  const started = Date.parse(progress.started_at || '');
+  if (!isNaN(started)) {
+    const ago = document.createElement('div');
+    ago.className = 'ago';
+    ago.textContent = uallakI18n.t('action_started_ago', { n: Math.max(0, Math.round((Date.now() - started) / 60000)) });
+    box.appendChild(ago);
+  }
+}
+
+function finishActionCard(el, c) {
+  const box = el.querySelector('.progress');
+  if (box) box.remove();
+  // linkify() escapes first — the result may carry a link (the Drive file)
+  el.querySelector('.note').innerHTML = linkify(c.result || '');
+}
+
+function watchActionCard(el, id) {
+  if (el.dataset.watching) return;
+  el.dataset.watching = '1';
+  let delay = 8000;
+  const tick = async () => {
+    if (!document.body.contains(el)) return;   // the window re-rendered: its new card polls
+    try {
+      const res = await fetch(`/api/client/actions/${Number(id)}`, { credentials: 'same-origin' });
+      const body = await res.json();
+      if (res.ok && body.success) {
+        const c = body.data || {};
+        if (c.status !== 'running') { finishActionCard(el, c); return; }
+        if (c.progress) paintActionProgress(el, c.progress);
+      }
+    } catch (e) {
+      console.error('action status failed', e);
+    }
+    delay = Math.min(delay * 1.5, 30000);
+    setTimeout(tick, delay);
+  };
+  setTimeout(tick, delay);
 }
 
 // The exact metadata the click sends (e.g. a YouTube upload's title,
@@ -4895,6 +5082,14 @@ async function decideAction(id, decision, el, personaId, staffAction = false) {
   }
   const row = el.querySelector('.row');
   if (row) row.remove();
+  if (r.status === 'running' && r.progress) {
+    // A slow action: answered at once with its progress card; the job runs
+    // on the server and this same card turns into the result
+    note.textContent = '';
+    paintActionProgress(el, r.progress);
+    watchActionCard(el, id);
+    return;
+  }
   // linkify() escapes first — the outcome may carry a link (YouTube Studio)
   note.innerHTML = linkify(r.message || '');
   // An explained refusal may come with the card that fixes it (e.g. a TikTok

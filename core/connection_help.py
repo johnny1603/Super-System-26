@@ -11,13 +11,23 @@ LINK RULE: every URL below already existed in the codebase before this file
 (client-facing copy, vendor registries, pricing references). Nothing is
 guessed. Where the right link is not known, `url` is "" — such a link is
 never shown or given — and the owner fills it in. A WordPress admin link is
-site-specific, so it can never be a fixed URL here.
+site-specific, so it can never be a fixed URL here. One step further, used
+only for the creative tools' "open an account" step: the HOMEPAGE of a
+domain whose page was already linked (heygen.com, elevenlabs.io). Deep links
+inside a vendor's app (its API-keys screen) are not confirmed for HeyGen or
+ElevenLabs, so those steps describe the screen instead of linking it.
 
-The client-paid creative tools (Higgsfield, HeyGen, ElevenLabs) are ACTIVE,
-one entry and one dashboard card each (core/vendor_tools): each client opens
-their OWN account and pays the vendor directly; uallak only manages and
-creates with it, and keys/material never mix between clients. The remaining
-placeholders (active=False: Creatomate, Uppbeat) have no connect flow at all.
+The client-paid creative tools are ACTIVE, one entry and one dashboard card
+each (core/vendor_tools), and each has a `guide` — the card's PRIMARY connect
+path (guide_view): numbered steps, what the screen looks like, a direct link,
+where the key is, then "stuck? we'll do it with you" (a staff request,
+POST /api/client/connection-help/{id}/assist). The raw key field is the
+secondary "I already have a key". Their titles are capabilities ("your
+voice", "your video presenter"); the vendor is named only inside the steps,
+where the client must open the account. Each client opens their OWN account
+and pays the vendor directly; uallak only manages and creates with it, and
+keys/material never mix between clients. The remaining placeholders
+(active=False: Creatomate, Uppbeat) have no connect flow at all.
 """
 import re
 
@@ -237,36 +247,72 @@ CONNECTIONS = [
         "needs_api_key": False,
         "active": True,
     },
-    # ─── Inactive placeholders: client-paid, per-client accounts ─────────────
+    # ─── Client-paid creative tools (core/vendor_tools): a GUIDED flow ───────
+    # The card's primary action is this guide (step → what the screen looks
+    # like → a direct link), with "stuck? we'll do it with you" (a staff
+    # request) and the raw key field only as "I already have a key". The
+    # TITLE is the capability (what the client reads on the card); the vendor
+    # is named only inside the steps, where the client opens the account.
+    # `steps` (the concierge's text) is derived from `guide` below the list.
     {
         "id": "higgsfield",
-        "title": _t("יצירת מדיה (Higgsfield)", "Media generation (Higgsfield)", "Génération de médias (Higgsfield)",
-                    "إنشاء الوسائط (Higgsfield)", "Создание медиа (Higgsfield)"),
-        # Each creative tool is its own connection (core/vendor_tools)
-        "steps": {
-            "he": ["נרשמים ל-Higgsfield בחשבון שלכם, עם אמצעי התשלום שלכם.",
-                   "בחשבון נכנסים לאזור API Keys ויוצרים מפתח חדש.",
-                   "מעתיקים את המפתח ומדביקים אותו רק בכרטיס Higgsfield בדשבורד, ולוחצים \"חיבור\". אף פעם לא בצ׳אט.",
-                   "הכרטיס יראה \"מחובר\". הכלים האחרים (HeyGen, ElevenLabs) לא מושפעים."],
-            "en": ["Sign up to Higgsfield on your own account, with your own payment method.",
-                   "In your account, open API Keys and create a new key.",
-                   "Copy the key and paste it only into the Higgsfield card on the dashboard, then click \"Connect\". Never in the chat.",
-                   "The card will show \"Connected\". Your other tools (HeyGen, ElevenLabs) are not affected."],
-            "fr": ["Inscrivez-vous à Higgsfield sur votre propre compte, avec votre moyen de paiement.",
-                   "Dans votre compte, ouvrez API Keys et créez une nouvelle clé.",
-                   "Copiez la clé et collez-la uniquement dans la carte Higgsfield du tableau de bord, puis cliquez sur « Connecter ». Jamais dans le chat.",
-                   "La carte affichera « Connecté ». Vos autres outils (HeyGen, ElevenLabs) ne changent pas."],
-            "ar": ["سجّل في Higgsfield بحسابك الخاص وبوسيلة الدفع الخاصة بك.",
-                   "في حسابك افتح API Keys وأنشئ مفتاحًا جديدًا.",
-                   "انسخ المفتاح والصقه فقط في بطاقة Higgsfield في لوحة التحكم ثم اضغط \"ربط\". لا ترسله أبدًا في الدردشة.",
-                   "ستظهر البطاقة \"مرتبط\". أدواتك الأخرى (HeyGen وElevenLabs) لا تتأثر."],
-            "ru": ["Зарегистрируйтесь в Higgsfield на свой аккаунт, со своим способом оплаты.",
-                   "В аккаунте откройте API Keys и создайте новый ключ.",
-                   "Скопируйте ключ и вставьте его только в карточку Higgsfield на панели, затем нажмите «Подключить». Никогда в чат.",
-                   "На карточке появится «Подключено». Другие инструменты (HeyGen, ElevenLabs) не меняются."],
+        "title": _t("הדמות שבסרטונים — דמות AI", "Your video presenter — an AI presenter",
+                    "Votre présentateur vidéo — un présentateur IA",
+                    "الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي", "Ведущий ваших видео — ИИ-ведущий"),
+        "guide": {
+            "he": [{"do": "פותחים חשבון ב-Higgsfield (הכלי שמייצר את דמות ה-AI, תמונות וסרטונים) ובוחרים מסלול, עם אמצעי התשלום שלכם.",
+                    "see": "עמוד מסלולים: לכל מסלול כמות קרדיטים לחודש. ההרשמה היא מייל או כניסה עם Google.",
+                    "link": "https://higgsfield.ai/pricing"},
+                   {"do": "נכנסים לעמוד מפתחות ה-API ולוחצים ליצירת מפתח חדש.",
+                    "see": "רשימת מפתחות (ריקה בהתחלה) וכפתור ליצירת מפתח. המפתח החדש מופיע על המסך — מעתיקים אותו כולו.",
+                    "link": "https://cloud.higgsfield.ai/api-keys"},
+                   {"do": "חוזרים לכאן, לוחצים \"יש לי כבר מפתח\", מדביקים ולוחצים \"חיבור\".",
+                    "see": "הכרטיס יראה \"מחובר\". את הכלי הזה אי אפשר לבדוק מראש — הוא נבדק ביצירה הראשונה. אף פעם לא שולחים מפתח בצ׳אט.",
+                    "link": ""}],
+            "en": [{"do": "Open an account at Higgsfield (the tool that makes the AI presenter, images and videos) and pick a plan, with your own payment method.",
+                    "see": "A plans page: each plan has monthly credits. Sign-up is e-mail or Google.",
+                    "link": "https://higgsfield.ai/pricing"},
+                   {"do": "Open the API keys page and create a new key.",
+                    "see": "A list of keys (empty at first) and a button to create one. The new key appears on screen — copy all of it.",
+                    "link": "https://cloud.higgsfield.ai/api-keys"},
+                   {"do": "Come back here, click \"I already have a key\", paste it and click \"Connect\".",
+                    "see": "The card shows \"Connected\". This tool can't be checked in advance — the first creation checks it. Never send a key in the chat.",
+                    "link": ""}],
+            "fr": [{"do": "Ouvrez un compte chez Higgsfield (l'outil qui crée le présentateur IA, les images et les vidéos) et choisissez une formule, avec votre moyen de paiement.",
+                    "see": "Une page de formules avec des crédits mensuels. Inscription par e-mail ou Google.",
+                    "link": "https://higgsfield.ai/pricing"},
+                   {"do": "Ouvrez la page des clés API et créez une nouvelle clé.",
+                    "see": "Une liste de clés (vide au début) et un bouton de création. La nouvelle clé s'affiche — copiez-la entièrement.",
+                    "link": "https://cloud.higgsfield.ai/api-keys"},
+                   {"do": "Revenez ici, cliquez sur « J'ai déjà une clé », collez-la et cliquez sur « Connecter ».",
+                    "see": "La carte affiche « Connecté ». Cet outil ne peut pas être vérifié à l'avance — la première création le vérifie. Jamais de clé dans le chat.",
+                    "link": ""}],
+            "ar": [{"do": "افتحوا حسابًا في Higgsfield (الأداة التي تصنع شخصية الذكاء الاصطناعي والصور والفيديوهات) واختاروا باقة بوسيلة الدفع الخاصة بكم.",
+                    "see": "صفحة باقات: لكل باقة رصيد شهري. التسجيل بالبريد أو بحساب Google.",
+                    "link": "https://higgsfield.ai/pricing"},
+                   {"do": "افتحوا صفحة مفاتيح API وأنشئوا مفتاحًا جديدًا.",
+                    "see": "قائمة مفاتيح (فارغة في البداية) وزر لإنشاء مفتاح. يظهر المفتاح الجديد على الشاشة — انسخوه كاملًا.",
+                    "link": "https://cloud.higgsfield.ai/api-keys"},
+                   {"do": "عودوا إلى هنا، اضغطوا \"لديّ مفتاح بالفعل\"، الصقوه واضغطوا \"ربط\".",
+                    "see": "ستظهر البطاقة \"مرتبط\". لا يمكن فحص هذه الأداة مسبقًا — يُفحص عند أول إنشاء. لا ترسلوا مفتاحًا في الدردشة أبدًا.",
+                    "link": ""}],
+            "ru": [{"do": "Откройте аккаунт в Higgsfield (инструмент, который делает ИИ-ведущего, изображения и видео) и выберите тариф со своим способом оплаты.",
+                    "see": "Страница тарифов: у каждого тарифа месячные кредиты. Регистрация по e-mail или через Google.",
+                    "link": "https://higgsfield.ai/pricing"},
+                   {"do": "Откройте страницу API-ключей и создайте новый ключ.",
+                    "see": "Список ключей (сначала пустой) и кнопка создания. Новый ключ появится на экране — скопируйте его целиком.",
+                    "link": "https://cloud.higgsfield.ai/api-keys"},
+                   {"do": "Вернитесь сюда, нажмите «У меня уже есть ключ», вставьте его и нажмите «Подключить».",
+                    "see": "На карточке появится «Подключено». Этот инструмент нельзя проверить заранее — проверка при первом создании. Никогда не отправляйте ключ в чат.",
+                    "link": ""}],
         },
+        "key_where": _t("המפתח נמצא בעמוד מפתחות ה-API בחשבון ה-Higgsfield (הקישור בשלב 2).",
+                        "The key is on the API keys page of your Higgsfield account (the link in step 2).",
+                        "La clé se trouve sur la page des clés API de votre compte Higgsfield (le lien de l'étape 2).",
+                        "المفتاح في صفحة مفاتيح API في حساب Higgsfield (الرابط في الخطوة 2).",
+                        "Ключ — на странице API-ключей вашего аккаунта Higgsfield (ссылка в шаге 2)."),
         # Both already in client-facing copy / the pricing reference
-        "links": [{"label": _t("API Keys", "API Keys", "API Keys", "API Keys", "API Keys"),
+        "links": [{"label": _t("מפתחות API", "API keys", "Clés API", "مفاتيح API", "API-ключи"),
                    "url": "https://cloud.higgsfield.ai/api-keys"},
                   {"label": _t("מסלולים", "Plans", "Formules", "الباقات", "Тарифы"),
                    "url": "https://higgsfield.ai/pricing"}],
@@ -276,30 +322,81 @@ CONNECTIONS = [
     },
     {
         "id": "heygen",
-        "title": _t("HeyGen (אווטאר)", "HeyGen (avatar)", "HeyGen (avatar)", "HeyGen (أفاتار)", "HeyGen (аватар)"),
-        "steps": {
-            "he": ["נרשמים ל-HeyGen בחשבון שלכם, עם מסלול שכולל גישת API ואמצעי התשלום שלכם.",
-                   "בהגדרות החשבון ב-HeyGen יוצרים מפתח API ומעתיקים אותו.",
-                   "בכרטיס HeyGen בדשבורד מדביקים את המפתח, מסמנים את אישור השימוש בדמות שלכם (חובה) ולוחצים \"חיבור\". אף פעם לא בצ׳אט.",
-                   "אפשר ללחוץ \"בדיקת חיבור\" בכל רגע. ElevenLabs ו-Higgsfield מתחברים בנפרד, כל אחד בכרטיס שלו."],
-            "en": ["Sign up to HeyGen on your own account, with a plan that includes API access and your own payment method.",
-                   "In your HeyGen account settings, create an API key and copy it.",
-                   "On the HeyGen card, paste the key, tick the likeness consent (required) and click \"Connect\". Never in the chat.",
-                   "You can click \"Test connection\" at any time. ElevenLabs and Higgsfield connect separately, each on its own card."],
-            "fr": ["Inscrivez-vous à HeyGen sur votre propre compte, avec une formule incluant l'accès API et votre moyen de paiement.",
-                   "Dans les paramètres de votre compte HeyGen, créez une clé API et copiez-la.",
-                   "Sur la carte HeyGen, collez la clé, cochez le consentement d'utilisation de votre image (obligatoire) et cliquez sur « Connecter ». Jamais dans le chat.",
-                   "Vous pouvez cliquer sur « Tester la connexion » à tout moment. ElevenLabs et Higgsfield se connectent séparément, chacun sur sa carte."],
-            "ar": ["سجّل في HeyGen بحسابك الخاص، بباقة تشمل الوصول إلى API وبوسيلة الدفع الخاصة بك.",
-                   "في إعدادات حساب HeyGen أنشئ مفتاح API وانسخه.",
-                   "في بطاقة HeyGen الصق المفتاح، وحدّد الموافقة على استخدام صورتك (إلزامي) ثم اضغط \"ربط\". لا ترسله أبدًا في الدردشة.",
-                   "يمكنك الضغط على \"فحص الاتصال\" في أي وقت. ElevenLabs وHiggsfield يُربطان بشكل منفصل، كل واحد في بطاقته."],
-            "ru": ["Зарегистрируйтесь в HeyGen на свой аккаунт, с тарифом с доступом к API и своим способом оплаты.",
-                   "В настройках аккаунта HeyGen создайте API-ключ и скопируйте его.",
-                   "На карточке HeyGen вставьте ключ, отметьте согласие на использование образа (обязательно) и нажмите «Подключить». Никогда в чат.",
-                   "«Проверить подключение» можно в любой момент. ElevenLabs и Higgsfield подключаются отдельно, каждый на своей карточке."],
+        "title": _t("הדמות שבסרטונים — דמות מצולמת שלך", "Your video presenter — a filmed likeness of you",
+                    "Votre présentateur vidéo — votre image filmée", "الشخصية في الفيديوهات — شخصيتك المصوَّرة",
+                    "Ведущий ваших видео — ваш снятый образ"),
+        "guide": {
+            "he": [{"do": "פותחים חשבון ב-HeyGen (הכלי שמייצר את הדמות המצולמת שלך), עם המייל ואמצעי התשלום שלכם. גם המסלול החינמי מתאים לדמות אחת.",
+                    "see": "מסך הרשמה רגיל: מייל או כניסה עם Google. אחרי ההרשמה נפתח מסך הבית של החשבון.",
+                    "link": "https://www.heygen.com"},
+                   {"do": "טוענים יתרת API (החל מ-5$) — ממנה משולמים הסרטונים, ישירות מהחשבון שלכם.",
+                    "see": "עמוד מחירון ה-API מראה כמה עולה דקת וידאו (בערך 1-4$ לדקה).",
+                    "link": "https://www.heygen.com/api-pricing"},
+                   {"do": "בהגדרות החשבון (Settings) נכנסים לאזור ה-API ומעתיקים את המפתח.",
+                    "see": "מסך עם הכותרת API ומפתח מוסתר בנקודות, ולידו כפתור העתקה.",
+                    "link": ""},
+                   {"do": "חוזרים לכאן, לוחצים \"יש לי כבר מפתח\", מדביקים, מסמנים את אישור השימוש בדמות (חובה) ולוחצים \"חיבור\".",
+                    "see": "הכרטיס יראה \"מחובר ✓\", ואפשר ללחוץ \"בדיקת חיבור\" בכל רגע. אף פעם לא שולחים מפתח בצ׳אט.",
+                    "link": ""}],
+            "en": [{"do": "Open an account at HeyGen (the tool that makes your filmed presenter), with your own e-mail and payment method. The free plan is enough for one presenter.",
+                    "see": "A normal sign-up screen: e-mail or Google. After it, your account's home screen opens.",
+                    "link": "https://www.heygen.com"},
+                   {"do": "Top up API credit (from $5) — videos are paid from it, directly from your account.",
+                    "see": "The API pricing page shows what a video minute costs (roughly $1-4 a minute).",
+                    "link": "https://www.heygen.com/api-pricing"},
+                   {"do": "In your account Settings, open the API area and copy the key.",
+                    "see": "A screen titled API with a key hidden behind dots and a copy button next to it.",
+                    "link": ""},
+                   {"do": "Come back here, click \"I already have a key\", paste it, tick the likeness consent (required) and click \"Connect\".",
+                    "see": "The card shows \"Connected ✓\"; \"Test connection\" works at any time. Never send a key in the chat.",
+                    "link": ""}],
+            "fr": [{"do": "Ouvrez un compte chez HeyGen (l'outil qui crée votre présentateur filmé), avec votre e-mail et votre moyen de paiement. La formule gratuite suffit pour un présentateur.",
+                    "see": "Un écran d'inscription classique : e-mail ou Google. Ensuite s'ouvre l'accueil de votre compte.",
+                    "link": "https://www.heygen.com"},
+                   {"do": "Rechargez un crédit API (dès 5 $) — les vidéos sont payées avec, directement depuis votre compte.",
+                    "see": "La page des tarifs API indique le prix d'une minute de vidéo (environ 1-4 $).",
+                    "link": "https://www.heygen.com/api-pricing"},
+                   {"do": "Dans les paramètres (Settings) du compte, ouvrez la zone API et copiez la clé.",
+                    "see": "Un écran intitulé API avec une clé masquée par des points et un bouton de copie.",
+                    "link": ""},
+                   {"do": "Revenez ici, cliquez sur « J'ai déjà une clé », collez-la, cochez le consentement d'image (obligatoire) et cliquez sur « Connecter ».",
+                    "see": "La carte affiche « Connecté ✓ » ; « Tester la connexion » fonctionne à tout moment. Jamais de clé dans le chat.",
+                    "link": ""}],
+            "ar": [{"do": "افتحوا حسابًا في HeyGen (الأداة التي تصنع شخصيتكم المصوَّرة) ببريدكم ووسيلة الدفع الخاصة بكم. الباقة المجانية تكفي لشخصية واحدة.",
+                    "see": "شاشة تسجيل عادية: بريد أو حساب Google. بعدها تُفتح الشاشة الرئيسية للحساب.",
+                    "link": "https://www.heygen.com"},
+                   {"do": "اشحنوا رصيد API (ابتداءً من 5$) — منه تُدفع الفيديوهات مباشرة من حسابكم.",
+                    "see": "صفحة أسعار API تُظهر تكلفة دقيقة الفيديو (نحو 1-4$ للدقيقة).",
+                    "link": "https://www.heygen.com/api-pricing"},
+                   {"do": "في إعدادات الحساب (Settings) افتحوا قسم API وانسخوا المفتاح.",
+                    "see": "شاشة بعنوان API ومفتاح مخفي بنقاط وبجانبه زر نسخ.",
+                    "link": ""},
+                   {"do": "عودوا إلى هنا، اضغطوا \"لديّ مفتاح بالفعل\"، الصقوه، حدّدوا الموافقة على استخدام الصورة (إلزامي) واضغطوا \"ربط\".",
+                    "see": "ستظهر البطاقة \"مرتبط ✓\"، و\"فحص الاتصال\" متاح في أي وقت. لا ترسلوا مفتاحًا في الدردشة أبدًا.",
+                    "link": ""}],
+            "ru": [{"do": "Откройте аккаунт в HeyGen (инструмент, который делает вашего снятого ведущего) со своим e-mail и способом оплаты. Для одного ведущего хватит бесплатного тарифа.",
+                    "see": "Обычная регистрация: e-mail или Google. После неё откроется главная страница аккаунта.",
+                    "link": "https://www.heygen.com"},
+                   {"do": "Пополните API-баланс (от $5) — из него оплачиваются видео, напрямую с вашего аккаунта.",
+                    "see": "Страница цен API показывает стоимость минуты видео (примерно $1-4 за минуту).",
+                    "link": "https://www.heygen.com/api-pricing"},
+                   {"do": "В настройках аккаунта (Settings) откройте раздел API и скопируйте ключ.",
+                    "see": "Экран с заголовком API, ключ скрыт точками, рядом кнопка копирования.",
+                    "link": ""},
+                   {"do": "Вернитесь сюда, нажмите «У меня уже есть ключ», вставьте его, отметьте согласие на образ (обязательно) и нажмите «Подключить».",
+                    "see": "На карточке появится «Подключено ✓»; «Проверить подключение» можно в любой момент. Никогда не отправляйте ключ в чат.",
+                    "link": ""}],
         },
-        "links": [{"label": _t("מחירון API", "API pricing", "Tarifs API", "أسعار API", "Цены API"),
+        "key_where": _t("המפתח נמצא בחשבון ה-HeyGen, בהגדרות (Settings) ← אזור ה-API.",
+                        "The key is in your HeyGen account, under Settings → the API area.",
+                        "La clé se trouve dans votre compte HeyGen, dans Settings → la zone API.",
+                        "المفتاح في حساب HeyGen، ضمن Settings ← قسم API.",
+                        "Ключ — в аккаунте HeyGen: Settings → раздел API."),
+        # The homepage is the domain of the pricing link that already existed
+        "links": [{"label": _t("פתיחת חשבון", "Open an account", "Ouvrir un compte", "فتح حساب",
+                               "Открыть аккаунт"),
+                   "url": "https://www.heygen.com"},
+                  {"label": _t("מחירון API", "API pricing", "Tarifs API", "أسعار API", "Цены API"),
                    "url": "https://www.heygen.com/api-pricing"}],
         "estimated_minutes": 5,
         "needs_api_key": True,
@@ -307,30 +404,79 @@ CONNECTIONS = [
     },
     {
         "id": "elevenlabs",
-        "title": _t("ElevenLabs (קול)", "ElevenLabs (voice)", "ElevenLabs (voix)", "ElevenLabs (صوت)", "ElevenLabs (голос)"),
-        "steps": {
-            "he": ["נרשמים ל-ElevenLabs בחשבון שלכם. שיבוט קול דורש מסלול בתשלום אצלם.",
-                   "בחשבון ElevenLabs יוצרים מפתח API עם גישה לקולות (Voices) ולהקראה (Text to Speech), ומעתיקים אותו.",
-                   "בכרטיס ElevenLabs בדשבורד מדביקים את המפתח ולוחצים \"חיבור\". אף פעם לא בצ׳אט.",
-                   "רוצים שנשבט את הקול שלכם? מאשרים את הסכמת שיבוט הקול באותו כרטיס. בלי ההסכמה, הקלטות משמשות רק כפסקול כמו שהן."],
-            "en": ["Sign up to ElevenLabs on your own account. Voice cloning needs one of their paid plans.",
-                   "In your ElevenLabs account, create an API key with access to Voices and Text to Speech, and copy it.",
-                   "On the ElevenLabs card, paste the key and click \"Connect\". Never in the chat.",
-                   "Want us to clone your voice? Confirm the voice-cloning consent on the same card. Without it, recordings are used only as an audio track, as they are."],
-            "fr": ["Inscrivez-vous à ElevenLabs sur votre propre compte. Le clonage de voix nécessite une de leurs formules payantes.",
-                   "Dans votre compte ElevenLabs, créez une clé API avec accès aux voix (Voices) et à la synthèse (Text to Speech), et copiez-la.",
-                   "Sur la carte ElevenLabs, collez la clé et cliquez sur « Connecter ». Jamais dans le chat.",
-                   "Vous voulez que nous clonions votre voix ? Confirmez le consentement de clonage sur la même carte. Sans lui, les enregistrements servent uniquement de piste audio, tels quels."],
-            "ar": ["سجّل في ElevenLabs بحسابك الخاص. استنساخ الصوت يتطلب إحدى باقاتهم المدفوعة.",
-                   "في حساب ElevenLabs أنشئ مفتاح API مع صلاحية الأصوات (Voices) والتحويل إلى كلام (Text to Speech)، وانسخه.",
-                   "في بطاقة ElevenLabs الصق المفتاح واضغط \"ربط\". لا ترسله أبدًا في الدردشة.",
-                   "تريد أن نستنسخ صوتك؟ أكّد موافقة استنساخ الصوت في البطاقة نفسها. بدونها تُستخدم التسجيلات كمسار صوتي فقط كما هي."],
-            "ru": ["Зарегистрируйтесь в ElevenLabs на свой аккаунт. Для клонирования голоса нужен один из их платных тарифов.",
-                   "В аккаунте ElevenLabs создайте API-ключ с доступом к голосам (Voices) и озвучке (Text to Speech) и скопируйте его.",
-                   "На карточке ElevenLabs вставьте ключ и нажмите «Подключить». Никогда в чат.",
-                   "Хотите, чтобы мы клонировали ваш голос? Подтвердите согласие на клонирование на той же карточке. Без него записи используются только как звуковая дорожка, как есть."],
+        "title": _t("הקול שלך", "Your voice", "Votre voix", "صوتك", "Ваш голос"),
+        "guide": {
+            "he": [{"do": "פותחים חשבון ב-ElevenLabs (הכלי שמשבט את הקול שלך ומקריא בו), עם המייל שלכם.",
+                    "see": "מסך הרשמה רגיל: מייל או כניסה עם Google.",
+                    "link": "https://elevenlabs.io"},
+                   {"do": "בוחרים מסלול בתשלום שכולל שיבוט קול (Voice Cloning). התשלום עובר ישירות מכם אליהם.",
+                    "see": "עמוד מסלולים: ליד כל מסלול כתוב אם הוא כולל Voice Cloning.",
+                    "link": "https://elevenlabs.io/pricing"},
+                   {"do": "בתפריט החשבון נכנסים ל-API Keys (לפעמים תחת Developers), יוצרים מפתח חדש ומאפשרים לו גישה ל-Voices ול-Text to Speech.",
+                    "see": "נפתח חלון קטן: שם למפתח ורשימת הרשאות. אחרי Create המפתח מוצג פעם אחת בלבד — מעתיקים אותו מיד.",
+                    "link": ""},
+                   {"do": "חוזרים לכאן, לוחצים \"יש לי כבר מפתח\", מדביקים ולוחצים \"חיבור\". רוצים שנשבט את הקול? מסמנים גם את הסכמת שיבוט הקול בכרטיס.",
+                    "see": "הכרטיס יראה \"מחובר ✓\". בלי הסכמת השיבוט, הקלטות משמשות רק כפסקול כמו שהן. אף פעם לא שולחים מפתח בצ׳אט.",
+                    "link": ""}],
+            "en": [{"do": "Open an account at ElevenLabs (the tool that clones your voice and reads in it), with your e-mail.",
+                    "see": "A normal sign-up screen: e-mail or Google.",
+                    "link": "https://elevenlabs.io"},
+                   {"do": "Pick a paid plan that includes voice cloning. You pay them directly.",
+                    "see": "A plans page: each plan says whether it includes Voice Cloning.",
+                    "link": "https://elevenlabs.io/pricing"},
+                   {"do": "In the account menu open API Keys (sometimes under Developers), create a new key and give it access to Voices and Text to Speech.",
+                    "see": "A small window: a name for the key and a list of permissions. After Create the key is shown only once — copy it right away.",
+                    "link": ""},
+                   {"do": "Come back here, click \"I already have a key\", paste it and click \"Connect\". Want us to clone your voice? Also tick the voice-cloning consent on the card.",
+                    "see": "The card shows \"Connected ✓\". Without the cloning consent, recordings are used only as an audio track, as they are. Never send a key in the chat.",
+                    "link": ""}],
+            "fr": [{"do": "Ouvrez un compte chez ElevenLabs (l'outil qui clone votre voix et lit avec), avec votre e-mail.",
+                    "see": "Un écran d'inscription classique : e-mail ou Google.",
+                    "link": "https://elevenlabs.io"},
+                   {"do": "Choisissez une formule payante qui inclut le clonage de voix. Vous les payez directement.",
+                    "see": "Une page de formules : chacune indique si elle inclut Voice Cloning.",
+                    "link": "https://elevenlabs.io/pricing"},
+                   {"do": "Dans le menu du compte, ouvrez API Keys (parfois sous Developers), créez une clé et donnez-lui l'accès à Voices et Text to Speech.",
+                    "see": "Une petite fenêtre : un nom et une liste d'autorisations. Après Create, la clé ne s'affiche qu'une fois — copiez-la tout de suite.",
+                    "link": ""},
+                   {"do": "Revenez ici, cliquez sur « J'ai déjà une clé », collez-la et cliquez sur « Connecter ». Pour cloner votre voix, cochez aussi le consentement de clonage.",
+                    "see": "La carte affiche « Connecté ✓ ». Sans le consentement, les enregistrements servent seulement de piste audio. Jamais de clé dans le chat.",
+                    "link": ""}],
+            "ar": [{"do": "افتحوا حسابًا في ElevenLabs (الأداة التي تستنسخ صوتكم وتقرأ به) ببريدكم.",
+                    "see": "شاشة تسجيل عادية: بريد أو حساب Google.",
+                    "link": "https://elevenlabs.io"},
+                   {"do": "اختاروا باقة مدفوعة تشمل استنساخ الصوت. الدفع مباشرة منكم إليهم.",
+                    "see": "صفحة باقات: بجانب كل باقة مكتوب إن كانت تشمل Voice Cloning.",
+                    "link": "https://elevenlabs.io/pricing"},
+                   {"do": "في قائمة الحساب افتحوا API Keys (أحيانًا تحت Developers)، أنشئوا مفتاحًا جديدًا وامنحوه صلاحية Voices وText to Speech.",
+                    "see": "نافذة صغيرة: اسم للمفتاح وقائمة صلاحيات. بعد Create يظهر المفتاح مرة واحدة فقط — انسخوه فورًا.",
+                    "link": ""},
+                   {"do": "عودوا إلى هنا، اضغطوا \"لديّ مفتاح بالفعل\"، الصقوه واضغطوا \"ربط\". تريدون استنساخ صوتكم؟ حدّدوا أيضًا موافقة الاستنساخ في البطاقة.",
+                    "see": "ستظهر البطاقة \"مرتبط ✓\". بدون موافقة الاستنساخ تُستخدم التسجيلات كمسار صوتي فقط. لا ترسلوا مفتاحًا في الدردشة أبدًا.",
+                    "link": ""}],
+            "ru": [{"do": "Откройте аккаунт в ElevenLabs (инструмент, который клонирует ваш голос и озвучивает им) на свой e-mail.",
+                    "see": "Обычная регистрация: e-mail или Google.",
+                    "link": "https://elevenlabs.io"},
+                   {"do": "Выберите платный тариф с клонированием голоса. Оплата идёт напрямую от вас.",
+                    "see": "Страница тарифов: у каждого указано, есть ли Voice Cloning.",
+                    "link": "https://elevenlabs.io/pricing"},
+                   {"do": "В меню аккаунта откройте API Keys (иногда в разделе Developers), создайте ключ и дайте ему доступ к Voices и Text to Speech.",
+                    "see": "Небольшое окно: имя ключа и список разрешений. После Create ключ показывается один раз — скопируйте его сразу.",
+                    "link": ""},
+                   {"do": "Вернитесь сюда, нажмите «У меня уже есть ключ», вставьте его и нажмите «Подключить». Хотите клон голоса? Отметьте и согласие на клонирование.",
+                    "see": "На карточке появится «Подключено ✓». Без согласия записи используются только как звуковая дорожка. Никогда не отправляйте ключ в чат.",
+                    "link": ""}],
         },
-        "links": [{"label": _t("מסלולים", "Plans", "Formules", "الباقات", "Тарифы"),
+        "key_where": _t("המפתח נמצא בחשבון ה-ElevenLabs, בתפריט החשבון ← API Keys (לפעמים תחת Developers).",
+                        "The key is in your ElevenLabs account menu → API Keys (sometimes under Developers).",
+                        "La clé se trouve dans le menu du compte ElevenLabs → API Keys (parfois sous Developers).",
+                        "المفتاح في قائمة حساب ElevenLabs ← API Keys (أحيانًا تحت Developers).",
+                        "Ключ — в меню аккаунта ElevenLabs → API Keys (иногда в разделе Developers)."),
+        # The homepage is the domain of the pricing link that already existed
+        "links": [{"label": _t("פתיחת חשבון", "Open an account", "Ouvrir un compte", "فتح حساب",
+                               "Открыть аккаунт"),
+                   "url": "https://elevenlabs.io"},
+                  {"label": _t("מסלולים", "Plans", "Formules", "الباقات", "Тарифы"),
                    "url": "https://elevenlabs.io/pricing"}],
         "estimated_minutes": 5,
         "needs_api_key": True,
@@ -387,7 +533,31 @@ CONNECTIONS = [
     },
 ]
 
+# A guided entry's concierge steps ARE its guide's "do" lines — one text, no drift
+for _entry in CONNECTIONS:
+    if _entry.get("guide"):
+        _entry["steps"] = {lang: [g["do"] for g in _entry["guide"].get(lang) or []] for lang in LANGS}
+
 _BY_ID = {c["id"]: c for c in CONNECTIONS}
+
+
+def guide_view(connection_id: str, lang: str = "he") -> dict:
+    """What a dashboard card renders as its primary connect path: numbered
+    steps, what the screen looks like, a direct link, where the key is.
+    {} for an entry without a guide (or inactive). Links come only from the
+    entry's own `links`, so nothing outside the config is ever shown."""
+    entry = get(connection_id)
+    if not entry or not entry.get("guide"):
+        return {}
+    allowed = {link["url"]: _pick(link["label"], lang) for link in entry["links"] if link["url"]}
+    steps = []
+    for item in _pick(entry["guide"], lang) or []:
+        url = item.get("link") or ""
+        steps.append({"do": item["do"], "see": item.get("see", ""),
+                      "link": {"url": url, "label": allowed[url]} if url in allowed else None})
+    return {"id": entry["id"], "title": _pick(entry["title"], lang), "steps": steps,
+            "key_where": _pick(entry.get("key_where") or {"he": ""}, lang),
+            "estimated_minutes": entry["estimated_minutes"]}
 
 
 def get(connection_id: str, active_only: bool = True) -> dict:

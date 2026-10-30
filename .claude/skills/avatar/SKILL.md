@@ -44,7 +44,10 @@ likeness on the HeyGen card (required to connect HeyGen), voice-cloning on
 the ElevenLabs card (optional — without it a recording is only ever an audio
 track, never cloned). Every server path re-checks with `has_consent()`. HeyGen additionally requires its own
 recorded consent-statement VIDEO for twins — the source kit gives the client
-the exact sentence. Bump `CONSENT_VERSION` when wording changes. Revocation
+the exact sentence. Bump `CONSENT_VERSION` when wording changes (v2,
+2026-10-30: the statements say "the account I opened for this" instead of the
+vendor's name — vendor names are never client-facing, see
+docs/CREATIVE-TOOLS.md §6; rows recorded under v1 stay valid). Revocation
 is "client asks, we stop + delete" — handled manually for now (flag if it
 needs automation).
 

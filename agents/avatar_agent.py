@@ -54,13 +54,15 @@ ELEVENLABS_PLATFORM = "elevenlabs"
 CONSENT_SCOPES = ("likeness", "voice")
 # Bump when the statement wording changes — every consent row records the
 # version it was given under
-CONSENT_VERSION = "2026-07-19.v1"
+# v2 (2026-10-30): the wording names the capability, not the vendor (the
+# vendor is named in the connection help, where the client opens the account)
+CONSENT_VERSION = "2026-10-30.v2"
 CONSENT_STATEMENTS_HE = {
     "likeness": ("אני מאשר/ת במפורש ל-uallak להשתמש בצילומים ובתמונות שאעלה כדי ליצור "
-                 "אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפיק באמצעותו סרטונים "
+                 "דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפיק באמצעותה סרטונים "
                  "עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת."),
     "voice": ("אני מאשר/ת במפורש ל-uallak להשתמש בהקלטות הקול שאעלה כדי ליצור שיבוט קול "
-              "דיגיטלי בחשבון ה-ElevenLabs שלי, ולהשתמש בו בסרטונים עבור העסק שלי. "
+              "דיגיטלי בחשבון שפתחתי לשם כך, ולהשתמש בו בסרטונים עבור העסק שלי. "
               "אוכל לבקש את הפסקת השימוש בכל עת."),
 }
 
@@ -316,10 +318,11 @@ def create_avatar(client_id: int, avatar_name: str = "") -> dict:
                           {"method": "web_ui_self_service", "name": name,
                            "known_avatar_ids": known_ids})
             log_communication(client_id, "outbound", "dashboard_chat",
-                              "הצעד האחרון ליצירת האווטאר הוא אצלכם ב-HeyGen 🎬 נכנסים לחשבון, "
-                              "בוחרים יצירת אווטאר דיגיטלי, ומעלים שם את אותם צילומים וסרטון "
-                              "ההסכמה שהכנתם לפי הערכה (עובד בכל מסלול, כולל החינמי). ברגע "
-                              "שהאווטאר יסיים להתאמן — נזהה אותו אוטומטית ונעדכן אתכם 🎉")
+                              "הצעד האחרון ליצירת הדמות המצולמת שלכם הוא אצלכם 🎬 נכנסים לחשבון "
+                              "שפתחתם לדמות, בוחרים יצירת דמות דיגיטלית, ומעלים שם את אותם צילומים "
+                              "וסרטון ההסכמה שהכנתם לפי הערכה (ההוראות המדויקות מחכות בערכה ב-Drive). "
+                              "ברגע שהדמות תהיה מוכנה — נזהה אותה אוטומטית ונעדכן אתכם 🎉 "
+                              "נתקעתם? כתבו לי כאן ונעשה את זה יחד.")
             log_step(AGENT_NAME, "create_avatar",
                      f"client {client_id}: twin-creation API unavailable ({message[:120]}) - "
                      f"client directed to self-create '{name}' in HeyGen's web UI")
@@ -426,7 +429,7 @@ def _voice_samples(client_id: int, file_ids: list = None) -> list:
     return samples[:5]
 
 
-def create_voice_clone(client_id: int, file_ids: list = None) -> dict:
+def create_voice_clone(client_id: int, file_ids: list = None, notify: bool = True) -> dict:
     """Clone the client's voice from their recordings, on THEIR ElevenLabs
     account. The voice-cloning consent is a hard gate (separate from the
     likeness consent, same rigor) — without it a recording is only ever an
@@ -434,7 +437,7 @@ def create_voice_clone(client_id: int, file_ids: list = None) -> dict:
     from core import vendor_tools
     if not has_consent(client_id, "voice"):
         return {"success": False, "code": "no_voice_consent", "errors": [_NO_CONSENT.format(scope="voice")],
-                "message_he": "שיבוט קול דורש את הסכמת שיבוט הקול בכרטיס ElevenLabs."}
+                "message_he": "שיבוט קול דורש את הסכמת שיבוט הקול בכרטיס \"הקול שלך\"."}
     if vendor_tools.missing(client_id, ["elevenlabs"]):
         return {**vendor_tools.missing_block(["elevenlabs"]), "errors": ["elevenlabs not connected"]}
     api_key = _key(client_id, ELEVENLABS_PLATFORM)
@@ -466,8 +469,10 @@ def create_voice_clone(client_id: int, file_ids: list = None) -> dict:
     _log_activity(client_id, "avatar_voice_created", {"voice_id": voice_id,
                                                       "samples": len(samples)})
     _record_tool_use(client_id, "elevenlabs", "voice_clone", units=len(samples))
-    log_communication(client_id, "outbound", "dashboard_chat",
-                      "שיבוט הקול שלך מוכן! 🎙 מעכשיו סרטוני האווטאר יכולים לדבר בקול שלך.")
+    if notify:
+        # notify=False: a chat card (core/agent_actions clone_voice) posts the outcome itself
+        log_communication(client_id, "outbound", "dashboard_chat",
+                          "שיבוט הקול שלך מוכן! 🎙 מעכשיו הסרטונים יכולים לדבר בקול שלך.")
     return {"success": True, "voice_id": voice_id}
 
 
@@ -482,8 +487,8 @@ def delete_voice_clone(client_id: int) -> dict:
     api_key = _key(client_id, ELEVENLABS_PLATFORM)
     if not api_key:
         return {**vendor_tools.missing_block(["elevenlabs"]),
-                "message_he": ("כדי למחוק את הקול המשובט מהחשבון שלך צריך שהכרטיס של ElevenLabs יהיה מחובר — "
-                               "או למחוק אותו בעצמך באתר ElevenLabs, בעמוד הקולות.")}
+                "message_he": ("כדי למחוק את הקול המשובט מהחשבון שלך צריך שהכרטיס \"הקול שלך\" יהיה מחובר. "
+                               "הצוות קיבל התראה ויעזור למחוק אותו.")}
     try:
         el.delete_voice(api_key, voice_id)
     except el.ElevenLabsError as e:
@@ -570,16 +575,17 @@ def generate_avatar_video(client_id: int, script_text: str = "", avatar_id: str 
     layer then names any missing tool. Lands in Drive videos/avatar/ for
     human review — never auto-published (house rule)."""
     if not has_consent(client_id, "likeness"):
-        return {"success": False, "errors": [_NO_CONSENT.format(scope="likeness")]}
+        return {"success": False, "code": "no_likeness_consent", "errors": [_NO_CONSENT.format(scope="likeness")]}
     tier = _current_tier(client_id)
     if not tier:
-        return {"success": False, "errors": ["no avatar tier assigned - POST /api/avatar/set-tier "
-                                             "(this add-on is never part of standard management)"]}
+        return {"success": False, "code": "no_tier",
+                "errors": ["no avatar tier assigned - POST /api/avatar/set-tier "
+                           "(this add-on is never part of standard management)"]}
     usage = get_monthly_usage(client_id)
     if usage["minutes_remaining"] is not None and usage["minutes_remaining"] <= 0:
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar tier '{tier['id']}' minutes exhausted "
                                  f"({usage['minutes_used']}/{usage['minutes_cap']}) - upsell moment"])
-        return {"success": False, "errors": [
+        return {"success": False, "code": "minutes_cap", "errors": [
             f"monthly minutes cap reached ({usage['minutes_used']}/{usage['minutes_cap']} min) - "
             f"generation blocked until next month or a tier upgrade"]}
     from agents.media_agent import _subfolder
@@ -588,7 +594,7 @@ def generate_avatar_video(client_id: int, script_text: str = "", avatar_id: str 
         # Legacy callers: the clone when one exists, else nothing to say it with
         voice = {"kind": "clone"} if current_voice_id(client_id) else None
     if (voice or {}).get("kind") == "clone" and not (script_text or "").strip():
-        return {"success": False, "errors": ["script_text is required for the cloned voice"]}
+        return {"success": False, "code": "no_script", "errors": ["script_text is required for the cloned voice"]}
     try:
         done = timed_step(AGENT_NAME, "avatar_video",
                           lambda: avatar_video.make_video(client_id, script_text, voice, provider or None,
@@ -598,7 +604,7 @@ def generate_avatar_video(client_id: int, script_text: str = "", avatar_id: str 
         if any(code in message for code in (" 401 ", " 403 ", "401 ", "403 ")):
             vendor_tools.mark_rejected(client_id, provider or vendor_tools.default_provider(client_id))
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar video failed: {type(e).__name__}: {message[:200]}"])
-        return {"success": False, "errors": [message[:300]]}
+        return {"success": False, "code": "provider_error", "errors": [message[:300]]}
     if not done.get("success"):
         return {**done, "errors": [done.get("code", "refused")]}
     duration = float(done.get("duration") or 0)

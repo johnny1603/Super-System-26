@@ -496,13 +496,131 @@ def _v_creative_tool(value, client_id: int):
     return tool
 
 
-def _creative_label(tool: str) -> str:
-    return (_creative_tools_spec().get(tool) or {}).get("label") or "—"
+def _creative_label(tool: str, lang: str = "he") -> str:
+    """The tool as the CLIENT reads it — never the vendor's name."""
+    from core.vendor_tools import client_label
+    return client_label(tool, lang) or "—"
 
 
 def _creative_focus(tool: str) -> str:
     from core.vendor_tools import focus_id
     return focus_id(tool) if tool in _creative_tools_spec() else "connGrid"
+
+
+def _creative_tools_state(state: dict) -> dict:
+    return ((state or {}).get("creative_tools") or {}).get("tools") or {}
+
+
+def _tool_usable(state: dict, tool: str) -> bool:
+    return (_creative_tools_state(state).get(tool) or {}).get("status") in ("connected", "connected_unverified")
+
+
+def _voice_clone_possible(state: dict, client: dict) -> bool:
+    """The voice tool connected, the cloning consent given, a recording to
+    clone from, and no clone yet."""
+    voice = (state or {}).get("voice") or {}
+    return (_tool_usable(state, "elevenlabs") and bool(voice.get("voice_clone_consent"))
+            and (voice.get("count") or 0) > 0 and not voice.get("voice_clone_exists"))
+
+
+def _presenter_video_possible(state: dict, client: dict) -> bool:
+    """A presenter tool connected and a voice to speak with (a recording or
+    the clone). Consent, tier and minutes are re-checked when it runs."""
+    voice = (state or {}).get("voice") or {}
+    return ((_tool_usable(state, "heygen") or _tool_usable(state, "higgsfield"))
+            and ((voice.get("count") or 0) > 0 or bool(voice.get("voice_clone_exists"))))
+
+
+def _v_script(value, client_id: int):
+    text = " ".join(str(value or "").split())
+    if not 3 <= len(text) <= 1500:
+        raise ValueError("script must be 3-1500 characters")
+    return text
+
+
+def _v_presenter_voice(value, client_id: int):
+    """"clone" or "recording:<file_id>" — the recording must be in THIS
+    client's voice folder (core/voice_recordings)."""
+    raw = str(value or "").strip()
+    if raw == "clone":
+        return raw
+    if raw.startswith("recording:"):
+        from core import voice_recordings
+        if voice_recordings.get(client_id, raw.split(":", 1)[1].strip()):
+            return "recording:" + raw.split(":", 1)[1].strip()
+    raise ValueError("voice must be clone or recording:<file_id from account_state.voice.recordings>")
+
+
+def _v_presenter(value, client_id: int):
+    from core.avatar_video import PROVIDERS
+    provider = str(value or "").strip().lower()
+    if provider not in PROVIDERS:
+        raise ValueError("provider must be heygen or higgsfield")
+    return provider
+
+
+_VOICE_PHRASE = {
+    "clone": {"he": "הקול המשובט שלך", "en": "your cloned voice", "fr": "votre voix clonée",
+              "ar": "صوتك المستنسخ", "ru": "ваш клонированный голос"},
+    "recording": {"he": "ההקלטה \"{name}\"", "en": "the recording \"{name}\"", "fr": "l'enregistrement « {name} »",
+                  "ar": "التسجيل \"{name}\"", "ru": "запись «{name}»"},
+}
+
+
+def _presenter_display(client_id: int, params: dict) -> dict:
+    """The card's words for WHO speaks and WITH WHAT voice — client labels,
+    never a vendor name."""
+    from core import vendor_tools
+    from core.avatar_video import PROVIDERS
+    lang = _lang(client_id)
+    provider = params.get("provider") or vendor_tools.default_provider(client_id)
+    tool = getattr(PROVIDERS.get(provider), "tool", "heygen")
+    voice = params.get("voice", "")
+    if voice.startswith("recording:"):
+        from core import voice_recordings
+        name = (voice_recordings.get(client_id, voice.split(":", 1)[1]) or {}).get("name") or "—"
+        phrase = _pick(_VOICE_PHRASE["recording"], lang).replace("{name}", name)
+    else:
+        phrase = _pick(_VOICE_PHRASE["clone"], lang)
+    return {"presenter": vendor_tools.client_label(tool, lang), "voice": phrase}
+
+
+def _run_clone_voice(client_id: int, params: dict, background_tasks):
+    """avatar_agent.create_voice_clone — the function behind
+    POST /api/avatar/create-voice; it re-checks the cloning consent, the
+    tool and the recordings itself. Its outcome line is posted by decide()."""
+    from agents.avatar_agent import create_voice_clone
+    result = create_voice_clone(client_id, None, notify=False)
+    if result.get("success"):
+        return {"voice_created": True}
+    code = result.get("code", "")
+    raise ActionFailed({"missing_tool": "missing_tool", "no_voice_consent": "not_ready_yet",
+                        "no_recordings": "not_ready_yet"}.get(code, "provider_error"),
+                       f"{code}: {result.get('message_he') or '; '.join(map(str, result.get('errors') or []))}")
+
+
+def _run_make_presenter_video(client_id: int, params: dict, background_tasks):
+    """avatar_agent.generate_avatar_video — the function behind
+    POST /api/avatar/generate-video: consent → tier → minutes → the provider
+    layer (core/avatar_video). The video lands in the client's Drive for
+    review; nothing is published."""
+    from agents.avatar_agent import generate_avatar_video
+    voice_param = params.get("voice", "")
+    voice = ({"kind": "recording", "file_id": voice_param.split(":", 1)[1]} if voice_param.startswith("recording:")
+             else {"kind": "clone"})
+    result = generate_avatar_video(client_id, params["script"], "", "", params.get("provider", ""), voice)
+    if result.get("success"):
+        return {"link": result.get("link", ""), "duration_seconds": result.get("duration_seconds")}
+    code = result.get("code", "")
+    if code == "missing_tool":
+        mapped = "missing_tool"
+    elif code in ("no_tier", "minutes_cap"):
+        mapped = "not_in_plan"
+    elif code in ("", "provider_error", "elevenlabs_error", "error"):
+        mapped = "provider_error"   # ours to fix: _FAILED + an admin alert
+    else:
+        mapped = "not_ready_yet"
+    raise ActionFailed(mapped, f"{code}: {result.get('message_he') or '; '.join(map(str, result.get('errors') or []))}")
 
 
 def _gtm_needs_connect(state: dict, client: dict) -> bool:
@@ -837,16 +955,82 @@ ACTIONS = {
         "params": {"tool": {"required": True, "validate": _v_creative_tool,
                             "hint": "heygen | elevenlabs | higgsfield — the ONE tool that is missing"}},
         "available": _creative_tool_missing,
-        "display": lambda client_id, params: {"tool": _creative_label(params.get("tool", ""))},
+        "display": lambda client_id, params: {"tool": _creative_label(params.get("tool", ""), _lang(client_id))},
         "title": _txt("חיבור כלי יצירה", "Connect a creative tool", "Connecter un outil de création",
                       "ربط أداة إنشاء", "Подключить творческий инструмент"),
-        "what": _txt("ייפתח כרטיס החיבור של {tool} בלבד — מדביקים שם את המפתח מהחשבון שלכם. שאר הכלים לא משתנים.",
-                     "Only the {tool} card opens — paste the key from your own account there. Your other tools stay as they are.",
-                     "Seule la carte {tool} s'ouvre — collez-y la clé de votre propre compte. Vos autres outils ne changent pas.",
-                     "ستفتح بطاقة {tool} فقط — الصقوا فيها المفتاح من حسابكم. باقي الأدوات لا تتغير.",
-                     "Откроется только карточка {tool} — вставьте туда ключ из своего аккаунта. Остальные инструменты не меняются."),
+        "what": _txt("ייפתח רק הכרטיס \"{tool}\", עם הדרכה צעד אחר צעד. נתקעתם? יש שם כפתור ונעשה את זה יחד. שאר הכלים לא משתנים.",
+                     "Only the \"{tool}\" card opens, with a step-by-step guide. Stuck? There's a button there and we'll do it with you. Your other tools stay as they are.",
+                     "Seule la carte « {tool} » s'ouvre, avec un guide pas à pas. Bloqué ? Un bouton y est prévu et nous le faisons avec vous. Vos autres outils ne changent pas.",
+                     "ستفتح بطاقة \"{tool}\" فقط، مع إرشاد خطوة بخطوة. علقتم؟ يوجد زر هناك وسنفعل ذلك معكم. باقي الأدوات لا تتغير.",
+                     "Откроется только карточка «{tool}» с пошаговой инструкцией. Застряли? Там есть кнопка — сделаем вместе. Остальные инструменты не меняются."),
         "done": _txt("פותח את כרטיס החיבור…", "Opening the connection card…", "Ouverture de la carte…",
                      "جارٍ فتح البطاقة…", "Открываю карточку…"),
+    },
+    # ── Creative jobs on the client's OWN tool accounts. internal_only until
+    # the live test on client 27 passes (docs/CREATIVE-TOOLS.md): nothing a
+    # client is offered may be a path that never ran live. ──
+    "clone_voice": {
+        "approver": "client", "client_requestable": True, "internal_only": True, "kind": "execute",
+        "does": "Clones the client's voice from the recordings in account_state.voice, on THEIR own voice "
+                "tool account. Only when voice_clone_consent is true and no clone exists yet.",
+        "params": {},
+        "available": _voice_clone_possible,
+        "run": _run_clone_voice,
+        "slow": {"minutes": 10, "eta": _txt(
+            "זה לוקח בדרך כלל דקה-שתיים.", "It usually takes a minute or two.",
+            "Cela prend généralement une à deux minutes.", "يستغرق ذلك عادة دقيقة أو دقيقتين.",
+            "Обычно это занимает минуту-две.")},
+        "title": _txt("שיבוט הקול שלך", "Clone your voice", "Cloner votre voix", "استنساخ صوتك",
+                      "Клонировать ваш голос"),
+        "what": _txt("מההקלטות שהעליתם ייווצר שיבוט של הקול שלכם, בחשבון שלכם. אחר כך הסרטונים יוכלו לדבר בקול שלכם. אפשר למחוק אותו בכל רגע.",
+                     "A clone of your voice will be made from your recordings, on your own account. Videos can then speak in your voice. You can delete it at any time.",
+                     "Un clone de votre voix sera créé à partir de vos enregistrements, sur votre propre compte. Les vidéos pourront ensuite parler avec votre voix. Supprimable à tout moment.",
+                     "سيُنشأ من تسجيلاتكم استنساخ لصوتكم في حسابكم. بعدها يمكن للفيديوهات أن تتكلم بصوتكم. يمكن حذفه في أي وقت.",
+                     "Из ваших записей будет создан клон вашего голоса в вашем аккаунте. Потом видео смогут говорить вашим голосом. Удалить можно в любой момент."),
+        "done": _txt("הקול שלך שובט ✓ מעכשיו הסרטונים יכולים לדבר בקול שלך.",
+                     "Your voice is cloned ✓ Videos can now speak in your voice.",
+                     "Votre voix est clonée ✓ Les vidéos peuvent maintenant parler avec votre voix.",
+                     "تم استنساخ صوتك ✓ يمكن للفيديوهات الآن أن تتكلم بصوتك.",
+                     "Голос клонирован ✓ Теперь видео могут говорить вашим голосом."),
+    },
+    "make_presenter_video": {
+        "approver": "client", "client_requestable": True, "internal_only": True, "kind": "execute",
+        "does": "Makes ONE video in which the client's video presenter (filmed likeness or AI presenter, "
+                "account_state.creative_tools.video_providers) says a script, in their own voice. The video "
+                "goes to their Drive for review — nothing is published. Paid add-on: tier, minutes and the "
+                "likeness consent are checked when it runs.",
+        "params": {"script": {"required": True, "validate": _v_script,
+                              "hint": "the exact words the presenter says (3-1500 characters), as the client wrote "
+                                      "or approved them"},
+                   "voice": {"required": True, "validate": _v_presenter_voice,
+                             "hint": "\"clone\" (account_state.voice.voice_clone_exists) or "
+                                     "\"recording:<file_id>\" with a file_id from account_state.voice.recordings"},
+                   "provider": {"required": False, "validate": _v_presenter,
+                                "hint": "heygen | higgsfield — ONLY when the client asked for the other presenter; "
+                                        "leave out for their chosen one"}},
+        "available": _presenter_video_possible,
+        "run": _run_make_presenter_video,
+        "display": _presenter_display,
+        "details": lambda client_id, params: {"description": params.get("script", "")},
+        "slow": {"minutes": 30, "eta": _txt(
+            "סרטון כזה לוקח בדרך כלל 5 עד 15 דקות.", "A video like this usually takes 5 to 15 minutes.",
+            "Une vidéo comme celle-ci prend généralement 5 à 15 minutes.",
+            "فيديو كهذا يستغرق عادة من 5 إلى 15 دقيقة.", "Такое видео обычно делается 5–15 минут.")},
+        "title": _txt("סרטון עם הדמות שלך", "A video with your presenter", "Une vidéo avec votre présentateur",
+                      "فيديو مع شخصيتك", "Видео с вашим ведущим"),
+        "what": _txt("ייווצר סרטון שבו {presenter} אומר/ת את הטקסט, בקול: {voice}. הסרטון יישמר בתיקיית ה-Drive שלכם לבדיקה — שום דבר לא מתפרסם.",
+                     "A video will be made in which {presenter} says the script, in this voice: {voice}. It is saved to your Drive folder for review — nothing is published.",
+                     "Une vidéo sera créée où {presenter} dit le texte, avec cette voix : {voice}. Elle est enregistrée dans votre Drive pour vérification — rien n'est publié.",
+                     "سيُنشأ فيديو يقول فيه {presenter} النص، بهذا الصوت: {voice}. يُحفظ في مجلد Drive للمراجعة — لا يُنشر شيء.",
+                     "Будет создано видео, где {presenter} произносит текст голосом: {voice}. Оно сохранится в вашей папке Drive для проверки — ничего не публикуется."),
+        "done": _txt("הסרטון מוכן ✓ הוא מחכה לבדיקה שלכם בתיקיית ה-Drive.",
+                     "The video is ready ✓ It's waiting for your review in your Drive folder.",
+                     "La vidéo est prête ✓ Elle vous attend dans votre dossier Drive.",
+                     "الفيديو جاهز ✓ بانتظار مراجعتكم في مجلد Drive.",
+                     "Видео готово ✓ Оно ждёт вашей проверки в папке Drive."),
+        "done_message": lambda result, lang: (
+            _pick(ACTIONS["make_presenter_video"]["done"], lang)
+            + (f"\n{result['link']}" if result.get("link") else "")),
     },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
@@ -1189,6 +1373,50 @@ _OUTREACH_SEND_REFUSAL_CODES = set(_OUTREACH_SEND_REFUSALS)
 ACTIONS["send_outreach_email"]["refusals"] = _OUTREACH_SEND_REFUSALS
 ACTIONS["send_outreach_followup"]["refusals"] = _OUTREACH_SEND_REFUSALS
 
+# Explained creative refusals (no alert — nothing is broken). Anything else,
+# a provider's own failure included, is _FAILED + an admin alert: the vendor's
+# words never reach the client.
+_CREATIVE_REFUSALS = {
+    "missing_tool": _txt(
+        "כדי לעשות את זה צריך קודם לחבר כלי שעוד לא מחובר — שום דבר לא נוצר. הכרטיס שלו מחכה במסך הבית, עם הדרכה צעד אחר צעד, ואם נתקעים יש שם כפתור ונעשה את זה יחד.",
+        "A tool needed for this isn't connected yet — nothing was made. Its card is waiting on the home screen with a step-by-step guide, and if you get stuck there's a button to do it together.",
+        "Un outil nécessaire n'est pas encore connecté — rien n'a été créé. Sa carte vous attend sur l'accueil avec un guide pas à pas, et un bouton pour le faire ensemble si besoin.",
+        "أداة مطلوبة لذلك غير مرتبطة بعد — لم يُنشأ شيء. بطاقتها بانتظاركم في الشاشة الرئيسية مع إرشاد خطوة بخطوة، وزر لنفعل ذلك معًا إن علقتم.",
+        "Нужный инструмент ещё не подключён — ничего не создано. Его карточка ждёт на главной с пошаговой инструкцией, а если застрянете — там есть кнопка, сделаем вместе."),
+    "not_in_plan": _txt(
+        "סרטוני דמות הם תוספת בתשלום, ואין כרגע דקות זמינות בחבילה שלכם — שום דבר לא נוצר. אפשר לדבר איתנו על זה כאן בצ׳אט.",
+        "Presenter videos are a paid add-on, and your plan has no minutes available right now — nothing was made. You can talk to us about it here in the chat.",
+        "Les vidéos avec présentateur sont une option payante, et votre formule n'a pas de minutes disponibles — rien n'a été créé. Parlons-en ici dans le chat.",
+        "فيديوهات الشخصية إضافة مدفوعة، ولا توجد دقائق متاحة في باقتكم حاليًا — لم يُنشأ شيء. يمكن التحدث معنا عن ذلك هنا في الدردشة.",
+        "Видео с ведущим — платное дополнение, и сейчас в вашем тарифе нет доступных минут — ничего не создано. Можно обсудить это с нами здесь в чате."),
+    "not_ready_yet": _txt(
+        "עוד לא הכל מוכן לזה (למשל הדמות עוד בהכנה, חסרה הסכמה בכרטיס, או שאין עדיין הקלטה מתאימה) — שום דבר לא נוצר. אפשר לשאול אותי כאן מה בדיוק חסר.",
+        "Not everything is ready for this yet (for example the presenter is still being prepared, a consent is missing on its card, or there's no suitable recording yet) — nothing was made. Ask me here what exactly is missing.",
+        "Tout n'est pas encore prêt (présentateur en préparation, consentement manquant sur sa carte, ou pas d'enregistrement adapté) — rien n'a été créé. Demandez-moi ici ce qui manque.",
+        "ليس كل شيء جاهزًا بعد (مثلًا الشخصية قيد التجهيز، أو موافقة ناقصة في بطاقتها، أو لا يوجد تسجيل مناسب) — لم يُنشأ شيء. اسألوني هنا عمّا ينقص بالضبط.",
+        "Ещё не всё готово (например, ведущий ещё готовится, на карточке не хватает согласия или нет подходящей записи) — ничего не создано. Спросите меня здесь, чего именно не хватает."),
+}
+ACTIONS["clone_voice"]["refusals"] = _CREATIVE_REFUSALS
+ACTIONS["make_presenter_video"]["refusals"] = _CREATIVE_REFUSALS
+
+# Slow actions answer the click at once with a progress card and run in the
+# background (decide → _execute_in_background); the card polls and turns into
+# the result. "minutes": past twice that, a still-running job is "stalled" —
+# the client reads that the team is checking, and the team gets one alert.
+ACTIONS["configure_conversion"]["slow"] = {"minutes": 5, "eta": _txt(
+    "זה לוקח בדרך כלל פחות מדקה.", "It usually takes under a minute.", "Cela prend généralement moins d'une minute.",
+    "يستغرق ذلك عادة أقل من دقيقة.", "Обычно это занимает меньше минуты.")}
+ACTIONS["publish_youtube_from_media"]["slow"] = {"minutes": 20, "eta": _txt(
+    "העלאה לוקחת בדרך כלל בין דקה לכמה דקות, לפי גודל הסרטון.",
+    "An upload usually takes from one to a few minutes, depending on the video's size.",
+    "Une mise en ligne prend généralement d'une à quelques minutes, selon la taille de la vidéo.",
+    "يستغرق الرفع عادة من دقيقة إلى بضع دقائق حسب حجم الفيديو.",
+    "Загрузка обычно занимает от минуты до нескольких минут, в зависимости от размера видео.")}
+ACTIONS["send_tiktok_to_inbox"]["slow"] = {"minutes": 10, "eta": _txt(
+    "השליחה לוקחת בדרך כלל דקה-שתיים.", "Sending usually takes a minute or two.",
+    "L'envoi prend généralement une à deux minutes.", "يستغرق الإرسال عادة دقيقة أو دقيقتين.",
+    "Отправка обычно занимает минуту-две.")}
+
 _FOLLOWUP_DRAFT_REFUSALS = {
     **_OUTREACH_DRAFT_REFUSALS,
     "followup_pending": _txt("כבר יש טיוטת מעקב לעסק הזה שמחכה לאישור שלכם.",
@@ -1255,6 +1483,20 @@ _FAILED = _txt("זה לא הצליח הפעם, ושום דבר לא השתנה. 
                "Cela n'a pas abouti cette fois, et rien n'a été modifié. L'équipe a les détails et s'en occupe.",
                "لم ينجح ذلك هذه المرة ولم يتغير شيء. الفريق لديه التفاصيل ويعالج الأمر.",
                "В этот раз не получилось, ничего не изменено. Команда получила детали и занимается этим.")
+# A slow action's progress card: what runs, how long it usually takes, and
+# that the client will be told — never a bare spinner
+_PROGRESS = _txt(
+    "התחלנו ✓ {eta} אין צורך לחכות כאן: אפשר להמשיך לעבוד, והכרטיס הזה יתעדכן (וגם נכתוב כאן בצ׳אט) ברגע שזה מוכן.",
+    "Started ✓ {eta} No need to wait here: carry on working — this card updates (and we'll write here in the chat) the moment it's ready.",
+    "C'est parti ✓ {eta} Inutile d'attendre ici : continuez à travailler — cette carte se met à jour (et nous écrirons ici) dès que c'est prêt.",
+    "بدأنا ✓ {eta} لا حاجة للانتظار هنا: تابعوا عملكم — ستتحدث هذه البطاقة (وسنكتب هنا في الدردشة) فور الجاهزية.",
+    "Начали ✓ {eta} Ждать здесь не нужно: продолжайте работать — карточка обновится (и мы напишем в чат), как только всё будет готово.")
+_STALLED = _txt(
+    "זה לוקח יותר זמן מהרגיל. הצוות קיבל התראה ובודק — נעדכן כאן.",
+    "This is taking longer than usual. The team has been alerted and is checking — we'll update you here.",
+    "Cela prend plus de temps que d'habitude. L'équipe a été alertée et vérifie — nous vous tiendrons au courant ici.",
+    "يستغرق ذلك وقتًا أطول من المعتاد. تم تنبيه الفريق وهو يتحقق — سنبلغكم هنا.",
+    "Это занимает больше времени, чем обычно. Команда уведомлена и проверяет — сообщим здесь.")
 _EXPIRED = _txt("הבקשה הזו כבר לא בתוקף — כתבו לי שוב ואכין חדשה.", "This request has expired — message me again and I'll set up a new one.",
                 "Cette demande a expiré — écrivez-moi et j'en prépare une nouvelle.", "انتهت صلاحية هذا الطلب — راسلوني وسأجهز طلبًا جديدًا.",
                 "Срок запроса истёк — напишите мне, и я подготовлю новый.")
@@ -1359,10 +1601,10 @@ def _claim(proposal_id: int, from_statuses, changes: dict) -> bool:
     return bool(rows)
 
 
-def _open_rows(client_id: int) -> list:
+def _open_rows(client_id: int, statuses=OPEN_STATUSES) -> list:
     try:
         return (_db().table(TABLE).select("*").eq("client_id", int(client_id))
-                .in_("status", list(OPEN_STATUSES)).order("created_at", desc=True)
+                .in_("status", list(statuses)).order("created_at", desc=True)
                 .limit(20).execute().data or [])
     except Exception as e:
         _log(f"client {client_id}: agent_actions unreadable ({type(e).__name__}) — migration pending?",
@@ -1390,19 +1632,58 @@ def _approve_blocked(spec: dict, client_id) -> str:
         return "send_disabled"
 
 
+def _fill(spec: dict, row: dict, text: str) -> str:
+    """The card's {placeholders} from OUR reads (e.g. Drive's file name), never the model."""
+    params = row.get("params") or {}
+    if "{title}" in text:
+        text = text.replace("{title}", _suggestion_title(row.get("client_id"), params.get("suggestion_id")))
+    if spec.get("display"):
+        try:
+            for key, value in spec["display"](row.get("client_id"), params).items():
+                text = text.replace("{" + key + "}", str(value))
+        except Exception:
+            pass
+    return text
+
+
+def _since(stamp) -> timedelta:
+    try:
+        return _now() - datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except Exception:
+        return timedelta(0)
+
+
+def _stalled(row: dict, spec: dict) -> bool:
+    slow = spec.get("slow") or {}
+    return (row.get("status") == "running" and bool(slow)
+            and _since(row.get("decided_at") or row.get("created_at")) > timedelta(minutes=2 * slow["minutes"]))
+
+
+def progress_text(spec: dict, lang: str) -> str:
+    return _pick(_PROGRESS, lang).replace("{eta}", _pick(spec["slow"]["eta"], lang))
+
+
+def _result_text(spec: dict, row: dict, lang: str) -> str:
+    """What a finished card says — the same plain lines decide() posts."""
+    if row.get("status") == "done":
+        return _fill(spec, row, _pick(spec.get("done") or {"he": ""}, lang))
+    if row.get("status") == "failed":
+        refusal = (spec.get("refusals") or {}).get(row.get("outcome") or "")
+        return _pick(refusal or _FAILED, lang)
+    if row.get("status") == "cancelled":
+        return _pick(_CANCELLED, lang)
+    return ""
+
+
 def card(row: dict, actor: str, lang: str = "he") -> dict:
     spec = ACTIONS.get(row.get("action")) or {}
     params = row.get("params") or {}
-    what = _pick(spec.get("what") or {"he": ""}, lang)
-    if "{title}" in what:
-        what = what.replace("{title}", _suggestion_title(row.get("client_id"), params.get("suggestion_id")))
-    if spec.get("display"):
-        # Display values come from OUR read (e.g. Drive's file name), never the model
-        try:
-            for key, value in spec["display"](row.get("client_id"), params).items():
-                what = what.replace("{" + key + "}", str(value))
-        except Exception:
-            pass
+    what = _fill(spec, row, _pick(spec.get("what") or {"he": ""}, lang))
+    progress = None
+    if row.get("status") == "running" and spec.get("slow"):
+        stalled = _stalled(row, spec)
+        progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang),
+                    "started_at": row.get("decided_at"), "stalled": stalled}
     details = None
     if spec.get("details"):
         # Everything the click will send, for the client to read before approving
@@ -1423,6 +1704,8 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
             "blocked": (_pick((spec.get("refusals") or {}).get(code) or _FAILED, lang)
                         if row.get("status") in OPEN_STATUSES
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
+            # A slow action: the running card's text, then its plain result
+            "progress": progress, "result": _result_text(spec, row, lang),
             "created_at": row.get("created_at")}
 
 
@@ -1445,14 +1728,40 @@ def open_cards(client_id: int, actor: str, persona: str = None) -> list:
     admin sees every open card for the client."""
     lang = _lang(client_id) if actor == "client" else "he"
     out = []
-    for row in _open_rows(client_id):
+    # A running slow action stays on screen as its progress card after a reload
+    for row in _open_rows(client_id, OPEN_STATUSES + ("running",)):
         if actor == "client" and (row.get("origin") != "client_chat"
                                   or (persona and row.get("persona", "general") != persona)):
             continue
-        if _expired(row):
+        if row.get("status") == "running":
+            if not (ACTIONS.get(row.get("action")) or {}).get("slow"):
+                continue
+        elif _expired(row):
             continue
         out.append(card(row, actor, lang))
     return out
+
+
+def status_card(proposal_id: int, client_id: int) -> dict:
+    """One card, for a progress card's poll — {} when it is not this
+    client's. A stalled job raises ONE admin alert (the client's card already
+    says the team is checking)."""
+    try:
+        row = _get(proposal_id)
+    except Exception:
+        return {}
+    if not row or int(row.get("client_id") or 0) != int(client_id or 0) or row.get("origin") != "client_chat":
+        return {}
+    spec = ACTIONS.get(row.get("action")) or {}
+    if _stalled(row, spec):
+        try:
+            from core import chat_fallback
+            chat_fallback.alert_once(SERVICE_NAME, int(client_id), f"stalled:{proposal_id}",
+                                     f"client {client_id}: approved '{row.get('action')}' (proposal {proposal_id}) "
+                                     f"is still running after {2 * spec['slow']['minutes']} min — check it", days=7)
+        except Exception:
+            pass
+    return card(row, "client", _lang(client_id))
 
 
 # ─── Propose ─────────────────────────────────────────────────────────────────
@@ -1676,6 +1985,39 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
             out["focus"] = spec["focus"](params) if callable(spec["focus"]) else spec["focus"]
         return out
 
+    if spec.get("slow") and background_tasks is not None:
+        # Waiting is a card, not a spinner: answer the click NOW with what is
+        # running and how long it usually takes; the job runs after the
+        # response and the same card polls (status_card) into its result
+        background_tasks.add_task(_execute_in_background, row, spec, params, actor, client, lang)
+        return {"success": True, "status": "running",
+                "message": progress_text(spec, lang if actor == "client" else "he"),
+                "progress": {"text": progress_text(spec, lang if actor == "client" else "he"),
+                             "started_at": stamp, "stalled": False}}
+    return _execute(row, spec, params, actor, client, lang, background_tasks)
+
+
+def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, client: dict, lang: str):
+    """A slow action's run, after the response. Never raises: whatever goes
+    wrong outside the action's own handling still ends the row, alerts the
+    team and tells the client plainly (never the error itself)."""
+    try:
+        _execute(row, spec, params, actor, client, lang, None)
+    except Exception as e:
+        proposal_id = row.get("id")
+        _claim(proposal_id, ("running",), {"status": "failed", "finished_at": _now().isoformat(),
+                                           "outcome": "error"})
+        _log(f"client {row.get('client_id')}: {row.get('action')} background run broke: "
+             f"{type(e).__name__}: {e}", severity="WARNING", client_id=row.get("client_id"), proposal=proposal_id)
+        _alert(f"client {row.get('client_id')}: approved action '{row.get('action')}' failed in the "
+               f"background: {str(e)[:300]}")
+        _post(row, _pick(_FAILED, lang), to_client=True)
+
+
+def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang: str, background_tasks) -> dict:
+    """Runs a claimed (status running) action and records + posts its outcome."""
+    proposal_id = row.get("id")
+    client_id = int(row["client_id"])
     try:
         result = spec["run"](client_id, params, background_tasks) or {}
     except Exception as e:

@@ -383,9 +383,12 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
 
 def _creative_tools(client_id: int) -> dict:
     """Each creative tool on its own (core/vendor_tools): status, consent and
-    the video provider choice. Never a key, not even its last 4 characters."""
+    the video provider choice. Never a key, not even its last 4 characters,
+    and never the vendor's name: an agent repeats what it reads, so `label`
+    here is the client-facing name (vendor_tools.client_label)."""
     from core import avatar_video, vendor_tools
-    tools = {tool: {k: v for k, v in view.items() if k != "last4"}
+    tools = {tool: {k: v for k, v in view.items() if k not in ("last4", "client_label")}
+             | {"label": view.get("client_label") or ""}
              for tool, view in vendor_tools.statuses(client_id).items()}
     return {"tools": tools, "video_providers": avatar_video.providers_view(client_id)}
 
