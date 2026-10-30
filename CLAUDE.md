@@ -140,6 +140,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the
   click with a progress card that becomes the result (BackgroundTasks + poll). Guarded by
   `tests/test_ux_vision.py`.
+- `core/ownership.py` — **client ownership & portability**: the dashboard view "החשבונות
+  והנכסים שלי" (identity + our access + per-account disconnect, never any part of a key),
+  "ייצוא הכל" (`/api/client/export-all`, one ZIP of existing formats), the Hebrew handover
+  document, and the admin offboarding kit (handover first, then our access removed via
+  `_disconnect_platform`; never deletes vendor data, never touches billing/status). WordPress
+  disconnect deletes our own Application Password on the site. `tests/test_ownership.py` also
+  holds the guard that no client route returns a decrypted secret. See `docs/OWNERSHIP.md`.
 - `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
   typed name/id → `delete_client_full()`. Refuses internal (billing_exempt) and owner
   (`OWNER_EMAILS` + ADMIN_EMAIL/GMAIL_USER) accounts SERVER-side. Reuses

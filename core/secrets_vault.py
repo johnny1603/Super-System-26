@@ -7,7 +7,9 @@ WordPress Application Passwords, vendor logins) is stored ENCRYPTED in
 `access_token_enc`, never in plaintext. The ONLY function that decrypts is
 `get_client_secret(client_id, service)`. Nothing returns a secret to a browser,
 an API response, a log line or a model prompt — screens get
-`public_account()`: connected + at most the last 4 characters.
+`public_account()`: connected + at most the last 4 characters, and CLIENT
+screens not even those (core/ownership: the account's identity only;
+tests/test_ownership.py guards every client route).
 
 ## How
 

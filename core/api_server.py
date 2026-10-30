@@ -1956,11 +1956,38 @@ _DISCONNECT_GROUPS = {
     # Google verification round 2 (flags off by default)
     "gmail": ["gmail_send"],
     "search_console": ["search_console"],
+    # Keys the client created in their own CRM / automation accounts
+    # (core/ownership): disconnecting deletes our copy, nothing at the vendor
+    "crm": ["crm"],
+    "manychat": ["manychat"],
+    "make": ["make"],
 }
 
 # Groups whose grant can be revoked at the provider; every other group's
 # disconnect is deleting our stored copy (see the notes in _revoke_grant)
-_REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta", "gmail", "search_console")
+_REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta", "gmail", "search_console",
+                     "wordpress")
+
+def _revoke_wordpress_password(rows: list, secret: str):
+    """Delete OUR Application Password on the client's site — the one we
+    authenticate with, found by introspecting it. Nothing else on the site
+    is touched (no other password, user, post or page). True = deleted,
+    False = not confirmed (site down, WP < 5.7), None = nothing stored."""
+    row = next((r for r in rows if r.get("platform") == "wordpress"), None)
+    if not row or ":" not in (secret or ""):
+        return None
+    from core import wordpress_service
+    site_url = row.get("account_id") or ""
+    username, password = secret.split(":", 1)
+    try:
+        uuid = (wordpress_service.introspect_application_password(site_url, username, password) or {}).get("uuid")
+        if not uuid:
+            return False
+        wordpress_service.delete_application_password(site_url, username, password, uuid)
+        return True
+    except Exception as e:
+        print(f"[disconnect] wordpress password not deleted on the site: {type(e).__name__}")
+        return False
 
 def _revoke_grant(client_id: int, platform: str, rows: list = None):
     """Revoke our access at the provider for ONE disconnect group. Never
@@ -1991,10 +2018,12 @@ def _revoke_grant(client_id: int, platform: str, rows: list = None):
         token = tokens.get("meta_ads") or next((t for t in tokens.values() if t), "")
         if token:
             revoked = meta_service.revoke_permissions(token)
-    # wordpress: nothing to revoke remotely - the Application Password lives in
-    # the client's own wp-admin (we tell them they can delete it there too);
-    # deleting our stored copy of it IS the disconnect.
-    # higgsfield: same as wordpress - the API key lives on the client's own
+    elif platform == "wordpress":
+        # Our Application Password is deleted ON the site (core/ownership:
+        # leaving removes our access everywhere); the client can also delete
+        # it in their own wp-admin, and deleting our stored copy follows.
+        revoked = _revoke_wordpress_password(rows, tokens.get("wordpress"))
+    # higgsfield: the API key lives on the client's own
     # Higgsfield account; they can revoke it themselves at
     # cloud.higgsfield.ai/api-keys, and deleting our stored copy is our half.
     return revoked
@@ -5079,6 +5108,191 @@ def client_export_google_doc(dataset: str, request: Request):
                  {"dataset": dataset}, {"link": uploaded.get("webViewLink", "")})
     return {"success": True, "data": {"link": uploaded.get("webViewLink", ""),
                                       "shared_with": client.get("email", "")}}
+
+# ─── Ownership & portability (core/ownership) ────────────────────────────────
+# Everything the business owns, our access to it, and leaving: the
+# "החשבונות והנכסים שלי" page, "ייצוא הכל", the handover document and the
+# admin offboarding kit. No route here ever reads a secret.
+
+@app.get("/api/client/ownership")
+def client_ownership(request: Request, lang: str = "he"):
+    # Plain `def`: blocking Supabase reads
+    client_id = _require_session(request)
+    from core import ownership
+    accounts = get_accounts(client_id)
+    return {"success": True, "data": {
+        "accounts": ownership.accounts_view(client_id, _DISCONNECT_GROUPS, lang, accounts=accounts),
+        "assets": ownership.assets_view(client_id, lang, accounts=accounts),
+    }}
+
+def _handover_file(doc: dict, fmt: str, client_id: int) -> Response:
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if fmt == "pdf":
+        return Response(content=export_service.print_html(doc["title"], doc["subtitle"], doc["columns"],
+                                                          doc["rows"], summary=doc["summary"]),
+                        media_type="text/html; charset=utf-8")
+    if fmt == "docx":
+        return Response(content=export_service.to_docx(doc["title"], doc["subtitle"], doc["columns"],
+                                                       doc["rows"], summary=doc["summary"]),
+                        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="uallak-handover-{client_id}-{stamp}.docx"'})
+    raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_FORMAT"})
+
+@app.get("/api/client/ownership/handover")
+def client_ownership_handover(request: Request, format: str = "pdf"):
+    """The handover document for THIS session's client, any time — not only
+    when leaving: knowing what you own is the point."""
+    client_id = _require_session(request)
+    from core import ownership
+    doc = ownership.handover(client_id, _DISCONNECT_GROUPS, get_client(client_id) or {})
+    return _handover_file(doc, format, client_id)
+
+def _export_all_zip(client_id: int) -> bytes:
+    """"ייצוא הכל": one .zip of files in the formats we already export —
+    Excel per dataset, the full record as JSON, the handover document — built
+    for the SESSION's client only. A part that fails is listed in the README
+    instead of sinking the rest. Videos and media are LINKS (they never pass
+    through our server — core/drive_download)."""
+    import io
+    import zipfile
+    from core import landing_pages, outreach_tracker, ownership
+    files, missing = {}, []
+
+    def add(name: str, build):
+        try:
+            content = build()
+        except Exception as e:
+            print(f"[export_all] client {client_id}: {name} failed: {type(e).__name__}")
+            missing.append(name)
+            return
+        if content is not None:
+            files[name] = content
+
+    def dataset(name: str):
+        data = _export_dataset(client_id, name)
+        return export_service.to_xlsx(data["title"], data["columns"], data["rows"])
+
+    def outreach():
+        rows = outreach_tracker.page(client_id)["rows"]
+        if not rows:
+            return None
+        columns, table = outreach_tracker.export_table(rows)
+        return export_service.to_xlsx("פניות לעסקים", columns, table)
+
+    def landing():
+        pages = landing_pages.list_pages(client_id)
+        if not pages:
+            return None
+        rows = []
+        for p in pages:
+            content = p.get("content") or {}
+            rows.append({"created_at": p.get("created_at"), "title": p.get("title"), "slug": p.get("slug"),
+                         "status": p.get("status"), "headline": content.get("headline"),
+                         "subheadline": content.get("subheadline"),
+                         "benefits": " • ".join(content.get("benefits") or []),
+                         "sections": " • ".join(f"{s.get('title', '')}: {s.get('body', '')}"
+                                                for s in content.get("sections") or []),
+                         "cta_text": content.get("cta_text")})
+        return export_service.to_xlsx("דפי נחיתה", [
+            ("created_at", "תאריך"), ("title", "שם"), ("slug", "כתובת"), ("status", "סטטוס"),
+            ("headline", "כותרת"), ("subheadline", "כותרת משנה"), ("benefits", "יתרונות"),
+            ("sections", "חלקים"), ("cta_text", "כפתור")], rows)
+
+    def handover():
+        doc = ownership.handover(client_id, _DISCONNECT_GROUPS, get_client(client_id) or {})
+        return export_service.to_docx(doc["title"], doc["subtitle"], doc["columns"], doc["rows"],
+                                      summary=doc["summary"])
+
+    add("leads.xlsx", lambda: dataset("leads"))
+    add("media-and-videos.xlsx", lambda: dataset("media"))
+    add("outreach.xlsx", outreach)
+    add("landing-pages.xlsx", landing)
+    add("activity-report.xlsx", lambda: dataset("activity"))
+    add("billing.xlsx", lambda: dataset("billing"))
+    add("handover.docx", handover)
+    add("full-record.json", lambda: json.dumps(_build_client_export(client_id), ensure_ascii=False,
+                                                indent=2, default=str).encode("utf-8"))
+
+    readme = ["ייצוא הכל — uallak",
+              "כל הקבצים כאן שייכים לעסק שלך. אין בהם אף מפתח או סיסמה.",
+              "תמונות וסרטונים: הקובץ media-and-videos.xlsx כולל קישור לכל קובץ; הסרטונים עצמם נמצאים "
+              "ב-Drive, ב-YouTube או ב-TikTok שלך.",
+              "", "Export everything — uallak. Every file here belongs to your business; no key or password "
+              "is included. Media and videos are listed with a link to each file."]
+    if missing:
+        readme += ["", "לא נכללו הפעם (אפשר לנסות שוב בעוד רגע): " + ", ".join(missing)]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("README.txt", ("﻿" + "\n".join(readme)).encode("utf-8"))
+        for name, content in files.items():
+            z.writestr(name, content)
+    return buffer.getvalue()
+
+@app.get("/api/client/export-all")
+def client_export_all(request: Request):
+    # Plain `def`: PayPal + ad platforms + Supabase, all blocking
+    client_id = _require_session(request)
+    content = _export_all_zip(client_id)
+    log_activity(client_id, "export_service", "export_all_downloaded", {}, {})
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(content=content, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="uallak-export-all-{stamp}.zip"'})
+
+class OffboardingKitRequest(BaseModel):
+    confirm: str = ""     # the client id, typed
+
+_OFFBOARDING_KIT_CHAT = ("הכנו עבורך מסמך העברה עם כל החשבונות והנכסים של העסק, ומה עושים עם כל אחד. "
+                         "הסרנו את הגישה של uallak מכל החשבונות שחיברת — שום דבר שלך אצל הספקים לא נמחק. "
+                         "את המסמך ואת כל המידע שלך אפשר להוריד בכל רגע בעמוד \"החשבונות והנכסים שלי\".")
+
+@app.post("/api/admin/clients/{client_id}/offboarding-kit")
+def admin_offboarding_kit(client_id: int, req: OffboardingKitRequest, request: Request):
+    """Admin offboarding kit: the handover document FIRST (a snapshot while
+    our access still exists), then our access is removed everywhere through
+    the client's own disconnect path. Never deletes the client's data at a
+    vendor, never touches billing, status or records — closure/transfer and
+    deletion are separate actions. Plain `def`: provider revoke calls."""
+    _require_admin(request)
+    from core import ownership
+    client = get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_FOUND"})
+    if (req.confirm or "").strip() != str(client_id):
+        raise HTTPException(status_code=400, detail={"code": "ERR_CONFIRM_MISMATCH"})
+
+    doc = ownership.handover(client_id, _DISCONNECT_GROUPS, client)
+    html = export_service.print_html(doc["title"], doc["subtitle"], doc["columns"], doc["rows"],
+                                     summary=doc["summary"])
+    doc_link = ""
+    if drive_service.is_media_configured():
+        try:
+            from agents.media_agent import _subfolder
+            uploaded = drive_service.upload_google_doc(
+                _subfolder(client_id, "exports"), doc["title"],
+                export_service.doc_html(doc["title"], doc["subtitle"], doc["columns"], doc["rows"]))
+            if client.get("email"):
+                drive_service.share_with_user(uploaded["id"], client["email"], role="writer")
+            doc_link = uploaded.get("webViewLink", "")
+        except Exception as e:
+            print(f"[offboarding_kit] client {client_id}: Google Doc not created: {type(e).__name__}")
+
+    result = ownership.revoke_all(client_id, _DISCONNECT_GROUPS, _disconnect_platform)
+    not_confirmed = [r["group"] for r in result["revoked"] if r["provider_revoked"] is False]
+    if result["failed"] or not_confirmed:
+        alert("client_offboarding", [
+            f"client {client_id}: offboarding kit - access removal needs a manual check: "
+            f"failed {[f['group'] for f in result['failed']]}, not confirmed at the provider {not_confirmed}"])
+    log_activity(client_id, "ownership", "offboarding_kit_created",
+                 {"revoked": [r["group"] for r in result["revoked"]],
+                  "failed": [f["group"] for f in result["failed"]], "not_confirmed": not_confirmed},
+                 {"doc_link": doc_link})
+    try:
+        log_communication(client_id, "outbound", "dashboard_chat", _OFFBOARDING_KIT_CHAT)
+    except Exception as e:
+        print(f"[offboarding_kit] client {client_id}: chat note not posted: {type(e).__name__}")
+    return {"success": True, "data": {"html": html, "doc_link": doc_link, "revoked": result["revoked"],
+                                      "failed": result["failed"], "not_confirmed": not_confirmed}}
 
 # ─── Outreach page (core/outreach_tracker) ───────────────────────────────────
 # One row per business the client's Gmail agent found / drafted for / wrote

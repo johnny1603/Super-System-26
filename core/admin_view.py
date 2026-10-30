@@ -47,7 +47,7 @@ READ_ENDPOINTS = frozenset({
     "client_search_console_sites", "client_leads_list", "client_lead_capture_setup",
     "client_landing_pages", "client_crm_status", "client_support", "client_media_drive",
     "client_media_drive_thumb", "client_media_drive_file", "client_media_assets",
-    "client_suggestions", "client_open_actions", "client_outreach",
+    "client_suggestions", "client_open_actions", "client_outreach", "client_ownership",
 })
 STAFF_DECIDE_ENDPOINT = "client_decide_action"
 READ_METHODS = ("GET", "HEAD")

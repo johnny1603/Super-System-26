@@ -264,7 +264,8 @@ class SeparateConnections(ToolCase):
         view = vt.statuses(27)
         self.assertEqual(set(view), {"heygen", "elevenlabs", "higgsfield"})
         self.assertNotIn(KEY_H, repr(view))
-        self.assertEqual(view["heygen"]["last4"], "AAAA")
+        self.assertNotIn("last4", view["heygen"])               # not even part of it
+        self.assertNotIn(KEY_H[-4:], repr(view))
         self.assertNotIn(KEY_H, repr(self.records) + repr(self.logs))
 
     def test_consent_belongs_to_its_tool(self):

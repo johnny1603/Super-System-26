@@ -220,8 +220,8 @@ def statuses(client_id: int) -> dict:
         health = (record.get("health") or {}).get(tool) or {}
         out[tool] = {"tool": tool, "label": spec["label"], "client_label": client_label(tool),
                      "what_he": spec["what_he"],
+                     # No part of the key, not even its last 4 (core/ownership)
                      "status": status(client_id, tool, accounts, record),
-                     "last4": row.get("secret_last4", "") if row else "",
                      "checked_at": health.get("checked_at"),
                      "can_test": tool in CHECKS,
                      "consent_scope": spec["consent"], "consent_required": spec["consent_required"],

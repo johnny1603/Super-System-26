@@ -1813,6 +1813,7 @@ async function openDrawer(clientId) {
       ${c.email
         ? `<button class="drawer-action-btn secondary" onclick="resetClientPassword(${Number(c.id)})">🔑 איפוס סיסמה + ניתוק מכל המכשירים</button>`
         : ''}
+      <button class="drawer-action-btn secondary" onclick="runOffboardingKit(${Number(c.id)})" title="מסמך העברה עם כל החשבונות והנכסים, ואז הסרת הגישה שלנו מכל החשבונות. לא מוחק שום דבר של הלקוח אצל הספקים, לא נוגע בחיוב ולא סוגר את החשבון.">📦 ערכת יציאה: מסמך העברה + הסרת הגישה שלנו</button>
     </div>
 
     <div class="drawer-section">
@@ -3008,6 +3009,38 @@ async function resetClientPassword(clientId) {
     const res = await api(`/api/admin/clients/${clientId}/password-reset`, { method: 'POST' });
     if (!res.success) { alert('האיפוס נכשל' + ((res.detail || {}).code === 'ERR_AUTH_NOT_READY' ? ' — המיגרציה עדיין לא הורצה' : '')); return; }
     alert(res.data.email_sent ? 'בוצע — נשלח ללקוח מייל להגדרת סיסמה חדשה' : 'הסיסמה אופסה, אבל המייל לא נשלח: ' + (res.data.error || ''));
+  } catch (e) {
+    alert('שגיאה — נסה שוב');
+  }
+}
+
+// Offboarding kit (core/ownership): handover document first, then OUR access
+// is removed from every connected account. Billing, status and records are
+// untouched (closure/transfer and deletion are separate actions).
+async function runOffboardingKit(clientId) {
+  const typed = prompt('ערכת יציאה ללקוח ' + clientId + ':\n'
+    + '1. מכינים מסמך העברה עם כל החשבונות והנכסים (נשמר גם כ-Google Doc בתיקיית הלקוח ומשותף איתו)\n'
+    + '2. מסירים את הגישה של uallak מכל החשבונות המחוברים\n'
+    + 'שום דבר של הלקוח אצל הספקים לא נמחק. החיוב והחשבון לא משתנים.\n\n'
+    + 'להמשך, הקלידו את מספר הלקוח:');
+  if (typed === null) return;
+  try {
+    const res = await api(`/api/admin/clients/${clientId}/offboarding-kit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: String(typed).trim() }),
+    });
+    if (!res.success) {
+      alert((res.detail || {}).code === 'ERR_CONFIRM_MISMATCH' ? 'המספר לא תואם — לא בוצע דבר' : 'הפעולה נכשלה — לא בוצע דבר');
+      return;
+    }
+    const d = res.data;
+    const url = URL.createObjectURL(new Blob([d.html], { type: 'text/html' }));
+    window.open(url, '_blank', 'noopener');
+    const lines = ['בוצע. הגישה הוסרה מ: ' + ((d.revoked || []).map(r => r.group).join(', ') || 'אין חיבורים')];
+    if ((d.not_confirmed || []).length) lines.push('לא אושר אצל הספק (לבדוק ידנית): ' + d.not_confirmed.join(', '));
+    if ((d.failed || []).length) lines.push('נכשל (נשלחה התראה): ' + d.failed.map(f => f.group).join(', '));
+    lines.push(d.doc_link ? 'Google Doc: ' + d.doc_link : 'Google Doc לא נוצר — המסמך נפתח בחלון חדש להדפסה/שמירה');
+    alert(lines.join('\n'));
   } catch (e) {
     alert('שגיאה — נסה שוב');
   }

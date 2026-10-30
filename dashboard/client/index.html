@@ -938,6 +938,20 @@ body {
   color: #B9E6C9; white-space: pre; direction: ltr; text-align: left;
 }
 
+/* ---------- ACCOUNTS & ASSETS ---------- */
+.own-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+.own-card { background: var(--panel); border: 1px solid var(--border); border-radius: 13px; padding: 16px 18px; }
+.own-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.own-name { font-size: 14.5px; font-weight: 700; }
+.own-chip { font-size: 11.5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); color: var(--gray); white-space: nowrap; }
+.own-chip.connected { color: var(--green); border-color: var(--green); }
+.own-chip.needs_attention { color: var(--accent); border-color: var(--accent); }
+.own-line { font-size: 12.5px; color: var(--gray); line-height: 1.65; margin-top: 6px; }
+.own-ident { font-size: 13px; margin-top: 8px; word-break: break-word; }
+.own-ident a { color: var(--accent); }
+.own-key { font-size: 11.5px; color: var(--gray); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.own-card .disconnect-link { margin-top: 10px; }
+
 /* ---------- PERSONAL AREA ---------- */
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 26px; }
 .detail-card {
@@ -1159,6 +1173,9 @@ a.media-item:hover { border-color: var(--accent); }
   </button>
   <button class="nav-item" data-view="personal" onclick="showView('personal')">
     <span class="nav-ico">👤</span><span data-i18n="nav_personal">אזור אישי</span>
+  </button>
+  <button class="nav-item" data-view="ownership" onclick="showView('ownership')">
+    <span class="nav-ico">🔑</span><span data-i18n="nav_ownership">חשבונות ונכסים</span>
   </button>
   <button class="nav-item" data-view="support" onclick="showView('support')">
     <span class="nav-ico">💬</span><span data-i18n="nav_support">תמיכה</span>
@@ -1928,6 +1945,37 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 </div><!-- /viewPersonal -->
+
+<!-- ---------- ACCOUNTS & ASSETS (core/ownership) ----------
+     Every account and asset belongs to the client's business; we show the
+     account's identity and our access — never a key, token or any part of one. -->
+<div class="view" id="viewOwnership">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="own_title">החשבונות והנכסים שלי</div>
+      <div class="section-sub" data-i18n="own_sub">כל מה שכאן שייך לעסק שלך. לנו יש רק גישה — ואפשר להסיר אותה בכל רגע.</div>
+    </div>
+  </div>
+  <div class="own-list" id="ownAccounts"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+
+  <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="own_assets_title">הנכסים של העסק</div></div></div>
+  <div class="own-list" id="ownAssets"></div>
+
+  <div class="info-panel" style="margin-top:22px;">
+    <div class="info-panel-title" data-i18n="own_export_title">ייצוא הכל</div>
+    <div class="info-panel-text" data-i18n="own_export_text">קובץ אחד עם כל מה שלך.</div>
+    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="export-btn" href="/api/client/export-all" onclick="ownExportStarted()" data-i18n="own_export_btn">⬇ ייצוא הכל (ZIP)</a>
+      <a class="export-btn" href="/api/client/ownership/handover?format=pdf" target="_blank" rel="noopener" data-i18n="own_handover_pdf">📄 מסמך העברה (PDF)</a>
+      <a class="export-btn" href="/api/client/ownership/handover?format=docx" data-i18n="own_handover_docx">📝 מסמך העברה (Word)</a>
+    </div>
+  </div>
+
+  <div class="info-panel">
+    <div class="info-panel-title" data-i18n="own_leave_title">אם תרצו לעזוב</div>
+    <div class="info-panel-text" data-i18n="own_leave_text">עוזבים בקלות ובכבוד.</div>
+  </div>
+</div><!-- /viewOwnership -->
 
 <!-- ---------- HUMAN SUPPORT ---------- -->
 <div class="view" id="viewSupport">
@@ -2739,6 +2787,34 @@ const DASH_I18N = {
   act_avatar_video_created: { he:'סרטון אווטאר חדש נוצר — מחכה בתיקיית ה-Drive שלך', en:'A new avatar video was created — waiting in your Drive folder', fr:'Une nouvelle vidéo avatar a été créée — dans votre dossier Drive', ar:'أُنشئ فيديو أفاتار جديد — بانتظارك في مجلد Drive', ru:'Создано новое видео с аватаром — ждёт в вашей папке Drive' },
   act_avatar_tier_set: { he:'חבילת האווטאר שלך עודכנה', en:'Your avatar tier was updated', fr:'Votre formule avatar a été mise à jour', ar:'حُدّثت باقة الأفاتار الخاصة بك', ru:'Ваш тариф аватара обновлён' },
   act_account_disconnected: { he:'חיבור מערכת נותק לבקשתך', en:'A platform connection was disconnected at your request', fr:'Une connexion a été retirée à votre demande', ar:'فُصل اتصال منصة بناءً على طلبك', ru:'Подключение платформы отключено по вашему запросу' },
+  act_offboarding_kit_created: { he:'הוכן מסמך העברה, והגישה שלנו הוסרה מכל החשבונות', en:'Handover document prepared and our access removed from every account', fr:'Document de passation préparé et notre accès retiré de tous les comptes', ar:'أُعدّت وثيقة التسليم وأُزيلت صلاحيتنا من جميع الحسابات', ru:'Подготовлен документ передачи, наш доступ убран из всех аккаунтов' },
+  act_export_all_downloaded: { he:'הורדת ייצוא מלא של כל המידע שלך', en:'Full export of all your data downloaded', fr:'Export complet de toutes vos données téléchargé', ar:'تم تنزيل تصدير كامل لكل بياناتك', ru:'Скачан полный экспорт всех ваших данных' },
+  // "החשבונות והנכסים שלי" (core/ownership) — titles/access/key lines come from the server
+  nav_ownership: { he:'חשבונות ונכסים', en:'Accounts & assets', fr:'Comptes et actifs', ar:'الحسابات والأصول', ru:'Аккаунты и активы' },
+  own_title: { he:'החשבונות והנכסים שלי', en:'My accounts & assets', fr:'Mes comptes et actifs', ar:'حساباتي وأصولي', ru:'Мои аккаунты и активы' },
+  own_sub: { he:'כל מה שכאן שייך לעסק שלך. לנו יש רק גישה — ואפשר להסיר אותה בכל רגע.', en:'Everything here belongs to your business. We only have access — and you can remove it at any time.', fr:'Tout ce qui figure ici appartient à votre entreprise. Nous n\'avons qu\'un accès — que vous pouvez retirer à tout moment.', ar:'كل ما هنا ملك لعملك. لدينا صلاحية وصول فقط — ويمكنك إزالتها في أي وقت.', ru:'Всё здесь принадлежит вашему бизнесу. У нас есть только доступ — и его можно убрать в любой момент.' },
+  own_none: { he:'עוד לא חובר אף חשבון. כשמחברים חשבון, הוא מופיע כאן עם הגישה המדויקת שיש לנו אליו.', en:'No account is connected yet. When you connect one, it appears here with the exact access we have.', fr:'Aucun compte connecté pour l\'instant. Dès que vous en connectez un, il apparaît ici avec l\'accès exact dont nous disposons.', ar:'لا يوجد حساب مرتبط بعد. عند ربط حساب سيظهر هنا مع صلاحية الوصول الدقيقة التي لدينا.', ru:'Пока ни один аккаунт не подключён. Когда подключите, он появится здесь — с точным описанием нашего доступа.' },
+  own_load_failed: { he:'לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.', en:'We couldn\'t load the list right now. Please try again in a moment.', fr:'Impossible de charger la liste pour le moment. Réessayez dans un instant.', ar:'تعذّر تحميل القائمة الآن. حاول مرة أخرى بعد قليل.', ru:'Сейчас не удалось загрузить список. Попробуйте чуть позже.' },
+  own_access_label: { he:'הגישה שלנו:', en:'Our access:', fr:'Notre accès :', ar:'صلاحيتنا:', ru:'Наш доступ:' },
+  own_since: { he:'מחובר מאז {date}', en:'Connected since {date}', fr:'Connecté depuis le {date}', ar:'مرتبط منذ {date}', ru:'Подключено с {date}' },
+  own_status_connected: { he:'מחובר', en:'Connected', fr:'Connecté', ar:'مرتبط', ru:'Подключено' },
+  own_status_pending: { he:'חסר עוד שלב', en:'One step missing', fr:'Il manque une étape', ar:'تنقص خطوة', ru:'Не хватает одного шага' },
+  own_status_needs_attention: { he:'צריך לחבר מחדש', en:'Needs reconnecting', fr:'À reconnecter', ar:'يحتاج إلى إعادة ربط', ru:'Нужно переподключить' },
+  own_disconnect: { he:'הסרת הגישה שלנו', en:'Remove our access', fr:'Retirer notre accès', ar:'إزالة صلاحيتنا', ru:'Убрать наш доступ' },
+  own_disconnect_confirm: { he:'לחיצה נוספת מסירה את הגישה — החשבון עצמו נשאר שלך', en:'Click again to remove access — the account itself stays yours', fr:'Cliquez à nouveau pour retirer l\'accès — le compte reste à vous', ar:'اضغط مرة أخرى لإزالة الصلاحية — الحساب نفسه يبقى لك', ru:'Нажмите ещё раз, чтобы убрать доступ — сам аккаунт остаётся вашим' },
+  own_disconnecting: { he:'מסירים…', en:'Removing…', fr:'Retrait…', ar:'جارٍ الإزالة…', ru:'Убираем…' },
+  own_disconnected: { he:'הגישה שלנו הוסרה. החשבון וכל מה שבו נשארו אצלך.', en:'Our access was removed. The account and everything in it stayed with you.', fr:'Notre accès a été retiré. Le compte et tout son contenu restent à vous.', ar:'أُزيلت صلاحيتنا. الحساب وكل ما فيه بقي لديك.', ru:'Наш доступ убран. Аккаунт и всё в нём остались у вас.' },
+  own_disconnect_failed: { he:'לא הצלחנו להסיר את הגישה כרגע. נסו שוב, או כתבו לנו בצ׳אט ונעשה את זה יחד.', en:'We couldn\'t remove the access right now. Try again, or message us in the chat and we\'ll do it together.', fr:'Impossible de retirer l\'accès pour le moment. Réessayez, ou écrivez-nous dans le chat et nous le ferons ensemble.', ar:'تعذّرت إزالة الصلاحية الآن. حاول مرة أخرى، أو راسلنا في الدردشة وسنقوم بذلك معًا.', ru:'Сейчас не удалось убрать доступ. Попробуйте ещё раз или напишите нам в чат — сделаем вместе.' },
+  own_assets_title: { he:'הנכסים של העסק', en:'Your business assets', fr:'Les actifs de votre entreprise', ar:'أصول عملك', ru:'Активы вашего бизнеса' },
+  own_assets_none: { he:'עוד אין כאן נכסים — אתר, דפי נחיתה ולידים יופיעו כאן כשיהיו.', en:'No assets yet — your site, landing pages and leads appear here once they exist.', fr:'Pas encore d\'actifs — votre site, vos pages d\'atterrissage et vos leads apparaîtront ici.', ar:'لا توجد أصول بعد — سيظهر هنا موقعك وصفحات الهبوط والعملاء المحتملون عند وجودهم.', ru:'Активов пока нет — сайт, лендинги и лиды появятся здесь, когда будут.' },
+  own_export_title: { he:'ייצוא הכל', en:'Export everything', fr:'Tout exporter', ar:'تصدير كل شيء', ru:'Экспортировать всё' },
+  own_export_text: { he:'קובץ אחד עם כל מה שלך: הלידים, התוכן, רשימת התמונות והסרטונים עם קישור לכל קובץ, הפניות לעסקים, דפי הנחיתה, הדוחות והחיובים — ב-Excel, ועותק מלא ב-JSON. בלי אף מפתח או סיסמה.', en:'One file with everything that\'s yours: leads, content, the list of images and videos with a link to each file, business outreach, landing pages, reports and billing — in Excel, plus a full copy in JSON. No key or password included.', fr:'Un seul fichier avec tout ce qui vous appartient : leads, contenus, liste des images et vidéos avec un lien vers chaque fichier, prospection, pages d\'atterrissage, rapports et facturation — en Excel, plus une copie complète en JSON. Aucune clé ni mot de passe inclus.', ar:'ملف واحد بكل ما يخصك: العملاء المحتملون، المحتوى، قائمة الصور والفيديوهات مع رابط لكل ملف، التواصل مع الأعمال، صفحات الهبوط، التقارير والفواتير — بصيغة Excel، مع نسخة كاملة بصيغة JSON. دون أي مفتاح أو كلمة مرور.', ru:'Один файл со всем вашим: лиды, контент, список изображений и видео со ссылкой на каждый файл, обращения к бизнесам, лендинги, отчёты и платежи — в Excel, плюс полная копия в JSON. Без ключей и паролей.' },
+  own_export_btn: { he:'⬇ ייצוא הכל (ZIP)', en:'⬇ Export everything (ZIP)', fr:'⬇ Tout exporter (ZIP)', ar:'⬇ تصدير كل شيء (ZIP)', ru:'⬇ Экспортировать всё (ZIP)' },
+  own_export_started: { he:'מכינים את הקובץ — ההורדה תתחיל בעוד כמה שניות.', en:'Preparing your file — the download starts in a few seconds.', fr:'Préparation du fichier — le téléchargement démarre dans quelques secondes.', ar:'نجهّز الملف — سيبدأ التنزيل خلال ثوانٍ.', ru:'Готовим файл — загрузка начнётся через несколько секунд.' },
+  own_handover_pdf: { he:'📄 מסמך העברה (PDF)', en:'📄 Handover document (PDF)', fr:'📄 Document de passation (PDF)', ar:'📄 وثيقة التسليم (PDF)', ru:'📄 Документ передачи (PDF)' },
+  own_handover_docx: { he:'📝 מסמך העברה (Word)', en:'📝 Handover document (Word)', fr:'📝 Document de passation (Word)', ar:'📝 وثيقة التسليم (Word)', ru:'📝 Документ передачи (Word)' },
+  own_leave_title: { he:'אם תרצו לעזוב', en:'If you decide to leave', fr:'Si vous décidez de partir', ar:'إذا قررت المغادرة', ru:'Если решите уйти' },
+  own_leave_text: { he:'עוזבים בקלות ובכבוד: מכינים לך מסמך העברה עם כל חשבון ונכס ומה עושים עם כל אחד, מסירים את הגישה של uallak מכל החשבונות — ולא מוחקים שום דבר שלך אצל הספקים. הכל נשאר אצלך. כדי להתחיל, כתבו לנו בצ׳אט או בוואטסאפ.', en:'Leaving is easy and dignified: we prepare a handover document (in Hebrew) listing every account and asset and what to do with each, remove uallak\'s access from every account — and delete nothing of yours at the vendors. You keep everything. To start, message us in the chat or on WhatsApp.', fr:'Partir est simple et respectueux : nous préparons un document de passation (en hébreu) listant chaque compte et actif et ce qu\'il faut faire pour chacun, nous retirons l\'accès de uallak à tous les comptes — et nous ne supprimons rien de ce qui vous appartient chez les fournisseurs. Vous gardez tout. Pour commencer, écrivez-nous dans le chat ou sur WhatsApp.', ar:'المغادرة سهلة ومحترمة: نُعدّ لك وثيقة تسليم (بالعبرية) تضم كل حساب وأصل وما يجب فعله بكل منها، ونزيل صلاحية uallak من جميع الحسابات — ولا نحذف أي شيء يخصك لدى المزوّدين. يبقى كل شيء لديك. للبدء، راسلنا في الدردشة أو عبر واتساب.', ru:'Уйти легко и достойно: мы готовим документ передачи (на иврите) со всеми аккаунтами и активами и тем, что делать с каждым, убираем доступ uallak из всех аккаунтов — и ничего вашего у поставщиков не удаляем. Всё остаётся у вас. Чтобы начать, напишите нам в чат или в WhatsApp.' },
   act_subscription_cancelled: { he:'המנוי בוטל — לא יהיו חיובים נוספים', en:'The subscription was cancelled — no further charges', fr:'L\'abonnement a été annulé — plus aucun prélèvement', ar:'أُلغي الاشتراك — لا رسوم إضافية', ru:'Подписка отменена — списаний больше не будет' },
   act_account_closed: { he:'החשבון נסגר לבקשתך', en:'The account was closed at your request', fr:'Le compte a été fermé à votre demande', ar:'أُغلق الحساب بناءً على طلبك', ru:'Аккаунт закрыт по вашему запросу' },
   act_account_transferred: { he:'הניהול הועבר לגורם אחר לבקשתך', en:'Management was transferred at your request', fr:'La gestion a été transférée à votre demande', ar:'نُقلت الإدارة بناءً على طلبك', ru:'Ведение передано по вашему запросу' },
@@ -3848,8 +3924,7 @@ function paintTool(tool) {
   const stored = t.status !== 'not_connected';
   const st = document.getElementById('toolStatus-' + tool);
   st.removeAttribute('data-i18n');
-  st.textContent = uallakI18n.t(TOOL_STATUS_KEYS[t.status] || 'not_connected')
-    + (stored && t.last4 ? ' · ••••' + t.last4 : '');
+  st.textContent = uallakI18n.t(TOOL_STATUS_KEYS[t.status] || 'not_connected');
   st.className = 'conn-status' + ({ connected: ' connected', connected_unverified: ' unverified',
                                      key_rejected: ' rejected' }[t.status] || '');
   document.getElementById('toolOpenBtn-' + tool).style.display = stored ? 'none' : '';
@@ -5597,7 +5672,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'personal', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'personal', 'ownership', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -5618,6 +5693,7 @@ function showView(name) {
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); loadDriveMirror(''); }
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
+  if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
 }
 
@@ -6822,6 +6898,119 @@ async function loadAccount() {
     console.error('account load failed', e);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCOUNTS & ASSETS — "החשבונות והנכסים שלי" (core/ownership)
+// ═══════════════════════════════════════════════════════════════════════════
+// Titles, access lines and the key note come from the server in the page's
+// language. Built with textContent only; links are https only. No key, token
+// or part of one ever reaches this page — the server never sends one.
+function ownEl(tag, cls, text) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text) el.textContent = text;
+  return el;
+}
+
+function ownIdentity(item) {
+  const line = ownEl('div', 'own-ident');
+  if (item.what) line.appendChild(document.createTextNode(item.what + ': '));
+  if (item.link && /^https:\/\//.test(item.link)) {
+    const a = ownEl('a', '', item.text || item.link);
+    a.href = item.link; a.target = '_blank'; a.rel = 'noopener';
+    line.appendChild(a);
+  } else {
+    line.appendChild(document.createTextNode(item.text || ''));
+  }
+  return line;
+}
+
+function ownAccountCard(acc) {
+  const t = uallakI18n.t;
+  const card = ownEl('div', 'own-card');
+  const head = ownEl('div', 'own-head');
+  head.appendChild(ownEl('div', 'own-name', acc.title));
+  head.appendChild(ownEl('span', 'own-chip ' + acc.status, t('own_status_' + acc.status)));
+  card.appendChild(head);
+  (acc.items || []).forEach(item => card.appendChild(ownIdentity(item)));
+  card.appendChild(ownEl('div', 'own-line', t('own_access_label') + ' ' + acc.access));
+  if (acc.connected_at) card.appendChild(ownEl('div', 'own-line', t('own_since', { date: fmtDate(acc.connected_at) })));
+  card.appendChild(ownEl('div', 'own-key', acc.key_note));
+  const btn = ownEl('button', 'disconnect-link', t('own_disconnect'));
+  btn.type = 'button';
+  btn.onclick = () => ownDisconnect(acc.group, btn);
+  card.appendChild(btn);
+  return card;
+}
+
+function ownAssetRow(asset) {
+  const card = ownEl('div', 'own-card');
+  card.appendChild(ownEl('div', 'own-name', asset.title));
+  if (asset.text || asset.link) card.appendChild(ownIdentity({ what: '', text: asset.text, link: asset.link }));
+  return card;
+}
+
+async function loadOwnership() {
+  const t = uallakI18n.t;
+  const box = document.getElementById('ownAccounts');
+  const assetsBox = document.getElementById('ownAssets');
+  let data = null;
+  try {
+    const res = await fetch('/api/client/ownership?lang=' + encodeURIComponent(uallakI18n.current()),
+                            { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const body = await res.json();
+    data = body.success ? body.data : null;
+  } catch (e) {
+    data = null;
+  }
+  box.textContent = '';
+  assetsBox.textContent = '';
+  if (!data) { box.appendChild(ownEl('div', 'empty-row', t('own_load_failed'))); return; }
+  if (!data.accounts.length) box.appendChild(ownEl('div', 'empty-row', t('own_none')));
+  data.accounts.forEach(acc => box.appendChild(ownAccountCard(acc)));
+  if (!data.assets.length) assetsBox.appendChild(ownEl('div', 'empty-row', t('own_assets_none')));
+  data.assets.forEach(asset => assetsBox.appendChild(ownAssetRow(asset)));
+}
+
+// Same two-step arm as disconnectPlatform (no blocking dialog); the server
+// removes ONLY our access (core/api_server._disconnect_platform)
+async function ownDisconnect(group, btn) {
+  const t = uallakI18n.t;
+  if (!btn.classList.contains('arm')) {
+    btn.classList.add('arm');
+    btn.textContent = t('own_disconnect_confirm');
+    setTimeout(() => { if (btn.isConnected) { btn.classList.remove('arm'); btn.textContent = t('own_disconnect'); } }, 6000);
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = t('own_disconnecting');
+  try {
+    const res = await fetch('/api/client/disconnect', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: group }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      showNotice(t('own_disconnected'), 'success');
+      loadOwnership();
+      return;
+    }
+  } catch (e) {
+    console.error('ownership disconnect failed', e);
+  }
+  btn.disabled = false;
+  btn.classList.remove('arm');
+  btn.textContent = t('own_disconnect');
+  showNotice(t('own_disconnect_failed'), 'warn');
+}
+
+function ownExportStarted() {
+  showNotice(uallakI18n.t('own_export_started'), 'success');
+}
+
+if (uallakI18n.onChange) uallakI18n.onChange(() => { if (viewLoaded.ownership) loadOwnership(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MARKETING AUTOMATION (ManyChat / Make) — ROUTE TO A HUMAN, NEVER A FLOW
