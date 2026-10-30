@@ -25,9 +25,10 @@ talks HTTP.
 VERIFICATION STATUS: written against TikTok's public developer docs
 (developers.tiktok.com), never run with a live key/app — same accepted MVP
 state as every other services module in this codebase before its first real
-key. The likeliest first-round fixes: exact response field names for
-get_user_info (TikTok's docs excerpt didn't confirm GET vs a query-param
-shape) and whatever undocumented chunk-size ceiling FILE_UPLOAD enforces
+key. First live fix (2026-10-31, sandbox): user/info/ nests the account
+in data.user — get_user_info unwraps it, and the stored account id now
+comes from the token response's open_id (account_open_id). Still unverified:
+whatever undocumented chunk-size ceiling FILE_UPLOAD enforces
 (a single-chunk upload is used here — see upload_video_chunk — since
 uallak's short-form clips are always well under any plausible ceiling).
 """
@@ -149,11 +150,20 @@ def api_post(path: str, access_token: str, json_body: dict = None, params: dict 
     return response.json().get("data", {})
 
 
-def api_get(path: str, access_token: str, params: dict = None) -> dict:
+def _api_get_body(path: str, access_token: str, params: dict = None) -> dict:
+    """The WHOLE response body ({"data": ..., "error": {"code", "message",
+    "log_id"}}) — for a caller that needs the log_id as well as the data."""
     response = httpx.get(f"{API_BASE}/{path.lstrip('/')}", headers=_headers(access_token, json_body=False),
                          params=params or {}, timeout=TIMEOUT)
     _raise_api_error(response)
-    return response.json().get("data", {})
+    return response.json()
+
+
+def api_get(path: str, access_token: str, params: dict = None) -> dict:
+    """The response's "data" object, exactly as TikTok nests it. Generic on
+    purpose: an endpoint that wraps its payload one level deeper (user/info/
+    → data.user) unwraps it in its own function."""
+    return _api_get_body(path, access_token, params).get("data") or {}
 
 
 # 190/401-equivalent: TikTok's expired/invalid token error code. Access
@@ -263,11 +273,43 @@ def refresh_access_token(refresh_token: str) -> dict:
     return body
 
 
+USER_INFO_FIELDS = "open_id,display_name,avatar_url"
+
+
+def get_user_info_with_log(access_token: str) -> tuple:
+    """(user, log_id). /v2/user/info/ nests the account one level deeper than
+    the other endpoints: {"data": {"user": {"open_id", "display_name",
+    "avatar_url"}}, "error": {"code": "ok", "log_id": ...}}. Returning
+    data itself (the bug found live on 2026-10-31) handed the callback
+    {"user": {...}}, which has no open_id at the top."""
+    body = _api_get_body("user/info/", access_token, params={"fields": USER_INFO_FIELDS})
+    data = body.get("data") or {}
+    user = data.get("user") if isinstance(data.get("user"), dict) else {}
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    return user, error.get("log_id") or ""
+
+
 def get_user_info(access_token: str) -> dict:
-    """{open_id, display_name, avatar_url, ...} — the connected account's
-    identity, analogous to Meta's get_pages() asset discovery."""
-    return api_get("user/info/", access_token,
-                   params={"fields": "open_id,display_name,avatar_url"})
+    """{open_id, display_name, avatar_url} — the connected account itself
+    (data.user). DISPLAY data: the account's identity for storage is the
+    token response's open_id (account_open_id)."""
+    return get_user_info_with_log(access_token)[0]
+
+
+def account_open_id(tokens: dict, user: dict) -> tuple:
+    """(open_id, note). The token response's open_id is authoritative — it
+    comes with the grant itself, so a change in user/info can never break
+    connecting again. user/info's open_id is the fallback only. note is ""
+    or a short line for the log when the two disagree / only one exists."""
+    from_token = str((tokens or {}).get("open_id") or "").strip()
+    from_user = str((user or {}).get("open_id") or "").strip()
+    if from_token and from_user and from_token != from_user:
+        return from_token, "open_id differs between the token response and user/info — using the token's"
+    if from_token:
+        return from_token, ""
+    if from_user:
+        return from_user, "token response carried no open_id — using user/info's"
+    return "", ""
 
 
 # ─── Content Posting API (publishing) ──────────────────────────────────────

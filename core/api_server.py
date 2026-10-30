@@ -3240,11 +3240,26 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
     try:
         tokens = tiktok_service.exchange_code(code)
         access_token, refresh_token = tokens["access_token"], tokens["refresh_token"]
-        user = tiktok_service.get_user_info(access_token)
-        open_id = user.get("open_id", "")
+        # user/info is DISPLAY data (name, avatar): a failure there must not
+        # stop the connection — the account id comes from the token response
+        user, info_log_id = {}, ""
+        try:
+            user, info_log_id = tiktok_service.get_user_info_with_log(access_token)
+        except Exception as e:
+            info_log_id = getattr(e, "log_id", "") or ""
+            print(f"[tiktok oauth] client {client_id}: user/info failed (display data only): "
+                  f"{type(e).__name__} log_id={info_log_id or '-'}")
+        open_id, note = tiktok_service.account_open_id(tokens, user)
+        if note:
+            print(f"[tiktok oauth] client {client_id}: {note}")
         if not open_id:
-            print(f"[tiktok oauth] client {client_id}: no open_id in user info response")
-            return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+            log_ids = f"token log_id={tokens.get('log_id') or '-'}, user/info log_id={info_log_id or '-'}"
+            print(f"[tiktok oauth] client {client_id}: no open_id in the token response or user/info ({log_ids})")
+            from core.chat_fallback import alert_once
+            alert_once("tiktok_oauth", client_id, "tiktok_oauth:no_open_id",
+                       f"client {client_id}: TikTok connect returned no open_id (account id) in the token "
+                       f"response or user/info — nothing stored. {log_ids}. Give TikTok support the log_id.", 1)
+            return RedirectResponse(url="/dashboard/?connect_error=tiktok_no_account")
 
         # The user can untick a scope on TikTok's consent screen. Stored
         # anyway (identity works); core/tiktok_grant records what THIS grant
