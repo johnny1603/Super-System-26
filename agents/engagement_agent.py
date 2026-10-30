@@ -478,6 +478,19 @@ def _collect_login_facts(client_id: int) -> dict:
     # (2.4) Weekly satisfaction check-in, at most once a week
     facts["ask_for_feedback"] = not _acted_within(client_id, FEEDBACK_ASK_ACTION,
                                                   FEEDBACK_ASK_INTERVAL_DAYS)
+
+    # (2.5) Site visitors yesterday from their own Google Analytics (round 2,
+    # ANALYTICS_ENABLED, off). The direction is computed in code
+    # (site_traffic.compare) and present only when both days have data —
+    # the model states it as given, never computes one.
+    facts["site_traffic"] = None
+    from core.round2_flags import analytics_enabled
+    if analytics_enabled():
+        try:
+            from core import site_traffic
+            facts["site_traffic"] = site_traffic.briefing_fact(site_traffic.traffic(client_id))
+        except Exception as e:
+            print(f"[{AGENT_NAME}] site traffic fact failed for client {client_id}: {type(e).__name__}")
     return facts
 
 
@@ -496,6 +509,10 @@ You receive FACTS about what is genuinely true right now. Rules about them:
 - If `new_leads_this_week` > 0, be pleased about it and say the number. You may name the
   CHANNEL (`lead_channels`) but you must NOT say whether traffic was organic or paid — we
   do not measure that yet, and guessing would be a lie about their marketing.
+- If `site_traffic` is present, you may say how many people visited their site yesterday
+  (`visitors_yesterday`). Mention up/down ONLY if `direction` is present, exactly as given,
+  compared with the same day last week; quote `change_pct` only if it is not null. Never
+  compute, round or infer a trend yourself, and never call it organic or paid.
 - If `ask_for_feedback` is true, close by asking — warmly, once — whether they're happy with
   the platform so far and whether there's anything to pass to the team that builds it.
 - If nothing above applies, a short warm greeting that offers help is the whole message.

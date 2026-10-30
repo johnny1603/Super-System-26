@@ -22,6 +22,7 @@ measures it (an <audio> element) and sends it — accepted only within
 """
 import struct
 from datetime import datetime, timezone
+from core import drive_storage
 
 FOLDER = "voice"
 MAX_MB = 25
@@ -59,6 +60,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@drive_storage.scoped
 def _folder(client_id: int) -> str:
     from agents.media_agent import _subfolder
     return _subfolder(client_id, FOLDER)
@@ -121,6 +123,7 @@ def _duration(content: bytes, ext: str, hint):
 
 # ─── Upload / list / delete ──────────────────────────────────────────────────
 
+@drive_storage.scoped
 def upload(client_id: int, filename: str, content: bytes, duration_hint=None) -> dict:
     """Store one recording. Raises VoiceError(code) — PLAIN_HE[code] is the
     client's sentence."""
@@ -159,6 +162,7 @@ def _row(f: dict) -> dict:
             "uploaded_at": props.get("uploaded_at") or f.get("createdTime") or ""}
 
 
+@drive_storage.scoped
 def list_recordings(client_id: int) -> list:
     """Newest first. Raises when Drive can't be read (callers decide)."""
     from core import drive_service as drive
@@ -178,6 +182,7 @@ def get(client_id: int, file_id: str) -> dict:
         return {}
 
 
+@drive_storage.scoped
 def delete(client_id: int, file_ids: list) -> dict:
     """Trash the named recordings — only ids found in this client's folder."""
     from core import drive_service as drive

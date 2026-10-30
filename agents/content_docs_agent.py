@@ -40,6 +40,7 @@ from supabase import create_client as _supabase_client
 
 from core import drive_service as drive
 from core.agent_base import agent_alert, log_step, timed_step
+from core import drive_storage
 
 AGENT_NAME = "content_docs_agent"
 
@@ -71,6 +72,7 @@ def _log_activity(client_id: int, action_type: str, details: dict, result: dict 
     }).execute()
 
 
+@drive_storage.scoped
 def deliver_doc(client_id: int, title: str, html_content: str,
                 doc_kind: str = "content", body: str = "") -> dict:
     """Creates the Google Doc, shares it, opens the approval card, and pushes

@@ -32,6 +32,7 @@ test on client 27 confirms them — see docs/CREATIVE-TOOLS.md.
 """
 import os
 from datetime import datetime, timezone
+from core import drive_storage
 
 DEFAULT_PROVIDER = "heygen"
 VOICE_KINDS = ("recording", "clone")
@@ -107,6 +108,7 @@ class HiggsfieldProvider:
                 "job_id": result.get("job_id", ""), "credits": result.get("credits")}
 
 
+@drive_storage.scoped
 def _character_image(client_id: int) -> str:
     """The newest image the client put in avatar-source (their own material)."""
     from agents.avatar_agent import _source_files
@@ -130,6 +132,7 @@ def providers_view(client_id: int) -> list:
 
 # ─── Voice → audio URL ───────────────────────────────────────────────────────
 
+@drive_storage.scoped
 def _audio_from_recording(client_id: int, file_id: str) -> str:
     from core import drive_service as drive
     from core import voice_recordings
@@ -138,6 +141,7 @@ def _audio_from_recording(client_id: int, file_id: str) -> str:
     return drive.make_file_public(file_id)
 
 
+@drive_storage.scoped
 def _audio_from_clone(client_id: int, script: str) -> tuple:
     """(audio_url, characters). ElevenLabs errors → plain Hebrew."""
     from agents.avatar_agent import current_voice_id, has_consent

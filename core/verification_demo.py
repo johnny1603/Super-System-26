@@ -16,6 +16,7 @@ import os
 from datetime import datetime, timezone
 
 from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits
+from core import drive_storage
 
 DEMO_PREFIX = "uallak verification test"
 
@@ -72,6 +73,7 @@ def create_test_campaign(client_id: int) -> dict:
             "customer_id": info.get("display_id", ""), "account_name": info.get("name", "")}
 
 
+@drive_storage.scoped
 def _demo_video_file(client_id: int) -> dict:
     """The smallest video in the client's own Drive media folder (root or one
     level down), within core/video_limits — the same source and limit a real

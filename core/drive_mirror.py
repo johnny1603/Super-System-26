@@ -24,11 +24,11 @@ Rules this module holds:
   clients opening their Media tab can produce through this cache.
 - Nothing here ever reaches a chat prompt.
 """
-import os
 import time
 from collections import OrderedDict
 
 from core import drive_service as drive
+from core import drive_storage
 
 SERVICE_NAME = "drive_mirror"
 
@@ -57,9 +57,32 @@ class NotInClientFolder(Exception):
 
 # ─── Which folder is this client's ────────────────────────────────────────────
 
+def forget(client_id: int):
+    """Where the client's files live changed (core/drive_storage.forget)."""
+    _root_cache.pop(client_id, None)
+    _tree_cache.pop(client_id, None)
+    for key in [k for k in _list_cache if k[0] == client_id]:
+        _list_cache.pop(key, None)
+    for key in [k for k in _thumb_cache if k[0] == client_id]:
+        _thumb_cache.pop(key, None)
+
+
+@drive_storage.scoped
 def client_root_id(client_id: int) -> str:
     """The client's media folder id, or "" if it doesn't exist yet. Never
-    creates it (this is the read path).
+    creates it (this is the read path). Wherever drive_storage.location says
+    the files live: the uallak folder in the client's own Drive, or their
+    folder in our Shared Drive (shared_client_root)."""
+    where = drive_storage.location(client_id)
+    if where["kind"] == drive_storage.CLIENT:
+        return where["root"]
+    return shared_client_root(client_id)
+
+
+def shared_client_root(client_id: int) -> str:
+    """The client's folder in OUR Shared Drive, or "" — whatever the pointer
+    says (the migration and the usage scan read it; run as the service
+    account).
 
     The authority is the `client-{id} — …` folder under the CURRENT media
     root — the one media_agent.ensure_client_media_root writes into. The
@@ -72,7 +95,7 @@ def client_root_id(client_id: int) -> str:
     by its name prefix there. Resolved per client for ROOT_RESOLVE_SECONDS."""
     from agents import media_agent
     cached = media_agent._folder_cache.get(client_id)
-    if cached and cached.get("root"):
+    if cached and cached.get("root") and cached.get("kind") == drive_storage.SHARED:
         return cached["root"]   # found/created under the current root by this process
     hit = _root_cache.get(client_id)
     if hit and hit[0] > time.time() - ROOT_RESOLVE_SECONDS:
@@ -83,7 +106,7 @@ def client_root_id(client_id: int) -> str:
             .eq("action_type", "media_folder_created")
             .order("created_at", desc=True).limit(1).execute().data or [])
     hinted = ((rows[0].get("details") or {}).get("folder_id") or "") if rows else ""
-    media_root = media_agent._media_root_id()
+    media_root = drive_storage.shared_parent_id()
     if not media_root:
         return hinted
     root = ""
@@ -123,7 +146,9 @@ def _assert_in_client_tree(client_id: int, root: str, item_id: str):
     tree = _tree(client_id, root)
     if item_id in tree["folders"]:
         return
-    media_root = os.environ.get("DRIVE_MEDIA_FOLDER_ID", "")
+    # The boundary above the client's root: our Shared Drive media root, or
+    # the client's My Drive (the uallak folder's recorded parent)
+    media_root = drive_storage.location(client_id).get("parent") or ""
     current, hops = item_id, 0
     while hops < MAX_PARENT_HOPS:
         parents = drive.get_meta(current, "id,parents").get("parents") or []
@@ -133,7 +158,7 @@ def _assert_in_client_tree(client_id: int, root: str, item_id: str):
         if parent in tree["folders"]:
             return
         if parent == media_root:
-            break   # reached the shared media root without passing this client's folder
+            break   # reached the media root / My Drive without passing this client's folder
         current, hops = parent, hops + 1
     raise NotInClientFolder(item_id)
 
@@ -159,6 +184,7 @@ def _shape(item: dict) -> dict:
             "web_view_link": item.get("webViewLink", "")}
 
 
+@drive_storage.scoped
 def list_folder(client_id: int, folder_id: str = "", page_token: str = "",
                 refresh: bool = False) -> dict:
     """One page of the client's media folder (folder_id "" = its root).
@@ -212,6 +238,7 @@ def page_allowed(pages_already_loaded: int) -> bool:
 
 # ─── Thumbnails (fallback proxy) ──────────────────────────────────────────────
 
+@drive_storage.scoped
 def thumbnail(client_id: int, file_id: str) -> tuple:
     """(bytes, content_type) of a small thumbnail for a file in the client's
     folder — fetched as the service account, size-capped, cached in memory.

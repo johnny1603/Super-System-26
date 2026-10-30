@@ -309,6 +309,22 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   Console read (`core/search_console_service.py`), behind `GMAIL_SEND_ENABLED` /
   `SEARCH_CONSOLE_ENABLED` (`core/round2_flags.py`). Off = never requested, routes 404, cards
   hidden. Needs `migrations/2026-10-30-gmail-outreach.sql` before switching on.
+  **Round 2 also (built 2026-10-31, OFF, same review round):** Analytics read
+  (`analytics.readonly`, `ANALYTICS_ENABLED`): `core/analytics_service.py` (accountSummaries +
+  runReport only) → `core/site_traffic.py` (THE reader: 1 h cache, today / yesterday / 7·30·90
+  days + previous, sources; "no data yet" ≠ 0 — a period before the property's first session is
+  None; `compare()` is the only trend maker, and a trend exists only when BOTH periods are fully
+  recorded) → performance channel `website_traffic` + `traffic` block, client_state
+  `website_traffic`, the greeting's `site_traffic` fact. Client-owned Drive (`drive.file`,
+  `DRIVE_FILE_ENABLED`): **`core/drive_storage.py` is the ONE storage seam** — `location()`
+  (client's Drive only when flag on + active `google_drive_file` row + pointer flipped; any
+  doubt = our Shared Drive) and `scope()` / `@scoped` (whose credentials a Drive call uses, via
+  `drive_service._auth_override`). Every Drive reader/writer is `@drive_storage.scoped`; only
+  drive_storage reads `DRIVE_MEDIA_FOLDER_ID`. A new Drive caller must be scoped too
+  (`tests/test_round2_analytics_drive.py`). Migration (`core/drive_migration.py`, admin): copy →
+  verify (size + md5) → flip → free (typed phrase + re-verify) — never a delete before a
+  verification. Shared Drive size alert: `POST /api/admin/drive/usage-scan`
+  (`DRIVE_SHARED_ALERT_GB`, not scheduled yet).
   **Outreach page** (`core/outreach_tracker`, client view "פניות לעסקים" + admin tab + export):
   one row per business, status DERIVED at read time from prospect_contacts / agent_actions /
   outreach_sends / outreach_marks / suppression. We never read mail, so "ענו" / "ביקשו להסיר" /
@@ -391,7 +407,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/drive_service.py` — Google Drive archive for offboarded clients (service account
   via `GOOGLE_SERVICE_ACCOUNT_JSON`, folder `DRIVE_ARCHIVE_FOLDER_ID`). Closure/transfer
   exports the full client record to Drive, then purges the live rows to a PII-stripped
-  tombstone; offboarded clients are hard-locked out of login.
+  tombstone; offboarded clients are hard-locked out of login. Client MEDIA files go wherever
+  `core/drive_storage.location` says (our Shared Drive today; the client's own Drive behind
+  `DRIVE_FILE_ENABLED`) — never pick a destination in a caller.
 - `core/drive_mirror.py` + `core/drive_download.py` — the Media tab's live listing of
   the client's Drive folder, and its preview/direct-download proxy. A file id from the
   browser is authorised ONLY by walking Drive `parents` up to the client's root, fresh

@@ -45,7 +45,12 @@ LEAD_SOURCE_PLATFORM = {"google_ads": "google_ads", "meta": "meta"}
 # The dashboard card each "connect" action points at
 CONNECT_TARGET = {"google_ads": "gadsBtn", "meta": "metaBtn", "tiktok": "tiktokBtn",
                   "youtube": "youtubeBtn",
-                  "organic_seo": "siteBtn", "website_tracking": "gtmLink"}
+                  "organic_seo": "siteBtn", "website_tracking": "gtmLink",
+                  "website_traffic": "gaBtn"}
+# Round 2 (ANALYTICS_ENABLED, off): real visitors from the client's GA4
+# property (core/site_traffic). The channel exists ONLY while the flag is on —
+# off, the key is absent and the dashboard renders nothing for it.
+TRAFFIC_CHANNEL = "website_traffic"
 
 # Reads that have no cache of their own (TikTok/YouTube engagement, the GTM
 # live-version read) — and that alert on failure — are cached here so a page
@@ -322,6 +327,33 @@ def _tracking_card(client_id: int, platforms: set) -> dict:
     return _card("connected_no_data", last_checked=pulled)
 
 
+def _traffic_card(client_id: int) -> dict:
+    """Visitors from GA4. No session ever recorded → connected_no_data with
+    no numbers ("no data yet" is not 0 visitors)."""
+    from core import site_traffic
+    t = site_traffic.traffic(client_id)
+    if not t.get("connected"):
+        return _card("not_connected")
+    if t.get("choose_property"):
+        return _card("needs_attention", reason="choose_property", last_checked=_now())
+    if t.get("error"):
+        return _card("needs_attention", reason=t.get("reason") or "sync_failed", last_checked=_now())
+    if not t.get("first_data_date"):
+        return _card("connected_no_data", last_checked=t.get("pulled_at") or _now())
+    week = next((w for w in t["windows"] if w["days"] == 7), {})
+    month = next((w for w in t["windows"] if w["days"] == 30), {})
+    pick = lambda period: (period or {}).get("users")
+    return _card("active", data_pulled_at=t.get("pulled_at"), key_numbers={
+        "visitors_today": pick(t.get("today")),
+        "visitors_7_days": pick(week.get("current")),
+        "visitors_prev_7_days": pick(week.get("previous")),
+        "change_7_days": (week.get("change") or {}).get("users"),
+        "visitors_30_days": pick(month.get("current")),
+        "visitors_prev_30_days": pick(month.get("previous")),
+        "change_30_days": (month.get("change") or {}).get("users"),
+    })
+
+
 def _leads_card(leads: dict) -> dict:
     if leads.get("error"):
         return _card("needs_attention", reason="sync_failed", last_checked=_now())
@@ -376,8 +408,16 @@ def channel_statuses(client_id: int, _organic: dict = None, _leads: dict = None,
         "organic_seo": False,
         "website_tracking": "google_tagmanager" in platforms, "leads": True,
     }
+    channels = CHANNELS
+    from core.round2_flags import analytics_enabled
+    if analytics_enabled():
+        channels = CHANNELS + (TRAFFIC_CHANNEL,)
+        resolvers[TRAFFIC_CHANNEL] = lambda: _traffic_card(client_id)
+        connected_any[TRAFFIC_CHANNEL] = "google_analytics" in {a.get("platform") for a in accounts}
+        # Every site has visitors to show — offered with the website, like tracking
+        plan[TRAFFIC_CHANNEL] = plan["website_tracking"] or plan["organic_seo"]
     cards = {}
-    for channel in CHANNELS:
+    for channel in channels:
         # A live connection always counts as in plan; with an unreadable
         # package nothing is ASSUMED owed (not_in_plan stays neutral)
         in_plan = connected_any[channel] or (plan["resolved"] and plan[channel]) or channel == "leads"
@@ -423,5 +463,15 @@ def performance_page(client_id: int) -> dict:
     for card in statuses["channels"].values():
         card.pop("_daily", None)
 
-    return {"channels": statuses["channels"], "plan_resolved": statuses["plan_resolved"],
+    page = {"channels": statuses["channels"], "plan_resolved": statuses["plan_resolved"],
             "paid": paid, "organic": organic, "generated_at": statuses["generated_at"]}
+    traffic_card = statuses["channels"].get(TRAFFIC_CHANNEL)
+    if traffic_card and traffic_card.get("status") == "active":
+        # Same cached read the card used: windows with previous periods and
+        # code-computed changes, plus the traffic sources
+        from core import site_traffic
+        t = site_traffic.traffic(client_id)
+        page["traffic"] = {k: t.get(k) for k in ("today", "yesterday", "same_day_last_week",
+                                                  "yesterday_change", "windows", "sources",
+                                                  "first_data_date", "pulled_at")}
+    return page

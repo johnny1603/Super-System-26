@@ -65,6 +65,7 @@ import os
 import time
 import unicodedata
 from datetime import datetime, timezone
+from core import drive_storage
 
 SERVICE_NAME = "chat_uploads"
 DRIVE_MAX_BYTES = 5 * 1024 ** 4      # Google Drive's own per-file maximum (5 TB) — not ours
@@ -350,11 +351,13 @@ def check_chunk(offset: int, length: int, total: int):
         raise UploadRefused("bad_chunk", f"short middle chunk ({length} bytes)")
 
 
+@drive_storage.scoped
 def _folder_id(client_id: int, kind: str) -> str:
     from agents.media_agent import _subfolder
     return _subfolder(client_id, FOLDERS[kind])
 
 
+@drive_storage.scoped
 def begin(client_id: int, persona: str, filename: str, total: int, head: bytes,
           hint_mime: str = "", duration_hint=None) -> dict:
     """The first chunk: decide the real type, the folder and the name, and
@@ -369,7 +372,7 @@ def begin(client_id: int, persona: str, filename: str, total: int, head: bytes,
     except UploadRefused as e:
         raise refuse(client_id, e.code, e.detail)
     name = clean_name(filename, ext, kind)
-    if not drive.is_media_configured():
+    if not drive_storage.configured(client_id):
         raise refuse(client_id, "not_configured", "DRIVE_MEDIA_FOLDER_ID / service account not set")
     props = {"uallak_kind": KIND_TAG, "uploaded_at": _now(), "source": "chat"}
     if kind == "audio":
@@ -391,6 +394,7 @@ def begin(client_id: int, persona: str, filename: str, total: int, head: bytes,
             "p": persona or "general"}
 
 
+@drive_storage.scoped
 def send(client_id: int, payload: dict, offset: int, data: bytes) -> dict:
     """Forward ONE chunk. {"done": False, "next_offset"} or {"done": True, "file"}."""
     from core import drive_service as drive
@@ -403,6 +407,7 @@ def send(client_id: int, payload: dict, offset: int, data: bytes) -> dict:
         raise refuse(client_id, "storage", f"chunk at {offset} of {payload['t']} failed: {type(e).__name__}")
 
 
+@drive_storage.scoped
 def status(client_id: int, payload: dict) -> dict:
     from core import drive_service as drive
     try:

@@ -42,6 +42,7 @@ from supabase import create_client as _supabase_client
 from core import youtube_service as yt
 from core.agent_base import agent_alert, log_step, timed_step
 from core.secrets_vault import hydrate
+from core import drive_storage
 
 AGENT_NAME = "youtube_content_agent"
 YOUTUBE_PLATFORM = "youtube"  # account_id=channel_id, access_token=refresh token
@@ -270,6 +271,7 @@ def uploads_today(client_id: int) -> int:
     return len(rows)
 
 
+@drive_storage.scoped
 def publish(client_id: int, spec: dict) -> dict:
     """Uploads an already-generated video (Drive file_id, same pull-point
     shape as tiktok_content_agent.publish — TikTok's PULL_FROM_URL reasoning

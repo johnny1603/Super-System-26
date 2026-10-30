@@ -36,6 +36,7 @@ from supabase import create_client as _supabase_client
 from core import tiktok_service as tiktok
 from core.agent_base import agent_alert, log_step, timed_step
 from core.secrets_vault import hydrate
+from core import drive_storage
 
 AGENT_NAME = "tiktok_content_agent"
 TIKTOK_PLATFORM = "tiktok"  # account_id=open_id, access_token='access::refresh' (see tiktok_service)
@@ -142,6 +143,7 @@ def _wait_for_inbox_delivery(access_token: str, publish_id: str) -> dict:
                        f"{STATUS_POLL_MAX_TRIES * STATUS_POLL_SECONDS}s")
 
 
+@drive_storage.scoped
 def publish(client_id: int, spec: dict) -> dict:
     """Sends an already-generated video to the client's TikTok INBOX for them
     to caption and publish themselves — never Direct Post (see the module

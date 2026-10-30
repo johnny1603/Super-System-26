@@ -1956,6 +1956,10 @@ _DISCONNECT_GROUPS = {
     # Google verification round 2 (flags off by default)
     "gmail": ["gmail_send"],
     "search_console": ["search_console"],
+    "analytics": ["google_analytics"],
+    # The client's OWN Drive (drive.file): disconnecting revokes our grant;
+    # the uallak folder and its files stay theirs, in their Drive
+    "google_drive": ["google_drive_file"],
     # Keys the client created in their own CRM / automation accounts
     # (core/ownership): disconnecting deletes our copy, nothing at the vendor
     "crm": ["crm"],
@@ -1966,7 +1970,7 @@ _DISCONNECT_GROUPS = {
 # Groups whose grant can be revoked at the provider; every other group's
 # disconnect is deleting our stored copy (see the notes in _revoke_grant)
 _REVOCABLE_GROUPS = ("google_ads", "gtm", "youtube", "merchant_center", "meta", "gmail", "search_console",
-                     "wordpress")
+                     "analytics", "google_drive", "wordpress")
 
 def _revoke_wordpress_password(rows: list, secret: str):
     """Delete OUR Application Password on the client's site — the one we
@@ -2004,7 +2008,8 @@ def _revoke_grant(client_id: int, platform: str, rows: list = None):
               for r in rows if r.get("has_secret")}
 
     revoked = None
-    if platform in ("google_ads", "gtm", "youtube", "merchant_center", "gmail", "search_console"):
+    if platform in ("google_ads", "gtm", "youtube", "merchant_center", "gmail", "search_console",
+                    "analytics", "google_drive"):
         # Same Google OAuth infrastructure — revoking the refresh token kills
         # the grant regardless of which scopes it carried. Every token must
         # be confirmed, not just the last one tried.
@@ -2049,6 +2054,14 @@ def _disconnect_platform(client_id: int, platform: str) -> dict:
         for provider in rank_tracking.PROVIDERS:
             if provider.id == "search_console":
                 provider.forget(client_id)
+    if platform == "analytics":
+        from core import site_traffic
+        site_traffic.forget(client_id)
+    if platform == "google_drive":
+        # Files stay in the client's Drive; we stop writing there. New files
+        # go to our Shared Drive again (core/drive_storage)
+        from core import drive_storage
+        drive_storage.forget(client_id)
 
     return {"removed": removed, "revoked": revoked}
 
@@ -2698,12 +2711,14 @@ def google_ads_oauth_callback(state: str = "", code: str = "", error: str = ""):
 def _round2_features(client_id: int) -> dict:
     """Which Google round-2 cards the dashboard may show. Both False while
     the flags are off — then nothing else is read."""
-    from core.round2_flags import gmail_send_enabled, search_console_enabled
+    from core.round2_flags import (analytics_enabled, drive_file_enabled, gmail_send_enabled,
+                                   search_console_enabled)
     gmail = False
     if gmail_send_enabled():
         from core import gmail_agent_plan
         gmail = gmail_agent_plan.entitled(client_id)
-    return {"gmail_send": gmail, "search_console": search_console_enabled()}
+    return {"gmail_send": gmail, "search_console": search_console_enabled(),
+            "analytics": analytics_enabled(), "drive_file": drive_file_enabled()}
 
 def _google_ads_account_name(client_id: int, accounts: list) -> str:
     """The connected account's name for the Connections card ("" if unknown).
@@ -3060,6 +3075,223 @@ def client_search_console_choose(req: SearchConsoleSiteRequest, request: Request
         if provider.id == "search_console":
             provider.forget(client_id)
     return {"success": True}
+
+# ─── Google Analytics (round 2, ANALYTICS_ENABLED, off) ──────────────────────
+# Read-only (analytics.readonly). One GA4 property per client, chosen from the
+# properties THEIR login can read and stored in the row's account_id like the
+# GTM container choice. Several properties → status 'pending' until chosen.
+
+@app.get("/api/oauth/analytics/start")
+def analytics_oauth_start(request: Request):
+    from core import analytics_service
+    from core.round2_flags import analytics_enabled
+    _round2_or_404(analytics_enabled())
+    client_id = _require_session(request)
+    return RedirectResponse(url=analytics_service.build_consent_url(create_oauth_state_token(client_id)))
+
+@app.get("/api/oauth/analytics/callback")
+def analytics_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import analytics_service as ga
+    from core import site_traffic
+    from core.round2_flags import analytics_enabled
+    _round2_or_404(analytics_enabled())
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        _log_bad_oauth_state("analytics", state, error)
+        return RedirectResponse(url="/dashboard/?connect_error=analytics")
+    if error or not code:
+        print(f"[analytics oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=analytics")
+    try:
+        tokens = ga.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        granted = (tokens.get("scope") or "").split()
+        if not refresh_token or ga.ANALYTICS_SCOPES[0] not in granted:
+            print(f"[analytics oauth] client {client_id}: no refresh_token or scope not granted ({granted})")
+            if refresh_token:
+                google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=analytics")
+        properties = ga.list_properties(refresh_token)
+        if not properties:
+            # Nothing we could read — keep no grant we can't use
+            google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=analytics_no_properties")
+        if len(properties) == 1:
+            upsert_account(client_id, "google_analytics", properties[0]["property"], refresh_token, "active")
+        else:
+            # The client picks which one is their site (the dashboard card lists them)
+            upsert_account(client_id, "google_analytics", "", refresh_token, "pending")
+        site_traffic.forget(client_id)
+        print(f"[analytics oauth] client {client_id}: granted scopes {granted}")
+        log_activity(client_id, "site_traffic", "account_connected",
+                     {"scopes": granted, "properties": len(properties)}, {})
+        return RedirectResponse(url="/dashboard/?connected=analytics")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=analytics")
+
+def _analytics_row(client_id: int) -> dict:
+    return next((a for a in get_accounts(client_id) if a.get("platform") == "google_analytics"), {})
+
+@app.get("/api/client/analytics/properties")
+def client_analytics_properties(request: Request):
+    # The GA4 properties the client's own login can read, and which one we read
+    from core import analytics_service as ga
+    from core.round2_flags import analytics_enabled
+    from core.secrets_vault import get_client_secret
+    _round2_or_404(analytics_enabled())
+    client_id = _require_session(request)
+    row = _analytics_row(client_id)
+    if not row:
+        return {"success": True, "data": {"connected": False, "properties": [], "selected": ""}}
+    try:
+        properties = ga.list_properties(get_client_secret(client_id, "google_analytics", any_status=True))
+    except Exception as e:
+        print(f"[analytics] client {client_id}: accountSummaries failed: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail={"code": "ERR_ANALYTICS"})
+    return {"success": True, "data": {"connected": True,
+                                      "selected": row.get("account_id", "") if row.get("status") == "active" else "",
+                                      "properties": properties}}
+
+class AnalyticsPropertyRequest(BaseModel):
+    property: str
+
+@app.post("/api/client/analytics/property")
+def client_analytics_choose(req: AnalyticsPropertyRequest, request: Request):
+    from core import analytics_service as ga
+    from core import site_traffic
+    from core.round2_flags import analytics_enabled
+    from core.secrets_vault import get_client_secret
+    _round2_or_404(analytics_enabled())
+    client_id = _require_session(request)
+    if not _analytics_row(client_id):
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_CONNECTED"})
+    refresh_token = get_client_secret(client_id, "google_analytics", any_status=True)
+    # Only a property this grant really can read — never a typed-in id
+    if req.property not in [p["property"] for p in ga.list_properties(refresh_token)]:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PROPERTY"})
+    upsert_account(client_id, "google_analytics", req.property, refresh_token, "active")
+    site_traffic.forget(client_id)
+    return {"success": True}
+
+# ─── The client's OWN Google Drive (round 2, DRIVE_FILE_ENABLED, off) ────────
+# drive.file only: the app manages the files it creates and nothing else in
+# their Drive. Where files go is core/drive_storage.location — never decided
+# here.
+
+@app.get("/api/oauth/google-drive/start")
+def google_drive_oauth_start(request: Request):
+    from core import drive_file_service
+    from core.round2_flags import drive_file_enabled
+    _round2_or_404(drive_file_enabled())
+    client_id = _require_session(request)
+    return RedirectResponse(url=drive_file_service.build_consent_url(create_oauth_state_token(client_id)))
+
+@app.get("/api/oauth/google-drive/callback")
+def google_drive_oauth_callback(state: str = "", code: str = "", error: str = ""):
+    from core import drive_file_service, drive_migration, drive_storage
+    from core.round2_flags import drive_file_enabled
+    _round2_or_404(drive_file_enabled())
+    client_id = verify_oauth_state_token(state)
+    if not client_id:
+        _log_bad_oauth_state("google_drive", state, error)
+        return RedirectResponse(url="/dashboard/?connect_error=google_drive")
+    if error or not code:
+        print(f"[google_drive oauth] client {client_id}: consent denied or no code (error={error})")
+        return RedirectResponse(url="/dashboard/?connect_error=google_drive")
+    try:
+        tokens = drive_file_service.exchange_code(code)
+        refresh_token = tokens.get("refresh_token")
+        granted = (tokens.get("scope") or "").split()
+        if not refresh_token or drive_file_service.DRIVE_FILE_SCOPES[0] not in granted:
+            print(f"[google_drive oauth] client {client_id}: no refresh_token or drive.file not granted ({granted})")
+            if refresh_token:
+                google_ads_service.revoke_token(refresh_token)
+            return RedirectResponse(url="/dashboard/?connect_error=google_drive")
+        client = get_client(client_id) or {}
+        # Stored first (status active, account_id filled in below) so the
+        # folder is created with THIS grant through drive_storage.as_client
+        upsert_account(client_id, "google_drive_file", "pending_folder", refresh_token, "active")
+        with drive_storage.as_client(client_id):
+            folders = drive_file_service.create_folders(client.get("business_name") or client.get("name") or "")
+        upsert_account(client_id, "google_drive_file", folders["root"], refresh_token, "active")
+        # Nothing of theirs in our Shared Drive → their Drive is the home at
+        # once. Otherwise files keep going to our Shared Drive until the team
+        # has copied AND verified (core/drive_migration) and flips the pointer.
+        try:
+            needs_copy = drive_migration.has_files(client_id)
+        except Exception as e:
+            print(f"[google_drive oauth] client {client_id}: Shared Drive check failed: {type(e).__name__}")
+            needs_copy = True    # unknown → never flip blind
+        previous = drive_storage.record(client_id)
+        drive_storage.save_record(client_id, {
+            **previous, "root": folders["root"], "parent": folders["parent"], "link": folders["link"],
+            "folders": folders["folders"], "connected_at": datetime.now(timezone.utc).isoformat(),
+            "pointer": drive_storage.SHARED if needs_copy else drive_storage.CLIENT})
+        log_activity(client_id, "drive_storage", "account_connected",
+                     {"scopes": granted, "needs_migration": needs_copy}, {})
+        if needs_copy:
+            from core.chat_fallback import alert_once
+            alert_once("drive_storage", client_id, "migration_needed",
+                       f"client {client_id}: connected their own Google Drive — their existing files are "
+                       f"still in our Shared Drive. Admin drawer → Drive migration: copy, verify, flip.", 7)
+        return RedirectResponse(url="/dashboard/?connected=google_drive"
+                                    + ("_pending" if needs_copy else ""))
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url="/dashboard/?connect_error=google_drive")
+
+@app.get("/api/client/google-drive/status")
+def client_google_drive_status(request: Request):
+    # Where the client's files live right now (the card's line)
+    from core import drive_storage
+    from core.round2_flags import drive_file_enabled
+    _round2_or_404(drive_file_enabled())
+    client_id = _require_session(request)
+    where = drive_storage.location(client_id)
+    rec = drive_storage.record(client_id)
+    return {"success": True, "data": {"connected": bool(rec.get("root")), "where": where["kind"],
+                                      "link": rec.get("link", "") if rec.get("root") else ""}}
+
+class DriveMigrationRequest(BaseModel):
+    step: str              # plan | copy | verify | flip | free
+    confirm: str = ""
+
+@app.post("/api/admin/clients/{client_id}/drive-migration")
+def admin_drive_migration(client_id: int, req: DriveMigrationRequest, request: Request):
+    # Plain `def`: Drive HTTP calls. One step per request, each re-checked here.
+    from core import drive_migration
+    from core.round2_flags import drive_file_enabled
+    _round2_or_404(drive_file_enabled())
+    _require_admin(request)
+    steps = {"plan": lambda: drive_migration.plan(client_id),
+             "copy": lambda: drive_migration.copy(client_id),
+             "verify": lambda: drive_migration.verify(client_id),
+             "flip": lambda: drive_migration.flip(client_id),
+             "free": lambda: drive_migration.free_shared(client_id, req.confirm),
+             "status": lambda: drive_migration.status(client_id)}
+    if req.step not in steps:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_STEP"})
+    try:
+        result = steps[req.step]()
+    except drive_migration.MigrationRefused as e:
+        raise HTTPException(status_code=409, detail={"code": e.code, "detail": e.detail})
+    if req.step in ("flip", "free"):
+        log_activity(client_id, "drive_storage", f"drive_migration_{req.step}", {"by": "admin"}, result)
+    return {"success": True, "data": result}
+
+@app.post("/api/admin/drive/usage-scan")
+def admin_drive_usage_scan(request: Request):
+    # Our Shared Drive storage per client, with an admin alert above
+    # DRIVE_SHARED_ALERT_GB. Works whatever the round-2 flag says: until
+    # drive.file is approved, OUR storage is what is being billed.
+    _require_admin(request)
+    from core import drive_storage
+    ids = [c["id"] for c in list_clients() if c.get("id")]
+    rows = drive_storage.shared_usage_scan(ids)
+    return {"success": True, "data": {"threshold_bytes": drive_storage.shared_alert_bytes(), "clients": rows}}
 
 # ─── Merchant Center: RETIRED 2026-10-21 ─────────────────────────────────────
 # It never had a feature a client could see (no feed-status screen, the scan
@@ -5162,6 +5394,19 @@ def client_export(dataset: str, request: Request, format: str = "xlsx"):
         )
     raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_FORMAT"})
 
+def _export_doc_to_drive(client_id: int, client: dict, title: str, html: str) -> dict:
+    """A native Google Doc in the client's exports folder, wherever their
+    files live (core/drive_storage). In OUR Shared Drive it is shared with
+    the client as a writer (their OWN data — edit rights to copy it
+    comfortably); in their own Drive it is already theirs."""
+    from agents.media_agent import _subfolder
+    from core import drive_storage
+    with drive_storage.scope(client_id):
+        uploaded = drive_service.upload_google_doc(_subfolder(client_id, "exports"), title, html)
+        if client.get("email") and drive_storage.location(client_id)["kind"] != drive_storage.CLIENT:
+            drive_service.share_with_user(uploaded["id"], client["email"], role="writer")
+    return uploaded
+
 @app.post("/api/client/export/{dataset}/google-doc")
 def client_export_google_doc(dataset: str, request: Request):
     """Creates a REAL, editable Google Doc of the dataset and returns its link.
@@ -5172,28 +5417,23 @@ def client_export_google_doc(dataset: str, request: Request):
     Drive, because no client-side Google OAuth in this codebase carries a
     Drive scope - the client Google flows (Ads, GTM, YouTube) request
     advertising scopes only. The client can 'Make a copy' to own it
-    outright. Closing that gap needs a new consent screen + Drive scope; see
-    HANDOFF-client-dashboard-nav.md."""
+    outright. Round 2 (DRIVE_FILE_ENABLED, off) closes that gap: once the
+    client's files live in their OWN Drive (core/drive_storage), the Doc is
+    created there, owned by them, and nothing is shared."""
     # Plain `def`: Drive HTTP calls
     client_id = _require_session(request)
+    from core import drive_storage
     # Media gate only - the offboarding ARCHIVE folder has nothing to do with this
-    if not drive_service.is_media_configured():
+    if not drive_storage.configured(client_id):
         raise HTTPException(status_code=503, detail={"code": "ERR_MEDIA_NOT_CONFIGURED"})
 
     data = _export_dataset(client_id, dataset)
     client = get_client(client_id) or {}
     try:
-        from agents.media_agent import _subfolder
-        folder = _subfolder(client_id, "exports")
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
-        uploaded = drive_service.upload_google_doc(
-            folder, f"{data['title']} — {stamp}",
-            export_service.doc_html(data["title"], data["subtitle"],
-                                    data["columns"], data["rows"]))
-        if client.get("email"):
-            # writer, not commenter: this is the client's OWN data, and they
-            # need edit rights to copy it into their Drive comfortably
-            drive_service.share_with_user(uploaded["id"], client["email"], role="writer")
+        uploaded = _export_doc_to_drive(client_id, client, f"{data['title']} — {stamp}",
+                                        export_service.doc_html(data["title"], data["subtitle"],
+                                                                data["columns"], data["rows"]))
     except Exception as e:
         print(f"[export] google doc failed for client {client_id}/{dataset}: {e}")
         raise HTTPException(status_code=502, detail={"code": "ERR_GOOGLE_DOC_FAILED"})
@@ -5359,14 +5599,12 @@ def admin_offboarding_kit(client_id: int, req: OffboardingKitRequest, request: R
     html = export_service.print_html(doc["title"], doc["subtitle"], doc["columns"], doc["rows"],
                                      summary=doc["summary"])
     doc_link = ""
-    if drive_service.is_media_configured():
+    from core import drive_storage
+    if drive_storage.configured(client_id):
         try:
-            from agents.media_agent import _subfolder
-            uploaded = drive_service.upload_google_doc(
-                _subfolder(client_id, "exports"), doc["title"],
+            uploaded = _export_doc_to_drive(
+                client_id, client, doc["title"],
                 export_service.doc_html(doc["title"], doc["subtitle"], doc["columns"], doc["rows"]))
-            if client.get("email"):
-                drive_service.share_with_user(uploaded["id"], client["email"], role="writer")
             doc_link = uploaded.get("webViewLink", "")
         except Exception as e:
             print(f"[offboarding_kit] client {client_id}: Google Doc not created: {type(e).__name__}")

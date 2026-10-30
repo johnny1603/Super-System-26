@@ -43,7 +43,6 @@ Rules this module holds:
   admin cost view can see egress.
 - Nothing here ever reaches a chat prompt.
 """
-import os
 import re
 import threading
 import time
@@ -52,6 +51,7 @@ from urllib.parse import quote
 
 from core import drive_mirror
 from core import drive_service as drive
+from core import drive_storage
 
 SERVICE_NAME = "drive_download"
 
@@ -169,13 +169,16 @@ def max_bytes() -> int:
 
 # ─── Ownership ────────────────────────────────────────────────────────────────
 
+@drive_storage.scoped
 def _verify_in_client_tree(client_id: int, root: str, file_id: str, parent: str):
     """Walk parents from the file up to THIS client's root, fresh. Raises
     DownloadRefused("not_found") when the chain never reaches it."""
     hit = _verified.get((client_id, file_id))
     if hit and hit[1] == root and hit[0] > time.time() - VERIFY_SECONDS:
         return
-    media_root = os.environ.get("DRIVE_MEDIA_FOLDER_ID", "")
+    # The boundary above the client's root: our Shared Drive media root, or
+    # the client's own My Drive (core/drive_storage)
+    media_root = drive_storage.location(client_id).get("parent") or ""
     current, hops = parent, 0
     while current and hops <= drive_mirror.MAX_PARENT_HOPS:
         if current == root:
@@ -184,7 +187,7 @@ def _verify_in_client_tree(client_id: int, root: str, file_id: str, parent: str)
             _verified[(client_id, file_id)] = (time.time(), root)
             return
         if current == media_root:
-            break   # reached the shared media root without passing this client's folder
+            break   # reached the media root / My Drive without passing this client's folder
         try:
             parents = drive.get_meta(current, "id,parents").get("parents") or []
         except Exception as e:
@@ -199,6 +202,7 @@ def _verify_in_client_tree(client_id: int, root: str, file_id: str, parent: str)
 
 # ─── Planning a request (all checks, no body yet) ─────────────────────────────
 
+@drive_storage.scoped
 def plan(client_id: int, file_id: str, inline: bool = False, fmt: str = "pdf") -> dict:
     """Every check for one preview/download, without touching the file body.
     Raises DownloadRefused (not this client's / gone / Drive down) or, once
@@ -332,6 +336,7 @@ def response_headers(p: dict) -> dict:
     }
 
 
+@drive_storage.scoped
 def open_stream(p: dict, client_id: int, by: str = "client"):
     """Open the Drive stream for a plan() result and return a generator of
     chunks. Takes a rate-limit slot (released when the generator finishes,

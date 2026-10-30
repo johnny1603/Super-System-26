@@ -37,6 +37,7 @@ import json
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from core import drive_storage
 
 SERVICE_NAME = "agent_actions"
 TABLE = "agent_actions"
@@ -135,6 +136,7 @@ def _media_upload_max_mb() -> int:
     return VIDEO_UPLOAD_MAX_MB
 
 
+@drive_storage.scoped
 def _v_media_video(value, client_id: int):
     """A video in THIS client's Drive media folder, proven by Drive's own
     parents chain (drive_mirror's walk, fresh for files), never by what the
@@ -190,6 +192,7 @@ def _v_title(value, client_id: int):
     return title
 
 
+@drive_storage.scoped
 def _media_name(client_id: int, file_id: str) -> str:
     hit = _media_meta.get((client_id, file_id))
     if hit and hit[0] > time.time() - MEDIA_META_TTL:

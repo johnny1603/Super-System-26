@@ -46,6 +46,7 @@ from core import elevenlabs_service as el
 from core import heygen_service as hg
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core import drive_storage
 
 AGENT_NAME = "avatar_agent"
 HEYGEN_PLATFORM = "heygen"
@@ -187,6 +188,7 @@ Return JSON only:
  "consent_sentence": "the exact spoken consent sentence, client language (avatar kind only, else '')"}"""
 
 
+@drive_storage.scoped
 def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
     """Shot/recording instructions for what HeyGen/ElevenLabs actually need —
     same delivery pattern as media_agent.create_filming_kit: a doc in Drive
@@ -235,6 +237,7 @@ def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
             "file_id": uploaded.get("id")}
 
 
+@drive_storage.scoped
 def _source_files(client_id: int) -> list:
     from agents.media_agent import _subfolder
     return drive.list_files(_subfolder(client_id, "avatar-source"))
@@ -242,6 +245,7 @@ def _source_files(client_id: int) -> list:
 
 # ─── Avatar creation (HeyGen — consent-gated) ─────────────────────────────────
 
+@drive_storage.scoped
 def create_avatar(client_id: int, avatar_name: str = "") -> dict:
     """Create the client's avatar from their uploaded source material, on
     THEIR HeyGen account. Photos-only → photo-avatar path (standard API).
@@ -429,6 +433,7 @@ def _voice_samples(client_id: int, file_ids: list = None) -> list:
     return samples[:5]
 
 
+@drive_storage.scoped
 def create_voice_clone(client_id: int, file_ids: list = None, notify: bool = True) -> dict:
     """Clone the client's voice from their recordings, on THEIR ElevenLabs
     account. The voice-cloning consent is a hard gate (separate from the
@@ -565,6 +570,7 @@ def get_monthly_usage(client_id: int) -> dict:
 
 # ─── Avatar video generation (tier-gated, minutes-tracked) ────────────────────
 
+@drive_storage.scoped
 def generate_avatar_video(client_id: int, script_text: str = "", avatar_id: str = "",
                           heygen_voice_id: str = "", provider: str = "", voice: dict = None) -> dict:
     """One avatar video on the provider the client chose (HeyGen avatar or a

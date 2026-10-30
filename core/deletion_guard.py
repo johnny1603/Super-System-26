@@ -14,7 +14,8 @@ every writer, present and future:
   PATCH filtered by `client_id=eq.N` / `in.(…N…)`                       refused
   POST / PATCH of app_settings "client_settings:<N>" (and the per-client
     token-health rows "gtm_token:<N>", "gads_token:<N>", "tiktok_grant:<N>",
-    the PHP2Shell record "php_exposure:<N>", and "creative_tools:<N>")   refused
+    the PHP2Shell record "php_exposure:<N>", "creative_tools:<N>" and
+    "drive_storage:<N>")                                                 refused
   PATCH of clients id=N, unless it only sets status='deleting'          refused
   DELETE / GET / HEAD                                                    allowed
 
@@ -40,7 +41,7 @@ PROGRESS_PREFIX = "client_deletion:"
 # app_settings keys that belong to ONE client ("<prefix><client_id>") —
 # the same rows client_deletion._settings_keys clears
 CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tiktok_grant:",
-                           "php_exposure:", "creative_tools:")
+                           "php_exposure:", "creative_tools:", "drive_storage:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

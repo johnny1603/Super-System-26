@@ -154,6 +154,31 @@ GROUPS = {
                      "Только чтение поисковых данных сайта: позиции, клики и показы."),
         "steps": ["הנכס ב-Search Console ונתוניו נשארים שלך; הייתה לנו גישת קריאה בלבד.", _GOOGLE_STEP],
     },
+    "analytics": {
+        "kind": "oauth",
+        "title": _L("תנועה באתר (Google Analytics)", "Site traffic (Google Analytics)",
+                    "Trafic du site (Google Analytics)", "زيارات الموقع (Google Analytics)",
+                    "Посещаемость сайта (Google Analytics)"),
+        "access": _L("קריאה בלבד של נתוני הביקורים בנכס Analytics שבחרת: מבקרים, ביקורים ומקורות תנועה.",
+                     "Read-only access to visit data in the Analytics property you chose: visitors, sessions and traffic sources.",
+                     "Lecture seule des données de visite de la propriété Analytics choisie : visiteurs, sessions et sources de trafic.",
+                     "قراءة فقط لبيانات الزيارات في خاصية Analytics التي اخترتها: الزوار والجلسات ومصادر الزيارات.",
+                     "Только чтение данных о посещениях выбранного ресурса Analytics: посетители, сеансы и источники трафика."),
+        "steps": ["הנכס ב-Google Analytics ונתוניו נשארים שלך; הייתה לנו גישת קריאה בלבד.", _GOOGLE_STEP],
+    },
+    "google_drive": {
+        "kind": "oauth",
+        "title": _L("הקבצים שלך ב-Google Drive שלך", "Your files in your own Google Drive",
+                    "Vos fichiers dans votre propre Google Drive", "ملفاتك في Google Drive الخاص بك",
+                    "Ваши файлы в вашем собственном Google Drive"),
+        "access": _L("ניהול הקבצים שהמערכת עצמה יצרה, בתיקיית uallak ב-Drive שלך — ורק אותם. אין לנו שום גישה לשאר הקבצים ב-Drive שלך.",
+                     "Managing only the files the app itself created, in the uallak folder in your Drive. We have no access to anything else in your Drive.",
+                     "Gestion uniquement des fichiers créés par l'application, dans le dossier uallak de votre Drive. Aucun accès au reste de votre Drive.",
+                     "إدارة الملفات التي أنشأها التطبيق نفسه فقط، في مجلد uallak في Drive الخاص بك. لا وصول لنا إلى أي شيء آخر في Drive.",
+                     "Управление только файлами, которые создало само приложение, в папке uallak на вашем Drive. К остальному на вашем Drive у нас нет доступа."),
+        "steps": ["תיקיית uallak וכל הקבצים בה נמצאים ב-Drive שלך ושייכים לך — כשנסיר את הגישה שלנו הם נשארים בדיוק כמו שהם.",
+                  _GOOGLE_STEP],
+    },
     "wordpress": {
         "kind": "app_password",
         "title": _L("האתר שלך (WordPress)", "Your website (WordPress)", "Votre site (WordPress)",
@@ -245,6 +270,8 @@ _ITEM = {
     "meta_instagram": _L("אינסטגרם", "Instagram", "Instagram", "إنستغرام", "Instagram"),
     "google_tagmanager": _L("קונטיינר", "Container", "Conteneur", "الحاوية", "Контейнер"),
     "search_console": _L("נכס", "Property", "Propriété", "الموقع", "Ресурс"),
+    "google_analytics": _L("נכס", "Property", "Propriété", "الخاصية", "Ресурс"),
+    "google_drive_file": _L("תיקייה", "Folder", "Dossier", "المجلد", "Папка"),
 }
 
 # account_id values that are a marker, not something the client would recognise
@@ -258,6 +285,9 @@ ASSET_TITLES = {
                          "نطاق صفحات الهبوط", "Домен лендингов"),
     "drive_folder": _L("תיקיית המדיה ב-Drive", "Media folder in Drive", "Dossier médias dans Drive",
                        "مجلد الوسائط في Drive", "Папка медиа в Drive"),
+    "drive_folder_own": _L("תיקיית uallak ב-Drive שלך", "The uallak folder in your Drive",
+                           "Le dossier uallak dans votre Drive", "مجلد uallak في Drive الخاص بك",
+                           "Папка uallak на вашем Drive"),
     "leads": _L("הלידים שלך", "Your leads", "Vos leads", "عملاؤك المحتملون", "Ваши лиды"),
 }
 
@@ -270,6 +300,8 @@ ASSET_STEPS = {
     "landing_domain": "הדומיין {ref} רשום אצלך. מפנים את רשומת ה-DNS שלו ליעד החדש.",
     "drive_folder": ("תיקיית המדיה משותפת איתך מה-Drive של uallak. לפני היציאה מורידים את הקבצים או יוצרים מהם "
                      "עותק ב-Drive שלך — 'ייצוא הכל' כולל קישור לכל קובץ."),
+    "drive_folder_own": ("הקבצים כבר נמצאים ב-Drive שלך, בתיקיית uallak, ושייכים לך. בהעברה רק מסירים את הגישה "
+                         "שלנו — אין מה להוריד ואין מה להעתיק."),
     "leads": "{ref} לידים — כולם ב'ייצוא הכל' (Excel ו-JSON).",
 }
 
@@ -325,6 +357,9 @@ def _identity(group: str, row: dict) -> dict:
         link = f"https://www.facebook.com/{aid}"
     elif platform in ("wordpress", "search_console") and aid.startswith("https://"):
         link = aid
+    elif platform == "google_drive_file":
+        # The uallak folder in the client's own Drive (its id means nothing to them)
+        text, link = "", f"https://drive.google.com/drive/folders/{aid}"
     return {"text": text, "link": link}
 
 
@@ -416,7 +451,17 @@ def assets_view(client_id: int, lang: str = "he", accounts: list = None) -> list
         activity = []
     if any(a.get("action_type") == "website_provisioned" for a in activity):
         found.append(("hosted_site", "", ""))
-    if any(a.get("action_type") == "media_folder_created" for a in activity):
+    # Where the files ACTUALLY live (core/drive_storage): the client's own
+    # Drive once the pointer flipped, otherwise our Shared Drive
+    try:
+        from core import drive_storage
+        where = drive_storage.location(client_id)
+    except Exception as e:
+        print(f"[ownership] storage location read failed for client {client_id}: {type(e).__name__}")
+        where = {"kind": "shared_drive"}
+    if where.get("kind") == "client_drive":
+        found.append(("drive_folder_own", "", where.get("link") or ""))
+    elif any(a.get("action_type") == "media_folder_created" for a in activity):
         found.append(("drive_folder", "", ""))
     for kind, counter in (("landing_pages", _count_landing_pages), ("leads", _count_leads)):
         try:

@@ -26,6 +26,7 @@ google-cloud-pubsub, and pinned explicitly in requirements.txt); the Drive
 calls themselves are plain REST via httpx, same style as the other services.
 """
 import base64
+import contextvars
 import json
 import os
 import secrets
@@ -55,12 +56,14 @@ def is_configured() -> bool:
 
 
 def is_media_configured() -> bool:
-    """The client MEDIA folders (media_agent) need the service account and
-    DRIVE_MEDIA_FOLDER_ID — and nothing else. They used to be gated on
-    is_configured(), which also demands the offboarding ARCHIVE folder, so a
-    missing archive var silently disabled every client's media folder."""
-    return bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-                and os.environ.get("DRIVE_MEDIA_FOLDER_ID"))
+    """The SHARED-DRIVE media folders (media_agent) need the service account
+    and the Shared Drive media root — and nothing else. They used to be gated
+    on is_configured(), which also demands the offboarding ARCHIVE folder, so
+    a missing archive var silently disabled every client's media folder.
+    Per client, ask core/drive_storage.configured(client_id) instead: a
+    client whose files live in their own Drive needs neither."""
+    from core import drive_storage
+    return bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") and drive_storage.shared_parent_id())
 
 
 class DriveCredentialError(RuntimeError):
@@ -197,8 +200,17 @@ def _access_token() -> str:
     return credentials.token
 
 
+# Whose Drive a call runs in. Unset = OUR service account (the Shared Drive).
+# core/drive_storage sets it — and only it — to the client's own drive.file
+# grant while a call for a client whose files live in THEIR Drive runs
+# (drive_storage.scope / @scoped). Every call below goes through _headers().
+_auth_override = contextvars.ContextVar("drive_auth_override", default=None)
+
+
 def _headers() -> dict:
-    return {"Authorization": f"Bearer {_access_token()}"}
+    override = _auth_override.get()
+    token = override["token"]() if override else _access_token()
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _check(response: httpx.Response):
@@ -331,11 +343,12 @@ MIRROR_FILE_FIELDS = "id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLi
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
-def list_children(folder_id: str, page_token: str = "", page_size: int = 40) -> dict:
+def list_children(folder_id: str, page_token: str = "", page_size: int = 40, fields: str = "") -> dict:
     """One page of a folder's direct children (files AND subfolders), folders
-    first then newest. {"files": [...], "next_page_token": str}."""
+    first then newest. {"files": [...], "next_page_token": str}. `fields`:
+    another Drive field mask (the migration walk asks for md5Checksum)."""
     params = {"q": f"'{folder_id}' in parents and trashed = false",
-              "fields": f"nextPageToken,files({MIRROR_FILE_FIELDS})",
+              "fields": fields or f"nextPageToken,files({MIRROR_FILE_FIELDS})",
               "orderBy": "folder,modifiedTime desc", "pageSize": int(page_size),
               "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
     if page_token:
@@ -517,17 +530,20 @@ class ResumableSessionGone(RuntimeError):
 
 
 def start_resumable(folder_id: str, filename: str, mime_type: str, total_bytes: int,
-                    app_properties: dict = None) -> str:
+                    app_properties: dict = None, upload_mime: str = "") -> str:
     """Open a resumable upload session for ONE file in folder_id. Returns the
     session URI (a capability: whoever holds it can write to the session —
-    never sent to a browser in the clear)."""
+    never sent to a browser in the clear). `upload_mime`: the format of the
+    bytes when it differs from the file's type — Drive then CONVERTS (a .docx
+    sent into a Google Doc, as the Drive migration does)."""
     meta = {"name": filename, "parents": [folder_id], "mimeType": mime_type}
     if app_properties:
         meta["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}
     response = httpx.post(
         DRIVE_UPLOAD_URL,
         headers={**_headers(), "Content-Type": "application/json; charset=UTF-8",
-                 "X-Upload-Content-Type": mime_type, "X-Upload-Content-Length": str(int(total_bytes))},
+                 "X-Upload-Content-Type": upload_mime or mime_type,
+                 "X-Upload-Content-Length": str(int(total_bytes))},
         params={"uploadType": "resumable", "supportsAllDrives": "true",
                 "fields": "id,name,size,mimeType,webViewLink"},
         content=json.dumps(meta, ensure_ascii=False).encode("utf-8"),

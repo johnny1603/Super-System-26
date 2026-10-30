@@ -410,6 +410,8 @@ DECRYPTING_MODULES = {
     "agents/meta_ads_agent.py", "agents/crm_agent.py", "agents/meta_content_agent.py", "agents/media_agent.py",
     "agents/avatar_agent.py", "core/media_gen_service.py", "core/elevenlabs_service.py",
     "core/avatar_video.py",      # use_vendor_key → straight into the TTS / render call
+    "core/site_traffic.py",      # GA refresh token → straight into analytics_service reads
+    "core/drive_storage.py",     # drive.file refresh token → a closure feeding drive_service._headers
 }
 
 

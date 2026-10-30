@@ -1390,6 +1390,39 @@ a.media-item:hover { border-color: var(--accent); }
       <button class="conn-btn primary" id="scBtn" onclick="connectSearchConsole()" data-i18n="connect_now">חבר עכשיו</button>
     </div>
 
+    <div class="conn-card unlocked" id="gaCard" style="display:none;">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#E37400;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M5 20V12M12 20V7M19 20V4"/></svg>
+        </div>
+        <div>
+          <div class="conn-name">Google Analytics</div>
+          <div class="conn-status" id="gaStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <div class="perf-note" data-i18n="ga_card_note">קריאה בלבד: כמה אנשים נכנסים לאתר ומאיפה הם מגיעים, בעמוד הביצועים.</div>
+      <div id="gaProps" style="display:none;margin:8px 0;">
+        <label class="perf-note" for="gaPropSelect" data-i18n="ga_property_label">הנכס שאנחנו קוראים</label>
+        <select id="gaPropSelect" onchange="chooseAnalyticsProperty(this.value)" style="width:100%;max-width:100%;"></select>
+      </div>
+      <button class="conn-btn primary" id="gaBtn" onclick="connectAnalytics()" data-i18n="connect_now">חבר עכשיו</button>
+    </div>
+
+    <div class="conn-card unlocked" id="gdriveCard" style="display:none;">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#1FA463;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M8 3h8l6 10-4 7H6l-4-7z"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="gdrive_card">הקבצים שלך ב-Google Drive שלך</div>
+          <div class="conn-status" id="gdriveStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <div class="perf-note" data-i18n="gdrive_card_note">ניצור תיקייה אחת בשם uallak ב-Drive שלך, וכל הקבצים שלך יישמרו בה — אצלך ובבעלותך. נוכל לנהל רק קבצים שהמערכת עצמה יצרה, ולעולם לא נוכל לקרוא שום דבר אחר ב-Drive שלך.</div>
+      <div class="perf-note" id="gdriveWhere" style="display:none;"></div>
+      <button class="conn-btn primary" id="gdriveBtn" onclick="connectGoogleDrive()" data-i18n="connect_now">חבר עכשיו</button>
+    </div>
+
     <div class="conn-card unlocked">
       <div class="conn-top">
         <div class="conn-icon" style="background:#246FDB;">
@@ -1704,6 +1737,17 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
   <div class="conn-grid perf-grid" id="perfChannels"><div class="empty-row" data-i18n="perf_loading">טוען…</div></div>
+
+  <!-- Round 2 (ANALYTICS_ENABLED): real visitors from the client's GA4 property; hidden unless the server sends them -->
+  <div id="perfTrafficSection" style="display:none;">
+    <div class="section-head">
+      <div>
+        <div class="section-title" data-i18n="traffic_title">תנועה לאתר</div>
+        <div class="section-sub" data-i18n="traffic_sub">מבקרים באתר מתוך Google Analytics שלך — כל תקופה מול התקופה הקודמת באותו אורך</div>
+      </div>
+    </div>
+    <div id="perfTraffic"></div>
+  </div>
 
   <div class="section-head">
     <div>
@@ -2645,6 +2689,35 @@ const DASH_I18N = {
   ch_organic_seo: { he:'קידום אורגני (SEO)', en:'Organic SEO', fr:'Référencement organique', ar:'التحسين المجاني لمحركات البحث', ru:'Органическое продвижение (SEO)' },
   ch_youtube: { he:'YouTube', en:'YouTube', fr:'YouTube', ar:'YouTube', ru:'YouTube' },
   ch_website_tracking: { he:'מדידה באתר', en:'Website tracking', fr:'Suivi du site', ar:'القياس في الموقع', ru:'Аналитика сайта' },
+  ch_website_traffic: { he:'מבקרים באתר', en:'Website visitors', fr:'Visiteurs du site', ar:'زوار الموقع', ru:'Посетители сайта' },
+  att_choose_property: { he:'נשאר לבחור איזה נכס Analytics שייך לאתר שלכם (בכרטיס Google Analytics).', en:'Just pick which Analytics property is your site (on the Google Analytics card).', fr:'Il reste à choisir la propriété Analytics de votre site (sur la carte Google Analytics).', ar:'تبقّى اختيار خاصية Analytics الخاصة بموقعك (في بطاقة Google Analytics).', ru:'Осталось выбрать ресурс Analytics вашего сайта (на карточке Google Analytics).' },
+  metric_visitors: { he:'מבקרים', en:'Visitors', fr:'Visiteurs', ar:'الزوار', ru:'Посетители' },
+  metric_sessions: { he:'ביקורים', en:'Visits', fr:'Visites', ar:'الزيارات', ru:'Визиты' },
+  metric_visitors_today: { he:'מבקרים היום (עד עכשיו)', en:'Visitors today (so far)', fr:'Visiteurs aujourd\'hui (jusqu\'ici)', ar:'زوار اليوم (حتى الآن)', ru:'Посетители сегодня (пока)' },
+  metric_visitors_yesterday: { he:'מבקרים אתמול (מול אותו יום בשבוע שעבר)', en:'Visitors yesterday (vs the same day last week)', fr:'Visiteurs hier (par rapport au même jour la semaine dernière)', ar:'زوار الأمس (مقارنة بنفس اليوم من الأسبوع الماضي)', ru:'Посетители вчера (к тому же дню прошлой недели)' },
+  metric_visitors_7: { he:'מבקרים ב-7 הימים האחרונים', en:'Visitors, last 7 days', fr:'Visiteurs, 7 derniers jours', ar:'الزوار، آخر 7 أيام', ru:'Посетители за 7 дней' },
+  metric_visitors_30: { he:'מבקרים ב-30 הימים האחרונים', en:'Visitors, last 30 days', fr:'Visiteurs, 30 derniers jours', ar:'الزوار، آخر 30 يومًا', ru:'Посетители за 30 дней' },
+  traffic_title: { he:'תנועה לאתר', en:'Website traffic', fr:'Trafic du site', ar:'زيارات الموقع', ru:'Трафик сайта' },
+  traffic_sub: { he:'מבקרים באתר מתוך Google Analytics שלך — כל תקופה מול התקופה הקודמת באותו אורך', en:'Visitors from your own Google Analytics — each period against the previous one of the same length', fr:'Visiteurs issus de votre Google Analytics — chaque période comparée à la précédente de même durée', ar:'الزوار من Google Analytics الخاص بك — كل فترة مقابل الفترة السابقة بنفس الطول', ru:'Посетители из вашего Google Analytics — каждый период против предыдущего такой же длины' },
+  traffic_sources: { he:'מאיפה הגיעו הביקורים ({n} ימים)', en:'Where visits came from ({n} days)', fr:'Provenance des visites ({n} jours)', ar:'مصادر الزيارات ({n} يومًا)', ru:'Откуда пришли визиты ({n} дн.)' },
+  traffic_no_data_note: { he:'"—" = אין עדיין נתונים לתקופה הזו ב-Analytics (זה לא אפס מבקרים). חץ מופיע רק כששתי התקופות נמדדו במלואן.', en:'"—" = no data for that period in Analytics yet (not zero visitors). An arrow appears only when both periods were fully measured.', fr:'« — » = pas encore de données pour cette période dans Analytics (pas zéro visiteur). Une flèche n\'apparaît que si les deux périodes ont été entièrement mesurées.', ar:'"—" = لا توجد بيانات لهذه الفترة في Analytics بعد (وليس صفر زوار). يظهر السهم فقط عندما تُقاس الفترتان بالكامل.', ru:'«—» = за этот период в Analytics ещё нет данных (это не ноль посетителей). Стрелка появляется, только когда оба периода измерены полностью.' },
+  src_organic: { he:'חיפוש אורגני', en:'Organic search', fr:'Recherche naturelle', ar:'البحث العضوي', ru:'Органический поиск' },
+  src_paid: { he:'פרסום ממומן', en:'Paid ads', fr:'Publicité payante', ar:'الإعلانات المدفوعة', ru:'Платная реклама' },
+  src_direct: { he:'כניסה ישירה', en:'Direct', fr:'Accès direct', ar:'مباشر', ru:'Прямые заходы' },
+  src_social: { he:'רשתות חברתיות', en:'Social', fr:'Réseaux sociaux', ar:'الشبكات الاجتماعية', ru:'Соцсети' },
+  src_referral: { he:'הפניות מאתרים אחרים', en:'Referrals from other sites', fr:'Liens depuis d\'autres sites', ar:'إحالات من مواقع أخرى', ru:'Переходы с других сайтов' },
+  src_other: { he:'אחר', en:'Other', fr:'Autre', ar:'أخرى', ru:'Другое' },
+  ga_card_note: { he:'קריאה בלבד: כמה אנשים נכנסים לאתר ומאיפה הם מגיעים, בעמוד הביצועים.', en:'Read only: how many people visit your site and where they come from, on the Performance page.', fr:'Lecture seule : combien de personnes visitent votre site et d\'où elles viennent, dans la page Performances.', ar:'قراءة فقط: كم شخصًا يزور موقعك ومن أين يأتون، في صفحة الأداء.', ru:'Только чтение: сколько людей заходит на сайт и откуда, на странице «Результаты».' },
+  ga_property_label: { he:'הנכס שאנחנו קוראים', en:'The property we read', fr:'La propriété que nous lisons', ar:'الخاصية التي نقرأها', ru:'Ресурс, который мы читаем' },
+  ga_property_pick: { he:'בחרו את הנכס של האתר שלכם…', en:'Pick your site\'s property…', fr:'Choisissez la propriété de votre site…', ar:'اختر خاصية موقعك…', ru:'Выберите ресурс вашего сайта…' },
+  gdrive_card: { he:'הקבצים שלך ב-Google Drive שלך', en:'Your files in your own Google Drive', fr:'Vos fichiers dans votre propre Google Drive', ar:'ملفاتك في Google Drive الخاص بك', ru:'Ваши файлы в вашем Google Drive' },
+  gdrive_card_note: { he:'ניצור תיקייה אחת בשם uallak ב-Drive שלך, וכל הקבצים שלך יישמרו בה — אצלך ובבעלותך. נוכל לנהל רק קבצים שהמערכת עצמה יצרה, ולעולם לא נוכל לקרוא שום דבר אחר ב-Drive שלך.', en:'We create one folder named uallak in your Drive and keep all your files there — with you, owned by you. We can manage only files the app itself created, and can never read anything else in your Drive.', fr:'Nous créons un dossier nommé uallak dans votre Drive et y gardons tous vos fichiers — chez vous, à vous. Nous ne pouvons gérer que les fichiers créés par l\'application, et ne pouvons jamais lire quoi que ce soit d\'autre dans votre Drive.', ar:'ننشئ مجلدًا واحدًا باسم uallak في Drive الخاص بك ونحفظ فيه كل ملفاتك — لديك وبملكيتك. يمكننا إدارة الملفات التي أنشأها التطبيق نفسه فقط، ولا يمكننا أبدًا قراءة أي شيء آخر في Drive.', ru:'Мы создаём на вашем Drive одну папку uallak и храним в ней все ваши файлы — у вас и в вашей собственности. Мы можем управлять только файлами, созданными самим приложением, и никогда не можем читать ничего другого на вашем Drive.' },
+  gdrive_where_own: { he:'הקבצים שלך נשמרים עכשיו ב-Drive שלך. קבצים שתוסיפו לתיקייה ידנית לא יופיעו אצלנו — אפשר להעלות דרך הצ׳אט.', en:'Your files are now kept in your Drive. Files you add to the folder by hand won\'t show here — upload through the chat instead.', fr:'Vos fichiers sont désormais dans votre Drive. Les fichiers ajoutés à la main au dossier n\'apparaîtront pas ici — passez par le chat.', ar:'ملفاتك تُحفظ الآن في Drive الخاص بك. الملفات التي تضيفها يدويًا إلى المجلد لن تظهر هنا — ارفعها عبر المحادثة.', ru:'Ваши файлы теперь хранятся на вашем Drive. Файлы, добавленные в папку вручную, здесь не появятся — загружайте их через чат.' },
+  gdrive_where_moving: { he:'מחובר. הצוות מעביר את הקבצים הקיימים ל-Drive שלך ובודק שכל קובץ הגיע שלם — עד אז הם נשארים אצלנו, בלי שום פעולה מצדכם.', en:'Connected. The team is moving your existing files into your Drive and checking every file arrived intact — until then they stay with us; nothing for you to do.', fr:'Connecté. L\'équipe transfère vos fichiers existants dans votre Drive et vérifie que chacun est arrivé intact — d\'ici là ils restent chez nous ; rien à faire de votre côté.', ar:'متصل. ينقل الفريق ملفاتك الحالية إلى Drive الخاص بك ويتحقق من وصول كل ملف سليمًا — حتى ذلك الحين تبقى لدينا، دون أي إجراء منك.', ru:'Подключено. Команда переносит ваши файлы на ваш Drive и проверяет, что каждый дошёл целым — до тех пор они у нас; от вас ничего не требуется.' },
+  notice_analytics_connected: { he:'Google Analytics חובר — המבקרים באתר יופיעו בעמוד הביצועים.', en:'Google Analytics connected — your site visitors will show on the Performance page.', fr:'Google Analytics connecté — les visiteurs du site apparaîtront dans la page Performances.', ar:'تم ربط Google Analytics — سيظهر زوار الموقع في صفحة الأداء.', ru:'Google Analytics подключён — посетители сайта появятся на странице «Результаты».' },
+  notice_analytics_no_properties: { he:'בחשבון Google הזה אין נכס Google Analytics 4, אז לא שמרנו חיבור. אפשר להתחבר עם החשבון שבו מוגדר האתר ולנסות שוב.', en:'This Google account has no Google Analytics 4 property, so nothing was connected. Sign in with the account your site is set up in and try again.', fr:'Ce compte Google n\'a aucune propriété Google Analytics 4 — rien n\'a été connecté. Connectez-vous avec le compte de votre site et réessayez.', ar:'لا توجد خاصية Google Analytics 4 في حساب Google هذا، لذلك لم يُحفظ أي ربط. سجّل الدخول بالحساب المُعدّ فيه موقعك وحاول مجددًا.', ru:'В этом аккаунте Google нет ресурса Google Analytics 4, поэтому ничего не подключено. Войдите в аккаунт, где настроен сайт, и попробуйте снова.' },
+  notice_google_drive_connected: { he:'Google Drive חובר — מעכשיו הקבצים שלך נשמרים בתיקיית uallak ב-Drive שלך.', en:'Google Drive connected — from now on your files are kept in the uallak folder in your Drive.', fr:'Google Drive connecté — vos fichiers sont désormais dans le dossier uallak de votre Drive.', ar:'تم ربط Google Drive — من الآن تُحفظ ملفاتك في مجلد uallak في Drive الخاص بك.', ru:'Google Drive подключён — теперь ваши файлы хранятся в папке uallak на вашем Drive.' },
+  notice_google_drive_pending: { he:'Google Drive חובר ונוצרה תיקיית uallak ב-Drive שלך. הצוות יעביר אליה את הקבצים הקיימים ויבדוק כל קובץ — לא צריך לעשות כלום.', en:'Google Drive connected and a uallak folder created in your Drive. The team will move your existing files into it and check each one — nothing for you to do.', fr:'Google Drive connecté et dossier uallak créé dans votre Drive. L\'équipe y transférera vos fichiers existants et vérifiera chacun — rien à faire.', ar:'تم ربط Google Drive وإنشاء مجلد uallak في Drive الخاص بك. سينقل الفريق ملفاتك الحالية إليه ويتحقق من كل ملف — لا حاجة لأي إجراء.', ru:'Google Drive подключён, на вашем Drive создана папка uallak. Команда перенесёт туда ваши файлы и проверит каждый — от вас ничего не требуется.' },
   ch_leads: { he:'לידים', en:'Leads', fr:'Leads', ar:'العملاء المحتملون', ru:'Лиды' },
   st_not_in_plan: { he:'לא כלול בחבילה', en:'Not in your plan', fr:'Hors de votre formule', ar:'غير مشمول في باقتك', ru:'Не входит в пакет' },
   st_not_in_plan_note: { he:'אפשר להוסיף בכל עת דרך הצ׳אט.', en:'You can add it any time through the chat.', fr:'Vous pouvez l\'ajouter à tout moment via le chat.', ar:'يمكن إضافته في أي وقت عبر الدردشة.', ru:'Можно добавить в любой момент через чат.' },
@@ -3090,6 +3163,16 @@ async function loadDashboard() {
     if (features.search_console && conns.some(c => c.platform === 'search_console' && c.status === 'active')) {
       markPlatformConnected('scStatus', 'scBtn', 'search_console');
       loadSearchConsoleSites();
+    }
+    document.getElementById('gaCard').style.display = features.analytics ? '' : 'none';
+    document.getElementById('gdriveCard').style.display = features.drive_file ? '' : 'none';
+    if (features.analytics && conns.some(c => c.platform === 'google_analytics')) {
+      markPlatformConnected('gaStatus', 'gaBtn', 'analytics');
+      loadAnalyticsProperties();
+    }
+    if (features.drive_file && conns.some(c => c.platform === 'google_drive_file' && c.status === 'active')) {
+      markPlatformConnected('gdriveStatus', 'gdriveBtn', 'google_drive');
+      loadGoogleDriveStatus();
     }
     // The measurement card is always usable; without a site its note says
     // the tags go in once one is connected
@@ -3544,6 +3627,43 @@ async function chooseSearchConsoleSite(siteUrl) {
       body: JSON.stringify({ site_url: siteUrl }) });
     showNotice(uallakI18n.t(r.ok ? 'sc_site_saved' : 'sc_site_error'), r.ok ? 'success' : 'error');
   } catch (e) { showNotice(uallakI18n.t('sc_site_error'), 'error'); }
+}
+function connectAnalytics() { window.location.href = '/api/oauth/analytics/start'; }
+async function loadAnalyticsProperties() {
+  try {
+    const r = await fetch('/api/client/analytics/properties', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const data = (await r.json()).data || {};
+    const props = data.properties || [];
+    const sel = document.getElementById('gaPropSelect');
+    // No property chosen yet (the login reaches several): an empty first
+    // option, so picking one is a real choice, never a silent default
+    sel.innerHTML = (data.selected ? '' : `<option value="">${esc(uallakI18n.t('ga_property_pick'))}</option>`)
+      + props.map(p => `<option value="${esc(p.property)}"${p.property === data.selected ? ' selected' : ''}>`
+        + `${esc(p.name || p.property)}${p.account_name ? ' · ' + esc(p.account_name) : ''}</option>`).join('');
+    document.getElementById('gaProps').style.display = props.length ? 'block' : 'none';
+  } catch (e) { /* the card still says connected; the list is a convenience */ }
+}
+async function chooseAnalyticsProperty(property) {
+  if (!property) return;
+  try {
+    const r = await fetch('/api/client/analytics/property', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ property }) });
+    showNotice(uallakI18n.t(r.ok ? 'sc_site_saved' : 'sc_site_error'), r.ok ? 'success' : 'error');
+    if (r.ok) loadAnalyticsProperties();
+  } catch (e) { showNotice(uallakI18n.t('sc_site_error'), 'error'); }
+}
+function connectGoogleDrive() { window.location.href = '/api/oauth/google-drive/start'; }
+async function loadGoogleDriveStatus() {
+  try {
+    const r = await fetch('/api/client/google-drive/status', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const data = (await r.json()).data || {};
+    const el = document.getElementById('gdriveWhere');
+    el.textContent = uallakI18n.t(data.where === 'client_drive' ? 'gdrive_where_own' : 'gdrive_where_moving');
+    el.style.display = data.connected ? 'block' : 'none';
+  } catch (e) { /* the card still says connected */ }
 }
 
 // ─── pre-action explanation (universal pattern) ─────────────────────────────
@@ -7405,6 +7525,11 @@ function perfKeyNumbers(id, c) {
           .map(m => perfKv(t('metric_' + m), perfNum(k[m]))).join('');
   }
   if (id === 'website_tracking') return perfKv(t('metric_lead_event_live'), '✓');
+  if (id === 'website_traffic') {
+    return perfKv(t('metric_visitors_today'), perfNum(k.visitors_today))
+      + perfKv(t('metric_visitors_7'), perfNum(k.visitors_7_days) + perfTrend(k.change_7_days))
+      + perfKv(t('metric_visitors_30'), perfNum(k.visitors_30_days) + perfTrend(k.change_30_days));
+  }
   if (id === 'leads') {
     return [7, 30, 90].map(n => perfKv(t('metric_last_n_days', { n }), perfNum(k['last_' + n + '_days']))).join('');
   }
@@ -7443,6 +7568,35 @@ function renderPaid(paid) {
       ${p.leads_by_channel ? '' : `<div class="perf-note">${esc(t('perf_leads_no_channel'))}</div>`}
       <div class="perf-note">${esc(t('perf_pulled', { t: fmtDateTime(p.data_pulled_at) }))}</div>`;
   }).join('');
+}
+// A change computed on the SERVER (core/site_traffic.compare); null = one of
+// the periods has no data yet, so nothing is claimed
+function perfTrend(change) {
+  if (!change) return '';
+  const arrow = change.direction === 'up' ? ' ▲' : change.direction === 'down' ? ' ▼' : ' =';
+  return arrow + (change.change_pct == null || change.direction === 'same' ? '' : ' ' + Math.abs(change.change_pct) + '%');
+}
+function renderTraffic(tr) {
+  const t = uallakI18n.t;
+  const users = p => (p ? p.users : null);
+  const sessions = p => (p ? p.sessions : null);
+  const head = tr.windows.map(w => `<th>${esc(t('perf_window', { n: w.days }))}</th><th>${esc(t('perf_previous'))}</th><th>${esc(t('col_change'))}</th>`).join('');
+  const row = (label, pick, key) => `<tr><td>${esc(label)}</td>${tr.windows.map(w =>
+    `<td dir="ltr">${esc(perfNum(pick(w.current)))}</td><td dir="ltr" style="color:var(--gray);">${esc(perfNum(pick(w.previous)))}</td>`
+    + `<td dir="ltr">${esc(perfTrend((w.change || {})[key]).trim() || '—')}</td>`).join('')}</tr>`;
+  let html = `<div class="perf-table-wrap"><table class="perf-table"><thead><tr><th></th>${head}</tr></thead><tbody>`
+    + row(t('metric_visitors'), users, 'users') + row(t('metric_sessions'), sessions, 'sessions') + '</tbody></table></div>';
+  html += perfKv(t('metric_visitors_today'), perfNum(users(tr.today)))
+    + perfKv(t('metric_visitors_yesterday'), perfNum(users(tr.yesterday)) + perfTrend((tr.yesterday_change || {}).users));
+  const src = tr.sources;
+  if (src && src.total) {
+    html += `<div class="perf-block-title">${esc(t('traffic_sources', { n: src.days }))}</div>`
+      + ['organic', 'paid', 'direct', 'social', 'referral', 'other'].filter(k => src.sessions[k])
+          .map(k => perfKv(t('src_' + k), perfNum(src.sessions[k]) + ' (' + Math.round(src.sessions[k] * 100 / src.total) + '%)')).join('');
+  }
+  html += `<div class="perf-note">${esc(t('traffic_no_data_note'))}</div>`;
+  if (tr.pulled_at) html += `<div class="perf-note">${esc(t('perf_pulled', { t: fmtDateTime(tr.pulled_at) }))}</div>`;
+  return html;
 }
 function renderOrganic(o) {
   const t = uallakI18n.t;
@@ -7483,7 +7637,12 @@ function renderPerformance() {
     return;
   }
   const chs = PERF_DATA.channels || {};
-  chEl.innerHTML = PERF_CHANNEL_ORDER.map(id => perfCard(id, chs[id] || { status: 'not_in_plan' })).join('');
+  // website_traffic exists only while the server's Analytics flag is on
+  const order = chs.website_traffic ? PERF_CHANNEL_ORDER.concat(['website_traffic']) : PERF_CHANNEL_ORDER;
+  chEl.innerHTML = order.map(id => perfCard(id, chs[id] || { status: 'not_in_plan' })).join('');
+  const traffic = PERF_DATA.traffic;
+  document.getElementById('perfTrafficSection').style.display = traffic ? '' : 'none';
+  document.getElementById('perfTraffic').innerHTML = traffic ? renderTraffic(traffic) : '';
   paidEl.innerHTML = renderPaid(PERF_DATA.paid || []);
   orgEl.innerHTML = renderOrganic(PERF_DATA.organic || {});
 }
@@ -7653,6 +7812,14 @@ async function loadSupport() {
     showNotice(uallakI18n.t('notice_search_console_connected'), 'success');
   } else if (params.get('connect_error') === 'search_console_no_sites') {
     showNotice(uallakI18n.t('notice_search_console_no_sites'), 'warn');
+  } else if (params.get('connected') === 'analytics') {
+    showNotice(uallakI18n.t('notice_analytics_connected'), 'success');
+  } else if (params.get('connect_error') === 'analytics_no_properties') {
+    showNotice(uallakI18n.t('notice_analytics_no_properties'), 'warn');
+  } else if (params.get('connected') === 'google_drive') {
+    showNotice(uallakI18n.t('notice_google_drive_connected'), 'success');
+  } else if (params.get('connected') === 'google_drive_pending') {
+    showNotice(uallakI18n.t('notice_google_drive_pending'), 'success');
   } else if (params.get('connected') === 'youtube_no_channel') {
     // Authorized fine, but no channel exists yet - the guided self-creation
     // state (full steps wait in the chat; the popup explains what's

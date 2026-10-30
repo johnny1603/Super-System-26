@@ -332,7 +332,9 @@ SERVICE_ACCOUNT_ONLY = {"https://www.googleapis.com/auth/drive"}
 # Google verification ROUND 2 (docs/GOOGLE-ROUND2.md): behind flags, off by
 # default, and each may appear ONLY in its own service module
 ROUND2_SCOPES = {"https://www.googleapis.com/auth/gmail.send": {"core/gmail_service.py"},
-                 "https://www.googleapis.com/auth/webmasters.readonly": {"core/search_console_service.py"}}
+                 "https://www.googleapis.com/auth/webmasters.readonly": {"core/search_console_service.py"},
+                 "https://www.googleapis.com/auth/analytics.readonly": {"core/analytics_service.py"},
+                 "https://www.googleapis.com/auth/drive.file": {"core/drive_file_service.py"}}
 
 
 def _read(*parts):

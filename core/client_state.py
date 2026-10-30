@@ -50,7 +50,7 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "client_state"
 
-SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300}
+SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300, "website_traffic": 600}
 DEFAULT_TTL = 120
 
 # section -> the data_topic a client question about it is labelled with
@@ -67,6 +67,7 @@ SECTION_TOPIC = {
     # Its own topic: an unreadable Drive voice folder must not turn every
     # "account" question into the can't-read line
     "voice": "voice",
+    "website_traffic": "website",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -377,8 +378,23 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("outreach", lambda: _outreach(client_id))
     take("creative_tools", lambda: _creative_tools(client_id))
     take("voice", lambda: _voice(client_id))
+    from core.round2_flags import analytics_enabled
+    if analytics_enabled():
+        take("website_traffic", lambda: _website_traffic(client_id))
     state["_failed"] = failed
     return state
+
+
+def _website_traffic(client_id: int) -> dict:
+    """Visitors from the client's GA4 property (round 2, ANALYTICS_ENABLED) —
+    figures AND trends, the trends computed in core/site_traffic, never by a
+    model. A failed read raises so the section lands in _failed (a data
+    topic), never as failure text in the prompt."""
+    from core import site_traffic
+    t = site_traffic.traffic(client_id)
+    if t.get("error"):
+        raise RuntimeError(f"traffic read failed: {t.get('reason')}")
+    return site_traffic.for_agent(t)
 
 
 def _creative_tools(client_id: int) -> dict:

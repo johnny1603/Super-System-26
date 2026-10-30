@@ -70,6 +70,7 @@ from supabase import create_client as _supabase_client
 
 from core import competitor_research
 from core import drive_service as drive
+from core import drive_storage
 from core import media_gen_service as gen
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
@@ -118,22 +119,35 @@ def _log_activity(client_id: int, action_type: str, details: dict, result: dict 
 # ─── Drive organization ───────────────────────────────────────────────────────
 
 def _media_root_id() -> str:
-    from agents.keys_agent import get_key
-    return get_key("DRIVE_MEDIA_FOLDER_ID")
+    """OUR Shared Drive media root (core/drive_storage owns the setting)."""
+    root = drive_storage.shared_parent_id()
+    if not root:
+        raise ValueError("Missing key: DRIVE_MEDIA_FOLDER_ID")
+    return root
 
 
+@drive_storage.scoped
 def ensure_client_media_root(client_id: int) -> str:
-    """Find-or-create client-{id} under the media root; share it (read-only)
-    with the client's email the first time. Cached per process."""
+    """The client's media root, wherever drive_storage.location says it is:
+    the uallak folder in the client's OWN Drive (created at connect — nothing
+    to share, it is theirs), or find-or-create client-{id} under our Shared
+    Drive media root and share it (read-only) with the client's email the
+    first time. Cached per process; drive_storage.forget drops the cache
+    when the location changes."""
     cached = _folder_cache.get(client_id)
     if cached:
         return cached["root"]
+
+    where = drive_storage.location(client_id)
+    if where["kind"] == drive_storage.CLIENT:
+        _folder_cache[client_id] = {"root": where["root"], "paths": {}, "kind": drive_storage.CLIENT}
+        return where["root"]
 
     from agents.client_agent import get_client
     client = get_client(client_id)
     folder_name = f"client-{client_id} — {(client.get('name') or 'unnamed').strip()}"
     root = drive.ensure_folder(folder_name, _media_root_id())
-    _folder_cache[client_id] = {"root": root, "paths": {}}
+    _folder_cache[client_id] = {"root": root, "paths": {}, "kind": drive_storage.SHARED}
 
     # First-touch side effects, keyed off an activity row so they run once
     already = (_db().table("client_activity").select("id")
@@ -148,6 +162,7 @@ def ensure_client_media_root(client_id: int) -> str:
     return root
 
 
+@drive_storage.scoped
 def _subfolder(client_id: int, *path: str) -> str:
     """Find-or-create a nested path under the client's media root, e.g.
     _subfolder(cid, 'images', 'instagram'). Cached per process."""
@@ -162,6 +177,7 @@ def _subfolder(client_id: int, *path: str) -> str:
     return parent
 
 
+@drive_storage.scoped
 def get_client_media_link(client_id: int) -> str:
     """The browsable Drive link for the client's media folder — surfaced in
     the dashboard/profile. Creates the folder on first ask."""
@@ -229,7 +245,7 @@ def media_folder_status(client_id: int) -> dict:
     can't: {"status": "ok", "link"} | {"status": "not_configured"} |
     {"status": "error", "reason"}. Never raises. Failures alert (throttled)
     with the concrete fix — the button used to just go grey, silently."""
-    if not drive.is_media_configured():
+    if not drive_storage.configured(client_id):
         return {"status": "not_configured"}
     try:
         return {"status": "ok", "link": get_client_media_link(client_id)}
@@ -243,6 +259,7 @@ def media_folder_status(client_id: int) -> dict:
 PROBE_PREFIX = "uallak-drive-check-"
 
 
+@drive_storage.scoped
 def drive_self_test(client_id: int) -> dict:
     """Prove the client's media folder is USABLE, not just present: the same
     calls generation and delivery make (folder, upload, list, link), then
@@ -265,7 +282,7 @@ def drive_self_test(client_id: int) -> dict:
                           "fix": _drive_fix(reason), "error": str(e)[:300]})
             return None
 
-    if not drive.is_media_configured():
+    if not drive_storage.configured(client_id):
         return {"ok": False, "steps": [{"step": "config", "ok": False, "reason": "not_configured",
                                         "fix": "Set GOOGLE_SERVICE_ACCOUNT_JSON and DRIVE_MEDIA_FOLDER_ID on Cloud Run."}]}
 
@@ -318,6 +335,7 @@ def _record_self_test(client_id: int, steps: list):
         print(f"[{AGENT_NAME}] drive self-test log write failed for client {client_id}: {e}")
 
 
+@drive_storage.scoped
 def sync_website_media_folders(client_id: int) -> list:
     """website-media/{page} subfolders mirroring the client's actual site
     pages (dynamic — the handoff's folder spec). No site → no-op."""
@@ -333,6 +351,7 @@ def sync_website_media_folders(client_id: int) -> list:
     return created
 
 
+@drive_storage.scoped
 def prepare_for_publishing(client_id: int, file_id: str) -> dict:
     """Meta publishing needs a PUBLIC media URL (their server fetches it).
     Flips exactly ONE file public and returns the direct link — the client
@@ -468,6 +487,7 @@ def _craft_prompt(client_id: int, brief: str, platform: str, kind: str,
                                  cost_category="claude_media")
 
 
+@drive_storage.scoped
 def generate_image(client_id: int, brief: str, platform: str = "instagram",
                    avatar_context: dict = None) -> dict:
     """Brief (any language) → crafted prompt → Higgsfield image model → the
@@ -506,6 +526,7 @@ def generate_image(client_id: int, brief: str, platform: str = "instagram",
             "prompt": crafted["generation_prompt"]}
 
 
+@drive_storage.scoped
 def generate_video(client_id: int, brief: str, platform: str = "instagram",
                    avatar_context: dict = None) -> dict:
     """Brief → crafted prompt → Higgsfield video model (Veo-class, short clip
@@ -569,6 +590,7 @@ Return JSON only:
  "shot_list": ["..."], "coaching": ["..."], "gear_note": "..."}"""
 
 
+@drive_storage.scoped
 def create_filming_kit(client_id: int, topic: str) -> dict:
     """Script + shot list + camera coaching for self-filming — saved as a doc
     in the client's Drive scripts folder and announced in their dashboard

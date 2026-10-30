@@ -165,13 +165,15 @@ class Round1Frozen(unittest.TestCase):
         for path, (function, constant) in ROUND1_BUILDERS.items():
             body = _function_source(path, function)
             self.assertIn(constant, body, path)
-            for word in ("round2", "GMAIL", "SEARCH_CONSOLE", "gmail", "webmasters", "include_granted_scopes"):
+            for word in ("round2", "GMAIL", "SEARCH_CONSOLE", "gmail", "webmasters", "include_granted_scopes",
+                         "ANALYTICS", "analytics", "drive.file", "DRIVE_FILE"):
                 self.assertNotIn(word, body, f"{path}.{function} mentions {word}")
 
     def test_no_round1_module_imports_a_round2_one(self):
         for path in ROUND1_BUILDERS:
             source = _read(*path.split("/"))
-            for name in ("gmail_service", "search_console_service", "round2_flags"):
+            for name in ("gmail_service", "search_console_service", "round2_flags", "analytics_service",
+                         "drive_file_service", "drive_storage"):
                 self.assertNotIn(name, source, f"{path} imports {name}")
 
 
@@ -227,7 +229,10 @@ class FlagsOff(Services):
         source = _read("core", "api_server.py")
         tree = ast.parse(source)
         routes = {"gmail_oauth_start", "gmail_oauth_callback", "search_console_oauth_start",
-                  "search_console_oauth_callback", "client_search_console_sites", "client_search_console_choose"}
+                  "search_console_oauth_callback", "client_search_console_sites", "client_search_console_choose",
+                  "analytics_oauth_start", "analytics_oauth_callback", "client_analytics_properties",
+                  "client_analytics_choose", "google_drive_oauth_start", "google_drive_oauth_callback",
+                  "client_google_drive_status", "admin_drive_migration"}
         seen = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name in routes:
@@ -238,7 +243,7 @@ class FlagsOff(Services):
                 # The flag check comes before the session / state is even read
                 first_call_line = calls[0].lineno
                 body = ast.get_source_segment(source, node)
-                for later in ("_require_session", "verify_oauth_state_token"):
+                for later in ("_require_session", "verify_oauth_state_token", "_require_admin"):
                     for n in ast.walk(node):
                         if isinstance(n, ast.Call) and getattr(n.func, "id", "") == later:
                             self.assertGreater(n.lineno, first_call_line, f"{node.name}: {later} first")
@@ -247,10 +252,13 @@ class FlagsOff(Services):
 
     def test_dashboard_cards_hidden_unless_the_server_says_so(self):
         html = _read("dashboard", "client", "index.html")
-        for card in ("gmailCard", "scCard"):
+        for card in ("gmailCard", "scCard", "gaCard", "gdriveCard"):
             self.assertRegex(html, rf'id="{card}" style="display:none;"')
         self.assertIn("features.gmail_send ? '' : 'none'", html)
         self.assertIn("features.search_console ? '' : 'none'", html)
+        self.assertIn("features.analytics ? '' : 'none'", html)
+        self.assertIn("features.drive_file ? '' : 'none'", html)
+        self.assertRegex(html, r'id="perfTrafficSection" style="display:none;"')
         features = _function_source("core/api_server.py", "_round2_features")
         self.assertIn("if gmail_send_enabled():", features)
 
@@ -717,11 +725,17 @@ class Round2Doc(unittest.TestCase):
     def test_doc_covers_every_round2_scope(self):
         doc = _read("docs", "GOOGLE-ROUND2.md")
         matrix = doc.split("## Evidence matrix", 1)[1].split("\n## ", 1)[0]
-        for short in ("gmail.send", "webmasters.readonly"):
+        for short in ("gmail.send", "webmasters.readonly", "analytics.readonly", "drive.file"):
             self.assertEqual(len([l for l in matrix.splitlines() if l.startswith(f"| `{short}`")]), 1, short)
             self.assertIn(f"https://www.googleapis.com/auth/{short}", doc)
         for heading in ("## Justifications", "## Demo video", "## Switching it on"):
             self.assertIn(heading, doc)
+        # Each new scope says why nothing narrower exists, and what is deliberately left for later
+        narrower = doc.split("## Why no narrower scope works", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("no per-report", narrower)
+        self.assertIn("deliberately **not** requested", narrower)
+        self.assertIn("Merchant Center", doc.split("## Justifications", 1)[0])
+        self.assertIn("Google Photos pickers", doc.split("## Justifications", 1)[0])
 
 
 if __name__ == "__main__":
