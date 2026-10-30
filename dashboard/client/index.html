@@ -1288,6 +1288,8 @@ a.media-item:hover { border-color: var(--accent); }
       <span class="pending-badge" id="connGuideCount">…</span>
     </div>
     <div class="conn-guide-text" id="connGuideText"></div>
+    <!-- A step that is connected but cannot run yet: said plainly, never a silent ✓ -->
+    <div class="conn-guide-text" id="connGuideNotice" style="display:none; margin-top:8px;"></div>
     <div class="jn-bar" style="margin:12px 0 0;"><div class="jn-bar-fill" id="connGuideBarFill"></div></div>
     <button class="sugg-btn approve" style="margin-top:14px;" onclick="scrollToNextConnCard()"
             data-i18n="conn_guide_jump">קחו אותי לשלב הבא</button>
@@ -2236,7 +2238,8 @@ const DASH_I18N = {
   conn_step_tiktok: { he:'טיקטוק', en:'TikTok', fr:'TikTok', ar:'تيك توك', ru:'TikTok' },
   conn_step_youtube: { he:'יוטיוב', en:'YouTube', fr:'YouTube', ar:'يوتيوب', ru:'YouTube' },
   conn_step_media: { he:'חשבון יצירת המדיה', en:'your media generation account', fr:'votre compte de génération de médias', ar:'حساب إنتاج الوسائط', ru:'аккаунт генерации медиа' },
-  conn_step_avatar: { he:'האווטאר הדיגיטלי', en:'your digital avatar', fr:'votre avatar numérique', ar:'الأفاتار الرقمي', ru:'цифровой аватар' },
+  conn_step_avatar: { he:'הדמות שבסרטונים שלך', en:'the character in your videos', fr:'le personnage de vos vidéos', ar:'الشخصية في فيديوهاتك', ru:'персонаж ваших видео' },
+  conn_notice_avatar: { he:'סרטונים עם דמות AI עוד לא זמינים אצלנו. אם רוצים, אפשר בינתיים ליצור אותם עם דמות מצולמת שלך.', en:'Videos with an AI presenter are not available yet. If you like, you can make them with a filmed likeness of you in the meantime.', fr:'Les vidéos avec un présentateur IA ne sont pas encore disponibles. Si vous le souhaitez, vous pouvez en attendant les créer avec votre image filmée.', ar:'الفيديوهات بشخصية بالذكاء الاصطناعي غير متاحة بعد. إن رغبت، يمكنك في الأثناء إنشاؤها بشخصيتك المصوَّرة.', ru:'Видео с ИИ-ведущим пока недоступны. Если хотите, пока можно создавать их с вашим снятым образом.' },
 
   // ── progress journey ──
   journey_title: { he:'המסע שלך עם uallak', en:'Your journey with uallak', fr:'Votre parcours avec uallak', ar:'رحلتك مع uallak', ru:'Ваш путь с uallak' },
@@ -5850,16 +5853,22 @@ function renderConnectionGuide(status) {
       { what: uallakI18n.t('conn_step_' + status.next_step) });
     textEl.textContent = uallakI18n.t('conn_guide_next_text');
   }
+  const noticeEl = document.getElementById('connGuideNotice');
+  const notices = (status.not_ready || []).map(key => uallakI18n.t('conn_notice_' + key));
+  noticeEl.textContent = notices.join(' ');
+  noticeEl.style.display = notices.length ? 'block' : 'none';
   // Dim everything that isn't the current step, so one card is obviously next
   highlightNextConnCard(status.complete ? null : status.next_step);
 }
 
-// step key -> the existing card's status element, which is already inside the
-// card we want to spotlight. Reuses the grid rather than rebuilding it.
+// step key -> the existing cards' status elements, which are already inside the
+// cards we want to spotlight. Reuses the grid rather than rebuilding it. A step
+// is a capability: every card that can complete it is spotlit, and the client
+// picks ONE (the character in your videos = filmed likeness OR AI presenter).
 const CONN_STEP_ANCHOR = {
-  website: 'siteStatus', google_ads: 'gadsStatus', meta: 'metaStatus',
-  tiktok: 'tiktokStatus', youtube: 'youtubeStatus',
-  media: 'toolStatus-higgsfield', avatar: 'toolStatus-heygen',
+  website: ['siteStatus'], google_ads: ['gadsStatus'], meta: ['metaStatus'],
+  tiktok: ['tiktokStatus'], youtube: ['youtubeStatus'],
+  media: ['toolStatus-higgsfield'], avatar: ['toolStatus-heygen', 'toolStatus-higgsfield'],
 };
 
 function highlightNextConnCard(stepKey) {
@@ -5867,13 +5876,15 @@ function highlightNextConnCard(stepKey) {
     c.classList.remove('conn-next', 'conn-dimmed');
   });
   if (!stepKey) return;
-  const anchor = document.getElementById(CONN_STEP_ANCHOR[stepKey]);
-  const card = anchor && anchor.closest('.conn-card');
-  if (!card) return;
+  const cards = (CONN_STEP_ANCHOR[stepKey] || [])
+    .map(id => document.getElementById(id))
+    .map(anchor => anchor && anchor.closest('.conn-card'))
+    .filter(Boolean);
+  if (!cards.length) return;
   document.querySelectorAll('#connGrid .conn-card').forEach(c => {
-    if (c !== card) c.classList.add('conn-dimmed');
+    if (!cards.includes(c)) c.classList.add('conn-dimmed');
   });
-  card.classList.add('conn-next');
+  cards.forEach(card => card.classList.add('conn-next'));
 }
 
 function scrollToNextConnCard() {

@@ -51,23 +51,42 @@ SERVICE_NAME = "client_journey"
 # one step at a time. Website first because SEO, landing pages and tracking all
 # sit on top of it; then the paid platforms (where the money starts moving);
 # then organic/content; then the client-paid generation keys.
+#
+# A step is a CAPABILITY, never a vendor: `platforms` lists every supported
+# provider, and ANY ONE of them connected completes the step. One capability
+# never requires two vendors, and one package service never pulls in two
+# steps for the same capability ("avatar" used to require the media tool AND
+# the filmed-likeness tool). A connected provider that cannot run yet is
+# still "done" but carries a notice (see `_STEP_NOTICES`), so nothing reads
+# as finished when it would fail on the first click.
 CONNECTION_STEPS = [
-    # key            client_accounts platforms that PROVE it   required when...
+    # key            client_accounts platforms — ANY one proves it   required when...
     {"key": "website",     "platforms": ("wordpress",),
      "services": ("website", "seo", "organic")},
     {"key": "google_ads",  "platforms": ("google_ads",),
      "services": ("google",)},
-    {"key": "meta",        "platforms": ("meta_ads", "meta_page"),
+    {"key": "meta",        "platforms": ("meta_ads", "meta_page", "meta_instagram"),
      "services": ("meta", "facebook", "instagram")},
     {"key": "tiktok",      "platforms": ("tiktok",),
      "services": ("tiktok",)},
     {"key": "youtube",     "platforms": ("youtube",),
      "services": ("youtube",)},
     {"key": "media",       "platforms": ("higgsfield",),
-     "services": ("media", "content", "video", "avatar")},
-    {"key": "avatar",      "platforms": ("heygen",),
+     "services": ("media", "content", "video")},
+    # The character in the client's videos: a filmed likeness OR an AI
+    # presenter — the same choice core/avatar_video.make_video offers
+    {"key": "avatar",      "platforms": ("heygen", "higgsfield"),
      "services": ("avatar",)},
 ]
+
+
+def _avatar_notice(connected_platforms: set) -> dict:
+    from core.avatar_video import runnable_notice
+    return runnable_notice(connected_platforms)
+
+
+# step key -> fn(connected platforms) -> {} or {"code", "message_he", ...}
+_STEP_NOTICES = {"avatar": _avatar_notice}
 
 # Legacy alias kept so nothing that imported it breaks; the checklist above is
 # the real source now.
@@ -184,12 +203,24 @@ def connection_status(client_id: int) -> dict:
     connected_platforms = {a["platform"] for a in accounts}
 
     checklist = required_connections(client_id)
-    steps = []
+    steps, notices = [], []
     for step in checklist["steps"]:
         # ANY of a step's platforms proves it — one Meta consent may return the
-        # ad account, the Page, or both, and either is "Meta is connected".
+        # ad account, the Page, or both; either video provider means "the
+        # character in your videos" is connected.
         done = any(platform in connected_platforms for platform in step["platforms"])
-        steps.append({"key": step["key"], "platforms": step["platforms"], "done": done})
+        entry = {"key": step["key"], "platforms": step["platforms"], "done": done, "ready": done}
+        if done and step["key"] in _STEP_NOTICES:
+            try:
+                notice = _STEP_NOTICES[step["key"]](connected_platforms)
+            except Exception as e:
+                # Unknown readiness is not readiness
+                print(f"[{SERVICE_NAME}] {step['key']} readiness unknown for client {client_id}: {e}")
+                notice = {"code": "readiness_unknown", "message_he": ""}
+            if notice:
+                entry["ready"] = False
+                notices.append({"step": step["key"], **notice})
+        steps.append(entry)
 
     pending = [s for s in steps if not s["done"]]
     done_steps = [s for s in steps if s["done"]]
@@ -198,6 +229,10 @@ def connection_status(client_id: int) -> dict:
         "connected": [s["key"] for s in done_steps],
         "expected": [s["key"] for s in steps],
         "missing": [s["key"] for s in pending],
+        # Connected, but cannot run yet — shown next to the step and said by
+        # the agents, never hidden behind a "done"
+        "not_ready": [s["key"] for s in steps if s["done"] and not s["ready"]],
+        "notices": notices,
         # The single next thing to ask for. None when nothing is left.
         "next_step": pending[0]["key"] if pending else None,
         "done_count": len(done_steps),

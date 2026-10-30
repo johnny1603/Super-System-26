@@ -162,6 +162,11 @@ def _connections(client_id: int) -> dict:
         "required": status.get("expected") or [],
         "connected": status.get("connected") or [],
         "missing": status.get("missing") or [],
+        # Connected but not usable yet (e.g. the AI-presenter video path is
+        # still switched off): agents say `message_he` plainly and offer the
+        # alternative — never "it's all set"
+        "connected_not_ready": [{"step": n.get("step"), "say": n.get("message_he", "")}
+                                for n in status.get("notices") or []],
         "active_platforms": sorted({a.get("platform") for a in accounts if a.get("status") == "active"}),
         "waiting_platforms": sorted({a.get("platform") for a in accounts
                                      if a.get("status") not in ("active", None, "")}),

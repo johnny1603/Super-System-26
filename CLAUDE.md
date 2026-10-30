@@ -35,6 +35,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `connection_status`) — the required integrations come from the purchased package's
   `recommended_services`, never a guess, and **fail closed** when the package can't be
   read. `note_connections_complete()` stamps the 90-day clock start once, permanently.
+  Steps are **capabilities, never vendors**: ANY listed platform completes a step (avatar =
+  HeyGen OR Higgsfield), no service pulls in two steps. A connected provider that can't run yet
+  stays `done` but `ready: False` with a `notices` line (`avatar_video.runnable_notice`) that
+  the dashboard and agents (`client_state.connections.connected_not_ready`) say plainly.
+  Guarded by `tests/test_avatar_capability_checklist.py`.
   See `HANDOFF-engagement-upgrade.md`.
 - `core/feature_catalog.py` — **the** list of what uallak offers a client today, one entry
   per capability. Two readers and no second copy: `interview_agent` renders it (filtered to

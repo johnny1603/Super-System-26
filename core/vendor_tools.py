@@ -338,9 +338,18 @@ def disconnect(client_id: int, tool: str) -> dict:
 # ─── Video provider choice (per client; a video may override it) ─────────────
 
 def default_provider(client_id: int) -> str:
+    """The client's explicit choice; without one, the provider they actually
+    CONNECTED — a client who connected only one video tool is never asked to
+    connect a second one they did not ask for."""
     from core.avatar_video import PROVIDERS, DEFAULT_PROVIDER
     chosen = _record(client_id).get("avatar_provider")
-    return chosen if chosen in PROVIDERS else DEFAULT_PROVIDER
+    if chosen in PROVIDERS:
+        return chosen
+    if not is_connected(client_id, PROVIDERS[DEFAULT_PROVIDER].tool):
+        for provider in PROVIDERS.values():
+            if is_connected(client_id, provider.tool):
+                return provider.id
+    return DEFAULT_PROVIDER
 
 
 def set_default_provider(client_id: int, provider: str) -> str:

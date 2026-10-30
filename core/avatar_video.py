@@ -120,6 +120,30 @@ def _character_image(client_id: int) -> str:
 PROVIDERS = {"heygen": HeyGenProvider, "higgsfield": HiggsfieldProvider}
 
 
+def not_ready_line(provider_id: str) -> str:
+    """The ONE plain line for a provider that is connected but switched off:
+    it says so and offers a provider that does run. Used by make_video and by
+    the connection checklist (client_journey), so the client never reads a
+    finished step that would fail on the first video."""
+    spec = PROVIDERS[provider_id]
+    line = f"סרטונים עם {spec.label_he} עוד לא זמינים אצלנו."
+    alternative = next((p for p in PROVIDERS.values() if p.id != provider_id and p.enabled()), None)
+    if alternative:
+        line += f" אם רוצים, אפשר בינתיים ליצור אותם עם {alternative.label_he}."
+    return line
+
+
+def runnable_notice(connected_tools) -> dict:
+    """{} when at least one CONNECTED provider can really make a video (or none
+    is connected — then there is nothing to warn about); otherwise the notice
+    the checklist and the agents show instead of a silent "done"."""
+    linked = [p for p in PROVIDERS.values() if p.tool in set(connected_tools or ())]
+    if not linked or any(p.enabled() for p in linked):
+        return {}
+    return {"code": "avatar_video_not_available_yet", "provider": linked[0].id,
+            "message_he": not_ready_line(linked[0].id)}
+
+
 def providers_view(client_id: int) -> list:
     """For the dashboard choice and client_state: every provider, whether it
     is connected and whether it can run at all yet."""
@@ -188,9 +212,7 @@ def make_video(client_id: int, script: str = "", voice: dict = None, provider: s
     if not spec:
         return {"success": False, "code": "unknown_provider", "message_he": "כלי הווידאו שנבחר לא מוכר."}
     if not spec.enabled():
-        return {"success": False, "code": "provider_not_ready",
-                "message_he": f"סרטונים עם \"{spec.label_he}\" עוד לא הופעלו אצלנו — "
-                              f"הם ייפתחו אחרי בדיקה חיה. בינתיים אפשר להשתמש בדמות המצולמת שלך."}
+        return {"success": False, "code": "provider_not_ready", "message_he": not_ready_line(spec.id)}
     voice = voice or {}
     kind = voice.get("kind") or ""
     if kind and kind not in VOICE_KINDS:
