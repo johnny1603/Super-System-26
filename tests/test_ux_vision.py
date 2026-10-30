@@ -295,7 +295,9 @@ class GuidedHelp(unittest.TestCase):
         assist = source[source.index("def client_connection_assist"):]
         assist = assist[:assist.index("@app.")]
         self.assertIn("_require_session(request)", assist)
-        self.assertIn("chat_fallback.alert_once(", assist)       # a staff request, deduped
+        self.assertIn("connection_help.request_assist(", assist)  # the one staff request ...
+        request = _src("core", "connection_help.py").split("def request_assist", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("chat_fallback.alert_once(", request)      # ... deduped
 
     def test_card_primary_action_is_the_guide(self):
         html = _src("dashboard", "client", "index.html")

@@ -1044,13 +1044,90 @@ def _website_reads(client_id: int) -> dict:
     return data
 
 
+def _tiktok_view(client_id: int) -> dict:
+    """TikTok from STORED state only: the client_accounts row (no secret) and
+    the grant record (core/tiktok_grant: state + scope names). Deliberately no
+    live TikTok call: the engagement getter refreshes (rotates + stores) OAuth
+    tokens as a side effect — credential maintenance, not a pure read — and
+    it's slow."""
+    from agents.client_agent import get_accounts
+    from core import tiktok_grant
+    connected = any(a.get("platform") == "tiktok" and a.get("status") == "active"
+                    for a in get_accounts(client_id))
+    try:
+        from core.tiktok_service import ENGAGEMENT_READS_ENABLED as engagement_on
+    except Exception:
+        engagement_on = False
+    view = {"connected": connected,
+            # a known state, never "sync_failed" (core/performance)
+            "engagement_counts": "available" if engagement_on else "not_available_yet"}
+    if connected:
+        record = tiktok_grant.record(client_id)
+        grant = record.get("state") or "unknown"
+        view.update({"grant": grant, "scopes": record.get("scopes") or [],
+                     "needs_reconnect": grant in tiktok_grant.BAD_STATES,
+                     "can_send_to_inbox": grant == "ok"})
+    return view
+
+
+def _presenter_readiness(tools_section: dict, ready_avatars) -> dict:
+    """Which video presenter can really make a video now — from the cached
+    creative_tools section, in capability language (label), ids only for
+    action params."""
+    from core import avatar_video, vendor_tools
+    tools = tools_section.get("tools") or {}
+    connected = {tool for tool, view in tools.items() if view.get("status") in vendor_tools.CONNECTED}
+    presenters = [{"tool": p.get("tool"), "label": p.get("label_he"), "connected": bool(p.get("connected")),
+                   "ready": bool(p.get("ready")), "chosen": bool(p.get("chosen"))}
+                  for p in tools_section.get("video_providers") or []]
+    notice = avatar_video.runnable_notice(connected)
+    return {"presenters": presenters,
+            "can_make_presenter_video": any(p["connected"] and p["ready"] for p in presenters),
+            "ready_filmed_likenesses": ready_avatars,
+            "not_available_line": notice.get("message_he", "")}
+
+
 def _media_reads(client_id: int) -> dict:
-    # Deliberately no TikTok live fetch here: its engagement getter refreshes
-    # (rotates+stores) OAuth tokens as a side effect — credential maintenance,
-    # not a pure read — and it's slow. Recent media/publish items already
-    # appear in the shared recent_activity feed the persona receives.
+    # PURE READS ONLY (the persona path is read-only by construction). TikTok
+    # is read from stored state, never fetched live (see _tiktok_view). Recent
+    # media/publish items also appear in the shared recent_activity feed.
     from agents.media_agent import get_monthly_usage
     data = {"media_usage_this_month": get_monthly_usage(client_id)}
+    try:
+        data["tiktok"] = _tiktok_view(client_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: tiktok reads failed: {e}")
+    try:
+        # What we sent to their TikTok inbox: agent_actions' own history rows
+        from core.agent_actions import tiktok_drafts_sent
+        data["tiktok_inbox_drafts"] = tiktok_drafts_sent(client_id)
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: tiktok drafts read failed: {e}")
+    # Creative tools + voice through client_state's own cache: the snapshot
+    # that follows in this turn is then a cache hit, not a second read
+    from core import client_state
+    tools_section, ready_avatars = None, None
+    try:
+        tools_section = client_state.cached_section(client_id, "creative_tools")
+        if tools_section:
+            data["video_and_voice_tools"] = [
+                {"tool": tool, "label": view.get("label", ""), "status": view.get("status"),
+                 "consent_given": view.get("consent")}
+                for tool, view in (tools_section.get("tools") or {}).items()]
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: creative tools read failed: {e}")
+    try:
+        voice = client_state.cached_section(client_id, "voice")
+        if voice is not None:
+            dates = [r.get("uploaded_at") for r in voice.get("recordings") or [] if r.get("uploaded_at")]
+            data["voice_recordings"] = {
+                "count": voice.get("count", 0), "newest": max(dates) if dates else "",
+                "total_seconds": voice.get("total_seconds", 0),
+                "voice_clone_consent": bool(voice.get("voice_clone_consent")),
+                "voice_clone_exists": bool(voice.get("voice_clone_exists")),
+                "usable_as": voice.get("usable_as") or []}
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: voice read failed: {e}")
     # Camera hesitation is a MEDIA conversation, so the facts it needs live
     # here: does this client already have an avatar, and what would one cost.
     # Both are pure reads — the persona still cannot create or buy anything.
@@ -1058,13 +1135,19 @@ def _media_reads(client_id: int) -> dict:
         from agents.avatar_agent import list_ready_avatars
         from agents.onboarding_agent import PRICING
         avatar_pricing = PRICING.get("avatar") or {}
+        ready_avatars = len(list_ready_avatars(client_id) or [])
         data["avatar_option"] = {
-            "ready_avatars": len(list_ready_avatars(client_id) or []),
+            "ready_avatars": ready_avatars,
             "setup_ils": avatar_pricing.get("setup_first_avatar"),
             "monthly_tiers": avatar_pricing.get("monthly_tiers", [])[:1],
         }
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: avatar reads failed: {e}")
+    try:
+        if tools_section:
+            data["avatar_readiness"] = _presenter_readiness(tools_section, ready_avatars)
+    except Exception as e:
+        log_step(AGENT_NAME, "persona_reads", f"client {client_id}: avatar readiness failed: {e}")
     return data
 
 
@@ -1167,7 +1250,9 @@ PERSONAS = {
     },
     "media": {
         "name": "ליאור",
-        "domain": "visual content and media — the images/videos uallak generates, filming kits, and the weekly content plan",
+        "domain": ("visual content and media — the images/videos uallak generates, filming kits, the weekly "
+                   "content plan, videos sent to the client's TikTok drafts, their voice recordings and voice "
+                   "clone, and the presenter (the character) in their videos"),
         "voice": ("Creative spark, visual thinker, encouraging about self-filmed content — "
                   "believes every business has a story worth showing, not just telling."),
         "reads": _media_reads,
@@ -1187,7 +1272,41 @@ PERSONAS = {
                        "consent. Quote 'avatar_option' figures ONLY if present and say they're "
                        "a starting point, not a final quote. If ready_avatars > 0 they already "
                        "have one — remind them rather than pitching it again. Let them choose; "
-                       "never imply filming themselves is the lesser option."),
+                       "never imply filming themselves is the lesser option. "
+                       "TIKTOK ('tiktok', stored state — you can see it, never say you can't): "
+                       "connected false = not connected; offer connect_tiktok. needs_reconnect true = "
+                       "TikTok stopped accepting our access, or the connection was made without "
+                       "permission to send videos ('scopes' lacks video.upload) — say that plainly and "
+                       "offer connect_tiktok. grant 'unknown' = connected; it is checked the first time "
+                       "a video is sent, so just offer the send. engagement_counts 'not_available_yet': "
+                       "views and likes are simply not something we read from TikTok yet — never call "
+                       "it a fault, an error or a reason to reconnect. "
+                       "TIKTOK DRAFTS ('tiktok_inbox_drafts'): a video in sent_to_inbox is waiting as a "
+                       "DRAFT in the inbox of THEIR TikTok app — nothing was posted. They open the app, "
+                       "tap the notification, add a caption and press Post themselves (client_must_do "
+                       "says it); we never post for them. not_sent: say plainly it did not go through "
+                       "(reason needs_reconnect → offer connect_tiktok; pending_limit → several drafts "
+                       "already wait in their inbox, publish or delete some first; too_large → pick a "
+                       "shorter video). To send a video, propose send_tiktok_to_inbox. "
+                       "VOICE ('voice_recordings'): how many recordings they uploaded and the newest "
+                       "date. A recording is used as the soundtrack of a video exactly as recorded — "
+                       "that needs no special permission. CLONING their voice (videos speaking new "
+                       "text in their voice) needs their explicit consent on the 'הקול שלך' card: "
+                       "voice_clone_consent false → say so plainly, never clone or promise it. "
+                       "TOOLS ('video_and_voice_tools'): call each by its 'label' only — NEVER a vendor "
+                       "or product name; 'tool' is only for the connect_creative_tool param. status "
+                       "connected_unverified = stored, checked on the first real job; key_rejected = "
+                       "the tool refused the key, it must be connected again. "
+                       "PRESENTER ('avatar_readiness'): can_make_presenter_video says whether a video "
+                       "with a presenter can be made right now; not_available_line, when not empty, is "
+                       "the ONE plain line to say about a presenter they connected that does not run "
+                       "yet (it already offers the alternative — offer it, never require it). "
+                       "WHEN SOMETHING IS MISSING: name exactly the one thing missing, by its plain name, "
+                       "and propose the ONE card that fixes it (connect_tiktok, connect_creative_tool "
+                       "with that tool, send_tiktok_to_inbox, clone_voice, make_presenter_video — only "
+                       "when listed in available_actions). STUCK: when they say they tried and can't, "
+                       "or want a person to do it with them, propose request_connection_help for that "
+                       "connection — never send them to a website or explain key creation yourself."),
     },
 }
 

@@ -216,9 +216,11 @@ Drive (flag `DRIVE_FILE_ENABLED` on, a test client):
 5. Set `GMAIL_SEND_ENABLED=true` / `SEARCH_CONSOLE_ENABLED=true` / `ANALYTICS_ENABLED=true` /
    `DRIVE_FILE_ENABLED=true` on Cloud Run (env vars, read at call time; no code change).
 6. Storage alert while we still pay: `DRIVE_SHARED_ALERT_GB` (default 10) is the per-client
-   threshold for our Shared Drive; `POST /api/admin/drive/usage-scan` (admin) walks every
-   client's folder there and raises one admin alert per client per 7 days above it. **Not
-   scheduled yet** — add a daily Cloud Scheduler job that calls it.
+   threshold for our Shared Drive; the scan walks every client's folder there and raises ONE
+   admin alert per client per status change (crossing above, and back under). Two doors to the
+   same scan: `POST /api/admin/drive/usage-scan` (admin cookie — the dashboard button) and
+   `GET /api/drive/usage-scan` (X-Admin-Key — the daily Cloud Scheduler job, 03:30
+   Asia/Jerusalem, created by `bash scripts/schedule_drive_usage_scan.sh`).
 
 ### What drive.file changes, technically
 

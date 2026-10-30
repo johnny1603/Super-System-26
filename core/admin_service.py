@@ -370,9 +370,10 @@ def get_settings() -> dict:
         # core/google_ads_health, core/tiktok_grant) (php_exposure: per-client PHP2Shell record)
         # (creative_tools: per-client key health + video provider — core/vendor_tools)
         # (drive_storage: where a client's files live — core/drive_storage)
+        # (drive_usage: last Shared-Drive size status, for alert-on-change)
         if str(row["key"]).startswith(("client_settings:", "client_deletion:", "bulk_delete:",
                                        "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
-                                       "creative_tools:", "drive_storage:")):
+                                       "creative_tools:", "drive_storage:", "drive_usage:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

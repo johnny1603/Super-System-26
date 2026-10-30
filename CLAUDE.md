@@ -328,8 +328,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   drive_storage reads `DRIVE_MEDIA_FOLDER_ID`. A new Drive caller must be scoped too
   (`tests/test_round2_analytics_drive.py`). Migration (`core/drive_migration.py`, admin): copy →
   verify (size + md5) → flip → free (typed phrase + re-verify) — never a delete before a
-  verification. Shared Drive size alert: `POST /api/admin/drive/usage-scan`
-  (`DRIVE_SHARED_ALERT_GB`, not scheduled yet).
+  verification. Shared Drive size alert: `POST /api/admin/drive/usage-scan` (admin cookie, the
+  button) and its cron twin `GET /api/drive/usage-scan` (X-Admin-Key, daily scheduler job —
+  `bash scripts/schedule_drive_usage_scan.sh`). `DRIVE_SHARED_ALERT_GB` alerts ONCE per client
+  per status change (over / back under), stored in app_settings `drive_usage:<id>`.
   **Outreach page** (`core/outreach_tracker`, client view "פניות לעסקים" + admin tab + export):
   one row per business, status DERIVED at read time from prospect_contacts / agent_actions /
   outreach_sends / outreach_marks / suppression. We never read mail, so "ענו" / "ביקשו להסיר" /

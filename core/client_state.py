@@ -433,6 +433,16 @@ def _outreach(client_id: int) -> dict:
     return {"in_plan": True, **outreach_tracker.for_agent(client_id)}
 
 
+def cached_section(client_id: int, name: str):
+    """ONE section through the same cache snapshot() uses — for a persona's
+    own reads (support_agent._media_reads), so the snapshot that follows in
+    the same turn is a cache hit, not a second Drive/vendor read. None when
+    the read failed (never cached, never shown to a model)."""
+    fetchers = {"creative_tools": _creative_tools, "voice": _voice}
+    value, ok = _section(client_id, name, lambda: fetchers[name](client_id), False)
+    return value if ok else None
+
+
 def for_model(state: dict) -> dict:
     return {k: v for k, v in (state or {}).items() if not k.startswith("_")}
 

@@ -1369,21 +1369,13 @@ def client_connection_guide(connection_id: str, request: Request, lang: str = "h
 def client_connection_assist(connection_id: str, request: Request):
     # "Stuck? we'll do it with you": a staff request (admin alert, one per
     # client + connection a day), so the client is never left alone with a key
+    # (the chat card request_connection_help sends the same request)
     client_id = _require_session(request)
-    from core import chat_fallback, connection_help
-    entry = connection_help.get(connection_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail={"code": "no_guide"})
+    from core import connection_help
     try:
-        from agents.client_agent import get_client
-        name = (get_client(client_id) or {}).get("name", "")
-    except Exception:
-        name = ""
-    alerted = chat_fallback.alert_once(
-        "connection_help", client_id, f"assist:{connection_id}",
-        f"client {client_id} ({name}) is stuck connecting '{connection_id}' and pressed "
-        f"\"we'll do it with you\" — contact them and connect it together", days=1)
-    return {"success": True, "data": {"requested": True, "alerted": alerted}}
+        return {"success": True, "data": connection_help.request_assist(client_id, connection_id)}
+    except ValueError:
+        raise HTTPException(status_code=404, detail={"code": "no_guide"})
 
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
@@ -3282,16 +3274,30 @@ def admin_drive_migration(client_id: int, req: DriveMigrationRequest, request: R
         log_activity(client_id, "drive_storage", f"drive_migration_{req.step}", {"by": "admin"}, result)
     return {"success": True, "data": result}
 
-@app.post("/api/admin/drive/usage-scan")
-def admin_drive_usage_scan(request: Request):
-    # Our Shared Drive storage per client, with an admin alert above
-    # DRIVE_SHARED_ALERT_GB. Works whatever the round-2 flag says: until
-    # drive.file is approved, OUR storage is what is being billed.
-    _require_admin(request)
+def _drive_usage_scan() -> dict:
+    # Our Shared Drive storage per client, with an admin alert on each status
+    # change across DRIVE_SHARED_ALERT_GB. Works whatever the round-2 flag
+    # says: until drive.file is approved, OUR storage is what is being billed.
     from core import drive_storage
     ids = [c["id"] for c in list_clients() if c.get("id")]
     rows = drive_storage.shared_usage_scan(ids)
     return {"success": True, "data": {"threshold_bytes": drive_storage.shared_alert_bytes(), "clients": rows}}
+
+@app.post("/api/admin/drive/usage-scan")
+def admin_drive_usage_scan(request: Request):
+    # The dashboard button (admin_session cookie)
+    _require_admin(request)
+    return _drive_usage_scan()
+
+@app.get("/api/drive/usage-scan", dependencies=_admin_only)
+def drive_usage_scan():
+    # Daily Cloud Scheduler job (X-Admin-Key), same pattern as
+    # /api/monitor/scan and /api/leads/volume-scan. Plain `def`: it walks
+    # every client's folder in Drive.
+    try:
+        return _drive_usage_scan()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Merchant Center: RETIRED 2026-10-21 ─────────────────────────────────────
 # It never had a feature a client could see (no feed-status screen, the scan

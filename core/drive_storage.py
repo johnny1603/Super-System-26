@@ -50,7 +50,6 @@ LOCATION_TTL_SECONDS = 120
 # Admin alert while drive.file is not approved and we keep paying: a client's
 # folder in OUR Shared Drive above this many GB (env DRIVE_SHARED_ALERT_GB)
 DEFAULT_SHARED_ALERT_GB = 10.0
-USAGE_ALERT_DAYS = 7
 
 _location_cache = {}   # client_id -> (at, location)
 
@@ -256,13 +255,60 @@ def folder_usage(folder_id: str, max_items: int = 20000) -> dict:
     return {"bytes": total, "files": files, "complete": True}
 
 
+USAGE_PREFIX = "drive_usage:"   # app_settings drive_usage:<id> = {"status", "bytes", "changed_at"}
+
+
+def _usage_status(client_id: int) -> str:
+    rows = (_db().table("app_settings").select("value")
+            .eq("key", f"{USAGE_PREFIX}{int(client_id)}").limit(1).execute().data or [])
+    value = rows[0].get("value") if rows else {}
+    return (value or {}).get("status", "") if isinstance(value, dict) else ""
+
+
+def _save_usage_status(client_id: int, status: str, size: int):
+    _db().table("app_settings").upsert(
+        {"key": f"{USAGE_PREFIX}{int(client_id)}",
+         "value": {"status": status, "bytes": int(size), "changed_at": _now()}, "updated_at": _now()},
+        on_conflict="key").execute()
+
+
+def _usage_alert(issue: str):
+    from core.agent_base import agent_alert
+    agent_alert(SERVICE_NAME, [issue])
+
+
+def _note_usage_status(client_id: int, over: bool, size: int, threshold: int) -> bool:
+    """ONE admin alert per client per STATUS CHANGE — not on every run of a
+    daily job: crossing above the threshold alerts, dropping back below alerts
+    once that it is resolved, an unchanged status says nothing. The first
+    status ever seen alerts only when it is "over". The status is stored in
+    its own app_settings row (`drive_usage:<id>`, cleared by client_deletion,
+    covered by deletion_guard). Returns whether an alert was raised."""
+    status = "over" if over else "under"
+    previous = _usage_status(client_id)
+    if previous == status:
+        return False
+    _save_usage_status(client_id, status, size)
+    if status == "under" and not previous:
+        return False
+    gb, limit_gb = size / 1024 ** 3, threshold / 1024 ** 3
+    if over:
+        _usage_alert(f"client {client_id}: their folder in OUR Shared Drive holds {gb:.1f} GB "
+                     f"(threshold {limit_gb:.0f} GB, DRIVE_SHARED_ALERT_GB) — billed to uallak until "
+                     f"drive.file is approved and their files move to their own Drive")
+    else:
+        _usage_alert(f"client {client_id}: their folder in OUR Shared Drive is back under the threshold "
+                     f"({gb:.1f} GB of {limit_gb:.0f} GB, DRIVE_SHARED_ALERT_GB) — resolved")
+    return True
+
+
 def shared_usage_scan(client_ids: list) -> list:
     """For each client whose files are (still) in OUR Shared Drive: the size
-    of their folder, and ONE admin alert per client per USAGE_ALERT_DAYS when
-    it passes shared_alert_bytes(). Admin-triggered (and meant for a daily
-    scheduler job). Returns one row per client checked."""
+    of their folder, and ONE admin alert per client per status change when it
+    crosses shared_alert_bytes() (see _note_usage_status). Run by the daily
+    scheduler job (GET /api/drive/usage-scan, X-Admin-Key) and by the admin
+    button. Returns one row per client checked."""
     from core import drive_mirror
-    from core.chat_fallback import alert_once
     threshold, out = shared_alert_bytes(), []
     with as_service_account():
         for cid in client_ids:
@@ -275,13 +321,18 @@ def shared_usage_scan(client_ids: list) -> list:
                 out.append({"client_id": cid, "error": type(e).__name__})
                 continue
             over = usage["bytes"] > threshold
-            out.append({"client_id": cid, "bytes": usage["bytes"], "files": usage["files"],
-                        "complete": usage["complete"], "over_threshold": over,
-                        "in_client_drive": location(cid)["kind"] == CLIENT})
-            if over:
-                alert_once(SERVICE_NAME, cid, "shared_drive_over_threshold",
-                           f"client {cid}: their folder in OUR Shared Drive holds "
-                           f"{usage['bytes'] / 1024 ** 3:.1f} GB (threshold {threshold / 1024 ** 3:.0f} GB, "
-                           f"DRIVE_SHARED_ALERT_GB) — billed to uallak until drive.file is approved "
-                           f"and their files move to their own Drive", USAGE_ALERT_DAYS)
+            row = {"client_id": cid, "bytes": usage["bytes"], "files": usage["files"],
+                   "complete": usage["complete"], "over_threshold": over,
+                   "in_client_drive": location(cid)["kind"] == CLIENT}
+            if not over and not usage["complete"]:
+                # A walk cut short below the threshold proves nothing about
+                # "under": keep the stored status, alert nothing
+                row["alerted"] = False
+            else:
+                try:
+                    row["alerted"] = _note_usage_status(cid, over, usage["bytes"], threshold)
+                except Exception as e:
+                    row["alerted"] = False
+                    row["status_error"] = type(e).__name__
+            out.append(row)
     return out

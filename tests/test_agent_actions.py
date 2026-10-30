@@ -445,6 +445,108 @@ class VerificationDemoGuard(unittest.TestCase):
         self.assertEqual(vd.require_internal_test_client(27)["id"], 27)
 
 
+# ─── request_connection_help: a stuck client gets a person, never a website ──
+
+class ConnectionHelpCard(ActionTestCase):
+    def setUp(self):
+        super().setUp()
+        from core import connection_help
+        self.ch = connection_help
+        self.saved_assist = connection_help.request_assist
+        self.assists = []
+        connection_help.request_assist = lambda cid, conn: self.assists.append((cid, conn)) or {
+            "requested": True, "alerted": True}
+
+    def tearDown(self):
+        self.ch.request_assist = self.saved_assist
+        super().tearDown()
+
+    def test_offered_to_every_client_chat_but_not_internal_only(self):
+        names = [a["name"] for a in aa.available(40, "client_chat", {}, client=CLIENTS[40])]
+        self.assertIn("request_connection_help", names)
+        self.assertFalse(aa.ACTIONS["request_connection_help"]["internal_only"])
+
+    def test_card_names_the_capability_never_the_vendor(self):
+        card = self.propose(40, "client_chat", "request_connection_help", {"connection": "heygen"})["card"]
+        self.assertIn("הדמות שבסרטונים", card["what"])
+        self.assertNotIn("HeyGen", card["what"])
+        self.assertTrue(card["can_decide"])
+        self.assertIn("TikTok", self.propose(40, "client_chat", "request_connection_help",
+                                             {"connection": "tiktok"})["card"]["what"])
+
+    def test_unknown_or_inactive_connection_refused(self):
+        for bad in ("everything", "merchant_center", ""):
+            result = self.propose(40, "client_chat", "request_connection_help", {"connection": bad})
+            self.assertIn("error", result, bad)
+        self.assertEqual(self.rows(), [])
+
+    def test_click_sends_the_same_staff_request_as_the_guide_button(self):
+        card = self.propose(40, "client_chat", "request_connection_help", {"connection": "elevenlabs"})["card"]
+        self.assertEqual(self.assists, [])                      # proposing runs nothing
+        done = aa.decide(card["id"], "client", 40, "approve")
+        self.assertEqual(done["status"], "done")
+        self.assertEqual(self.assists, [(40, "elevenlabs")])
+
+
+class RequestAssist(unittest.TestCase):
+    """connection_help.request_assist — the ONE staff request behind both doors."""
+
+    def test_one_deduped_alert_per_client_and_connection_a_day(self):
+        import core
+        from core import connection_help
+        calls = []
+        stub = types.ModuleType("core.chat_fallback")
+        stub.alert_once = lambda source, cid, key, text, days=7: calls.append((source, cid, key, days)) or True
+        saved = (sys.modules.get("core.chat_fallback"), getattr(core, "chat_fallback", None))
+        sys.modules["core.chat_fallback"], core.chat_fallback = stub, stub
+        try:
+            self.assertEqual(connection_help.request_assist(40, "tiktok"), {"requested": True, "alerted": True})
+            with self.assertRaises(ValueError):
+                connection_help.request_assist(40, "nope")
+        finally:
+            if saved[0] is None:
+                sys.modules.pop("core.chat_fallback", None)
+            else:
+                sys.modules["core.chat_fallback"] = saved[0]
+            if saved[1] is None:
+                delattr(core, "chat_fallback")
+            else:
+                core.chat_fallback = saved[1]
+        self.assertEqual(calls, [("connection_help", 40, "assist:tiktok", 1)])
+
+
+class TikTokDraftsHistory(ActionTestCase):
+    def add(self, status, outcome="", file_id="1AbCdEfGhIjKlMnOp", client_id=40, action="send_tiktok_to_inbox"):
+        self.db.tables.setdefault(aa.TABLE, []).append({
+            "id": len(self.rows()) + 1, "client_id": client_id, "action": action, "status": status,
+            "outcome": outcome, "params": {"drive_file_id": file_id},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(timezone.utc).isoformat()})
+
+    def test_sent_failed_running_and_waiting_from_this_clients_rows_only(self):
+        aa._media_meta[(40, "1AbCdEfGhIjKlMnOp")] = (aa.time.time(), {"name": "promo.mp4"})
+        self.add("done")
+        self.add("failed", "pending_limit")
+        self.add("running")
+        self.add("proposed")
+        self.add("done", client_id=41)                              # another client
+        self.add("done", action="publish_youtube_from_media")       # another action
+        view = aa.tiktok_drafts_sent(40)
+        self.assertEqual(view["sent_to_inbox"][0]["file"], "promo.mp4")
+        self.assertEqual(len(view["sent_to_inbox"]), 1)
+        self.assertEqual(view["not_sent"][0]["reason"], "pending_limit")
+        self.assertEqual((view["sending_now"], view["waiting_for_approval"]), (1, 1))
+        self.assertIn("פרסם", view["client_must_do"])              # they publish it themselves
+
+    def test_nothing_sent_means_nothing_to_do(self):
+        self.assertEqual(aa.tiktok_drafts_sent(40)["client_must_do"], "")
+
+    def test_unreadable_table_raises_so_the_field_is_left_out(self):
+        self.db.fail = True
+        with self.assertRaises(RuntimeError):
+            aa.tiktok_drafts_sent(40)
+
+
 # ─── client_state: failures are never cached and never reach the model ──────
 
 class ClientStateFailures(unittest.TestCase):

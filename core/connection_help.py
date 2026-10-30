@@ -567,6 +567,28 @@ def get(connection_id: str, active_only: bool = True) -> dict:
     return entry
 
 
+def request_assist(client_id: int, connection_id: str) -> dict:
+    """"Stuck? we'll do it with you": a staff request — one admin alert per
+    client + connection a day — so the client is never left alone with a key
+    or sent off to a website. ONE implementation for the guide's button
+    (POST /api/client/connection-help/{id}/assist) and the chat card
+    (agent_actions request_connection_help). ValueError: no such guide."""
+    entry = get(connection_id)
+    if not entry:
+        raise ValueError("no_guide")
+    from core import chat_fallback
+    try:
+        from agents.client_agent import get_client
+        name = (get_client(client_id) or {}).get("name", "")
+    except Exception:
+        name = ""
+    alerted = chat_fallback.alert_once(
+        "connection_help", client_id, f"assist:{entry['id']}",
+        f"client {client_id} ({name}) is stuck connecting '{entry['id']}' and pressed "
+        f"\"we'll do it with you\" — contact them and connect it together", days=1)
+    return {"requested": True, "alerted": alerted}
+
+
 def _pick(table: dict, lang: str):
     return table.get(lang) or table.get("he")
 

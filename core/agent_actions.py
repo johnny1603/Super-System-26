@@ -505,6 +505,31 @@ def _creative_label(tool: str, lang: str = "he") -> str:
     return client_label(tool, lang) or "—"
 
 
+def _v_help_connection(value, client_id: int):
+    """A connection that has a help entry (core/connection_help, active)."""
+    from core import connection_help
+    connection_id = str(value or "").strip().lower()
+    if not connection_help.get(connection_id):
+        raise ValueError("connection must be an active core/connection_help id")
+    return connection_id
+
+
+def _help_connection_label(connection_id: str, lang: str = "he") -> str:
+    """The connection as the client reads it: its help entry's title (the
+    creative tools' titles are already capability names, never a vendor —
+    tests/test_ux_vision)."""
+    from core import connection_help
+    entry = connection_help.get(connection_id)
+    return connection_help._pick(entry["title"], lang) if entry else "—"
+
+
+def _run_request_connection_help(client_id: int, params: dict, background_tasks):
+    """The SAME staff request as the guide's "stuck? we'll do it with you"
+    button (POST /api/client/connection-help/{id}/assist)."""
+    from core import connection_help
+    return connection_help.request_assist(client_id, params["connection"])
+
+
 def _creative_focus(tool: str) -> str:
     from core.vendor_tools import focus_id
     return focus_id(tool) if tool in _creative_tools_spec() else "connGrid"
@@ -968,6 +993,34 @@ ACTIONS = {
                      "Откроется только карточка «{tool}» с пошаговой инструкцией. Застряли? Там есть кнопка — сделаем вместе. Остальные инструменты не меняются."),
         "done": _txt("פותח את כרטיס החיבור…", "Opening the connection card…", "Ouverture de la carte…",
                      "جارٍ فتح البطاقة…", "Открываю карточку…"),
+    },
+    "request_connection_help": {
+        # A stuck client gets a person, never "go to this website": the click
+        # sends the team the same request as the guide's "we'll do it with
+        # you" button (one admin alert per client + connection a day)
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Asks the team to contact the client and connect ONE connection together with them — ONLY "
+                "when the client says they are stuck, tried and failed, or asks for a person to help "
+                "them connect it. Never instead of the connection's own card when they just want to connect.",
+        "params": {"connection": {"required": True, "validate": _v_help_connection,
+                                  "hint": "the connection they are stuck on: tiktok | youtube | meta | google_ads "
+                                          "| tag_manager | wordpress | heygen | elevenlabs | higgsfield"}},
+        "available": lambda state, client: True,
+        "run": _run_request_connection_help,
+        "display": lambda client_id, params: {
+            "connection": _help_connection_label(params.get("connection", ""), _lang(client_id))},
+        "title": _txt("עזרה מהצוות בחיבור", "Help from the team to connect", "Aide de l'équipe pour connecter",
+                      "مساعدة من الفريق في الربط", "Помощь команды с подключением"),
+        "what": _txt("נבקש מהצוות לחזור אליכם ולחבר את \"{connection}\" יחד איתכם. בינתיים לא צריך לחפש שום דבר בעצמכם.",
+                     "We'll ask the team to get back to you and connect \"{connection}\" together with you. You don't need to look anything up in the meantime.",
+                     "Nous demandons à l'équipe de vous recontacter pour connecter « {connection} » avec vous. Inutile de chercher quoi que ce soit en attendant.",
+                     "سنطلب من الفريق التواصل معكم وربط \"{connection}\" معًا. لا حاجة للبحث عن أي شيء بأنفسكم في الأثناء.",
+                     "Мы попросим команду связаться с вами и подключить «{connection}» вместе. Пока ничего искать самим не нужно."),
+        "done": _txt("הבקשה אצל הצוות ✓ נחזור אליכם כדי לחבר את זה יחד.",
+                     "The team has your request ✓ We'll get back to you to connect it together.",
+                     "L'équipe a votre demande ✓ Nous vous recontactons pour le connecter ensemble.",
+                     "الطلب لدى الفريق ✓ سنعود إليكم لربطه معًا.",
+                     "Запрос у команды ✓ Мы свяжемся с вами, чтобы подключить вместе."),
     },
     # ── Creative jobs on the client's OWN tool accounts. internal_only until
     # the live test on client 27 passes (docs/CREATIVE-TOOLS.md): nothing a
@@ -1613,6 +1666,38 @@ def _open_rows(client_id: int, statuses=OPEN_STATUSES) -> list:
         _log(f"client {client_id}: agent_actions unreadable ({type(e).__name__}) — migration pending?",
              severity="WARNING", client_id=client_id)
         return []
+
+
+TIKTOK_INBOX_NEXT_STEP_HE = ("הסרטון מחכה כטיוטה בתיבת הנכנסים באפליקציית טיקטוק: פותחים את האפליקציה, "
+                             "נכנסים להתראה על הסרטון, מוסיפים כיתוב ולוחצים 'פרסם'. אנחנו לא מפרסמים בשמכם.")
+
+
+def tiktok_drafts_sent(client_id: int, limit: int = 10) -> dict:
+    """What we sent to the client's TikTok inbox, from this table's own
+    history — a pure read (no TikTok call, no token refresh, no Drive call:
+    a file name appears only when it is already known here). `done` means
+    TikTok accepted the video into THEIR inbox as a draft; publishing it is
+    the client's own step in the app (`client_must_do`). Raises when the
+    table is unreadable, so the caller leaves the field out."""
+    rows = (_db().table(TABLE).select("id,status,outcome,params,created_at,finished_at")
+            .eq("client_id", int(client_id)).eq("action", "send_tiktok_to_inbox")
+            .order("created_at", desc=True).limit(int(limit)).execute().data or [])
+
+    def name(row):
+        hit = _media_meta.get((client_id, str((row.get("params") or {}).get("drive_file_id") or "")))
+        return (hit[1] or {}).get("name", "") if hit else ""
+
+    sent = [{"file": name(r), "sent_at": str(r.get("finished_at") or r.get("created_at") or "")[:10]}
+            for r in rows if r.get("status") == "done"]
+    failed = [{"file": name(r), "at": str(r.get("finished_at") or r.get("created_at") or "")[:10],
+               "reason": r.get("outcome") or "error"}
+              for r in rows if r.get("status") == "failed"]
+    return {"sent_to_inbox": sent,
+            "not_sent": failed,
+            "sending_now": sum(1 for r in rows if r.get("status") == "running"),
+            "waiting_for_approval": sum(1 for r in rows if r.get("status") in OPEN_STATUSES
+                                        and not _expired(r)),
+            "client_must_do": TIKTOK_INBOX_NEXT_STEP_HE if sent else ""}
 
 
 def _expired(row: dict) -> bool:
