@@ -4348,6 +4348,85 @@ def client_voice_delete(req: VoiceDeleteRequest, request: Request):
     _creative_state_changed(client_id)
     return {"success": True, "data": result}
 
+# ─── Upload from the chat (core/chat_uploads) ───────────────────────────────
+# One fixed-size chunk per request, forwarded straight into a Drive resumable
+# session: no size limit of ours, memory bounded by one chunk, and no request
+# near the ~300 s timeout. Picking from the client's own Google Drive / Google
+# Photos is NOT here: it needs new OAuth scopes — a later verification round.
+
+_CHAT_UPLOAD_STATUS = {"empty": 400, "bad_chunk": 400, "unsupported": 415, "archive": 415, "unsafe": 415,
+                       "too_big": 413, "expired": 410, "not_configured": 503, "storage": 503}
+
+def _chat_upload_refused(e) -> HTTPException:
+    from core import chat_uploads as cu
+    return HTTPException(status_code=_CHAT_UPLOAD_STATUS.get(e.code, 400),
+                         detail={"code": e.code, "message_he": cu.PLAIN_HE.get(e.code, cu.PLAIN_HE["storage"])})
+
+@app.post("/api/client/chat-upload")
+async def client_chat_upload(request: Request):
+    # Raw body = ONE chunk; the name, total size, offset and the sealed
+    # session token travel in headers (no python-multipart in the image)
+    from urllib.parse import unquote
+    from starlette.concurrency import run_in_threadpool
+    from core import chat_uploads as cu
+    client_id = _require_session(request)
+    limit = cu.chunk_bytes()
+    try:
+        offset = int(request.headers.get("x-chunk-offset") or 0)
+        total = int(request.headers.get("x-file-size") or 0)
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+    if declared > limit:
+        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+    body = bytearray()
+    async for piece in request.stream():
+        body += piece
+        if len(body) > limit:
+            raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+    data = bytes(body)
+    token = request.headers.get("x-upload-token") or ""
+    try:
+        if token:
+            payload = cu.unseal(token, client_id)
+            if not payload:
+                raise cu.UploadRefused("expired")
+        else:
+            if offset != 0:
+                raise cu.UploadRefused("bad_chunk")
+            payload = await run_in_threadpool(
+                cu.begin, client_id, cu.valid_persona(request.headers.get("x-persona") or ""),
+                unquote(request.headers.get("x-file-name") or ""), total, data,
+                request.headers.get("x-file-type") or "", request.headers.get("x-duration-seconds"))
+            token = cu.seal(payload, client_id)
+        answer = await run_in_threadpool(cu.send, client_id, payload, offset, data)
+    except cu.UploadRefused as e:
+        raise _chat_upload_refused(e)
+    out = {"token": token, "kind": payload["k"], "name": payload["n"], "done": answer["done"],
+           "next_offset": answer.get("next_offset")}
+    if answer["done"]:
+        out["result"] = await run_in_threadpool(cu.finish, client_id, payload, answer.get("file") or {})
+    return {"success": True, "data": out}
+
+@app.post("/api/client/chat-upload/status")
+async def client_chat_upload_status(request: Request):
+    # The resume: how many bytes Drive holds for this session
+    from starlette.concurrency import run_in_threadpool
+    from core import chat_uploads as cu
+    client_id = _require_session(request)
+    payload = cu.unseal(request.headers.get("x-upload-token") or "", client_id)
+    try:
+        if not payload:
+            raise cu.UploadRefused("expired")
+        answer = await run_in_threadpool(cu.status, client_id, payload)
+    except cu.UploadRefused as e:
+        raise _chat_upload_refused(e)
+    out = {"done": answer["done"], "next_offset": answer.get("next_offset"), "kind": payload["k"],
+           "name": payload["n"]}
+    if answer["done"]:
+        out["result"] = await run_in_threadpool(cu.finish, client_id, payload, answer.get("file") or {})
+    return {"success": True, "data": out}
+
 @app.get("/api/avatar/scan", dependencies=_admin_only)
 def avatar_scan():
     # Daily readiness scan (twin training takes days - clients get notified,

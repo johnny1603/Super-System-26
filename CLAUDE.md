@@ -147,6 +147,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `_disconnect_platform`; never deletes vendor data, never touches billing/status). WordPress
   disconnect deletes our own Application Password on the site. `tests/test_ownership.py` also
   holds the guard that no client route returns a decrypted secret. See `docs/OWNERSHIP.md`.
+- `core/chat_uploads.py` — "+" / drag-drop upload from any chat window: 8 MiB chunks straight
+  into a Drive resumable session (`drive_service.start_resumable/put_chunk/resumable_status`),
+  no size limit of ours, type sniffed from the bytes, routed to videos/images/voice/documents,
+  then the window's agent PROPOSES cards (YouTube / TikTok / voice clone) by the real
+  availability rules. Chat windows are resizable (CSS variables only). Picking from the
+  client's Google Drive / Google Photos needs new OAuth scopes — a LATER verification round,
+  deliberately not built. See `docs/CHAT-UPLOADS.md`.
 - `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
   typed name/id → `delete_client_full()`. Refuses internal (billing_exempt) and owner
   (`OWNER_EMAILS` + ADMIN_EMAIL/GMAIL_USER) accounts SERVER-side. Reuses
@@ -521,7 +528,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   between mousedown and mouseup gets no `click` event at all. This silently killed every
   button inside the client dashboard's agent chat windows (close / minimize / new chat /
   download / send) — see `focusWindow` in `dashboard/client/index.html`, which now raises a
-  window with CSS `order` + `z-index` instead. Reorder with CSS, not with the DOM.
+  window with CSS `order` + `z-index` instead. Reorder with CSS, not with the DOM. The
+  resize and file-drop handlers follow the same rule (only `--cw-w`/`--cw-h` and classes
+  change); `tests/test_chat_uploads.py` fails if a DOM move appears in them.
 - `overflow` / `text-overflow: ellipsis` do **nothing** on an inline element. Several
   header labels are `<span>`s and need an explicit `display: block` to actually clip
   instead of spilling over the controls next to them.

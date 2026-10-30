@@ -461,11 +461,37 @@ body {
 /* Open windows lay out along the bottom; each is fully independent. */
 .chat-windows { position: fixed; bottom: 96px; left: 26px; z-index: 199;
   display: flex; gap: 12px; align-items: flex-end; pointer-events: none; }
-.chat-window { width: 322px; height: 468px; background: var(--panel);
+/* Size: the client's own, per window (--cw-w / --cw-h, set by the resize
+   handles and kept per client). The phone layout below ignores them. */
+.chat-window { width: var(--cw-w, 322px); height: var(--cw-h, 468px); background: var(--panel);
   border: 1px solid var(--border); border-radius: 18px; display: flex; flex-direction: column;
   overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); pointer-events: auto;
-  animation: greetIn 0.2s ease; }
+  animation: greetIn 0.2s ease; position: relative; }
 .chat-window.minimized { display: none; }
+/* Windows sit on the bottom-left, so they grow up and to the right: the
+   handles are the top edge, the right edge and the top-right corner. */
+.cw-resize { position: absolute; z-index: 3; touch-action: none; }
+.cw-resize[data-dir="y"] { top: 0; left: 18px; right: 18px; height: 6px; cursor: ns-resize; }
+.cw-resize[data-dir="x"] { top: 18px; bottom: 18px; right: 0; width: 6px; cursor: ew-resize; }
+.cw-resize[data-dir="xy"] { top: 0; right: 0; width: 16px; height: 16px; cursor: nesw-resize; }
+.cw-resize[data-dir="xy"]::after { content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
+  border-top: 2px solid var(--gray); border-right: 2px solid var(--gray); border-radius: 0 3px 0 0; opacity: 0.55; }
+.chat-window.resizing { user-select: none; }
+.chat-window.resizing .cw-resize[data-dir="xy"]::after { border-color: var(--accent); opacity: 1; }
+/* Upload: the "+" next to the input, and the drop overlay (built with the
+   window; dragging only toggles a class) */
+.cw-attach { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--panel-2); color: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; font-family: inherit; }
+.cw-attach:hover { border-color: var(--accent); color: var(--accent); }
+.cw-file { display: none; }
+.cw-drop { position: absolute; inset: 0; z-index: 4; display: none; align-items: center; justify-content: center;
+  text-align: center; padding: 20px; font-size: 14px; font-weight: 700; color: var(--accent);
+  background: rgba(10,10,10,0.82); border: 2px dashed var(--accent); border-radius: 18px; pointer-events: none; }
+.chat-window.drop-ready .cw-drop { display: flex; }
+.chat-upload .bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; margin-top: 6px; }
+.chat-upload .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
+.chat-upload.failed .bar > i { background: var(--gray); }
 .cw-head { padding: 11px 12px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 8px; background: linear-gradient(180deg, #1c1c1c, var(--panel)); }
 .cw-ava { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
@@ -685,6 +711,7 @@ body {
 @media (max-width: 640px) {
   .chat-windows { left: 0; right: 0; bottom: 0; display: block; }
   .chat-window { position: fixed; left: 8px; right: 8px; bottom: 80px; width: auto; height: 70vh; }
+  .cw-resize { display: none; }   /* phone: the fixed near-full-screen window, never resized */
   .chat-launcher { left: 8px; right: 8px; width: auto; }
   .chat-dock { left: 8px; right: 8px; bottom: 18px; max-width: none; }
 }
@@ -2514,6 +2541,14 @@ const DASH_I18N = {
   chat_download: { he:'הורדת השיחה', en:'Download conversation', fr:'Télécharger la conversation', ar:'تنزيل المحادثة', ru:'Скачать беседу' },
   chat_minimize: { he:'מזעור', en:'Minimize', fr:'Réduire', ar:'تصغير', ru:'Свернуть' },
   chat_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
+  chat_attach: { he:'העלאת קובץ — סרטון, תמונה, הקלטה או מסמך', en:'Upload a file — video, photo, recording or document', fr:'Envoyer un fichier — vidéo, photo, enregistrement ou document', ar:'رفع ملف — فيديو أو صورة أو تسجيل أو مستند', ru:'Загрузить файл — видео, фото, запись или документ' },
+  chat_drop_here: { he:'משחררים כאן — הקובץ יישמר בתיקיית המדיה שלך', en:'Drop here — the file is saved to your media folder', fr:'Déposez ici — le fichier est enregistré dans votre dossier média', ar:'أفلتوا هنا — يُحفظ الملف في مجلد الوسائط', ru:'Отпустите здесь — файл сохранится в вашей папке медиа' },
+  upload_title: { he:'מעלה: {name}', en:'Uploading: {name}', fr:'Envoi : {name}', ar:'جارٍ الرفع: {name}', ru:'Загрузка: {name}' },
+  upload_progress: { he:'{done} מתוך {total} ({pct}%). אפשר להמשיך לכתוב בינתיים.', en:'{done} of {total} ({pct}%). You can keep chatting meanwhile.', fr:'{done} sur {total} ({pct} %). Vous pouvez continuer à écrire.', ar:'{done} من {total} ({pct}%). يمكنكم متابعة الكتابة.', ru:'{done} из {total} ({pct}%). Можно продолжать переписку.' },
+  upload_resuming: { he:'החיבור נקטע — ממשיכים מאיפה שעצרנו ({done} מתוך {total}).', en:'The connection dropped — resuming where it stopped ({done} of {total}).', fr:'Connexion interrompue — reprise là où elle s\'est arrêtée ({done} sur {total}).', ar:'انقطع الاتصال — نستأنف من حيث توقفنا ({done} من {total}).', ru:'Связь прервалась — продолжаем с места остановки ({done} из {total}).' },
+  upload_done: { he:'הקובץ נשמר ✓', en:'File saved ✓', fr:'Fichier enregistré ✓', ar:'تم حفظ الملف ✓', ru:'Файл сохранён ✓' },
+  upload_failed: { he:'ההעלאה לא הצליחה. אפשר לנסות שוב — אם הקובץ ייבחר שוב, היא תמשיך מאיפה שעצרה.', en:'The upload didn\'t go through. Try again — picking the same file resumes where it stopped.', fr:'L\'envoi n\'a pas abouti. Réessayez — le même fichier reprend là où il s\'est arrêté.', ar:'لم ينجح الرفع. حاولوا مجددًا — اختيار الملف نفسه يستأنف من حيث توقف.', ru:'Загрузка не удалась. Попробуйте снова — тот же файл продолжит с места остановки.' },
+  upload_empty: { he:'הקובץ ריק — אין מה להעלות.', en:'The file is empty — nothing to upload.', fr:'Le fichier est vide — rien à envoyer.', ar:'الملف فارغ — لا شيء للرفع.', ru:'Файл пуст — загружать нечего.' },
   chat_dl_me: { he:'אני', en:'Me', fr:'Moi', ar:'أنا', ru:'Я' },
   chat_dl_team: { he:'uallak', en:'uallak', fr:'uallak', ar:'uallak', ru:'uallak' },
   chat_dl_empty: { he:'(אין עדיין הודעות בשיחה זו)', en:'(no messages in this conversation yet)', fr:'(aucun message dans cette conversation pour l\'instant)', ar:'(لا توجد رسائل في هذه المحادثة بعد)', ru:'(в этой беседе пока нет сообщений)' },
@@ -3081,6 +3116,8 @@ async function loadDashboard() {
 
     // Concierge data for the greeting + chips
     chatData.name = (d.client && d.client.name) || '';
+    chatData.clientId = (d.client && d.client.id) || '';
+    Object.keys(CHAT_WINDOWS).forEach(id => applyWindowSize(id, CHAT_WINDOWS[id].root));
     chatData.gender = (d.client && d.client.owner_gender) || null;
     chatData.firstVisit = !d.tour_completed;
     chatData.conns = conns;
@@ -4662,6 +4699,24 @@ function buildWindow(id) {
   send.className = 'support-send';
   send.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
   send.onclick = () => sendInWindow(id);
+  // Upload from the chat: "+" opens the native picker (on a phone that is the
+  // gallery + camera), and files can be dropped on the window. Staff viewing
+  // as the client are read-only, so they get neither.
+  if (!ADMIN_VIEW) {
+    const file = document.createElement('input');
+    file.type = 'file'; file.multiple = true; file.className = 'cw-file';
+    // A picker hint only (it decides which phone sources are offered) — the
+    // server reads each file's real type from its bytes
+    file.accept = 'image/*,video/*,audio/*,application/pdf,.heic,.heif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,'
+                + '.odt,.ods,.odp,.rtf,.txt,.csv';
+    file.onchange = () => { const picked = Array.from(file.files || []); file.value = ''; uploadFilesInWindow(id, picked); };
+    const attach = document.createElement('button');
+    attach.type = 'button'; attach.className = 'cw-attach'; attach.textContent = '+';
+    attach.title = uallakI18n.t('chat_attach');
+    attach.setAttribute('aria-label', uallakI18n.t('chat_attach'));
+    attach.onclick = () => file.click();
+    inputArea.appendChild(file); inputArea.appendChild(attach);
+  }
   inputArea.appendChild(input); inputArea.appendChild(send);
   head.querySelector('[data-act="dl"]').onclick = () => downloadWindowConversation(id);
   head.querySelector('[data-act="new"]').onclick = () => newChatInWindow(id);
@@ -4670,8 +4725,277 @@ function buildWindow(id) {
   root.appendChild(head); root.appendChild(msgs);
   if (chips) root.appendChild(chips);
   root.appendChild(inputArea);
+  // Everything the drag code touches exists from here on: dragging a size or
+  // a file only changes styles and classes, never the DOM tree
+  ['y', 'x', 'xy'].forEach(dir => {
+    const handle = document.createElement('div');
+    handle.className = 'cw-resize'; handle.dataset.dir = dir;
+    root.appendChild(handle);
+  });
+  const drop = document.createElement('div');
+  drop.className = 'cw-drop';
+  drop.textContent = uallakI18n.t('chat_drop_here');
+  root.appendChild(drop);
   root.addEventListener('mousedown', () => focusWindow(id));
+  applyWindowSize(id, root);
+  wireWindowResize(id, root);
+  if (!ADMIN_VIEW) wireWindowDrop(id, root);
   return { root: root, msgsEl: msgs, inputEl: input, chipsEl: chips, minimized: false };
+}
+
+// ─── Resizable windows ───────────────────────────────────────────────────────
+// The client drags the top edge, the right edge or the top-right corner; the
+// size is kept per window, per client (localStorage — a convenience: a new
+// device starts at the default). Only two CSS variables change while
+// dragging: NO node is added, moved or removed (see focusWindow's comment for
+// why that matters). On a phone the window is the fixed near-full-screen
+// sheet and the handles are hidden.
+function chatWindowMin() { return { w: 280, h: 360 }; }
+function chatWindowMax() {
+  return { w: Math.max(chatWindowMin().w, window.innerWidth - 60),
+           h: Math.max(chatWindowMin().h, window.innerHeight - 130) };
+}
+function isPhoneChatLayout() {
+  return Boolean(window.matchMedia && window.matchMedia('(max-width: 640px)').matches);
+}
+function windowSizeKey(id) {
+  return chatData.clientId ? `uallak_cw_size_${chatData.clientId}_${id}` : '';
+}
+function clampWindowSize(w, h) {
+  const min = chatWindowMin(), max = chatWindowMax();
+  return { w: Math.round(Math.min(Math.max(w, min.w), max.w)),
+           h: Math.round(Math.min(Math.max(h, min.h), max.h)) };
+}
+function applyWindowSize(id, root) {
+  const key = windowSizeKey(id);
+  if (!key) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+  if (!saved || !Number.isFinite(saved.w) || !Number.isFinite(saved.h)) return;
+  const size = clampWindowSize(saved.w, saved.h);
+  root.style.setProperty('--cw-w', size.w + 'px');
+  root.style.setProperty('--cw-h', size.h + 'px');
+}
+function wireWindowResize(id, root) {
+  root.querySelectorAll('.cw-resize').forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      if (isPhoneChatLayout() || e.button > 0) return;
+      e.preventDefault();          // no text selection; also suppresses the compat mousedown…
+      focusWindow(id);             // …so raise it here (CSS order/z-index only)
+      const dir = handle.dataset.dir;
+      const start = { x: e.clientX, y: e.clientY, w: root.offsetWidth, h: root.offsetHeight };
+      let size = { w: start.w, h: start.h };
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+      root.classList.add('resizing');
+      const move = ev => {
+        // Anchored bottom-left: right edge follows the pointer, top edge too
+        size = clampWindowSize(dir === 'y' ? start.w : start.w + (ev.clientX - start.x),
+                               dir === 'x' ? start.h : start.h - (ev.clientY - start.y));
+        root.style.setProperty('--cw-w', size.w + 'px');
+        root.style.setProperty('--cw-h', size.h + 'px');
+      };
+      const end = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', end);
+        handle.removeEventListener('pointercancel', end);
+        root.classList.remove('resizing');
+        const key = windowSizeKey(id);
+        if (key) { try { localStorage.setItem(key, JSON.stringify(size)); } catch (err) {} }
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    });
+  });
+}
+
+// ─── Upload from the chat ────────────────────────────────────────────────────
+// Each file goes up in fixed chunks (the server's video_limits.UPLOAD_CHUNK_BYTES
+// — keep the two equal), every chunk straight into the client's Drive media
+// folder, so there is no size limit of ours and a big video never hits a
+// request timeout. An interruption resumes from where Drive stands (and after
+// a reload, when the same file is picked again). While it runs: a progress
+// card, never a spinner. When it lands: the agent's line and its proposal
+// cards — nothing is published or sent without the client's click.
+// Picking from the client's own Google Drive / Google Photos is NOT here: it
+// needs new Google OAuth scopes — a later verification round on purpose.
+const CHAT_UPLOAD_CHUNK = 8 * 1024 * 1024;
+const CHAT_UPLOAD_RETRIES = 6;
+
+function wireWindowDrop(id, root) {
+  let depth = 0;
+  const hasFiles = e => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+  root.addEventListener('dragenter', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth += 1; root.classList.add('drop-ready');
+  });
+  root.addEventListener('dragover', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+  });
+  root.addEventListener('dragleave', e => {
+    if (!hasFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) root.classList.remove('drop-ready');
+  });
+  root.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth = 0; root.classList.remove('drop-ready');
+    uploadFilesInWindow(id, Array.from(e.dataTransfer.files || []));
+  });
+}
+
+async function uploadFilesInWindow(id, files) {
+  for (const f of files) {
+    if (!CHAT_WINDOWS[id]) return;   // the window was closed
+    await uploadOneFile(id, f);
+  }
+}
+
+function formatMB(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 10 ? Math.round(mb) + 'MB' : mb >= 1 ? mb.toFixed(1) + 'MB' : Math.max(1, Math.round(bytes / 1024)) + 'KB';
+}
+
+function appendUploadCard(w, file) {
+  const el = document.createElement('div');
+  el.className = 'chat-action chat-upload';
+  el.dir = 'auto';
+  const title = document.createElement('div');
+  title.className = 't';
+  title.textContent = uallakI18n.t('upload_title', { name: file.name });
+  const box = document.createElement('div');
+  box.className = 'progress';
+  const text = document.createElement('div');
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const fill = document.createElement('i');
+  bar.appendChild(fill);
+  box.append(text, bar);
+  const note = document.createElement('div');
+  note.className = 'note';
+  el.append(title, box, note);
+  w.msgsEl.appendChild(el);
+  w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+  return {
+    progress(done, total, resuming) {
+      const pct = total ? Math.floor(done * 100 / total) : 0;
+      fill.style.width = pct + '%';
+      text.textContent = uallakI18n.t(resuming ? 'upload_resuming' : 'upload_progress',
+                                      { done: formatMB(done), total: formatMB(total), pct: pct });
+    },
+    done() { fill.style.width = '100%'; text.textContent = uallakI18n.t('upload_done'); },
+    fail(message) { el.classList.add('failed'); text.textContent = ''; note.textContent = message; },
+  };
+}
+
+function uploadResumeKey(file) {
+  return `uallak_up_${chatData.clientId || ''}_${file.size}_${file.lastModified || 0}_${file.name}`;
+}
+
+// Audio only, best effort: the duration the voice-recordings list shows
+function mediaDuration(file) {
+  return new Promise(resolve => {
+    if (!/^audio\//.test(file.type || '')) return resolve('');
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    const done = v => { URL.revokeObjectURL(url); resolve(v); };
+    const timer = setTimeout(() => done(''), 4000);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => { clearTimeout(timer); done(Number.isFinite(a.duration) ? String(a.duration) : ''); };
+    a.onerror = () => { clearTimeout(timer); done(''); };
+    a.src = url;
+  });
+}
+
+async function chatUploadStatus(token) {
+  const res = await fetch('/api/client/chat-upload/status', {
+    method: 'POST', credentials: 'same-origin', headers: { 'X-Upload-Token': token } });
+  const body = await res.json().catch(() => ({}));
+  return { ok: res.ok && body.success, status: res.status, data: body.data || {}, detail: body.detail || {} };
+}
+
+async function uploadOneFile(id, file) {
+  const w = CHAT_WINDOWS[id];
+  if (!w) return;
+  const card = appendUploadCard(w, file);
+  if (!file.size) { card.fail(uallakI18n.t('upload_empty')); return; }
+  const key = uploadResumeKey(file);
+  let token = '';
+  let offset = 0;
+  let finished = null;
+  try { token = localStorage.getItem(key) || ''; } catch (e) {}
+  if (token) {
+    // The same file was cut off earlier: continue where Drive stands
+    const s = await chatUploadStatus(token).catch(() => ({ ok: false }));
+    if (s.ok && s.data.done) finished = s.data.result;
+    else if (s.ok) offset = Number(s.data.next_offset) || 0;
+    else { token = ''; try { localStorage.removeItem(key); } catch (e) {} }
+  }
+  const duration = token ? '' : await mediaDuration(file);
+  let failures = 0;
+  card.progress(offset, file.size, Boolean(token && offset));
+  while (!finished) {
+    const chunk = file.slice(offset, Math.min(offset + CHAT_UPLOAD_CHUNK, file.size));
+    const headers = { 'Content-Type': 'application/octet-stream',
+                      'X-Chunk-Offset': String(offset), 'X-File-Size': String(file.size) };
+    if (token) headers['X-Upload-Token'] = token;
+    else {
+      headers['X-File-Name'] = encodeURIComponent(file.name);
+      headers['X-File-Type'] = file.type || '';
+      headers['X-Persona'] = id;
+      if (duration) headers['X-Duration-Seconds'] = duration;
+    }
+    let res = null, body = {};
+    try {
+      res = await fetch('/api/client/chat-upload', { method: 'POST', credentials: 'same-origin', headers, body: chunk });
+      body = await res.json().catch(() => ({}));
+    } catch (e) { res = null; }
+    if (res && res.ok && body.success) {
+      failures = 0;
+      const d = body.data || {};
+      token = d.token || token;
+      try { localStorage.setItem(key, token); } catch (e) {}
+      if (d.done) { finished = d.result || {}; break; }
+      offset = Number(d.next_offset) || 0;
+      card.progress(offset, file.size, false);
+      continue;
+    }
+    const detail = (body && body.detail) || {};
+    if (res && res.status >= 400 && res.status < 500 && detail.code !== 'bad_chunk') {
+      // A plain sentence from the server (wrong type, unsafe, session gone…)
+      try { localStorage.removeItem(key); } catch (e) {}
+      card.fail(detail.message_he || uallakI18n.t('upload_failed'));
+      return;
+    }
+    // Network drop / 5xx / a chunk Drive didn't line up with: ask Drive where
+    // it stands and continue from there, with a growing pause
+    failures += 1;
+    if (failures > CHAT_UPLOAD_RETRIES) {
+      card.fail(detail.message_he || uallakI18n.t('upload_failed'));
+      return;
+    }
+    card.progress(offset, file.size, true);
+    await new Promise(r => setTimeout(r, Math.min(2000 * failures, 15000)));
+    if (!token) continue;   // the first chunk never landed: no session yet, send it again
+    const s = await chatUploadStatus(token).catch(() => ({ ok: false }));
+    if (s.ok && s.data.done) { finished = s.data.result || {}; break; }
+    if (s.ok) offset = Number(s.data.next_offset) || 0;
+    else if (s.status === 410) {
+      try { localStorage.removeItem(key); } catch (e) {}
+      card.fail((s.detail && s.detail.message_he) || uallakI18n.t('upload_failed'));
+      return;
+    }
+  }
+  try { localStorage.removeItem(key); } catch (e) {}
+  card.done();
+  const win = CHAT_WINDOWS[id];
+  if (!win) return;
+  if (finished.message) appendMsg(win.msgsEl, finished.message, 'bot');
+  (finished.cards || []).forEach(c => appendActionCard(id, c));
+  // The Media tab, if it was opened: re-list fresh (refresh bypasses every
+  // instance's listing cache), so the file shows like any Drive upload
+  if (driveMirror.data) loadDriveMirror(driveMirror.folder, true);
 }
 
 // ─── chat input: Enter sends, Shift+Enter is a new line ──────────────────────
@@ -4874,7 +5198,7 @@ async function decideSuggestion(id, decision, btn) {
 // ─── support chat (multi-window) ─────────────────────────────────────────────
 // Everything the concierge experience needs about this client, filled by
 // loadDashboard() + renderSuggestions(); greeting/chips render once both are in
-const chatData = { name: '', gender: null, firstVisit: false, conns: [],
+const chatData = { name: '', clientId: '', gender: null, firstVisit: false, conns: [],
                    pendingCount: 0, pendingTitles: [], dashReady: false, suggReady: false };
 
 // Append a message into a SPECIFIC window's message box (each window owns its

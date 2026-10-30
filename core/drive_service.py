@@ -501,6 +501,106 @@ def read_range(file_id: str, start: int, length: int, _sleep=time.sleep) -> byte
         _sleep(min(2 ** attempt, 10))
 
 
+# ─── Resumable upload (the chat "+" — core/chat_uploads.py) ──────────────────
+# The mirror image of read_range: the browser sends fixed-size chunks
+# (video_limits.UPLOAD_CHUNK_BYTES), each request forwards ONE chunk to the
+# Drive session, so memory never grows with the file and no single request
+# comes near Cloud Run's ~300 s timeout. Drive keeps the session (about a
+# week); resumable_status() says where to continue after an interruption.
+RESUMABLE_SESSION_PREFIX = "https://www.googleapis.com/upload/drive/v3/files"
+CHUNK_PUT_RETRIES = 2
+
+
+class ResumableSessionGone(RuntimeError):
+    """Drive no longer knows the upload session (expired / cancelled) — the
+    upload must start again from byte 0."""
+
+
+def start_resumable(folder_id: str, filename: str, mime_type: str, total_bytes: int,
+                    app_properties: dict = None) -> str:
+    """Open a resumable upload session for ONE file in folder_id. Returns the
+    session URI (a capability: whoever holds it can write to the session —
+    never sent to a browser in the clear)."""
+    meta = {"name": filename, "parents": [folder_id], "mimeType": mime_type}
+    if app_properties:
+        meta["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}
+    response = httpx.post(
+        DRIVE_UPLOAD_URL,
+        headers={**_headers(), "Content-Type": "application/json; charset=UTF-8",
+                 "X-Upload-Content-Type": mime_type, "X-Upload-Content-Length": str(int(total_bytes))},
+        params={"uploadType": "resumable", "supportsAllDrives": "true",
+                "fields": "id,name,size,mimeType,webViewLink"},
+        content=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
+        timeout=TIMEOUT,
+    )
+    _check(response)
+    location = response.headers.get("location") or ""
+    if not location.startswith(RESUMABLE_SESSION_PREFIX):
+        raise DriveResponseError(f"Drive resumable start: HTTP {response.status_code} returned no session URI")
+    return location
+
+
+def _resumable_answer(response: httpx.Response) -> dict:
+    """308 → {"done": False, "next_offset"} (from the Range header; none = 0).
+    200/201 → {"done": True, "file": {...}}. 404/410 → ResumableSessionGone."""
+    if response.status_code == 308:
+        received = response.headers.get("range") or ""
+        next_offset = 0
+        if received.startswith("bytes=") and "-" in received:
+            try:
+                next_offset = int(received.split("-", 1)[1]) + 1
+            except ValueError:
+                next_offset = 0
+        return {"done": False, "next_offset": next_offset}
+    if response.status_code in (404, 410):
+        raise ResumableSessionGone(f"Drive upload session gone (HTTP {response.status_code})")
+    _check(response)
+    return {"done": True, "file": _json(response, "resumable upload")}
+
+
+def put_chunk(session_uri: str, data: bytes, offset: int, total_bytes: int, _sleep=time.sleep) -> dict:
+    """Send bytes [offset, offset+len(data)) of a total_bytes file to the
+    session. A 5xx / dropped connection is retried CHUNK_PUT_RETRIES times
+    (asking Drive where it stands first, so a chunk is never written twice
+    out of place). Returns _resumable_answer's dict."""
+    if not session_uri.startswith(RESUMABLE_SESSION_PREFIX):
+        raise ValueError("not a Drive upload session")
+    end = offset + len(data) - 1
+    attempt = 0
+    while True:
+        try:
+            response = httpx.put(
+                session_uri,
+                headers={**_headers(), "Content-Length": str(len(data)),
+                         "Content-Range": f"bytes {offset}-{end}/{int(total_bytes)}"},
+                content=data,
+                timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
+            )
+            if response.status_code < 500:
+                return _resumable_answer(response)
+            failure = f"HTTP {response.status_code}"
+        except httpx.TransportError as e:
+            failure = type(e).__name__
+        if attempt >= CHUNK_PUT_RETRIES:
+            raise RuntimeError(f"Drive chunk upload failed ({failure})")
+        attempt += 1
+        _sleep(min(2 ** attempt, 8))
+        state = resumable_status(session_uri, total_bytes)
+        if state["done"] or state["next_offset"] != offset:
+            return state   # Drive already has more (or less) than we thought: the caller follows it
+
+
+def resumable_status(session_uri: str, total_bytes: int) -> dict:
+    """Where the session stands — the resume after an interruption."""
+    if not session_uri.startswith(RESUMABLE_SESSION_PREFIX):
+        raise ValueError("not a Drive upload session")
+    response = httpx.put(session_uri,
+                         headers={**_headers(), "Content-Length": "0",
+                                  "Content-Range": f"bytes */{int(total_bytes)}"},
+                         timeout=TIMEOUT)
+    return _resumable_answer(response)
+
+
 def download_file(file_id: str) -> bytes:
     """Raw file content (alt=media), WHOLE in memory — for small files only
     (avatar photos/voice samples, TikTok clips). Drive → YouTube uploads use
