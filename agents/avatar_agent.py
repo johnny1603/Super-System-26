@@ -102,22 +102,35 @@ def _key(client_id: int, platform: str) -> str:
 
 # ─── Connections (client self-service, dashboard card) ────────────────────────
 
-def connect_accounts(client_id: int, heygen_key: str, elevenlabs_key: str = "") -> dict:
-    """Store the client's own HeyGen key (required) and ElevenLabs key
-    (optional — voice cloning is its own choice). Same self-service pattern
-    as the Higgsfield/WordPress cards; validated by first real use."""
-    if not (heygen_key or "").strip():
-        return {"success": False, "errors": ["heygen_key is required"]}
-    from agents.client_agent import upsert_account
-    upsert_account(client_id, HEYGEN_PLATFORM, "heygen", heygen_key.strip(), "active")
-    connected = ["heygen"]
-    if (elevenlabs_key or "").strip():
-        upsert_account(client_id, ELEVENLABS_PLATFORM, "elevenlabs",
-                       elevenlabs_key.strip(), "active")
-        connected.append("elevenlabs")
-    _log_activity(client_id, "avatar_accounts_connected", {"connected": connected})
-    log_step(AGENT_NAME, "connect_accounts", f"client {client_id}: {connected}")
-    return {"success": True, "connected": connected}
+def connect_accounts(client_id: int, heygen_key: str = "", elevenlabs_key: str = "") -> dict:
+    """LEGACY entry (POST /api/avatar/connect): each key given is connected
+    ON ITS OWN through core/vendor_tools — either may be given without the
+    other. The dashboard now uses one card per tool (/api/client/tools/*)."""
+    from core import vendor_tools
+    connected, errors = [], []
+    for tool, key in (("heygen", heygen_key), ("elevenlabs", elevenlabs_key)):
+        if not (key or "").strip():
+            continue
+        try:
+            vendor_tools.connect(client_id, tool, key)
+            connected.append(tool)
+        except vendor_tools.ToolError as e:
+            errors.append(f"{tool}: {e.code}")
+    if not connected and not errors:
+        errors.append("no key given")
+    log_step(AGENT_NAME, "connect_accounts", f"client {client_id}: connected {connected}, refused {errors}")
+    return {"success": bool(connected), "connected": connected, "errors": errors}
+
+
+def current_voice_id(client_id: int) -> str:
+    """The client's ElevenLabs clone, unless it was deleted since."""
+    created = _rows(client_id, "avatar_voice_created", limit=1)
+    if not created:
+        return ""
+    deleted = _rows(client_id, "avatar_voice_deleted", limit=1)
+    if deleted and (deleted[0].get("created_at") or "") >= (created[0].get("created_at") or ""):
+        return ""
+    return (created[0].get("details") or {}).get("voice_id") or ""
 
 
 # ─── Consent (mandatory, recorded — the non-negotiable gate) ──────────────────
@@ -144,8 +157,8 @@ def has_consent(client_id: int, scope: str) -> bool:
 
 
 _NO_CONSENT = ("explicit {scope} consent has not been recorded for this client - "
-               "the client confirms it in the dashboard's avatar card "
-               "(POST /api/avatar/consent); creation is blocked until then")
+               "the client confirms it on the tool's own dashboard card (likeness: HeyGen, "
+               "voice: ElevenLabs; POST /api/avatar/consent); creation is blocked until then")
 
 
 # ─── Source material (reuses media_agent's filming-kit pattern + Drive) ──────
@@ -238,7 +251,9 @@ def create_avatar(client_id: int, avatar_name: str = "") -> dict:
         return {"success": False, "errors": [_NO_CONSENT.format(scope="likeness")]}
     api_key = _key(client_id, HEYGEN_PLATFORM)
     if not api_key:
-        return {"success": False, "errors": ["client's HeyGen account is not connected (dashboard avatar card)"]}
+        from core import vendor_tools
+        return {**vendor_tools.missing_block(["heygen"]),
+                "errors": ["client's HeyGen account is not connected (dashboard HeyGen card)"]}
 
     files = _source_files(client_id)
     videos = [f for f in files if (f.get("mimeType") or "").startswith("video/")]
@@ -395,38 +410,102 @@ def run_readiness_scan() -> dict:
 
 # ─── Voice cloning (ElevenLabs — consent-gated) ───────────────────────────────
 
-def create_voice_clone(client_id: int) -> dict:
-    """Clone the client's voice from audio in avatar-source, on THEIR
-    ElevenLabs account. Consent (voice) is a hard gate — separate from the
-    likeness consent, same rigor."""
+def _voice_samples(client_id: int, file_ids: list = None) -> list:
+    """[(name, id, mime)] — the dashboard's voice recordings first (the
+    client's upload section, core/voice_recordings), then any audio left in
+    avatar-source by the older flow."""
+    from core import voice_recordings
+    rows = voice_recordings.list_recordings(client_id)
+    if file_ids:
+        wanted = set(file_ids)
+        rows = [r for r in rows if r["id"] in wanted]
+    samples = [(r["name"], r["id"], r["mime"] or "audio/mpeg") for r in rows]
+    if not samples and not file_ids:
+        samples = [(f["name"], f["id"], f["mimeType"]) for f in _source_files(client_id)
+                   if (f.get("mimeType") or "").startswith("audio/")]
+    return samples[:5]
+
+
+def create_voice_clone(client_id: int, file_ids: list = None) -> dict:
+    """Clone the client's voice from their recordings, on THEIR ElevenLabs
+    account. The voice-cloning consent is a hard gate (separate from the
+    likeness consent, same rigor) — without it a recording is only ever an
+    audio track. ElevenLabs errors come back as one plain Hebrew sentence."""
+    from core import vendor_tools
     if not has_consent(client_id, "voice"):
-        return {"success": False, "errors": [_NO_CONSENT.format(scope="voice")]}
+        return {"success": False, "code": "no_voice_consent", "errors": [_NO_CONSENT.format(scope="voice")],
+                "message_he": "שיבוט קול דורש את הסכמת שיבוט הקול בכרטיס ElevenLabs."}
+    if vendor_tools.missing(client_id, ["elevenlabs"]):
+        return {**vendor_tools.missing_block(["elevenlabs"]), "errors": ["elevenlabs not connected"]}
     api_key = _key(client_id, ELEVENLABS_PLATFORM)
     if not api_key:
-        return {"success": False, "errors": ["client's ElevenLabs account is not connected (dashboard avatar card)"]}
-    audio = [f for f in _source_files(client_id)
-             if (f.get("mimeType") or "").startswith("audio/")]
-    if not audio:
-        return {"success": False,
-                "errors": ["no audio files in avatar-source - run request-source kind=voice first"]}
+        return {**vendor_tools.missing_block(["elevenlabs"]), "errors": ["elevenlabs key unusable"]}
+    samples = _voice_samples(client_id, file_ids)
+    if not samples:
+        return {"success": False, "code": "no_recordings", "errors": ["no voice recordings"],
+                "message_he": "עוד אין הקלטות קול. מעלים הקלטה באזור \"הקלטות קול\" בדשבורד."}
 
     from agents.client_agent import get_client, log_communication
     try:
-        samples = [(f["name"], drive.download_file(f["id"]), f["mimeType"])
-                   for f in audio[:5]]
+        files = [(name, drive.download_file(fid), mime) for name, fid, mime in samples]
         voice_id = timed_step(
             AGENT_NAME, "voice_clone",
             lambda: el.create_voice_clone(
-                api_key, f"{get_client(client_id).get('name', '')} voice", samples))
+                api_key, f"{get_client(client_id).get('name', '')} voice", files))
+    except el.ElevenLabsError as e:
+        if e.key_rejected:
+            vendor_tools.mark_rejected(client_id, "elevenlabs")
+        log_step(AGENT_NAME, "voice_clone", f"client {client_id}: refused by ElevenLabs ({e.status} {e.code})")
+        return {"success": False, "code": "elevenlabs_error", "errors": [f"{e.status} {e.code}"],
+                "message_he": el.plain_he(e)}
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: voice clone failed: {e}"])
-        return {"success": False, "errors": [str(e)]}
+        agent_alert(AGENT_NAME, [f"client {client_id}: voice clone failed: {type(e).__name__}"])
+        return {"success": False, "code": "error", "errors": [type(e).__name__],
+                "message_he": el.plain_he(e)}
 
     _log_activity(client_id, "avatar_voice_created", {"voice_id": voice_id,
                                                       "samples": len(samples)})
+    _record_tool_use(client_id, "elevenlabs", "voice_clone", units=len(samples))
     log_communication(client_id, "outbound", "dashboard_chat",
                       "שיבוט הקול שלך מוכן! 🎙 מעכשיו סרטוני האווטאר יכולים לדבר בקול שלך.")
     return {"success": True, "voice_id": voice_id}
+
+
+def delete_voice_clone(client_id: int) -> dict:
+    """The client asked to delete their voice: the clone goes from THEIR
+    ElevenLabs account (and is recorded as deleted, so nothing uses it). The
+    recordings themselves are deleted by core/voice_recordings.delete."""
+    from core import vendor_tools
+    voice_id = current_voice_id(client_id)
+    if not voice_id:
+        return {"success": True, "deleted": False, "note": "no clone on record"}
+    api_key = _key(client_id, ELEVENLABS_PLATFORM)
+    if not api_key:
+        return {**vendor_tools.missing_block(["elevenlabs"]),
+                "message_he": ("כדי למחוק את הקול המשובט מהחשבון שלך צריך שהכרטיס של ElevenLabs יהיה מחובר — "
+                               "או למחוק אותו בעצמך באתר ElevenLabs, בעמוד הקולות.")}
+    try:
+        el.delete_voice(api_key, voice_id)
+    except el.ElevenLabsError as e:
+        if e.key_rejected:
+            vendor_tools.mark_rejected(client_id, "elevenlabs")
+        return {"success": False, "code": "elevenlabs_error", "message_he": el.plain_he(e)}
+    except Exception as e:
+        return {"success": False, "code": "error", "message_he": el.plain_he(e)}
+    _log_activity(client_id, "avatar_voice_deleted", {"voice_id": voice_id})
+    log_step(AGENT_NAME, "delete_voice_clone", f"client {client_id}: clone deleted")
+    return {"success": True, "deleted": True}
+
+
+def _record_tool_use(client_id: int, tool: str, kind: str, usd_estimate: float = 0.0, units=None):
+    """Cost tracking stays PER TOOL: one client_costs row per job, tagged with
+    the tool (cost_tracker.record_client_paid_media — 0 for a paying client,
+    whose own vendor account pays; the estimate for an internal account)."""
+    try:
+        from core.cost_tracker import record_client_paid_media
+        record_client_paid_media(client_id, usd_estimate, credits=units, kind=kind, model=tool, tool=tool)
+    except Exception as e:
+        log_step(AGENT_NAME, "cost", f"client {client_id}: {tool} cost not recorded ({type(e).__name__})")
 
 
 # ─── Tier + minutes tracking (the billed unit) ────────────────────────────────
@@ -481,13 +560,15 @@ def get_monthly_usage(client_id: int) -> dict:
 
 # ─── Avatar video generation (tier-gated, minutes-tracked) ────────────────────
 
-def generate_avatar_video(client_id: int, script_text: str,
-                          avatar_id: str = "", heygen_voice_id: str = "") -> dict:
-    """One avatar video on the client's HeyGen account: their ready avatar +
-    either their ElevenLabs cloned voice (preferred when it exists) or a
-    HeyGen stock voice. Gates, in order: consent, tier assigned, minutes
-    remaining, accounts connected. Lands in Drive videos/avatar/ for human
-    review — never auto-published (house rule)."""
+def generate_avatar_video(client_id: int, script_text: str = "", avatar_id: str = "",
+                          heygen_voice_id: str = "", provider: str = "", voice: dict = None) -> dict:
+    """One avatar video on the provider the client chose (HeyGen avatar or a
+    Higgsfield character — core/avatar_video), with the same voice sources
+    for either: an uploaded recording as the audio track, the ElevenLabs
+    clone reading the script, or (HeyGen) a stock voice. Gates here, in
+    order: likeness consent, tier assigned, minutes remaining; the provider
+    layer then names any missing tool. Lands in Drive videos/avatar/ for
+    human review — never auto-published (house rule)."""
     if not has_consent(client_id, "likeness"):
         return {"success": False, "errors": [_NO_CONSENT.format(scope="likeness")]}
     tier = _current_tier(client_id)
@@ -501,54 +582,28 @@ def generate_avatar_video(client_id: int, script_text: str,
         return {"success": False, "errors": [
             f"monthly minutes cap reached ({usage['minutes_used']}/{usage['minutes_cap']} min) - "
             f"generation blocked until next month or a tier upgrade"]}
-    api_key = _key(client_id, HEYGEN_PLATFORM)
-    if not api_key:
-        return {"success": False, "errors": ["client's HeyGen account is not connected"]}
-    if not (script_text or "").strip():
-        return {"success": False, "errors": ["script_text is required"]}
-
-    if not avatar_id:
-        # Multi-avatar picker: pass an explicit avatar_id from
-        # list_ready_avatars (GET /api/avatar/list). Default = the newest
-        # ready avatar when the client has only one (the common case).
-        ready = list_ready_avatars(client_id)
-        if len(ready) > 1:
-            return {"success": False, "errors": [
-                "client has multiple ready avatars - pass avatar_id explicitly "
-                f"(choices: {[(a['avatar_id'], a['avatar_name']) for a in ready]})"]}
-        avatar_id = ready[0]["avatar_id"] if ready else ""
-        if not avatar_id:
-            return {"success": False, "errors": ["no ready avatar on record and no avatar_id given"]}
-
     from agents.media_agent import _subfolder
+    from core import avatar_video, vendor_tools
+    if voice is None and not heygen_voice_id:
+        # Legacy callers: the clone when one exists, else nothing to say it with
+        voice = {"kind": "clone"} if current_voice_id(client_id) else None
+    if (voice or {}).get("kind") == "clone" and not (script_text or "").strip():
+        return {"success": False, "errors": ["script_text is required for the cloned voice"]}
     try:
-        audio_url = ""
-        voice_rows = _rows(client_id, "avatar_voice_created", limit=1)
-        elevenlabs_key = _key(client_id, ELEVENLABS_PLATFORM)
-        if voice_rows and elevenlabs_key:
-            # Cloned voice path: 11Labs TTS → Drive → public URL → HeyGen audio
-            voice_id = (voice_rows[0].get("details") or {}).get("voice_id")
-            audio = timed_step(AGENT_NAME, "tts",
-                               lambda: el.text_to_speech(elevenlabs_key, voice_id, script_text))
-            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
-            audio_file = drive.upload_bytes(_subfolder(client_id, "videos", "avatar"),
-                                            f"voiceover-{stamp}.mp3", audio, "audio/mpeg")
-            audio_url = drive.make_file_public(audio_file["id"])
-        elif not heygen_voice_id:
-            return {"success": False, "errors": [
-                "no cloned voice on record and no heygen_voice_id given - pass a HeyGen stock "
-                "voice id or clone the client's voice first"]}
-
-        video_id = timed_step(
-            AGENT_NAME, "heygen_generate",
-            lambda: hg.generate_avatar_video(api_key, avatar_id, script_text,
-                                             voice_id=heygen_voice_id, audio_url=audio_url))
-        done = timed_step(AGENT_NAME, "heygen_wait",
-                          lambda: hg.wait_for_video(api_key, video_id))
-        duration = float(done.get("duration") or 0)
+        done = timed_step(AGENT_NAME, "avatar_video",
+                          lambda: avatar_video.make_video(client_id, script_text, voice, provider or None,
+                                                          avatar_id, heygen_voice_id))
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: avatar video failed: {e}"])
-        return {"success": False, "errors": [str(e)]}
+        message = str(e)
+        if any(code in message for code in (" 401 ", " 403 ", "401 ", "403 ")):
+            vendor_tools.mark_rejected(client_id, provider or vendor_tools.default_provider(client_id))
+        agent_alert(AGENT_NAME, [f"client {client_id}: avatar video failed: {type(e).__name__}: {message[:200]}"])
+        return {"success": False, "errors": [message[:300]]}
+    if not done.get("success"):
+        return {**done, "errors": [done.get("code", "refused")]}
+    duration = float(done.get("duration") or 0)
+    video_id = done.get("job_id", "")
+    avatar_id = done.get("avatar_id", avatar_id)
 
     # Store the finished video in Drive (HeyGen's video_url is temporary)
     try:
@@ -559,13 +614,24 @@ def generate_avatar_video(client_id: int, script_text: str,
     except Exception as e:
         uploaded = {}
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar video rendered but Drive save "
-                                 f"failed ({e}) - grab it from HeyGen: {done.get('video_url', '')[:120]}"])
+                                 f"failed ({type(e).__name__}) - grab it from {done['provider']} "
+                                 f"(job {video_id})"])
 
     _log_activity(client_id, "avatar_video_created",
-                  {"avatar_id": avatar_id, "duration_seconds": duration,
-                   "script_preview": script_text[:150]},
-                  {"heygen_video_id": video_id, "file_id": uploaded.get("id"),
-                   "link": uploaded.get("webViewLink", "")})
+                  {"avatar_id": avatar_id, "duration_seconds": duration, "provider": done["provider"],
+                   "voice_kind": done.get("voice_kind"), "script_preview": (script_text or "")[:150]},
+                  {"heygen_video_id" if done["provider"] == "heygen" else "job_id": video_id,
+                   "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
+    # Per-tool cost rows: the video tool, and ElevenLabs when it read the script
+    if done["provider"] == "heygen":
+        from core.third_party_pricing import THIRD_PARTY_PRICING
+        low, high = THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"]
+        _record_tool_use(client_id, "heygen", "avatar_video", usd_estimate=duration / 60 * (low + high) / 2,
+                         units=round(duration, 1))
+    else:
+        _record_tool_use(client_id, done["provider"], "avatar_video", units=done.get("credits"))
+    if done.get("tts_characters"):
+        _record_tool_use(client_id, "elevenlabs", "tts", units=done["tts_characters"])
     usage = get_monthly_usage(client_id)
     log_step(AGENT_NAME, "generate_avatar_video",
              f"client {client_id}: {duration}s, {usage['minutes_used']}/{usage['minutes_cap']} min used")

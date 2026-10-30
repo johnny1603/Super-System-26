@@ -478,6 +478,33 @@ def _channel_needs_connect(channel: str):
     return check
 
 
+def _creative_tool_missing(state: dict, client: dict) -> bool:
+    """Some creative tool (core/vendor_tools) is not usable right now."""
+    tools = ((state or {}).get("creative_tools") or {}).get("tools") or {}
+    return any(t.get("status") in ("not_connected", "key_rejected") for t in tools.values())
+
+
+def _creative_tools_spec() -> dict:
+    from core.vendor_tools import TOOLS
+    return TOOLS
+
+
+def _v_creative_tool(value, client_id: int):
+    tool = str(value or "").strip().lower()
+    if tool not in _creative_tools_spec():
+        raise ValueError("tool must be heygen, elevenlabs or higgsfield")
+    return tool
+
+
+def _creative_label(tool: str) -> str:
+    return (_creative_tools_spec().get(tool) or {}).get("label") or "—"
+
+
+def _creative_focus(tool: str) -> str:
+    from core.vendor_tools import focus_id
+    return focus_id(tool) if tool in _creative_tools_spec() else "connGrid"
+
+
 def _gtm_needs_connect(state: dict, client: dict) -> bool:
     tracking = (state or {}).get("tracking") or {}
     if tracking.get("connected"):
@@ -797,6 +824,29 @@ ACTIONS = {
                      "Откроется окно подтверждения TikTok — подтвердите один раз и вернитесь сюда."),
         "done": _txt("פותח את מסך האישור של טיקטוק…", "Opening TikTok's approval screen…",
                      "Ouverture de l'écran TikTok…", "جارٍ فتح شاشة موافقة تيك توك…", "Открываю окно TikTok…"),
+    },
+    "connect_creative_tool": {
+        # "focus": the key is pasted ONLY into that tool's own card (never in
+        # chat), and HeyGen's card carries the likeness consent the click must
+        # not bypass. Opens exactly the one tool's card (core/vendor_tools).
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "focus",
+        "focus": lambda params: _creative_focus(params.get("tool", "")),
+        "does": "Opens the connection card of ONE creative tool (heygen | elevenlabs | higgsfield) so the "
+                "client pastes that tool's key there — the fix when a feature needs a tool that "
+                "account_state.creative_tools shows as not connected or key_rejected.",
+        "params": {"tool": {"required": True, "validate": _v_creative_tool,
+                            "hint": "heygen | elevenlabs | higgsfield — the ONE tool that is missing"}},
+        "available": _creative_tool_missing,
+        "display": lambda client_id, params: {"tool": _creative_label(params.get("tool", ""))},
+        "title": _txt("חיבור כלי יצירה", "Connect a creative tool", "Connecter un outil de création",
+                      "ربط أداة إنشاء", "Подключить творческий инструмент"),
+        "what": _txt("ייפתח כרטיס החיבור של {tool} בלבד — מדביקים שם את המפתח מהחשבון שלכם. שאר הכלים לא משתנים.",
+                     "Only the {tool} card opens — paste the key from your own account there. Your other tools stay as they are.",
+                     "Seule la carte {tool} s'ouvre — collez-y la clé de votre propre compte. Vos autres outils ne changent pas.",
+                     "ستفتح بطاقة {tool} فقط — الصقوا فيها المفتاح من حسابكم. باقي الأدوات لا تتغير.",
+                     "Откроется только карточка {tool} — вставьте туда ключ из своего аккаунта. Остальные инструменты не меняются."),
+        "done": _txt("פותח את כרטיס החיבור…", "Opening the connection card…", "Ouverture de la carte…",
+                     "جارٍ فتح البطاقة…", "Открываю карточку…"),
     },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
@@ -1622,7 +1672,8 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         if spec["kind"] == "link":
             out["redirect"] = spec["link"]
         else:
-            out["focus"] = spec["focus"]
+            # A callable focus names the card from the STORED params
+            out["focus"] = spec["focus"](params) if callable(spec["focus"]) else spec["focus"]
         return out
 
     try:

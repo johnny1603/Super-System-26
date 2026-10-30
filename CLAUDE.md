@@ -118,6 +118,23 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `use_vendor_key()`, which aborts + alerts when the same key belongs to another client
   (except owner keys shared only between internal/billing-exempt accounts, logged). Data
   migration: `scripts/encrypt_client_secrets.py` (dry-run default).
+- `core/vendor_tools.py` — the client-paid creative tools (HeyGen, ElevenLabs, Higgsfield),
+  **each its own connection**: own card (`toolCard-<tool>`), key, Connect (key checked with
+  the vendor FIRST — a rejected key is never stored), Test, status (connected /
+  connected_unverified / key_rejected / not_connected), Disconnect (only that tool's row), help
+  entry and consent (likeness → HeyGen, required; voice cloning → ElevenLabs, optional). Never
+  connect or disconnect them together again. Health + video provider live in `app_settings`
+  `creative_tools:<id>` (deletion clears it, the guard covers it). A feature missing a tool
+  returns `missing_block()` (plain Hebrew naming exactly that tool + a button to only its card;
+  chat card `connect_creative_tool`). `core/avatar_video.make_video` is the ONE "avatar video
+  with this audio/script" entry: provider per video > client default > HeyGen; voice =
+  `recording` (uploaded file as the audio track, no cloning consent) | `clone` (ElevenLabs TTS).
+  **The Higgsfield talking-character provider is PREPARED ONLY** (endpoint/model are unverified
+  env settings, off behind `HIGGSFIELD_AVATAR_VIDEO_ENABLED`). `core/voice_recordings.py` — the
+  "הקלטות קול" card: raw-body upload (no multipart), format sniffed from bytes, Drive media
+  folder `voice` is the one record (duration in appProperties), `client_state.voice` for agents.
+  Nothing here has run against a live vendor; live test path for client 27 in
+  `docs/CREATIVE-TOOLS.md` + `scripts/creative_tools_live_test.sh`.
 - `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
   typed name/id → `delete_client_full()`. Refuses internal (billing_exempt) and owner
   (`OWNER_EMAILS` + ADMIN_EMAIL/GMAIL_USER) accounts SERVER-side. Reuses

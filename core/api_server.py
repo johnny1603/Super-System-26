@@ -1908,9 +1908,14 @@ _DISCONNECT_GROUPS = {
     "merchant_center": ["merchant_center", "merchant_center_pending"],
     "wordpress": ["wordpress"],
     "higgsfield": ["higgsfield"],
-    # HeyGen + ElevenLabs disconnect together (both are the avatar add-on's
-    # credentials; like wordpress/higgsfield, the keys live on the client's
-    # own accounts and are revocable there - deleting our copy is our half)
+    # Each creative tool on its own (core/vendor_tools): disconnecting one
+    # never touches another. Like wordpress/higgsfield, the keys live on the
+    # client's own accounts and are revocable there - deleting our copy is
+    # our half.
+    "heygen": ["heygen"],
+    "elevenlabs": ["elevenlabs"],
+    # LEGACY group, kept only so an old dashboard tab still works; the
+    # current dashboard disconnects each tool separately
     "avatar": ["heygen", "elevenlabs"],
     # Google verification round 2 (flags off by default)
     "gmail": ["gmail_send"],
@@ -4011,8 +4016,10 @@ def admin_content_docs(client_id: int, request: Request):
 # ─── Avatar agent (distinct paid add-on — HeyGen twins + ElevenLabs voices) ──
 
 class AvatarConnectRequest(BaseModel):
-    heygen_key: str
-    elevenlabs_key: str = ""  # optional - voice cloning is its own choice
+    # LEGACY (both keys in one form). Each key given is connected on its own
+    # via core/vendor_tools; the dashboard uses /api/client/tools/{tool}/*
+    heygen_key: str = ""
+    elevenlabs_key: str = ""
 
 @app.post("/api/avatar/connect")
 def avatar_connect(req: AvatarConnectRequest, request: Request):
@@ -4067,13 +4074,15 @@ def avatar_create(req: AvatarCreateRequest):
 
 class AvatarVoiceRequest(BaseModel):
     client_id: int
+    file_ids: list[str] = []   # which recordings to clone from (default: the newest five)
 
 @app.post("/api/avatar/create-voice", dependencies=_admin_only)
 def avatar_create_voice(req: AvatarVoiceRequest):
+    # Voice-cloning consent is re-checked inside; without it nothing is cloned
     from agents.avatar_agent import create_voice_clone
-    result = create_voice_clone(req.client_id)
+    result = create_voice_clone(req.client_id, req.file_ids or None)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+        raise HTTPException(status_code=400, detail=_creative_refusal(result))
     return {"success": True, "data": result}
 
 class AvatarTierRequest(BaseModel):
@@ -4090,20 +4099,30 @@ def avatar_set_tier(req: AvatarTierRequest):
 
 class AvatarVideoRequest(BaseModel):
     client_id: int
-    script_text: str
+    script_text: str = ""
     avatar_id: str = ""
     heygen_voice_id: str = ""
+    provider: str = ""          # heygen | higgsfield (default: the client's choice)
+    voice_kind: str = ""        # recording | clone | "" (HeyGen stock voice / legacy)
+    voice_file_id: str = ""     # the recording, when voice_kind = recording
 
 @app.post("/api/avatar/generate-video", dependencies=_admin_only)
 def avatar_generate_video(req: AvatarVideoRequest):
-    # SLOW (HeyGen render polls up to ~15 min). Tier + minutes + consent
-    # gates enforced in the agent; minutes are the billed unit
+    # SLOW (a render polls up to ~15 min). Tier + minutes + consent gates in
+    # the agent; the provider layer (core/avatar_video) names a missing tool
     from agents.avatar_agent import generate_avatar_video
-    result = generate_avatar_video(req.client_id, req.script_text,
-                                   req.avatar_id, req.heygen_voice_id)
+    voice = ({"kind": req.voice_kind, "file_id": req.voice_file_id} if req.voice_kind else None)
+    result = generate_avatar_video(req.client_id, req.script_text, req.avatar_id,
+                                   req.heygen_voice_id, req.provider, voice)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
+        raise HTTPException(status_code=400, detail=_creative_refusal(result))
     return {"success": True, "data": result}
+
+def _creative_refusal(result: dict) -> dict:
+    # The plain Hebrew sentence (e.g. an ElevenLabs error) and which tool is
+    # missing travel with the codes — never a key or a vendor response body
+    return {"errors": result.get("errors", ["unknown error"]), "code": result.get("code", ""),
+            "message_he": result.get("message_he", ""), "missing": result.get("missing", [])}
 
 @app.get("/api/avatar/usage", dependencies=_admin_only)
 def avatar_usage(client_id: int):
@@ -4116,6 +4135,147 @@ def avatar_list(client_id: int):
     # /api/avatar/generate-video (default only auto-picks when exactly one)
     from agents.avatar_agent import list_ready_avatars
     return {"success": True, "data": {"avatars": list_ready_avatars(client_id)}}
+
+# ─── Creative tools, one card per tool (core/vendor_tools) ──────────────────
+
+_TOOL_ERRORS_HE = {
+    "unknown_tool": "הכלי הזה לא מוכר.",
+    "empty_key": "צריך להדביק את המפתח לפני החיבור.",
+    "consent_required": "כדי לחבר את HeyGen צריך לסמן את האישור לשימוש בדמות שלך.",
+    "key_rejected": "הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.",
+    "not_connected": "הכלי הזה עוד לא מחובר.",
+    "unknown_provider": "ספק הווידאו הזה לא מוכר.",
+}
+
+def _tool_error(e) -> HTTPException:
+    code = getattr(e, "code", "") or "unknown"
+    return HTTPException(status_code=400, detail={"code": code,
+                         "message_he": _TOOL_ERRORS_HE.get(code, "משהו לא הצליח. ננסה שוב בעוד רגע.")})
+
+def _creative_state_changed(client_id: int):
+    # The agents' snapshot (client_state.creative_tools / .voice) must not
+    # say "not connected" for two minutes after the client just connected
+    from core import client_state
+    client_state.forget(client_id)
+
+class ToolConnectRequest(BaseModel):
+    api_key: str
+    consent: bool = False
+
+class ToolProviderRequest(BaseModel):
+    provider: str
+
+@app.get("/api/client/tools")
+def client_tools(request: Request):
+    client_id = _require_session(request)
+    from core import avatar_video, vendor_tools
+    return {"success": True, "data": {"tools": vendor_tools.statuses(client_id),
+                                      "providers": avatar_video.providers_view(client_id)}}
+
+@app.post("/api/client/tools/provider")
+def client_tools_provider(req: ToolProviderRequest, request: Request):
+    client_id = _require_session(request)
+    from core import vendor_tools
+    try:
+        vendor_tools.set_default_provider(client_id, req.provider)
+    except vendor_tools.ToolError as e:
+        raise _tool_error(e)
+    _creative_state_changed(client_id)
+    return {"success": True, "data": {"provider": req.provider}}
+
+@app.post("/api/client/tools/{tool}/connect")
+def client_tool_connect(tool: str, req: ToolConnectRequest, request: Request):
+    # The key is never echoed back or logged; a rejected key is not stored
+    client_id = _require_session(request)
+    from core import vendor_tools
+    try:
+        result = vendor_tools.connect(client_id, tool, req.api_key, req.consent)
+    except vendor_tools.ToolError as e:
+        raise _tool_error(e)
+    _creative_state_changed(client_id)
+    return {"success": True, "data": result}
+
+@app.post("/api/client/tools/{tool}/test")
+def client_tool_test(tool: str, request: Request):
+    client_id = _require_session(request)
+    from core import vendor_tools
+    try:
+        result = vendor_tools.test(client_id, tool)
+    except vendor_tools.ToolError as e:
+        raise _tool_error(e)
+    _creative_state_changed(client_id)
+    return {"success": True, "data": result}
+
+@app.post("/api/client/tools/{tool}/disconnect")
+def client_tool_disconnect(tool: str, request: Request):
+    # Deletes ONLY this tool's key - every other tool stays connected
+    client_id = _require_session(request)
+    from core import vendor_tools
+    try:
+        result = vendor_tools.disconnect(client_id, tool)
+    except vendor_tools.ToolError as e:
+        raise _tool_error(e)
+    _creative_state_changed(client_id)
+    return {"success": True, "data": result}
+
+# ─── Voice recordings (core/voice_recordings) ───────────────────────────────
+
+@app.get("/api/client/voice")
+def client_voice_list(request: Request):
+    client_id = _require_session(request)
+    from core import voice_recordings as vr
+    try:
+        return {"success": True, "data": vr.for_agent(client_id) | {"recordings": vr.list_recordings(client_id)}}
+    except Exception as e:
+        print(f"[voice] client {client_id}: list failed: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "storage", "message_he": vr.PLAIN_HE["storage"]})
+
+@app.post("/api/client/voice/upload")
+async def client_voice_upload(request: Request):
+    # Raw body (no python-multipart in the image); name + duration in headers
+    from urllib.parse import unquote
+    from starlette.concurrency import run_in_threadpool
+    from core import voice_recordings as vr
+    client_id = _require_session(request)
+    try:
+        if int(request.headers.get("content-length") or 0) > vr.MAX_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail={"code": "too_big", "message_he": vr.PLAIN_HE["too_big"]})
+    except ValueError:
+        pass
+    body = await request.body()
+    name = unquote(request.headers.get("x-file-name") or "")
+    try:
+        row = await run_in_threadpool(vr.upload, client_id, name, body, request.headers.get("x-duration-seconds"))
+    except vr.VoiceError as e:
+        raise HTTPException(status_code=413 if e.code == "too_big" else 400,
+                            detail={"code": e.code, "message_he": vr.PLAIN_HE.get(e.code, vr.PLAIN_HE["storage"])})
+    except Exception as e:
+        # The folder listing (file-count cap) could not be read
+        print(f"[voice] client {client_id}: upload failed: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "storage", "message_he": vr.PLAIN_HE["storage"]})
+    _creative_state_changed(client_id)
+    return {"success": True, "data": row}
+
+class VoiceDeleteRequest(BaseModel):
+    file_ids: list[str] = []
+    all: bool = False
+    delete_clone: bool = False
+
+@app.post("/api/client/voice/delete")
+def client_voice_delete(req: VoiceDeleteRequest, request: Request):
+    client_id = _require_session(request)
+    from core import voice_recordings as vr
+    try:
+        ids = [r["id"] for r in vr.list_recordings(client_id)] if req.all else req.file_ids
+        result = vr.delete(client_id, ids)
+    except Exception as e:
+        print(f"[voice] client {client_id}: delete failed: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "storage", "message_he": vr.PLAIN_HE["storage"]})
+    if req.delete_clone:
+        from agents.avatar_agent import delete_voice_clone
+        result["clone"] = delete_voice_clone(client_id)
+    _creative_state_changed(client_id)
+    return {"success": True, "data": result}
 
 @app.get("/api/avatar/scan", dependencies=_admin_only)
 def avatar_scan():

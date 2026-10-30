@@ -103,6 +103,22 @@ body {
   margin-top: 8px; font-family: 'Heebo', sans-serif; display: block;
 }
 .disconnect-link.arm { color: var(--accent); font-weight: 700; }
+/* Creative tool cards + voice recordings (one card per tool) */
+.tool-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.tool-row .conn-btn { width: auto; flex: 1 1 120px; }
+.conn-status.rejected { color: #D9534F; }
+.conn-status.unverified { color: #FFB020; }
+.voice-progress { height: 6px; border-radius: 6px; background: var(--panel-2); margin-top: 10px; overflow: hidden; }
+.voice-progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.voice-list { margin-top: 10px; }
+.voice-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; }
+.voice-row:last-child { border-bottom: none; }
+.voice-row .voice-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.voice-row .voice-meta { color: var(--gray); font-size: 11.5px; white-space: nowrap; }
+.voice-row button { background: none; border: none; color: var(--gray); text-decoration: underline; cursor: pointer;
+  font: inherit; font-size: 11.5px; min-height: 32px; padding: 0 4px; }
+.voice-row button.arm { color: var(--accent); font-weight: 700; }
 
 /* ---------- LAYOUT (single page, no sidebar) ---------- */
 .main { flex: 1; padding: 32px 40px; max-width: 960px; margin: 0 auto; width: 100%; }
@@ -1389,49 +1405,133 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
     </div>
 
-    <div class="conn-card unlocked">
+    <!-- Creative tools: ONE card per tool (core/vendor_tools, /api/client/tools/*).
+         Each has its own key, Connect, Test, status, Disconnect (only that
+         tool's key), help and consent — one can be connected without the
+         other. The key is pasted ONLY here, never in the chat. -->
+    <div class="conn-card unlocked" id="toolCard-higgsfield">
       <div class="conn-top">
         <div class="conn-icon" style="background:#7C3AED;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z"/><path d="M19 14l.8 2.4L22 17.2l-2.2.8L19 20.4l-.8-2.4L16 17.2l2.2-.8z"/></svg>
         </div>
         <div>
           <div class="conn-name" data-i18n="higgsfield_card">יצירת מדיה (תמונות/סרטונים)</div>
-          <div class="conn-status" id="higgsfieldStatus" data-i18n="not_connected">לא מחובר</div>
+          <div class="conn-status" id="toolStatus-higgsfield" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="higgsfieldBtn" onclick="openHiggsfieldFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
-      <div id="higgsfieldForm" style="display:none; margin-top:10px;">
+      <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="openToolForm('higgsfield')" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="toolForm-higgsfield" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="higgsfield_signup_note">נרשמים בחשבונכם עם אמצעי התשלום שלכם ב-higgsfield.ai, ויוצרים מפתח API באזור ה-API Keys בחשבון (cloud.higgsfield.ai/api-keys) — התשלום על היצירה עצמה מתבצע ישירות דרככם, אנחנו רק מפעילים את הכלי בשבילכם.</div>
-        <input class="site-input" id="higgsfieldKey" dir="ltr" type="password" data-i18n-placeholder="higgsfield_key_ph" placeholder="Higgsfield API Key">
-        <button class="conn-btn primary" id="higgsfieldSubmitBtn" onclick="connectHiggsfield()" data-i18n="site_connect">חיבור</button>
+        <input class="site-input" id="toolKey-higgsfield" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="higgsfield_key_ph" placeholder="Higgsfield API Key">
+        <button class="conn-btn primary" id="toolConnectBtn-higgsfield" onclick="connectTool('higgsfield')" data-i18n="site_connect">חיבור</button>
       </div>
+      <div class="tool-row" id="toolManage-higgsfield" style="display:none;">
+        <button class="conn-btn secondary" onclick="openToolForm('higgsfield', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
+      </div>
+      <button class="disconnect-link" id="toolDisc-higgsfield" style="display:none;" onclick="disconnectTool('higgsfield', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
+      <button type="button" class="conn-help-btn" data-help-id="higgsfield" style="display:none;" onclick="helpConnection('higgsfield')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
-    <div class="conn-card unlocked">
+    <div class="conn-card unlocked" id="toolCard-heygen">
       <div class="conn-top">
         <div class="conn-icon" style="background:#0EA5A5;">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/><path d="M17 3.5l1 1M20 6l1 .5"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="avatar_card">אווטאר דיגיטלי (תוספת בתשלום)</div>
-          <div class="conn-status" id="avatarStatus" data-i18n="not_connected">לא מחובר</div>
+          <div class="conn-name" data-i18n="tool_heygen_card">HeyGen — אווטאר בדמות שלך</div>
+          <div class="conn-status" id="toolStatus-heygen" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="avatarBtn" onclick="openAvatarFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
-      <div id="avatarForm" style="display:none; margin-top:10px;">
-        <div class="lock-note" data-i18n="avatar_signup_note">שירות בתשלום נפרד מדמי הניהול. נרשמים בחשבונכם ובאמצעי התשלום שלכם ל-HeyGen (ולרצון גם ל-ElevenLabs לשיבוט קול), יוצרים מפתחות API בהגדרות החשבון, ומדביקים כאן — המנויים לכלים משולמים ישירות דרככם.</div>
-        <input class="site-input" id="avatarHeygenKey" dir="ltr" type="password" data-i18n-placeholder="avatar_heygen_ph" placeholder="HeyGen API Key">
-        <input class="site-input" id="avatarElevenKey" dir="ltr" type="password" data-i18n-placeholder="avatar_eleven_ph" placeholder="ElevenLabs API Key (אופציונלי)">
-        <label style="display:flex; gap:8px; align-items:flex-start; font-size:11.5px; color:var(--gray); margin:8px 0; cursor:pointer;">
-          <input type="checkbox" id="avatarConsentLikeness" style="margin-top:2px;">
+      <button class="conn-btn primary" id="toolOpenBtn-heygen" onclick="openToolForm('heygen')" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="toolForm-heygen" style="display:none; margin-top:10px;">
+        <div class="conn-note" data-i18n="tool_heygen_note">שירות בתשלום נפרד מדמי הניהול. נרשמים ל-HeyGen בחשבון שלכם ובאמצעי התשלום שלכם, יוצרים מפתח API בהגדרות החשבון ומדביקים אותו כאן. התשלום ל-HeyGen עובר ישירות דרככם.</div>
+        <input class="site-input" id="toolKey-heygen" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="avatar_heygen_ph" placeholder="HeyGen API Key">
+        <label class="conn-consent">
+          <input type="checkbox" id="toolConsent-heygen">
           <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת אווטאר דיגיטלי של דמותי בחשבון ה-HeyGen שלי, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
         </label>
-        <label style="display:flex; gap:8px; align-items:flex-start; font-size:11.5px; color:var(--gray); margin:8px 0; cursor:pointer;">
-          <input type="checkbox" id="avatarConsentVoice" style="margin-top:2px;">
-          <span data-i18n="avatar_consent_voice">(רק אם חיברתם ElevenLabs) אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
-        </label>
-        <button class="conn-btn primary" id="avatarSubmitBtn" onclick="connectAvatar()" data-i18n="site_connect">חיבור</button>
+        <button class="conn-btn primary" id="toolConnectBtn-heygen" onclick="connectTool('heygen')" data-i18n="site_connect">חיבור</button>
       </div>
+      <div class="tool-row" id="toolManage-heygen" style="display:none;">
+        <button class="conn-btn secondary" id="toolTestBtn-heygen" onclick="testTool('heygen')" data-i18n="tool_test_btn">בדיקת חיבור</button>
+        <button class="conn-btn secondary" onclick="openToolForm('heygen', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
+      </div>
+      <button class="disconnect-link" id="toolDisc-heygen" style="display:none;" onclick="disconnectTool('heygen', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
+      <button type="button" class="conn-help-btn" data-help-id="heygen" style="display:none;" onclick="helpConnection('heygen')" data-i18n="conn_help_btn">עזרה</button>
+    </div>
+
+    <div class="conn-card unlocked" id="toolCard-elevenlabs">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#1F2937;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="tool_eleven_card">ElevenLabs — הקול שלך</div>
+          <div class="conn-status" id="toolStatus-elevenlabs" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="toolOpenBtn-elevenlabs" onclick="openToolForm('elevenlabs')" data-i18n="connect_now">חבר עכשיו</button>
+      <div id="toolForm-elevenlabs" style="display:none; margin-top:10px;">
+        <div class="conn-note" data-i18n="tool_eleven_note">נרשמים ל-ElevenLabs בחשבון שלכם (שיבוט קול דורש מסלול בתשלום אצלם), יוצרים מפתח API ומדביקים אותו כאן. התשלום ל-ElevenLabs עובר ישירות דרככם.</div>
+        <input class="site-input" id="toolKey-elevenlabs" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="tool_eleven_ph" placeholder="ElevenLabs API Key">
+        <button class="conn-btn primary" id="toolConnectBtn-elevenlabs" onclick="connectTool('elevenlabs')" data-i18n="site_connect">חיבור</button>
+      </div>
+      <div class="tool-row" id="toolManage-elevenlabs" style="display:none;">
+        <button class="conn-btn secondary" id="toolTestBtn-elevenlabs" onclick="testTool('elevenlabs')" data-i18n="tool_test_btn">בדיקת חיבור</button>
+        <button class="conn-btn secondary" onclick="openToolForm('elevenlabs', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
+      </div>
+      <!-- Voice-cloning consent belongs to THIS tool and is optional: without
+           it a recording is only ever used as an audio track, never cloned -->
+      <div id="toolVoiceConsentBox" style="margin-top:10px;">
+        <label class="conn-consent">
+          <input type="checkbox" id="toolConsent-elevenlabs">
+          <span data-i18n="tool_voice_consent">אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+        </label>
+        <button class="conn-btn secondary" id="toolConsentBtn-elevenlabs" onclick="saveVoiceConsent()" data-i18n="tool_voice_consent_btn">אישור הסכמת שיבוט קול</button>
+      </div>
+      <div class="conn-note" id="toolVoiceConsentOn" style="display:none; margin-top:8px;" data-i18n="tool_voice_consent_on">הסכמת שיבוט הקול נרשמה ✓</div>
+      <button class="disconnect-link" id="toolDisc-elevenlabs" style="display:none;" onclick="disconnectTool('elevenlabs', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
+      <button type="button" class="conn-help-btn" data-help-id="elevenlabs" style="display:none;" onclick="helpConnection('elevenlabs')" data-i18n="conn_help_btn">עזרה</button>
+    </div>
+
+    <!-- Which video tool makes the client's character videos (core/avatar_video);
+         a single video may still override it -->
+    <div class="conn-card unlocked" id="providerCard">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#464646;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="provider_card">כלי הווידאו לסרטוני דמות</div>
+          <div class="conn-status" id="providerStatus"></div>
+        </div>
+      </div>
+      <div class="conn-note" data-i18n="provider_note">באיזה כלי ניצור את סרטוני הדמות שלכם. הקול זהה בשניהם: הקלטה שהעליתם או הקול המשובט שלכם.</div>
+      <select class="site-input" id="providerSelect" onchange="chooseProvider(this.value)"></select>
+    </div>
+
+    <!-- Voice recordings (core/voice_recordings): uploading is ALL that is
+         asked of the client — no script, no plan. Stored in their own Drive
+         media folder, subfolder "voice". -->
+    <div class="conn-card unlocked" id="voiceCard">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#B45309;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 7v10M21 12h0"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="voice_card">הקלטות קול</div>
+          <div class="conn-status" id="voiceSummary"></div>
+        </div>
+      </div>
+      <div class="conn-note" data-i18n="voice_note">מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס ElevenLabs.</div>
+      <input type="file" id="voiceFile" accept=".mp3,.m4a,.wav,.webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/webm" style="display:none;" onchange="uploadVoiceFile(this.files[0])">
+      <div class="tool-row">
+        <button class="conn-btn primary" id="voiceUploadBtn" onclick="document.getElementById('voiceFile').click()" data-i18n="voice_upload_btn">העלאת הקלטה</button>
+        <button class="conn-btn secondary" id="voiceRecordBtn" onclick="toggleVoiceRecording()" data-i18n="voice_record_btn">הקלטה מהדפדפן</button>
+      </div>
+      <div class="voice-progress" id="voiceProgress" style="display:none;"><div class="voice-progress-bar" id="voiceProgressBar"></div></div>
+      <div class="voice-list" id="voiceList"></div>
+      <button class="disconnect-link" id="voiceDeleteAll" style="display:none;" onclick="deleteAllVoice(this)" data-i18n="voice_delete_all">מחיקת כל ההקלטות והקול המשובט</button>
     </div>
 
     <!-- Marketing automation: deliberately NOT a connect flow like every other
@@ -2228,6 +2328,63 @@ const DASH_I18N = {
   avatar_need_consent: { he:'כדי להמשיך יש לאשר את הסכמת השימוש בדמות — זו דרישה מחייבת', en:'You must confirm the likeness consent to continue — it\'s a mandatory requirement', fr:'Vous devez confirmer le consentement d\'utilisation de votre image — c\'est obligatoire', ar:'يجب تأكيد الموافقة على استخدام صورتك للمتابعة — هذا شرط إلزامي', ru:'Для продолжения необходимо подтвердить согласие на использование образа — это обязательное требование' },
   avatar_need_voice_consent: { he:'חיברתם ElevenLabs — יש לאשר גם את הסכמת שיבוט הקול', en:'You added an ElevenLabs key — please also confirm the voice-cloning consent', fr:'Vous avez ajouté une clé ElevenLabs — veuillez aussi confirmer le consentement vocal', ar:'أضفت مفتاح ElevenLabs — يرجى تأكيد موافقة استنساخ الصوت أيضًا', ru:'Вы добавили ключ ElevenLabs — подтвердите также согласие на клонирование голоса' },
   avatar_connected_notice: { he:'חשבונות האווטאר חוברו וההסכמה נרשמה ✓', en:'Avatar accounts connected and consent recorded ✓', fr:'Comptes avatar connectés et consentement enregistré ✓', ar:'تم ربط حسابات الأفاتار وتسجيل الموافقة ✓', ru:'Аккаунты аватара подключены, согласие зафиксировано ✓' },
+  tool_heygen_card: { he:'HeyGen — אווטאר בדמות שלך', en:'HeyGen — an avatar in your likeness', fr:'HeyGen — un avatar à votre image', ar:'HeyGen — أفاتار بصورتك', ru:'HeyGen — аватар с вашей внешностью' },
+  tool_heygen_note: { he:'שירות בתשלום נפרד מדמי הניהול. נרשמים ל-HeyGen בחשבון שלכם ובאמצעי התשלום שלכם, יוצרים מפתח API בהגדרות החשבון ומדביקים אותו כאן. התשלום ל-HeyGen עובר ישירות דרככם.', en:'A service billed separately from your management fee. Sign up for HeyGen with your own account and payment method, create an API key in your account settings and paste it here. HeyGen is paid directly by you.', fr:'Service facturé séparément de vos frais de gestion. Inscrivez-vous à HeyGen avec votre compte et votre moyen de paiement, créez une clé API dans les paramètres et collez-la ici. HeyGen est payé directement par vous.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. سجّل في HeyGen بحسابك ووسيلة دفعك، أنشئ مفتاح API في إعدادات الحساب والصقه هنا. الدفع لـ HeyGen يتم مباشرة من خلالك.', ru:'Услуга оплачивается отдельно от ведения. Зарегистрируйтесь в HeyGen со своим аккаунтом и способом оплаты, создайте API-ключ в настройках и вставьте его сюда. HeyGen оплачивается напрямую вами.' },
+  tool_eleven_card: { he:'ElevenLabs — הקול שלך', en:'ElevenLabs — your voice', fr:'ElevenLabs — votre voix', ar:'ElevenLabs — صوتك', ru:'ElevenLabs — ваш голос' },
+  tool_eleven_note: { he:'נרשמים ל-ElevenLabs בחשבון שלכם (שיבוט קול דורש מסלול בתשלום אצלם), יוצרים מפתח API ומדביקים אותו כאן. התשלום ל-ElevenLabs עובר ישירות דרככם.', en:'Sign up for ElevenLabs on your own account (voice cloning needs one of their paid plans), create an API key and paste it here. ElevenLabs is paid directly by you.', fr:'Inscrivez-vous à ElevenLabs sur votre compte (le clonage de voix nécessite une formule payante), créez une clé API et collez-la ici. ElevenLabs est payé directement par vous.', ar:'سجّل في ElevenLabs بحسابك (استنساخ الصوت يتطلب باقة مدفوعة لديهم)، أنشئ مفتاح API والصقه هنا. الدفع لـ ElevenLabs يتم مباشرة من خلالك.', ru:'Зарегистрируйтесь в ElevenLabs на свой аккаунт (для клонирования голоса нужен платный тариф), создайте API-ключ и вставьте его сюда. ElevenLabs оплачивается напрямую вами.' },
+  tool_eleven_ph: { he:'ElevenLabs API Key', en:'ElevenLabs API Key', fr:'Clé API ElevenLabs', ar:'مفتاح ElevenLabs API', ru:'API-ключ ElevenLabs' },
+  tool_voice_consent: { he:'אני מאשר/ת במפורש שימוש בהקלטות הקול שאעלה ליצירת שיבוט קול דיגיטלי בחשבון ה-ElevenLabs שלי, לשימוש בסרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the voice recordings I upload being used to create a digital voice clone on my own ElevenLabs account, for use in videos for my business. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les enregistrements vocaux que je téléverse servent à créer un clone vocal numérique sur mon propre compte ElevenLabs, pour des vidéos de mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام التسجيلات الصوتية التي أرفعها لإنشاء نسخة رقمية من صوتي في حساب ElevenLabs الخاص بي، لاستخدامها في فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной аудиозаписей для создания цифрового клона моего голоса в моём собственном аккаунте ElevenLabs для видео моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
+  tool_voice_consent_btn: { he:'אישור הסכמת שיבוט קול', en:'Confirm voice-cloning consent', fr:'Confirmer le consentement de clonage', ar:'تأكيد موافقة استنساخ الصوت', ru:'Подтвердить согласие на клонирование' },
+  tool_voice_consent_on: { he:'הסכמת שיבוט הקול נרשמה ✓', en:'Voice-cloning consent recorded ✓', fr:'Consentement de clonage enregistré ✓', ar:'سُجلت موافقة استنساخ الصوت ✓', ru:'Согласие на клонирование голоса зафиксировано ✓' },
+  tool_voice_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת ההסכמה', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
+  tool_test_btn: { he:'בדיקת חיבור', en:'Test connection', fr:'Tester la connexion', ar:'فحص الاتصال', ru:'Проверить подключение' },
+  tool_testing: { he:'בודקים…', en:'Testing…', fr:'Test…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
+  tool_replace_key: { he:'החלפת מפתח', en:'Replace key', fr:'Remplacer la clé', ar:'استبدال المفتاح', ru:'Заменить ключ' },
+  tool_st_connected: { he:'מחובר ✓', en:'Connected ✓', fr:'Connecté ✓', ar:'متصل ✓', ru:'Подключено ✓' },
+  tool_st_unverified: { he:'מחובר (ייבדק ביצירה הראשונה)', en:'Connected (checked on the first job)', fr:'Connecté (vérifié à la première création)', ar:'متصل (يُفحص عند أول إنشاء)', ru:'Подключено (проверится при первой задаче)' },
+  tool_st_rejected: { he:'המפתח נדחה — צריך מפתח חדש', en:'Key rejected — a new key is needed', fr:'Clé refusée — une nouvelle clé est nécessaire', ar:'المفتاح مرفوض — يلزم مفتاح جديد', ru:'Ключ отклонён — нужен новый ключ' },
+  tool_connected_notice: { he:'{name} חובר ✓', en:'{name} connected ✓', fr:'{name} connecté ✓', ar:'تم ربط {name} ✓', ru:'{name} подключён ✓' },
+  tool_connected_unverified_notice: { he:'{name} חובר. לא הצלחנו לבדוק את המפתח מראש, הוא ייבדק ביצירה הראשונה.', en:'{name} connected. We couldn\'t check the key in advance; it will be checked on the first job.', fr:'{name} connecté. La clé n\'a pas pu être vérifiée à l\'avance ; elle le sera à la première création.', ar:'تم ربط {name}. لم نتمكن من فحص المفتاح مسبقًا، وسيُفحص عند أول إنشاء.', ru:'{name} подключён. Проверить ключ заранее не удалось — он проверится при первой задаче.' },
+  tool_disconnected_notice: { he:'{name} נותק. שאר הכלים נשארו מחוברים.', en:'{name} disconnected. Your other tools stay connected.', fr:'{name} déconnecté. Vos autres outils restent connectés.', ar:'تم فصل {name}. باقي الأدوات بقيت متصلة.', ru:'{name} отключён. Остальные инструменты остаются подключены.' },
+  tool_test_ok: { he:'{name}: המפתח תקין ✓', en:'{name}: the key works ✓', fr:'{name} : la clé fonctionne ✓', ar:'{name}: المفتاح يعمل ✓', ru:'{name}: ключ работает ✓' },
+  tool_test_unreachable: { he:'לא הצלחנו להגיע ל-{name} כרגע. החיבור לא השתנה, אפשר לנסות שוב בעוד רגע.', en:'We couldn\'t reach {name} right now. Nothing changed; try again in a moment.', fr:'Impossible de joindre {name} pour le moment. Rien n\'a changé ; réessayez dans un instant.', ar:'لم نتمكن من الوصول إلى {name} الآن. لم يتغير شيء، حاول بعد لحظة.', ru:'Сейчас не удалось связаться с {name}. Ничего не изменилось — попробуйте чуть позже.' },
+  tool_err_key_rejected: { he:'הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.', en:'The tool rejected the key. Copy it again from your account and try again.', fr:'L\'outil a refusé la clé. Copiez-la à nouveau depuis votre compte et réessayez.', ar:'رفضت الأداة المفتاح. انسخه مجددًا من حسابك وحاول مرة أخرى.', ru:'Инструмент отклонил ключ. Скопируйте его ещё раз из аккаунта и попробуйте снова.' },
+  tool_err_empty_key: { he:'צריך להדביק את המפתח לפני החיבור.', en:'Paste the key before connecting.', fr:'Collez la clé avant de connecter.', ar:'الصق المفتاح قبل الربط.', ru:'Вставьте ключ перед подключением.' },
+  tool_err_consent_required: { he:'כדי לחבר את HeyGen צריך לסמן את האישור לשימוש בדמות שלך.', en:'To connect HeyGen, tick the likeness consent.', fr:'Pour connecter HeyGen, cochez le consentement d\'utilisation de votre image.', ar:'لربط HeyGen حدّد موافقة استخدام صورتك.', ru:'Чтобы подключить HeyGen, отметьте согласие на использование образа.' },
+  tool_err_not_connected: { he:'הכלי הזה עוד לא מחובר.', en:'This tool isn\'t connected yet.', fr:'Cet outil n\'est pas encore connecté.', ar:'هذه الأداة غير متصلة بعد.', ru:'Этот инструмент ещё не подключён.' },
+  tool_err_unknown_provider: { he:'ספק הווידאו הזה לא מוכר.', en:'Unknown video provider.', fr:'Fournisseur vidéo inconnu.', ar:'مزوّد الفيديو غير معروف.', ru:'Неизвестный видеосервис.' },
+  provider_card: { he:'כלי הווידאו לסרטוני דמות', en:'Video tool for character videos', fr:'Outil vidéo pour les vidéos de personnage', ar:'أداة الفيديو لمقاطع الشخصية', ru:'Видеоинструмент для роликов с персонажем' },
+  provider_note: { he:'באיזה כלי ניצור את סרטוני הדמות שלכם. הקול זהה בשניהם: הקלטה שהעליתם או הקול המשובט שלכם.', en:'Which tool makes your character videos. The voice is the same in both: a recording you uploaded or your cloned voice.', fr:'L\'outil qui crée vos vidéos de personnage. La voix est la même dans les deux : un enregistrement téléversé ou votre voix clonée.', ar:'بأي أداة ننشئ مقاطع الشخصية الخاصة بكم. الصوت نفسه في الحالتين: تسجيل رفعتموه أو صوتكم المستنسخ.', ru:'Каким инструментом делать ваши ролики с персонажем. Голос в обоих одинаковый: загруженная запись или ваш клонированный голос.' },
+  provider_heygen: { he:'HeyGen — אווטאר בדמות שלך', en:'HeyGen — avatar in your likeness', fr:'HeyGen — avatar à votre image', ar:'HeyGen — أفاتار بصورتك', ru:'HeyGen — аватар с вашей внешностью' },
+  provider_higgsfield: { he:'Higgsfield — דמות / משפיען AI', en:'Higgsfield — AI character / influencer', fr:'Higgsfield — personnage / influenceur IA', ar:'Higgsfield — شخصية / مؤثر بالذكاء الاصطناعي', ru:'Higgsfield — ИИ-персонаж / инфлюенсер' },
+  provider_not_ready: { he:'עוד לא פעיל', en:'not available yet', fr:'pas encore disponible', ar:'غير متاح بعد', ru:'пока недоступно' },
+  provider_needs_tool: { he:'צריך לחבר את {name}', en:'{name} needs connecting', fr:'{name} doit être connecté', ar:'يلزم ربط {name}', ru:'Нужно подключить {name}' },
+  provider_saved: { he:'הבחירה נשמרה ✓', en:'Choice saved ✓', fr:'Choix enregistré ✓', ar:'تم حفظ الاختيار ✓', ru:'Выбор сохранён ✓' },
+  voice_card: { he:'הקלטות קול', en:'Voice recordings', fr:'Enregistrements vocaux', ar:'تسجيلات صوتية', ru:'Записи голоса' },
+  voice_note: { he:'מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס ElevenLabs.', en:'Upload a recording of your voice (mp3, m4a, wav or webm, up to 25MB) — that\'s all. We decide how to use it in your videos. Your voice is cloned only if you confirmed the voice-cloning consent on the ElevenLabs card.', fr:'Téléversez un enregistrement de votre voix (mp3, m4a, wav ou webm, jusqu\'à 25 Mo) — c\'est tout. Nous décidons comment l\'utiliser. Votre voix n\'est clonée que si vous avez confirmé le consentement sur la carte ElevenLabs.', ar:'ارفع تسجيلًا لصوتك (mp3 أو m4a أو wav أو webm، حتى 25MB) — وهذا كل شيء. نحن نقرر كيف نستخدمه في الفيديوهات. يُستنسخ صوتك فقط إذا أكدت موافقة الاستنساخ في بطاقة ElevenLabs.', ru:'Загрузите запись своего голоса (mp3, m4a, wav или webm, до 25 МБ) — и всё. Как её использовать в роликах, решаем мы. Голос клонируется, только если вы подтвердили согласие на карточке ElevenLabs.' },
+  voice_upload_btn: { he:'העלאת הקלטה', en:'Upload a recording', fr:'Téléverser un enregistrement', ar:'رفع تسجيل', ru:'Загрузить запись' },
+  voice_record_btn: { he:'הקלטה מהדפדפן', en:'Record in the browser', fr:'Enregistrer dans le navigateur', ar:'تسجيل من المتصفح', ru:'Записать в браузере' },
+  voice_stop_btn: { he:'⏹ עצירה ושמירה', en:'⏹ Stop and save', fr:'⏹ Arrêter et enregistrer', ar:'⏹ إيقاف وحفظ', ru:'⏹ Остановить и сохранить' },
+  voice_uploading: { he:'מעלים…', en:'Uploading…', fr:'Envoi…', ar:'جارٍ الرفع…', ru:'Загружаем…' },
+  voice_uploaded: { he:'ההקלטה נשמרה ✓ זה כל מה שצריך מכם.', en:'Recording saved ✓ That\'s all we need from you.', fr:'Enregistrement sauvegardé ✓ C\'est tout ce qu\'il nous faut.', ar:'تم حفظ التسجيل ✓ هذا كل ما نحتاجه منك.', ru:'Запись сохранена ✓ Больше от вас ничего не нужно.' },
+  voice_summary: { he:'{count} הקלטות', en:'{count} recordings', fr:'{count} enregistrements', ar:'{count} تسجيلات', ru:'Записей: {count}' },
+  voice_track_only: { he:'משמשות כפסקול בלבד (בלי שיבוט)', en:'used as an audio track only (no cloning)', fr:'utilisés comme piste audio uniquement (sans clonage)', ar:'تُستخدم كمسار صوتي فقط (بدون استنساخ)', ru:'используются только как звуковая дорожка (без клонирования)' },
+  voice_empty: { he:'עוד אין הקלטות', en:'No recordings yet', fr:'Aucun enregistrement', ar:'لا توجد تسجيلات بعد', ru:'Записей пока нет' },
+  voice_delete: { he:'מחיקה', en:'Delete', fr:'Supprimer', ar:'حذف', ru:'Удалить' },
+  voice_deleted: { he:'ההקלטה נמחקה', en:'Recording deleted', fr:'Enregistrement supprimé', ar:'تم حذف التسجيل', ru:'Запись удалена' },
+  voice_delete_all: { he:'מחיקת כל ההקלטות והקול המשובט', en:'Delete all recordings and the cloned voice', fr:'Supprimer tous les enregistrements et la voix clonée', ar:'حذف كل التسجيلات والصوت المستنسخ', ru:'Удалить все записи и клон голоса' },
+  voice_delete_all_confirm: { he:'בטוחים? לחיצה נוספת מוחקת הכל', en:'Sure? Click again to delete everything', fr:'Sûr ? Cliquez encore pour tout supprimer', ar:'متأكد؟ اضغط مجددًا لحذف الكل', ru:'Уверены? Нажмите ещё раз, чтобы удалить всё' },
+  voice_all_deleted: { he:'כל ההקלטות נמחקו, וגם הקול המשובט (אם היה)', en:'All recordings were deleted, and the cloned voice too (if there was one)', fr:'Tous les enregistrements ont été supprimés, ainsi que la voix clonée (le cas échéant)', ar:'حُذفت كل التسجيلات، والصوت المستنسخ أيضًا (إن وُجد)', ru:'Все записи удалены, а также клон голоса (если он был)' },
+  voice_clone_not_deleted: { he:'ההקלטות נמחקו, אבל את הקול המשובט לא הצלחנו למחוק מחשבון ה-ElevenLabs שלך. אפשר למחוק אותו בעצמך באתר ElevenLabs, בעמוד הקולות, או לחבר שוב את הכרטיס ולנסות שוב.', en:'The recordings were deleted, but we couldn\'t delete the cloned voice from your ElevenLabs account. You can delete it yourself on ElevenLabs\' Voices page, or reconnect the card and try again.', fr:'Les enregistrements ont été supprimés, mais la voix clonée n\'a pas pu être supprimée de votre compte ElevenLabs. Supprimez-la vous-même dans la page Voices d\'ElevenLabs, ou reconnectez la carte et réessayez.', ar:'حُذفت التسجيلات، لكن لم نتمكن من حذف الصوت المستنسخ من حساب ElevenLabs. يمكنك حذفه بنفسك في صفحة الأصوات في ElevenLabs، أو إعادة ربط البطاقة والمحاولة مجددًا.', ru:'Записи удалены, но клон голоса из вашего аккаунта ElevenLabs удалить не удалось. Удалите его сами на странице Voices в ElevenLabs или переподключите карточку и повторите.' },
+  voice_duration_unknown: { he:'משך לא ידוע', en:'length unknown', fr:'durée inconnue', ar:'المدة غير معروفة', ru:'длительность неизвестна' },
+  voice_list_error: { he:'לא הצלחנו להציג את ההקלטות כרגע', en:'We couldn\'t show the recordings right now', fr:'Impossible d\'afficher les enregistrements pour le moment', ar:'لم نتمكن من عرض التسجيلات الآن', ru:'Сейчас не удалось показать записи' },
+  voice_record_unsupported: { he:'הדפדפן הזה לא תומך בהקלטה. אפשר להקליט בטלפון ולהעלות את הקובץ.', en:'This browser can\'t record. Record on your phone and upload the file.', fr:'Ce navigateur ne peut pas enregistrer. Enregistrez avec votre téléphone et téléversez le fichier.', ar:'هذا المتصفح لا يدعم التسجيل. سجّل بالهاتف وارفع الملف.', ru:'Этот браузер не умеет записывать. Запишите на телефон и загрузите файл.' },
+  voice_record_denied: { he:'אין גישה למיקרופון. צריך לאשר גישה למיקרופון בדפדפן ולנסות שוב.', en:'No microphone access. Allow the microphone in your browser and try again.', fr:'Pas d\'accès au micro. Autorisez le micro dans le navigateur et réessayez.', ar:'لا يوجد وصول إلى الميكروفون. اسمح بالميكروفون في المتصفح وحاول مجددًا.', ru:'Нет доступа к микрофону. Разрешите микрофон в браузере и попробуйте снова.' },
+  voice_err_bad_format: { he:'אפשר להעלות רק קובצי קול: mp3, m4a, wav או webm.', en:'Only audio files: mp3, m4a, wav or webm.', fr:'Uniquement des fichiers audio : mp3, m4a, wav ou webm.', ar:'ملفات صوتية فقط: mp3 أو m4a أو wav أو webm.', ru:'Только аудиофайлы: mp3, m4a, wav или webm.' },
+  voice_err_too_big: { he:'הקובץ גדול מדי — עד 25MB לקובץ. אפשר לקצר את ההקלטה או לשמור אותה כ-mp3.', en:'The file is too big — up to 25MB. Shorten the recording or save it as mp3.', fr:'Fichier trop volumineux — 25 Mo maximum. Raccourcissez l\'enregistrement ou enregistrez-le en mp3.', ar:'الملف كبير جدًا — حتى 25MB. قصّر التسجيل أو احفظه بصيغة mp3.', ru:'Файл слишком большой — до 25 МБ. Сократите запись или сохраните её в mp3.' },
+  voice_err_too_many: { he:'יש כבר 50 הקלטות. מוחקים הקלטה ישנה ואז מעלים חדשה.', en:'There are already 50 recordings. Delete an old one, then upload.', fr:'Il y a déjà 50 enregistrements. Supprimez-en un ancien, puis téléversez.', ar:'يوجد بالفعل 50 تسجيلًا. احذف تسجيلًا قديمًا ثم ارفع.', ru:'Уже 50 записей. Удалите старую и загрузите новую.' },
+  voice_err_empty: { he:'הקובץ ריק.', en:'The file is empty.', fr:'Le fichier est vide.', ar:'الملف فارغ.', ru:'Файл пустой.' },
+  voice_err_storage: { he:'לא הצלחנו לשמור את הקובץ כרגע. ננסה שוב בעוד רגע.', en:'We couldn\'t save the file right now. Try again in a moment.', fr:'Impossible d\'enregistrer le fichier pour le moment. Réessayez dans un instant.', ar:'لم نتمكن من حفظ الملف الآن. حاول بعد لحظة.', ru:'Сейчас не удалось сохранить файл. Попробуйте чуть позже.' },
   avatar_connect_failed: { he:'החיבור נכשל — ודאו שהמפתחות תקינים ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the keys and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez les clés et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تحقق من المفاتيح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключи и попробуйте снова, или напишите нам в чат' },
   newsletter_card: { he:'דיוור / מיילים', en:'Email marketing', fr:'E-mailing', ar:'البريد التسويقي', ru:'Email-рассылки' },
   whatsapp_card: { he:'וואטסאפ עסקי', en:'WhatsApp Business', fr:'WhatsApp Business', ar:'واتساب للأعمال', ru:'WhatsApp Business' },
@@ -2494,6 +2651,8 @@ const DASH_I18N = {
   preact_wordpress_body: { he:'כדי לעבוד על האתר בצורה מאובטחת, וורדפרס דורש "סיסמת אפליקציה" — סיסמה נפרדת שרק אתם יכולים ליצור, מתוך ניהול האתר שלכם (משתמשים ← פרופיל ← Application Passwords). זו לא הסיסמה הרגילה שלכם, ואפשר לבטל אותה בכל רגע. ניצור אתכם שלב-שלב בטופס הבא.', en:'To work on your site securely, WordPress requires an "Application Password" — a separate password only YOU can create, from your own site admin (Users → Profile → Application Passwords). It\'s not your regular password, and you can revoke it anytime. The next form walks you through it step by step.', fr:'Pour travailler sur votre site en toute sécurité, WordPress exige un « Application Password » — un mot de passe distinct que vous seul pouvez créer, depuis l\'admin de votre site (Utilisateurs → Profil → Application Passwords). Ce n\'est pas votre mot de passe habituel, et il est révocable à tout moment. Le formulaire suivant vous guide pas à pas.', ar:'للعمل على موقعكم بأمان، يتطلب WordPress "كلمة مرور تطبيق" — كلمة مرور منفصلة أنتم وحدكم من يستطيع إنشاءها، من إدارة موقعكم (المستخدمون ← الملف الشخصي ← Application Passwords). ليست كلمة المرور العادية، ويمكن إلغاؤها في أي وقت. النموذج التالي يرشدكم خطوة بخطوة.', ru:'Для безопасной работы с сайтом WordPress требует «пароль приложения» — отдельный пароль, который можете создать только вы, в админке своего сайта (Пользователи → Профиль → Application Passwords). Это не ваш обычный пароль, и его можно отозвать в любой момент. Следующая форма проведёт вас по шагам.' },
   preact_higgsfield_title: { he:'רגע לפני חיבור יצירת המדיה', en:'Before connecting media generation', fr:'Avant de connecter la génération de médias', ar:'قبل ربط إنشاء الوسائط', ru:'Перед подключением генерации медиа' },
   preact_higgsfield_body: { he:'יצירת התמונות והסרטונים רצה על חשבון Higgsfield שלכם — כך התשלום על היצירה עובר ישירות דרככם, בשקיפות מלאה, ולא דרכנו. לכן את מפתח ה-API רק אתם יכולים ליצור, בחשבון שלכם (cloud.higgsfield.ai/api-keys). בטופס הבא פשוט מדביקים אותו — ומכאן אנחנו מפעילים הכל בשבילכם.', en:'Image and video generation runs on YOUR Higgsfield account — so payment for generation goes directly through you, fully transparently, not through us. That\'s why only you can create the API key, in your own account (cloud.higgsfield.ai/api-keys). In the next form you just paste it — and from there we operate everything for you.', fr:'La génération d\'images et de vidéos tourne sur VOTRE compte Higgsfield — le paiement de la génération passe donc directement par vous, en toute transparence, pas par nous. C\'est pourquoi vous seul pouvez créer la clé API, dans votre compte (cloud.higgsfield.ai/api-keys). Dans le formulaire suivant, collez-la simplement — et nous opérons tout pour vous.', ar:'إنشاء الصور والفيديوهات يعمل على حساب Higgsfield الخاص بكم — فيمر الدفع مقابل الإنشاء مباشرة من خلالكم وبشفافية كاملة، وليس من خلالنا. لذلك أنتم وحدكم من يستطيع إنشاء مفتاح API، في حسابكم (cloud.higgsfield.ai/api-keys). في النموذج التالي الصقوه فقط — ومن هناك نشغّل كل شيء نيابة عنكم.', ru:'Генерация изображений и видео работает на ВАШЕМ аккаунте Higgsfield — оплата за генерацию идёт напрямую от вас, полностью прозрачно, а не через нас. Поэтому только вы можете создать API-ключ, в своём аккаунте (cloud.higgsfield.ai/api-keys). В следующей форме просто вставьте его — а дальше мы всё делаем за вас.' },
+  preact_elevenlabs_title: { he:'רגע לפני חיבור ElevenLabs', en:'Before connecting ElevenLabs', fr:'Avant de connecter ElevenLabs', ar:'قبل ربط ElevenLabs', ru:'Перед подключением ElevenLabs' },
+  preact_elevenlabs_body: { he:'הקול שלכם נשאר בחשבון ה-ElevenLabs שלכם, לא אצלנו — לכן את מפתח ה-API רק אתם יכולים ליצור, בחשבון שלכם. החיבור הזה נפרד מ-HeyGen ומ-Higgsfield. שיבוט הקול עצמו נעשה רק אחרי שתאשרו את הסכמת שיבוט הקול בכרטיס; בלי ההסכמה, הקלטות משמשות רק כפסקול כמו שהן.', en:'Your voice stays on YOUR ElevenLabs account, not with us — so only you can create the API key, in your own account. This connection is separate from HeyGen and Higgsfield. Your voice is cloned only after you confirm the voice-cloning consent on the card; without it, recordings are used only as an audio track, as they are.', fr:'Votre voix reste sur VOTRE compte ElevenLabs, pas chez nous — vous seul pouvez donc créer la clé API. Cette connexion est indépendante de HeyGen et Higgsfield. Le clonage n\'a lieu qu\'après votre consentement sur la carte ; sans lui, les enregistrements servent uniquement de piste audio.', ar:'صوتك يبقى في حساب ElevenLabs الخاص بك وليس لدينا — لذلك أنت وحدك من ينشئ مفتاح API. هذا الربط منفصل عن HeyGen وHiggsfield. لا يُستنسخ صوتك إلا بعد تأكيد موافقة الاستنساخ في البطاقة؛ بدونها تُستخدم التسجيلات كمسار صوتي فقط.', ru:'Ваш голос остаётся в ВАШЕМ аккаунте ElevenLabs, а не у нас — поэтому API-ключ можете создать только вы. Это подключение отдельно от HeyGen и Higgsfield. Голос клонируется только после согласия на карточке; без него записи используются лишь как звуковая дорожка.' },
   preact_avatar_title: { he:'רגע לפני שמתחילים עם האווטאר', en:'Before starting your avatar', fr:'Avant de commencer votre avatar', ar:'قبل البدء بالأفاتار', ru:'Перед созданием аватара' },
   preact_avatar_body: { he:'האווטאר הדיגיטלי נוצר על חשבון HeyGen שלכם — הפנים והקול שלכם נשארים בבעלותכם, בחשבון שלכם, ולא אצלנו. לכן שני שלבים הם רק שלכם: יצירת מפתח API בחשבון, ובהמשך — יצירת האווטאר עצמו באתר HeyGen (כמה קליקים, עובד גם במסלול החינמי; נשלח הוראות מדויקות). וגם: נבקש הסכמה מפורשת לשימוש בדמות — בלי זה שום דבר לא רץ.', en:'Your digital avatar is created on YOUR HeyGen account — your face and voice stay yours, in your account, never held by us. That\'s why two steps are yours alone: creating an API key in your account, and later creating the avatar itself on HeyGen\'s site (a few clicks, works on the free plan too; we\'ll send exact instructions). Also: we\'ll ask for explicit consent to use your likeness — nothing runs without it.', fr:'Votre avatar numérique est créé sur VOTRE compte HeyGen — votre visage et votre voix restent à vous, dans votre compte, jamais chez nous. C\'est pourquoi deux étapes vous reviennent : créer une clé API dans votre compte, puis créer l\'avatar lui-même sur le site HeyGen (quelques clics, fonctionne aussi avec l\'offre gratuite ; nous enverrons des instructions précises). Aussi : nous demanderons un consentement explicite pour utiliser votre image — rien ne tourne sans cela.', ar:'يُنشأ الأفاتار الرقمي على حساب HeyGen الخاص بكم — وجهكم وصوتكم يبقيان ملككم، في حسابكم، وليس لدينا أبدًا. لذلك خطوتان لكم وحدكم: إنشاء مفتاح API في الحساب، ولاحقًا إنشاء الأفاتار نفسه في موقع HeyGen (بضع نقرات، يعمل أيضًا في الخطة المجانية؛ سنرسل تعليمات دقيقة). وأيضًا: سنطلب موافقة صريحة على استخدام صورتكم — لا شيء يعمل بدونها.', ru:'Ваш цифровой аватар создаётся на ВАШЕМ аккаунте HeyGen — ваше лицо и голос остаются вашими, в вашем аккаунте, а не у нас. Поэтому два шага только ваши: создание API-ключа в аккаунте, а позже — создание самого аватара на сайте HeyGen (несколько кликов, работает и на бесплатном тарифе; мы пришлём точные инструкции). И ещё: мы запросим явное согласие на использование вашего образа — без него ничего не запускается.' },
   preact_tiktok_title: { he:'רגע לפני חיבור טיקטוק', en:'Before connecting TikTok', fr:'Avant de connecter TikTok', ar:'قبل ربط تيك توك', ru:'Перед подключением TikTok' },
@@ -2548,6 +2707,9 @@ const DASH_I18N = {
   act_media_trend_examples_sent: { he:'שלחנו לך דוגמאות לתוכן שעובד בתחום שלך — בצ׳אט עם ליאור', en:'We sent you examples of content that works in your field — in the chat with ליאור', fr:'Nous vous avons envoyé des exemples de contenu qui marche dans votre domaine — dans le chat avec ליאור', ar:'أرسلنا لك أمثلة على محتوى ناجح في مجالك — في الدردشة مع ליאור', ru:'Мы отправили вам примеры контента, который работает в вашей сфере — в чате с ליאור' },
   act_media_prepared_for_publishing: { he:'פריט מדיה הוכן לפרסום', en:'A media item was prepared for publishing', fr:'Un média a été préparé pour publication', ar:'جُهّز عنصر وسائط للنشر', ru:'Медиафайл подготовлен к публикации' },
   act_avatar_accounts_connected: { he:'חשבונות האווטאר חוברו בהצלחה', en:'Your avatar accounts were connected', fr:'Vos comptes avatar ont été connectés', ar:'تم ربط حسابات الأفاتار الخاصة بك', ru:'Ваши аккаунты аватара подключены' },
+  act_creative_tool_connected: { he:'כלי יצירה חובר', en:'A creative tool was connected', fr:'Un outil de création a été connecté', ar:'تم ربط أداة إنشاء', ru:'Подключён творческий инструмент' },
+  act_creative_tool_disconnected: { he:'כלי יצירה נותק', en:'A creative tool was disconnected', fr:'Un outil de création a été déconnecté', ar:'تم فصل أداة إنشاء', ru:'Творческий инструмент отключён' },
+  act_avatar_voice_deleted: { he:'הקול המשובט שלך נמחק', en:'Your cloned voice was deleted', fr:'Votre voix clonée a été supprimée', ar:'تم حذف صوتك المستنسخ', ru:'Ваш клон голоса удалён' },
   act_avatar_consent_recorded: { he:'הסכמתך לשימוש בדמות/בקול נרשמה', en:'Your likeness/voice consent was recorded', fr:'Votre consentement (image/voix) a été enregistré', ar:'سُجلت موافقتك على استخدام الصورة/الصوت', ru:'Ваше согласие на использование образа/голоса зафиксировано' },
   act_avatar_source_requested: { he:'הוראות צילום לאווטאר מחכות לך ב-Drive', en:'Avatar filming instructions await you on Drive', fr:'Les instructions de tournage pour l\'avatar vous attendent sur Drive', ar:'تعليمات تصوير الأفاتار بانتظارك في Drive', ru:'Инструкции по съёмке для аватара ждут вас на Drive' },
   act_avatar_creation_submitted: { he:'יצירת האווטאר הדיגיטלי שלך יצאה לדרך', en:'Your digital avatar creation is underway', fr:'La création de votre avatar numérique est lancée', ar:'بدأت عملية إنشاء الأفاتار الرقمي الخاص بك', ru:'Создание вашего цифрового аватара запущено' },
@@ -2813,12 +2975,9 @@ async function loadDashboard() {
       // Container + site match + REAL token health, after the page is up
       loadGtmConnection(false);
     }
-    if (conns.some(c => c.platform === 'higgsfield' && c.status === 'active')) {
-      markHiggsfieldConnected();
-    }
-    if (conns.some(c => c.platform === 'heygen' && c.status === 'active')) {
-      markAvatarConnected();
-    }
+    // Creative tools, each on its own card, and the voice recordings
+    loadCreativeTools();
+    loadVoiceRecordings();
 
     // Chat persona: apply the client's saved choice, or offer the one-time picker
     initPersona(d.client && d.client.owner_gender);
@@ -3290,16 +3449,6 @@ function openSiteManualExplained() {
   if (form.style.display !== 'none') { form.style.display = 'none'; return; }
   preactExplain('wordpress', () => { form.style.display = 'block'; });
 }
-function openHiggsfieldFormExplained() {
-  const form = document.getElementById('higgsfieldForm');
-  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
-  preactExplain('higgsfield', toggleHiggsfieldForm);
-}
-function openAvatarFormExplained() {
-  const form = document.getElementById('avatarForm');
-  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
-  preactExplain('avatar', toggleAvatarForm);
-}
 function connectTiktokExplained() {
   // The OAuth part is simple, but what FOLLOWS isn't obvious: published videos
   // land in their TikTok inbox for THEM to post - explained up front, not
@@ -3638,109 +3787,413 @@ function handleSiteProvisionStatus(status) {
   }
 }
 
-function markHiggsfieldConnected() {
-  markPlatformConnected('higgsfieldStatus', 'higgsfieldBtn', 'higgsfield');
-  document.getElementById('higgsfieldForm').style.display = 'none';
+// ─── Creative tools: ONE card per tool (core/vendor_tools) ──────────────────
+// HeyGen, ElevenLabs and Higgsfield each connect, test and disconnect on
+// their own. The key is checked with the vendor before it is stored (a key
+// the vendor rejects is never saved); Higgsfield has no key check, so its
+// first real generation is the check. Keys never come back from the server.
+const CREATIVE_TOOLS = ['higgsfield', 'heygen', 'elevenlabs'];
+const TOOL_LABELS = { higgsfield: 'Higgsfield', heygen: 'HeyGen', elevenlabs: 'ElevenLabs' };
+const TOOL_PREACT = { higgsfield: 'higgsfield', heygen: 'avatar', elevenlabs: 'elevenlabs' };
+const TOOL_STATUS_KEYS = { connected: 'tool_st_connected', connected_unverified: 'tool_st_unverified',
+  key_rejected: 'tool_st_rejected', not_connected: 'not_connected' };
+let toolState = { tools: {}, providers: [] };
+
+// A server code → this page's own text; never the server's string itself
+function codeText(prefix, body, fallbackKey) {
+  const code = body && body.detail && body.detail.code;
+  const key = prefix + String(code || '').toLowerCase();
+  const text = code ? uallakI18n.t(key) : key;
+  return text === key ? uallakI18n.t(fallbackKey) : text;
 }
 
-function toggleHiggsfieldForm() {
-  const form = document.getElementById('higgsfieldForm');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-}
-
-function markAvatarConnected() {
-  markPlatformConnected('avatarStatus', 'avatarBtn', 'avatar');
-  document.getElementById('avatarForm').style.display = 'none';
-}
-
-function toggleAvatarForm() {
-  const form = document.getElementById('avatarForm');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-}
-
-// Avatar add-on: the client pastes their OWN HeyGen (+optional ElevenLabs)
-// keys. The consent checkboxes are MANDATORY, recorded server-side BEFORE the
-// keys are stored - likeness consent always; voice consent required only when
-// an ElevenLabs key is provided (and its checkbox must then be ticked).
-async function connectAvatar() {
-  const heygen_key = document.getElementById('avatarHeygenKey').value.trim();
-  const elevenlabs_key = document.getElementById('avatarElevenKey').value.trim();
-  const likenessOk = document.getElementById('avatarConsentLikeness').checked;
-  const voiceOk = document.getElementById('avatarConsentVoice').checked;
-  if (!heygen_key) { showNotice(uallakI18n.t('avatar_fill_heygen'), 'warn'); return; }
-  if (!likenessOk) { showNotice(uallakI18n.t('avatar_need_consent'), 'warn'); return; }
-  if (elevenlabs_key && !voiceOk) { showNotice(uallakI18n.t('avatar_need_voice_consent'), 'warn'); return; }
-
-  const btn = document.getElementById('avatarSubmitBtn');
-  btn.disabled = true;
-  btn.textContent = uallakI18n.t('site_connecting');
+async function loadCreativeTools() {
   try {
-    const consent = await fetch('/api/avatar/consent', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'likeness' }),
-    });
-    if (!consent.ok) throw new Error('likeness consent failed');
-    if (elevenlabs_key) {
-      const voiceConsent = await fetch('/api/avatar/consent', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: 'voice' }),
-      });
-      if (!voiceConsent.ok) throw new Error('voice consent failed');
-    }
-    const res = await fetch('/api/avatar/connect', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ heygen_key, elevenlabs_key }),
-    });
+    const res = await fetch('/api/client/tools', { credentials: 'same-origin' });
     const body = await res.json();
-    if (res.ok && body.success) {
-      markAvatarConnected();
-      showNotice(uallakI18n.t('avatar_connected_notice'), 'success');
-      return;
-    }
+    if (!res.ok || !body.success) throw new Error('tools ' + res.status);
+    toolState = body.data || toolState;
   } catch (e) {
-    console.error('avatar connect failed', e);
-  }
-  btn.disabled = false;
-  btn.textContent = uallakI18n.t('site_connect');
-  showNotice(uallakI18n.t('avatar_connect_failed'), 'warn');
-}
-
-// Higgsfield has no OAuth redirect - the client pastes their OWN API key
-// (created at cloud.higgsfield.ai/api-keys on their own paid plan), same
-// self-service pattern as the WordPress Application Password card. No
-// server-side validation call here (would burn the client's credits) - a
-// bad key just fails on the first real generation, surfaced via an alert.
-async function connectHiggsfield() {
-  const api_key = document.getElementById('higgsfieldKey').value.trim();
-  if (!api_key) {
-    showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn');
+    console.error('creative tools load failed', e);
     return;
   }
-  const btn = document.getElementById('higgsfieldSubmitBtn');
+  CREATIVE_TOOLS.forEach(paintTool);
+  paintProviders();
+}
+
+function paintTool(tool) {
+  const t = (toolState.tools || {})[tool] || { status: 'not_connected' };
+  const stored = t.status !== 'not_connected';
+  const st = document.getElementById('toolStatus-' + tool);
+  st.removeAttribute('data-i18n');
+  st.textContent = uallakI18n.t(TOOL_STATUS_KEYS[t.status] || 'not_connected')
+    + (stored && t.last4 ? ' · ••••' + t.last4 : '');
+  st.className = 'conn-status' + ({ connected: ' connected', connected_unverified: ' unverified',
+                                     key_rejected: ' rejected' }[t.status] || '');
+  document.getElementById('toolOpenBtn-' + tool).style.display = stored ? 'none' : '';
+  document.getElementById('toolManage-' + tool).style.display = stored ? 'flex' : 'none';
+  document.getElementById('toolDisc-' + tool).style.display = stored ? 'block' : 'none';
+  const testBtn = document.getElementById('toolTestBtn-' + tool);
+  if (testBtn) testBtn.style.display = t.can_test ? '' : 'none';
+  // A rejected key: the form is open so a fresh key can be pasted right away
+  const form = document.getElementById('toolForm-' + tool);
+  if (t.status === 'key_rejected') form.style.display = 'block';
+  else if (stored) form.style.display = 'none';
+  if (tool === 'heygen' && t.consent) document.getElementById('toolConsent-heygen').checked = true;
+  if (tool === 'elevenlabs') {
+    document.getElementById('toolVoiceConsentBox').style.display = t.consent ? 'none' : '';
+    document.getElementById('toolVoiceConsentOn').style.display = t.consent ? 'block' : 'none';
+  }
+}
+
+function openToolForm(tool, replacing) {
+  const form = document.getElementById('toolForm-' + tool);
+  if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+  const show = () => { form.style.display = 'block'; document.getElementById('toolKey-' + tool).focus(); };
+  if (replacing) show(); else preactExplain(TOOL_PREACT[tool], show);
+}
+
+async function connectTool(tool) {
+  const input = document.getElementById('toolKey-' + tool);
+  const api_key = input.value.trim();
+  if (!api_key) { showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn'); return; }
+  const box = document.getElementById('toolConsent-' + tool);
+  const consent = !!(box && box.checked);
+  if (tool === 'heygen' && !consent) { showNotice(uallakI18n.t('avatar_need_consent'), 'warn'); return; }
+  const btn = document.getElementById('toolConnectBtn-' + tool);
   btn.disabled = true;
   btn.textContent = uallakI18n.t('site_connecting');
   try {
-    const res = await fetch('/api/media/connect', {
-      method: 'POST',
-      credentials: 'same-origin',
+    const res = await fetch('/api/client/tools/' + tool + '/connect', {
+      method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key }),
+      body: JSON.stringify({ api_key, consent }),
     });
-    const body = await res.json();
+    const body = await res.json().catch(() => ({}));
     if (res.ok && body.success) {
-      markHiggsfieldConnected();
-      showNotice(uallakI18n.t('higgsfield_connected_notice'), 'success');
-      return;
+      input.value = '';
+      showNotice(uallakI18n.t(body.data && body.data.status === 'connected_unverified'
+        ? 'tool_connected_unverified_notice' : 'tool_connected_notice', { name: TOOL_LABELS[tool] }), 'success');
+      await loadCreativeTools();
+    } else {
+      showNotice(codeText('tool_err_', body, 'higgsfield_connect_failed'), 'warn');
     }
   } catch (e) {
-    console.error('higgsfield connect failed', e);
+    console.error('tool connect failed', e);
+    showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
   }
   btn.disabled = false;
   btn.textContent = uallakI18n.t('site_connect');
+}
+
+async function testTool(tool) {
+  const btn = document.getElementById('toolTestBtn-' + tool);
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('tool_testing');
+  try {
+    const res = await fetch('/api/client/tools/' + tool + '/test', { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      const d = body.data || {};
+      if (d.reachable === false) showNotice(uallakI18n.t('tool_test_unreachable', { name: TOOL_LABELS[tool] }), 'warn');
+      else if (d.status === 'connected') showNotice(uallakI18n.t('tool_test_ok', { name: TOOL_LABELS[tool] }), 'success');
+      else showNotice(uallakI18n.t('tool_err_key_rejected'), 'warn');
+      await loadCreativeTools();
+    } else {
+      showNotice(codeText('tool_err_', body, 'higgsfield_connect_failed'), 'warn');
+    }
+  } catch (e) {
+    console.error('tool test failed', e);
+  }
+  btn.disabled = false;
+  btn.textContent = uallakI18n.t('tool_test_btn');
+}
+
+// Two-step confirm like every other disconnect link; deletes ONLY this
+// tool's key — the other tools, consents and recordings stay
+async function disconnectTool(tool, link) {
+  if (!link.classList.contains('arm')) {
+    link.classList.add('arm');
+    link.textContent = uallakI18n.t('disconnect_confirm');
+    setTimeout(() => { link.classList.remove('arm'); link.textContent = uallakI18n.t('disconnect_link'); }, 6000);
+    return;
+  }
+  link.disabled = true;
+  link.textContent = uallakI18n.t('disconnecting');
+  try {
+    const res = await fetch('/api/client/tools/' + tool + '/disconnect', { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      showNotice(uallakI18n.t('tool_disconnected_notice', { name: TOOL_LABELS[tool] }), 'success');
+      await loadCreativeTools();
+    } else {
+      showNotice(uallakI18n.t('disconnect_failed'), 'warn');
+    }
+  } catch (e) {
+    console.error('tool disconnect failed', e);
+    showNotice(uallakI18n.t('disconnect_failed'), 'warn');
+  }
+  link.disabled = false;
+  link.classList.remove('arm');
+  link.textContent = uallakI18n.t('disconnect_link');
+}
+
+// Voice-cloning consent: optional, belongs to ElevenLabs, recorded on its own
+async function saveVoiceConsent() {
+  if (!document.getElementById('toolConsent-elevenlabs').checked) {
+    showNotice(uallakI18n.t('tool_voice_consent_tick'), 'warn');
+    return;
+  }
+  const btn = document.getElementById('toolConsentBtn-elevenlabs');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/avatar/consent', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'voice' }),
+    });
+    if (res.ok) {
+      showNotice(uallakI18n.t('tool_voice_consent_on'), 'success');
+      await loadCreativeTools();
+      loadVoiceRecordings();
+    } else {
+      showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
+    }
+  } catch (e) {
+    console.error('voice consent failed', e);
+  }
+  btn.disabled = false;
+}
+
+function paintProviders() {
+  const select = document.getElementById('providerSelect');
+  const providers = toolState.providers || [];
+  select.innerHTML = providers.map(p => {
+    const label = uallakI18n.t('provider_' + p.id) + (p.ready ? '' : ' — ' + uallakI18n.t('provider_not_ready'));
+    return `<option value="${esc(p.id)}"${p.chosen ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+  const chosen = providers.find(p => p.chosen);
+  const status = document.getElementById('providerStatus');
+  status.textContent = !chosen ? ''
+    : !chosen.ready ? uallakI18n.t('provider_not_ready')
+    : chosen.connected ? uallakI18n.t('connected_status')
+    : uallakI18n.t('provider_needs_tool', { name: TOOL_LABELS[chosen.tool] || chosen.tool });
+}
+
+async function chooseProvider(provider) {
+  try {
+    const res = await fetch('/api/client/tools/provider', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      showNotice(uallakI18n.t('provider_saved'), 'success');
+      const chosen = (toolState.providers || []).find(p => p.id === provider);
+      // Chosen but not connected: open ONLY that tool's card
+      if (chosen && !chosen.connected) focusToolCard(chosen.tool);
+      await loadCreativeTools();
+      return;
+    }
+  } catch (e) {
+    console.error('provider choice failed', e);
+  }
   showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
+  paintProviders();
+}
+
+function focusToolCard(tool) {
+  const card = document.getElementById('toolCard-' + tool);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.style.outline = '2px solid var(--accent)';
+  setTimeout(() => { card.style.outline = ''; }, 4000);
+}
+
+// ─── Voice recordings (core/voice_recordings) ───────────────────────────────
+// Upload is the client's whole job. The body is sent raw (the server has no
+// multipart parser); name + browser-measured duration travel in headers.
+const VOICE_MAX_MB = 25;
+const VOICE_EXTS = ['mp3', 'm4a', 'wav', 'webm'];
+let voiceRecorder = null;
+
+function fmtDuration(seconds) {
+  if (!seconds) return uallakI18n.t('voice_duration_unknown');
+  const s = Math.round(seconds);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function fmtIsraelDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\./g, '/');
+}
+
+async function loadVoiceRecordings() {
+  const list = document.getElementById('voiceList');
+  try {
+    const res = await fetch('/api/client/voice', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('voice ' + res.status);
+    const d = body.data || {};
+    const rows = d.recordings || [];
+    document.getElementById('voiceSummary').textContent = rows.length
+      ? uallakI18n.t('voice_summary', { count: rows.length })
+        + (d.voice_clone_consent ? '' : ' · ' + uallakI18n.t('voice_track_only'))
+      : uallakI18n.t('voice_empty');
+    list.innerHTML = rows.map(r => `
+      <div class="voice-row">
+        <span class="voice-name" title="${esc(r.name)}">${esc(r.name)}</span>
+        <span class="voice-meta">${esc(fmtIsraelDate(r.uploaded_at))} · ${esc(fmtDuration(r.duration_seconds))}</span>
+        <button type="button" data-id="${esc(r.id)}" onclick="deleteVoice(this)">${esc(uallakI18n.t('voice_delete'))}</button>
+      </div>`).join('');
+    document.getElementById('voiceDeleteAll').style.display = (rows.length || d.voice_clone_exists) ? 'block' : 'none';
+  } catch (e) {
+    console.error('voice list failed', e);
+    document.getElementById('voiceSummary').textContent = uallakI18n.t('voice_list_error');
+  }
+}
+
+function measureAudio(file) {
+  return new Promise(resolve => {
+    try {
+      const audio = document.createElement('audio');
+      const url = URL.createObjectURL(file);
+      const done = v => { URL.revokeObjectURL(url); resolve(v); };
+      audio.preload = 'metadata';
+      audio.onloadedmetadata = () => done(isFinite(audio.duration) ? audio.duration : '');
+      audio.onerror = () => done('');
+      setTimeout(() => done(''), 5000);
+      audio.src = url;
+    } catch (e) { resolve(''); }
+  });
+}
+
+async function uploadVoiceFile(file, knownSeconds) {
+  document.getElementById('voiceFile').value = '';
+  if (!file) return;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!VOICE_EXTS.includes(ext)) { showNotice(uallakI18n.t('voice_err_bad_format'), 'warn'); return; }
+  if (file.size > VOICE_MAX_MB * 1024 * 1024) { showNotice(uallakI18n.t('voice_err_too_big'), 'warn'); return; }
+  const seconds = knownSeconds || await measureAudio(file);
+  const bar = document.getElementById('voiceProgressBar');
+  const wrap = document.getElementById('voiceProgress');
+  const btn = document.getElementById('voiceUploadBtn');
+  wrap.style.display = 'block';
+  bar.style.width = '0';
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('voice_uploading');
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/client/voice/upload');
+  xhr.withCredentials = true;
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+  if (seconds) xhr.setRequestHeader('X-Duration-Seconds', String(Math.round(seconds * 10) / 10));
+  xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%'; };
+  const finish = () => {
+    wrap.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = uallakI18n.t('voice_upload_btn');
+  };
+  xhr.onload = () => {
+    finish();
+    let body = {};
+    try { body = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status === 200 && body.success) {
+      showNotice(uallakI18n.t('voice_uploaded'), 'success');
+      loadVoiceRecordings();
+    } else {
+      showNotice(codeText('voice_err_', body, 'voice_err_storage'), 'warn');
+    }
+  };
+  xhr.onerror = () => { finish(); showNotice(uallakI18n.t('voice_err_storage'), 'warn'); };
+  xhr.send(file);
+}
+
+// Optional: record in the browser (MediaRecorder). Chrome/Firefox give webm,
+// Safari gives audio/mp4 (stored as m4a) — both are formats the server takes.
+async function toggleVoiceRecording() {
+  const btn = document.getElementById('voiceRecordBtn');
+  if (voiceRecorder) { voiceRecorder.stop(); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    showNotice(uallakI18n.t('voice_record_unsupported'), 'warn');
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showNotice(uallakI18n.t('voice_record_denied'), 'warn');
+    return;
+  }
+  const chunks = [];
+  const started = Date.now();
+  // Ask for a format the server takes (Firefox's default would be ogg)
+  const mimeType = ['audio/webm', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  if (!mimeType) {
+    stream.getTracks().forEach(t => t.stop());
+    showNotice(uallakI18n.t('voice_record_unsupported'), 'warn');
+    return;
+  }
+  voiceRecorder = new MediaRecorder(stream, { mimeType });
+  voiceRecorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  voiceRecorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    const type = voiceRecorder.mimeType || 'audio/webm';
+    voiceRecorder = null;
+    btn.textContent = uallakI18n.t('voice_record_btn');
+    const ext = type.includes('mp4') ? 'm4a' : 'webm';
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const file = new File(chunks, `recording-${stamp}.${ext}`, { type });
+    uploadVoiceFile(file, (Date.now() - started) / 1000);
+  };
+  voiceRecorder.start();
+  btn.textContent = uallakI18n.t('voice_stop_btn');
+}
+
+async function postVoiceDelete(payload) {
+  const res = await fetch('/api/client/voice/delete', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  return res.ok && body.success ? body.data : null;
+}
+
+async function deleteVoice(btn) {
+  if (!btn.classList.contains('arm')) {
+    btn.classList.add('arm');
+    btn.textContent = uallakI18n.t('disconnect_confirm');
+    setTimeout(() => { btn.classList.remove('arm'); btn.textContent = uallakI18n.t('voice_delete'); }, 6000);
+    return;
+  }
+  btn.disabled = true;
+  const data = await postVoiceDelete({ file_ids: [btn.getAttribute('data-id')] }).catch(() => null);
+  if (data && (data.done || []).length) showNotice(uallakI18n.t('voice_deleted'), 'success');
+  else showNotice(uallakI18n.t('voice_err_storage'), 'warn');
+  loadVoiceRecordings();
+}
+
+// "Delete my voice": every recording AND the clone on their ElevenLabs account
+async function deleteAllVoice(link) {
+  if (!link.classList.contains('arm')) {
+    link.classList.add('arm');
+    link.textContent = uallakI18n.t('voice_delete_all_confirm');
+    setTimeout(() => { link.classList.remove('arm'); link.textContent = uallakI18n.t('voice_delete_all'); }, 6000);
+    return;
+  }
+  link.disabled = true;
+  const data = await postVoiceDelete({ all: true, delete_clone: true }).catch(() => null);
+  link.disabled = false;
+  link.classList.remove('arm');
+  link.textContent = uallakI18n.t('voice_delete_all');
+  const clone = (data && data.clone) || {};
+  if (!data || (data.failed || []).length) showNotice(uallakI18n.t('voice_err_storage'), 'warn');
+  else if (clone.success === false) showNotice(uallakI18n.t('voice_clone_not_deleted'), 'warn');
+  else showNotice(uallakI18n.t('voice_all_deleted'), 'success');
+  loadVoiceRecordings();
 }
 
 // WordPress has no OAuth redirect - the client pastes an Application Password
@@ -4691,7 +5144,7 @@ function renderConnectionGuide(status) {
 const CONN_STEP_ANCHOR = {
   website: 'siteStatus', google_ads: 'gadsStatus', meta: 'metaStatus',
   tiktok: 'tiktokStatus', youtube: 'youtubeStatus',
-  media: 'higgsfieldStatus', avatar: 'avatarStatus',
+  media: 'toolStatus-higgsfield', avatar: 'toolStatus-heygen',
 };
 
 function highlightNextConnCard(stepKey) {

@@ -941,10 +941,11 @@ def _settings_keys(ids: list) -> list:
     """The client's own app_settings rows: per-client limits, the Tag
     Manager / Google Ads token-health records (core/gtm_connection,
     core/google_ads_health), the TikTok grant record (core/tiktok_grant) and
-    the PHP2Shell site record (core/php_exposure)."""
+    the PHP2Shell site record (core/php_exposure) and the creative tools'
+    key health + video provider choice (core/vendor_tools)."""
     return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}",
                                      f"gads_token:{int(i)}", f"tiktok_grant:{int(i)}",
-                                     f"php_exposure:{int(i)}")]
+                                     f"php_exposure:{int(i)}", f"creative_tools:{int(i)}")]
 
 
 def _clear_settings(ids: list):

@@ -368,8 +368,10 @@ def get_settings() -> dict:
         # (client_deletion: progress rows of a client deletion — same reason)
         # (gtm_token / gads_token: per-client token health — core/gtm_connection,
         # core/google_ads_health, core/tiktok_grant) (php_exposure: per-client PHP2Shell record)
+        # (creative_tools: per-client key health + video provider — core/vendor_tools)
         if str(row["key"]).startswith(("client_settings:", "client_deletion:", "bulk_delete:",
-                                       "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:")):
+                                       "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
+                                       "creative_tools:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

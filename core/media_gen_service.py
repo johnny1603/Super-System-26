@@ -145,6 +145,30 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
             "credits": _credits_used(data), "model": IMAGE_MODEL}
 
 
+# Talking character (image + external audio track → lip-synced video).
+# PREPARED, NOT VERIFIED: the path and model below are settings, not facts we
+# confirmed against Higgsfield's API — so the provider that calls this
+# (core/avatar_video.HiggsfieldProvider) stays off behind
+# HIGGSFIELD_AVATAR_VIDEO_ENABLED until a live test on client 27 confirms
+# both (docs/CREATIVE-TOOLS.md). Fix them with Cloud Run env vars, not a deploy.
+SPEAK_PATH = os.environ.get("MEDIA_SPEAK_PATH", "speak")
+SPEAK_MODEL = os.environ.get("MEDIA_SPEAK_MODEL", "")
+
+
+def generate_talking_character(api_key: str, image_url: str, audio_url: str) -> dict:
+    """One lip-synced character video from a still image and an audio URL, on
+    the CLIENT'S key/credits. Returns {'url', 'job_id', 'credits'} — the
+    caller downloads and stores it."""
+    _count("video", DAILY_VIDEO_LIMIT)
+    payload = {"image_url": image_url, "audio_url": audio_url}
+    if SPEAK_MODEL:
+        payload["model"] = SPEAK_MODEL
+    job_id = _create_job(api_key, SPEAK_PATH, payload)
+    data = _wait_for_result(api_key, job_id)
+    return {"url": _result_url(data), "job_id": job_id, "credits": _credits_used(data),
+            "duration": data.get("duration")}
+
+
 def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dict:
     """One short clip (model-default length, typically ~5-8s with native
     audio on the Veo-class models) on the CLIENT'S key/credits."""

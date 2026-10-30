@@ -39,9 +39,10 @@ follow-up handoff; remove the exclusion only there.
 No creation path (avatar, voice, video generation) runs without a logged
 `avatar_consent_recorded` activity row for the relevant scope
 (`likeness` / `voice`): statement text + `CONSENT_VERSION` + timestamp.
-The dashboard card collects it via explicit checkboxes (likeness always;
-voice when an ElevenLabs key is given) BEFORE keys are stored; every server
-path re-checks with `has_consent()`. HeyGen additionally requires its own
+Each consent sits on its OWN tool's card (core/vendor_tools, 2026-10-30):
+likeness on the HeyGen card (required to connect HeyGen), voice-cloning on
+the ElevenLabs card (optional — without it a recording is only ever an audio
+track, never cloned). Every server path re-checks with `has_consent()`. HeyGen additionally requires its own
 recorded consent-statement VIDEO for twins — the source kit gives the client
 the exact sentence. Bump `CONSENT_VERSION` when wording changes. Revocation
 is "client asks, we stop + delete" — handled manually for now (flag if it
@@ -97,8 +98,12 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
 
 ## Flow
 
-1. Client connects own HeyGen (+optional ElevenLabs) keys + consents —
-   dashboard card → `POST /api/avatar/consent` then `POST /api/avatar/connect`.
+1. Client connects each tool on its own card — `POST /api/client/tools/{tool}/connect`
+   (key checked with the vendor first; a rejected key is never stored), plus
+   `/test`, `/disconnect`, and `/api/client/tools/provider` for the video
+   provider (HeyGen | Higgsfield, core/avatar_video). Voice recordings are
+   uploaded in the "הקלטות קול" card (`/api/client/voice*`, core/voice_recordings).
+   `POST /api/avatar/connect` is LEGACY (each key given is connected on its own).
 2. `POST /api/avatar/request-source` — filming-kit-pattern instructions doc
    into Drive `avatar-source/` (shared to the client as WRITER so they can
    upload); the kit names the consent-clip convention (filename contains
@@ -111,9 +116,11 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
    client notified 🎉.
 5. `POST /api/avatar/set-tier` (admin; activity-row storage, newest wins) →
    `POST /api/avatar/generate-video` — gates in order: consent → tier →
-   minutes remaining (hard block at cap + upsell alert) → accounts. Cloned
-   voice preferred (11L TTS → Drive → public URL → HeyGen audio), else a
-   HeyGen stock voice id. Finished videos land in Drive `videos/avatar/`
+   minutes remaining (hard block at cap + upsell alert) → then
+   `core/avatar_video.make_video` (provider + voice: `recording` = an
+   uploaded file as the audio track, no cloning consent needed; `clone` =
+   11L TTS → Drive → public URL; none = HeyGen stock voice id) names any
+   missing tool with a button to only that tool's card. Finished videos land in Drive `videos/avatar/`
    for human review — never auto-published. `GET /api/avatar/usage` shows
    minutes used/remaining + avatars_ready count (setup-fee basis).
 6. **Multi-avatar picker**: clients can hold several avatars (first 150₪,
@@ -122,8 +129,10 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
    with several, an explicit `avatar_id` is required (never guess whose
    face fronts a video). One avatar per video; no compositing.
 
-Disconnect: `_DISCONNECT_GROUPS["avatar"]` = heygen + elevenlabs together
-(dashboard two-click, offboarding purge covers it automatically).
+Disconnect: per tool (`/api/client/tools/{tool}/disconnect`, or the
+`heygen` / `elevenlabs` disconnect groups) — never both together. The old
+`"avatar"` group is kept only for an old dashboard tab. Offboarding purge
+covers every row automatically. See docs/CREATIVE-TOOLS.md.
 
 ## Sales chat + support chat + pricing reference (wired 2026-07-20)
 

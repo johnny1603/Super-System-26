@@ -23,6 +23,10 @@ from the readers that already exist:
   package ........ client_journey.required_connections
   site_security .. php_exposure.site_security_fact (PHP2Shell: the STORED last
                    check per WordPress site — no request to the site here)
+  outreach ....... outreach_tracker.for_agent
+  creative_tools . vendor_tools.statuses (each tool on its own, no key, no last4)
+                   + avatar_video.providers_view
+  voice .......... voice_recordings.for_agent (the Drive voice folder listing)
 
 Rules:
 - Read-only. Nothing here writes to a platform; no new platform call exists
@@ -59,6 +63,10 @@ SECTION_TOPIC = {
     # Its own topic: an unreadable outreach record (migration not run yet)
     # must not turn every "account" question into the can't-read line
     "outreach": "outreach",
+    "creative_tools": "account",
+    # Its own topic: an unreadable Drive voice folder must not turn every
+    # "account" question into the can't-read line
+    "voice": "voice",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -367,8 +375,27 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("package", lambda: _package(client_id))
     take("site_security", lambda: _site_security(client_id))
     take("outreach", lambda: _outreach(client_id))
+    take("creative_tools", lambda: _creative_tools(client_id))
+    take("voice", lambda: _voice(client_id))
     state["_failed"] = failed
     return state
+
+
+def _creative_tools(client_id: int) -> dict:
+    """Each creative tool on its own (core/vendor_tools): status, consent and
+    the video provider choice. Never a key, not even its last 4 characters."""
+    from core import avatar_video, vendor_tools
+    tools = {tool: {k: v for k, v in view.items() if k != "last4"}
+             for tool, view in vendor_tools.statuses(client_id).items()}
+    return {"tools": tools, "video_providers": avatar_video.providers_view(client_id)}
+
+
+def _voice(client_id: int) -> dict:
+    """The client's voice recordings (core/voice_recordings) — so an agent
+    never answers "I can't see your recordings". Raises when the folder is
+    unreadable: a data gap, never a fake 0."""
+    from core import voice_recordings
+    return voice_recordings.for_agent(client_id)
 
 
 def _outreach(client_id: int) -> dict:

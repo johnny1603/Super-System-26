@@ -247,8 +247,10 @@ def link_lead_costs(lead_id: str, client_id: int) -> int:
 
 
 def record_client_paid_media(client_id: int, usd_estimate: float, credits=None,
-                             kind: str = "image", model: str = "", exempt: bool = None):
-    """One generation on the client's Higgsfield key, as an ESTIMATE (see
+                             kind: str = "image", model: str = "", exempt: bool = None,
+                             tool: str = "higgsfield"):
+    """One job on one of the client's own creative-tool keys (Higgsfield,
+    HeyGen, ElevenLabs — `tool`, so cost stays per tool), as an ESTIMATE (see
     module docstring for why the amount is 0 for paying clients)."""
     if exempt is None:
         try:
@@ -260,7 +262,7 @@ def record_client_paid_media(client_id: int, usd_estimate: float, credits=None,
     record_cost(CLIENT_PAID_MEDIA, usd_to_ils(usd_estimate) if exempt else 0.0, client_id,
                 {"estimate": True, "payer": "uallak" if exempt else "client",
                  "usd_estimate": round(usd_estimate, 6), "credits": credits,
-                 "kind": kind, "model": model},
+                 "kind": kind, "model": model, "tool": tool},
                 usd=usd_estimate if exempt else 0.0)
 
 

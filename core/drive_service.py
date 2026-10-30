@@ -244,11 +244,17 @@ def ensure_folder(name: str, parent_id: str) -> str:
     return created["id"]
 
 
-def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str) -> dict:
+def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str,
+                 app_properties: dict = None) -> dict:
     """Binary upload (images/videos/docs for the media agent). Same multipart
     scheme as upload_json but with raw bytes as the media part. Returns
-    Drive's {id, size, name, webViewLink}."""
-    metadata = json.dumps({"name": filename, "parents": [folder_id]}, ensure_ascii=False)
+    Drive's {id, size, name, webViewLink}. `app_properties`: small string
+    facts kept ON the file (e.g. a voice recording's duration), so Drive
+    stays the one record."""
+    meta = {"name": filename, "parents": [folder_id]}
+    if app_properties:
+        meta["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}
+    metadata = json.dumps(meta, ensure_ascii=False)
     boundary = f"uallak_{secrets.token_hex(16)}"
     body = (
         (f"--{boundary}\r\n"
@@ -302,16 +308,16 @@ def get_link(file_id: str) -> str:
     return _json(response, "get link").get("webViewLink", "")
 
 
-def list_files(folder_id: str) -> list:
+def list_files(folder_id: str, fields: str = "id,name,mimeType,size") -> list:
     """Non-folder files directly inside a folder — the avatar agent reads the
     client's uploaded source material this way. Returns
-    [{id, name, mimeType, size}]."""
+    [{id, name, mimeType, size}] (or the `fields` asked for)."""
     response = httpx.get(
         DRIVE_FILES_URL,
         headers=_headers(),
         params={"q": f"'{folder_id}' in parents and trashed = false "
                      "and mimeType != 'application/vnd.google-apps.folder'",
-                "fields": "files(id,name,mimeType,size)", "pageSize": 100,
+                "fields": f"files({fields})", "pageSize": 100,
                 "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
         timeout=TIMEOUT,
     )
