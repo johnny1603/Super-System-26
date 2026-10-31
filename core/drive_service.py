@@ -635,7 +635,9 @@ def download_file(file_id: str) -> bytes:
 def make_file_public(file_id: str) -> str:
     """Flip ONE file to anyone-with-link reader and return its direct-download
     URL — needed when publishing to Meta (their server fetches media from a
-    public URL). Deliberately per-file: client folders stay restricted."""
+    public URL). Deliberately per-file: client folders stay restricted.
+    A share that only a vendor's server needs for one job goes through
+    core/public_share.briefly_public instead, which closes it again."""
     response = httpx.post(
         f"{DRIVE_FILES_URL}/{file_id}/permissions",
         headers={**_headers(), "Content-Type": "application/json"},
@@ -645,6 +647,41 @@ def make_file_public(file_id: str) -> str:
     )
     _check(response)
     return f"https://drive.google.com/uc?export=download&id={file_id}"
+
+
+def public_permission_ids(file_id: str) -> list:
+    """The ids of every anyone-with-link permission on ONE file ([] = closed)."""
+    response = httpx.get(
+        f"{DRIVE_FILES_URL}/{file_id}/permissions",
+        headers=_headers(),
+        params={"supportsAllDrives": "true", "fields": "permissions(id,type)"},
+        timeout=TIMEOUT,
+    )
+    _check(response)
+    return [p["id"] for p in _json(response, "permissions list").get("permissions", [])
+            if p.get("type") == "anyone" and p.get("id")]
+
+
+def revoke_public(file_id: str) -> bool:
+    """Undo make_file_public: delete every anyone-with-link permission on the
+    file, then READ the permissions back. True only when none is left — a
+    delete that answered 2xx is not taken as proof. A file that no longer
+    exists (404) is closed by definition."""
+    try:
+        for permission_id in public_permission_ids(file_id):
+            response = httpx.delete(
+                f"{DRIVE_FILES_URL}/{file_id}/permissions/{permission_id}",
+                headers=_headers(),
+                params={"supportsAllDrives": "true"},
+                timeout=TIMEOUT,
+            )
+            if response.status_code != 404:
+                _check(response)
+        return not public_permission_ids(file_id)
+    except httpx.HTTPStatusError as e:
+        if e.response is not None and e.response.status_code == 404:
+            return True
+        raise
 
 
 def upload_google_doc(folder_id: str, filename: str, html_content: str) -> dict:

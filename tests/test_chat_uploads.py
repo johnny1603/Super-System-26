@@ -739,7 +739,8 @@ class Windows(unittest.TestCase):
         one = _js_function(self.html, "uploadOneFile")
         self.assertIn("appendUploadCard(w, file)", one)
         self.assertIn("appendActionCard(id, c)", one)
-        self.assertIn("chatUploadStatus(token)", one)
+        self.assertIn("chunkedUpload(file,", one)
+        self.assertIn("chatUploadStatus(token)", _js_function(self.html, "chunkedUpload"))
         self.assertNotIn("spinner", one)
 
     def test_i18n_keys_exist_in_five_languages(self):

@@ -100,7 +100,7 @@ class HiggsfieldProvider:
         from core import media_gen_service as mg
         if not audio_url:
             raise _refuse("no_voice", "סרטון עם דמות AI צריך קול: הקלטה שהעלית או הקול המשובט שלך.")
-        image_url = options.get("image_url") or _character_image(client_id)
+        image_url = options.get("image_url") or _character_image(client_id, options["share"])
         if not image_url:
             raise _refuse("no_character", "כדי ליצור סרטון דמות צריך תמונה של הדמות. מעלים תמונה לתיקיית avatar-source ב-Drive.")
         result = mg.generate_talking_character(key, image_url, audio_url)
@@ -109,12 +109,12 @@ class HiggsfieldProvider:
 
 
 @drive_storage.scoped
-def _character_image(client_id: int) -> str:
-    """The newest image the client put in avatar-source (their own material)."""
+def _character_image(client_id: int, share) -> str:
+    """The newest image the client put in avatar-source (their own material),
+    public only for this render (core/public_share)."""
     from agents.avatar_agent import _source_files
-    from core import drive_service as drive
     images = [f for f in _source_files(client_id) if (f.get("mimeType") or "").startswith("image/")]
-    return drive.make_file_public(images[0]["id"]) if images else ""
+    return share.url(images[0]["id"]) if images else ""
 
 
 PROVIDERS = {"heygen": HeyGenProvider, "higgsfield": HiggsfieldProvider}
@@ -157,16 +157,15 @@ def providers_view(client_id: int) -> list:
 # ─── Voice → audio URL ───────────────────────────────────────────────────────
 
 @drive_storage.scoped
-def _audio_from_recording(client_id: int, file_id: str) -> str:
-    from core import drive_service as drive
+def _audio_from_recording(client_id: int, file_id: str, share) -> str:
     from core import voice_recordings
     if not voice_recordings.get(client_id, file_id):
         raise _refuse("recording_not_found", "ההקלטה הזו לא נמצאת בתיקיית ההקלטות שלך. אפשר לבחור הקלטה אחרת מהרשימה.")
-    return drive.make_file_public(file_id)
+    return share.url(file_id)
 
 
 @drive_storage.scoped
-def _audio_from_clone(client_id: int, script: str) -> tuple:
+def _audio_from_clone(client_id: int, script: str, share) -> tuple:
     """(audio_url, characters). ElevenLabs errors → plain Hebrew."""
     from agents.avatar_agent import current_voice_id, has_consent
     from agents.media_agent import _subfolder
@@ -195,7 +194,7 @@ def _audio_from_clone(client_id: int, script: str) -> tuple:
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
     uploaded = drive.upload_bytes(_subfolder(client_id, "videos", "avatar"), f"voiceover-{stamp}.mp3",
                                   audio, "audio/mpeg")
-    return drive.make_file_public(uploaded["id"]), len(script)
+    return share.url(uploaded["id"]), len(script)
 
 
 # ─── The one entry point ─────────────────────────────────────────────────────
@@ -224,16 +223,20 @@ def make_video(client_id: int, script: str = "", voice: dict = None, provider: s
     key = use_vendor_key(client_id, spec.tool, job=f"avatar_video:{spec.id}")
     if not key:
         return vendor_tools.missing_block([spec.tool])
+    from core.public_share import briefly_public
     try:
-        characters = 0
-        if kind == "recording":
-            audio_url = _audio_from_recording(client_id, str(voice.get("file_id") or ""))
-        elif kind == "clone":
-            audio_url, characters = _audio_from_clone(client_id, script)
-        else:
-            audio_url = ""
-        result = spec.render(client_id, key, audio_url, script,
-                             {"avatar_id": avatar_id, "heygen_voice_id": heygen_voice_id})
+        # The client's voice/image is public only while the render runs (both
+        # providers' render waits for the finished video), closed right after
+        with briefly_public(client_id, "avatar_video", f"{spec.id} avatar video") as share:
+            characters = 0
+            if kind == "recording":
+                audio_url = _audio_from_recording(client_id, str(voice.get("file_id") or ""), share)
+            elif kind == "clone":
+                audio_url, characters = _audio_from_clone(client_id, script, share)
+            else:
+                audio_url = ""
+            result = spec.render(client_id, key, audio_url, script,
+                                 {"avatar_id": avatar_id, "heygen_voice_id": heygen_voice_id, "share": share})
     except VideoRefused as e:
         return e.block
     return {"success": True, "provider": spec.id, "voice_kind": kind or "stock", "tts_characters": characters,

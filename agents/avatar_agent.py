@@ -21,18 +21,24 @@ collects it with an explicit checkbox; the server re-checks on every
 creation path. HeyGen additionally requires its own recorded consent-
 statement VIDEO for digital twins — our source-kit instructions cover it.
 
-HeyGen API reality (re-verified 2026-07-20): photo-avatar creation/training
-is standard API; VIDEO digital-twin creation via API is Enterprise-only, BUT
-web-UI twin creation is available on EVERY plan including Free (1 twin
-included; more need a paid plan/add-on) — so the CLIENT creates the twin
-themselves in HeyGen's web UI following our source kit, and this agent
-detects readiness by scanning their avatar list, then generates videos with
-it (standard pay-as-you-go API — also plan-independent).
+Creation (2026-10-31): the client never leaves uallak by default. They
+upload the training video and record the consent clip in the dashboard's
+presenter card (core/avatar_footage — two labelled slots, no filename
+rules), and create_avatar submits both through the creation API. ONLY when
+the tool refuses that API for a permission/plan reason (its video-twin
+creation API is Enterprise-only) does the manual route run: one plain line
+in the chat, and an alert so the TEAM walks the client through the tool's
+website. The readiness scan detects the finished avatar either way.
+
+Privacy: the tool takes the videos only as public URLs. Each share is open
+only for the call (core/public_share): revoked on success AND failure,
+read back to verify, retried once, and an alert if it still stands.
 
 Storage: everything lives under the client's existing media Drive root
 (media_agent's folders — reused, not rebuilt): `avatar-source/` for their
-uploaded footage/photos/audio (shared to the client as WRITER so they can
-upload), finished videos in `videos/avatar/`.
+footage/photos (dashboard slots land here; still shared to the client as
+WRITER, and files put there the old way are still read), finished videos
+in `videos/avatar/`.
 """
 import json
 import os
@@ -57,11 +63,15 @@ CONSENT_SCOPES = ("likeness", "voice")
 # version it was given under
 # v2 (2026-10-30): the wording names the capability, not the vendor (the
 # vendor is named in the connection help, where the client opens the account)
-CONSENT_VERSION = "2026-10-30.v2"
+# v3 (2026-10-31): the likeness statement says the files are shared with the
+# tool only while the presenter is being created and are closed right after —
+# what core/public_share does. Rows recorded under v1/v2 stay valid.
+CONSENT_VERSION = "2026-10-31.v3"
 CONSENT_STATEMENTS_HE = {
     "likeness": ("אני מאשר/ת במפורש ל-uallak להשתמש בצילומים ובתמונות שאעלה כדי ליצור "
                  "דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפיק באמצעותה סרטונים "
-                 "עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת."),
+                 "עבור העסק שלי. הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה. "
+                 "אוכל לבקש את הפסקת השימוש בכל עת."),
     "voice": ("אני מאשר/ת במפורש ל-uallak להשתמש בהקלטות הקול שאעלה כדי ליצור שיבוט קול "
               "דיגיטלי בחשבון שפתחתי לשם כך, ולהשתמש בו בסרטונים עבור העסק שלי. "
               "אוכל לבקש את הפסקת השימוש בכל עת."),
@@ -171,12 +181,13 @@ instructions for ONE Israeli small-business owner, in the CLIENT'S LANGUAGE (fro
 context; Hebrew default). kind='avatar': instructions for HeyGen digital-twin footage — a single
 continuous 2-3 minute video, 720p+ (1080p preferred), good even lighting, plain background,
 looking at camera, natural pauses, varied short sentences, hands visible sometimes, NO cuts or
-filters; PLUS HeyGen's own required consent-statement video (state name + explicit permission to
-create the avatar, one take, ~15 seconds — give the exact sentence to say); PLUS one final step:
-create the avatar THEMSELVES in HeyGen's website (a few clicks, works on every plan including
-the free one — in HeyGen: Avatars → create digital twin → upload the SAME training footage and
-consent video they filmed); once it finishes training, our system detects it automatically and
-lets them know. kind='voice':
+filters; PLUS a short consent clip (~15 seconds, one take, looking at camera) — the exact sentence
+is shown on screen in the presenter card of their uallak dashboard, where they record it in the
+browser. Both videos are uploaded IN THE DASHBOARD presenter card, each into its own labelled slot
+("training video" / "consent video") — never mention file names, Drive folders or naming rules.
+After both are in, OUR SYSTEM creates the presenter for them and lets them know when it is ready;
+NEVER tell the client to create it themselves or to visit any other website, and never name a
+vendor or tool. kind='voice':
 instructions for ElevenLabs voice cloning — 1-3 minutes total of clean solo speech, quiet room,
 phone mic is fine, natural tone, no music/background noise.
 
@@ -184,21 +195,23 @@ Warm, confidence-building, numbered steps. HARD LIMITS: max 10 steps, 1-2 senten
 checklist max 6 one-line items.
 
 Return JSON only:
-{"title": "client-language", "steps": ["..."], "checklist": ["..."],
- "consent_sentence": "the exact spoken consent sentence, client language (avatar kind only, else '')"}"""
+{"title": "client-language", "steps": ["..."], "checklist": ["..."]}"""
 
 
 @drive_storage.scoped
 def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
     """Shot/recording instructions for what HeyGen/ElevenLabs actually need —
     same delivery pattern as media_agent.create_filming_kit: a doc in Drive
-    plus a chat message. Also flips the avatar-source folder to WRITER for
-    the client so they can upload into it."""
+    plus a chat message. The footage itself is uploaded in the dashboard's
+    presenter card (core/avatar_footage); the avatar-source folder is still
+    shared as WRITER so files put there the old way keep working."""
     if kind not in ("avatar", "voice"):
         return {"success": False, "errors": ["kind must be avatar|voice"]}
     from agents.client_agent import get_client, log_communication
     from agents.media_agent import _subfolder
     from agents.seo_agent import _business_context
+    from core import avatar_footage
+    from core.agent_actions import _lang
 
     try:
         kit = timed_step(
@@ -216,8 +229,9 @@ def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
             kit.get("title", ""),
             "\n".join(f"{i + 1}. {s}" for i, s in enumerate(kit.get("steps") or [])),
             "✔ " + "\n✔ ".join(kit.get("checklist") or []),
-            (f'🎙 משפט ההסכמה לצילום: "{kit["consent_sentence"]}"'
-             if kit.get("consent_sentence") else ""),
+            # The SAME sentence the dashboard shows above the record button
+            (f'🎙 משפט ההסכמה לצילום: "{avatar_footage.consent_sentence(_lang(client_id))}"'
+             if kind == "avatar" else ""),
         ]))
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         uploaded = drive.upload_bytes(folder, f"source-kit-{kind}-{stamp}.txt",
@@ -230,9 +244,12 @@ def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
     _log_activity(client_id, "avatar_source_requested", {"kind": kind},
                   {"file_id": uploaded.get("id"), "folder_link": folder_link})
     log_communication(client_id, "outbound", "dashboard_chat",
-                      f"הכנו לך הוראות מדויקות לחומרי הגלם של האווטאר 🎬 ההנחיות מחכות "
-                      f"בתיקיית avatar-source ב-Drive שלך — מעלים את הצילומים לאותה תיקייה "
-                      f"בדיוק, ומשם אנחנו ממשיכים: {folder_link}")
+                      (f"הכנו לך הוראות מדויקות לצילום הדמות שלך 🎬 ({folder_link}) את שני הסרטונים "
+                       f"מעלים בכרטיס \"הדמות שבסרטונים\" בדשבורד — סרטון האימון, וסרטון ההסכמה "
+                       f"שמקליטים שם עם המשפט שעל המסך. משם אנחנו יוצרים את הדמות ומעדכנים אותך.")
+                      if kind == "avatar" else
+                      f"הכנו לך הוראות מדויקות להקלטת הקול 🎙 ({folder_link}) את ההקלטה מעלים "
+                      f"בכרטיס \"הקלטות קול\" בדשבורד, ומשם אנחנו ממשיכים.")
     return {"success": True, "kind": kind, "folder_link": folder_link,
             "file_id": uploaded.get("id")}
 
@@ -240,7 +257,30 @@ def request_source_kit(client_id: int, kind: str = "avatar") -> dict:
 @drive_storage.scoped
 def _source_files(client_id: int) -> list:
     from agents.media_agent import _subfolder
-    return drive.list_files(_subfolder(client_id, "avatar-source"))
+    return drive.list_files(_subfolder(client_id, "avatar-source"),
+                            fields="id,name,mimeType,size,createdTime,appProperties")
+
+
+def footage_view(client_id: int) -> dict:
+    """The dashboard presenter card's two slots (core/avatar_footage)."""
+    from core import avatar_footage
+    from core.agent_actions import _lang
+    view = avatar_footage.view(_source_files(client_id), _lang(client_id))
+    # Already sent to creation since the newest of the two videos landed —
+    # the card says "being created" instead of offering the button again
+    newest = max((view[s]["uploaded_at"] for s in avatar_footage.SLOTS if view[s]), default="")
+    submitted = _rows(client_id, "avatar_creation_submitted", limit=1)
+    view["submitted"] = bool(view["ready"] and submitted
+                             and (submitted[0].get("created_at") or "") >= newest)
+    return view
+
+
+# The API refused twin creation for a permission/plan reason (the creation
+# API is Enterprise-only at the tool) — the ONLY case the manual route is used
+_PLAN_REFUSAL_WORDS = ("permission", "forbidden", "enterprise", "plan", "upgrade", "not allowed",
+                       "not available", "401", "403")
+MANUAL_FALLBACK_HE = ("החשבון שפתחתם לדמות לא מאפשר לנו ליצור אותה אוטומטית, אז הצוות ייצור איתכם "
+                      "קשר להשלים את הצעד האחרון יחד — הסרטונים כבר אצלנו.")
 
 
 # ─── Avatar creation (HeyGen — consent-gated) ─────────────────────────────────
@@ -249,10 +289,11 @@ def _source_files(client_id: int) -> list:
 def create_avatar(client_id: int, avatar_name: str = "", photo_ids: list = None) -> dict:
     """Create the client's avatar from their uploaded source material, on
     THEIR HeyGen account. Photos-only → photo-avatar path (standard API).
-    Video footage → digital-twin path: tries the Enterprise creation API;
-    on a permission error the CLIENT is pointed to HeyGen's web UI to create
-    the twin themselves (available on every plan incl. Free) instead of
-    failing opaquely. Consent (likeness) is a hard gate.
+    Video footage → digital-twin path: the two dashboard slots
+    (core/avatar_footage) through the creation API, each file public only
+    for the call (core/public_share); on a permission/plan refusal the
+    manual fallback (one chat line + a team alert). Consent (likeness) is a
+    hard gate.
 
     `photo_ids`: images the client uploaded in a chat (the
     create_presenter_from_photos card, which already proved each one is in
@@ -281,9 +322,9 @@ def create_avatar(client_id: int, avatar_name: str = "", photo_ids: list = None)
         videos = [f for f in files if (f.get("mimeType") or "").startswith("video/")]
         photos = [f for f in files if (f.get("mimeType") or "").startswith("image/")]
     if not videos and not photos:
-        return {"success": False,
-                "errors": ["no source material in avatar-source - run request-source first, "
-                           "then the client uploads their footage/photos there"]}
+        return {"success": False, "code": "no_footage",
+                "errors": ["no source material - the client uploads the training and consent "
+                           "videos in the dashboard presenter card (or photos in the chat)"]}
 
     from agents.client_agent import get_client
     name = (avatar_name or f"{get_client(client_id).get('name', '')} avatar").strip()
@@ -295,24 +336,30 @@ def create_avatar(client_id: int, avatar_name: str = "", photo_ids: list = None)
 
     log_step(AGENT_NAME, "create_avatar",
              f"client {client_id}: {len(videos)} videos, {len(photos)} photos")
+    from core import avatar_footage
+    from core.public_share import briefly_public
+    footage = avatar_footage.pick(videos)
+    training, consent_clip = footage["training"], footage["consent"]
     try:
         if videos:
-            # Digital twin: training footage + consent video as public URLs.
-            # Naming convention from the source kit: the consent clip's
-            # filename contains 'consent'; the longest other video is training.
-            consent_clip = next((v for v in videos if "consent" in (v.get("name") or "").lower()), None)
-            training = max((v for v in videos if v is not consent_clip),
-                           key=lambda v: int(v.get("size") or 0), default=None)
-            if not consent_clip or not training:
-                return {"success": False, "errors": [
-                    "digital twin needs BOTH a training video and a consent video whose filename "
-                    "contains 'consent' (HeyGen's own requirement - see the source kit)"]}
-            result = timed_step(
-                AGENT_NAME, "submit_digital_twin",
-                lambda: hg.submit_digital_twin(
-                    api_key, name,
-                    training_footage_url=drive.make_file_public(training["id"]),
-                    video_consent_url=drive.make_file_public(consent_clip["id"])))
+            # Digital twin: which video is which comes from the dashboard
+            # slot it was uploaded into (core/avatar_footage) — a filename is
+            # only the fallback for files put in Drive the old way
+            if not training or not consent_clip:
+                missing = "missing_training" if not training else "missing_consent"
+                return {"success": False, "code": missing,
+                        "message_he": avatar_footage.PLAIN_HE[missing],
+                        "errors": [f"digital twin needs both videos - {missing}"]}
+            # The client's face and voice are public ONLY while the tool's
+            # server takes them: closed (and verified) the moment the call
+            # returns or fails; an unclosable share alerts the team
+            with briefly_public(client_id, AGENT_NAME, "avatar creation") as share:
+                result = timed_step(
+                    AGENT_NAME, "submit_digital_twin",
+                    lambda: hg.submit_digital_twin(
+                        api_key, name,
+                        training_footage_url=share.url(training["id"]),
+                        video_consent_url=share.url(consent_clip["id"])))
             method = "digital_twin_api"
         else:
             keys = []
@@ -326,31 +373,25 @@ def create_avatar(client_id: int, avatar_name: str = "", photo_ids: list = None)
             method = "photo_avatar"
     except Exception as e:
         message = str(e)
-        if any(word in message.lower() for word in ("permission", "forbidden", "enterprise", "401", "403")):
-            # Non-Enterprise API key (the normal case): twin creation happens
-            # in HeyGen's web UI, BY THE CLIENT — decided 2026-07-20 after
-            # HeyGen's pricing page confirmed every plan (incl. Free) includes
-            # web-UI custom-twin creation; only the creation API is
-            # Enterprise-gated. The source kit already walks them through it;
-            # the daily scan detects the finished avatar and notifies them.
+        if videos and any(word in message.lower() for word in _PLAN_REFUSAL_WORDS):
+            # The tool refused the creation API for a permission/plan reason
+            # (it is Enterprise-only there). ONLY then the manual route: the
+            # client reads one plain line, the TEAM gets the job of walking
+            # them through creating the twin in the tool's own website with
+            # the two videos already in avatar-source; the daily scan then
+            # detects the finished avatar and notifies them as usual.
             from agents.client_agent import log_communication
             _log_activity(client_id, "avatar_creation_submitted",
-                          {"method": "web_ui_self_service", "name": name,
-                           "known_avatar_ids": known_ids})
-            log_communication(client_id, "outbound", "dashboard_chat",
-                              "הצעד האחרון ליצירת הדמות המצולמת שלכם הוא אצלכם 🎬 נכנסים לחשבון "
-                              "שפתחתם לדמות, בוחרים יצירת דמות דיגיטלית, ומעלים שם את אותם צילומים "
-                              "וסרטון ההסכמה שהכנתם לפי הערכה (ההוראות המדויקות מחכות בערכה ב-Drive). "
-                              "ברגע שהדמות תהיה מוכנה — נזהה אותה אוטומטית ונעדכן אתכם 🎉 "
-                              "נתקעתם? כתבו לי כאן ונעשה את זה יחד.")
-            log_step(AGENT_NAME, "create_avatar",
-                     f"client {client_id}: twin-creation API unavailable ({message[:120]}) - "
-                     f"client directed to self-create '{name}' in HeyGen's web UI")
-            return {"success": True, "method": "web_ui_self_service",
-                    "note": "creation API unavailable on this HeyGen key (normal - it is "
-                            "Enterprise-only) - the client creates the twin themselves in "
-                            "HeyGen's web UI per the source kit (any plan, incl. free); "
-                            "the readiness scan will detect and notify"}
+                          {"method": "manual_fallback", "name": name, "known_avatar_ids": known_ids})
+            log_communication(client_id, "outbound", "dashboard_chat", MANUAL_FALLBACK_HE)
+            agent_alert(AGENT_NAME, [
+                f"client {client_id}: the presenter tool REFUSED automatic twin creation "
+                f"({message[:160]}) - manual route: help the client create '{name}' in the tool's "
+                f"website with the training video '{training.get('name', '')}' and the consent video "
+                f"'{consent_clip.get('name', '')}' (both in avatar-source); the daily scan detects it"])
+            return {"success": True, "method": "manual_fallback", "message_he": MANUAL_FALLBACK_HE,
+                    "note": "creation API refused (permission/plan) - team alerted to guide the "
+                            "client through the tool's website; the readiness scan will detect it"}
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar creation failed: {e}"])
         return {"success": False, "code": "provider_error", "errors": [message]}
 

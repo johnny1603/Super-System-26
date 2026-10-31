@@ -172,7 +172,7 @@ class ServerLabels(unittest.TestCase):
         for text in ast.literal_eval(consent).values():
             self.assertIsNone(VENDOR.search(text))
         # The wording changed, so the version every consent row records did too
-        self.assertIn('CONSENT_VERSION = "2026-10-30.v2"', source)
+        self.assertIn('CONSENT_VERSION = "2026-10-31.v3"', source)
         # Every chat line the agent posts to the client
         for call in ast.walk(tree):
             if isinstance(call, ast.Call) and getattr(call.func, "id", "") == "log_communication":

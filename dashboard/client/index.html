@@ -111,6 +111,15 @@ body {
 .voice-progress { height: 6px; border-radius: 6px; background: var(--panel-2); margin-top: 10px; overflow: hidden; }
 .voice-progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
 .voice-list { margin-top: 10px; }
+.footage-slot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.footage-title { font-weight: 600; font-size: 13px; }
+.footage-state { font-size: 12px; color: var(--gray); margin: 6px 0; overflow-wrap: anywhere; }
+.footage-state.have { color: var(--accent); }
+.footage-sentence { margin: 8px 0; padding: 10px 12px; border-inline-start: 3px solid var(--accent); background: var(--panel-2);
+  border-radius: 6px; font-size: 14px; line-height: 1.5; }
+.footage-preview { width: 100%; max-height: 260px; border-radius: 8px; background: #000; margin: 6px 0; }
+#footageCreateBtn { margin-top: 12px; }
+#footageCard .conn-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .voice-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border);
   font-size: 12.5px; }
 .voice-row:last-child { border-bottom: none; }
@@ -1608,7 +1617,7 @@ a.media-item:hover { border-color: var(--accent); }
         <input class="site-input" id="toolKey-heygen" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="avatar_heygen_ph" placeholder="מדביקים כאן את המפתח">
         <label class="conn-consent">
           <input type="checkbox" id="toolConsent-heygen">
-          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה. אוכל לבקש את הפסקת השימוש בכל עת.</span>
         </label>
         <button class="conn-btn primary" id="toolConnectBtn-heygen" onclick="connectTool('heygen')" data-i18n="site_connect">חיבור</button>
       </div>
@@ -1618,6 +1627,45 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <button class="disconnect-link" id="toolDisc-heygen" style="display:none;" onclick="disconnectTool('heygen', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
       <button type="button" class="conn-help-btn" data-help-id="heygen" style="display:none;" onclick="helpConnection('heygen')" data-i18n="conn_help_btn">עזרה</button>
+    </div>
+
+    <!-- The two videos the filmed presenter is made from (core/avatar_footage):
+         each in its own labelled slot — no filename rules, no Drive folder.
+         Uploads ride the chat's chunked path with an X-Avatar-Slot header. -->
+    <div class="conn-card unlocked" id="footageCard">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#0E7490;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/><circle cx="9.5" cy="12" r="2"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="footage_card">הסרטונים לדמות שלך</div>
+          <div class="conn-status" id="footageStatus"></div>
+        </div>
+      </div>
+      <div class="conn-note" data-i18n="footage_note">שני סרטונים, כל אחד במקום שלו. מכאן אנחנו יוצרים את הדמות — לא צריך להיכנס לשום אתר אחר.</div>
+      <div class="footage-slot" id="footageSlot-training">
+        <div class="footage-title" data-i18n="footage_training">1. סרטון האימון</div>
+        <div class="conn-note" data-i18n="footage_training_hint">2-3 דקות שלכם מדברים למצלמה, בלי חיתוכים, באור טוב.</div>
+        <div class="footage-state" id="footageState-training" data-i18n="footage_empty">עוד לא הועלה</div>
+        <input type="file" id="footageFile-training" accept="video/*" style="display:none;" onchange="uploadFootage('training', this.files[0]); this.value='';">
+        <div class="tool-row">
+          <button class="conn-btn secondary" id="footageUploadBtn-training" onclick="document.getElementById('footageFile-training').click()" data-i18n="footage_upload">העלאת סרטון</button>
+        </div>
+      </div>
+      <div class="footage-slot" id="footageSlot-consent">
+        <div class="footage-title" data-i18n="footage_consent">2. סרטון ההסכמה</div>
+        <div class="conn-note" data-i18n="footage_consent_hint">מסתכלים למצלמה ואומרים את המשפט הזה, בטייק אחד:</div>
+        <blockquote class="footage-sentence" id="footageSentence" dir="auto"></blockquote>
+        <video class="footage-preview" id="footagePreview" muted playsinline style="display:none;"></video>
+        <div class="footage-state" id="footageState-consent" data-i18n="footage_empty">עוד לא הועלה</div>
+        <input type="file" id="footageFile-consent" accept="video/*" style="display:none;" onchange="uploadFootage('consent', this.files[0]); this.value='';">
+        <div class="tool-row">
+          <button class="conn-btn primary" id="footageRecordBtn" onclick="toggleConsentRecording()" data-i18n="footage_record">הקלטה עכשיו</button>
+          <button class="conn-btn secondary" id="footageUploadBtn-consent" onclick="document.getElementById('footageFile-consent').click()" data-i18n="footage_upload">העלאת סרטון</button>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="footageCreateBtn" onclick="createPresenter(this)" disabled data-i18n="footage_create">יצירת הדמות שלי</button>
+      <div class="conn-note" id="footageCreateNote" data-i18n="footage_need_both">אחרי ששני הסרטונים יתקבלו, נוכל ליצור את הדמות.</div>
     </div>
 
     <div class="conn-card unlocked" id="toolCard-elevenlabs">
@@ -2503,7 +2551,27 @@ const DASH_I18N = {
   higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
   higgsfield_connect_failed: { he:'החיבור נכשל — ודאו שהמפתח תקין ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the key is correct and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez la clé et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تأكد من صحة المفتاح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключ и попробуйте снова, или напишите нам в чат' },
   avatar_heygen_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
-  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a filmed digital likeness of me on the account I opened for it, and to produce videos for my business with it. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer mon image numérique filmée sur le compte que j\'ai ouvert à cet effet, et à produire des vidéos pour mon entreprise. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء شخصية رقمية مصوَّرة لي في الحساب الذي فتحته لذلك، ولإنتاج فيديوهات لعملي. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания моего цифрового снятого образа в аккаунте, открытом для этого, и на производство видео для моего бизнеса. Я могу в любой момент потребовать прекратить это использование.' },
+  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a filmed digital likeness of me on the account I opened for it, and to produce videos for my business with it. The files are opened to the tool only for the duration of the creation, and access to them is closed right after. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer mon image numérique filmée sur le compte que j\'ai ouvert à cet effet, et à produire des vidéos pour mon entreprise. Les fichiers ne sont ouverts à l\'outil que pendant la création, et leur accès est fermé juste après. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء شخصية رقمية مصوَّرة لي في الحساب الذي فتحته لذلك، ولإنتاج فيديوهات لعملي. تُفتح الملفات للأداة فقط طوال مدة الإنشاء، ويُغلق الوصول إليها فور انتهائه. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания моего цифрового снятого образа в аккаунте, открытом для этого, и на производство видео для моего бизнеса. Файлы открываются инструменту только на время создания, и доступ к ним закрывается сразу после. Я могу в любой момент потребовать прекратить это использование.' },
+  footage_card: { he:'הסרטונים לדמות שלך', en:'The videos for your presenter', fr:'Les vidéos de votre présentateur', ar:'فيديوهات شخصيتك', ru:'Видео для вашего ведущего' },
+  footage_note: { he:'שני סרטונים, כל אחד במקום שלו. מכאן אנחנו יוצרים את הדמות — לא צריך להיכנס לשום אתר אחר.', en:'Two videos, each in its own place. We create the presenter from here — no other website needed.', fr:'Deux vidéos, chacune à sa place. Nous créons le présentateur d\'ici — aucun autre site nécessaire.', ar:'فيديوهان، كل واحد في مكانه. من هنا ننشئ الشخصية — دون الحاجة إلى أي موقع آخر.', ru:'Два видео, каждое на своём месте. Ведущего создаём отсюда — другие сайты не нужны.' },
+  footage_training: { he:'1. סרטון האימון', en:'1. Training video', fr:'1. Vidéo d\'entraînement', ar:'1. فيديو التدريب', ru:'1. Обучающее видео' },
+  footage_training_hint: { he:'2-3 דקות שלכם מדברים למצלמה, בלי חיתוכים, באור טוב.', en:'2-3 minutes of you talking to camera, no cuts, good light.', fr:'2-3 minutes face caméra, sans coupe, avec une bonne lumière.', ar:'2-3 دقائق تتحدثون فيها إلى الكاميرا، بلا قص، بإضاءة جيدة.', ru:'2-3 минуты разговора в камеру, без склеек, при хорошем свете.' },
+  footage_consent: { he:'2. סרטון ההסכמה', en:'2. Consent video', fr:'2. Vidéo de consentement', ar:'2. فيديو الموافقة', ru:'2. Видео согласия' },
+  footage_consent_hint: { he:'מסתכלים למצלמה ואומרים את המשפט הזה, בטייק אחד:', en:'Look at the camera and say this sentence, in one take:', fr:'Regardez la caméra et dites cette phrase, en une prise :', ar:'انظروا إلى الكاميرا وقولوا هذه الجملة في لقطة واحدة:', ru:'Смотрите в камеру и произнесите эту фразу одним дублем:' },
+  footage_upload: { he:'העלאת סרטון', en:'Upload a video', fr:'Téléverser une vidéo', ar:'رفع فيديو', ru:'Загрузить видео' },
+  footage_replace: { he:'החלפת הסרטון', en:'Replace the video', fr:'Remplacer la vidéo', ar:'استبدال الفيديو', ru:'Заменить видео' },
+  footage_record: { he:'הקלטה עכשיו', en:'Record now', fr:'Enregistrer', ar:'سجّل الآن', ru:'Записать сейчас' },
+  footage_stop: { he:'סיום ושליחה', en:'Stop and send', fr:'Arrêter et envoyer', ar:'إنهاء وإرسال', ru:'Стоп и отправить' },
+  footage_empty: { he:'עוד לא הועלה', en:'Not uploaded yet', fr:'Pas encore téléversée', ar:'لم يُرفع بعد', ru:'Ещё не загружено' },
+  footage_have: { he:'התקבל ✓ {name}', en:'Received ✓ {name}', fr:'Reçue ✓ {name}', ar:'تم الاستلام ✓ {name}', ru:'Получено ✓ {name}' },
+  footage_uploading: { he:'מעלה… {pct}%', en:'Uploading… {pct}%', fr:'Téléversement… {pct} %', ar:'جارٍ الرفع… {pct}%', ru:'Загрузка… {pct}%' },
+  footage_create: { he:'יצירת הדמות שלי', en:'Create my presenter', fr:'Créer mon présentateur', ar:'إنشاء شخصيتي', ru:'Создать моего ведущего' },
+  footage_creating: { he:'שולח ליצירה…', en:'Sending for creation…', fr:'Envoi en création…', ar:'جارٍ الإرسال للإنشاء…', ru:'Отправляем на создание…' },
+  footage_need_both: { he:'אחרי ששני הסרטונים יתקבלו, נוכל ליצור את הדמות.', en:'Once both videos are in, we can create the presenter.', fr:'Dès que les deux vidéos sont là, nous pouvons créer le présentateur.', ar:'بعد استلام الفيديوهين يمكننا إنشاء الشخصية.', ru:'Когда оба видео будут загружены, мы сможем создать ведущего.' },
+  footage_submitted: { he:'הדמות בתהליך יצירה. זה לוקח כמה ימים — נעדכן אותך כשהיא מוכנה.', en:'Your presenter is being created. It takes a few days — we\'ll let you know when it\'s ready.', fr:'Votre présentateur est en création. Cela prend quelques jours — nous vous préviendrons.', ar:'شخصيتك قيد الإنشاء. يستغرق ذلك بضعة أيام — سنخبرك عندما تكون جاهزة.', ru:'Ведущий создаётся. Это занимает несколько дней — мы сообщим, когда он будет готов.' },
+  footage_list_error: { he:'לא הצלחנו לטעון את הסרטונים כרגע.', en:'We couldn\'t load the videos right now.', fr:'Impossible de charger les vidéos pour le moment.', ar:'تعذّر تحميل الفيديوهات الآن.', ru:'Не удалось загрузить видео.' },
+  footage_camera_denied: { he:'אין גישה למצלמה. צריך לאשר מצלמה ומיקרופון בדפדפן ולנסות שוב, או להעלות סרטון.', en:'No camera access. Allow the camera and microphone in your browser and try again, or upload a video.', fr:'Pas d\'accès à la caméra. Autorisez caméra et micro, ou téléversez une vidéo.', ar:'لا يوجد وصول إلى الكاميرا. اسمحوا بالكاميرا والميكروفون أو ارفعوا فيديو.', ru:'Нет доступа к камере. Разрешите камеру и микрофон или загрузите видео.' },
+  footage_record_unsupported: { he:'הדפדפן הזה לא מקליט וידאו. אפשר לצלם בטלפון ולהעלות את הסרטון.', en:'This browser can\'t record video. Film on your phone and upload it.', fr:'Ce navigateur ne peut pas filmer. Filmez avec votre téléphone et téléversez.', ar:'هذا المتصفح لا يسجل الفيديو. صوّروا بالهاتف وارفعوا الفيديو.', ru:'Этот браузер не записывает видео. Снимите на телефон и загрузите.' },
   avatar_need_consent: { he:'כדי להמשיך יש לאשר את הסכמת השימוש בדמות — זו דרישה מחייבת', en:'You must confirm the likeness consent to continue — it\'s a mandatory requirement', fr:'Vous devez confirmer le consentement d\'utilisation de votre image — c\'est obligatoire', ar:'يجب تأكيد الموافقة على استخدام صورتك للمتابعة — هذا شرط إلزامي', ru:'Для продолжения необходимо подтвердить согласие на использование образа — это обязательное требование' },
   tool_heygen_card: { he:'הדמות שבסרטונים — דמות מצולמת שלך', en:'Your video presenter — a filmed likeness of you', fr:'Votre présentateur vidéo — votre image filmée', ar:'الشخصية في الفيديوهات — شخصيتك المصوَّرة', ru:'Ведущий ваших видео — ваш снятый образ' },
   tool_heygen_note: { he:'שירות בתשלום נפרד מדמי הניהול. מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על הסרטונים עובר ישירות מהחשבון שלכם.', en:'A service billed separately from your management fee. Paste the key you copied following the guide. Videos are paid directly from your own account.', fr:'Service facturé séparément de vos frais de gestion. Collez la clé copiée en suivant le guide. Les vidéos sont payées directement depuis votre compte.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. تُدفع الفيديوهات مباشرة من حسابكم.', ru:'Услуга оплачивается отдельно от ведения. Вставьте ключ, скопированный по инструкции. Видео оплачиваются напрямую с вашего аккаунта.' },
@@ -3238,6 +3306,7 @@ async function loadDashboard() {
     // Creative tools, each on its own card, and the voice recordings
     loadCreativeTools();
     loadVoiceRecordings();
+    loadAvatarFootage();
 
     // The account manager: apply the client's saved choice (or the default),
     // and offer the one-time picker until they've chosen
@@ -4557,6 +4626,128 @@ async function toggleVoiceRecording() {
   btn.textContent = uallakI18n.t('voice_stop_btn');
 }
 
+// ─── Presenter footage: two labelled slots (core/avatar_footage) ────────────
+// Which video is which comes from the slot the client used — never a file
+// name. The upload is the chat's chunked one (chunkedUpload) with a slot header.
+let footageView = null;
+let consentRecorder = null;
+const FOOTAGE_SLOTS = ['training', 'consent'];
+
+function paintFootage() {
+  const v = footageView;
+  if (!v) return;
+  document.getElementById('footageSentence').textContent = v.sentence || '';
+  FOOTAGE_SLOTS.forEach(slot => {
+    const row = v[slot];
+    const state = document.getElementById('footageState-' + slot);
+    state.classList.toggle('have', Boolean(row));
+    state.textContent = row ? uallakI18n.t('footage_have', { name: row.name }) : uallakI18n.t('footage_empty');
+    document.getElementById('footageUploadBtn-' + slot).textContent =
+      uallakI18n.t(row ? 'footage_replace' : 'footage_upload');
+  });
+  const btn = document.getElementById('footageCreateBtn');
+  const note = document.getElementById('footageCreateNote');
+  btn.disabled = !v.ready || v.submitted;
+  btn.style.display = v.submitted ? 'none' : '';
+  note.textContent = uallakI18n.t(v.submitted ? 'footage_submitted' : 'footage_need_both');
+  note.style.display = (v.ready && !v.submitted) ? 'none' : '';
+  document.getElementById('footageStatus').textContent = v.submitted ? uallakI18n.t('footage_submitted') : '';
+}
+
+async function loadAvatarFootage() {
+  try {
+    const res = await fetch('/api/client/avatar-footage', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('footage ' + res.status);
+    footageView = body.data || {};
+    paintFootage();
+  } catch (e) {
+    console.error('footage view failed', e);
+    document.getElementById('footageStatus').textContent = uallakI18n.t('footage_list_error');
+  }
+}
+
+async function uploadFootage(slot, file) {
+  if (!file) return;
+  if (!file.size) { showNotice(uallakI18n.t('upload_empty'), 'warn'); return; }
+  const state = document.getElementById('footageState-' + slot);
+  const buttons = [document.getElementById('footageUploadBtn-' + slot)];
+  if (slot === 'consent') buttons.push(document.getElementById('footageRecordBtn'));
+  buttons.forEach(b => { b.disabled = true; });
+  state.classList.remove('have');
+  const first = { 'X-File-Name': encodeURIComponent(file.name), 'X-File-Type': file.type || '', 'X-Avatar-Slot': slot };
+  const outcome = await chunkedUpload(file, first, (done, total) => {
+    state.textContent = uallakI18n.t('footage_uploading', { pct: total ? Math.floor(done * 100 / total) : 0 });
+  });
+  buttons.forEach(b => { b.disabled = false; });
+  if (outcome.error) {
+    showNotice(outcome.error, 'warn');
+    paintFootage();
+    return;
+  }
+  await loadAvatarFootage();
+}
+
+// The consent clip, recorded right here with the sentence on screen. Chrome
+// and Firefox give webm, Safari mp4 — both are video the upload accepts.
+async function toggleConsentRecording() {
+  const btn = document.getElementById('footageRecordBtn');
+  const preview = document.getElementById('footagePreview');
+  if (consentRecorder) { consentRecorder.stop(); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    showNotice(uallakI18n.t('footage_record_unsupported'), 'warn');
+    return;
+  }
+  const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+    .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  if (!mimeType) { showNotice(uallakI18n.t('footage_record_unsupported'), 'warn'); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+  } catch (e) {
+    showNotice(uallakI18n.t('footage_camera_denied'), 'warn');
+    return;
+  }
+  preview.srcObject = stream;
+  preview.style.display = 'block';
+  preview.play().catch(() => {});
+  const chunks = [];
+  consentRecorder = new MediaRecorder(stream, { mimeType });
+  consentRecorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  consentRecorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    preview.srcObject = null;
+    preview.style.display = 'none';
+    const type = (consentRecorder.mimeType || mimeType).split(';')[0];
+    consentRecorder = null;
+    btn.textContent = uallakI18n.t('footage_record');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const file = new File(chunks, `consent-${stamp}.${type.includes('mp4') ? 'mp4' : 'webm'}`, { type });
+    uploadFootage('consent', file);
+  };
+  consentRecorder.start(1000);
+  btn.textContent = uallakI18n.t('footage_stop');
+}
+
+async function createPresenter(btn) {
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('footage_creating');
+  try {
+    const res = await fetch('/api/client/avatar-footage/create', { method: 'POST', credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      const d = body.data || {};
+      showNotice(d.message_he || uallakI18n.t('footage_submitted'), d.message_he ? 'warn' : 'success');
+    } else {
+      showNotice((body.detail && body.detail.message_he) || uallakI18n.t('upload_failed'), 'warn');
+    }
+  } catch (e) {
+    showNotice(uallakI18n.t('upload_failed'), 'warn');
+  }
+  btn.textContent = uallakI18n.t('footage_create');
+  await loadAvatarFootage();
+}
+
 async function postVoiceDelete(payload) {
   const res = await fetch('/api/client/voice/delete', {
     method: 'POST', credentials: 'same-origin',
@@ -5178,12 +5369,12 @@ async function chatUploadStatus(token) {
   return { ok: res.ok && body.success, status: res.status, data: body.data || {}, detail: body.detail || {} };
 }
 
-async function uploadOneFile(id, file) {
-  const w = CHAT_WINDOWS[id];
-  if (!w) return;
-  const card = appendUploadCard(w, file);
-  if (!file.size) { card.fail(uallakI18n.t('upload_empty')); return; }
-  const key = uploadResumeKey(file);
+// The chunked, resumable upload behind the chat "+" AND the presenter card's
+// two slots. firstHeaders travel with the first chunk only (name, type,
+// persona or slot); after that the sealed token carries them.
+// progress(done, total, resuming). → { result } or { error: plain sentence }.
+async function chunkedUpload(file, firstHeaders, progress) {
+  const key = uploadResumeKey(file) + (firstHeaders['X-Avatar-Slot'] ? '_' + firstHeaders['X-Avatar-Slot'] : '');
   let token = '';
   let offset = 0;
   let finished = null;
@@ -5195,20 +5386,14 @@ async function uploadOneFile(id, file) {
     else if (s.ok) offset = Number(s.data.next_offset) || 0;
     else { token = ''; try { localStorage.removeItem(key); } catch (e) {} }
   }
-  const duration = token ? '' : await mediaDuration(file);
   let failures = 0;
-  card.progress(offset, file.size, Boolean(token && offset));
+  progress(offset, file.size, Boolean(token && offset));
   while (!finished) {
     const chunk = file.slice(offset, Math.min(offset + CHAT_UPLOAD_CHUNK, file.size));
     const headers = { 'Content-Type': 'application/octet-stream',
                       'X-Chunk-Offset': String(offset), 'X-File-Size': String(file.size) };
     if (token) headers['X-Upload-Token'] = token;
-    else {
-      headers['X-File-Name'] = encodeURIComponent(file.name);
-      headers['X-File-Type'] = file.type || '';
-      headers['X-Persona'] = id;
-      if (duration) headers['X-Duration-Seconds'] = duration;
-    }
+    else Object.assign(headers, firstHeaders);
     let res = null, body = {};
     try {
       res = await fetch('/api/client/chat-upload', { method: 'POST', credentials: 'same-origin', headers, body: chunk });
@@ -5221,24 +5406,20 @@ async function uploadOneFile(id, file) {
       try { localStorage.setItem(key, token); } catch (e) {}
       if (d.done) { finished = d.result || {}; break; }
       offset = Number(d.next_offset) || 0;
-      card.progress(offset, file.size, false);
+      progress(offset, file.size, false);
       continue;
     }
     const detail = (body && body.detail) || {};
     if (res && res.status >= 400 && res.status < 500 && detail.code !== 'bad_chunk') {
       // A plain sentence from the server (wrong type, unsafe, session gone…)
       try { localStorage.removeItem(key); } catch (e) {}
-      card.fail(detail.message_he || uallakI18n.t('upload_failed'));
-      return;
+      return { error: detail.message_he || uallakI18n.t('upload_failed') };
     }
     // Network drop / 5xx / a chunk Drive didn't line up with: ask Drive where
     // it stands and continue from there, with a growing pause
     failures += 1;
-    if (failures > CHAT_UPLOAD_RETRIES) {
-      card.fail(detail.message_he || uallakI18n.t('upload_failed'));
-      return;
-    }
-    card.progress(offset, file.size, true);
+    if (failures > CHAT_UPLOAD_RETRIES) return { error: detail.message_he || uallakI18n.t('upload_failed') };
+    progress(offset, file.size, true);
     await new Promise(r => setTimeout(r, Math.min(2000 * failures, 15000)));
     if (!token) continue;   // the first chunk never landed: no session yet, send it again
     const s = await chatUploadStatus(token).catch(() => ({ ok: false }));
@@ -5246,11 +5427,24 @@ async function uploadOneFile(id, file) {
     if (s.ok) offset = Number(s.data.next_offset) || 0;
     else if (s.status === 410) {
       try { localStorage.removeItem(key); } catch (e) {}
-      card.fail((s.detail && s.detail.message_he) || uallakI18n.t('upload_failed'));
-      return;
+      return { error: (s.detail && s.detail.message_he) || uallakI18n.t('upload_failed') };
     }
   }
   try { localStorage.removeItem(key); } catch (e) {}
+  return { result: finished };
+}
+
+async function uploadOneFile(id, file) {
+  const w = CHAT_WINDOWS[id];
+  if (!w) return;
+  const card = appendUploadCard(w, file);
+  if (!file.size) { card.fail(uallakI18n.t('upload_empty')); return; }
+  const duration = await mediaDuration(file);
+  const first = { 'X-File-Name': encodeURIComponent(file.name), 'X-File-Type': file.type || '', 'X-Persona': id };
+  if (duration) first['X-Duration-Seconds'] = duration;
+  const outcome = await chunkedUpload(file, first, (done, total, resuming) => card.progress(done, total, resuming));
+  if (outcome.error) { card.fail(outcome.error); return; }
+  const finished = outcome.result || {};
   card.done();
   const win = CHAT_WINDOWS[id];
   if (!win) return;

@@ -120,7 +120,16 @@ def _upload_bytes(folder, name, content, mime, app_properties=None):
 drive_stub.upload_bytes = _upload_bytes
 drive_stub.list_files = lambda folder, fields="": [dict(f) for f in DRIVE_FILES.get(folder, [])]
 drive_stub.trash_file = lambda fid: DRIVE_CALLS.append(("trash", fid))
-drive_stub.make_file_public = lambda fid: f"https://drive.example/{fid}"
+PUBLIC = set()        # file ids currently shared anyone-with-link
+
+
+def _make_public(fid):
+    PUBLIC.add(fid)
+    return f"https://drive.example/{fid}"
+
+
+drive_stub.make_file_public = _make_public
+drive_stub.revoke_public = lambda fid: PUBLIC.discard(fid) or True
 drive_stub.download_file = lambda fid: b"audio"
 sys.modules["core.drive_service"] = drive_stub
 
@@ -337,6 +346,8 @@ class ProviderChoice(ToolCase):
         self.assertTrue(result["success"], result)
         self.assertEqual(result["voice_kind"], "recording")
         self.assertEqual(HEYGEN_CALLS, [("av1", "", "https://drive.example/rec1")])
+        # The client's voice was public only for the render (core/public_share)
+        self.assertEqual(PUBLIC, set())
 
     def test_recording_of_another_folder_refused(self):
         ACCOUNTS[(27, "heygen")] = KEY_H

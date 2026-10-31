@@ -47,7 +47,9 @@ recorded consent-statement VIDEO for twins — the source kit gives the client
 the exact sentence. Bump `CONSENT_VERSION` when wording changes (v2,
 2026-10-30: the statements say "the account I opened for this" instead of the
 vendor's name — vendor names are never client-facing, see
-docs/CREATIVE-TOOLS.md §6; rows recorded under v1 stay valid). Revocation
+docs/CREATIVE-TOOLS.md §6; rows recorded under v1 stay valid; v3,
+2026-10-31: the likeness statement says the files are opened to the tool
+only for the creation and closed right after — what core/public_share does). Revocation
 is "client asks, we stop + delete" — handled manually for now (flag if it
 needs automation).
 
@@ -67,18 +69,34 @@ needs automation).
   including Free** (pricing page: Free = 1 Custom Digital Twin; Creator
   $29 / Pro $49 = "1+"; Business $149 = 5). The earlier belief that
   creation itself needed a Team/Business plan was wrong.
-- **The decided creation flow (2026-07-20) — client self-creates**: the
-  CLIENT creates their own twin in HeyGen's web UI, a few clicks following
-  the source kit (which names the exact steps + the consent-statement
-  video HeyGen requires). Works on whatever plan they're on, incl. free.
-  No workspace invite, no collaborator step, no Johnny involvement.
-  Then they connect their HeyGen API key via the existing dashboard card
-  (unchanged) and ALL generation runs on that key exactly like Higgsfield.
-  `create_avatar` still tries the Enterprise API first and returns
-  method='web_ui_self_service' (+ a dashboard-chat message pointing the
-  client to the web UI) when it isn't available; the **daily readiness
-  scan** (`GET /api/avatar/scan`) detects each finished avatar and
-  notifies the client — nobody is left wondering.
+- **Creation flow (2026-10-31) — the client never leaves uallak by
+  default**: they upload the training video and record the consent clip in
+  the dashboard's "הסרטונים לדמות שלך" card (core/avatar_footage — two
+  labelled slots; the slot is an appProperty on the file, never a filename
+  rule; uploads ride /api/client/chat-upload with `X-Avatar-Slot`), then
+  press "create" (`POST /api/client/avatar-footage/create`) and
+  `create_avatar` submits both via the creation API. ONLY when the tool
+  refuses for a permission/plan reason: method='manual_fallback' — ONE plain
+  Hebrew chat line (MANUAL_FALLBACK_HE) + a team alert to walk the client
+  through the tool's website. The source kit never tells the client to
+  create it themselves. The **daily readiness scan** (`GET
+  /api/avatar/scan`) detects each finished avatar either way.
+- **Re-checked 2026-10-31 (HeyGen developer docs, "avatar consent")**:
+  submitting a PRE-RECORDED consent video via API is Enterprise-only; for
+  everyone else HeyGen's v3 flow records consent on HeyGen's hosted page
+  (`POST /v3/avatars/{group_id}/consent` → a 24h single-use URL, optional
+  `reroute_url` back to us). So on a normal key the API path refuses and the
+  manual fallback runs. Not built (needs a live key): the v3 group + hosted
+  consent link opened from the dashboard with reroute back.
+- **Privacy**: the tool takes files only as public URLs. Every share goes
+  through `core/public_share.briefly_public` — revoked on success AND
+  failure, read back (`drive_service.revoke_public`), retried once, admin
+  alert if still public. Same for avatar-video audio tracks and character
+  images. The only standing `make_file_public` left is the admin
+  Meta-publishing helper (`media_agent.prepare_for_publishing`);
+  tests/test_avatar_in_product.py fails on any new one.
+  UNVERIFIED: whether the tool fetches the URL during the call or later —
+  if later, the immediate revoke breaks creation; first live test decides.
 - **Client cost implication (disclose everywhere, no surprises)**: NO paid
   HeyGen subscription is required — one avatar works on the Free plan;
   **additional avatars (our 100₪-each pricing) need a paid plan/add-on**.
@@ -108,11 +126,13 @@ gcloud scheduler jobs create http avatar-scan --schedule="0 9 * * *" \
    uploaded in the "הקלטות קול" card (`/api/client/voice*`, core/voice_recordings).
    `POST /api/avatar/connect` is LEGACY (each key given is connected on its own).
 2. `POST /api/avatar/request-source` — filming-kit-pattern instructions doc
-   into Drive `avatar-source/` (shared to the client as WRITER so they can
-   upload); the kit names the consent-clip convention (filename contains
-   'consent').
-3. `POST /api/avatar/create` — photos → photo-avatar path; videos → twin
-   path (Enterprise API, or the client-self-creates web-UI flow above).
+   into Drive `avatar-source/`; it points to the dashboard card for both
+   videos and carries the SAME consent sentence the card shows
+   (`avatar_footage.consent_sentence`). Old files in avatar-source still
+   work (filename 'consent' = the fallback only for un-slotted files).
+3. `POST /api/client/avatar-footage/create` (client) or `POST
+   /api/avatar/create` (admin) — photos → photo-avatar path; videos → twin
+   path (creation API, or the manual fallback above).
    `POST /api/avatar/create-voice` for the ElevenLabs clone (instant).
 4. Daily scan detects each avatar's readiness (multi-avatar aware, with a
    stop condition so new HeyGen STOCK avatars can't false-trigger) →

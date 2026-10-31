@@ -123,7 +123,7 @@ def text_to_speech(api_key: str, voice_id: str, text: str,
                    model_id: str = "eleven_multilingual_v2") -> bytes:
     """Speech audio (MP3 bytes) in the cloned voice — Hebrew works on the
     multilingual model. Feeds the avatar video providers' audio_url path after
-    a Drive upload + make_file_public."""
+    a Drive upload, public only for that render (core/public_share)."""
     response = httpx.post(
         f"{API_BASE}/v1/text-to-speech/{voice_id}",
         headers={**_headers(api_key), "Content-Type": "application/json"},

@@ -4610,6 +4610,61 @@ def client_voice_delete(req: VoiceDeleteRequest, request: Request):
     _creative_state_changed(client_id)
     return {"success": True, "data": result}
 
+# ─── Presenter footage, two dashboard slots (core/avatar_footage) ───────────
+# The videos themselves arrive through /api/client/chat-upload with an
+# X-Avatar-Slot header (same chunked, resumable path as the chat).
+
+_FOOTAGE_HE = {
+    "storage": "לא הצלחנו לקרוא את הסרטונים כרגע. ננסה שוב בעוד רגע.",
+    "not_in_package": "הדמות המצולמת לא כלולה בחבילה הנוכחית שלך. אפשר לכתוב לי בצ'אט ואכין הצעה.",
+    "missing_tool": "קודם מחברים את הכרטיס \"הדמות שבסרטונים\" — ואז יוצרים את הדמות.",
+    "no_consent": "קודם מסמנים את האישור לשימוש בדמות בכרטיס \"הדמות שבסרטונים\".",
+    "already_submitted": "הדמות כבר בתהליך יצירה. נעדכן אותך כשהיא מוכנה.",
+    "provider_error": "היצירה לא הצליחה הפעם. הצוות קיבל התראה ויחזור אליך.",
+}
+
+def _footage_refusal(code: str, message_he: str = "", status: int = 400) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code,
+                         "message_he": message_he or _FOOTAGE_HE.get(code, _FOOTAGE_HE["provider_error"])})
+
+@app.get("/api/client/avatar-footage")
+def client_avatar_footage(request: Request):
+    client_id = _require_session(request)
+    from agents.avatar_agent import footage_view
+    try:
+        return {"success": True, "data": footage_view(client_id)}
+    except Exception as e:
+        print(f"[avatar_footage] client {client_id}: view failed: {type(e).__name__}")
+        raise _footage_refusal("storage", status=503)
+
+@app.post("/api/client/avatar-footage/create")
+def client_avatar_footage_create(request: Request):
+    # The client's own click: package → tool → likeness consent → both
+    # videos, then avatar_agent.create_avatar (which re-checks consent + tool)
+    client_id = _require_session(request)
+    from agents.avatar_agent import create_avatar, footage_view
+    from core import client_state, vendor_tools
+    from core.agent_actions import _in_package
+    if _in_package({"package": client_state.cached_package(client_id)}, "avatar") is False:
+        raise _footage_refusal("not_in_package")
+    try:
+        view = footage_view(client_id)
+    except Exception as e:
+        print(f"[avatar_footage] client {client_id}: view failed: {type(e).__name__}")
+        raise _footage_refusal("storage", status=503)
+    if view.get("submitted"):
+        raise _footage_refusal("already_submitted", status=409)
+    if not vendor_tools.is_connected(client_id, "heygen"):
+        raise _footage_refusal("missing_tool")
+    result = create_avatar(client_id)
+    if not result.get("success"):
+        code = result.get("code") or "provider_error"
+        raise _footage_refusal(code if code in _FOOTAGE_HE or result.get("message_he") else "provider_error",
+                               result.get("message_he", ""))
+    _creative_state_changed(client_id)
+    return {"success": True, "data": {"method": result.get("method", ""),
+                                      "message_he": result.get("message_he", "")}}
+
 # ─── Upload from the chat (core/chat_uploads) ───────────────────────────────
 # One fixed-size chunk per request, forwarded straight into a Drive resumable
 # session: no size limit of ours, memory bounded by one chunk, and no request
@@ -4617,6 +4672,7 @@ def client_voice_delete(req: VoiceDeleteRequest, request: Request):
 # Photos is NOT here: it needs new OAuth scopes — a later verification round.
 
 _CHAT_UPLOAD_STATUS = {"empty": 400, "bad_chunk": 400, "unsupported": 415, "archive": 415, "unsafe": 415,
+                       "video_only": 415,
                        "too_big": 413, "expired": 410, "not_configured": 503, "storage": 503}
 
 def _chat_upload_refused(e) -> HTTPException:
@@ -4659,7 +4715,8 @@ async def client_chat_upload(request: Request):
             payload = await run_in_threadpool(
                 cu.begin, client_id, cu.valid_persona(request.headers.get("x-persona") or ""),
                 unquote(request.headers.get("x-file-name") or ""), total, data,
-                request.headers.get("x-file-type") or "", request.headers.get("x-duration-seconds"))
+                request.headers.get("x-file-type") or "", request.headers.get("x-duration-seconds"),
+                (request.headers.get("x-avatar-slot") or "").strip())
             token = cu.seal(payload, client_id)
         answer = await run_in_threadpool(cu.send, client_id, payload, offset, data)
     except cu.UploadRefused as e:

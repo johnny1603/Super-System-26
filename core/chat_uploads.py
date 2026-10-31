@@ -89,6 +89,7 @@ PLAIN_HE = {
     "bad_chunk": "משהו השתבש באמצע ההעלאה. צריך להתחיל אותה מחדש.",
     "not_configured": "תיקיית המדיה שלך עוד לא מוכנה, ולכן אי אפשר להעלות כרגע. הצוות קיבל התראה.",
     "storage": "לא הצלחנו לשמור את הקובץ כרגע. הצוות קיבל התראה, ואפשר לנסות שוב בעוד רגע.",
+    "video_only": "כאן מעלים רק סרטון. תמונות והקלטות קול מעלים בצ'אט או בכרטיס הקלטות הקול.",
 }
 
 
@@ -359,10 +360,15 @@ def _folder_id(client_id: int, kind: str) -> str:
 
 @drive_storage.scoped
 def begin(client_id: int, persona: str, filename: str, total: int, head: bytes,
-          hint_mime: str = "", duration_hint=None) -> dict:
+          hint_mime: str = "", duration_hint=None, slot: str = "") -> dict:
     """The first chunk: decide the real type, the folder and the name, and
-    open the Drive session. Returns the token payload (not yet sealed)."""
+    open the Drive session. Returns the token payload (not yet sealed).
+    `slot` (core/avatar_footage.SLOTS): the presenter card's training /
+    consent slot — a video only, into avatar-source, tagged with its slot."""
+    from core import avatar_footage
     from core import drive_service as drive
+    if slot and slot not in avatar_footage.SLOTS:
+        raise refuse(client_id, "unsupported", f"unknown avatar slot {slot[:20]!r}")
     if total <= 0 or not head:
         raise refuse(client_id, "empty")
     if total > DRIVE_MAX_BYTES:
@@ -371,9 +377,20 @@ def begin(client_id: int, persona: str, filename: str, total: int, head: bytes,
         kind, ext, mime = sniff(head, filename, hint_mime)
     except UploadRefused as e:
         raise refuse(client_id, e.code, e.detail)
+    if slot and kind != "video":
+        raise UploadRefused("video_only")
     name = clean_name(filename, ext, kind)
     if not drive_storage.configured(client_id):
         raise refuse(client_id, "not_configured", "DRIVE_MEDIA_FOLDER_ID / service account not set")
+    if slot:
+        props = {"uallak_kind": avatar_footage.KIND, avatar_footage.SLOT_PROP: slot,
+                 "uploaded_at": _now(), "source": "dashboard"}
+        try:
+            uri = drive.start_resumable(avatar_footage.folder(client_id), name, mime, total, props)
+        except Exception as e:
+            raise refuse(client_id, "storage", f"starting the Drive session failed: "
+                                               f"{drive.classify_error(e)} {type(e).__name__}")
+        return {"u": uri, "t": int(total), "k": kind, "n": name, "m": mime, "f": "", "p": "general", "s": slot}
     props = {"uallak_kind": KIND_TAG, "uploaded_at": _now(), "source": "chat"}
     if kind == "audio":
         from core import voice_recordings as vr
@@ -555,6 +572,17 @@ def finish(client_id: int, payload: dict, drive_file: dict) -> dict:
         size = int(payload["t"])
     name = drive_file.get("name") or payload["n"]
     _media_changed(client_id)
+    if payload.get("s"):
+        # A presenter-card slot: no chat thread and no cards — the card shows
+        # the slot as filled; creating the presenter is the card's own button
+        try:
+            from agents import avatar_agent
+            avatar_agent._log_activity(client_id, "avatar_footage_uploaded",
+                                       {"file_id": file_id, "slot": payload["s"], "size": size})
+        except Exception:
+            pass
+        return {"file": {"id": file_id, "name": name, "kind": kind, "size": size, "folder": "avatar-source"},
+                "slot": payload["s"], "message": "", "cards": []}
     try:
         lines, cards = proposals(client_id, persona, kind, file_id, size)
     except Exception as e:
