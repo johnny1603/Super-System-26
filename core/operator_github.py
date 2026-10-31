@@ -141,15 +141,37 @@ def file_at(path: str, ref: str) -> str:
     return base64.b64decode(body.get("content", "")).decode("utf-8")
 
 
-# ─── Setup check (Tier 2 action "github_check", read-only) ───────────────────
-# What Tier 3 needs from GitHub, one line each. States only — never a value:
-# the two Variables are reported as set / missing, not echoed.
+# ─── Connection check (Tier 1, read-only; "בדיקת חיבור GitHub") ──────────────
+# Everything Tier 3 needs from GitHub, one plain-Hebrew line each. Nothing is
+# created and no value is returned (the two Variables: set / missing only).
+#
+# The three WRITE permissions are tested without writing: each request is sent
+# with input that cannot succeed — a commit that does not exist, a branch that
+# was just confirmed NOT to exist. GitHub checks the token's permission first:
+# 403/404 = not permitted; 422 (the input is invalid) = permitted. If the probe
+# branch somehow exists, the PR and dispatch probes are skipped, never sent.
 REQUIRED_VARIABLES = ("GCP_WIF_PROVIDER", "GCP_DEPLOY_SA")
 DEPLOY_ENVIRONMENT = "production"
+PROBE_BRANCH = "operator/connection-check-never-created"
+_NO_COMMIT = "0" * 40
+
+_HE = {
+    "token": ("הטוקן תקין", "הטוקן לא תקין או שפג תוקפו — צריך ליצור טוקן חדש ולהריץ שוב את setup_operator.sh"),
+    "repo": ("הריפו נגיש", "אין לטוקן גישה לריפו — בהגדרות הטוקן צריך לבחור את הריפו Super-System-26"),
+    "branch": ("מותר ליצור ענף (נבדק בלי ליצור)", "אין הרשאה ליצור ענף — בטוקן חסר Contents: Read and write"),
+    "pr": ("מותר לפתוח PR (נבדק בלי לפתוח)", "אין הרשאה לפתוח PR — בטוקן חסר Pull requests: Read and write"),
+    "dispatch": ("מותר להפעיל את הפריסה (נבדק בלי להפעיל)", "אין הרשאה להפעיל את הפריסה — בטוקן חסר Actions: Read and write"),
+    "workflow": ("קובץ הפריסה deploy.yml קיים ופעיל", "קובץ הפריסה deploy.yml לא נמצא"),
+    "variable": ("המשתנה {name} מוגדר", "המשתנה {name} חסר ב-GitHub (Settings ← Secrets and variables ← Actions ← Variables)"),
+    "environment": ("סביבת production קיימת", "סביבת production עוד לא קיימת ב-GitHub (Settings ← Environments)"),
+    "reviewer": ("יש מאשר חובה לפריסה", "מומלץ: אין מאשר חובה בסביבת production"),
+    "protected": ("master מוגן", "מומלץ: master לא מוגן (Settings ← Branches)"),
+}
+_UNKNOWN_HE = "לא ניתן לבדוק — לטוקן אין הרשאת קריאה לזה (Variables / Environments: Read-only)"
 
 
 def _probe(path: str):
-    """(body, state): state 'ok' | 'missing' | 'no_permission' | an error code."""
+    """(body, state): 'ok' | 'missing' | 'no_permission' | an error code."""
     try:
         return _call("GET", path), "ok"
     except GitHubError as e:
@@ -160,35 +182,89 @@ def _probe(path: str):
         return None, e.code
 
 
-def setup_check() -> dict:
-    items = {}
+def _probe_write(path: str, body: dict) -> str:
+    """'allowed' | 'denied' | an error code, from a request built to fail."""
+    try:
+        _call("POST", path, json=body)
+        return "unexpected_success"
+    except GitHubError as e:
+        if e.code == "http_422":
+            return "allowed"
+        if e.code in ("http_401", "http_403", "http_404"):
+            return "denied"
+        return e.code
+
+
+def _line(key: str, ok, state: str, recommended: bool = False, name: str = "") -> dict:
+    good, bad = _HE[key]
+    text = (good if ok else bad if ok is False else _UNKNOWN_HE).format(name=name)
+    return {"check": f"{key}_{name}" if name else key, "ok": ok, "state": state,
+            "recommended": recommended, "text_he": text}
+
+
+def connection_check() -> dict:
+    """{"ok", "summary_he", "lines": [...]} — never raises for a GitHub answer."""
+    lines = []
+
+    def done():
+        blocking = [l for l in lines if not l["recommended"] and l["ok"] is not True]
+        ok = not blocking
+        summary = ("הכול מוכן — המפעיל יכול לפתוח ענף, PR ולהפעיל פריסה (תמיד רק אחרי האישור שלך)." if ok
+                   else f"עוד לא מוכן: {len(blocking)} דברים לתקן, מפורטים למטה.")
+        return {"ok": ok, "summary_he": summary, "lines": lines}
+
     if not configured():
-        return {"ok": False, "items": {"token": {"ok": False, "state": "not_configured"}}}
-    repo, state = _probe(_repo())
-    items["repo_access"] = {"ok": state == "ok", "state": state}
+        lines.append({"check": "token", "ok": False, "state": "not_configured", "recommended": False,
+                      "text_he": "אין טוקן GitHub בשרת — צריך להריץ את scripts/setup_operator.sh ב-Cloud Shell"})
+        return done()
+    try:
+        _call("GET", "/user")
+        state = "ok"
+    except GitHubError as e:
+        state = e.code          # only 401 means GitHub rejected the token itself
+    if state not in ("ok", "http_401", "http_403", "http_404"):
+        lines.append({"check": "token", "ok": None, "state": state, "recommended": False,
+                      "text_he": f"לא הצלחתי להגיע ל-GitHub ({state}) — לנסות שוב בעוד דקה"})
+        return done()
+    lines.append(_line("token", state != "http_401", state))
+    if state == "http_401":
+        return done()
+    _, state = _probe(_repo())
+    lines.append(_line("repo", state == "ok", state))
     if state != "ok":
-        return {"ok": False, "items": items}
+        return done()
+
+    state = _probe_write(_repo("/git/refs"), {"ref": f"refs/heads/{PROBE_BRANCH}", "sha": _NO_COMMIT})
+    lines.append(_line("branch", state == "allowed", state))
+    _, exists = _probe(_repo(f"/git/ref/heads/{PROBE_BRANCH}"))
+    if exists == "missing":
+        state = _probe_write(_repo("/pulls"), {"title": "connection check", "head": PROBE_BRANCH,
+                                               "base": BASE_BRANCH, "draft": True})
+        lines.append(_line("pr", state == "allowed", state))
+        state = _probe_write(_repo(f"/actions/workflows/{DEPLOY_WORKFLOW}/dispatches"),
+                             {"ref": PROBE_BRANCH, "inputs": {"sha": _NO_COMMIT}})
+        lines.append(_line("dispatch", state == "allowed", state))
+    else:
+        for key in ("pr", "dispatch"):
+            lines.append(_line(key, None, f"skipped:{exists}"))
+
+    _, state = _probe(_repo(f"/actions/workflows/{DEPLOY_WORKFLOW}"))
+    lines.append(_line("workflow", state == "ok", state))
     for name in REQUIRED_VARIABLES:
         _, state = _probe(_repo(f"/actions/variables/{name}"))
-        items[f"variable_{name}"] = {"ok": state == "ok", "state": "set" if state == "ok" else state}
-    _, state = _probe(_repo(f"/actions/workflows/{DEPLOY_WORKFLOW}"))
-    items["deploy_workflow"] = {"ok": state == "ok", "state": state}
+        lines.append(_line("variable", True if state == "ok" else False if state == "missing" else None,
+                           "set" if state == "ok" else state, name=name))
     env, state = _probe(_repo(f"/environments/{DEPLOY_ENVIRONMENT}"))
-    reviewers = 0
-    for rule in (env or {}).get("protection_rules") or []:
-        if rule.get("type") == "required_reviewers":
-            reviewers += len(rule.get("reviewers") or [])
-    items["environment_production"] = {"ok": state == "ok", "state": state}
-    items["required_reviewer"] = {"ok": reviewers > 0 if state == "ok" else None,
-                                  "state": f"{reviewers} reviewer(s)" if state == "ok" else state,
-                                  "recommended": True}
+    lines.append(_line("environment", True if state == "ok" else False if state == "missing" else None, state))
+    reviewers = sum(len(r.get("reviewers") or []) for r in (env or {}).get("protection_rules") or []
+                    if r.get("type") == "required_reviewers")
+    lines.append(_line("reviewer", (reviewers > 0) if state == "ok" else None,
+                       f"{reviewers} reviewer(s)" if state == "ok" else state, recommended=True))
     branch, state = _probe(_repo(f"/branches/{BASE_BRANCH}"))
     protected = bool((branch or {}).get("protected"))
-    items["master_protected"] = {"ok": protected if state == "ok" else None,
-                                 "state": ("protected" if protected else "not_protected") if state == "ok" else state,
-                                 "recommended": True}
-    required = [k for k, v in items.items() if not v.get("recommended")]
-    return {"ok": all(items[k]["ok"] for k in required), "items": items}
+    lines.append(_line("protected", protected if state == "ok" else None,
+                       ("protected" if protected else "not_protected") if state == "ok" else state, recommended=True))
+    return done()
 
 
 # ─── Tier 3: writes (each call site is behind operator_gate) ─────────────────

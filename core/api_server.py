@@ -6056,6 +6056,13 @@ def operator_status(request: Request):
         "github_configured": operator_github.configured(),
         "tier3": {**operator_gate.enabled(), "sent_to": operator_gate.masked_email()}}}
 
+@app.get("/api/admin/operator/github-check")
+def operator_github_check(request: Request):
+    # Tier 1, read-only: nothing is created (core/operator_github.connection_check)
+    _operator_admin(request)
+    from core import operator_github
+    return {"success": True, "data": operator_github.connection_check()}
+
 @app.get("/api/admin/operator/messages")
 def operator_messages(request: Request):
     _operator_admin(request)

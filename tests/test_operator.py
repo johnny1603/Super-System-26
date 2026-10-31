@@ -507,7 +507,7 @@ class AdminOnly(unittest.TestCase):
         api = _src("core", "api_server.py")
         routes = re.findall(r'@app\.(?:get|post)\("(/api/admin/operator[^"]*)"\)\ndef \w+\([^)]*\):\n((?:\s*#.*\n)*)(.*)\n',
                             api)
-        self.assertEqual(len(routes), 9)
+        self.assertEqual(len(routes), 10)          # + github-check (Tier 1 read, 2026-11-01)
         for path, _comments, first_code_line in routes:
             self.assertIn("_operator_admin(request)", first_code_line, path)   # before anything else
         self.assertIn("def _operator_admin(request: Request) -> tuple:\n    _require_admin(request)", api)

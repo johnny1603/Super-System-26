@@ -86,8 +86,8 @@ and owner_steps for anything only he can do).
 
 WHAT YOU MAY DO — THREE TIERS, NEVER BLURRED:
 - Tier 1, reads: any read tool, as many as you need.
-- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token, clear_cache and
-  github_check yourself when they help the diagnosis. Rollback, return-to-latest, flag changes and
+- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token and clear_cache
+  yourself when they help the diagnosis. Rollback, return-to-latest, flag changes and
   re-sending a failed notification you only OFFER with offer_action — a one-tap button he
   presses. Never say you did one of those; say you put the button there.
   If a deploy in the last few hours lines up with new errors, offer the rollback FIRST
@@ -292,9 +292,10 @@ TOOLS = [
      "input_schema": _schema({"client_id": _INT, "platform": _STR}, ["client_id", "platform"])},
     {"name": "clear_cache", "description": "Tier 2, runs now: forget the cached snapshot of one client.",
      "input_schema": _schema({"client_id": _INT}, ["client_id"])},
-    {"name": "github_check", "description": "Tier 2, runs now, read-only: is the GitHub side of Tier 3 ready "
-     "(token, repo access, the two deploy Variables, deploy workflow, 'production' environment, required "
-     "reviewer, master protection). States only, never values.", "input_schema": _schema({})},
+    {"name": "github_check", "description": "Tier 1 read: is the GitHub side of Tier 3 ready — token valid, "
+     "repo reachable, may create a branch / open a PR / start the deploy (each tested WITHOUT doing it), "
+     "deploy workflow, the two Variables, 'production' environment, reviewer, master protection. Plain "
+     "Hebrew lines; states only, never values.", "input_schema": _schema({})},
     {"name": "offer_action", "description": "Put a ONE-TAP button in front of the owner (Tier 2; he presses "
      "it, it runs at once). action: rollback (params: optional revision) | restore_latest | flip_flag "
      "(params: flag, state on/off/default) | resend_notification (params: activity_id).",
@@ -368,7 +369,10 @@ def run_tool(name: str, args: dict, turn: _Turn):
         return operator_actions.failed_notifications()
     if name == "flags":
         return operator_flags.view()
-    if name in ("run_health_check", "refresh_token", "clear_cache", "github_check"):
+    if name == "github_check":
+        from core import operator_github
+        return operator_github.connection_check()
+    if name in ("run_health_check", "refresh_token", "clear_cache"):
         action = {"run_health_check": "health_check"}.get(name, name)
         try:
             out = operator_actions.run(action, args, f"operator agent for {turn.who}", by_agent=True)

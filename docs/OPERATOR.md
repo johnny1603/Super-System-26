@@ -83,10 +83,14 @@ and do Tier 2 (reversible) — but you can **never ship code**:
    | `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github-actions` |
    | `GCP_DEPLOY_SA` | `github-deployer@super-system-500410.iam.gserviceaccount.com` |
 5. Recommended #1 and #2 above.
-6. Check: the operator page → "בדיקת חיבור GitHub" (action `github_check`, read-only). It reports
-   token, repo access, both Variables (set / missing — never the value), the deploy workflow, the
-   `production` environment, and — as recommendations — its required reviewer and master
-   protection.
+6. Check: the operator page → "בדיקת חיבור GitHub" (Tier 1, `GET /api/admin/operator/github-check`,
+   also the agent's `github_check` tool). Plain Hebrew lines: token valid, repo reachable, may
+   create a branch / open a PR / start the deploy — each tested WITHOUT doing it (a commit that
+   cannot exist; a branch confirmed absent first, so GitHub answers 422 when permitted, 403 when
+   not) — the deploy workflow, both Variables (set / missing, never the value), the `production`
+   environment, and as recommendations its required reviewer and master protection.
+   Required reviewers can't be written in deploy.yml (it only names `environment: production`);
+   they are a repo setting: Settings → Environments → production → Required reviewers.
 
 Without steps 2–4 the operator still works for everything that reads the database (alerts,
 clients, client state, code); Cloud Run/logs answer "no permission yet" and Tier 3 says it is off.
