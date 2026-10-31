@@ -415,6 +415,18 @@ body {
 }
 .persona-pick-btn:hover, .persona-pick-btn.active { border-color: var(--accent); }
 .persona-pick-btn .agent-face { width: 52px; height: 52px; }
+.persona-pick-btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.persona-pick-btn .pick-mark { font-size: 10.5px; font-weight: 600; color: var(--accent); min-height: 13px; }
+.manager-why { font-size: 12.5px; color: var(--gray); line-height: 1.5; margin: 0 0 12px; text-align: center; }
+.manager-choices .persona-pick-btn { flex: 1 1 0; max-width: 132px; padding: 12px 8px; }
+.manager-choices .persona-pick-btn .agent-face { width: 72px; height: 72px; }
+.manager-choice-modal { text-align: center; }
+.manager-choice-modal .preact-btns { justify-content: center; }
+.manager-current { font-size: 12px; color: var(--gray); text-align: center; margin-top: 10px; min-height: 16px; }
+@media (max-width: 640px) {
+  .manager-choices { gap: 8px; }
+  .manager-choices .persona-pick-btn .agent-face { width: 58px; height: 58px; }
+}
 
 /* ---------- AGENT FACES (portraits + standing figures) ---------- */
 /* Every agent's portrait, everywhere: round, cover-cropped. A face that can't
@@ -2085,6 +2097,14 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 
+  <!-- The account manager — switchable at any time (core/manager_identity) -->
+  <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="manager_settings_title">מנהל/ת הלקוח שלך</div></div></div>
+  <div class="billing-card manager-settings" id="managerSettings">
+    <div class="manager-why" data-i18n="manager_choice_why">זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.</div>
+    <div class="persona-pick-btns manager-choices" data-manager-choices></div>
+    <div class="manager-current" id="managerCurrent"></div>
+  </div>
+
   <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="personal_business">פרטי העסק</div></div></div>
   <div class="detail-grid" id="businessDetails"></div>
 
@@ -2189,7 +2209,8 @@ a.media-item:hover { border-color: var(--accent); }
        options come from the server, built by renderManagerPick() -->
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
-    <div class="persona-pick-btns" id="managerPickBtns"></div>
+    <div class="manager-why" data-i18n="manager_choice_why">זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.</div>
+    <div class="persona-pick-btns" id="managerPickBtns" data-manager-choices></div>
   </div>
   <div class="launcher-list" id="launcherList"></div>
 </div>
@@ -2198,6 +2219,21 @@ a.media-item:hover { border-color: var(--accent); }
 
 <!-- ---------- UPGRADE PANEL ---------- -->
 <div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
+
+<!-- ---------- ACCOUNT MANAGER CHOICE (core/manager_identity) ----------
+     Shown on load to any client who never chose (manager_persona NULL —
+     existing clients included) until they pick; "later" hides it for this
+     browser session only. The default name/face is only a render fallback. -->
+<div class="preact-overlay" id="managerChoiceOverlay" role="dialog" aria-modal="true" aria-labelledby="managerChoiceTitle">
+  <div class="preact-modal manager-choice-modal">
+    <div class="preact-title" id="managerChoiceTitle" data-i18n="manager_choice_title">מי ילווה אותך ב-uallak?</div>
+    <div class="manager-why" data-i18n="manager_choice_why">זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.</div>
+    <div class="persona-pick-btns manager-choices" data-manager-choices></div>
+    <div class="preact-btns">
+      <button class="conn-btn cancel" onclick="laterManagerChoice()" data-i18n="manager_choice_later">אחר כך</button>
+    </div>
+  </div>
+</div>
 
 <!-- ---------- PRE-ACTION EXPLANATION MODAL (shared - see preactExplain) ---------- -->
 <div class="preact-overlay" id="preactOverlay">
@@ -2730,6 +2766,13 @@ const DASH_I18N = {
   chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
   greet_back: { he:'טוב לראות אותך שוב{name} 👋', en:'Good to see you again{name} 👋', fr:'Ravi de vous revoir{name} 👋', ar:'سعيد برؤيتك مجددًا{name} 👋', ru:'Рады видеть вас снова{name} 👋' },
   greet_first_1: { he:'היי{name}, ברוכים הבאים ל-uallak! 👋', en:'Hi{name}, welcome to uallak! 👋', fr:'Bonjour{name}, bienvenue chez uallak ! 👋', ar:'مرحبًا{name}، أهلًا بك في uallak! 👋', ru:'Привет{name}, добро пожаловать в uallak! 👋' },
+  manager_choice_title: { he:'מי ילווה אותך ב-uallak?', en:'Who will look after you at uallak?', fr:'Qui vous accompagnera chez uallak ?', ar:'من سيرافقك في uallak؟', ru:'Кто будет вести вас в uallak?' },
+  manager_choice_why: { he:'זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.', en:'This is the person who will manage your account and talk with you day to day — you can change them any time.', fr:'C\'est la personne qui gérera votre compte et vous parlera au quotidien — vous pouvez changer à tout moment.', ar:'هذا هو الشخص الذي سيدير حسابك ويتحدث معك يوميًا — يمكنك التغيير في أي وقت.', ru:'Этот человек будет вести ваш аккаунт и общаться с вами каждый день — сменить можно в любой момент.' },
+  manager_choice_later: { he:'אחר כך', en:'Later', fr:'Plus tard', ar:'لاحقًا', ru:'Позже' },
+  manager_settings_title: { he:'מנהל/ת הלקוח שלך', en:'Your account manager', fr:'Votre responsable de compte', ar:'مدير حسابك', ru:'Ваш менеджер' },
+  manager_current: { he:'נבחר/ה ✓', en:'Current ✓', fr:'Actuel ✓', ar:'الحالي ✓', ru:'Текущий ✓' },
+  manager_not_chosen: { he:'עוד לא בחרת — בינתיים מוצג/ת ברירת מחדל.', en:'You haven\'t chosen yet — a default is shown for now.', fr:'Vous n\'avez pas encore choisi — un choix par défaut s\'affiche pour l\'instant.', ar:'لم تختر بعد — يُعرض اختيار افتراضي مؤقتًا.', ru:'Вы ещё не выбрали — пока показан вариант по умолчанию.' },
+  manager_save_failed: { he:'לא הצלחנו לשמור את הבחירה כרגע. אפשר לנסות שוב בעוד רגע.', en:'We couldn\'t save your choice right now. Please try again in a moment.', fr:'Impossible d\'enregistrer votre choix pour le moment. Réessayez dans un instant.', ar:'تعذّر حفظ اختيارك الآن. حاول مجددًا بعد قليل.', ru:'Не удалось сохранить выбор. Попробуйте ещё раз чуть позже.' },
   greet_manager: { he:'קוראים לי {manager}, ואני מלווה את העסק שלכם כאן.', en:'I\'m {manager}, and I look after your business here.', fr:'Je m\'appelle {manager} et je m\'occupe de votre entreprise ici.', ar:'أنا {manager}، وأرافق عملك هنا.', ru:'Меня зовут {manager}, и я веду ваш бизнес здесь.' },
   greet_first_2: { he:'מעכשיו אנחנו הצוות שלך. כל מה שנכין בשבילך — רעיונות, פוסטים, קמפיינים — יופיע באזור "ממתין לאישור שלך", ואישור שלך הוא מה שמכניס אותנו לפעולה.', en:'From now on we\'re your team. Everything we prepare for you — ideas, posts, campaigns — appears in the "Waiting for your approval" area, and your approval is what sets us in motion.', fr:'Désormais, nous sommes votre équipe. Tout ce que nous préparons — idées, posts, campagnes — apparaît dans « En attente de votre validation », et votre accord nous met en action.', ar:'من الآن نحن فريقك. كل ما نجهزه لك — أفكار، منشورات، حملات — يظهر في منطقة "بانتظار موافقتك"، وموافقتك هي ما يطلقنا للعمل.', ru:'Теперь мы — ваша команда. Всё, что мы готовим для вас — идеи, посты, кампании — появляется в зоне «Ждёт вашего одобрения», и именно ваше одобрение запускает нас в работу.' },
   greet_first_pending: { he:'כבר מחכות לך {n} הצעות ראשונות 🎯', en:'{n} first suggestions are already waiting for you 🎯', fr:'{n} premières suggestions vous attendent déjà 🎯', ar:'{n} اقتراحات أولى بانتظارك بالفعل 🎯', ru:'Вас уже ждут {n} первых предложений 🎯' },
@@ -4942,47 +4985,106 @@ function applyManager(m) {
   renderLauncher();
 }
 
+// Every place the three managers are offered — the first-visit choice, the
+// chat launcher, and the always-available switch in the personal area —
+// is a [data-manager-choices] box, filled from here. The current one is
+// marked only once it was really CHOSEN (the default is never presented as
+// the client's choice).
 function renderManagerPick() {
-  const box = document.getElementById('managerPickBtns');
-  if (!box) return;
-  box.innerHTML = '';
-  MANAGER_OPTIONS.forEach(opt => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'persona-pick-btn' + (MANAGER && MANAGER.chosen && MANAGER.key === opt.key ? ' active' : '');
-    const label = managerName(opt);
-    b.innerHTML = faceHtml(opt.key, label.charAt(0)) + `<span>${esc(label)}</span>`;
-    b.setAttribute('aria-label', label);
-    b.onclick = () => chooseManager(opt.key);
-    box.appendChild(b);
+  const chosenKey = MANAGER && MANAGER.chosen ? MANAGER.key : '';
+  document.querySelectorAll('[data-manager-choices]').forEach(box => {
+    box.innerHTML = '';
+    MANAGER_OPTIONS.forEach(opt => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const current = opt.key === chosenKey;
+      b.className = 'persona-pick-btn' + (current ? ' active' : '');
+      b.setAttribute('aria-pressed', current ? 'true' : 'false');
+      const label = managerName(opt);
+      b.innerHTML = faceHtml(opt.key, label.charAt(0)) + `<span>${esc(label)}</span>`
+        + `<span class="pick-mark">${current ? esc(uallakI18n.t('manager_current')) : ''}</span>`;
+      b.setAttribute('aria-label', label);
+      b.onclick = () => chooseManager(opt.key);
+      box.appendChild(b);
+    });
   });
+  const note = document.getElementById('managerCurrent');
+  if (note) note.textContent = chosenKey ? '' : uallakI18n.t('manager_not_chosen');
+}
+
+function managerChoiceDismissed() {
+  try { return sessionStorage.getItem('uallak_manager_later') === '1'; } catch (e) { return false; }
+}
+
+function showManagerChoice(manager) {
+  const unchosen = !(manager && manager.chosen);
+  document.getElementById('personaPick').style.display = unchosen ? 'block' : 'none';
+  // The first-visit choice: any client who never chose (existing ones too),
+  // not staff viewing as the client, not over the welcome tour
+  const tourOpen = document.getElementById('welcomeOverlay').classList.contains('visible');
+  const offer = unchosen && !ADMIN_VIEW && !tourOpen && !managerChoiceDismissed() && MANAGER_OPTIONS.length;
+  document.getElementById('managerChoiceOverlay').classList.toggle('open', Boolean(offer));
+}
+
+function laterManagerChoice() {
+  try { sessionStorage.setItem('uallak_manager_later', '1'); } catch (e) {}
+  document.getElementById('managerChoiceOverlay').classList.remove('open');
 }
 
 function initManager(manager, options) {
   MANAGER_OPTIONS = Array.isArray(options) ? options : [];
   if (manager && manager.key) applyManager(manager);
   renderManagerPick();
-  // Picked once, at first contact; kept for everything afterwards
-  document.getElementById('personaPick').style.display = (manager && manager.chosen) ? 'none' : 'block';
+  showManagerChoice(manager);
 }
 
+// Choose or switch. Saved FIRST, then applied everywhere on the page (FAB,
+// launcher, every open window's header and figure, the bylines on cards
+// already in a thread) — the thread itself and its history stay as they are.
+// Other open dashboard tabs catch up through the storage event below.
 async function chooseManager(key) {
   const opt = MANAGER_OPTIONS.find(o => o.key === key);
   if (!opt) return;
-  applyManager(Object.assign({}, opt, { chosen: true }));
-  document.getElementById('personaPick').style.display = 'none';
+  let saved = null;
   try {
-    const res = await fetch('/api/client/profile', {
+    const res = await fetch('/api/client/manager', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manager_persona: key }),
+      body: JSON.stringify({ manager: key }),
     });
-    if (!res.ok) throw new Error('manager save failed: ' + res.status);
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) saved = body.data || {};
   } catch (e) {
-    console.error('manager save failed', e); // UI already applied; offered again on the next visit
+    console.error('manager save failed', e);
+  }
+  if (!saved || !saved.manager) {
+    showNotice(uallakI18n.t('manager_save_failed'), 'warn');
+    return;
+  }
+  if (Array.isArray(saved.options)) MANAGER_OPTIONS = saved.options;
+  applyManager(saved.manager);
+  renderManagerPick();
+  showManagerChoice(saved.manager);
+  try { localStorage.setItem('uallak_manager_changed', key + ':' + Date.now()); } catch (e) {}
+}
+
+async function refreshManagerFromServer() {
+  try {
+    const res = await fetch('/api/client/manager', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!res.ok || !body.success) return;
+    const d = body.data || {};
+    if (Array.isArray(d.options)) MANAGER_OPTIONS = d.options;
+    if (d.manager) applyManager(d.manager);
+    renderManagerPick();
+    showManagerChoice(d.manager);
+  } catch (e) {
+    console.error('manager refresh failed', e);
   }
 }
+// A switch made in another tab (/profile/ or another dashboard tab)
+window.addEventListener('storage', e => { if (e.key === 'uallak_manager_changed') refreshManagerFromServer(); });
 
 // Unified metadata for any persona id (general concierge + specialists), so the
 // launcher, windows, figures and cards all render the same identity from one place.
@@ -5553,6 +5655,10 @@ function refreshWindowIdentities() {
     set('figname', el => { el.textContent = p.name; });
     const stage = root.querySelector('.cw-figure-stage');
     if (stage) { stage.title = p.name; stage.setAttribute('aria-label', p.name); }
+    // Cards already in the thread carry whose they are — no stale face/name
+    root.querySelectorAll('.chat-action > .by').forEach(by => {
+      by.innerHTML = faceHtml(p.face, p.initial) + `<span>${esc(p.name)}</span>`;
+    });
   });
 }
 

@@ -3334,6 +3334,10 @@ async function openControlRoom(clientId) {
           <div id="crCosts"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">👤 מנהל/ת הלקוח (השם והפנים שהלקוח רואה)</div>
+          <div id="crManager"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">⚙️ הגדרות לקוח — מגבלות מאמרים ופעולות</div>
           <div id="crSettings"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3367,8 +3371,51 @@ async function openControlRoom(clientId) {
   crRenderPersonaTabs();
   crLoadChat();
   crLoadBudget(clientId);
+  crLoadManager(clientId);
   crLoadSettings(clientId);
   crLoadCosts(clientId);
+}
+
+// ─── the client's account manager (core/manager_identity) ───────────────────
+// See + set it for support cases. Same single source as the client's own
+// choice; the change is logged as by="staff" in the client's activity.
+async function crLoadManager(clientId, notice) {
+  const el = document.getElementById('crManager');
+  if (!el) return;
+  try {
+    const d = (await api(`/api/admin/clients/${Number(clientId)}/manager`)).data;
+    if (crState.clientId !== clientId || !el.isConnected) return;
+    const m = d.manager || {};
+    const current = m.chosen ? m.key : '';
+    el.innerHTML = `
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">${m.chosen
+        ? `הלקוח בחר: <b style="color:var(--white);">${esc(m.names ? m.names.he : m.name)}</b>`
+        : `הלקוח עוד לא בחר — מוצג/ת כברירת מחדל: <b>${esc(m.names ? m.names.he : m.name)}</b> (הבחירה תוצע לו בכניסה הבאה)`}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${(d.options || []).map(o => `<button type="button" class="manage-btn" aria-pressed="${o.key === current}"
+            onclick="crSetManager(${Number(clientId)}, '${esc(o.key)}')"
+            style="display:flex;align-items:center;gap:8px;${o.key === current ? 'border-color:var(--accent);color:var(--accent);' : ''}">
+            <img src="${esc(o.portrait_png)}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;"
+                 onerror="this.style.display='none'">
+            ${esc(o.names ? o.names.he : o.name)}${o.key === current ? ' ✓' : ''}</button>`).join('')}
+      </div>
+      <div id="crManagerMsg" style="font-size:12px;color:var(--gray);margin-top:6px;">${notice ? esc(notice) : ''}</div>`;
+  } catch (e) {
+    if (el.isConnected) el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת מנהל/ת הלקוח</div>';
+  }
+}
+async function crSetManager(clientId, key) {
+  const msg = document.getElementById('crManagerMsg');
+  if (msg) msg.textContent = 'שומר…';
+  try {
+    await api(`/api/admin/clients/${Number(clientId)}/manager`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manager: key }),
+    });
+    crLoadManager(clientId, 'נשמר ✓ — חל מיד בצ׳אט, בכרטיסים, במיילים ובהודעות');
+  } catch (e) {
+    if (msg) msg.textContent = 'השמירה נכשלה (האם המיגרציה manager-persona הורצה?)';
+  }
 }
 
 // ─── per-client cost view (core/cost_tracker.client_cost_view) ──────────────

@@ -56,6 +56,18 @@ body {
 .notice-banner.warn { display: block; background: var(--accent-dim); border: 1px solid rgba(255,76,31,0.3); color: var(--accent); }
 
 .section-head { margin: 34px 0 14px; }
+.manager-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.manager-opt { flex: 1 1 0; min-width: 96px; max-width: 160px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px 8px; cursor: pointer; color: inherit; font-family: inherit; font-size: 13.5px;
+  font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.manager-opt:hover { border-color: var(--accent); }
+.manager-opt[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.manager-opt:disabled { opacity: 0.6; cursor: wait; }
+.manager-face { width: 76px; height: 76px; border-radius: 50%; overflow: hidden; background: var(--accent-dim);
+  display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--accent); }
+.manager-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.manager-mark { font-size: 11px; font-weight: 600; color: var(--accent); min-height: 14px; }
+.manager-note { font-size: 12px; color: var(--gray); margin-top: 8px; min-height: 16px; }
 .section-title { font-size: 17px; font-weight: 700; }
 .section-sub { font-size: 13px; color: var(--gray); margin-top: 2px; }
 
@@ -212,6 +224,16 @@ body {
       <button class="btn small-link" id="removePicBtn" style="display:none;" onclick="removePicture()" data-i18n="pic_remove">הסרת התמונה</button>
     </div>
   </div>
+
+  <!-- ---------- ACCOUNT MANAGER (core/manager_identity) ----------
+       Switchable at any time; the current one is marked. Saved through
+       /api/client/manager; an open dashboard tab picks it up at once. -->
+  <div class="section-head">
+    <div class="section-title" data-i18n="manager_title">מנהל/ת הלקוח שלך</div>
+    <div class="section-sub" data-i18n="manager_why">זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.</div>
+  </div>
+  <div class="manager-row" id="managerRow"></div>
+  <div class="manager-note" id="managerNote"></div>
 
   <!-- ---------- EXTERNAL COSTS ---------- -->
   <div class="section-head">
@@ -403,6 +425,12 @@ const I18N = {
   bye_transfer_title: { he:'המעבר הושלם — בהצלחה בהמשך!', en:'Transfer complete — good luck ahead!', fr:'Transfert terminé — bonne continuation !', ar:'اكتمل النقل — بالتوفيق!', ru:'Переход завершён — удачи в дальнейшем!' },
   bye_body: { he:'המנוי ב-PayPal בוטל ולא יהיו יותר חיובים. שלחנו לך מייל אישור עם עותק מלא של הנתונים שלך כקובץ מצורף', en:'Your PayPal subscription is cancelled — no more charges. We\'ve emailed you a confirmation with a full copy of your data attached', fr:'Votre abonnement PayPal est annulé — plus aucun prélèvement. Un e-mail de confirmation avec une copie complète de vos données vous a été envoyé', ar:'أُلغي اشتراك PayPal ولن تكون هناك رسوم أخرى. أرسلنا لك بريد تأكيد مع نسخة كاملة من بياناتك مرفقة', ru:'Подписка PayPal отменена — списаний больше не будет. Мы отправили письмо-подтверждение с полной копией ваших данных во вложении' },
   bye_close_tail: { he:'. אם תרצו לחזור מתישהו — נשמח לקבל אתכם שוב ❤️', en:'. If you ever want to come back — we\'d love to have you again ❤️', fr:'. Si vous souhaitez revenir un jour — ce sera avec plaisir ❤️', ar:'. إذا أردت العودة يومًا — يسعدنا استقبالك مجددًا ❤️', ru:'. Если когда-нибудь захотите вернуться — будем рады снова ❤️' },
+  manager_title: { he:'מנהל/ת הלקוח שלך', en:'Your account manager', fr:'Votre responsable de compte', ar:'مدير حسابك', ru:'Ваш менеджер' },
+  manager_why: { he:'זה האדם שינהל את החשבון שלך וידבר איתך ביום-יום — אפשר להחליף בכל רגע.', en:'This is the person who will manage your account and talk with you day to day — you can change them any time.', fr:'C\'est la personne qui gérera votre compte et vous parlera au quotidien — vous pouvez changer à tout moment.', ar:'هذا هو الشخص الذي سيدير حسابك ويتحدث معك يوميًا — يمكنك التغيير في أي وقت.', ru:'Этот человек будет вести ваш аккаунт и общаться с вами каждый день — сменить можно в любой момент.' },
+  manager_current: { he:'נבחר/ה ✓', en:'Current ✓', fr:'Actuel ✓', ar:'الحالي ✓', ru:'Текущий ✓' },
+  manager_not_chosen: { he:'עוד לא בחרת — בינתיים מוצג/ת ברירת מחדל.', en:'You haven\'t chosen yet — a default is shown for now.', fr:'Vous n\'avez pas encore choisi — un choix par défaut s\'affiche pour l\'instant.', ar:'لم تختر بعد — يُعرض اختيار افتراضي مؤقتًا.', ru:'Вы ещё не выбрали — пока показан вариант по умолчанию.' },
+  manager_saved: { he:'מעכשיו {name} מלווה אותך ✓', en:'{name} is looking after you from now on ✓', fr:'{name} vous accompagne désormais ✓', ar:'من الآن {name} يرافقك ✓', ru:'Теперь вас ведёт {name} ✓' },
+  manager_save_failed: { he:'לא הצלחנו לשמור את הבחירה כרגע. אפשר לנסות שוב בעוד רגע.', en:'We couldn\'t save your choice right now. Please try again in a moment.', fr:'Impossible d\'enregistrer votre choix pour le moment. Réessayez dans un instant.', ar:'تعذّر حفظ اختيارك الآن. حاول مجددًا بعد قليل.', ru:'Не удалось сохранить выбор. Попробуйте ещё раз чуть позже.' },
   bye_transfer_tail: { he:' — מומלץ להעביר אותו לגורם המנהל החדש. הדלת תמיד פתוחה ❤️', en:' — pass it to your new agency. Our door is always open ❤️', fr:' — transmettez-la à votre nouvelle agence. Notre porte reste ouverte ❤️', ar:' — يُنصح بتمريرها إلى وكالتك الجديدة. بابنا مفتوح دائمًا ❤️', ru:' — передайте её новому агентству. Наши двери всегда открыты ❤️' },
 };
 
@@ -438,6 +466,66 @@ async function loadProfile() {
     renderPicture(c.profile_image);
   } catch (e) {
     console.error('profile load failed', e);
+  }
+}
+
+// ─── the account manager (core/manager_identity) ────────────────────────────
+// Names and faces come only from the server; the page keeps no copy.
+let managerData = null;   // { manager, options }
+
+function managerLabel(m) {
+  return (m.names && m.names[uallakI18n.current()]) || m.name || '';
+}
+
+function renderManagerRow() {
+  const row = document.getElementById('managerRow');
+  if (!managerData) return;
+  const current = managerData.manager && managerData.manager.chosen ? managerData.manager.key : '';
+  row.innerHTML = (managerData.options || []).map(o => {
+    const label = managerLabel(o);
+    const on = o.key === current;
+    return `<button type="button" class="manager-opt" data-key="${esc(o.key)}" aria-pressed="${on}" aria-label="${esc(label)}">
+      <span class="manager-face" data-initial="${esc(label.charAt(0))}"><picture><source srcset="${esc(o.portrait)}" type="image/webp">
+        <img src="${esc(o.portrait_png)}" alt="" onerror="this.closest('.manager-face').textContent = this.closest('.manager-face').dataset.initial"></picture></span>
+      <span>${esc(label)}</span>
+      <span class="manager-mark">${on ? esc(uallakI18n.t('manager_current')) : ''}</span>
+    </button>`;
+  }).join('');
+  row.querySelectorAll('.manager-opt').forEach(b => { b.onclick = () => chooseManager(b.dataset.key); });
+  document.getElementById('managerNote').textContent = current ? '' : uallakI18n.t('manager_not_chosen');
+}
+
+async function loadManager() {
+  try {
+    const res = await fetch('/api/client/manager', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!res.ok || !body.success) return;
+    managerData = body.data;
+    renderManagerRow();
+  } catch (e) {
+    console.error('manager load failed', e);
+  }
+}
+
+async function chooseManager(key) {
+  const buttons = document.querySelectorAll('.manager-opt');
+  buttons.forEach(b => { b.disabled = true; });
+  try {
+    const res = await fetch('/api/client/manager', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manager: key }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.success) throw new Error('manager ' + res.status);
+    managerData = body.data;
+    renderManagerRow();
+    showNotice(uallakI18n.t('manager_saved', { name: managerLabel(managerData.manager) }), 'success');
+    // An open dashboard tab repaints its chat, cards and button right away
+    try { localStorage.setItem('uallak_manager_changed', key + ':' + Date.now()); } catch (e) {}
+  } catch (e) {
+    showNotice(uallakI18n.t('manager_save_failed'), 'warn');
+    renderManagerRow();
   }
 }
 
@@ -773,8 +861,9 @@ uallakI18n.init(I18N);
 uallakI18n.mountSwitcher(document.getElementById('langRow'));
 // Rebuild the JS-rendered areas in the new language (server data is cached
 // ~5min by the agents, so the refetch is cheap)
-uallakI18n.onChange(() => { loadProfile(); loadCosts(); renderAccount(); syncLanguagePreference(); });
+uallakI18n.onChange(() => { loadProfile(); loadCosts(); renderAccount(); syncLanguagePreference(); renderManagerRow(); });
 loadProfile();
+loadManager();
 loadCosts();
 loadAccount();
 

@@ -1,8 +1,11 @@
 """The client's account manager — the ONE source of truth for who the main
 concierge is (2026-10-31).
 
-The concierge has three identities: ג'וני, ניסים and אלינור. The client picks one
-the first time they open the chat, and that choice is THE identity everywhere
+The concierge has three identities: ג'וני, ניסים and אלינור. The CLIENT picks
+one: a client whose choice is still NULL is shown the picker when they open
+the dashboard (existing clients included), and can switch at any time in
+their settings (/profile/ and the dashboard's personal area); staff can set
+it from the Control Room. That choice is THE identity everywhere
 the concierge speaks or signs: the chat window, its cards, the daily login
 greeting (the "morning briefing"), emails, WhatsApp notifications and the
 concierge's own system prompt. Everything reads it from here — nothing else
@@ -13,8 +16,9 @@ identical whichever is chosen: `prompt_line` is the only thing a prompt adds,
 and it says exactly that.
 
 Storage: `clients.manager_persona` (migrations/2026-10-31-manager-persona.sql),
-one of MANAGERS' keys or NULL. NULL means the client never chose, and resolves
-to `default_key`: a client who had picked the old female companion ("דנה",
+one of MANAGERS' keys or NULL. NULL means the client never chose. It is NEVER
+filled in silently — nothing writes the default back. Until they pick, it
+only RENDERS as `default_key`: a client who had picked the old female companion ("דנה",
 stored as owner_gender='female') keeps a woman — אלינור — and everyone else
 gets ג'וני. The specialists (יואב, מאיה, אורי, ליאור) keep their own names;
 their faces are mapped in SPECIALIST_FACES.
@@ -148,3 +152,29 @@ def save_choice(client_id: int, key: str) -> dict:
         print(f"[manager_identity] save failed for client {client_id} (column missing?): {e}")
         return {"success": False, "code": "ERR_MANAGER_NOT_SAVED"}
     return {"success": True, "manager": view(key)}
+
+
+def change(client_id: int, key: str, by: str = "client") -> dict:
+    """Set — or later switch — the client's manager. `by` is "client" or
+    "staff:<who>" (the Control Room, for support cases). Nothing is cached
+    anywhere: every chat turn, card, email, WhatsApp line and morning
+    briefing reads the stored value through for_client / for_client_id, so
+    the new name and face apply from the next thing said. Chat history is
+    kept by persona channel, not by manager, so the open thread stays.
+    Logged as a client_activity row (from → to, by whom)."""
+    if not valid(key):
+        return {"success": False, "code": "ERR_MANAGER_UNKNOWN"}
+    from agents.client_agent import get_client, log_activity
+    try:
+        before = (get_client(client_id) or {}).get("manager_persona")
+    except Exception:
+        before = None
+    saved = save_choice(client_id, key)
+    if not saved.get("success"):
+        return saved
+    try:
+        log_activity(client_id, "manager_identity", "manager_changed" if valid(before) else "manager_chosen",
+                     {"from": before if valid(before) else None, "to": key, "by": by})
+    except Exception as e:
+        print(f"[manager_identity] change log failed for client {client_id}: {e}")
+    return saved

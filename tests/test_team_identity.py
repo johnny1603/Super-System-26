@@ -293,7 +293,7 @@ class Manager(unittest.TestCase):
         self.assertIn('"manager": manager_identity.for_client(client', api)
         self.assertIn('"manager_options": manager_identity.options(', api)
         self.assertIn("manager_persona: str | None = None", api)
-        self.assertIn("manager_identity.save_choice(client_id, req.manager_persona)", api)
+        self.assertIn('manager_identity.change(client_id, req.manager_persona, by="client")', api)
 
     def test_dashboard_keeps_no_copy_of_the_names(self):
         html = _src("dashboard", "client", "index.html")
@@ -305,7 +305,7 @@ class Manager(unittest.TestCase):
             for nm in mi.MANAGERS[key]["name"].values():
                 self.assertNotIn(nm, code, nm)
         self.assertIn("initManager(d.manager, d.manager_options)", html)
-        self.assertIn("body: JSON.stringify({ manager_persona: key })", _js_function(html, "chooseManager"))
+        self.assertIn("body: JSON.stringify({ manager: key })", _js_function(html, "chooseManager"))
         self.assertNotIn("persona_male", html)
 
     def test_migration(self):

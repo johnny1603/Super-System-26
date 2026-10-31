@@ -5862,9 +5862,9 @@ async def client_profile(req: ClientProfileRequest, request: Request):
     client_id = _require_session(request)
     manager = None
     if req.manager_persona is not None:
-        # Its own write (manager_identity.save_choice), so a not-yet-migrated
+        # Its own write (manager_identity.change), so a not-yet-migrated
         # column fails THIS choice loudly and never the rest of the profile
-        saved = manager_identity.save_choice(client_id, req.manager_persona)
+        saved = manager_identity.change(client_id, req.manager_persona, by="client")
         if not saved.get("success"):
             raise HTTPException(status_code=400 if saved["code"] == "ERR_MANAGER_UNKNOWN" else 503,
                                 detail={"code": saved["code"]})
@@ -6143,6 +6143,46 @@ def admin_lead_status(request: Request, lead_id: str, req: AdminLeadStatusReques
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "bad status"))
     return {"success": True, "data": result}
+
+class ManagerChoiceRequest(BaseModel):
+    manager: str   # johnny|nissim|elinor (core/manager_identity)
+
+def _manager_payload(client_id: int) -> dict:
+    client = get_client(client_id) or {}
+    lang = client.get("language") or "he"
+    return {"manager": manager_identity.for_client(client, lang), "options": manager_identity.options(lang)}
+
+def _manager_change(client_id: int, key: str, by: str) -> dict:
+    saved = manager_identity.change(client_id, key, by=by)
+    if not saved.get("success"):
+        raise HTTPException(status_code=400 if saved["code"] == "ERR_MANAGER_UNKNOWN" else 503,
+                            detail={"code": saved["code"]})
+    return {"success": True, "data": _manager_payload(client_id)}
+
+@app.get("/api/client/manager")
+def client_manager(request: Request):
+    # The settings switcher (and an open dashboard tab catching up after a
+    # switch made on /profile/): the current manager + the three options
+    client_id = _require_session(request)
+    return {"success": True, "data": _manager_payload(client_id)}
+
+@app.post("/api/client/manager")
+def client_manager_change(req: ManagerChoiceRequest, request: Request):
+    return _manager_change(_require_session(request), req.manager, "client")
+
+@app.get("/api/admin/clients/{client_id}/manager")
+def admin_client_manager(client_id: int, request: Request):
+    _require_admin(request)
+    return {"success": True, "data": _manager_payload(client_id)}
+
+@app.post("/api/admin/clients/{client_id}/manager")
+def admin_client_manager_change(client_id: int, req: ManagerChoiceRequest, request: Request):
+    # Support cases: staff set it from the Control Room. Logged by="staff"
+    # (the admin session has no per-person identity)
+    _require_admin(request)
+    if not get_client(client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    return _manager_change(client_id, req.manager, "staff")
 
 @app.get("/api/admin/clients/{client_id}")
 def admin_client_detail(client_id: int, request: Request):
