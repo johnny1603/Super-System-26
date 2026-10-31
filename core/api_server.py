@@ -1475,7 +1475,11 @@ async def client_chat_history(request: Request, scope: str = "current", persona:
         raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_PERSONA"})
     channel = persona_channel(persona)
     history = list(reversed(get_communications(client_id, limit=200, channel=channel)))
-    boundary = get_client(client_id).get("chat_started_at")
+    # The window opens at the later of 'new chat' and the daily 08:00 rollover
+    # (core/chat_rollover) — nothing is deleted, earlier days stay browsable
+    from core import chat_rollover
+    window = chat_rollover.window(client_id, channel, get_client(client_id).get("chat_started_at"))
+    boundary = window["start"]
     current = ([h for h in history if (h.get("created_at") or "") >= boundary]
                if boundary else history)
     return {
@@ -1483,6 +1487,8 @@ async def client_chat_history(request: Request, scope: str = "current", persona:
         "history": history if scope == "all" else current,
         "chat_started_at": boundary,
         "has_previous": len(history) > len(current),
+        # The dashboard shows ONE quiet line ("יום חדש, הכול שמור") — never a reset message
+        "rolled_over": window["rolled_over"],
     }
 
 @app.get("/api/client-chat/unread")
@@ -5994,8 +6000,16 @@ def admin_view_as_exit(request: Request, response: Response):
 @app.get("/api/admin/model-costs")
 def admin_model_costs(request: Request, days: int = 7):
     _require_admin(request)
-    from core import model_routing
-    return {"success": True, "data": {"routing": model_routing.summary(days)}}
+    from core import chat_rollover, model_routing
+    return {"success": True, "data": {"routing": model_routing.summary(days),
+                                      "rollover": chat_rollover.stats(days)}}
+
+@app.get("/api/chat/rollover", dependencies=_admin_only)
+def chat_rollover_run():
+    # Cloud Scheduler: 08:00 Asia/Jerusalem + catch-up runs for windows that
+    # were deferred (scripts/schedule_chat_rollover.sh). Idempotent per day.
+    from core import chat_rollover
+    return {"success": True, "data": chat_rollover.run()}
 
 # ─── The owner's operator (core/operator_agent, docs/OPERATOR.md) ────────────
 # Admin session only — never an admin_view (enter-as-client) route, never a

@@ -12,7 +12,7 @@ round-2 Google flags request OAuth scopes Google has not approved yet): those
 can be switched OFF here as a kill switch, never ON — an ON override for them
 is refused when written AND ignored when read.
 
-A flag listed with `"default": True` (the chat routing switch)
+A flag listed with `"default": True` (the chat routing / rollover switches)
 is ON when its env var is unset — their OFF is the operator's kill switch.
 
 Reads are cached CACHE_SECONDS per instance; an unreadable table means "no
@@ -36,6 +36,10 @@ FLAGS = {
         "label_he": "ניתוב מודלים בצ'אט (מודל זול לשאלות פשוטות). כבוי = הכול על המודל החזק",
         "can_turn_on": True, "default": True,
         "note_he": "כיבוי משפיע תוך 30 שניות בכל השרתים."},
+    "CHAT_ROLLOVER_ENABLED": {
+        "label_he": "פתיחת יום חדש בצ'אט כל בוקר ב-08:00 (סיכום + ארכיון, בלי למחוק)",
+        "can_turn_on": True, "default": True,
+        "note_he": "כיבוי עוצר את המעבר היומי מיד; שום דבר לא נמחק בכל מקרה."},
     "PRESENTER_VIDEO_ALL_CLIENTS": {
         "label_he": "סרטוני מציג פתוחים לכל הלקוחות (לא רק לחשבונות פנימיים)",
         "can_turn_on": True,

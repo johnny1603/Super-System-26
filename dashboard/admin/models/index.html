@@ -57,6 +57,10 @@ select { font-family:inherit; font-size:14px; background:var(--panel-2); color:v
     </div>
     <div id="routing" class="muted" style="margin-top:10px;">טוען…</div>
   </div>
+  <div class="card">
+    <h2>יום חדש בצ'אט (08:00)</h2>
+    <div id="rollover" class="muted">טוען…</div>
+  </div>
 </div>
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -90,12 +94,32 @@ function renderRouting(r) {
     <div class="muted" style="margin-top:8px;">כולל את עלות המסווג. נעולים (מנהל, ראיון פתיחה) תמיד ברמה "כבד".</div>`;
 }
 
+function renderRollover(r) {
+  const el = document.getElementById("rollover");
+  if (!r.table_ready) {
+    el.innerHTML = "טבלת הסיכומים עוד לא קיימת — להריץ את migrations/2026-11-01-chat-rollover.sql ב-Supabase.";
+    return;
+  }
+  el.className = "";
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="muted">חלונות שהתחלפו</span><b>${r.rolled}</b></div>
+      <div class="kpi"><span class="muted">היסטוריה ממוצעת לפני (תווים)</span><b>${Number(r.avg_history_chars_before).toLocaleString("he-IL")}</b></div>
+      <div class="kpi"><span class="muted">הקשר ממוצע אחרי (תווים)</span><b>${Number(r.avg_context_chars_after).toLocaleString("he-IL")}</b></div>
+      <div class="kpi"><span class="muted">עלות סיכום לחלון</span><b>${ils(r.summary_cost_per_window_ils)}</b></div>
+    </div>
+    <div style="margin-top:12px;">${r.enabled ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי</span>'}
+      ${r.failed ? ` · <span class="badge warn">${r.failed} סיכומים נכשלו — החלון הישן נשאר</span>` : ""}
+      <span class="muted"> · ממוצע ${r.avg_messages_archived} הודעות בארכיון לחלון · סה"כ ${ils(r.summary_cost_ils)}</span></div>`;
+}
+
 async function load() {
   const days = document.getElementById("days").value;
   const res = await fetch("/api/admin/model-costs?days=" + encodeURIComponent(days), {credentials: "same-origin"});
   if (res.status === 401) { document.getElementById("authNote").style.display = "block"; return; }
   const body = await res.json();
   renderRouting(body.data.routing);
+  renderRollover(body.data.rollover);
 }
 document.getElementById("days").addEventListener("change", load);
 load().catch(() => { document.getElementById("routing").textContent = "הטעינה נכשלה. אפשר לרענן."; });

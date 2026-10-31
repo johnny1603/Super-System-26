@@ -595,6 +595,8 @@ body {
 
 .chat-load-prev { text-align: center; font-size: 11.5px; color: var(--accent); cursor: pointer; padding: 2px 0 6px; }
 .chat-divider { text-align: center; color: var(--gray); font-size: 11px; margin: 4px 0; }
+.chat-new-day { text-align: center; color: var(--gray); font-size: 11.5px; padding: 2px 0 6px; }
+.chat-new-day .chat-load-prev { display: inline; padding: 0; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 10px; }
 .chip {
@@ -2658,6 +2660,7 @@ const DASH_I18N = {
   action_not_sent: { he:'זה לא הגיע אלינו — נסו שוב בעוד רגע.', en:'That didn\'t reach us — please try again in a moment.', fr:'Cela ne nous est pas parvenu — réessayez dans un instant.', ar:'لم يصلنا ذلك — حاولوا مرة أخرى بعد لحظة.', ru:'Запрос не дошёл — попробуйте ещё раз чуть позже.' },
   chat_error: { he:'נראה שההודעה הזו לא הגיעה אליי — החזרתי אותה לתיבה, אפשר לשלוח שוב.', en:'Looks like that message didn\'t reach me — I put it back in the box so you can send it again.', fr:'On dirait que ce message ne m\'est pas parvenu — je l\'ai remis dans la zone de saisie pour que vous puissiez le renvoyer.', ar:'يبدو أن هذه الرسالة لم تصلني — أعدتها إلى خانة الكتابة لتتمكنوا من إرسالها مجددًا.', ru:'Похоже, это сообщение до меня не дошло — оно снова в поле ввода, можно отправить ещё раз.' },
   chat_prev: { he:'הצג שיחות קודמות', en:'Show previous conversations', fr:'Voir les discussions précédentes', ar:'عرض المحادثات السابقة', ru:'Показать прошлые беседы' },
+  chat_new_day: { he:'יום חדש, הכול שמור', en:'A new day, everything is saved', fr:'Nouvelle journée, tout est conservé', ar:'يوم جديد، كل شيء محفوظ', ru:'Новый день, всё сохранено' },
   chat_divider: { he:'— שיחה חדשה —', en:'— new conversation —', fr:'— nouvelle discussion —', ar:'— محادثة جديدة —', ru:'— новая беседа —' },
   chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
   greet_back: { he:'טוב לראות אותך שוב{name} 👋', en:'Good to see you again{name} 👋', fr:'Ravi de vous revoir{name} 👋', ar:'سعيد برؤيتك مجددًا{name} 👋', ru:'Рады видеть вас снова{name} 👋' },
@@ -5567,7 +5570,19 @@ async function loadWindowHistory(personaId) {
                             { credentials: 'same-origin' });
     const data = await res.json();
     if (!data.success) return;
-    if (data.has_previous) {
+    if (data.rolled_over) {
+      // The daily 08:00 rollover: one quiet line, never a reset message —
+      // the agent remembers (summaries) and every message is still here
+      const line = document.createElement('div');
+      line.className = 'chat-new-day';
+      line.dataset.role = 'new-day';
+      const link = document.createElement('span');
+      link.className = 'chat-load-prev';
+      link.textContent = uallakI18n.t('chat_prev');
+      line.append(uallakI18n.t('chat_new_day') + ' · ', link);
+      link.onclick = () => loadPrevInWindow(personaId, line);
+      w.msgsEl.prepend(line);
+    } else if (data.has_previous) {
       const link = document.createElement('div');
       link.className = 'chat-load-prev';
       link.textContent = uallakI18n.t('chat_prev');

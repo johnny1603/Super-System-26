@@ -251,6 +251,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   ON; off = all opus). Per-turn log `chat_turn_routes` (migrations/2026-11-01-chat-routing.sql),
   admin page `/admin/models/`. Prompt caching: `claude_json.cached_system()` — static prompt
   cached, client data after it. `tests/test_model_routing.py`, `tests/test_prompt_caching.py`.
+- `core/chat_rollover.py` — every chat window (client × agent channel) opens fresh at 08:00
+  Asia/Jerusalem: haiku summary → `chat_summaries` (migrations/2026-11-01-chat-rollover.sql),
+  messages stay in client_communications (never deleted), agent context = latest summary + ≤2
+  earlier (`window()`, payload `previous_days`). Deferred while the client wrote in the last 30
+  min; failed summary (after one retry) = old window kept + admin alert. Job
+  `GET /api/chat/rollover` (scripts/schedule_chat_rollover.sh), flag `CHAT_ROLLOVER_ENABLED`
+  (default ON). Dashboard line "יום חדש, הכול שמור". `tests/test_chat_rollover.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
   resolved first inside `_require_session` and allowed only for endpoints in
