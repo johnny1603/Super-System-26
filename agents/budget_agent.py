@@ -325,30 +325,11 @@ def get_external_client_paid_costs(client_id: int) -> dict:
     else:
         result["higgsfield"] = {"connected": False}
 
-    from agents.avatar_agent import get_monthly_usage as avatar_usage, HEYGEN_PLATFORM, ELEVENLABS_PLATFORM
-    if HEYGEN_PLATFORM in connected_platforms:
-        usage = avatar_usage(client_id)
-        minutes = usage["minutes_used"]
-        low, high = HEYGEN_USD_PER_MIN_RANGE
-        result["heygen"] = {
-            "connected": True, "confidence": ESTIMATE,
-            "minutes_used_this_month": minutes,
-            "tier": usage["tier"],
-            "estimated_usd_range": [round(minutes * low, 2), round(minutes * high, 2)],
-            "estimated_ils_range": [usd_to_ils(minutes * low), usd_to_ils(minutes * high)],
-            "note": (f"Minutes are real — HeyGen's own render duration, tracked by "
-                     f"avatar_agent. The $ range is a wide ESTIMATE from HeyGen's "
-                     f"published per-minute API pricing (${low}-${high}/min depending on "
-                     f"avatar model, which isn't recorded per video) — not the client's "
-                     f"actual invoice. HeyGen does expose a wallet-balance endpoint "
-                     f"(v2/user/remaining_quota) that could give a real current-balance "
-                     f"reading, but its semantics/units after the Feb-2026 pay-as-you-go "
-                     f"migration weren't verifiable with confidence — flagged as a "
-                     f"future one-round check, not wired in here to avoid presenting "
-                     f"an unverified number as real."),
-        }
-    else:
-        result["heygen"] = {"connected": False}
+    from agents.avatar_agent import ELEVENLABS_PLATFORM
+    # HeyGen was retired 2026-10-31 (presenter clips now draw the client's
+    # Higgsfield credits, counted above as the tool's own usage). A stored
+    # HeyGen row is never reported as a running cost any more.
+    result["heygen"] = {"connected": False, "retired": True}
 
     if ELEVENLABS_PLATFORM in connected_platforms:
         result["elevenlabs"] = {

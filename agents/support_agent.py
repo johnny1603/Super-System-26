@@ -356,14 +356,18 @@ account_state.voice.voice_clone_consent is true (the consent sits on the "הקו
 it, say plainly that the recording is used only as an audio track. When clone_voice or
 make_presenter_video is listed, the client may approve it here as a card (it runs in the background
 and the card itself tells them how long it takes and updates when done — never promise a time
-yourself); when it is not listed, the team makes them. The presenter is the one marked chosen in
-creative_tools.video_providers, and one whose "ready" is false is not available yet — never
-promise it.
+yourself); when it is not listed, the team makes them. The presenter is the one in
+creative_tools.video_providers; when its "ready" is false it is not available yet — never
+promise it. A presenter video is a SHORT clip: at most 15 seconds of speech (about 35 words) or a
+recording of at most 15 seconds. When the client wants a longer text, say so plainly and offer
+to split it into several short clips — never shorten their words yourself and never imply one
+long video is possible.
 
-PHOTOS → PRESENTER: photos of the client in account_state.media_folder.images (e.g. uploaded in a
-chat) can become their presenter character. When they ask for a presenter/character/avatar from
-photos and create_presenter_from_photos is listed, propose it with the drive_file_id values of
-the photos they mean (the newest ones when they just uploaded them) — even if a tool or the
+PHOTOS → PRESENTER: a photo of the client in account_state.media_folder.images (e.g. uploaded in a
+chat), or an AI image we generated for them that they liked, can become their presenter character.
+When they ask for a presenter/character/avatar from a photo and create_presenter_from_photos is
+listed, propose it with the drive_file_id values of the photos they mean (the newest ones when
+they just uploaded them) — even if a tool or the
 likeness consent is missing: the system then shows the ONE card that fixes exactly that, and
 names it. When "avatar" is in account_state.package.not_in_package, it is the upgrade path below.
 
@@ -486,8 +490,9 @@ clarifying question first instead) - set "upgrade_request" to a short ENGLISH su
 what they want (services, budgets, constraints - pull specifics from conversation_history), and
 put in "reply" a short holding line ("רגע, מכינים לך הצעה מסודרת 🙏") used only if the build
 fails. The system then builds a real, priced proposal using the same pricing brain as
-onboarding - this also covers the avatar/digital-twin video add-on (a real person's likeness on
-video, via HeyGen/ElevenLabs) when a client asks about it by name or describes wanting a digital
+onboarding - this also covers the avatar/presenter video add-on (short clips, up to 15 seconds
+each, of a presenter made from their own photos or an AI character, speaking in their recorded or
+cloned voice) when a client asks about it by name or describes wanting a digital
 version of themselves/their team presenting content; the pricing brain decides whether it's
 actually a good fit for their business, same as any other upgrade - never promise it yourself or
 quote a number in "reply" beyond the holding line. When "upgrade_request" is set,
@@ -1157,7 +1162,7 @@ def _tiktok_view(client_id: int) -> dict:
     return view
 
 
-def _presenter_readiness(tools_section: dict, ready_avatars) -> dict:
+def _presenter_readiness(tools_section: dict, ready_avatars, client_id: int = None) -> dict:
     """Which video presenter can really make a video now — from the cached
     creative_tools section, in capability language (label), ids only for
     action params."""
@@ -1167,7 +1172,7 @@ def _presenter_readiness(tools_section: dict, ready_avatars) -> dict:
     presenters = [{"tool": p.get("tool"), "label": p.get("label_he"), "connected": bool(p.get("connected")),
                    "ready": bool(p.get("ready")), "chosen": bool(p.get("chosen"))}
                   for p in tools_section.get("video_providers") or []]
-    notice = avatar_video.runnable_notice(connected)
+    notice = avatar_video.runnable_notice(connected, client_id)
     return {"presenters": presenters,
             "can_make_presenter_video": any(p["connected"] and p["ready"] for p in presenters),
             "ready_filmed_likenesses": ready_avatars,
@@ -1232,7 +1237,7 @@ def _media_reads(client_id: int) -> dict:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: avatar reads failed: {e}")
     try:
         if tools_section:
-            data["avatar_readiness"] = _presenter_readiness(tools_section, ready_avatars)
+            data["avatar_readiness"] = _presenter_readiness(tools_section, ready_avatars, client_id)
     except Exception as e:
         log_step(AGENT_NAME, "persona_reads", f"client {client_id}: avatar readiness failed: {e}")
     return data

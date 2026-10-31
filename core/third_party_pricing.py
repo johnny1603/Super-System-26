@@ -18,8 +18,8 @@ the relevant skill (avatar, media, website, budget) for how each is used.
 THIRD_PARTY_PRICING = {
     "higgsfield": {
         "vendor": "Higgsfield",
-        "what_for": ("Client-paid image/video generation (media_agent) — the client's own "
-                     "account and card; we never bill for this."),
+        "what_for": ("Client-paid image/video generation (media_agent) AND the presenter clips "
+                     "(avatar_video) — the client's own account and card; we never bill for this."),
         "pricing_url": "https://higgsfield.ai/pricing",
         "checked_at": "2026-07-21",
         "currency": "USD",
@@ -38,9 +38,11 @@ THIRD_PARTY_PRICING = {
     },
     "heygen": {
         "vendor": "HeyGen",
-        "what_for": ("Client-paid avatar creation/video generation (avatar_agent) — pay-as-you-go "
-                     "API wallet, no required subscription for one avatar (web-UI twin creation "
-                     "works on every HeyGen plan including Free)."),
+        # RETIRED 2026-10-31: the presenter is Higgsfield. Kept as history;
+        # price_monitor_agent skips retired entries.
+        "retired": True,
+        "what_for": ("RETIRED — was client-paid avatar creation/video generation (avatar_agent) — "
+                     "pay-as-you-go API wallet."),
         "pricing_url": "https://www.heygen.com/api-pricing",
         "checked_at": "2026-07-20",
         "currency": "USD",

@@ -44,7 +44,8 @@ def _src(*parts) -> str:
 
 
 HANDOFF_ALERTS = []
-AVATAR = {"consent": True, "calls": [], "result": {"success": True, "method": "photo_avatar", "name": "x"}}
+AVATAR = {"consent": True, "calls": [], "generated": set(),
+          "result": {"success": True, "method": "character_image", "name": "x"}}
 
 
 def _create_avatar(client_id, avatar_name="", photo_ids=None):
@@ -69,6 +70,7 @@ STUBS = {
                                log_step=lambda *a, **k: None, timed_step=lambda a, s, fn: fn()),
     "agents.avatar_agent": _module("agents.avatar_agent", has_consent=lambda cid, scope: AVATAR["consent"],
                                    create_avatar=_create_avatar, list_ready_avatars=lambda cid: [],
+                                   generated_image_ids=lambda cid: set(AVATAR["generated"]),
                                    current_voice_id=lambda cid: ""),
 }
 _SAVED = {name: sys.modules.get(name) for name in list(STUBS) + ["agents.support_agent"]}
@@ -109,7 +111,8 @@ class Base(unittest.TestCase):
                                                          "name": f"{value}.jpg"})
         aa._presenter_tool_status = lambda cid: "connected"
         cs.cached_package = lambda cid: {"readable": True, "services": ["avatar"], "not_in_package": []}
-        AVATAR.update(consent=True, calls=[], result={"success": True, "method": "photo_avatar", "name": "x"})
+        AVATAR.update(consent=True, calls=[], generated=set(),
+                      result={"success": True, "method": "character_image", "name": "x"})
 
     def tearDown(self):
         for name, fn in self.saved.items():
@@ -247,11 +250,26 @@ def _state(services=("avatar",), readable=True, images=1):
                              "images": [{"drive_file_id": f"img{i}"} for i in range(images)]}}
 
 
+INTERNAL = dict(CLIENT, billing_exempt=True)
+
+
 class PresenterFromPhotos(Base):
-    def propose(self, photos, state=None):
+    """Internal test clients only until the presenter ran live
+    (core/avatar_video.open_to_all) — so these run as an internal client."""
+
+    def setUp(self):
+        super().setUp()
+        aa._client = lambda cid: dict(INTERNAL, id=cid)
+
+    def propose(self, photos, state=None, client=None):
         return aa.propose(40, "client_chat", "media", {"name": "create_presenter_from_photos",
                                                        "params": {"photo_ids": photos}},
-                          state=state or _state(), client=CLIENT, context={"language": "he"})
+                          state=state or _state(), client=client or INTERNAL, context={"language": "he"})
+
+    def test_a_paying_client_is_not_offered_it_until_it_ran_live(self):
+        self.assertEqual(self.propose(["imgA"], client=CLIENT), {"error": "internal_only"})
+        names = [a["name"] for a in aa.available(40, "client_chat", _state(), client=CLIENT)]
+        self.assertNotIn("create_presenter_from_photos", names)
 
     def test_offered_only_when_the_package_has_it_and_there_are_photos(self):
         possible = aa.ACTIONS["create_presenter_from_photos"]["available"]
@@ -259,22 +277,23 @@ class PresenterFromPhotos(Base):
         self.assertFalse(possible(_state(services=("google ads",)), CLIENT))
         self.assertFalse(possible(_state(readable=False), CLIENT))
         self.assertFalse(possible(_state(images=0), CLIENT))
-        names = [a["name"] for a in aa.available(40, "client_chat", _state(), client=CLIENT)]
+        names = [a["name"] for a in aa.available(40, "client_chat", _state(), client=INTERNAL)]
         self.assertIn("create_presenter_from_photos", names)
 
     def test_everything_in_place_gives_the_card(self):
         out = self.propose(["imgA", "imgB"])
         self.assertEqual(out["card"]["action"], "create_presenter_from_photos")
         self.assertTrue(out["card"]["can_decide"])
-        self.assertIn("2", out["card"]["what"])
+        self.assertIn("התמונה שבחרתם", out["card"]["what"])
+        self.assertIn("עד 15 שניות", out["card"]["what"])          # length said before the click
         self.assertIsNone(VENDOR.search(out["card"]["what"]))
 
     def test_missing_tool_names_it_and_offers_only_its_card(self):
         aa._presenter_tool_status = lambda cid: "not_connected"
         out = self.propose(["imgA"])
         self.assertEqual(out["card"]["action"], "connect_creative_tool")
-        self.assertEqual(self.rows("connect_creative_tool")[0]["params"], {"tool": "heygen"})
-        label = aa._creative_label("heygen", "he")
+        self.assertEqual(self.rows("connect_creative_tool")[0]["params"], {"tool": "higgsfield"})
+        label = aa._creative_label("higgsfield", "he")
         self.assertIn(label, out["notice"])
         self.assertIsNone(VENDOR.search(out["notice"]))
         self.assertEqual(self.rows("create_presenter_from_photos"), [])
@@ -284,7 +303,13 @@ class PresenterFromPhotos(Base):
         out = self.propose(["imgA"])
         self.assertEqual(out["card"]["action"], "connect_creative_tool")    # the card that carries the consent
         self.assertIn("אישור", out["notice"])
+        self.assertEqual(self.rows("connect_creative_tool")[0]["params"], {"tool": "higgsfield"})
         self.assertEqual(self.rows("create_presenter_from_photos"), [])
+
+    def test_an_ai_image_we_made_needs_no_likeness_consent(self):
+        AVATAR.update(consent=False, generated={"imgA"})
+        out = self.propose(["imgA"])
+        self.assertEqual(out["card"]["action"], "create_presenter_from_photos")
 
     def test_not_in_the_package_offers_the_upgrade(self):
         cs.cached_package = lambda cid: {"readable": True, "services": ["google ads"], "not_in_package": ["avatar"]}
@@ -316,10 +341,11 @@ class PresenterFromPhotos(Base):
         self.assertEqual((row["status"], row["outcome"]), ("failed", "no_consent"))
         self.assertIn("אישור", self.posted[-1][2])
 
-    def test_avatar_agent_checks_consent_before_touching_any_photo(self):
+    def test_avatar_agent_checks_consent_before_copying_any_photo(self):
         src = _src("agents", "avatar_agent.py")
         body = src.split("def create_avatar(", 1)[1].split("\ndef ", 1)[0]
-        self.assertLess(body.index('has_consent(client_id, "likeness")'), body.index("if photo_ids:"))
+        self.assertLess(body.index('has_consent(client_id, "likeness")'), body.index("drive.download_file("))
+        self.assertLess(body.index('has_consent(client_id, "likeness")'), body.index("drive.upload_bytes("))
         self.assertIn('"code": "no_consent"', body)
 
     def test_photo_validator_proves_every_file(self):

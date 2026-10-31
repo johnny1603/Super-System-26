@@ -1,19 +1,23 @@
 """The client-paid creative tools — each one its OWN connection.
 
-HeyGen (avatar video in the client's likeness), ElevenLabs (the client's
-voice clone + speech in it) and Higgsfield (generated images / video /
-characters) used to share cards and forms; HeyGen + ElevenLabs were even
-connected and disconnected together. Here every tool is independent:
+ElevenLabs (the client's voice clone + speech in it) and Higgsfield
+(generated images / video, AND the presenter — the client's character
+speaking an audio track, core/avatar_video). Every tool is independent:
 
-- its own key (one `client_accounts` row per tool — the SAME rows that
-  existed before, so clients already connected keep working with no
-  re-entry), its own Connect, Test connection, status and Disconnect (which
-  deletes that tool's row and nothing else);
-- its own consent where the law of likeness needs one: `likeness` belongs to
-  HeyGen (required to connect it), `voice` (cloning) belongs to ElevenLabs
-  and is optional — without it a recording can still be used as a plain
-  audio track, never cloned (agents/avatar_agent.has_consent);
+- its own key (one `client_accounts` row per tool), its own Connect, Test
+  connection, status and Disconnect (which deletes that tool's row and
+  nothing else);
+- its own consent where the law of likeness needs one: `likeness` sits on
+  the Higgsfield card (optional there — it is required only before a
+  presenter is made from the client's OWN photos; AI images need none),
+  `voice` (cloning) on the ElevenLabs card, also optional — without it a
+  recording can still be used as a plain audio track, never cloned
+  (agents/avatar_agent.has_consent);
 - its own help entry (core/connection_help, same id).
+
+HEYGEN IS RETIRED (2026-10-31): it is in RETIRED_TOOLS, not TOOLS — never
+offered, no card, no Connect, no help entry. A stored row (internal test
+clients only) is left intact; ownership and Disconnect still see it.
 
 STATUS per tool: connected | connected_unverified (stored; the vendor has no
 key-check we can call, or it could not be reached — the first real job is
@@ -51,37 +55,39 @@ def _t(he, en, fr, ar, ru) -> dict:
 
 
 TOOLS = {
-    "heygen": {"label": "HeyGen", "platform": "heygen", "help_id": "heygen",
-               "client_label": _t("הדמות שבסרטונים — דמות מצולמת שלך",
-                                  "Your video presenter — a filmed likeness of you",
-                                  "Votre présentateur vidéo — votre image filmée",
-                                  "الشخصية في الفيديوهات — شخصيتك المصوَّرة",
-                                  "Ведущий ваших видео — ваш снятый образ"),
-               "what_he": "סרטונים שבהם הדמות המצולמת שלך מדברת",
-               "consent": "likeness", "consent_required": True},
     "elevenlabs": {"label": "ElevenLabs", "platform": "elevenlabs", "help_id": "elevenlabs",
                    "client_label": _t("הקול שלך", "Your voice", "Votre voix", "صوتك", "Ваш голос"),
                    "what_he": "שיבוט הקול שלך והקראה בקול שלך",
                    "consent": "voice", "consent_required": False},
     "higgsfield": {"label": "Higgsfield", "platform": "higgsfield", "help_id": "higgsfield",
-                   "client_label": _t("הדמות שבסרטונים — דמות AI",
-                                      "Your video presenter — an AI presenter",
-                                      "Votre présentateur vidéo — un présentateur IA",
-                                      "الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي",
-                                      "Ведущий ваших видео — ИИ-ведущий"),
-                   "what_he": "דמות AI, תמונות וסרטונים שנוצרים במחשב",
-                   "consent": None, "consent_required": False},
+                   "client_label": _t("הדמות שבסרטונים ותמונות AI",
+                                      "Your video presenter and AI images",
+                                      "Votre présentateur vidéo et images IA",
+                                      "الشخصية في الفيديوهات وصور الذكاء الاصطناعي",
+                                      "Ведущий ваших видео и ИИ-изображения"),
+                   "what_he": "הדמות שמדברת בסרטונים שלך (מתמונה שלך או דמות AI), ותמונות וסרטונים שנוצרים במחשב",
+                   "consent": "likeness", "consent_required": False},
+}
+
+# Retired tools: never offered (no card, no Connect, no help entry), but a
+# client's stored row stays and Disconnect/ownership still reach it.
+RETIRED_TOOLS = {
+    "heygen": {"label": "HeyGen", "platform": "heygen", "retired_on": "2026-10-31",
+               "client_label": _t("כלי הדמות המצולמת הקודם", "The previous filmed-presenter tool",
+                                  "L'ancien outil de présentateur filmé", "أداة الشخصية المصوَّرة السابقة",
+                                  "Прежний инструмент снятого ведущего")},
 }
 
 
 def client_label(tool: str, lang: str = "he") -> str:
     """What the client reads for a tool — never the vendor's name."""
-    labels = (TOOLS.get(tool) or {}).get("client_label") or {}
+    labels = (TOOLS.get(tool) or RETIRED_TOOLS.get(tool) or {}).get("client_label") or {}
     return labels.get(lang) or labels.get("he") or ""
 
 
 _VENDOR_RE = re.compile(r"\b(heygen|eleven\s?labs|higgsfield)(?:'s)?\b", re.IGNORECASE)
-_VENDOR_TOOL = {"heygen": "heygen", "elevenlabs": "elevenlabs", "higgsfield": "higgsfield"}
+# A reply that still says "HeyGen" is talking about the presenter — which is Higgsfield now
+_VENDOR_TOOL = {"heygen": "higgsfield", "elevenlabs": "elevenlabs", "higgsfield": "higgsfield"}
 
 
 def scrub_vendor_names(text: str, lang: str = "he") -> str:
@@ -165,11 +171,6 @@ def _probe(url: str, headers: dict, rejected_ok_statuses=()) -> str:
     return "unknown"
 
 
-def _check_heygen(key: str) -> str:
-    from core import heygen_service as hg
-    return _probe(f"{hg.API_BASE}/v2/user/remaining_quota", {"X-Api-Key": key})
-
-
 def _check_elevenlabs(key: str) -> str:
     from core import elevenlabs_service as el
     return _probe(f"{el.API_BASE}/v1/user", {"xi-api-key": key},
@@ -178,7 +179,7 @@ def _check_elevenlabs(key: str) -> str:
 
 # Higgsfield publishes no key-check endpoint we could verify: a stored key is
 # "connected_unverified" until a real generation succeeds or is refused.
-CHECKS = {"heygen": _check_heygen, "elevenlabs": _check_elevenlabs}
+CHECKS = {"elevenlabs": _check_elevenlabs}
 
 
 # ─── Status ──────────────────────────────────────────────────────────────────
@@ -199,6 +200,8 @@ def _consent(client_id: int, scope):
 
 
 def status(client_id: int, tool: str, accounts: dict = None, record: dict = None) -> str:
+    if tool not in TOOLS:
+        return "not_connected"   # unknown or retired: nothing can run on it
     accounts = _accounts(client_id) if accounts is None else accounts
     row = accounts.get(TOOLS[tool]["platform"])
     if not row or not row.get("has_secret"):
@@ -324,11 +327,13 @@ def test(client_id: int, tool: str) -> dict:
 def disconnect(client_id: int, tool: str) -> dict:
     """Deletes THIS tool's stored key and health — nothing else (the other
     tools, consents, recordings and videos stay). The key itself lives on the
-    client's own vendor account, where they can revoke it too."""
-    if tool not in TOOLS:
+    client's own vendor account, where they can revoke it too. A retired
+    tool's stored row can still be disconnected."""
+    spec = TOOLS.get(tool) or RETIRED_TOOLS.get(tool)
+    if not spec:
         raise ToolError("unknown_tool")
     from agents.client_agent import remove_accounts
-    removed = remove_accounts(client_id, [TOOLS[tool]["platform"]])
+    removed = remove_accounts(client_id, [spec["platform"]])
     _set_health(client_id, tool, "")
     if removed:
         _log(client_id, "creative_tool_disconnected", tool)
@@ -338,18 +343,12 @@ def disconnect(client_id: int, tool: str) -> dict:
 # ─── Video provider choice (per client; a video may override it) ─────────────
 
 def default_provider(client_id: int) -> str:
-    """The client's explicit choice; without one, the provider they actually
-    CONNECTED — a client who connected only one video tool is never asked to
-    connect a second one they did not ask for."""
+    """The presenter provider. There is ONE since HeyGen was retired
+    (2026-10-31): a stored "heygen" choice (internal test clients) is simply
+    no longer honoured — the record is left as it is."""
     from core.avatar_video import PROVIDERS, DEFAULT_PROVIDER
     chosen = _record(client_id).get("avatar_provider")
-    if chosen in PROVIDERS:
-        return chosen
-    if not is_connected(client_id, PROVIDERS[DEFAULT_PROVIDER].tool):
-        for provider in PROVIDERS.values():
-            if is_connected(client_id, provider.tool):
-                return provider.id
-    return DEFAULT_PROVIDER
+    return chosen if chosen in PROVIDERS else DEFAULT_PROVIDER
 
 
 def set_default_provider(client_id: int, provider: str) -> str:

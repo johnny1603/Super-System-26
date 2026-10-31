@@ -1,4 +1,15 @@
-"""Low-level HeyGen plumbing — REAL-PERSON avatars (digital twins / photo
+"""RETIRED 2026-10-31 — UNREACHABLE. Do not import this module from any
+client path again.
+
+HeyGen was dropped as the presenter: avatar creation through its API is
+Enterprise-only, and everything else about it sent the client out of the
+product. The presenter is Higgsfield now (core/avatar_video,
+core/media_gen_service.PRESENTER_MODEL). This file stays only as history;
+nothing in core/, agents/ or dashboard/ imports it, and
+tests/test_presenter_higgsfield.py fails if anything does.
+
+(Original description follows.)
+Low-level HeyGen plumbing — REAL-PERSON avatars (digital twins / photo
 avatars) and avatar video generation. HTTP only; business logic, consent
 enforcement, and minutes tracking live in agents/avatar_agent.py.
 

@@ -4,9 +4,10 @@ import time
 from datetime import datetime
 
 from core.claude_json import safe_claude_json_call
+from core.media_gen_service import PRESENTER_MAX_SECONDS
 from core.third_party_pricing import THIRD_PARTY_PRICING
 
-_HEYGEN_MIN_RANGE = THIRD_PARTY_PRICING["heygen"]["generation_usd_per_min_range"]
+_CREATIVE_TOOL_ENTRY_USD = THIRD_PARTY_PRICING["higgsfield"]["plans"]["starter"]
 
 # Organic SEO is ONE selectable package at a FIXED monthly price (decided
 # 2026-10-18). It is never derived from a client budget, and it includes the
@@ -95,8 +96,9 @@ PRICING = {
     # part of standard platform management. Numbers are final (handoff
     # 2026-07-19): billed/tracked unit is MINUTES per month; video counts are
     # client-facing estimates only (~30s average). Separate from — and in
-    # addition to — the client's own direct HeyGen/ElevenLabs subscriptions
-    # (their payment method, never ours). Wired into build_proposal 2026-07-20
+    # addition to — the client's own direct creative-tool subscriptions
+    # (Higgsfield; ElevenLabs for an optional voice clone — their payment
+    # method, never ours; HeyGen was retired 2026-10-31). Wired into build_proposal 2026-07-20
     # — see BUDGET PYRAMID #9 below for the relevance rule (offered only when
     # genuinely fitting, never a default line in every proposal).
     "avatar": {
@@ -110,21 +112,17 @@ PRICING = {
         # above 40 minutes/month: custom quote (no fixed tier)
         # Client-side direct costs (THEIRS, paid straight to the vendors —
         # must be disclosed in any client-facing copy, honest_note included):
-        # HeyGen — NO paid subscription required: avatar creation works in
-        # the web UI on every plan incl. Free (1 custom twin included;
-        # additional twins need a paid plan/add-on — relevant to our
-        # 100₪-per-additional-avatar pricing), and video generation runs on
-        # HeyGen's standalone pay-as-you-go API wallet (top up from $5)
-        # regardless of plan. Optional ElevenLabs plan for voice cloning.
-        # The per-minute $ range is interpolated from
-        # core/third_party_pricing.py (single source of truth, re-checked
-        # twice a month by price_monitor_agent) — never hardcode it here.
+        # The presenter runs on the SAME creative-tool account as the
+        # client's images/videos (Higgsfield — no extra vendor signup; its
+        # plan credits pay for each clip). Optional voice tool for cloning.
+        # Vendor names stay out of the client text. The entry price is
+        # interpolated from core/third_party_pricing.py (single source of
+        # truth, re-checked by price_monitor_agent) — never hardcode it here.
         "client_direct_costs_note_he": (
-            "בנוסף למחירי uallak: חשבון HeyGen — יצירת האווטאר עצמה אפשרית בכל מסלול, "
-            "כולל החינמי (אווטאר אחד; אווטארים נוספים דורשים מסלול בתשלום), והפקת "
-            f"הסרטונים משולמת בקרדיטים ל-API לפי שימוש (טעינה החל מ-5$, כ-"
-            f"{int(_HEYGEN_MIN_RANGE[0])}-{int(_HEYGEN_MIN_RANGE[1])}$ לדקת וידאו). לרצון גם "
-            "מנוי ElevenLabs לשיבוט קול. הכל משולם על ידך ישירות לספקים, לא דרכנו."),
+            "בנוסף למחירי uallak: חשבון בכלי יצירת התמונות והווידאו (אותו חשבון שמשמש לתמונות "
+            f"ולסרטונים, מנוי חודשי החל מכ-{int(_CREATIVE_TOOL_ENTRY_USD)}$; כל סרטון מגיש צורך "
+            "קרדיטים מהמנוי). לרצון גם מנוי בכלי הקול לשיבוט הקול שלך. הכל משולם על ידך ישירות "
+            "לספקים, לא דרכנו."),
     },
 
     "raffle": {"setup_and_management": 250},
@@ -242,7 +240,7 @@ def get_avatar_upgrade_tiers(current_monthly_fee: int) -> list:
         "description": (f"עד {t['minutes_per_month']} דקות וידאו אווטאר בחודש "
                         f"({t['video_estimate']} סרטונים), בנוסף לכל מה שיש לך היום"),
         "note": (f"+ ₪{avatar['setup_first_avatar']} הקמה חד-פעמית (בגבייה נפרדת). "
-                 "בנוסף: חשבון HeyGen משולם על ידך ישירות לספק"),
+                 "בנוסף: חשבון כלי היצירה משולם על ידך ישירות לספק"),
     } for t in avatar["monthly_tiers"]]
 
 
@@ -668,16 +666,17 @@ BUDGET PYRAMID — DECISION FRAMEWORK (follow this structure, don't improvise pe
      monthly_breakdown line (e.g. "אווטאר דיגיטלי — בסיסי"), INCLUDED in monthly_management_total
      (same treatment as the new-site hosting line in BUDGET PYRAMID #5 — this is the exception #1
      allows for)
-   - The client ALSO pays HeyGen (avatar creation/generation) directly on their own account, and
-     ElevenLabs too if they want voice cloning — same external-cost pattern as ad spend.
-     Whenever avatar is included, cost_disclaimers must carry this as its own item (see the
-     cost_disclaimers rules below) — write it naturally in the client's language, keeping the
-     same substance as this reference disclosure: "{PRICING['avatar']['client_direct_costs_note_he']}"
-     — no required paid HeyGen plan for one avatar, ongoing generation billed through HeyGen's own
-     pay-as-you-go credits
-   - Consent, the filming-kit instructions, and connecting the HeyGen/ElevenLabs accounts all happen
-     AFTER purchase in the client's dashboard (avatar_agent) — never something to walk through or
-     promise specifics about in the sales chat itself
+   - The client ALSO pays their own creative-tool account (the same one used for images/videos —
+     no extra signup for the presenter), and a voice tool too if they want voice cloning — same
+     external-cost pattern as ad spend. Whenever avatar is included, cost_disclaimers must carry
+     this as its own item (see the cost_disclaimers rules below) — write it naturally in the
+     client's language, keeping the same substance as this reference disclosure:
+     "{PRICING['avatar']['client_direct_costs_note_he']}" — never name a vendor
+   - Each presenter video is a SHORT clip: up to {PRESENTER_MAX_SECONDS} seconds of speech. A longer
+     message becomes several short clips. Never promise long single videos
+   - Consent and connecting the accounts all happen AFTER purchase in the client's dashboard
+     (avatar_agent) — never something to walk through or promise specifics about in the sales chat
+     itself
 
 ═══════════════════════════════════════════════════════════════════════════
 
@@ -763,9 +762,9 @@ CRITICAL RULES:
   - MEDIA GENERATION — when a package includes ongoing image/video content production: the client
     opens their own Higgsfield account and pays that subscription directly (from about $15/month at
     the entry plan); we operate the tool for them
-  - AVATAR — when a package includes the avatar/digital-twin add-on: HeyGen (and ElevenLabs for
-    voice cloning, if relevant) are paid by the client directly on their own account, per BUDGET
-    PYRAMID #9
+  - AVATAR — when a package includes the avatar/presenter add-on: the same creative-tool account as
+    media generation (no extra signup), plus a voice tool for cloning if relevant, paid by the
+    client directly on their own account, per BUDGET PYRAMID #9 (never name the vendors)
   - DOMAIN — when a package includes building a NEW website: the domain is bought by the client
     directly (~80-100 NIS/year). Note the site's hosting is NOT this kind of cost — it is already
     inside monthly_management_total as its own line

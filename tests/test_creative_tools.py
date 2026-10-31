@@ -3,7 +3,7 @@ voice recordings (core/vendor_tools, core/avatar_video, core/voice_recordings,
 core/elevenlabs_service, the connect_creative_tool card, client_state and the
 dashboard cards).
 
-Stdlib only — httpx, supabase, the client store, Drive, HeyGen and the vault
+Stdlib only — httpx, supabase, the client store, Drive, the presenter model and the vault
 are stubs in sys.modules; every HTTP call is RECORDED so the tests can prove
 what a key check sends (one read-only GET) and that a rejected key is never
 stored.
@@ -88,6 +88,8 @@ def _remove(cid, platforms=None):
 client_agent.upsert_account = _upsert
 client_agent.remove_accounts = _remove
 client_agent._db = lambda: None
+INTERNAL = {27}       # billing_exempt clients: the presenter gate is open for them
+client_agent.get_client = lambda cid: {"id": cid, "billing_exempt": cid in INTERNAL}
 sys.modules["agents.client_agent"] = client_agent
 
 CONSENTS = set()      # (client_id, scope)
@@ -96,8 +98,8 @@ avatar_stub = types.ModuleType("agents.avatar_agent")
 avatar_stub.has_consent = lambda cid, scope: (cid, scope) in CONSENTS
 avatar_stub.record_consent = lambda cid, scope: CONSENTS.add((cid, scope)) or {"success": True}
 avatar_stub.current_voice_id = lambda cid: CLONES.get(cid, "")
-avatar_stub.list_ready_avatars = lambda cid: [{"avatar_id": "av1", "avatar_name": "Me"}]
-avatar_stub._source_files = lambda cid: []
+avatar_stub.list_ready_avatars = lambda cid: [{"avatar_id": "av1", "avatar_name": "Me", "kind": "own_photo"}]
+avatar_stub._source_files = lambda cid: [{"id": "av1"}]
 sys.modules["agents.avatar_agent"] = avatar_stub
 
 vault = types.ModuleType("core.secrets_vault")
@@ -137,20 +139,16 @@ media_stub = types.ModuleType("agents.media_agent")
 media_stub._subfolder = lambda cid, *path: f"client{cid}/" + "/".join(path)
 sys.modules["agents.media_agent"] = media_stub
 
-HEYGEN_CALLS = []
-heygen_stub = types.ModuleType("core.heygen_service")
-heygen_stub.API_BASE = "https://api.heygen.example"
-heygen_stub.generate_avatar_video = lambda key, avatar, script, voice_id="", audio_url="": (
-    HEYGEN_CALLS.append((avatar, voice_id, audio_url)) or "vid1")
-heygen_stub.wait_for_video = lambda key, vid: {"video_url": "https://heygen/v.mp4", "duration": 30}
-sys.modules["core.heygen_service"] = heygen_stub
-
 from core import avatar_video as av            # noqa: E402
 from core import elevenlabs_service as el      # noqa: E402
 from core import vendor_tools as vt            # noqa: E402
 from core import voice_recordings as vr        # noqa: E402
 
 KEY_H, KEY_E, KEY_HF = "hg-key-0000-AAAA", "el-key-1111-BBBB", "hf-key-2222-CCCC"
+RENDERS = []          # (key, image_url, audio_url, seconds) sent to the presenter model
+av.mg.generate_talking_character = lambda key, image_url, audio_url, seconds=0, aspect_ratio="9:16": (
+    RENDERS.append((key, image_url, audio_url, seconds))
+    or {"url": "https://hf/v.mp4", "job_id": "j1", "credits": 5, "duration": seconds, "model": "wan2_7"})
 
 
 class ToolCase(unittest.TestCase):
@@ -160,7 +158,8 @@ class ToolCase(unittest.TestCase):
         CLONES.clear()
         DRIVE_FILES.clear()
         DRIVE_CALLS.clear()
-        HEYGEN_CALLS.clear()
+        RENDERS.clear()
+        PUBLIC.clear()
         HTTPX.calls.clear()
         HTTPX.next.clear()
         self.records, self.logs = {}, []
@@ -176,39 +175,48 @@ class ToolCase(unittest.TestCase):
 # ─── 1. Each tool is its own connection ──────────────────────────────────────
 
 class SeparateConnections(ToolCase):
-    def test_heygen_needs_likeness_consent_elevenlabs_does_not(self):
+    def test_heygen_is_retired_and_cannot_be_connected(self):
         with self.assertRaises(vt.ToolError) as e:
-            vt.connect(27, "heygen", KEY_H)
-        self.assertEqual(e.exception.code, "consent_required")
+            vt.connect(27, "heygen", KEY_H, consent=True)
+        self.assertEqual(e.exception.code, "unknown_tool")
         self.assertEqual(ACCOUNTS, {})
-        self.assertEqual(HTTPX.calls, [])                 # refused before any vendor call
-        vt.connect(27, "elevenlabs", KEY_E)              # no consent needed to connect
-        self.assertIn((27, "elevenlabs"), ACCOUNTS)
+        self.assertEqual(HTTPX.calls, [])
+        self.assertNotIn("heygen", vt.TOOLS)
+        self.assertIn("heygen", vt.RETIRED_TOOLS)
 
-    def test_heygen_consent_given_at_connect_is_recorded(self):
-        result = vt.connect(27, "heygen", KEY_H, consent=True)
-        self.assertEqual(result["status"], "connected")
+    def test_no_tool_needs_consent_to_connect(self):
+        vt.connect(27, "elevenlabs", KEY_E)
+        vt.connect(27, "higgsfield", KEY_HF)
+        self.assertIn((27, "elevenlabs"), ACCOUNTS)
+        self.assertIn((27, "higgsfield"), ACCOUNTS)
+        self.assertEqual(CONSENTS, set())
+
+    def test_likeness_consent_given_at_connect_is_recorded(self):
+        vt.connect(27, "higgsfield", KEY_HF, consent=True)
         self.assertIn((27, "likeness"), CONSENTS)
 
     def test_one_connected_without_the_other(self):
         vt.connect(27, "elevenlabs", KEY_E)
         self.assertEqual(vt.status(27, "elevenlabs"), "connected")
-        self.assertEqual(vt.status(27, "heygen"), "not_connected")
-        self.assertEqual(vt.missing(27, ["heygen", "elevenlabs"]), ["heygen"])
+        self.assertEqual(vt.status(27, "higgsfield"), "not_connected")
+        self.assertEqual(vt.missing(27, ["higgsfield", "elevenlabs"]), ["higgsfield"])
 
     def test_disconnect_removes_only_that_tool(self):
         CONSENTS.add((27, "likeness"))
-        vt.connect(27, "heygen", KEY_H)
         vt.connect(27, "elevenlabs", KEY_E)
         vt.connect(27, "higgsfield", KEY_HF)
-        vt.disconnect(27, "heygen")
-        self.assertNotIn((27, "heygen"), ACCOUNTS)
+        vt.disconnect(27, "higgsfield")
+        self.assertNotIn((27, "higgsfield"), ACCOUNTS)
         self.assertIn((27, "elevenlabs"), ACCOUNTS)
-        self.assertIn((27, "higgsfield"), ACCOUNTS)
         self.assertIn((27, "likeness"), CONSENTS)        # consent stays; only the key goes
-        self.assertNotIn("heygen", self.records[27]["health"])
+        self.assertNotIn("higgsfield", self.records[27]["health"])
         self.assertIn("elevenlabs", self.records[27]["health"])
 
+    def test_an_old_heygen_row_can_still_be_disconnected(self):
+        ACCOUNTS[(27, "heygen")] = KEY_H                 # internal test clients only
+        self.assertEqual(vt.status(27, "heygen"), "not_connected")
+        vt.disconnect(27, "heygen")
+        self.assertNotIn((27, "heygen"), ACCOUNTS)
     def test_rejected_key_is_never_stored(self):
         HTTPX.next.append(FakeResponse(401, {"detail": {"status": "invalid_api_key"}}))
         with self.assertRaises(vt.ToolError) as e:
@@ -247,11 +255,11 @@ class SeparateConnections(ToolCase):
 
     def test_legacy_rows_keep_working_without_reentry(self):
         # Connected before this module: a row, no health record
-        ACCOUNTS[(27, "heygen")] = KEY_H
+        ACCOUNTS[(27, "higgsfield")] = KEY_HF
         ACCOUNTS[(27, "elevenlabs")] = KEY_E
-        self.assertEqual(vt.status(27, "heygen"), "connected_unverified")
-        self.assertTrue(vt.is_connected(27, "heygen"))
-        self.assertEqual(vt.missing(27, ["heygen", "elevenlabs"]), [])
+        self.assertEqual(vt.status(27, "higgsfield"), "connected_unverified")
+        self.assertTrue(vt.is_connected(27, "higgsfield"))
+        self.assertEqual(vt.missing(27, ["higgsfield", "elevenlabs"]), [])
 
     def test_key_rejected_during_a_job_shows_on_the_card(self):
         vt.connect(27, "elevenlabs", KEY_E)
@@ -265,24 +273,23 @@ class SeparateConnections(ToolCase):
         self.assertEqual(vt.test(27, "elevenlabs")["status"], "key_rejected")
         self.assertEqual(vt.test(27, "elevenlabs")["status"], "connected")
         with self.assertRaises(vt.ToolError):
-            vt.test(27, "heygen")                          # not connected
+            vt.test(27, "higgsfield")                      # not connected
 
     def test_statuses_never_carry_a_key(self):
-        CONSENTS.add((27, "likeness"))
-        vt.connect(27, "heygen", KEY_H)
+        vt.connect(27, "higgsfield", KEY_HF)
         view = vt.statuses(27)
-        self.assertEqual(set(view), {"heygen", "elevenlabs", "higgsfield"})
-        self.assertNotIn(KEY_H, repr(view))
-        self.assertNotIn("last4", view["heygen"])               # not even part of it
-        self.assertNotIn(KEY_H[-4:], repr(view))
-        self.assertNotIn(KEY_H, repr(self.records) + repr(self.logs))
+        self.assertEqual(set(view), {"elevenlabs", "higgsfield"})
+        self.assertNotIn(KEY_HF, repr(view))
+        self.assertNotIn("last4", view["higgsfield"])           # not even part of it
+        self.assertNotIn(KEY_HF[-4:], repr(view))
+        self.assertNotIn(KEY_HF, repr(self.records) + repr(self.logs))
 
     def test_consent_belongs_to_its_tool(self):
-        self.assertEqual(vt.TOOLS["heygen"]["consent"], "likeness")
-        self.assertTrue(vt.TOOLS["heygen"]["consent_required"])
+        # Likeness is checked per video (own photos only), never to connect
+        self.assertEqual(vt.TOOLS["higgsfield"]["consent"], "likeness")
+        self.assertFalse(vt.TOOLS["higgsfield"]["consent_required"])
         self.assertEqual(vt.TOOLS["elevenlabs"]["consent"], "voice")
         self.assertFalse(vt.TOOLS["elevenlabs"]["consent_required"])
-        self.assertIsNone(vt.TOOLS["higgsfield"]["consent"])
 
 
 class MissingToolMessage(unittest.TestCase):
@@ -296,78 +303,94 @@ class MissingToolMessage(unittest.TestCase):
                                              "focus": "toolCard-elevenlabs"}])
 
     def test_two_missing_tools_two_buttons(self):
-        block = vt.missing_block(["heygen", "elevenlabs"])
-        self.assertIn("דמות מצולמת שלך", block["message_he"])
+        block = vt.missing_block(["higgsfield", "elevenlabs"])
+        self.assertIn(vt.client_label("higgsfield"), block["message_he"])
         self.assertIn("הקול שלך", block["message_he"])
-        self.assertEqual([b["focus"] for b in block["buttons"]], ["toolCard-heygen", "toolCard-elevenlabs"])
+        self.assertNotIn("Higgsfield", block["message_he"])
+        self.assertEqual([b["focus"] for b in block["buttons"]], ["toolCard-higgsfield", "toolCard-elevenlabs"])
 
 
-# ─── 2. Provider choice ──────────────────────────────────────────────────────
+# ─── 2. The presenter: one provider, gated, short clips ─────────────────────
 
-class ProviderChoice(ToolCase):
+class Presenter(ToolCase):
     def setUp(self):
         super().setUp()
-        os.environ.pop("HIGGSFIELD_AVATAR_VIDEO_ENABLED", None)
+        os.environ.pop(av.OPEN_TO_ALL_ENV, None)
+        INTERNAL.clear()
+        INTERNAL.add(27)
 
-    def test_default_and_choice(self):
-        self.assertEqual(vt.default_provider(27), "heygen")
-        vt.set_default_provider(27, "higgsfield")
+    def _recording(self, seconds=6.0):
+        DRIVE_FILES["client27/voice"] = [{"id": "rec1", "name": "me.mp3", "mimeType": "audio/mpeg", "size": 10,
+                                          "appProperties": {"uploaded_at": "2026-10-30T10:00:00+00:00",
+                                                            "duration_seconds": seconds}}]
+
+    def test_default_is_higgsfield_and_heygen_maps_to_it(self):
+        self.assertEqual(av.DEFAULT_PROVIDER, "higgsfield")
+        self.assertEqual(list(av.PROVIDERS), ["higgsfield"])
+        self.assertEqual(vt.default_provider(27), "higgsfield")
+        self.records[27] = {"video_provider": "heygen"}           # an old stored choice
         self.assertEqual(vt.default_provider(27), "higgsfield")
         with self.assertRaises(vt.ToolError) as e:
-            vt.set_default_provider(27, "sora")
+            vt.set_default_provider(27, "heygen")
         self.assertEqual(e.exception.code, "unknown_provider")
 
-    def test_higgsfield_is_off_until_a_live_test(self):
+    def test_paying_client_is_not_open_yet(self):
+        INTERNAL.clear()
         ACCOUNTS[(27, "higgsfield")] = KEY_HF
-        result = av.make_video(27, "שלום", {"kind": "recording", "file_id": "x"}, provider="higgsfield")
+        result = av.make_video(27, "שלום", {"kind": "recording", "file_id": "x"})
         self.assertEqual(result["code"], "provider_not_ready")
-        view = {p["id"]: p for p in av.providers_view(27)}
-        self.assertFalse(view["higgsfield"]["ready"])
-        self.assertTrue(view["heygen"]["ready"])
+        self.assertNotIn("Higgsfield", result["message_he"])
+        self.assertFalse(av.providers_view(27)[0]["ready"])
+        os.environ[av.OPEN_TO_ALL_ENV] = "1"
+        try:
+            self.assertTrue(av.providers_view(27)[0]["ready"])
+        finally:
+            os.environ.pop(av.OPEN_TO_ALL_ENV, None)
 
-    def test_chosen_provider_not_connected_names_it(self):
-        result = av.make_video(27, "שלום", None, provider="heygen", heygen_voice_id="stock1")
+    def test_not_connected_names_the_tool(self):
+        CONSENTS.add((27, "likeness"))
+        self._recording()
+        result = av.make_video(27, "", {"kind": "recording", "file_id": "rec1"})
         self.assertEqual(result["code"], "missing_tool")
-        self.assertEqual(result["missing"], ["heygen"])
+        self.assertEqual(result["missing"], ["higgsfield"])
 
     def test_clone_needs_elevenlabs_named_alone(self):
-        ACCOUNTS[(27, "heygen")] = KEY_H
+        ACCOUNTS[(27, "higgsfield")] = KEY_HF
+        CONSENTS.add((27, "likeness"))
         result = av.make_video(27, "שלום", {"kind": "clone"})
         self.assertEqual(result["missing"], ["elevenlabs"])
         self.assertIn("הקול שלך", result["message_he"])
 
-    def test_recording_needs_no_cloning_consent(self):
-        ACCOUNTS[(27, "heygen")] = KEY_H
-        vr_folder = "client27/voice"
-        DRIVE_FILES[vr_folder] = [{"id": "rec1", "name": "me.mp3", "mimeType": "audio/mpeg", "size": 10,
-                                   "appProperties": {"uploaded_at": "2026-10-30T10:00:00+00:00"}}]
+    def test_recording_needs_no_cloning_consent_and_is_public_only_for_the_render(self):
+        ACCOUNTS[(27, "higgsfield")] = KEY_HF
+        CONSENTS.add((27, "likeness"))
+        self._recording(6.0)
         self.assertNotIn((27, "voice"), CONSENTS)
         result = av.make_video(27, "", {"kind": "recording", "file_id": "rec1"})
         self.assertTrue(result["success"], result)
-        self.assertEqual(result["voice_kind"], "recording")
-        self.assertEqual(HEYGEN_CALLS, [("av1", "", "https://drive.example/rec1")])
-        # The client's voice was public only for the render (core/public_share)
-        self.assertEqual(PUBLIC, set())
+        self.assertEqual((result["provider"], result["voice_kind"]), ("higgsfield", "recording"))
+        self.assertEqual(RENDERS, [(KEY_HF, "https://drive.example/av1", "https://drive.example/rec1", 6.0)])
+        self.assertEqual(PUBLIC, set())                           # closed again
 
     def test_recording_of_another_folder_refused(self):
-        ACCOUNTS[(27, "heygen")] = KEY_H
+        ACCOUNTS[(27, "higgsfield")] = KEY_HF
         result = av.make_video(27, "", {"kind": "recording", "file_id": "someone-elses"})
         self.assertEqual(result["code"], "recording_not_found")
-        self.assertEqual(HEYGEN_CALLS, [])
+        self.assertEqual(RENDERS, [])
 
     def test_clone_without_consent_refused_before_any_tts(self):
-        ACCOUNTS[(27, "heygen")] = KEY_H
+        ACCOUNTS[(27, "higgsfield")] = KEY_HF
         ACCOUNTS[(27, "elevenlabs")] = KEY_E
+        CONSENTS.add((27, "likeness"))
         CLONES[27] = "voice1"
         result = av.make_video(27, "שלום", {"kind": "clone"})
         self.assertEqual(result["code"], "no_voice_consent")
         self.assertEqual(result["buttons"][0]["focus"], "toolCard-elevenlabs")
         self.assertEqual(HTTPX.calls, [])
 
-    def test_same_voice_sources_for_either_provider(self):
+    def test_voice_sources(self):
         self.assertEqual(av.VOICE_KINDS, ("recording", "clone"))
-        self.assertEqual(av.make_video(27, "", {"kind": "whisper"})["code"], "bad_voice")
-
+        self.assertEqual(av.make_video(27, "", {"kind": "whisper"})["code"], "no_voice")
 
 # ─── 3. ElevenLabs errors: plain Hebrew, never the key or the body ──────────
 
@@ -498,8 +521,8 @@ class ConnectCreativeToolCard(unittest.TestCase):
 
     def test_offered_only_when_a_tool_is_missing(self):
         available = self.aa.ACTIONS["connect_creative_tool"]["available"]
-        ok = {"creative_tools": {"tools": {"heygen": {"status": "connected"}}}}
-        broken = {"creative_tools": {"tools": {"heygen": {"status": "key_rejected"}}}}
+        ok = {"creative_tools": {"tools": {"higgsfield": {"status": "connected"}}}}
+        broken = {"creative_tools": {"tools": {"higgsfield": {"status": "key_rejected"}}}}
         self.assertFalse(available(ok, {}))
         self.assertTrue(available(broken, {}))
         self.assertFalse(available({}, {}))
@@ -508,13 +531,13 @@ class ConnectCreativeToolCard(unittest.TestCase):
 class ClientStateSections(ToolCase):
     def test_creative_tools_section_has_no_key_and_no_last4(self):
         from core import client_state as cs
-        CONSENTS.add((27, "likeness"))
-        vt.connect(27, "heygen", KEY_H)
+        vt.connect(27, "higgsfield", KEY_HF)
         section = cs._creative_tools(27)
-        self.assertEqual(section["tools"]["heygen"]["status"], "connected")
-        self.assertNotIn("last4", section["tools"]["heygen"])
-        self.assertNotIn("AAAA", repr(section))
-        self.assertEqual({p["id"] for p in section["video_providers"]}, {"heygen", "higgsfield"})
+        self.assertEqual(section["tools"]["higgsfield"]["status"], "connected_unverified")
+        self.assertNotIn("last4", section["tools"]["higgsfield"])
+        self.assertNotIn("CCCC", repr(section))
+        self.assertNotIn("heygen", section["tools"])
+        self.assertEqual({p["id"] for p in section["video_providers"]}, {"higgsfield"})
 
     def test_sections_registered_with_their_topics(self):
         from core import client_state as cs
@@ -530,7 +553,7 @@ class Wiring(unittest.TestCase):
 
     def test_disconnect_groups_are_per_tool(self):
         src = _src("core", "api_server.py")
-        self.assertIn('"heygen": ["heygen"],', src)
+        self.assertIn('"heygen": ["heygen"],', src)          # an old row can still be removed
         self.assertIn('"elevenlabs": ["elevenlabs"],', src)
 
     def test_client_routes_are_session_gated(self):
@@ -551,7 +574,8 @@ class Wiring(unittest.TestCase):
     def test_help_entries_active_for_each_tool(self):
         from core import connection_help
         active = {c["id"] for c in connection_help.CONNECTIONS if c["active"]}
-        self.assertTrue({"heygen", "elevenlabs", "higgsfield"} <= active)
+        self.assertTrue(set(vt.TOOLS) <= active)
+        self.assertNotIn("heygen", active)
 
     def test_no_google_scope_in_the_new_modules(self):
         for name in ("vendor_tools.py", "avatar_video.py", "voice_recordings.py", "elevenlabs_service.py"):
@@ -567,7 +591,8 @@ class DashboardCards(unittest.TestCase):
         self.html = _src("dashboard", "client", "index.html")
 
     def test_one_card_per_tool_with_its_own_controls(self):
-        for tool in ("heygen", "elevenlabs", "higgsfield"):
+        self.assertNotIn('toolCard-heygen', self.html)
+        for tool in ("elevenlabs", "higgsfield"):
             for element in ("toolCard-", "toolStatus-", "toolKey-", "toolConnectBtn-", "toolDisc-", "toolForm-"):
                 self.assertIn(f'id="{element}{tool}"', self.html, element + tool)
             self.assertIn(f'data-help-id="{tool}"', self.html)
@@ -577,10 +602,11 @@ class DashboardCards(unittest.TestCase):
             self.assertNotIn(old, self.html)
 
     def test_each_consent_on_its_own_tool(self):
-        heygen = self.html.split('id="toolCard-heygen"', 1)[1].split('id="toolCard-elevenlabs"', 1)[0]
-        eleven = self.html.split('id="toolCard-elevenlabs"', 1)[1].split('id="providerCard"', 1)[0]
-        self.assertIn("avatar_consent_likeness", heygen)
-        self.assertNotIn("tool_voice_consent", heygen)
+        higgs = self.html.split('id="toolCard-higgsfield"', 1)[1].split('id="toolCard-elevenlabs"', 1)[0]
+        eleven = self.html.split('id="toolCard-elevenlabs"', 1)[1].split('id="voiceCard"', 1)[0]
+        self.assertIn("avatar_consent_likeness", higgs)
+        self.assertIn('id="toolConsent-higgsfield"', higgs)
+        self.assertNotIn("tool_voice_consent", higgs)
         self.assertIn("tool_voice_consent", eleven)
         self.assertNotIn("avatar_consent_likeness", eleven)
 

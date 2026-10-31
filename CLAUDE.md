@@ -36,7 +36,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `recommended_services`, never a guess, and **fail closed** when the package can't be
   read. `note_connections_complete()` stamps the 90-day clock start once, permanently.
   Steps are **capabilities, never vendors**: ANY listed platform completes a step (avatar =
-  HeyGen OR Higgsfield), no service pulls in two steps. A connected provider that can't run yet
+  Higgsfield since HeyGen was retired 2026-10-31), no service pulls in two steps. A connected provider that can't run yet
   stays `done` but `ready: False` with a `notices` line (`avatar_video.runnable_notice`) that
   the dashboard and agents (`client_state.connections.connected_not_ready`) say plainly.
   Guarded by `tests/test_avatar_capability_checklist.py`.
@@ -119,23 +119,31 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   column always blanked; no key → the write fails, never plaintext). Decrypted ONLY by
   `get_client_secret()` (agents' `_get_connection` readers call `hydrate()`, which goes
   through it). `get_accounts()` returns rows WITHOUT secrets — screens see at most
-  `secret_last4`. Client-paid vendor jobs (Higgsfield, HeyGen, ElevenLabs) take their key via
+  `secret_last4`. Client-paid vendor jobs (Higgsfield, ElevenLabs) take their key via
   `use_vendor_key()`, which aborts + alerts when the same key belongs to another client
   (except owner keys shared only between internal/billing-exempt accounts, logged). Data
   migration: `scripts/encrypt_client_secrets.py` (dry-run default).
-- `core/vendor_tools.py` — the client-paid creative tools (HeyGen, ElevenLabs, Higgsfield),
+- `core/vendor_tools.py` — the client-paid creative tools (ElevenLabs, Higgsfield),
   **each its own connection**: own card (`toolCard-<tool>`), key, Connect (key checked with
   the vendor FIRST — a rejected key is never stored), Test, status (connected /
   connected_unverified / key_rejected / not_connected), Disconnect (only that tool's row), help
-  entry and consent (likeness → HeyGen, required; voice cloning → ElevenLabs, optional). Never
-  connect or disconnect them together again. Health + video provider live in `app_settings`
+  entry and consent (likeness → the Higgsfield card, needed only for a character made from the
+  client's own photo; voice cloning → ElevenLabs, optional). Never
+  connect or disconnect them together again. Health lives in `app_settings`
   `creative_tools:<id>` (deletion clears it, the guard covers it). A feature missing a tool
   returns `missing_block()` (plain Hebrew naming exactly that tool + a button to only its card;
-  chat card `connect_creative_tool`). `core/avatar_video.make_video` is the ONE "avatar video
-  with this audio/script" entry: provider per video > client default > HeyGen; voice =
-  `recording` (uploaded file as the audio track, no cloning consent) | `clone` (ElevenLabs TTS).
-  **The Higgsfield talking-character provider is PREPARED ONLY** (endpoint/model are unverified
-  env settings, off behind `HIGGSFIELD_AVATAR_VIDEO_ENABLED`). `core/voice_recordings.py` — the
+  chat card `connect_creative_tool`). **HeyGen is RETIRED (2026-10-31)**: `RETIRED_TOOLS` /
+  `avatar_video.RETIRED_PROVIDERS`, `core/heygen_service.py` kept but unreachable, stored rows
+  kept; nothing client-facing may reach it again (`tests/test_presenter_higgsfield.py`).
+  `core/avatar_video.make_video` is the ONE presenter entry: Higgsfield, model
+  `media_gen_service.PRESENTER_MODEL` (`wan2_7`: character image as `start_image` + the voice
+  as `audio_references`, named only there); voice = `recording` (uploaded file as the audio
+  track, no cloning consent) | `clone` (ElevenLabs TTS). **Clips are ≤ `MAX_CLIP_SECONDS` (15)
+  — a longer text is refused with an offer to split, never cut; the card states the length.**
+  The character and audio are public only during the render (`public_share.briefly_public`).
+  **Gate:** internal (billing_exempt) clients only until a live run; env
+  `PRESENTER_VIDEO_ALL_CLIENTS=1` opens it (and the chat cards' `internal_only`). Never run
+  live yet. `core/voice_recordings.py` — the
   "הקלטות קול" card: raw-body upload (no multipart), format sniffed from bytes, Drive media
   folder `voice` is the one record (duration in appProperties), `client_state.voice` for agents.
   Nothing here has run against a live vendor; live test path for client 27 in
@@ -157,7 +165,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   no size limit of ours, type sniffed from the bytes, routed to videos/images/voice/documents,
   then the window's agent PROPOSES cards (YouTube / TikTok / voice clone / presenter from photos)
   by the real availability rules. An image → `create_presenter_from_photos` (avatar_agent's
-  photo path, client-approved; its `prepare` answers a missing tool or likeness consent with the
+  character path — one still image, own photo or an AI image media_agent made — client-approved,
+  internal-only behind the presenter gate; its `prepare` answers a missing tool or likeness consent with the
   ONE `connect_creative_tool` card, and a package without "avatar" with the upgrade line; several
   uploads grow one card). Chat windows are resizable (CSS variables only). Picking from the
   client's Google Drive / Google Photos needs new OAuth scopes — a LATER verification round,

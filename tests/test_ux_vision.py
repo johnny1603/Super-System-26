@@ -43,7 +43,7 @@ from core import vendor_tools as vt              # noqa: E402
 
 VENDOR = re.compile(r"heygen|eleven\s?labs|higgsfield", re.IGNORECASE)
 LANGS = ("he", "en", "fr", "ar", "ru")
-TOOLS = ("heygen", "elevenlabs", "higgsfield")
+TOOLS = ("elevenlabs", "higgsfield")       # HeyGen retired 2026-10-31 (vt.RETIRED_TOOLS)
 
 
 def _src(*parts) -> str:
@@ -92,8 +92,10 @@ class DashboardLabels(unittest.TestCase):
     def test_i18n_table_parsed(self):
         # The parser must actually see the table, or the next test proves nothing
         self.assertGreater(len(self.i18n), 500)
-        for key in ("tool_heygen_card", "tool_eleven_card", "higgsfield_card", "provider_heygen"):
+        for key in ("tool_eleven_card", "higgsfield_card", "presenter_note"):
             self.assertIn(key, self.i18n)
+        for gone in ("tool_heygen_card", "provider_heygen", "provider_higgsfield"):
+            self.assertNotIn(gone, self.i18n)
 
     def test_no_vendor_name_in_any_i18n_value(self):
         hits = {k: v for k, values in self.i18n.items() for v in values if VENDOR.search(v)}
@@ -104,9 +106,7 @@ class DashboardLabels(unittest.TestCase):
         self.assertEqual(hits, [], "visible markup / placeholder names a vendor")
 
     def test_capability_labels_in_all_languages(self):
-        expected = {"tool_eleven_card": "הקול שלך", "tool_heygen_card": "הדמות שבסרטונים — דמות מצולמת שלך",
-                    "higgsfield_card": "הדמות שבסרטונים — דמות AI", "provider_heygen": "דמות מצולמת שלך",
-                    "provider_higgsfield": "דמות AI"}
+        expected = {"tool_eleven_card": "הקול שלך", "higgsfield_card": vt.client_label("higgsfield")}
         for key, he in expected.items():
             self.assertEqual(self.i18n[key][0], he)
             self.assertTrue(all(self.i18n[key]), key)
@@ -132,10 +132,10 @@ class ServerLabels(unittest.TestCase):
                 self.assertTrue(label, (tool, lang))
                 self.assertIsNone(VENDOR.search(label), (tool, lang))
         self.assertEqual(vt.client_label("elevenlabs"), "הקול שלך")
-        self.assertIn("דמות מצולמת שלך", vt.client_label("heygen"))
-        self.assertIn("דמות AI", vt.client_label("higgsfield"))
+        self.assertEqual(vt.client_label("higgsfield"), "הדמות שבסרטונים ותמונות AI")
+        self.assertIsNone(VENDOR.search(vt.client_label("heygen")))     # retired, still labelled
         # Internal names stay (code, logs, admin, cost rows)
-        self.assertEqual(vt.TOOLS["heygen"]["label"], "HeyGen")
+        self.assertEqual(vt.RETIRED_TOOLS["heygen"]["label"], "HeyGen")
 
     def test_missing_block_names_capabilities_only(self):
         for combo in (["heygen"], ["elevenlabs"], ["higgsfield"], ["heygen", "elevenlabs"],
@@ -146,8 +146,8 @@ class ServerLabels(unittest.TestCase):
                 self.assertIsNone(VENDOR.search(button["label"]), combo)
 
     def test_provider_labels(self):
-        self.assertEqual(av.PROVIDERS["heygen"].label_he, "דמות מצולמת שלך")
-        self.assertEqual(av.PROVIDERS["higgsfield"].label_he, "דמות AI")
+        self.assertEqual(av.PROVIDERS["higgsfield"].label_he, "הדמות שלך")
+        self.assertNotIn("heygen", av.PROVIDERS)
 
     def test_avatar_video_client_messages(self):
         # Every Hebrew sentence in the provider layer (refusals the client may read)
@@ -172,7 +172,7 @@ class ServerLabels(unittest.TestCase):
         for text in ast.literal_eval(consent).values():
             self.assertIsNone(VENDOR.search(text))
         # The wording changed, so the version every consent row records did too
-        self.assertIn('CONSENT_VERSION = "2026-10-31.v3"', source)
+        self.assertIn('CONSENT_VERSION = "2026-10-31.v4"', source)
         # Every chat line the agent posts to the client
         for call in ast.walk(tree):
             if isinstance(call, ast.Call) and getattr(call.func, "id", "") == "log_communication":
@@ -230,10 +230,9 @@ class ChatReplyScrub(unittest.TestCase):
         out = vt.scrub_vendor_names(reply, "he")
         self.assertIsNone(VENDOR.search(out))
         self.assertIn("הקול שלך", out)
-        self.assertIn("דמות מצולמת שלך", out)
-        self.assertIn("דמות AI", out)
+        self.assertIn(vt.client_label("higgsfield"), out)     # an old "HeyGen" means the presenter now
         self.assertEqual(vt.scrub_vendor_names("Your HeyGen's key", "en"),
-                         "Your " + vt.client_label("heygen", "en") + " key")
+                         "Your " + vt.client_label("higgsfield", "en") + " key")
         self.assertEqual(vt.scrub_vendor_names("nothing here", "he"), "nothing here")
         self.assertEqual(vt.scrub_vendor_names("", "he"), "")
 
@@ -505,7 +504,7 @@ class CreativeActions(unittest.TestCase):
 
     def test_availability(self):
         connected = {"status": "connected"}
-        state = {"creative_tools": {"tools": {"elevenlabs": connected, "heygen": connected}},
+        state = {"creative_tools": {"tools": {"elevenlabs": connected, "higgsfield": connected}},
                  "voice": {"count": 2, "voice_clone_consent": True, "voice_clone_exists": False}}
         self.assertTrue(aa._voice_clone_possible(state, {}))
         self.assertTrue(aa._presenter_video_possible(state, {}))

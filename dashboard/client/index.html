@@ -111,15 +111,6 @@ body {
 .voice-progress { height: 6px; border-radius: 6px; background: var(--panel-2); margin-top: 10px; overflow: hidden; }
 .voice-progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
 .voice-list { margin-top: 10px; }
-.footage-slot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
-.footage-title { font-weight: 600; font-size: 13px; }
-.footage-state { font-size: 12px; color: var(--gray); margin: 6px 0; overflow-wrap: anywhere; }
-.footage-state.have { color: var(--accent); }
-.footage-sentence { margin: 8px 0; padding: 10px 12px; border-inline-start: 3px solid var(--accent); background: var(--panel-2);
-  border-radius: 6px; font-size: 14px; line-height: 1.5; }
-.footage-preview { width: 100%; max-height: 260px; border-radius: 8px; background: #000; margin: 6px 0; }
-#footageCreateBtn { margin-top: 12px; }
-#footageCard .conn-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .voice-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border);
   font-size: 12.5px; }
 .voice-row:last-child { border-bottom: none; }
@@ -792,7 +783,7 @@ body {
 
 /* ---------- PRE-ACTION EXPLANATION (shared across ALL manual-step flows) ---------- */
 /* One component for every "the client does this part themselves" moment:
-   WordPress app-password, HeyGen web-UI creation, Higgsfield key, TikTok
+   WordPress app-password, Higgsfield key, TikTok
    inbox-publish, Meta Page creation. Never reinvent per-integration. */
 .preact-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.65);
@@ -1594,7 +1585,7 @@ a.media-item:hover { border-color: var(--accent); }
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z"/><path d="M19 14l.8 2.4L22 17.2l-2.2.8L19 20.4l-.8-2.4L16 17.2l2.2-.8z"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="higgsfield_card">הדמות שבסרטונים — דמות AI</div>
+          <div class="conn-name" data-i18n="higgsfield_card">הדמות שבסרטונים ותמונות AI</div>
           <div class="conn-status" id="toolStatus-higgsfield" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
@@ -1608,76 +1599,21 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="tool-row" id="toolManage-higgsfield" style="display:none;">
         <button class="conn-btn secondary" onclick="openToolForm('higgsfield', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
       </div>
+      <!-- The presenter (core/avatar_video): short clips only, said up front -->
+      <div class="conn-note" id="presenterNote" data-i18n="presenter_note">אותו כלי מייצר גם את הדמות שמדברת בסרטונים שלכם — מתמונה ברורה שלכם (שולחים בצ'אט עם ה-+) או מדמות AI. כל סרטון כזה הוא קליפ קצר, עד 15 שניות.</div>
+      <div class="conn-status" id="presenterStatus" style="margin-top:6px;"></div>
+      <!-- Likeness consent sits on THIS card and is optional here: it is required
+           only before a presenter is made from the client's OWN photos -->
+      <div id="toolLikenessConsentBox" style="margin-top:10px;">
+        <label class="conn-consent">
+          <input type="checkbox" id="toolConsent-higgsfield">
+          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש ל-uallak להשתמש בתמונות שלי שאבחר כדי ליצור מהן דמות דיגיטלית שלי, ולהפיק איתה סרטונים קצרים עבור העסק שלי בחשבון שפתחתי לשם כך. התמונה וההקלטה נפתחות לכלי רק בזמן שכל סרטון נוצר, והגישה אליהן נסגרת מיד אחרי. אוכל לבקש את הפסקת השימוש בכל עת.</span>
+        </label>
+        <button class="conn-btn secondary" id="toolConsentBtn-higgsfield" onclick="saveLikenessConsent()" data-i18n="tool_likeness_consent_btn">אישור השימוש בדמות שלי</button>
+      </div>
+      <div class="conn-note" id="toolLikenessConsentOn" style="display:none; margin-top:8px;" data-i18n="tool_likeness_consent_on">האישור לשימוש בדמות שלך נרשם ✓</div>
       <button class="disconnect-link" id="toolDisc-higgsfield" style="display:none;" onclick="disconnectTool('higgsfield', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
       <button type="button" class="conn-help-btn" data-help-id="higgsfield" style="display:none;" onclick="helpConnection('higgsfield')" data-i18n="conn_help_btn">עזרה</button>
-    </div>
-
-    <div class="conn-card unlocked" id="toolCard-heygen">
-      <div class="conn-top">
-        <div class="conn-icon" style="background:#0EA5A5;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/><path d="M17 3.5l1 1M20 6l1 .5"/></svg>
-        </div>
-        <div>
-          <div class="conn-name" data-i18n="tool_heygen_card">הדמות שבסרטונים — דמות מצולמת שלך</div>
-          <div class="conn-status" id="toolStatus-heygen" data-i18n="not_connected">לא מחובר</div>
-        </div>
-      </div>
-      <button class="conn-btn primary" id="toolOpenBtn-heygen" onclick="openToolGuide('heygen')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
-      <div class="tool-guide" id="toolGuide-heygen" style="display:none;"></div>
-      <div id="toolForm-heygen" style="display:none; margin-top:10px;">
-        <div class="conn-note" data-i18n="tool_heygen_note">שירות בתשלום נפרד מדמי הניהול. מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על הסרטונים עובר ישירות מהחשבון שלכם.</div>
-        <input class="site-input" id="toolKey-heygen" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="avatar_heygen_ph" placeholder="מדביקים כאן את המפתח">
-        <label class="conn-consent">
-          <input type="checkbox" id="toolConsent-heygen">
-          <span data-i18n="avatar_consent_likeness">אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה. אוכל לבקש את הפסקת השימוש בכל עת.</span>
-        </label>
-        <button class="conn-btn primary" id="toolConnectBtn-heygen" onclick="connectTool('heygen')" data-i18n="site_connect">חיבור</button>
-      </div>
-      <div class="tool-row" id="toolManage-heygen" style="display:none;">
-        <button class="conn-btn secondary" id="toolTestBtn-heygen" onclick="testTool('heygen')" data-i18n="tool_test_btn">בדיקת חיבור</button>
-        <button class="conn-btn secondary" onclick="openToolForm('heygen', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
-      </div>
-      <button class="disconnect-link" id="toolDisc-heygen" style="display:none;" onclick="disconnectTool('heygen', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
-      <button type="button" class="conn-help-btn" data-help-id="heygen" style="display:none;" onclick="helpConnection('heygen')" data-i18n="conn_help_btn">עזרה</button>
-    </div>
-
-    <!-- The two videos the filmed presenter is made from (core/avatar_footage):
-         each in its own labelled slot — no filename rules, no Drive folder.
-         Uploads ride the chat's chunked path with an X-Avatar-Slot header. -->
-    <div class="conn-card unlocked" id="footageCard">
-      <div class="conn-top">
-        <div class="conn-icon" style="background:#0E7490;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/><circle cx="9.5" cy="12" r="2"/></svg>
-        </div>
-        <div>
-          <div class="conn-name" data-i18n="footage_card">הסרטונים לדמות שלך</div>
-          <div class="conn-status" id="footageStatus"></div>
-        </div>
-      </div>
-      <div class="conn-note" data-i18n="footage_note">שני סרטונים, כל אחד במקום שלו. מכאן אנחנו יוצרים את הדמות — לא צריך להיכנס לשום אתר אחר.</div>
-      <div class="footage-slot" id="footageSlot-training">
-        <div class="footage-title" data-i18n="footage_training">1. סרטון האימון</div>
-        <div class="conn-note" data-i18n="footage_training_hint">2-3 דקות שלכם מדברים למצלמה, בלי חיתוכים, באור טוב.</div>
-        <div class="footage-state" id="footageState-training" data-i18n="footage_empty">עוד לא הועלה</div>
-        <input type="file" id="footageFile-training" accept="video/*" style="display:none;" onchange="uploadFootage('training', this.files[0]); this.value='';">
-        <div class="tool-row">
-          <button class="conn-btn secondary" id="footageUploadBtn-training" onclick="document.getElementById('footageFile-training').click()" data-i18n="footage_upload">העלאת סרטון</button>
-        </div>
-      </div>
-      <div class="footage-slot" id="footageSlot-consent">
-        <div class="footage-title" data-i18n="footage_consent">2. סרטון ההסכמה</div>
-        <div class="conn-note" data-i18n="footage_consent_hint">מסתכלים למצלמה ואומרים את המשפט הזה, בטייק אחד:</div>
-        <blockquote class="footage-sentence" id="footageSentence" dir="auto"></blockquote>
-        <video class="footage-preview" id="footagePreview" muted playsinline style="display:none;"></video>
-        <div class="footage-state" id="footageState-consent" data-i18n="footage_empty">עוד לא הועלה</div>
-        <input type="file" id="footageFile-consent" accept="video/*" style="display:none;" onchange="uploadFootage('consent', this.files[0]); this.value='';">
-        <div class="tool-row">
-          <button class="conn-btn primary" id="footageRecordBtn" onclick="toggleConsentRecording()" data-i18n="footage_record">הקלטה עכשיו</button>
-          <button class="conn-btn secondary" id="footageUploadBtn-consent" onclick="document.getElementById('footageFile-consent').click()" data-i18n="footage_upload">העלאת סרטון</button>
-        </div>
-      </div>
-      <button class="conn-btn primary" id="footageCreateBtn" onclick="createPresenter(this)" disabled data-i18n="footage_create">יצירת הדמות שלי</button>
-      <div class="conn-note" id="footageCreateNote" data-i18n="footage_need_both">אחרי ששני הסרטונים יתקבלו, נוכל ליצור את הדמות.</div>
     </div>
 
     <div class="conn-card unlocked" id="toolCard-elevenlabs">
@@ -1713,22 +1649,6 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="conn-note" id="toolVoiceConsentOn" style="display:none; margin-top:8px;" data-i18n="tool_voice_consent_on">הסכמת שיבוט הקול נרשמה ✓</div>
       <button class="disconnect-link" id="toolDisc-elevenlabs" style="display:none;" onclick="disconnectTool('elevenlabs', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
       <button type="button" class="conn-help-btn" data-help-id="elevenlabs" style="display:none;" onclick="helpConnection('elevenlabs')" data-i18n="conn_help_btn">עזרה</button>
-    </div>
-
-    <!-- Which presenter fronts the client's videos (core/avatar_video): a
-         filmed likeness of them or an AI presenter; one video may override it -->
-    <div class="conn-card unlocked" id="providerCard">
-      <div class="conn-top">
-        <div class="conn-icon" style="background:#464646;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
-        </div>
-        <div>
-          <div class="conn-name" data-i18n="provider_card">איזו דמות תופיע בסרטונים</div>
-          <div class="conn-status" id="providerStatus"></div>
-        </div>
-      </div>
-      <div class="conn-note" data-i18n="provider_note">דמות מצולמת שלך — את/ה, מצולם/ת; או דמות AI. הקול זהה בשתיהן: הקלטה שהעליתם או הקול המשובט שלכם.</div>
-      <select class="site-input" id="providerSelect" onchange="chooseProvider(this.value)"></select>
     </div>
 
     <!-- Voice recordings (core/voice_recordings): uploading is ALL that is
@@ -2365,7 +2285,7 @@ const DASH_I18N = {
   conn_step_youtube: { he:'יוטיוב', en:'YouTube', fr:'YouTube', ar:'يوتيوب', ru:'YouTube' },
   conn_step_media: { he:'חשבון יצירת המדיה', en:'your media generation account', fr:'votre compte de génération de médias', ar:'حساب إنتاج الوسائط', ru:'аккаунт генерации медиа' },
   conn_step_avatar: { he:'הדמות שבסרטונים שלך', en:'the character in your videos', fr:'le personnage de vos vidéos', ar:'الشخصية في فيديوهاتك', ru:'персонаж ваших видео' },
-  conn_notice_avatar: { he:'סרטונים עם דמות AI עוד לא זמינים אצלנו. אם רוצים, אפשר בינתיים ליצור אותם עם דמות מצולמת שלך.', en:'Videos with an AI presenter are not available yet. If you like, you can make them with a filmed likeness of you in the meantime.', fr:'Les vidéos avec un présentateur IA ne sont pas encore disponibles. Si vous le souhaitez, vous pouvez en attendant les créer avec votre image filmée.', ar:'الفيديوهات بشخصية بالذكاء الاصطناعي غير متاحة بعد. إن رغبت، يمكنك في الأثناء إنشاؤها بشخصيتك المصوَّرة.', ru:'Видео с ИИ-ведущим пока недоступны. Если хотите, пока можно создавать их с вашим снятым образом.' },
+  conn_notice_avatar: { he:'סרטוני מגיש עם הדמות שלך עוד לא פתוחים אצלנו — הם בבדיקות אחרונות, ונעדכן ברגע שייפתחו.', en:'Presenter videos with your character are not open yet — they are in final testing, and we will tell you the moment they open.', fr:'Les vidéos avec votre présentateur ne sont pas encore ouvertes — tests finaux en cours ; nous vous préviendrons dès leur ouverture.', ar:'فيديوهات المقدِّم بشخصيتك غير متاحة بعد — إنها في الاختبارات الأخيرة، وسنبلغك فور فتحها.', ru:'Видео с вашим ведущим пока не открыты — идут финальные проверки, мы сообщим, как только откроем.' },
 
   // ── progress journey ──
   journey_title: { he:'המסע שלך עם uallak', en:'Your journey with uallak', fr:'Votre parcours avec uallak', ar:'رحلتك مع uallak', ru:'Ваш путь с uallak' },
@@ -2581,36 +2501,13 @@ const DASH_I18N = {
   err_website_not_in_package: { he:'הקמת אתר חדש אינה כלולה בחבילה הנוכחית שלכם — דברו איתנו בצ\'אט כדי להוסיף את השירות', en:'Building a new site isn\'t included in your current package — talk to us in the chat to add it', fr:'La création d\'un nouveau site n\'est pas incluse dans votre formule actuelle — contactez-nous via le chat pour l\'ajouter', ar:'إنشاء موقع جديد غير مشمول في باقتكم الحالية — تحدثوا معنا في الدردشة لإضافة الخدمة', ru:'Создание нового сайта не входит в ваш текущий пакет — напишите нам в чат, чтобы добавить услугу' },
   err_website_already_connected: { he:'כבר יש לכם אתר מחובר — נתקו אותו קודם אם אתם רוצים אתר חדש', en:'You already have a connected website — disconnect it first if you want a new one', fr:'Vous avez déjà un site connecté — déconnectez-le d\'abord si vous en voulez un nouveau', ar:'لديكم بالفعل موقع مرتبط — افصلوه أولاً إذا أردتم موقعًا جديدًا', ru:'У вас уже есть подключённый сайт — сначала отключите его, если хотите новый' },
   err_website_provision_in_progress: { he:'כבר מקימים לכם אתר — אין צורך ללחוץ שוב', en:'We\'re already building your site — no need to click again', fr:'Nous créons déjà votre site — pas besoin de cliquer à nouveau', ar:'نحن بالفعل نُنشئ موقعكم — لا داعٍ للنقر مرة أخرى', ru:'Мы уже создаём ваш сайт — не нужно нажимать снова' },
-  higgsfield_card: { he:'הדמות שבסרטונים — דמות AI', en:'Your video presenter — an AI presenter', fr:'Votre présentateur vidéo — un présentateur IA', ar:'الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي', ru:'Ведущий ваших видео — ИИ-ведущий' },
+  higgsfield_card: { he:'הדמות שבסרטונים ותמונות AI', en:'Your video presenter and AI images', fr:'Votre présentateur vidéo et images IA', ar:'الشخصية في الفيديوهات وصور الذكاء الاصطناعي', ru:'Ведущий ваших видео и ИИ-изображения' },
   higgsfield_signup_note: { he:'מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.', en:'Paste the key you copied following the guide. Creation is paid directly by you to the tool — we only operate it for you.', fr:'Collez ici la clé copiée en suivant le guide. La création est payée directement par vous à l\'outil — nous l\'utilisons seulement pour vous.', ar:'الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. الدفع مقابل الإنشاء يتم مباشرة منكم للأداة — نحن فقط نشغّلها لكم.', ru:'Вставьте ключ, скопированный по инструкции. Создание оплачивается вами напрямую инструменту — мы только управляем им за вас.' },
   higgsfield_key_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
   higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
   higgsfield_connect_failed: { he:'החיבור נכשל — ודאו שהמפתח תקין ונסו שוב, או דברו איתנו בצ׳אט', en:'Connection failed — check the key is correct and try again, or talk to us in the chat', fr:'Échec de connexion — vérifiez la clé et réessayez, ou contactez-nous via le chat', ar:'فشل الربط — تأكد من صحة المفتاح وحاول مجددًا، أو تحدث معنا في الدردشة', ru:'Подключение не удалось — проверьте ключ и попробуйте снова, или напишите нам в чат' },
-  avatar_heygen_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
-  avatar_consent_likeness: { he:'אני מאשר/ת במפורש שימוש בצילומים ובתמונות שאעלה ליצירת דמות דיגיטלית מצולמת שלי בחשבון שפתחתי לשם כך, ולהפקת סרטונים עבור העסק שלי. הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to the footage and photos I upload being used to create a filmed digital likeness of me on the account I opened for it, and to produce videos for my business with it. The files are opened to the tool only for the duration of the creation, and access to them is closed right after. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que les vidéos et photos que je téléverse servent à créer mon image numérique filmée sur le compte que j\'ai ouvert à cet effet, et à produire des vidéos pour mon entreprise. Les fichiers ne sont ouverts à l\'outil que pendant la création, et leur accès est fermé juste après. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على استخدام المقاطع والصور التي أرفعها لإنشاء شخصية رقمية مصوَّرة لي في الحساب الذي فتحته لذلك، ولإنتاج فيديوهات لعملي. تُفتح الملفات للأداة فقط طوال مدة الإنشاء، ويُغلق الوصول إليها فور انتهائه. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь на использование загруженных мной видео и фото для создания моего цифрового снятого образа в аккаунте, открытом для этого, и на производство видео для моего бизнеса. Файлы открываются инструменту только на время создания, и доступ к ним закрывается сразу после. Я могу в любой момент потребовать прекратить это использование.' },
-  footage_card: { he:'הסרטונים לדמות שלך', en:'The videos for your presenter', fr:'Les vidéos de votre présentateur', ar:'فيديوهات شخصيتك', ru:'Видео для вашего ведущего' },
-  footage_note: { he:'שני סרטונים, כל אחד במקום שלו. מכאן אנחנו יוצרים את הדמות — לא צריך להיכנס לשום אתר אחר.', en:'Two videos, each in its own place. We create the presenter from here — no other website needed.', fr:'Deux vidéos, chacune à sa place. Nous créons le présentateur d\'ici — aucun autre site nécessaire.', ar:'فيديوهان، كل واحد في مكانه. من هنا ننشئ الشخصية — دون الحاجة إلى أي موقع آخر.', ru:'Два видео, каждое на своём месте. Ведущего создаём отсюда — другие сайты не нужны.' },
-  footage_training: { he:'1. סרטון האימון', en:'1. Training video', fr:'1. Vidéo d\'entraînement', ar:'1. فيديو التدريب', ru:'1. Обучающее видео' },
-  footage_training_hint: { he:'2-3 דקות שלכם מדברים למצלמה, בלי חיתוכים, באור טוב.', en:'2-3 minutes of you talking to camera, no cuts, good light.', fr:'2-3 minutes face caméra, sans coupe, avec une bonne lumière.', ar:'2-3 دقائق تتحدثون فيها إلى الكاميرا، بلا قص، بإضاءة جيدة.', ru:'2-3 минуты разговора в камеру, без склеек, при хорошем свете.' },
-  footage_consent: { he:'2. סרטון ההסכמה', en:'2. Consent video', fr:'2. Vidéo de consentement', ar:'2. فيديو الموافقة', ru:'2. Видео согласия' },
-  footage_consent_hint: { he:'מסתכלים למצלמה ואומרים את המשפט הזה, בטייק אחד:', en:'Look at the camera and say this sentence, in one take:', fr:'Regardez la caméra et dites cette phrase, en une prise :', ar:'انظروا إلى الكاميرا وقولوا هذه الجملة في لقطة واحدة:', ru:'Смотрите в камеру и произнесите эту фразу одним дублем:' },
-  footage_upload: { he:'העלאת סרטון', en:'Upload a video', fr:'Téléverser une vidéo', ar:'رفع فيديو', ru:'Загрузить видео' },
-  footage_replace: { he:'החלפת הסרטון', en:'Replace the video', fr:'Remplacer la vidéo', ar:'استبدال الفيديو', ru:'Заменить видео' },
-  footage_record: { he:'הקלטה עכשיו', en:'Record now', fr:'Enregistrer', ar:'سجّل الآن', ru:'Записать сейчас' },
-  footage_stop: { he:'סיום ושליחה', en:'Stop and send', fr:'Arrêter et envoyer', ar:'إنهاء وإرسال', ru:'Стоп и отправить' },
-  footage_empty: { he:'עוד לא הועלה', en:'Not uploaded yet', fr:'Pas encore téléversée', ar:'لم يُرفع بعد', ru:'Ещё не загружено' },
-  footage_have: { he:'התקבל ✓ {name}', en:'Received ✓ {name}', fr:'Reçue ✓ {name}', ar:'تم الاستلام ✓ {name}', ru:'Получено ✓ {name}' },
-  footage_uploading: { he:'מעלה… {pct}%', en:'Uploading… {pct}%', fr:'Téléversement… {pct} %', ar:'جارٍ الرفع… {pct}%', ru:'Загрузка… {pct}%' },
-  footage_create: { he:'יצירת הדמות שלי', en:'Create my presenter', fr:'Créer mon présentateur', ar:'إنشاء شخصيتي', ru:'Создать моего ведущего' },
-  footage_creating: { he:'שולח ליצירה…', en:'Sending for creation…', fr:'Envoi en création…', ar:'جارٍ الإرسال للإنشاء…', ru:'Отправляем на создание…' },
-  footage_need_both: { he:'אחרי ששני הסרטונים יתקבלו, נוכל ליצור את הדמות.', en:'Once both videos are in, we can create the presenter.', fr:'Dès que les deux vidéos sont là, nous pouvons créer le présentateur.', ar:'بعد استلام الفيديوهين يمكننا إنشاء الشخصية.', ru:'Когда оба видео будут загружены, мы сможем создать ведущего.' },
-  footage_submitted: { he:'הדמות בתהליך יצירה. זה לוקח כמה ימים — נעדכן אותך כשהיא מוכנה.', en:'Your presenter is being created. It takes a few days — we\'ll let you know when it\'s ready.', fr:'Votre présentateur est en création. Cela prend quelques jours — nous vous préviendrons.', ar:'شخصيتك قيد الإنشاء. يستغرق ذلك بضعة أيام — سنخبرك عندما تكون جاهزة.', ru:'Ведущий создаётся. Это занимает несколько дней — мы сообщим, когда он будет готов.' },
-  footage_list_error: { he:'לא הצלחנו לטעון את הסרטונים כרגע.', en:'We couldn\'t load the videos right now.', fr:'Impossible de charger les vidéos pour le moment.', ar:'تعذّر تحميل الفيديوهات الآن.', ru:'Не удалось загрузить видео.' },
-  footage_camera_denied: { he:'אין גישה למצלמה. צריך לאשר מצלמה ומיקרופון בדפדפן ולנסות שוב, או להעלות סרטון.', en:'No camera access. Allow the camera and microphone in your browser and try again, or upload a video.', fr:'Pas d\'accès à la caméra. Autorisez caméra et micro, ou téléversez une vidéo.', ar:'لا يوجد وصول إلى الكاميرا. اسمحوا بالكاميرا والميكروفون أو ارفعوا فيديو.', ru:'Нет доступа к камере. Разрешите камеру и микрофон или загрузите видео.' },
-  footage_record_unsupported: { he:'הדפדפן הזה לא מקליט וידאו. אפשר לצלם בטלפון ולהעלות את הסרטון.', en:'This browser can\'t record video. Film on your phone and upload it.', fr:'Ce navigateur ne peut pas filmer. Filmez avec votre téléphone et téléversez.', ar:'هذا المتصفح لا يسجل الفيديو. صوّروا بالهاتف وارفعوا الفيديو.', ru:'Этот браузер не записывает видео. Снимите на телефон и загрузите.' },
+  avatar_consent_likeness: { he:'אני מאשר/ת במפורש ל-uallak להשתמש בתמונות שלי שאבחר כדי ליצור מהן דמות דיגיטלית שלי, ולהפיק איתה סרטונים קצרים עבור העסק שלי בחשבון שפתחתי לשם כך. התמונה וההקלטה נפתחות לכלי רק בזמן שכל סרטון נוצר, והגישה אליהן נסגרת מיד אחרי. אוכל לבקש את הפסקת השימוש בכל עת.', en:'I explicitly consent to uallak using photos of me that I choose to create a digital presenter of me, and to produce short videos for my business with it on the account I opened for this. The photo and the recording are opened to the tool only while each video is being made, and access to them is closed right after. I can request that this use stop at any time.', fr:'Je consens explicitement à ce que uallak utilise les photos de moi que je choisis pour créer mon présentateur numérique, et produise avec lui de courtes vidéos pour mon entreprise sur le compte ouvert à cet effet. La photo et l\'enregistrement ne sont ouverts à l\'outil que pendant la création de chaque vidéo, et leur accès est fermé juste après. Je peux demander l\'arrêt de cette utilisation à tout moment.', ar:'أوافق صراحةً على أن تستخدم uallak صوري التي أختارها لإنشاء شخصية رقمية لي، وإنتاج فيديوهات قصيرة لعملي بها في الحساب الذي فتحته لذلك. تُفتح الصورة والتسجيل للأداة فقط أثناء إنشاء كل فيديو، ويُغلق الوصول إليهما فور انتهائه. يمكنني طلب إيقاف هذا الاستخدام في أي وقت.', ru:'Я явно соглашаюсь, чтобы uallak использовал выбранные мной фото для создания моего цифрового ведущего и делал с ним короткие видео для моего бизнеса в аккаунте, открытом для этого. Фото и запись открываются инструменту только на время создания каждого видео, и доступ к ним закрывается сразу после. Я могу в любой момент потребовать прекратить это использование.' },
   avatar_need_consent: { he:'כדי להמשיך יש לאשר את הסכמת השימוש בדמות — זו דרישה מחייבת', en:'You must confirm the likeness consent to continue — it\'s a mandatory requirement', fr:'Vous devez confirmer le consentement d\'utilisation de votre image — c\'est obligatoire', ar:'يجب تأكيد الموافقة على استخدام صورتك للمتابعة — هذا شرط إلزامي', ru:'Для продолжения необходимо подтвердить согласие на использование образа — это обязательное требование' },
-  tool_heygen_card: { he:'הדמות שבסרטונים — דמות מצולמת שלך', en:'Your video presenter — a filmed likeness of you', fr:'Votre présentateur vidéo — votre image filmée', ar:'الشخصية في الفيديوهات — شخصيتك المصوَّرة', ru:'Ведущий ваших видео — ваш снятый образ' },
-  tool_heygen_note: { he:'שירות בתשלום נפרד מדמי הניהול. מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על הסרטונים עובר ישירות מהחשבון שלכם.', en:'A service billed separately from your management fee. Paste the key you copied following the guide. Videos are paid directly from your own account.', fr:'Service facturé séparément de vos frais de gestion. Collez la clé copiée en suivant le guide. Les vidéos sont payées directement depuis votre compte.', ar:'خدمة بتكلفة منفصلة عن رسوم الإدارة. الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. تُدفع الفيديوهات مباشرة من حسابكم.', ru:'Услуга оплачивается отдельно от ведения. Вставьте ключ, скопированный по инструкции. Видео оплачиваются напрямую с вашего аккаунта.' },
   tool_eleven_card: { he:'הקול שלך', en:'Your voice', fr:'Votre voix', ar:'صوتك', ru:'Ваш голос' },
   tool_eleven_note: { he:'מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. שיבוט קול דורש מסלול בתשלום בחשבון שפתחתם; התשלום עובר ישירות מכם.', en:'Paste the key you copied following the guide. Voice cloning needs a paid plan on the account you opened; you pay it directly.', fr:'Collez la clé copiée en suivant le guide. Le clonage de voix nécessite une formule payante sur le compte ouvert ; vous la payez directement.', ar:'الصقوا المفتاح الذي نسختموه حسب الإرشاد. استنساخ الصوت يتطلب باقة مدفوعة في الحساب الذي فتحتموه؛ الدفع مباشرة منكم.', ru:'Вставьте ключ, скопированный по инструкции. Для клонирования голоса нужен платный тариф в открытом аккаунте; оплата напрямую от вас.' },
   tool_eleven_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
@@ -2618,8 +2515,11 @@ const DASH_I18N = {
   tool_voice_consent_btn: { he:'אישור הסכמת שיבוט קול', en:'Confirm voice-cloning consent', fr:'Confirmer le consentement de clonage', ar:'تأكيد موافقة استنساخ الصوت', ru:'Подтвердить согласие на клонирование' },
   tool_voice_consent_on: { he:'הסכמת שיבוט הקול נרשמה ✓', en:'Voice-cloning consent recorded ✓', fr:'Consentement de clonage enregistré ✓', ar:'سُجلت موافقة استنساخ الصوت ✓', ru:'Согласие на клонирование голоса зафиксировано ✓' },
   tool_voice_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת ההסכמה', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
-  tool_name_heygen: { he:'הדמות המצולמת שלך', en:'your filmed presenter', fr:'votre présentateur filmé', ar:'شخصيتك المصوَّرة', ru:'ваш снятый ведущий' },
-  tool_name_higgsfield: { he:'דמות ה-AI', en:'your AI presenter', fr:'votre présentateur IA', ar:'شخصية الذكاء الاصطناعي', ru:'ваш ИИ-ведущий' },
+  presenter_note: { he:'אותו כלי מייצר גם את הדמות שמדברת בסרטונים שלכם — מתמונה ברורה שלכם (שולחים בצ\'אט עם ה-+) או מדמות AI. כל סרטון כזה הוא קליפ קצר, עד 15 שניות.', en:'The same tool also makes the presenter who speaks in your videos — from a clear photo of you (send it in the chat with +) or an AI character. Each such video is a short clip, up to 15 seconds.', fr:'Le même outil crée aussi le présentateur qui parle dans vos vidéos — à partir d\'une photo nette de vous (envoyez-la dans le chat avec +) ou d\'un personnage IA. Chaque vidéo est un clip court, 15 secondes au plus.', ar:'الأداة نفسها تصنع أيضًا الشخصية التي تتكلم في فيديوهاتكم — من صورة واضحة لكم (أرسلوها في الدردشة بزر +) أو من شخصية ذكاء اصطناعي. كل فيديو مقطع قصير حتى 15 ثانية.', ru:'Этот же инструмент делает и ведущего, который говорит в ваших видео, — по чёткому фото (отправьте его в чат кнопкой +) или из ИИ-персонажа. Каждое такое видео — короткий клип до 15 секунд.' },
+  tool_likeness_consent_btn: { he:'אישור השימוש בדמות שלי', en:'Confirm the likeness consent', fr:'Confirmer le consentement d\'image', ar:'تأكيد الموافقة على استخدام صورتي', ru:'Подтвердить согласие на образ' },
+  tool_likeness_consent_on: { he:'האישור לשימוש בדמות שלך נרשם ✓', en:'Your likeness consent is recorded ✓', fr:'Votre consentement d\'image est enregistré ✓', ar:'سُجلت موافقتك على استخدام صورتك ✓', ru:'Согласие на использование образа зафиксировано ✓' },
+  tool_likeness_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת האישור', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
+  tool_name_higgsfield: { he:'הדמות שבסרטונים ותמונות AI', en:'your presenter and AI images', fr:'votre présentateur et images IA', ar:'الشخصية وصور الذكاء الاصطناعي', ru:'ваш ведущий и ИИ-изображения' },
   tool_name_elevenlabs: { he:'הקול שלך', en:'your voice', fr:'votre voix', ar:'صوتك', ru:'ваш голос' },
   tool_start_guide: { he:'חיבור עם הדרכה צעד אחר צעד', en:'Connect with a step-by-step guide', fr:'Connecter avec un guide pas à pas', ar:'الربط مع إرشاد خطوة بخطوة', ru:'Подключить с пошаговой инструкцией' },
   tool_have_key: { he:'יש לי כבר מפתח', en:'I already have a key', fr:'J\'ai déjà une clé', ar:'لديّ مفتاح بالفعل', ru:'У меня уже есть ключ' },
@@ -2648,13 +2548,7 @@ const DASH_I18N = {
   tool_err_consent_required: { he:'כדי לחבר את הדמות המצולמת שלך צריך לסמן את האישור לשימוש בדמות שלך.', en:'To connect your filmed presenter, tick the likeness consent.', fr:'Pour connecter votre présentateur filmé, cochez le consentement d\'utilisation de votre image.', ar:'لربط شخصيتك المصوَّرة حدّد موافقة استخدام صورتك.', ru:'Чтобы подключить снятого ведущего, отметьте согласие на использование образа.' },
   tool_err_not_connected: { he:'הכלי הזה עוד לא מחובר.', en:'This tool isn\'t connected yet.', fr:'Cet outil n\'est pas encore connecté.', ar:'هذه الأداة غير متصلة بعد.', ru:'Этот инструмент ещё не подключён.' },
   tool_err_unknown_provider: { he:'הבחירה הזו לא מוכרת.', en:'Unknown choice.', fr:'Choix inconnu.', ar:'اختيار غير معروف.', ru:'Неизвестный вариант.' },
-  provider_card: { he:'איזו דמות תופיע בסרטונים', en:'Who presents your videos', fr:'Qui présente vos vidéos', ar:'من يقدّم فيديوهاتكم', ru:'Кто ведёт ваши видео' },
-  provider_note: { he:'דמות מצולמת שלך — את/ה, מצולם/ת; או דמות AI. הקול זהה בשתיהן: הקלטה שהעליתם או הקול המשובט שלכם.', en:'A filmed likeness of you, or an AI presenter. The voice is the same in both: a recording you uploaded or your cloned voice.', fr:'Votre image filmée, ou un présentateur IA. La voix est la même : un enregistrement téléversé ou votre voix clonée.', ar:'شخصيتك المصوَّرة أو شخصية بالذكاء الاصطناعي. الصوت نفسه في الحالتين: تسجيل رفعتموه أو صوتكم المستنسخ.', ru:'Ваш снятый образ или ИИ-ведущий. Голос одинаковый: загруженная запись или ваш клонированный голос.' },
-  provider_heygen: { he:'דמות מצולמת שלך', en:'A filmed likeness of you', fr:'Votre image filmée', ar:'شخصيتك المصوَّرة', ru:'Ваш снятый образ' },
-  provider_higgsfield: { he:'דמות AI', en:'An AI presenter', fr:'Un présentateur IA', ar:'شخصية بالذكاء الاصطناعي', ru:'ИИ-ведущий' },
-  provider_not_ready: { he:'עוד לא פעיל', en:'not available yet', fr:'pas encore disponible', ar:'غير متاح بعد', ru:'пока недоступно' },
-  provider_needs_tool: { he:'צריך לחבר את "{name}"', en:'"{name}" needs connecting', fr:'« {name} » doit être connecté', ar:'يلزم ربط "{name}"', ru:'Нужно подключить «{name}»' },
-  provider_saved: { he:'הבחירה נשמרה ✓', en:'Choice saved ✓', fr:'Choix enregistré ✓', ar:'تم حفظ الاختيار ✓', ru:'Выбор сохранён ✓' },
+  provider_not_ready: { he:'סרטוני מגיש עוד לא פתוחים אצלך — הם בבדיקות אחרונות, ונעדכן כשייפתחו.', en:'Presenter videos are not open for you yet — they are in final testing; we will tell you when they open.', fr:'Les vidéos de présentateur ne sont pas encore ouvertes pour vous — tests finaux en cours.', ar:'فيديوهات المقدِّم غير متاحة لك بعد — في الاختبارات الأخيرة، وسنبلغك عند فتحها.', ru:'Видео с ведущим для вас пока не открыты — идут финальные проверки, мы сообщим.' },
   voice_card: { he:'הקלטות קול', en:'Voice recordings', fr:'Enregistrements vocaux', ar:'تسجيلات صوتية', ru:'Записи голоса' },
   voice_note: { he:'מעלים הקלטה של הקול שלכם (mp3, m4a, wav או webm, עד 25MB) — וזהו. אנחנו נחליט איך להשתמש בה בסרטונים. שיבוט הקול נעשה רק אם אישרתם את הסכמת שיבוט הקול בכרטיס "הקול שלך".', en:'Upload a recording of your voice (mp3, m4a, wav or webm, up to 25MB) — that\'s all. We decide how to use it in your videos. Your voice is cloned only if you confirmed the voice-cloning consent on the "Your voice" card.', fr:'Téléversez un enregistrement de votre voix (mp3, m4a, wav ou webm, jusqu\'à 25 Mo) — c\'est tout. Nous décidons comment l\'utiliser. Votre voix n\'est clonée que si vous avez confirmé le consentement sur la carte « Votre voix ».', ar:'ارفع تسجيلًا لصوتك (mp3 أو m4a أو wav أو webm، حتى 25MB) — وهذا كل شيء. نحن نقرر كيف نستخدمه في الفيديوهات. يُستنسخ صوتك فقط إذا أكدت موافقة الاستنساخ في بطاقة "صوتك".', ru:'Загрузите запись своего голоса (mp3, m4a, wav или webm, до 25 МБ) — и всё. Как её использовать в роликах, решаем мы. Голос клонируется, только если вы подтвердили согласие на карточке «Ваш голос».' },
   voice_upload_btn: { he:'העלאת הקלטה', en:'Upload a recording', fr:'Téléverser un enregistrement', ar:'رفع تسجيل', ru:'Загрузить запись' },
@@ -3349,7 +3243,6 @@ async function loadDashboard() {
     // Creative tools, each on its own card, and the voice recordings
     loadCreativeTools();
     loadVoiceRecordings();
-    loadAvatarFootage();
 
     // The account manager: apply the client's saved choice (or the default),
     // and offer the one-time picker until they've chosen
@@ -4206,7 +4099,7 @@ function handleSiteProvisionStatus(status) {
 // generation is the check. Keys never come back from the server.
 // The ids below are internal; what the client READS is toolName() — the
 // capability, never the vendor's name.
-const CREATIVE_TOOLS = ['higgsfield', 'heygen', 'elevenlabs'];
+const CREATIVE_TOOLS = ['higgsfield', 'elevenlabs'];
 function toolName(tool) { return uallakI18n.t('tool_name_' + tool); }
 const TOOL_STATUS_KEYS = { connected: 'tool_st_connected', connected_unverified: 'tool_st_unverified',
   key_rejected: 'tool_st_rejected', not_connected: 'not_connected' };
@@ -4231,7 +4124,7 @@ async function loadCreativeTools() {
     return;
   }
   CREATIVE_TOOLS.forEach(paintTool);
-  paintProviders();
+  paintPresenter();
 }
 
 function paintTool(tool) {
@@ -4252,7 +4145,10 @@ function paintTool(tool) {
   const form = document.getElementById('toolForm-' + tool);
   if (t.status === 'key_rejected') form.style.display = 'block';
   else if (stored) form.style.display = 'none';
-  if (tool === 'heygen' && t.consent) document.getElementById('toolConsent-heygen').checked = true;
+  if (tool === 'higgsfield') {
+    document.getElementById('toolLikenessConsentBox').style.display = t.consent ? 'none' : '';
+    document.getElementById('toolLikenessConsentOn').style.display = t.consent ? 'block' : 'none';
+  }
   if (tool === 'elevenlabs') {
     document.getElementById('toolVoiceConsentBox').style.display = t.consent ? 'none' : '';
     document.getElementById('toolVoiceConsentOn').style.display = t.consent ? 'block' : 'none';
@@ -4376,7 +4272,6 @@ async function connectTool(tool) {
   if (!api_key) { showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn'); return; }
   const box = document.getElementById('toolConsent-' + tool);
   const consent = !!(box && box.checked);
-  if (tool === 'heygen' && !consent) { showNotice(uallakI18n.t('avatar_need_consent'), 'warn'); return; }
   const btn = document.getElementById('toolConnectBtn-' + tool);
   btn.disabled = true;
   btn.textContent = uallakI18n.t('site_connecting');
@@ -4482,42 +4377,39 @@ async function saveVoiceConsent() {
   btn.disabled = false;
 }
 
-function paintProviders() {
-  const select = document.getElementById('providerSelect');
-  const providers = toolState.providers || [];
-  select.innerHTML = providers.map(p => {
-    const label = uallakI18n.t('provider_' + p.id) + (p.ready ? '' : ' — ' + uallakI18n.t('provider_not_ready'));
-    return `<option value="${esc(p.id)}"${p.chosen ? ' selected' : ''}>${esc(label)}</option>`;
-  }).join('');
-  const chosen = providers.find(p => p.chosen);
-  const status = document.getElementById('providerStatus');
-  status.textContent = !chosen ? ''
-    : !chosen.ready ? uallakI18n.t('provider_not_ready')
-    : chosen.connected ? uallakI18n.t('connected_status')
-    : uallakI18n.t('provider_needs_tool', { name: toolName(chosen.tool) });
+// The presenter (core/avatar_video): one provider, so no choice — only
+// whether it is open for this client yet
+function paintPresenter() {
+  const p = (toolState.providers || [])[0];
+  const status = document.getElementById('presenterStatus');
+  status.textContent = p && !p.ready ? uallakI18n.t('provider_not_ready') : '';
 }
 
-async function chooseProvider(provider) {
+// Likeness consent: optional on this card, required before a presenter is
+// made from the client's own photos; recorded on its own
+async function saveLikenessConsent() {
+  if (!document.getElementById('toolConsent-higgsfield').checked) {
+    showNotice(uallakI18n.t('tool_likeness_consent_tick'), 'warn');
+    return;
+  }
+  const btn = document.getElementById('toolConsentBtn-higgsfield');
+  btn.disabled = true;
   try {
-    const res = await fetch('/api/client/tools/provider', {
+    const res = await fetch('/api/avatar/consent', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify({ scope: 'likeness' }),
     });
-    const body = await res.json().catch(() => ({}));
-    if (res.ok && body.success) {
-      showNotice(uallakI18n.t('provider_saved'), 'success');
-      const chosen = (toolState.providers || []).find(p => p.id === provider);
-      // Chosen but not connected: open ONLY that tool's card
-      if (chosen && !chosen.connected) focusToolCard(chosen.tool);
+    if (res.ok) {
+      showNotice(uallakI18n.t('tool_likeness_consent_on'), 'success');
       await loadCreativeTools();
-      return;
+    } else {
+      showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
     }
   } catch (e) {
-    console.error('provider choice failed', e);
+    console.error('likeness consent failed', e);
   }
-  showNotice(uallakI18n.t('higgsfield_connect_failed'), 'warn');
-  paintProviders();
+  btn.disabled = false;
 }
 
 function focusToolCard(tool) {
@@ -4667,128 +4559,6 @@ async function toggleVoiceRecording() {
   };
   voiceRecorder.start();
   btn.textContent = uallakI18n.t('voice_stop_btn');
-}
-
-// ─── Presenter footage: two labelled slots (core/avatar_footage) ────────────
-// Which video is which comes from the slot the client used — never a file
-// name. The upload is the chat's chunked one (chunkedUpload) with a slot header.
-let footageView = null;
-let consentRecorder = null;
-const FOOTAGE_SLOTS = ['training', 'consent'];
-
-function paintFootage() {
-  const v = footageView;
-  if (!v) return;
-  document.getElementById('footageSentence').textContent = v.sentence || '';
-  FOOTAGE_SLOTS.forEach(slot => {
-    const row = v[slot];
-    const state = document.getElementById('footageState-' + slot);
-    state.classList.toggle('have', Boolean(row));
-    state.textContent = row ? uallakI18n.t('footage_have', { name: row.name }) : uallakI18n.t('footage_empty');
-    document.getElementById('footageUploadBtn-' + slot).textContent =
-      uallakI18n.t(row ? 'footage_replace' : 'footage_upload');
-  });
-  const btn = document.getElementById('footageCreateBtn');
-  const note = document.getElementById('footageCreateNote');
-  btn.disabled = !v.ready || v.submitted;
-  btn.style.display = v.submitted ? 'none' : '';
-  note.textContent = uallakI18n.t(v.submitted ? 'footage_submitted' : 'footage_need_both');
-  note.style.display = (v.ready && !v.submitted) ? 'none' : '';
-  document.getElementById('footageStatus').textContent = v.submitted ? uallakI18n.t('footage_submitted') : '';
-}
-
-async function loadAvatarFootage() {
-  try {
-    const res = await fetch('/api/client/avatar-footage', { credentials: 'same-origin' });
-    const body = await res.json();
-    if (!res.ok || !body.success) throw new Error('footage ' + res.status);
-    footageView = body.data || {};
-    paintFootage();
-  } catch (e) {
-    console.error('footage view failed', e);
-    document.getElementById('footageStatus').textContent = uallakI18n.t('footage_list_error');
-  }
-}
-
-async function uploadFootage(slot, file) {
-  if (!file) return;
-  if (!file.size) { showNotice(uallakI18n.t('upload_empty'), 'warn'); return; }
-  const state = document.getElementById('footageState-' + slot);
-  const buttons = [document.getElementById('footageUploadBtn-' + slot)];
-  if (slot === 'consent') buttons.push(document.getElementById('footageRecordBtn'));
-  buttons.forEach(b => { b.disabled = true; });
-  state.classList.remove('have');
-  const first = { 'X-File-Name': encodeURIComponent(file.name), 'X-File-Type': file.type || '', 'X-Avatar-Slot': slot };
-  const outcome = await chunkedUpload(file, first, (done, total) => {
-    state.textContent = uallakI18n.t('footage_uploading', { pct: total ? Math.floor(done * 100 / total) : 0 });
-  });
-  buttons.forEach(b => { b.disabled = false; });
-  if (outcome.error) {
-    showNotice(outcome.error, 'warn');
-    paintFootage();
-    return;
-  }
-  await loadAvatarFootage();
-}
-
-// The consent clip, recorded right here with the sentence on screen. Chrome
-// and Firefox give webm, Safari mp4 — both are video the upload accepts.
-async function toggleConsentRecording() {
-  const btn = document.getElementById('footageRecordBtn');
-  const preview = document.getElementById('footagePreview');
-  if (consentRecorder) { consentRecorder.stop(); return; }
-  if (!navigator.mediaDevices || !window.MediaRecorder) {
-    showNotice(uallakI18n.t('footage_record_unsupported'), 'warn');
-    return;
-  }
-  const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
-    .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
-  if (!mimeType) { showNotice(uallakI18n.t('footage_record_unsupported'), 'warn'); return; }
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
-  } catch (e) {
-    showNotice(uallakI18n.t('footage_camera_denied'), 'warn');
-    return;
-  }
-  preview.srcObject = stream;
-  preview.style.display = 'block';
-  preview.play().catch(() => {});
-  const chunks = [];
-  consentRecorder = new MediaRecorder(stream, { mimeType });
-  consentRecorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-  consentRecorder.onstop = () => {
-    stream.getTracks().forEach(t => t.stop());
-    preview.srcObject = null;
-    preview.style.display = 'none';
-    const type = (consentRecorder.mimeType || mimeType).split(';')[0];
-    consentRecorder = null;
-    btn.textContent = uallakI18n.t('footage_record');
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    const file = new File(chunks, `consent-${stamp}.${type.includes('mp4') ? 'mp4' : 'webm'}`, { type });
-    uploadFootage('consent', file);
-  };
-  consentRecorder.start(1000);
-  btn.textContent = uallakI18n.t('footage_stop');
-}
-
-async function createPresenter(btn) {
-  btn.disabled = true;
-  btn.textContent = uallakI18n.t('footage_creating');
-  try {
-    const res = await fetch('/api/client/avatar-footage/create', { method: 'POST', credentials: 'same-origin' });
-    const body = await res.json().catch(() => ({}));
-    if (res.ok && body.success) {
-      const d = body.data || {};
-      showNotice(d.message_he || uallakI18n.t('footage_submitted'), d.message_he ? 'warn' : 'success');
-    } else {
-      showNotice((body.detail && body.detail.message_he) || uallakI18n.t('upload_failed'), 'warn');
-    }
-  } catch (e) {
-    showNotice(uallakI18n.t('upload_failed'), 'warn');
-  }
-  btn.textContent = uallakI18n.t('footage_create');
-  await loadAvatarFootage();
 }
 
 async function postVoiceDelete(payload) {
@@ -6318,7 +6088,7 @@ function renderConnectionGuide(status) {
 const CONN_STEP_ANCHOR = {
   website: ['siteStatus'], google_ads: ['gadsStatus'], meta: ['metaStatus'],
   tiktok: ['tiktokStatus'], youtube: ['youtubeStatus'],
-  media: ['toolStatus-higgsfield'], avatar: ['toolStatus-heygen', 'toolStatus-higgsfield'],
+  media: ['toolStatus-higgsfield'], avatar: ['toolStatus-higgsfield'],
 };
 
 function highlightNextConnCard(stepKey) {

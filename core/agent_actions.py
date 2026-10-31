@@ -531,7 +531,7 @@ def _creative_tools_spec() -> dict:
 def _v_creative_tool(value, client_id: int):
     tool = str(value or "").strip().lower()
     if tool not in _creative_tools_spec():
-        raise ValueError("tool must be heygen, elevenlabs or higgsfield")
+        raise ValueError("tool must be elevenlabs or higgsfield")
     return tool
 
 
@@ -587,11 +587,23 @@ def _voice_clone_possible(state: dict, client: dict) -> bool:
             and (voice.get("count") or 0) > 0 and not voice.get("voice_clone_exists"))
 
 
+def _presenter_internal_only() -> bool:
+    """The presenter actions stay internal-test-only until the presenter has
+    run live on a real Higgsfield account — the SAME switch as
+    core/avatar_video.open_to_all (env PRESENTER_VIDEO_ALL_CLIENTS)."""
+    try:
+        from core.avatar_video import open_to_all
+        return not open_to_all()
+    except Exception:
+        return True
+
+
 def _presenter_video_possible(state: dict, client: dict) -> bool:
-    """A presenter tool connected and a voice to speak with (a recording or
-    the clone). Consent, tier and minutes are re-checked when it runs."""
+    """The presenter tool connected and a voice to speak with (a recording or
+    the clone). Character, consent, length, tier and minutes are re-checked
+    when it runs."""
     voice = (state or {}).get("voice") or {}
-    return ((_tool_usable(state, "heygen") or _tool_usable(state, "higgsfield"))
+    return (_tool_usable(state, "higgsfield")
             and ((voice.get("count") or 0) > 0 or bool(voice.get("voice_clone_exists"))))
 
 
@@ -619,7 +631,7 @@ def _v_presenter(value, client_id: int):
     from core.avatar_video import PROVIDERS
     provider = str(value or "").strip().lower()
     if provider not in PROVIDERS:
-        raise ValueError("provider must be heygen or higgsfield")
+        raise ValueError("provider must be higgsfield")
     return provider
 
 
@@ -631,14 +643,74 @@ _VOICE_PHRASE = {
 }
 
 
+_PRESENTER_NAME = _txt("הדמות שלך", "your presenter", "votre présentateur", "شخصيتك", "ваш ведущий")
+_PRESENTER_LENGTH = _txt(
+    "אורך הסרטון: כ-{seconds} שניות. סרטון מגיש הוא קליפ קצר — עד {max} שניות.",
+    "Length: about {seconds} seconds. A presenter video is a short clip — up to {max} seconds.",
+    "Durée : environ {seconds} secondes. Une vidéo de présentateur est un clip court — {max} secondes au plus.",
+    "المدة: نحو {seconds} ثانية. فيديو المقدِّم مقطع قصير — حتى {max} ثانية.",
+    "Длина: около {seconds} секунд. Видео с ведущим — короткий клип, до {max} секунд.")
+_PRESENTER_TOO_LONG = {
+    "clone": _txt(
+        "הטקסט הזה הוא כ-{seconds} שניות דיבור, וסרטון מגיש הוא קליפ קצר של עד {max} שניות — ולא אקצר אותו בשקט. אפשר לחלק אותו ל-{parts} סרטונים קצרים, כל אחד עד {max} שניות. רוצים שאכין אותם?",
+        "This script is about {seconds} seconds of speech, and a presenter video is a short clip of up to {max} seconds — I won't cut it quietly. I can split it into {parts} short videos, each up to {max} seconds. Shall I prepare them?",
+        "Ce texte fait environ {seconds} secondes de parole, et une vidéo de présentateur dure au plus {max} secondes — je ne le couperai pas en silence. Je peux le découper en {parts} courtes vidéos de {max} secondes au plus. Je les prépare ?",
+        "هذا النص نحو {seconds} ثانية من الكلام، وفيديو المقدِّم مقطع قصير حتى {max} ثانية — لن أقصّه بصمت. يمكنني تقسيمه إلى {parts} فيديوهات قصيرة، كل منها حتى {max} ثانية. هل أجهّزها؟",
+        "Этот текст — около {seconds} секунд речи, а видео с ведущим — короткий клип до {max} секунд, молча я его не обрежу. Могу разделить его на {parts} коротких видео, каждое до {max} секунд. Подготовить?"),
+    "recording": _txt(
+        "ההקלטה הזו ארוכה כ-{seconds} שניות, וסרטון מגיש הוא קליפ קצר של עד {max} שניות — ולא אחתוך אותה בלי לשאול. אפשר לבחור הקלטה קצרה יותר, או לכתוב את הטקסט ולהקריא אותו בקול המשובט שלך בכמה סרטונים קצרים.",
+        "This recording is about {seconds} seconds long, and a presenter video is a short clip of up to {max} seconds — I won't cut it without asking. You can pick a shorter recording, or write the text and have your cloned voice read it across several short videos.",
+        "Cet enregistrement dure environ {seconds} secondes, et une vidéo de présentateur dure au plus {max} secondes — je ne le couperai pas sans demander. Choisissez un enregistrement plus court, ou écrivez le texte pour plusieurs courtes vidéos avec votre voix clonée.",
+        "هذا التسجيل نحو {seconds} ثانية، وفيديو المقدِّم مقطع قصير حتى {max} ثانية — لن أقصّه دون أن أسأل. يمكن اختيار تسجيل أقصر، أو كتابة النص ليُقرأ بصوتك المستنسخ في عدة فيديوهات قصيرة.",
+        "Эта запись длится около {seconds} секунд, а видео с ведущим — до {max} секунд, без вопроса я её не обрежу. Выберите запись короче или напишите текст, и ваш клонированный голос прочитает его в нескольких коротких видео."),
+    "unknown": _txt(
+        "לא הצלחתי לדעת את אורך ההקלטה הזו, ולכן לא אשלח אותה — סרטון מגיש הוא עד {max} שניות, ואני לא חותך בשקט. אפשר להעלות אותה שוב בכרטיס \"הקלטות קול\" או לבחור הקלטה אחרת.",
+        "I couldn't tell how long this recording is, so I won't send it — a presenter video is up to {max} seconds and I don't cut quietly. Upload it again in the \"Voice recordings\" card or pick another recording.",
+        "Je n'ai pas pu mesurer cet enregistrement, donc je ne l'envoie pas — une vidéo de présentateur dure au plus {max} secondes. Téléversez-le de nouveau ou choisissez-en un autre.",
+        "لم أتمكن من معرفة مدة هذا التسجيل، لذا لن أرسله — فيديو المقدِّم حتى {max} ثانية. ارفعوه مجددًا أو اختاروا تسجيلًا آخر.",
+        "Не удалось определить длину этой записи, поэтому я её не отправлю — видео с ведущим до {max} секунд. Загрузите её снова или выберите другую."),
+}
+
+
+def _presenter_seconds(client_id: int, params: dict):
+    """(seconds, voice kind) the clip will last — the recording's measured
+    length, or the script's estimate for the clone. seconds None = unknown."""
+    from core import avatar_video
+    voice = params.get("voice", "")
+    if voice.startswith("recording:"):
+        try:
+            return avatar_video.recording_seconds(client_id, voice.split(":", 1)[1]), "recording"
+        except avatar_video.VideoRefused:
+            return None, "recording"
+    return avatar_video.estimate_seconds(params.get("script", "")), "clone"
+
+
+def _prepare_presenter_video(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """Length honesty BEFORE the card: a clip is at most MAX_CLIP_SECONDS.
+    Too long → a plain line that offers to split it (the model then proposes
+    one card per part); nothing is ever cut quietly. Fits → the card, which
+    states the length."""
+    from core import avatar_video
+    lang = (context or {}).get("language") or "he"
+    seconds, kind = _presenter_seconds(client_id, params)
+    limit = str(avatar_video.MAX_CLIP_SECONDS)
+    if seconds is None:
+        return {"refuse": _pick(_PRESENTER_TOO_LONG["unknown"], lang).replace("{max}", limit)}
+    if not avatar_video.fits(seconds):
+        parts = len(avatar_video.split_script(params.get("script", ""))) if kind == "clone" else 0
+        return {"refuse": _pick(_PRESENTER_TOO_LONG[kind], lang).replace("{seconds}", str(round(seconds)))
+                .replace("{max}", limit).replace("{parts}", str(max(parts, 2)))}
+    for row in rows:
+        if row.get("status") == "proposed" and (row.get("params") or {}) == params:
+            return {"existing": row}
+    return {"params": params}
+
+
 def _presenter_display(client_id: int, params: dict) -> dict:
-    """The card's words for WHO speaks and WITH WHAT voice — client labels,
-    never a vendor name."""
-    from core import vendor_tools
-    from core.avatar_video import PROVIDERS
+    """The card's words for WHO speaks, WITH WHAT voice and FOR HOW LONG —
+    client labels, never a vendor name."""
+    from core import avatar_video
     lang = _lang(client_id)
-    provider = params.get("provider") or vendor_tools.default_provider(client_id)
-    tool = getattr(PROVIDERS.get(provider), "tool", "heygen")
     voice = params.get("voice", "")
     if voice.startswith("recording:"):
         from core import voice_recordings
@@ -646,7 +718,10 @@ def _presenter_display(client_id: int, params: dict) -> dict:
         phrase = _pick(_VOICE_PHRASE["recording"], lang).replace("{name}", name)
     else:
         phrase = _pick(_VOICE_PHRASE["clone"], lang)
-    return {"presenter": vendor_tools.client_label(tool, lang), "voice": phrase}
+    seconds, _ = _presenter_seconds(client_id, params)
+    length = (_pick(_PRESENTER_LENGTH, lang).replace("{seconds}", str(max(1, round(seconds or 0))))
+              .replace("{max}", str(avatar_video.MAX_CLIP_SECONDS)))
+    return {"presenter": _pick(_PRESENTER_NAME, lang), "voice": phrase, "length": length}
 
 
 def _run_clone_voice(client_id: int, params: dict, background_tasks):
@@ -672,7 +747,7 @@ def _run_make_presenter_video(client_id: int, params: dict, background_tasks):
     voice_param = params.get("voice", "")
     voice = ({"kind": "recording", "file_id": voice_param.split(":", 1)[1]} if voice_param.startswith("recording:")
              else {"kind": "clone"})
-    result = generate_avatar_video(client_id, params["script"], "", "", params.get("provider", ""), voice)
+    result = generate_avatar_video(client_id, params["script"], provider=params.get("provider", ""), voice=voice)
     if result.get("success"):
         return {"link": result.get("link", ""), "duration_seconds": result.get("duration_seconds")}
     code = result.get("code", "")
@@ -719,7 +794,19 @@ def _likeness_consent(client_id: int) -> bool:
 def _presenter_tool_status(client_id: int) -> str:
     from core import client_state
     tools = (client_state.cached_section(client_id, "creative_tools") or {}).get("tools") or {}
-    return (tools.get("heygen") or {}).get("status") or "not_connected"
+    return (tools.get("higgsfield") or {}).get("status") or "not_connected"
+
+
+def _all_generated(client_id: int, photo_ids) -> bool:
+    """Every chosen image is one media_agent made for this client (an AI
+    character) — then no likeness consent is needed. Any doubt = their own
+    photo, which needs it."""
+    try:
+        from agents.avatar_agent import generated_image_ids
+        made = generated_image_ids(client_id)
+        return bool(photo_ids) and all(p in made for p in photo_ids)
+    except Exception:
+        return False
 
 
 _PHOTOS_TOOL_FIRST = _txt(
@@ -753,12 +840,12 @@ def _prepare_presenter_photos(client_id: int, params: dict, context: dict, rows:
     state = {"package": client_state.cached_package(client_id)}
     if _in_package(state, "avatar") is not True:
         return {"refuse": _pick(PRESENTER_NOT_IN_PACKAGE, lang)}
-    tool = _creative_label("heygen", lang)
+    tool = _creative_label("higgsfield", lang)
     if _presenter_tool_status(client_id) not in ("connected", "connected_unverified"):
-        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "heygen"},
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
                 "notice": _pick(_PHOTOS_TOOL_FIRST, lang).replace("{tool}", tool)}
-    if not _likeness_consent(client_id):
-        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "heygen"},
+    if not _all_generated(client_id, params["photo_ids"]) and not _likeness_consent(client_id):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
                 "notice": _pick(_PHOTOS_CONSENT_FIRST, lang).replace("{tool}", tool)}
     photos = list(params["photo_ids"])
     supersedes = None
@@ -1234,15 +1321,16 @@ ACTIONS = {
     },
     "connect_creative_tool": {
         # "focus": the key is pasted ONLY into that tool's own card (never in
-        # chat), and HeyGen's card carries the likeness consent the click must
-        # not bypass. Opens exactly the one tool's card (core/vendor_tools).
+        # chat), and the presenter tool's card carries the likeness consent
+        # the click must not bypass. Opens exactly the one tool's card
+        # (core/vendor_tools).
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "focus",
         "focus": lambda params: _creative_focus(params.get("tool", "")),
-        "does": "Opens the connection card of ONE creative tool (heygen | elevenlabs | higgsfield) so the "
+        "does": "Opens the connection card of ONE creative tool (elevenlabs | higgsfield) so the "
                 "client pastes that tool's key there — the fix when a feature needs a tool that "
                 "account_state.creative_tools shows as not connected or key_rejected.",
         "params": {"tool": {"required": True, "validate": _v_creative_tool,
-                            "hint": "heygen | elevenlabs | higgsfield — the ONE tool that is missing"}},
+                            "hint": "elevenlabs | higgsfield — the ONE tool that is missing"}},
         "available": _creative_tool_missing,
         "display": lambda client_id, params: {"tool": _creative_label(params.get("tool", ""), _lang(client_id))},
         "title": _txt("חיבור כלי יצירה", "Connect a creative tool", "Connecter un outil de création",
@@ -1265,7 +1353,7 @@ ACTIONS = {
                 "them connect it. Never instead of the connection's own card when they just want to connect.",
         "params": {"connection": {"required": True, "validate": _v_help_connection,
                                   "hint": "the connection they are stuck on: tiktok | youtube | meta | google_ads "
-                                          "| tag_manager | wordpress | heygen | elevenlabs | higgsfield"}},
+                                          "| tag_manager | wordpress | elevenlabs | higgsfield"}},
         "available": lambda state, client: True,
         "run": _run_request_connection_help,
         "display": lambda client_id, params: {
@@ -1284,15 +1372,19 @@ ACTIONS = {
                      "Запрос у команды ✓ Мы свяжемся с вами, чтобы подключить вместе."),
     },
     "create_presenter_from_photos": {
-        # The photo-avatar path of avatar_agent.create_avatar, from images the
-        # client uploaded (chat "+" or the media folder). Their click; the
-        # likeness consent stays a hard gate (prepare AND create_avatar).
-        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
-        "does": "Creates the client's presenter character (the face in their presenter videos) from photos "
-                "of them in their media folder (account_state.media_folder.images), on their own presenter "
-                "tool account. Propose it whenever they ask to make a presenter/character/avatar from "
-                "photos — if the tool or the likeness consent is missing, the system answers with the "
-                "one card that fixes it.",
+        # avatar_agent.create_avatar: the chosen image becomes the client's
+        # presenter character (the still each presenter clip starts from).
+        # Their click; for their OWN photos the likeness consent is a hard gate
+        # (prepare AND create_avatar); an AI image we made for them needs none.
+        # Internal test clients only until the presenter ran live
+        # (core/avatar_video.open_to_all).
+        "approver": "client", "client_requestable": True, "internal_only": _presenter_internal_only(),
+        "kind": "execute",
+        "does": "Makes the client's presenter character (the face in their presenter videos) from ONE image in "
+                "their media folder (account_state.media_folder.images): a clear photo of them, or an AI "
+                "image we generated for them that they liked. Propose it whenever they ask to make a "
+                "presenter/character/avatar from a photo — if the tool or the likeness consent is missing, "
+                "the system answers with the one card that fixes it.",
         "params": {"photo_ids": {"required": True, "validate": _v_media_images,
                                  "hint": "drive_file_id values from account_state.media_folder.images "
                                          "(comma-separated, up to 10) — the photos the client means"},
@@ -1303,21 +1395,20 @@ ACTIONS = {
         "validate_stored": lambda client_id, params: validate_params(
             ACTIONS["create_presenter_from_photos"], params, client_id),
         "run": _run_create_presenter_from_photos,
-        "display": lambda client_id, params: {"count": len(params.get("photo_ids") or []),
-                                              "tool": _creative_label("heygen", _lang(client_id))},
-        "title": _txt("יצירת הדמות המגישה שלכם מהתמונות", "Create your presenter from your photos",
-                      "Créer votre présentateur à partir de vos photos", "إنشاء شخصيتكم المقدِّمة من الصور",
+        "display": lambda client_id, params: {"count": len(params.get("photo_ids") or [])},
+        "title": _txt("יצירת הדמות המגישה שלכם מתמונה", "Create your presenter from a photo",
+                      "Créer votre présentateur à partir d'une photo", "إنشاء شخصيتكم المقدِّمة من صورة",
                       "Создать вашего ведущего по фото"),
-        "what": _txt("נשלח {count} תמונות מתיקיית המדיה שלכם לחשבון \"{tool}\" שלכם, וייווצר ממנה הדמות שתופיע בסרטוני המגיש שלכם. שום דבר לא מתפרסם.",
-                     "We'll send {count} photos from your media folder to your \"{tool}\" account and create the presenter who appears in your presenter videos from them. Nothing is published.",
-                     "Nous envoyons {count} photos de votre dossier média à votre compte « {tool} » pour créer le présentateur de vos vidéos. Rien n'est publié.",
-                     "سنرسل {count} صور من مجلد الوسائط إلى حسابكم \"{tool}\" لننشئ منها الشخصية التي تظهر في فيديوهاتكم. لا يُنشر شيء.",
-                     "Мы отправим {count} фото из вашей папки медиа в ваш аккаунт «{tool}» и создадим по ним ведущего для ваших видео. Ничего не публикуется."),
-        "done": _txt("קיבלנו ✓ הדמות שלכם נבנית עכשיו מהתמונות. ההכנה לוקחת זמן (לפעמים עד כמה ימים) — ברגע שהיא מוכנה נעדכן אתכם כאן, ואז אפשר להכין איתה סרטונים.",
-                     "Done ✓ Your presenter is being built from the photos. Preparing it takes a while (sometimes up to a few days) — the moment it's ready we'll tell you here, and then you can make videos with it.",
-                     "C'est fait ✓ Votre présentateur est en préparation à partir des photos (parfois quelques jours) — nous vous prévenons ici dès qu'il est prêt.",
-                     "تم ✓ تُبنى شخصيتكم الآن من الصور. يستغرق التجهيز وقتًا (أحيانًا بضعة أيام) — سنبلغكم هنا فور جاهزيتها.",
-                     "Готово ✓ Ваш ведущий создаётся по фото. Подготовка занимает время (иногда до нескольких дней) — сообщим здесь, как только он будет готов."),
+        "what": _txt("התמונה שבחרתם (הראשונה, אם בחרתם כמה) תהפוך לדמות שמדברת בסרטוני המגיש שלכם. כל סרטון כזה הוא קליפ קצר, עד 15 שניות. שום דבר לא מתפרסם.",
+                     "The photo you chose (the first, if you chose several) becomes the presenter who speaks in your presenter videos. Each such video is a short clip, up to 15 seconds. Nothing is published.",
+                     "La photo choisie (la première, si vous en avez choisi plusieurs) devient le présentateur de vos vidéos. Chaque vidéo est un clip court, 15 secondes au plus. Rien n'est publié.",
+                     "الصورة التي اخترتموها (الأولى إن اخترتم عدة صور) تصبح الشخصية التي تتكلم في فيديوهاتكم. كل فيديو مقطع قصير حتى 15 ثانية. لا يُنشر شيء.",
+                     "Выбранное фото (первое, если вы выбрали несколько) станет ведущим ваших видео. Каждое такое видео — короткий клип до 15 секунд. Ничего не публикуется."),
+        "done": _txt("הדמות שלכם מוכנה ✓ מעכשיו אפשר להכין איתה סרטוני מגיש קצרים (עד 15 שניות כל אחד), בקול מהקלטה שלכם או בקול המשובט.",
+                     "Your presenter is ready ✓ You can now make short presenter videos with it (up to 15 seconds each), in a voice from your recording or your cloned voice.",
+                     "Votre présentateur est prêt ✓ Vous pouvez maintenant créer de courtes vidéos (15 secondes au plus), avec votre enregistrement ou votre voix clonée.",
+                     "شخصيتكم جاهزة ✓ يمكنكم الآن إعداد فيديوهات قصيرة معها (حتى 15 ثانية لكل منها) بصوت من تسجيلكم أو بصوتكم المستنسخ.",
+                     "Ваш ведущий готов ✓ Теперь можно делать с ним короткие видео (до 15 секунд), голосом из вашей записи или клонированным голосом."),
     },
     "team_request": {
         # Opened by CODE when a chat genuinely hands something to a person
@@ -1380,21 +1471,28 @@ ACTIONS = {
                      "Голос клонирован ✓ Теперь видео могут говорить вашим голосом."),
     },
     "make_presenter_video": {
-        "approver": "client", "client_requestable": True, "internal_only": True, "kind": "execute",
-        "does": "Makes ONE video in which the client's video presenter (filmed likeness or AI presenter, "
-                "account_state.creative_tools.video_providers) says a script, in their own voice. The video "
-                "goes to their Drive for review — nothing is published. Paid add-on: tier, minutes and the "
-                "likeness consent are checked when it runs.",
+        # Internal test clients only until the presenter ran live on a real
+        # Higgsfield account (core/avatar_video.open_to_all)
+        "approver": "client", "client_requestable": True, "internal_only": _presenter_internal_only(),
+        "kind": "execute",
+        "does": "Makes ONE short presenter clip — AT MOST 15 SECONDS of speech (about 35 words) — in which the "
+                "client's presenter character says a script, in their own voice. The video goes to their "
+                "Drive for review — nothing is published. Paid add-on: tier, minutes and the likeness "
+                "consent are checked when it runs. A LONGER text: say plainly that a clip is up to 15 "
+                "seconds and offer to split it into several clips — never shorten or cut it yourself; when "
+                "they agree, propose one card per part.",
         "params": {"script": {"required": True, "validate": _v_script,
                               "hint": "the exact words the presenter says (3-1500 characters), as the client wrote "
-                                      "or approved them"},
+                                      "or approved them — at most ~35 words fit one clip"},
                    "voice": {"required": True, "validate": _v_presenter_voice,
                              "hint": "\"clone\" (account_state.voice.voice_clone_exists) or "
                                      "\"recording:<file_id>\" with a file_id from account_state.voice.recordings"},
                    "provider": {"required": False, "validate": _v_presenter,
-                                "hint": "heygen | higgsfield — ONLY when the client asked for the other presenter; "
-                                        "leave out for their chosen one"}},
+                                "hint": "leave out"}},
         "available": _presenter_video_possible,
+        "prepare": _prepare_presenter_video,
+        "validate_stored": lambda client_id, params: validate_params(
+            ACTIONS["make_presenter_video"], params, client_id),
         "run": _run_make_presenter_video,
         "display": _presenter_display,
         "details": lambda client_id, params: {"description": params.get("script", "")},
@@ -1404,11 +1502,11 @@ ACTIONS = {
             "فيديو كهذا يستغرق عادة من 5 إلى 15 دقيقة.", "Такое видео обычно делается 5–15 минут.")},
         "title": _txt("סרטון עם הדמות שלך", "A video with your presenter", "Une vidéo avec votre présentateur",
                       "فيديو مع شخصيتك", "Видео с вашим ведущим"),
-        "what": _txt("ייווצר סרטון שבו {presenter} אומר/ת את הטקסט, בקול: {voice}. הסרטון יישמר בתיקיית ה-Drive שלכם לבדיקה — שום דבר לא מתפרסם.",
-                     "A video will be made in which {presenter} says the script, in this voice: {voice}. It is saved to your Drive folder for review — nothing is published.",
-                     "Une vidéo sera créée où {presenter} dit le texte, avec cette voix : {voice}. Elle est enregistrée dans votre Drive pour vérification — rien n'est publié.",
-                     "سيُنشأ فيديو يقول فيه {presenter} النص، بهذا الصوت: {voice}. يُحفظ في مجلد Drive للمراجعة — لا يُنشر شيء.",
-                     "Будет создано видео, где {presenter} произносит текст голосом: {voice}. Оно сохранится в вашей папке Drive для проверки — ничего не публикуется."),
+        "what": _txt("ייווצר סרטון שבו {presenter} אומרת את הטקסט, בקול: {voice}. {length} הסרטון יישמר בתיקיית ה-Drive שלכם לבדיקה — שום דבר לא מתפרסם.",
+                     "A video will be made in which {presenter} says the script, in this voice: {voice}. {length} It is saved to your Drive folder for review — nothing is published.",
+                     "Une vidéo sera créée où {presenter} dit le texte, avec cette voix : {voice}. {length} Elle est enregistrée dans votre Drive pour vérification — rien n'est publié.",
+                     "سيُنشأ فيديو تقول فيه {presenter} النص، بهذا الصوت: {voice}. {length} يُحفظ في مجلد Drive للمراجعة — لا يُنشر شيء.",
+                     "Будет создано видео, где {presenter} произносит текст голосом: {voice}. {length} Оно сохранится в вашей папке Drive для проверки — ничего не публикуется."),
         "done": _txt("הסרטון מוכן ✓ הוא מחכה לבדיקה שלכם בתיקיית ה-Drive.",
                      "The video is ready ✓ It's waiting for your review in your Drive folder.",
                      "La vidéo est prête ✓ Elle vous attend dans votre dossier Drive.",

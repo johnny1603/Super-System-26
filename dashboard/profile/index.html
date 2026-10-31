@@ -377,10 +377,8 @@ const I18N = {
   badge_hard: { he:'מספר אמיתי', en:'Real figure', fr:'Chiffre réel', ar:'رقم حقيقي', ru:'Реальная цифра' },
   badge_estimate: { he:'הערכה', en:'Estimate', fr:'Estimation', ar:'تقدير', ru:'Оценка' },
   badge_unknown: { he:'לא ידוע לנו', en:'Unknown to us', fr:'Inconnu pour nous', ar:'غير معروف لدينا', ru:'Нам неизвестно' },
-  tool_higgsfield: { he:'דמות AI, תמונות וסרטונים', en:'AI presenter, images and videos', fr:'Présentateur IA, images et vidéos', ar:'شخصية الذكاء الاصطناعي والصور والفيديوهات', ru:'ИИ-ведущий, изображения и видео' },
+  tool_higgsfield: { he:'הדמות שבסרטונים, תמונות וסרטונים', en:'Your presenter, images and videos', fr:'Votre présentateur, images et vidéos', ar:'الشخصية والصور والفيديوهات', ru:'Ведущий, изображения и видео' },
   tool_higgsfield_note: { he:'מספר התמונות/הסרטונים שנוצרו החודש הוא נתון אמיתי — אין לנו גישה לעלות בפועל בחשבון שפתחתם לכלי הזה.', en:'The number of images/videos generated this month is real — we have no visibility into the actual cost on the account you opened for this tool.', fr:'Le nombre d\'images/vidéos générées ce mois-ci est réel — nous n\'avons pas de visibilité sur le coût réel du compte ouvert pour cet outil.', ar:'عدد الصور/الفيديوهات المُنشأة هذا الشهر رقم حقيقي — لا نملك رؤية للتكلفة الفعلية في الحساب الذي فتحتموه لهذه الأداة.', ru:'Количество изображений/видео за этот месяц реально — у нас нет доступа к фактической стоимости в аккаунте, открытом для этого инструмента.' },
-  tool_heygen: { he:'הדמות המצולמת שלך', en:'Your filmed presenter', fr:'Votre présentateur filmé', ar:'شخصيتك المصوَّرة', ru:'Ваш снятый ведущий' },
-  tool_heygen_note: { he:'משך הסרטונים בדקות הוא נתון אמיתי; טווח העלות בשקלים הוא הערכה בלבד לפי התעריפים הפומביים של הכלי — לא החיוב בפועל שלך.', en:'Video minutes are real; the cost range is only an estimate from the tool\'s published rates — not your actual bill.', fr:'Les minutes de vidéo sont réelles ; la fourchette de coût n\'est qu\'une estimation basée sur les tarifs publics de l\'outil — pas votre facture réelle.', ar:'دقائق الفيديو رقم حقيقي؛ نطاق التكلفة مجرد تقدير وفق الأسعار المعلنة للأداة — وليس فاتورتك الفعلية.', ru:'Минуты видео реальны; диапазон стоимости — лишь оценка по опубликованным тарифам инструмента, а не ваш фактический счёт.' },
   tool_elevenlabs: { he:'הקול שלך', en:'Your voice', fr:'Votre voix', ar:'صوتك', ru:'Ваш голос' },
   tool_elevenlabs_note: { he:'אין לנו כיום נראות לצריכה או לעלות בחשבון שפתחתם לקול שלכם.', en:'We currently have no visibility into usage or cost on the account you opened for your voice.', fr:'Nous n\'avons actuellement aucune visibilité sur l\'usage ou le coût du compte ouvert pour votre voix.', ar:'لا نملك حاليًا أي رؤية للاستخدام أو التكلفة في الحساب الذي فتحتموه لصوتكم.', ru:'В настоящее время у нас нет доступа к использованию или стоимости в аккаунте, открытом для вашего голоса.' },
   tool_seo: { he:'כלי מחקר SEO', en:'SEO research tool', fr:'Outil de recherche SEO', ar:'أداة أبحاث SEO', ru:'Инструмент SEO-исследований' },
@@ -644,15 +642,7 @@ function renderTools(tools) {
       <div class="tool-note">${uallakI18n.t('tool_higgsfield_note')}</div>
     </div>`);
   }
-  if (tools.heygen && tools.heygen.connected) {
-    const t = tools.heygen;
-    const range = t.estimated_ils_range ? `${ils(t.estimated_ils_range[0])} – ${ils(t.estimated_ils_range[1])}` : '—';
-    cards.push(`<div class="tool-card">
-      <div class="tool-head"><span class="tool-name">${uallakI18n.t('tool_heygen')}</span>${badge(t.confidence)}</div>
-      <div class="tool-figure">${t.minutes_used_this_month} min · ${range}</div>
-      <div class="tool-note">${uallakI18n.t('tool_heygen_note')}</div>
-    </div>`);
-  }
+  // The retired filmed-presenter tool (2026-10-31) is never shown to a client
   if (tools.elevenlabs && tools.elevenlabs.connected) {
     cards.push(`<div class="tool-card">
       <div class="tool-head"><span class="tool-name">${uallakI18n.t('tool_elevenlabs')}</span>${badge(tools.elevenlabs.confidence)}</div>

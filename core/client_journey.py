@@ -73,19 +73,20 @@ CONNECTION_STEPS = [
      "services": ("youtube",)},
     {"key": "media",       "platforms": ("higgsfield",),
      "services": ("media", "content", "video")},
-    # The character in the client's videos: a filmed likeness OR an AI
-    # presenter — the same choice core/avatar_video.make_video offers
-    {"key": "avatar",      "platforms": ("heygen", "higgsfield"),
+    # The character in the client's videos — core/avatar_video's one
+    # presenter provider (HeyGen retired 2026-10-31: a stored HeyGen row no
+    # longer completes this step)
+    {"key": "avatar",      "platforms": ("higgsfield",),
      "services": ("avatar",)},
 ]
 
 
-def _avatar_notice(connected_platforms: set) -> dict:
+def _avatar_notice(connected_platforms: set, client_id: int = None) -> dict:
     from core.avatar_video import runnable_notice
-    return runnable_notice(connected_platforms)
+    return runnable_notice(connected_platforms, client_id)
 
 
-# step key -> fn(connected platforms) -> {} or {"code", "message_he", ...}
+# step key -> fn(connected platforms, client_id) -> {} or {"code", "message_he", ...}
 _STEP_NOTICES = {"avatar": _avatar_notice}
 
 # Legacy alias kept so nothing that imported it breaks; the checklist above is
@@ -226,7 +227,7 @@ def connection_status(client_id: int) -> dict:
         entry = {"key": step["key"], "platforms": step["platforms"], "done": done, "ready": done}
         if done and step["key"] in _STEP_NOTICES:
             try:
-                notice = _STEP_NOTICES[step["key"]](connected_platforms)
+                notice = _STEP_NOTICES[step["key"]](connected_platforms, client_id)
             except Exception as e:
                 # Unknown readiness is not readiness
                 print(f"[{SERVICE_NAME}] {step['key']} readiness unknown for client {client_id}: {e}")

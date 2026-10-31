@@ -1,9 +1,26 @@
 ---
 name: avatar
-description: How uallak's avatar agent works — real-person digital twins (HeyGen) and voice clones (ElevenLabs) as a DISTINCT PAID ADD-ON, with mandatory recorded consent, minutes-based tier tracking, and client-owned accounts. Use when touching agents/avatar_agent.py, core/heygen_service.py, core/elevenlabs_service.py, PRICING["avatar"], or any /api/avatar* endpoint.
+description: How uallak's avatar agent works — the client's presenter character (Higgsfield, short lip-synced clips; HeyGen RETIRED 2026-10-31) and voice clones (ElevenLabs) as a DISTINCT PAID ADD-ON, with mandatory recorded consent, minutes-based tier tracking, and client-owned accounts. Use when touching agents/avatar_agent.py, core/avatar_video.py, core/elevenlabs_service.py, PRICING["avatar"], or any /api/avatar* endpoint.
 ---
 
 # Avatar agent (premium add-on — real people's likeness)
+
+## CURRENT STATE (2026-10-31) — read this first; HeyGen sections below are HISTORY
+
+- **HeyGen is retired** (its avatar-creation API is Enterprise-only and it sent clients out of
+  the product). `core/heygen_service.py` and `avatar_video.HeyGenProvider` stay but are
+  UNREACHABLE; nothing client-facing may name or reach them (`tests/test_presenter_higgsfield.py`).
+  Stored HeyGen rows are kept. The daily `avatar-scan` job is a no-op and can be deleted.
+- **The presenter = Higgsfield**, `core/avatar_video.make_video`: a character image (the
+  client's own photo with likeness consent, or an AI image media_agent made, no consent) +
+  audio (an uploaded recording or the ElevenLabs clone) → model
+  `media_gen_service.PRESENTER_MODEL` (`wan2_7`, `start_image` + `audio_references`) → Drive
+  `videos/avatar/`. Clips are **≤ 15 s**; longer = refused with a split offer, never cut, no
+  stitching. Public links only during the render.
+- **Gate:** internal (billing_exempt) clients only until a live run; `PRESENTER_VIDEO_ALL_CLIENTS=1`
+  opens it. `CONSENT_VERSION` `2026-10-31.v4`. Full detail: `docs/CREATIVE-TOOLS.md`.
+- Tier "~videos" estimates below assume ~30 s per video; with 15 s clips they are a business
+  decision still to revisit.
 
 ## Why separate from media_agent (never merge)
 

@@ -89,16 +89,13 @@ from test_agent_actions import FakeDB     # noqa: E402
 
 TOOLS_SECTION = {
     "tools": {
-        "heygen": {"label": "הדמות שבסרטונים — דמות מצולמת שלך", "status": "not_connected", "consent": False},
         "elevenlabs": {"label": "הקול שלך", "status": "key_rejected", "consent": False},
-        "higgsfield": {"label": "הדמות שבסרטונים — דמות AI", "status": "connected_unverified",
-                       "consent": None},
+        "higgsfield": {"label": "הדמות שבסרטונים ותמונות AI", "status": "connected_unverified",
+                       "consent": False},
     },
     "video_providers": [
-        {"id": "heygen", "tool": "heygen", "label_he": "דמות מצולמת שלך", "chosen": False, "ready": True,
-         "connected": False},
-        {"id": "higgsfield", "tool": "higgsfield", "label_he": "דמות AI", "chosen": True, "ready": False,
-         "connected": True},
+        {"id": "higgsfield", "tool": "higgsfield", "label_he": "הדמות שלך", "chosen": True, "ready": False,
+         "connected": True, "max_seconds": 15},
     ],
 }
 VOICE_SECTION = {"count": 2, "total_seconds": 41.0,
@@ -120,7 +117,7 @@ class MediaReads(unittest.TestCase):
         self.grant = {}
         tg.record = lambda cid: dict(self.grant)
         aa._db = lambda: self.db
-        os.environ.pop("HIGGSFIELD_AVATAR_VIDEO_ENABLED", None)
+        os.environ.pop("PRESENTER_VIDEO_ALL_CLIENTS", None)
 
     def tearDown(self):
         cs._creative_tools, cs._voice, tg.record, aa._db = self.saved
@@ -189,7 +186,7 @@ class MediaReads(unittest.TestCase):
     def test_tools_in_capability_language(self):
         tools = sa._media_reads(40)["video_and_voice_tools"]
         self.assertEqual({t["tool"]: t["status"] for t in tools},
-                         {"heygen": "not_connected", "elevenlabs": "key_rejected",
+                         {"elevenlabs": "key_rejected",
                           "higgsfield": "connected_unverified"})
         for tool in tools:
             self.assertIsNone(VENDOR.search(tool["label"]), tool)
@@ -197,9 +194,9 @@ class MediaReads(unittest.TestCase):
     def test_presenter_that_cannot_run_yet_is_said_plainly(self):
         readiness = sa._media_reads(40)["avatar_readiness"]
         self.assertFalse(readiness["can_make_presenter_video"])
-        self.assertIn("עוד לא זמינים", readiness["not_available_line"])
+        self.assertIn("עוד לא פתוחים", readiness["not_available_line"])
         self.assertIsNone(VENDOR.search(readiness["not_available_line"]))
-        self.assertEqual([p["label"] for p in readiness["presenters"]], ["דמות מצולמת שלך", "דמות AI"])
+        self.assertEqual([p["label"] for p in readiness["presenters"]], ["הדמות שלך"])
 
     def test_creative_tools_and_voice_share_the_snapshot_cache(self):
         sa._media_reads(40)

@@ -256,20 +256,20 @@ CONNECTIONS = [
     # `steps` (the concierge's text) is derived from `guide` below the list.
     {
         "id": "higgsfield",
-        "title": _t("הדמות שבסרטונים — דמות AI", "Your video presenter — an AI presenter",
-                    "Votre présentateur vidéo — un présentateur IA",
-                    "الشخصية في الفيديوهات — شخصية بالذكاء الاصطناعي", "Ведущий ваших видео — ИИ-ведущий"),
+        "title": _t("הדמות שבסרטונים ותמונות AI", "Your video presenter and AI images",
+                    "Votre présentateur vidéo et images IA",
+                    "الشخصية في الفيديوهات وصور الذكاء الاصطناعي", "Ведущий ваших видео и ИИ-изображения"),
         "guide": {
-            "he": [{"do": "פותחים חשבון ב-Higgsfield (הכלי שמייצר את דמות ה-AI, תמונות וסרטונים) ובוחרים מסלול, עם אמצעי התשלום שלכם.",
+            "he": [{"do": "פותחים חשבון ב-Higgsfield (הכלי שמייצר את הדמות שמדברת בסרטונים שלכם, תמונות וסרטונים) ובוחרים מסלול, עם אמצעי התשלום שלכם.",
                     "see": "עמוד מסלולים: לכל מסלול כמות קרדיטים לחודש. ההרשמה היא מייל או כניסה עם Google.",
                     "link": "https://higgsfield.ai/pricing"},
                    {"do": "נכנסים לעמוד מפתחות ה-API ולוחצים ליצירת מפתח חדש.",
                     "see": "רשימת מפתחות (ריקה בהתחלה) וכפתור ליצירת מפתח. המפתח החדש מופיע על המסך — מעתיקים אותו כולו.",
                     "link": "https://cloud.higgsfield.ai/api-keys"},
-                   {"do": "חוזרים לכאן, לוחצים \"יש לי כבר מפתח\", מדביקים ולוחצים \"חיבור\".",
+                   {"do": "חוזרים לכאן, לוחצים \"יש לי כבר מפתח\", מדביקים ולוחצים \"חיבור\". רוצים דמות מהתמונות שלכם? מסמנים גם את האישור לשימוש בדמות.",
                     "see": "הכרטיס יראה \"מחובר\". את הכלי הזה אי אפשר לבדוק מראש — הוא נבדק ביצירה הראשונה. אף פעם לא שולחים מפתח בצ׳אט.",
                     "link": ""}],
-            "en": [{"do": "Open an account at Higgsfield (the tool that makes the AI presenter, images and videos) and pick a plan, with your own payment method.",
+            "en": [{"do": "Open an account at Higgsfield (the tool that makes the presenter who speaks in your videos, images and videos) and pick a plan, with your own payment method.",
                     "see": "A plans page: each plan has monthly credits. Sign-up is e-mail or Google.",
                     "link": "https://higgsfield.ai/pricing"},
                    {"do": "Open the API keys page and create a new key.",
@@ -400,7 +400,11 @@ CONNECTIONS = [
                    "url": "https://www.heygen.com/api-pricing"}],
         "estimated_minutes": 5,
         "needs_api_key": True,
-        "active": True,
+        # RETIRED 2026-10-31: HeyGen is no longer offered (the presenter is
+        # Higgsfield — core/avatar_video). Inactive = no help button, and the
+        # concierge may not give its links. Kept only as history.
+        "active": False,
+        "retired": True,
     },
     {
         "id": "elevenlabs",

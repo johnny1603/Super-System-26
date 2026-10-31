@@ -1,14 +1,12 @@
 """The connection checklist is CAPABILITY-based (core/client_journey).
 
-"The character in your videos" is one step that ANY supported video provider
-completes (a filmed likeness via HeyGen, or an AI presenter via Higgsfield);
-an avatar package never requires two vendors, and never pulls in the media
-step as well. The honesty gate: the AI-presenter path is switched off
-(HIGGSFIELD_AVATAR_VIDEO_ENABLED), so a client whose only provider is
-Higgsfield sees the step satisfied WITH a plain one-line notice that offers
-the alternative — never a silent "done" that would fail on the first video.
-
-Covers: only HeyGen, only Higgsfield (flag off and on), both, neither.
+"The character in your videos" is one step, completed by the ONE presenter
+provider — Higgsfield (HeyGen was retired 2026-10-31: a stored HeyGen row no
+longer completes it). The honesty gate: the presenter is open only to
+INTERNAL test clients until it has run live (PRESENTER_VIDEO_ALL_CLIENTS
+opens it to everyone), so a paying client with Higgsfield connected sees the
+step satisfied WITH a plain one-line notice — never a silent "done" that
+would fail on the first video.
 
 Stdlib only. Run from the repo root:  python -I -B tests/test_avatar_capability_checklist.py -v
 """
@@ -31,6 +29,8 @@ ACTIVE = {}
 _client_agent = sys.modules.get("agents.client_agent") or types.ModuleType("agents.client_agent")
 _client_agent.get_accounts = lambda cid: [{"platform": p, "status": "active", "has_secret": True}
                                           for p in sorted(ACTIVE.get(cid, ()))]
+INTERNAL = set()
+_client_agent.get_client = lambda cid: {"id": cid, "billing_exempt": cid in INTERNAL}
 sys.modules["agents.client_agent"] = _client_agent
 
 from core import avatar_video as av      # noqa: E402
@@ -38,7 +38,7 @@ from core import client_journey as cj    # noqa: E402
 from core import vendor_tools as vt      # noqa: E402
 
 VENDOR = re.compile(r"heygen|eleven\s?labs|higgsfield", re.IGNORECASE)
-FLAG = "HIGGSFIELD_AVATAR_VIDEO_ENABLED"
+FLAG = "PRESENTER_VIDEO_ALL_CLIENTS"
 
 
 def _src(*parts) -> str:
@@ -74,6 +74,7 @@ class CapabilityChecklist(unittest.TestCase):
 
     def setUp(self):
         ACTIVE.clear()
+        INTERNAL.clear()
         os.environ.pop(FLAG, None)
         self.saved = (cj._db, cj._chosen_package, vt._record)
         box = {}
@@ -100,22 +101,20 @@ class CapabilityChecklist(unittest.TestCase):
         self.assertEqual(s["notices"], [])
         self.assertEqual(s["not_ready"], [])
 
-    def test_only_heygen_completes_it(self):
+    def test_a_stored_heygen_row_no_longer_completes_it(self):
         s = self.status("heygen")
-        self.assertTrue(s["complete"])
-        self.assertIsNone(s["next_step"])
-        self.assertEqual(s["steps"][0]["ready"], True)
-        self.assertEqual(s["notices"], [])
-        self.assertEqual(vt.default_provider(27), "heygen")
+        self.assertFalse(s["complete"])
+        self.assertEqual(s["missing"], ["avatar"])
+        self.assertEqual(vt.default_provider(27), "higgsfield")
 
-    def test_only_higgsfield_satisfies_it_but_says_it_cannot_run_yet(self):
+    def test_paying_client_with_higgsfield_is_satisfied_but_told_it_is_not_open(self):
         s = self.status("higgsfield")
         # Satisfied: the client is never asked for a second tool
         self.assertTrue(s["complete"])
         self.assertEqual(s["missing"], [])
         self.assertIsNone(s["next_step"])
         # ...but never a silent "done"
-        self.assertEqual(s["steps"][0], {"key": "avatar", "platforms": ["heygen", "higgsfield"],
+        self.assertEqual(s["steps"][0], {"key": "avatar", "platforms": ["higgsfield"],
                                          "done": True, "ready": False})
         self.assertEqual(s["not_ready"], ["avatar"])
         (notice,) = s["notices"]
@@ -123,45 +122,38 @@ class CapabilityChecklist(unittest.TestCase):
         self.assertEqual(notice["code"], "avatar_video_not_available_yet")
         line = notice["message_he"]
         self.assertNotIn("\n", line)
-        self.assertIn("עוד לא זמינים", line)
-        self.assertIn("דמות AI", line)
-        self.assertIn("דמות מצולמת שלך", line)        # the alternative is offered
+        self.assertIn("עוד לא פתוחים", line)
         self.assertIsNone(VENDOR.search(line))
 
-    def test_only_higgsfield_video_click_gives_the_same_line_not_a_second_tool(self):
+    def test_paying_client_video_click_gives_the_same_line_not_a_second_tool(self):
         ACTIVE[27] = {"higgsfield"}
-        # No explicit choice: the provider they connected, not HeyGen by default
-        self.assertEqual(vt.default_provider(27), "higgsfield")
         result = av.make_video(27, "שלום", {"kind": "recording", "file_id": "x"})
         self.assertEqual(result["code"], "provider_not_ready")
-        self.assertNotEqual(result.get("code"), "missing_tool")
         self.assertEqual(result["message_he"], av.not_ready_line("higgsfield"))
 
-    def test_only_higgsfield_with_the_path_enabled_is_simply_ready(self):
-        os.environ[FLAG] = "true"
+    def test_internal_test_client_is_simply_ready(self):
+        INTERNAL.add(27)
         s = self.status("higgsfield")
         self.assertTrue(s["complete"])
         self.assertTrue(s["steps"][0]["ready"])
         self.assertEqual(s["notices"], [])
 
-    def test_both_connected_is_ready_with_no_notice(self):
-        s = self.status("heygen", "higgsfield")
-        self.assertTrue(s["complete"])
+    def test_the_one_switch_opens_it_to_everyone(self):
+        os.environ[FLAG] = "true"
+        s = self.status("higgsfield")
         self.assertTrue(s["steps"][0]["ready"])
         self.assertEqual(s["notices"], [])
-        self.assertEqual(s["not_ready"], [])
-        self.assertEqual(vt.default_provider(27), "heygen")
 
-    def test_an_explicit_choice_still_wins(self):
-        ACTIVE[27] = {"heygen"}
-        vt._record = lambda cid: {"avatar_provider": "higgsfield"}
+    def test_a_stored_heygen_choice_is_not_honoured(self):
+        ACTIVE[27] = {"heygen", "higgsfield"}
+        vt._record = lambda cid: {"avatar_provider": "heygen"}
         self.assertEqual(vt.default_provider(27), "higgsfield")
 
     def test_unknown_readiness_is_not_readiness(self):
         saved = cj._STEP_NOTICES["avatar"]
-        cj._STEP_NOTICES["avatar"] = lambda connected: 1 / 0
+        cj._STEP_NOTICES["avatar"] = lambda connected, client_id=None: 1 / 0
         try:
-            s = self.status("heygen")
+            s = self.status("higgsfield")
         finally:
             cj._STEP_NOTICES["avatar"] = saved
         self.assertFalse(s["steps"][0]["ready"])
@@ -214,8 +206,8 @@ class ClientFacingWording(unittest.TestCase):
         self.assertIn("connGuideNotice", self.html)
         self.assertIn("'conn_notice_' + key", self.html)
 
-    def test_both_cards_are_spotlit_for_the_avatar_step(self):
-        self.assertIn("avatar: ['toolStatus-heygen', 'toolStatus-higgsfield']", self.html)
+    def test_the_presenter_card_is_spotlit_for_the_avatar_step(self):
+        self.assertIn("avatar: ['toolStatus-higgsfield']", self.html)
 
     def test_agents_are_told_to_say_it(self):
         self.assertIn('"connected_not_ready"', _src("core", "client_state.py"))

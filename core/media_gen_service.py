@@ -145,28 +145,55 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
             "credits": _credits_used(data), "model": IMAGE_MODEL}
 
 
-# Talking character (image + external audio track → lip-synced video).
-# PREPARED, NOT VERIFIED: the path and model below are settings, not facts we
-# confirmed against Higgsfield's API — so the provider that calls this
-# (core/avatar_video.HiggsfieldProvider) stays off behind
-# HIGGSFIELD_AVATAR_VIDEO_ENABLED until a live test on client 27 confirms
-# both (docs/CREATIVE-TOOLS.md). Fix them with Cloud Run env vars, not a deploy.
-SPEAK_PATH = os.environ.get("MEDIA_SPEAK_PATH", "speak")
-SPEAK_MODEL = os.environ.get("MEDIA_SPEAK_MODEL", "")
+# Presenter video (the client's character image + an audio track → a
+# lip-synced clip) — THE presenter path since HeyGen was retired (2026-10-31).
+#
+# PRESENTER_MODEL is the ONE place the model is named; callers never see it.
+# "wan2_7" (Wan 2.7, in Higgsfield's catalog as "Synchronized audio,
+# character-consistent video") was picked because it takes exactly our two
+# inputs — a `start_image` (the character) and `audio_references` (the voice)
+# — keeps the face consistent, and syncs to the given audio rather than
+# generating its own; 2-15 s, 720p/1080p, 9:16 among its ratios. Seedance
+# 2.0/2.5 also accept audio references but add generated audio and video
+# references on top, and cost more; Grok Video 1.5 is a preview.
+#
+# NOT YET RUN LIVE: the model id, roles and limits come from Higgsfield's
+# model catalog (read 2026-10-31); the REST path and the shape of the media
+# list below are our reading of it and are env settings, so a mismatch is a
+# Cloud Run env fix, not a deploy. Until a live run, avatar_video keeps the
+# presenter to internal test clients (avatar_video.open_to_all).
+PRESENTER_MODEL = os.environ.get("MEDIA_PRESENTER_MODEL", "wan2_7")
+PRESENTER_PATH = os.environ.get("MEDIA_PRESENTER_PATH", "generations")
+PRESENTER_RESOLUTION = os.environ.get("MEDIA_PRESENTER_RESOLUTION", "720p")
+PRESENTER_MIN_SECONDS = 2
+PRESENTER_MAX_SECONDS = 15   # the model's ceiling — a longer text is several clips, never cut
 
 
-def generate_talking_character(api_key: str, image_url: str, audio_url: str) -> dict:
-    """One lip-synced character video from a still image and an audio URL, on
-    the CLIENT'S key/credits. Returns {'url', 'job_id', 'credits'} — the
-    caller downloads and stores it."""
+def generate_talking_character(api_key: str, image_url: str, audio_url: str,
+                               seconds: int = 0, aspect_ratio: str = "9:16") -> dict:
+    """One lip-synced presenter clip from the character image and an audio
+    URL, on the CLIENT'S key/credits. `seconds` is the audio's length (the
+    caller refuses anything over PRESENTER_MAX_SECONDS before calling).
+    Returns {'url', 'job_id', 'credits', 'duration', 'model'} — the caller
+    downloads and stores it."""
+    seconds = int(min(max(round(seconds or PRESENTER_MIN_SECONDS), PRESENTER_MIN_SECONDS),
+                      PRESENTER_MAX_SECONDS))
+    if aspect_ratio not in VALID_ASPECT_RATIOS:
+        aspect_ratio = "9:16"
     _count("video", DAILY_VIDEO_LIMIT)
-    payload = {"image_url": image_url, "audio_url": audio_url}
-    if SPEAK_MODEL:
-        payload["model"] = SPEAK_MODEL
-    job_id = _create_job(api_key, SPEAK_PATH, payload)
+    job_id = _create_job(api_key, PRESENTER_PATH, {
+        "model": PRESENTER_MODEL,
+        "prompt": "The person in the image speaks directly to the camera, in sync with the audio. "
+                  "Natural, subtle head and hand movement; same face, clothes and background.",
+        "duration": seconds,
+        "resolution": PRESENTER_RESOLUTION,
+        "aspect_ratio": aspect_ratio,
+        "medias": [{"role": "start_image", "url": image_url},
+                   {"role": "audio_references", "url": audio_url}],
+    })
     data = _wait_for_result(api_key, job_id)
     return {"url": _result_url(data), "job_id": job_id, "credits": _credits_used(data),
-            "duration": data.get("duration")}
+            "duration": data.get("duration") or seconds, "model": PRESENTER_MODEL}
 
 
 def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dict:

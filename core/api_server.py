@@ -1727,8 +1727,10 @@ def upgrade_success(client_id: int, subscription_id: str = "", plan_id: str = ""
                     f"client {client_id} self-purchased the avatar add-on ({tier['name']}, "
                     f"+{tier['addon_monthly']} ILS/mo — recurring now billing via PayPal). "
                     f"{invoice_note} "
-                    "REMAINING MANUAL STEP: walk them through avatar onboarding — HeyGen key "
-                    "+ consent in the dashboard card, then the source kit. Tier is already assigned."])
+                    "REMAINING MANUAL STEP: walk them through presenter onboarding — the Higgsfield "
+                    "card (+ likeness consent), one photo in the chat, a voice recording. Tier is "
+                    "already assigned. (The presenter is internal-test-only until "
+                    "PRESENTER_VIDEO_ALL_CLIENTS is on.)"])
             elif tier_id == "youtube_standalone":
                 # Additive add-on: appends to the package name (never replaces),
                 # same as avatar. The 'addon_activated' row is what
@@ -4340,7 +4342,7 @@ def admin_content_docs(client_id: int, request: Request):
     from agents.content_docs_agent import list_delivered_docs
     return {"success": True, "data": list_delivered_docs(client_id)}
 
-# ─── Avatar agent (distinct paid add-on — HeyGen twins + ElevenLabs voices) ──
+# ─── Avatar agent (distinct paid add-on — presenter characters + ElevenLabs voices) ──
 
 class AvatarConnectRequest(BaseModel):
     # LEGACY (both keys in one form). Each key given is connected on its own
@@ -4392,7 +4394,7 @@ class AvatarCreateRequest(BaseModel):
 
 @app.post("/api/avatar/create", dependencies=_admin_only)
 def avatar_create(req: AvatarCreateRequest):
-    # Consent-gated in the agent; plain `def` - Drive + HeyGen uploads block
+    # Consent-gated in the agent; plain `def` - the Drive copy blocks
     from agents.avatar_agent import create_avatar
     result = create_avatar(req.client_id, req.avatar_name)
     if not result.get("success"):
@@ -4427,20 +4429,18 @@ def avatar_set_tier(req: AvatarTierRequest):
 class AvatarVideoRequest(BaseModel):
     client_id: int
     script_text: str = ""
-    avatar_id: str = ""
-    heygen_voice_id: str = ""
-    provider: str = ""          # heygen | higgsfield (default: the client's choice)
-    voice_kind: str = ""        # recording | clone | "" (HeyGen stock voice / legacy)
+    avatar_id: str = ""         # the character (GET /api/avatar/list); auto-picked when exactly one
+    provider: str = ""          # higgsfield (the one presenter provider; HeyGen retired)
+    voice_kind: str = ""        # recording | clone
     voice_file_id: str = ""     # the recording, when voice_kind = recording
 
 @app.post("/api/avatar/generate-video", dependencies=_admin_only)
 def avatar_generate_video(req: AvatarVideoRequest):
-    # SLOW (a render polls up to ~15 min). Tier + minutes + consent gates in
-    # the agent; the provider layer (core/avatar_video) names a missing tool
+    # SLOW (a render polls up to ~10 min). Tier + minutes gates in the agent;
+    # core/avatar_video checks gate, length, character, consent, missing tool
     from agents.avatar_agent import generate_avatar_video
     voice = ({"kind": req.voice_kind, "file_id": req.voice_file_id} if req.voice_kind else None)
-    result = generate_avatar_video(req.client_id, req.script_text, req.avatar_id,
-                                   req.heygen_voice_id, req.provider, voice)
+    result = generate_avatar_video(req.client_id, req.script_text, req.avatar_id, req.provider, voice)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=_creative_refusal(result))
     return {"success": True, "data": result}
@@ -4468,7 +4468,7 @@ def avatar_list(client_id: int):
 _TOOL_ERRORS_HE = {
     "unknown_tool": "הכלי הזה לא מוכר.",
     "empty_key": "צריך להדביק את המפתח לפני החיבור.",
-    "consent_required": "כדי לחבר את הדמות המצולמת שלך צריך לסמן את האישור לשימוש בדמות שלך.",
+    "consent_required": "כדי להמשיך צריך לסמן את האישור לשימוש בדמות שלך.",
     "key_rejected": "הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.",
     "not_connected": "הכלי הזה עוד לא מחובר.",
     "unknown_provider": "ספק הווידאו הזה לא מוכר.",
@@ -4610,9 +4610,9 @@ def client_voice_delete(req: VoiceDeleteRequest, request: Request):
     _creative_state_changed(client_id)
     return {"success": True, "data": result}
 
-# ─── Presenter footage, two dashboard slots (core/avatar_footage) ───────────
-# The videos themselves arrive through /api/client/chat-upload with an
-# X-Avatar-Slot header (same chunked, resumable path as the chat).
+# ─── Presenter footage (core/avatar_footage) — RETIRED with HeyGen ──────────
+# The footage card is gone from the dashboard (2026-10-31). GET still reads
+# what was uploaded; POST create answers 410 with a plain line.
 
 _FOOTAGE_HE = {
     "storage": "לא הצלחנו לקרוא את הסרטונים כרגע. ננסה שוב בעוד רגע.",
@@ -4621,6 +4621,7 @@ _FOOTAGE_HE = {
     "no_consent": "קודם מסמנים את האישור לשימוש בדמות בכרטיס \"הדמות שבסרטונים\".",
     "already_submitted": "הדמות כבר בתהליך יצירה. נעדכן אותך כשהיא מוכנה.",
     "provider_error": "היצירה לא הצליחה הפעם. הצוות קיבל התראה ויחזור אליך.",
+    "retired": "כבר לא צריך סרטוני אימון — הדמות שלך נוצרת עכשיו מתמונה אחת. שולחים לי אותה בצ'אט עם כפתור ה-+.",
 }
 
 def _footage_refusal(code: str, message_he: str = "", status: int = 400) -> HTTPException:
@@ -4639,31 +4640,12 @@ def client_avatar_footage(request: Request):
 
 @app.post("/api/client/avatar-footage/create")
 def client_avatar_footage_create(request: Request):
-    # The client's own click: package → tool → likeness consent → both
-    # videos, then avatar_agent.create_avatar (which re-checks consent + tool)
-    client_id = _require_session(request)
-    from agents.avatar_agent import create_avatar, footage_view
-    from core import client_state, vendor_tools
-    from core.agent_actions import _in_package
-    if _in_package({"package": client_state.cached_package(client_id)}, "avatar") is False:
-        raise _footage_refusal("not_in_package")
-    try:
-        view = footage_view(client_id)
-    except Exception as e:
-        print(f"[avatar_footage] client {client_id}: view failed: {type(e).__name__}")
-        raise _footage_refusal("storage", status=503)
-    if view.get("submitted"):
-        raise _footage_refusal("already_submitted", status=409)
-    if not vendor_tools.is_connected(client_id, "heygen"):
-        raise _footage_refusal("missing_tool")
-    result = create_avatar(client_id)
-    if not result.get("success"):
-        code = result.get("code") or "provider_error"
-        raise _footage_refusal(code if code in _FOOTAGE_HE or result.get("message_he") else "provider_error",
-                               result.get("message_he", ""))
-    _creative_state_changed(client_id)
-    return {"success": True, "data": {"method": result.get("method", ""),
-                                      "message_he": result.get("message_he", "")}}
+    # RETIRED 2026-10-31 with HeyGen: a filmed twin (training + consent
+    # videos) is no longer made. The presenter is a character from ONE photo,
+    # sent in the chat (create_presenter_from_photos). This route stays only
+    # so an old open tab gets a plain answer instead of a 404.
+    _require_session(request)
+    raise _footage_refusal("retired", status=410)
 
 # ─── Upload from the chat (core/chat_uploads) ───────────────────────────────
 # One fixed-size chunk per request, forwarded straight into a Drive resumable

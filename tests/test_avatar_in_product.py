@@ -1,13 +1,13 @@
-"""Avatar creation without leaving uallak (2026-10-31):
+"""Avatar creation without leaving uallak (2026-10-31), revised the same day
+when HeyGen was retired and Higgsfield became the presenter:
 
-1. the source kit no longer tells the client to create the avatar themselves
-   on the vendor's website — the manual route is only the automatic fallback
-   when the API refuses (one plain Hebrew chat line + a team alert);
-2. the training and consent videos come from two labelled dashboard slots
-   (core/avatar_footage, via the chat's chunked upload) — a filename is only
-   the fallback for files already in the Drive folder;
-3. the consent sentence is shown on screen in the client's language and
-   recorded in the browser;
+1. the source kit never tells the client to create anything themselves or
+   to visit another website — they send ONE photo in the chat;
+2. the presenter CHARACTER is that photo (or an AI image we made for them),
+   copied into avatar-source and marked — no vendor call, no public share;
+   their own photo needs the likeness consent, an AI image does not;
+3. the filmed-twin footage card is gone from the dashboard (core/avatar_footage
+   stays as a module; its create route answers 410);
 4. a client's file is public ONLY while the vendor fetches it
    (core/public_share): revoked on success and failure, verified, retried
    once, alert if it stays public — and no make_file_public in the repo is
@@ -80,24 +80,20 @@ def _revoke(fid):
 drive.make_file_public = _make_public
 drive.revoke_public = _revoke
 drive.list_files = lambda folder, fields="": [dict(f) for f in FILES]
-drive.get_meta = lambda fid, fields="": {}
+META = {}                 # file id -> Drive metadata for get_meta
+UPLOADS = []              # (folder, name, mime, app_properties)
+drive.get_meta = lambda fid, fields="": dict(META.get(fid, {}))
+drive.download_file = lambda fid: b"image-bytes"
+
+
+def _upload(folder, name, content, mime, app_properties=None):
+    UPLOADS.append((folder, name, mime, dict(app_properties or {})))
+    return {"id": f"copy-{len(UPLOADS)}", "webViewLink": ""}
+
+
+drive.upload_bytes = _upload
 _stub("core.drive_service", drive)
 
-HEYGEN = {"raise": None, "calls": []}
-heygen = types.ModuleType("core.heygen_service")
-heygen.list_avatars = lambda key: [{"avatar_id": "stock1"}]
-
-
-def _submit(key, name, training_footage_url, video_consent_url):
-    # The vendor's server fetches the files DURING the call: they must be public now
-    HEYGEN["calls"].append((training_footage_url, video_consent_url, set(PUBLIC)))
-    if HEYGEN["raise"]:
-        raise HEYGEN["raise"]
-    return {"avatar_id": "new"}
-
-
-heygen.submit_digital_twin = _submit
-_stub("core.heygen_service", heygen)
 _stub("core.elevenlabs_service", types.ModuleType("core.elevenlabs_service"))
 claude_json = types.ModuleType("core.claude_json")
 claude_json.ClaudeJSONError = Exception
@@ -115,7 +111,7 @@ actions = types.ModuleType("core.agent_actions")
 actions._lang = lambda cid: "he"
 _stub("core.agent_actions", actions)
 vault = types.ModuleType("core.secrets_vault")
-vault.use_vendor_key = lambda cid, platform, job="": "hg-key"
+vault.use_vendor_key = lambda cid, platform, job="": "hf-key"
 _stub("core.secrets_vault", vault)
 
 from agents import avatar_agent as aa     # noqa: E402
@@ -123,8 +119,11 @@ from core import avatar_footage as af     # noqa: E402
 from core import public_share as ps       # noqa: E402
 
 aa._log_activity = lambda cid, action, details, result=None: ACTIVITY.append((action, details))
-aa.has_consent = lambda cid, scope: True
+CONSENTS = set()
+aa.has_consent = lambda cid, scope: scope in CONSENTS
 aa._rows = lambda cid, action, limit=20: []
+GENERATED = set()
+aa.generated_image_ids = lambda cid: set(GENERATED)
 ps.RETRY_PAUSE_SECONDS = 0
 
 
@@ -135,55 +134,81 @@ def _video(fid, name, slot="", size=100, at="2026-10-31T10:00:00"):
 
 class Base(unittest.TestCase):
     def setUp(self):
-        for bucket in (ALERTS, CHAT, ACTIVITY, SHARED_EVER, FILES, HEYGEN["calls"]):
+        for bucket in (ALERTS, CHAT, ACTIVITY, SHARED_EVER, FILES, UPLOADS):
             bucket.clear()
-        PUBLIC.clear()
+        for bucket in (PUBLIC, CONSENTS, GENERATED):
+            bucket.clear()
         REVOKE_FAILS.clear()
-        HEYGEN["raise"] = None
+        META.clear()
+        META["p1"] = {"id": "p1", "name": "me.jpg", "mimeType": "image/jpeg", "trashed": False}
 
 
-# ─── 1. Source kit: our system creates it; manual only as a fallback ─────────
+# ─── 1. Source kit: one photo in the chat; nothing to do elsewhere ──────────
 
 class SourceKit(Base):
-    def test_kit_never_sends_the_client_to_create_it_themselves(self):
+    def test_kit_never_sends_the_client_elsewhere(self):
         prompt = aa.SOURCE_KIT_SYSTEM
-        self.assertNotIn("THEMSELVES in HeyGen", prompt)
-        self.assertNotIn("HeyGen's website", prompt)
-        self.assertNotIn("create digital twin", prompt)
-        self.assertIn("OUR SYSTEM creates the presenter", prompt)
-        self.assertIn("NEVER tell the client to create it themselves", prompt)
-        self.assertIn("never mention file names", prompt)
-        self.assertNotIn("consent_sentence", prompt)     # the sentence is ours, not the model's
+        self.assertNotRegex(prompt, "(?i)heygen|higgsfield|digital.twin|training video|consent clip")
+        self.assertIn("NEVER tell the client to create anything", prompt)
+        self.assertIn("never name a vendor or tool", prompt)
+        self.assertIn("Never mention file names", prompt)
+        self.assertIn("dashboard chat", prompt)
+        self.assertIn("up to 15 seconds", prompt)
 
-    def test_kit_doc_carries_the_same_sentence_the_dashboard_shows(self):
+    def test_kit_no_longer_carries_a_filmed_consent_sentence(self):
         source = _src("agents", "avatar_agent.py")
-        self.assertIn("avatar_footage.consent_sentence(_lang(client_id))", source)
+        self.assertNotIn("avatar_footage.consent_sentence", source)
+        self.assertNotRegex(source, r"import heygen_service|heygen_service as")
 
-    def test_success_does_not_take_the_manual_route(self):
-        FILES[:] = [_video("t1", "a.mp4", "training"), _video("c1", "b.mp4", "consent")]
-        result = aa.create_avatar(27)
-        self.assertEqual(result["method"], "digital_twin_api")
-        self.assertEqual(CHAT, [])
 
-    def test_plan_refusal_falls_back_with_one_hebrew_line_and_a_team_alert(self):
-        FILES[:] = [_video("t1", "a.mp4", "training"), _video("c1", "b.mp4", "consent")]
-        HEYGEN["raise"] = RuntimeError("heygen submit_digital_twin failed: 403 enterprise plan required")
-        result = aa.create_avatar(27)
+# ─── 2. The character: one image, copied and marked — no vendor, no share ───
+
+class Character(Base):
+    def test_own_photo_with_consent_becomes_the_character(self):
+        CONSENTS.add("likeness")
+        result = aa.create_avatar(27, photo_ids=["p1"])
         self.assertTrue(result["success"])
-        self.assertEqual(result["method"], "manual_fallback")
-        self.assertEqual(CHAT, [aa.MANUAL_FALLBACK_HE])
-        self.assertEqual(len(aa.MANUAL_FALLBACK_HE.split(". ")), 1)       # one line
-        self.assertRegex(aa.MANUAL_FALLBACK_HE, "[֐-׿]")
-        self.assertNotRegex(aa.MANUAL_FALLBACK_HE, "(?i)heygen|drive|consent")
-        self.assertTrue(any("manual route" in " ".join(issues) for _, issues in ALERTS))
-
-    def test_other_errors_are_not_mistaken_for_a_plan_refusal(self):
-        FILES[:] = [_video("t1", "a.mp4", "training"), _video("c1", "b.mp4", "consent")]
-        HEYGEN["raise"] = RuntimeError("heygen submit_digital_twin failed: 500 internal")
-        result = aa.create_avatar(27)
-        self.assertFalse(result["success"])
-        self.assertEqual(result["code"], "provider_error")
+        self.assertEqual((result["method"], result["kind"]), ("character_image", "own_photo"))
+        (folder, name, mime, props), = UPLOADS
+        self.assertEqual(props, {aa.CHARACTER_PROP: "own_photo"})
+        self.assertTrue(name.startswith("presenter-") and name.endswith(".jpg"))
+        (action, details), = ACTIVITY
+        self.assertEqual(action, "avatar_ready")
+        self.assertEqual((details["provider"], details["kind"], details["source_file_id"]),
+                         ("higgsfield", "own_photo", "p1"))
+        self.assertEqual(SHARED_EVER, [])          # nothing public: there is no vendor call here
         self.assertEqual(CHAT, [])
+
+    def test_own_photo_without_consent_is_refused_and_nothing_is_copied(self):
+        result = aa.create_avatar(27, photo_ids=["p1"])
+        self.assertEqual(result["code"], "no_consent")
+        self.assertEqual((UPLOADS, ACTIVITY), ([], []))
+
+    def test_an_ai_image_we_made_needs_no_likeness_consent(self):
+        GENERATED.add("p1")
+        result = aa.create_avatar(27, photo_ids=["p1"])
+        self.assertTrue(result["success"])
+        self.assertEqual(result["kind"], "generated")
+        self.assertEqual(UPLOADS[0][3], {aa.CHARACTER_PROP: "generated"})
+
+    def test_not_an_image_is_refused(self):
+        META["p1"]["mimeType"] = "video/mp4"
+        CONSENTS.add("likeness")
+        self.assertEqual(aa.create_avatar(27, photo_ids=["p1"])["code"], "no_photos")
+
+    def test_only_presenter_rows_are_characters(self):
+        rows = [{"details": {"avatar_id": "hg1", "avatar_name": "old twin"}, "created_at": "1"},
+                {"details": {"avatar_id": "c1", "avatar_name": "me", "provider": "higgsfield",
+                             "kind": "generated"}, "created_at": "2"}]
+        saved, aa._rows = aa._rows, lambda cid, action, limit=20: rows
+        try:
+            ready = aa.list_ready_avatars(27)
+        finally:
+            aa._rows = saved
+        self.assertEqual([(a["avatar_id"], a["kind"]) for a in ready], [("c1", "generated")])
+
+    def test_the_old_readiness_scan_is_a_no_op(self):
+        self.assertEqual(aa.run_readiness_scan()["retired"], True)
 
 
 # ─── 2. Two labelled slots, filename only as the old-folder fallback ─────────
@@ -210,14 +235,6 @@ class Slots(Base):
         chosen = af.pick([_video("legacy", "consent.mp4"), _video("slot", "clip.webm", "consent"),
                           _video("t", "talk.mp4", "training")])
         self.assertEqual(chosen["consent"]["id"], "slot")
-
-    def test_missing_consent_is_a_plain_refusal_not_a_filename_rule(self):
-        FILES[:] = [_video("t1", "talk.mp4", "training")]
-        result = aa.create_avatar(27)
-        self.assertEqual(result["code"], "missing_consent")
-        self.assertNotIn("filename", result["message_he"])
-        self.assertEqual(HEYGEN["calls"], [])
-        self.assertEqual(SHARED_EVER, [])
 
     def test_upload_slot_takes_video_only_and_tags_the_file(self):
         source = _src("core", "chat_uploads.py")
@@ -247,45 +264,22 @@ class ConsentRecording(Base):
         self.assertIsNone(view["consent"])
         self.assertFalse(view["ready"])
 
-    def test_dashboard_card_has_two_labelled_slots_and_a_recorder(self):
+    def test_the_filmed_twin_card_is_gone_from_the_dashboard(self):
         html = _src("dashboard", "client", "index.html")
-        card = html[html.index('id="footageCard"'):]
-        card = card[:card.index('id="footageCreateNote"')]
-        for needle in ('id="footageSlot-training"', 'id="footageSlot-consent"', 'id="footageSentence"',
-                       'onclick="toggleConsentRecording()"', 'accept="video/*"'):
-            self.assertIn(needle, card)
-        self.assertNotIn("Drive", card)                    # no folder, no naming rule
-        self.assertIn("getUserMedia({ video: { facingMode: 'user' }, audio: true })", html)
-        self.assertIn("'X-Avatar-Slot': slot", html)
-        self.assertIn("chunkedUpload(file, first,", html)
-
-    def test_dashboard_strings_exist_in_five_languages(self):
-        html = _src("dashboard", "client", "index.html")
-        for key in ("footage_card", "footage_training", "footage_consent", "footage_consent_hint", "footage_record",
-                    "footage_stop", "footage_create", "footage_submitted", "footage_camera_denied"):
-            line = re.search(rf"^  {key}: \{{(.*)\}},$", html, re.M)
-            self.assertIsNotNone(line, key)
-            for lang in ("he:", "en:", "fr:", "ar:", "ru:"):
-                self.assertIn(lang, line.group(1), key)
+        for gone in ('id="footageCard"', "toggleConsentRecording", "'X-Avatar-Slot': slot", "createPresenter(",
+                     "/api/client/avatar-footage"):
+            self.assertNotIn(gone, html)
+        self.assertNotRegex(html, r"(?m)^  footage_[a-z_]+: \{")
+        api = _src("core", "api_server.py")
+        create = api[api.index("def client_avatar_footage_create"):]
+        create = create[:create.index("\n@app.")]
+        self.assertIn('_footage_refusal("retired", status=410)', create)
+        self.assertNotIn("create_avatar", create)
 
 
 # ─── 4. Public only while the vendor fetches ─────────────────────────────────
 
 class ShortExposure(Base):
-    def test_twin_files_are_public_during_the_call_and_closed_after(self):
-        FILES[:] = [_video("t1", "a.mp4", "training"), _video("c1", "b.mp4", "consent")]
-        aa.create_avatar(27)
-        (_, _, public_during), = HEYGEN["calls"]
-        self.assertEqual(public_during, {"t1", "c1"})
-        self.assertEqual(PUBLIC, set())
-
-    def test_closed_on_failure_too(self):
-        FILES[:] = [_video("t1", "a.mp4", "training"), _video("c1", "b.mp4", "consent")]
-        for error in (RuntimeError("403 forbidden"), RuntimeError("500 boom")):
-            HEYGEN["raise"] = error
-            aa.create_avatar(27)
-            self.assertEqual(PUBLIC, set(), str(error))
-
     def test_one_failed_close_is_retried_without_an_alert(self):
         REVOKE_FAILS["f"] = 1
         with ps.briefly_public(27, "avatar_agent", "test") as share:
@@ -332,14 +326,16 @@ class ShortExposure(Base):
 
     def test_consent_text_says_what_the_code_does(self):
         statement = aa.CONSENT_STATEMENTS_HE["likeness"]
-        self.assertIn("רק למשך היצירה", statement)
-        self.assertIn("נסגרת מיד אחריה", statement)
+        self.assertIn("רק בזמן שכל סרטון נוצר", statement)
+        self.assertIn("נסגרת מיד אחרי", statement)
+        self.assertNotRegex(statement, "(?i)heygen|higgsfield")
         html = _src("dashboard", "client", "index.html")
-        self.assertIn("הקבצים נפתחים לכלי רק למשך היצירה, והגישה אליהם נסגרת מיד אחריה.", html)
+        self.assertIn("התמונה וההקלטה נפתחות לכלי רק בזמן שכל סרטון נוצר, והגישה אליהן נסגרת מיד אחרי.", html)
         line = re.search(r"^  avatar_consent_likeness: \{(.*)\},$", html, re.M).group(1)
-        for words in ("only for the duration of the creation", "pendant la création", "طوال مدة الإنشاء",
-                      "только на время создания"):
+        for words in ("only while each video is being made", "pendant la création de chaque vidéo",
+                      "أثناء إنشاء كل فيديو", "только на время создания каждого видео"):
             self.assertIn(words, line)
+        self.assertNotRegex(line, "(?i)heygen|higgsfield|filmed")
 
 
 class RevokeReadsBack(unittest.TestCase):

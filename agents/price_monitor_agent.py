@@ -93,6 +93,8 @@ def run_price_check() -> dict:
     One vendor's failure never blocks the rest — each check is independent."""
     results = []
     for key, data in THIRD_PARTY_PRICING.items():
+        if data.get("retired"):
+            continue   # no longer used (HeyGen, 2026-10-31) — a web search for it buys nothing
         result = timed_step(AGENT_NAME, f"check_{key}",
                            lambda k=key, d=data: _check_vendor(k, d))
         results.append(result)

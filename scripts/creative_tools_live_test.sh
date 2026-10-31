@@ -9,6 +9,8 @@
 #       avatar video with an uploaded recording as the audio track
 #   bash scripts/creative_tools_live_test.sh video CLIENT_ID clone "script text"
 #       avatar video with the script read in the cloned voice
+# The presenter is Higgsfield (HeyGen retired 2026-10-31): a clip is at most 15 s, and the
+# client needs a character in avatar-source first (the chat's "presenter from photos" card).
 # Prints only the HTTP status and the result fields - never the admin key or a vendor key.
 set -u
 

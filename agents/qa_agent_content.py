@@ -36,7 +36,8 @@ version that fixes anything that fails:
      advertising or sponsored articles
    - the client's own Higgsfield subscription, when a package includes ongoing image/video
      production
-   - the client's own HeyGen (+ ElevenLabs) costs, when a package includes the avatar add-on
+   - the client's own creative-tool costs (the same image/video tool account, + a voice tool for
+     cloning), when a package includes the avatar add-on — named by what they do, never a vendor
    - the domain (~80-100 NIS/year), when a package includes building a NEW website. The site's
      HOSTING is not one of these — it is already a monthly_management_total line, so an item
      claiming the client pays hosting separately is WRONG and must be removed
@@ -93,7 +94,7 @@ version that fixes anything that fails:
     (e.g. market_reality says 300 leads is unrealistic while a goal still promises 300 leads).
     Keep the field in the returned proposal — never drop it
 15. AVATAR ADD-ON RELEVANCE — if ANY package's recommended_services includes "avatar" (the
-    digital-twin video add-on), its HeyGen/ElevenLabs cost disclosure belongs in cost_disclaimers
+    presenter video add-on), its creative-tool cost disclosure belongs in cost_disclaimers
     (criterion 9 covers whether it is present). Here, check the add-on is genuinely relevant to the business (personal-brand
     services, or a client already comfortable on camera) rather than a random inclusion with no
     story behind it — if the package's description/business_summary give no reason for it, that's
