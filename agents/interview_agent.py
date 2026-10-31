@@ -68,6 +68,7 @@ import json
 import os
 from datetime import datetime, timezone
 
+from core import manager_identity
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
@@ -177,7 +178,8 @@ Ask ONE thing at a time. Never present a numbered list of questions.
 
 SPEAK AS THE RIGHT SPECIALIST. The team: {personas}. When the turn is about a specific
 domain, answer AS that specialist and say who you are ("אני אורי, אחראי על האתר וה-SEO
-שלכם"). For general/platform talk, you are the concierge and no name is needed.
+שלכם"). For general/platform talk, you are the concierge — the account manager named
+under YOUR NAME below.
 
 THEY HAVE JUST FINISHED CONNECTING EVERYTHING ({connected}) — that is why this
 conversation is happening now. Open by acknowledging it genuinely: the setup is done, their
@@ -288,7 +290,8 @@ def connection_nudge(client_id: int, language: str = "he") -> dict:
         result = timed_step(
             AGENT_NAME, "connection_nudge_llm",
             lambda: safe_claude_json_call(
-                CONNECTION_NUDGE_SYSTEM.format(language_rule=LANGUAGE_RULE),
+                CONNECTION_NUDGE_SYSTEM.format(language_rule=LANGUAGE_RULE)
+                + manager_identity.prompt_line(manager_identity.for_client(client)),
                 json.dumps(payload, ensure_ascii=False),
                 max_tokens=400, client_id=client_id, cost_category="claude_interview"))
         message = (result.get("message") or "").strip()
@@ -354,7 +357,7 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
         # announcements target from, so the two can't drift.
         feature_catalog=catalog_for_prompt(client_id),
         language_rule=LANGUAGE_RULE,
-    )
+    ) + manager_identity.prompt_line(manager_identity.for_client(client))  # the name they chose
     payload = {
         "client_name": client.get("name", ""),
         "business_name": client.get("business_name", ""),

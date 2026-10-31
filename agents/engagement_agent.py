@@ -362,6 +362,10 @@ def notify_client_urgent(client_id: int, message_he: str) -> dict:
     from agents.client_agent import get_client, log_activity, log_communication
 
     client = get_client(client_id)
+    # Signed by the manager the client chose (core/manager_identity), so the
+    # notification comes from the same person as the chat
+    from core import manager_identity
+    message_he = f"{message_he}\n\n— {manager_identity.signoff(manager_identity.for_client(client or {}, 'he'), 'he')}"
     sent = send_whatsapp(client.get("phone", ""), message_he)
     try:
         log_communication(client_id, "outbound", "dashboard_chat", message_he)
@@ -494,8 +498,8 @@ def _collect_login_facts(client_id: int) -> dict:
     return facts
 
 
-LOGIN_MOMENT_SYSTEM = """You are the uallak team greeting an existing client who has just
-opened their dashboard. Write ONE short message that feels like a person who actually looked
+LOGIN_MOMENT_SYSTEM = """You are {manager_name}, the client's account manager on the uallak team (the
+person they chose), greeting an existing client who has just opened their dashboard. Write ONE short message that feels like a person who actually looked
 at their account before speaking — not a daily template.
 
 You receive FACTS about what is genuinely true right now. Rules about them:
@@ -551,12 +555,18 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
     from agents.onboarding_agent import LANGUAGE_RULE
 
     client = get_client(client_id) or {}
-    payload = {"client_name": client.get("name", ""), "ui_language": language, **facts}
+    # The manager the client chose (core/manager_identity) — the only
+    # per-client part of who is greeting; the rules below are the same for all
+    from core import manager_identity
+    manager = manager_identity.for_client(client, language)
+    manager_name = f"{manager['names']['en']} ({manager['names']['he']} in Hebrew, {manager['gender']})"
+    payload = {"client_name": client.get("name", ""), "ui_language": language,
+               "your_name": manager["name"], **facts}
     try:
         result = timed_step(
             AGENT_NAME, "login_moment_llm",
             lambda: safe_claude_json_call(
-                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE),
+                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE, manager_name=manager_name),
                 json.dumps(payload, ensure_ascii=False),
                 max_tokens=500, client_id=client_id, cost_category="engagement_login"))
     except Exception as e:  # includes ClaudeJSONError
@@ -656,8 +666,13 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
     from agents.onboarding_agent import LANGUAGE_RULE
     from agents.support_agent import PERSONAS, persona_channel
 
-    persona = PERSONAS.get(persona_id) or {}
     client = get_client(client_id) or {}
+    persona = PERSONAS.get(persona_id) or {}
+    if persona_id == "general":
+        # The concierge's announcement comes from the manager the client chose
+        from core import manager_identity
+        manager = manager_identity.for_client(client, language)
+        persona = {"name": manager["name"], "voice": "Warm, direct, practical — their account manager."}
     payload = {
         "client_name": client.get("name", ""),
         "ui_language": language,

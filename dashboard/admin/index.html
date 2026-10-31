@@ -1858,7 +1858,7 @@ async function openDrawer(clientId) {
     </div>
 
     <div class="drawer-section">
-      <div class="drawer-label">אוטומציות שיווק — פרטי כניסה (ManyChat / Make)</div>
+      <div class="drawer-label">אוטומציות שיווק — פרטי כניסה (ManyChat)</div>
       <div id="automationArea">
         <div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div>
       </div>
@@ -2705,7 +2705,7 @@ async function loadClientLeadsSection(clientId) {
   bulkRegister('client_leads', rows.map(l => l.id));
 }
 
-// ─── marketing automation (ManyChat / Make) ──────────────────────────────────
+// ─── marketing automation (ManyChat) ─────────────────────────────────────────
 // API token per client, encrypted server-side and NEVER shown back (at most
 // the last 4 characters). Passwords are no longer stored; an old stored login
 // is flagged "legacy" (kept, not shown) until the client moves to a token.
@@ -3203,7 +3203,7 @@ async function crPhpRotate(clientId, ev) {
   if (out) { out.style.color = 'var(--gray)'; out.textContent = 'נוצר כרטיס לאישור למעלה — הוא ירוץ רק אחרי "אשר והרץ".'; }
 }
 
-// Clients still on a stored ManyChat/Make username+password (kept, never shown)
+// Clients still on a stored ManyChat username+password (kept, never shown)
 async function crLoadLegacyLogins(names) {
   const el = document.getElementById('crLegacyLogins');
   if (!el) return;

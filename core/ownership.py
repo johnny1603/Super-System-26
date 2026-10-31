@@ -232,6 +232,9 @@ GROUPS = {
                               "Создание и поддержка автоматизаций переписки в вашем аккаунте."),
                  "steps": ["החשבון שלך ב-ManyChat והאוטומציות שנבנו בו נשארים שלך וממשיכים לעבוד.", _KEY_STEP,
                            "אם צירפתם את הצוות שלנו כמשתמש בחשבון — מסירים אותו מרשימת המשתמשים."]},
+    # RETIRED vendor (automation_service.RETIRED_VENDORS): never offered any
+    # more, but a client who already has a row still sees it here and can
+    # disconnect it — the stored row is theirs and is left intact.
     "make": {"kind": "api_key", "vendor": "Make",
              "title": _L("חיבורים בין המערכות שלך", "Connections between your systems", "Connexions entre vos outils",
                          "الربط بين أنظمتك", "Связки между вашими системами"),

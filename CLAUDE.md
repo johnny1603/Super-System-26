@@ -47,7 +47,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   and feature-announcement targeting decides relevance from the same entries. **Shipping a
   client-facing capability means adding one dict here** — miss it and the interview keeps
   describing a product that no longer matches. The `access` field (`self_serve` / `manual` /
-  `automatic`) is what stops a manual service like ManyChat/Make being described as a button.
+  `automatic`) is what stops a manual service like ManyChat being described as a button.
 - `core/feature_announcements.py` + `engagement_agent.run_feature_announcement` — Johnny
   flags a shipped feature as ready; relevant clients are told **once each**, at their next
   login, in the owning persona's voice and in that persona's chat thread. Admin-triggered
@@ -257,7 +257,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   buttons render from ACTIVE entries, and the concierge may only give that entry's links
   (`strip_foreign_links`). Every URL there already existed in the code — never add a guessed
   one; leave `url` empty instead.
-- `core/automation_service.py` — ManyChat / Make, the one integration that is deliberately
+- `core/automation_service.py` — ManyChat (Make was retired 2026-10-31: those automations are built
+  in-house; `RETIRED_VENDORS` — never offered, but a client's stored row is left intact and
+  ownership/disconnect still see it), the one integration that is deliberately
   NOT a self-service connect flow: no fixed price, no OAuth, no client-facing credential
   form. The client dashboard shows informational cards that route to WhatsApp or the general
   concierge; Johnny scopes and prices it by hand and stores the client's login in the admin
@@ -568,6 +570,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   window with CSS `order` + `z-index` instead. Reorder with CSS, not with the DOM. The
   resize and file-drop handlers follow the same rule (only `--cw-w`/`--cw-h` and classes
   change); `tests/test_chat_uploads.py` fails if a DOM move appears in them.
+  Minimise/restore follow it too: a minimised window shows its agent's standing figure
+  (`.cw-figure`, built in `buildWindow`) purely via the `.minimized` class — nothing is
+  built or moved on that path (`tests/test_team_identity.py`).
+- **The concierge's name and face come ONLY from `core/manager_identity`** (ג'וני / ניסים /
+  אלינור, the client's choice in `clients.manager_persona`; default: the old female companion
+  -> אלינור, else ג'וני). Chat prompt, login greeting, interview, emails, WhatsApp and the
+  dashboard (`/api/dashboard` `.manager` / `.manager_options`) all read it; the page keeps
+  no copy of the names. Only the name and face differ — never the voice or rules. Faces:
+  `dashboard/assets/agents/<key>-portrait|figure.webp` (+ `.png` fallback, then the initial).
+- Language flags are inline SVG in `dashboard/assets/i18n.js` — never emoji (Windows draws
+  flag emoji as two letters).
 - `overflow` / `text-overflow: ellipsis` do **nothing** on an inline element. Several
   header labels are `<span>`s and need an explicit `display: block` to actually clip
   instead of spilling over the controls next to them.

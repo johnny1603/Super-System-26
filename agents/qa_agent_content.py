@@ -17,7 +17,7 @@ version that fixes anything that fails:
    keyword work, lead capture, weekly reporting, automations when included) — not a list of
    outcome projections. 5-7 items, at most 1-2 of which are pure projections. Every named action
    must actually be contained in the packages you were given; delete any that isn't. A mention of
-   ManyChat/Make marketing automation is allowed ONLY as a possibility to explore with the team,
+   ManyChat marketing automation is allowed ONLY as a possibility to explore with the team,
    never as an included deliverable and never with a price
 4. No contradictions between business_summary and any package's recommended_services — they must
    all tell the same story

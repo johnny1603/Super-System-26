@@ -21,28 +21,47 @@
 
   var SUPPORTED = ['he', 'en', 'fr', 'ar', 'ru'];
   var RTL = ['he', 'ar'];
+  // Every switcher button's aria-label + title: there is no visible text, so
+  // this is the only way a screen reader or a mouse hover learns the language
   var NATIVE_NAMES = { he: 'עברית', en: 'English', fr: 'Français', ar: 'العربية', ru: 'Русский' };
-  // The switcher's menu label is deliberately NOT the same as NATIVE_NAMES
-  // for Arabic: "ערבית" (Hebrew) instead of "العربية" (Arabic script), so the
-  // option reads unambiguously regardless of which language is currently
-  // active on screen. Paired with FLAGS.ar below (see its own comment).
-  var MENU_LABELS = { he: 'עברית', en: 'English', fr: 'Français', ar: 'ערבית', ru: 'Русский' };
-  // Flag-style badge per language. Arabic deliberately uses Israel's flag,
-  // NOT a generic Arabic-speaking-country flag (Saudi/Egypt/etc.) - these are
-  // Israeli Arabic-speaking clients, not a foreign audience, and a foreign
-  // flag would misrepresent who they are.
-  var FLAGS = { he: '🇮🇱', en: '🇺🇸', fr: '🇫🇷', ar: '🇮🇱', ru: '🇷🇺' };
   var LOCALES = { he: 'he-IL', en: 'en-GB', fr: 'fr-FR', ar: 'ar', ru: 'ru-RU' };
   var STORAGE_KEY = 'uallak_lang';
 
-  // What a language button shows: every language shows ONLY its flag glyph (no
-  // label). Arabic is the deliberate exception — it shows its name AS TEXT
-  // ("ערבית") with no flag at all, since the only fitting flag would be
-  // Israel's (these are Israeli Arabic-speaking clients) and that duplicates
-  // the Hebrew badge — the word reads unambiguously instead. `is-text` styling
-  // hangs off the same distinction.
-  function switcherFace(code) {
-    return code === 'ar' ? MENU_LABELS.ar : (FLAGS[code] || '🌐');
+  // Flags are inline SVG, NEVER emoji (2026-10-31). The previous switcher drew
+  // regional-indicator flag emoji (IL/US/FR/RU), and Windows ships no flag glyphs:
+  // every button rendered as two grey letters ("IL", "US", ...). SVG renders
+  // the same on every OS. Arabic uses the UAE colours. Drawn on a 40x40 box,
+  // clipped to a circle, with a highlight + rim shade for depth.
+  var FLAG_BODY = {
+    he: '<rect width="40" height="40" fill="#fff"/><rect y="7" width="40" height="5" fill="#0038B8"/>' +
+        '<rect y="28" width="40" height="5" fill="#0038B8"/><path d="M20 14.2l4.3 7.4h-8.6zM20 25.8l-4.3-7.4h8.6" ' +
+        'fill="none" stroke="#0038B8" stroke-width="1.5"/>',
+    en: '<rect width="40" height="40" fill="#012169"/><path d="M0 0l40 40M40 0L0 40" stroke="#fff" stroke-width="8"/>' +
+        '<path d="M0 0l40 40M40 0L0 40" stroke="#C8102E" stroke-width="4"/><path d="M20 0v40M0 20h40" stroke="#fff" ' +
+        'stroke-width="13"/><path d="M20 0v40M0 20h40" stroke="#C8102E" stroke-width="7"/>',
+    fr: '<rect x="0" width="13.34" height="40" fill="#002395"/><rect x="13.34" width="13.33" height="40" fill="#fff"/>' +
+        '<rect x="26.67" width="13.33" height="40" fill="#ED2939"/>',
+    ar: '<rect x="11" y="0" width="29" height="13.34" fill="#009A3E"/><rect x="11" y="13.34" width="29" height="13.33" ' +
+        'fill="#fff"/><rect x="11" y="26.67" width="29" height="13.33" fill="#000"/><rect x="0" y="0" width="11" ' +
+        'height="40" fill="#CE1126"/>',
+    ru: '<rect y="0" width="40" height="13.34" fill="#fff"/><rect y="13.34" width="40" height="13.33" fill="#0039A6"/>' +
+        '<rect y="26.67" width="40" height="13.33" fill="#D52B1E"/>',
+  };
+  var flagSeq = 0;
+
+  // Each SVG carries its OWN defs under ids unique to this button, so no flag
+  // depends on another one existing (or being visible) on the page
+  function flagSvg(code) {
+    var p = 'uallak-flag-' + (++flagSeq) + '-';
+    return '<svg viewBox="0 0 40 40" aria-hidden="true" focusable="false"><defs>' +
+      '<clipPath id="' + p + 'c"><circle cx="20" cy="20" r="20"/></clipPath>' +
+      '<radialGradient id="' + p + 's" cx="33%" cy="28%" r="78%">' +
+      '<stop offset="0%" stop-color="#fff" stop-opacity=".55"/><stop offset="42%" stop-color="#fff" stop-opacity=".10"/>' +
+      '<stop offset="72%" stop-color="#000" stop-opacity=".10"/><stop offset="100%" stop-color="#000" stop-opacity=".48"/>' +
+      '</radialGradient><radialGradient id="' + p + 'r" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="88%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".40"/>' +
+      '</radialGradient></defs><g clip-path="url(#' + p + 'c)">' + (FLAG_BODY[code] || '') +
+      '<rect width="40" height="40" fill="url(#' + p + 's)"/><rect width="40" height="40" fill="url(#' + p + 'r)"/></g></svg>';
   }
 
   var table = {};
@@ -117,15 +136,19 @@
     lang = next;
     try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* private mode */ }
     applyDom();
-    listeners.forEach(function (fn) { fn(lang); });
+    // One page re-render throwing must not stop the rest (or the switcher's
+    // own ring) from updating — every listener runs, each in isolation
+    listeners.forEach(function (fn) {
+      try { fn(lang); } catch (e) { if (window.console) console.error('i18n listener failed', e); }
+    });
   }
 
-  // Compact control: a raised 3D flag badge showing the CURRENT language,
-  // opening a small popover of raised 3D round buttons (flag-only, one per
-  // language; Arabic shows the word "ערבית" instead of a flag) on click -
-  // replaces the old plain-text <select> everywhere mountSwitcher is used
-  // (login, profile, dashboard, landing, terms), so the design only needs to
-  // happen once, here, in the shared engine.
+  // The switcher (from the owner's flag design file, 2026-10-31): one row
+  // of round flag buttons with depth, no visible text, the active one ringed
+  // in the brand accent. All five are always on screen — one tap switches,
+  // there is no popover to open first (the old popover collapsed into a
+  // one-column stack inside the narrow top bar). Used by every page that
+  // calls mountSwitcher (login, profile, dashboard, landing, terms, sales chat).
   var SWITCHER_STYLE_ID = 'uallak-i18n-switcher-style';
 
   function ensureSwitcherStyles() {
@@ -133,105 +156,66 @@
     var style = document.createElement('style');
     style.id = SWITCHER_STYLE_ID;
     style.textContent =
-      '.uallak-lang-switcher{position:relative;display:inline-block;line-height:0;}' +
-      // ── Current-language badge: raised, embossed accent button ──
-      '.uallak-lang-badge{width:38px;height:38px;border-radius:50%;border:1px solid rgba(0,0,0,0.14);' +
-      'color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;' +
-      'background:linear-gradient(145deg,#ff7a52 0%,#ff4c1f 55%,#d8380f 100%);' +
-      'box-shadow:0 4px 9px rgba(0,0,0,0.34),inset 0 2px 2px rgba(255,255,255,0.5),' +
-      'inset 0 -3px 4px rgba(0,0,0,0.3);transition:transform .12s,box-shadow .12s;}' +
-      '.uallak-lang-badge:hover{transform:translateY(-1px);' +
-      'box-shadow:0 6px 14px rgba(0,0,0,0.38),inset 0 2px 2px rgba(255,255,255,0.55),inset 0 -3px 4px rgba(0,0,0,0.3);}' +
-      '.uallak-lang-badge:active{transform:translateY(1px);' +
-      'box-shadow:0 2px 5px rgba(0,0,0,0.3),inset 0 3px 5px rgba(0,0,0,0.34),inset 0 -1px 2px rgba(255,255,255,0.3);}' +
-      '.uallak-lang-badge.is-text{font-size:11px;font-weight:800;letter-spacing:-0.3px;}' +
-      '.uallak-lang-badge:focus-visible{outline:2px solid var(--accent,#FF4C1F);outline-offset:2px;}' +
-      // ── Popover: a wrapped row of round buttons ──
-      '.uallak-lang-menu{position:absolute;top:calc(100% + 10px);inset-inline-end:0;' +
-      'background:rgba(255,255,255,0.97);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,0.3);' +
-      'padding:10px;display:none;gap:9px;flex-wrap:wrap;justify-content:center;max-width:184px;z-index:9999;}' +
-      '.uallak-lang-menu.open{display:flex;}' +
-      // ── One raised, embossed round button per language ──
-      '.uallak-lang-item{width:42px;height:42px;border-radius:50%;border:1px solid rgba(0,0,0,0.1);cursor:pointer;' +
-      'display:flex;align-items:center;justify-content:center;font-size:20px;padding:0;font-family:inherit;color:#1A1A1A;' +
-      'background:linear-gradient(145deg,#ffffff 0%,#ececec 55%,#d6d6d6 100%);' +
-      'box-shadow:0 4px 8px rgba(0,0,0,0.26),inset 0 2px 2px rgba(255,255,255,0.95),' +
-      'inset 0 -3px 4px rgba(0,0,0,0.16);transition:transform .12s,box-shadow .12s;}' +
-      '.uallak-lang-item:hover{transform:translateY(-2px);' +
-      'box-shadow:0 8px 14px rgba(0,0,0,0.3),inset 0 2px 2px rgba(255,255,255,0.95),inset 0 -3px 4px rgba(0,0,0,0.16);}' +
-      '.uallak-lang-item:active{transform:translateY(1px);' +
-      'box-shadow:0 2px 5px rgba(0,0,0,0.26),inset 0 3px 5px rgba(0,0,0,0.22);}' +
-      '.uallak-lang-item.is-text{font-size:12px;font-weight:800;letter-spacing:-0.3px;}' +
-      '.uallak-lang-item.active{border-color:rgba(0,0,0,0.14);color:#fff;' +
-      'background:linear-gradient(145deg,#ff7a52 0%,#ff4c1f 55%,#d8380f 100%);' +
-      'box-shadow:0 4px 9px rgba(0,0,0,0.34),inset 0 2px 2px rgba(255,255,255,0.45),inset 0 -3px 4px rgba(0,0,0,0.3);}';
+      '.uallak-lang-row{display:inline-flex;gap:10px;align-items:center;flex-wrap:nowrap;vertical-align:middle;}' +
+      '.lang-btn{width:34px;height:34px;padding:0;border:0;border-radius:50%;flex:0 0 auto;' +
+      'background:transparent;cursor:pointer;line-height:0;-webkit-tap-highlight-color:transparent;' +
+      'touch-action:manipulation;filter:drop-shadow(0 3px 5px rgba(0,0,0,.55));' +
+      'transition:transform .16s ease,filter .16s ease;}' +
+      '@media (hover:hover){.lang-btn:hover{transform:translateY(-2px) scale(1.06);' +
+      'filter:drop-shadow(0 6px 9px rgba(0,0,0,.6));}}' +
+      '.lang-btn:active{transform:translateY(0) scale(.97);}' +
+      '.lang-btn svg{width:100%;height:100%;display:block;border-radius:50%;pointer-events:none;}' +
+      // The active one: a ring in the brand accent, separated by a gap in the page background
+      '.lang-btn[aria-current="true"]{box-shadow:0 0 0 2px var(--bg,#0D0D0D),0 0 0 4px var(--accent,#FF4C1F);' +
+      'transform:scale(1.04);}' +
+      '.lang-btn:focus-visible{outline:2px solid var(--accent,#FF4C1F);outline-offset:4px;}' +
+      // Phones: smaller, tighter — still a 28px+ target, the row never forces a horizontal scroll
+      '@media (max-width:640px){.uallak-lang-row{gap:8px;}.lang-btn{width:28px;height:28px;}}';
     document.head.appendChild(style);
   }
 
+  function paintActive(row) {
+    row.querySelectorAll('.lang-btn').forEach(function (btn) {
+      var on = btn.getAttribute('data-lang') === lang;
+      if (on) btn.setAttribute('aria-current', 'true'); else btn.removeAttribute('aria-current');
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
   function mountSwitcher(container) {
+    if (!container) return null;
     ensureSwitcherStyles();
     container.innerHTML = ''; // safe to re-mount
 
-    var wrap = document.createElement('div');
-    wrap.className = 'uallak-lang-switcher';
+    var row = document.createElement('div');
+    row.className = 'uallak-lang-row';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Language / שפה');
 
-    var badge = document.createElement('button');
-    badge.type = 'button';
-    badge.setAttribute('aria-label', 'Language / שפה');
-    badge.setAttribute('aria-haspopup', 'true');
-
-    function paintBadge(code) {
-      badge.className = 'uallak-lang-badge' + (code === 'ar' ? ' is-text' : '');
-      badge.textContent = switcherFace(code);
-    }
-    paintBadge(lang);
-
-    var menu = document.createElement('div');
-    menu.className = 'uallak-lang-menu';
-
-    function renderMenu() {
-      menu.innerHTML = '';
-      SUPPORTED.forEach(function (code) {
-        var item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'uallak-lang-item' + (code === lang ? ' active' : '')
-                         + (code === 'ar' ? ' is-text' : '');
-        // The language name is kept as an accessible label / hover tooltip only
-        // - it is intentionally not shown as visible text (Arabic aside, whose
-        // face IS its name).
-        item.setAttribute('aria-label', MENU_LABELS[code]);
-        item.title = MENU_LABELS[code];
-        item.textContent = switcherFace(code);
-        item.addEventListener('click', function (e) {
-          e.stopPropagation();
-          setLanguage(code);
-          menu.classList.remove('open');
-        });
-        menu.appendChild(item);
+    SUPPORTED.forEach(function (code) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'lang-btn';
+      btn.setAttribute('data-lang', code);
+      // No visible text — the name lives in aria-label AND title, always
+      btn.setAttribute('aria-label', NATIVE_NAMES[code]);
+      btn.setAttribute('title', NATIVE_NAMES[code]);
+      btn.setAttribute('lang', code);
+      btn.innerHTML = flagSvg(code);
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (code !== lang) setLanguage(code);
       });
-    }
-    renderMenu();
-
-    badge.addEventListener('click', function (e) {
-      e.stopPropagation();
-      menu.classList.toggle('open');
+      row.appendChild(btn);
     });
-    document.addEventListener('click', function () { menu.classList.remove('open'); });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') menu.classList.remove('open');
-    });
+    paintActive(row);
 
-    // Keep the badge + menu in sync if the language changes (this switch, or
-    // in principle another one on the same page)
-    listeners.push(function (newLang) {
-      paintBadge(newLang);
-      renderMenu();
-    });
+    // Repaint the ring whenever the language changes (this row or any other)
+    listeners.push(function () { paintActive(row); });
 
-    wrap.appendChild(badge);
-    wrap.appendChild(menu);
-    container.appendChild(wrap);
-    return wrap;
+    container.appendChild(row);
+    return row;
   }
 
   // Server error-code pattern: API failures return detail={"code": "ERR_X"}

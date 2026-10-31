@@ -30,7 +30,7 @@ here, the interview will keep describing a product that no longer matches.
 - `where_he`     where they find it. "" for things with no screen of their own.
 - `access`       how the client gets it:
                  `self_serve` — they can do it themselves right now
-                 `manual`     — they have to talk to a human first (ManyChat/Make)
+                 `manual`     — they have to talk to a human first (ManyChat)
                  `automatic`  — we do it, nothing for them to press
 - `persona`      which specialist owns the conversation about it. Must be a key
                  in `support_agent.PERSONAS`, or "general" for the concierge.
@@ -235,9 +235,9 @@ FEATURES = [
     },
     {
         "key": "marketing_automation",
-        "name_he": "אוטומציה שיווקית (ManyChat / Make)",
-        "what_he": "מענה אוטומטי לפניות בוואטסאפ ובאינסטגרם, וחיבור בין המערכות שלכם. זה לא שירות במחיר קבוע ולא מחברים אותו לבד — מדברים איתנו בוואטסאפ, מבינים מה צריך, ורק אז מתמחרים ובונים.",
-        "where_he": "מסך הבית, כרטיסי ManyChat ו-Make באזור החיבורים",
+        "name_he": "אוטומציית שיחות (ManyChat)",
+        "what_he": "מענה אוטומטי לפניות בוואטסאפ ובאינסטגרם. זה לא שירות במחיר קבוע ולא מחברים אותו לבד — מדברים איתנו בוואטסאפ, מבינים מה צריך, ורק אז מתמחרים ובונים.",
+        "where_he": "מסך הבית, כרטיס ManyChat באזור החיבורים",
         "access": "manual",
         "persona": "general",
         "relevance": {"always": True},

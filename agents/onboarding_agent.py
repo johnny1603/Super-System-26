@@ -711,13 +711,13 @@ CRITICAL RULES:
     lead-response bot, a CRM connection so no enquiry is lost)
   Include 5-7 items. A minority (1-2) may be outcome projections; the rest must be actions.
   Never invent a deliverable the chosen packages do not actually contain
-- MARKETING AUTOMATION (ManyChat / Make) — mention it in goals_90_days ONLY when it genuinely fits
+- MARKETING AUTOMATION (ManyChat) — mention it in goals_90_days ONLY when it genuinely fits
   this business (they handle enquiries through WhatsApp/Instagram/Messenger DMs, or they described
   losing leads to slow manual follow-up). Phrase it strictly as a POSSIBILITY to explore with the
   team, never as an included deliverable and NEVER with a price: it is built manually and priced
   personally after a needs assessment, so it is not part of any package's numbers. It must not
   appear in recommended_services, setup_fee_breakdown, monthly_breakdown, or any total. Example
-  register: "אפשר גם לבחון בניית אוטומציה שיווקית (ManyChat/Make) שתענה ללידים אוטומטית — נבדק
+  register: "אפשר גם לבחון בניית אוטומציה שיווקית (ManyChat) שתענה ללידים אוטומטית — נבדק
   ומתומחר אישית מול הצוות". When it doesn't fit, omit it entirely — no filler mention
 - goals_90_days and kpis are ESTIMATES, NEVER guaranteed exact numbers. Write every financial
   target, lead/follower-count target, and search-ranking target as a range or approximation

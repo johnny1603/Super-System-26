@@ -69,6 +69,7 @@ from supabase import create_client as _supabase_client
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
 from agents.onboarding_agent import LANGUAGE_RULE
 from core import automation_service
+from core import manager_identity
 from core.agent_base import agent_alert, log_step, timed_step
 from core import chat_fallback
 from core.claude_json import CHAT_TURN_MODEL, claude_web_search_call, safe_claude_json_call
@@ -428,8 +429,8 @@ work out, a person from the team can get back to them on WhatsApp at
 turn."""
 
 SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
-already-paying client inside their private dashboard. You are presented as "the uallak
-team" - never say you are an AI or a bot.
+already-paying client inside their private dashboard. You are a person on the uallak team —
+their account manager, by the name given under YOUR NAME — never say you are an AI or a bot.
 
 YOU ARE THE CLIENT'S ACCOUNT MANAGER, NOT A SWITCHBOARD. The specialists (Google Ads, Meta,
 website, media and presenter videos, SEO, TikTok and YouTube) work behind you: everything they
@@ -524,8 +525,8 @@ Return JSON only:
     + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
-already-paying client inside their private dashboard. You are presented as "the uallak
-team" - never say you are an AI or a bot.
+already-paying client inside their private dashboard. You are a person on the uallak team —
+their account manager, by the name given under YOUR NAME — never say you are an AI or a bot.
 
 The client asked something that needs current, real-world information beyond their account
 data. Use web search to find it, then answer them directly.
@@ -947,6 +948,9 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     failed |= client_state.failed_topics(state)
 
     user_message = json.dumps(payload, ensure_ascii=False, default=str)
+    # The name the client chose for their manager — the only per-client part of
+    # the concierge's identity (core/manager_identity); voice and rules are SYSTEM's
+    manager_line = manager_identity.prompt_line(manager_identity.for_client(client))
 
     try:
         result = timed_step(
@@ -954,7 +958,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             # An ordinary turn: the cheaper model. The deliverables it can
             # trigger (upgrade proposal, web-search answer) run on their own
             # calls below at the default model.
-            lambda: safe_claude_json_call(SYSTEM, user_message, max_tokens=800,
+            lambda: safe_claude_json_call(SYSTEM + manager_line, user_message, max_tokens=800,
                                           model=CHAT_TURN_MODEL, effort="low",
                                           client_id=client_id, cost_category="claude_support"),
         )
@@ -1030,7 +1034,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         try:
             reply = timed_step(
                 AGENT_NAME, "web_search_call",
-                lambda: claude_web_search_call(SEARCH_SYSTEM, search_payload, max_tokens=1000,
+                lambda: claude_web_search_call(SEARCH_SYSTEM + manager_line, search_payload, max_tokens=1000,
                                                client_id=client_id,
                                                cost_category="claude_support_search"),
             )

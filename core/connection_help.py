@@ -519,18 +519,6 @@ CONNECTIONS = [
         "needs_api_key": False,  # credentials go to the team, never a key field (automation_service)
         "active": False,
     },
-    {
-        "id": "make",
-        "title": _t("Make", "Make", "Make", "Make", "Make"),
-        "steps": {lang: [] for lang in LANGS},
-        "links": [{"label": _t("הרשמה", "Sign up", "Inscription", "التسجيل", "Регистрация"),
-                   "url": "https://www.make.com/en/register"},
-                  {"label": _t("כניסה", "Log in", "Connexion", "تسجيل الدخول", "Вход"),
-                   "url": "https://www.make.com/en/login"}],
-        "estimated_minutes": None,
-        "needs_api_key": False,
-        "active": False,
-    },
 ]
 
 # A guided entry's concierge steps ARE its guide's "do" lines — one text, no drift

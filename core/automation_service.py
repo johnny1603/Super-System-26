@@ -1,4 +1,4 @@
-"""Marketing automation (ManyChat / Make) — a MANUAL service, deliberately not
+"""Marketing automation (ManyChat) — a MANUAL service, deliberately not
 built like any other integration in the dashboard.
 
 Every other connection (Google/Meta/TikTok/YouTube/WordPress/Higgsfield) is a
@@ -9,9 +9,9 @@ the system already knows. This one has neither, on purpose:
   needs assessment with the client over the existing WhatsApp support channel,
   and only then prices and builds the automation himself. Nothing here may ever
   quote a number — not the sales chat, not the support chat, not the dashboard.
-- The client dashboard shows these two as INFORMATIONAL cards only. There is no
+- The client dashboard shows it as an INFORMATIONAL card only. There is no
   "connect" button, no OAuth, no client-facing credential form.
-- If the client decides to go ahead, they open their OWN ManyChat/Make account
+- If the client decides to go ahead, they open their OWN ManyChat account
   with an email + password — explicitly NOT "Sign in with Google", because
   Johnny later signs in as them and a Google-federated account makes that a
   fight with Google's own auth. They then send those credentials to Johnny, who
@@ -38,13 +38,13 @@ VENDORS = {
         "signup_url": "https://manychat.com/signup",
         "what_he": "אוטומציות שיחה בוואטסאפ, אינסטגרם ומסנג׳ר — מענה אוטומטי לפניות ולידים",
     },
-    "make": {
-        "name": "Make",
-        "login_url": "https://www.make.com/en/login",
-        "signup_url": "https://www.make.com/en/register",
-        "what_he": "חיבור בין המערכות שלך — טפסים, CRM, מיילים וגיליונות — בלי עבודה ידנית",
-    },
 }
+
+# Make was retired on 2026-10-31: those automations are built in-house now.
+# It is no longer a vendor — not offered, not priced, not shown — but a
+# client's existing `client_accounts` row with platform "make" is LEFT
+# INTACT (never deleted by this change); see RETIRED_VENDORS.
+RETIRED_VENDORS = ("make",)
 
 # Said to the client verbatim (support_agent) before they open an account. The
 # Google warning is the operational point, not a style choice: Johnny signs in
@@ -57,7 +57,7 @@ SIGNUP_RULE_HE = (
 
 # What the support chat is allowed to say about how this is sold. No prices.
 POLICY_NOTE = (
-    "ManyChat and Make are a MANUAL service: there is no fixed price and no "
+    "ManyChat is a MANUAL service: there is no fixed price and no "
     "self-service setup in the system. The client talks to the team on WhatsApp, "
     "a personal needs assessment happens, and only then is the automation priced "
     "and built for them. NEVER quote a price, a price range, or a setup fee for "
@@ -81,9 +81,6 @@ def vendor(slug: str) -> dict:
 #     it lets you BUILD flows or only read/send via the API. If building needs
 #     a dashboard login, the right model is the client inviting Johnny as a
 #     team member (their own login stays theirs) — not a stored password.
-#   Make — whether the client's plan allows API tokens, which scopes building/
-#     editing scenarios needs, token expiry, and whether "invite a team member
-#     to the organization" is the better path than a token.
 # Until verified, tokens are stored but nothing in the system USES them.
 TOKEN_ACCOUNT_ID = "api_token"
 
@@ -120,11 +117,11 @@ def get_credentials(client_id: int) -> list:
 def save_token(client_id: int, slug: str, api_token: str) -> dict:
     """Store (or replace) one vendor's API token for a client — encrypted by
     upsert_account. Replaces a legacy login row in place."""
-    from agents.client_agent import upsert_account
-
     v = vendor(slug)
     if not v:
         return {"success": False, "errors": [f"unknown automation vendor: {slug}"]}
+    from agents.client_agent import upsert_account
+
     api_token = (api_token or "").strip()
     if not api_token:
         return {"success": False, "errors": ["api_token is required"]}

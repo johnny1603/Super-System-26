@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -404,8 +404,28 @@ body {
   font-size: 12.5px; font-weight: 700; color: inherit;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.persona-pick-btn:hover { border-color: var(--accent); }
-.persona-pick-btn svg { width: 40px; height: 40px; }
+.persona-pick-btn:hover, .persona-pick-btn.active { border-color: var(--accent); }
+.persona-pick-btn .agent-face { width: 52px; height: 52px; }
+
+/* ---------- AGENT FACES (portraits + standing figures) ---------- */
+/* Every agent's portrait, everywhere: round, cover-cropped. A face that can't
+   load (WebP, then PNG) becomes the agent's initial on a disc — never a hole. */
+.agent-face { position: relative; display: block; width: 100%; height: 100%; border-radius: 50%;
+  overflow: hidden; background: var(--panel-2); flex-shrink: 0; }
+.agent-face picture, .agent-face img { display: block; width: 100%; height: 100%; }
+.agent-face img { object-fit: cover; object-position: 50% 30%; }
+.agent-face.failed picture, .agent-figure.failed picture { display: none; }
+.agent-face.failed::after { content: attr(data-initial); position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; background: var(--accent-dim); color: var(--accent);
+  font-weight: 800; font-size: 0.95em; }
+.agent-figure { position: relative; display: block; height: 100%; }
+.agent-figure picture { display: block; height: 100%; }
+.agent-figure img { display: block; height: 100%; width: auto; max-width: none; user-select: none; }
+.agent-figure.failed { width: 64px; }
+.agent-figure.failed::after { content: attr(data-initial); position: absolute; left: 50%; bottom: 0;
+  transform: translateX(-50%); width: 56px; height: 56px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; background: var(--accent-dim); color: var(--accent);
+  font-weight: 800; font-size: 22px; }
 
 /* ---------- SUPPORT CHAT ---------- */
 .support-fab {
@@ -431,7 +451,9 @@ body {
   background: var(--accent); border: 2px solid var(--bg);
 }
 .support-fab svg { width: 24px; height: 24px; }
-.support-fab svg.persona { width: 44px; height: 44px; }
+/* With the manager's face: the portrait fills the button, ringed in the accent */
+.support-fab.has-face { padding: 0; box-shadow: 0 0 0 3px var(--accent), 0 8px 24px rgba(255,76,31,0.4); }
+.support-fab .agent-face { width: 56px; height: 56px; }
 
 /* ---------- MULTI-WINDOW CHAT ---------- */
 /* Launcher popover: pick which agent to open a conversation with. */
@@ -449,8 +471,7 @@ body {
 .launcher-item { display: flex; align-items: center; gap: 11px; padding: 9px 10px;
   border-radius: 12px; cursor: pointer; }
 .launcher-item:hover { background: var(--panel-2); }
-.launcher-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
-.launcher-ava svg { width: 100%; height: 100%; display: block; }
+.launcher-ava { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
 .launcher-name { font-size: 13px; font-weight: 700; }
 .launcher-role { font-size: 11px; color: var(--gray); }
 .launcher-open-dot { margin-inline-start: auto; width: 8px; height: 8px; border-radius: 50%;
@@ -467,7 +488,42 @@ body {
   border: 1px solid var(--border); border-radius: 18px; display: flex; flex-direction: column;
   overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); pointer-events: auto;
   animation: greetIn 0.2s ease; position: relative; }
-.chat-window.minimized { display: none; }
+/* MINIMISED = the agent's standing figure, waiting, in the window's own place.
+   Pure CSS on the .minimized class: the window's insides hide and its
+   .cw-figure (built with the window) shows. No node is added, moved or
+   removed on minimise/restore — the CLAUDE.md re-parenting trap. */
+.cw-figure { display: none; }
+.chat-window.minimized { width: auto; height: auto; background: transparent; border: none;
+  box-shadow: none; overflow: visible; animation: none; }
+.chat-window.minimized > :not(.cw-figure) { display: none !important; }
+.chat-window.minimized .cw-figure { display: flex; flex-direction: column; align-items: center;
+  position: relative; padding-top: 4px; }
+.cw-figure-stage { position: relative; display: block; height: 168px; padding: 0; border: 0;
+  background: none; cursor: pointer; font-family: inherit; color: inherit;
+  -webkit-tap-highlight-color: transparent; }
+.cw-figure-body { position: relative; z-index: 1; display: block; height: 100%;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45)); transform-origin: 50% 100%;
+  transition: transform 0.18s ease; }
+@media (hover: hover) { .cw-figure-stage:hover .cw-figure-body { transform: translateY(-3px); } }
+.cw-figure-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 12px; }
+/* A soft light behind the figure: dark clothes would vanish on the dark page */
+.cw-figure-stage::before { content: ''; position: absolute; left: -18%; right: -18%; top: 6%; bottom: 0;
+  border-radius: 50% 50% 40% 40%; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 55%, rgba(255,255,255,0.20), rgba(255,255,255,0.06) 55%, transparent 72%); }
+/* The floor it stands on */
+.cw-figure-shadow { position: absolute; left: 50%; bottom: -3px; width: 62%; height: 10px; transform: translateX(-50%);
+  border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,0.55), transparent); }
+.cw-figure-name { margin-top: 6px; font-size: 11.5px; font-weight: 700; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 100px; padding: 2px 10px; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
+.cw-figure-close { position: absolute; top: 0; inset-inline-end: -6px; z-index: 2; width: 24px; height: 24px;
+  border-radius: 50%; border: 1px solid var(--border); background: var(--panel); color: var(--gray);
+  font-size: 11px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  padding: 0; font-family: inherit; }
+.cw-figure-close:hover { color: var(--accent); border-color: var(--accent); }
+/* Animation hook, off for now: e.g.
+   .cw-figure-stage[data-anim="idle"] .cw-figure-body { animation: figureIdle 4s ease-in-out infinite; }
+   and always behind prefers-reduced-motion: no-preference. */
 /* Windows sit on the bottom-left, so they grow up and to the right: the
    handles are the top edge, the right edge and the top-right corner. */
 .cw-resize { position: absolute; z-index: 3; touch-action: none; }
@@ -494,9 +550,8 @@ body {
 .chat-upload.failed .bar > i { background: var(--gray); }
 .cw-head { padding: 11px 12px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 8px; background: linear-gradient(180deg, #1c1c1c, var(--panel)); }
-.cw-ava { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+.cw-ava { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
   background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 15px; }
-.cw-ava svg { width: 100%; height: 100%; display: block; }
 .cw-titles { flex: 1; min-width: 0; }
 /* display:block is load-bearing: these are <span>s, and overflow/text-overflow
    are inert on inline elements — the persona name and role spilled out of
@@ -511,18 +566,6 @@ body {
 /* flex-end: the send button stays at the bottom as the textarea grows */
 .cw-input-area { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-end; }
 
-/* Dock: minimized windows collapse to pills you can reopen or close. */
-.chat-dock { position: fixed; bottom: 26px; left: 92px; z-index: 200;
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: 60vw; }
-.dock-pill { display: flex; align-items: center; gap: 7px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 100px; padding: 5px 8px 5px 6px; cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
-.dock-pill:hover { border-color: var(--accent); }
-.dock-ava { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
-.dock-ava svg { width: 100%; height: 100%; display: block; }
-.dock-name { font-size: 12px; font-weight: 700; }
-.dock-close { border: none; background: none; color: var(--gray); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
-.dock-close:hover { color: var(--accent); }
 
 .support-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .support-msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-line; }
@@ -566,6 +609,8 @@ body {
 /* An agent's proposed action: what will happen + the one click that runs it */
 .chat-action { align-self: flex-start; max-width: 82%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5; background: var(--panel-2); }
 .chat-action .t { font-weight: 700; margin-bottom: 2px; }
+.chat-action .by { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--gray); }
+.chat-action .by .agent-face { width: 20px; height: 20px; font-size: 10px; }
 .chat-action .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .chat-action .row button { border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: inherit; }
 .chat-action .row .ok { background: var(--accent); color: white; }
@@ -706,14 +751,22 @@ body {
 .confirm-upgrade-btn.ready { background: var(--accent); color: white; border: none; cursor: pointer; }
 .upgrade-addons-title { font-size: 12px; font-weight: 800; color: var(--gray); margin: 18px 0 10px; text-transform: none; letter-spacing: 0.3px; }
 
-/* On narrow screens each window goes near-full-width and stacks; the dock
-   switches between them so conversations still never mix. */
+/* On narrow screens each open window goes near-full-width and stacks (fixed,
+   so out of the row); the minimised ones stand side by side along the bottom,
+   clear of the chat button on the left, so conversations still never mix. */
+/* Phone figures stand in the 80px band under the open window, beside the chat
+   button — never behind the window. The name is on the figure's title /
+   aria-label there; the band is too short for a label too. */
 @media (max-width: 640px) {
-  .chat-windows { left: 0; right: 0; bottom: 0; display: block; }
+  .chat-windows { left: 0; right: 0; bottom: 0; display: flex; flex-direction: row; flex-wrap: nowrap;
+    align-items: flex-end; gap: 10px; padding: 0 14px 8px 96px; overflow-x: auto; }
   .chat-window { position: fixed; left: 8px; right: 8px; bottom: 80px; width: auto; height: 70vh; }
+  .chat-window.minimized { position: relative; left: auto; right: auto; bottom: auto; flex: 0 0 auto; }
+  .cw-figure-stage { height: 68px; }
+  .cw-figure-name { display: none; }
+  .cw-figure-close { width: 20px; height: 20px; font-size: 10px; inset-inline-end: -10px; }
   .cw-resize { display: none; }   /* phone: the fixed near-full-screen window, never resized */
   .chat-launcher { left: 8px; right: 8px; width: auto; }
-  .chat-dock { left: 8px; right: 8px; bottom: 18px; max-width: none; }
 }
 
 /* ---------- PRE-ACTION EXPLANATION (shared across ALL manual-step flows) ---------- */
@@ -1071,6 +1124,14 @@ a.media-item:hover { border-color: var(--accent); }
   .mainnav { padding: 0 14px; }
   .nav-item { padding: 13px 10px 11px 10px; font-size: 12.5px; }
   .detail-grid { grid-template-columns: 1fr; }
+}
+/* Phones. Last in the sheet on purpose: the base grid rules above would win
+   otherwise. The 4-up stats and 3-up connection cards set a ~630px minimum
+   width, so a phone laid the whole page out wider than its screen and zoomed
+   everything out (chat, faces and the language flags included). */
+@media (max-width: 640px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .conn-grid { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
 </head>
@@ -1637,9 +1698,10 @@ a.media-item:hover { border-color: var(--accent); }
     <!-- Marketing automation: deliberately NOT a connect flow like every other
          card here. There is no fixed price and no self-service setup — Johnny
          runs a personal needs assessment on WhatsApp first, then prices and
-         builds it by hand. So these two cards only explain and route to a
+         builds it by hand. So this card only explains and routes to a
          human; the credentials (if the client goes ahead) are handed over in
-         that conversation and stored admin-side. See core/automation_service.py. -->
+         that conversation and stored admin-side. See core/automation_service.py.
+         (Make was retired 2026-10-31 — those automations are built in-house.) -->
     <div class="conn-card unlocked">
       <div class="conn-top">
         <div class="conn-icon" style="background:#0084FF;">
@@ -1653,21 +1715,6 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="conn-note" data-i18n="manychat_note">מענה אוטומטי לפניות בוואטסאפ, אינסטגרם ומסנג׳ר. זה לא שירות במחיר קבוע — בונים אותו לפי הצורך המדויק שלכם, ולכן מתחילים בשיחה קצרה איתנו שבה נבין מה נכון לעסק שלכם ורק אז נתמחר.</div>
       <button class="conn-btn primary" onclick="askAboutAutomation('manychat')" data-i18n="automation_talk">דברו איתנו על זה</button>
       <button class="conn-btn secondary" onclick="chatAboutAutomation('manychat')" data-i18n="automation_chat">יש לי שאלה — בצ׳אט</button>
-    </div>
-
-    <div class="conn-card unlocked">
-      <div class="conn-top">
-        <div class="conn-icon" style="background:#6D00CC;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M9 6h6M6 9v6a3 3 0 0 0 3 3h6"/></svg>
-        </div>
-        <div>
-          <div class="conn-name" data-i18n="make_card">Make — חיבור בין המערכות</div>
-          <div class="conn-status" data-i18n="manual_service_status">שירות בהתאמה אישית</div>
-        </div>
-      </div>
-      <div class="conn-note" data-i18n="make_note">מחבר בין הטפסים, ה-CRM, המיילים והגיליונות שלכם כך שדברים קורים לבד. גם כאן אין מחיר קבוע — נבין קודם מה בדיוק צריך אצלכם, ואז נתמחר ונבנה.</div>
-      <button class="conn-btn primary" onclick="askAboutAutomation('make')" data-i18n="automation_talk">דברו איתנו על זה</button>
-      <button class="conn-btn secondary" onclick="chatAboutAutomation('make')" data-i18n="automation_chat">יש לי שאלה — בצ׳אט</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -2085,26 +2132,21 @@ a.media-item:hover { border-color: var(--accent); }
 <!-- Multi-window chat. The FAB opens this launcher; each agent picked here
      opens its OWN independent window (built in JS into #chatWindows), so a
      client can keep several agent conversations open at once with nothing
-     mixing. Minimized windows collapse into #chatDock. Backend keeps each
+     mixing. A minimized window shows its agent's standing figure in its
+     place (CSS only — see minimizeWindow). Backend keeps each
      conversation on its own persona channel (support_agent.persona_channel). -->
 <div class="chat-launcher" id="chatLauncher">
   <div class="launcher-head" data-i18n="chat_team">צוות uallak</div>
+  <!-- The account manager, picked once (core/manager_identity): the three
+       options come from the server, built by renderManagerPick() -->
   <div class="persona-pick" id="personaPick" style="display:none;">
     <div class="persona-pick-title" data-i18n="persona_title">רגע לפני שמתחילים — מי ילווה אתכם כאן?</div>
-    <div class="persona-pick-btns">
-      <button class="persona-pick-btn" onclick="choosePersona('male')">
-        <span id="personaPreviewMale"></span><span data-i18n="persona_short_male">דניאל</span>
-      </button>
-      <button class="persona-pick-btn" onclick="choosePersona('female')">
-        <span id="personaPreviewFemale"></span><span data-i18n="persona_short_female">דנה</span>
-      </button>
-    </div>
+    <div class="persona-pick-btns" id="managerPickBtns"></div>
   </div>
   <div class="launcher-list" id="launcherList"></div>
 </div>
 
 <div class="chat-windows" id="chatWindows"></div>
-<div class="chat-dock" id="chatDock"></div>
 
 <!-- ---------- UPGRADE PANEL ---------- -->
 <div class="overlay-dim" id="upgradeOverlay" onclick="toggleUpgradePanel()"></div>
@@ -2539,10 +2581,8 @@ const DASH_I18N = {
   whatsapp_card: { he:'וואטסאפ עסקי', en:'WhatsApp Business', fr:'WhatsApp Business', ar:'واتساب للأعمال', ru:'WhatsApp Business' },
   // Marketing automation — a manual, personally-priced service (no connect flow)
   manychat_card: { he:'ManyChat — אוטומציית שיחות', en:'ManyChat — chat automation', fr:'ManyChat — automatisation des conversations', ar:'ManyChat — أتمتة المحادثات', ru:'ManyChat — автоматизация переписки' },
-  make_card: { he:'Make — חיבור בין המערכות', en:'Make — connect your systems', fr:'Make — connectez vos systèmes', ar:'Make — ربط أنظمتك', ru:'Make — связать ваши системы' },
   manual_service_status: { he:'שירות בהתאמה אישית', en:'Tailored service', fr:'Service sur mesure', ar:'خدمة مخصصة', ru:'Индивидуальная услуга' },
   manychat_note: { he:'מענה אוטומטי לפניות בוואטסאפ, אינסטגרם ומסנג׳ר. זה לא שירות במחיר קבוע — בונים אותו לפי הצורך המדויק שלכם, ולכן מתחילים בשיחה קצרה איתנו שבה נבין מה נכון לעסק שלכם ורק אז נתמחר.', en:'Automatic replies to enquiries on WhatsApp, Instagram and Messenger. This isn’t a fixed-price service — it’s built around what you actually need, so we start with a short conversation to work out what fits your business, and only then price it.', fr:'Réponses automatiques aux demandes sur WhatsApp, Instagram et Messenger. Ce n’est pas un service à prix fixe — il est construit selon vos besoins réels : on commence par un court échange pour définir ce qui convient, et le prix vient ensuite.', ar:'ردود تلقائية على الاستفسارات في واتساب وإنستغرام وماسنجر. هذه ليست خدمة بسعر ثابت — تُبنى حسب احتياجك الفعلي، لذلك نبدأ بمحادثة قصيرة لنفهم ما يناسب عملك ثم نحدد السعر.', ru:'Автоматические ответы на обращения в WhatsApp, Instagram и Messenger. Это не услуга с фиксированной ценой — её собирают под ваши реальные задачи, поэтому начинаем с короткого разговора, а цену называем уже после.' },
-  make_note: { he:'מחבר בין הטפסים, ה-CRM, המיילים והגיליונות שלכם כך שדברים קורים לבד. גם כאן אין מחיר קבוע — נבין קודם מה בדיוק צריך אצלכם, ואז נתמחר ונבנה.', en:'Connects your forms, CRM, emails and spreadsheets so things happen on their own. No fixed price here either — we first work out exactly what you need, then price and build it.', fr:'Relie vos formulaires, CRM, e-mails et tableurs pour que tout se fasse tout seul. Là non plus, pas de prix fixe : on définit d’abord le besoin, puis on chiffre et on construit.', ar:'يربط النماذج وCRM والبريد والجداول لديك ليحدث كل شيء تلقائيًا. لا سعر ثابت هنا أيضًا — نحدد أولًا ما تحتاجه بالضبط ثم نُسعّر ونبني.', ru:'Связывает ваши формы, CRM, почту и таблицы, чтобы всё работало само. Фиксированной цены тоже нет — сначала выясняем, что именно нужно, потом считаем и делаем.' },
   automation_talk: { he:'דברו איתנו על זה', en:'Talk to us about it', fr:'Parlons-en', ar:'تحدث معنا عن ذلك', ru:'Обсудить с нами' },
   automation_chat: { he:'יש לי שאלה — בצ׳אט', en:'I have a question — in the chat', fr:'J’ai une question — dans le chat', ar:'لدي سؤال — في المحادثة', ru:'Есть вопрос — в чате' },
   automation_wa_prefill: { he:'שלום, אני {name}. אשמח לשמוע על אוטומציה שיווקית ({vendor}) לעסק שלי.', en:'Hi, this is {name}. I’d like to hear about marketing automation ({vendor}) for my business.', fr:'Bonjour, ici {name}. J’aimerais en savoir plus sur l’automatisation marketing ({vendor}) pour mon entreprise.', ar:'مرحبًا، أنا {name}. أود معرفة المزيد عن أتمتة التسويق ({vendor}) لعملي.', ru:'Здравствуйте, это {name}. Хочу узнать про маркетинговую автоматизацию ({vendor}) для моего бизнеса.' },
@@ -2601,10 +2641,6 @@ const DASH_I18N = {
   chat_dl_empty: { he:'(אין עדיין הודעות בשיחה זו)', en:'(no messages in this conversation yet)', fr:'(aucun message dans cette conversation pour l\'instant)', ar:'(لا توجد رسائل في هذه المحادثة بعد)', ru:'(в этой беседе пока нет сообщений)' },
   chat_team: { he:'צוות uallak', en:'uallak team', fr:'Équipe uallak', ar:'فريق uallak', ru:'Команда uallak' },
   persona_title: { he:'רגע לפני שמתחילים — מי ילווה אתכם כאן?', en:'Before we start — who will accompany you here?', fr:'Avant de commencer — qui vous accompagnera ici ?', ar:'قبل أن نبدأ — من سيرافقك هنا؟', ru:'Прежде чем начать — кто будет вас сопровождать?' },
-  persona_male: { he:'דניאל מ-uallak', en:'Daniel from uallak', fr:'Daniel de uallak', ar:'دانيال من uallak', ru:'Даниэль из uallak' },
-  persona_female: { he:'דנה מ-uallak', en:'Dana from uallak', fr:'Dana de uallak', ar:'دانا من uallak', ru:'Дана из uallak' },
-  persona_short_male: { he:'דניאל', en:'Daniel', fr:'Daniel', ar:'دانيال', ru:'Даниэль' },
-  persona_short_female: { he:'דנה', en:'Dana', fr:'Dana', ar:'دانا', ru:'Дана' },
   chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
@@ -2626,6 +2662,7 @@ const DASH_I18N = {
   chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
   greet_back: { he:'טוב לראות אותך שוב{name} 👋', en:'Good to see you again{name} 👋', fr:'Ravi de vous revoir{name} 👋', ar:'سعيد برؤيتك مجددًا{name} 👋', ru:'Рады видеть вас снова{name} 👋' },
   greet_first_1: { he:'היי{name}, ברוכים הבאים ל-uallak! 👋', en:'Hi{name}, welcome to uallak! 👋', fr:'Bonjour{name}, bienvenue chez uallak ! 👋', ar:'مرحبًا{name}، أهلًا بك في uallak! 👋', ru:'Привет{name}, добро пожаловать в uallak! 👋' },
+  greet_manager: { he:'קוראים לי {manager}, ואני מלווה את העסק שלכם כאן.', en:'I\'m {manager}, and I look after your business here.', fr:'Je m\'appelle {manager} et je m\'occupe de votre entreprise ici.', ar:'أنا {manager}، وأرافق عملك هنا.', ru:'Меня зовут {manager}, и я веду ваш бизнес здесь.' },
   greet_first_2: { he:'מעכשיו אנחנו הצוות שלך. כל מה שנכין בשבילך — רעיונות, פוסטים, קמפיינים — יופיע באזור "ממתין לאישור שלך", ואישור שלך הוא מה שמכניס אותנו לפעולה.', en:'From now on we\'re your team. Everything we prepare for you — ideas, posts, campaigns — appears in the "Waiting for your approval" area, and your approval is what sets us in motion.', fr:'Désormais, nous sommes votre équipe. Tout ce que nous préparons — idées, posts, campagnes — apparaît dans « En attente de votre validation », et votre accord nous met en action.', ar:'من الآن نحن فريقك. كل ما نجهزه لك — أفكار، منشورات، حملات — يظهر في منطقة "بانتظار موافقتك"، وموافقتك هي ما يطلقنا للعمل.', ru:'Теперь мы — ваша команда. Всё, что мы готовим для вас — идеи, посты, кампании — появляется в зоне «Ждёт вашего одобрения», и именно ваше одобрение запускает нас в работу.' },
   greet_first_pending: { he:'כבר מחכות לך {n} הצעות ראשונות 🎯', en:'{n} first suggestions are already waiting for you 🎯', fr:'{n} premières suggestions vous attendent déjà 🎯', ar:'{n} اقتراحات أولى بانتظارك بالفعل 🎯', ru:'Вас уже ждут {n} первых предложений 🎯' },
   greet_first_3: { he:'ואם משהו לא ברור — אני כאן בצ׳אט.', en:'And if anything is unclear — I\'m here in the chat.', fr:'Et si quelque chose n\'est pas clair — je suis là dans le chat.', ar:'وإن لم يكن شيء واضحًا — أنا هنا في الدردشة.', ru:'А если что-то неясно — я здесь, в чате.' },
@@ -2828,7 +2865,8 @@ const DASH_I18N = {
   preact_gtm_body: { he:'כדי לדעת אילו קמפיינים באמת מביאים לכם לידים, אנחנו צריכים גישה ל-Google Tag Manager שלכם — מערכת המדידה של האתר. זו הרשאה נפרדת מחיבור Google Ads, כי מדובר בהרשאה אחרת אצל גוגל, ורק בעל החשבון יכול לאשר אותה. אנחנו נשתמש בה רק להגדרת מדידת המרות (למשל: שליחת טופס יצירת קשר) — לא נשנה שום דבר אחר.', en:'To know which campaigns actually bring you leads, we need access to your Google Tag Manager — the site\'s measurement system. It\'s a separate consent from your Google Ads connection because Google treats it as a different permission, and only the account owner can grant it. We\'ll use it only for conversion measurement setup (e.g. contact form submissions) — nothing else gets changed.', fr:'Pour savoir quelles campagnes vous apportent réellement des leads, nous avons besoin d\'accéder à votre Google Tag Manager — le système de mesure du site. C\'est un consentement distinct de votre connexion Google Ads car Google le traite comme une autorisation différente, et seul le propriétaire du compte peut l\'accorder. Nous l\'utiliserons uniquement pour configurer la mesure des conversions (ex. envoi du formulaire de contact) — rien d\'autre ne sera modifié.', ar:'لمعرفة أي الحملات تجلب لكم عملاء محتملين فعلًا، نحتاج إلى الوصول إلى Google Tag Manager الخاص بكم — نظام قياس الموقع. هذه موافقة منفصلة عن ربط Google Ads لأن غوغل تعاملها كصلاحية مختلفة، وصاحب الحساب وحده يستطيع منحها. سنستخدمها فقط لإعداد قياس التحويلات (مثل إرسال نموذج التواصل) — لن يتغير أي شيء آخر.', ru:'Чтобы знать, какие кампании действительно приносят вам лиды, нам нужен доступ к вашему Google Tag Manager — системе измерения сайта. Это отдельное согласие от подключения Google Ads, потому что Google считает это другим разрешением, и дать его может только владелец аккаунта. Мы используем его только для настройки измерения конверсий (например, отправка контактной формы) — больше ничего не изменится.' },
   upgrade_addons_title: { he:'תוספות ושירותים נוספים — הצעה מדויקת בצ\'אט', en:'Add-ons & extra services — get an exact quote in the chat', fr:'Options et services supplémentaires — devis précis dans le chat', ar:'إضافات وخدمات أخرى — عرض دقيق في الدردشة', ru:'Дополнения и услуги — точное предложение в чате' },
   addon_ask_btn: { he:'קבלו הצעה בצ\'אט', en:'Get a quote in the chat', fr:'Obtenir un devis dans le chat', ar:'احصلوا على عرض في الدردشة', ru:'Получить предложение в чате' },
-  team_role_general: { he:'הקונסיירז\' הראשי — לכל נושא', en:'Main concierge — anything at all', fr:'Concierge principal — pour tout sujet', ar:'المرافق الرئيسي — لأي موضوع', ru:'Главный консьерж — по любым вопросам' },
+  team_role_manager_m: { he:'מנהל הלקוח שלך — לכל נושא', en:'Your account manager — anything at all', fr:'Votre responsable de compte — pour tout sujet', ar:'مدير حسابك — لأي موضوع', ru:'Ваш менеджер — по любым вопросам' },
+  team_role_manager_f: { he:'מנהלת הלקוח שלך — לכל נושא', en:'Your account manager — anything at all', fr:'Votre responsable de compte — pour tout sujet', ar:'مديرة حسابك — لأي موضوع', ru:'Ваш менеджер — по любым вопросам' },
   team_role_google: { he:'מומחה Google Ads', en:'Google Ads specialist', fr:'Spécialiste Google Ads', ar:'خبير إعلانات Google', ru:'Специалист по Google Ads' },
   team_role_meta: { he:'מומחית מטא — פייסבוק ואינסטגרם', en:'Meta specialist — Facebook & Instagram', fr:'Spécialiste Meta — Facebook & Instagram', ar:'خبيرة Meta — فيسبوك وإنستغرام', ru:'Специалист по Meta — Facebook и Instagram' },
   team_role_website: { he:'מומחה אתר וקידום אורגני', en:'Website & SEO specialist', fr:'Spécialiste site web & SEO', ar:'خبير المواقع وتحسين محركات البحث', ru:'Специалист по сайту и SEO' },
@@ -3201,8 +3239,9 @@ async function loadDashboard() {
     loadCreativeTools();
     loadVoiceRecordings();
 
-    // Chat persona: apply the client's saved choice, or offer the one-time picker
-    initPersona(d.client && d.client.owner_gender);
+    // The account manager: apply the client's saved choice (or the default),
+    // and offer the one-time picker until they've chosen
+    initManager(d.manager, d.manager_options);
 
     // Concierge data for the greeting + chips
     chatData.name = (d.client && d.client.name) || '';
@@ -4651,58 +4690,133 @@ function handleWordpressReturn(err) {
   if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-// ─── chat persona (client-chosen, never inferred from name) ──────────────────
-const PERSONA_SVGS = {
-  male: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><rect x="13" y="15" width="22" height="19" rx="7" fill="#F7F4EF"/><path d="M14 20 v-2 a7 7 0 0 1 7-7 h6 a7 7 0 0 1 7 7 v2 z" fill="#1A1A1A"/><circle cx="19" cy="25" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25" r="2.3" fill="#1A1A1A"/><path d="M19.5 29.5c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
-  female: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#2A2A2A"/><line x1="24" y1="8" x2="24" y2="13" stroke="#FF4C1F" stroke-width="2"/><circle cx="24" cy="6.5" r="2" fill="#FF4C1F"/><path d="M12 34 q-2.5-9 1-16 q3-7 11-7 q8 0 11 7 q3.5 7 1 16 l-3.5-1 v-8 h-17 v8 z" fill="#1A1A1A"/><rect x="13" y="16" width="22" height="18" rx="7" fill="#F7F4EF"/><path d="M14 21 v-1.5 a8 8 0 0 1 8-8 h4 a8 8 0 0 1 8 8 V21 q-5-3.5-10-3.5 T14 21 z" fill="#1A1A1A"/><circle cx="19" cy="25.5" r="2.3" fill="#1A1A1A"/><circle cx="29" cy="25.5" r="2.3" fill="#1A1A1A"/><path d="M16.5 22.5 l4-1 M27.5 21.5 l4 1" stroke="#1A1A1A" stroke-width="1.4" stroke-linecap="round"/><path d="M19.5 30c1.5 1.6 7.5 1.6 9 0" stroke="#FF4C1F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
-};
-function personaName(gender) {
-  return uallakI18n.t(gender === 'male' ? 'persona_male' : 'persona_female');
+// ─── faces: every agent's portrait (and standing figure) ─────────────────────
+// Square portraits for every place an agent appears (launcher, window header,
+// cards, the chat button) and the full-body transparent figure for a
+// minimised window. WebP first, PNG if WebP can't load, and the agent's
+// initial on a coloured disc if neither does — a face never leaves a hole.
+const AGENT_ASSETS = '/assets/agents/';
+
+function agentPictureHtml(key, kind) {
+  const base = AGENT_ASSETS + key + '-' + kind;
+  return `<picture><source srcset="${base}.webp" type="image/webp">`
+    + `<img src="${base}.png" data-png="${base}.png" alt="" decoding="async" draggable="false"`
+    + ` onerror="agentFaceFailed(this)"></picture>`;
+}
+// A round portrait. `key` empty (the manager before the dashboard data
+// arrives) = the initial alone.
+function faceHtml(key, initial) {
+  return `<span class="agent-face${key ? '' : ' failed'}" data-initial="${esc(initial || '·')}">`
+    + (key ? agentPictureHtml(key, 'portrait') : '') + '</span>';
+}
+function figureHtml(key, initial) {
+  return `<span class="agent-figure${key ? '' : ' failed'}" data-initial="${esc(initial || '·')}">`
+    + (key ? agentPictureHtml(key, 'figure') : '') + '</span>';
+}
+// First failure: drop the WebP source and try the PNG. Second: the initial.
+function agentFaceFailed(img) {
+  const holder = img.closest('.agent-face, .agent-figure');
+  const source = img.parentNode && img.parentNode.querySelector('source');
+  if (source && !img.dataset.retried) {
+    img.dataset.retried = '1';
+    source.remove();
+    img.src = img.dataset.png;
+    return;
+  }
+  if (holder) holder.classList.add('failed');
 }
 
-function applyPersona(gender) {
-  if (!PERSONA_SVGS[gender]) return;
-  window._personaGender = gender;
-  document.getElementById('supportFabBtn').innerHTML =
-    PERSONA_SVGS[gender].replace('<svg ', '<svg class="persona" ');
-  // If the general concierge window is open, repaint its identity live
-  const gw = CHAT_WINDOWS.general;
-  if (gw) {
-    const p = personaMeta('general');
-    const ava = gw.root.querySelector('[data-role="ava"]');
-    const title = gw.root.querySelector('[data-role="title"]');
-    if (ava) ava.innerHTML = p.svg;
-    if (title) title.textContent = p.name;
-  }
+// ─── the client's account manager (core/manager_identity) ────────────────────
+// The concierge is ONE of three people — ג'וני, ניסים, אלינור — whichever the
+// client picked. The server is the only source of their names and faces
+// (/api/dashboard .manager + .manager_options); this page keeps no copy. Same
+// voice and rules whichever is chosen; only the name and the face change.
+let MANAGER = null;          // { key, names{he,en,..}, gender, chosen }
+let MANAGER_OPTIONS = [];
+
+function managerName(m) {
+  m = m || MANAGER;
+  if (!m) return uallakI18n.t('chat_team');
+  return (m.names && m.names[uallakI18n.current()]) || m.name || '';
+}
+
+function applyManager(m) {
+  if (!m || !m.key) return;
+  MANAGER = m;
+  const fab = document.getElementById('supportFabBtn');
+  fab.innerHTML = faceHtml(m.key, managerName(m).charAt(0));
+  fab.classList.add('has-face');
+  fab.setAttribute('aria-label', managerName(m));
+  refreshWindowIdentities();
   renderLauncher();
 }
 
+function renderManagerPick() {
+  const box = document.getElementById('managerPickBtns');
+  if (!box) return;
+  box.innerHTML = '';
+  MANAGER_OPTIONS.forEach(opt => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'persona-pick-btn' + (MANAGER && MANAGER.chosen && MANAGER.key === opt.key ? ' active' : '');
+    const label = managerName(opt);
+    b.innerHTML = faceHtml(opt.key, label.charAt(0)) + `<span>${esc(label)}</span>`;
+    b.setAttribute('aria-label', label);
+    b.onclick = () => chooseManager(opt.key);
+    box.appendChild(b);
+  });
+}
+
+function initManager(manager, options) {
+  MANAGER_OPTIONS = Array.isArray(options) ? options : [];
+  if (manager && manager.key) applyManager(manager);
+  renderManagerPick();
+  // Picked once, at first contact; kept for everything afterwards
+  document.getElementById('personaPick').style.display = (manager && manager.chosen) ? 'none' : 'block';
+}
+
+async function chooseManager(key) {
+  const opt = MANAGER_OPTIONS.find(o => o.key === key);
+  if (!opt) return;
+  applyManager(Object.assign({}, opt, { chosen: true }));
+  document.getElementById('personaPick').style.display = 'none';
+  try {
+    const res = await fetch('/api/client/profile', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manager_persona: key }),
+    });
+    if (!res.ok) throw new Error('manager save failed: ' + res.status);
+  } catch (e) {
+    console.error('manager save failed', e); // UI already applied; offered again on the next visit
+  }
+}
+
 // Unified metadata for any persona id (general concierge + specialists), so the
-// launcher, windows, and dock all render the same identity from one place.
+// launcher, windows, figures and cards all render the same identity from one place.
 function personaMeta(id) {
   if (id === 'general') {
-    const g = window._personaGender || 'male';
-    return { id: 'general', name: personaName(g), roleKey: 'team_role_general', svg: PERSONA_SVGS[g] };
+    const name = managerName();
+    const female = MANAGER && MANAGER.gender === 'female';
+    return { id: 'general', name, initial: name.charAt(0),
+             roleKey: female ? 'team_role_manager_f' : 'team_role_manager_m',
+             face: MANAGER ? MANAGER.key : '' };
   }
   const p = TEAM_PERSONAS[id];
-  return { id: id, name: p.name, roleKey: p.roleKey, svg: p.svg };
+  return { id: id, name: p.name, initial: p.name.charAt(0), roleKey: p.roleKey, face: p.face };
 }
 function allPersonaIds() { return ['general'].concat(Object.keys(TEAM_PERSONAS)); }
 
 // ─── specialist personas (team strip) ────────────────────────────────────────
-// Visual identities for the READ-ONLY specialist chats (backend:
-// support_agent.PERSONAS - ids must match). Names are proper nouns, not
-// translated; roles come from the i18n table. Colors mirror each platform's
-// connection-card color so the mental model stays consistent.
+// The specialist chats (backend: support_agent.PERSONAS - ids must match).
+// Names are proper nouns, not translated; roles come from the i18n table;
+// `face` is the asset key in /assets/agents/ (core/manager_identity.SPECIALIST_FACES).
 const TEAM_PERSONAS = {
-  google: { name: 'יואב', roleKey: 'team_role_google',
-    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#4285F4"/><rect x="14" y="26" width="5" height="9" rx="1.5" fill="#fff"/><rect x="21.5" y="20" width="5" height="15" rx="1.5" fill="#fff"/><rect x="29" y="14" width="5" height="21" rx="1.5" fill="#fff"/></svg>` },
-  meta: { name: 'מאיה', roleKey: 'team_role_meta',
-    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#0866FF"/><circle cx="18.5" cy="24" r="7" fill="none" stroke="#fff" stroke-width="2.6"/><circle cx="29.5" cy="24" r="7" fill="none" stroke="#fff" stroke-width="2.6"/></svg>` },
-  website: { name: 'אורי', roleKey: 'team_role_website',
-    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#464646"/><circle cx="24" cy="24" r="10" fill="none" stroke="#fff" stroke-width="2.2"/><path d="M14 24h20M24 14a15 15 0 0 1 0 20 15 15 0 0 1 0-20z" fill="none" stroke="#fff" stroke-width="2.2"/></svg>` },
-  media: { name: 'ליאור', roleKey: 'team_role_media',
-    svg: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="22" fill="#7C3AED"/><path d="M19 16l13 8-13 8z" fill="#fff"/><path d="M33 11l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z" fill="#fff"/></svg>` },
+  google: { name: 'יואב', roleKey: 'team_role_google', face: 'yoav' },
+  meta: { name: 'מאיה', roleKey: 'team_role_meta', face: 'maya' },
+  website: { name: 'אורי', roleKey: 'team_role_website', face: 'uri' },
+  media: { name: 'ליאור', roleKey: 'team_role_media', face: 'lior' },
 };
 // ─── multi-window manager ────────────────────────────────────────────────────
 // Each persona (general concierge + 4 specialists) can have its OWN window open
@@ -4725,7 +4839,7 @@ function renderLauncher() {
     item.className = 'launcher-item';
     const dot = CHAT_WINDOWS[id] ? '<span class="launcher-open-dot"></span>'
               : (CHAT_UNREAD[id] ? '<span class="launcher-unread-dot"></span>' : '');
-    item.innerHTML = `<span class="launcher-ava">${p.svg}</span>`
+    item.innerHTML = `<span class="launcher-ava">${faceHtml(p.face, p.initial)}</span>`
       + `<span><span class="launcher-name">${esc(p.name)}</span><br>`
       + `<span class="launcher-role">${esc(uallakI18n.t(p.roleKey))}</span></span>${dot}`;
     item.onclick = () => openAgentWindow(id);
@@ -4805,7 +4919,7 @@ function buildWindow(id) {
   const head = document.createElement('div');
   head.className = 'cw-head';
   head.innerHTML =
-    `<span class="cw-ava" data-role="ava">${p.svg}</span>`
+    `<span class="cw-ava" data-role="ava">${faceHtml(p.face, p.initial)}</span>`
     + `<span class="cw-titles"><span class="cw-title" data-role="title">${esc(p.name)}</span>`
     + `<span class="cw-sub" data-role="sub">${esc(uallakI18n.t(p.roleKey))}</span></span>`
     + `<button class="cw-btn" data-act="dl" title="${esc(uallakI18n.t('chat_download'))}">⬇</button>`
@@ -4863,6 +4977,28 @@ function buildWindow(id) {
   drop.className = 'cw-drop';
   drop.textContent = uallakI18n.t('chat_drop_here');
   root.appendChild(drop);
+  // The minimised state: the agent's standing figure, waiting. Built HERE,
+  // with the window, and only ever shown/hidden by the .minimized class — no
+  // node moves on minimise or restore (see focusWindow's comment for why).
+  // .cw-figure-stage is the animation hook: give it a keyframe (or swap its
+  // <picture> for a sprite/video) later without touching this markup.
+  const fig = document.createElement('div');
+  fig.className = 'cw-figure';
+  fig.innerHTML =
+    `<button type="button" class="cw-figure-stage" data-act="restore" data-anim="idle"`
+    + ` title="${esc(p.name)}" aria-label="${esc(p.name)}">`
+    + `<span class="cw-figure-body" data-role="figure">${figureHtml(p.face, p.initial)}</span>`
+    + `<span class="cw-figure-shadow" aria-hidden="true"></span></button>`
+    + `<span class="cw-figure-name" data-role="figname">${esc(p.name)}</span>`
+    + `<button type="button" class="cw-figure-close" data-act="figclose"`
+    + ` title="${esc(uallakI18n.t('chat_close'))}" aria-label="${esc(uallakI18n.t('chat_close'))}">✕</button>`;
+  fig.querySelector('[data-act="restore"]').onclick = () => {
+    restoreWindow(id);
+    const w = CHAT_WINDOWS[id];
+    if (w) { markThreadSeen(id); w.inputEl.focus(); }
+  };
+  fig.querySelector('[data-act="figclose"]').onclick = (e) => { e.stopPropagation(); closeAgentWindow(id); };
+  root.appendChild(fig);
   root.addEventListener('mousedown', () => focusWindow(id));
   applyWindowSize(id, root);
   wireWindowResize(id, root);
@@ -5193,60 +5329,37 @@ function focusWindow(id) {
   w.root.style.order = chatWindowTop;
   w.root.style.zIndex = chatWindowTop;
 }
+// Minimise / restore are ONE class toggle on the window itself: the window's
+// insides hide and its standing figure shows, in place (CSS). Nothing is
+// built, moved or removed here.
 function minimizeWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
-  w.minimized = true; w.root.classList.add('minimized'); renderDock();
+  w.minimized = true; w.root.classList.add('minimized');
 }
 function restoreWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
-  w.minimized = false; w.root.classList.remove('minimized'); renderDock(); focusWindow(id);
+  w.minimized = false; w.root.classList.remove('minimized'); focusWindow(id);
   autoGrowChatInput(w.inputEl);   // size any text it held while hidden
 }
 function closeAgentWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
-  w.root.remove(); delete CHAT_WINDOWS[id]; renderDock(); renderLauncher();
+  w.root.remove(); delete CHAT_WINDOWS[id]; renderLauncher();
 }
-function renderDock() {
-  const dock = document.getElementById('chatDock');
-  dock.innerHTML = '';
+// Repaint every open window's name, role and faces (the manager was chosen,
+// or the language changed). Text and image swaps only — no node moves.
+function refreshWindowIdentities() {
   Object.keys(CHAT_WINDOWS).forEach(id => {
-    if (!CHAT_WINDOWS[id].minimized) return;
+    const root = CHAT_WINDOWS[id].root;
     const p = personaMeta(id);
-    const pill = document.createElement('div');
-    pill.className = 'dock-pill';
-    pill.innerHTML = `<span class="dock-ava">${p.svg}</span><span class="dock-name">${esc(p.name)}</span>`;
-    pill.onclick = () => restoreWindow(id);
-    const x = document.createElement('button');
-    x.className = 'dock-close'; x.textContent = '✕';
-    x.onclick = (e) => { e.stopPropagation(); closeAgentWindow(id); };
-    pill.appendChild(x);
-    dock.appendChild(pill);
+    const set = (role, fn) => { const el = root.querySelector(`[data-role="${role}"]`); if (el) fn(el); };
+    set('ava', el => { el.innerHTML = faceHtml(p.face, p.initial); });
+    set('title', el => { el.textContent = p.name; });
+    set('sub', el => { el.textContent = uallakI18n.t(p.roleKey); });
+    set('figure', el => { el.innerHTML = figureHtml(p.face, p.initial); });
+    set('figname', el => { el.textContent = p.name; });
+    const stage = root.querySelector('.cw-figure-stage');
+    if (stage) { stage.title = p.name; stage.setAttribute('aria-label', p.name); }
   });
-}
-
-function initPersona(gender) {
-  document.getElementById('personaPreviewMale').innerHTML = PERSONA_SVGS.male;
-  document.getElementById('personaPreviewFemale').innerHTML = PERSONA_SVGS.female;
-  if (gender) {
-    applyPersona(gender);
-  } else {
-    document.getElementById('personaPick').style.display = 'block';
-  }
-}
-
-async function choosePersona(gender) {
-  applyPersona(gender);
-  document.getElementById('personaPick').style.display = 'none';
-  try {
-    await fetch('/api/client/profile', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner_gender: gender }),
-    });
-  } catch (e) {
-    console.error('persona save failed', e); // UI already applied; retried on next visit
-  }
 }
 
 // ─── pending suggestions (proactive engagement feed) ─────────────────────────
@@ -5420,6 +5533,11 @@ function appendActionCard(personaId, a) {
   el.className = 'chat-action';
   el.dir = 'auto';
   el.dataset.actionId = String(Number(a.id));
+  // Whose card this is: the agent's face + name (the manager's for the concierge)
+  const meta = personaMeta(personaId);
+  const by = document.createElement('div');
+  by.className = 'by';
+  by.innerHTML = faceHtml(meta.face, meta.initial) + `<span>${esc(meta.name)}</span>`;
   const title = document.createElement('div');
   title.className = 't';
   title.textContent = a.title || '';
@@ -5427,7 +5545,7 @@ function appendActionCard(personaId, a) {
   what.textContent = a.what || '';
   const note = document.createElement('div');
   note.className = 'note';
-  el.append(title, what);
+  el.append(by, title, what);
   if (a.details) el.appendChild(actionDetails(a.details));
   if (ADMIN_VIEW && (a.can_decide || a.staff_may_decide)) {
     // Staff in the client's dashboard: a client-only action stays the
@@ -5682,9 +5800,7 @@ async function newChatInWindow(personaId) {
 // server round-trip beyond the read, so they can forward it to someone.
 async function downloadWindowConversation(personaId) {
   const p = personaMeta(personaId);
-  const who = personaId === 'general'
-    ? uallakI18n.t('team_role_general')
-    : p.name + ' — ' + uallakI18n.t(p.roleKey);
+  const who = p.name + ' — ' + uallakI18n.t(p.roleKey);
   let entries = [];
   try {
     const res = await fetch('/api/client-chat/history?scope=all&persona='
@@ -6088,7 +6204,9 @@ function greetingText() {
   else hello = t('greet_back', { name: namePart });
 
   if (chatData.firstVisit) {
-    const lines = [t('greet_first_1', { name: namePart }), t('greet_first_2')];
+    const lines = [t('greet_first_1', { name: namePart })];
+    if (MANAGER) lines.push(t('greet_manager', { manager: managerName() }));
+    lines.push(t('greet_first_2'));
     if (chatData.pendingCount > 0) {
       lines.push(t('greet_first_pending', { n: chatData.pendingCount }));
     }
@@ -7503,13 +7621,13 @@ function ownExportStarted() {
 if (uallakI18n.onChange) uallakI18n.onChange(() => { if (viewLoaded.ownership) loadOwnership(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MARKETING AUTOMATION (ManyChat / Make) — ROUTE TO A HUMAN, NEVER A FLOW
+// MARKETING AUTOMATION (ManyChat) — ROUTE TO A HUMAN, NEVER A FLOW
 // ═══════════════════════════════════════════════════════════════════════════
-// These two cards have no connect action on purpose: the service is scoped and
+// This card has no connect action on purpose: the service is scoped and
 // priced personally, so both buttons end in a conversation. Credentials, if the
 // client goes ahead, are handed over in that conversation and stored admin-side
 // — this page never collects them. See core/automation_service.py.
-const AUTOMATION_NAMES = { manychat: 'ManyChat', make: 'Make' };
+const AUTOMATION_NAMES = { manychat: 'ManyChat' };
 
 // The support number lives in app_settings and is served by /api/client/support
 // (same source the תמיכה view uses). Cached because these cards sit on the home
@@ -7795,16 +7913,17 @@ async function loadSupport() {
     if (viewLoaded.personal) loadAccount();
     if (viewLoaded.support) loadSupport();
     renderLauncher();
-    // Re-translate every OPEN window's role subtitle + input placeholder (their
-    // text is JS-set, so applyDom doesn't reach it), then refresh chips + dock.
+    // Re-translate every OPEN window's name, role + input placeholder (their
+    // text is JS-set, so applyDom doesn't reach it), then refresh the chips,
+    // the manager picker and the chat button's label.
     Object.keys(CHAT_WINDOWS).forEach(id => {
       const w = CHAT_WINDOWS[id];
-      const sub = w.root.querySelector('[data-role="sub"]');
-      if (sub) sub.textContent = uallakI18n.t(personaMeta(id).roleKey);
       if (w.inputEl) w.inputEl.placeholder = uallakI18n.t('chat_input_ph');
     });
+    refreshWindowIdentities();
     renderChips();
-    renderDock();
+    renderManagerPick();
+    if (MANAGER) document.getElementById('supportFabBtn').setAttribute('aria-label', managerName());
   });
   renderLauncher();
   // Close the launcher on an outside click (the FAB's own handler toggles it,

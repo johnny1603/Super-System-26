@@ -63,6 +63,7 @@ from core.session import (
 )
 from core import admin_view
 from core import client_auth
+from core import manager_identity
 from core import google_ads_service
 from core import meta_service
 from core import tiktok_service
@@ -1222,6 +1223,11 @@ async def dashboard_data(request: Request):
             # null until they set one. Requires the clients.profile_image column.
             "profile_image": client.get("profile_image"),
         },
+        # The account manager the client chose (or the default until they do)
+        # and the three to choose from — core/manager_identity is the only
+        # source of names and faces; the page holds no copy of its own
+        "manager": manager_identity.for_client(client, client.get("language") or "he"),
+        "manager_options": manager_identity.options(client.get("language") or "he"),
         "monthly_fee": monthly_fee,
         "next_billing_date": next_billing_date,
         # Internal no-billing account: the billing UI says so instead of
@@ -1957,6 +1963,8 @@ _DISCONNECT_GROUPS = {
     # (core/ownership): disconnecting deletes our copy, nothing at the vendor
     "crm": ["crm"],
     "manychat": ["manychat"],
+    # Retired vendor: no longer offered, but an existing row stays
+    # disconnectable by its owner (automation_service.RETIRED_VENDORS)
     "make": ["make"],
 }
 
@@ -5785,6 +5793,8 @@ class ClientProfileRequest(BaseModel):
     language: str | None = None       # he|en|fr|ar|ru — kept in sync with uallakI18n's
                                       # switcher choice; the stored preference outbound
                                       # emails use (no live message to detect language from)
+    manager_persona: str | None = None  # johnny|nissim|elinor — the account manager the
+                                        # client picked (core/manager_identity)
 
 # ~200KB of base64 ≈ a 150KB image - far more than the browser-side resize
 # produces, just a hard stop against arbitrary-size uploads into the DB
@@ -5793,6 +5803,15 @@ MAX_PROFILE_IMAGE_CHARS = 200_000
 @app.post("/api/client/profile")
 async def client_profile(req: ClientProfileRequest, request: Request):
     client_id = _require_session(request)
+    manager = None
+    if req.manager_persona is not None:
+        # Its own write (manager_identity.save_choice), so a not-yet-migrated
+        # column fails THIS choice loudly and never the rest of the profile
+        saved = manager_identity.save_choice(client_id, req.manager_persona)
+        if not saved.get("success"):
+            raise HTTPException(status_code=400 if saved["code"] == "ERR_MANAGER_UNKNOWN" else 503,
+                                detail={"code": saved["code"]})
+        manager = saved["manager"]
     changes = {}
     if req.owner_gender is not None:
         if req.owner_gender not in ("male", "female"):
@@ -5809,6 +5828,8 @@ async def client_profile(req: ClientProfileRequest, request: Request):
             raise HTTPException(status_code=400, detail="language must be he|en|fr|ar|ru")
         changes["language"] = req.language
     if not changes:
+        if manager:
+            return {"success": True, "manager": manager}
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
         db.table("clients").update(changes).eq("id", client_id).execute()
@@ -6521,7 +6542,7 @@ def admin_delete_feature_announcement(announcement_id: int, request: Request):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return result
 
-# ─── Marketing automation (ManyChat / Make) — ADMIN ONLY ─────────────────────
+# ─── Marketing automation (ManyChat) — ADMIN ONLY ────────────────────────────
 # The credentials the CLIENT created and handed to Johnny, so he can sign in and
 # build their automation. Deliberately admin-session only and deliberately NOT
 # mirrored on any client endpoint: unlike every other integration there is no
@@ -6535,7 +6556,7 @@ def admin_automation_credentials(client_id: int, request: Request):
     return {"success": True, "data": automation_service.get_credentials(client_id)}
 
 class AutomationTokenRequest(BaseModel):
-    vendor: str      # manychat | make (automation_service.VENDORS)
+    vendor: str      # manychat (automation_service.VENDORS)
     api_token: str   # encrypted per client; passwords are no longer accepted
 
 @app.get("/api/admin/costs/by-client-month")

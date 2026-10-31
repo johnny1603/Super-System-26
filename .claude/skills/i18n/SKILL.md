@@ -43,19 +43,17 @@ description: How multi-language support works in uallak — chat language matchi
   `uallakI18n.onChange(fn)` if the page caches rendered strings.
 - Direction: `setLanguage` flips `<html dir>`/`<html lang>` (he/ar → rtl).
   Force `dir="ltr"` on inherently-LTR inputs (emails, URLs).
-- Switcher: `uallakI18n.mountSwitcher(containerEl)` — a settings-style round
-  flag badge (2026-07-21 redesign, replacing the old plain-text `<select>`)
-  showing the CURRENT language; click opens a small dropdown (flag + label
-  per option). Mounted on every page that calls it: login, profile, the
-  client dashboard's topbar, the sales-chat page, landing, terms. One
-  redesign in the shared engine reaches all of them — never restyle this
-  per-page; a page's own `.lang-switcher` CSS class is dead now (removed
-  everywhere it existed) since the control no longer uses that class name.
-  Flags: `FLAGS` in i18n.js. **Arabic deliberately uses Israel's flag 🇮🇱, not
-  a generic Arabic-country flag** — these are Israeli Arabic-speaking
-  clients, not a foreign audience — paired with the menu label "ערבית"
-  (`MENU_LABELS.ar`, Hebrew word for Arabic, not "العربية") so the option
-  reads unambiguously regardless of which language is currently on screen.
+- Switcher: `uallakI18n.mountSwitcher(containerEl)` — since 2026-10-31 a ROW of
+  five round SVG flag buttons with depth (he / en / fr / ar in UAE colours / ru),
+  no visible text, `aria-label` + `title` = the language's native name, the
+  active one ringed in the brand accent (`aria-current="true"`). One tap
+  switches — no popover. Mounted on every page that calls it: login, profile,
+  the client dashboard's topbar, the sales-chat page, landing, terms. Never
+  restyle it per page. **Never use emoji flags**: Windows has no flag glyphs and
+  draws regional-indicator emoji as two letters ("IL", "US") — that was why the
+  old switcher looked broken. Each SVG carries its own defs under unique ids.
+  `setLanguage` runs every listener in its own try/catch so one page re-render
+  that throws can't stop the rest (or the ring) from updating.
   Choice persists in localStorage `uallak_lang` across pages.
 - Fonts: Heebo covers Hebrew+Latin; Arabic/Cyrillic fall back to system
   sans-serif. Good enough for v1; a Noto addition is a future polish item.

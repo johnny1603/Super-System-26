@@ -3,6 +3,7 @@ import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from urllib.parse import quote
 
 # The app password previously hardcoded here leaked into git history — it must be
@@ -52,6 +53,29 @@ def _tr(table: dict, key: str, lang: str, **vars) -> str:
     for name, value in vars.items():
         text = text.replace("{" + name + "}", str(value))
     return text
+
+def _manager(client_id: int, lang: str):
+    """The account manager the client chose (core/manager_identity) — the
+    name on the From line and the sign-off under a client email. None before
+    the client exists (the sales-chat report): that one stays from uallak."""
+    if not client_id:
+        return None
+    from core import manager_identity
+    return manager_identity.for_client_id(client_id, lang)
+
+
+def _signoff_html(manager: dict, lang: str) -> str:
+    if not manager:
+        return ""
+    from core import manager_identity
+    from html import escape
+    return ('<p style="color:#3D3D3D;text-align:center;margin:18px 0 0;font-size:14px;">'
+            f'{escape(manager_identity.signoff(manager, lang))}</p>')
+
+
+def _from(manager: dict) -> str:
+    return formataddr((f"{manager['name']} · uallak", GMAIL_USER)) if manager else GMAIL_USER
+
 
 _CLIENT_REPORT_I18N = {
     "subtitle": {"he":"הבית לעסקים קטנים ובינוניים","en":"A home for small and medium businesses","fr":"Une maison pour les PME","ar":"بيت للشركات الصغيرة والمتوسطة","ru":"Дом для малого и среднего бизнеса"},
@@ -160,6 +184,7 @@ _PAYMENT_CONFIRMATION_I18N = {
 def send_payment_confirmation(client_email: str, client_name: str, client_id: int, language: str = None):
     lang = _lang_of(client_id, language)
     t = lambda key, **v: _tr(_PAYMENT_CONFIRMATION_I18N, key, lang, **v)
+    manager = _manager(client_id, lang)
     html = f"""
     <div dir="{_LANG_DIR[lang]}" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
       <div style="text-align:center;margin-bottom:32px;">
@@ -183,11 +208,12 @@ def send_payment_confirmation(client_email: str, client_name: str, client_id: in
       <div style="background:white;border-radius:12px;padding:24px;text-align:center;border:1.5px solid rgba(0,0,0,0.08);">
         <p style="color:#3D3D3D;margin:0;">{t('whatsapp_note')}</p>
       </div>
+      {_signoff_html(manager, lang)}
     </div>
     """
     msg = MIMEMultipart('alternative')
     msg['Subject'] = t('subject')
-    msg['From'] = GMAIL_USER
+    msg['From'] = _from(manager)
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))
     _send(msg, client_email)
@@ -266,6 +292,7 @@ def send_account_setup_invite(client_email: str, client_name: str, client_id: in
     an inbox."""
     lang = _lang_of(client_id)
     t = lambda key, **v: _tr(_SETUP_INVITE_I18N, key, lang, **v)
+    manager = _manager(client_id, lang)
     name_suffix = f" {client_name}" if client_name else ""
     body = t("reset_body") if reason == "reset" else t("welcome_body")
     link = f"{PUBLIC_APP_URL}/login/?setup=1&email={quote(client_email)}"
@@ -281,11 +308,12 @@ def send_account_setup_invite(client_email: str, client_name: str, client_id: in
         <a href="{link}" style="display:inline-block;background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;">{t('button')}</a>
         <p style="color:#8A8A8A;line-height:1.6;font-size:13px;margin:20px 0 0;">{t('ignore_note')}</p>
       </div>
+      {_signoff_html(manager, lang)}
     </div>
     """
     msg = MIMEMultipart('alternative')
     msg['Subject'] = t("subject_reset" if reason == "reset" else "subject_welcome")
-    msg['From'] = GMAIL_USER
+    msg['From'] = _from(manager)
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))
     _send(msg, client_email)
@@ -337,6 +365,7 @@ def send_sales_alert(client_email: str, client_name: str, conversions: dict,
     they're internal keys from the ads agents, not client-facing prose)."""
     lang = _lang_of(client_id, language)
     t = lambda key, **v: _tr(_SALES_ALERT_I18N, key, lang, **v)
+    manager = _manager(client_id, lang)
     total = round(sum(conversions.values()), 1)
     total_label = int(total) if total == int(total) else total
     lines_html = "".join([
@@ -362,11 +391,12 @@ def send_sales_alert(client_email: str, client_name: str, conversions: dict,
       <div style="text-align:center;">
         <a href="{PUBLIC_APP_URL}/login/" style="background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">{t('dashboard_btn')}</a>
       </div>
+      {_signoff_html(manager, lang)}
     </div>
     """
     msg = MIMEMultipart('alternative')
     msg['Subject'] = t('subject', total=total_label)
-    msg['From'] = GMAIL_USER
+    msg['From'] = _from(manager)
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))
     _send(msg, client_email)
