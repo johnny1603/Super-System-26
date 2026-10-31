@@ -246,24 +246,40 @@ def _source_files(client_id: int) -> list:
 # ─── Avatar creation (HeyGen — consent-gated) ─────────────────────────────────
 
 @drive_storage.scoped
-def create_avatar(client_id: int, avatar_name: str = "") -> dict:
+def create_avatar(client_id: int, avatar_name: str = "", photo_ids: list = None) -> dict:
     """Create the client's avatar from their uploaded source material, on
     THEIR HeyGen account. Photos-only → photo-avatar path (standard API).
     Video footage → digital-twin path: tries the Enterprise creation API;
     on a permission error the CLIENT is pointed to HeyGen's web UI to create
     the twin themselves (available on every plan incl. Free) instead of
-    failing opaquely. Consent (likeness) is a hard gate."""
+    failing opaquely. Consent (likeness) is a hard gate.
+
+    `photo_ids`: images the client uploaded in a chat (the
+    create_presenter_from_photos card, which already proved each one is in
+    their media folder) — the photo-avatar path from exactly those, instead
+    of the avatar-source folder."""
     if not has_consent(client_id, "likeness"):
-        return {"success": False, "errors": [_NO_CONSENT.format(scope="likeness")]}
+        return {"success": False, "code": "no_consent", "errors": [_NO_CONSENT.format(scope="likeness")]}
     api_key = _key(client_id, HEYGEN_PLATFORM)
     if not api_key:
         from core import vendor_tools
         return {**vendor_tools.missing_block(["heygen"]),
                 "errors": ["client's HeyGen account is not connected (dashboard HeyGen card)"]}
 
-    files = _source_files(client_id)
-    videos = [f for f in files if (f.get("mimeType") or "").startswith("video/")]
-    photos = [f for f in files if (f.get("mimeType") or "").startswith("image/")]
+    if photo_ids:
+        videos = []
+        photos = []
+        for file_id in photo_ids[:10]:
+            meta = drive.get_meta(file_id, "id,name,mimeType,trashed")
+            if not meta.get("trashed") and str(meta.get("mimeType") or "").startswith("image/"):
+                photos.append(meta)
+        if not photos:
+            return {"success": False, "code": "no_photos",
+                    "errors": ["none of the chosen photos is still an image in the media folder"]}
+    else:
+        files = _source_files(client_id)
+        videos = [f for f in files if (f.get("mimeType") or "").startswith("video/")]
+        photos = [f for f in files if (f.get("mimeType") or "").startswith("image/")]
     if not videos and not photos:
         return {"success": False,
                 "errors": ["no source material in avatar-source - run request-source first, "
@@ -336,7 +352,7 @@ def create_avatar(client_id: int, avatar_name: str = "") -> dict:
                             "HeyGen's web UI per the source kit (any plan, incl. free); "
                             "the readiness scan will detect and notify"}
         agent_alert(AGENT_NAME, [f"client {client_id}: avatar creation failed: {e}"])
-        return {"success": False, "errors": [message]}
+        return {"success": False, "code": "provider_error", "errors": [message]}
 
     _log_activity(client_id, "avatar_creation_submitted",
                   {"method": method, "name": name, "known_avatar_ids": known_ids},

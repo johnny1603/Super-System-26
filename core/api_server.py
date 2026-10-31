@@ -1410,9 +1410,10 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
                 result = answer_support_question(client_id, req.message,
                                                  help_connection=req.help_connection)
             else:
-                # Specialist path: structurally read-only — no upgrade builds, no
-                # web search, no action functions reachable (support_agent enforces),
-                # except the website persona's code-run article DRAFT (never publish)
+                # Specialist path: structurally read-only — no web search, no
+                # action functions reachable (support_agent enforces), except the
+                # website persona's code-run article DRAFT (never publish) and the
+                # same priced upgrade QUOTE the concierge builds
                 result = answer_persona_question(client_id, persona, req.message,
                                                  background_tasks)
         # Vendor names never reach a client (core/vendor_tools) — except the

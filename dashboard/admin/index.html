@@ -3052,7 +3052,7 @@ async function runOffboardingKit(clientId) {
 // table), and it is unrelated to the WhatsApp button and to "הודעה בצ׳אט
 // התמיכה שלו", which DOES reach the client.
 const HEALTH_LABEL = { attention: 'דורש תשומת לב', stalled: 'תקוע', ok: 'תקין', inactive: 'לא פעיל' };
-const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות', action_request: 'בקשת פעולה', php2shell: 'אבטחת אתר' };
+const CR_KIND_LABEL = { alert: 'התראה', feedback: 'משוב לקוח', connections: 'חיבורים', seo_strategy: 'SEO', stalled: 'פעילות', action_request: 'בקשת פעולה', team_request: 'בקשה לצוות', php2shell: 'אבטחת אתר' };
 const crState = { clientId: null, persona: 'general', personas: [], sending: false };
 
 function crShowList() {
@@ -3643,9 +3643,12 @@ const CR_ACTION_STATUS = { proposed: 'ממתין לאישור שלך', awaiting_
 function crActionCardHtml(clientId, a) {
   const params = a.params && Object.keys(a.params).length
     ? `<div class="p">${esc(Object.entries(a.params).map(([k, v]) => k + ': ' + v).join(' · '))}</div>` : '';
+  // A team request is work done by a person: approve = "handled" (the client
+  // is told), cancel = closed without it
+  const teamRequest = a.action === 'team_request';
   const buttons = a.can_decide ? `<div class="row">
-      <button type="button" class="alert-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'approve', this)">אשר והרץ</button>
-      <button type="button" class="manage-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'cancel', this)">ביטול</button>
+      <button type="button" class="alert-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'approve', this)">${teamRequest ? 'טופל — לעדכן את הלקוח' : 'אשר והרץ'}</button>
+      <button type="button" class="manage-btn" onclick="crDecideAction(${Number(clientId)}, ${Number(a.id)}, 'cancel', this)">${teamRequest ? 'לסגור בלי טיפול' : 'ביטול'}</button>
     </div>` : '';
   return `<div class="cr-action" data-action-id="${Number(a.id)}">
     <div class="t">⚡ ${esc(a.title || a.action)}</div>

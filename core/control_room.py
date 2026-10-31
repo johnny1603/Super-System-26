@@ -234,7 +234,14 @@ def client_view(client_id: int) -> dict:
     attention += [{"kind": "action_request", "id": a["id"],
                    "text": f"הלקוח ביקש בצ'אט: {a['title']} — לאישור שלך בכרטיס הפעולה",
                    "source": "agent_actions", "at": a.get("created_at")}
-                  for a in actions if a.get("status") == "awaiting_staff"]
+                  for a in actions if a.get("status") == "awaiting_staff" and a.get("action") != "team_request"]
+    # A chat's genuine handoff: a person has to act, and the client sees the
+    # card's status until it is marked handled here
+    attention += [{"kind": "team_request", "id": a["id"],
+                   "text": f"בקשה לצוות ({(a.get('params') or {}).get('topic', 'other')}): "
+                           f"\"{(a.get('params') or {}).get('request', '')[:200]}\" — לטפל ולסמן כטופל בכרטיס",
+                   "source": "agent_actions", "at": a.get("created_at")}
+                  for a in actions if a.get("status") == "awaiting_staff" and a.get("action") == "team_request"]
     php_label = {"vulnerable": "מדווח גרסת PHP פגיעה", "unknown": "גרסת PHP לא ידועה — לשאול את האחסון",
                  "not_checked": "עוד לא נבדק"}
     attention += [{"kind": "php2shell",

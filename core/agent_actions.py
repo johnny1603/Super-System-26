@@ -46,6 +46,10 @@ OPEN_STATUSES = ("proposed", "awaiting_staff")
 LANGS = ("he", "en", "fr", "ar", "ru")
 
 
+def _txt(he, en, fr, ar, ru):
+    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
+
+
 class ActionFailed(Exception):
     """An action's own refusal or failure. `code` goes to the audit row;
     the message only to the admin/log (it may carry platform detail)."""
@@ -137,11 +141,10 @@ def _media_upload_max_mb() -> int:
 
 
 @drive_storage.scoped
-def _v_media_video(value, client_id: int):
-    """A video in THIS client's Drive media folder, proven by Drive's own
-    parents chain (drive_mirror's walk, fresh for files), never by what the
-    model or the browser said; a video MIME type, not trashed, within the
-    upload size cap (the upload is read into memory)."""
+def _media_file(client_id: int, value) -> tuple:
+    """(file_id, meta) for a file in THIS client's Drive media folder, proven
+    by Drive's own parents chain (drive_mirror's walk, fresh for files),
+    never by what the model or the browser said; not trashed."""
     file_id = str(value or "").strip()
     if not _DRIVE_ID_RE.match(file_id):
         raise ValueError("drive_file_id is not a Drive id")
@@ -161,6 +164,15 @@ def _v_media_video(value, client_id: int):
         raise ValueError(f"could not read the file ({type(e).__name__})")
     if meta.get("trashed"):
         raise ValueError("the file is in the trash")
+    return file_id, meta
+
+
+@drive_storage.scoped
+def _v_media_video(value, client_id: int):
+    """A video in THIS client's Drive media folder (_media_file's proof), a
+    video MIME type, within the upload size cap (the upload is read into
+    memory)."""
+    file_id, meta = _media_file(client_id, value)
     if not str(meta.get("mimeType") or "").startswith("video/"):
         raise ValueError("not a video")
     from core.video_limits import fits
@@ -179,6 +191,30 @@ def _v_tiktok_video(value, client_id: int):
     if not hit or not fits_tiktok((hit[1] or {}).get("size")):
         raise ValueError(f"video must be up to {TIKTOK_INBOX_MAX_MB} MB for TikTok")
     return file_id
+
+
+PRESENTER_PHOTOS_MAX = 10   # what avatar_agent's photo path sends (photos[:10])
+
+
+@drive_storage.scoped
+def _v_media_images(value, client_id: int):
+    """1-PRESENTER_PHOTOS_MAX images in THIS client's media folder, each one
+    proven by _media_file (the parents walk) — a list, or ids separated by
+    commas."""
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    ids = []
+    for item in raw:
+        item = str(item or "").strip()
+        if item and item not in ids:
+            ids.append(item)
+    if not 1 <= len(ids) <= PRESENTER_PHOTOS_MAX:
+        raise ValueError(f"photo_ids must be 1-{PRESENTER_PHOTOS_MAX} images")
+    for item in ids:
+        file_id, meta = _media_file(client_id, item)
+        if not str(meta.get("mimeType") or "").startswith("image/"):
+            raise ValueError("not an image")
+        _media_meta[(client_id, file_id)] = (time.time(), meta)
+    return ids
 
 
 _TITLE_DROP = re.compile(r"[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩<>]")
@@ -651,6 +687,235 @@ def _run_make_presenter_video(client_id: int, params: dict, background_tasks):
     raise ActionFailed(mapped, f"{code}: {result.get('message_he') or '; '.join(map(str, result.get('errors') or []))}")
 
 
+# ─── Photos → presenter (avatar_agent.create_avatar's photo-avatar path) ─────
+
+def _in_package(state: dict, step: str):
+    """True / False from the purchased package (core/client_journey's
+    capability steps — the same rule the checklist uses), None when the
+    package could not be read (then nothing is offered and nothing is
+    called "not in your package")."""
+    package = (state or {}).get("package") or {}
+    if not package.get("readable"):
+        return None
+    from core.client_journey import step_in_services
+    return step_in_services(step, package.get("services") or [])
+
+
+def _presenter_photos_possible(state: dict, client: dict) -> bool:
+    """The presenter capability is in the package and there are images in the
+    media folder. Deliberately NOT gated on the tool or the consent: asking
+    must reach _prepare_presenter_photos, which answers with the ONE card
+    that fixes what is missing instead of silence."""
+    media = (state or {}).get("media_folder") or {}
+    return (_in_package(state, "avatar") is True
+            and ((media.get("counts") or {}).get("image", 0) > 0 or bool(media.get("images"))))
+
+
+def _likeness_consent(client_id: int) -> bool:
+    from agents.avatar_agent import has_consent
+    return has_consent(client_id, "likeness")
+
+
+def _presenter_tool_status(client_id: int) -> str:
+    from core import client_state
+    tools = (client_state.cached_section(client_id, "creative_tools") or {}).get("tools") or {}
+    return (tools.get("heygen") or {}).get("status") or "not_connected"
+
+
+_PHOTOS_TOOL_FIRST = _txt(
+    "כדי ליצור את הדמות מהתמונות חסר דבר אחד: חיבור \"{tool}\". לחצו על הכפתור — ייפתח רק הכרטיס שלו, עם הדרכה צעד אחר צעד — ואז אכין את יצירת הדמות. התמונות כבר שמורות.",
+    "One thing is missing to create the presenter from your photos: connecting \"{tool}\". Tap the button — only its card opens, with a step-by-step guide — and then I'll set up the presenter. Your photos are already saved.",
+    "Il manque une seule chose pour créer le présentateur à partir de vos photos : connecter « {tool} ». Touchez le bouton — seule sa carte s'ouvre, avec un guide — puis je prépare le présentateur. Vos photos sont déjà enregistrées.",
+    "ينقص شيء واحد لإنشاء الشخصية من صوركم: ربط \"{tool}\". اضغطوا على الزر — تفتح بطاقته فقط مع إرشاد خطوة بخطوة — ثم أجهّز الشخصية. الصور محفوظة بالفعل.",
+    "Чтобы создать ведущего по фото, не хватает одного: подключить «{tool}». Нажмите кнопку — откроется только его карточка с инструкцией, — и я подготовлю ведущего. Фото уже сохранены.")
+_PHOTOS_CONSENT_FIRST = _txt(
+    "לפני שיוצרים דמות מהפנים שלכם צריך את האישור שלכם לשימוש בדמות — הוא נמצא בכרטיס \"{tool}\". לחצו על הכפתור, סמנו את האישור, ואז אכין את יצירת הדמות. התמונות כבר שמורות.",
+    "Before a presenter is made from your face we need your likeness consent — it's on the \"{tool}\" card. Tap the button, tick the consent, and then I'll set up the presenter. Your photos are already saved.",
+    "Avant de créer un présentateur à partir de votre visage, il faut votre consentement d'image — il se trouve sur la carte « {tool} ». Touchez le bouton, cochez-le, puis je prépare le présentateur.",
+    "قبل إنشاء شخصية من وجهكم نحتاج موافقتكم على استخدام صورتكم — وهي في بطاقة \"{tool}\". اضغطوا على الزر، حدّدوا الموافقة، ثم أجهّز الشخصية.",
+    "Прежде чем создать ведущего по вашему лицу, нужно ваше согласие на использование образа — оно на карточке «{tool}». Нажмите кнопку, отметьте согласие, и я подготовлю ведущего.")
+PRESENTER_NOT_IN_PACKAGE = _txt(
+    "אגב, מתמונות כאלה אפשר ליצור דמות מגישה שמופיעה בסרטונים שלכם — זו תוספת שלא כלולה בחבילה הנוכחית. רוצים לשמוע מה היא כוללת ומה המחיר? כתבו לי כאן ואכין הצעה מסודרת.",
+    "By the way, photos like these can become a presenter who appears in your videos — an add-on your current package doesn't include. Want to hear what it includes and what it costs? Write to me here and I'll prepare a proper offer.",
+    "D'ailleurs, de telles photos peuvent devenir un présentateur dans vos vidéos — une option non incluse dans votre formule actuelle. Écrivez-moi ici si vous voulez une offre.",
+    "بالمناسبة، يمكن تحويل صور كهذه إلى شخصية تقدّم فيديوهاتكم — إضافة غير مشمولة في باقتكم الحالية. اكتبوا لي هنا إن أردتم عرضًا.",
+    "Кстати, из таких фото можно сделать ведущего для ваших видео — это дополнение не входит в текущий пакет. Напишите мне здесь, если хотите предложение.")
+
+
+def _prepare_presenter_photos(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """What stands between these photos and a presenter, in order — the
+    package, the tool, the likeness consent — each answered with ITS one
+    fix (an upgrade line, or the tool's own card, which carries the
+    consent), never "the team will handle it". Photos uploaded one after
+    another join the ONE open card instead of stacking cards."""
+    from core import client_state
+    lang = (context or {}).get("language") or "he"
+    state = {"package": client_state.cached_package(client_id)}
+    if _in_package(state, "avatar") is not True:
+        return {"refuse": _pick(PRESENTER_NOT_IN_PACKAGE, lang)}
+    tool = _creative_label("heygen", lang)
+    if _presenter_tool_status(client_id) not in ("connected", "connected_unverified"):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "heygen"},
+                "notice": _pick(_PHOTOS_TOOL_FIRST, lang).replace("{tool}", tool)}
+    if not _likeness_consent(client_id):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "heygen"},
+                "notice": _pick(_PHOTOS_CONSENT_FIRST, lang).replace("{tool}", tool)}
+    photos = list(params["photo_ids"])
+    supersedes = None
+    for row in rows:
+        earlier = (row.get("params") or {}).get("photo_ids") or []
+        if row.get("status") == "proposed":
+            photos = (photos + [p for p in earlier if p not in photos])[:PRESENTER_PHOTOS_MAX]
+            supersedes = row.get("id")
+            if set(photos) == set(earlier):
+                return {"existing": row}
+            break
+    return {"params": {**params, "photo_ids": photos}, "supersedes": supersedes}
+
+
+def _run_create_presenter_from_photos(client_id: int, params: dict, background_tasks):
+    """avatar_agent.create_avatar — its photo-avatar path, from exactly the
+    approved photos. It re-checks the likeness consent and the tool itself."""
+    from agents.avatar_agent import create_avatar
+    result = create_avatar(client_id, params.get("avatar_name", ""), photo_ids=params["photo_ids"])
+    if result.get("success"):
+        return {"method": result.get("method", ""), "name": result.get("name", "")}
+    code = result.get("code", "")
+    mapped = {"missing_tool": "missing_tool", "no_consent": "no_consent",
+              "no_photos": "no_photos"}.get(code, "provider_error")
+    raise ActionFailed(mapped, f"{code}: {'; '.join(map(str, result.get('errors') or []))}")
+
+
+def _v_avatar_name(value, client_id: int):
+    name = " ".join(_TITLE_DROP.sub(" ", str(value or "")).split())[:60].strip()
+    if len(name) < 2:
+        raise ValueError("avatar_name too short")
+    return name
+
+
+# ─── Team requests: a handoff that is REAL (tracked, visible, closed by staff) ─
+# A chat that says "I'm passing this to the team" opens one of these: an
+# agent_actions row awaiting staff, so it is an item in the Control Room's
+# "needs your attention" (not just an alert line), a card the client sees in
+# the chat it came from with its status, and a posted line when staff close
+# it. Opened by CODE only (open_team_request) — never proposed by a model.
+
+TEAM_REQUEST_TOPICS = ("legal", "tax", "refund", "package_exception", "contract", "billing",
+                       "complaint", "manual_task", "action_not_offered", "other")
+TEAM_REQUEST_TTL_HOURS = 24 * 14
+
+
+def _v_team_topic(value, client_id: int):
+    topic = str(value or "").strip().lower()
+    return topic if topic in TEAM_REQUEST_TOPICS else "other"
+
+
+def _v_team_request(value, client_id: int):
+    from core.redaction import redact
+    text = " ".join(redact(str(value or "")).split())[:500]
+    if len(text) < 2:
+        raise ValueError("request too short")
+    return text
+
+
+_TEAM_TOPIC_LABEL = {
+    "legal": _txt("שאלה משפטית", "A legal question", "Une question juridique", "سؤال قانوني", "Юридический вопрос"),
+    "tax": _txt("שאלת מס / הנהלת חשבונות", "A tax / accounting question", "Une question fiscale / comptable",
+                "سؤال ضريبي / محاسبي", "Вопрос о налогах / бухгалтерии"),
+    "refund": _txt("בקשת החזר", "A refund request", "Une demande de remboursement", "طلب استرداد", "Запрос на возврат"),
+    "package_exception": _txt("בקשה לחריגה מהחבילה", "A package exception", "Une exception à la formule",
+                              "طلب استثناء من الباقة", "Исключение из пакета"),
+    "contract": _txt("שאלה על תנאי ההסכם", "A contract question", "Une question sur le contrat",
+                     "سؤال عن شروط الاتفاق", "Вопрос по договору"),
+    "billing": _txt("נושא חיוב", "A billing matter", "Une question de facturation", "مسألة فوترة", "Вопрос об оплате"),
+    "complaint": _txt("פנייה לצוות", "A message for the team", "Un message pour l'équipe", "رسالة للفريق",
+                      "Обращение к команде"),
+    "manual_task": _txt("משימה שהצוות מבצע", "A task our team does", "Une tâche de l'équipe", "مهمة ينفذها الفريق",
+                        "Задача для команды"),
+    "action_not_offered": _txt("בקשה לצוות", "A request for the team", "Une demande pour l'équipe",
+                               "طلب للفريق", "Запрос команде"),
+    "other": _txt("בקשה לצוות", "A request for the team", "Une demande pour l'équipe", "طلب للفريق",
+                  "Запрос команде"),
+}
+
+# The one plain sentence the client reads when a request is opened (what
+# happens, roughly when, where to see it) — and when it already was
+TEAM_REQUEST_OPENED = _txt(
+    "פתחתי על זה בקשה מסודרת לצוות: איש צוות יחזור אליכם בדרך כלל תוך יום עסקים אחד, ואת הסטטוס רואים כאן בכרטיס.",
+    "I've opened a proper request for the team: a team member usually gets back to you within one business day, and you can see its status here on the card.",
+    "J'ai ouvert une demande à l'équipe : un membre vous répond généralement sous un jour ouvré, et son statut est visible ici sur la carte.",
+    "فتحت طلبًا منظمًا للفريق: سيعود إليكم أحد أعضاء الفريق عادةً خلال يوم عمل واحد، وتظهر حالته هنا في البطاقة.",
+    "Я открыл запрос команде: сотрудник обычно отвечает в течение одного рабочего дня, а статус виден здесь, на карточке.")
+TEAM_REQUEST_ALREADY_OPEN = _txt(
+    "זה כבר אצל הצוות בבקשה פתוחה — איש צוות יחזור אליכם בדרך כלל תוך יום עסקים אחד, והסטטוס מופיע כאן בכרטיס.",
+    "This is already with the team as an open request — a team member usually gets back to you within one business day, and its status is here on the card.",
+    "C'est déjà une demande ouverte auprès de l'équipe — réponse généralement sous un jour ouvré, statut ici sur la carte.",
+    "هذا لدى الفريق بالفعل كطلب مفتوح — يعودون إليكم عادةً خلال يوم عمل واحد، والحالة هنا في البطاقة.",
+    "Это уже у команды как открытый запрос — ответ обычно в течение рабочего дня, статус здесь, на карточке.")
+
+
+def _run_team_request(client_id: int, params: dict, background_tasks):
+    """Staff marked it handled — the work itself happened with a person."""
+    return {"handled": True}
+
+
+def open_team_request(client_id: int, persona: str, topic: str, request: str, origin: str = "client_chat") -> dict:
+    """{"card", "status", "already"} for a tracked team request, or
+    {"error": code} when it could not be stored (the caller then falls back
+    to the plain alert). One open request per client + topic: asking again
+    shows that card, it does not stack a second one."""
+    spec = ACTIONS["team_request"]
+    try:
+        params = validate_params(spec, {"topic": topic, "request": request}, client_id)
+    except ValueError as e:
+        _log(f"client {client_id}: team request not opened: {e}", client_id=client_id)
+        return {"error": "invalid_params"}
+    lang = _lang(client_id)
+    for row in _open_rows(client_id):
+        if (row.get("action") == "team_request" and not _expired(row)
+                and (row.get("params") or {}).get("topic") == params["topic"]):
+            return {"card": card(row, "client", lang), "status": row.get("status"), "already": True}
+    try:
+        rows = _db().table(TABLE).insert({
+            "client_id": int(client_id), "action": "team_request", "params": params, "origin": origin,
+            "persona": persona or "general", "approver": "admin", "status": "awaiting_staff",
+        }).execute().data or []
+    except Exception as e:
+        _log(f"client {client_id}: team request not stored: {type(e).__name__}: {e}",
+             severity="WARNING", client_id=client_id)
+        return {"error": "storage_unavailable"}
+    if not rows:
+        return {"error": "storage_unavailable"}
+    row = rows[0]
+    _log(f"client {client_id}: team request opened ({params['topic']}) from {origin}/{persona}",
+         client_id=client_id, proposal=row.get("id"), action="team_request")
+    _alert(f"client {client_id}: team request ({params['topic']}) — \"{params['request'][:300]}\" — "
+           f"handle it and mark it handled in the Control Room (request {row.get('id')})")
+    _forget_state(client_id)
+    return {"card": card(row, "client", lang), "status": "awaiting_staff", "already": False}
+
+
+def team_requests_view(client_id: int, limit: int = 10) -> list:
+    """The client's team requests and where each one stands — for the agents
+    (client_state) so "what happened with my request?" has a real answer.
+    Raises when the table is unreadable (the caller leaves the field out)."""
+    rows = (_db().table(TABLE).select("id,status,params,created_at,finished_at")
+            .eq("client_id", int(client_id)).eq("action", "team_request")
+            .order("created_at", desc=True).limit(int(limit)).execute().data or [])
+    state = {"awaiting_staff": "open", "running": "open", "done": "handled", "cancelled": "closed",
+             "failed": "closed", "expired": "closed"}
+    out = []
+    for r in rows:
+        status = state.get(r.get("status"), "closed")
+        if status == "open" and _expired({**r, "action": "team_request"}):
+            status = "closed"
+        out.append({"topic": (r.get("params") or {}).get("topic", "other"),
+                    "request": (r.get("params") or {}).get("request", ""),
+                    "status": status, "opened": str(r.get("created_at") or "")[:10],
+                    "closed": str(r.get("finished_at") or "")[:10]})
+    return out
+
+
 def _gtm_needs_connect(state: dict, client: dict) -> bool:
     tracking = (state or {}).get("tracking") or {}
     if tracking.get("connected"):
@@ -709,10 +974,6 @@ def _tiktok_send_possible(state: dict, client: dict) -> bool:
 # kind: "execute" (server runs it) | "link" (the click navigates to an OAuth
 #   start route — the consent itself is the client's) | "focus" (the click
 #   opens a dashboard card that carries a consent the click must not bypass).
-
-def _txt(he, en, fr, ar, ru):
-    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
-
 
 ACTIONS = {
     "configure_conversion": {
@@ -1021,6 +1282,75 @@ ACTIONS = {
                      "L'équipe a votre demande ✓ Nous vous recontactons pour le connecter ensemble.",
                      "الطلب لدى الفريق ✓ سنعود إليكم لربطه معًا.",
                      "Запрос у команды ✓ Мы свяжемся с вами, чтобы подключить вместе."),
+    },
+    "create_presenter_from_photos": {
+        # The photo-avatar path of avatar_agent.create_avatar, from images the
+        # client uploaded (chat "+" or the media folder). Their click; the
+        # likeness consent stays a hard gate (prepare AND create_avatar).
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Creates the client's presenter character (the face in their presenter videos) from photos "
+                "of them in their media folder (account_state.media_folder.images), on their own presenter "
+                "tool account. Propose it whenever they ask to make a presenter/character/avatar from "
+                "photos — if the tool or the likeness consent is missing, the system answers with the "
+                "one card that fixes it.",
+        "params": {"photo_ids": {"required": True, "validate": _v_media_images,
+                                 "hint": "drive_file_id values from account_state.media_folder.images "
+                                         "(comma-separated, up to 10) — the photos the client means"},
+                   "avatar_name": {"required": False, "validate": _v_avatar_name,
+                                   "hint": "optional name for the presenter, if the client gave one"}},
+        "available": _presenter_photos_possible,
+        "prepare": _prepare_presenter_photos,
+        "validate_stored": lambda client_id, params: validate_params(
+            ACTIONS["create_presenter_from_photos"], params, client_id),
+        "run": _run_create_presenter_from_photos,
+        "display": lambda client_id, params: {"count": len(params.get("photo_ids") or []),
+                                              "tool": _creative_label("heygen", _lang(client_id))},
+        "title": _txt("יצירת הדמות המגישה שלכם מהתמונות", "Create your presenter from your photos",
+                      "Créer votre présentateur à partir de vos photos", "إنشاء شخصيتكم المقدِّمة من الصور",
+                      "Создать вашего ведущего по фото"),
+        "what": _txt("נשלח {count} תמונות מתיקיית המדיה שלכם לחשבון \"{tool}\" שלכם, וייווצר ממנה הדמות שתופיע בסרטוני המגיש שלכם. שום דבר לא מתפרסם.",
+                     "We'll send {count} photos from your media folder to your \"{tool}\" account and create the presenter who appears in your presenter videos from them. Nothing is published.",
+                     "Nous envoyons {count} photos de votre dossier média à votre compte « {tool} » pour créer le présentateur de vos vidéos. Rien n'est publié.",
+                     "سنرسل {count} صور من مجلد الوسائط إلى حسابكم \"{tool}\" لننشئ منها الشخصية التي تظهر في فيديوهاتكم. لا يُنشر شيء.",
+                     "Мы отправим {count} фото из вашей папки медиа в ваш аккаунт «{tool}» и создадим по ним ведущего для ваших видео. Ничего не публикуется."),
+        "done": _txt("קיבלנו ✓ הדמות שלכם נבנית עכשיו מהתמונות. ההכנה לוקחת זמן (לפעמים עד כמה ימים) — ברגע שהיא מוכנה נעדכן אתכם כאן, ואז אפשר להכין איתה סרטונים.",
+                     "Done ✓ Your presenter is being built from the photos. Preparing it takes a while (sometimes up to a few days) — the moment it's ready we'll tell you here, and then you can make videos with it.",
+                     "C'est fait ✓ Votre présentateur est en préparation à partir des photos (parfois quelques jours) — nous vous prévenons ici dès qu'il est prêt.",
+                     "تم ✓ تُبنى شخصيتكم الآن من الصور. يستغرق التجهيز وقتًا (أحيانًا بضعة أيام) — سنبلغكم هنا فور جاهزيتها.",
+                     "Готово ✓ Ваш ведущий создаётся по фото. Подготовка занимает время (иногда до нескольких дней) — сообщим здесь, как только он будет готов."),
+    },
+    "team_request": {
+        # Opened by CODE when a chat genuinely hands something to a person
+        # (open_team_request) — never proposed by a model ("code_only"). Staff
+        # close it in the Control Room: approve = handled, cancel = closed.
+        "approver": "admin", "client_requestable": False, "internal_only": False, "kind": "execute",
+        "code_only": True, "ttl_hours": TEAM_REQUEST_TTL_HOURS,
+        "does": "A tracked request for the team (a licensed-professional or commercial decision, or work "
+                "our team does by hand). Opened by the system, never proposed.",
+        "params": {"topic": {"required": True, "validate": _v_team_topic, "hint": ""},
+                   "request": {"required": True, "validate": _v_team_request, "hint": ""}},
+        "available": lambda state, client: False,
+        "run": _run_team_request,
+        "display": lambda client_id, params: {
+            "topic": _pick(_TEAM_TOPIC_LABEL.get(params.get("topic"), _TEAM_TOPIC_LABEL["other"]), _lang(client_id)),
+            "request": params.get("request", "")},
+        "title": _txt("בקשה שפתחנו לצוות", "A request we opened for the team", "Une demande ouverte pour l'équipe",
+                      "طلب فتحناه للفريق", "Запрос, открытый для команды"),
+        "what": _txt("{topic}: \"{request}\" — איש צוות יחזור אליכם בדרך כלל תוך יום עסקים אחד. הסטטוס מתעדכן כאן.",
+                     "{topic}: \"{request}\" — a team member usually gets back to you within one business day. The status updates here.",
+                     "{topic} : « {request} » — un membre de l'équipe vous répond généralement sous un jour ouvré. Le statut se met à jour ici.",
+                     "{topic}: \"{request}\" — يعود إليكم أحد أعضاء الفريق عادةً خلال يوم عمل واحد. تتحدث الحالة هنا.",
+                     "{topic}: «{request}» — сотрудник обычно отвечает в течение рабочего дня. Статус обновляется здесь."),
+        "done": _txt("הצוות טיפל בבקשה שלכם ✓ אם משהו עוד פתוח — כתבו לי כאן.",
+                     "The team has handled your request ✓ If anything is still open, write to me here.",
+                     "L'équipe a traité votre demande ✓ Si quelque chose reste ouvert, écrivez-moi ici.",
+                     "عالج الفريق طلبكم ✓ إن بقي شيء مفتوحًا، اكتبوا لي هنا.",
+                     "Команда обработала ваш запрос ✓ Если что-то ещё открыто — напишите мне здесь."),
+        "cancelled": _txt("הצוות סגר את הבקשה. אם היא עדיין רלוונטית — כתבו לי כאן ואפתח אותה שוב.",
+                          "The team closed this request. If it's still relevant, write to me here and I'll open it again.",
+                          "L'équipe a clôturé cette demande. Si elle est toujours d'actualité, écrivez-moi ici.",
+                          "أغلق الفريق هذا الطلب. إن كان لا يزال مهمًا، اكتبوا لي هنا وسأفتحه مجددًا.",
+                          "Команда закрыла этот запрос. Если он ещё актуален — напишите мне здесь, и я открою его снова."),
     },
     # ── Creative jobs on the client's OWN tool accounts. internal_only until
     # the live test on client 27 passes (docs/CREATIVE-TOOLS.md): nothing a
@@ -1454,6 +1784,25 @@ _CREATIVE_REFUSALS = {
 }
 ACTIONS["clone_voice"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["make_presenter_video"]["refusals"] = _CREATIVE_REFUSALS
+ACTIONS["create_presenter_from_photos"]["refusals"] = {
+    "missing_tool": _CREATIVE_REFUSALS["missing_tool"],
+    "no_consent": _txt(
+        "חסר האישור שלכם לשימוש בדמות (בכרטיס הדמות המצולמת), אז שום דבר לא נוצר. מסמנים אותו שם — וכותבים לי כאן, ואכין את זה שוב.",
+        "Your likeness consent (on the filmed presenter card) is missing, so nothing was made. Tick it there, write to me here, and I'll set this up again.",
+        "Votre consentement d'image (sur la carte du présentateur filmé) manque — rien n'a été créé. Cochez-le puis écrivez-moi ici.",
+        "موافقتكم على استخدام صورتكم (في بطاقة الشخصية المصوَّرة) ناقصة، لذلك لم يُنشأ شيء. حدّدوها ثم اكتبوا لي هنا.",
+        "Нет вашего согласия на использование образа (на карточке снятого ведущего) — ничего не создано. Отметьте его и напишите мне здесь."),
+    "no_photos": _txt(
+        "התמונות שבחרתם כבר לא נמצאות בתיקיית המדיה, אז שום דבר לא נוצר. העלו אותן שוב כאן בצ׳אט ואכין את זה מחדש.",
+        "The photos you chose are no longer in your media folder, so nothing was made. Upload them here in the chat again and I'll set it up anew.",
+        "Les photos choisies ne sont plus dans votre dossier média — rien n'a été créé. Renvoyez-les ici dans le chat.",
+        "الصور التي اخترتموها لم تعد في مجلد الوسائط، لذلك لم يُنشأ شيء. ارفعوها هنا مجددًا.",
+        "Выбранных фото больше нет в папке медиа — ничего не создано. Загрузите их здесь в чате ещё раз."),
+}
+ACTIONS["create_presenter_from_photos"]["slow"] = {"minutes": 5, "eta": _txt(
+    "שליחת התמונות לוקחת בדרך כלל דקה-שתיים.", "Sending the photos usually takes a minute or two.",
+    "L'envoi des photos prend généralement une à deux minutes.", "يستغرق إرسال الصور عادة دقيقة أو دقيقتين.",
+    "Отправка фото обычно занимает минуту-две.")}
 
 # Slow actions answer the click at once with a progress card and run in the
 # background (decide → _execute_in_background); the card polls and turns into
@@ -1582,6 +1931,8 @@ def _actor_for(origin: str) -> str:
 
 
 def _may_propose(spec: dict, actor: str) -> bool:
+    if spec.get("code_only"):
+        return False   # opened by code (open_team_request), never by a model
     if actor == "admin":
         return spec["approver"] == "admin" or spec.get("admin_proposable", False)
     return spec["approver"] == "client" or spec.get("client_requestable", False)
@@ -1705,7 +2056,9 @@ def _expired(row: dict) -> bool:
         created = datetime.fromisoformat(str(row.get("created_at")).replace("Z", "+00:00"))
     except Exception:
         return True
-    return _now() - created > timedelta(hours=PROPOSAL_TTL_HOURS)
+    # A team request waits for a person, not for a click — it lives longer
+    ttl = (ACTIONS.get(row.get("action")) or {}).get("ttl_hours", PROPOSAL_TTL_HOURS)
+    return _now() - created > timedelta(hours=ttl)
 
 
 def _approve_blocked(spec: dict, client_id) -> str:
@@ -1759,7 +2112,7 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
         refusal = (spec.get("refusals") or {}).get(row.get("outcome") or "")
         return _pick(refusal or _FAILED, lang)
     if row.get("status") == "cancelled":
-        return _pick(_CANCELLED, lang)
+        return _pick(spec.get("cancelled") or _CANCELLED, lang)
     return ""
 
 
@@ -1910,7 +2263,8 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
             # card, with the prepared line in place of the model's reply.
             # state=None: the fix is offered because of what prepare just
             # learned, which the turn's snapshot may not know yet.
-            switched = propose(client_id, origin, persona, {"name": prepared["switch_to"], "params": {}},
+            switched = propose(client_id, origin, persona,
+                               {"name": prepared["switch_to"], "params": prepared.get("switch_params") or {}},
                                client=client, context=context)
             if switched.get("card"):
                 return {**switched, "notice": prepared.get("notice", "")}
@@ -2023,8 +2377,9 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
             return {"success": True, "already": True, "status": (_get(proposal_id) or {}).get("status")}
         _log(f"client {client_id}: {row['action']} cancelled by {by}", client_id=client_id,
              proposal=proposal_id)
-        _post(row, _pick(_CANCELLED, lang), to_client=row.get("origin") == "client_chat")
-        return {"success": True, "status": "cancelled", "message": _pick(_CANCELLED, lang)}
+        cancelled = spec.get("cancelled") or _CANCELLED
+        _post(row, _pick(cancelled, lang), to_client=row.get("origin") == "client_chat")
+        return {"success": True, "status": "cancelled", "message": _pick(cancelled, lang)}
 
     # Approve can't run right now (outreach while sending is off / Gmail not
     # connected): say why and leave the card exactly as it was — nothing claimed

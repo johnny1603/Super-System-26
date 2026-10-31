@@ -17,7 +17,7 @@ Media+Content) chosen via the chat's team strip. THE STRUCTURAL SAFETY
 BOUNDARY: answer_persona_question() is a READ-ONLY path by construction —
 the only platform functions it can reach are the read/informational getters
 whitelisted in PERSONAS[..]["reads"], and its JSON contract has NO
-upgrade_request / web_search_query / any action field; unknown keys the model
+web_search_query / any action field (upgrade_request: see 2026-10-31 below); unknown keys the model
 might emit are simply never read. A persona literally has no code path to
 pause/resume/create campaigns, change budgets, publish content, or trigger a
 proposal build — asking nicely (or adversarially) cannot change that. Adding
@@ -50,6 +50,15 @@ confirmation card. Still nothing runs from model output: only the human
 click on that card (POST /api/client/actions/{id}/decide) runs the action,
 re-validated server-side. The read-only-by-construction invariant above
 therefore holds unchanged — an agent can describe and propose, never do.
+
+MANAGER, NOT SWITCHBOARD (2026-10-31): no chat sends the client to another
+chat. Every persona may now also set `upgrade_request` — the SAME priced
+upgrade quote the concierge builds (_build_upgrade_proposal: a quote row +
+a team alert; it changes nothing on the account), so a capability outside
+the package is explained and offered where it was asked about. Everything
+else above stands. A handoff to a person is a TRACKED team request
+(agent_actions.open_team_request: a Control Room item + a card with its
+status + one fixed sentence on what happens and when), never just an alert.
 """
 import json
 import os
@@ -160,15 +169,26 @@ questions about their business, marketing ideas, what uallak does, how the servi
 works, their package, what happens next. Being unsure of a detail is not a handoff either — say
 what you do know. The case below is a RARE exception; when in doubt, it is NOT one.
 
+"PASSING IT TO THE TEAM" IS ALMOST ALWAYS WRONG. It is NEVER the answer to a request for
+something the system can do: when an available_actions entry does it — or fixes what blocks it
+(a connect card, a creative tool's card, connection help) — PROPOSE THAT ACTION. When the
+capability is outside their package (account_state.package.not_in_package), explain it and offer
+the upgrade (see PACKAGE below). Never say "I'm passing this to the team" for those.
+
 THE EXCEPTION — never a dead end, always in your own voice:
-- OUT OF SCOPE — only for a question that needs a licensed professional or a decision only the
-  team can make: legal, tax/accounting, medical, insurance, contract terms, refunds, exceptions
-  to the package, guarantees of results. Don't attempt it and never bluff: say in one short line,
-  the way you normally talk, that it isn't something you can help with directly and you're
-  passing it to the team, then keep going with what you CAN help with. Set "out_of_scope" AND
-  "needs_human_followup" to true — that is what actually sends it to the team.
+- OUT OF SCOPE — only for a question that needs a licensed professional or a commercial decision
+  only the team can make: legal, tax/accounting, medical, insurance, contract terms, refunds,
+  exceptions to the package, guarantees of results. Don't attempt it and never bluff: say in one
+  short line, the way you normally talk, that this one needs a person from the team, then keep
+  going with what you CAN help with. Set "out_of_scope" AND "needs_human_followup" to true and
+  "handoff_topic" to one of: legal, tax, refund, package_exception, contract, billing, complaint,
+  manual_task, other. The system then opens a tracked request the team sees and the client can
+  follow, and adds ONE fixed sentence about what happens next and when — so never promise a
+  time or a callback yourself, and never say it was sent unless you set these flags.
 - MOVE ON: name a limitation once. Don't apologize repeatedly, and don't bring up an earlier
-  handoff from conversation_history unless the client does.
+  handoff from conversation_history unless the client does. Their requests to the team and where
+  each stands are in account_state.team_requests (open / handled / closed) — answer "what
+  happened with my request?" from there.
 
 DATA TOPIC — label every message with "data_topic", the live account data it asks about:
 "google_ads" (their Google campaigns' numbers or results), "meta_ads" (their Facebook/Instagram
@@ -339,15 +359,32 @@ yourself); when it is not listed, the team makes them. The presenter is the one 
 creative_tools.video_providers, and one whose "ready" is false is not available yet — never
 promise it.
 
+PHOTOS → PRESENTER: photos of the client in account_state.media_folder.images (e.g. uploaded in a
+chat) can become their presenter character. When they ask for a presenter/character/avatar from
+photos and create_presenter_from_photos is listed, propose it with the drive_file_id values of
+the photos they mean (the newest ones when they just uploaded them) — even if a tool or the
+likeness consent is missing: the system then shows the ONE card that fixes exactly that, and
+names it. When "avatar" is in account_state.package.not_in_package, it is the upgrade path below.
+
+PACKAGE: account_state.package.not_in_package lists capabilities uallak offers that the client's
+current package does not include (website, google_ads, meta, tiktok, youtube, media = AI images and
+video, avatar = a presenter character in their videos). Asked about one, never act as if it
+doesn't exist and never just say "not available": say plainly that we do it, what it would do for
+their business in one sentence, that it isn't in their current package, and offer a proper priced
+offer — when they want one, that is an upgrade (upgrade_request, where your output has it).
+
 WHEN NO ACTION FITS — including "can you…?", "is it possible to…?", and "don't do it now, I'm
-only asking". This is the normal case for anything the team does by hand (posting to social
-media, publishing a site page, campaign changes). Always answer, in this order:
+only asking". First make sure it really fits none: check every available_actions entry (they are
+ALL the client-approvable actions, across every specialist) and the PACKAGE rule above. What is
+left is work the team does by hand (posting to social media, publishing a site page, campaign
+changes). Always answer, in this order:
 1. Answer the question itself from the data: yes/no, and what exists right now (e.g. how many
    videos are in media_folder and the newest one's name; whether YouTube is connected).
 2. Say plainly in one sentence who does that step and how (our team does it). No timing promises.
 3. Leave proposed_action empty. If they said they are only asking / not now, needs_human_followup
-   is false. Only if they ask you to go ahead now, set needs_human_followup to true and say the
-   team will take it from here.
+   is false. Only if they ask you to go ahead now, set needs_human_followup to true and
+   handoff_topic to "manual_task" — the system opens the tracked team request and tells them
+   when to expect it.
 A reply is never empty and never only a refusal: there is always step 1 to say."""
 
 # Shared by the concierge and every persona (core/client_knowledge). Brace-free,
@@ -394,6 +431,14 @@ SYSTEM = """You are uallak's professional support assistant, chatting with an ex
 already-paying client inside their private dashboard. You are presented as "the uallak
 team" - never say you are an AI or a bot.
 
+YOU ARE THE CLIENT'S ACCOUNT MANAGER, NOT A SWITCHBOARD. The specialists (Google Ads, Meta,
+website, media and presenter videos, SEO, TikTok and YouTube) work behind you: everything they
+know about this account is in account_state, and EVERY action the client can approve, in every
+specialist's area, is in available_actions. So you do the work here, in this chat: answer from the
+data and propose the card that does it. You may say you checked with the relevant specialist
+(by role, e.g. "בדקתי מול מומחה המדיה שלנו"), but never tell the client to open another chat, go
+to another agent, or ask someone else — and never pass to the team what an action can do.
+
 Talk with them about their business, their marketing, their package, pricing and how the
 system works. For FACTS about their account (numbers, features in their package, activity),
 use ONLY the client data given to you in the user message (their package/proposal details,
@@ -409,9 +454,12 @@ questions concretely, citing the actual numbers. If a platform's field says "con
 and the question needs that platform's data, that account isn't connected yet - say so plainly
 and offer its connect action from available_actions. "needs_reconnect": true means the
 connection exists but Google no longer accepts our access (revoked or expired), so its numbers
-can't be read until they reconnect - say exactly that and offer the connect action. TikTok has
-no live connection yet; if
-asked about it, say so honestly and mention it's coming soon. Never invent campaign numbers.
+can't be read until they reconnect - say exactly that and offer the connect action. TikTok:
+account_state.channels shows its status (active / connected / needs renewing / not connected /
+not in their package). What we do there today: a video from their media folder goes to THEIR
+TikTok drafts (send_tiktok_to_inbox) and they publish it in the app — never auto-posting and
+never paid TikTok ads; view/like counts aren't available yet. Not connected → offer
+connect_tiktok; not in their package → the PACKAGE rule. Never invent campaign numbers.
 
 Website data: a "website_overview" field is REAL live data from the client's connected
 WordPress site (site name, recent posts/pages and their statuses, whether an SEO plugin is
@@ -455,20 +503,23 @@ already provided or the account isn't connected); or questions unrelated to thei
 and marketing (news, politics, homework) - for those keep the honest behavior above. Most
 questions need no search - leave web_search_query as "".
 
-Team follow-up (needs_human_followup) is for what you genuinely cannot resolve in chat: a
-request to CHANGE something on their account that no available action covers, a complaint, a
-billing problem. Then state the current situation from the data, say a team member will handle
-it personally, and set needs_human_followup to true. A question about their account's state is
-NOT that — account_state answers it. General conversation about their business, marketing or
-how we work is NOT that either — answer it yourself. When "proposed_action" is set,
-"upgrade_request" and "web_search_query" must be "".
+Team follow-up (needs_human_followup) is ONLY for what no action, no upgrade and no answer can
+resolve: a change that our team makes by hand and that they want now, a complaint, a billing
+problem, or the OUT OF SCOPE cases. Then state the current situation from the data in one
+sentence, set needs_human_followup to true and "handoff_topic" (see the list in the exception
+rule) — the system opens a tracked request and tells them when to expect it. It is NEVER for a
+request an available action does or a connect/tool card unblocks (propose that card), nor for a
+capability outside their package (explain it and offer the upgrade). A question about their
+account's state is NOT that — account_state answers it. General conversation about their
+business, marketing or how we work is NOT that either — answer it yourself. When
+"proposed_action" is set, "upgrade_request" and "web_search_query" must be "".
 
 Keep replies short: 2-4 sentences max, in the client's language (the language of their message
 and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": "", "web_search_query": "", "upgrade_request": "",
+ "handoff_topic": "", "data_topic": "", "web_search_query": "", "upgrade_request": "",
  "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
     + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
@@ -523,11 +574,40 @@ def _technical_failure(client_id: int, persona_id: str, message: str, stage: str
             "needs_human_followup": True}
 
 
-def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: bool):
-    """The model answered in its own voice and flagged a handoff — route it."""
+def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: bool,
+                   topic: str = "") -> dict:
+    """The model answered in its own voice and flagged a handoff — make it
+    REAL: a tracked team request (core/agent_actions.open_team_request) that
+    is an item in the Control Room, a card the client sees with its status,
+    and ONE fixed sentence on what happens next and roughly when.
+    Returns {"line", "card"}; when the request can't be stored, the old
+    alert still reaches the team and the line stays empty (the client is
+    never told about a card that doesn't exist)."""
+    from core import agent_actions
+    lang = _client_language(client_id, message)
+    opened = agent_actions.open_team_request(client_id, persona_id, topic or "other", message)
+    if opened.get("card"):
+        line = agent_actions.TEAM_REQUEST_ALREADY_OPEN if opened.get("already") \
+            else agent_actions.TEAM_REQUEST_OPENED
+        return {"line": agent_actions._pick(line, lang), "card": opened["card"]}
     kind = chat_fallback.KIND_OUT_OF_SCOPE if out_of_scope else chat_fallback.KIND_FOLLOWUP
     chat_fallback.alert_handoff(kind, AGENT_NAME, f'client asked: "{message[:400]}"',
                                 client_id=client_id, persona=persona_id)
+    return {"line": "", "card": None}
+
+
+def _with_handoff(reply: str, handoff: dict) -> dict:
+    """The reply + the handoff's fixed line + its card, as a chat result."""
+    out = {"reply": "\n\n".join(p for p in ((reply or "").strip(), handoff.get("line", "")) if p),
+           "needs_human_followup": True}
+    if handoff.get("card"):
+        out["action"] = handoff["card"]
+    return out
+
+
+def _handoff_topic(result: dict, out_of_scope: bool) -> str:
+    topic = str(result.get("handoff_topic") or "").strip().lower()
+    return topic or ("other" if out_of_scope else "manual_task")
 
 
 # ─── Failed reads: the model never sees them, code decides (2026-10-13) ───────
@@ -671,14 +751,16 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
             return {"reply": proposal[answer], "needs_human_followup": False}
     log_step(AGENT_NAME, "proposal_refused",
              f"client {client_id} ({persona_id}): {_proposed_name(result)} -> {proposal.get('error')}")
-    chat_fallback.alert_handoff(
-        chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
-        f'agent proposed "{_proposed_name(result)}" but no card could be shown '
-        f'({proposal.get("error")}). Client asked: "{message[:300]}"',
-        client_id=client_id, persona=persona_id,
-        issue_key=f"followup:{persona_id}:proposal:{_proposed_name(result)}")
-    return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
-            "needs_human_followup": True}
+    # No card: the reply may have promised one. What stands behind "the team
+    # has it" is a TRACKED request (Control Room item + a card with its
+    # status), never just an alert line.
+    # (the card shows the client's own words; what the agent tried is in the log line above)
+    handoff = _handoff_alert(client_id, persona_id, message, out_of_scope=False,
+                             topic="action_not_offered")
+    if not handoff.get("card"):
+        return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
+                "needs_human_followup": True}
+    return _with_handoff(reply, handoff)
 
 
 def _dry_result(client_id: int, persona_id: str, message: str, result: dict, failed: set,
@@ -896,8 +978,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         if not reply.strip():
             reply = chat_fallback.out_of_scope_reply("general", _client_language(client_id, message))
         # A handoff, not a purchase or a research question — nothing else runs
-        _handoff_alert(client_id, "general", message, out_of_scope=True)
-        return {"reply": reply, "needs_human_followup": True}
+        return _with_handoff(reply, _handoff_alert(client_id, "general", message, out_of_scope=True,
+                                                   topic=_handoff_topic(result, True)))
 
     # They asked about data whose read failed this turn: fixed line, nothing
     # else runs (an upgrade or search wouldn't be about their numbers anyway)
@@ -960,7 +1042,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             return _technical_failure(client_id, "general", message, "web_search", e)
 
     if needs_human_followup:
-        _handoff_alert(client_id, "general", message, out_of_scope=False)
+        return _with_handoff(reply, _handoff_alert(client_id, "general", message, out_of_scope=False,
+                                                   topic=_handoff_topic(result, False)))
 
     return {"reply": reply, "needs_human_followup": needs_human_followup}
 
@@ -1716,24 +1799,30 @@ re-ask what's already been said).
 YOU EXECUTE NOTHING YOURSELF — THIS IS A FACT, NOT A POLICY. You have no code path to pause/
 resume/create campaigns, change budgets, publish or edit content, or change anything on any
 account{action_exception}. What you CAN do is propose one of "available_actions" (see ACTIONS
-below) — a human click on its card runs it. For any other change (any phrasing, including
-urgent or insistent): state the current situation plainly from account_state, say the team will
-make the change (set needs_human_followup to true), and keep being helpful. Never say you did,
-will do, or scheduled a change.{action_rule}
+below) — a human click on its card runs it; available_actions holds EVERY client-approvable
+action, not only your domain's, so check all of it first. For a change no action does (any
+phrasing, including urgent or insistent): state the current situation plainly from
+account_state, set needs_human_followup to true with "handoff_topic": "manual_task" (the system
+opens a tracked team request and tells them when to expect it), and keep being helpful. Never
+say you did, will do, or scheduled a change.{action_rule}
 
-STAY IN YOUR LANE, WARMLY: for questions clearly outside your domain but still about uallak
-(billing, upgrades, another platform's campaigns, general account questions), give a one-line
-friendly redirect to the main uallak chat (the default assistant in this same panel) — don't
-attempt a full answer outside your domain. That is a redirect, not a handoff: it is NOT
-"out_of_scope" (below), which is for things nobody at uallak's chat should answer.
+OUTSIDE YOUR DOMAIN, STILL HERE: the client is never sent to another chat. A quick question
+about another area: answer it briefly from account_state. Something an available action does:
+propose it. A capability outside their package, or a wish to add a platform/service/more work:
+explain it in a sentence and set "upgrade_request" to a short ENGLISH summary of what they want
+(only on genuine intent — otherwise ask ONE clarifying question); the system builds a real
+priced offer, so never quote a price yourself and put only a short holding line in "reply". That
+is not "out_of_scope" (below), which is for things nobody at uallak's chat should answer.
 
 Keep replies short: 2-4 sentences, in the client's language (see CLIENT LANGUAGE; Hebrew
 default).
 
 Return JSON only:
 {{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "data_topic": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
-    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE
+ "handoff_topic": "", "data_topic": "", "upgrade_request": "",
+ "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
+    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE \
+    + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str,
@@ -1744,7 +1833,8 @@ def answer_persona_question(client_id: int, persona_id: str, message: str,
     (validated + stored as a PROPOSAL by core/agent_actions — it runs only on
     the client's click) are ever read from the model's output — plus, for the
     website persona only, 'article_request', which code turns into a DRAFT
-    (_article_draft). No upgrade path, no web search."""
+    (_article_draft) — and 'upgrade_request', the same priced quote the
+    concierge builds (2026-10-31). No web search."""
     persona = PERSONAS.get(persona_id)
     if not persona:
         return {"reply": "", "needs_human_followup": False, "error": "unknown persona"}
@@ -1833,12 +1923,27 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         # click runs it (core/agent_actions). Never run from here.
         if _proposed_name(result):
             return _route_proposal(client_id, persona_id, message, result, reply, state, client)
+        # An upgrade wish is answered HERE with a real priced offer — the same
+        # build as the concierge's — never "go ask in the main chat"
+        upgrade_request = (result.get("upgrade_request") or "").strip()[:400]
+        if upgrade_request:
+            log_step(AGENT_NAME, "upgrade_proposal", f"client {client_id} ({persona_id}): '{upgrade_request}'")
+            try:
+                reply = timed_step(
+                    AGENT_NAME, "upgrade_proposal_build",
+                    lambda: _build_upgrade_proposal(client_id, client, lead, upgrade_request))
+            except Exception as e:
+                return _technical_failure(client_id, persona_id,
+                                          f"{message} [upgrade request: {upgrade_request}]",
+                                          "upgrade_proposal_build", e)
+            return {"reply": reply, "needs_human_followup": False}
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))
     if needs_human_followup:
-        _handoff_alert(client_id, persona_id, message, out_of_scope)
-    # ONLY reply + needs_human_followup leave this function (out_of_scope and
-    # data_topic are read above for routing, never passed on); anything else
-    # is dropped unread
+        return _with_handoff(reply, _handoff_alert(client_id, persona_id, message, out_of_scope,
+                                                   topic=_handoff_topic(result, out_of_scope)))
+    # ONLY reply + needs_human_followup (+ a card) leave this function
+    # (out_of_scope, data_topic and handoff_topic are read above for routing,
+    # never passed on); anything else is dropped unread
     return {"reply": reply, "needs_human_followup": needs_human_followup}

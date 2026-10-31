@@ -134,6 +134,23 @@ def _chosen_package(client_id: int) -> dict:
     return next((p for p in packages if p.get("id") == package_id), {})
 
 
+def step_in_services(step_key: str, services: list) -> bool:
+    """Whether a package's services include this capability step — THE rule
+    (required_connections uses it; agents use it to tell "not in your
+    package" apart from "not connected")."""
+    step = next((s for s in CONNECTION_STEPS if s["key"] == step_key), None)
+    if not step:
+        return False
+    return any(any(token in str(service).strip().lower() for token in step["services"])
+               for service in services or [])
+
+
+def capabilities_outside(services: list) -> list:
+    """The capability steps uallak offers that these services do NOT
+    include — explained and offered as an upgrade, never hidden."""
+    return [s["key"] for s in CONNECTION_STEPS if not step_in_services(s["key"], services)]
+
+
 def required_connections(client_id: int) -> dict:
     """The ordered checklist THIS client must complete, from THEIR package.
 
@@ -156,10 +173,7 @@ def required_connections(client_id: int) -> dict:
 
     steps = []
     for step in CONNECTION_STEPS:
-        needed = builds_site and step["key"] == "website"
-        if not needed:
-            needed = any(any(token in service for token in step["services"])
-                         for service in services)
+        needed = (builds_site and step["key"] == "website") or step_in_services(step["key"], services)
         if needed:
             steps.append({"key": step["key"], "platforms": list(step["platforms"])})
 
@@ -238,6 +252,11 @@ def connection_status(client_id: int) -> dict:
         "done_count": len(done_steps),
         "total_count": len(steps),
         "complete": checklist["resolved"] and not pending and bool(steps),
+        # Capabilities the package doesn't include: their cards say so and
+        # offer adding them through the chat — never silence. Empty when the
+        # package can't be read (nothing is called "not in your plan" then).
+        "not_in_plan": ([s["key"] for s in CONNECTION_STEPS if s["key"] not in {x["key"] for x in steps}]
+                        if checklist["resolved"] else []),
         # False = the purchased package could not be read; callers gating the
         # 90-day clock must fail closed on this (see required_connections).
         "resolved": checklist["resolved"],

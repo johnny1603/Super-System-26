@@ -576,12 +576,40 @@ class Proposals(unittest.TestCase):
         self.assertEqual(cards, [])
         self.assertTrue(any(f"{vr.MAX_MB}MB" in line for line in lines))
 
-    def test_images_and_documents_get_no_fake_card(self):
-        for kind in ("image", "document"):
-            lines, cards = self.run_for(kind, MiB, _state())
-            self.assertEqual(cards, [])
-            self.assertTrue(any("עדיין אין לי פעולה אוטומטית" in line for line in lines))
+    def test_documents_and_unknown_package_images_get_no_fake_card(self):
+        lines, cards = self.run_for("document", MiB, _state())
+        self.assertEqual(cards, [])
+        self.assertTrue(any("עדיין אין לי פעולה אוטומטית" in line for line in lines))
+        # Package unreadable: neither a presenter card nor "not in your package"
+        lines, cards = self.run_for("image", MiB, _state())
+        self.assertEqual(cards, [])
+        self.assertTrue(any("היא שמורה" in line for line in lines))
+        self.assertFalse(any("לא כלולה בחבילה" in line for line in lines))
         self.assertEqual(self.proposed, [])
+
+    def test_photo_with_the_presenter_in_the_package_offers_the_presenter_card(self):
+        state = _state()
+        state["package"] = {"readable": True, "services": ["avatar"], "not_in_package": []}
+        lines, cards = self.run_for("image", MiB, state)
+        self.assertEqual(self.names(), ["create_presenter_from_photos"])
+        self.assertEqual(self.proposed[0][2]["params"], {"photo_ids": ["file123"]})
+        self.assertEqual(len(cards), 1)
+
+    def test_photo_without_the_presenter_in_the_package_offers_the_upgrade(self):
+        state = _state()
+        state["package"] = {"readable": True, "services": ["google ads"], "not_in_package": ["avatar"]}
+        lines, cards = self.run_for("image", MiB, state)
+        self.assertEqual(cards, [])
+        self.assertEqual(self.proposed, [])
+        self.assertTrue(any("לא כלולה בחבילה" in line and "הצעה" in line for line in lines))
+
+    def test_video_with_youtube_and_tiktok_outside_the_package_says_so(self):
+        state = _state(youtube=False, tiktok=False)
+        state["channels"]["by_channel"] = {"youtube": {"status": "not_in_plan"}, "tiktok": {"status": "not_in_plan"}}
+        lines, cards = self.run_for("video", 5 * MiB, state)
+        self.assertEqual(cards, [])
+        self.assertTrue(any("לא כלולים בחבילה" in line for line in lines))
+        self.assertFalse(any("עוד לא מחוברים" in line for line in lines))
 
     def test_finish_logs_the_thread_and_clears_only_this_clients_listing(self):
         LOGGED.clear()

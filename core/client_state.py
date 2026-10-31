@@ -275,6 +275,7 @@ def _media(client_id: int) -> dict:
 
 MEDIA_SUBFOLDERS_READ = 8
 MEDIA_VIDEOS_LISTED = 10
+MEDIA_IMAGES_LISTED = 10
 
 
 def _media_folder(client_id: int) -> dict:
@@ -301,12 +302,19 @@ def _media_folder(client_id: int) -> dict:
         counts[f.get("kind", "file")] = counts.get(f.get("kind", "file"), 0) + 1
     videos = sorted((f for f in files if f.get("kind") == "video"),
                     key=lambda f: f.get("modified_time") or "", reverse=True)
+    images = sorted((f for f in files if f.get("kind") == "image"),
+                    key=lambda f: f.get("modified_time") or "", reverse=True)
     out = {"exists": True, "counts": counts,
            "videos": [{"drive_file_id": v.get("id", ""), "name": v.get("name", ""),
                        "size_mb": round(v["size"] / 1048576, 1) if v.get("size") else None,
                        "uploadable": fits(v.get("size")),
                        "tiktok_uploadable": fits_tiktok(v.get("size"))}
                       for v in videos[:MEDIA_VIDEOS_LISTED]],
+           # The newest images (e.g. photos uploaded in a chat) — what
+           # create_presenter_from_photos is proposed with
+           "images": [{"drive_file_id": i.get("id", ""), "name": i.get("name", ""),
+                       "modified": str(i.get("modified_time") or "")[:10]}
+                      for i in images[:MEDIA_IMAGES_LISTED]],
            "upload_max_mb": VIDEO_UPLOAD_MAX_MB,
            "tiktok_upload_max_mb": TIKTOK_INBOX_MAX_MB,
            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
@@ -320,9 +328,30 @@ def _media_folder(client_id: int) -> dict:
 
 
 def _package(client_id: int) -> dict:
-    from core.client_journey import required_connections
+    """The purchased services, plus the capabilities uallak offers that they
+    do NOT include (`not_in_package`) — so an agent explains those and offers
+    the upgrade instead of acting as if they don't exist. Nothing is listed
+    as outside the package when the package can't be read."""
+    from core.client_journey import capabilities_outside, required_connections
     checklist = required_connections(client_id)
-    return {"readable": bool(checklist.get("resolved")), "services": checklist.get("services") or []}
+    readable = bool(checklist.get("resolved"))
+    services = checklist.get("services") or []
+    return {"readable": readable, "services": services,
+            "not_in_package": capabilities_outside(services) if readable else []}
+
+
+def cached_package(client_id: int) -> dict:
+    """The package section through the snapshot's cache (None-safe: {} when
+    unreadable — then nothing is offered as in or out of the package)."""
+    value, ok = _section(client_id, "package", lambda: _package(client_id), False)
+    return value if ok and value else {}
+
+
+def _team_requests(client_id: int) -> list:
+    """The client's requests to the team and where each stands
+    (core/agent_actions.team_requests_view)."""
+    from core import agent_actions
+    return agent_actions.team_requests_view(client_id)
 
 
 def _site_security(client_id: int) -> dict:
@@ -383,6 +412,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("outreach", lambda: _outreach(client_id))
     take("creative_tools", lambda: _creative_tools(client_id))
     take("voice", lambda: _voice(client_id))
+    take("team_requests", lambda: _team_requests(client_id))
     from core.round2_flags import analytics_enabled
     if analytics_enabled():
         take("website_traffic", lambda: _website_traffic(client_id))

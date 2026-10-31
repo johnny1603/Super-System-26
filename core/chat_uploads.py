@@ -497,8 +497,15 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
                 lines.append(f"לטיוטות בטיקטוק הוא גדול מדי (טיקטוק מקבלת מאיתנו עד {TIKTOK_INBOX_MAX_MB}MB). "
                              f"גרסה קצרה או דחוסה יותר תעבור.")
         if not youtube_ok and not tiktok_ok:
-            lines.append("כרגע אין לי לאן לשלוח אותו: יוטיוב וטיקטוק עוד לא מחוברים אצלך. "
-                         "ברגע שיתחברו, אציע להעלות אותו משם.")
+            cards_by = agent_actions._cards(state)
+            outside = [label for channel, label in (("youtube", "יוטיוב"), ("tiktok", "טיקטוק"))
+                       if (cards_by.get(channel) or {}).get("status") == "not_in_plan"]
+            if len(outside) == 2:
+                lines.append("יוטיוב וטיקטוק לא כלולים בחבילה הנוכחית שלך, אז כרגע אין לי לאן לשלוח אותו. "
+                             "אם תרצו להוסיף אחד מהם — כתבו לי כאן ואכין הצעה מסודרת.")
+            else:
+                lines.append("כרגע אין לי לאן לשלוח אותו: יוטיוב וטיקטוק עוד לא מחוברים אצלך. "
+                             "ברגע שיתחברו, אציע להעלות אותו משם.")
     elif kind == "audio":
         from core import voice_recordings as vr
         lines.append("ההקלטה מופיעה גם ברשימת הקלטות הקול שלך.")
@@ -514,8 +521,23 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
         if not cards and size <= vr.MAX_MB * 1024 * 1024:
             lines.append("כרגע אין לי פעולה נוספת זמינה עבורה.")
     elif kind == "image":
-        lines.append("עדיין אין לי פעולה אוטומטית לתמונה שעולה מהצ'אט — היא שמורה, "
-                     "ואפשר לכתוב לי מה תרצו לעשות איתה.")
+        # A photo can become the client's presenter (avatar_agent's photo
+        # path). In the package → the card, or the ONE card fixing what is
+        # missing (the tool / the likeness consent — the action's prepare
+        # decides); not in the package → say it exists and offer the upgrade.
+        # An unreadable package says neither.
+        media = state.get("media_folder") or {}
+        images = [{"drive_file_id": file_id}] + [i for i in media.get("images") or []
+                                                 if i.get("drive_file_id") != file_id]
+        here = {**state, "media_folder": {**media, "images": images}}
+        in_package = agent_actions._in_package(state, "avatar")
+        if in_package is True:
+            _offer(client_id, persona, "create_presenter_from_photos", {"photo_ids": [file_id]},
+                   here, client, lang, cards, lines)
+        elif in_package is False:
+            lines.append(agent_actions._pick(agent_actions.PRESENTER_NOT_IN_PACKAGE, lang))
+        if not cards and in_package is not False:
+            lines.append("היא שמורה — אפשר לכתוב לי מה תרצו לעשות איתה.")
     else:
         lines.append("המסמך שמור. עדיין אין לי פעולה אוטומטית למסמכים שעולים מהצ'אט — "
                      "אפשר לכתוב לי מה תרצו לעשות איתו.")

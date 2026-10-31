@@ -155,8 +155,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/chat_uploads.py` — "+" / drag-drop upload from any chat window: 8 MiB chunks straight
   into a Drive resumable session (`drive_service.start_resumable/put_chunk/resumable_status`),
   no size limit of ours, type sniffed from the bytes, routed to videos/images/voice/documents,
-  then the window's agent PROPOSES cards (YouTube / TikTok / voice clone) by the real
-  availability rules. Chat windows are resizable (CSS variables only). Picking from the
+  then the window's agent PROPOSES cards (YouTube / TikTok / voice clone / presenter from photos)
+  by the real availability rules. An image → `create_presenter_from_photos` (avatar_agent's
+  photo path, client-approved; its `prepare` answers a missing tool or likeness consent with the
+  ONE `connect_creative_tool` card, and a package without "avatar" with the upgrade line; several
+  uploads grow one card). Chat windows are resizable (CSS variables only). Picking from the
   client's Google Drive / Google Photos needs new OAuth scopes — a LATER verification round,
   deliberately not built. See `docs/CHAT-UPLOADS.md`.
 - `core/client_deletion.py` — admin "מחיקת לקוח": preview → warnings → backup (no secrets) →
@@ -384,6 +387,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   Every chat alert goes through `alert_handoff()` (deduped via a `client_activity`
   `issue_key` row, ISSUE_DEDUP_DAYS-style; prospects dedupe in memory). Don't add a raw
   `agent_alert` or a generic "תקלה" line to a chat path. See `HANDOFF-graceful-chat.md`.
+  **Manager, not switchboard (2026-10-31):** a handoff is only for a licensed-professional or
+  commercial decision (or hand work the client wants now), never for what an action does, and no
+  chat sends the client to another chat. A handoff is REAL: `agent_actions.open_team_request`
+  stores a `team_request` row (code-only, approver admin, 14-day life) → a Control Room
+  "needs attention" item ("טופל" / "לסגור"), a status card in the client's chat, one fixed
+  sentence (`TEAM_REQUEST_OPENED`), and `client_state.team_requests`. Capabilities outside the
+  package are `client_state.package.not_in_package` / `connection_status.not_in_plan` (one rule:
+  `client_journey.step_in_services`) — explained with an upgrade offer, and marked on the
+  dashboard cards. Guarded by `tests/test_concierge_manager.py`.
   **A failed data read never reaches the model** (no error blocks, no "unavailable"
   list, no chat_fallback rows in `recent_activity`). The model labels each message's
   `data_topic`, and code shows the fixed "can't pull that up" line only when that topic's

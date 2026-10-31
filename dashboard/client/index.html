@@ -2617,6 +2617,7 @@ const DASH_I18N = {
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
   action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
   action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
+  action_team_request_open: { he:'סטטוס: פתוח אצל הצוות — נעדכן כאן ברגע שזה טופל.', en:'Status: open with the team — we\'ll update you here as soon as it\'s handled.', fr:'Statut : ouvert auprès de l\'équipe — nous vous tiendrons au courant ici.', ar:'الحالة: مفتوح لدى الفريق — سنبلغكم هنا فور معالجته.', ru:'Статус: открыт у команды — сообщим здесь, как только будет обработан.' },
   action_with_team: { he:'נשלח לצוות לאישור — נעדכן כאן כשזה בוצע.', en:'Sent to the team for approval — we\'ll update you here when it\'s done.', fr:'Envoyé à l\'équipe pour validation — nous vous tiendrons au courant ici.', ar:'أُرسل إلى الفريق للموافقة — سنبلغكم هنا عند التنفيذ.', ru:'Отправлено команде на подтверждение — сообщим здесь, когда будет готово.' },
   action_not_sent: { he:'זה לא הגיע אלינו — נסו שוב בעוד רגע.', en:'That didn\'t reach us — please try again in a moment.', fr:'Cela ne nous est pas parvenu — réessayez dans un instant.', ar:'لم يصلنا ذلك — حاولوا مرة أخرى بعد لحظة.', ru:'Запрос не дошёл — попробуйте ещё раз чуть позже.' },
   chat_error: { he:'נראה שההודעה הזו לא הגיעה אליי — החזרתי אותה לתיבה, אפשר לשלוח שוב.', en:'Looks like that message didn\'t reach me — I put it back in the box so you can send it again.', fr:'On dirait que ce message ne m\'est pas parvenu — je l\'ai remis dans la zone de saisie pour que vous puissiez le renvoyer.', ar:'يبدو أن هذه الرسالة لم تصلني — أعدتها إلى خانة الكتابة لتتمكنوا من إرسالها مجددًا.', ru:'Похоже, это сообщение до меня не дошло — оно снова в поле ввода, можно отправить ещё раз.' },
@@ -2723,6 +2724,8 @@ const DASH_I18N = {
   notice_google_drive_pending: { he:'Google Drive חובר ונוצרה תיקיית uallak ב-Drive שלך. הצוות יעביר אליה את הקבצים הקיימים ויבדוק כל קובץ — לא צריך לעשות כלום.', en:'Google Drive connected and a uallak folder created in your Drive. The team will move your existing files into it and check each one — nothing for you to do.', fr:'Google Drive connecté et dossier uallak créé dans votre Drive. L\'équipe y transférera vos fichiers existants et vérifiera chacun — rien à faire.', ar:'تم ربط Google Drive وإنشاء مجلد uallak في Drive الخاص بك. سينقل الفريق ملفاتك الحالية إليه ويتحقق من كل ملف — لا حاجة لأي إجراء.', ru:'Google Drive подключён, на вашем Drive создана папка uallak. Команда перенесёт туда ваши файлы и проверит каждый — от вас ничего не требуется.' },
   ch_leads: { he:'לידים', en:'Leads', fr:'Leads', ar:'العملاء المحتملون', ru:'Лиды' },
   st_not_in_plan: { he:'לא כלול בחבילה', en:'Not in your plan', fr:'Hors de votre formule', ar:'غير مشمول في باقتك', ru:'Не входит в пакет' },
+  conn_not_in_plan_note: { he:'לא כלול בחבילה הנוכחית שלך — אפשר להוסיף.', en:'Not in your current package — you can add it.', fr:'Pas inclus dans votre formule actuelle — vous pouvez l\'ajouter.', ar:'غير مشمول في باقتك الحالية — يمكن إضافته.', ru:'Не входит в текущий пакет — можно добавить.' },
+  conn_not_in_plan_ask: { he:'לשאול בצ׳אט מה זה כולל', en:'Ask in the chat what it includes', fr:'Demander dans le chat ce que cela comprend', ar:'اسألوا في الدردشة عمّا يشمله', ru:'Спросить в чате, что входит' },
   st_not_in_plan_note: { he:'אפשר להוסיף בכל עת דרך הצ׳אט.', en:'You can add it any time through the chat.', fr:'Vous pouvez l\'ajouter à tout moment via le chat.', ar:'يمكن إضافته في أي وقت عبر الدردشة.', ru:'Можно добавить в любой момент через чат.' },
   st_not_connected: { he:'עוד לא מחובר', en:'Not connected yet', fr:'Pas encore connecté', ar:'غير مرتبط بعد', ru:'Ещё не подключено' },
   st_connected_no_data: { he:'מחובר — עוד אין נתונים', en:'Connected — no data yet', fr:'Connecté — pas encore de données', ar:'مرتبط — لا توجد بيانات بعد', ru:'Подключено — данных пока нет' },
@@ -5450,7 +5453,7 @@ function appendActionCard(personaId, a) {
     row.append(ok, no);
     el.appendChild(row);
   } else if (a.status === 'awaiting_staff') {
-    note.textContent = uallakI18n.t('action_with_team');
+    note.textContent = uallakI18n.t(a.action === 'team_request' ? 'action_team_request_open' : 'action_with_team');
   }
   el.appendChild(note);
   w.msgsEl.appendChild(el);
@@ -5829,8 +5832,39 @@ async function runConnectionFlow(isFirstLogin) {
   if (isFirstLogin) runConnectionNudge();
 }
 
+// A capability outside the package is never just silence: its card says so
+// and offers adding it in the chat (the agent explains it and prepares a
+// priced offer). A card that also serves an in-package step (the AI media
+// tool is both "media" and "avatar") stays as it is.
+function markNotInPlanCards(status) {
+  const outside = status.not_in_plan || [];
+  const inPlan = new Set();
+  (status.expected || []).forEach(key => (CONN_STEP_ANCHOR[key] || []).forEach(id => inPlan.add(id)));
+  document.querySelectorAll('#connGrid .conn-not-in-plan').forEach(n => n.remove());
+  const done = new Set();
+  outside.forEach(key => (CONN_STEP_ANCHOR[key] || []).forEach(id => {
+    if (inPlan.has(id) || done.has(id)) return;
+    const anchor = document.getElementById(id);
+    const card = anchor && anchor.closest('.conn-card');
+    if (!card) return;
+    done.add(id);
+    const note = document.createElement('div');
+    note.className = 'conn-not-in-plan';
+    note.style.cssText = 'font-size:12px;color:var(--gray);margin-top:8px;';
+    note.textContent = uallakI18n.t('conn_not_in_plan_note') + ' ';
+    const ask = document.createElement('button');
+    ask.type = 'button';
+    ask.className = 'conn-help-btn';
+    ask.textContent = uallakI18n.t('conn_not_in_plan_ask');
+    ask.onclick = () => openAgentWindow('general');
+    note.appendChild(ask);
+    card.appendChild(note);
+  }));
+}
+
 function renderConnectionGuide(status) {
   const guide = document.getElementById('connGuide');
+  markNotInPlanCards(status);
   if (!status.expected || !status.expected.length) {
     // Either nothing is required or — more likely — the purchased package
     // couldn't be read. Say nothing rather than implying they're done.
