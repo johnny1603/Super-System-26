@@ -1,23 +1,27 @@
+import contextvars
 import json
+from contextlib import contextmanager
 
 from anthropic import Anthropic
 
+from core.model_routing import TIER_MODELS
+
 DEFAULT_MODEL = "claude-sonnet-4-6"
-# Every CLIENT-FACING chat turn — the words a client reads from their manager
-# or a specialist (concierge, the four personas, the support web-search
-# answer, the interview, the login greeting, feature announcements) — runs on
-# the strong model, so each character actually sounds like itself
-# (2026-11-01; was claude-haiku-5-5 at low effort, purely for cost).
-# Deliverables (proposals, articles, research) stay on DEFAULT_MODEL. One
-# constant each, so either choice is reversible in one line.
-CHAT_TURN_MODEL = "claude-opus-5-5"
+# Chat-turn models come from ONE table (core/model_routing.TIER_MODELS,
+# 2026-11-01). CHAT_TURN_MODEL = the strong tier: the manager, the opening
+# interview, the login greeting, feature announcements and the operator are
+# locked to it; the specialists' turns are routed per turn
+# (model_routing.routed_turn) and land here whenever routing is off.
+# Deliverables (proposals, articles, research) stay on DEFAULT_MODEL.
+CHAT_TURN_MODEL = TIER_MODELS["heavy"]
 CHAT_TURN_EFFORT = "low"          # Opus 5.5 defaults to medium; chat replies are short
 # Room for adaptive thinking (always on for Opus 5.5) PLUS the JSON reply —
 # billed by what is used, not by this ceiling
 CHAT_TURN_MAX_TOKENS = 2000
 # The cheap model, ONLY for internal steps where no personality is involved
-# (classification / filtering — e.g. question_filter). Never for text a client reads.
-CLASSIFY_MODEL = "claude-haiku-5-5"
+# (classification / filtering — e.g. question_filter, the turn router). Never
+# for text a client reads unless the router chose it for a simple turn.
+CLASSIFY_MODEL = TIER_MODELS["simple"]
 
 # Prompt caching (2026-11-01). Every agent's system prompt is passed as
 # blocks: the STATIC part (persona, rules, tool definitions — tools render
@@ -43,6 +47,29 @@ def cached_system(*static_parts: str, dynamic: str = "") -> list:
     if dynamic:
         blocks.append({"type": "text", "text": dynamic})
     return blocks
+
+
+# A turn-level usage collector (core/model_routing logs one row per chat turn
+# with its tokens and cost): every _record inside collect_usage() also lands
+# in the yielded list. Context-local, so concurrent turns never mix.
+_usage_sink = contextvars.ContextVar("claude_usage_sink", default=None)
+
+
+@contextmanager
+def collect_usage():
+    sink = []
+    token = _usage_sink.set(sink)
+    try:
+        yield sink
+    finally:
+        _usage_sink.reset(token)
+
+
+def _collect(model, input_tokens, output_tokens, cache_read, cache_write, ils):
+    sink = _usage_sink.get()
+    if sink is not None:
+        sink.append({"model": model, "input": input_tokens, "output": output_tokens,
+                     "cache_read": cache_read, "cache_write": cache_write, "ils": ils})
 
 
 def usage_tokens(response) -> dict:
@@ -127,6 +154,7 @@ def _record(cost_category, model, input_tokens, output_tokens, client_id,
     try:
         from core.cost_tracker import claude_cost_ils, claude_cost_usd, record_cost
         ils = claude_cost_ils(input_tokens, output_tokens, model, cache_read_tokens, cache_write_tokens)
+        _collect(model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, ils)
         print(f"[claude_cost] {cost_category} model={model} client={client_id} in={input_tokens} "
               f"cache_read={cache_read_tokens} cache_write={cache_write_tokens} out={output_tokens} "
               f"ils={ils}")
@@ -161,7 +189,7 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
 
 
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
-                          client_id=None, cost_category="claude_api", effort=None):
+                          client_id=None, cost_category="claude_api", effort=None, retry_empty=True):
     """Call Claude expecting a JSON object back, guarding against the response
     getting cut off mid-JSON or coming back EMPTY.
 
@@ -181,12 +209,14 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
       ran it (this is the single choke point for JSON LLM calls, so
       instrumenting here covers everything). Pass client_id / cost_category
       where attribution is known.
+    - retry_empty=False: ONE attempt only — for a routed turn, whose retry is
+      one tier UP (core/model_routing), not the same model again.
     """
     client = _client(api_key)
     # effort is optional: only sent when a caller asks (e.g. "low" for chat turns)
     extra = {"output_config": {"effort": effort}} if effort else {}
 
-    attempts = [model, model] + ([DEFAULT_MODEL] if model != DEFAULT_MODEL else [])
+    attempts = ([model, model] + ([DEFAULT_MODEL] if model != DEFAULT_MODEL else [])) if retry_empty else [model]
     raw, response = "", None
     for number, attempt_model in enumerate(attempts, start=1):
         response = _complete(client, system, user_message, max_tokens, attempt_model, extra,
@@ -297,6 +327,7 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
                                        web_search_cost_ils, web_search_cost_usd)
         ils = round(claude_cost_ils(total_input, total_output, model, total_cache_read, total_cache_write)
                     + web_search_cost_ils(total_searches), 4)
+        _collect(model, total_input, total_output, total_cache_read, total_cache_write, ils)
         print(f"[claude_cost] {cost_category} model={model} client={client_id} in={total_input} "
               f"cache_read={total_cache_read} cache_write={total_cache_write} out={total_output} "
               f"searches={total_searches} ils={ils}")

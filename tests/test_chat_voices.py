@@ -58,21 +58,31 @@ class Models(unittest.TestCase):
         self.cj = _src("core", "claude_json.py")
 
     def test_constants(self):
-        self.assertIn('CHAT_TURN_MODEL = "claude-opus-5-5"', self.cj)
+        # The model names live in core/model_routing.TIER_MODELS (2026-11-01)
+        self.assertIn('CHAT_TURN_MODEL = TIER_MODELS["heavy"]', self.cj)
         self.assertIn('CHAT_TURN_EFFORT = "low"', self.cj)
-        self.assertIn('CLASSIFY_MODEL = "claude-haiku-5-5"', self.cj)
+        self.assertIn('CLASSIFY_MODEL = TIER_MODELS["simple"]', self.cj)
         self.assertIn('DEFAULT_MODEL = "claude-sonnet-4-6"', self.cj)       # deliverables unchanged
+        routing = _src("core", "model_routing.py")
+        self.assertIn('"heavy": "claude-opus-5-5"', routing)
+        self.assertIn('"simple": "claude-haiku-5-5"', routing)
 
     def test_every_client_facing_turn_uses_the_chat_model(self):
-        expected = {("agents", "support_agent.py"): 3,      # concierge, web-search answer, persona
-                    ("agents", "interview_agent.py"): 2,    # connection nudge, interview turn
-                    ("agents", "engagement_agent.py"): 2}   # login moment, feature announcement
+        # Fixed on the strong model: the web-search answer, the connection
+        # nudge, the login moment, the feature announcement
+        expected = {("agents", "support_agent.py"): 1,
+                    ("agents", "interview_agent.py"): 1,
+                    ("agents", "engagement_agent.py"): 2}
         for parts, n in expected.items():
             body = _src(*parts)
             self.assertEqual(body.count("model=CHAT_TURN_MODEL"), n, parts)
-        # The JSON turns also carry the effort and the token room for thinking
-        for parts, n in (((("agents", "support_agent.py")), 2), (("agents", "interview_agent.py"), 2),
-                         (("agents", "engagement_agent.py"), 2)):
+        # The turns (manager, specialist, interview) go through model_routing:
+        # the model comes from there, the effort and token room stay
+        for parts, n in ((("agents", "support_agent.py"), 2), (("agents", "interview_agent.py"), 1)):
+            body = re.sub(r"\s+", " ", _src(*parts))
+            self.assertEqual(len(re.findall(r"max_tokens=CHAT_TURN_MAX_TOKENS, model=model, "
+                                            r"effort=CHAT_TURN_EFFORT", body)), n, parts)
+        for parts, n in ((("agents", "interview_agent.py"), 1), (("agents", "engagement_agent.py"), 2)):
             body = re.sub(r"\s+", " ", _src(*parts))
             self.assertEqual(len(re.findall(r"max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL, "
                                             r"effort=CHAT_TURN_EFFORT", body)), n, parts)

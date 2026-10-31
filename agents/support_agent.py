@@ -70,6 +70,7 @@ from agents.client_agent import get_client, get_activity, get_communications, lo
 from agents.onboarding_agent import LANGUAGE_RULE
 from core import automation_service
 from core import manager_identity
+from core import model_routing
 from core.agent_base import agent_alert, log_step, timed_step
 from core import chat_fallback
 from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, cached_system,
@@ -966,10 +967,15 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             # call at the default model.
             # Cached: the rules + the manager line (static per manager); the
             # client's data, history and message stay in user_message.
-            lambda: safe_claude_json_call(cached_system(SYSTEM + manager_line), user_message,
-                                          max_tokens=CHAT_TURN_MAX_TOKENS,
-                                          model=CHAT_TURN_MODEL, effort=CHAT_TURN_EFFORT,
-                                          client_id=client_id, cost_category="claude_support"),
+            # The manager is LOCKED to the strong tier (core/model_routing) —
+            # routed_turn only logs the turn.
+            lambda: model_routing.routed_turn(
+                "manager",
+                lambda model, last_try: safe_claude_json_call(
+                    cached_system(SYSTEM + manager_line), user_message, max_tokens=CHAT_TURN_MAX_TOKENS,
+                    model=model, effort=CHAT_TURN_EFFORT, client_id=client_id,
+                    cost_category="claude_support", retry_empty=last_try),
+                message=message, client_id=client_id),
         )
     except Exception as e:
         # ANY failure — unparseable JSON, but also the API timeouts/overloads
@@ -1884,9 +1890,12 @@ is not "out_of_scope" (below), which is for things nobody at uallak's chat shoul
 Keep replies short: 2-4 sentences, in the client's language (see CLIENT LANGUAGE; Hebrew
 default).
 
+"confidence": "low" only when you are genuinely unsure your reply is right (then a
+stronger colleague answers instead — the client never sees this field); otherwise "high".
+
 Return JSON only:
-{{"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "handoff_topic": "", "data_topic": "", "upgrade_request": "",
+{{"reply": "client-language text", "confidence": "high", "needs_human_followup": true/false,
+ "out_of_scope": true/false, "handoff_topic": "", "data_topic": "", "upgrade_request": "",
  "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
     + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE \
     + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
@@ -1963,13 +1972,16 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
             # needs it); the article draft it may start is a separate
             # pipeline on the default model
             # Cached: the persona prompt (static per persona); the client's
-            # data, history and message stay in the user message.
-            lambda: safe_claude_json_call(cached_system(system),
-                                          json.dumps(payload, ensure_ascii=False, default=str),
-                                          max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL,
-                                          effort=CHAT_TURN_EFFORT,
-                                          client_id=client_id,
-                                          cost_category="claude_support"))
+            # data, history and message stay in the user message. ROUTED
+            # (core/model_routing): the same prompt goes to whichever tier the
+            # turn needs — only `model` changes, never the persona rules.
+            lambda: model_routing.routed_turn(
+                "specialist",
+                lambda model, last_try: safe_claude_json_call(
+                    cached_system(system), json.dumps(payload, ensure_ascii=False, default=str),
+                    max_tokens=CHAT_TURN_MAX_TOKENS, model=model, effort=CHAT_TURN_EFFORT,
+                    client_id=client_id, cost_category="claude_support", retry_empty=last_try),
+                message=message, recent=payload["conversation_history"], client_id=client_id))
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)
 

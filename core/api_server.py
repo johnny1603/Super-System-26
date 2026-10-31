@@ -5988,6 +5988,15 @@ def admin_view_as_exit(request: Request, response: Response):
     response.delete_cookie(admin_view.COOKIE, path="/")
     return {"success": True, "redirect": "/admin/"}
 
+# ─── Model costs: routing + caching per chat turn (core/model_routing) ───────
+# Admin session only. Read-only.
+
+@app.get("/api/admin/model-costs")
+def admin_model_costs(request: Request, days: int = 7):
+    _require_admin(request)
+    from core import model_routing
+    return {"success": True, "data": {"routing": model_routing.summary(days)}}
+
 # ─── The owner's operator (core/operator_agent, docs/OPERATOR.md) ────────────
 # Admin session only — never an admin_view (enter-as-client) route, never a
 # client session. Tier 1 reads + Tier 2 one-tap actions here; Tier 3 (code)

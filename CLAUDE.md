@@ -244,6 +244,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   code (`core/operator_gate`, checked inside operator_changes). Never master, never secrets,
   never `.github/`. Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
   `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
+- `core/model_routing.py` — **the ONE place chat models are named** (`TIER_MODELS` simple/
+  standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: manager + interview locked to
+  heavy). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
+  empty/malformed/low-confidence/error. Flag `MODEL_ROUTING_ENABLED` (operator_flags, default
+  ON; off = all opus). Per-turn log `chat_turn_routes` (migrations/2026-11-01-chat-routing.sql),
+  admin page `/admin/models/`. Prompt caching: `claude_json.cached_system()` — static prompt
+  cached, client data after it. `tests/test_model_routing.py`, `tests/test_prompt_caching.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
   resolved first inside `_require_session` and allowed only for endpoints in

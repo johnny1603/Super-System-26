@@ -12,6 +12,9 @@ round-2 Google flags request OAuth scopes Google has not approved yet): those
 can be switched OFF here as a kill switch, never ON — an ON override for them
 is refused when written AND ignored when read.
 
+A flag listed with `"default": True` (the chat routing switch)
+is ON when its env var is unset — their OFF is the operator's kill switch.
+
 Reads are cached CACHE_SECONDS per instance; an unreadable table means "no
 override" (the environment decides), never an error in the flag's caller.
 """
@@ -27,6 +30,12 @@ _TRUE = ("1", "true", "yes", "on")
 _GOOGLE_ROUND2 = ("הדלקה מבקשת מלקוחות הרשאת Google שעוד לא אושרה בבדיקת Google (סבב 2). "
                   "רק אתה, אחרי אישור Google — docs/GOOGLE-ROUND2.md. כאן אפשר רק לכבות.")
 FLAGS = {
+    # ON unless the env says otherwise — the operator page's OFF is the
+    # instant "everything on the strongest model" switch (core/model_routing)
+    "MODEL_ROUTING_ENABLED": {
+        "label_he": "ניתוב מודלים בצ'אט (מודל זול לשאלות פשוטות). כבוי = הכול על המודל החזק",
+        "can_turn_on": True, "default": True,
+        "note_he": "כיבוי משפיע תוך 30 שניות בכל השרתים."},
     "PRESENTER_VIDEO_ALL_CLIENTS": {
         "label_he": "סרטוני מציג פתוחים לכל הלקוחות (לא רק לחשבונות פנימיים)",
         "can_turn_on": True,
@@ -60,7 +69,11 @@ def _now() -> str:
 
 
 def env_value(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in _TRUE
+    """The env var; unset/empty -> the flag's listed default (False unless listed)."""
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return bool(FLAGS.get(name, {}).get("default", False))
+    return raw in _TRUE
 
 
 def override(name: str):

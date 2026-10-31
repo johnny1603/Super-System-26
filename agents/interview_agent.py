@@ -69,6 +69,7 @@ import os
 from datetime import datetime, timezone
 
 from core import manager_identity
+from core import model_routing
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, ClaudeJSONError,
                                cached_system, safe_claude_json_call)
@@ -383,10 +384,14 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
     try:
         result = timed_step(
             AGENT_NAME, "interview_llm",
-            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
-                                          max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL,
-                                          effort=CHAT_TURN_EFFORT, client_id=client_id,
-                                          cost_category="claude_interview"))
+            # LOCKED to the strong tier (core/model_routing); routed_turn logs it
+            lambda: model_routing.routed_turn(
+                "interview",
+                lambda model, last_try: safe_claude_json_call(
+                    system, json.dumps(payload, ensure_ascii=False), max_tokens=CHAT_TURN_MAX_TOKENS,
+                    model=model, effort=CHAT_TURN_EFFORT, client_id=client_id,
+                    cost_category="claude_interview", retry_empty=last_try),
+                message=message, client_id=client_id))
     except Exception as e:
         # Any failure, not just unparseable JSON — an API timeout used to
         # escape as a 500 and the dashboard silently dropped the interview.

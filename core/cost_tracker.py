@@ -43,6 +43,8 @@ MODEL_PRICES_USD_PER_MTOK = {
     # Classification steps (core/claude_json.CLASSIFY_MODEL) — and every chat
     # turn before 2026-11-01; list price for prompts up to 100K tokens
     "claude-haiku-5-5": (0.10, 0.50),
+    # The standard tier of chat routing (core/model_routing.TIER_MODELS)
+    "claude-sonnet-5-5": (2.00, 10.00),
 }
 CLAUDE_INPUT_USD_PER_MTOK, CLAUDE_OUTPUT_USD_PER_MTOK = MODEL_PRICES_USD_PER_MTOK["claude-sonnet-4-6"]
 # Anthropic web search tool list pricing - a per-search fee on top of the

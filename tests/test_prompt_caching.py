@@ -142,11 +142,10 @@ class CallSites(unittest.TestCase):
     in the user message or the unmarked dynamic block."""
 
     def test_support_concierge_search_persona(self):
-        s = _src("agents", "support_agent.py")
-        self.assertIn("safe_claude_json_call(cached_system(SYSTEM + manager_line), user_message", s)
+        s = " ".join(_src("agents", "support_agent.py").split())
+        self.assertIn("safe_claude_json_call( cached_system(SYSTEM + manager_line), user_message", s)
         self.assertIn("claude_web_search_call(cached_system(SEARCH_SYSTEM + manager_line), search_payload", s)
-        self.assertIn("safe_claude_json_call(cached_system(system),\n"
-                      "                                          json.dumps(payload", s)
+        self.assertIn("safe_claude_json_call( cached_system(system), json.dumps(payload", s)
 
     def test_interview_client_data_is_outside_the_cached_part(self):
         s = _src("agents", "interview_agent.py")

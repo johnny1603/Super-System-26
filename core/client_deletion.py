@@ -59,6 +59,7 @@ DATA_TABLES = (
     ("landing_pages", True),
     ("admin_agent_chat", True),
     ("client_target_keywords", True),
+    ("chat_turn_routes", True),
     ("login_codes", False),
 )
 

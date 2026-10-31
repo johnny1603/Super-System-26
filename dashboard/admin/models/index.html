@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — עלויות מודלים</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* Model costs per chat turn (core/model_routing). Admin session only — the
+   API answers 401 without it. Read-only. */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
+  --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:760px; margin:0 auto; padding:0 16px 60px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.muted { color:var(--gray); font-size:13px; }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.kpi { background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:12px; }
+.kpi b { display:block; font-size:22px; font-weight:900; margin-top:4px; font-variant-numeric:tabular-nums; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; }
+th { color:var(--gray); font-weight:500; font-size:13px; }
+.bar { height:6px; border-radius:6px; background:var(--accent); margin-top:4px; }
+select { font-family:inherit; font-size:14px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:8px 10px; }
+.badge { display:inline-block; font-size:12px; padding:2px 9px; border-radius:100px; background:var(--panel-2); border:1px solid var(--border); }
+.badge.ok { color:var(--green); } .badge.warn { color:var(--yellow); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · עלויות מודלים</div>
+  <a href="/admin/">← לניהול</a>
+</div>
+<div class="wrap">
+  <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <h2 style="margin:0">תורות צ'אט</h2>
+      <label class="muted">תקופה
+        <select id="days"><option value="1">יום</option><option value="7" selected>7 ימים</option><option value="30">30 ימים</option></select>
+      </label>
+    </div>
+    <div id="routing" class="muted" style="margin-top:10px;">טוען…</div>
+  </div>
+</div>
+<script>
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ils = n => "₪" + Number(n || 0).toFixed(3);
+const TIER_HE = {simple: "פשוט", standard: "רגיל", heavy: "כבד"};
+
+function renderRouting(r) {
+  const el = document.getElementById("routing");
+  if (!r.table_ready) {
+    el.innerHTML = "טבלת הלוג עוד לא קיימת — להריץ את migrations/2026-11-01-chat-routing.sql ב-Supabase.";
+    return;
+  }
+  const rows = ["simple", "standard", "heavy"].map(t => {
+    const x = r.tiers[t];
+    return `<tr><td>${TIER_HE[t]}<div class="muted">${esc(x.model)}</div></td><td>${x.turns}</td>
+      <td>${x.pct}%<div class="bar" style="width:${Math.min(100, x.pct)}%"></div></td>
+      <td>${ils(x.cost_per_turn_ils)}</td><td>${ils(x.cost_ils)}</td></tr>`;
+  }).join("");
+  el.className = "";
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="muted">תורות</span><b>${r.turns}</b></div>
+      <div class="kpi"><span class="muted">עלות ממוצעת לתור</span><b>${ils(r.cost_per_turn_ils)}</b></div>
+      <div class="kpi"><span class="muted">שיעור הסלמה</span><b>${r.escalation_rate_pct}%</b></div>
+      <div class="kpi"><span class="muted">פגיעות מטמון (cache)</span><b>${r.cache_hit_rate_pct}%</b></div>
+    </div>
+    <div style="margin-top:12px;">ניתוב: ${r.routing_enabled ? '<span class="badge ok">פעיל</span>'
+      : '<span class="badge warn">כבוי — הכול על המודל החזק</span>'}</div>
+    <table style="margin-top:12px;"><thead><tr><th>רמה</th><th>תורות</th><th>% מהתורות</th><th>עלות לתור</th><th>סה"כ</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="muted" style="margin-top:8px;">כולל את עלות המסווג. נעולים (מנהל, ראיון פתיחה) תמיד ברמה "כבד".</div>`;
+}
+
+async function load() {
+  const days = document.getElementById("days").value;
+  const res = await fetch("/api/admin/model-costs?days=" + encodeURIComponent(days), {credentials: "same-origin"});
+  if (res.status === 401) { document.getElementById("authNote").style.display = "block"; return; }
+  const body = await res.json();
+  renderRouting(body.data.routing);
+}
+document.getElementById("days").addEventListener("change", load);
+load().catch(() => { document.getElementById("routing").textContent = "הטעינה נכשלה. אפשר לרענן."; });
+</script>
+</body>
+</html>
