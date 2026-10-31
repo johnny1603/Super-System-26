@@ -539,7 +539,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   browser mark (`favicon.svg` + `favicon.png` + `apple-touch-icon.png`, the wordmark's
   lowercase "u" in `#FF4C1F` on `#0D0D0D`). All seven pages carry the same three `<link>`
   tags; the generated `/lp/` client landing pages deliberately do not — those are the
-  CLIENT's brand, not ours.
+  CLIENT's brand, not ours. `uallak-bg.js` + `uallak-bg.css` = the animated triangle
+  background, loaded ONLY by the dashboard, landing, login and sales chat (never admin /
+  Control Room): a fixed `z-index:-1`, `pointer-events:none` layer, so nothing on a page may
+  give `<html>` a background or it disappears. Tuned values, DPR ≤ 2, stops on a hidden tab,
+  12 shards under 640 px, a still frame under reduced motion — `tests/test_background.py`.
 
 ## Conventions
 
