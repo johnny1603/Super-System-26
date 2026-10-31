@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — המפעיל</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* The owner's operator (core/operator_agent, docs/OPERATOR.md). Admin session
+   only — every /api/admin/operator/* route answers 401 without it. Phone first. */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --accent-dim: rgba(255,76,31,0.12); --white: #F7F4EF; --gray: #8A8A85;
+  --border: rgba(255,255,255,0.08); --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:760px; margin:0 auto; padding:0 16px 140px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); position:sticky; top:0; z-index:5; }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.muted { color:var(--gray); font-size:13px; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+.btn { font-family:inherit; font-size:14px; font-weight:700; border-radius:10px; padding:11px 16px; border:0; cursor:pointer;
+  background:var(--panel-2); color:var(--white); border:1px solid var(--border); min-height:44px; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.danger { background:var(--red); border-color:var(--red); color:#fff; }
+.btn:disabled { opacity:.45; cursor:default; }
+.badge { display:inline-block; font-size:12px; padding:2px 9px; border-radius:100px; background:var(--panel-2); border:1px solid var(--border); }
+.badge.ok { color:var(--green); } .badge.warn { color:var(--yellow); } .badge.bad { color:var(--red); }
+.banner { background:rgba(255,59,59,.12); border:1px solid var(--red); border-radius:14px; padding:14px; margin-top:14px; }
+.msg { margin-top:12px; padding:12px 14px; border-radius:14px; white-space:pre-wrap; word-wrap:break-word; line-height:1.55; }
+.msg.owner { background:var(--accent-dim); border:1px solid rgba(255,76,31,.35); margin-right:12%; }
+.msg.operator { background:var(--panel); border:1px solid var(--border); margin-left:6%; }
+.msg.report { border-color:rgba(0,201,110,.4); }
+.sub { margin-top:10px; padding:10px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border); white-space:normal; }
+.sub ul, .sub ol { margin:6px 20px 0 0; }
+pre.diff { direction:ltr; text-align:left; font:12px/1.45 ui-monospace,Consolas,monospace; background:#0a0a0a; padding:10px;
+  border-radius:8px; overflow-x:auto; max-height:420px; margin-top:8px; white-space:pre; }
+pre.diff .a { color:#7be3a7; } pre.diff .d { color:#ff8b8b; } pre.diff .h { color:#8ab4ff; }
+details summary { cursor:pointer; color:var(--gray); font-size:13px; margin-top:8px; }
+input.code { font-family:inherit; font-size:20px; letter-spacing:6px; width:9.5em; text-align:center; padding:9px;
+  border-radius:10px; border:1px solid var(--border); background:#0a0a0a; color:var(--white); direction:ltr; }
+.composer { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(0deg,#0D0D0D 70%,rgba(13,13,13,0)); padding:14px 16px 16px; z-index:6; }
+.composer .inner { max-width:760px; margin:0 auto; display:flex; gap:8px; align-items:flex-end; }
+.composer textarea { flex:1; min-width:0; font-family:inherit; font-size:15px; resize:none; height:52px; max-height:160px; padding:13px;
+  border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--white); }
+.thinking { color:var(--gray); font-size:13px; margin-top:12px; display:none; }
+.result { font-size:13px; margin-top:8px; white-space:pre-wrap; word-wrap:break-word; }
+.small-pre { direction:ltr; text-align:left; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-word; max-height:220px; overflow:auto; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · המפעיל</div>
+  <a href="/admin/">← לניהול</a>
+</div>
+<div class="wrap">
+  <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+  <div id="banner"></div>
+  <div class="card" id="statusCard"><h2>הייצור עכשיו</h2><div class="muted">טוען…</div></div>
+  <div id="log"></div>
+  <div class="thinking" id="thinking">המפעיל בודק — לוגים, גרסאות, התראות… (עד כ-3 דקות)</div>
+  <div class="card"><details id="moreBox"><summary>שינויי קוד, מתגים ויומן פעולות</summary>
+    <div id="changes"></div><div id="flags"></div><div id="audit"></div></details></div>
+</div>
+<div class="composer"><div class="inner">
+  <textarea id="input" placeholder="מה קרה? למשל: האתר לא עולה / לקוח 12 אומר שהלידים הפסיקו" aria-label="הודעה למפעיל"></textarea>
+  <button class="btn primary" id="send" aria-label="שליחה">שלח</button>
+</div></div>
+<script>
+const API = '/api/admin/operator';
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+async function call(path, opts) {
+  const r = await fetch(API + path, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } }, opts || {}));
+  if (r.status === 401) { $('authNote').style.display = 'block'; throw new Error('auth'); }
+  let body = {}; try { body = await r.json(); } catch (e) {}
+  if (!r.ok) { const d = body.detail || {}; throw new Error((d.code || ('HTTP ' + r.status)) + (d.detail ? ' — ' + d.detail : '')); }
+  return body.data;
+}
+const post = (path, data) => call(path, { method: 'POST', body: JSON.stringify(data || {}) });
+function when(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return iso; } }
+const ERR_HE = {
+  ERR_GATE_WRONG: 'קוד שגוי', ERR_GATE_EXPIRED: 'הקוד פג תוקף או כבר נוצל — בקש קוד חדש', ERR_GATE_LOCKED: 'יותר מדי ניסיונות — בקש קוד חדש',
+  ERR_GATE_MISMATCH: 'הקוד לא שייך לפעולה הזו או לחלון הזה', ERR_GATE_DISABLED: 'שלב 3 כבוי (חסרות הגדרות)',
+  ERR_TESTS_FAILED: 'הבדיקות נכשלו ב-PR — לא ממזג', ERR_TESTS_PENDING: 'הבדיקות עוד רצות — נסה שוב בעוד דקה',
+  ERR_PR_CHANGED: 'מישהו דחף ל-PR אחרי שביקשת אישור — בקש קוד חדש', ERR_MASTER_MOVED: 'master השתנה מתחת לשינוי — בקש מהמפעיל להציע מחדש',
+  ERR_OWNER_TAP_ONLY: 'רק בלחיצה שלך', ERR_NO_PREVIOUS_REVISION: 'אין גרסה קודמת מוכנה', ERR_FLAG_OWNER_ONLY: 'את זה אפשר רק לכבות מכאן',
+  ERR_MESSAGE_TRUNCATED: 'ההודעה נשמרה מקוצרת (לפני 1.11) — לא שולח שוב', ERR_AUDIT_UNAVAILABLE: 'יומן הפעולות לא זמין — לא בוצע כלום'
+};
+function errText(e) { const code = String(e.message || e).split(' — ')[0]; return '⚠ ' + (ERR_HE[code] || e.message || e); }
+
+// ─── Status + one-tap rollback ───────────────────────────────────────────────
+async function runAction(name, params, btn, out) {
+  btn.disabled = true; out.textContent = 'מבצע…';
+  try {
+    const d = await post('/actions/' + name, { params: params || {} });
+    out.textContent = '✓ בוצע. ' + summarize(d.result) + (d.undo_he ? '\nביטול: ' + d.undo_he : '');
+    loadStatus(); loadMore();
+  } catch (e) { out.textContent = errText(e); btn.disabled = false; }
+}
+function summarize(r) {
+  if (!r) return '';
+  if (r.to) return (r.done ? 'התנועה עברה ל-' : 'נשלח, עוד מתעדכן: ') + r.to + ' (מ-' + r.from + ')';
+  if (r.flag) return r.flag + ': ' + (r.after ? 'פעיל' : 'כבוי');
+  if ('sent' in r) return r.sent ? 'נשלח' : 'השליחה נכשלה שוב';
+  if (r.platform) return r.platform + ': ' + r.state;
+  return JSON.stringify(r).slice(0, 300);
+}
+async function loadStatus() {
+  const card = $('statusCard'), banner = $('banner');
+  let d; try { d = await call('/status'); } catch (e) { card.lastChild.textContent = errText(e); return; }
+  card.textContent = ''; card.appendChild(el('h2', null, 'הייצור עכשיו'));
+  banner.textContent = '';
+  const c = d.cloud || {};
+  if (c.error) {
+    card.appendChild(el('div', 'muted', 'אין גישה ל-Cloud Run מהשרת (' + c.error + '). מה שצריך: bash scripts/setup_operator.sh ב-Cloud Shell.'));
+  } else {
+    const s = c.serving || {};
+    const line = el('div');
+    line.appendChild(el('span', 'badge ' + (s.pinned ? 'warn' : 'ok'), s.pinned ? 'נעוץ לגרסה (אחרי חזרה אחורה)' : 'גרסה אחרונה'));
+    line.appendChild(document.createTextNode(' ' + (s.revision || '?')));
+    card.appendChild(line);
+    card.appendChild(el('div', 'muted', 'עלתה: ' + when(c.serving_since) + ' · קומיט: ' + (c.running_commit ? c.running_commit.slice(0, 7) : 'לא ידוע (פריסה ידנית)')));
+    const w = c.watch || {};
+    if (w.recent_deploy) card.appendChild(el('div', 'muted', 'פריסה טרייה — שגיאות מאז: ' + (w.errors == null ? '?' : w.errors)));
+    const row = el('div', 'row'), out = el('div', 'result');
+    const prev = (c.previous || {}).name;
+    if (prev) {
+      const b = el('button', 'btn' + (w.suspicious ? ' danger' : ''), '↩ חזרה לגרסה הקודמת (' + prev + ')');
+      b.onclick = () => runAction('rollback', { revision: prev }, b, out); row.appendChild(b);
+    }
+    if (s.pinned) { const b = el('button', 'btn primary', '→ חזרה לגרסה האחרונה'); b.onclick = () => runAction('restore_latest', {}, b, out); row.appendChild(b); }
+    card.appendChild(row); card.appendChild(out);
+    if (w.suspicious && prev) {
+      const bn = el('div', 'banner');
+      bn.appendChild(el('div', null, '⚠ הגרסה שעלתה ב-' + when(w.deployed_at) + ' מייצרת שגיאות (' + w.errors + '). חזרה לגרסה הקודמת היא לחיצה אחת והפיכה.'));
+      const r2 = el('div', 'row'), o2 = el('div', 'result'), b2 = el('button', 'btn danger', '↩ חזור עכשיו ל-' + prev);
+      b2.onclick = () => runAction('rollback', { revision: prev }, b2, o2); r2.appendChild(b2); bn.appendChild(r2); bn.appendChild(o2);
+      banner.appendChild(bn);
+    }
+  }
+  const t3 = d.tier3 || {};
+  card.appendChild(el('div', 'muted', t3.ok
+    ? 'שינויי קוד: פעילים · קודי אישור נשלחים ל-' + t3.sent_to
+    : 'שינויי קוד: כבויים — חסר: ' + (t3.missing || []).join(', ') + (d.github_configured ? '' : ', OPERATOR_GITHUB_TOKEN')));
+  renderChanges(d.changes || []); renderFlags(d.flags || []);
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+function renderMessage(m) {
+  const box = el('div', 'msg ' + (m.role === 'owner' ? 'owner' : 'operator') + (m.kind === 'report' ? ' report' : ''), m.content);
+  (m.cards || []).forEach(c => { const n = renderCard(c); if (n) box.appendChild(n); });
+  $('log').appendChild(box);
+  return box;
+}
+function renderCard(c) {
+  if (c.type === 'action') {
+    const s = el('div', 'sub'); s.appendChild(el('div', null, '🔘 ' + c.label_he));
+    if (c.reason_he) s.appendChild(el('div', 'muted', c.reason_he));
+    const row = el('div', 'row'), out = el('div', 'result'), b = el('button', 'btn primary', 'בצע עכשיו');
+    b.onclick = () => runAction(c.action, c.params, b, out); row.appendChild(b);
+    s.appendChild(row); s.appendChild(out); s.appendChild(el('div', 'muted', 'ביטול: ' + c.undo_he)); return s;
+  }
+  if (c.type === 'done') { const s = el('div', 'sub'); s.appendChild(el('div', null, '✓ ' + c.label_he)); s.appendChild(el('div', 'small-pre', summarize(c.result))); return s; }
+  if (c.type === 'report') return null;     // stored as its own message
+  if (c.type === 'change') return renderChange(c.change);
+  return null;
+}
+function diffPre(text) {
+  const pre = el('pre', 'diff');
+  String(text || '').split('\n').forEach(line => {
+    const cls = line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@') ? 'h' : line.startsWith('+') ? 'a' : line.startsWith('-') ? 'd' : null;
+    pre.appendChild(el('span', cls, line + '\n'));
+  });
+  return pre;
+}
+const STATUS_HE = { proposed: 'הוצע — לא נדחף לשום מקום', pr_open: 'PR פתוח — ממתין לאישור מיזוג ופריסה', merged: 'מוזג',
+  deploying: 'בפריסה…', deployed: 'נפרס ✓', deploy_failed: 'הפריסה נכשלה' };
+function renderChange(ch) {
+  const s = el('div', 'sub'); s.dataset.change = ch.id;
+  s.appendChild(el('div', null, '🧩 שינוי קוד #' + ch.id + ': ' + ch.title));
+  s.appendChild(el('div', 'muted', STATUS_HE[ch.status] || ch.status));
+  if (ch.what_he) s.appendChild(el('div', null, 'מה משתנה: ' + ch.what_he));
+  if (ch.why_he) s.appendChild(el('div', null, 'למה: ' + ch.why_he));
+  s.appendChild(el('div', 'muted', 'קבצים: ' + (ch.files || []).join(', ')));
+  if (ch.pr_url) { const a = el('a', null, 'ה-PR ב-GitHub ←'); a.href = ch.pr_url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--accent)'; s.appendChild(a); }
+  const det = el('details'); det.appendChild(el('summary', null, 'ה-diff המלא')); det.appendChild(diffPre(ch.diff)); s.appendChild(det);
+  const out = el('div', 'result'), row = el('div', 'row');
+  const step = ch.status === 'proposed' ? ['open_pr', 'אשר: פתח ענף ו-PR', '/open-pr'] : ch.status === 'pr_open' ? ['merge_deploy', 'אשר: מזג ופרוס לייצור', '/merge-deploy'] : null;
+  if (step) {
+    const b = el('button', 'btn primary', step[1] + ' (קוד במייל)');
+    b.onclick = async () => {
+      b.disabled = true; out.textContent = 'שולח קוד…';
+      try {
+        const g = await post('/changes/' + ch.id + '/request-code', { step: step[0] });
+        out.textContent = 'נשלח קוד ל-' + g.sent_to + ' (בתוקף ' + g.expires_in_minutes + ' דקות). הקלד אותו:';
+        const r2 = el('div', 'row'), inp = el('input', 'code'); inp.inputMode = 'numeric'; inp.maxLength = 6; inp.autocomplete = 'one-time-code';
+        inp.setAttribute('aria-label', 'קוד אישור');
+        const ok = el('button', 'btn primary', 'אשר');
+        ok.onclick = async () => {
+          ok.disabled = true;
+          try { const res = await post('/changes/' + ch.id + step[2], { gate_id: g.gate_id, code: inp.value.trim() });
+                s.replaceWith(renderChange(res)); loadMore(); }
+          catch (e) { out.textContent = errText(e); ok.disabled = false; }
+        };
+        r2.appendChild(inp); r2.appendChild(ok); s.appendChild(r2); inp.focus();
+      } catch (e) { out.textContent = errText(e); b.disabled = false; }
+    };
+    row.appendChild(b);
+  }
+  if (ch.status === 'deploying') {
+    const b = el('button', 'btn', 'בדוק סטטוס פריסה');
+    b.onclick = async () => { try { s.replaceWith(renderChange(await call('/changes/' + ch.id))); loadStatus(); } catch (e) { out.textContent = errText(e); } };
+    row.appendChild(b);
+  }
+  if (ch.deploy_run && ch.deploy_run.url) { const a = el('a', null, 'ריצת הפריסה ←'); a.href = ch.deploy_run.url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--accent)'; row.appendChild(a); }
+  s.appendChild(row); s.appendChild(out);
+  return s;
+}
+async function loadHistory() {
+  let rows; try { rows = await call('/messages'); } catch (e) { return; }
+  $('log').textContent = '';
+  if (!rows.length) $('log').appendChild(el('div', 'msg operator', 'כאן מדווחים לי על בעיה, ואני בודק: גרסאות ופריסות, לוגים, התראות, מצב לקוח, קוד וקומיטים — ואומר מה מצאתי, מה הסיבה ומה הראיות.'));
+  rows.forEach(renderMessage);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+async function send() {
+  const text = $('input').value.trim(); if (!text) return;
+  $('input').value = ''; $('send').disabled = true; $('thinking').style.display = 'block';
+  renderMessage({ role: 'owner', content: text, cards: [] });
+  window.scrollTo(0, document.body.scrollHeight);
+  try {
+    const d = await post('/ask', { message: text });
+    const m = renderMessage({ role: 'operator', content: d.reply, cards: d.cards });
+    (d.cards || []).filter(c => c.type === 'report').forEach(c => renderMessage({ role: 'operator', kind: 'report', content: reportText(c.report), cards: [] }));
+    m.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    loadStatus();
+  } catch (e) {
+    // A dropped phone connection doesn't lose the answer: it is stored server-side
+    renderMessage({ role: 'operator', content: errText(e) + '\nאם החיבור נפל — התשובה נשמרת; רענן בעוד דקה.', cards: [] });
+  }
+  $('send').disabled = false; $('thinking').style.display = 'none';
+}
+function reportText(r) {
+  const lines = ['📋 ' + (r.title || ''), '', r.summary_he || '', '', 'סיבה משוערת: ' + (r.cause_he || '')];
+  if ((r.evidence || []).length) lines.push('', 'ראיות:', ...r.evidence.map(e => '• ' + e));
+  if (r.next_he) lines.push('', 'הלאה: ' + r.next_he);
+  if ((r.owner_steps || []).length) lines.push('', 'מה רק אתה יכול לעשות:', ...r.owner_steps.map((s, i) => (i + 1) + '. ' + s));
+  return lines.join('\n');
+}
+
+// ─── Changes / flags / audit ─────────────────────────────────────────────────
+function renderChanges(list) {
+  const box = $('changes'); box.textContent = '';
+  box.appendChild(el('h2', null, 'שינויי קוד אחרונים')).style.marginTop = '12px';
+  if (!list.length) box.appendChild(el('div', 'muted', 'אין.'));
+  list.forEach(ch => box.appendChild(renderChange(ch)));
+}
+function renderFlags(flags) {
+  const box = $('flags'); box.textContent = '';
+  box.appendChild(el('h2', null, 'מתגים')).style.marginTop = '16px';
+  flags.forEach(f => {
+    const s = el('div', 'sub');
+    s.appendChild(el('div', null, f.label_he + ' — ' + (f.effective ? 'פעיל' : 'כבוי') + (f.override === null ? ' (ברירת מחדל)' : ' (עקיפה)')));
+    s.appendChild(el('div', 'muted', f.name + ' · ' + f.note_he));
+    const row = el('div', 'row'), out = el('div', 'result');
+    [['on', 'הדלק'], ['off', 'כבה'], ['default', 'ברירת מחדל']].forEach(([st, label]) => {
+      const b = el('button', 'btn', label); if (st === 'on' && !f.can_turn_on) b.disabled = true;
+      b.onclick = () => runAction('flip_flag', { flag: f.name, state: st }, b, out); row.appendChild(b);
+    });
+    s.appendChild(row); s.appendChild(out); box.appendChild(s);
+  });
+}
+async function loadMore() {
+  const box = $('audit');
+  let d; try { d = await call('/audit'); } catch (e) { return; }
+  box.textContent = '';
+  if ((d.failed_notifications || []).length) {
+    box.appendChild(el('h2', null, 'התראות WhatsApp שנכשלו')).style.marginTop = '16px';
+    d.failed_notifications.forEach(n => {
+      const s = el('div', 'sub'); s.appendChild(el('div', null, 'לקוח ' + n.client_id + ' · ' + when(n.at)));
+      s.appendChild(el('div', 'muted', n.preview));
+      const row = el('div', 'row'), out = el('div', 'result'), b = el('button', 'btn', 'שלח שוב');
+      if (!n.resendable) { b.disabled = true; out.textContent = 'נשמרה מקוצרת — לא ניתן לשלוח שוב'; }
+      b.onclick = () => runAction('resend_notification', { activity_id: n.id }, b, out);
+      row.appendChild(b); s.appendChild(row); s.appendChild(out); box.appendChild(s);
+    });
+  }
+  box.appendChild(el('h2', null, 'יומן פעולות')).style.marginTop = '16px';
+  const pre = el('div', 'small-pre');
+  pre.textContent = (d.audit || []).map(a => a.entry).join('\n') || 'ריק.';
+  box.appendChild(pre);
+}
+
+$('send').onclick = send;
+$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+$('moreBox').addEventListener('toggle', () => { if ($('moreBox').open) loadMore(); });
+loadStatus(); loadHistory();
+setInterval(loadStatus, 60000);
+</script>
+</body>
+</html>

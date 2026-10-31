@@ -4,28 +4,28 @@ routes answer 404, their cards and chat actions are never offered, and no
 round-2 API is called. Round 1's scope lists (sign-in, Ads, YouTube, Tag
 Manager) do not depend on these at all.
 
-Read from the environment at call time (no restart-time caching), stdlib
-only so any module and any test can ask cheaply.
+Read from the environment at call time (no restart-time caching). The
+operator (core/operator_flags) can switch any of these OFF as a kill switch —
+never ON: an ON override is refused and ignored, because ON requests Google
+scopes that only the owner can get approved.
 """
-import os
-
-_TRUE = ("1", "true", "yes", "on")
+from core.operator_flags import enabled as _enabled
 
 
 def gmail_send_enabled() -> bool:
-    return os.environ.get("GMAIL_SEND_ENABLED", "").strip().lower() in _TRUE
+    return _enabled("GMAIL_SEND_ENABLED")
 
 
 def search_console_enabled() -> bool:
-    return os.environ.get("SEARCH_CONSOLE_ENABLED", "").strip().lower() in _TRUE
+    return _enabled("SEARCH_CONSOLE_ENABLED")
 
 
 def analytics_enabled() -> bool:
     """analytics.readonly — GA4 site traffic (core/analytics_service)."""
-    return os.environ.get("ANALYTICS_ENABLED", "").strip().lower() in _TRUE
+    return _enabled("ANALYTICS_ENABLED")
 
 
 def drive_file_enabled() -> bool:
     """drive.file — the client's files in their OWN Google Drive
     (core/drive_file_service, core/drive_storage)."""
-    return os.environ.get("DRIVE_FILE_ENABLED", "").strip().lower() in _TRUE
+    return _enabled("DRIVE_FILE_ENABLED")

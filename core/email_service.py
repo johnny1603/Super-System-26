@@ -600,14 +600,40 @@ def send_account_transferred(client_email: str, client_name: str,
     )
 
 
-def _send(msg, to_email):
+def send_operator_code(to_email: str, code: str, summary_he: str, minutes: int) -> bool:
+    """The operator's Tier 3 approval code (core/operator_gate). The email
+    names exactly what the code approves, so a code that arrives for
+    something the owner didn't ask for is a visible warning sign. True only
+    when the mail server accepted it — the gate needs to know."""
+    from html import escape
+    html = f"""
+    <div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;">
+      <h2>🔐 קוד אישור — המפעיל של uallak</h2>
+      <p>הקוד מאשר <strong>רק</strong> את הפעולה הזו:</p>
+      <p style="background:#f4f4f4;padding:10px;border-radius:6px;">{escape(summary_he)}</p>
+      <p style="font-size:28px;letter-spacing:6px;font-weight:bold;">{code}</p>
+      <p>בתוקף {int(minutes)} דקות, לשימוש אחד, ורק בחלון הדשבורד שביקש אותו.</p>
+      <p style="color:#a00;">לא ביקשת קוד כזה? מישהו מחזיק בסיסמת הניהול — החלף את ADMIN_PASSWORD עכשיו.</p>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = "🔐 uallak — קוד אישור לפעולת קוד/פריסה"
+    msg['From'] = GMAIL_USER
+    msg['To'] = to_email
+    msg.attach(MIMEText(html, 'html'))
+    return _send(msg, to_email)
+
+
+def _send(msg, to_email) -> bool:
     if not GMAIL_APP_PASSWORD:
         print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")
-        return
+        return False
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_USER, to_email, msg.as_string())
         print(f"✅ מייל נשלח ל-{to_email}")
+        return True
     except Exception as e:
         print(f"❌ שגיאה בשליחת מייל: {e}")
+        return False

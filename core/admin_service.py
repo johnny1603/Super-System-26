@@ -373,7 +373,8 @@ def get_settings() -> dict:
         # (drive_usage: last Shared-Drive size status, for alert-on-change)
         if str(row["key"]).startswith(("client_settings:", "client_deletion:", "bulk_delete:",
                                        "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
-                                       "creative_tools:", "drive_storage:", "drive_usage:")):
+                                       "creative_tools:", "drive_storage:", "drive_usage:",
+                                       "flag_override:", "operator_gate:", "operator_change:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

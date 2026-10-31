@@ -232,6 +232,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   client), `client_state.site_security` for agents (ACCOUNT_STATE_RULE: never call a site safe),
   admin action `rotate_wordpress_password` (`website_agent.rotate_stored_password`: mint →
   verify → store → revoke old). InstaWP has no documented PHP-version API — manual runbook.
+- `core/operator_agent.py` — **the owner's operator** (`/admin/operator/`, admin session only,
+  never on a client surface). Tier 1 reads (`core/cloud_ops` revisions/logs via the runtime SA,
+  alerts, client_state, Control Room, `core/operator_github` history/CI, the deployed code) →
+  Hebrew diagnosis + report; Tier 2 (`core/operator_actions`, audited to `alerts` source
+  `operator` BEFORE running, fail closed): health check / token refresh / cache clear by the
+  agent, rollback / restore / flags (`core/operator_flags`: app_settings override; round-2
+  Google flags OFF only) / WhatsApp re-send only on the owner's tap; Tier 3
+  (`core/operator_changes`): proposal → PR on `operator/<id>` → merge+deploy
+  (`.github/workflows/deploy.yml`, dispatch only, WIF), EACH step behind an emailed one-time
+  code (`core/operator_gate`, checked inside operator_changes). Never master, never secrets,
+  never `.github/`. Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
+  `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
   resolved first inside `_require_session` and allowed only for endpoints in

@@ -1,0 +1,73 @@
+name: Deploy to Cloud Run
+run-name: Deploy ${{ inputs.sha }}
+
+# Deploys ONE commit that is already on master — started only on request:
+# by the operator after the owner's merge+deploy approval (emailed code), or
+# by the owner by hand ("Run workflow" in the GitHub app). Never on push.
+#
+# Auth: Workload Identity Federation (no key file) as the dedicated deployer
+# service account. The provider only trusts THIS workflow file on master of
+# this repo (scripts/setup_operator.sh). The repo variables GCP_WIF_PROVIDER
+# and GCP_DEPLOY_SA come from that script's output.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full commit SHA on master to deploy"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Add yourself as a required reviewer of this environment in the repo
+    # settings for one more approval, on GitHub's side (docs/OPERATOR.md)
+    environment: production
+    env:
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: The input must be a full commit SHA
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "not a full commit SHA"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: The commit must be on master
+        run: |
+          git fetch --no-tags origin master
+          git merge-base --is-ancestor "$SHA" origin/master || { echo "commit is not on master"; exit 1; }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        run: python -I -B scripts/run_tests.py
+
+      - name: Stamp the build with its commit (core/cloud_ops.running_commit)
+        run: echo "$SHA" > BUILD_COMMIT
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        run: |
+          gcloud run deploy super-system --source . --region me-west1 --platform managed \
+            --port 8080 --memory 512Mi --quiet
+          # A rollback pins traffic to an old revision; a deploy always ends on the new one
+          gcloud run services update-traffic super-system --region me-west1 --to-latest --quiet

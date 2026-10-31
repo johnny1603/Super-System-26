@@ -77,7 +77,9 @@ def _refuse(code: str, message_he: str, **extra) -> VideoRefused:
 # ─── The gate: internal test clients until the first live run ───────────────
 
 def open_to_all() -> bool:
-    return os.environ.get(OPEN_TO_ALL_ENV, "").strip().lower() in ("1", "true", "yes")
+    # env default, or the operator's override (core/operator_flags)
+    from core.operator_flags import enabled
+    return enabled(OPEN_TO_ALL_ENV)
 
 
 def _internal(client_id) -> bool:

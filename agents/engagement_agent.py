@@ -374,8 +374,10 @@ def notify_client_urgent(client_id: int, message_he: str) -> dict:
     if not sent and whatsapp_configured():
         agent_alert(AGENT_NAME, [f"URGENT WhatsApp to client {client_id} FAILED — "
                                  f"message: {message_he[:120]}"])
+    # The FULL text (it is already in the client's chat): a failed send can be
+    # re-sent exactly by the operator (core/operator_actions, 2026-11-01)
     log_activity(client_id, AGENT_NAME, "urgent_notification",
-                 {"channel": "whatsapp", "sent": sent}, {"message": message_he[:200]})
+                 {"channel": "whatsapp", "sent": sent}, {"message": message_he, "full": True})
     return {"success": True, "whatsapp_sent": sent}
 
 

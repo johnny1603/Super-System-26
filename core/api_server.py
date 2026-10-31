@@ -5988,6 +5988,128 @@ def admin_view_as_exit(request: Request, response: Response):
     response.delete_cookie(admin_view.COOKIE, path="/")
     return {"success": True, "redirect": "/admin/"}
 
+# ─── The owner's operator (core/operator_agent, docs/OPERATOR.md) ────────────
+# Admin session only — never an admin_view (enter-as-client) route, never a
+# client session. Tier 1 reads + Tier 2 one-tap actions here; Tier 3 (code)
+# steps go through core/operator_changes, which checks the emailed one-time
+# code itself (a route cannot skip it). Plain `def`: blocking work.
+
+def _operator_admin(request: Request) -> tuple:
+    _require_admin(request)
+    fp = admin_session_fingerprint(request.cookies.get("admin_session"))
+    return fp, admin_view.who(fp, _request_ip(request))
+
+class OperatorAskRequest(BaseModel):
+    message: str
+
+class OperatorActionRequest(BaseModel):
+    params: dict = {}
+
+class OperatorCodeRequest(BaseModel):
+    step: str
+
+class OperatorApproveRequest(BaseModel):
+    gate_id: str
+    code: str
+
+def _operator_error(e) -> HTTPException:
+    return HTTPException(status_code=409, detail={"code": e.code, "detail": getattr(e, "detail", "")})
+
+@app.get("/api/admin/operator/status")
+def operator_status(request: Request):
+    _operator_admin(request)
+    from core import cloud_ops, operator_changes, operator_flags, operator_gate, operator_github
+    try:
+        cloud = cloud_ops.status()
+        cloud["watch"] = cloud_ops.deploy_watch(cloud)
+    except cloud_ops.CloudOpsUnavailable as e:
+        cloud = {"error": e.code, "detail": e.detail}
+    try:
+        changes = operator_changes.recent(8)
+    except Exception:
+        changes = []
+    return {"success": True, "data": {
+        "cloud": cloud, "flags": operator_flags.view(), "changes": changes,
+        "github_configured": operator_github.configured(),
+        "tier3": {**operator_gate.enabled(), "sent_to": operator_gate.masked_email()}}}
+
+@app.get("/api/admin/operator/messages")
+def operator_messages(request: Request):
+    _operator_admin(request)
+    from core import operator_agent
+    return {"success": True, "data": operator_agent.history()}
+
+@app.post("/api/admin/operator/ask")
+def operator_ask(req: OperatorAskRequest, request: Request):
+    _, who = _operator_admin(request)
+    from core import operator_agent
+    return {"success": True, "data": operator_agent.ask(req.message, who)}
+
+@app.post("/api/admin/operator/actions/{name}")
+def operator_action(name: str, req: OperatorActionRequest, request: Request):
+    # Tier 2: runs NOW on the owner's tap, audited before it runs
+    _, who = _operator_admin(request)
+    from core import operator_actions
+    try:
+        return {"success": True, "data": operator_actions.run(name, req.params, who)}
+    except operator_actions.ActionError as e:
+        raise _operator_error(e)
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
+@app.get("/api/admin/operator/audit")
+def operator_audit(request: Request):
+    _operator_admin(request)
+    from core import operator_actions
+    return {"success": True, "data": {"audit": operator_actions.recent_audit(),
+                                      "failed_notifications": operator_actions.failed_notifications()}}
+
+@app.get("/api/admin/operator/changes/{change_id}")
+def operator_change(change_id: str, request: Request):
+    _operator_admin(request)
+    from core import operator_changes
+    try:
+        return {"success": True, "data": operator_changes.refresh_deploy(change_id)}
+    except operator_changes.ChangeError as e:
+        raise _operator_error(e)
+
+@app.post("/api/admin/operator/changes/{change_id}/request-code")
+def operator_change_code(change_id: str, req: OperatorCodeRequest, request: Request):
+    fp, who = _operator_admin(request)
+    from core import operator_actions, operator_changes, operator_gate
+    try:
+        return {"success": True, "data": operator_changes.request_code(change_id, req.step, fp, who)}
+    except (operator_changes.ChangeError, operator_gate.GateError) as e:
+        raise _operator_error(e)
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
+@app.post("/api/admin/operator/changes/{change_id}/open-pr")
+def operator_change_open_pr(change_id: str, req: OperatorApproveRequest, request: Request):
+    fp, who = _operator_admin(request)
+    from core import operator_actions, operator_changes, operator_github
+    try:
+        return {"success": True, "data": operator_changes.open_pr(change_id, req.gate_id, req.code, fp, who)}
+    except operator_changes.ChangeError as e:
+        raise _operator_error(e)
+    except operator_github.GitHubError as e:
+        raise HTTPException(status_code=502, detail={"code": f"ERR_GITHUB_{e.code}", "detail": e.detail})
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
+@app.post("/api/admin/operator/changes/{change_id}/merge-deploy")
+def operator_change_merge_deploy(change_id: str, req: OperatorApproveRequest, request: Request):
+    fp, who = _operator_admin(request)
+    from core import operator_actions, operator_changes, operator_github
+    try:
+        return {"success": True, "data": operator_changes.merge_and_deploy(change_id, req.gate_id, req.code, fp, who)}
+    except operator_changes.ChangeError as e:
+        raise _operator_error(e)
+    except operator_github.GitHubError as e:
+        raise HTTPException(status_code=502, detail={"code": f"ERR_GITHUB_{e.code}", "detail": e.detail})
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
 @app.get("/api/admin/view-as/audit")
 def admin_view_as_audit(request: Request, limit: int = 100):
     _require_admin(request)

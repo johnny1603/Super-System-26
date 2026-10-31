@@ -57,6 +57,13 @@ KEYS = {
     # domain flow reports that the remaining work is on our side.
     "CLOUDFLARE_API_TOKEN": os.environ.get("CLOUDFLARE_API_TOKEN", ""),
     "CLOUDFLARE_ZONE_ID": os.environ.get("CLOUDFLARE_ZONE_ID", ""),
+    # The owner's operator (core/operator_github, docs/OPERATOR.md): a
+    # fine-grained token for THIS repo only — Contents, Pull requests, Actions
+    # R/W, deliberately WITHOUT Workflows. Secret Manager → env var. Absent is
+    # a SUPPORTED state: Tier 1 git reads and all of Tier 3 say "not set up".
+    # (Tier 3 also needs OPERATOR_APPROVAL_EMAIL + OPERATOR_CODE_ENABLED —
+    # plain settings, not secrets, so they are not listed here.)
+    "OPERATOR_GITHUB_TOKEN": os.environ.get("OPERATOR_GITHUB_TOKEN", ""),
 }
 
 def get_key(name):
