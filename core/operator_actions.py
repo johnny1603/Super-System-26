@@ -172,6 +172,11 @@ def _clear_cache(params: dict) -> dict:
             "note": "this instance only — other Cloud Run instances expire theirs within minutes (SECTION_TTL)"}
 
 
+def _github_check(params: dict) -> dict:
+    from core import operator_github
+    return operator_github.setup_check()
+
+
 def _flip_flag(params: dict) -> dict:
     from core import operator_flags
     try:
@@ -251,6 +256,8 @@ ACTIONS = {
                       "undo_he": "קריאה חיה אחת עם טוקן טרי — אין מה לבטל"},
     "clear_cache": {"run": _clear_cache, "by_agent": True, "label_he": "ניקוי מטמון",
                     "undo_he": "המטמון מתמלא מחדש בקריאה הבאה"},
+    "github_check": {"run": _github_check, "by_agent": True, "label_he": "בדיקת חיבור GitHub",
+                     "undo_he": "קריאה בלבד — אין מה לבטל"},
     "flip_flag": {"run": _flip_flag, "by_agent": False, "label_he": "שינוי מתג",
                   "undo_he": "\"חזרה לברירת מחדל\" מוחקת את העקיפה"},
     "resend_notification": {"run": _resend_notification, "by_agent": False,

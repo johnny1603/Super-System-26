@@ -4,7 +4,8 @@ approval + emailed code (core/operator_gate) — its OWN branch, a pull
 request, a merge bound to the approved head SHA, and the deploy workflow.
 
 Token: OPERATOR_GITHUB_TOKEN, a fine-grained token for this one repository
-(Contents R/W, Pull requests R/W, Actions R/W, Metadata R) and deliberately
+(Contents R/W, Pull requests R/W, Actions R/W, Metadata R, Variables R and
+Environments R for setup_check) and deliberately
 WITHOUT the Workflows permission — so it cannot change .github/workflows even
 if everything else failed. The token never appears in a return value, an
 error or a log line.
@@ -138,6 +139,56 @@ def file_at(path: str, ref: str) -> str:
     if isinstance(body, list) or body.get("type") != "file":
         raise GitHubError("not_a_file", path)
     return base64.b64decode(body.get("content", "")).decode("utf-8")
+
+
+# ─── Setup check (Tier 2 action "github_check", read-only) ───────────────────
+# What Tier 3 needs from GitHub, one line each. States only — never a value:
+# the two Variables are reported as set / missing, not echoed.
+REQUIRED_VARIABLES = ("GCP_WIF_PROVIDER", "GCP_DEPLOY_SA")
+DEPLOY_ENVIRONMENT = "production"
+
+
+def _probe(path: str):
+    """(body, state): state 'ok' | 'missing' | 'no_permission' | an error code."""
+    try:
+        return _call("GET", path), "ok"
+    except GitHubError as e:
+        if e.code == "http_404":
+            return None, "missing"
+        if e.code in ("http_401", "http_403"):
+            return None, "no_permission"
+        return None, e.code
+
+
+def setup_check() -> dict:
+    items = {}
+    if not configured():
+        return {"ok": False, "items": {"token": {"ok": False, "state": "not_configured"}}}
+    repo, state = _probe(_repo())
+    items["repo_access"] = {"ok": state == "ok", "state": state}
+    if state != "ok":
+        return {"ok": False, "items": items}
+    for name in REQUIRED_VARIABLES:
+        _, state = _probe(_repo(f"/actions/variables/{name}"))
+        items[f"variable_{name}"] = {"ok": state == "ok", "state": "set" if state == "ok" else state}
+    _, state = _probe(_repo(f"/actions/workflows/{DEPLOY_WORKFLOW}"))
+    items["deploy_workflow"] = {"ok": state == "ok", "state": state}
+    env, state = _probe(_repo(f"/environments/{DEPLOY_ENVIRONMENT}"))
+    reviewers = 0
+    for rule in (env or {}).get("protection_rules") or []:
+        if rule.get("type") == "required_reviewers":
+            reviewers += len(rule.get("reviewers") or [])
+    items["environment_production"] = {"ok": state == "ok", "state": state}
+    items["required_reviewer"] = {"ok": reviewers > 0 if state == "ok" else None,
+                                  "state": f"{reviewers} reviewer(s)" if state == "ok" else state,
+                                  "recommended": True}
+    branch, state = _probe(_repo(f"/branches/{BASE_BRANCH}"))
+    protected = bool((branch or {}).get("protected"))
+    items["master_protected"] = {"ok": protected if state == "ok" else None,
+                                 "state": ("protected" if protected else "not_protected") if state == "ok" else state,
+                                 "recommended": True}
+    required = [k for k, v in items.items() if not v.get("recommended")]
+    return {"ok": all(items[k]["ok"] for k in required), "items": items}
 
 
 # ─── Tier 3: writes (each call site is behind operator_gate) ─────────────────

@@ -70,13 +70,23 @@ and do Tier 2 (reversible) — but you can **never ship code**:
 
 1. Supabase SQL editor: `migrations/2026-11-01-operator.sql` (conversation memory + reports).
 2. GitHub → Settings → Developer settings → Fine-grained token → only this repo:
-   Contents R/W, Pull requests R/W, Actions R/W, Metadata R. **Not** Workflows.
+   Contents R/W, Pull requests R/W, Actions R/W, Metadata R, and READ-ONLY Variables +
+   Environments (for the "בדיקת חיבור GitHub" check). **Not** Workflows, **not** Administration.
 3. Cloud Shell: `git pull && bash scripts/setup_operator.sh` — grants the service its reads +
    rollback role, creates the deployer SA + WIF, and (when you answer y) stores the token in
    Secret Manager and sets `OPERATOR_APPROVAL_EMAIL` + `OPERATOR_CODE_ENABLED=1`.
-4. GitHub → Settings → Secrets and variables → Actions → **Variables**: `GCP_WIF_PROVIDER`,
-   `GCP_DEPLOY_SA` (the script prints both).
+4. GitHub → Settings → Secrets and variables → Actions → **Variables** (repository variables,
+   not secrets — neither value is secret). `bash scripts/print_github_variables.sh` prints both:
+
+   | Name | Value |
+   |---|---|
+   | `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github-actions` |
+   | `GCP_DEPLOY_SA` | `github-deployer@super-system-500410.iam.gserviceaccount.com` |
 5. Recommended #1 and #2 above.
+6. Check: the operator page → "בדיקת חיבור GitHub" (action `github_check`, read-only). It reports
+   token, repo access, both Variables (set / missing — never the value), the deploy workflow, the
+   `production` environment, and — as recommendations — its required reviewer and master
+   protection.
 
 Without steps 2–4 the operator still works for everything that reads the database (alerts,
 clients, client state, code); Cloud Run/logs answer "no permission yet" and Tier 3 says it is off.

@@ -115,6 +115,13 @@ function summarize(r) {
   if (r.flag) return r.flag + ': ' + (r.after ? 'פעיל' : 'כבוי');
   if ('sent' in r) return r.sent ? 'נשלח' : 'השליחה נכשלה שוב';
   if (r.platform) return r.platform + ': ' + r.state;
+  if (r.items) {
+    const GH_HE = { token: 'טוקן', repo_access: 'גישה לריפו', variable_GCP_WIF_PROVIDER: 'משתנה GCP_WIF_PROVIDER',
+      variable_GCP_DEPLOY_SA: 'משתנה GCP_DEPLOY_SA', deploy_workflow: 'workflow הפריסה',
+      environment_production: 'סביבת production', required_reviewer: 'מאשר חובה (מומלץ)', master_protected: 'הגנה על master (מומלץ)' };
+    return (r.ok ? 'GitHub מוכן לשלב 3' : 'GitHub עוד לא מוכן') + '\n' + Object.entries(r.items).map(([k, v]) =>
+      (v.ok === true ? '✓ ' : v.ok === false ? '✗ ' : '? ') + (GH_HE[k] || k) + ': ' + v.state).join('\n');
+  }
   return JSON.stringify(r).slice(0, 300);
 }
 async function loadStatus() {
@@ -154,6 +161,9 @@ async function loadStatus() {
   card.appendChild(el('div', 'muted', t3.ok
     ? 'שינויי קוד: פעילים · קודי אישור נשלחים ל-' + t3.sent_to
     : 'שינויי קוד: כבויים — חסר: ' + (t3.missing || []).join(', ') + (d.github_configured ? '' : ', OPERATOR_GITHUB_TOKEN')));
+  const ghRow = el('div', 'row'), ghOut = el('div', 'result'), gh = el('button', 'btn', 'בדיקת חיבור GitHub');
+  gh.onclick = () => runAction('github_check', {}, gh, ghOut);
+  ghRow.appendChild(gh); card.appendChild(ghRow); card.appendChild(ghOut);
   renderChanges(d.changes || []); renderFlags(d.flags || []);
 }
 
