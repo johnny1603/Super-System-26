@@ -3,3 +3,4 @@ __pycache__/
 *.db
 .env
 config/secrets.py
+operator-for-supabase.txt
