@@ -265,6 +265,9 @@ class Manager(unittest.TestCase):
         self.assertIn("female", line)
         self.assertIn("changes NOTHING else", line)
         self.assertNotIn("{", line)                      # safe inside .format()-ed prompts
+        self.assertIn(mi.MANAGER_VOICE, line)            # the one shared, written voice
+        for key in mi.ORDER:
+            self.assertTrue(mi.prompt_line(mi.view(key)).endswith("\n\n" + mi.MANAGER_VOICE), key)
 
     def test_signoff(self):
         self.assertEqual(mi.signoff(mi.view("elinor"), "he"), "אלינור — מנהלת הלקוח שלך ב-uallak")
@@ -333,13 +336,18 @@ class Flags(unittest.TestCase):
             self.assertIn(colour, body.split("ar:")[1].split("ru:")[0])
 
     def test_each_button_is_labelled_and_the_active_one_ringed(self):
+        make = _js_function(self.js, "makeFlagButton")
+        self.assertIn("btn.setAttribute('aria-label', NATIVE_NAMES[code])", make)
+        self.assertIn("btn.setAttribute('title', NATIVE_NAMES[code])", make)
+        self.assertIn("btn.innerHTML = flagSvg(code)", make)
         mount = _js_function(self.js, "mountSwitcher")
-        self.assertIn("btn.setAttribute('aria-label', NATIVE_NAMES[code])", mount)
-        self.assertIn("btn.setAttribute('title', NATIVE_NAMES[code])", mount)
-        self.assertIn("btn.innerHTML = flagSvg(code)", mount)
         self.assertIn("setLanguage(code)", mount)
-        self.assertIn("aria-current", _js_function(self.js, "paintActive"))
+        paint = _js_function(self.js, "paintActive")
+        self.assertIn("aria-current", paint)
+        self.assertIn("current.setAttribute('aria-label'", paint)        # the one visible button
+        self.assertIn("current.setAttribute('title'", paint)
         self.assertIn('.lang-btn[aria-current="true"]{box-shadow:0 0 0 2px var(--bg,#0D0D0D),0 0 0 4px var(--accent,#FF4C1F);', self.js)
+        self.assertIn("filter:drop-shadow(0 3px 5px rgba(0,0,0,.55))", self.js)   # depth kept
 
     def test_each_flag_has_its_own_defs(self):
         svg = _js_function(self.js, "flagSvg")
@@ -351,7 +359,64 @@ class Flags(unittest.TestCase):
         self.assertIn("try { fn(lang); } catch (e)", body)
 
     def test_phone_sizing(self):
-        self.assertIn("@media (max-width:640px){.uallak-lang-row{gap:8px;}.lang-btn{width:28px;height:28px;}}", self.js)
+        self.assertIn("@media (max-width:640px){.uallak-lang-pop{gap:8px;padding:7px 8px;}.lang-btn{width:28px;height:28px;}}", self.js)
+
+
+class OneFlag(unittest.TestCase):
+    """Part B (2026-11-01): ONE round flag showing the current language; it
+    opens the other four, a pick switches and collapses, outside click and
+    Escape close it, keyboard works, and it can never cause a horizontal scroll."""
+
+    def setUp(self):
+        self.js = _src("dashboard", "assets", "i18n.js")
+        self.mount = _js_function(self.js, "mountSwitcher")
+
+    def test_one_visible_button_is_a_disclosure(self):
+        self.assertEqual(self.mount.count("makeFlagButton(lang)"), 1)
+        self.assertIn("current.setAttribute('aria-haspopup', 'true')", self.mount)
+        self.assertIn("current.setAttribute('aria-expanded', 'false')", self.mount)
+        self.assertIn("current.setAttribute('aria-controls', popId)", self.mount)
+        self.assertIn("'.uallak-lang-pop{position:fixed;z-index:950;display:none;", self.js)
+        self.assertIn(".uallak-lang-pop.open{display:flex;}", self.js)
+
+    def test_the_popup_holds_the_others_never_the_current(self):
+        self.assertIn("SUPPORTED.forEach(function (code) {\n      var btn = makeFlagButton(code);", self.mount)
+        paint = _js_function(self.js, "paintActive")
+        self.assertIn("btn.hidden = btn.getAttribute('data-lang') === lang;", paint)
+
+    def test_a_pick_switches_and_collapses(self):
+        self.assertIn("close(true);\n        if (code !== lang) setLanguage(code);", self.mount)
+        close = _js_function(self.mount, "close")
+        self.assertIn("pop.classList.remove('open')", close)
+        self.assertIn("current.setAttribute('aria-expanded', 'false')", close)
+
+    def test_outside_click_and_escape_close_it(self):
+        open_ = _js_function(self.mount, "open")
+        self.assertIn("document.addEventListener('pointerdown', onOutside, true)", open_)
+        self.assertIn("document.addEventListener('keydown', onKey, true)", open_)
+        self.assertIn("if (!inside(e.target)) close(false);", _js_function(self.mount, "onOutside"))
+        self.assertIn("e.key === 'Escape'", _js_function(self.mount, "onKey"))
+        # every listener added on open is removed on close
+        close = _js_function(self.mount, "close")
+        for added in re.findall(r"(?:document|window)\.addEventListener\(([^)]*)\)", open_):
+            self.assertIn(added, close.replace("removeEventListener", "addEventListener"))
+
+    def test_keyboard(self):
+        self.assertIn("open(e.detail === 0)", self.mount)              # Enter/Space focus the first flag
+        self.assertIn("e.key === 'ArrowDown' || e.key === 'ArrowUp'", self.mount)
+        on_key = _js_function(self.mount, "onKey")
+        self.assertIn("RTL.indexOf(lang) !== -1", on_key)              # arrows follow the visual order
+        self.assertIn("e.key === 'Home'", on_key)
+        self.assertIn("e.key === 'End'", on_key)
+        self.assertIn("pop.addEventListener('focusout', onFocusOut)", self.mount)
+
+    def test_never_a_horizontal_scroll(self):
+        place = _js_function(self.mount, "place")
+        self.assertIn("left = Math.max(8, Math.min(left, vw - w - 8));", place)
+        self.assertIn("if (top + h > vh - 8)", place)                  # opens upwards when no room
+        # on <body>: a transformed/filtered header would otherwise re-anchor position:fixed
+        self.assertIn("document.body.appendChild(pop);", self.mount)
+        self.assertIn("if (container._uallakLangPop) container._uallakLangPop.remove();", self.mount)
 
     def test_every_page_still_mounts_it(self):
         for page in ("client", "login", "profile", "landing", "onboarding", "terms"):

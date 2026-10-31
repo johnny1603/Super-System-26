@@ -260,8 +260,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `cost_category` (chat/proposal/content/media/seo/infra). Admin view: Control Room list.
 - `core/chat_guard.py` — runs before a client chat message is stored or sent to a model:
   key/password-looking messages are never stored, plus the per-client length and daily caps
-  (`client_settings`: `chat_max_message_chars`, `chat_daily_message_cap`). Ordinary chat turns
-  run on `claude_json.CHAT_TURN_MODEL` (cheaper); deliverables stay on `DEFAULT_MODEL`.
+  (`client_settings`: `chat_max_message_chars`, `chat_daily_message_cap`). Client chat turns
+  run on `claude_json.CHAT_TURN_MODEL` (the strong model); deliverables stay on `DEFAULT_MODEL`.
 - `core/connection_help.py` — one config entry per connection; the dashboard's "עזרה"
   buttons render from ACTIVE entries, and the concierge may only give that entry's links
   (`strip_foreign_links`). Every URL there already existed in the code — never add a guessed
@@ -547,8 +547,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 
 ## Conventions
 
-- Model: `claude-sonnet-4-6` (default in `core/claude_json.py`), except ordinary chat turns,
-  which use `CHAT_TURN_MODEL` (`claude-haiku-5-5`) at low effort.
+- Model: `claude-sonnet-4-6` (default in `core/claude_json.py`) for deliverables; every
+  CLIENT-FACING chat turn (concierge, the four personas, the support search answer, interview,
+  login moment, feature announcement) uses `CHAT_TURN_MODEL` (`claude-opus-5-5`, low effort,
+  `CHAT_TURN_MAX_TOKENS`) so each character sounds like itself; `CLASSIFY_MODEL`
+  (`claude-haiku-5-5`) only for steps no client reads (question_filter). The specialists'
+  written characters live in `support_agent.PERSONAS[...]["voice"]`, the managers' ONE shared
+  voice in `manager_identity.MANAGER_VOICE` — `tests/test_chat_voices.py`.
 - Client-facing text in Hebrew; code, logs, prompts in English.
 - Secrets only via env vars, registered in `agents/keys_agent.py` `KEYS` so startup warns
   when one is missing. Never hardcode credentials (a Gmail app password leaked into git
@@ -593,7 +598,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   no copy of the names. Only the name and face differ — never the voice or rules. Faces:
   `dashboard/assets/agents/<key>-portrait|figure.webp` (+ `.png` fallback, then the initial).
 - Language flags are inline SVG in `dashboard/assets/i18n.js` — never emoji (Windows draws
-  flag emoji as two letters).
+  flag emoji as two letters). The switcher is ONE flag (the current language) that opens the
+  other four in a `position:fixed` popover appended to `<body>` (a transformed/filtered header
+  would re-anchor it) and clamped inside the viewport; outside click / Escape / Tab-out close it.
 - `overflow` / `text-overflow: ellipsis` do **nothing** on an inline element. Several
   header labels are `<span>`s and need an explicit `display: block` to actually clip
   instead of spilling over the controls next to them.

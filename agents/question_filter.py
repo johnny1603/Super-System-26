@@ -5,7 +5,7 @@ The chat page holds the question list client-side and does the actual filtering;
 this agent only returns the IDs to skip.
 """
 from core.agent_base import log_step
-from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.claude_json import CLASSIFY_MODEL, ClaudeJSONError, safe_claude_json_call
 
 AGENT_NAME = "question_filter"
 
@@ -55,7 +55,9 @@ def get_skip_ids(intro: str, api_key: str = None) -> list:
         return []
     try:
         result = safe_claude_json_call(
-            SYSTEM, f"Client opening message: {intro}", max_tokens=200, api_key=api_key,
+            # Pure classification, nothing the client reads: the cheap model
+            SYSTEM, f"Client opening message: {intro}", max_tokens=600, api_key=api_key,
+            model=CLASSIFY_MODEL, effort="low",
             cost_category="claude_sales_chat",  # the lead, via the endpoint's cost_owner
         )
         skip_ids = [i for i in result.get("skip_ids", []) if i in BASE_QUESTION_IDS]

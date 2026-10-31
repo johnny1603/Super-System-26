@@ -3,10 +3,21 @@ import json
 from anthropic import Anthropic
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
-# Ordinary chat turns (a reply, no deliverable) run on the cheaper model;
-# anything that PRODUCES something (proposals, articles, research answers)
-# stays on DEFAULT_MODEL. One constant so the choice is reversible in one line.
-CHAT_TURN_MODEL = "claude-haiku-5-5"
+# Every CLIENT-FACING chat turn — the words a client reads from their manager
+# or a specialist (concierge, the four personas, the support web-search
+# answer, the interview, the login greeting, feature announcements) — runs on
+# the strong model, so each character actually sounds like itself
+# (2026-11-01; was claude-haiku-5-5 at low effort, purely for cost).
+# Deliverables (proposals, articles, research) stay on DEFAULT_MODEL. One
+# constant each, so either choice is reversible in one line.
+CHAT_TURN_MODEL = "claude-opus-5-5"
+CHAT_TURN_EFFORT = "low"          # Opus 5.5 defaults to medium; chat replies are short
+# Room for adaptive thinking (always on for Opus 5.5) PLUS the JSON reply —
+# billed by what is used, not by this ceiling
+CHAT_TURN_MAX_TOKENS = 2000
+# The cheap model, ONLY for internal steps where no personality is involved
+# (classification / filtering — e.g. question_filter). Never for text a client reads.
+CLASSIFY_MODEL = "claude-haiku-5-5"
 
 # Anthropic's server-side web search tool (the search runs on their side and
 # results come back in the same response - no client-side loop to implement).

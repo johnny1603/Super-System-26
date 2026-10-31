@@ -49,7 +49,7 @@ from supabase import create_client as _supabase_client
 
 from core import israel_calendar
 from core.agent_base import agent_alert, log_step, timed_step
-from core.claude_json import safe_claude_json_call
+from core.claude_json import CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, safe_claude_json_call
 from core.whatsapp_service import is_configured as whatsapp_configured, send_whatsapp
 
 AGENT_NAME = "engagement_agent"
@@ -524,6 +524,8 @@ You receive FACTS about what is genuinely true right now. Rules about them:
 TONE: one human on the client's team, mid-relationship. Never an AI or a bot. Never
 enthusiastic beyond what the facts support.
 
+{manager_voice}
+
 LANGUAGE: {language_rule}
 
 HARD LIMITS: max 4 sentences total. At most ONE question. No bullet lists. No emoji spam —
@@ -566,9 +568,11 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
         result = timed_step(
             AGENT_NAME, "login_moment_llm",
             lambda: safe_claude_json_call(
-                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE, manager_name=manager_name),
+                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE, manager_name=manager_name,
+                                           manager_voice=manager_identity.MANAGER_VOICE),
                 json.dumps(payload, ensure_ascii=False),
-                max_tokens=500, client_id=client_id, cost_category="engagement_login"))
+                max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL, effort=CHAT_TURN_EFFORT,
+                client_id=client_id, cost_category="engagement_login"))
     except Exception as e:  # includes ClaudeJSONError
         print(f"[{AGENT_NAME}] login moment generation failed for client {client_id}: {e}")
         return {"success": False, "message": "", "sent": False}
@@ -672,7 +676,7 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
         # The concierge's announcement comes from the manager the client chose
         from core import manager_identity
         manager = manager_identity.for_client(client, language)
-        persona = {"name": manager["name"], "voice": "Warm, direct, practical — their account manager."}
+        persona = {"name": manager["name"], "voice": manager_identity.MANAGER_VOICE}
     payload = {
         "client_name": client.get("name", ""),
         "ui_language": language,
@@ -692,7 +696,8 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
         result = timed_step(
             AGENT_NAME, "feature_announcement_llm",
             lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
-                                          max_tokens=400, client_id=client_id,
+                                          max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL,
+                                          effort=CHAT_TURN_EFFORT, client_id=client_id,
                                           cost_category="engagement_login"))
     except Exception as e:  # includes ClaudeJSONError
         # NOT marked as sent — a failed write must leave the announcement

@@ -37,8 +37,11 @@ from datetime import datetime, timezone
 # accounting system.
 MODEL_PRICES_USD_PER_MTOK = {
     "claude-sonnet-4-6": (3.00, 15.00),
-    # Ordinary chat turns (core/claude_json.CHAT_TURN_MODEL); list price for
-    # prompts up to 100K tokens, which every chat turn is
+    # Client-facing chat turns (core/claude_json.CHAT_TURN_MODEL, 2026-11-01).
+    # Thinking tokens are billed as output and are inside output_tokens.
+    "claude-opus-5-5": (4.00, 20.00),
+    # Classification steps (core/claude_json.CLASSIFY_MODEL) — and every chat
+    # turn before 2026-11-01; list price for prompts up to 100K tokens
     "claude-haiku-5-5": (0.10, 0.50),
 }
 CLAUDE_INPUT_USD_PER_MTOK, CLAUDE_OUTPUT_USD_PER_MTOK = MODEL_PRICES_USD_PER_MTOK["claude-sonnet-4-6"]

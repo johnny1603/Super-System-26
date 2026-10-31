@@ -70,7 +70,8 @@ from datetime import datetime, timezone
 
 from core import manager_identity
 from core.agent_base import agent_alert, log_step, timed_step
-from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, ClaudeJSONError,
+                               safe_claude_json_call)
 
 AGENT_NAME = "interview_agent"
 
@@ -293,7 +294,8 @@ def connection_nudge(client_id: int, language: str = "he") -> dict:
                 CONNECTION_NUDGE_SYSTEM.format(language_rule=LANGUAGE_RULE)
                 + manager_identity.prompt_line(manager_identity.for_client(client)),
                 json.dumps(payload, ensure_ascii=False),
-                max_tokens=400, client_id=client_id, cost_category="claude_interview"))
+                max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL, effort=CHAT_TURN_EFFORT,
+                client_id=client_id, cost_category="claude_interview"))
         message = (result.get("message") or "").strip()
     except Exception as e:  # includes ClaudeJSONError
         print(f"[{AGENT_NAME}] connection nudge failed for client {client_id}: {e}")
@@ -374,7 +376,8 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
         result = timed_step(
             AGENT_NAME, "interview_llm",
             lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False),
-                                          max_tokens=700, client_id=client_id,
+                                          max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL,
+                                          effort=CHAT_TURN_EFFORT, client_id=client_id,
                                           cost_category="claude_interview"))
     except Exception as e:
         # Any failure, not just unparseable JSON — an API timeout used to
