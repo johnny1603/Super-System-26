@@ -72,8 +72,8 @@ from core import automation_service
 from core import manager_identity
 from core.agent_base import agent_alert, log_step, timed_step
 from core import chat_fallback
-from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, claude_web_search_call,
-                               safe_claude_json_call)
+from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, cached_system,
+                               claude_web_search_call, safe_claude_json_call)
 
 CONVERSATION_HISTORY_LIMIT = 12  # current-thread turns passed to the LLM
 PENDING_SUGGESTIONS_LIMIT = 5
@@ -964,7 +964,10 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             # A client-facing turn: the strong chat model, so the manager's
             # voice holds. The upgrade proposal it can trigger runs on its own
             # call at the default model.
-            lambda: safe_claude_json_call(SYSTEM + manager_line, user_message, max_tokens=CHAT_TURN_MAX_TOKENS,
+            # Cached: the rules + the manager line (static per manager); the
+            # client's data, history and message stay in user_message.
+            lambda: safe_claude_json_call(cached_system(SYSTEM + manager_line), user_message,
+                                          max_tokens=CHAT_TURN_MAX_TOKENS,
                                           model=CHAT_TURN_MODEL, effort=CHAT_TURN_EFFORT,
                                           client_id=client_id, cost_category="claude_support"),
         )
@@ -1040,7 +1043,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         try:
             reply = timed_step(
                 AGENT_NAME, "web_search_call",
-                lambda: claude_web_search_call(SEARCH_SYSTEM + manager_line, search_payload, max_tokens=2500,
+                lambda: claude_web_search_call(cached_system(SEARCH_SYSTEM + manager_line), search_payload,
+                                               max_tokens=2500,
                                                model=CHAT_TURN_MODEL, client_id=client_id,
                                                cost_category="claude_support_search"),
             )
@@ -1958,7 +1962,10 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
             # A client-facing turn -> the strong chat model (the character
             # needs it); the article draft it may start is a separate
             # pipeline on the default model
-            lambda: safe_claude_json_call(system, json.dumps(payload, ensure_ascii=False, default=str),
+            # Cached: the persona prompt (static per persona); the client's
+            # data, history and message stay in the user message.
+            lambda: safe_claude_json_call(cached_system(system),
+                                          json.dumps(payload, ensure_ascii=False, default=str),
                                           max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL,
                                           effort=CHAT_TURN_EFFORT,
                                           client_id=client_id,

@@ -13,6 +13,8 @@ TESTS = os.path.join(ROOT, "tests")
 
 
 def main() -> int:
+    # A failing test's Hebrew output must not crash the runner on a non-UTF-8 console
+    sys.stdout.reconfigure(errors="replace")
     files = sorted(f for f in os.listdir(TESTS) if f.startswith("test_") and f.endswith(".py"))
     failed = []
     for name in files:

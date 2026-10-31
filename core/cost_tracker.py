@@ -83,14 +83,30 @@ def current_action() -> dict:
     return dict(_action.get() or {})
 
 
-def claude_cost_usd(input_tokens: int, output_tokens: int, model: str = None) -> float:
+# Prompt caching (core/claude_json.cached_system, 2026-11-01). The API's
+# input_tokens is the UNCACHED remainder only; cached tokens come separately:
+# a cache WRITE (5-minute TTL) costs 1.25x the input price, a cache READ a
+# fraction of it — 0.05x on Opus 5.5, 0.1x on the others we use.
+CACHE_WRITE_MULTIPLIER = 1.25
+CACHE_READ_MULTIPLIER = {"claude-opus-5-5": 0.05}
+DEFAULT_CACHE_READ_MULTIPLIER = 0.10
+
+
+def claude_cost_usd(input_tokens: int, output_tokens: int, model: str = None,
+                    cache_read_tokens: int = 0, cache_write_tokens: int = 0) -> float:
     price_in, price_out = MODEL_PRICES_USD_PER_MTOK.get(
         model or "", (CLAUDE_INPUT_USD_PER_MTOK, CLAUDE_OUTPUT_USD_PER_MTOK))
-    return round((input_tokens * price_in + output_tokens * price_out) / 1_000_000, 6)
+    read_multiplier = CACHE_READ_MULTIPLIER.get(model or "", DEFAULT_CACHE_READ_MULTIPLIER)
+    return round((input_tokens * price_in
+                  + (cache_write_tokens or 0) * price_in * CACHE_WRITE_MULTIPLIER
+                  + (cache_read_tokens or 0) * price_in * read_multiplier
+                  + output_tokens * price_out) / 1_000_000, 6)
 
 
-def claude_cost_ils(input_tokens: int, output_tokens: int, model: str = None) -> float:
-    return round(claude_cost_usd(input_tokens, output_tokens, model) * USD_TO_ILS, 4)
+def claude_cost_ils(input_tokens: int, output_tokens: int, model: str = None,
+                    cache_read_tokens: int = 0, cache_write_tokens: int = 0) -> float:
+    return round(claude_cost_usd(input_tokens, output_tokens, model, cache_read_tokens,
+                                 cache_write_tokens) * USD_TO_ILS, 4)
 
 
 def web_search_cost_usd(searches: int) -> float:

@@ -477,7 +477,7 @@ def ask_agent(client_id: int, persona_id: str, message: str) -> dict:
     failure Johnny gets the actual reason (he is the operator — unlike the
     client-facing chats, hiding the error here would help no one)."""
     from agents.support_agent import PERSONAS
-    from core.claude_json import safe_claude_json_call
+    from core.claude_json import cached_system, safe_claude_json_call
 
     persona_id = (persona_id or "general").strip()
     if persona_id != "general" and persona_id not in PERSONAS:
@@ -494,8 +494,8 @@ def ask_agent(client_id: int, persona_id: str, message: str) -> dict:
     try:
         grounding = timed_step(AGENT_NAME, "grounding", lambda: _grounding(client_id, persona_id))
         state = grounding.pop("_state", None)
-        system = ADMIN_AGENT_SYSTEM.format(name=persona["name"], domain=persona["domain"],
-                                           voice=persona["voice"])
+        system = cached_system(ADMIN_AGENT_SYSTEM.format(name=persona["name"], domain=persona["domain"],
+                                                         voice=persona["voice"]))
         payload = {"conversation_so_far": [{"from": "johnny" if m["role"] == "admin" else "you",
                                             "text": m["content"][:1500]}
                                            for m in history["messages"][-CHAT_HISTORY_TURNS:]],

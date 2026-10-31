@@ -468,16 +468,33 @@ FAILED_REPLY = ("לא הצלחתי להשלים את הבדיקה הפעם (תק
 
 
 def _record(response):
-    from core.claude_json import _record as record
+    from core.claude_json import _record as record, usage_tokens
     from core.cost_tracker import INTERNAL
-    usage = getattr(response, "usage", None)
-    record("claude_operator", _model(), getattr(usage, "input_tokens", 0) or 0,
-           getattr(usage, "output_tokens", 0) or 0, INTERNAL)
+    usage = usage_tokens(response)
+    record("claude_operator", _model(), usage["input"], usage["output"], INTERNAL,
+           usage["cache_read"], usage["cache_write"])
+
+
+def _with_tail_marker(msgs: list) -> list:
+    """The conversation as sent: a cache marker on the LAST block only, so each
+    loop step reads everything before it from cache (the static SYSTEM + TOOLS
+    carry their own marker). A copy — the stored msgs stay unmarked, so old
+    markers never pile up past the 4-breakpoint limit."""
+    from core.claude_json import CACHE_CONTROL
+    if not msgs:
+        return msgs
+    last = dict(msgs[-1])
+    content = last["content"]
+    if isinstance(content, str):
+        last["content"] = [{"type": "text", "text": content, "cache_control": dict(CACHE_CONTROL)}]
+    elif content and isinstance(content[-1], dict):
+        last["content"] = content[:-1] + [{**content[-1], "cache_control": dict(CACHE_CONTROL)}]
+    return msgs[:-1] + [last]
 
 
 def ask(message: str, who: str) -> dict:
     """One owner message → investigation → reply (+ cards). Never raises."""
-    from core.claude_json import _client
+    from core.claude_json import _client, cached_system
     from core.redaction import redact
     message = redact(str(message or "")).strip()[:4000]
     if not message:
@@ -492,8 +509,10 @@ def ask(message: str, who: str) -> dict:
         for step in range(MAX_STEPS + 1):
             last = step == MAX_STEPS or time.time() > deadline
             extra = {"tool_choice": {"type": "none"}} if last else {}
-            response = client.messages.create(model=_model(), max_tokens=MAX_TOKENS, system=SYSTEM,
-                                              messages=msgs, tools=TOOLS,
+            # Tools render before system, so the system marker caches both
+            response = client.messages.create(model=_model(), max_tokens=MAX_TOKENS,
+                                              system=cached_system(SYSTEM),
+                                              messages=_with_tail_marker(msgs), tools=TOOLS,
                                               output_config={"effort": EFFORT}, **extra)
             _record(response)
             uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]

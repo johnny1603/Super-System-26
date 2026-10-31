@@ -279,8 +279,8 @@ class Manager(unittest.TestCase):
     def test_everything_reads_the_one_source(self):
         support = _src("agents", "support_agent.py")
         self.assertIn("manager_line = manager_identity.prompt_line(manager_identity.for_client(client))", support)
-        self.assertIn("safe_claude_json_call(SYSTEM + manager_line", support)
-        self.assertIn("claude_web_search_call(SEARCH_SYSTEM + manager_line", support)
+        self.assertIn("safe_claude_json_call(cached_system(SYSTEM + manager_line)", support)
+        self.assertIn("claude_web_search_call(cached_system(SEARCH_SYSTEM + manager_line)", support)
         self.assertNotIn('You are presented as "the uallak', support)
         engagement = _src("agents", "engagement_agent.py")
         self.assertIn("LOGIN_MOMENT_SYSTEM = \"\"\"You are {manager_name}", engagement)

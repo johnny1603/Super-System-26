@@ -49,7 +49,8 @@ from supabase import create_client as _supabase_client
 
 from core import israel_calendar
 from core.agent_base import agent_alert, log_step, timed_step
-from core.claude_json import CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, safe_claude_json_call
+from core.claude_json import (CHAT_TURN_EFFORT, CHAT_TURN_MAX_TOKENS, CHAT_TURN_MODEL, cached_system,
+                               safe_claude_json_call)
 from core.whatsapp_service import is_configured as whatsapp_configured, send_whatsapp
 
 AGENT_NAME = "engagement_agent"
@@ -570,8 +571,8 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
         result = timed_step(
             AGENT_NAME, "login_moment_llm",
             lambda: safe_claude_json_call(
-                LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE, manager_name=manager_name,
-                                           manager_voice=manager_identity.MANAGER_VOICE),
+                cached_system(LOGIN_MOMENT_SYSTEM.format(language_rule=LANGUAGE_RULE, manager_name=manager_name,
+                                                         manager_voice=manager_identity.MANAGER_VOICE)),
                 json.dumps(payload, ensure_ascii=False),
                 max_tokens=CHAT_TURN_MAX_TOKENS, model=CHAT_TURN_MODEL, effort=CHAT_TURN_EFFORT,
                 client_id=client_id, cost_category="engagement_login"))
@@ -689,11 +690,11 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
         "team_note": announcement.get("note", ""),
         "title": announcement.get("title", ""),
     }
-    system = FEATURE_ANNOUNCEMENT_SYSTEM.format(
+    system = cached_system(FEATURE_ANNOUNCEMENT_SYSTEM.format(
         persona_name=persona.get("name", "צוות uallak"),
         persona_voice=persona.get("voice", "Warm, direct, practical."),
         language_rule=LANGUAGE_RULE,
-    )
+    ))
     try:
         result = timed_step(
             AGENT_NAME, "feature_announcement_llm",

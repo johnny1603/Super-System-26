@@ -79,7 +79,8 @@ class Models(unittest.TestCase):
 
     def test_search_answer_runs_on_the_chat_model(self):
         body = re.sub(r"\s+", " ", _src("agents", "support_agent.py"))
-        self.assertRegex(body, r"claude_web_search_call\(SEARCH_SYSTEM \+ manager_line, search_payload, "
+        self.assertRegex(body, r"claude_web_search_call\(cached_system\(SEARCH_SYSTEM \+ manager_line\), "
+                               r"search_payload, "
                                r"max_tokens=\d+, model=CHAT_TURN_MODEL")
 
     def test_cheap_model_only_for_classification(self):
@@ -102,8 +103,9 @@ class Models(unittest.TestCase):
         self.assertIn('"claude-opus-5-5": (4.00, 20.00)', prices)
         self.assertIn('"claude-haiku-5-5"', prices)
         # every JSON call is still recorded against the model that ran it
-        self.assertIn('details={"input_tokens": input_tokens, "output_tokens": output_tokens, "model": model}',
+        self.assertIn('details={"input_tokens": input_tokens, "output_tokens": output_tokens, "model": model,',
                       self.cj)
+        self.assertIn("_record(cost_category, model, total[\"input\"], total[\"output\"], client_id,", self.cj)
 
 
 class Specialists(unittest.TestCase):

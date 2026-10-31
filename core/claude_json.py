@@ -19,6 +19,41 @@ CHAT_TURN_MAX_TOKENS = 2000
 # (classification / filtering — e.g. question_filter). Never for text a client reads.
 CLASSIFY_MODEL = "claude-haiku-5-5"
 
+# Prompt caching (2026-11-01). Every agent's system prompt is passed as
+# blocks: the STATIC part (persona, rules, tool definitions — tools render
+# before system, so a marker on system covers them too) carries cache_control;
+# anything per-client (history, client data, the new message) comes AFTER the
+# last marker — in an unmarked system block or in the user message — so it is
+# never part of a cached prefix. 5-minute TTL: a client's next turn usually
+# comes within minutes, and the shared prompts (one per persona) are reused
+# across clients. Minimum cacheable prefix on the 5.5 models is 512 tokens;
+# ours are 7-9K.
+CACHE_CONTROL = {"type": "ephemeral"}
+
+
+def cached_system(*static_parts: str, dynamic: str = "") -> list:
+    """System blocks: each static part cached (a marker per part, so a shared
+    first part — e.g. the concierge rules — is reused whatever follows it),
+    then the dynamic part, unmarked. At most 3 static parts (API limit: 4
+    breakpoints, one left for a conversation tail)."""
+    parts = [p for p in static_parts if p]
+    if len(parts) > 3:
+        raise ValueError("at most 3 cached system parts")
+    blocks = [{"type": "text", "text": p, "cache_control": dict(CACHE_CONTROL)} for p in parts]
+    if dynamic:
+        blocks.append({"type": "text", "text": dynamic})
+    return blocks
+
+
+def usage_tokens(response) -> dict:
+    """input = the UNCACHED remainder; cache_read / cache_write separately."""
+    usage = getattr(response, "usage", None)
+    return {"input": getattr(usage, "input_tokens", 0) or 0,
+            "output": getattr(usage, "output_tokens", 0) or 0,
+            "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
+            "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0}
+
+
 # Anthropic's server-side web search tool (the search runs on their side and
 # results come back in the same response - no client-side loop to implement).
 # max_uses caps the worst-case per-answer search spend; user_location biases
@@ -78,22 +113,29 @@ def _text(response) -> str:
 
 def _shape(response) -> str:
     """For logs: stop_reason, usage and block TYPES — never content."""
-    usage = getattr(response, "usage", None)
+    usage = usage_tokens(response)
     types = [getattr(b, "type", "?") for b in (response.content or [])]
     return (f"stop_reason={response.stop_reason} blocks={types} "
-            f"input_tokens={getattr(usage, 'input_tokens', '?')} "
-            f"output_tokens={getattr(usage, 'output_tokens', '?')}")
+            f"input_tokens={usage['input']} cache_read={usage['cache_read']} "
+            f"cache_write={usage['cache_write']} output_tokens={usage['output']}")
 
 
-def _record(cost_category, model, input_tokens, output_tokens, client_id):
+def _record(cost_category, model, input_tokens, output_tokens, client_id,
+            cache_read_tokens=0, cache_write_tokens=0, extra_details=None):
+    """One cost row per model call, priced with cached vs uncached input
+    separated, plus ONE log line per turn (tokens + ILS; never content)."""
     try:
         from core.cost_tracker import claude_cost_ils, claude_cost_usd, record_cost
+        ils = claude_cost_ils(input_tokens, output_tokens, model, cache_read_tokens, cache_write_tokens)
+        print(f"[claude_cost] {cost_category} model={model} client={client_id} in={input_tokens} "
+              f"cache_read={cache_read_tokens} cache_write={cache_write_tokens} out={output_tokens} "
+              f"ils={ils}")
         record_cost(
-            cost_category,
-            claude_cost_ils(input_tokens, output_tokens, model),
-            client_id=client_id,
-            details={"input_tokens": input_tokens, "output_tokens": output_tokens, "model": model},
-            usd=claude_cost_usd(input_tokens, output_tokens, model),
+            cost_category, ils, client_id=client_id,
+            details={"input_tokens": input_tokens, "output_tokens": output_tokens, "model": model,
+                     "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
+                     **(extra_details or {})},
+            usd=claude_cost_usd(input_tokens, output_tokens, model, cache_read_tokens, cache_write_tokens),
         )
     except Exception as e:
         print(f"[claude_json] cost tracking failed (non-fatal): {e}")
@@ -108,13 +150,13 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
                                       messages=[{"role": "user", "content": user_message}], **extra)
 
     response = create(max_tokens)
-    input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
+    total = usage_tokens(response)
     if response.stop_reason == "max_tokens":
         print(f"[claude_json] response truncated at max_tokens={max_tokens}, retrying with {max_tokens * 2}")
         response = create(max_tokens * 2)
-        input_tokens += response.usage.input_tokens
-        output_tokens += response.usage.output_tokens
-    _record(cost_category, model, input_tokens, output_tokens, client_id)
+        total = {k: total[k] + v for k, v in usage_tokens(response).items()}
+    _record(cost_category, model, total["input"], total["output"], client_id,
+            total["cache_read"], total["cache_write"])
     return response
 
 
@@ -221,7 +263,7 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
     """
     client = _client()
     messages = [{"role": "user", "content": user_message}]
-    total_input = total_output = total_searches = 0
+    total_input = total_output = total_searches = total_cache_read = total_cache_write = 0
     sourced = []
 
     response = None
@@ -233,8 +275,11 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
             messages=messages,
             tools=[WEB_SEARCH_TOOL],
         )
-        total_input += response.usage.input_tokens
-        total_output += response.usage.output_tokens
+        usage = usage_tokens(response)
+        total_input += usage["input"]
+        total_output += usage["output"]
+        total_cache_read += usage["cache_read"]
+        total_cache_write += usage["cache_write"]
         server_tool_use = getattr(response.usage, "server_tool_use", None)
         total_searches += getattr(server_tool_use, "web_search_requests", 0) or 0
         # Collected per response, not just from the last one: a paused turn's
@@ -250,15 +295,20 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
     try:
         from core.cost_tracker import (claude_cost_ils, claude_cost_usd, record_cost,
                                        web_search_cost_ils, web_search_cost_usd)
+        ils = round(claude_cost_ils(total_input, total_output, model, total_cache_read, total_cache_write)
+                    + web_search_cost_ils(total_searches), 4)
+        print(f"[claude_cost] {cost_category} model={model} client={client_id} in={total_input} "
+              f"cache_read={total_cache_read} cache_write={total_cache_write} out={total_output} "
+              f"searches={total_searches} ils={ils}")
         record_cost(
-            cost_category,
-            round(claude_cost_ils(total_input, total_output, model)
-                  + web_search_cost_ils(total_searches), 4),
+            cost_category, ils,
             client_id=client_id,
             details={"input_tokens": total_input, "output_tokens": total_output,
+                     "cache_read_tokens": total_cache_read, "cache_write_tokens": total_cache_write,
                      "web_searches": total_searches, "model": model,
                      "web_search_usd": web_search_cost_usd(total_searches)},
-            usd=claude_cost_usd(total_input, total_output, model) + web_search_cost_usd(total_searches),
+            usd=claude_cost_usd(total_input, total_output, model, total_cache_read, total_cache_write)
+            + web_search_cost_usd(total_searches),
         )
     except Exception as e:
         print(f"[claude_json] cost tracking failed (non-fatal): {e}")

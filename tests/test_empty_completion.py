@@ -62,7 +62,7 @@ ALERTS = []
 _STUBS = {
     "anthropic": _module("anthropic", Anthropic=lambda **k: None),
     "core.cost_tracker": _module("core.cost_tracker",
-                                 claude_cost_ils=lambda i, o, m: 0.0, claude_cost_usd=lambda i, o, m: 0.0,
+                                 claude_cost_ils=lambda *a: 0.0, claude_cost_usd=lambda *a: 0.0,
                                  record_cost=lambda category, ils, **k: COSTS.append(k["details"]["model"])),
 }
 _saved = {name: sys.modules.get(name) for name in _STUBS}
@@ -241,7 +241,8 @@ class ProductionQuestion(unittest.TestCase):
 
     def test_the_model_gets_the_facts_and_the_rule_for_this_question(self):
         _, fake = self.ask([self.model_answer("x")])
-        system, payload = fake.calls[0]["system"], json.loads(fake.calls[0]["messages"][0]["content"])
+        system = "".join(b["text"] for b in fake.calls[0]["system"])
+        payload = json.loads(fake.calls[0]["messages"][0]["content"])
         self.assertIn("WHEN NO ACTION FITS", system)
         self.assertIn("I'm\nonly asking", system)
         self.assertIn("Never propose one that is not listed there", system)
