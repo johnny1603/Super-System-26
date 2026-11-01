@@ -260,7 +260,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   messages stay in client_communications (never deleted), agent context = latest summary + ≤2
   earlier (`window()`, payload `previous_days`). Deferred while the client wrote in the last 30
   min; failed summary (after one retry) = old window kept + admin alert. Job
-  `GET /api/chat/rollover` (scripts/schedule_chat_rollover.sh), flag `CHAT_ROLLOVER_ENABLED`
+  `GET /api/chat/rollover` (scripts/schedule_jobs.sh — the ONE scheduler entry point; create
+  uses `--headers`, update `--update-headers`; key from Secret Manager, never printed), flag `CHAT_ROLLOVER_ENABLED`
   (default ON). Dashboard line "יום חדש, הכול שמור". `tests/test_chat_rollover.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),

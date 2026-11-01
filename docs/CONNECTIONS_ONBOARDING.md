@@ -36,8 +36,12 @@ key; staff viewing as the client cannot run it.
 
 1. Run `migrations/2026-11-01-connection-catalog.sql` in Supabase (idempotent;
    comment-free copy for pasting: `catalog-for-supabase.txt`, gitignored).
-2. Scheduler, daily:
-   `gcloud scheduler jobs create http connection-reminders --schedule="0 10 * * *" --time-zone="Asia/Jerusalem" --uri="{SERVICE_URL}/api/connections/reminders" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}`
+2. Scheduler — one command in Cloud Shell, from the repo root, creates or
+   updates every job (chat-rollover, chat-rollover-catchup,
+   connection-reminders daily 10:00, landing-hosting-costs monthly and PAUSED):
+   `bash scripts/schedule_jobs.sh`
+   It reads the admin key from Secret Manager itself and never prints it;
+   `--dry-run` shows the commands with the key masked. The routes are GET.
 3. Until the table exists every "אין לי" goes to human support; "יש לי" works.
 
 ## Seed links verified live (2026-11-01)

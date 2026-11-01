@@ -351,7 +351,8 @@ class Wiring(unittest.TestCase):
         self.assertIn("if (data.rolled_over) {", page)
 
     def test_scheduler_script(self):
-        script = self._src("scripts", "schedule_chat_rollover.sh")
+        self.assertIn("schedule_jobs.sh", self._src("scripts", "schedule_chat_rollover.sh"))
+        script = self._src("scripts", "schedule_jobs.sh")
         self.assertIn('"0 8 * * *"', script)
         self.assertIn('TZ_NAME="Asia/Jerusalem"', script)
         self.assertNotIn("SECRETS_ENCRYPTION_KEY", script)
