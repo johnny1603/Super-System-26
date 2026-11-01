@@ -13,9 +13,10 @@ to "drive the relationship". Four jobs:
    dashboard's "ממתין לאישור שלך" area — plus a short push into the
    dashboard chat. Nothing executes without client approval.
 
-2. DAILY sales alerts (run_daily_engagement → /api/engagement/daily):
-   yesterday's conversions per connected platform → a celebration email
-   (distinct from weekly reports). Deduped per-day via client_activity.
+2. The MORNING BRIEFING (run_morning_briefing → /api/engagement/morning,
+   agents/morning_briefing.py): one short message a day in the manager's
+   voice. It absorbed the old daily sales email (run_daily_engagement is
+   retired and sends nothing).
 
 3. URGENT notifications (notify_client_urgent): the WhatsApp SOS rung of the
    notification ladder (dashboard = ambient, email = important, WhatsApp =
@@ -58,7 +59,6 @@ AGENT_NAME = "engagement_agent"
 MAX_SUGGESTIONS_PER_RUN = 3
 RECENT_TITLES_LIMIT = 10          # passed to the prompt to avoid repeats
 VALID_SUGGESTION_KINDS = ("promotion", "content_idea", "campaign_tweak", "homework")
-PLATFORM_LABELS_HE = {"google_ads": "גוגל", "meta_ads": "פייסבוק ואינסטגרם"}
 
 WEEKLY_SYSTEM = """You are the proactive marketing brain of uallak, an Israeli marketing agency,
 generating this week's suggestions for ONE existing client. You receive their business context
@@ -311,46 +311,27 @@ def run_weekly_engagement() -> dict:
 
 # ─── Daily sales alerts ───────────────────────────────────────────────────────
 
-def _sales_alert_already_sent(client_id: int, date_key: str) -> bool:
-    rows = (_db().table("client_activity").select("id")
-            .eq("client_id", client_id).eq("agent_name", AGENT_NAME)
-            .eq("action_type", "sales_alert_sent")
-            .eq("details->>date", date_key).limit(1).execute().data)
-    return bool(rows)
-
-
 def run_daily_engagement() -> dict:
-    """Yesterday's conversions per client → celebration email. Designed for a
-    Cloud Scheduler hit on /api/engagement/daily (morning, after the ads
-    platforms have settled yesterday's numbers)."""
-    from agents.client_agent import list_clients, log_activity
-    from agents.google_ads_agent import get_conversions_yesterday as google_conversions
-    from agents.meta_ads_agent import get_conversions_yesterday as meta_conversions
-    from core.email_service import send_sales_alert
+    """RETIRED 2026-11-02: yesterday's conversions are now part of the ONE
+    morning message (run_morning_briefing). The route stays so an old
+    scheduler job that still fires (scripts/schedule_jobs.sh pauses it) sends
+    nothing — a client never gets the sales email AND the briefing."""
+    log_step(AGENT_NAME, "daily_engagement", "retired — folded into the morning briefing; nothing sent")
+    return {"retired": True, "replaced_by": "/api/engagement/morning", "alerts_sent": 0}
 
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-    summary = {"clients_checked": 0, "alerts_sent": 0}
-    for client in list_clients("active"):
-        client_id = client["id"]
-        summary["clients_checked"] += 1
-        conversions = {}
-        for platform, fetch in (("google_ads", google_conversions),
-                                ("meta_ads", meta_conversions)):
-            count = fetch(client_id)
-            if count:
-                conversions[PLATFORM_LABELS_HE[platform]] = count
-        if not conversions or not client.get("email"):
-            continue
-        if _sales_alert_already_sent(client_id, yesterday):
-            continue
-        send_sales_alert(client["email"], client.get("name", ""), conversions, client_id)
-        log_activity(client_id, AGENT_NAME, "sales_alert_sent",
-                     {"date": yesterday, "conversions": conversions}, {})
-        summary["alerts_sent"] += 1
 
-    log_step(AGENT_NAME, "daily_engagement",
-             f"done — {summary['alerts_sent']} sales alerts of {summary['clients_checked']} clients")
-    return summary
+# ─── The morning briefing (agents/morning_briefing.py) ───────────────────────
+
+def run_morning_briefing(client_id: int) -> dict:
+    """One client's morning briefing (agents/morning_briefing.run_for_client)."""
+    from agents import morning_briefing
+    return morning_briefing.run_for_client(client_id)
+
+
+def run_morning_briefings() -> dict:
+    """Every active client — the Cloud Scheduler job behind /api/engagement/morning."""
+    from agents import morning_briefing
+    return morning_briefing.run_all()
 
 
 # ─── Urgent notifications (WhatsApp SOS rung) ─────────────────────────────────
@@ -435,15 +416,19 @@ def _acted_within(client_id: int, action_type: str, days: int) -> bool:
     return bool(rows)
 
 
-def _collect_login_facts(client_id: int) -> dict:
+def _collect_login_facts(client_id: int, since: str = None) -> dict:
     """What is TRUE right now and worth a mention. Pure reads, no LLM, no
-    side effects — and every value here is something a row proves."""
-    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    side effects — and every value here is something a row proves. `since`
+    (the morning briefing's time on a day it was sent) narrows every list to
+    what is NEW after it, so the login moment never repeats the briefing."""
+    briefed = bool(since)
+    since = since or (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     facts = {"part_of_day": _part_of_day()}
 
     # (2.2) Their side of the work: approved homework still open, and anything
     # still pending a decision. "Pending" is what we ask about directly.
-    pending = [s for s in get_suggestions(client_id, status="pending", limit=10)]
+    pending = [s for s in get_suggestions(client_id, status="pending", limit=10)
+               if not briefed or (s.get("created_at") or "") > since]
     facts["pending_suggestions"] = [
         {"title": s.get("title", ""), "kind": s.get("kind", "")} for s in pending[:4]]
     approved_homework = (_db().table("client_suggestions")
@@ -451,7 +436,8 @@ def _collect_login_facts(client_id: int) -> dict:
                          .eq("client_id", client_id).eq("kind", "homework")
                          .eq("status", "approved")
                          .order("decided_at", desc=True).limit(3).execute().data or [])
-    facts["homework_in_progress"] = [h.get("title", "") for h in approved_homework]
+    facts["homework_in_progress"] = [] if briefed else [h.get("title", "") for h in approved_homework]
+    facts["briefing_sent_today"] = briefed
 
     # (2.6) Things WE delivered since they last looked — praise has to name the
     # actual item or it is noise.
@@ -523,6 +509,9 @@ You receive FACTS about what is genuinely true right now. Rules about them:
 - If `ask_for_feedback` is true, close by asking — warmly, once — whether they're happy with
   the platform so far and whether there's anything to pass to the team that builds it.
 - If nothing above applies, a short warm greeting that offers help is the whole message.
+- If `briefing_sent_today` is true, you already wrote to them this morning: do NOT greet again
+  and do NOT repeat anything — the facts list only what is NEW since that message. Open with it
+  directly ("ועוד דבר מאז הבוקר" in spirit, in your own words).
 
 TONE: one human on the client's team, mid-relationship. Never an AI or a bot. Never
 enthusiastic beyond what the facts support.
@@ -549,12 +538,19 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
     if _acted_within(client_id, LOGIN_MOMENT_ACTION, 1):
         return {"success": True, "message": "", "sent": False, "reason": "already_greeted_today"}
 
+    # The morning briefing already greeted today and named what was waiting:
+    # only what is NEW since it may be said, and nothing at all if nothing is
+    from agents import morning_briefing
+    briefing = morning_briefing.briefing_today(client_id)
     try:
-        facts = _collect_login_facts(client_id)
+        facts = _collect_login_facts(client_id, since=briefing.get("posted_at") if briefing else None)
     except Exception as e:
         # A greeting is a nicety; never let it break a dashboard load.
         print(f"[{AGENT_NAME}] login facts failed for client {client_id}: {e}")
         return {"success": False, "message": "", "sent": False}
+    if briefing and not (facts["pending_suggestions"] or facts["recently_delivered"]
+                         or facts["new_leads_this_week"]):
+        return {"success": True, "message": "", "sent": False, "reason": "briefing_covered_today"}
 
     from agents.client_agent import get_client, log_activity, log_communication
     from agents.onboarding_agent import LANGUAGE_RULE

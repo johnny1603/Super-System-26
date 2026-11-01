@@ -51,7 +51,9 @@ EXPECTED = {
     "lead-volume-scan": ("GET", "0 6 * * *", "/api/leads/volume-scan"),
     "engagement-weekly": ("GET", "0 9 * * 0", "/api/engagement/weekly"),
     "drive-usage-scan": ("GET", "30 3 * * *", "/api/drive/usage-scan"),
+    "engagement-morning": ("GET", "30 8 * * 0-5", "/api/engagement/morning"),
 }
+RETIRED = sa.parse_retired(SRC)
 
 
 class JobTable(unittest.TestCase):
@@ -62,6 +64,10 @@ class JobTable(unittest.TestCase):
             j = by_name[name]
             self.assertEqual((j["method"], j["schedule"], j["path"]), (method, schedule, path), name)
         self.assertEqual(by_name["landing-hosting-costs"]["initial"], "paused")
+
+    def test_daily_sales_job_is_retired_not_managed(self):
+        self.assertEqual(RETIRED, ["engagement-daily"])
+        self.assertNotIn("engagement-daily", [j["name"] for j in MANAGED])
 
     def test_names_unique(self):
         names = [j["name"] for j in MANAGED]
@@ -227,6 +233,8 @@ class DryRun(unittest.TestCase):
         if any(" create http landing-hosting-costs " in l for l in lines):
             self.assertIn("[dry-run] gcloud scheduler jobs pause landing-hosting-costs", out)
         self.assertIn(f"Managed by this script ({len(MANAGED)}):", out)
+        self.assertIn("[dry-run] gcloud scheduler jobs pause engagement-daily", out)
+        self.assertIn("Retired (kept paused): engagement-daily", out)
 
     def test_error_text_is_sanitized(self):
         fn = SRC[SRC.index("sanitize() {"):SRC.index("\n}\n", SRC.index("sanitize() {")) + 3]

@@ -346,60 +346,41 @@ def send_admin_alert(answers: dict, proposal: dict):
     msg.attach(MIMEText(html, 'html'))
     _send(msg, ADMIN_EMAIL)
 
-_SALES_ALERT_I18N = {
-    "subtitle": {"he":"הבית לעסקים קטנים ובינוניים","en":"A home for small and medium businesses","fr":"Une maison pour les PME","ar":"بيت للشركات الصغيرة والمتوسطة","ru":"Дом для малого и среднего бизнеса"},
-    "greeting": {"he":"🎉 {name}, יש תוצאות!","en":"🎉 {name}, we have results!","fr":"🎉 {name}, il y a des résultats !","ar":"🎉 {name}، هناك نتائج!","ru":"🎉 {name}, есть результаты!"},
-    "body": {"he":"הקמפיינים שלך הביאו אתמול <strong style=\"color:#00C96E;\">{total}</strong> המרות (לידים/פניות/רכישות):","en":"Your campaigns brought in <strong style=\"color:#00C96E;\">{total}</strong> conversions yesterday (leads/inquiries/purchases):","fr":"Vos campagnes ont généré hier <strong style=\"color:#00C96E;\">{total}</strong> conversions (leads/demandes/achats) :","ar":"جلبت حملاتك أمس <strong style=\"color:#00C96E;\">{total}</strong> تحويلات (عملاء محتملون/استفسارات/عمليات شراء):","ru":"Ваши кампании принесли вчера <strong style=\"color:#00C96E;\">{total}</strong> конверсий (лиды/обращения/покупки):"},
-    "footer_note": {"he":"המספרים לפי דיווח פלטפורמות הפרסום — פירוט מלא בדשבורד שלך.","en":"Numbers per the ad platforms' own reporting — full details on your dashboard.","fr":"Chiffres selon les rapports des plateformes publicitaires — détails complets sur votre tableau de bord.","ar":"الأرقام وفق تقارير منصات الإعلانات نفسها — التفاصيل الكاملة في لوحة التحكم الخاصة بك.","ru":"Цифры по данным самих рекламных платформ — полные детали в вашем личном кабинете."},
-    "dashboard_btn": {"he":"לדשבורד שלי →","en":"To my dashboard →","fr":"Vers mon tableau de bord →","ar":"إلى لوحة التحكم ←","ru":"В личный кабинет →"},
-    "subject": {"he":"🎉 uallak — {total} המרות חדשות מהקמפיינים שלך!","en":"🎉 uallak — {total} new conversions from your campaigns!","fr":"🎉 uallak — {total} nouvelles conversions de vos campagnes !","ar":"🎉 uallak — {total} تحويلات جديدة من حملاتك!","ru":"🎉 uallak — {total} новых конверсий по вашим кампаниям!"},
+_URGENT_I18N = {
+    "subject": {"he": "uallak — משהו שצריך אותך היום", "en": "uallak — something needs you today",
+                "fr": "uallak — un point demande votre attention aujourd'hui",
+                "ar": "uallak — أمر يحتاجك اليوم", "ru": "uallak — сегодня нужно ваше внимание"},
+    "dashboard_btn": {"he": "לדשבורד", "en": "Open the dashboard", "fr": "Ouvrir le tableau de bord",
+                      "ar": "إلى لوحة التحكم", "ru": "Открыть панель"},
 }
 
 
-def send_sales_alert(client_email: str, client_name: str, conversions: dict,
-                      client_id: int = None, language: str = None):
-    """Same-day celebration email when a client's campaigns produced
-    conversions yesterday (engagement_agent's daily run) — distinct from the
-    weekly report. `conversions` maps a Hebrew platform label to a count,
-    e.g. {"גוגל": 3, "פייסבוק ואינסטגרם": 2} (platform labels stay Hebrew —
-    they're internal keys from the ads agents, not client-facing prose)."""
+def send_urgent_notice(client_email: str, client_name: str, text: str, client_id: int = None,
+                       language: str = None) -> bool:
+    """The morning briefing's push for an item that cannot wait, when WhatsApp
+    is not available (agents/morning_briefing.push_urgent). Plain text in a
+    simple frame; the same words are already in the dashboard chat."""
+    if not client_email:
+        return False
+    from html import escape
     lang = _lang_of(client_id, language)
-    t = lambda key, **v: _tr(_SALES_ALERT_I18N, key, lang, **v)
+    t = lambda key, **v: _tr(_URGENT_I18N, key, lang, **v)
     manager = _manager(client_id, lang)
-    total = round(sum(conversions.values()), 1)
-    total_label = int(total) if total == int(total) else total
-    lines_html = "".join([
-        f'<p style="margin:6px 0;color:#3D3D3D;">✅ {label}: <strong>{int(v) if v == int(v) else v}</strong></p>'
-        for label, v in conversions.items() if v
-    ])
+    body = "<br>".join(escape(line) for line in (text or "").splitlines() if line.strip())
     html = f"""
     <div dir="{_LANG_DIR[lang]}" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#F7F4EF;padding:32px;border-radius:16px;">
-      <div style="text-align:center;margin-bottom:32px;">
-        <h1 style="font-size:32px;font-weight:900;margin:0;">u<span style="color:#FF4C1F;">allak</span></h1>
-        <p style="color:#8A8A8A;margin:4px 0 0;">{t('subtitle')}</p>
+      <div style="background:white;border-radius:12px;padding:24px;color:#1A1A1A;line-height:1.7;">{body}</div>
+      <div style="text-align:center;margin-top:18px;">
+        <a href="{PUBLIC_APP_URL}/dashboard/" style="background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">{t('dashboard_btn')}</a>
       </div>
-      <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;border-top:4px solid #00C96E;text-align:center;">
-        <h2 style="margin:0 0 10px;color:#1A1A1A;">{t('greeting', name=client_name)}</h2>
-        <p style="color:#3D3D3D;line-height:1.7;margin:0 0 16px;">
-          {t('body', total=total_label)}
-        </p>
-        {lines_html}
-        <p style="color:#8A8A8A;font-size:12px;margin:16px 0 0;">
-          {t('footer_note')}
-        </p>
-      </div>
-      <div style="text-align:center;">
-        <a href="{PUBLIC_APP_URL}/login/" style="background:#FF4C1F;color:white;padding:12px 28px;border-radius:100px;font-weight:700;text-decoration:none;display:inline-block;">{t('dashboard_btn')}</a>
-      </div>
-      {_signoff_html(manager, lang)}
     </div>
     """
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = t('subject', total=total_label)
+    msg['Subject'] = t('subject')
     msg['From'] = _from(manager)
     msg['To'] = client_email
     msg.attach(MIMEText(html, 'html'))
-    _send(msg, client_email)
+    return _send(msg, client_email)
 
 
 def send_google_ads_weekly_report(report: dict):

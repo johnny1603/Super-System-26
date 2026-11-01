@@ -6042,9 +6042,21 @@ def engagement_weekly():
 
 @app.get("/api/engagement/daily", dependencies=_admin_only)
 def engagement_daily():
+    # RETIRED (folded into /api/engagement/morning): answers, sends nothing
     from agents.engagement_agent import run_daily_engagement
     try:
         return {"success": True, "data": run_daily_engagement()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/engagement/morning", dependencies=_admin_only)
+def engagement_morning():
+    # Cloud Scheduler 08:30 Asia/Jerusalem Sunday-Friday (scripts/schedule_jobs.sh
+    # engagement-morning), after the 08:00 chat rollover. Plain `def`: one LLM
+    # call per active client. Idempotent per client per day.
+    from agents.engagement_agent import run_morning_briefings
+    try:
+        return {"success": True, "data": run_morning_briefings()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

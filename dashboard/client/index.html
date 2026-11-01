@@ -625,6 +625,8 @@ body {
 /* An agent's proposed action: what will happen + the one click that runs it */
 .chat-action { align-self: flex-start; max-width: 82%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5; background: var(--panel-2); }
 .chat-action .t { font-weight: 700; margin-bottom: 2px; }
+/* A briefing's approval link landed here (openApproval): a brief, quiet highlight */
+.chat-action.approval-focus, .sugg-row.approval-focus { outline: 2px solid #FF4C1F; outline-offset: 2px; }
 .chat-action .by { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--gray); }
 .chat-action .by .agent-face { width: 20px; height: 20px; font-size: 10px; }
 .chat-action .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
@@ -3190,7 +3192,10 @@ async function loadDashboard() {
     const feed = (d.activity || []).filter(a => a.action_type !== 'welcome_tour_completed'
       && a.agent_name !== 'chat_fallback'
       && !String(a.action_type || '').startsWith('website_authorize_')
-      && !String(a.action_type || '').startsWith('google_link_'));
+      && !String(a.action_type || '').startsWith('google_link_')
+      // engagement bookkeeping (the briefing / login message is in the chat itself)
+      && !String(a.action_type || '').startsWith('morning_briefing_')
+      && a.action_type !== 'login_moment_sent' && a.action_type !== 'feedback_asked');
     document.getElementById('activityListMain').innerHTML = feed.length
       ? feed.map(a => `<div class="activity-row">
           <div class="activity-dot"></div>
@@ -4874,6 +4879,49 @@ window.addEventListener('storage', e => { if (e.key === 'uallak_manager_changed'
 
 // Unified metadata for any persona id (general concierge + specialists), so the
 // launcher, windows, figures and cards all render the same identity from one place.
+// ─── Approval deep link (the morning briefing) ───────────────────────────────
+// /dashboard/?approve=card:<id>&persona=<p> or ?approve=suggestion:<id> opens
+// that exact card and highlights it. The link never approves anything — the
+// client's own click on the card does, as always.
+function openApproval(spec, persona) {
+  const m = /^(card|suggestion):(\d{1,12})$/.exec(String(spec || ''));
+  if (!m) return;
+  const id = Number(m[2]);
+  const highlight = el => {
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('approval-focus');
+    setTimeout(() => el.classList.remove('approval-focus'), 4000);
+  };
+  const findThen = (lookup, tries) => {
+    const el = lookup();
+    if (el) highlight(el);
+    else if (tries > 0) setTimeout(() => findThen(lookup, tries - 1), 300);
+  };
+  if (m[1] === 'suggestion') {
+    showView('home');
+    findThen(() => document.getElementById('sugg-' + id), 20);
+    return;
+  }
+  const pid = (persona === 'general' || TEAM_PERSONAS[persona]) ? persona : 'general';
+  const open = async () => {
+    if (!chatData.dashReady) { setTimeout(open, 300); return; }   // names and faces come from the dashboard
+    const w = openAgentWindow(pid);
+    try { await w.historyLoaded; } catch (e) { /* the cards load on their own */ }
+    findThen(() => w.msgsEl.querySelector(`.chat-action[data-action-id="${id}"]`), 20);
+  };
+  open();
+}
+
+// The same link inside a chat message opens the card in place (no new tab)
+document.addEventListener('click', e => {
+  const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+  if (!a) return;
+  let url;
+  try { url = new URL(a.href); } catch (err) { return; }
+  if (url.origin !== window.location.origin || !url.pathname.startsWith('/dashboard') || !url.searchParams.get('approve')) return;
+  e.preventDefault();
+  openApproval(url.searchParams.get('approve'), url.searchParams.get('persona'));
+});
 function personaMeta(id) {
   if (id === 'general') {
     const name = managerName();
@@ -8234,6 +8282,8 @@ async function loadSupport() {
   probeOutreachNav();
 
   const params = new URLSearchParams(window.location.search);
+  // Captured before the replaceState below (the morning briefing's approval link)
+  const approveLink = { spec: params.get('approve'), persona: params.get('persona') };
   if (params.get('connected') === 'google_ads') {
     markGoogleAdsConnected();
     showNotice(uallakI18n.t('notice_gads_connected'), 'success');
@@ -8322,6 +8372,7 @@ async function loadSupport() {
   // nothing, lands on home. Done last so the lazy loaders fire after the
   // page's own data requests are already in flight.
   if (initialView && initialView !== 'home') showView(initialView);
+  if (approveLink.spec) openApproval(approveLink.spec, approveLink.persona);
 })();
 </script>
 

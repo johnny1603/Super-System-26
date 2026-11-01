@@ -20,7 +20,9 @@ anything:
 4. The client sees one small line, "יום חדש, הכול שמור", and the link to the
    previous conversations (dashboard). No message is posted into the chat.
 5. A client who wrote in the last IDLE_MINUTES is not rolled now; a later
-   catch-up run rolls them once they are idle.
+   catch-up run rolls them once they are idle. If today's morning briefing
+   (08:30) already landed in that window, the cut is made AT the briefing
+   (briefing_boundary), so it opens the new window instead of being archived.
 6. Action cards are proposals (core/agent_actions), listed per persona with no
    reference to the window — pending ones stay on screen unchanged; they are
    also named in the summary.
@@ -226,6 +228,24 @@ def _pending_cards(client_id, channel) -> list:
         return []
 
 
+def briefing_boundary(client_id: int, channel: str, day: str, now: datetime, start: str = None) -> str:
+    """Where today's window starts. Normally `now`. When this chat already
+    got today's morning briefing (agents/morning_briefing — posted into the
+    current window because the rollover was deferred while the client was
+    active), the window is cut AT the briefing: it opens the new window and is
+    never archived away. Never raises."""
+    boundary = now.isoformat()
+    try:
+        from agents import morning_briefing
+        sent = morning_briefing.briefing_today(client_id, day)
+        posted = sent.get("posted_at") or ""
+        if sent.get("channel") == channel and posted and posted < boundary and posted > (start or ""):
+            return posted
+    except Exception:
+        pass
+    return boundary
+
+
 def roll(client_id: int, channel: str, day: str, now: datetime) -> str:
     """'rolled' | 'already' | 'empty' | 'failed' for one chat window."""
     if _existing(client_id, channel, day):
@@ -233,7 +253,7 @@ def roll(client_id: int, channel: str, day: str, now: datetime) -> str:
     from agents.client_agent import get_client
     client = get_client(client_id) or {}
     current = window(client_id, channel, client.get("chat_started_at"))
-    boundary = now.isoformat()
+    boundary = briefing_boundary(client_id, channel, day, now, current["start"])
     messages = _window_messages(client_id, channel, current["start"], boundary)
     if not any(m.get("direction") == "inbound" for m in messages):
         return "empty"

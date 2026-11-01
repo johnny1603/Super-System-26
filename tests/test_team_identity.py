@@ -291,7 +291,9 @@ class Manager(unittest.TestCase):
         self.assertEqual(interview.count("manager_identity.prompt_line(manager_identity.for_client(client))"), 2)
         email = _src("core", "email_service.py")
         self.assertEqual(email.count("msg['From'] = _from(manager)"), 3)
-        self.assertEqual(email.count("{_signoff_html(manager, lang)}"), 3)
+        # the urgent morning notice carries the manager's sign-off inside its text
+        self.assertEqual(email.count("{_signoff_html(manager, lang)}"), 2)
+        self.assertNotIn("def send_sales_alert", email)          # folded into the morning briefing
         api = _src("core", "api_server.py")
         self.assertIn('"manager": manager_identity.for_client(client', api)
         self.assertIn('"manager_options": manager_identity.options(', api)

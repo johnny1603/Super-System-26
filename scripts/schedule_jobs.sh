@@ -48,6 +48,10 @@ NAMES=(); METHODS=(); SCHEDULES=(); PATHS=(); INITIALS=(); DESCRIPTIONS=()
 job() {
   NAMES+=("$1"); METHODS+=("$2"); SCHEDULES+=("$3"); PATHS+=("$4"); INITIALS+=("$5"); DESCRIPTIONS+=("$6")
 }
+# retire NAME WHY — a job we used to run: paused if it exists (never deleted,
+# so it can be looked at or resumed by hand), never created
+RETIRED=()
+retire() { RETIRED+=("$1"); }
 
 # BEGIN JOBS
 job chat-rollover GET "0 8 * * *" "/api/chat/rollover" active "Daily chat rollover at 08:00: summary + fresh window, nothing deleted"
@@ -57,7 +61,8 @@ job landing-hosting-costs GET "0 6 2 * *" "/api/landing/hosting-costs" paused "M
 job crm-retry-syncs GET "0 */6 * * *" "/api/crm/retry-syncs" active "Retry client leads whose sync to the client's own CRM failed"
 job lead-volume-scan GET "0 6 * * *" "/api/leads/volume-scan" active "Daily lead volume and tier per client, plus uallak's own Supabase footprint"
 job engagement-weekly GET "0 9 * * 0" "/api/engagement/weekly" active "Weekly client suggestions (Israeli calendar, trends, performance), Sunday 09:00"
-job engagement-daily GET "45 7 * * *" "/api/engagement/daily" active "Daily sales celebration email for yesterday's conversions"
+job engagement-morning GET "30 8 * * 0-5" "/api/engagement/morning" active "Morning briefing 08:30 Sun-Fri, after the 08:00 chat rollover (no Shabbat or chag)"
+retire engagement-daily "folded into the morning briefing (engagement-morning)"
 job drive-usage-scan GET "30 3 * * *" "/api/drive/usage-scan" active "Daily Shared Drive storage scan (DRIVE_SHARED_ALERT_GB alert on status change)"
 # END JOBS
 
@@ -239,10 +244,28 @@ for i in "${!NAMES[@]}"; do
   fi
 done
 
+# Retired jobs: paused where they still exist
+for job in ${RETIRED[@]+"${RETIRED[@]}"}; do
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] gcloud scheduler jobs pause $job --location=$LOCATION --project=$PROJECT (retired, only if it exists)"
+    continue
+  fi
+  job_exists "$job" || continue
+  if err=$(gcloud scheduler jobs pause "$job" --location="$LOCATION" --project="$PROJECT" --quiet 2>&1 >/dev/null); then
+    echo "OK: $job paused (retired)"
+  elif printf '%s' "$err" | grep -qi "already paused\|FAILED_PRECONDITION"; then
+    echo "OK: $job already paused (retired)"
+  else
+    echo "FAILED: $job (pause retired): $(sanitize "$(printf '%s\n' "$err" | grep -E '^ERROR' | head -n 2)" | cut -c1-400)"
+    FAILED+=("$job")
+  fi
+done
+
 unset AK
 
 echo
 echo "Managed by this script (${#NAMES[@]}): ${NAMES[*]}"
+[ "${#RETIRED[@]}" -gt 0 ] && echo "Retired (kept paused): ${RETIRED[*]}"
 
 if [ "$DRY_RUN" -eq 0 ]; then
   echo

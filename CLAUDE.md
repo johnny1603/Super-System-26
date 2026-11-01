@@ -277,6 +277,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   managed-or-not and method-vs-route flags, via `scripts/scheduler_audit.py`, never reading
   headers), flag `CHAT_ROLLOVER_ENABLED`
   (default ON). Dashboard line "יום חדש, הכול שמור". `tests/test_chat_rollover.py`.
+- `agents/morning_briefing.py` — the client's ONE daily message (2026-11-02): `GET
+  /api/engagement/morning`, job `engagement-morning` 08:30 Sun-Fri (after the rollover), in the
+  chosen manager's voice in the dashboard chat; ≤3 lines (Friday/erev 2), one code-built approval
+  link (`/dashboard/?approve=card:<id>&persona=<p>`, opened by the dashboard), nothing on
+  Shabbat/chag/Yom HaZikaron (`israel_calendar.day_info`), one LLM call per client per day (no
+  retry; code text on failure), urgent items pushed once per issue (WhatsApp, else email). The
+  daily sales email (`run_daily_engagement`, job `engagement-daily`) is RETIRED and folded in;
+  the login moment only says what is new since the briefing; a deferred rollover cuts AT the
+  briefing (`chat_rollover.briefing_boundary`). `tests/test_morning_briefing.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
   resolved first inside `_require_session` and allowed only for endpoints in

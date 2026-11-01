@@ -88,16 +88,31 @@ request; quick-reply chips include "מה ממתין לאישור שלי?" when a
 pending. The card feed remains the approval surface — the chat is the voice
 around it, not a duplicate.
 
-## Daily sales alerts
+## Morning briefing (2026-11-02) — replaced the daily sales alert
 
-`run_daily_engagement()` (→ `GET /api/engagement/daily`, morning): yesterday's
-conversions via `get_conversions_yesterday()` in google_ads_agent (GAQL,
-`segments.date DURING YESTERDAY`) and meta_ads_agent (insights
-`date_preset=yesterday`, CONVERSION_ACTION_TYPES sum). Any conversions → a
-celebration email (`email_service.send_sales_alert`, distinct from weekly
-reports), deduped per-day via `client_activity` `sales_alert_sent` rows.
-Fetch failures return None and are skipped silently — a missing celebration
-is not an incident.
+`agents/morning_briefing.py` (read its docstring first) via
+`run_morning_briefing(client_id)` / `run_morning_briefings()` →
+`GET /api/engagement/morning` (X-Admin-Key, 08:30 Sunday-Friday).
+- ONE message in the manager's dashboard thread: optional urgent line + at most
+  3 lines (2 on Friday / erev chag): what came in (leads, yesterday's ad
+  conversions — the old sales email folded in), what we did, what waits for
+  approval with ONE code-built link `/dashboard/?approve=card:<id>&persona=<p>`.
+  No "!", no URLs from the model, manager voice. Quiet day = one line naming
+  what is in progress.
+- Rhythm from `israel_calendar.day_info`: nothing on Shabbat, chag rest days or
+  Yom HaZikaron.
+- ONE LLM call per client per day (`json_retry=False`, `retry_empty=False`;
+  failure → `fallback_lines`), skipped when nothing is connected, cost
+  category `engagement_morning`. Idempotent by the `morning_briefing_sent`
+  row (`details.date`).
+- Urgent (stored signals only, e.g. Google Ads grant dead) → WhatsApp, else
+  email (`send_urgent_notice`), else admin alert; ONCE per issue key
+  (`morning_briefing_pushed`).
+- Rollover: `chat_rollover.briefing_boundary` cuts a deferred rollover AT the
+  briefing's `posted_at`, so the briefing opens the new window.
+- Login moment reads `briefing_today()` and only speaks about what is new.
+`run_daily_engagement()` is retired (returns `retired: True`, sends nothing).
+Tests: `tests/test_morning_briefing.py`.
 
 ## Login moments — the fourth job (2026-08-02)
 
@@ -281,16 +296,12 @@ alter table clients add column if not exists owner_gender text;
 
 ## Scheduler jobs
 
-```
-gcloud scheduler jobs create http engagement-weekly --schedule="0 9 * * 0" \
-  --uri="{SERVICE_URL}/api/engagement/weekly" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}
-gcloud scheduler jobs create http engagement-daily --schedule="45 7 * * *" \
-  --uri="{SERVICE_URL}/api/engagement/daily" --http-method=GET --update-headers=X-Admin-Key={ADMIN_KEY}
-```
-
-(Weekly on Sunday morning — start of the Israeli work week; daily at 07:45,
-after the ad platforms settle yesterday's numbers and before the 08:00 team
-scans.)
+Never hand-run gcloud for these: `bash scripts/schedule_jobs.sh` (the ONE job
+table; `--audit` lists every job in the project). Ours:
+`engagement-weekly` (GET, Sunday 09:00) and `engagement-morning` (GET
+`/api/engagement/morning`, `30 8 * * 0-5`, after the 08:00 chat rollover).
+`engagement-daily` is RETIRED (`retire` line — the script pauses it if it
+still exists).
 
 ## Gotchas
 

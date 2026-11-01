@@ -112,6 +112,36 @@ EVENTS = [
 HORIZON_WARNING_DAYS = 90
 
 
+# ─── Days off and days to stay quiet (the morning briefing's rhythm) ─────────
+# Derived ONLY from the verified EREV dates above (no new dates): offset 1 is
+# the first day of the chag. Rosh Hashana has two days; Sukkot's day 8 is
+# Shemini Atzeret / Simchat Torah; Pesach's day 7 is its last yom tov.
+REST_OFFSETS = {"rosh_hashana": (1, 2), "yom_kippur": (1,), "sukkot": (1, 8),
+                "pesach": (1, 7), "shavuot": (1,)}
+# Memorial days: the day itself (erev date + 1) — no marketing chatter at all
+QUIET_OFFSETS = {"yom_hazikaron": (1,)}
+
+
+def day_info(d: date) -> dict:
+    """{"shabbat", "friday", "rest": slug|"", "erev": slug|"", "quiet": slug|""}
+    for one Israeli calendar day."""
+    out = {"shabbat": d.weekday() == 5, "friday": d.weekday() == 4, "rest": "", "erev": "", "quiet": ""}
+    for event in EVENTS:
+        for raw in event["dates"]:
+            erev = _parse(raw)
+            for offset in REST_OFFSETS.get(event["slug"], ()):
+                if d == erev + timedelta(days=offset):
+                    out["rest"] = event["slug"]
+                elif d == erev + timedelta(days=offset - 1):
+                    out["erev"] = out["erev"] or event["slug"]
+            for offset in QUIET_OFFSETS.get(event["slug"], ()):
+                if d == erev + timedelta(days=offset):
+                    out["quiet"] = event["slug"]
+    if out["rest"]:
+        out["erev"] = ""            # day 1 of Rosh Hashana is also day 2's erev: rest wins
+    return out
+
+
 def _parse(d: str) -> date:
     return datetime.strptime(d, "%Y-%m-%d").date()
 
