@@ -110,11 +110,11 @@ and the registry; it verifies nothing and pushes nothing.
 
 ## Scheduler
 
-```
-gcloud scheduler jobs create http crm-retry-syncs --schedule="0 */6 * * *" \
-  --uri="{SERVICE_URL}/api/crm/retry-syncs" --http-method=GET \
-  --update-headers=X-Admin-Key={ADMIN_KEY}
-```
+Job `crm-retry-syncs` (GET, `0 */6 * * *`, Asia/Jerusalem) lives in the job table of
+`scripts/schedule_jobs.sh` — the one scheduler entry point (key from Secret Manager, never
+printed). Run `bash scripts/schedule_jobs.sh` to create/refresh it (a 401 means the job carries
+an old key: rerunning refreshes it) and `bash scripts/schedule_jobs.sh --audit` to check every
+job. Never create it by hand with a pasted key.
 
 ## Deferred / not built
 

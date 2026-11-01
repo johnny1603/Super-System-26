@@ -260,8 +260,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   messages stay in client_communications (never deleted), agent context = latest summary + ≤2
   earlier (`window()`, payload `previous_days`). Deferred while the client wrote in the last 30
   min; failed summary (after one retry) = old window kept + admin alert. Job
-  `GET /api/chat/rollover` (scripts/schedule_jobs.sh — the ONE scheduler entry point; create
-  uses `--headers`, update `--update-headers`; key from Secret Manager, never printed), flag `CHAT_ROLLOVER_ENABLED`
+  `GET /api/chat/rollover` (scripts/schedule_jobs.sh — the ONE scheduler entry point: its
+  `# BEGIN JOBS` table is the single source of truth for every job we own, each job's method must
+  be the one the route registers (tested); create uses `--headers`, update `--update-headers`; key
+  from Secret Manager, never printed; `--audit` lists EVERY job in the project with last attempt,
+  managed-or-not and method-vs-route flags, via `scripts/scheduler_audit.py`, never reading
+  headers), flag `CHAT_ROLLOVER_ENABLED`
   (default ON). Dashboard line "יום חדש, הכול שמור". `tests/test_chat_rollover.py`.
 - `core/admin_view.py` — admin "כניסה כלקוח": the client's own dashboard, READ-ONLY, from
   the admin client list. Its own signed `admin_view` cookie bound to the admin session (2 h),
@@ -374,8 +378,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`tests/test_round2_analytics_drive.py`). Migration (`core/drive_migration.py`, admin): copy →
   verify (size + md5) → flip → free (typed phrase + re-verify) — never a delete before a
   verification. Shared Drive size alert: `POST /api/admin/drive/usage-scan` (admin cookie, the
-  button) and its cron twin `GET /api/drive/usage-scan` (X-Admin-Key, daily scheduler job —
-  `bash scripts/schedule_drive_usage_scan.sh`). `DRIVE_SHARED_ALERT_GB` alerts ONCE per client
+  button) and its cron twin `GET /api/drive/usage-scan` (X-Admin-Key, daily scheduler job
+  `drive-usage-scan` in `scripts/schedule_jobs.sh`). `DRIVE_SHARED_ALERT_GB` alerts ONCE per client
   per status change (over / back under), stored in app_settings `drive_usage:<id>`.
   **Outreach page** (`core/outreach_tracker`, client view "פניות לעסקים" + admin tab + export):
   one row per business, status DERIVED at read time from prospect_contacts / agent_actions /

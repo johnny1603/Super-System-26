@@ -142,29 +142,23 @@ class StoredStatusLifecycle(unittest.TestCase):
 
 
 class SchedulerScript(unittest.TestCase):
+    # The job now lives in the one scheduler entry point (scripts/schedule_jobs.sh);
+    # the old script is a thin wrapper. Key handling is tested in test_schedule_jobs.
     def setUp(self):
-        self.script = _src("scripts", "schedule_drive_usage_scan.sh")
+        self.wrapper = _src("scripts", "schedule_drive_usage_scan.sh")
+        self.script = _src("scripts", "schedule_jobs.sh")
 
-    def test_daily_in_jerusalem_with_the_admin_key_header(self):
-        self.assertIn('SCHEDULE="30 3 * * *"', self.script)
+    def test_daily_in_jerusalem_get(self):
+        self.assertIn('job drive-usage-scan GET "30 3 * * *" "/api/drive/usage-scan" active', self.script)
         self.assertIn('TZ_NAME="Asia/Jerusalem"', self.script)
-        self.assertIn('URL="https://app.uallak.com/api/drive/usage-scan"', self.script)
-        self.assertIn("--http-method=GET", self.script)
-        self.assertIn('--update-headers="X-Admin-Key=$AK"', self.script)
+        self.assertIn('@app.get("/api/drive/usage-scan", dependencies=_admin_only)', _src("core", "api_server.py"))
 
-    def test_key_read_from_cloud_run_and_never_printed(self):
-        self.assertIn("gcloud run services describe", self.script)
-        self.assertIn('e.get("name") == "ADMIN_KEY"', self.script)
-        self.assertIn("unset AK", self.script)
-        for line in self.script.splitlines():
-            if line.strip().startswith(("echo", "printf")):
-                self.assertNotIn("$AK", line, line)
-
-    def test_create_or_update_so_it_can_be_rerun(self):
-        self.assertIn('ACTION="update"', self.script)
-        self.assertIn('ACTION="create"', self.script)
+    def test_wrapper_only_delegates(self):
+        self.assertIn('exec bash "$(dirname "$0")/schedule_jobs.sh" "$@"', self.wrapper)
+        self.assertNotIn("gcloud", self.wrapper)
 
     def test_lf_line_endings(self):
+        self.assertNotIn("\r\n", self.wrapper)
         self.assertNotIn("\r\n", self.script)
 
 
