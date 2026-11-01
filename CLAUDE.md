@@ -204,6 +204,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `app_settings` `gtm_token:<id>` (NOT client_activity — the client's feed shows unknown action
   types raw); client_deletion clears it. `configure_lead_conversion` refuses to publish on a
   mismatch or a dead grant. Control Room shows the same view + last OK time.
+  `configure_lead_conversion` is IDEMPOTENT: workspace (by `WORKSPACE_NAME`), trigger and tag are
+  looked up by NAME (`gtm_service.ensure_entity`) and reused or updated (PUT with fingerprint) —
+  never created twice (a workspace is based on the LIVE version, so a published trigger is
+  already there: the client-27 "duplicate name" 400). Failures that are ours retry once, then
+  one admin alert; the client sees only the fixed line.
 - `core/video_limits.py` — THE Drive → YouTube upload size limit (`VIDEO_UPLOAD_MAX_MB`, 512)
   and chunk size, read by client_state, agent_actions, verification_demo and
   `youtube_content_agent.publish` (the root guard). Uploads STREAM: `drive_service.read_range`

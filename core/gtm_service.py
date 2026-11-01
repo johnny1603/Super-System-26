@@ -29,9 +29,11 @@ Each scope, by the API method that requires it (Tag Manager API v2
 reference, checked 2026-10-17) — docs/GOOGLE-SCOPES.md has the full map:
 tagmanager.edit.containers — accounts.list, containers.list, containers.get,
   workspaces.list, workspaces.getStatus, versions.live (read) and
-  workspaces.create / workspaces.delete / workspaces.triggers.create /
-  workspaces.tags.create / triggers.delete / tags.delete (write; the deletes
-  only remove what this flow itself just created, after a failed run).
+  workspaces.create / workspaces.delete / workspaces.sync /
+  workspaces.triggers.list+create+update / workspaces.tags.list+create+update /
+  triggers.delete / tags.delete (write; every object is looked up by name and
+  reused or updated before anything is created; the deletes only remove what
+  this flow itself just created, after a failed run).
 tagmanager.edit.containerversions — workspaces.create_version. Missing
   until 2026-10-17, so every publish_workspace call would have failed with
   403; grants made before then lack it and must reconnect
@@ -224,7 +226,27 @@ def lead_workspace(refresh_token: str, container_path: str) -> tuple:
     deletes it when the version is created. If one can't be created (the
     workspace limit), the default workspace is used only when it holds no
     unpublished change; otherwise GtmWorkspaceBusy. Auth/permission errors
-    (401/403) are re-raised: the default workspace would fail the same way."""
+    (401/403) are re-raised: the default workspace would fail the same way.
+
+    Our own workspace left over from an earlier run (it carries our name) is
+    REUSED, never duplicated: synced to the live version first, and replaced
+    by a fresh one only when the sync reports a conflict."""
+    workspaces = _get(refresh_token, f"{container_path}/workspaces").get("workspace", [])
+    mine = next((w for w in workspaces if (w.get("name") or "") == WORKSPACE_NAME and w.get("path")), {})
+    if mine:
+        try:
+            synced = _post(refresh_token, f"{mine['path']}:sync")
+            if not synced.get("mergeConflict") and not (synced.get("syncStatus") or {}).get("mergeConflict") \
+                    and not (synced.get("syncStatus") or {}).get("syncError"):
+                return mine["path"], True
+        except GtmApiError as e:
+            if e.status in (401, 403):
+                raise
+        try:
+            delete_workspace(refresh_token, mine["path"])
+        except GtmApiError as e:
+            if e.status in (401, 403):
+                raise
     try:
         created = _post(refresh_token, f"{container_path}/workspaces",
                         json_body={"name": WORKSPACE_NAME,
@@ -275,37 +297,106 @@ def get_live_version(refresh_token: str, container_path: str) -> dict:
 
 # ─── Write (conversion trigger + tag + publish) ──────────────────────────────
 
-def create_form_submit_trigger(refresh_token: str, workspace_path: str,
-                               name: str = "uallak — form submission") -> dict:
+# GTM refuses a second entity with the same name in a workspace ("Found entity
+# with duplicate name"), and a workspace is based on the LIVE version — so a
+# trigger or tag that an earlier run published (or left in a draft) is already
+# there. Every object this setup writes is therefore looked up by NAME first
+# and reused (or updated to our spec), never created twice. The setup creates
+# no variables today; a future one goes through ensure_entity("variables").
+TRIGGER_NAME = "uallak — form submission"
+TAG_NAME = "uallak — GA4 generate_lead"
+_LIST_KEY = {"triggers": "trigger", "tags": "tag", "variables": "variable"}
+
+
+def _put(refresh_token: str, path: str, json_body: dict = None, params: dict = None) -> dict:
+    response = httpx.put(f"{GTM_BASE_URL}/{path.lstrip('/')}",
+                         headers={"Authorization": f"Bearer {_access_token(refresh_token)}"},
+                         json=json_body or {}, params=params or {}, timeout=TIMEOUT)
+    if response.status_code != 200:
+        raise GtmApiError("PUT", path, response)
+    return response.json()
+
+
+def find_named(items: list, name: str) -> dict:
+    """The entity called exactly `name` ({} if none)."""
+    return next((i for i in items or [] if (i.get("name") or "") == name), {})
+
+
+def list_entities(refresh_token: str, workspace_path: str, kind: str) -> list:
+    return _get(refresh_token, f"{workspace_path}/{kind}").get(_LIST_KEY[kind], [])
+
+
+def _is_duplicate_name(error: Exception) -> bool:
+    return isinstance(error, GtmApiError) and error.status == 400 and "duplicate name" in str(error).lower()
+
+
+def ensure_entity(refresh_token: str, workspace_path: str, kind: str, body: dict, matches) -> tuple:
+    """(entity, outcome) for a trigger / tag / variable named body['name']:
+    'reused' when one with that name already matches our spec, 'updated' when
+    one exists but differs (rewritten to our spec, with its fingerprint so a
+    concurrent edit is never clobbered), 'created' otherwise. A create that
+    still meets a duplicate name (someone added it in between) re-reads and
+    takes that path instead of failing."""
+    existing = find_named(list_entities(refresh_token, workspace_path, kind), body["name"])
+    if not existing:
+        try:
+            return _post(refresh_token, f"{workspace_path}/{kind}", json_body=body), "created"
+        except GtmApiError as e:
+            if not _is_duplicate_name(e):
+                raise
+            existing = find_named(list_entities(refresh_token, workspace_path, kind), body["name"])
+            if not existing:
+                raise
+    if matches(existing):
+        return existing, "reused"
+    params = {"fingerprint": existing["fingerprint"]} if existing.get("fingerprint") else None
+    return _put(refresh_token, existing["path"], json_body=body, params=params), "updated"
+
+
+def form_submit_trigger_body(name: str = TRIGGER_NAME) -> dict:
     """GTM's built-in Form Submission trigger, all forms. Known real-world
     limit (documented, not hidden): it catches standard HTML form submits;
     heavily-AJAXed form builders that never fire a submit event need a
     custom-event trigger instead — that's the v2 follow-up, not v1."""
-    return _post(refresh_token, f"{workspace_path}/triggers", json_body={
-        "name": name,
-        "type": "formSubmission",
-        "waitForTags": {"type": "boolean", "value": "false"},
-        "checkValidation": {"type": "boolean", "value": "false"},
-    })
+    return {"name": name, "type": "formSubmission",
+            "waitForTags": {"type": "boolean", "value": "false"},
+            "checkValidation": {"type": "boolean", "value": "false"}}
 
 
-def create_ga4_lead_event_tag(refresh_token: str, workspace_path: str,
-                              ga4_measurement_id: str, trigger_id: str,
-                              name: str = "uallak — GA4 generate_lead") -> dict:
+def ga4_lead_tag_body(ga4_measurement_id: str, trigger_id: str, name: str = TAG_NAME) -> dict:
     """GA4 event tag (type gaawe) firing 'generate_lead' on the given
     trigger. generate_lead is GA4's own recommended-event name for this —
     Google Ads can then import it as a conversion action directly.
     measurementIdOverride keeps the tag self-contained (no dependency on a
     separate Google tag existing in the container)."""
-    return _post(refresh_token, f"{workspace_path}/tags", json_body={
-        "name": name,
-        "type": "gaawe",
-        "parameter": [
-            {"type": "template", "key": "measurementIdOverride", "value": ga4_measurement_id},
-            {"type": "template", "key": "eventName", "value": "generate_lead"},
-        ],
-        "firingTriggerId": [trigger_id],
-    })
+    return {"name": name, "type": "gaawe",
+            "parameter": [
+                {"type": "template", "key": "measurementIdOverride", "value": ga4_measurement_id},
+                {"type": "template", "key": "eventName", "value": "generate_lead"},
+            ],
+            "firingTriggerId": [str(trigger_id)]}
+
+
+def ensure_form_submit_trigger(refresh_token: str, workspace_path: str) -> tuple:
+    """(trigger, outcome) — our form-submission trigger, reused if present."""
+    return ensure_entity(refresh_token, workspace_path, "triggers", form_submit_trigger_body(),
+                         lambda t: t.get("type") == "formSubmission" and not t.get("filter")
+                         and not t.get("autoEventFilter"))
+
+
+def ensure_ga4_lead_event_tag(refresh_token: str, workspace_path: str,
+                              ga4_measurement_id: str, trigger_id: str) -> tuple:
+    """(tag, outcome) — our GA4 generate_lead tag, reused only if it already
+    fires on THIS trigger with this measurement id and is not paused;
+    otherwise rewritten so the GA4 tag is attached to the trigger."""
+    def matches(tag):
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        return (tag.get("type") == "gaawe" and not tag.get("paused")
+                and params.get("measurementIdOverride") == ga4_measurement_id
+                and params.get("eventName") == "generate_lead"
+                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
+    return ensure_entity(refresh_token, workspace_path, "tags",
+                         ga4_lead_tag_body(ga4_measurement_id, trigger_id), matches)
 
 
 def publish_workspace(refresh_token: str, workspace_path: str,

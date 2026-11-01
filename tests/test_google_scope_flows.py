@@ -53,12 +53,30 @@ class FakeGtm:
     "publish") to (http_status, google_reason) or "compiler"."""
 
     def __init__(self, gtm):
-        self.gtm, self.calls, self.deleted = gtm, [], []
+        self.gtm, self.calls, self.deleted, self.puts = gtm, [], [], []
         self.fail, self.default_has_changes = {}, False
+        self.fail_times = {}                   # key -> how many calls fail (default: all)
+        self.workspaces = [{"path": f"{CONTAINER}/workspaces/1", "name": "Default Workspace"}]
+        self.sync_conflict = False
+        # Entities per workspace path, like the real API: a NEW workspace is
+        # based on the live version, so whatever is in `live` is there too
+        self.live = {"trigger": [], "tag": []}
+        self.entities = {}
+
+    def _ws(self, path):
+        ws = path.rsplit("/", 1)[0]
+        return self.entities.setdefault(ws, {"trigger": [dict(t) for t in self.live["trigger"]],
+                                              "tag": [dict(t) for t in self.live["tag"]]})
 
     def _maybe_fail(self, key, method, path):
         failure = self.fail.get(key)
-        if failure is None or failure == "compiler":
+        if failure is None:
+            return None
+        if key in self.fail_times:
+            if self.fail_times[key] <= 0:
+                return None
+            self.fail_times[key] -= 1
+        if failure == "compiler":
             return failure
         status, reason = failure
         body = {"error": {"code": status, "status": reason, "details": [{"reason": reason}]}}
@@ -67,23 +85,42 @@ class FakeGtm:
     def get(self, refresh_token, path, params=None):
         self.calls.append(("GET", path))
         if path == f"{CONTAINER}/workspaces":
-            return {"workspace": [{"path": f"{CONTAINER}/workspaces/1"}]}
+            return {"workspace": [dict(w) for w in self.workspaces]}
         if path.endswith("/status"):
             return {"workspaceChange": [{"tag": {}}]} if self.default_has_changes else {}
+        if path.endswith("/triggers"):
+            return {"trigger": [dict(t) for t in self._ws(path)["trigger"]]}
+        if path.endswith("/tags"):
+            return {"tag": [dict(t) for t in self._ws(path)["tag"]]}
         raise AssertionError(f"unexpected GET {path}")
+
+    def _create(self, kind, path, body, new_id):
+        items = self._ws(path)[kind]
+        if any(i["name"] == body["name"] for i in items):
+            # Exactly what Tag Manager answered for client 27
+            raise self.gtm.GtmApiError("POST", path, _Resp(400, {"error": {
+                "code": 400, "message": "Found entity with duplicate name", "status": "INVALID_ARGUMENT"}}))
+        entity = {**body, f"{kind}Id": new_id, "path": f"{path}/{new_id}", "fingerprint": "f1"}
+        items.append(entity)
+        return dict(entity)
 
     def post(self, refresh_token, path, json_body=None, params=None):
         self.calls.append(("POST", path))
         if path == f"{CONTAINER}/workspaces":
             self._maybe_fail("create_workspace", "POST", path)
-            return {"path": f"{CONTAINER}/workspaces/9", "name": json_body["name"]}
+            ws = {"path": f"{CONTAINER}/workspaces/9", "name": json_body["name"]}
+            self.workspaces.append(ws)
+            return dict(ws)
+        if path.endswith(":sync"):
+            return {"syncStatus": {"mergeConflict": self.sync_conflict}}
         if path.endswith("/triggers"):
             self._maybe_fail("trigger", "POST", path)
-            return {"triggerId": "5", "path": f"{path}/5", "name": json_body["name"]}
+            return self._create("trigger", path, json_body, "5")
         if path.endswith("/tags"):
             self._maybe_fail("tag", "POST", path)
-            assert json_body["firingTriggerId"] == ["5"]
-            return {"tagId": "6", "path": f"{path}/6", "name": json_body["name"]}
+            triggers = [t["triggerId"] for t in self._ws(path)["trigger"]]
+            assert json_body["firingTriggerId"][0] in triggers, (json_body, triggers)
+            return self._create("tag", path, json_body, "6")
         if path.endswith(":create_version"):
             if self._maybe_fail("version", "POST", path) == "compiler":
                 return {"compilerError": True}
@@ -94,9 +131,25 @@ class FakeGtm:
             return {"containerVersion": {"name": "uallak conversion tracking", "containerVersionId": "12"}}
         raise AssertionError(f"unexpected POST {path}")
 
+    def put(self, refresh_token, path, json_body=None, params=None):
+        self.calls.append(("PUT", path))
+        self.puts.append((path, json_body, params))
+        kind = "tag" if "/tags/" in path else "trigger"
+        items = self._ws(path.rsplit("/", 1)[0])[kind]
+        for i, item in enumerate(items):
+            if item["path"] == path:
+                items[i] = {**json_body, f"{kind}Id": item[f"{kind}Id"], "path": path, "fingerprint": "f2"}
+                return dict(items[i])
+        raise AssertionError(f"PUT to a missing entity {path}")
+
     def delete(self, refresh_token, path):
         self.calls.append(("DELETE", path))
         self.deleted.append(path)
+        self.workspaces = [w for w in self.workspaces if w["path"] != path]
+        self.entities.pop(path, None)
+        for items in self.entities.values():
+            for kind in ("trigger", "tag"):
+                items[kind] = [i for i in items[kind] if i["path"] != path]
 
 
 class GtmFlow(unittest.TestCase):
@@ -149,6 +202,7 @@ class GtmFlow(unittest.TestCase):
         self.alerts.clear()
         self.api = FakeGtm(self.gtm)
         self.gtm._get, self.gtm._post, self.gtm._delete = self.api.get, self.api.post, self.api.delete
+        self.gtm._put = self.api.put
 
     def run_flow(self):
         return self.website.configure_lead_conversion(27, "G-ABC1234")
@@ -165,13 +219,125 @@ class GtmFlow(unittest.TestCase):
         self.assertEqual(result["tag_name"], "uallak — GA4 generate_lead")
         self.assertEqual(self.alerts, [])
 
-    def test_failed_tag_deletes_our_workspace_and_alerts(self):
+    def test_failed_tag_deletes_our_workspace_retries_once_and_alerts(self):
         self.api.fail["tag"] = (500, "INTERNAL")
         result = self.run_flow()
         self.assertEqual(result["reason"], "gtm_error")
-        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/9"])
+        # two attempts, each cleaned up; ONE alert after the retry
+        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/9"] * 2)
         self.assertEqual(len(self.alerts), 1)
+        self.assertIn("failed twice", self.alerts[0][0])
         self.assertFalse(any(p.endswith(":publish") for _m, p in self.api.calls))
+
+    def test_a_passing_retry_publishes_without_an_alert(self):
+        self.api.fail["tag"] = (503, "UNAVAILABLE")
+        self.api.fail_times["tag"] = 1
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(self.alerts, [])
+        self.assertEqual(sum(1 for m, p in self.api.calls if m == "POST" and p.endswith("/tags")), 2)
+
+    # ── client 27: the trigger already exists (published by an earlier run) ──
+
+    def _existing_trigger(self, **extra):
+        self.api.live["trigger"] = [{"name": "uallak — form submission", "type": "formSubmission",
+                                     "triggerId": "41", "path": "x/triggers/41", "fingerprint": "f0", **extra}]
+
+    def test_existing_trigger_is_reused_not_created(self):
+        self._existing_trigger()
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        trigger_posts = [p for m, p in self.api.calls if m == "POST" and p.endswith("/triggers")]
+        self.assertEqual(trigger_posts, [])                       # no duplicate-name 400 possible
+        tag = self.api.entities[f"{CONTAINER}/workspaces/9"]["tag"][0]
+        self.assertEqual(tag["firingTriggerId"], ["41"])          # the GA4 tag is attached to it
+        self.assertEqual(self.alerts, [])
+        self.assertTrue(any(p.endswith(":publish") for _m, p in self.api.calls))
+
+    def test_existing_trigger_with_another_type_is_updated_in_place(self):
+        self._existing_trigger(type="click")
+        # the fake keeps paths per workspace; give the live trigger a path inside ours
+        self.api.live["trigger"][0]["path"] = f"{CONTAINER}/workspaces/9/triggers/41"
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(len(self.api.puts), 1)
+        path, body, params = self.api.puts[0]
+        self.assertEqual((path, body["type"], params), (f"{CONTAINER}/workspaces/9/triggers/41",
+                                                         "formSubmission", {"fingerprint": "f0"}))
+        self.assertFalse(any(m == "POST" and p.endswith("/triggers") for m, p in self.api.calls))
+
+    def test_existing_tag_not_on_the_trigger_is_reattached(self):
+        self._existing_trigger()
+        self.api.live["tag"] = [{"name": "uallak — GA4 generate_lead", "type": "gaawe", "tagId": "77",
+                                 "path": f"{CONTAINER}/workspaces/9/tags/77", "fingerprint": "t0",
+                                 "parameter": [{"key": "measurementIdOverride", "value": "G-ABC1234"},
+                                               {"key": "eventName", "value": "generate_lead"}],
+                                 "firingTriggerId": ["3"]}]
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(len(self.api.puts), 1)
+        path, body, _params = self.api.puts[0]
+        self.assertEqual((path, body["firingTriggerId"]), (f"{CONTAINER}/workspaces/9/tags/77", ["41"]))
+        self.assertFalse(any(m == "POST" and (p.endswith("/tags") or p.endswith("/triggers"))
+                             for m, p in self.api.calls))
+
+    def test_matching_trigger_and_tag_are_both_reused(self):
+        self._existing_trigger()
+        self.api.live["tag"] = [{"name": "uallak — GA4 generate_lead", "type": "gaawe", "tagId": "77",
+                                 "path": "x/tags/77",
+                                 "parameter": [{"key": "measurementIdOverride", "value": "G-ABC1234"},
+                                               {"key": "eventName", "value": "generate_lead"}],
+                                 "firingTriggerId": ["41"]}]
+        self.assertTrue(self.run_flow()["success"])
+        self.assertEqual(self.api.puts, [])
+        self.assertFalse(any(m == "POST" and (p.endswith("/tags") or p.endswith("/triggers"))
+                             for m, p in self.api.calls))
+
+    def test_leftover_own_workspace_is_reused_not_duplicated(self):
+        self.api.workspaces.append({"path": f"{CONTAINER}/workspaces/24", "name": "uallak lead tracking"})
+        self.api.entities[f"{CONTAINER}/workspaces/24"] = {"trigger": [
+            {"name": "uallak — form submission", "type": "formSubmission", "triggerId": "8",
+             "path": f"{CONTAINER}/workspaces/24/triggers/8"}], "tag": []}
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        self.assertNotIn(("POST", f"{CONTAINER}/workspaces"), self.api.calls)
+        self.assertIn(("POST", f"{CONTAINER}/workspaces/24:sync"), self.api.calls)
+        self.assertIn(("POST", f"{CONTAINER}/workspaces/24/tags"), self.api.calls)
+        self.assertFalse(any(m == "POST" and p.endswith("/triggers") for m, p in self.api.calls))
+
+    def test_leftover_workspace_with_a_conflict_is_replaced(self):
+        self.api.workspaces.append({"path": f"{CONTAINER}/workspaces/24", "name": "uallak lead tracking"})
+        self.api.sync_conflict = True
+        self.assertTrue(self.run_flow()["success"])
+        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/24"])
+        self.assertIn(("POST", f"{CONTAINER}/workspaces"), self.api.calls)
+
+    def test_duplicate_name_race_on_create_takes_the_existing_one(self):
+        # listed empty, then someone else's create lands before ours
+        real_get = self.api.get
+        state = {"n": 0}
+
+        def racy_get(rt, path, params=None):
+            out = real_get(rt, path, params)
+            if path.endswith("/triggers") and state["n"] == 0:
+                state["n"] += 1
+                self.api._ws(path)["trigger"].append({"name": "uallak — form submission", "type": "formSubmission",
+                                                      "triggerId": "50", "path": f"{path}/50"})
+                return {"trigger": []}
+            return out
+        self.gtm._get = racy_get
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        tag = self.api.entities[f"{CONTAINER}/workspaces/9"]["tag"][0]
+        self.assertEqual(tag["firingTriggerId"], ["50"])
+
+    def test_duplicate_name_never_reaches_the_client(self):
+        # Even if every write failed, the card shows the plain fixed line — the
+        # runner raises ActionFailed with a code; the raw text goes to the admin only
+        with open(os.path.join(ROOT, "core", "agent_actions.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('_post(row, _pick(_FAILED, lang), to_client=True)', src)
+        self.assertIn("the message only to the admin/log", src)
 
     def test_no_publish_permission_is_explained_not_alerted(self):
         self.api.fail["publish"] = (403, "PERMISSION_DENIED")
@@ -223,7 +389,8 @@ class GtmFlow(unittest.TestCase):
         self.api.fail["create_workspace"] = (400, "FAILED_PRECONDITION")
         self.api.fail["tag"] = (500, "INTERNAL")
         self.run_flow()
-        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/1/triggers/5"])
+        # each of the two attempts removes only the trigger it created
+        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/1/triggers/5"] * 2)
 
     def test_refusals_before_any_write_carry_a_reason(self):
         saved = self.website.get_conversion_tracking_status

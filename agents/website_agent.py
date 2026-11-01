@@ -1213,6 +1213,10 @@ def gtm_failure_reason(error: Exception) -> str:
     return "gtm_error"
 
 
+# Failures that are ours, not the client's: one automatic retry, then an alert
+GTM_RETRYABLE = ("gtm_error", "gtm_api_disabled", "gtm_compiler_error")
+
+
 def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: bool, created: list):
     """After a failed run, leave the container as it was: our own workspace is
     deleted whole; in a shared workspace only the trigger/tag we created are.
@@ -1232,9 +1236,12 @@ def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: b
 def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> dict:
     """V1 conversion configuration — THE single common case: standard HTML
     form submission → GA4 'generate_lead' event, created in the default
-    workspace and PUBLISHED (a draft fires nothing). Idempotent-ish: refuses
+    workspace and PUBLISHED (a draft fires nothing). Idempotent: refuses
     when the live container already has a lead-event tag rather than
-    stacking a duplicate that would double-count every lead. Known v1 limit,
+    stacking a duplicate that would double-count every lead, and every GTM
+    object (workspace, trigger, tag) is found by name and reused/updated
+    before anything is created, so a re-run never meets "duplicate name".
+    A failure that is ours is retried once, then alerted. Known v1 limit,
     stated: GTM's built-in Form Submission trigger catches standard submits;
     heavily-AJAXed form builders need a custom-event trigger — flagged
     follow-up, not silently attempted."""
@@ -1291,33 +1298,56 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
     refresh_token, container_path = conn["access_token"], conn["account_id"]
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: {container_path} → {ga4_measurement_id}")
-    workspace, ours, created = "", False, []
-    try:
-        # Our own workspace: the published version carries ONLY our trigger
-        # and tag, never someone's drafts (gtm_service.lead_workspace)
-        workspace, ours = gtm.lead_workspace(refresh_token, container_path)
-        trigger = timed_step(AGENT_NAME, "gtm_create_trigger",
-                             lambda: gtm.create_form_submit_trigger(refresh_token, workspace))
-        created.append(trigger.get("path", ""))
-        tag = timed_step(AGENT_NAME, "gtm_create_tag",
-                         lambda: gtm.create_ga4_lead_event_tag(
-                             refresh_token, workspace, ga4_measurement_id,
-                             trigger["triggerId"]))
-        created.append(tag.get("path", ""))
-        published = timed_step(AGENT_NAME, "gtm_publish",
-                               lambda: gtm.publish_workspace(refresh_token, workspace))
-    except Exception as e:
+
+    def attempt():
+        workspace, ours, created = "", False, []
+        try:
+            # Our own workspace: the published version carries ONLY our trigger
+            # and tag, never someone's drafts (gtm_service.lead_workspace).
+            # Trigger and tag are looked up by NAME and reused/updated — a
+            # workspace is based on the live version, so an earlier run's
+            # trigger may already be there (the "duplicate name" 400).
+            workspace, ours = gtm.lead_workspace(refresh_token, container_path)
+            trigger, trigger_outcome = timed_step(AGENT_NAME, "gtm_ensure_trigger",
+                                                  lambda: gtm.ensure_form_submit_trigger(refresh_token, workspace))
+            if trigger_outcome == "created":
+                created.append(trigger.get("path", ""))
+            tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
+                                          lambda: gtm.ensure_ga4_lead_event_tag(
+                                              refresh_token, workspace, ga4_measurement_id,
+                                              trigger["triggerId"]))
+            if tag_outcome == "created":
+                created.append(tag.get("path", ""))
+            published = timed_step(AGENT_NAME, "gtm_publish",
+                                   lambda: gtm.publish_workspace(refresh_token, workspace))
+            return {"trigger": trigger, "tag": tag, "published": published,
+                    "outcomes": {"trigger": trigger_outcome, "tag": tag_outcome}}
+        except Exception as e:
+            _undo_gtm_drafts(client_id, refresh_token, workspace, ours, created)
+            return {"error": e}
+
+    # Ours to fix (not the client's): retried once, then ONE admin alert. The
+    # error text never reaches the client — agent_actions shows its plain line.
+    first = attempt()
+    done = first
+    if "error" in first and gtm_failure_reason(first["error"]) in GTM_RETRYABLE:
+        log_step(AGENT_NAME, "configure_lead_conversion",
+                 f"client {client_id}: retrying once after {gtm_failure_reason(first['error'])}")
+        done = attempt()
+    if "error" in done:
+        e = done["error"]
         reason = gtm_failure_reason(e)
-        _undo_gtm_drafts(client_id, refresh_token, workspace, ours, created)
-        if reason in ("gtm_error", "gtm_api_disabled", "gtm_compiler_error"):
-            agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed "
-                                     f"({reason}): {e}"])
+        if reason in GTM_RETRYABLE:
+            agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed twice "
+                                     f"({reason}): {str(e)[:300]}"])
         return {"success": False, "reason": reason, "errors": [str(e)]}
 
+    trigger, tag, published = done["trigger"], done["tag"], done["published"]
     version = (published.get("containerVersion") or {})
     _log_activity(client_id, "website_conversion_configured",
                   {"ga4_measurement_id": ga4_measurement_id,
-                   "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId")},
+                   "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId"),
+                   "gtm_objects": done["outcomes"], "retried": done is not first},
                   {"live_version": version.get("name", "")})
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: published as '{version.get('name', '')}'")
