@@ -363,7 +363,8 @@ Return JSON only:
 
 
 def draft_campaign_spec(client_id: int, daily_budget_ils: float, final_url: str = "",
-                        goal: str = "", force_refresh_research: bool = False) -> dict:
+                        goal: str = "", force_refresh_research: bool = False,
+                        landing_page_id: int = None) -> dict:
     """Competitor research → a validated Meta traffic campaign spec, for review.
 
     CREATES NOTHING — the returned spec is what create_link_campaign takes, and
@@ -382,6 +383,11 @@ def draft_campaign_spec(client_id: int, daily_budget_ils: float, final_url: str 
     if not final_url:
         from agents.website_agent import _get_connection as _wp_connection
         final_url = (_wp_connection(client_id) or {}).get("account_id") or ""
+    if not final_url or landing_page_id:
+        # One of the client's own LIVE landing pages (uallak-hosted): the named
+        # one wins over the site; with no site, the newest live page.
+        from agents.landing_page_agent import ad_destination
+        final_url = ad_destination(client_id, landing_page_id) or final_url
     if not final_url.startswith(("http://", "https://")):
         return {"success": False, "errors": ["final_url is required (no connected website to "
                                              "fall back on) and must start with http(s)://"]}

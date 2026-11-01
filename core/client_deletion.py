@@ -56,6 +56,9 @@ DATA_TABLES = (
     ("client_leads", True),
     ("client_feedback", True),
     ("client_lead_volume", True),
+    # versions/stats before their pages (versions also cascade on the page)
+    ("landing_page_versions", True),
+    ("landing_page_stats", True),
     ("landing_pages", True),
     ("admin_agent_chat", True),
     ("client_target_keywords", True),

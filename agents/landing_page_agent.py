@@ -21,6 +21,12 @@ reviewing generated copy, confirming a DNS record was added — all of it
 surfaces as a `dashboard_chat` communication, the same channel
 website_agent's self-provisioning already talks on. There is deliberately no
 email, no standalone form and no out-of-band channel in this file.
+
+THE FLOW (docs/LANDING_PAGES.md, 2026-11-01): the agent writes (a new
+version) → a `publish_landing_page` card with a preview link in the website
+agent's (אורי) thread → the client's click publishes exactly that version →
+a "live" line with the URL. Nothing goes live without that click; a revert
+is one tap.
 """
 import json
 import os
@@ -28,8 +34,12 @@ import os
 from core import competitor_research, landing_domains, landing_pages
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
+from core.cost_tracker import cost_action
 
 AGENT_NAME = "landing_page_agent"
+# Landing pages are the website agent's (אורי) work: its chat thread carries
+# the preview cards, the "live" line and the tracking offer.
+PERSONA = "website"
 
 
 def _log_activity(client_id: int, action_type: str, details: dict, result: dict = None):
@@ -127,11 +137,39 @@ def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
 
 # ─── Create (the main entry point) ────────────────────────────────────────────
 
+def _default_contact(client_id: int) -> dict:
+    """The page's call / WhatsApp buttons from what the client already gave
+    us (their account phone) — never typed into a form by them again."""
+    try:
+        from agents.client_agent import get_client
+        client = get_client(client_id) or {}
+    except Exception:
+        return {}
+    phone = client.get("phone") or ""
+    return landing_pages.normalize_contact({"phone": phone, "whatsapp": phone})
+
+
+def propose_publish(client_id: int, page_id: int, intro: str = "") -> dict:
+    """The approval card for the page's newest version, in אורי's chat, with
+    one line saying what changed. The click (agent_actions.publish_landing_page)
+    is the only way a page goes live."""
+    from core import agent_actions
+    result = agent_actions.propose(client_id, "client_chat", PERSONA,
+                                   {"name": "publish_landing_page", "params": {"page_id": page_id}})
+    if intro:
+        try:
+            agent_actions._post_client_message(client_id, PERSONA, intro)
+        except Exception as e:
+            log_step(AGENT_NAME, "propose_publish", f"client {client_id}: message not posted ({type(e).__name__})")
+    return result
+
+
 def create_page(client_id: int, title: str, goal: str = "",
                 generate: bool = True) -> dict:
-    """Create ONE landing page, with generated copy by default.
+    """Create ONE landing page, with generated copy by default, and propose
+    publishing it (preview card in the website agent's chat).
 
-    The 3-page ceiling is enforced in `landing_pages.create_page` (server-side,
+    The page ceiling is enforced in `landing_pages.create_page` (server-side,
     before anything is generated) — so a client at the limit never burns an LLM
     call to be told no."""
     created = landing_pages.create_page(client_id, title, goal, copy_source="")
@@ -146,12 +184,17 @@ def create_page(client_id: int, title: str, goal: str = "",
 
     page = created["page"]
     copy_result = {}
-    if generate:
-        copy_result = generate_copy(client_id, goal, title)
-        if copy_result.get("success"):
-            landing_pages.update_page(client_id, page["id"],
-                                      {"content": copy_result["content"]})
-            page = landing_pages.get_page(client_id, page["id"]) or page
+    # Every AI cost of this page is labelled with it — the admin cost view
+    # sums client_costs by action_ref "lp:<id>" (core/landing_admin).
+    with cost_action("landing_page_generate", ref=f"lp:{page['id']}"):
+        if generate:
+            copy_result = generate_copy(client_id, goal, title)
+    fields = {"contact": _default_contact(client_id)}
+    if copy_result.get("success"):
+        fields["content"] = copy_result["content"]
+    updated = landing_pages.update_page(client_id, page["id"], fields, source="generated")
+    if updated.get("success"):
+        page = updated["page"]
 
     _log_activity(client_id, "landing_page_created",
                   {"page_id": page["id"], "slug": page["slug"], "title": title,
@@ -159,21 +202,23 @@ def create_page(client_id: int, title: str, goal: str = "",
                    "research_grounded": copy_result.get("research_grounded", False)},
                   {"notes_for_johnny": copy_result.get("notes", "")})
 
-    # Copy review happens IN CHAT (point 7) — never a separate review surface.
+    card = {}
     if copy_result.get("success"):
-        _chat(client_id,
-              f'הכנתי עבורכם דף נחיתה חדש: "{page["title"]}" ✍️\n'
-              f'הוא שמור כטיוטה — אפשר לראות אותו באזור "דפי נחיתה" בדשבורד. '
-              f'תגידו לי כאן מה לשנות בטקסט, וכשזה מוצא חן בעיניכם נעלה אותו לאוויר.')
+        card = propose_publish(client_id, page["id"],
+                               f'הכנתי דף נחיתה חדש: "{page["title"]}" ✍️ '
+                               f'בכרטיס יש תצוגה מקדימה. מאשרים, והוא עולה לאוויר. '
+                               f'רוצים לשנות משהו? כתבו לי כאן.')
     return {"success": True, "page": page,
             "copy_generated": bool(copy_result.get("success")),
+            "card": card.get("card"),
             "notes_for_johnny": copy_result.get("notes", "")}
 
 
 def regenerate_copy(client_id: int, page_id: int, feedback: str = "") -> dict:
     """Rewrite one page's copy, optionally with the client's own chat feedback
     folded into the goal — which is how "make it warmer / lead with price"
-    arrives, since review happens in conversation."""
+    arrives, since review happens in conversation. The rewrite is a NEW
+    version; the live one stays live until the client approves the card."""
     page = landing_pages.get_page(client_id, page_id)
     if not page:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND",
@@ -182,36 +227,145 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "") -> dict:
     if feedback:
         goal = f"{goal}\n\nCLIENT FEEDBACK ON THE PREVIOUS VERSION: {feedback}".strip()
 
-    result = generate_copy(client_id, goal, page.get("title", ""))
+    with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
+        result = generate_copy(client_id, goal, page.get("title", ""))
     if not result.get("success"):
         return result
-    landing_pages.update_page(client_id, page_id, {"content": result["content"]})
+    updated = landing_pages.update_page(client_id, page_id, {"content": result["content"]},
+                                        source="rewrite")
+    if not updated.get("success"):
+        return updated
     _log_activity(client_id, "landing_page_copy_regenerated",
                   {"page_id": page_id, "had_feedback": bool(feedback)})
-    return {"success": True, "page": landing_pages.get_page(client_id, page_id)}
+    card = propose_publish(client_id, page_id,
+                           f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
+                           f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.')
+    return {"success": True, "page": updated["page"], "card": card.get("card")}
 
 
-def publish_page(client_id: int, page_id: int) -> dict:
-    """Draft → live. Explicit, and client-triggered: unlike an article on their
-    WordPress site, a landing page is a standalone asset with their name on it,
-    and nothing goes live without someone saying so."""
-    result = landing_pages.update_page(client_id, page_id, {"status": "published"})
+def edited(client_id: int, page_id: int) -> dict:
+    """After a client's own edit (a new version): offer it for publishing."""
+    page = landing_pages.get_page(client_id, page_id)
+    if not page:
+        return {}
+    if page.get("status") == "published" and page.get("current_version") == page.get("published_version"):
+        return {}
+    return propose_publish(client_id, page_id)
+
+
+def publish_page(client_id: int, page_id: int, version: int = None, notify: bool = True) -> dict:
+    """Draft → live, at `version` (default the newest). Called by the client's
+    approval of the publish card (notify=False: the card posts its own done
+    line), by a revert, or by the admin.
+
+    After it is live: the admin hears once when the client reached the
+    live-page limit, and a client without Tag Manager gets the connect card."""
+    result = landing_pages.publish(client_id, page_id, version)
     if not result.get("success"):
         return result
     page = result["page"]
-    url = page_url(client_id, page)
-    _log_activity(client_id, "landing_page_published",
-                  {"page_id": page_id, "slug": page["slug"], "url": url})
-
     state = landing_domains.get_state(client_id)
-    if state["mode"] == "active":
-        _chat(client_id, f'דף הנחיתה "{page["title"]}" עלה לאוויר 🚀\n{url}')
-    else:
-        _chat(client_id,
-              f'דף הנחיתה "{page["title"]}" עלה לאוויר 🚀\n{url}\n'
-              f'הכתובת הזמנית הזו עובדת מצוין בינתיים — וברגע שנחבר את הדומיין שלכם, '
-              f'הדף יעבור לכתובת שלכם אוטומטית, בלי לשנות כלום.')
-    return {"success": True, "page": page, "url": url}
+    url = page_url(client_id, page, state=state)
+    _log_activity(client_id, "landing_page_published",
+                  {"page_id": page_id, "slug": page["slug"], "url": url, "version": result.get("version")})
+    try:
+        from core import client_state
+        client_state.forget(client_id)
+    except Exception:
+        pass
+
+    _limit_alert(client_id)
+    tracking_offered = _offer_tracking(client_id)
+    if notify:
+        line = f'דף הנחיתה "{page["title"]}" באוויר 🚀\n{url}'
+        if state["mode"] != "active":
+            line += '\nהכתובת הזו עובדת מצוין. כשנחבר את הדומיין שלכם, הדף יעבור אליו לבד.'
+        _chat(client_id, line)
+    return {"success": True, "page": page, "url": url, "version": result.get("version"),
+            "shared_url": state["mode"] != "active", "tracking_offered": tracking_offered}
+
+
+def revert_page(client_id: int, page_id: int, version: int) -> dict:
+    """One tap back to an earlier version (it comes back as a new version; a
+    live page goes live with it at once — the tap is the approval)."""
+    result = landing_pages.revert(client_id, page_id, version)
+    if not result.get("success"):
+        return result
+    _log_activity(client_id, "landing_page_reverted", {"page_id": page_id, "to_version": version,
+                                                       "new_version": result.get("version")})
+    try:
+        from core import client_state
+        client_state.forget(client_id)
+    except Exception:
+        pass
+    return result
+
+
+def unpublish_page(client_id: int, page_id: int, by: str = "client", reason: str = "") -> dict:
+    """Instant: the next visit answers 'not found'. `by` admin = the team took
+    it down (the client is told plainly, in the website agent's chat)."""
+    page = landing_pages.get_page(client_id, page_id)
+    result = landing_pages.unpublish(client_id, page_id, reason or by)
+    if not result.get("success"):
+        return result
+    _log_activity(client_id, "landing_page_unpublished", {"page_id": page_id, "by": by})
+    if by == "admin" and page:
+        try:
+            from core import agent_actions
+            agent_actions._post_client_message(
+                client_id, PERSONA, f'הורדנו זמנית את דף הנחיתה "{page.get("title", "")}" מהאוויר. '
+                                    f'נחזור אליכם כאן עם הפרטים.')
+        except Exception:
+            pass
+    try:
+        from core import client_state
+        client_state.forget(client_id)
+    except Exception:
+        pass
+    return result
+
+
+def _limit_alert(client_id: int):
+    """ONE admin alert when a client reaches the live-page limit (the client
+    never sees a counter)."""
+    try:
+        active = landing_pages.count_active(client_id)
+        if active >= landing_pages.MAX_ACTIVE_PAGES:
+            from core import chat_fallback
+            chat_fallback.alert_once(AGENT_NAME, client_id, "landing_active_limit",
+                                     f"client {client_id}: {active}/{landing_pages.MAX_ACTIVE_PAGES} landing "
+                                     f"pages live — at the included limit. A further page is a pricing decision.",
+                                     days=30)
+    except Exception as e:
+        log_step(AGENT_NAME, "limit_alert", f"client {client_id}: check failed ({type(e).__name__})")
+
+
+def _offer_tracking(client_id: int) -> bool:
+    """No Tag Manager connected → the connect card in this chat (once per open card)."""
+    try:
+        from core import gtm_connection, agent_actions
+        if gtm_connection._connection(client_id).get("access_token"):
+            return False
+        proposed = agent_actions.propose(client_id, "client_chat", PERSONA,
+                                         {"name": "connect_tag_manager", "params": {}})
+        return bool(proposed.get("card"))
+    except Exception as e:
+        log_step(AGENT_NAME, "offer_tracking", f"client {client_id}: skipped ({type(e).__name__})")
+        return False
+
+
+def ad_destination(client_id: int, page_id: int = None) -> str:
+    """A LIVE landing page's public URL for an ad's final URL — the named page,
+    else the newest live one; '' when none is live."""
+    try:
+        pages = [p for p in landing_pages.list_pages(client_id) if p.get("status") == "published"]
+    except Exception:
+        return ""
+    if page_id:
+        pages = [p for p in pages if p.get("id") == page_id]
+    if not pages:
+        return ""
+    return page_url(client_id, pages[0])
 
 
 # ─── The 4th page: blocked, and priced by a HUMAN ─────────────────────────────
@@ -321,15 +475,28 @@ def dashboard_payload(client_id: int) -> dict:
     or pending state, per-page lead counts, and the domain card."""
     from agents.client_agent import get_client
     business_name = (get_client(client_id) or {}).get("business_name", "")
+    from core import landing_tracking
     counts = landing_pages.lead_counts_by_page(client_id)
+    stats = landing_tracking.stats_by_page(client_id, days=30)
     state = landing_domains.get_state(client_id)  # read once, reused per page
     pages = []
     for page in landing_pages.list_pages(client_id):
+        # Counting on → no row really is zero; counting off (pre-migration) → None
+        numbers = stats.get(page["id"]) or ({"views": 0, "calls": 0, "whatsapp": 0}
+                                            if landing_tracking._stats_ok["value"] else {})
         pages.append({
             "id": page["id"], "slug": page["slug"], "title": page.get("title", ""),
             "goal": page.get("goal", ""), "status": page.get("status", "draft"),
             "url": page_url(client_id, page, business_name, state),
             "leads": counts.get(page["slug"], 0),
+            # Last 30 days, our own counters (None = not counted yet, never a fake 0)
+            "views": numbers.get("views") if numbers else None,
+            "calls": numbers.get("calls") if numbers else None,
+            "whatsapp": numbers.get("whatsapp") if numbers else None,
+            "current_version": page.get("current_version") or 0,
+            "published_version": page.get("published_version"),
+            "has_unpublished_changes": bool(page.get("current_version")) and
+                page.get("current_version") != page.get("published_version"),
             "created_at": page.get("created_at", ""),
         })
     used = len(pages)

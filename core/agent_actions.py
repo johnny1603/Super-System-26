@@ -495,6 +495,102 @@ def _run_rotate_wordpress_password(client_id: int, params: dict, background_task
             else "NO — delete the older 'uallak' Application Password in wp-admin → Users → Profile"}
 
 
+# ─── Landing pages (docs/LANDING_PAGES.md) ───────────────────────────────────
+
+def _v_landing_page(value, client_id: int):
+    try:
+        page_id = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("page_id must be a number")
+    from core import landing_pages
+    if not landing_pages.get_page(client_id, page_id):
+        raise ValueError("not one of this client's landing pages")
+    return page_id
+
+
+def _v_landing_version(value, client_id: int):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("version must be a number")
+    if number < 0:
+        raise ValueError("version must not be negative")
+    return number
+
+
+def _validate_landing_stored(client_id: int, params: dict) -> dict:
+    params = params if isinstance(params, dict) else {}
+    if set(params) - {"page_id", "version"}:
+        raise ValueError("unknown params")
+    page_id = _v_landing_page(params.get("page_id"), client_id)
+    return {"page_id": page_id, "version": _v_landing_version(params.get("version") or 0, client_id)}
+
+
+def _prepare_landing(client_id: int, params: dict, rows: list) -> dict:
+    """Pin the card to the page's NEWEST version, so what the client approves
+    is exactly what the preview showed; a newer card for the same page
+    replaces the older one."""
+    from core import landing_pages
+    page = landing_pages.get_page(client_id, params["page_id"]) or {}
+    params = {"page_id": params["page_id"],
+              "version": int(params.get("version") or page.get("current_version") or 0)}
+    same_page = [r for r in rows if (r.get("params") or {}).get("page_id") == params["page_id"]]
+    for row in same_page:
+        if (row.get("params") or {}) == params:
+            return {"existing": row}
+    return {"params": params, "supersedes": same_page[0].get("id") if same_page else None}
+
+
+def _landing_title(client_id: int, page_id) -> str:
+    try:
+        from core import landing_pages
+        return (landing_pages.get_page(client_id, int(page_id)) or {}).get("title", "")
+    except Exception:
+        return ""
+
+
+def _landing_details(client_id: int, params: dict) -> dict:
+    page_id, version = int(params.get("page_id") or 0), int(params.get("version") or 0)
+    url = f"/api/client/landing-pages/{page_id}/preview" + (f"?version={version}" if version else "")
+    return {"title": _landing_title(client_id, page_id), "preview_url": url}
+
+
+def _run_publish_landing_page(client_id: int, params: dict, background_tasks):
+    from agents.landing_page_agent import publish_page
+    result = publish_page(client_id, params["page_id"], params.get("version") or None, notify=False)
+    if not result.get("success"):
+        code = {"ERR_LANDING_ACTIVE_LIMIT": "active_limit", "ERR_LANDING_TOO_LARGE": "too_large",
+                "ERR_LANDING_NO_VERSION": "no_version"}.get(result.get("code"), "error")
+        raise ActionFailed(code, result.get("code", ""))
+    return {"title": result["page"].get("title", ""), "url": result.get("url", ""),
+            "shared_url": result.get("shared_url", False), "tracking_offered": result.get("tracking_offered", False)}
+
+
+_LANDING_SHARED_NOTE = _txt(
+    "הכתובת הזו עובדת מצוין. כשנחבר את הדומיין שלכם, הדף יעבור אליו לבד.",
+    "This address works well. Once we connect your own domain, the page moves there by itself.",
+    "Cette adresse fonctionne. Une fois votre domaine connecté, la page y passera toute seule.",
+    "هذا العنوان يعمل جيدًا. عندما نربط نطاقكم، ستنتقل الصفحة إليه تلقائيًا.",
+    "Этот адрес работает. Когда подключим ваш домен, страница переедет туда сама.")
+_LANDING_TRACKING_NOTE = _txt(
+    "כדי לראות את התוצאות גם במדידת האתר שלכם ב-Google, הוספתי כאן כרטיס חיבור.",
+    "To also see the results in your Google site tracking, I added a connect card here.",
+    "Pour voir aussi les résultats dans votre suivi Google, j'ai ajouté une carte de connexion.",
+    "لرؤية النتائج أيضًا في قياس موقعكم في Google، أضفت هنا بطاقة ربط.",
+    "Чтобы видеть результаты и в аналитике Google, я добавил здесь карточку подключения.")
+
+
+def _landing_done(result: dict, lang: str) -> str:
+    text = _pick(ACTIONS["publish_landing_page"]["done"], lang).replace("{page}", result.get("title", ""))
+    if result.get("url"):
+        text += f"\n{result['url']}"
+    if result.get("shared_url"):
+        text += "\n" + _pick(_LANDING_SHARED_NOTE, lang)
+    if result.get("tracking_offered"):
+        text += "\n" + _pick(_LANDING_TRACKING_NOTE, lang)
+    return text
+
+
 def _run_approve_suggestion(client_id: int, params: dict, background_tasks):
     from agents.engagement_agent import decide_suggestion
     result = decide_suggestion(client_id, params["suggestion_id"], "approved", background_tasks)
@@ -1230,6 +1326,55 @@ ACTIONS = {
         "done": _txt("סיסמת האפליקציה של וורדפרס הוחלפה ✓", "WordPress application password rotated ✓",
                      "Mot de passe d'application WordPress renouvelé ✓", "تم تجديد كلمة مرور تطبيق WordPress ✓",
                      "Пароль приложения WordPress заменён ✓"),
+    },
+    "publish_landing_page": {
+        # The client's click is the approval: the exact version on the card
+        # (the preview link shows it) goes live on their landing page.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Puts ONE of the client's landing pages live (account_state.landing_pages), at the version "
+                "shown in the card's preview. Proposed by the system after it writes or changes a page; "
+                "propose it yourself only when the client asks to publish a page that has a newer version.",
+        "params": {"page_id": {"required": True, "validate": _v_landing_page,
+                               "hint": "page id copied exactly from account_state.landing_pages"},
+                   "version": {"required": False, "validate": _v_landing_version,
+                               "hint": "leave out — the newest version is used"}},
+        "available": lambda state, client: True,
+        "validate_stored": lambda client_id, params: _validate_landing_stored(client_id, params),
+        "prepare": lambda client_id, params, context, rows: _prepare_landing(client_id, params, rows),
+        "details": lambda client_id, params: _landing_details(client_id, params),
+        "display": lambda client_id, params: {"page": _landing_title(client_id, params.get("page_id"))},
+        "run": _run_publish_landing_page,
+        "title": _txt("העלאת דף נחיתה לאוויר", "Publish a landing page", "Publier une page d'atterrissage",
+                      "نشر صفحة هبوط", "Опубликовать посадочную страницу"),
+        "what": _txt("דף הנחיתה \"{page}\" יעלה לאוויר בדיוק כמו בתצוגה המקדימה. אפשר לשנות או לחזור לגרסה קודמת בכל רגע.",
+                     "The landing page \"{page}\" goes live exactly as in the preview. You can change it or go back to an earlier version at any time.",
+                     "La page « {page} » sera publiée exactement comme dans l'aperçu. Vous pouvez la modifier ou revenir en arrière à tout moment.",
+                     "ستُنشر صفحة الهبوط \"{page}\" تمامًا كما في المعاينة. يمكنكم تعديلها أو العودة لنسخة سابقة في أي وقت.",
+                     "Страница «{page}» будет опубликована точно как в предпросмотре. Её можно изменить или вернуть прежнюю версию в любой момент."),
+        "done": _txt("דף הנחיתה \"{page}\" באוויר 🚀", "The landing page \"{page}\" is live 🚀",
+                     "La page « {page} » est en ligne 🚀", "صفحة الهبوط \"{page}\" منشورة 🚀",
+                     "Страница «{page}» опубликована 🚀"),
+        "done_message": lambda result, lang: _landing_done(result, lang),
+        "refusals": {
+            "active_limit": _txt(
+                "כל דפי הנחיתה שכלולים בחבילה כבר באוויר. אפשר להוריד אחד מהם, או לכתוב לי כאן ונבדוק תוספת עם הצוות.",
+                "All the landing pages in your package are already live. Take one down, or write to me here and we'll check an extra with the team.",
+                "Toutes les pages incluses sont déjà en ligne. Retirez-en une, ou écrivez-moi ici pour en ajouter une.",
+                "كل صفحات الهبوط المشمولة في الباقة منشورة. أوقفوا واحدة، أو اكتبوا لي هنا لنفحص إضافة مع الفريق.",
+                "Все страницы из пакета уже опубликованы. Снимите одну или напишите мне здесь — обсудим дополнительную с командой."),
+            "too_large": _txt(
+                "הדף ארוך מדי בשביל דף נחיתה. בואו נקצר אותו — כתבו לי מה הכי חשוב שיישאר.",
+                "The page is too long for a landing page. Let's shorten it — tell me what matters most to keep.",
+                "La page est trop longue. Raccourcissons-la — dites-moi l'essentiel à garder.",
+                "الصفحة طويلة جدًا لصفحة هبوط. لنختصرها — أخبروني ما الأهم.",
+                "Страница слишком длинная. Давайте сократим — напишите, что важнее всего оставить."),
+            "no_version": _txt(
+                "הגרסה הזו כבר לא קיימת. אכין לכם כרטיס חדש עם הגרסה העדכנית.",
+                "That version no longer exists. I'll prepare a new card with the latest one.",
+                "Cette version n'existe plus. Je prépare une nouvelle carte avec la dernière.",
+                "هذه النسخة لم تعد موجودة. سأجهز بطاقة جديدة بالنسخة الأحدث.",
+                "Этой версии больше нет. Подготовлю новую карточку с последней."),
+        },
     },
     "connect_tag_manager": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",

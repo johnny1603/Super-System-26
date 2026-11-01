@@ -264,7 +264,13 @@ def _landing_pages(client_id: int) -> dict:
     pages = payload.get("pages") or []
     return {"used": payload.get("used", len(pages)), "included": payload.get("included"),
             "domain_mode": (payload.get("domain") or {}).get("mode"),
-            "pages": [{"title": p.get("title", ""), "status": p.get("status"), "leads": p.get("leads", 0)}
+            # id: what a publish_landing_page proposal names; url only when live
+            # (the Ads agent may use it as a destination); views/calls: last 30 days
+            "pages": [{"id": p.get("id"), "title": p.get("title", ""), "status": p.get("status"),
+                       "url": p.get("url") if p.get("status") == "published" else "",
+                       "leads": p.get("leads", 0), "views_30d": p.get("views"),
+                       "calls_30d": p.get("calls"), "whatsapp_30d": p.get("whatsapp"),
+                       "has_unpublished_changes": p.get("has_unpublished_changes", False)}
                       for p in pages]}
 
 

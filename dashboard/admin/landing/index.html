@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — דפי נחיתה</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* Every client's landing pages (core/landing_admin): status, live URL,
+   30-day numbers, cost per page and per client, instant take-down, hosting
+   rates, backup + move to versions. Admin session only. */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
+  --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.muted { color:var(--gray); font-size:13px; }
+.scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; vertical-align:top; }
+th { color:var(--gray); font-weight:500; font-size:13px; white-space:nowrap; }
+td a { color:var(--white); }
+.badge { display:inline-block; font-size:12px; padding:2px 9px; border-radius:100px; background:var(--panel-2); border:1px solid var(--border); }
+.badge.ok { color:var(--green); } .badge.warn { color:var(--yellow); }
+button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:6px 12px; cursor:pointer; }
+button.danger { border-color:rgba(255,59,59,.5); color:var(--red); }
+input { font-family:inherit; font-size:14px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:7px 10px; width:110px; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+code { font-size:12px; word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · דפי נחיתה</div>
+  <a href="/admin/">← לניהול</a>
+</div>
+<div class="wrap">
+  <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+  <div id="state" class="card muted">טוען…</div>
+  <div class="card">
+    <h2>לקוחות</h2>
+    <div class="scroll"><table><thead><tr><th>לקוח</th><th>דפים</th><th>באוויר</th><th>עלות AI</th><th>עלות אחסון (הערכה)</th><th>סה"כ</th></tr></thead>
+      <tbody id="clients"></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2>כל הדפים</h2>
+    <div class="scroll"><table><thead><tr><th>לקוח</th><th>דף</th><th>מצב</th><th>צפיות 30 י׳</th><th>שיחות</th><th>וואטסאפ</th><th>עלות</th><th></th></tr></thead>
+      <tbody id="pages"></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2>תעריפי אחסון (להערכת עלות לדף)</h2>
+    <div class="muted">אין חשבונית שמפרקת אחסון לפי דף, אז העלות מחושבת מהנפח והבקשות של כל דף בחודש שעבר × התעריפים כאן. בלי תעריפים לא נרשם כלום.</div>
+    <div class="row">
+      <label class="muted">₪ ל-GB <input id="perGb" type="number" step="0.0001" min="0"></label>
+      <label class="muted">₪ ל-10,000 בקשות <input id="per10k" type="number" step="0.0001" min="0"></label>
+      <button id="saveRates">שמירה</button>
+      <button id="recordHosting">רישום החודש שעבר</button>
+      <span id="ratesMsg" class="muted"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>גיבוי והעברה לגרסאות</h2>
+    <div class="muted">קודם גיבוי מלא, ורק אחריו העברה: לכל דף בלי גרסאות נוצרת גרסה 1 זהה למה שבאוויר. שום דבר לא נמחק.</div>
+    <div class="row">
+      <button id="backup">גיבוי</button>
+      <button id="migrate" disabled>העברה לגרסאות</button>
+      <span id="backupMsg" class="muted"></span>
+    </div>
+  </div>
+</div>
+<script>
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ils = n => "₪" + Number(n || 0).toFixed(2);
+let backupSha = "";
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
+    : {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (res.status === 401) { document.getElementById("authNote").style.display = "block"; throw new Error("auth"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data.detail && data.detail.code) || "failed");
+  return data.data;
+}
+
+function render(d) {
+  const state = document.getElementById("state");
+  state.innerHTML = `מגבלת דפים באוויר ללקוח: <b>${d.limit}</b> ·
+    גרסאות: ${d.versions_on ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי — להריץ את migrations/2026-11-01-landing-own.sql</span>'} ·
+    מונים: ${d.counters_on ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי</span>'}`;
+  document.getElementById("clients").innerHTML = d.clients.map(c => `<tr>
+    <td>${esc(c.business_name) || "—"} <span class="muted">#${c.client_id}</span>
+      ${c.near_limit ? '<span class="badge warn">במגבלה</span>' : ""}</td>
+    <td>${c.pages}</td><td>${c.live}</td><td>${ils(c.cost_ai_ils)}</td><td>${ils(c.cost_hosting_ils)}</td>
+    <td>${ils(c.cost_ai_ils + c.cost_hosting_ils)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">אין עדיין דפים.</td></tr>';
+  document.getElementById("pages").innerHTML = d.pages.map(p => `<tr>
+    <td>${esc(p.business_name) || "—"} <span class="muted">#${p.client_id}</span></td>
+    <td>${esc(p.title)}<div class="muted"><code>${esc(p.url)}</code></div></td>
+    <td>${p.status === "published" ? '<span class="badge ok">באוויר</span>' : '<span class="badge">טיוטה</span>'}
+      ${p.current_version ? `<div class="muted">גרסה ${p.current_version}${p.published_version ? " · באוויר " + p.published_version : ""}</div>` : ""}</td>
+    <td>${p.views_30d}</td><td>${p.calls_30d}</td><td>${p.whatsapp_30d}</td>
+    <td>${ils(p.cost_ai_ils + p.cost_hosting_ils)}</td>
+    <td>${p.status === "published" ? `<button class="danger" data-client="${p.client_id}" data-page="${p.id}">הורדה מהאוויר</button>` : ""}</td>
+  </tr>`).join("") || '<tr><td colspan="8" class="muted">אין עדיין דפים.</td></tr>';
+  if (d.rates.ils_per_gb != null) document.getElementById("perGb").value = d.rates.ils_per_gb;
+  if (d.rates.ils_per_10k_requests != null) document.getElementById("per10k").value = d.rates.ils_per_10k_requests;
+}
+
+async function load() { render(await api("/api/admin/landing")); }
+
+document.getElementById("pages").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-page]");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    await api("/api/admin/landing/unpublish", {client_id: +b.dataset.client, page_id: +b.dataset.page, reason: "admin"});
+    await load();
+  } catch (err) { b.disabled = false; b.textContent = "לא הצליח — לנסות שוב"; }
+});
+document.getElementById("saveRates").addEventListener("click", async () => {
+  const msg = document.getElementById("ratesMsg");
+  try {
+    await api("/api/admin/landing/rates", {ils_per_gb: +document.getElementById("perGb").value,
+                                           ils_per_10k_requests: +document.getElementById("per10k").value});
+    msg.textContent = "נשמר ✓";
+  } catch (err) { msg.textContent = "לא נשמר — לבדוק את המספרים"; }
+});
+document.getElementById("recordHosting").addEventListener("click", async () => {
+  const msg = document.getElementById("ratesMsg");
+  try {
+    const r = await api("/api/admin/landing/hosting-costs", {});
+    msg.textContent = r.reason === "rates_not_set" ? "קודם לשמור תעריפים"
+      : r.reason === "already_recorded" ? `החודש ${r.month} כבר נרשם` : `נרשמו ${r.recorded} דפים לחודש ${r.month} ✓`;
+    await load();
+  } catch (err) { msg.textContent = "לא הצליח"; }
+});
+document.getElementById("backup").addEventListener("click", async () => {
+  const msg = document.getElementById("backupMsg");
+  try {
+    const r = await api("/api/admin/landing/backup", {});
+    backupSha = r.sha256;
+    const blob = new Blob([r.body], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `landing-backup-${r.sha256.slice(0, 12)}.json`;
+    a.click();
+    msg.innerHTML = `גובו ${r.pages} דפים · sha256 <code>${esc(r.sha256)}</code>`;
+    document.getElementById("migrate").disabled = false;
+  } catch (err) { msg.textContent = "הגיבוי נכשל — שום דבר לא השתנה"; }
+});
+document.getElementById("migrate").addEventListener("click", async () => {
+  const msg = document.getElementById("backupMsg");
+  try {
+    const r = await api("/api/admin/landing/migrate", {backup_sha256: backupSha});
+    msg.textContent = `הועברו ${r.migrated.length} דפים · ${r.skipped.length} כבר היו עם גרסאות ✓`;
+    await load();
+  } catch (err) {
+    msg.textContent = err.message === "migration_sql_not_run" ? "קודם להריץ את קובץ ההגירה ב-Supabase"
+      : err.message === "backup_required" ? "צריך גיבוי חדש לפני העברה" : "ההעברה נכשלה — שום דבר לא נמחק";
+  }
+});
+load().catch(err => { if (err.message !== "auth") document.getElementById("state").textContent = "הטעינה נכשלה. אפשר לרענן."; });
+</script>
+<!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->
+<script src="/assets/itzik-chat.js" defer></script>
+</body>
+</html>

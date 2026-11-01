@@ -144,6 +144,29 @@ def get_state(client_id: int) -> dict:
     }
 
 
+_host_cache = {}
+HOST_TTL = 600
+
+
+def client_for_hostname(hostname: str) -> int:
+    """Which client a VERIFIED custom hostname belongs to (0 = none). Used by
+    the /lp-host/ routes our Cloudflare Worker forwards a client's own domain
+    to. Cached 10 minutes; only 'active' (verified) rows count."""
+    import time
+    hostname = normalize_hostname(hostname)
+    if not hostname:
+        return 0
+    hit = _host_cache.get(hostname)
+    if hit and hit[0] > time.time() - HOST_TTL:
+        return hit[1]
+    rows = (_db().table("client_accounts").select("client_id")
+            .eq("platform", PLATFORM).eq("account_id", hostname).eq("status", "active")
+            .order("id", desc=True).limit(1).execute().data or [])
+    client_id = int(rows[0]["client_id"]) if rows else 0
+    _host_cache[hostname] = (time.time(), client_id)
+    return client_id
+
+
 # Building a page's public URL deliberately lives in ONE place —
 # landing_page_agent.page_url() — rather than half here and half there, so the
 # dashboard, the chat messages and the rendered page can never disagree about

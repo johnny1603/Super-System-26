@@ -45,7 +45,7 @@ READ_ENDPOINTS = frozenset({
     "client_interview_state", "client_connection_checklist", "client_journey_view",
     "client_external_costs", "google_ads_accounts", "gtm_connection_status", "gtm_containers",
     "client_search_console_sites", "client_leads_list", "client_lead_capture_setup",
-    "client_landing_pages", "client_crm_status", "client_support", "client_media_drive",
+    "client_landing_pages", "client_landing_versions", "client_landing_preview", "client_crm_status", "client_support", "client_media_drive",
     "client_media_drive_thumb", "client_media_drive_file", "client_media_assets",
     "client_suggestions", "client_open_actions", "client_outreach", "client_ownership",
 })

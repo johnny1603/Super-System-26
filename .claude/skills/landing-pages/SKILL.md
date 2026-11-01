@@ -145,17 +145,41 @@ it cannot create/publish/price), which keeps the persona path's
 read-only-by-construction invariant intact. Adding an action-capable function
 to a persona's reads is a bug by definition.
 
+## Owned + versioned (2026-11-01, docs/LANDING_PAGES.md — read it first)
+
+- Every write is a new `landing_page_versions` row; `published_version` is
+  what visitors see. Publishing is ONLY the client's click on the
+  `publish_landing_page` card (agent_actions) in אורי's chat — the dashboard
+  button opens that card. Revert = one tap (new version, live at once on a
+  live page). Pre-migration everything degrades to the old single-content
+  behaviour (`_versions_ok`, `landing_tracking._stats_ok`).
+- `core/landing_tracking.py`: our own counters (views + call/WhatsApp/store
+  click redirects), the form's honeypot + signed render stamp + per-IP limit,
+  and `gtm_container()` — Tag Manager ONLY via the Worker's
+  `x-uallak-lp-host` on the client's verified hostname, never on app.uallak.com.
+- Every page links its own privacy/terms pages and shows a consent line.
+- `core/landing_admin.py` + `/admin/landing/`: all pages, instant takedown,
+  cost per page/client (`cost_action ref lp:<id>` + monthly hosting estimate),
+  backup-first migration to versions.
+- InstaWP is for full websites only — never touch it from here.
+
 ## Endpoints
 
-Public: `GET /lp/{client_segment}/{page_slug}`, `GET /_uallak-verify`.
+Public: `GET /lp/{client_segment}/{page_slug}`, `/lp/{client_segment}/privacy`,
+`/lp/{client_segment}/terms`, `/lp/{client_segment}/{page_slug}/go/{call|whatsapp|store}`,
+the same under `/lp-host/...` (client's own domain via `proxy/landing-worker.js`),
+`GET /_uallak-verify`.
 Client (session): `GET|POST /api/client/landing-pages`,
-`POST /api/client/landing-pages/{id}` (edit),
-`POST /api/client/landing-pages/{id}/publish`,
+`POST /api/client/landing-pages/{id}` (edit → new version + card),
+`POST /api/client/landing-pages/{id}/publish` (returns the card),
+`GET /api/client/landing-pages/{id}/versions`, `POST .../{id}/revert`,
+`POST .../{id}/unpublish`, `GET .../{id}/preview?version=`,
 `POST /api/client/landing-pages/{id}/regenerate`,
 `DELETE /api/client/landing-pages/{id}`,
 `POST /api/client/landing-pages/request-extra`,
 `POST /api/client/landing-domain`, `POST /api/client/landing-domain/verify`.
-Admin (X-Admin-Key): `POST /api/landing-pages/admin/create`.
+Admin (X-Admin-Key): `POST /api/landing-pages/admin/create`,
+`GET /api/landing/hosting-costs` (monthly). Admin session: `/api/admin/landing*`.
 
 ## Setup required before custom domains work (NOT done)
 

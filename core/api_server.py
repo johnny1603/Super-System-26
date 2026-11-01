@@ -4903,27 +4903,90 @@ class LandingUpdateRequest(BaseModel):
     title: str = None
     goal: str = None
     content: dict = None
+    contact: dict = None   # phone / whatsapp / store_url — validated in landing_pages.normalize_contact
 
 @app.post("/api/client/landing-pages/{page_id}")
 def client_landing_update(page_id: int, req: LandingUpdateRequest, request: Request):
+    # An edit is a NEW version; what is live stays live until the client
+    # approves the publish card this offers in the website agent's chat.
     client_id = _require_session(request)
     from core import landing_pages
+    from agents.landing_page_agent import edited
     fields = {k: v for k, v in req.model_dump().items() if v is not None}
     result = landing_pages.update_page(client_id, page_id, fields)
     if not result.get("success"):
         raise HTTPException(status_code=400,
                             detail={"code": result.get("code", "ERR_LANDING_UPDATE_FAILED")})
-    return {"success": True, "data": result["page"]}
+    proposed = edited(client_id, page_id)
+    return {"success": True, "data": result["page"], "card": proposed.get("card")}
 
 @app.post("/api/client/landing-pages/{page_id}/publish")
 def client_landing_publish(page_id: int, request: Request):
+    # The button no longer publishes: it opens the approval card (preview +
+    # approve) in the website agent's chat — the click there publishes.
     client_id = _require_session(request)
-    from agents.landing_page_agent import publish_page
-    result = publish_page(client_id, page_id)
+    from core import landing_pages
+    from agents.landing_page_agent import propose_publish, PERSONA
+    if not landing_pages.get_page(client_id, page_id):
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    proposed = propose_publish(client_id, page_id)
+    if not proposed.get("card"):
+        raise HTTPException(status_code=400, detail={"code": "ERR_LANDING_PUBLISH_FAILED"})
+    return {"success": True, "data": {"card": proposed["card"], "persona": PERSONA}}
+
+@app.get("/api/client/landing-pages/{page_id}/versions")
+def client_landing_versions(page_id: int, request: Request):
+    client_id = _require_session(request)
+    from core import landing_pages
+    page = landing_pages.get_page(client_id, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    return {"success": True, "data": {
+        "versions": landing_pages.list_versions(client_id, page_id),
+        "current_version": page.get("current_version") or 0,
+        "published_version": page.get("published_version") if page.get("status") == "published" else None}}
+
+class LandingRevertRequest(BaseModel):
+    version: int
+
+@app.post("/api/client/landing-pages/{page_id}/revert")
+def client_landing_revert(page_id: int, req: LandingRevertRequest, request: Request):
+    # One tap: the tap IS the approval (it restores something the client
+    # already approved or wrote).
+    client_id = _require_session(request)
+    from agents.landing_page_agent import revert_page
+    result = revert_page(client_id, page_id, req.version)
     if not result.get("success"):
-        raise HTTPException(status_code=400,
-                            detail={"code": result.get("code", "ERR_LANDING_PUBLISH_FAILED")})
-    return {"success": True, "data": result}
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_LANDING_REVERT_FAILED")})
+    return {"success": True, "data": {"version": result.get("version"), "reverted_to": req.version,
+                                      "live": result.get("page", {}).get("status") == "published"}}
+
+@app.post("/api/client/landing-pages/{page_id}/unpublish")
+def client_landing_unpublish(page_id: int, request: Request):
+    client_id = _require_session(request)
+    from agents.landing_page_agent import unpublish_page
+    result = unpublish_page(client_id, page_id, by="client")
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    return {"success": True}
+
+@app.get("/api/client/landing-pages/{page_id}/preview", include_in_schema=False)
+def client_landing_preview(page_id: int, request: Request, version: int = 0):
+    # The approval card's preview: the exact version, session-gated, never
+    # indexed, no Tag Manager, and a form that cannot submit.
+    client_id = _require_session(request)
+    from core import landing_pages
+    page = landing_pages.get_page(client_id, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    visible = landing_pages.visible_of(client_id, page, version or page.get("current_version") or None)
+    html_text = landing_pages.render_page(
+        page, "#", str(request.url.replace(query="")), visible=visible,
+        business_name=_lp_business(client_id),
+        links={k: "#" for k in _lp_links(page["slug"], visible["contact"])},   # shown, not followed
+        preview=True)
+    return HTMLResponse(html_text, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex",
+                                            "Content-Security-Policy": "script-src 'none'"})
 
 class LandingRegenerateRequest(BaseModel):
     feedback: str = ""   # the client's own words on what to change
@@ -5049,6 +5112,21 @@ async def public_lead_capture(token: str, request: Request,
         payload = {}
 
     referer = request.headers.get("referer", "")
+    # Our own landing pages' forms carry a honeypot, a signed render time and
+    # a per-IP limit (core/landing_tracking). A dropped submit is answered
+    # exactly like a stored one, so a bot learns nothing.
+    from core import landing_tracking
+    if landing_tracking.is_landing_submit(payload):
+        spam = landing_tracking.spam_reason(client_id, payload, _request_ip(request))
+        payload = landing_tracking.clean_payload(payload)
+        if spam:
+            print(f"[lead_capture] client {client_id}: landing submit dropped ({spam})")
+            redirect_to = str(payload.get("redirect") or "").strip()
+            from urllib.parse import urlparse
+            target, origin = urlparse(redirect_to), urlparse(referer)
+            if redirect_to and target.scheme == "https" and target.netloc and target.netloc == origin.netloc:
+                return RedirectResponse(url=redirect_to, status_code=303)
+            return {"success": True, "stored": True}
     payload.setdefault("source_detail", referer)
     result = client_leads_service.capture_lead(
         client_id, payload, source=str(payload.get("source") or "website_form"))
@@ -5996,6 +6074,74 @@ def admin_view_as_exit(request: Request, response: Response):
 
 # ─── Model costs: routing + caching per chat turn (core/model_routing) ───────
 # Admin session only. Read-only.
+
+# ─── Landing pages: admin (core/landing_admin, /admin/landing/) ──────────────
+
+@app.get("/api/admin/landing")
+def admin_landing_overview(request: Request):
+    _require_admin(request)
+    from core import landing_admin
+    return {"success": True, "data": landing_admin.overview()}
+
+class AdminLandingUnpublishRequest(BaseModel):
+    client_id: int
+    page_id: int
+    reason: str = ""
+
+@app.post("/api/admin/landing/unpublish")
+def admin_landing_unpublish(req: AdminLandingUnpublishRequest, request: Request):
+    # Instant: the next visit to the page answers 404.
+    _require_admin(request)
+    from core import landing_admin
+    result = landing_admin.unpublish(req.client_id, req.page_id, req.reason)
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail={"code": "ERR_LANDING_NOT_FOUND"})
+    return {"success": True}
+
+class AdminLandingRatesRequest(BaseModel):
+    ils_per_gb: float
+    ils_per_10k_requests: float
+
+@app.post("/api/admin/landing/rates")
+def admin_landing_rates(req: AdminLandingRatesRequest, request: Request):
+    _require_admin(request)
+    from core import landing_admin
+    try:
+        return {"success": True, "data": landing_admin.set_rates(req.ils_per_gb, req.ils_per_10k_requests)}
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_RATE"})
+
+@app.post("/api/admin/landing/hosting-costs")
+def admin_landing_hosting_costs(request: Request):
+    _require_admin(request)
+    from core import landing_admin
+    return {"success": True, "data": landing_admin.record_hosting()}
+
+@app.get("/api/landing/hosting-costs", dependencies=_admin_only)
+def cron_landing_hosting_costs():
+    # Monthly scheduler twin of the admin button (X-Admin-Key). Once per month.
+    from core import landing_admin
+    return {"success": True, "data": landing_admin.record_hosting()}
+
+@app.post("/api/admin/landing/backup")
+def admin_landing_backup(request: Request):
+    _require_admin(request)
+    from core import landing_admin
+    result = landing_admin.backup()
+    return {"success": True, "data": result}
+
+class AdminLandingMigrateRequest(BaseModel):
+    backup_sha256: str
+    client_id: int = None
+
+@app.post("/api/admin/landing/migrate")
+def admin_landing_migrate(req: AdminLandingMigrateRequest, request: Request):
+    _require_admin(request)
+    from core import landing_admin
+    result = landing_admin.migrate(req.backup_sha256, req.client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_MIGRATE_FAILED")})
+    return {"success": True, "data": result}
 
 @app.get("/api/admin/model-costs")
 def admin_model_costs(request: Request, days: int = 7):
@@ -6947,30 +7093,103 @@ def landing_domain_verify_marker():
     from core.landing_domains import VERIFY_BODY
     return PlainTextResponse(VERIFY_BODY)
 
-@app.get("/lp/{client_segment}/{page_slug}", include_in_schema=False)
-def serve_landing_page(client_segment: str, page_slug: str, request: Request):
-    # PUBLIC and unauthenticated by necessity — this is the page a real visitor
-    # loads. Plain `def`: Supabase reads are blocking.
-    from core import landing_pages
-    from core.session import create_lead_capture_token
-
+def _lp_client(client_segment: str) -> int:
     # The client id is the trailing numeric segment of the slug (see
     # landing_pages.client_slug) — no lookup table, and a renamed business
     # keeps working.
     match = re.search(r"(\d+)$", client_segment or "")
     if not match:
         raise HTTPException(status_code=404, detail="not found")
-    client_id = int(match.group(1))
+    return int(match.group(1))
 
+
+def _lp_live_page(client_id: int, page_slug: str) -> dict:
+    from core import landing_pages
     try:
         page = landing_pages.get_by_slug(client_id, page_slug)
     except Exception as e:
-        print(f"[landing] lookup failed for {client_segment}/{page_slug}: {e}")
+        print(f"[landing] lookup failed for client {client_id}/{page_slug}: {type(e).__name__}")
         raise HTTPException(status_code=503, detail="temporarily unavailable")
-    # A draft is not publicly reachable — same 404 as a page that never
-    # existed, so an unpublished slug can't be probed for.
+    # A draft (or a page taken down) is not publicly reachable — same 404 as a
+    # page that never existed, so an unpublished slug can't be probed for.
     if not page or page.get("status") != "published":
         raise HTTPException(status_code=404, detail="not found")
+    return page
+
+
+def _lp_business(client_id: int) -> str:
+    try:
+        from agents.client_agent import get_client
+        return (get_client(client_id) or {}).get("business_name", "") or ""
+    except Exception:
+        return ""
+
+
+def _lp_links(slug: str, contact: dict) -> dict:
+    # RELATIVE on purpose: from /lp/<client>/<slug> and from <their-domain>/<slug>
+    # alike, "<slug>/go/call" and "privacy" resolve to the right place.
+    links = {"privacy": "privacy", "terms": "terms"}
+    for kind, key in (("call", "phone"), ("whatsapp", "whatsapp"), ("store", "store_url")):
+        if contact.get(key):
+            links[kind] = f"{slug}/go/{kind}"
+    return links
+
+
+def _lp_legal(client_segment: str, kind: str):
+    from core import landing_pages
+    client_id = _lp_client(client_segment)
+    try:
+        if not landing_pages.count_active(client_id):
+            raise HTTPException(status_code=404, detail="not found")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="temporarily unavailable")
+    return HTMLResponse(landing_pages.render_legal(kind, _lp_business(client_id)))
+
+
+@app.get("/lp/{client_segment}/privacy", include_in_schema=False)
+def serve_landing_privacy(client_segment: str):
+    return _lp_legal(client_segment, "privacy")
+
+
+@app.get("/lp/{client_segment}/terms", include_in_schema=False)
+def serve_landing_terms(client_segment: str):
+    return _lp_legal(client_segment, "terms")
+
+
+@app.get("/lp/{client_segment}/{page_slug}/go/{kind}", include_in_schema=False)
+def landing_go(client_segment: str, page_slug: str, kind: str, background_tasks: BackgroundTasks):
+    # The call / WhatsApp / store buttons: count the click (our own counter,
+    # every hostname), then hand the visitor on. The target comes ONLY from
+    # the live version's validated contact — never from the request.
+    from core import landing_pages, landing_tracking
+    if kind not in ("call", "whatsapp", "store"):
+        raise HTTPException(status_code=404, detail="not found")
+    client_id = _lp_client(client_segment)
+    page = _lp_live_page(client_id, page_slug)
+    contact = landing_pages.visible_of(client_id, page)["contact"]
+    target = {"call": f"tel:{contact['phone']}" if contact.get("phone") else "",
+              "whatsapp": f"https://wa.me/{contact['whatsapp']}" if contact.get("whatsapp") else "",
+              "store": contact.get("store_url", "")}[kind]
+    if not target:
+        raise HTTPException(status_code=404, detail="not found")
+    background_tasks.add_task(landing_tracking.bump, page["id"], client_id,
+                              {"call": "calls", "whatsapp": "whatsapp", "store": "store"}[kind])
+    return RedirectResponse(url=target, status_code=302)
+
+
+@app.get("/lp/{client_segment}/{page_slug}", include_in_schema=False)
+def serve_landing_page(client_segment: str, page_slug: str, request: Request,
+                       background_tasks: BackgroundTasks):
+    # PUBLIC and unauthenticated by necessity — this is the page a real visitor
+    # loads. Plain `def`: Supabase reads are blocking.
+    from core import landing_pages, landing_tracking
+    from core.session import create_lead_capture_token
+
+    client_id = _lp_client(client_segment)
+    page = _lp_live_page(client_id, page_slug)
+    visible = landing_pages.visible_of(client_id, page)   # the LIVE version, not the newest draft
 
     base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
     capture_url = f"{base}/api/leads/capture/{create_lead_capture_token(client_id)}"
@@ -6980,6 +7199,14 @@ def serve_landing_page(client_segment: str, page_slug: str, request: Request):
     # open-redirect guard in both states, without this route having to know
     # which one it is serving.
     public_url = str(request.url.replace(query="", scheme="https"))
+    lp_host = request.headers.get(landing_tracking.LP_HOST_HEADER, "")
+    if request.url.path.startswith("/lp-host/") and lp_host:
+        # Through the Worker: the visitor is on THEIR host, so the thank-you
+        # redirect must be too (the capture endpoint's same-host guard)
+        public_url = f"https://{lp_host.strip().lower()}/{page['slug']}"
+    # Tag Manager only through the client's own verified hostname (our Worker
+    # sets the header) — never on app.uallak.com, which carries the sessions.
+    gtm = landing_tracking.gtm_container(client_id, lp_host)
     # Attribution rides in as hidden fields rendered from THIS request's query
     # string — no JS on the page, and it still works with JS disabled.
     page_html = landing_pages.render_page(
@@ -6987,8 +7214,51 @@ def serve_landing_page(client_segment: str, page_slug: str, request: Request):
         sent=request.query_params.get("sent") == "1",
         query_params=request.query_params,
         path=request.url.path,
-        referrer=request.headers.get("referer", ""))
-    return HTMLResponse(page_html)
+        referrer=request.headers.get("referer", ""),
+        visible=visible, business_name=_lp_business(client_id),
+        links=_lp_links(page["slug"], visible["contact"]),
+        gtm_container=gtm, form_stamp=landing_tracking.make_stamp(client_id))
+    if request.query_params.get("sent") != "1":
+        background_tasks.add_task(landing_tracking.bump, page["id"], client_id, "views",
+                                  len(page_html.encode("utf-8")))
+    return HTMLResponse(page_html, headers={"Cache-Control": "no-store"})
+
+
+# The client's OWN domain (lp.theirbusiness.co.il → Cloudflare for SaaS → our
+# Worker, docs/LANDING_PAGES.md §1): the Worker forwards <their-host>/<path> to
+# /lp-host/<path> with the visitor's hostname in x-uallak-lp-host. The
+# hostname picks the client — only a VERIFIED one — and the same handlers
+# serve. A forged header only shows that client's public page to whoever
+# forged it.
+def _lp_host_segment(request: Request) -> str:
+    from core import landing_domains, landing_tracking
+    try:
+        client_id = landing_domains.client_for_hostname(request.headers.get(landing_tracking.LP_HOST_HEADER, ""))
+    except Exception:
+        raise HTTPException(status_code=503, detail="temporarily unavailable")
+    if not client_id:
+        raise HTTPException(status_code=404, detail="not found")
+    return f"c{client_id}"
+
+
+@app.get("/lp-host/privacy", include_in_schema=False)
+def serve_host_privacy(request: Request):
+    return _lp_legal(_lp_host_segment(request), "privacy")
+
+
+@app.get("/lp-host/terms", include_in_schema=False)
+def serve_host_terms(request: Request):
+    return _lp_legal(_lp_host_segment(request), "terms")
+
+
+@app.get("/lp-host/{page_slug}/go/{kind}", include_in_schema=False)
+def serve_host_go(page_slug: str, kind: str, request: Request, background_tasks: BackgroundTasks):
+    return landing_go(_lp_host_segment(request), page_slug, kind, background_tasks)
+
+
+@app.get("/lp-host/{page_slug}", include_in_schema=False)
+def serve_host_page(page_slug: str, request: Request, background_tasks: BackgroundTasks):
+    return serve_landing_page(_lp_host_segment(request), page_slug, request, background_tasks)
 
 # Must be last — catch-all for the landing page
 app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")

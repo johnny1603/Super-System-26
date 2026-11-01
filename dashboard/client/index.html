@@ -1019,6 +1019,11 @@ body {
 }
 .lp-meta { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--gray); }
 .lp-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.lp-meta { flex-wrap: wrap; gap: 6px; }
+.lp-versions { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; font-size: 13px; }
+.lp-version { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; }
+.lp-version a, .chat-action .preview-link { color: var(--accent); }
+.chat-action .preview-link { display: inline-block; margin-top: 6px; font-weight: 600; }
 
 /* ---------- SETUP / INFO PANEL ---------- */
 .info-panel {
@@ -2323,6 +2328,20 @@ const DASH_I18N = {
   landing_creating: { he:'מכין את הדף — רגע…', en:'Building the page — one moment…', fr:'Création de la page…', ar:'جارٍ إنشاء الصفحة…', ru:'Создаём страницу…' },
   landing_create_failed: { he:'משהו השתבש — נסו שוב או כתבו לנו בצ׳אט', en:'Something went wrong — try again or message us in the chat', fr:'Une erreur est survenue — réessayez ou écrivez-nous', ar:'حدث خطأ — حاول مجددًا أو راسلنا', ru:'Что-то пошло не так — попробуйте снова или напишите нам' },
   landing_leads_count: { he:'{n} לידים מהדף הזה', en:'{n} leads from this page', fr:'{n} prospects depuis cette page', ar:'{n} عملاء من هذه الصفحة', ru:'{n} лидов с этой страницы' },
+  landing_publish_changes: { he:'העלאת השינויים לאוויר', en:'Publish the changes', fr:'Publier les modifications', ar:'نشر التعديلات', ru:'Опубликовать изменения' },
+  landing_views_count: { he:'{n} כניסות ב-30 יום', en:'{n} visits in 30 days', fr:'{n} visites en 30 jours', ar:'{n} زيارة خلال 30 يومًا', ru:'{n} посещений за 30 дней' },
+  landing_calls_count: { he:'{n} לחיצות לשיחה', en:'{n} call taps', fr:'{n} appels', ar:'{n} نقرات اتصال', ru:'{n} нажатий «позвонить»' },
+  landing_wa_count: { he:'{n} פניות בוואטסאפ', en:'{n} WhatsApp taps', fr:'{n} clics WhatsApp', ar:'{n} نقرات واتساب', ru:'{n} нажатий WhatsApp' },
+  landing_versions: { he:'גרסאות', en:'Versions', fr:'Versions', ar:'النسخ', ru:'Версии' },
+  landing_loading: { he:'טוען…', en:'Loading…', fr:'Chargement…', ar:'جارٍ التحميل…', ru:'Загрузка…' },
+  landing_version_n: { he:'גרסה {n}', en:'Version {n}', fr:'Version {n}', ar:'النسخة {n}', ru:'Версия {n}' },
+  landing_view: { he:'צפייה', en:'View', fr:'Voir', ar:'عرض', ru:'Смотреть' },
+  landing_revert: { he:'חזרה לגרסה הזו', en:'Go back to this one', fr:'Revenir à celle-ci', ar:'العودة إلى هذه', ru:'Вернуть эту' },
+  landing_reverted: { he:'חזרנו לגרסה {n} ✓', en:'Back to version {n} ✓', fr:'Retour à la version {n} ✓', ar:'تمت العودة إلى النسخة {n} ✓', ru:'Возвращена версия {n} ✓' },
+  landing_reverted_live: { he:'גרסה {n} חזרה לאוויר ✓', en:'Version {n} is live again ✓', fr:'La version {n} est de nouveau en ligne ✓', ar:'النسخة {n} منشورة مجددًا ✓', ru:'Версия {n} снова опубликована ✓' },
+  landing_unpublish: { he:'הורדה מהאוויר', en:'Take down', fr:'Retirer', ar:'إيقاف النشر', ru:'Снять с публикации' },
+  landing_unpublish_confirm: { he:'להוריד את הדף מהאוויר? אפשר להעלות אותו שוב בכל רגע.', en:'Take the page down? You can publish it again any time.', fr:'Retirer la page ? Vous pourrez la republier à tout moment.', ar:'إيقاف نشر الصفحة؟ يمكن نشرها مجددًا في أي وقت.', ru:'Снять страницу? Её можно опубликовать снова в любой момент.' },
+  landing_unpublished: { he:'הדף ירד מהאוויר ✓', en:'The page is down ✓', fr:'La page est retirée ✓', ar:'تم إيقاف الصفحة ✓', ru:'Страница снята ✓' },
   landing_prompt_title: { he:'איך נקרא לדף? (למשל: מבצע פתיחת שנה)', en:'What should we call this page? (e.g. New-year offer)', fr:'Comment nommer cette page ?', ar:'ما اسم هذه الصفحة؟', ru:'Как назовём страницу?' },
   landing_prompt_goal: { he:'מה ההצעה או הקמפיין שהדף הזה משרת? (משפט אחד)', en:'Which offer or campaign is this page for? (one sentence)', fr:'Pour quelle offre ou campagne ? (une phrase)', ar:'لأي عرض أو حملة هذه الصفحة؟ (جملة واحدة)', ru:'Для какого предложения или кампании эта страница? (одно предложение)' },
   landing_prompt_feedback: { he:'מה לשנות בטקסט? (אפשר להשאיר ריק לניסוח חדש)', en:'What should change in the copy? (leave empty for a fresh version)', fr:'Que faut-il changer ? (laisser vide pour une nouvelle version)', ar:'ما الذي تريد تغييره؟ (اتركه فارغًا لنسخة جديدة)', ru:'Что изменить в тексте? (оставьте пустым для новой версии)' },
@@ -2653,6 +2672,7 @@ const DASH_I18N = {
   action_d_hashtags: { he:'האשטגים', en:'Hashtags', fr:'Hashtags', ar:'الوسوم', ru:'Хэштеги' },
   action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
+  action_d_preview: { he:'לצפייה בדף לפני שמאשרים ←', en:'Preview the page before approving →', fr:'Voir la page avant de valider →', ar:'معاينة الصفحة قبل الموافقة ←', ru:'Посмотреть страницу перед одобрением →' },
   action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
   action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
   action_team_request_open: { he:'סטטוס: פתוח אצל הצוות — נעדכן כאן ברגע שזה טופל.', en:'Status: open with the team — we\'ll update you here as soon as it\'s handled.', fr:'Statut : ouvert auprès de l\'équipe — nous vous tiendrons au courant ici.', ar:'الحالة: مفتوح لدى الفريق — سنبلغكم هنا فور معالجته.', ru:'Статус: открыт у команды — сообщим здесь, как только будет обработан.' },
@@ -5755,6 +5775,16 @@ function actionDetails(d) {
   row('action_d_hashtags', (d.hashtags || []).join(' '));
   row('action_d_tags', (d.tags || []).join(', '));
   (d.links || []).forEach(l => row('action_d_link', (l.label ? l.label + ' — ' : '') + l.url));
+  // A landing page's preview: our own session-gated path only, never a link the model wrote
+  if (typeof d.preview_url === 'string' && d.preview_url.indexOf('/api/client/landing-pages/') === 0) {
+    const a = document.createElement('a');
+    a.href = d.preview_url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'preview-link';
+    a.textContent = t('action_d_preview');
+    box.appendChild(a);
+  }
   return box;
 }
 
@@ -7123,19 +7153,105 @@ function renderLandingPages(data) {
     const urlRow = live
       ? `<a class="lp-url" href="${esc(page.url)}" target="_blank" rel="noopener">${esc(page.url)}</a>`
       : '';
-    const publishBtn = live ? '' :
-      `<button class="sugg-btn approve" onclick="landingPublish(${page.id})">${uallakI18n.t('landing_publish')}</button>`;
-    return `<div class="lp-card">
+    // Publishing is the approval card in the website agent's chat, never a
+    // direct switch: the button opens that chat with the card.
+    const id = Number(page.id);
+    const publishBtn = (live && !page.has_unpublished_changes) ? '' :
+      `<button class="sugg-btn approve" onclick="landingPublish(${id})">${uallakI18n.t(live ? 'landing_publish_changes' : 'landing_publish')}</button>`;
+    const stats = [uallakI18n.t('landing_leads_count', { n: page.leads })];
+    if (live && page.views != null) {
+      stats.push(uallakI18n.t('landing_views_count', { n: page.views }));
+      if (page.calls) stats.push(uallakI18n.t('landing_calls_count', { n: page.calls }));
+      if (page.whatsapp) stats.push(uallakI18n.t('landing_wa_count', { n: page.whatsapp }));
+    }
+    const versionsBtn = page.current_version > 1
+      ? `<button class="sugg-btn reject" onclick="landingVersions(${id})">${uallakI18n.t('landing_versions')}</button>` : '';
+    const downBtn = live
+      ? `<button class="sugg-btn reject" onclick="landingUnpublish(${id})">${uallakI18n.t('landing_unpublish')}</button>` : '';
+    return `<div class="lp-card" id="lpCard-${id}">
       <div class="lp-head"><span class="lp-title">${esc(page.title)}</span>${badge}</div>
       ${page.goal ? `<div class="lp-goal">${esc(page.goal)}</div>` : ''}
       ${urlRow}
-      <div class="lp-meta"><span>${uallakI18n.t('landing_leads_count', { n: page.leads })}</span></div>
+      <div class="lp-meta">${stats.map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
       <div class="lp-actions">
         ${publishBtn}
-        <button class="sugg-btn reject" onclick="landingRegenerate(${page.id})">${uallakI18n.t('landing_rewrite')}</button>
+        <button class="sugg-btn reject" onclick="landingRegenerate(${id})">${uallakI18n.t('landing_rewrite')}</button>
+        ${versionsBtn}
+        ${downBtn}
       </div>
+      <div class="lp-versions" id="lpVersions-${id}" style="display:none"></div>
     </div>`;
   }).join('');
+}
+
+async function landingVersions(pageId) {
+  const box = document.getElementById('lpVersions-' + pageId);
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.textContent = uallakI18n.t('landing_loading');
+  try {
+    const res = await fetch(`/api/client/landing-pages/${pageId}/versions`, { credentials: 'same-origin' });
+    const body = await res.json();
+    if (!body.success) throw new Error('unavailable');
+    const d = body.data;
+    box.innerHTML = '';
+    (d.versions || []).forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'lp-version';
+      const when = v.created_at ? new Date(v.created_at).toLocaleString(document.documentElement.lang || undefined,
+        { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      const label = document.createElement('span');
+      label.textContent = uallakI18n.t('landing_version_n', { n: v.version }) + (when ? ' · ' + when : '')
+        + (v.version === d.published_version ? ' · ' + uallakI18n.t('landing_status_live') : '');
+      row.appendChild(label);
+      const view = document.createElement('a');
+      view.href = `/api/client/landing-pages/${pageId}/preview?version=${Number(v.version)}`;
+      view.target = '_blank'; view.rel = 'noopener';
+      view.textContent = uallakI18n.t('landing_view');
+      row.appendChild(view);
+      if (v.version !== d.current_version) {
+        const back = document.createElement('button');
+        back.className = 'sugg-btn reject';
+        back.textContent = uallakI18n.t('landing_revert');
+        back.onclick = () => landingRevert(pageId, v.version);
+        row.appendChild(back);
+      }
+      box.appendChild(row);
+    });
+  } catch (e) {
+    box.textContent = uallakI18n.t('landing_unavailable');
+  }
+}
+
+async function landingRevert(pageId, version) {
+  try {
+    const res = await fetch(`/api/client/landing-pages/${pageId}/revert`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    });
+    const body = await res.json();
+    if (!body.success) throw new Error('revert failed');
+    showNotice(uallakI18n.t(body.data.live ? 'landing_reverted_live' : 'landing_reverted', { n: version }), 'success');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_create_failed'), 'warn');
+  }
+}
+
+async function landingUnpublish(pageId) {
+  if (!confirm(uallakI18n.t('landing_unpublish_confirm'))) return;
+  try {
+    const res = await fetch(`/api/client/landing-pages/${pageId}/unpublish`, {
+      method: 'POST', credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('unpublish failed');
+    showNotice(uallakI18n.t('landing_unpublished'), 'success');
+    await loadLanding();
+  } catch (e) {
+    showNotice(uallakI18n.t('landing_create_failed'), 'warn');
+  }
 }
 
 async function landingCreate() {
@@ -7168,12 +7284,16 @@ async function landingCreate() {
 }
 
 async function landingPublish(pageId) {
+  // Opens the website agent's chat with the approval card (preview + approve)
   try {
     const res = await fetch(`/api/client/landing-pages/${pageId}/publish`, {
       method: 'POST', credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('publish failed');
-    await loadLanding();
+    const body = await res.json();
+    if (!body.success) throw new Error('publish failed');
+    const persona = body.data.persona || 'website';
+    openAgentWindow(persona);
+    appendActionCard(persona, body.data.card);
   } catch (e) {
     showNotice(uallakI18n.t('landing_create_failed'), 'warn');
   }

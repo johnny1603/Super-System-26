@@ -32,8 +32,28 @@ The form posts to `POST /api/leads/capture/{token}` with the SAME
 `create_lead_capture_token` the WordPress auto-wiring uses — no second capture
 path, no second token scheme. Per-page attribution rides on `source_detail`
 (`lp:{slug}`), which `client_leads` already stores and filters on.
+
+## Versions (2026-11-01, docs/LANDING_PAGES.md)
+
+Every edit — generated copy, a rewrite, a client edit, a revert — is a NEW
+row in landing_page_versions; nothing is overwritten. `published_version`
+says which one is LIVE, so editing a live page never changes what visitors
+see until the client approves the new version (the publish card). Revert
+copies an old version into a new one and, on a live page, puts it live at
+once (the client's tap is the approval). Before
+migrations/2026-11-01-landing-own.sql runs, all of this degrades to the old
+single-content behaviour — `_versions_ok` turns off on the first
+missing-table error.
+
+## Sanitized twice
+
+Every string is stripped of tags, control characters and script URLs on the
+WAY IN (normalize_content / normalize_contact), and escaped on the way OUT
+(render). Either alone would hold; both is the rule for text that an LLM or a
+client wrote and a stranger's browser renders.
 """
 import html
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -62,7 +82,15 @@ MAX_SECTION_TITLE_CHARS = 90
 MAX_SECTION_BODY_CHARS = 600
 MAX_CTA_CHARS = 40
 
+# Invisible limits (docs/LANDING_PAGES.md §6): pages live at once, and the size
+# of one rendered page. The client never sees a counter; the admin is alerted
+# when a client reaches the live-page limit (landing_page_agent).
+MAX_ACTIVE_PAGES = MAX_PAGES_PER_CLIENT
+MAX_PAGE_BYTES = 64_000
+MAX_URL_CHARS = 300
+
 _db_instance = None
+_versions_ok = {"value": True}
 
 
 def _db():
@@ -78,8 +106,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# A tag starts with a letter, / ! or ? — so "מחיר < 100" survives, "<script" does not
+_TAG = re.compile(r"<[a-zA-Z/!?][^>]*>?")
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f‎‏‪-‮⁦-⁩]")
+_SCRIPT_URL = re.compile(r"(?i)\b(javascript|vbscript|data)\s*:")
+
+
+def sanitize_text(value) -> str:
+    """Plain text only: no tags, no control/bidi-override characters, no
+    script URLs. Applied to everything an LLM or a client wrote, BEFORE it is
+    stored — render() escapes again on the way out."""
+    text = html.unescape(str(value or ""))
+    text = _TAG.sub("", text)
+    text = _CONTROL.sub("", text)
+    text = _SCRIPT_URL.sub("", text)
+    return text
+
+
 def _clip(value, limit: int) -> str:
-    return (str(value or "").strip())[:limit]
+    return sanitize_text(value).strip()[:limit]
 
 
 # ─── Slugs ────────────────────────────────────────────────────────────────────
@@ -102,10 +147,15 @@ def client_slug(client_id: int, business_name: str = "") -> str:
     return f"{base}-{client_id}".strip("-") if base else f"c{client_id}"
 
 
+# Paths the client's legal pages use under the same /lp/{client}/ prefix — a
+# page can never take one of these slugs.
+RESERVED_SLUGS = {"privacy", "terms"}
+
+
 def _unique_slug(client_id: int, desired: str) -> str:
     existing = {row["slug"] for row in
                 (_db().table("landing_pages").select("slug")
-                 .eq("client_id", client_id).execute().data or [])}
+                 .eq("client_id", client_id).execute().data or [])} | RESERVED_SLUGS
     if desired not in existing:
         return desired
     for suffix in range(2, 50):
@@ -140,6 +190,36 @@ def normalize_content(raw: dict) -> dict:
         "cta_text": _clip(raw.get("cta_text"), MAX_CTA_CHARS) or "שליחה",
         "form_note": _clip(raw.get("form_note"), MAX_SUB_CHARS),
     }
+
+
+def _digits(value, lo: int, hi: int) -> str:
+    raw = sanitize_text(value).strip()
+    digits = re.sub(r"[^\d]", "", raw)
+    if not lo <= len(digits) <= hi:
+        return ""
+    return ("+" if raw.startswith("+") else "") + digits
+
+
+def safe_url(value) -> str:
+    """https only, no credentials, no spaces, length-capped — else ""."""
+    from urllib.parse import urlparse
+    url = sanitize_text(value).strip()
+    if not url or len(url) > MAX_URL_CHARS or any(c.isspace() for c in url):
+        return ""
+    parts = urlparse(url)
+    if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc or "." not in parts.hostname:
+        return ""
+    return url
+
+
+def normalize_contact(raw: dict) -> dict:
+    """The page's action links: phone (click-to-call), WhatsApp number,
+    store URL (a store client's buy button). Anything invalid is dropped."""
+    raw = raw if isinstance(raw, dict) else {}
+    out = {"phone": _digits(raw.get("phone"), 7, 15),
+           "whatsapp": _digits(raw.get("whatsapp"), 9, 15).lstrip("+"),
+           "store_url": safe_url(raw.get("store_url"))}
+    return {k: v for k, v in out.items() if v}
 
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -195,9 +275,12 @@ def create_page(client_id: int, title: str, goal: str = "", content: dict = None
     return {"success": True, "code": "", "page": (created.data or [row])[0]}
 
 
-def update_page(client_id: int, page_id: int, fields: dict) -> dict:
-    """Only these four are writable; anything else in `fields` is ignored, so a
-    bad payload can never flip client_id or rewrite a slug into a collision."""
+def update_page(client_id: int, page_id: int, fields: dict, source: str = "client_edit") -> dict:
+    """Only title / goal / content / contact are writable here; anything else
+    in `fields` is ignored, so a bad payload can never flip client_id, rewrite
+    a slug into a collision or publish a page (publishing is publish(), behind
+    the client's approval card). A change to what visitors would see (title,
+    content, contact) becomes a NEW version — the live one stays live."""
     changes = {}
     if "title" in fields:
         changes["title"] = _clip(fields["title"], MAX_TITLE_CHARS)
@@ -205,21 +288,181 @@ def update_page(client_id: int, page_id: int, fields: dict) -> dict:
         changes["goal"] = _clip(fields["goal"], MAX_GOAL_CHARS)
     if "content" in fields:
         changes["content"] = normalize_content(fields["content"])
-    if "status" in fields:
-        if fields["status"] not in STATUSES:
-            return {"success": False, "code": "ERR_LANDING_BAD_STATUS",
-                    "errors": [f"status must be one of {STATUSES}"]}
-        changes["status"] = fields["status"]
+    if "contact" in fields:
+        changes["contact"] = normalize_contact(fields["contact"])
     if not changes:
         return {"success": False, "code": "ERR_LANDING_NO_FIELDS",
                 "errors": ["nothing to update"]}
-
+    page = get_page(client_id, page_id)
+    if not page:
+        return {"success": False, "code": "ERR_LANDING_NOT_FOUND", "errors": ["page not found"]}
+    visible = {k: changes[k] for k in ("title", "content", "contact") if k in changes}
+    if visible:
+        merged = {"title": page.get("title", ""), "content": page.get("content") or {},
+                  "contact": page.get("contact") or {}, **visible}
+        size = page_size({**page, **merged})
+        if size > MAX_PAGE_BYTES:
+            return {"success": False, "code": "ERR_LANDING_TOO_LARGE", "errors": [f"{size} bytes"]}
+        version = _add_version(client_id, page_id, merged, source, size)
+        if version:
+            changes["current_version"] = version
     changes["updated_at"] = _now()
-    result = (_db().table("landing_pages").update(changes)
-              .eq("id", page_id).eq("client_id", client_id).execute())
+    try:
+        result = (_db().table("landing_pages").update(changes)
+                  .eq("id", page_id).eq("client_id", client_id).execute())
+    except Exception as e:
+        # Before the migration: the new columns don't exist yet — keep the old behaviour
+        if not any(col in str(e) for col in ("current_version", "contact")):
+            raise
+        changes = {k: v for k, v in changes.items() if k not in ("current_version", "contact")}
+        result = (_db().table("landing_pages").update(changes)
+                  .eq("id", page_id).eq("client_id", client_id).execute())
     if not result.data:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND",
                 "errors": ["page not found"]}
+    return {"success": True, "code": "", "page": result.data[0]}
+
+
+# ─── Versions ────────────────────────────────────────────────────────────────
+
+def _missing_table(error: Exception) -> bool:
+    text = str(error)
+    return "landing_page_versions" in text or "42P01" in text or "PGRST205" in text \
+        or "current_version" in text or "published_version" in text
+
+
+def _add_version(client_id: int, page_id: int, visible: dict, source: str, size: int = 0) -> int:
+    """Store one version; returns its number (0 when versions aren't set up yet)."""
+    if not _versions_ok["value"]:
+        return 0
+    try:
+        rows = (_db().table("landing_page_versions").select("version").eq("page_id", page_id)
+                .eq("client_id", client_id).order("version", desc=True).limit(1).execute().data or [])
+        number = (rows[0]["version"] if rows else 0) + 1
+        _db().table("landing_page_versions").insert({
+            "page_id": page_id, "client_id": client_id, "version": number,
+            "title": visible.get("title", ""), "content": visible.get("content") or {},
+            "contact": visible.get("contact") or {}, "source": _clip(source, 20), "size_bytes": int(size or 0),
+        }).execute()
+        return number
+    except Exception as e:
+        if _missing_table(e):
+            _versions_ok["value"] = False
+            print(f"[{SERVICE_NAME}] versions off until migrations/2026-11-01-landing-own.sql runs")
+            return 0
+        raise
+
+
+def list_versions(client_id: int, page_id: int) -> list:
+    if not _versions_ok["value"]:
+        return []
+    try:
+        return (_db().table("landing_page_versions").select("version, source, created_at, title, size_bytes")
+                .eq("client_id", client_id).eq("page_id", page_id)
+                .order("version", desc=True).limit(50).execute().data or [])
+    except Exception as e:
+        if _missing_table(e):
+            _versions_ok["value"] = False
+            return []
+        raise
+
+
+def get_version(client_id: int, page_id: int, version: int) -> dict:
+    """One version, scoped by client AND page — another client's id never resolves."""
+    if not _versions_ok["value"] or not version:
+        return {}
+    try:
+        rows = (_db().table("landing_page_versions").select("*").eq("client_id", client_id)
+                .eq("page_id", page_id).eq("version", int(version)).limit(1).execute().data or [])
+    except Exception as e:
+        if _missing_table(e):
+            _versions_ok["value"] = False
+            return {}
+        raise
+    return rows[0] if rows else {}
+
+
+def visible_of(client_id: int, page: dict, version: int = None) -> dict:
+    """What a visitor sees for `version` (default: the LIVE one): title,
+    content, contact. Falls back to the page row itself — before the
+    migration, and for a page whose live version predates versioning."""
+    number = version if version is not None else page.get("published_version")
+    row = get_version(client_id, page.get("id"), number) if number else {}
+    src = row or page
+    return {"title": src.get("title") or page.get("title", ""),
+            "content": normalize_content(src.get("content") or {}),
+            "contact": normalize_contact(src.get("contact") or {}),
+            "version": row.get("version") if row else page.get("current_version") or 0}
+
+
+def count_active(client_id: int) -> int:
+    result = (_db().table("landing_pages").select("id", count="exact")
+              .eq("client_id", client_id).eq("status", "published").limit(1).execute())
+    return result.count or 0
+
+
+def publish(client_id: int, page_id: int, version: int = None) -> dict:
+    """Put `version` (default: the newest) live. Only ever called from the
+    client's approval of the publish card, a revert tap, or the admin.
+    Refuses past the invisible live-page limit and the size limit."""
+    page = get_page(client_id, page_id)
+    if not page:
+        return {"success": False, "code": "ERR_LANDING_NOT_FOUND"}
+    number = int(version or page.get("current_version") or 0)
+    if number and _versions_ok["value"] and not get_version(client_id, page_id, number):
+        return {"success": False, "code": "ERR_LANDING_NO_VERSION"}
+    if page.get("status") != "published" and count_active(client_id) >= MAX_ACTIVE_PAGES:
+        return {"success": False, "code": "ERR_LANDING_ACTIVE_LIMIT"}
+    visible = visible_of(client_id, page, number or None)
+    if page_size({**page, **visible}) > MAX_PAGE_BYTES:
+        return {"success": False, "code": "ERR_LANDING_TOO_LARGE"}
+    changes = {"status": "published", "updated_at": _now(), "unpublished_reason": ""}
+    if number:
+        changes.update(published_version=number, published_at=_now())
+    try:
+        result = (_db().table("landing_pages").update(changes)
+                  .eq("id", page_id).eq("client_id", client_id).execute())
+    except Exception as e:
+        if not _missing_table(e) and "unpublished_reason" not in str(e) and "published_at" not in str(e):
+            raise
+        result = (_db().table("landing_pages").update({"status": "published", "updated_at": _now()})
+                  .eq("id", page_id).eq("client_id", client_id).execute())
+    if not result.data:
+        return {"success": False, "code": "ERR_LANDING_NOT_FOUND"}
+    return {"success": True, "code": "", "page": result.data[0], "version": number}
+
+
+def revert(client_id: int, page_id: int, version: int) -> dict:
+    """One tap: version N comes back as a NEW version; a live page goes live
+    with it at once."""
+    page = get_page(client_id, page_id)
+    old = get_version(client_id, page_id, version) if page else {}
+    if not old:
+        return {"success": False, "code": "ERR_LANDING_NO_VERSION"}
+    updated = update_page(client_id, page_id, {"title": old.get("title"), "content": old.get("content"),
+                                               "contact": old.get("contact")}, source=f"revert:{version}")
+    if not updated.get("success"):
+        return updated
+    new_number = updated["page"].get("current_version")
+    if page.get("status") == "published":
+        return {**publish(client_id, page_id, new_number), "reverted_to": version}
+    return {"success": True, "code": "", "page": updated["page"], "reverted_to": version, "version": new_number}
+
+
+def unpublish(client_id: int, page_id: int, reason: str = "") -> dict:
+    """Instant: the next request for the page answers 404."""
+    changes = {"status": "draft", "updated_at": _now(), "unpublished_reason": _clip(reason, 120)}
+    try:
+        result = (_db().table("landing_pages").update(changes)
+                  .eq("id", page_id).eq("client_id", client_id).execute())
+    except Exception as e:
+        if "unpublished_reason" not in str(e):
+            raise
+        changes.pop("unpublished_reason")
+        result = (_db().table("landing_pages").update(changes)
+                  .eq("id", page_id).eq("client_id", client_id).execute())
+    if not result.data:
+        return {"success": False, "code": "ERR_LANDING_NOT_FOUND"}
     return {"success": True, "code": "", "page": result.data[0]}
 
 
@@ -285,8 +528,50 @@ textarea{min-height:96px;resize:vertical}
 button{width:100%;padding:14px;border:0;border-radius:9px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;font-size:17px;cursor:pointer}
 .note{font-size:13px;color:var(--muted);margin:12px 0 0}
 .sent{background:rgba(31,111,235,.1);border:1px solid var(--accent);border-radius:11px;padding:16px;margin:0 0 24px;font-weight:600}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 28px}
+.actions a{flex:1 1 140px;display:block;text-align:center;padding:13px 8px;white-space:nowrap;border-radius:9px;border:1px solid var(--accent);color:var(--accent);font-weight:700;text-decoration:none;min-height:48px}
+.actions a.wa{border-color:#1f9d55;color:#1f9d55}
+.hp{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.consent{font-size:12.5px;color:var(--muted);margin:12px 0 0}
+.consent a,footer a{color:inherit}
 footer{margin-top:40px;font-size:12px;color:var(--muted);text-align:center}
+footer nav{margin-bottom:6px}
+footer nav a{margin:0 8px}
+.legal h1{font-size:26px}
+.legal p,.legal li{color:var(--ink)}
 """
+
+# Tag Manager runs ONLY on the client's own domain, never on app.uallak.com:
+# a third-party container on our origin could act as a logged-in client or
+# admin (see the module docstring). Our own counters work everywhere.
+GTM_ID = re.compile(r"^GTM-[A-Z0-9]{4,12}$")
+
+
+def _gtm_head(container: str) -> str:
+    if not GTM_ID.match(container or ""):
+        return ""
+    return ("<script>window.dataLayer=window.dataLayer||[];"
+            "(function(w,d,s,l,i){w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});"
+            "var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;"
+            f"j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);"
+            f"}})(window,document,'script','dataLayer','{container}');</script>")
+
+
+# The events pushed to the client's dataLayer (their Tag Manager forwards
+# them to Analytics / Ads). Names follow GA4's recommended events.
+TRACKING_EVENTS = {"view": "page_view", "lead": "generate_lead", "call": "click_to_call",
+                   "whatsapp": "click_whatsapp", "store": "begin_checkout"}
+
+
+def _gtm_events(slug: str) -> str:
+    events = json.dumps(TRACKING_EVENTS)
+    return ("<script>(function(){var E=" + events + ",p=" + json.dumps(slug) + ";"
+            "function push(k){window.dataLayer.push({event:E[k],landing_page:p});}"
+            "push('view');var f=document.querySelector('form.lead');"
+            "if(f)f.addEventListener('submit',function(){push('lead');});"
+            "document.querySelectorAll('a[data-track]').forEach(function(a){"
+            "a.addEventListener('click',function(){push(a.getAttribute('data-track'));});});"
+            "})();</script>")
 
 
 # Attribution parameters carried from the visitor's URL into the capture POST.
@@ -318,20 +603,45 @@ def _attribution_hidden_fields(query_params, path: str, referrer: str) -> str:
     return "\n  ".join(fields)
 
 
+def _footer(business: str, links: dict) -> str:
+    nav = ""
+    if links.get("privacy") or links.get("terms"):
+        nav = "<nav>"
+        if links.get("privacy"):
+            nav += f'<a href="{_e(links["privacy"])}">מדיניות פרטיות</a>'
+        if links.get("terms"):
+            nav += f'<a href="{_e(links["terms"])}">תנאי שימוש</a>'
+        nav += "</nav>"
+    owner = f"{_e(business)} · " if business else ""
+    return f"<footer>{nav}{owner}נבנה ומתארח על ידי uallak</footer>"
+
+
 def render_page(page: dict, capture_url: str, public_url: str,
                 sent: bool = False, query_params=None, path: str = "",
-                referrer: str = "") -> str:
+                referrer: str = "", visible: dict = None, business_name: str = "",
+                links: dict = None, gtm_container: str = "", form_stamp: str = "",
+                preview: bool = False) -> str:
     """The whole page, as one self-contained HTML document. No external CSS,
-    no JS, no fonts — a landing page's only job is to load instantly and
+    no fonts, and NO JavaScript unless the client's own Tag Manager is on
+    (custom domain only) — a landing page's only job is to load instantly and
     capture a lead, and every external request is a chance to be slow.
+
+    `visible`: the version to render (landing_pages.visible_of); default the
+    page row itself. `links`: call / whatsapp / store (our counting
+    redirects), privacy / terms. `form_stamp`: the signed render time the
+    capture endpoint uses against bots (core/landing_tracking).
 
     The form is a plain `<form method="post">` to the existing capture
     endpoint, which is exactly what that endpoint was built to accept (it
     hand-parses urlencoded bodies so no JS is needed). `redirect` returns the
     visitor to this same page with ?sent=1, which satisfies the endpoint's
     same-host-https guard on both the shared and the custom domain."""
-    content = normalize_content(page.get("content") or {})
-    title = _e(page.get("title") or content["headline"] or "")
+    visible = visible or {"title": page.get("title", ""), "content": page.get("content") or {},
+                          "contact": page.get("contact") or {}}
+    content = normalize_content(visible.get("content") or {})
+    links = links or {}
+    title = _e(visible.get("title") or content["headline"] or "")
+    slug = re.sub(r"[^a-z0-9-]", "", str(page.get("slug") or ""))
 
     benefits = "".join(f"<li>{_e(b)}</li>" for b in content["benefits"])
     benefits_html = f'<ul class="benefits">{benefits}</ul>' if benefits else ""
@@ -349,11 +659,27 @@ def render_page(page: dict, capture_url: str, public_url: str,
         section_parts.append(block + "</section>")
     sections_html = "".join(section_parts)
 
+    actions = []
+    if links.get("call"):
+        actions.append(f'<a href="{_e(links["call"])}" data-track="call">📞 התקשרו עכשיו</a>')
+    if links.get("whatsapp"):
+        actions.append(f'<a class="wa" href="{_e(links["whatsapp"])}" data-track="whatsapp">💬 וואטסאפ</a>')
+    if links.get("store"):
+        actions.append(f'<a href="{_e(links["store"])}" data-track="store">🛒 לרכישה באתר</a>')
+    actions_html = f'<div class="actions">{"".join(actions)}</div>' if actions else ""
+
     attribution_fields = _attribution_hidden_fields(query_params or {}, path, referrer)
 
     sent_html = ('<div class="sent">תודה! קיבלנו את הפרטים ונחזור אליכם בהקדם.</div>'
                  if sent else "")
     note_html = f'<p class="note">{_e(content["form_note"])}</p>' if content["form_note"] else ""
+    who = _e(business_name) if business_name else "בעל העסק"
+    privacy_link = (f' — <a href="{_e(links["privacy"])}">מדיניות הפרטיות</a>' if links.get("privacy") else "")
+    consent_html = (f'<p class="consent">בשליחת הטופס אתם מאשרים ל{who} לחזור אליכם בנוגע לפנייה. '
+                    f'הפרטים נשמרים רק לשם כך{privacy_link}.</p>')
+    gtm = _gtm_head(gtm_container) if not preview else ""
+    events = _gtm_events(slug) if gtm else ""
+    robots = "noindex,nofollow" if preview else "index,follow"
 
     return f"""<!doctype html>
 <html lang="he" dir="rtl">
@@ -362,7 +688,8 @@ def render_page(page: dict, capture_url: str, public_url: str,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{_e(content['subheadline'])}">
-<meta name="robots" content="index,follow">
+<meta name="robots" content="{robots}">
+{gtm}
 <style>{PAGE_CSS}</style>
 </head>
 <body>
@@ -370,9 +697,10 @@ def render_page(page: dict, capture_url: str, public_url: str,
 {sent_html}
 <h1>{_e(content['headline']) or title}</h1>
 <p class="sub">{_e(content['subheadline'])}</p>
+{actions_html}
 {benefits_html}
 {sections_html}
-<form action="{_e(capture_url)}" method="post">
+<form class="lead" action="{_e(capture_url)}" method="post">
   <label for="lp-name">שם</label>
   <input id="lp-name" name="name" type="text" autocomplete="name" required>
   <label for="lp-phone">טלפון</label>
@@ -381,14 +709,59 @@ def render_page(page: dict, capture_url: str, public_url: str,
   <input id="lp-email" name="email" type="email" autocomplete="email">
   <label for="lp-message">הודעה (לא חובה)</label>
   <textarea id="lp-message" name="message"></textarea>
+  <div class="hp" aria-hidden="true"><label for="lp-website">אתר</label><input id="lp-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+  <input type="hidden" name="lp_stamp" value="{_e(form_stamp)}">
   <input type="hidden" name="source" value="website_form">
-  <input type="hidden" name="source_detail" value="{_e(source_detail_for(page.get('slug', '')))}">
+  <input type="hidden" name="source_detail" value="{_e(source_detail_for(slug))}">
   <input type="hidden" name="redirect" value="{_e(public_url)}?sent=1">
   {attribution_fields}
-  <button type="submit">{_e(content['cta_text'])}</button>
+  <button type="submit"{' disabled' if preview else ''}>{_e(content['cta_text'])}</button>
   {note_html}
+  {consent_html}
 </form>
 </main>
-<footer>נבנה על ידי uallak</footer>
+{_footer(business_name, links)}
+{events}
 </body>
 </html>"""
+
+
+def page_size(page: dict) -> int:
+    """Bytes of the rendered page — the size limit's measure."""
+    visible = {"title": page.get("title", ""), "content": page.get("content") or {},
+               "contact": page.get("contact") or {}}
+    links = {"call": "https://x", "whatsapp": "https://x", "store": "https://x",
+             "privacy": "https://x", "terms": "https://x"}
+    return len(render_page(page, "https://x", "https://x", visible=visible, links=links).encode("utf-8"))
+
+
+# ─── The legal pages every landing page links to ─────────────────────────────
+
+def render_legal(kind: str, business_name: str, contact_email: str = "", contact_phone: str = "") -> str:
+    """A fixed Hebrew privacy notice / terms page per client: the BUSINESS
+    collects the enquiry, uallak hosts the page and stores the form on its
+    behalf. Fixed text, every value escaped — never model-written."""
+    who = _e(business_name or "בעל העסק")
+    contact = " · ".join(_e(x) for x in (contact_email, contact_phone) if x)
+    contact_line = f"<p>ליצירת קשר: {contact}</p>" if contact else ""
+    if kind == "privacy":
+        heading = "מדיניות פרטיות"
+        body = (f"<p>הדף מופעל על ידי {who}. הפרטים שתשאירו בטופס (שם, טלפון, אימייל והודעה) "
+                f"נשמרים כדי ש{who} יחזרו אליכם בנוגע לפנייה, ולא לשום מטרה אחרת.</p>"
+                "<p>הדף והטופס מתארחים אצל uallak, שמאחסנת את הפרטים עבור העסק בלבד ואינה משתמשת בהם "
+                "לצרכיה. אנחנו סופרים כניסות ולחיצות לדף בלי לזהות אתכם אישית.</p>"
+                f"<p>אפשר לבקש לעיין בפרטים, לתקן אותם או למחוק אותם בכל פנייה ל{who}.</p>")
+    else:
+        heading = "תנאי שימוש"
+        body = (f"<p>הדף מציג הצעה של {who}. התוכן נכתב עבור העסק ומיועד למידע בלבד; "
+                f"התנאים המחייבים הם אלה שתסכמו ישירות עם {who}.</p>"
+                "<p>שליחת הטופס אינה מחייבת אתכם לדבר — היא רק בקשה שיחזרו אליכם.</p>"
+                "<p>הדף מתארח אצל uallak. אין להעתיק את תוכנו או לשבש את פעולתו.</p>")
+    return f"""<!doctype html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{heading} — {who}</title><meta name="robots" content="noindex,follow"><style>{PAGE_CSS}</style></head>
+<body><main class="wrap legal"><h1>{heading}</h1>{body}{contact_line}</main>
+<footer>{who} · נבנה ומתארח על ידי uallak</footer></body></html>"""
+
+

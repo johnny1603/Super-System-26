@@ -474,4 +474,21 @@ def performance_page(client_id: int) -> dict:
         page["traffic"] = {k: t.get(k) for k in ("today", "yesterday", "same_day_last_week",
                                                   "yesterday_change", "windows", "sources",
                                                   "first_data_date", "pulled_at")}
+    page["landing_pages"] = _landing_block(client_id)
     return page
+
+
+def _landing_block(client_id: int) -> list:
+    """Per landing page, last 30 days: views / calls / WhatsApp (our own
+    counters) and leads (client_leads, all time). [] when there are none or
+    the read failed — the page simply has no landing section then."""
+    try:
+        from agents.landing_page_agent import dashboard_payload
+        pages = dashboard_payload(client_id).get("pages") or []
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] landing block failed for client {client_id}: {type(e).__name__}")
+        return []
+    return [{"title": p.get("title", ""), "status": p.get("status"),
+             "url": p.get("url") if p.get("status") == "published" else "",
+             "views": p.get("views"), "calls": p.get("calls"), "whatsapp": p.get("whatsapp"),
+             "leads": p.get("leads", 0)} for p in pages]

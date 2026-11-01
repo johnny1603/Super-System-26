@@ -522,7 +522,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   project per page. 3 included per client, **enforced server-side**; a 4th is blocked and
   priced by a human, never by code. Content is STRUCTURED and escaped into a fixed template
   — raw HTML is never stored, because these serve from the same origin as the dashboard
-  session cookie. See `.claude/skills/landing-pages/SKILL.md`.
+  session cookie. **Owned + versioned (2026-11-01, `docs/LANDING_PAGES.md`)**: every write is a
+  `landing_page_versions` row; only the client's `publish_landing_page` card (אורי's chat,
+  preview link) puts a version live; one-tap revert; own counters + form anti-spam +
+  Tag-Manager-only-on-their-verified-domain in `core/landing_tracking.py`; privacy/terms
+  per page; admin `/admin/landing/` (`core/landing_admin.py`: takedown, cost per page,
+  backup-first migration). Needs `migrations/2026-11-01-landing-own.sql`; degrades to the old
+  behaviour until then. InstaWP is full websites only. `tests/test_landing_own.py`.
+  See `.claude/skills/landing-pages/SKILL.md`.
 - `core/operating_costs.py` — uallak's OWN company-wide spend ("what am I actually
   spending"), admin-only. Distinct from `client_costs` (per-client AI usage, which this
   READS and never writes) and from `budget_agent` (ONE client's picture). **No provider we
