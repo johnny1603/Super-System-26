@@ -606,10 +606,11 @@ def send_operator_code(to_email: str, code: str, summary_he: str, minutes: int) 
     something the owner didn't ask for is a visible warning sign. True only
     when the mail server accepted it — the gate needs to know."""
     from html import escape
+    from core.operator_agent import DISPLAY_NAME
     html = f"""
     <div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;">
-      <h2>🔐 קוד אישור — המפעיל של uallak</h2>
-      <p>הקוד מאשר <strong>רק</strong> את הפעולה הזו:</p>
+      <h2>🔐 קוד אישור מ{DISPLAY_NAME}</h2>
+      <p>{DISPLAY_NAME} ביקש את האישור שלך. הקוד מאשר <strong>רק</strong> את הפעולה הזו:</p>
       <p style="background:#f4f4f4;padding:10px;border-radius:6px;">{escape(summary_he)}</p>
       <p style="font-size:28px;letter-spacing:6px;font-weight:bold;">{code}</p>
       <p>בתוקף {int(minutes)} דקות, לשימוש אחד, ורק בחלון הדשבורד שביקש אותו.</p>
@@ -617,7 +618,7 @@ def send_operator_code(to_email: str, code: str, summary_he: str, minutes: int) 
     </div>
     """
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = "🔐 uallak — קוד אישור לפעולת קוד/פריסה"
+    msg['Subject'] = f"🔐 {DISPLAY_NAME} — קוד אישור לפעולת קוד/פריסה"
     msg['From'] = GMAIL_USER
     msg['To'] = to_email
     msg.attach(MIMEText(html, 'html'))

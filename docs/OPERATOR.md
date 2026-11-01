@@ -1,7 +1,30 @@
-# The operator — the owner's personal agent
+# איציק (Itzik) — the owner's personal operator agent
 
-`/admin/operator/` (admin session only; linked from the admin menu as "המפעיל"). One place
-to say "something is wrong" and have it investigated, written up, fixed and shipped.
+The owner sees him as **איציק** (`operator_agent.DISPLAY_NAME`): admin menu, page title,
+chat header, the approval-code email, PR titles and the audit-log display. Internal names
+and routes stay `operator`. One place to say "something is wrong" and have it investigated,
+written up, fixed and shipped.
+
+**Where he lives (2026-11-01):** a floating chat on EVERY admin page
+(`dashboard/assets/itzik-chat.js`, self-contained, reused later by the mobile app) —
+minimised by default as his standing figure in the corner, portrait in the open header,
+the same look as the client agent chats. It draws nothing until
+`GET /api/admin/operator/presence` answers with the admin session, and only admin pages
+load it. Action cards and the Tier 3 approval cards (with the emailed code) appear inside
+the chat. `/admin/operator/` is his workspace: production status + one-tap rollback,
+approvals waiting, saved reports, the action log, flags.
+
+**Presence** (`core/operator_presence.py`): a badge on the minimised figure for new open
+alerts since the chat was last opened, a pending approval, or a post-deploy problem. When
+the new deploy looks wrong (`cloud_ops.deploy_watch().suspicious`), ONE proactive line with
+the one-tap rollback — at most once per browser session per revision pair.
+
+**Persona** (in `SYSTEM`, shared by any model): a man in his 30s, hi-tech background, calm,
+sharp, concise, dry humour, first person as a partner; what he found → the evidence → what
+he recommends; owner-only steps as exact numbered steps. Model: locked top tier,
+`model_routing.locked_model("operator")`.
+
+The rest of this page says "the operator" for the same agent.
 Built 2026-11-01. Phone-first page; the API under `/api/admin/operator/*` is plain JSON so a
 phone app can use it later (it will need its own auth — see "Recommended next").
 

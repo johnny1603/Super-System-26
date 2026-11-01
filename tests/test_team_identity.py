@@ -32,7 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 AGENTS_DIR = os.path.join(ROOT, "dashboard", "assets", "agents")
-NAMES = ("johnny", "nissim", "elinor", "lior", "yoav", "maya", "uri")
+NAMES = ("johnny", "nissim", "elinor", "lior", "yoav", "maya", "uri", "itzik")   # + איציק, the owner's operator
 
 
 def _src(*parts) -> str:

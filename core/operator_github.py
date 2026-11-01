@@ -209,7 +209,7 @@ def connection_check() -> dict:
     def done():
         blocking = [l for l in lines if not l["recommended"] and l["ok"] is not True]
         ok = not blocking
-        summary = ("הכול מוכן — המפעיל יכול לפתוח ענף, PR ולהפעיל פריסה (תמיד רק אחרי האישור שלך)." if ok
+        summary = ("הכול מוכן — איציק יכול לפתוח ענף, PR ולהפעיל פריסה (תמיד רק אחרי האישור שלך)." if ok
                    else f"עוד לא מוכן: {len(blocking)} דברים לתקן, מפורטים למטה.")
         return {"ok": ok, "summary_he": summary, "lines": lines}
 

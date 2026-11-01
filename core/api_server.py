@@ -6056,6 +6056,13 @@ def operator_status(request: Request):
         "github_configured": operator_github.configured(),
         "tier3": {**operator_gate.enabled(), "sent_to": operator_gate.masked_email()}}}
 
+@app.get("/api/admin/operator/presence")
+def operator_presence(request: Request, since: str = ""):
+    # איציק's badge + proactive rollback line on every admin page (core/operator_presence)
+    _operator_admin(request)
+    from core import operator_presence
+    return {"success": True, "data": operator_presence.snapshot(since)}
+
 @app.get("/api/admin/operator/github-check")
 def operator_github_check(request: Request):
     # Tier 1, read-only: nothing is created (core/operator_github.connection_check)

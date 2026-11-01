@@ -18,8 +18,9 @@ error, is retried ONCE one tier up. The client only ever sees the final
 answer. The top tier has nothing above it, so it keeps claude_json's own
 empty-answer retries instead.
 
-LOCKED: the team manager (the concierge) and the opening interview always
-run on the heavy tier, router or not.
+LOCKED: the team manager (the concierge), the opening interview and איציק
+(the owner's operator, locked_model("operator")) always run on the heavy
+tier, router or not.
 
 FLAG: MODEL_ROUTING_ENABLED (core/operator_flags; ON by default, one tap on
 the operator page turns it off) — off sends EVERY turn to the heavy tier.
@@ -49,6 +50,7 @@ TIER_MODELS = {
 ROLE_OVERRIDES = {
     "manager": "heavy",      # the team manager (concierge)
     "interview": "heavy",    # the opening interview
+    "operator": "heavy",     # איציק, the owner's operator (core/operator_agent)
 }
 ROUTER_TIER = "simple"       # the router runs on this tier's model
 FALLBACK_TIER = "standard"   # router failed / timed out / answered nonsense
@@ -106,6 +108,11 @@ def routing_enabled() -> bool:
         return operator_flags.enabled(FLAG)
     except Exception:
         return False
+
+
+def locked_model(role: str) -> str:
+    """The model of a locked role (ROLE_OVERRIDES) — for callers that never route."""
+    return TIER_MODELS[ROLE_OVERRIDES[role]]
 
 
 def next_tier(tier: str):

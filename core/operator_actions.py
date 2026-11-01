@@ -63,7 +63,10 @@ def audit(event: str, who: str, detail: str = "", status: str = "resolved"):
 def recent_audit(limit: int = 50) -> list:
     rows = (_db().table("alerts").select("issues, created_at").eq("source", AUDIT_SOURCE)
             .order("created_at", desc=True).limit(int(limit)).execute().data or [])
-    return [{"at": r.get("created_at"), "entry": (r.get("issues") or [""])[0]} for r in rows]
+    # Stored lines keep the internal actor name; the owner reads איציק
+    from core.operator_agent import DISPLAY_NAME
+    return [{"at": r.get("created_at"),
+             "entry": (r.get("issues") or [""])[0].replace("operator agent", DISPLAY_NAME)} for r in rows]
 
 
 # ─── Params ──────────────────────────────────────────────────────────────────

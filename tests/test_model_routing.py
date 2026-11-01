@@ -338,7 +338,11 @@ class OneConfig(unittest.TestCase):
         self.assertIn('CLASSIFY_MODEL = TIER_MODELS["simple"]', _src("core", "claude_json.py"))
 
     def test_locked_roles_in_config(self):
-        self.assertEqual(mr.ROLE_OVERRIDES, {"manager": "heavy", "interview": "heavy"})
+        self.assertEqual(mr.ROLE_OVERRIDES, {"manager": "heavy", "interview": "heavy", "operator": "heavy"})
+        self.assertEqual(mr.locked_model("operator"), OPUS)
+        op = _src("core", "operator_agent.py")
+        self.assertIn('locked_model("operator")', op)
+        self.assertNotIn("CHAT_TURN_MODEL", op)
         self.assertEqual(mr.TIER_MODELS, {"simple": HAIKU, "standard": SONNET, "heavy": OPUS})
         self.assertEqual(mr.FALLBACK_TIER, "standard")
 

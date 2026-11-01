@@ -232,7 +232,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   client), `client_state.site_security` for agents (ACCOUNT_STATE_RULE: never call a site safe),
   admin action `rotate_wordpress_password` (`website_agent.rotate_stored_password`: mint →
   verify → store → revoke old). InstaWP has no documented PHP-version API — manual runbook.
-- `core/operator_agent.py` — **the owner's operator** (`/admin/operator/`, admin session only,
+- `core/operator_agent.py` — **the owner's operator, shown to him as איציק** (`DISPLAY_NAME`;
+  floating chat on every admin page via `dashboard/assets/itzik-chat.js` — admin pages only,
+  draws nothing without the admin session; badge + one proactive rollback line from
+  `core/operator_presence.py`; workspace `/admin/operator/`; model
+  `model_routing.locked_model("operator")`; `tests/test_itzik.py`. Admin session only,
   never on a client surface). Tier 1 reads (`core/cloud_ops` revisions/logs via the runtime SA,
   alerts, client_state, Control Room, `core/operator_github` history/CI, the deployed code) →
   Hebrew diagnosis + report; Tier 2 (`core/operator_actions`, audited to `alerts` source
@@ -245,8 +249,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   never `.github/`. Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
   `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
 - `core/model_routing.py` — **the ONE place chat models are named** (`TIER_MODELS` simple/
-  standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: manager + interview locked to
-  heavy). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
+  standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: manager + interview + operator (איציק)
+  locked to heavy). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
   empty/malformed/low-confidence/error. Flag `MODEL_ROUTING_ENABLED` (operator_flags, default
   ON; off = all opus). Per-turn log `chat_turn_routes` (migrations/2026-11-01-chat-routing.sql),
   admin page `/admin/models/`. Prompt caching: `claude_json.cached_system()` — static prompt

@@ -263,11 +263,11 @@ def open_pr(change_id: str, gate_id: str, code: str, admin_fp: str, who: str) ->
         raise ChangeError("ERR_MASTER_MOVED", e.detail)
     branch = f"{gh.BRANCH_PREFIX}{change['id']}"
     operator_actions.audit(f"tier3 open_pr START change {change['id']} branch {branch}", who)
-    head = gh.create_branch_commit(branch, base, updated, f"Operator: {change['title']}")
+    head = gh.create_branch_commit(branch, base, updated, f"איציק: {change['title']}")
     body = (f"**מה השתנה:** {change['what_he']}\n\n**למה:** {change['why_he']}\n\n"
             f"נוצר על ידי הסוכן התפעולי (שינוי #{change['id']}). מיזוג ופריסה — רק אחרי אישור נפרד "
             f"וקוד חד-פעמי במייל.")
-    pr = gh.open_pr(branch, f"Operator: {change['title']}", body)
+    pr = gh.open_pr(branch, f"איציק: {change['title']}", body)
     change.update(status="pr_open", branch=branch, base_sha=base, pr_number=pr["number"], pr_url=pr["url"],
                   head_sha=pr["head_sha"] or head, diff=unified_diff(originals, updated))
     _save(change)
@@ -291,7 +291,7 @@ def merge_and_deploy(change_id: str, gate_id: str, code: str, admin_fp: str, who
         raise ChangeError("ERR_TESTS_" + tests["state"].upper())
     operator_actions.audit(f"tier3 merge_deploy START change {change['id']} PR #{change['pr_number']} "
                            f"head {change['head_sha'][:12]} tests {tests['state']}", who)
-    merge_sha = gh.merge_pr(change["pr_number"], change["head_sha"], f"Operator: {change['title']}")
+    merge_sha = gh.merge_pr(change["pr_number"], change["head_sha"], f"איציק: {change['title']}")
     change.update(status="merged", merge_sha=merge_sha)
     _save(change)
     dispatched_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()

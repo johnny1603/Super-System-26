@@ -507,7 +507,7 @@ class AdminOnly(unittest.TestCase):
         api = _src("core", "api_server.py")
         routes = re.findall(r'@app\.(?:get|post)\("(/api/admin/operator[^"]*)"\)\ndef \w+\([^)]*\):\n((?:\s*#.*\n)*)(.*)\n',
                             api)
-        self.assertEqual(len(routes), 10)          # + github-check (Tier 1 read, 2026-11-01)
+        self.assertEqual(len(routes), 11)          # + github-check, + presence (איציק's badge, 2026-11-01)
         for path, _comments, first_code_line in routes:
             self.assertIn("_operator_admin(request)", first_code_line, path)   # before anything else
         self.assertIn("def _operator_admin(request: Request) -> tuple:\n    _require_admin(request)", api)
@@ -530,7 +530,7 @@ class AdminOnly(unittest.TestCase):
 
     def test_strong_model_and_cost_recorded(self):
         src = _src("core", "operator_agent.py")
-        self.assertIn("from core.claude_json import CHAT_TURN_MODEL", src)
+        self.assertIn('locked_model("operator")', src)      # the top tier, from core/model_routing
         self.assertIn('record("claude_operator", _model()', src)
 
     def test_reads_never_open_secret_files(self):
