@@ -242,6 +242,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   client), `client_state.site_security` for agents (ACCOUNT_STATE_RULE: never call a site safe),
   admin action `rotate_wordpress_password` (`website_agent.rotate_stored_password`: mint →
   verify → store → revoke old). InstaWP has no documented PHP-version API — manual runbook.
+- `core/site_updates.py` — plugin/theme updates via the website agent's cards (2026-11-02,
+  `docs/SITE-UPDATES.md`, never run live). Status (REST + wordpress.org directory, PHP/WP
+  incompatibility flags) for every connected site → client_state `site_updates` + admin
+  `GET /api/admin/site-updates/{id}`. Updates ONLY on sites we host on InstaWP: card
+  `update_site_items`, one item at a time, VERIFIED InstaWP site version (files+DB) before each,
+  `wp plugin|theme update <slug>` over run-cmd, health check (home + key pages 200, no fatal,
+  checkout with WooCommerce, WordPress boots), automatic restore + admin alert on failure.
+  No verified backup → nothing runs; the rest goes to the code-only card
+  `update_site_items_without_backup` (explicit client click). Never WordPress core. Each item logged
+  (`site_update`: who, from→to, backup_ref, result). `tests/test_site_updates.py`.
 - `core/operator_agent.py` — **the owner's operator, shown to him as איציק** (`DISPLAY_NAME`;
   floating chat on every admin page via `dashboard/assets/itzik-chat.js` — admin pages only,
   draws nothing without the admin session; badge + one proactive rollback line from

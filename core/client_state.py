@@ -50,7 +50,9 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "client_state"
 
-SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300, "website_traffic": 600}
+SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300, "website_traffic": 600,
+               # plugin/theme versions move slowly and a cold read is several HTTP calls
+               "site_updates": 6 * 3600}
 DEFAULT_TTL = 120
 
 # section -> the data_topic a client question about it is labelled with
@@ -68,6 +70,7 @@ SECTION_TOPIC = {
     # "account" question into the can't-read line
     "voice": "voice",
     "website_traffic": "website",
+    "site_updates": "website",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -368,6 +371,14 @@ def _site_security(client_id: int) -> dict:
     return php_exposure.site_security_fact(client_id)
 
 
+def _site_updates(client_id: int) -> dict:
+    """Plugin/theme updates waiting on the client's WordPress site, with
+    compatibility flags, and whether WE can run them (core/site_updates).
+    {"connected": False} when no site is connected."""
+    from core import site_updates
+    return site_updates.for_agent(client_id)
+
+
 # ─── The snapshot ────────────────────────────────────────────────────────────
 
 def _section(client_id: int, name: str, fetch, refresh: bool):
@@ -415,6 +426,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("media_folder", lambda: _media_folder(client_id))
     take("package", lambda: _package(client_id))
     take("site_security", lambda: _site_security(client_id))
+    take("site_updates", lambda: _site_updates(client_id))
     take("outreach", lambda: _outreach(client_id))
     take("creative_tools", lambda: _creative_tools(client_id))
     take("voice", lambda: _voice(client_id))

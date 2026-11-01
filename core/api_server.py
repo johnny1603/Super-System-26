@@ -6866,6 +6866,17 @@ def admin_php_exposure_scan(request: Request, client_id: int = 0):
     from core import php_exposure
     return {"success": True, "data": php_exposure.run_scan(client_id or None)}
 
+@app.get("/api/admin/site-updates/{client_id}")
+def admin_site_updates(request: Request, client_id: int, refresh: bool = False):
+    # Plain `def`: the site's REST lists + directory lookups. Status only —
+    # updates run solely through the client's confirmation card (core/site_updates)
+    _require_admin(request)
+    from core import site_updates
+    try:
+        return {"success": True, "data": site_updates.status(client_id, refresh=refresh)}
+    except Exception as e:
+        return {"success": False, "error": f"site not readable: {type(e).__name__}"}
+
 @app.get("/api/website/php-exposure-scan", dependencies=_admin_only)
 def website_php_exposure_scan():
     # Scheduler twin of the admin button (X-Admin-Key), like /api/website/scan

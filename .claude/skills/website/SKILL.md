@@ -441,6 +441,16 @@ hosting, domains — anything with a price tag is a client-billed decision
 (same principle as ad spend), never an automatic install. `install_plugin`
 only accepts wordpress.org slugs for this reason.
 
+## Plugin / theme updates (2026-11-02)
+
+Read `docs/SITE-UPDATES.md`. Status for every connected site (`core/site_updates.status`,
+client_state `site_updates`); updates ONLY on sites we host on InstaWP, ONLY through the
+client's `update_site_items` card: verified InstaWP site version before each item, health
+check after, automatic restore on failure. No verified backup = nothing runs (the
+code-only `update_site_items_without_backup` card asks explicitly). Never WordPress core,
+never a command built from text — only `wp plugin|theme update <validated slug>`. A site the
+client hosts elsewhere: status only, updates are a team request.
+
 ## Gotchas
 
 - **Basic auth requires HTTPS and can be disabled** — some hosts/security

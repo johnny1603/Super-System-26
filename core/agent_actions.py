@@ -54,9 +54,11 @@ class ActionFailed(Exception):
     """An action's own refusal or failure. `code` goes to the audit row;
     the message only to the admin/log (it may carry platform detail)."""
 
-    def __init__(self, code: str, message: str = ""):
+    def __init__(self, code: str, message: str = "", follow_params: dict = None):
         super().__init__(message or code)
         self.code = code
+        # Params for the spec's follow_up card (e.g. the items still to do)
+        self.follow_params = follow_params or {}
 
 
 # ─── Seams (patched by tests; everything external goes through these) ────────
@@ -493,6 +495,159 @@ def _run_rotate_wordpress_password(client_id: int, params: dict, background_task
     return {"site_url": result["site_url"],
             "old_password_revoked": "yes" if result.get("old_revoked")
             else "NO — delete the older 'uallak' Application Password in wp-admin → Users → Profile"}
+
+
+# ─── Plugin / theme updates (core/site_updates, docs/SITE-UPDATES.md) ────────
+
+def _v_update_request(value, client_id: int):
+    from core import site_updates
+    return site_updates.parse_request(value)
+
+
+def _v_update_items(value, client_id: int):
+    from core import site_updates
+    return site_updates.validate_items(value)
+
+
+def _validate_update_stored(client_id: int, params: dict) -> dict:
+    params = params if isinstance(params, dict) else {}
+    if set(params) - {"items"}:
+        raise ValueError("unknown params")
+    return {"items": _v_update_items(params.get("items"), client_id)}
+
+
+def _site_updates_possible(state: dict, client: dict) -> bool:
+    updates = (state or {}).get("site_updates") or {}
+    return bool(updates.get("we_can_update") and updates.get("updates"))
+
+
+_SITE_UPDATE_PLAN_REFUSALS = {
+    "no_site": _txt(
+        "האתר לא מחובר אליי כרגע, אז אין לי איך לבדוק או לעדכן תוספים. אפשר לחבר אותו מחדש בכרטיס האתר.",
+        "Your site isn't connected to me right now, so I can't check or update plugins. You can reconnect it on the website card.",
+        "Votre site n'est pas connecté pour le moment, je ne peux donc pas vérifier ni mettre à jour les extensions.",
+        "موقعكم غير متصل بي الآن، لذلك لا أستطيع فحص الإضافات أو تحديثها.",
+        "Сайт сейчас не подключён, поэтому я не могу проверить или обновить плагины."),
+    "not_hosted": _txt(
+        "אני רואה את העדכונים שמחכים באתר, אבל האתר מאוחסן אצלכם ולא אצלנו, ולכן אין לי דרך לגבות אותו בעצמי. את העדכונים האלה עושה איש צוות ידנית, עם גיבוי לפני. רוצה שאפתח לו בקשה?",
+        "I can see the updates waiting on your site, but it's hosted on your side, not ours, so I can't back it up myself. A team member does these updates by hand, with a backup first. Shall I open a request?",
+        "Je vois les mises à jour en attente, mais le site est hébergé chez vous : je ne peux pas le sauvegarder moi-même. Un membre de l'équipe les fait à la main, avec une sauvegarde avant. J'ouvre une demande ?",
+        "أرى التحديثات المنتظرة، لكن الموقع مستضاف لديكم وليس لدينا، فلا أستطيع نسخه احتياطيًا بنفسي. يقوم بها أحد أعضاء الفريق يدويًا مع نسخة احتياطية. هل أفتح طلبًا؟",
+        "Я вижу ожидающие обновления, но сайт размещён у вас, а не у нас, и сам я не могу сделать копию. Их делает сотрудник вручную, с копией заранее. Открыть запрос?"),
+    "incompatible": _txt(
+        "העדכון הזה דורש גרסת שרת חדשה יותר ממה שיש באתר כרגע, אז לא אעדכן אותו — זה עלול לשבור את האתר. הצוות יכול לבדוק שדרוג של השרת קודם.",
+        "This update needs a newer server version than your site has right now, so I won't run it — it could break the site. The team can look at upgrading the server first.",
+        "Cette mise à jour exige une version de serveur plus récente que celle du site ; je ne la lance pas, elle pourrait casser le site.",
+        "هذا التحديث يتطلب إصدار خادم أحدث مما في الموقع الآن، لذلك لن أشغّله — قد يعطّل الموقع.",
+        "Этому обновлению нужна более новая версия сервера, чем сейчас на сайте, поэтому я его не запускаю — сайт может сломаться."),
+    "nothing_to_update": _txt(
+        "כל התוספים והתבניות באתר כבר מעודכנים, אין כרגע מה לעדכן.",
+        "Every plugin and theme on your site is already up to date — nothing to update right now.",
+        "Toutes les extensions et thèmes sont déjà à jour.",
+        "كل الإضافات والقوالب في موقعكم محدّثة بالفعل.",
+        "Все плагины и темы на сайте уже обновлены."),
+}
+
+
+def _prepare_site_updates(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """The model asked for "all" or named items; code reads the site and pins
+    the card to exactly what will be updated (installed -> new version), only
+    items that are behind AND compatible. A newer card replaces an older one."""
+    from core import site_updates
+    plan = site_updates.plan(client_id, params["items"])
+    lang = (context or {}).get("language") or "he"
+    if plan.get("refuse"):
+        return {"refuse": _pick(_SITE_UPDATE_PLAN_REFUSALS[plan["refuse"]], lang)}
+    params = {"items": plan["items"]}
+    for row in rows:
+        if (row.get("params") or {}) == params:
+            return {"existing": row}
+    return {"params": params, "supersedes": rows[0].get("id") if rows else None}
+
+
+def _run_site_updates(without_backup: bool):
+    def run(client_id: int, params: dict, background_tasks, row: dict = None):
+        from core import site_updates
+        row = row or {}
+        out = site_updates.run_updates(client_id, params["items"], who=str(row.get("decided_by") or "client"),
+                                       proposal_id=row.get("id"), without_backup=without_backup)
+        _forget_state(client_id)        # the next turn reads the site's versions fresh
+        detail = "; ".join(out["problems"])[:500]
+        stopped = out["stopped"]
+        if stopped == "backup_failed":
+            # Nothing more is touched; the rest waits on a card that says there is no backup
+            raise ActionFailed("backup_failed", detail, follow_params={"items": out["remaining"]})
+        if stopped == "rolled_back" and out["updated"]:
+            raise ActionFailed("rolled_back_partial", detail)
+        if stopped:
+            raise ActionFailed(stopped, detail)
+        return {"updated": out["updated"], "skipped": out["skipped"]}
+    return run
+
+
+def _site_updates_display(client_id: int, params: dict) -> dict:
+    from core import site_updates
+    items = (params or {}).get("items") or []
+    return {"items": site_updates.describe(items), "count": len(items)}
+
+
+_SITE_UPDATE_DONE_NONE = _txt(
+    "לא היה צורך לעדכן: הפריטים כבר היו מעודכנים, או שהעדכון לא התאים לאתר. שום דבר לא השתנה.",
+    "Nothing needed updating: the items were already current or the update didn't suit the site. Nothing changed.",
+    "Rien à mettre à jour : déjà à jour ou mise à jour non adaptée. Rien n'a changé.",
+    "لم يكن هناك ما يُحدَّث: العناصر محدّثة أو التحديث غير مناسب. لم يتغير شيء.",
+    "Обновлять было нечего: всё уже актуально или обновление не подходит сайту. Ничего не изменилось.")
+
+
+def _site_updates_done(name: str):
+    def message(result: dict, lang: str) -> str:
+        updated = result.get("updated") or []
+        if not updated:
+            return _pick(_SITE_UPDATE_DONE_NONE, lang)
+        lines = "\n".join(f"• {u['name']}: {u['from']} → {u['to']}" for u in updated)
+        return f"{_pick(ACTIONS[name]['done'], lang)}\n{lines}"
+    return message
+
+
+_SITE_UPDATE_RUN_REFUSALS = {
+    "backup_failed": _txt(
+        "לא הצלחתי לגבות את האתר לפני העדכון, ולכן לא עדכנתי (מה שכבר עודכן ונבדק לפני כן נשאר). אם תרצה שאעדכן בכל זאת בלי גיבוי, יש לזה כרטיס נפרד כאן. אפשר גם לחכות שהצוות יבדוק את הגיבוי.",
+        "I couldn't back up your site before the update, so I didn't update (anything already updated and checked stays). If you want me to update without a backup, there's a separate card here. Or wait for the team to look at the backup.",
+        "Je n'ai pas pu sauvegarder le site avant la mise à jour, donc je n'ai rien mis à jour (ce qui l'était déjà reste). Une carte séparée permet de le faire sans sauvegarde.",
+        "لم أتمكن من نسخ الموقع احتياطيًا قبل التحديث، لذلك لم أحدّث (ما حُدّث وفُحص قبل ذلك يبقى). إن أردتم التحديث دون نسخة احتياطية فهناك بطاقة منفصلة هنا.",
+        "Не удалось сделать копию сайта перед обновлением, поэтому я ничего не обновил (уже обновлённое остаётся). Если хотите обновить без копии — для этого здесь отдельная карточка."),
+    "rolled_back": _txt(
+        "העדכון גרם לתקלה באתר, אז החזרתי את האתר מיד מהגיבוי שלקחתי רגע לפני. בדקתי, והאתר עובד כמו קודם. לא המשכתי לעדכונים הבאים, והצוות כבר בודק מה קרה.",
+        "The update caused a problem on your site, so I restored it right away from the backup taken just before. I checked: the site works as before. I didn't go on to the next updates, and the team is looking at what happened.",
+        "La mise à jour a causé un problème ; j'ai aussitôt restauré le site depuis la sauvegarde. Il fonctionne comme avant. L'équipe regarde ce qui s'est passé.",
+        "سبّب التحديث خللًا في الموقع، فأعدته فورًا من النسخة الاحتياطية. فحصت والموقع يعمل كما كان. الفريق يفحص ما حدث.",
+        "Обновление вызвало сбой, и я сразу восстановил сайт из копии. Проверил — сайт работает как раньше. Команда разбирается, что произошло."),
+    "rolled_back_partial": _txt(
+        "חלק מהעדכונים עברו ונבדקו, אבל אחד מהם גרם לתקלה, אז החזרתי את האתר מיד מהגיבוי שלקחתי רגע לפניו. בדקתי, והאתר עובד. לא המשכתי הלאה, והצוות כבר בודק מה קרה.",
+        "Some updates went through and were checked, but one caused a problem, so I restored the site right away from the backup taken just before it. The site works. I stopped there, and the team is looking at it.",
+        "Certaines mises à jour sont passées, mais une a causé un problème : j'ai restauré le site depuis la sauvegarde prise juste avant. Il fonctionne ; l'équipe regarde.",
+        "بعض التحديثات نجحت، لكن أحدها سبّب خللًا فأعدت الموقع فورًا من النسخة التي أُخذت قبله. الموقع يعمل والفريق يفحص.",
+        "Часть обновлений прошла, но одно вызвало сбой — я сразу восстановил сайт из копии, сделанной перед ним. Сайт работает, команда разбирается."),
+    "rollback_failed": _txt(
+        "משהו בעדכון לא הסתדר, והצוות כבר מטפל בזה עכשיו כדי להחזיר את האתר למצב שלפני. אעדכן אותך כאן ברגע שזה מאחורינו.",
+        "Something in the update went wrong, and the team is on it right now to bring the site back to how it was. I'll update you here as soon as it's behind us.",
+        "Quelque chose s'est mal passé ; l'équipe s'en occupe tout de suite pour remettre le site comme avant.",
+        "حدث خلل في التحديث، والفريق يعالجه الآن لإعادة الموقع كما كان.",
+        "Что-то пошло не так, и команда уже возвращает сайт в прежнее состояние."),
+    "failed_no_backup": _txt(
+        "העדכון גרם לתקלה באתר, ומכיוון שעודכן בלי גיבוי, הצוות מתקן את זה עכשיו ידנית. אעדכן אותך כאן ברגע שזה מאחורינו.",
+        "The update caused a problem, and since it ran without a backup, the team is fixing it by hand right now. I'll update you here as soon as it's done.",
+        "La mise à jour a causé un problème ; faite sans sauvegarde, l'équipe la corrige à la main maintenant.",
+        "سبّب التحديث خللًا، ولأنه تم دون نسخة احتياطية يصلحه الفريق يدويًا الآن.",
+        "Обновление вызвало сбой; так как оно было без копии, команда исправляет его вручную."),
+    "site_unhealthy": _txt(
+        "לפני העדכון בדקתי את האתר, ומשהו בו כבר לא עובד כמו שצריך — אז לא נגעתי בכלום. הצוות קיבל את הפרטים ויבדוק את זה קודם.",
+        "Before updating I checked the site, and something on it already isn't working right — so I touched nothing. The team has the details and will look at it first.",
+        "Avant la mise à jour, j'ai vu qu'un élément du site ne fonctionnait déjà pas ; je n'ai rien touché. L'équipe regarde.",
+        "قبل التحديث فحصت الموقع ووجدت أن شيئًا فيه لا يعمل كما يجب، فلم ألمس شيئًا. الفريق سيفحصه أولًا.",
+        "Перед обновлением я проверил сайт — что-то уже работает не так, поэтому я ничего не трогал. Команда посмотрит."),
+    **{k: v for k, v in _SITE_UPDATE_PLAN_REFUSALS.items() if k in ("no_site", "not_hosted")},
+}
 
 
 # ─── Landing pages (docs/LANDING_PAGES.md) ───────────────────────────────────
@@ -1326,6 +1481,81 @@ ACTIONS = {
         "done": _txt("סיסמת האפליקציה של וורדפרס הוחלפה ✓", "WordPress application password rotated ✓",
                      "Mot de passe d'application WordPress renouvelé ✓", "تم تجديد كلمة مرور تطبيق WordPress ✓",
                      "Пароль приложения WordPress заменён ✓"),
+    },
+    "update_site_items": {
+        # core/site_updates: one item at a time, a VERIFIED backup before each,
+        # a health check after each, automatic rollback on failure. Only on a
+        # site we host (account_state.site_updates.we_can_update). WordPress
+        # core is never updated — there is no such item type.
+        "approver": "client", "admin_proposable": True, "client_requestable": True,
+        "internal_only": False, "kind": "execute", "needs_row": True,
+        "does": "Updates the client's site plugins/themes listed in account_state.site_updates.updates, one at a "
+                "time: a full site backup before each, a check that the site and key pages load after each, and "
+                "an automatic restore from that backup if anything breaks. Never WordPress itself. Offer it in "
+                "the words of site_updates.offer_line_he when updates are waiting.",
+        "params": {"items": {"required": True, "validate": _v_update_request,
+                             "hint": "\"all\", or a list of item ids copied exactly from site_updates.updates "
+                                     "(e.g. [\"plugin:wordpress-seo\"])"}},
+        "available": _site_updates_possible,
+        "prepare": _prepare_site_updates,
+        "validate_stored": _validate_update_stored,
+        "display": _site_updates_display,
+        "run": _run_site_updates(without_backup=False),
+        "slow": {"minutes": 20, "eta": _txt(
+            "כל עדכון לוקח בדרך כלל כמה דקות, כולל הגיבוי לפני והבדיקה אחרי.",
+            "Each update usually takes a few minutes, including the backup before and the check after.",
+            "Chaque mise à jour prend généralement quelques minutes, sauvegarde et vérification comprises.",
+            "يستغرق كل تحديث عادة بضع دقائق، مع النسخ الاحتياطي قبله والفحص بعده.",
+            "Каждое обновление обычно занимает несколько минут, включая копию до и проверку после.")},
+        "title": _txt("עדכון תוספים ותבניות באתר", "Update your site's plugins and themes",
+                      "Mettre à jour les extensions et thèmes du site", "تحديث إضافات وقوالب الموقع",
+                      "Обновить плагины и темы сайта"),
+        "what": _txt("נעדכן אחד-אחד:\n{items}\nלפני כל עדכון נגבה את כל האתר, ואחרי כל עדכון נבדוק שהאתר והעמודים החשובים עולים כרגיל. אם משהו לא תקין, נחזיר את האתר מיד מהגיבוי. את מערכת האתר עצמה לא מעדכנים כאן.",
+                     "We'll update them one at a time:\n{items}\nBefore each update we back up the whole site, and after each one we check that the site and its key pages load normally. If anything is wrong, we restore the site from the backup right away. The site system itself is not updated here.",
+                     "Une par une :\n{items}\nAvant chaque mise à jour, une sauvegarde complète du site ; après, une vérification des pages principales. Si quelque chose ne va pas, restauration immédiate. Le système du site lui-même n'est pas mis à jour ici.",
+                     "سنحدّث واحدًا تلو الآخر:\n{items}\nقبل كل تحديث ننسخ الموقع كله احتياطيًا، وبعده نفحص أن الموقع والصفحات المهمة تعمل. إن حدث خلل نعيد الموقع فورًا من النسخة. نظام الموقع نفسه لا يُحدَّث هنا.",
+                     "Обновим по одному:\n{items}\nПеред каждым обновлением — полная копия сайта, после — проверка, что сайт и главные страницы открываются. Если что-то не так — сразу восстановим из копии. Саму систему сайта здесь не обновляем."),
+        "done": _txt("העדכונים הסתיימו ✓ גיבינו לפני כל אחד ובדקנו אחרי — האתר עולה כרגיל.",
+                     "Updates done ✓ We backed up before each one and checked after — the site loads normally.",
+                     "Mises à jour terminées ✓ Sauvegarde avant, vérification après — le site fonctionne.",
+                     "انتهت التحديثات ✓ نسخنا احتياطيًا قبل كل واحد وفحصنا بعده — الموقع يعمل كالمعتاد.",
+                     "Обновления готовы ✓ Копия до, проверка после — сайт работает как обычно."),
+        "done_message": _site_updates_done("update_site_items"),
+        "refusals": _SITE_UPDATE_RUN_REFUSALS,
+        "follow_up": {"backup_failed": "update_site_items_without_backup"},
+    },
+    "update_site_items_without_backup": {
+        # Opened ONLY by code, when a verified backup could not be taken: the
+        # same updates, said plainly to run with no backup — never proceeds
+        # without this explicit click. A model can never propose it.
+        "approver": "client", "client_requestable": False, "code_only": True,
+        "internal_only": False, "kind": "execute", "needs_row": True,
+        "does": "The remaining site updates after a backup could not be taken, run WITHOUT a backup on the "
+                "client's explicit approval. Opened by code only.",
+        "params": {"items": {"required": True, "validate": _v_update_items, "hint": ""}},
+        "available": lambda state, client: False,
+        "display": _site_updates_display,
+        "run": _run_site_updates(without_backup=True),
+        "slow": {"minutes": 20, "eta": _txt(
+            "כל עדכון לוקח בדרך כלל כמה דקות, כולל הבדיקה אחרי.",
+            "Each update usually takes a few minutes, including the check after.",
+            "Chaque mise à jour prend quelques minutes, vérification comprise.",
+            "يستغرق كل تحديث بضع دقائق مع الفحص بعده.", "Каждое обновление занимает несколько минут с проверкой.")},
+        "title": _txt("עדכון בלי גיבוי — רק באישור שלך", "Update WITHOUT a backup — only if you approve",
+                      "Mise à jour SANS sauvegarde — seulement avec votre accord",
+                      "تحديث دون نسخة احتياطية — فقط بموافقتكم", "Обновление БЕЗ копии — только с вашего согласия"),
+        "what": _txt("לא הצלחתי לגבות את האתר, ולכן עוד לא עדכנתי:\n{items}\nאם תאשר כאן, אעדכן בלי גיבוי. אבדוק אחרי כל עדכון, אבל אם משהו ישתבש לא יהיה גיבוי לחזור אליו, והצוות יתקן ידנית. אפשר גם לבטל ולחכות שהצוות יבדוק את הגיבוי.",
+                     "I couldn't back up the site, so I haven't updated yet:\n{items}\nIf you approve here, I'll update without a backup. I'll check after each update, but if something breaks there is no backup to go back to and the team fixes it by hand. You can also cancel and wait for the team to check the backup.",
+                     "Je n'ai pas pu sauvegarder le site, donc rien n'est encore mis à jour :\n{items}\nSi vous approuvez, je mets à jour sans sauvegarde. Je vérifie après chaque mise à jour, mais en cas de problème il n'y a pas de sauvegarde. Vous pouvez aussi annuler.",
+                     "لم أتمكن من نسخ الموقع احتياطيًا، لذا لم أحدّث بعد:\n{items}\nإن وافقتم هنا سأحدّث دون نسخة احتياطية. سأفحص بعد كل تحديث، لكن إن حدث خلل فلا نسخة للعودة إليها ويصلحه الفريق يدويًا. يمكنكم أيضًا الإلغاء.",
+                     "Не удалось сделать копию сайта, поэтому я ещё не обновлял:\n{items}\nЕсли подтвердите, обновлю без копии. Проверю после каждого обновления, но при сбое вернуться будет не к чему — команда исправит вручную. Можно и отменить."),
+        "done": _txt("העדכונים הסתיימו ✓ בדקנו אחרי כל אחד — האתר עולה כרגיל.",
+                     "Updates done ✓ We checked after each one — the site loads normally.",
+                     "Mises à jour terminées ✓ Vérifiées une par une — le site fonctionne.",
+                     "انتهت التحديثات ✓ فحصنا بعد كل واحد — الموقع يعمل.",
+                     "Обновления готовы ✓ Проверены по одному — сайт работает."),
+        "done_message": _site_updates_done("update_site_items_without_backup"),
+        "refusals": _SITE_UPDATE_RUN_REFUSALS,
     },
     "publish_landing_page": {
         # The client's click is the approval: the exact version on the card
@@ -2173,9 +2403,9 @@ def _actor_for(origin: str) -> str:
     return "client" if origin == "client_chat" else "admin"
 
 
-def _may_propose(spec: dict, actor: str) -> bool:
-    if spec.get("code_only"):
-        return False   # opened by code (open_team_request), never by a model
+def _may_propose(spec: dict, actor: str, by_code: bool = False) -> bool:
+    if spec.get("code_only") and not by_code:
+        return False   # opened by code (open_team_request, a follow-up), never by a model
     if actor == "admin":
         return spec["approver"] == "admin" or spec.get("admin_proposable", False)
     return spec["approver"] == "client" or spec.get("client_requestable", False)
@@ -2451,7 +2681,7 @@ def status_card(proposal_id: int, client_id: int) -> dict:
 # ─── Propose ─────────────────────────────────────────────────────────────────
 
 def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
-            client: dict = None, dry_run: bool = False, context: dict = None) -> dict:
+            client: dict = None, dry_run: bool = False, context: dict = None, by_code: bool = False) -> dict:
     """The model's proposed_action -> a stored proposal + card, or
     {"error": code}. Everything is checked here; nothing runs.
 
@@ -2470,7 +2700,7 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     if not spec:
         return {"error": "unknown_action"}
     actor = _actor_for(origin)
-    if not _may_propose(spec, actor):
+    if not _may_propose(spec, actor, by_code):
         return {"error": "not_allowed_here"}
     client = client if client is not None else _client(client_id)
     if spec["internal_only"] and not _is_internal(client):
@@ -2659,6 +2889,7 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         return {"success": True, "already": True, "status": (_get(proposal_id) or {}).get("status")}
     _log(f"client {client_id}: {row['action']} approved by {by}", client_id=client_id,
          proposal=proposal_id)
+    row = {**row, "decided_by": by, "decided_at": stamp}   # who approved, for runners that log it
 
     if spec["kind"] in ("link", "focus"):
         _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
@@ -2705,7 +2936,10 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
     proposal_id = row.get("id")
     client_id = int(row["client_id"])
     try:
-        result = spec["run"](client_id, params, background_tasks) or {}
+        if spec.get("needs_row"):
+            result = spec["run"](client_id, params, background_tasks, row=row) or {}
+        else:
+            result = spec["run"](client_id, params, background_tasks) or {}
     except Exception as e:
         code = e.code if isinstance(e, ActionFailed) else "error"
         _claim(proposal_id, ("running",), {"status": "failed", "finished_at": _now().isoformat(),
@@ -2721,9 +2955,11 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
             out = {"success": True, "status": "failed", "code": code, "message": text}
             follow = (spec.get("follow_up") or {}).get(code)
             if follow:
-                # The card that fixes it, right under the refusal (e.g. reconnect TikTok)
+                # The card that fixes it, right under the refusal (e.g. reconnect TikTok,
+                # or the remaining site updates on a card that says there is no backup)
                 fix = propose(client_id, row.get("origin") or "client_chat", row.get("persona", "general"),
-                              {"name": follow, "params": {}}, client=client)
+                              {"name": follow, "params": getattr(e, "follow_params", None) or {}},
+                              client=client, by_code=True)
                 if fix.get("card"):
                     out["next_card"] = fix["card"]
             return out
