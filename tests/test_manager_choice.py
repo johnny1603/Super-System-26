@@ -61,12 +61,16 @@ class _Query:
     def execute(self):
         if DB_FAILS[0]:
             raise RuntimeError("column manager_persona does not exist")
+        if NO_ROW[0] or self.client_id not in CLIENTS:
+            # PostgREST: an UPDATE that matches nothing is NOT an error, just no rows
+            return types.SimpleNamespace(data=[])
         WRITES.append((self.client_id, dict(self.row)))
-        CLIENTS.setdefault(self.client_id, {}).update(self.row)
-        return types.SimpleNamespace(data=[])
+        CLIENTS[self.client_id].update(self.row)
+        return types.SimpleNamespace(data=[dict(CLIENTS[self.client_id])])   # return=representation
 
 
 DB_FAILS = [False]
+NO_ROW = [False]
 _db = types.SimpleNamespace(table=lambda name: _Query())
 client_agent = types.ModuleType("agents.client_agent")
 client_agent.get_client = lambda cid: dict(CLIENTS.get(cid, {}))
@@ -94,6 +98,7 @@ class Base(unittest.TestCase):
         WRITES.clear()
         ACTIVITY.clear()
         DB_FAILS[0] = False
+        NO_ROW[0] = False
 
 
 # ─── 1. The default renders; it is never assigned ────────────────────────────
@@ -146,6 +151,57 @@ class Change(Base):
         DB_FAILS[0] = True
         self.assertEqual(mi.change(7, "nissim")["code"], "ERR_MANAGER_NOT_SAVED")
         self.assertEqual(ACTIVITY, [])
+
+    def test_a_write_that_did_not_land_is_never_a_success(self):
+        # The "reverts after refresh" hole: an UPDATE matching no row raised
+        # nothing, so the page showed the new manager and the reload the old one
+        CLIENTS[7] = {"id": 7, "manager_persona": "nissim"}
+        NO_ROW[0] = True
+        self.assertEqual(mi.change(7, "johnny"), {"success": False, "code": "ERR_MANAGER_NOT_SAVED"})
+        self.assertEqual(CLIENTS[7]["manager_persona"], "nissim")
+        self.assertEqual(ACTIVITY, [])                       # nothing logged as changed
+        self.assertEqual(mi.change(99, "johnny")["code"], "ERR_MANAGER_NOT_SAVED")   # unknown client id
+
+    def test_two_clients_choose_persist_after_refresh_and_switch_away_from_nissim(self):
+        CLIENTS[27] = {"id": 27, "manager_persona": None, "language": "he"}
+        CLIENTS[40] = {"id": 40, "manager_persona": None, "owner_gender": "female", "language": "en"}
+        self.assertTrue(mi.change(27, "nissim")["success"])
+        self.assertTrue(mi.change(40, "johnny")["success"])
+        # "refresh" = a fresh read of the stored row, which is all the dashboard does
+        self.assertEqual((mi.for_client_id(27)["key"], mi.for_client_id(27)["chosen"]), ("nissim", True))
+        self.assertEqual(mi.for_client_id(40)["key"], "johnny")
+        # the old report: once Nissim, always Nissim — switching away now lands and persists
+        self.assertTrue(mi.change(27, "elinor")["success"])
+        self.assertTrue(mi.change(27, "johnny")["success"])
+        self.assertTrue(mi.change(40, "elinor")["success"])
+        for cid, key, he, en, role_he in ((27, "johnny", "ג'וני", "Johnny", "מנהל הלקוח שלך ב-uallak"),
+                                          (40, "elinor", "אלינור", "Elinor", "מנהלת הלקוח שלך ב-uallak")):
+            view = mi.for_client_id(cid, "he")
+            self.assertEqual((view["key"], view["name"], view["chosen"]), (key, he, True))      # dashboard
+            self.assertEqual(view["portrait"], f"/assets/agents/{key}-portrait.webp")            # face
+            self.assertEqual(view["figure"], f"/assets/agents/{key}-figure.webp")
+            self.assertIn(f"you are {en} ({he} in Hebrew", mi.prompt_line(view))                 # every prompt
+            self.assertEqual(mi.signoff(view, "he"), f"{he} — {role_he}")                       # email, WhatsApp
+        self.assertEqual([a[3]["to"] for a in ACTIVITY if a[0] == 27], ["nissim", "elinor", "johnny"])
+        for cid in (27, 40):                                  # the faces exist on disk
+            key = mi.for_client_id(cid)["key"]
+            for kind in ("portrait", "figure"):
+                for ext in ("webp", "png"):
+                    self.assertTrue(os.path.exists(os.path.join(ROOT, "dashboard", "assets", "agents",
+                                                                f"{key}-{kind}.{ext}")))
+
+    def test_the_picker_is_never_one_shot_again(self):
+        # 1403121 hid the picker for good after the first pick ("picked once,
+        # at first contact") and applied the choice before the save returned
+        html = _src("dashboard", "client", "index.html")
+        choose = _js_function(html, "chooseManager")
+        self.assertNotIn("style.display = 'none'", choose)
+        self.assertNotIn("Object.assign({}, opt, { chosen: true })", choose)   # no optimistic apply
+        render = _js_function(html, "renderManagerPick")
+        self.assertNotIn("return", render.split("{", 1)[1].split("forEach")[0])  # renders for chosen clients too
+        self.assertIn("refreshManagerFromServer", html)
+        # every manager-speaking prompt goes through the one helper
+        self.assertIn("manager_identity.prompt_line(manager)", _src("agents", "morning_briefing.py"))
 
     def test_every_reader_sees_the_new_manager_at_once(self):
         CLIENTS[7] = {"id": 7, "manager_persona": "johnny"}

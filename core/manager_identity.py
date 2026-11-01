@@ -165,15 +165,29 @@ def signoff(identity: dict, lang: str = "he") -> str:
 
 def save_choice(client_id: int, key: str) -> dict:
     """The client's own choice. Fails loudly (never silently drops it) when
-    the column hasn't been migrated yet."""
+    the column hasn't been migrated yet — AND when the write did not land: an
+    UPDATE that matched no row raises nothing, and reporting success then is
+    what made a choice "revert" on the next refresh. Success only when the
+    stored value is proven: the updated row came back with it, or a fresh
+    read shows it."""
     if not valid(key):
         return {"success": False, "code": "ERR_MANAGER_UNKNOWN"}
-    from agents.client_agent import _db
+    from agents.client_agent import _db, get_client
     try:
-        _db().table("clients").update({"manager_persona": key}).eq("id", client_id).execute()
+        rows = (_db().table("clients").update({"manager_persona": key}).eq("id", client_id)
+                .execute().data or [])
     except Exception as e:
         print(f"[manager_identity] save failed for client {client_id} (column missing?): {e}")
         return {"success": False, "code": "ERR_MANAGER_NOT_SAVED"}
+    if not any(isinstance(r, dict) and r.get("manager_persona") == key for r in rows):
+        try:
+            stored = (get_client(client_id) or {}).get("manager_persona")
+        except Exception:
+            stored = None
+        if stored != key:
+            print(f"[manager_identity] save NOT applied for client {client_id}: no row updated, "
+                  f"stored value is {stored!r}")
+            return {"success": False, "code": "ERR_MANAGER_NOT_SAVED"}
     return {"success": True, "manager": view(key)}
 
 

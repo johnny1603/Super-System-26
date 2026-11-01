@@ -676,7 +676,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   אלינור, the client's choice in `clients.manager_persona`; default: the old female companion
   -> אלינור, else ג'וני). Chat prompt, login greeting, interview, emails, WhatsApp and the
   dashboard (`/api/dashboard` `.manager` / `.manager_options`) all read it; the page keeps
-  no copy of the names. Only the name and face differ — never the voice or rules. Faces:
+  no copy of the names. Only the name and face differ — never the voice or rules.
+  `save_choice` succeeds only when the write is PROVEN (the updated row came back with the value, or a
+  fresh read shows it) — an UPDATE matching no row is not an error in PostgREST, and calling it a
+  success is what makes a choice "revert" on refresh. Every prompt gets the name via `prompt_line`. Faces:
   `dashboard/assets/agents/<key>-portrait|figure.webp` (+ `.png` fallback, then the initial).
 - Language flags are inline SVG in `dashboard/assets/i18n.js` — never emoji (Windows draws
   flag emoji as two letters). The switcher is ONE flag (the current language) that opens the
