@@ -5128,6 +5128,27 @@ def admin_landing_create(req: AdminLandingCreateRequest):
                                     "errors": result.get("errors", [])})
     return {"success": True, "data": result}
 
+class TeamRequestLandingRequest(BaseModel):
+    client_id: int
+    title: str = ""
+    goal: str = ""        # default: the request's own words
+    dry_run: bool = True  # show the request first; nothing changes
+
+@app.post("/api/team-requests/{request_id}/fulfil-landing", dependencies=_admin_only)
+def admin_fulfil_landing_request(request_id: int, req: TeamRequestLandingRequest):
+    # A team request that asked for a landing page before the chat could build
+    # one (request #6, client 27): the draft is built with THE builder in the
+    # request's own thread, the request is marked handled by the system (never
+    # deleted), and the client publishes from the preview card — never here.
+    from agents.landing_page_agent import fulfil_team_request
+    if not req.dry_run and not req.title.strip():
+        raise HTTPException(status_code=400, detail={"code": "ERR_TITLE_REQUIRED"})
+    result = fulfil_team_request(req.client_id, request_id, req.title, req.goal, dry_run=req.dry_run)
+    if not result.get("success"):
+        raise HTTPException(status_code=404 if result.get("code") == "ERR_REQUEST_NOT_FOUND" else 400,
+                            detail={k: result.get(k) for k in ("code", "page_id", "topic", "request") if k in result})
+    return {"success": True, "data": result}
+
 @app.post("/api/leads/capture/{token}")
 async def public_lead_capture(token: str, request: Request,
                               background_tasks: BackgroundTasks):

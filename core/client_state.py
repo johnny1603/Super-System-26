@@ -261,19 +261,44 @@ def _website(client_id: int) -> dict:
             "drafts": sum(1 for p in posts if p.get("status") == "draft")}
 
 
+LANDING_VERSIONS_LISTED = 5
+
+
+def _landing_versions(client_id: int, page_id) -> list:
+    from core import landing_pages
+    try:
+        rows = landing_pages.list_versions(client_id, int(page_id))[:LANDING_VERSIONS_LISTED]
+    except Exception:
+        return []
+    return [{"version": r.get("version"), "source": r.get("source", ""),
+             "date": str(r.get("created_at") or "")[:10]} for r in rows]
+
+
 def _landing_pages(client_id: int) -> dict:
+    """The client's landing pages exactly as the dashboard section shows them
+    — the ONLY source the chat may name a page or draft from (an empty list
+    means there is none). Everything the chat's landing actions name (page
+    ids, version numbers) comes from here."""
     from agents.landing_page_agent import dashboard_payload
     payload = dashboard_payload(client_id)
     pages = payload.get("pages") or []
     return {"used": payload.get("used", len(pages)), "included": payload.get("included"),
+            "can_create": payload.get("can_create", False),
             "domain_mode": (payload.get("domain") or {}).get("mode"),
-            # id: what a publish_landing_page proposal names; url only when live
-            # (the Ads agent may use it as a destination); views/calls: last 30 days
-            "pages": [{"id": p.get("id"), "title": p.get("title", ""), "status": p.get("status"),
+            "domain_hostname": (payload.get("domain") or {}).get("hostname", ""),
+            # id: what a landing action names; url only when live (the Ads
+            # agent may use it as a destination); views/calls: last 30 days;
+            # status "draft" = written, not live (never call it published)
+            "pages": [{"id": p.get("id"), "title": p.get("title", ""), "goal": p.get("goal", ""),
+                       "status": p.get("status"),
                        "url": p.get("url") if p.get("status") == "published" else "",
+                       "created": str(p.get("created_at") or "")[:10],
                        "leads": p.get("leads", 0), "views_30d": p.get("views"),
                        "calls_30d": p.get("calls"), "whatsapp_30d": p.get("whatsapp"),
-                       "has_unpublished_changes": p.get("has_unpublished_changes", False)}
+                       "current_version": p.get("current_version"),
+                       "live_version": p.get("published_version") if p.get("status") == "published" else None,
+                       "has_unpublished_changes": p.get("has_unpublished_changes", False),
+                       "versions": _landing_versions(client_id, p.get("id"))}
                       for p in pages]}
 
 

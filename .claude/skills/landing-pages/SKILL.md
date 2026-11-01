@@ -145,6 +145,22 @@ it cannot create/publish/price), which keeps the persona path's
 read-only-by-construction invariant intact. Adding an action-capable function
 to a persona's reads is a bug by definition.
 
+## Through the chat (2026-11-02, docs/CHAT_PARITY.md)
+
+Every landing-page step the dashboard has is also a card in the chat the
+client asked in (manager or אורי):
+- `create_landing_page`, then `publish_landing_page`.
+- `edit_landing_page`, `revert_landing_page`, `unpublish_landing_page` and
+  `delete_landing_page`.
+- `connect_landing_domain` and `check_landing_domain`.
+
+Each card's run calls the SAME `landing_page_agent` function as the dashboard
+button. A new chat path never reimplements the builder: pass `persona=` and
+`announce=` / `notify=` instead.
+
+A landing-page ask is never a team request. Only a page beyond the package is
+one, as `package_exception`.
+
 ## Owned + versioned (2026-11-01, docs/LANDING_PAGES.md — read it first)
 
 - Every write is a new `landing_page_versions` row; `published_version` is

@@ -239,6 +239,28 @@ def alert_once(source_agent: str, client_id: int, issue_key: str, message: str,
         return False
 
 
+# ─── Capability gaps (2026-11-02) ────────────────────────────────────────────
+# A client asked the chat for something it cannot do yet (no action, no
+# upgrade, no answer covers it). That is a PRODUCT gap, not a team job: the
+# chat says so honestly and offers the closest thing it can do; no team
+# request is opened and the client is never shown one. The admin side sees
+# it as an alert from source "capability_gap" (alerts table → Control Room,
+# איציק's recent_alerts(source="capability_gap")), deduped per client +
+# question for a week — the list of what to build next.
+
+CAPABILITY_GAP_SOURCE = "capability_gap"
+CAPABILITY_GAP_DAYS = 7
+
+
+def alert_capability_gap(client_id: int, persona: str, message: str, gap: str = "") -> bool:
+    """One deduped `capability_gap` admin alert. `gap`: the model's / code's
+    short English description of what is missing (optional). Never raises."""
+    key = f"{CAPABILITY_GAP_SOURCE}:{question_key(gap or message)}"
+    text = (f"[CAPABILITY GAP — the chat can't do this yet] client {client_id} ({persona} chat) "
+            f"asked: \"{(message or '')[:400]}\"" + (f" | missing: {gap[:300]}" if gap else ""))
+    return alert_once(CAPABILITY_GAP_SOURCE, client_id, key, text, CAPABILITY_GAP_DAYS)
+
+
 _sales_alerted = {}  # issue_key -> monotonic time of last alert (prospects have no client row)
 
 

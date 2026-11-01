@@ -149,29 +149,39 @@ def _default_contact(client_id: int) -> dict:
     return landing_pages.normalize_contact({"phone": phone, "whatsapp": phone})
 
 
-def propose_publish(client_id: int, page_id: int, intro: str = "") -> dict:
-    """The approval card for the page's newest version, in אורי's chat, with
-    one line saying what changed. The click (agent_actions.publish_landing_page)
-    is the only way a page goes live."""
+def propose_publish(client_id: int, page_id: int, intro: str = "", persona: str = PERSONA) -> dict:
+    """The approval card for the page's newest version, with one line saying
+    what changed — in אורי's chat by default, or in the chat the work was
+    asked for in (`persona`: the manager's thread when the client asked the
+    manager). The click (agent_actions.publish_landing_page) is the only way
+    a page goes live."""
     from core import agent_actions
-    result = agent_actions.propose(client_id, "client_chat", PERSONA,
-                                   {"name": "publish_landing_page", "params": {"page_id": page_id}})
+    persona = persona or PERSONA
+    result = agent_actions.propose(client_id, "client_chat", persona,
+                                   {"name": "publish_landing_page", "params": {"page_id": page_id}},
+                                   by_code=True)
     if intro:
         try:
-            agent_actions._post_client_message(client_id, PERSONA, intro)
+            agent_actions._post_client_message(client_id, persona, intro)
         except Exception as e:
             log_step(AGENT_NAME, "propose_publish", f"client {client_id}: message not posted ({type(e).__name__})")
     return result
 
 
 def create_page(client_id: int, title: str, goal: str = "",
-                generate: bool = True) -> dict:
+                generate: bool = True, persona: str = PERSONA, announce: bool = True) -> dict:
     """Create ONE landing page, with generated copy by default, and propose
-    publishing it (preview card in the website agent's chat).
+    publishing it (preview card in the website agent's chat, or in `persona`'s
+    — the chat the client asked in). THE one builder: the dashboard's
+    "+ דף נחיתה חדש" button, the chat's create_landing_page card and the
+    admin path all call this.
 
     The page ceiling is enforced in `landing_pages.create_page` (server-side,
     before anything is generated) — so a client at the limit never burns an LLM
-    call to be told no."""
+    call to be told no.
+
+    `announce`: post the "I wrote a new page" line with the card. A chat
+    card's run passes False — its own done line says it, once."""
     created = landing_pages.create_page(client_id, title, goal, copy_source="")
     if not created.get("success"):
         if created.get("code") == "ERR_LANDING_PAGE_LIMIT":
@@ -204,17 +214,52 @@ def create_page(client_id: int, title: str, goal: str = "",
 
     card = {}
     if copy_result.get("success"):
-        card = propose_publish(client_id, page["id"],
-                               f'הכנתי דף נחיתה חדש: "{page["title"]}" ✍️ '
-                               f'בכרטיס יש תצוגה מקדימה. מאשרים, והוא עולה לאוויר. '
-                               f'רוצים לשנות משהו? כתבו לי כאן.')
+        intro = (f'הכנתי דף נחיתה חדש: "{page["title"]}" ✍️ '
+                 f'בכרטיס יש תצוגה מקדימה. מאשרים, והוא עולה לאוויר. '
+                 f'רוצים לשנות משהו? כתבו לי כאן.') if announce else ""
+        card = propose_publish(client_id, page["id"], intro, persona=persona)
     return {"success": True, "page": page,
             "copy_generated": bool(copy_result.get("success")),
             "card": card.get("card"),
             "notes_for_johnny": copy_result.get("notes", "")}
 
 
-def regenerate_copy(client_id: int, page_id: int, feedback: str = "") -> dict:
+def fulfil_team_request(client_id: int, request_id: int, title: str, goal: str = "",
+                        dry_run: bool = False) -> dict:
+    """A team request that asked for a landing page before the chat could
+    build one (request #6, client 27, 2026-11-02): build the DRAFT now with
+    THE builder, in the thread the request came from, and mark the request
+    handled by the system (kept, never deleted). The client still publishes
+    with their own click on the preview card. `goal` defaults to the
+    request's own words. `dry_run`: show the request, change nothing."""
+    from core import agent_actions
+    row = agent_actions.open_team_request_row(client_id, request_id)
+    if not row:
+        return {"success": False, "code": "ERR_REQUEST_NOT_FOUND"}
+    request_text = (row.get("params") or {}).get("request", "")
+    view = {"request_id": request_id, "topic": (row.get("params") or {}).get("topic", ""),
+            "request": request_text, "persona": row.get("persona") or "general"}
+    if dry_run:
+        return {"success": True, "dry_run": True, **view, "pages_used": landing_pages.count_pages(client_id),
+                "pages_included": landing_pages.MAX_PAGES_PER_CLIENT}
+    created = create_page(client_id, title, goal or request_text, persona=view["persona"])
+    if not created.get("success"):
+        return {"success": False, "code": created.get("code", "ERR_LANDING_CREATE_FAILED"), **view}
+    if not created.get("copy_generated"):
+        # The request stays open: nothing the client can approve exists yet
+        return {"success": False, "code": "ERR_LANDING_COPY_FAILED", "page_id": created["page"]["id"], **view}
+    closed = agent_actions.close_team_request_by_system(
+        client_id, request_id,
+        f"landing page draft {created['page']['id']} built by the chat's landing builder; "
+        f"the client publishes it from the preview card")
+    _log_activity(client_id, "team_request_fulfilled_by_system",
+                  {"request_id": request_id, "page_id": created["page"]["id"]})
+    return {"success": True, **view, "page_id": created["page"]["id"], "status": created["page"].get("status"),
+            "preview_card": bool(created.get("card")), "request_closed": closed}
+
+
+def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: str = PERSONA,
+                    announce: bool = True) -> dict:
     """Rewrite one page's copy, optionally with the client's own chat feedback
     folded into the goal — which is how "make it warmer / lead with price"
     arrives, since review happens in conversation. The rewrite is a NEW
@@ -237,9 +282,9 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "") -> dict:
         return updated
     _log_activity(client_id, "landing_page_copy_regenerated",
                   {"page_id": page_id, "had_feedback": bool(feedback)})
-    card = propose_publish(client_id, page_id,
-                           f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
-                           f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.')
+    intro = (f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
+             f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.') if announce else ""
+    card = propose_publish(client_id, page_id, intro, persona=persona)
     return {"success": True, "page": updated["page"], "card": card.get("card")}
 
 
@@ -396,32 +441,51 @@ def request_extra_page(client_id: int, reason: str = "") -> dict:
 
 # ─── Domain flow (all client contact via chat) ────────────────────────────────
 
-def request_domain(client_id: int, hostname: str) -> dict:
+def domain_request_message(result: dict) -> str:
+    """The plain message for a requested domain — written to be forwarded
+    verbatim. ONE text for the dashboard button and the chat card."""
+    return (f'מעולה — נחבר את דפי הנחיתה לכתובת {result["hostname"]} 🌐\n\n'
+            f'צריך דבר אחד: להעביר את ההודעה הבאה למי שמנהל לכם את הדומיין '
+            f'(המעצב/מפתח/חברת האחסון). אין צורך להבין אותה — רק להעביר כמו שהיא:\n\n'
+            f'━━━━━━━━━━━━━━\n{result["dns"]["forward_text"]}\n━━━━━━━━━━━━━━\n\n'
+            f'ברגע שהם מאשרים שזה בוצע — כתבו לי כאן, ואני אבדוק ואעדכן אתכם. '
+            f'עד אז הדפים ממשיכים לעבוד רגיל בכתובת הזמנית.')
+
+
+def domain_verify_message(result: dict) -> str:
+    """The plain result of a domain check (dashboard button and chat card)."""
+    if result.get("verified"):
+        return (f'הדומיין שלכם מחובר! ✅ דפי הנחיתה עברו לכתובת '
+                f'{result["hostname"]} — הקישורים בדשבורד כבר מעודכנים.')
+    if not result.get("uallak_side_ready", True):
+        # Our fault, and the client must not be sent to chase their DNS provider
+        return ('בדקתי — הרשומה שלכם בסדר גמור, ההשלמה בצד שלנו עוד רצה. '
+                'אין מה לעשות מצדכם, אעדכן אתכם כאן ברגע שזה מוכן 🙏')
+    return ('בדקתי ועדיין לא רואה את החיבור. שינויי DNS יכולים לקחת כמה שעות, '
+            'אז נבדוק שוב מאוחר יותר — ואם עבר יותר מיום, שווה לוודא מול מי '
+            'שמנהל את הדומיין שהרשומה נוספה בדיוק כפי שנשלחה.')
+
+
+def request_domain(client_id: int, hostname: str, notify: bool = True) -> dict:
     """Generate the client's DNS record and tell them, in chat, exactly what to
-    forward and to whom. The message is written to be passed on verbatim."""
+    forward and to whom. `notify=False`: the chat card's done line says it."""
     result = landing_domains.request_domain(client_id, hostname)
     if not result.get("success"):
         return result
 
-    dns = result["dns"]
     _log_activity(client_id, "landing_domain_requested",
                   {"hostname": result["hostname"],
                    "registered_with_cloudflare": result.get("registered_with_cloudflare"),
                    "register_error": result.get("register_error", "")})
-    _chat(client_id,
-          f'מעולה — נחבר את דפי הנחיתה לכתובת {result["hostname"]} 🌐\n\n'
-          f'צריך דבר אחד: להעביר את ההודעה הבאה למי שמנהל לכם את הדומיין '
-          f'(המעצב/מפתח/חברת האחסון). אין צורך להבין אותה — רק להעביר כמו שהיא:\n\n'
-          f'━━━━━━━━━━━━━━\n{dns["forward_text"]}\n━━━━━━━━━━━━━━\n\n'
-          f'ברגע שהם מאשרים שזה בוצע — כתבו לי כאן, ואני אבדוק ואעדכן אתכם. '
-          f'עד אז הדפים ממשיכים לעבוד רגיל בכתובת הזמנית.')
+    if notify:
+        _chat(client_id, domain_request_message(result))
     return result
 
 
-def verify_domain(client_id: int) -> dict:
+def verify_domain(client_id: int, notify: bool = True) -> dict:
     """Check whether the client's DNS is live, and report the result in chat.
-    Triggered by the dashboard's "בדקו עכשיו" button or by the client saying in
-    chat that the record was added."""
+    Triggered by the dashboard's "בדקו עכשיו" button or by the chat card
+    (`notify=False`: the card's done line says it)."""
     result = landing_domains.verify_domain(client_id)
     if not result.get("success"):
         return result
@@ -430,24 +494,13 @@ def verify_domain(client_id: int) -> dict:
                   else "landing_domain_verify_failed",
                   {"hostname": result.get("hostname", ""),
                    "reason": result.get("reason", "")})
-    if result["verified"]:
-        _chat(client_id,
-              f'הדומיין שלכם מחובר! ✅ דפי הנחיתה עברו לכתובת '
-              f'{result["hostname"]} — הקישורים בדשבורד כבר מעודכנים.')
-    elif not result.get("uallak_side_ready", True):
-        # Our fault, and the client must not be sent to chase their DNS provider
-        _chat(client_id,
-              'בדקתי — הרשומה שלכם בסדר גמור, ההשלמה בצד שלנו עוד רצה. '
-              'אין מה לעשות מצדכם, אעדכן אתכם כאן ברגע שזה מוכן 🙏')
+    if not result["verified"] and not result.get("uallak_side_ready", True):
         agent_alert(AGENT_NAME, [
             f"client {client_id}: landing domain {result.get('hostname')} is waiting on "
             f"UALLAK-side setup (CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID / the Host "
             f"rewrite Worker). The client has been told it is on us, not on them."])
-    else:
-        _chat(client_id,
-              'בדקתי ועדיין לא רואה את החיבור. שינויי DNS יכולים לקחת כמה שעות, '
-              'אז נבדוק שוב מאוחר יותר — ואם עבר יותר מיום, שווה לוודא מול מי '
-              'שמנהל את הדומיין שהרשומה נוספה בדיוק כפי שנשלחה.')
+    if notify:
+        _chat(client_id, domain_verify_message(result))
     return result
 
 

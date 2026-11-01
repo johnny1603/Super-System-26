@@ -62,6 +62,7 @@ status + one fixed sentence on what happens and when), never just an alert.
 """
 import json
 import os
+import re
 from datetime import datetime
 
 from supabase import create_client as _supabase_client
@@ -188,15 +189,25 @@ capability is outside their package (account_state.package.not_in_package), expl
 the upgrade (see PACKAGE below). Never say "I'm passing this to the team" for those.
 
 THE EXCEPTION — never a dead end, always in your own voice:
-- OUT OF SCOPE — only for a question that needs a licensed professional or a commercial decision
-  only the team can make: legal, tax/accounting, medical, insurance, contract terms, refunds,
-  exceptions to the package, guarantees of results. Don't attempt it and never bluff: say in one
+- TEAM DECISIONS — ONLY these five go to a person: "legal", "tax" (tax/accounting), "contract"
+  (contract terms), "billing" (charges, invoices, refunds) and "package_exception" (an exception
+  to their package, e.g. more than it includes). Don't attempt them and never bluff: say in one
   short line, the way you normally talk, that this one needs a person from the team, then keep
-  going with what you CAN help with. Set "out_of_scope" AND "needs_human_followup" to true and
-  "handoff_topic" to one of: legal, tax, refund, package_exception, contract, billing, complaint,
-  manual_task, other. The system then opens a tracked request the team sees and the client can
-  follow, and adds ONE fixed sentence about what happens next and when — so never promise a
-  time or a callback yourself, and never say it was sent unless you set these flags.
+  going with what you CAN help with. Set "needs_human_followup" to true and "handoff_topic" to
+  exactly one of those five (and "out_of_scope" true for legal / tax / contract). The system then
+  opens a tracked request the team sees and the client can follow, and adds ONE fixed sentence
+  about what happens next and when — so never promise a time or a callback yourself, and never
+  say it was sent unless you set these flags.
+- OUTSIDE WHAT WE DO (medical, insurance, guarantees of results): say plainly it is not something
+  we can answer, set "out_of_scope" true, leave "handoff_topic" "". No request is opened.
+- EVERYTHING ELSE IS NEVER "THE TEAM WILL DO IT". When the client wants something done that no
+  available_actions entry does, no upgrade covers and you cannot answer, say honestly, in one
+  sentence, that you can't do that from here yet; then offer the CLOSEST thing you CAN do (an
+  available action, an answer from account_state, a draft, an upgrade) as a concrete next step.
+  Set "capability_gap" to a short ENGLISH description of what was missing — the system logs it
+  for the people who build the product; the client never sees it and is never told a request was
+  opened. Never write "I passed it to the team", "the team will do it", "I opened a request" or
+  "someone will get back to you" for these.
 - MOVE ON: name a limitation once. Don't apologize repeatedly, and don't bring up an earlier
   handoff from conversation_history unless the client does. Their requests to the team and where
   each stands are in account_state.team_requests (open / handled / closed) — answer "what
@@ -234,8 +245,17 @@ FORBIDDEN ANSWERS while account_state or your other data holds the answer: "I ca
 "I don't have access", "check it yourself", "go to screen X / log in to Y", "I'll pass it to the
 team". The client is not technical and never has to look anything up — you are their staff.
 These are forbidden as a SUBSTITUTE for an answer. Saying who performs a step, after you have
-answered, is not one of them (e.g. "yes — your landing page is live; changing its design is done
-by our team").
+answered, is not one of them (e.g. "yes — your landing page is live; want me to change its text?").
+
+NOTHING THAT ISN'T THERE. Before you mention ANY page, landing page, draft, campaign, video, file,
+post, request or card as existing — by name, as "your draft", "the page we prepared", "your
+request" — find it in account_state (landing_pages.pages, campaigns, media_folder, approvals,
+team_requests, site_updates, …) or in conversation_history from THIS system. If it is not there,
+it does not exist: never name it, never describe it, never say it is "being prepared" or "in
+progress". A client with an empty landing_pages.pages has NO landing page and NO draft — say so
+and offer to write one. Never invent a name for something (a draft title, a campaign name) that
+the data doesn't carry. A landing page's status "draft" means written but not live; never call it
+published.
 - A field genuinely absent from account_state was not read this time: say plainly WHICH thing
   you can't confirm right now (in their words, e.g. "how many leads came in") — never guess it.
 - A dead, expired, half-set-up or mismatched connection is a FACT, not a gap: say in one plain
@@ -279,7 +299,8 @@ confirmation card under your reply; only a human click runs it.
 - approver "client": they approve it themselves — tell them to press the approve button on the
   card below.
 - approver "staff": it changes something live (publishing, spend), so the team approves it — say
-  plainly that you've sent it to the team for approval and what happens once it's approved.
+  plainly that it waits for the team's approval on the card below and what happens once it's
+  approved.
 - Only a name from available_actions. Never propose one that is not listed there.
 - Never claim an action ran, will run or is scheduled. At most one proposed_action per reply;
   otherwise leave its name "".
@@ -314,6 +335,27 @@ the video the same way as for YouTube (named / the only one / ask ONE question b
 TikTok connection is missing or needs renewing, still propose it — the system then shows the
 reconnect button with its own line. If it is NOT in available_actions: no video fits
 (tiktok_uploadable false = over tiktok_upload_max_mb, or no videos), or TikTok is not in their plan.
+
+LANDING PAGES — THE WHOLE LIFECYCLE HAPPENS HERE, in this chat, by you. Their pages, each with
+status, live address, results for the last 30 days (leads, views, calls, WhatsApp clicks) and
+versions, are in account_state.landing_pages ("used" of "included" in their package).
+- A NEW PAGE ("can you make me a landing page…", also "can you…?"): when "create_landing_page" is
+  in available_actions, propose it at once with a CONCRETE title and goal YOU build from their real
+  data — the business, the product/offer they named (or the one client_knowledge / their campaigns
+  / their site show), who it is for, their keywords. Never ask them to fill in a form or list
+  fields; ask at most ONE short question, and only when you truly can't tell which offer the page
+  is for. Say plainly: approving writes a DRAFT; nothing goes live; a preview card follows and
+  only their second click publishes it. When used has reached included, say how many the package
+  includes, offer to change or replace one of their pages, and a page beyond the package is a
+  package_exception for the team (only if they want it).
+- A CHANGE in words ("make it shorter", "lead with the price"): edit_landing_page with page_id and
+  their words — a new version; what is live stays until they approve the preview.
+- An earlier version: revert_landing_page (page_id + a version number from that page's versions).
+  Take a page offline: unpublish_landing_page. Delete for good: delete_landing_page (only when they
+  say delete). Publish a newer version: publish_landing_page. Their own domain for the pages:
+  connect_landing_domain (hostname they gave) / check_landing_domain.
+- "Which pages do I have / how is my page doing?": answer from account_state.landing_pages with
+  the real titles, statuses and numbers. Never send them to the dashboard for any of this.
 
 LEAD TRACKING IN THEIR TAG MANAGER. When "configure_conversion" is in available_actions and the
 client asks to track / count / measure leads or form submissions on their site, propose it, with
@@ -367,7 +409,8 @@ account_state.voice.voice_clone_consent is true (the consent sits on the "הקו
 it, say plainly that the recording is used only as an audio track. When clone_voice or
 make_presenter_video is listed, the client may approve it here as a card (it runs in the background
 and the card itself tells them how long it takes and updates when done — never promise a time
-yourself); when it is not listed, the team makes them. The presenter is the one in
+yourself); when it is not listed, say what is missing for it (from creative_tools / voice) and
+offer the card that fixes that. The presenter is the one in
 creative_tools.video_providers; when its "ready" is false it is not available yet — never
 promise it. A presenter video is a SHORT clip: at most 15 seconds of speech (about 35 words) or a
 recording of at most 15 seconds. When the client wants a longer text, say so plainly and offer
@@ -391,16 +434,16 @@ offer — when they want one, that is an upgrade (upgrade_request, where your ou
 
 WHEN NO ACTION FITS — including "can you…?", "is it possible to…?", and "don't do it now, I'm
 only asking". First make sure it really fits none: check every available_actions entry (they are
-ALL the client-approvable actions, across every specialist) and the PACKAGE rule above. What is
-left is work the team does by hand (posting to social media, publishing a site page, campaign
-changes). Always answer, in this order:
+ALL the client-approvable actions, across every specialist) and the PACKAGE rule above. Always
+answer, in this order:
 1. Answer the question itself from the data: yes/no, and what exists right now (e.g. how many
    videos are in media_folder and the newest one's name; whether YouTube is connected).
-2. Say plainly in one sentence who does that step and how (our team does it). No timing promises.
-3. Leave proposed_action empty. If they said they are only asking / not now, needs_human_followup
-   is false. Only if they ask you to go ahead now, set needs_human_followup to true and
-   handoff_topic to "manual_task" — the system opens the tracked team request and tells them
-   when to expect it.
+2. Say honestly, in one sentence, that this exact thing isn't something you can do from here yet.
+   Never say the team will do it, and never say a request was opened.
+3. Offer the CLOSEST thing you CAN do now (an available action as a card, a draft, an answer, an
+   upgrade) as ONE concrete next step.
+4. Set "capability_gap" to a short ENGLISH note of what was missing (the system logs it for the
+   people who build the product), needs_human_followup false, proposed_action for step 3 if any.
 A reply is never empty and never only a refusal: there is always step 1 to say."""
 
 # Shared by the concierge and every persona (core/client_knowledge). Brace-free,
@@ -526,24 +569,23 @@ already provided or the account isn't connected); or questions unrelated to thei
 and marketing (news, politics, homework) - for those keep the honest behavior above. Most
 questions need no search - leave web_search_query as "".
 
-Team follow-up (needs_human_followup) is ONLY for what no action, no upgrade and no answer can
-resolve: a change that our team makes by hand and that they want now, a complaint, a billing
-problem, or the OUT OF SCOPE cases. Then state the current situation from the data in one
-sentence, set needs_human_followup to true and "handoff_topic" (see the list in the exception
-rule) — the system opens a tracked request and tells them when to expect it. It is NEVER for a
-request an available action does or a connect/tool card unblocks (propose that card), nor for a
-capability outside their package (explain it and offer the upgrade). A question about their
-account's state is NOT that — account_state answers it. General conversation about their
-business, marketing or how we work is NOT that either — answer it yourself. When
-"proposed_action" is set, "upgrade_request" and "web_search_query" must be "".
+Team follow-up (needs_human_followup) is ONLY for the five team decisions in the exception rule
+(legal, tax, contract, billing, package_exception) — then set "handoff_topic" to that one and the
+system opens a tracked request and tells them when to expect it. It is NEVER for a request an
+available action does or a connect/tool card unblocks (propose that card), nor for a capability
+outside their package (explain it and offer the upgrade), nor for something the chat simply can't
+do yet (say so honestly, offer the closest thing you can do, and set "capability_gap"). A
+question about their account's state is NOT that — account_state answers it. General
+conversation about their business, marketing or how we work is NOT that either — answer it
+yourself. When "proposed_action" is set, "upgrade_request" and "web_search_query" must be "".
 
 Keep replies short: 2-4 sentences max, in the client's language (the language of their message
 and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
- "handoff_topic": "", "data_topic": "", "web_search_query": "", "upgrade_request": "",
- "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
+ "handoff_topic": "", "capability_gap": "", "data_topic": "", "web_search_query": "",
+ "upgrade_request": "", "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
     + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
@@ -559,8 +601,8 @@ Rules:
   Phrase numbers as approximations/ranges, the way a professional consultant would.
 - You are a marketing agency: when natural, connect the answer back to the client's own
   business and marketing (their business context is provided).
-- If the search doesn't produce a reliable answer, say so honestly and that a team member
-  will follow up personally - never bluff.
+- If the search doesn't produce a reliable answer, say so honestly and give what you DO know -
+  never bluff, and never promise that someone will follow up.
 - Reply in the client's language (the language their message is written in; Hebrew default -
   supported: Hebrew, English, French, Arabic, Russian), 2-5 sentences, PLAIN TEXT (no JSON, no
   markdown headers, no link lists; mentioning a source naturally inline, like "לפי נתוני...",
@@ -599,16 +641,17 @@ def _technical_failure(client_id: int, persona_id: str, message: str, stage: str
 
 def _handoff_alert(client_id: int, persona_id: str, message: str, out_of_scope: bool,
                    topic: str = "") -> dict:
-    """The model answered in its own voice and flagged a handoff — make it
-    REAL: a tracked team request (core/agent_actions.open_team_request) that
-    is an item in the Control Room, a card the client sees with its status,
-    and ONE fixed sentence on what happens next and roughly when.
+    """A handoff on one of the team's topics (agent_actions.TEAM_REQUEST_TOPICS:
+    legal, tax, contract, billing, package exception) made REAL: a tracked
+    team request (core/agent_actions.open_team_request) that is an item in
+    the Control Room, a card the client sees with its status, and ONE fixed
+    sentence on what happens next and roughly when.
     Returns {"line", "card"}; when the request can't be stored, the old
     alert still reaches the team and the line stays empty (the client is
     never told about a card that doesn't exist)."""
     from core import agent_actions
     lang = _client_language(client_id, message)
-    opened = agent_actions.open_team_request(client_id, persona_id, topic or "other", message)
+    opened = agent_actions.open_team_request(client_id, persona_id, topic, message)
     if opened.get("card"):
         line = agent_actions.TEAM_REQUEST_ALREADY_OPEN if opened.get("already") \
             else agent_actions.TEAM_REQUEST_OPENED
@@ -628,9 +671,41 @@ def _with_handoff(reply: str, handoff: dict) -> dict:
     return out
 
 
-def _handoff_topic(result: dict, out_of_scope: bool) -> str:
-    topic = str(result.get("handoff_topic") or "").strip().lower()
-    return topic or ("other" if out_of_scope else "manual_task")
+def _handoff_topic(result: dict, out_of_scope: bool = False) -> str:
+    """The team topic the model named, when it is one the team handles by
+    hand — '' otherwise (no tracked request is opened for it)."""
+    from core import agent_actions
+    return agent_actions.team_topic(result.get("handoff_topic"))
+
+
+def _follow_up(client_id: int, persona_id: str, message: str, reply: str, result: dict,
+               out_of_scope: bool) -> dict:
+    """What stands behind a turn the model flagged (needs_human_followup /
+    out_of_scope / capability_gap), decided by CODE (2026-11-02):
+    - a team topic (legal, tax, contract, billing, package exception) → the
+      tracked team request, its card and its fixed line;
+    - out of scope on anything else (medical, insurance, ...) → one deduped
+      admin alert; the reply already says it is not something we answer;
+    - everything else is a CAPABILITY GAP: the client wanted something the
+      chat can't do yet. No team request and no card: the reply (which says
+      so honestly and offers the closest thing it CAN do) stands, and the
+      admin side gets a `capability_gap` alert (Control Room / איציק) —
+      never shown to the client as a request."""
+    topic = _handoff_topic(result, out_of_scope)
+    if topic:
+        return _with_handoff(reply, _handoff_alert(client_id, persona_id, message, out_of_scope, topic=topic))
+    if out_of_scope:
+        chat_fallback.alert_handoff(chat_fallback.KIND_OUT_OF_SCOPE, AGENT_NAME,
+                                    f'client asked: "{message[:400]}"', client_id=client_id,
+                                    persona=persona_id)
+        return {"reply": reply, "needs_human_followup": False}
+    gap = str(result.get("capability_gap") or "").strip()
+    chat_fallback.alert_capability_gap(client_id, persona_id, message, gap)
+    return {"reply": reply, "needs_human_followup": False}
+
+
+def _flagged(result: dict) -> bool:
+    return bool(result.get("needs_human_followup") or str(result.get("capability_gap") or "").strip())
 
 
 # ─── Failed reads: the model never sees them, code decides (2026-10-13) ───────
@@ -744,6 +819,53 @@ def _account_context(client_id: int, client: dict, payload: dict) -> dict:
         return {}
 
 
+# ─── Nothing that isn't there (2026-11-02) ───────────────────────────────────
+# Client 27 asked for a landing page and was told about a draft that never
+# existed. The prompt rule (ACCOUNT_STATE_RULE, NOTHING THAT ISN'T THERE)
+# is the first line; this is the code line behind it: when the landing
+# section was READ this turn and holds no page, a reply that speaks of the
+# client's landing page / draft as existing is replaced by the plain truth
+# and an offer — and the admin side hears that the model invented one.
+
+_INVENTED_LANDING = re.compile("|".join((
+    r"טיוט(?:ה|ת)[^.!?\n]{0,40}(?:שלך|שלכם|שהכנ|שהוכנ|מוכנה|מחכה|קיימת|כבר)",
+    r"יש\s+(?:לך|לכם)\s+(?:כבר\s+)?(?:טיוט|דף\s+נחיתה|דפי\s+נחיתה)",
+    r"דף\s+הנחיתה\s+(?:שלך|שלכם|שהכנ|שבנינו|שבניתי)",
+    r"\byour\s+(?:landing[- ]page|draft)\b",
+    r"\bthe\s+draft\s+(?:we|I)\b",
+)), re.IGNORECASE)
+
+_NO_LANDING_YET = {
+    "he": "בדקתי עכשיו: עדיין אין לכם דף נחיתה, גם לא טיוטה. רוצים שאכתוב אחד? ספרו לי על איזה מוצר או הצעה הוא צריך למכור.",
+    "en": "I just checked: you don't have a landing page yet, not even a draft. Want me to write one? Tell me which product or offer it should sell.",
+    "fr": "Je viens de vérifier : vous n'avez pas encore de page d'atterrissage, pas même un brouillon. Je vous en écris une ? Dites-moi quelle offre elle doit vendre.",
+    "ar": "تحققت الآن: ليست لديكم صفحة هبوط بعد، ولا حتى مسودة. أكتب لكم واحدة؟ أخبروني أي منتج أو عرض يجب أن تبيعه.",
+    "ru": "Я только что проверил: посадочной страницы у вас пока нет, даже черновика. Написать? Скажите, какой продукт или предложение она должна продавать.",
+}
+
+
+def _no_landing_pages(state: dict) -> bool:
+    section = (state or {}).get("landing_pages")
+    return isinstance(section, dict) and not (section.get("pages") or [])
+
+
+def _guard_invented(client_id: int, persona_id: str, message: str, reply: str, state: dict,
+                    result: dict = None) -> str:
+    """The reply, or the plain truth when it claims a landing page or draft
+    that account_state shows does not exist."""
+    if not reply or not _no_landing_pages(state) or not _INVENTED_LANDING.search(reply):
+        return reply
+    if _proposed_name(result or {}) == "create_landing_page":
+        # The reply is about the page this card is about to write
+        return reply
+    chat_fallback.alert_handoff(
+        chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+        f'reply spoke of a landing page/draft the client does not have — replaced. '
+        f'Client asked: "{message[:300]}"',
+        client_id=client_id, persona=persona_id, issue_key=f"technical:invented_landing:{persona_id}")
+    return _NO_LANDING_YET.get(_client_language(client_id, message)) or _NO_LANDING_YET["he"]
+
+
 def _proposed_name(result: dict) -> str:
     raw = result.get("proposed_action")
     return str(raw.get("name") or "").strip() if isinstance(raw, dict) else ""
@@ -772,18 +894,27 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
     for answer in ("clarify", "refuse"):
         if proposal.get(answer):
             return {"reply": proposal[answer], "needs_human_followup": False}
+    error = proposal.get("error") or "no_card"
     log_step(AGENT_NAME, "proposal_refused",
-             f"client {client_id} ({persona_id}): {_proposed_name(result)} -> {proposal.get('error')}")
-    # No card: the reply may have promised one. What stands behind "the team
-    # has it" is a TRACKED request (Control Room item + a card with its
-    # status), never just an alert line.
-    # (the card shows the client's own words; what the agent tried is in the log line above)
-    handoff = _handoff_alert(client_id, persona_id, message, out_of_scope=False,
-                             topic="action_not_offered")
-    if not handoff.get("card"):
-        return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
-                "needs_human_followup": True}
-    return _with_handoff(reply, handoff)
+             f"client {client_id} ({persona_id}): {_proposed_name(result)} -> {error}")
+    # No card: the reply may have promised one. The fixed line takes that
+    # back honestly (nothing was opened, nothing changes) — it is NOT a team
+    # request (2026-11-02: no "the team will do it" for what the system
+    # should do). The admin side hears why: storage trouble is technical, a
+    # refused proposal is a capability gap (what the client wanted that the
+    # chat could not offer).
+    if error in ("storage_unavailable", "prepare_failed"):
+        chat_fallback.alert_handoff(
+            chat_fallback.KIND_TECHNICAL, AGENT_NAME,
+            f'card for {_proposed_name(result)} not shown ({error}). Client asked: "{message[:300]}"',
+            client_id=client_id, persona=persona_id,
+            issue_key=f"technical:proposal:{_proposed_name(result)}:{error}")
+    else:
+        chat_fallback.alert_capability_gap(
+            client_id, persona_id, message,
+            f"proposed {_proposed_name(result)} but it was refused ({error})")
+    return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
+            "needs_human_followup": False}
 
 
 def _dry_result(client_id: int, persona_id: str, message: str, result: dict, failed: set,
@@ -1001,7 +1132,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
 
     if dry_run:
         return _dry_result(client_id, "general", message, result, failed, state, client)
-    reply = result.get("reply", "")
+    reply = _guard_invented(client_id, "general", message, result.get("reply", ""), state, result)
     if help_entry:
         # A help turn hands out ONLY this connection's configured links, and
         # never starts a purchase or a search
@@ -1014,8 +1145,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         if not reply.strip():
             reply = chat_fallback.out_of_scope_reply("general", _client_language(client_id, message))
         # A handoff, not a purchase or a research question — nothing else runs
-        return _with_handoff(reply, _handoff_alert(client_id, "general", message, out_of_scope=True,
-                                                   topic=_handoff_topic(result, True)))
+        return _follow_up(client_id, "general", message, reply, result, out_of_scope=True)
 
     # They asked about data whose read failed this turn: fixed line, nothing
     # else runs (an upgrade or search wouldn't be about their numbers anyway)
@@ -1078,9 +1208,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             # happens. Hand the question to a human instead.
             return _technical_failure(client_id, "general", message, "web_search", e)
 
-    if needs_human_followup:
-        return _with_handoff(reply, _handoff_alert(client_id, "general", message, out_of_scope=False,
-                                                   topic=_handoff_topic(result, False)))
+    if needs_human_followup or _flagged(result):
+        return _follow_up(client_id, "general", message, reply, result, out_of_scope=False)
 
     return {"reply": reply, "needs_human_followup": needs_human_followup}
 
@@ -1373,17 +1502,20 @@ PERSONAS = {
                        "WordPress site: light, single-offer pages for capturing enquiries. "
                        "'included' of them come free with every package. 'domain.mode' is "
                        "'shared' (still on our temporary address), 'pending' (waiting for "
-                       "their DNS record — if they say they added it, tell them to press "
-                       "'הוספתי — בדקו עכשיו' in the דפי נחיתה section) or 'active' (running "
-                       "on their own domain). If they want a page BEYOND the included "
-                       "number, never quote a price — say you'll pass it to the team. "
+                       "their DNS record — if they say they added it, propose "
+                       "check_landing_domain) or 'active' (running on their own domain). "
+                       "Creating, changing, reverting, taking down and deleting pages are all "
+                       "cards you propose here (see LANDING PAGES). If they want a page BEYOND "
+                       "the included number, never quote a price: it is a package_exception "
+                       "for the team (needs_human_followup + handoff_topic package_exception). "
                        "'external_crm' is their OPTIONAL connection to a CRM they already "
                        "own — leads we capture are copied there automatically, on top of "
                        "(never instead of) the leads list in their dashboard. 'vendors' "
                        "lists what we support today; only those. If they ask about a CRM "
                        "that isn't in that list — Zoho, Salesforce, Monday, anything — say "
-                       "warmly that it isn't supported yet and you'll pass the request to "
-                       "the team; NEVER improvise setup steps for it. When 'connected' is "
+                       "warmly that it isn't supported yet (set capability_gap — never "
+                       "say you passed it to the team); NEVER improvise setup steps for it. "
+                       "When 'connected' is "
                        "false and they want to connect, walk them through the card in the "
                        "לידים section using the vendor's own 'help_he' text, and be clear "
                        "it is optional — nothing about their leads changes if they skip it. "
@@ -1572,11 +1704,11 @@ _ARTICLE_DUPLICATE = {
     "ru": "Недавно мы уже писали статью ровно на эту тему. Хотите другой ракурс? Скажите, на чём сделать акцент, и я подготовлю новый черновик.",
 }
 _ARTICLE_NOT_IN_PACKAGE = {
-    "he": "כתיבת מאמרים לאתר צריכה להיות חלק מהחבילה שלכם — העברתי את הבקשה לצוות, ויחזרו אליכם.",
-    "en": "Writing articles for your site needs to be part of your package — I've passed your request to the team and they'll get back to you.",
-    "fr": "La rédaction d'articles pour votre site doit faire partie de votre formule — j'ai transmis votre demande à l'équipe, qui reviendra vers vous.",
-    "ar": "كتابة المقالات لموقعكم يجب أن تكون ضمن باقتكم — حوّلت طلبكم للفريق وسيعودون إليكم.",
-    "ru": "Написание статей для сайта должно входить в ваш пакет — я передал запрос команде, с вами свяжутся.",
+    "he": "כתיבת מאמרים לאתר לא כלולה בחבילה שלכם כרגע. רוצים שאכין לכם הצעה מסודרת להוסיף אותה?",
+    "en": "Writing articles for your site isn't in your current package. Want me to prepare a proper offer to add it?",
+    "fr": "La rédaction d'articles n'est pas incluse dans votre formule actuelle. Voulez-vous que je prépare une offre pour l'ajouter ?",
+    "ar": "كتابة المقالات لموقعكم ليست ضمن باقتكم الحالية. هل تريدون أن أجهز لكم عرضًا منظمًا لإضافتها؟",
+    "ru": "Статьи для сайта не входят в ваш текущий пакет. Подготовить предложение, чтобы добавить их?",
 }
 _ARTICLE_SIMILAR_NOTE = {
     "he": "שימו לב: כבר כתבנו לאחרונה מאמר על נושא דומה — \"{title}\"{link}",
@@ -1635,7 +1767,8 @@ def _article_draft(client_id: int, message: str, brief: dict, background_tasks=N
                 f'(or could not be read). Topic: "{brief["topic"]}"',
                 client_id=client_id, persona="website",
                 issue_key="followup:website:article_not_in_package")
-            return {"reply": _ARTICLE_NOT_IN_PACKAGE[lang], "needs_human_followup": True}
+            # An upgrade question (the reply offers the priced offer), not a team request
+            return {"reply": _ARTICLE_NOT_IN_PACKAGE[lang], "needs_human_followup": False}
     # Every policy gate BEFORE promising anything — a refusal is answered now,
     # in the same turn, never minutes later
     try:
@@ -1747,18 +1880,18 @@ _REVISION_BROKEN_LINKS = {
     "ru": "Обратите внимание: я убрал ссылку, которая сейчас не открывается, чтобы в черновике не было битых ссылок:",
 }
 _REVISION_NOT_DRAFT = {
-    "he": "המאמר הזה כבר לא טיוטה (כנראה פורסם), אז לא אשנה אותו מכאן — העברתי את הבקשה לצוות.",
-    "en": "That article is no longer a draft (it was probably published), so I won't change it from here — I've passed your request to the team.",
-    "fr": "Cet article n'est plus un brouillon (il a sans doute été publié), je ne le modifie donc pas d'ici — j'ai transmis votre demande à l'équipe.",
-    "ar": "هذا المقال لم يعد مسودة (ربما نُشر)، لذلك لن أغيّره من هنا — حوّلت طلبكم للفريق.",
-    "ru": "Эта статья уже не черновик (вероятно, опубликована), поэтому я не буду менять её отсюда — передал запрос команде.",
+    "he": "המאמר הזה כבר לא טיוטה (כנראה פורסם), ומאמר שכבר באוויר עוד אי אפשר לשנות מכאן. רוצים שאכתוב טיוטה חדשה ומעודכנת במקומו?",
+    "en": "That article is no longer a draft (it was probably published), and a live article can't be changed from here yet. Want me to write a new, updated draft instead?",
+    "fr": "Cet article n'est plus un brouillon (sans doute publié), et un article en ligne ne peut pas encore être modifié d'ici. Je vous écris un nouveau brouillon à jour ?",
+    "ar": "هذا المقال لم يعد مسودة (ربما نُشر)، ولا يمكن بعد تعديل مقال منشور من هنا. أكتب لكم مسودة جديدة محدّثة بدلًا منه؟",
+    "ru": "Эта статья уже не черновик (вероятно, опубликована), а опубликованную статью отсюда пока не изменить. Написать новый обновлённый черновик вместо неё?",
 }
 _REVISION_CAP = {
-    "he": "הטיוטה הזו הגיעה ל-{cap} תיקונים מהצ׳אט — את ההמשך העברתי לצוות, שיחזרו אליכם.",
-    "en": "This draft has reached {cap} fixes from the chat — I've passed the rest to the team and they'll get back to you.",
-    "fr": "Ce brouillon a atteint {cap} corrections depuis le chat — j'ai transmis la suite à l'équipe, qui reviendra vers vous.",
-    "ar": "وصلت هذه المسودة إلى {cap} تعديلات من الدردشة — حوّلت الباقي للفريق وسيعودون إليكم.",
-    "ru": "Этот черновик достиг {cap} правок из чата — остальное я передал команде, с вами свяжутся.",
+    "he": "הטיוטה הזו הגיעה ל-{cap} תיקונים מהצ׳אט, וזה המקסימום לטיוטה אחת. רוצים שאכתוב טיוטה חדשה מאפס עם כל ההערות?",
+    "en": "This draft has reached {cap} fixes from the chat, the most one draft can take. Want me to write a fresh draft with all your notes?",
+    "fr": "Ce brouillon a atteint {cap} corrections depuis le chat, le maximum pour un brouillon. Je vous en écris un nouveau avec toutes vos remarques ?",
+    "ar": "وصلت هذه المسودة إلى {cap} تعديلات من الدردشة، وهو الحد الأقصى للمسودة الواحدة. أكتب لكم مسودة جديدة بكل الملاحظات؟",
+    "ru": "Этот черновик получил {cap} правок из чата — это максимум для одного черновика. Написать новый с учётом всех замечаний?",
 }
 _REVISION_TOO_BIG = {
     "he": "זה כבר שכתוב גדול יותר מתיקון קטן. תוכלו לכתוב לי בדיוק איזה משפט או חלק לשנות, ולמה?",
@@ -1814,11 +1947,10 @@ def _article_revision(client_id: int, message: str, revision: dict) -> dict:
                 if r.get("action_type") == "article_draft_revised"
                 and (r.get("details") or {}).get("post_id") == post_id])
     if done >= cap:
-        chat_fallback.alert_handoff(
-            chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
-            f'draft {post_id} reached its chat revision cap ({cap}). Asked: "{revision["instruction"]}"',
-            client_id=client_id, persona="website", issue_key=f"followup:website:revision_cap:{post_id}")
-        return {"reply": _REVISION_CAP[lang].format(cap=cap), "needs_human_followup": True}
+        chat_fallback.alert_capability_gap(
+            client_id, "website", revision["instruction"],
+            f"draft {post_id} reached its chat revision cap ({cap})")
+        return {"reply": _REVISION_CAP[lang].format(cap=cap), "needs_human_followup": False}
 
     log_step(AGENT_NAME, "article_revision", f"client {client_id}: post {post_id}")
     try:
@@ -1854,11 +1986,10 @@ def _article_revision(client_id: int, message: str, revision: dict) -> dict:
     if reason == "unsupported":
         return {"reply": _REVISION_NO_IMAGES[lang], "needs_human_followup": False}
     if reason == "not_draft":
-        chat_fallback.alert_handoff(
-            chat_fallback.KIND_FOLLOWUP, AGENT_NAME,
-            f'asked to change post {post_id}, which is no longer a draft: "{revision["instruction"]}"',
-            client_id=client_id, persona="website", issue_key=f"followup:website:not_draft:{post_id}")
-        return {"reply": _REVISION_NOT_DRAFT[lang], "needs_human_followup": True}
+        chat_fallback.alert_capability_gap(
+            client_id, "website", revision["instruction"],
+            f"change a published article (post {post_id}) from the chat")
+        return {"reply": _REVISION_NOT_DRAFT[lang], "needs_human_followup": False}
 
     errors = "; ".join(str(x) for x in (result.get("errors") or ["unknown"]))[:300]
     chat_fallback.alert_handoff(
@@ -1892,9 +2023,9 @@ account{action_exception}. What you CAN do is propose one of "available_actions"
 below) — a human click on its card runs it; available_actions holds EVERY client-approvable
 action, not only your domain's, so check all of it first. For a change no action does (any
 phrasing, including urgent or insistent): state the current situation plainly from
-account_state, set needs_human_followup to true with "handoff_topic": "manual_task" (the system
-opens a tracked team request and tells them when to expect it), and keep being helpful. Never
-say you did, will do, or scheduled a change.{action_rule}
+account_state, say honestly that this exact change isn't something you can do from here yet,
+offer the closest thing you CAN do, and set "capability_gap" (see WHEN NO ACTION FITS) — never
+"the team will do it". Never say you did, will do, or scheduled a change.{action_rule}
 
 OUTSIDE YOUR DOMAIN, STILL HERE: the client is never sent to another chat. A quick question
 about another area: answer it briefly from account_state. Something an available action does:
@@ -1912,8 +2043,8 @@ stronger colleague answers instead — the client never sees this field); otherw
 
 Return JSON only:
 {{"reply": "client-language text", "confidence": "high", "needs_human_followup": true/false,
- "out_of_scope": true/false, "handoff_topic": "", "data_topic": "", "upgrade_request": "",
- "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
+ "out_of_scope": true/false, "handoff_topic": "", "capability_gap": "", "data_topic": "",
+ "upgrade_request": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
     + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE \
     + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
 
@@ -2006,7 +2137,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
 
     if dry_run:
         return _dry_result(client_id, persona_id, message, result, failed, state, client)
-    reply = result.get("reply", "")
+    reply = _guard_invented(client_id, persona_id, message, result.get("reply", ""), state, result)
     out_of_scope = bool(result.get("out_of_scope", False))
     if not out_of_scope:
         unavailable = _data_unavailable(client_id, persona_id, message, result, failed)
@@ -2043,9 +2174,8 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     needs_human_followup = bool(result.get("needs_human_followup", False)) or out_of_scope
     if out_of_scope and not reply.strip():
         reply = chat_fallback.out_of_scope_reply(persona_id, _client_language(client_id, message))
-    if needs_human_followup:
-        return _with_handoff(reply, _handoff_alert(client_id, persona_id, message, out_of_scope,
-                                                   topic=_handoff_topic(result, out_of_scope)))
+    if needs_human_followup or _flagged(result):
+        return _follow_up(client_id, persona_id, message, reply, result, out_of_scope)
     # ONLY reply + needs_human_followup (+ a card) leave this function
     # (out_of_scope, data_topic and handoff_topic are read above for routing,
     # never passed on); anything else is dropped unread

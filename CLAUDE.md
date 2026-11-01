@@ -471,6 +471,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   package are `client_state.package.not_in_package` / `connection_status.not_in_plan` (one rule:
   `client_journey.step_in_services`) — explained with an upgrade offer, and marked on the
   dashboard cards. Guarded by `tests/test_concierge_manager.py`.
+  **Chat parity + no "team" fallback (2026-11-02, `docs/CHAT_PARITY.md`):**
+  - Everything the client dashboard does, the manager chat can do. `core/chat_parity.PARITY`
+    maps every session-gated client route to a chat action, an `account_state` read, a chat
+    field, an explicit not-in-chat reason, or a P1–P3 gap.
+  - `tests/test_chat_parity.py` fails on a new route or dashboard `/api/` call with no entry.
+    A new button ships with its chat path or its reason.
+  - Team requests are ONLY `legal` / `tax` / `contract` / `billing` / `package_exception`
+    (`agent_actions.TEAM_REQUEST_TOPICS`; refund → billing). Retired topics on older rows
+    still close.
+  - Anything else the chat can't do: the reply says so honestly and offers the closest thing,
+    and the model sets `capability_gap`. Code (`support_agent._follow_up`) raises
+    `chat_fallback.alert_capability_gap`: an admin alert with source `capability_gap`, deduped
+    7 days, never shown to the client as a request.
+  - A refused card is `NO_CARD` (an honest "nothing was opened") plus that alert.
+  - NOTHING THAT ISN'T THERE: never mention a page, draft, campaign, file or request that
+    `account_state` doesn't show. This is the prompt rule in `ACCOUNT_STATE_RULE`, backed by
+    `support_agent._guard_invented` for landing pages.
+  - Guarded by `tests/test_landing_chat.py`.
   **A failed data read never reaches the model** (no error blocks, no "unavailable"
   list, no chat_fallback rows in `recent_activity`). The model labels each message's
   `data_topic`, and code shows the fixed "can't pull that up" line only when that topic's
@@ -563,6 +581,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   per page; admin `/admin/landing/` (`core/landing_admin.py`: takedown, cost per page,
   backup-first migration). Needs `migrations/2026-11-01-landing-own.sql`; degrades to the old
   behaviour until then. InstaWP is full websites only. `tests/test_landing_own.py`.
+  **The whole lifecycle also runs from the chat (2026-11-02)**:
+  - Cards: `create_landing_page` (a draft via THE builder `create_page(persona=)`, then the
+    publish card in that same thread), `edit_landing_page`, `revert_landing_page`,
+    `unpublish_landing_page`, `delete_landing_page`, `connect_landing_domain` and
+    `check_landing_domain`.
+  - An old team request asking for a page: `POST /api/team-requests/{id}/fulfil-landing`
+    (admin, dry run by default), run with `scripts/fulfil_landing_request.sh`.
+  - Guarded by `tests/test_landing_chat.py`.
+
   See `.claude/skills/landing-pages/SKILL.md`.
 - `core/connection_catalog.py` — connections onboarding through the chat (2026-11-01,
   `docs/CONNECTIONS_ONBOARDING.md`). Every dashboard connection card has exactly ONE "חבר"

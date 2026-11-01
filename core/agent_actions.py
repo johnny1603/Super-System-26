@@ -476,6 +476,36 @@ def _search_console_connect_needed(state: dict, client: dict) -> bool:
     return (_cards(state).get("organic_seo") or {}).get("status") not in (None, "not_in_plan")
 
 
+def _analytics_connect_needed(state: dict, client: dict) -> bool:
+    from core.round2_flags import analytics_enabled
+    if not analytics_enabled():
+        return False
+    return not (_connected("analytics")(state, client) or _connected("google_analytics")(state, client))
+
+
+def _v_manager(value, client_id: int):
+    from core import manager_identity
+    key = str(value or "").strip().lower()
+    if not manager_identity.valid(key):
+        raise ValueError("unknown manager")
+    return key
+
+
+def _manager_name(client_id: int, key) -> str:
+    from core import manager_identity
+    return manager_identity.name(key if manager_identity.valid(key) else manager_identity.DEFAULT_KEY,
+                                 _lang(client_id))
+
+
+def _run_change_manager(client_id: int, params: dict, background_tasks):
+    """manager_identity.change — the SAME write as the settings picker."""
+    from core import manager_identity
+    result = manager_identity.change(client_id, params["manager"], by="client_chat")
+    if not result.get("success"):
+        raise ActionFailed("not_saved", result.get("code", ""))
+    return {"name": _manager_name(client_id, params["manager"])}
+
+
 def _run_rotate_wordpress_password(client_id: int, params: dict, background_tasks):
     """website_agent.rotate_stored_password — the same mint/delete code as
     one-click connect. The audit record is this action's own row (who
@@ -744,6 +774,277 @@ def _landing_done(result: dict, lang: str) -> str:
     if result.get("tracking_offered"):
         text += "\n" + _pick(_LANDING_TRACKING_NOTE, lang)
     return text
+
+
+# ─── Landing pages through the chat (docs/CHAT_PARITY.md, 2026-11-02) ────────
+# Everything the dashboard's Landing Pages section does, the client can ask
+# the manager (or אורי) for: create, change in words, go back to a version,
+# take down, delete, connect / check their domain. Each is one card and one
+# click, and runs the SAME landing_page_agent function the dashboard button
+# does — nothing here builds, writes or publishes a page itself. A new or
+# changed page still goes live only through publish_landing_page's own card.
+
+def _v_landing_text(limit_attr: str, minimum: int = 2):
+    def check(value, client_id: int):
+        from core import landing_pages
+        from core.redaction import redact
+        text = " ".join(redact(str(value or "")).split())
+        if len(text) < minimum:
+            raise ValueError("too short")
+        return text[:getattr(landing_pages, limit_attr)]
+    return check
+
+
+def _v_change_request(value, client_id: int):
+    from core.redaction import redact
+    text = " ".join(redact(str(value or "")).split())[:500]
+    if len(text) < 2:
+        raise ValueError("change request too short")
+    return text
+
+
+def _landing_pages_of(state: dict) -> list:
+    return list(((state or {}).get("landing_pages") or {}).get("pages") or [])
+
+
+def _has_landing_pages(state: dict, client: dict) -> bool:
+    return bool(_landing_pages_of(state))
+
+
+def _has_live_landing_page(state: dict, client: dict) -> bool:
+    return any(p.get("status") == "published" for p in _landing_pages_of(state))
+
+
+def _landing_section_read(state: dict, client: dict) -> bool:
+    """Creating needs the landing section to have been READ this turn —
+    without it the model has no page count and no business facts to propose from."""
+    return isinstance((state or {}).get("landing_pages"), dict)
+
+
+def _landing_limit_text(lang: str) -> str:
+    from core import landing_pages
+    n = landing_pages.MAX_PAGES_PER_CLIENT
+    return _pick(_txt(
+        f"החבילה שלכם כוללת {n} דפי נחיתה, וכבר יש לכם {n}. אפשר לשנות אחד מהם, או למחוק אחד ולבנות במקומו — "
+        f"תגידו לי איזה. דף נוסף מעבר לחבילה הוא חריגה מהחבילה, ואותה מאשר הצוות.",
+        f"Your package includes {n} landing pages and you already have {n}. I can change one of them, or delete one "
+        f"and build the new one in its place — tell me which. An extra page beyond the package is a package "
+        f"exception, which the team approves.",
+        f"Votre formule inclut {n} pages et vous en avez déjà {n}. Je peux en modifier une, ou en supprimer une pour "
+        f"la remplacer — dites-moi laquelle. Une page en plus est une exception à la formule, validée par l'équipe.",
+        f"تشمل باقتكم {n} صفحات هبوط ولديكم {n} بالفعل. يمكنني تعديل إحداها، أو حذف واحدة وبناء الجديدة مكانها — "
+        f"أخبروني أيها. صفحة إضافية خارج الباقة استثناء يوافق عليه الفريق.",
+        f"В ваш пакет входит {n} посадочных страниц, и у вас уже {n}. Могу изменить одну или удалить одну и сделать "
+        f"новую вместо неё — скажите какую. Дополнительная страница — исключение из пакета, его согласует команда."),
+        lang)
+
+
+_LANDING_GOAL_QUESTION = _txt(
+    "על איזה מוצר או הצעה הדף הזה צריך למכור? משפט אחד מספיק.",
+    "Which product or offer should this page sell? One sentence is enough.",
+    "Quel produit ou quelle offre cette page doit-elle vendre ? Une phrase suffit.",
+    "ما المنتج أو العرض الذي يجب أن تبيعه هذه الصفحة؟ جملة واحدة تكفي.",
+    "Какой продукт или предложение должна продавать эта страница? Одного предложения хватит.")
+
+
+def _prepare_create_landing(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """ONE question at most: the page's offer when the model had none. At the
+    package's page count: the plain package line (a number that already
+    exists in the system), never a card that would fail."""
+    from core import landing_pages
+    lang = (context or {}).get("language") or "he"
+    if not params.get("goal"):
+        return {"clarify": _pick(_LANDING_GOAL_QUESTION, lang)}
+    if landing_pages.count_pages(client_id) >= landing_pages.MAX_PAGES_PER_CLIENT:
+        return {"refuse": _landing_limit_text(lang)}
+    clean = {"title": params["title"], "goal": params["goal"]}
+    for row in rows:
+        if (row.get("params") or {}) == clean:
+            return {"existing": row}
+    # One new-page card at a time: a changed proposal replaces the older card
+    return {"params": clean, "supersedes": rows[0].get("id") if rows else None}
+
+
+def _validate_create_landing_stored(client_id: int, params: dict) -> dict:
+    params = params if isinstance(params, dict) else {}
+    if set(params) - {"title", "goal"}:
+        raise ValueError("unknown params")
+    return {"title": _v_landing_text("MAX_TITLE_CHARS")(params.get("title"), client_id),
+            "goal": _v_landing_text("MAX_GOAL_CHARS")(params.get("goal"), client_id)}
+
+
+def _run_create_landing_page(client_id: int, params: dict, background_tasks, row: dict = None):
+    """The dashboard button's own builder (landing_page_agent.create_page),
+    posting its preview card into the thread this card came from."""
+    from agents.landing_page_agent import create_page
+    result = create_page(client_id, params["title"], params["goal"],
+                         persona=(row or {}).get("persona") or "general", announce=False)
+    if not result.get("success"):
+        code = {"ERR_LANDING_PAGE_LIMIT": "page_limit"}.get(result.get("code"), "error")
+        raise ActionFailed(code, result.get("code", ""))
+    if not result.get("copy_generated"):
+        # The page exists, empty; the generator already alerted the team
+        raise ActionFailed("copy_failed", "copy generation failed")
+    return {"title": result["page"].get("title", ""), "page_id": result["page"].get("id"),
+            "preview_card": bool(result.get("card"))}
+
+
+def _created_done(result: dict, lang: str) -> str:
+    return _pick(ACTIONS["create_landing_page"]["done"], lang).replace("{page}", result.get("title", ""))
+
+
+def _prepare_page_change(client_id: int, params: dict, rows: list, keys: tuple) -> dict:
+    """A newer card for the same page replaces the older one."""
+    clean = {k: params[k] for k in keys if k in params}
+    same_page = [r for r in rows if (r.get("params") or {}).get("page_id") == clean["page_id"]]
+    for row in same_page:
+        if (row.get("params") or {}) == clean:
+            return {"existing": row}
+    return {"params": clean, "supersedes": same_page[0].get("id") if same_page else None}
+
+
+def _validate_page_change(keys: dict):
+    def check(client_id: int, params: dict) -> dict:
+        params = params if isinstance(params, dict) else {}
+        if set(params) - set(keys):
+            raise ValueError("unknown params")
+        return {k: validate(params.get(k), client_id) for k, validate in keys.items()}
+    return check
+
+
+def _run_edit_landing_page(client_id: int, params: dict, background_tasks, row: dict = None):
+    from agents.landing_page_agent import regenerate_copy
+    result = regenerate_copy(client_id, params["page_id"], params["change_request"],
+                             persona=(row or {}).get("persona") or "general", announce=False)
+    if not result.get("success"):
+        code = {"ERR_LANDING_TOO_LARGE": "too_large", "ERR_LANDING_NOT_FOUND": "not_found"}.get(
+            result.get("code"), "error")
+        raise ActionFailed(code, str(result.get("code") or result.get("errors") or ""))
+    return {"title": result["page"].get("title", ""), "version": result["page"].get("current_version")}
+
+
+def _edited_done(result: dict, lang: str) -> str:
+    return _pick(ACTIONS["edit_landing_page"]["done"], lang).replace("{page}", result.get("title", ""))
+
+
+def _prepare_revert(client_id: int, params: dict, rows: list) -> dict:
+    from core import landing_pages
+    if not landing_pages.get_version(client_id, params["page_id"], params["version"]):
+        return {"refuse": _pick(ACTIONS["revert_landing_page"]["refusals"]["no_version"],
+                                _lang(client_id))}
+    return _prepare_page_change(client_id, params, rows, ("page_id", "version"))
+
+
+def _run_revert_landing_page(client_id: int, params: dict, background_tasks):
+    from agents.landing_page_agent import revert_page
+    result = revert_page(client_id, params["page_id"], params["version"])
+    if not result.get("success"):
+        code = {"ERR_LANDING_NO_VERSION": "no_version", "ERR_LANDING_ACTIVE_LIMIT": "active_limit",
+                "ERR_LANDING_TOO_LARGE": "too_large"}.get(result.get("code"), "error")
+        raise ActionFailed(code, result.get("code", ""))
+    page = result.get("page") or {}
+    return {"title": page.get("title", ""), "version": params["version"],
+            "live": page.get("status") == "published"}
+
+
+def _reverted_done(result: dict, lang: str) -> str:
+    text = _pick(ACTIONS["revert_landing_page"]["done"], lang).replace("{page}", result.get("title", "")) \
+        .replace("{version}", str(result.get("version", "")))
+    if result.get("live"):
+        text += " " + _pick(_txt("הדף באוויר כבר עם הגרסה הזו.", "The live page already shows this version.",
+                                 "La page en ligne affiche déjà cette version.",
+                                 "الصفحة المنشورة تعرض هذه النسخة الآن.",
+                                 "Опубликованная страница уже показывает эту версию."), lang)
+    return text
+
+
+def _prepare_unpublish(client_id: int, params: dict, rows: list) -> dict:
+    from core import landing_pages
+    page = landing_pages.get_page(client_id, params["page_id"]) or {}
+    if page.get("status") != "published":
+        return {"refuse": _pick(_txt(
+            f"הדף \"{page.get('title', '')}\" לא באוויר כרגע, אז אין מה להוריד.",
+            f"The page \"{page.get('title', '')}\" isn't live right now, so there's nothing to take down.",
+            f"La page « {page.get('title', '')} » n'est pas en ligne, rien à retirer.",
+            f"الصفحة \"{page.get('title', '')}\" غير منشورة الآن، فلا شيء لإيقافه.",
+            f"Страница «{page.get('title', '')}» сейчас не опубликована — снимать нечего."), _lang(client_id))}
+    return _prepare_page_change(client_id, params, rows, ("page_id",))
+
+
+def _run_unpublish_landing_page(client_id: int, params: dict, background_tasks):
+    from agents.landing_page_agent import unpublish_page
+    title = _landing_title(client_id, params["page_id"])
+    result = unpublish_page(client_id, params["page_id"], by="client")
+    if not result.get("success"):
+        raise ActionFailed("not_found", result.get("code", ""))
+    return {"title": title}
+
+
+def _prepare_delete(client_id: int, params: dict, rows: list) -> dict:
+    """The page's title is stored on the card (from OUR read): after the
+    delete there is no page left to read it from."""
+    title = _landing_title(client_id, params["page_id"])
+    return _prepare_page_change(client_id, {"page_id": params["page_id"], "title": title}, rows,
+                                ("page_id", "title"))
+
+
+def _validate_delete_stored(client_id: int, params: dict) -> dict:
+    params = params if isinstance(params, dict) else {}
+    if set(params) - {"page_id", "title"}:
+        raise ValueError("unknown params")
+    return {"page_id": _v_landing_page(params.get("page_id"), client_id),
+            "title": " ".join(str(params.get("title") or "").split())[:120]}
+
+
+def _run_delete_landing_page(client_id: int, params: dict, background_tasks):
+    from core import landing_pages
+    if not landing_pages.delete_page(client_id, params["page_id"]):
+        raise ActionFailed("not_found", "page not found")
+    try:
+        from agents.client_agent import log_activity
+        log_activity(client_id, "landing_page_agent", "landing_page_deleted",
+                     {"page_id": params["page_id"], "by": "client_chat"})
+    except Exception:
+        pass
+    return {"title": params.get("title", "")}
+
+
+def _v_hostname(value, client_id: int):
+    from core import landing_domains
+    host = landing_domains.normalize_hostname(str(value or ""))
+    if not host or host.endswith("uallak.com"):
+        raise ValueError("not a usable hostname")
+    return host
+
+
+def _run_connect_landing_domain(client_id: int, params: dict, background_tasks):
+    from agents.landing_page_agent import request_domain
+    result = request_domain(client_id, params["hostname"], notify=False)
+    if not result.get("success"):
+        raise ActionFailed("bad_hostname", result.get("code", ""))
+    return result
+
+
+def _domain_requested_done(result: dict, lang: str) -> str:
+    from agents.landing_page_agent import domain_request_message
+    return domain_request_message(result)
+
+
+def _run_check_landing_domain(client_id: int, params: dict, background_tasks):
+    from agents.landing_page_agent import verify_domain
+    result = verify_domain(client_id, notify=False)
+    if not result.get("success"):
+        raise ActionFailed("no_domain", result.get("code", ""))
+    return result
+
+
+def _domain_checked_done(result: dict, lang: str) -> str:
+    from agents.landing_page_agent import domain_verify_message
+    return domain_verify_message(result)
+
+
+def _domain_mode(state: dict) -> str:
+    return ((state or {}).get("landing_pages") or {}).get("domain_mode") or ""
 
 
 def _run_approve_suggestion(client_id: int, params: dict, background_tasks):
@@ -1138,14 +1439,41 @@ def _v_avatar_name(value, client_id: int):
 # the chat it came from with its status, and a posted line when staff close
 # it. Opened by CODE only (open_team_request) — never proposed by a model.
 
-TEAM_REQUEST_TOPICS = ("legal", "tax", "refund", "package_exception", "contract", "billing",
-                       "complaint", "manual_task", "action_not_offered", "other")
+# ONLY these open a team request (2026-11-02): decisions that belong to a
+# licensed professional or to the business itself. Anything else the chat
+# can't do is a capability gap (chat_fallback.alert_capability_gap) — an
+# admin alert, never a "request" the client is shown. Older rows may carry a
+# retired topic (manual_task, complaint, ...): they still display and close.
+TEAM_REQUEST_TOPICS = ("legal", "tax", "contract", "billing", "package_exception")
+_RETIRED_TEAM_TOPICS = ("refund", "complaint", "manual_task", "action_not_offered", "other")
 TEAM_REQUEST_TTL_HOURS = 24 * 14
+# A refund is a billing matter (one request topic, not two)
+TEAM_TOPIC_ALIASES = {"refund": "billing"}
+
+
+def team_topic(value) -> str:
+    """The team topic a label names, or '' when it is not one the team handles."""
+    topic = str(value or "").strip().lower()
+    topic = TEAM_TOPIC_ALIASES.get(topic, topic)
+    return topic if topic in TEAM_REQUEST_TOPICS else ""
 
 
 def _v_team_topic(value, client_id: int):
-    topic = str(value or "").strip().lower()
-    return topic if topic in TEAM_REQUEST_TOPICS else "other"
+    topic = team_topic(value)
+    if not topic:
+        raise ValueError(f"not a team topic: {topic[:40]}")
+    return topic
+
+
+def _validate_team_request_stored(client_id: int, params: dict) -> dict:
+    """An existing request (possibly on a retired topic) still closes."""
+    params = params if isinstance(params, dict) else {}
+    if set(params) - {"topic", "request", "system_note"}:
+        raise ValueError("unknown params")
+    topic = str(params.get("topic") or "").strip().lower()
+    if topic not in TEAM_REQUEST_TOPICS + _RETIRED_TEAM_TOPICS:
+        raise ValueError("unknown topic")
+    return {"topic": topic, "request": _v_team_request(params.get("request"), client_id)}
 
 
 def _v_team_request(value, client_id: int):
@@ -1192,6 +1520,14 @@ TEAM_REQUEST_ALREADY_OPEN = _txt(
     "Это уже у команды как открытый запрос — ответ обычно в течение рабочего дня, статус здесь, на карточке.")
 
 
+HANDLED_BY_SYSTEM = _txt(
+    "טופל ✓ את זה כבר אפשר לעשות כאן בצ׳אט, וזה בוצע.",
+    "Handled ✓ This can now be done right here in the chat, and it was.",
+    "Traité ✓ Cela se fait désormais ici dans le chat, et c'est fait.",
+    "تمت المعالجة ✓ أصبح ذلك ممكنًا هنا في الدردشة، وقد تم.",
+    "Готово ✓ Теперь это делается прямо здесь, в чате, и это сделано.")
+
+
 def _run_team_request(client_id: int, params: dict, background_tasks):
     """Staff marked it handled — the work itself happened with a person."""
     return {"handled": True}
@@ -1231,6 +1567,40 @@ def open_team_request(client_id: int, persona: str, topic: str, request: str, or
            f"handle it and mark it handled in the Control Room (request {row.get('id')})")
     _forget_state(client_id)
     return {"card": card(row, "client", lang), "status": "awaiting_staff", "already": False}
+
+
+def open_team_request_row(client_id: int, request_id: int) -> dict:
+    """One OPEN team request of THIS client ({} otherwise — another client's
+    id is answered exactly like a missing one)."""
+    try:
+        row = _get(request_id)
+    except Exception:
+        return {}
+    if (not row or row.get("action") != "team_request" or int(row.get("client_id") or 0) != int(client_id)
+            or row.get("status") not in OPEN_STATUSES):
+        return {}
+    return row
+
+
+def close_team_request_by_system(client_id: int, request_id: int, note: str) -> bool:
+    """The system itself did what a team request asked (e.g. request #6, a
+    landing page, once the chat could build one): the row is kept — never
+    deleted — marked done with outcome "handled_by_system" and an internal
+    note in its params (staff see it; the client sees the request handled).
+    Compare-and-set, so it never overwrites a staff decision."""
+    row = open_team_request_row(client_id, request_id)
+    if not row:
+        return False
+    params = {**(row.get("params") or {}), "system_note": " ".join(str(note or "").split())[:300]}
+    stamp = _now().isoformat()
+    done = _claim(request_id, OPEN_STATUSES, {"status": "done", "decided_at": stamp, "decided_by": "system",
+                                              "finished_at": stamp, "outcome": "handled_by_system",
+                                              "params": params})
+    if done:
+        _log(f"client {client_id}: team request {request_id} handled by the system: {params['system_note']}",
+             client_id=client_id, proposal=request_id, action="team_request")
+        _forget_state(client_id)
+    return done
 
 
 def team_requests_view(client_id: int, limit: int = 10) -> list:
@@ -1606,6 +1976,263 @@ ACTIONS = {
                 "Этой версии больше нет. Подготовлю новую карточку с последней."),
         },
     },
+    "create_landing_page": {
+        # The chat's way to the dashboard's "+ דף נחיתה חדש": the click builds
+        # a DRAFT with the same builder; going live is the publish card's
+        # own, second click.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "needs_row": True,
+        "does": "Writes a NEW landing-page DRAFT for the client (never live): the click runs our page writer, and "
+                "a second card with a preview then asks whether to publish it. PROPOSE A CONCRETE PAGE from the "
+                "client's REAL data — their business, the product/offer they named or that account_state shows, "
+                "their keywords — as title + goal. Never send the client a form and never ask them to fill in "
+                "fields; ask at most ONE question, and only when you truly cannot tell which offer the page is "
+                "for (leave goal out and the system asks it). account_state.landing_pages shows how many pages "
+                "they have and how many the package includes.",
+        "params": {"title": {"required": True, "validate": _v_landing_text("MAX_TITLE_CHARS"),
+                             "hint": "short Hebrew page name built from their offer, e.g. the product + who it is for"},
+                   "goal": {"required": False, "validate": _v_landing_text("MAX_GOAL_CHARS"),
+                            "hint": "Hebrew: the ONE offer/product the page sells and to whom, from the client's own "
+                                    "words and account data — leave out only if you truly don't know it"}},
+        "available": _landing_section_read,
+        "prepare": lambda client_id, params, context, rows: _prepare_create_landing(client_id, params, context, rows),
+        "validate_stored": _validate_create_landing_stored,
+        "details": lambda client_id, params: {"title": params.get("title", ""),
+                                              "description": params.get("goal", "")},
+        "display": lambda client_id, params: {"page": params.get("title", "")},
+        "run": _run_create_landing_page,
+        "slow": {"minutes": 5, "eta": _txt(
+            "כתיבת דף כזה לוקחת בדרך כלל דקה-שתיים.", "Writing a page like this usually takes a minute or two.",
+            "Rédiger une page comme celle-ci prend en général une à deux minutes.",
+            "كتابة صفحة كهذه تستغرق عادةً دقيقة أو دقيقتين.", "Такая страница обычно пишется минуту-две.")},
+        "title": _txt("דף נחיתה חדש", "A new landing page", "Une nouvelle page d'atterrissage",
+                      "صفحة هبوط جديدة", "Новая посадочная страница"),
+        "what": _txt("אכתוב טיוטה של דף נחיתה \"{page}\". שום דבר לא עולה לאוויר: אחרי שהטיוטה מוכנה תקבלו כאן תצוגה מקדימה ותחליטו.",
+                     "I'll write a draft landing page \"{page}\". Nothing goes live: once the draft is ready you'll get a preview here and decide.",
+                     "Je rédige un brouillon de page « {page} ». Rien n'est publié : vous recevrez un aperçu ici et déciderez.",
+                     "سأكتب مسودة صفحة هبوط \"{page}\". لا يُنشر شيء: عندما تجهز ستصلكم معاينة هنا وتقررون.",
+                     "Я напишу черновик страницы «{page}». Ничего не публикуется: когда он будет готов, здесь появится предпросмотр."),
+        "done": _txt("הטיוטה של \"{page}\" מוכנה ✍️ בכרטיס שמתחת יש תצוגה מקדימה — מאשרים, והדף עולה לאוויר. רוצים שינוי? כתבו לי במילים.",
+                     "The draft of \"{page}\" is ready ✍️ The card below has a preview — approve it and the page goes live. Want a change? Tell me in words.",
+                     "Le brouillon « {page} » est prêt ✍️ La carte ci-dessous a un aperçu — validez et la page est publiée. Un changement ? Dites-le-moi.",
+                     "مسودة \"{page}\" جاهزة ✍️ في البطاقة أدناه معاينة — وافقوا وتُنشر الصفحة. تريدون تغييرًا؟ اكتبوا لي.",
+                     "Черновик «{page}» готов ✍️ В карточке ниже предпросмотр — подтвердите, и страница опубликуется. Нужны правки? Напишите словами."),
+        "done_message": lambda result, lang: _created_done(result, lang),
+        "refusals": {
+            "page_limit": _txt(
+                "בינתיים כל דפי הנחיתה שבחבילה כבר קיימים, אז לא פתחתי דף חדש. אפשר לשנות אחד מהם או למחוק אחד ולבנות במקומו.",
+                "Meanwhile all the landing pages in your package already exist, so I didn't open a new one. I can change one, or delete one and build in its place.",
+                "Toutes les pages de votre formule existent déjà ; je n'en ai pas ouvert de nouvelle. Je peux en modifier ou en remplacer une.",
+                "كل صفحات الباقة موجودة بالفعل، لذا لم أفتح صفحة جديدة. يمكنني تعديل إحداها أو حذفها وبناء أخرى مكانها.",
+                "Все страницы из пакета уже есть, новую я не открыл. Могу изменить одну или заменить её."),
+            "copy_failed": _txt(
+                "פתחתי את הדף, אבל כתיבת הטקסט לא הצליחה הפעם. הצוות קיבל התראה. כתבו לי \"תכתוב שוב\" ואנסה מחדש.",
+                "I opened the page, but writing its text didn't work this time. The team was alerted. Write \"try again\" and I'll rewrite it.",
+                "J'ai créé la page, mais la rédaction n'a pas abouti. L'équipe est prévenue. Écrivez « réessaie » et je recommence.",
+                "فتحت الصفحة لكن كتابة النص لم تنجح هذه المرة. الفريق تلقى تنبيهًا. اكتبوا \"حاول مجددًا\" وسأعيد الكتابة.",
+                "Страницу я открыл, но текст в этот раз не написался. Команда уведомлена. Напишите «ещё раз» — перепишу."),
+        },
+    },
+    "edit_landing_page": {
+        # A change in words → a NEW version; the live page stays as it is
+        # until the publish card that follows is approved.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "needs_row": True,
+        "does": "Rewrites ONE of the client's landing pages (account_state.landing_pages) according to the change "
+                "they asked for in their own words — as a NEW version. What is live does not change; a preview "
+                "card then asks whether to publish the new version.",
+        "params": {"page_id": {"required": True, "validate": _v_landing_page,
+                               "hint": "page id copied exactly from account_state.landing_pages"},
+                   "change_request": {"required": True, "validate": _v_change_request,
+                                      "hint": "the change, in the client's own words (Hebrew)"}},
+        "available": _has_landing_pages,
+        "prepare": lambda client_id, params, context, rows: _prepare_page_change(
+            client_id, params, rows, ("page_id", "change_request")),
+        "validate_stored": _validate_page_change({"page_id": _v_landing_page,
+                                                  "change_request": _v_change_request}),
+        "details": lambda client_id, params: {"title": _landing_title(client_id, params.get("page_id")),
+                                              "description": params.get("change_request", "")},
+        "display": lambda client_id, params: {"page": _landing_title(client_id, params.get("page_id"))},
+        "run": _run_edit_landing_page,
+        "slow": {"minutes": 5, "eta": _txt(
+            "כתיבה מחדש לוקחת בדרך כלל דקה-שתיים.", "A rewrite usually takes a minute or two.",
+            "Une réécriture prend en général une à deux minutes.", "إعادة الكتابة تستغرق عادةً دقيقة أو دقيقتين.",
+            "Переписывание обычно занимает минуту-две.")},
+        "title": _txt("שינוי בדף נחיתה", "Change a landing page", "Modifier une page d'atterrissage",
+                      "تعديل صفحة هبوط", "Изменить посадочную страницу"),
+        "what": _txt("אכתוב גרסה חדשה של \"{page}\" לפי מה שביקשתם. מה שבאוויר לא משתנה — תקבלו תצוגה מקדימה ותחליטו.",
+                     "I'll write a new version of \"{page}\" as you asked. What's live doesn't change — you'll get a preview and decide.",
+                     "J'écris une nouvelle version de « {page} » comme demandé. La page en ligne ne change pas — vous recevrez un aperçu.",
+                     "سأكتب نسخة جديدة من \"{page}\" كما طلبتم. المنشور لا يتغير — ستصلكم معاينة وتقررون.",
+                     "Напишу новую версию «{page}», как вы просили. Опубликованное не меняется — придёт предпросмотр."),
+        "done": _txt("הגרסה החדשה של \"{page}\" מוכנה. מה שבאוויר לא השתנה — התצוגה המקדימה בכרטיס שמתחת.",
+                     "The new version of \"{page}\" is ready. What's live hasn't changed — the preview is in the card below.",
+                     "La nouvelle version de « {page} » est prête. Rien n'a changé en ligne — l'aperçu est ci-dessous.",
+                     "النسخة الجديدة من \"{page}\" جاهزة. المنشور لم يتغير — المعاينة في البطاقة أدناه.",
+                     "Новая версия «{page}» готова. Опубликованное не изменилось — предпросмотр в карточке ниже."),
+        "done_message": lambda result, lang: _edited_done(result, lang),
+        "refusals": {
+            "too_large": _txt(
+                "הגרסה הזו יצאה ארוכה מדי לדף נחיתה, אז לא שמרתי אותה. כתבו לי מה הכי חשוב שיישאר ואקצר.",
+                "That version came out too long for a landing page, so I didn't keep it. Tell me what matters most and I'll shorten it.",
+                "Cette version était trop longue ; je ne l'ai pas gardée. Dites-moi l'essentiel et je raccourcis.",
+                "خرجت هذه النسخة طويلة جدًا فلم أحفظها. أخبروني بالأهم وسأختصر.",
+                "Версия вышла слишком длинной, я её не сохранил. Напишите, что важнее всего, — сокращу."),
+            "not_found": _txt("הדף הזה כבר לא קיים.", "That page no longer exists.", "Cette page n'existe plus.",
+                              "هذه الصفحة لم تعد موجودة.", "Этой страницы больше нет."),
+        },
+    },
+    "revert_landing_page": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Brings back an EARLIER version of one landing page (account_state.landing_pages[].versions). "
+                "If the page is live, the live page switches to it at once — say so before proposing.",
+        "params": {"page_id": {"required": True, "validate": _v_landing_page,
+                               "hint": "page id copied exactly from account_state.landing_pages"},
+                   "version": {"required": True, "validate": _v_landing_version,
+                               "hint": "a version number listed in that page's versions"}},
+        "available": _has_landing_pages,
+        "prepare": lambda client_id, params, context, rows: _prepare_revert(client_id, params, rows),
+        "validate_stored": _validate_page_change({"page_id": _v_landing_page, "version": _v_landing_version}),
+        "details": lambda client_id, params: {
+            "title": _landing_title(client_id, params.get("page_id")),
+            "preview_url": f"/api/client/landing-pages/{int(params.get('page_id') or 0)}/preview"
+                           f"?version={int(params.get('version') or 0)}"},
+        "display": lambda client_id, params: {"page": _landing_title(client_id, params.get("page_id")),
+                                              "version": params.get("version", "")},
+        "run": _run_revert_landing_page,
+        "title": _txt("חזרה לגרסה קודמת של דף נחיתה", "Go back to an earlier landing-page version",
+                      "Revenir à une version précédente", "العودة إلى نسخة سابقة من صفحة الهبوط",
+                      "Вернуть прежнюю версию страницы"),
+        "what": _txt("\"{page}\" יחזור לגרסה {version} (התצוגה המקדימה בכרטיס). אם הדף באוויר — הוא מתעדכן מיד.",
+                     "\"{page}\" goes back to version {version} (preview on the card). If the page is live, it updates at once.",
+                     "« {page} » revient à la version {version} (aperçu sur la carte). Si elle est en ligne, elle change aussitôt.",
+                     "ستعود \"{page}\" إلى النسخة {version} (المعاينة في البطاقة). إن كانت منشورة فتتحدث فورًا.",
+                     "«{page}» вернётся к версии {version} (предпросмотр в карточке). Если она опубликована — обновится сразу."),
+        "done": _txt("\"{page}\" חזר לגרסה {version} ✓", "\"{page}\" is back to version {version} ✓",
+                     "« {page} » est revenue à la version {version} ✓", "عادت \"{page}\" إلى النسخة {version} ✓",
+                     "«{page}» возвращена к версии {version} ✓"),
+        "done_message": lambda result, lang: _reverted_done(result, lang),
+        "refusals": {
+            "no_version": _txt("את הגרסה הזו אני לא מוצא אצל הדף הזה. תגידו לי מה רציתם להחזיר ואמצא את הנכונה.",
+                               "I can't find that version for this page. Tell me what you wanted back and I'll find the right one.",
+                               "Je ne trouve pas cette version. Dites-moi ce que vous vouliez retrouver.",
+                               "لا أجد هذه النسخة لهذه الصفحة. أخبروني بما أردتم استرجاعه.",
+                               "Не нахожу такую версию. Скажите, что хотели вернуть, — найду нужную."),
+            "active_limit": _txt(
+                "כל דפי הנחיתה שכלולים בחבילה כבר באוויר, אז לא החלפתי. אפשר להוריד אחד מהם קודם.",
+                "All the landing pages in your package are already live, so I didn't switch. Take one down first.",
+                "Toutes vos pages incluses sont déjà en ligne ; retirez-en une d'abord.",
+                "كل الصفحات المشمولة منشورة؛ أوقفوا واحدة أولًا.",
+                "Все страницы из пакета уже опубликованы; сначала снимите одну."),
+            "too_large": _txt("הגרסה הזו ארוכה מדי לדף נחיתה, אז לא החזרתי אותה.",
+                              "That version is too long for a landing page, so I didn't bring it back.",
+                              "Cette version est trop longue ; je ne l'ai pas rétablie.",
+                              "هذه النسخة طويلة جدًا فلم أسترجعها.", "Эта версия слишком длинная, я её не вернул."),
+        },
+    },
+    "unpublish_landing_page": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Takes ONE live landing page down (instant; visitors stop seeing it). The page and its versions "
+                "stay, and it can be published again with publish_landing_page.",
+        "params": {"page_id": {"required": True, "validate": _v_landing_page,
+                               "hint": "page id copied exactly from account_state.landing_pages (a live one)"}},
+        "available": _has_live_landing_page,
+        "prepare": lambda client_id, params, context, rows: _prepare_unpublish(client_id, params, rows),
+        "validate_stored": _validate_page_change({"page_id": _v_landing_page}),
+        "display": lambda client_id, params: {"page": _landing_title(client_id, params.get("page_id"))},
+        "run": _run_unpublish_landing_page,
+        "title": _txt("הורדת דף נחיתה מהאוויר", "Take a landing page down", "Retirer une page d'atterrissage",
+                      "إيقاف صفحة هبوط", "Снять посадочную страницу"),
+        "what": _txt("\"{page}\" יורד מהאוויר מיד. הדף עצמו נשמר, ואפשר להעלות אותו שוב בכל רגע.",
+                     "\"{page}\" goes offline right away. The page itself is kept and can go live again any time.",
+                     "« {page} » est retirée tout de suite. La page est conservée et peut être republiée.",
+                     "ستتوقف \"{page}\" فورًا. الصفحة نفسها محفوظة ويمكن نشرها مجددًا.",
+                     "«{page}» сразу снимается. Сама страница сохраняется, её можно снова опубликовать."),
+        "done": _txt("\"{page}\" ירד מהאוויר ✓ הדף שמור, ואפשר להעלות אותו שוב כשתרצו.",
+                     "\"{page}\" is offline ✓ The page is kept, and can go live again whenever you want.",
+                     "« {page} » est hors ligne ✓ La page est conservée.",
+                     "\"{page}\" متوقفة ✓ الصفحة محفوظة ويمكن نشرها متى شئتم.",
+                     "«{page}» снята ✓ Страница сохранена, её можно опубликовать снова."),
+        "done_message": lambda result, lang: _pick(ACTIONS["unpublish_landing_page"]["done"], lang).replace(
+            "{page}", result.get("title", "")),
+        "refusals": {"not_found": _txt("הדף הזה כבר לא קיים.", "That page no longer exists.",
+                                       "Cette page n'existe plus.", "هذه الصفحة لم تعد موجودة.",
+                                       "Этой страницы больше нет.")},
+    },
+    "delete_landing_page": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Deletes ONE landing page for good (it frees a place in the package). Only when the client asks to "
+                "delete it — to just take it offline, use unpublish_landing_page.",
+        "params": {"page_id": {"required": True, "validate": _v_landing_page,
+                               "hint": "page id copied exactly from account_state.landing_pages"}},
+        "available": _has_landing_pages,
+        "prepare": lambda client_id, params, context, rows: _prepare_delete(client_id, params, rows),
+        "validate_stored": _validate_delete_stored,
+        "display": lambda client_id, params: {"page": params.get("title", "")},
+        "run": _run_delete_landing_page,
+        "title": _txt("מחיקת דף נחיתה", "Delete a landing page", "Supprimer une page d'atterrissage",
+                      "حذف صفحة هبوط", "Удалить посадочную страницу"),
+        "what": _txt("\"{page}\" יימחק לגמרי, כולל כל הגרסאות שלו, ויתפנה מקום לדף חדש. את זה אי אפשר לבטל.",
+                     "\"{page}\" will be deleted for good, with all its versions, freeing a place for a new page. This can't be undone.",
+                     "« {page} » sera supprimée définitivement, versions comprises. Irréversible.",
+                     "ستُحذف \"{page}\" نهائيًا مع كل نسخها، ويتحرر مكان لصفحة جديدة. لا يمكن التراجع.",
+                     "«{page}» будет удалена навсегда со всеми версиями. Это необратимо."),
+        "done": _txt("\"{page}\" נמחק ✓", "\"{page}\" is deleted ✓", "« {page} » est supprimée ✓",
+                     "حُذفت \"{page}\" ✓", "«{page}» удалена ✓"),
+        "done_message": lambda result, lang: _pick(ACTIONS["delete_landing_page"]["done"], lang).replace(
+            "{page}", result.get("title", "")),
+        "refusals": {"not_found": _txt("הדף הזה כבר לא קיים.", "That page no longer exists.",
+                                       "Cette page n'existe plus.", "هذه الصفحة لم تعد موجودة.",
+                                       "Этой страницы больше нет.")},
+    },
+    "connect_landing_domain": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Starts moving the client's landing pages to their OWN subdomain (e.g. lp.theirbusiness.co.il): the "
+                "click writes the exact DNS message for whoever manages their domain. Pages keep working on the "
+                "temporary address meanwhile.",
+        "params": {"hostname": {"required": True, "validate": _v_hostname,
+                                "hint": "the subdomain the client named, e.g. lp.theirbusiness.co.il"}},
+        "available": lambda state, client: _domain_mode(state) in ("shared", "pending"),
+        "display": lambda client_id, params: {"hostname": params.get("hostname", "")},
+        "run": _run_connect_landing_domain,
+        "title": _txt("חיבור דפי הנחיתה לדומיין שלכם", "Connect your landing pages to your domain",
+                      "Connecter vos pages à votre domaine", "ربط صفحات الهبوط بنطاقكم",
+                      "Подключить страницы к вашему домену"),
+        "what": _txt("אכין את ההודעה המדויקת למי שמנהל לכם את הדומיין, כדי שהדפים יעברו ל-{hostname}.",
+                     "I'll prepare the exact message for whoever manages your domain, so the pages move to {hostname}.",
+                     "Je prépare le message exact pour la personne qui gère votre domaine, vers {hostname}.",
+                     "سأجهز الرسالة الدقيقة لمن يدير نطاقكم، لتنتقل الصفحات إلى {hostname}.",
+                     "Подготовлю точное сообщение для того, кто управляет доменом, чтобы страницы переехали на {hostname}."),
+        "done": _txt("ההודעה לדומיין מוכנה.", "The domain message is ready.", "Le message est prêt.",
+                     "الرسالة جاهزة.", "Сообщение готово."),
+        "done_message": lambda result, lang: _domain_requested_done(result, lang),
+        "refusals": {"bad_hostname": _txt(
+            "את הכתובת הזו אי אפשר לחבר. צריך תת-דומיין שלכם, למשל lp.העסק-שלכם.co.il.",
+            "That address can't be connected. It needs a subdomain of yours, e.g. lp.yourbusiness.co.il.",
+            "Cette adresse ne peut pas être connectée ; il faut un sous-domaine à vous, ex. lp.votreentreprise.fr.",
+            "لا يمكن ربط هذا العنوان؛ نحتاج نطاقًا فرعيًا لكم مثل lp.yourbusiness.co.il.",
+            "Этот адрес не подключить; нужен ваш поддомен, например lp.yourbusiness.co.il.")},
+    },
+    "check_landing_domain": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Checks whether the client's landing-page domain record is live now (after they say it was added).",
+        "params": {},
+        "available": lambda state, client: _domain_mode(state) == "pending",
+        "run": _run_check_landing_domain,
+        "title": _txt("בדיקת חיבור הדומיין", "Check the domain connection", "Vérifier la connexion du domaine",
+                      "فحص ربط النطاق", "Проверить подключение домена"),
+        "what": _txt("אבדוק עכשיו אם הדומיין של דפי הנחיתה כבר מחובר.",
+                     "I'll check now whether your landing-page domain is connected.",
+                     "Je vérifie maintenant si votre domaine est connecté.",
+                     "سأفحص الآن إن كان نطاق صفحات الهبوط مربوطًا.", "Проверю сейчас, подключён ли домен."),
+        "done": _txt("בדקתי.", "Checked.", "Vérifié.", "فحصت.", "Проверил."),
+        "done_message": lambda result, lang: _domain_checked_done(result, lang),
+        "refusals": {"no_domain": _txt("עוד לא ביקשתם לחבר דומיין לדפי הנחיתה. כתבו לי איזו כתובת תרצו.",
+                                       "You haven't asked to connect a domain yet. Tell me which address you'd like.",
+                                       "Aucun domaine demandé pour l'instant. Dites-moi lequel.",
+                                       "لم تطلبوا ربط نطاق بعد. أخبروني بالعنوان.",
+                                       "Домен ещё не запрошен. Напишите, какой адрес нужен.")},
+    },
     "connect_tag_manager": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
         "link": "/api/oauth/gtm/start",
@@ -1791,11 +2418,12 @@ ACTIONS = {
         # close it in the Control Room: approve = handled, cancel = closed.
         "approver": "admin", "client_requestable": False, "internal_only": False, "kind": "execute",
         "code_only": True, "ttl_hours": TEAM_REQUEST_TTL_HOURS,
-        "does": "A tracked request for the team (a licensed-professional or commercial decision, or work "
-                "our team does by hand). Opened by the system, never proposed.",
+        "does": "A tracked request for the team: legal, tax, contract, billing or a package exception only "
+                "(a licensed-professional or commercial decision). Opened by the system, never proposed.",
         "params": {"topic": {"required": True, "validate": _v_team_topic, "hint": ""},
                    "request": {"required": True, "validate": _v_team_request, "hint": ""}},
         "available": lambda state, client: False,
+        "validate_stored": _validate_team_request_stored,
         "run": _run_team_request,
         "display": lambda client_id, params: {
             "topic": _pick(_TEAM_TOPIC_LABEL.get(params.get("topic"), _TEAM_TOPIC_LABEL["other"]), _lang(client_id)),
@@ -2153,6 +2781,64 @@ ACTIONS = {
         "done": _txt("פותח את מסך האישור של Google…", "Opening Google's approval screen…",
                      "Ouverture de l'écran Google…", "جارٍ فتح شاشة موافقة Google…", "Открываю окно Google…"),
     },
+    # ── Trivial chat-parity gaps closed 2026-11-02 (docs/CHAT_PARITY.md) ──
+    "connect_analytics": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
+        "link": "/api/oauth/analytics/start",
+        "does": "Opens Google's approval screen for READ-ONLY access to the client's Google Analytics, so their "
+                "site traffic shows in the dashboard and the chat.",
+        "params": {},
+        "available": _analytics_connect_needed,
+        "title": _txt("חיבור Google Analytics (קריאה בלבד)", "Connect Google Analytics (read only)",
+                      "Connecter Google Analytics (lecture seule)", "ربط Google Analytics (قراءة فقط)",
+                      "Подключить Google Analytics (только чтение)"),
+        "what": _txt("ייפתח מסך האישור של Google. הגישה לקריאה בלבד: נראה את התנועה לאתר שלכם — ולא נשנה שום דבר.",
+                     "Google's approval screen opens. Access is read only: we see your site's traffic — and change nothing.",
+                     "L'écran Google s'ouvre. Lecture seule : nous voyons le trafic de votre site, sans rien modifier.",
+                     "ستفتح شاشة موافقة Google. للقراءة فقط: نرى زيارات موقعكم — ولا نغيّر شيئًا.",
+                     "Откроется окно Google. Только чтение: видим посещаемость сайта и ничего не меняем."),
+        "done": _txt("פותח את מסך האישור של Google…", "Opening Google's approval screen…",
+                     "Ouverture de l'écran Google…", "جارٍ فتح شاشة موافقة Google…", "Открываю окно Google…"),
+    },
+    "connect_website": {
+        # "focus": connecting the site takes the client's own site address
+        # and approval on its card — never typed into a chat.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "focus",
+        "focus": "siteBtn",
+        "does": "Opens the website connection card (one-click WordPress approval, or 'build me a site') so the "
+                "client can connect their site.",
+        "params": {},
+        "available": _channel_needs_connect("website"),
+        "title": _txt("חיבור האתר שלכם", "Connect your website", "Connecter votre site", "ربط موقعكم",
+                      "Подключить ваш сайт"),
+        "what": _txt("ייפתח כרטיס החיבור של האתר — מאשרים שם בלחיצה אחת.",
+                     "The website card opens — approve there in one click.",
+                     "La carte du site s'ouvre — validez-y en un clic.", "ستفتح بطاقة الموقع — وافقوا هناك بنقرة واحدة.",
+                     "Откроется карточка сайта — подтвердите там в один клик."),
+        "done": _txt("פותח את כרטיס האתר…", "Opening the website card…", "Ouverture de la carte du site…",
+                     "جارٍ فتح بطاقة الموقع…", "Открываю карточку сайта…"),
+    },
+    "change_manager": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Switches who the client's account manager is (the name and face in this chat, emails and "
+                "messages). Only when the client asks to switch; everything else stays the same.",
+        "params": {"manager": {"required": True, "validate": _v_manager,
+                               "hint": "one of: johnny, nissim, elinor"}},
+        "available": lambda state, client: True,
+        "display": lambda client_id, params: {"manager": _manager_name(client_id, params.get("manager"))},
+        "run": _run_change_manager,
+        "title": _txt("החלפת מנהל/ת הלקוח", "Switch your account manager", "Changer de responsable de compte",
+                      "تغيير مدير الحساب", "Сменить менеджера"),
+        "what": _txt("מעכשיו {manager} כאן איתכם. השיחות, הנתונים וכל מה שבתהליך נשארים בדיוק כמו שהם.",
+                     "From now on {manager} will be with you. Conversations, data and everything in progress stay exactly as they are.",
+                     "Désormais {manager} vous accompagne. Conversations, données et travaux en cours restent identiques.",
+                     "من الآن {manager} سيرافقكم. المحادثات والبيانات وكل ما هو قيد التنفيذ يبقى كما هو.",
+                     "Теперь с вами будет {manager}. Переписка, данные и всё в работе остаются как есть."),
+        "done": _txt("✓ {manager} איתכם מעכשיו.", "✓ {manager} is with you from now on.",
+                     "✓ {manager} vous accompagne désormais.", "✓ {manager} معكم من الآن.", "✓ Теперь с вами {manager}."),
+        "done_message": lambda result, lang: _pick(ACTIONS["change_manager"]["done"], lang).replace(
+            "{manager}", result.get("name", "")),
+    },
 }
 
 _OUTREACH_DRAFT_REFUSALS = {
@@ -2378,11 +3064,13 @@ _STALLED = _txt(
 _EXPIRED = _txt("הבקשה הזו כבר לא בתוקף — כתבו לי שוב ואכין חדשה.", "This request has expired — message me again and I'll set up a new one.",
                 "Cette demande a expiré — écrivez-moi et j'en prépare une nouvelle.", "انتهت صلاحية هذا الطلب — راسلوني وسأجهز طلبًا جديدًا.",
                 "Срок запроса истёк — напишите мне, и я подготовлю новый.")
-NO_CARD = _txt("(את הכפתור לאישור לא הצלחתי להציג כרגע — הצוות קיבל את הבקשה ויטפל בה.)",
-               "(I couldn't show the approval button right now — the team has the request and will handle it.)",
-               "(Je n'ai pas pu afficher le bouton de validation — l'équipe a la demande et s'en occupe.)",
-               "(تعذّر عرض زر الموافقة الآن — الفريق استلم الطلب وسيتولاه.)",
-               "(Не удалось показать кнопку подтверждения — команда получила запрос и займётся им.)")
+# The reply promised a card that could not be made: say so, plainly — nothing
+# was opened and nothing changes. Never "the team has it" (no request exists).
+NO_CARD = _txt("(תיקון: את הכרטיס לאישור לא הצלחתי להכין הפעם, אז שום דבר לא נפתח ושום דבר לא ישתנה. רשמתי את זה אצלנו לבדיקה.)",
+               "(Correction: I couldn't prepare the approval card this time, so nothing was opened and nothing will change. I've noted it on our side to look into.)",
+               "(Correction : je n'ai pas pu préparer la carte de validation, donc rien n'a été ouvert ni modifié. C'est noté de notre côté.)",
+               "(تصحيح: لم أتمكن من تجهيز بطاقة الموافقة هذه المرة، فلم يُفتح شيء ولن يتغير شيء. سجّلت ذلك لدينا للفحص.)",
+               "(Поправка: не получилось подготовить карточку подтверждения, поэтому ничего не открыто и не изменится. Я отметил это у нас для проверки.)")
 
 
 def _lang(client_id: int) -> str:
@@ -2580,6 +3268,8 @@ def progress_text(spec: dict, lang: str) -> str:
 def _result_text(spec: dict, row: dict, lang: str) -> str:
     """What a finished card says — the same plain lines decide() posts."""
     if row.get("status") == "done":
+        if row.get("outcome") == "handled_by_system":
+            return _pick(HANDLED_BY_SYSTEM, lang)
         return _fill(spec, row, _pick(spec.get("done") or {"he": ""}, lang))
     if row.get("status") == "failed":
         refusal = (spec.get("refusals") or {}).get(row.get("outcome") or "")

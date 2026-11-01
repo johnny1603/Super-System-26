@@ -5,7 +5,9 @@
   client sees with its status, one fixed sentence on what happens and when,
   and a posted line when staff mark it handled / close it. Opened by code,
   never proposed by a model; one open request per client + topic.
-- "No card could be shown" is a tracked request too, never a bare promise.
+- Team requests ONLY for legal / tax / contract / billing / package exception
+  (2026-11-02). "No card could be shown" and "the chat can't do that" are an
+  honest line plus a capability_gap admin alert — never a request.
 - Photos → presenter: create_presenter_from_photos (avatar_agent's photo path).
   In the package → the card; tool missing → the ONE card that fixes it, named;
   likeness consent missing → that card again (it carries the consent), never
@@ -132,7 +134,8 @@ class TeamRequest(Base):
         out = aa.open_team_request(40, "general", "refund", "אני רוצה החזר על החודש")
         row = self.rows("team_request")[0]
         self.assertEqual((row["status"], row["approver"], row["origin"]), ("awaiting_staff", "admin", "client_chat"))
-        self.assertEqual(row["params"], {"topic": "refund", "request": "אני רוצה החזר על החודש"})
+        # A refund is a billing matter (2026-11-02: five team topics)
+        self.assertEqual(row["params"], {"topic": "billing", "request": "אני רוצה החזר על החודש"})
         self.assertEqual(len(self.alerts), 1)
         self.assertIn("client 40", self.alerts[0])           # the Control Room matching convention
         card = out["card"]
@@ -149,11 +152,22 @@ class TeamRequest(Base):
         aa.open_team_request(40, "general", "legal", "שאלה משפטית")
         self.assertEqual(len(self.rows("team_request")), 2)
 
-    def test_unknown_topic_is_other_and_secrets_are_redacted(self):
-        aa.open_team_request(40, "general", "pizza", "my key is sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123")
+    def test_only_team_topics_open_a_request_and_secrets_are_redacted(self):
+        for topic in ("pizza", "manual_task", "complaint", "other", "action_not_offered"):
+            self.assertEqual(aa.open_team_request(40, "general", topic, "בקשה כלשהי"), {"error": "invalid_params"})
+        self.assertEqual(self.rows("team_request"), [])
+        aa.open_team_request(40, "general", "legal", "my key is sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123")
         params = self.rows("team_request")[0]["params"]
-        self.assertEqual(params["topic"], "other")
+        self.assertEqual(params["topic"], "legal")
         self.assertNotIn("abcdefghijklmnopqrstuvwxyz0123", params["request"])
+
+    def test_an_older_request_on_a_retired_topic_still_closes(self):
+        # Request #6 (client 27) was opened as manual_task before 2026-11-02
+        self.db.tables.setdefault(aa.TABLE, []).append({
+            "id": 6, "client_id": 40, "action": "team_request", "origin": "client_chat", "persona": "general",
+            "params": {"topic": "manual_task", "request": "דף נחיתה"}, "approver": "admin",
+            "status": "awaiting_staff", "created_at": datetime.now(timezone.utc).isoformat()})
+        self.assertEqual(aa.decide(6, "admin", 40, "approve")["status"], "done")
 
     def test_storage_failure_is_reported_not_faked(self):
         self.db.fail = True
@@ -167,7 +181,7 @@ class TeamRequest(Base):
             self.assertNotIn("team_request", [a["name"] for a in aa.available(40, origin, {}, client=CLIENT)])
 
     def test_the_client_sees_it_until_handled_and_it_outlives_a_normal_card(self):
-        aa.open_team_request(40, "media", "manual_task", "תעלו את הסרטון לאינסטגרם")
+        aa.open_team_request(40, "media", "contract", "שאלה על ההסכם")
         row = self.rows("team_request")[0]
         row["created_at"] = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
         self.assertEqual([c["action"] for c in aa.open_cards(40, "client", persona="media")], ["team_request"])
@@ -229,17 +243,51 @@ class ChatHandoffs(Base):
         self.assertEqual(len(HANDOFF_ALERTS), 1)
         self.assertNotIn("action", sa._with_handoff("טקסט", handoff))
 
-    def test_topic_defaults(self):
-        self.assertEqual(sa._handoff_topic({}, True), "other")
-        self.assertEqual(sa._handoff_topic({}, False), "manual_task")
-        self.assertEqual(sa._handoff_topic({"handoff_topic": "Refund"}, True), "refund")
+    def test_only_the_five_team_topics(self):
+        # 2026-11-02: no "other" / "manual_task" default — anything else is not a team request
+        self.assertEqual(sa._handoff_topic({}, True), "")
+        self.assertEqual(sa._handoff_topic({}, False), "")
+        self.assertEqual(sa._handoff_topic({"handoff_topic": "manual_task"}, False), "")
+        self.assertEqual(sa._handoff_topic({"handoff_topic": "Refund"}, True), "billing")
+        for topic in ("legal", "tax", "contract", "billing", "package_exception"):
+            self.assertEqual(sa._handoff_topic({"handoff_topic": topic}, False), topic)
 
-    def test_no_card_is_a_tracked_request_not_a_bare_promise(self):
-        out = sa._route_proposal(40, "general", "תעשה לי משהו", {"proposed_action": {"name": "made_up"}},
-                                 "מכין כרטיס", state={}, client=CLIENT)
+    def test_no_card_is_an_honest_line_and_a_capability_gap_never_a_request(self):
+        gaps, saved = [], chat_fallback.alert_capability_gap
+        chat_fallback.alert_capability_gap = lambda *a, **k: gaps.append(a)
+        try:
+            out = sa._route_proposal(40, "general", "תעשה לי משהו", {"proposed_action": {"name": "made_up"}},
+                                     "מכין כרטיס", state={}, client=CLIENT)
+        finally:
+            chat_fallback.alert_capability_gap = saved
+        self.assertNotIn("action", out)
+        self.assertEqual(self.rows("team_request"), [])
+        self.assertIn(aa._pick(aa.NO_CARD, "he"), out["reply"])
+        self.assertNotIn("הצוות קיבל", out["reply"])
+        self.assertFalse(out["needs_human_followup"])
+        self.assertEqual(len(gaps), 1)
+        self.assertIn("made_up", gaps[0][3])
+
+    def test_a_manual_task_flag_is_a_capability_gap_not_a_request(self):
+        gaps, saved = [], chat_fallback.alert_capability_gap
+        chat_fallback.alert_capability_gap = lambda *a, **k: gaps.append(a)
+        try:
+            out = sa._follow_up(40, "media", "תעלו את הסרטון לאינסטגרם", "את זה עוד אין לי איך לעשות מכאן.",
+                                {"needs_human_followup": True, "handoff_topic": "manual_task",
+                                 "capability_gap": "post to Instagram"}, out_of_scope=False)
+        finally:
+            chat_fallback.alert_capability_gap = saved
+        self.assertEqual(self.rows("team_request"), [])
+        self.assertNotIn("action", out)
+        self.assertFalse(out["needs_human_followup"])
+        self.assertEqual(out["reply"], "את זה עוד אין לי איך לעשות מכאן.")
+        self.assertEqual(gaps, [(40, "media", "תעלו את הסרטון לאינסטגרם", "post to Instagram")])
+
+    def test_a_team_topic_still_opens_the_tracked_request(self):
+        out = sa._follow_up(40, "general", "חויבתי פעמיים", "זה לצוות.",
+                            {"needs_human_followup": True, "handoff_topic": "billing"}, out_of_scope=False)
         self.assertEqual(out["action"]["action"], "team_request")
-        self.assertEqual(self.rows("team_request")[0]["params"]["topic"], "action_not_offered")
-        self.assertNotIn(aa._pick(aa.NO_CARD, "he"), out["reply"])
+        self.assertEqual(self.rows("team_request")[0]["params"]["topic"], "billing")
 
 
 # ─── Photos → presenter ──────────────────────────────────────────────────────
@@ -448,7 +496,7 @@ class Prompts(unittest.TestCase):
     def test_persona_upgrade_is_the_concierges_build(self):
         body = _src("agents", "support_agent.py").split("def _answer_persona_question(", 1)[1]
         self.assertIn("_build_upgrade_proposal(client_id, client, lead, upgrade_request)", body)
-        self.assertIn("_with_handoff(", body)
+        self.assertIn("_follow_up(", body)
 
 
 if __name__ == "__main__":

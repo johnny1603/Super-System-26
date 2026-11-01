@@ -87,6 +87,19 @@ fallback origin; env `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`; deploy
    changes what visitors see until the next card is approved.
 6. Revert: "גרסאות" → "חזרה לגרסה הזו" — one tap; it becomes a new version and,
    on a live page, goes live at once (the tap is the approval).
+7. **Everything above works from the chat too (2026-11-02, `docs/CHAT_PARITY.md`).**
+   - The manager (or אורי) proposes `create_landing_page` with a concrete title
+     and goal built from the client's real data, asking at most one question.
+   - The client's click runs THE builder (`landing_page_agent.create_page`, the
+     one the "+ דף נחיתה חדש" button calls). It writes a draft, and the publish
+     card from step 3 appears in the same thread the client asked in
+     (`persona=`).
+   - The rest of the lifecycle has its own cards, each calling the dashboard
+     button's own function: `edit_landing_page`, `revert_landing_page`,
+     `unpublish_landing_page`, `delete_landing_page`, `connect_landing_domain`
+     and `check_landing_domain`.
+   - Results and versions per page come from `client_state.landing_pages`.
+   - A landing-page ask is never a team request.
 
 ## 3. Tracking
 
