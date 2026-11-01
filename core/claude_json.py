@@ -1,5 +1,6 @@
 import contextvars
 import json
+import re
 from contextlib import contextmanager
 
 from anthropic import Anthropic
@@ -129,6 +130,55 @@ def _extract_json(raw: str) -> str:
     return raw
 
 
+_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+_NO_JSON = object()
+
+
+def _parse(raw: str):
+    """The model's text -> a JSON value, with a LOCAL repair before any paid
+    retry: fences/preamble stripped, then the first complete object decoded
+    even when prose (with its own braces) follows it, then trailing commas
+    dropped. _NO_JSON when none of that yields JSON."""
+    cleaned = _extract_json(raw)
+    try:
+        return json.loads(cleaned, strict=False)
+    except json.JSONDecodeError:
+        pass
+    decoder = json.JSONDecoder(strict=False)
+    start = raw.find("{")
+    if start != -1:
+        try:
+            return decoder.raw_decode(raw[start:])[0]
+        except json.JSONDecodeError:
+            pass
+    try:
+        return json.loads(_TRAILING_COMMA.sub(r"\1", cleaned), strict=False)
+    except json.JSONDecodeError:
+        return _NO_JSON
+
+
+# Appended to the user message for the one repair retry (same model)
+REPAIR_NOTE = ("\n\n[Your previous answer to this message was not valid JSON. Answer again with ONLY the "
+               "JSON object the instructions ask for — no prose, no markdown fences, nothing before or "
+               "after it.]")
+
+
+def _with_repair_note(user_message):
+    if isinstance(user_message, list):
+        return list(user_message) + [{"type": "text", "text": REPAIR_NOTE.strip()}]
+    return f"{user_message}{REPAIR_NOTE}"
+
+
+def escalation_model(model: str):
+    """One tier up per core/model_routing's table, or None at the top. A model
+    outside the table (DEFAULT_MODEL, the deliverables' model) counts as the
+    standard tier."""
+    from core.model_routing import TIER_MODELS as tiers, next_tier
+    tier = next((t for t, m in tiers.items() if m == model), "standard")
+    up = next_tier(tier)
+    return tiers[up] if up else None
+
+
 def _text(response) -> str:
     """All TEXT blocks, joined. Models with thinking on by default (Haiku 5.5:
     adaptive thinking, display "omitted") return thinking blocks next to the
@@ -189,7 +239,8 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
 
 
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
-                          client_id=None, cost_category="claude_api", effort=None, retry_empty=True):
+                          client_id=None, cost_category="claude_api", effort=None, retry_empty=True,
+                          json_retry=True):
     """Call Claude expecting a JSON object back, guarding against the response
     getting cut off mid-JSON or coming back EMPTY.
 
@@ -211,6 +262,13 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
       where attribution is known.
     - retry_empty=False: ONE attempt only — for a routed turn, whose retry is
       one tier UP (core/model_routing), not the same model again.
+    - MALFORMED JSON (2026-11-02, after ClaudeJSONError alerts #113-#124): a
+      local repair first (no call: first complete object, trailing commas),
+      then ONE repair retry on the same model with REPAIR_NOTE, then ONE call
+      a tier up (escalation_model, per model_routing's table) — the tier-up
+      step is skipped when retry_empty=False, because a routed turn's caller
+      (model_routing.routed_turn) escalates itself. json_retry=False: no paid
+      retry at all (the turn router: a malformed answer means 'standard').
     """
     client = _client(api_key)
     # effort is optional: only sent when a caller asks (e.g. "low" for chat turns)
@@ -231,15 +289,30 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
         raise ClaudeJSONError(
             f"Empty completion from Claude after {len(attempts)} attempts "
             f"({' -> '.join(attempts)}; last {_shape(response)})", raw_response="")
-    cleaned = _extract_json(raw)
+    parsed = _parse(raw)
+    if parsed is not _NO_JSON:
+        return parsed
 
-    try:
-        return json.loads(cleaned, strict=False)
-    except json.JSONDecodeError as e:
-        raise ClaudeJSONError(
-            f"Could not parse JSON from Claude response (stop_reason={response.stop_reason}): {e}",
-            raw_response=raw,
-        ) from e
+    # MALFORMED JSON (the local repair already failed): one repair retry on the
+    # same model, then — unless the caller owns escalation (a routed turn,
+    # retry_empty=False) — one tier up per core/model_routing. Logged by shape,
+    # never content.
+    repair_models = ([model] if json_retry else []) + \
+        ([up] if json_retry and retry_empty and (up := escalation_model(model)) else [])
+    for attempt_model in repair_models:
+        print(f"[claude_json] MALFORMED JSON (cost_category={cost_category}, client_id={client_id}, "
+              f"{_shape(response)}); repair retry on {attempt_model}")
+        response = _complete(client, system, _with_repair_note(user_message), max_tokens, attempt_model,
+                             extra, client_id, cost_category)
+        retry_raw = _text(response)
+        parsed = _parse(retry_raw) if retry_raw.strip() else _NO_JSON
+        if parsed is not _NO_JSON:
+            return parsed
+        raw = retry_raw or raw
+    raise ClaudeJSONError(
+        f"Could not parse JSON from Claude response after {1 + len(repair_models)} attempt(s) "
+        f"({' -> '.join([model] + repair_models)}; stop_reason={response.stop_reason})",
+        raw_response=raw)
 
 
 def _sourced_urls(response) -> list:

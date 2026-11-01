@@ -140,7 +140,8 @@ def _ask_router(message: str, recent: list, client_id) -> dict:
                               for t in (recent or [])[-RECENT_TURNS:] if isinstance(t, dict)]}
     return safe_claude_json_call(ROUTER_SYSTEM, json.dumps(payload, ensure_ascii=False),
                                  max_tokens=ROUTER_MAX_TOKENS, model=TIER_MODELS[ROUTER_TIER], effort="low",
-                                 client_id=client_id, cost_category="claude_router", retry_empty=False)
+                                 client_id=client_id, cost_category="claude_router", retry_empty=False,
+                                 json_retry=False)   # malformed -> FALLBACK_TIER, never a paid retry
 
 
 def _router_call(message, recent, client_id):
@@ -158,6 +159,9 @@ def classify(message: str, recent: list, client_id=None) -> dict:
     except concurrent.futures.TimeoutError:
         return {"tier": FALLBACK_TIER, "reason": "router timeout", "source": "timeout", "router_ils": 0.0}
     except Exception as e:
+        if type(e).__name__ == "ClaudeJSONError":
+            return {"tier": FALLBACK_TIER, "reason": "router answer malformed", "source": "invalid",
+                    "router_ils": 0.0}
         return {"tier": FALLBACK_TIER, "reason": f"router error {type(e).__name__}", "source": "error",
                 "router_ils": 0.0}
     tier = str((out or {}).get("tier", "") if isinstance(out, dict) else "").strip().lower()

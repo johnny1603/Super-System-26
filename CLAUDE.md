@@ -22,7 +22,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   that expects JSON (truncation-aware retry, fence stripping, `ClaudeJSONError`). An EMPTY
   completion (Haiku 5.5 thinks by default and can end a turn with thinking blocks only) is
   retried once on the same model, then once on `DEFAULT_MODEL`, logging stop_reason/usage/block
-  types only; text is joined from ALL text blocks.
+  types only; text is joined from ALL text blocks. MALFORMED JSON (2026-11-02): local repair (first
+  complete object, trailing commas) -> ONE repair retry on the same model -> ONE call a tier up
+  (`escalation_model`, per `model_routing.TIER_MODELS`; DEFAULT_MODEL counts as standard; skipped
+  when `retry_empty=False` because `routed_turn` escalates itself) -> ClaudeJSONError.
+  `json_retry=False` = no paid retry (the turn router, which falls back to `standard`).
+  `tests/test_structured_output.py`.
   `claude_web_search_call()` is its TEXT-mode sibling for answers that need live web search
   (server-side web_search tool, pause_turn handling, per-search fee tracked in client_costs) —
   search + citations don't mix with strict JSON output, hence two paths. Used by the support

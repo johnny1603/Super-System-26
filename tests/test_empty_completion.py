@@ -133,10 +133,12 @@ class EmptyCompletion(unittest.TestCase):
         self.assertEqual(result, {"reply": "full"})
         self.assertEqual(fake.calls[1]["max_tokens"], 1400)
 
-    def test_unparseable_text_is_still_a_parse_error_not_a_retry(self):
-        result, fake, _ = self.run_script([response(block("text", "not json at all"))])
+    def test_unparseable_text_gets_one_repair_retry_then_a_parse_error(self):
+        # The top tier has nothing above it: one repair retry, then the error
+        result, fake, _ = self.run_script([response(block("text", "not json at all")),
+                                           response(block("text", "still not json"))])
         self.assertIsInstance(result, cj.ClaudeJSONError)
-        self.assertEqual(len(fake.calls), 1)
+        self.assertEqual([c["model"] for c in fake.calls], [cj.CHAT_TURN_MODEL] * 2)
 
 
 # ─── The production question, through the real concierge path ───────────────
