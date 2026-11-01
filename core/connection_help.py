@@ -598,14 +598,25 @@ def missing_links() -> list:
             for c in CONNECTIONS for link in c["links"] if not link["url"]]
 
 
+def _catalog_links(entry: dict) -> list:
+    """Agents read vendor links ONLY from the connection_catalog table
+    (core/connection_catalog, 2026-11-01) — the `links` above are kept for the
+    card guide's screen descriptions, never handed out by an agent."""
+    from core import connection_catalog
+    row = connection_catalog.entry("website" if entry["id"] == "wordpress" else entry["id"])
+    if not row or not row["enabled"]:
+        return []
+    return [{"label": label, "url": row[field]}
+            for field, label in (("signup_url", "הרשמה"), ("pricing_url", "מסלולים")) if row[field]]
+
+
 def for_agent(entry: dict, lang: str, whatsapp: str) -> dict:
     """The block the concierge receives: steps in the client's language and
-    ONLY links that have a real URL."""
+    ONLY the catalog's links for this connection."""
     return {
         "connection": _pick(entry["title"], lang),
         "steps": _pick(entry["steps"], lang) or [],
-        "links": [{"label": _pick(link["label"], lang), "url": link["url"]}
-                  for link in entry["links"] if link["url"]],
+        "links": _catalog_links(entry),
         "estimated_minutes": entry["estimated_minutes"],
         "needs_api_key": entry["needs_api_key"],
         "human_support_whatsapp": whatsapp,
@@ -616,10 +627,10 @@ _URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
 
 
 def strip_foreign_links(reply: str, entry: dict) -> str:
-    """Removes any URL from the reply that is not one of this entry's links —
-    the agent may only hand out the links from the config, for that
-    connection only."""
-    allowed = {link["url"].rstrip("/") for link in entry.get("links", []) if link["url"]}
+    """Removes any URL from the reply that is not one of this connection's
+    catalog links — the agent may only hand out links from the
+    connection_catalog table, for that connection only."""
+    allowed = {link["url"].rstrip("/") for link in _catalog_links(entry)}
 
     def keep(match):
         url = match.group(0).rstrip(".,;:!?")

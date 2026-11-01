@@ -1393,8 +1393,7 @@ a.media-item:hover { border-color: var(--accent); }
         <input type="checkbox" id="gadsConsent">
         <span data-i18n-html="gads_consent">אני מאשר/ת שאנשי צוות מורשים של uallak יראו את חשבון Google Ads שלי ואת ביצועי הקמפיינים (בדשבורד הניהול ובדוח שבועי פנימי) וינהלו בו קמפיינים עבורי, כמתואר ב<a href="/privacy/he/" target="_blank" rel="noopener">מדיניות הפרטיות</a>.</span>
       </label>
-      <button class="conn-btn primary" id="gadsBtn" onclick="connectGoogleAds()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="google_ads" style="display:none;" onclick="helpConnection('google_ads')" data-i18n="conn_help_btn">עזרה</button>
+      <button class="conn-btn primary" id="gadsBtn" onclick="connectViaChat('google_ads')" data-i18n="conn_connect">חבר</button>
       <!-- Shown only when the login reaches several enabled accounts -->
       <div class="gads-choose" id="gadsChoose" style="display:none;"></div>
     </div>
@@ -1409,8 +1408,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="metaStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="metaBtn" onclick="connectMeta()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="meta" style="display:none;" onclick="helpConnection('meta')" data-i18n="conn_help_btn">עזרה</button>
+      <button class="conn-btn primary" id="metaBtn" onclick="connectViaChat('meta')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1423,8 +1421,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="tiktokStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="tiktokBtn" onclick="connectTiktokExplained()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="tiktok" style="display:none;" onclick="helpConnection('tiktok')" data-i18n="conn_help_btn">עזרה</button>
+      <button class="conn-btn primary" id="tiktokBtn" onclick="connectViaChat('tiktok')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1437,8 +1434,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="youtubeStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="youtubeBtn" onclick="connectYoutube()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="youtube" style="display:none;" onclick="helpConnection('youtube')" data-i18n="conn_help_btn">עזרה</button>
+      <button class="conn-btn primary" id="youtubeBtn" onclick="connectViaChat('youtube')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <!-- Google verification round 2: hidden unless the server says the flag is on (d.features) -->
@@ -1453,7 +1449,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <div class="perf-note" data-i18n="gmail_card_note">שליחה בלבד: כל מייל יוצא רק אחרי שתאשרו אותו בצ׳אט. אנחנו לא קוראים את תיבת הדואר.</div>
-      <button class="conn-btn primary" id="gmailBtn" onclick="connectGmailSend()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="gmailBtn" onclick="connectViaChat('gmail')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked" id="scCard" style="display:none;">
@@ -1471,7 +1467,7 @@ a.media-item:hover { border-color: var(--accent); }
         <label class="perf-note" for="scSiteSelect" data-i18n="sc_site_label">האתר שאנחנו קוראים</label>
         <select id="scSiteSelect" onchange="chooseSearchConsoleSite(this.value)" style="width:100%;max-width:100%;"></select>
       </div>
-      <button class="conn-btn primary" id="scBtn" onclick="connectSearchConsole()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="scBtn" onclick="connectViaChat('search_console')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked" id="gaCard" style="display:none;">
@@ -1489,7 +1485,7 @@ a.media-item:hover { border-color: var(--accent); }
         <label class="perf-note" for="gaPropSelect" data-i18n="ga_property_label">הנכס שאנחנו קוראים</label>
         <select id="gaPropSelect" onchange="chooseAnalyticsProperty(this.value)" style="width:100%;max-width:100%;"></select>
       </div>
-      <button class="conn-btn primary" id="gaBtn" onclick="connectAnalytics()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="gaBtn" onclick="connectViaChat('analytics')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked" id="gdriveCard" style="display:none;">
@@ -1504,7 +1500,7 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <div class="perf-note" data-i18n="gdrive_card_note">ניצור תיקייה אחת בשם uallak ב-Drive שלך, וכל הקבצים שלך יישמרו בה — אצלך ובבעלותך. נוכל לנהל רק קבצים שהמערכת עצמה יצרה, ולעולם לא נוכל לקרוא שום דבר אחר ב-Drive שלך.</div>
       <div class="perf-note" id="gdriveWhere" style="display:none;"></div>
-      <button class="conn-btn primary" id="gdriveBtn" onclick="connectGoogleDrive()" data-i18n="connect_now">חבר עכשיו</button>
+      <button class="conn-btn primary" id="gdriveBtn" onclick="connectViaChat('google_drive')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -1517,8 +1513,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="gtmStatus" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="gtmBtn" onclick="connectGtm()" data-i18n="connect_now">חבר עכשיו</button>
-      <button type="button" class="conn-help-btn" data-help-id="tag_manager" style="display:none;" onclick="helpConnection('tag_manager')" data-i18n="conn_help_btn">עזרה</button>
+      <button class="conn-btn primary" id="gtmBtn" onclick="connectViaChat('tag_manager')" data-i18n="conn_connect">חבר</button>
       <div class="lock-note" id="gtmNoSiteNote" style="display:none; margin-top:6px;" data-i18n="gtm_no_site_note">מדידת ההמרות תותקן באתר שלכם ברגע שהאתר יחובר.</div>
       <!-- Which container is connected + does the site load it (core/gtm_connection) -->
       <div class="gtm-info" id="gtmInfo" style="display:none;"></div>
@@ -1538,11 +1533,8 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <div class="site-choice-row" id="siteChoiceRow">
-        <button class="conn-btn primary" id="siteBtn" onclick="openSiteFormExplained()" data-i18n="connect_now">חבר עכשיו</button>
-        <button class="conn-btn secondary" id="siteExistingBtn" onclick="toggleExistingSiteForm()" data-i18n="site_existing_btn">יש לי אתר קיים — בדקו אותו</button>
-        <button class="conn-btn secondary" id="siteCreateBtn" onclick="toggleCreateSiteForm()" data-i18n="site_create_new">אין לי אתר — הקימו לי אחד</button>
+        <button class="conn-btn primary" id="siteBtn" onclick="connectViaChat('website')" data-i18n="conn_connect">חבר</button>
       </div>
-      <button type="button" class="conn-help-btn" data-help-id="wordpress" style="display:none;" onclick="helpConnection('wordpress')" data-i18n="conn_help_btn">עזרה</button>
       <!-- Existing-site path. We DETECT what their site is rather than asking
            them to declare it, then offer exactly one of two genuinely different
            things. Every explanation is delivered into אורי's chat thread — this
@@ -1598,7 +1590,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="toolStatus-higgsfield" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="openToolGuide('higgsfield')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
+      <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="connectViaChat('higgsfield')" data-i18n="conn_connect">חבר</button>
       <div class="tool-guide" id="toolGuide-higgsfield" style="display:none;"></div>
       <div id="toolForm-higgsfield" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="higgsfield_signup_note">מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.</div>
@@ -1622,7 +1614,6 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <div class="conn-note" id="toolLikenessConsentOn" style="display:none; margin-top:8px;" data-i18n="tool_likeness_consent_on">האישור לשימוש בדמות שלך נרשם ✓</div>
       <button class="disconnect-link" id="toolDisc-higgsfield" style="display:none;" onclick="disconnectTool('higgsfield', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
-      <button type="button" class="conn-help-btn" data-help-id="higgsfield" style="display:none;" onclick="helpConnection('higgsfield')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
     <div class="conn-card unlocked" id="toolCard-elevenlabs">
@@ -1635,7 +1626,7 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" id="toolStatus-elevenlabs" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
-      <button class="conn-btn primary" id="toolOpenBtn-elevenlabs" onclick="openToolGuide('elevenlabs')" data-i18n="tool_start_guide">חיבור עם הדרכה צעד אחר צעד</button>
+      <button class="conn-btn primary" id="toolOpenBtn-elevenlabs" onclick="connectViaChat('elevenlabs')" data-i18n="conn_connect">חבר</button>
       <div class="tool-guide" id="toolGuide-elevenlabs" style="display:none;"></div>
       <div id="toolForm-elevenlabs" style="display:none; margin-top:10px;">
         <div class="conn-note" data-i18n="tool_eleven_note">מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. שיבוט קול דורש מסלול בתשלום בחשבון שפתחתם; התשלום עובר ישירות מכם.</div>
@@ -1657,7 +1648,6 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
       <div class="conn-note" id="toolVoiceConsentOn" style="display:none; margin-top:8px;" data-i18n="tool_voice_consent_on">הסכמת שיבוט הקול נרשמה ✓</div>
       <button class="disconnect-link" id="toolDisc-elevenlabs" style="display:none;" onclick="disconnectTool('elevenlabs', this)" data-i18n="disconnect_link">ניתוק חיבור</button>
-      <button type="button" class="conn-help-btn" data-help-id="elevenlabs" style="display:none;" onclick="helpConnection('elevenlabs')" data-i18n="conn_help_btn">עזרה</button>
     </div>
 
     <!-- Voice recordings (core/voice_recordings): uploading is ALL that is
@@ -1702,8 +1692,7 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <div class="conn-note" data-i18n="manychat_note">מענה אוטומטי לפניות בוואטסאפ, אינסטגרם ומסנג׳ר. זה לא שירות במחיר קבוע — בונים אותו לפי הצורך המדויק שלכם, ולכן מתחילים בשיחה קצרה איתנו שבה נבין מה נכון לעסק שלכם ורק אז נתמחר.</div>
-      <button class="conn-btn primary" onclick="askAboutAutomation('manychat')" data-i18n="automation_talk">דברו איתנו על זה</button>
-      <button class="conn-btn secondary" onclick="chatAboutAutomation('manychat')" data-i18n="automation_chat">יש לי שאלה — בצ׳אט</button>
+      <button class="conn-btn primary" id="manychatBtn" onclick="connectViaChat('manychat')" data-i18n="conn_connect">חבר</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -2479,6 +2468,9 @@ const DASH_I18N = {
   connected_status: { he:'מחובר', en:'Connected', fr:'Connecté', ar:'متصل', ru:'Подключено' },
   connected_btn: { he:'מחובר ✓', en:'Connected ✓', fr:'Connecté ✓', ar:'متصل ✓', ru:'Подключено ✓' },
   connect_now: { he:'חבר עכשיו', en:'Connect now', fr:'Connecter', ar:'اربط الآن', ru:'Подключить' },
+  conn_connect: { he:'חבר', en:'Connect', fr:'Connecter', ar:'اربط', ru:'Подключить' },
+  conn_chat_failed: { he:'לא הצלחנו לפתוח את השיחה כרגע. נסו שוב בעוד רגע.', en:'We couldn\'t open the chat right now. Please try again in a moment.', fr:'Impossible d\'ouvrir la discussion pour le moment. Réessayez dans un instant.', ar:'لم نتمكن من فتح المحادثة الآن. حاولوا مرة أخرى بعد قليل.', ru:'Сейчас не удалось открыть чат. Попробуйте ещё раз чуть позже.' },
+  gads_consent_chat_ok: { he:'מאשר/ת וממשיך/ה', en:'I agree, continue', fr:'J\'accepte, continuer', ar:'أوافق وأتابع', ru:'Согласен(на), продолжить' },
   gads_consent: {
     he:'אני מאשר/ת שאנשי צוות מורשים של uallak יראו את חשבון Google Ads שלי ואת ביצועי הקמפיינים (בדשבורד הניהול ובדוח שבועי פנימי) וינהלו בו קמפיינים עבורי, כמתואר ב<a href="/privacy/he/" target="_blank" rel="noopener">מדיניות הפרטיות</a>.',
     en:'I agree that authorized uallak staff will see my Google Ads account and campaign performance (in the admin dashboard and an internal weekly report) and manage campaigns in it for me, as described in the <a href="/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.',
@@ -3933,7 +3925,6 @@ async function chooseGtmContainer(path) {
 function markWebsiteConnected() {
   markPlatformConnected('siteStatus', 'siteBtn', 'wordpress');
   document.getElementById('siteForm').style.display = 'none';
-  document.getElementById('siteCreateBtn').style.display = 'none';
   document.getElementById('siteCreateForm').style.display = 'none';
   document.getElementById('siteCreateProgress').style.display = 'none';
   // Drop the two-button flex layout so the remaining connected-state siteBtn
@@ -4992,7 +4983,7 @@ function openAgentWindow(id) {
   document.getElementById('chatWindows').appendChild(w.root);
   markThreadSeen(id);
   renderLauncher();
-  loadWindowHistory(id);
+  w.historyLoaded = loadWindowHistory(id);   // awaited by connectViaChat
   if (id === 'general') renderChips();
   focusWindow(id);
   w.inputEl.focus();
@@ -8054,6 +8045,99 @@ function helpConnection(id) {
   if (!w) return;
   setChatInput(w.inputEl, uallakI18n.t('conn_help_msg', { name: entry.title }));
   sendInWindow('general', { help_connection: id });
+}
+
+// ─── "חבר": every connection starts in the agent's chat ─────────────────────
+// ONE button per card. The server (core/connection_catalog) asks one question
+// with two chips; links come ONLY from its connection_catalog table. "יש לי"
+// runs the card's existing connect flow below — a key is pasted only in the
+// card's own field, never in the chat. Included connections answer show:false
+// and nothing appears.
+const CONNECT_ACTIONS = {
+  google_ads: () => gadsConsentInChat(),
+  meta: () => connectMeta(), tiktok: () => connectTiktokExplained(), youtube: () => connectYoutube(),
+  gmail: () => connectGmailSend(), search_console: () => connectSearchConsole(),
+  analytics: () => connectAnalytics(), google_drive: () => connectGoogleDrive(), tag_manager: () => connectGtm(),
+  website: () => showCardForm('siteExistingForm', toggleExistingSiteForm),
+  website_create: () => showCardForm('siteCreateForm', toggleCreateSiteForm),
+  higgsfield: () => showCardForm('toolForm-higgsfield', () => openToolForm('higgsfield')),
+  elevenlabs: () => showCardForm('toolForm-elevenlabs', () => openToolForm('elevenlabs')),
+  manychat: () => askAboutAutomation('manychat'),
+};
+
+function showCardForm(formId, open) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  if (form.style.display === 'none') open();
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Google Ads needs the staff-access consent first: the same text as the card,
+// as a confirmation card in the chat — the click ticks the card's box
+function gadsConsentInChat() {
+  const box = document.getElementById('gadsConsent');
+  if (box && box.checked) { connectGoogleAds(); return; }
+  const w = CHAT_WINDOWS.google;
+  if (!w) return;
+  const el = document.createElement('div');
+  el.className = 'chat-action';
+  el.dir = 'auto';
+  const text = document.createElement('div');
+  text.innerHTML = uallakI18n.t('gads_consent');   // static i18n copy (its privacy link)
+  const row = document.createElement('div');
+  row.className = 'row';
+  const ok = document.createElement('button');
+  ok.type = 'button';
+  ok.className = 'ok';
+  ok.textContent = uallakI18n.t('gads_consent_chat_ok');
+  ok.onclick = () => { if (box) box.checked = true; ok.disabled = true; connectGoogleAds(); };
+  row.appendChild(ok);
+  el.append(text, row);
+  w.msgsEl.appendChild(el);
+  w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+
+async function connectViaChat(key, step) {
+  step = step || 'start';
+  let data;
+  try {
+    const res = await fetch('/api/client/connect-chat', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, step }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('connect chat refused');
+    data = body.data;
+  } catch (e) {
+    console.error('connect chat failed', e);
+    showNotice(uallakI18n.t('conn_chat_failed'), 'warn');
+    return;
+  }
+  if (!data.show) return;
+  const fresh = !CHAT_WINDOWS[data.persona];
+  const w = openAgentWindow(data.persona);
+  if (!w) return;
+  if (w.historyLoaded) await w.historyLoaded;
+  // A freshly opened window already replayed this turn from the stored thread
+  if (!fresh) (data.messages || []).forEach(m => appendMsg(w.msgsEl, m, 'bot'));
+  w.msgsEl.querySelectorAll('.conn-chips').forEach(el => el.remove());   // only the latest question has chips
+  if ((data.chips || []).length) {
+    const row = document.createElement('div');
+    row.className = 'chip-row conn-chips';
+    data.chips.forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = c.label;
+      b.onclick = () => { row.remove(); appendMsg(w.msgsEl, c.label, 'user'); connectViaChat(key, c.step); };
+      row.appendChild(b);
+    });
+    w.msgsEl.appendChild(row);
+    w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+  }
+  if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
+  if (data.connected) loadDashboard();
 }
 
 // The general concierge, not a specialist: automation isn't ads, site or media,

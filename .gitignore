@@ -6,3 +6,4 @@ config/secrets.py
 operator-for-supabase.txt
 chat-for-supabase.txt
 landing-for-supabase.txt
+catalog-for-supabase.txt

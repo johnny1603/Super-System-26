@@ -1383,6 +1383,68 @@ def client_connection_assist(connection_id: str, request: Request):
     except ValueError:
         raise HTTPException(status_code=404, detail={"code": "no_guide"})
 
+class ConnectChatRequest(BaseModel):
+    key: str
+    step: str = "start"   # start | has | none | done
+
+@app.post("/api/client/connect-chat")
+def client_connect_chat(req: ConnectChatRequest, request: Request):
+    # The card's ONE "חבר" button: one turn of the connect conversation in the
+    # agent's chat (core/connection_catalog). Links come only from the
+    # connection_catalog table. No key ever passes through here.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    key = (req.key or "").strip()
+    if not re.fullmatch(r"[a-z_]{1,40}", key) or req.step not in ("start", "has", "none", "done"):
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_REQUEST"})
+    from core import connection_catalog
+    result = connection_catalog.flow(client_id, key, req.step)
+    if not result.get("show"):
+        return {"success": True, "data": {"show": False}}
+    from agents.client_agent import log_communication
+    from agents.support_agent import persona_channel
+    channel = persona_channel(result["persona"])
+    chip = {"has": connection_catalog.CHIP_HAS, "none": connection_catalog.CHIP_NONE,
+            "done": connection_catalog.CHIP_DONE}.get(req.step)
+    if chip:
+        log_communication(client_id, "inbound", channel, chip)
+    for text in result.get("messages") or []:
+        log_communication(client_id, "outbound", channel, text)
+    return {"success": True, "data": result}
+
+@app.get("/api/connections/reminders", dependencies=_admin_only)
+def cron_connection_reminders():
+    # Daily (X-Admin-Key): at most ONE gentle reminder per client + connection, ever
+    from core import connection_catalog
+    return {"success": True, "data": connection_catalog.send_due_reminders()}
+
+@app.get("/api/admin/connection-catalog")
+def admin_connection_catalog(request: Request):
+    _require_admin(request)
+    from core import connection_catalog
+    return {"success": True, "data": {"rows": connection_catalog.rows(fresh=True),
+                                      "tiers": list(connection_catalog.TIERS)}}
+
+class AdminCatalogUpdateRequest(BaseModel):
+    tier: str = None
+    signup_url: str = None
+    pricing_url: str = None
+    recommended_plan_note: str = None
+    help_notes: str = None
+    enabled: bool = None
+
+@app.post("/api/admin/connection-catalog/{key}")
+def admin_connection_catalog_update(key: str, req: AdminCatalogUpdateRequest, request: Request):
+    # Change a link without a deploy. https only; audited.
+    _require_admin(request)
+    from core import connection_catalog
+    changes = {k: v for k, v in req.model_dump().items() if v is not None}
+    try:
+        return {"success": True, "data": connection_catalog.admin_update(key, changes)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_VALUE", "field": str(e)})
+
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
     client_id = _require_session(request)

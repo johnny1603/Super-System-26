@@ -301,8 +301,10 @@ class GuidedHelp(unittest.TestCase):
     def test_card_primary_action_is_the_guide(self):
         html = _src("dashboard", "client", "index.html")
         for tool in TOOLS:
-            self.assertIn(f'id="toolOpenBtn-{tool}" onclick="openToolGuide(\'{tool}\')" '
-                          f'data-i18n="tool_start_guide"', html)
+            # 2026-11-01: the card's ONE button is "חבר", which opens the chat
+            # flow (core/connection_catalog); the guide stays for the screens
+            self.assertIn(f'id="toolOpenBtn-{tool}" onclick="connectViaChat(\'{tool}\')" '
+                          f'data-i18n="conn_connect"', html)
             self.assertIn(f'id="toolGuide-{tool}"', html)
             # The raw key field is still there, behind "I already have a key"
             self.assertIn(f'id="toolKey-{tool}"', html)

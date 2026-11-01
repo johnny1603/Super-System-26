@@ -595,7 +595,8 @@ class DashboardCards(unittest.TestCase):
         for tool in ("elevenlabs", "higgsfield"):
             for element in ("toolCard-", "toolStatus-", "toolKey-", "toolConnectBtn-", "toolDisc-", "toolForm-"):
                 self.assertIn(f'id="{element}{tool}"', self.html, element + tool)
-            self.assertIn(f'data-help-id="{tool}"', self.html)
+            # One "חבר" per card (2026-11-01): it opens the agent's chat
+            self.assertIn(f'id="toolOpenBtn-{tool}" onclick="connectViaChat(\'{tool}\')"', self.html)
 
     def test_no_shared_form_left(self):
         for old in ("avatarHeygenKey", "avatarElevenKey", "connectAvatar(", "/api/avatar/connect"):

@@ -530,6 +530,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   backup-first migration). Needs `migrations/2026-11-01-landing-own.sql`; degrades to the old
   behaviour until then. InstaWP is full websites only. `tests/test_landing_own.py`.
   See `.claude/skills/landing-pages/SKILL.md`.
+- `core/connection_catalog.py` — connections onboarding through the chat (2026-11-01,
+  `docs/CONNECTIONS_ONBOARDING.md`). Every dashboard connection card has exactly ONE "חבר"
+  button → `POST /api/client/connect-chat` → the agent asks "יש לי חשבון / אין לי עדיין";
+  "יש לי" runs the card's existing connect, "אין לי" gives sign-up (+ plan, one recommended
+  plan, "paid directly to the vendor" for paid tiers) **from the `connection_catalog` table
+  only** (no vendor URL in code; `connection_help.for_agent` reads it too). No usable link →
+  human support. "סיימתי" verifies; not yet → ONE reminder (`GET /api/connections/reminders`,
+  daily). Included tier shows nothing. Owner edits links at `/admin/connections/`. Needs
+  `migrations/2026-11-01-connection-catalog.sql`. Don't add buttons next to a card's "חבר".
+  `tests/test_connection_catalog.py`.
 - `core/operating_costs.py` — uallak's OWN company-wide spend ("what am I actually
   spending"), admin-only. Distinct from `client_costs` (per-client AI usage, which this
   READS and never writes) and from `budget_agent` (ONE client's picture). **No provider we

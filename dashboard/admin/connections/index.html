@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — קטלוג חיבורים</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* The connection_catalog table (core/connection_catalog): the ONLY source of
+   sign-up and plan links the agents give clients. Edit a link here, no deploy.
+   Admin session only; https links only (checked again on the server). */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
+  --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.muted { color:var(--gray); font-size:13px; }
+.badge { display:inline-block; font-size:12px; padding:2px 9px; border-radius:100px; background:var(--panel-2); border:1px solid var(--border); font-weight:400; }
+.badge.ok { color:var(--green); } .badge.warn { color:var(--yellow); }
+label { display:block; margin-top:8px; }
+input[type=text], select, textarea { font-family:inherit; font-size:14px; background:var(--panel-2); color:var(--white);
+  border:1px solid var(--border); border-radius:10px; padding:7px 10px; width:100%; margin-top:3px; }
+textarea { min-height:54px; resize:vertical; }
+input[dir=ltr] { text-align:left; }
+button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:6px 12px; cursor:pointer; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · קטלוג חיבורים</div>
+  <a href="/admin/">← לניהול</a>
+</div>
+<div class="wrap">
+  <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+  <div class="card muted">מכאן בלבד הסוכנים לוקחים קישורי הרשמה ומסלולים. שורה כבויה או בלי קישור הרשמה — הלקוח מקבל עזרה מאדם במקום קישור. "כלול" — הלקוח לא רואה כלום.</div>
+  <div id="rows"><div class="card muted">טוען…</div></div>
+</div>
+<script>
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TIER_NAMES = {included: "כלול בחבילה", free_account: "חשבון חינמי", paid_account: "חשבון בתשלום"};
+let TIERS = [];
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
+    : {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (res.status === 401) { document.getElementById("authNote").style.display = "block"; throw new Error("auth"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data.detail && data.detail.field) || "failed");
+  return data.data;
+}
+
+function rowHtml(r) {
+  const usable = r.tier === "included" || (r.enabled && (r.signup_url || r.key === "website"));
+  return `<div class="card" data-key="${esc(r.key)}">
+    <h2><code>${esc(r.key)}</code> <span class="badge">${esc(TIER_NAMES[r.tier] || r.tier)}</span>
+      ${usable ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">עזרה מאדם</span>'}</h2>
+    <label class="muted">רמה <select name="tier">${TIERS.map(t =>
+      `<option value="${t}"${t === r.tier ? " selected" : ""}>${esc(TIER_NAMES[t] || t)}</option>`).join("")}</select></label>
+    <label class="muted">קישור הרשמה <input type="text" dir="ltr" name="signup_url" value="${esc(r.signup_url)}" placeholder="https://"></label>
+    <label class="muted">קישור מסלולים <input type="text" dir="ltr" name="pricing_url" value="${esc(r.pricing_url)}" placeholder="https://"></label>
+    <label class="muted">המסלול שאנחנו ממליצים עליו <textarea name="recommended_plan_note">${esc(r.recommended_plan_note)}</textarea></label>
+    <label class="muted">צעדים קצרים ללקוח <textarea name="help_notes">${esc(r.help_notes)}</textarea></label>
+    <div class="row">
+      <label class="muted" style="margin:0;"><input type="checkbox" name="enabled"${r.enabled ? " checked" : ""}> פעיל</label>
+      <button data-save>שמירה</button><span class="muted" data-msg></span>
+    </div>
+  </div>`;
+}
+
+async function load() {
+  const d = await api("/api/admin/connection-catalog");
+  TIERS = d.tiers;
+  document.getElementById("rows").innerHTML = d.rows.map(rowHtml).join("")
+    || '<div class="card muted">הטבלה ריקה או שעוד לא נוצרה — להריץ את migrations/2026-11-01-connection-catalog.sql ב-Supabase.</div>';
+}
+
+document.getElementById("rows").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-save]");
+  if (!b) return;
+  const card = b.closest("[data-key]");
+  const msg = card.querySelector("[data-msg]");
+  const body = {enabled: card.querySelector('[name="enabled"]').checked};
+  ["tier", "signup_url", "pricing_url", "recommended_plan_note", "help_notes"].forEach(f => {
+    body[f] = card.querySelector(`[name="${f}"]`).value.trim();
+  });
+  b.disabled = true;
+  try {
+    await api("/api/admin/connection-catalog/" + encodeURIComponent(card.dataset.key), body);
+    msg.textContent = "נשמר ✓";
+    await load();
+  } catch (err) {
+    b.disabled = false;
+    msg.textContent = (err.message === "signup_url" || err.message === "pricing_url")
+      ? "קישור חייב להתחיל ב-https:// ובלי רווחים" : "לא נשמר — לנסות שוב";
+  }
+});
+load().catch(err => { if (err.message !== "auth") document.getElementById("rows").innerHTML = '<div class="card muted">הטעינה נכשלה. אפשר לרענן.</div>'; });
+</script>
+<!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->
+<script src="/assets/itzik-chat.js" defer></script>
+</body>
+</html>
