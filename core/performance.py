@@ -320,11 +320,14 @@ def _tracking_card(client_id: int, platforms: set) -> dict:
         except Exception:
             pass
         return _card("needs_attention", reason=failure["reason"], last_checked=_now())
+    # Which conversion types (core/conversion_types) are live in the PUBLISHED
+    # container — form, WhatsApp click, phone click
+    live_types = list(status.get("live_types") or (["form_submit"] if status.get("configured_live") else []))
     if status.get("configured_live"):
-        return _card("active", data_pulled_at=pulled,
+        return _card("active", data_pulled_at=pulled, live_types=live_types,
                      key_numbers={"lead_event_live": True,
                                   "lead_event_tags": len(status.get("lead_event_tags") or [])})
-    return _card("connected_no_data", last_checked=pulled)
+    return _card("connected_no_data", last_checked=pulled, live_types=live_types)
 
 
 def _traffic_card(client_id: int) -> dict:
@@ -475,7 +478,66 @@ def performance_page(client_id: int) -> dict:
                                                   "yesterday_change", "windows", "sources",
                                                   "first_data_date", "pulled_at")}
     page["landing_pages"] = _landing_block(client_id)
+    page["conversions"] = _conversions_block(client_id, leads, page["landing_pages"])
     return page
+
+
+def _conversions_block(client_id: int, leads: dict, landing: list) -> dict:
+    """The client's OWN conversion types (core/conversion_types), each with
+    what we can honestly count today:
+    - form_submit: client_leads rows, 7/30/90 days (unchanged source);
+    - whatsapp_click / phone_click: our own landing-page click counters, last
+      30 days. Clicks on the WordPress site itself would come from GA4 event
+      counts — that read needs the round-2 Analytics grant, so it is not
+      claimed here (source says which);
+    - store_sales: the store itself, revenue + orders per period — the
+      PRIMARY metric for a client who sells online.
+    A click is an indication of an enquiry, never a confirmed conversation."""
+    from core import conversion_types
+    choice = conversion_types.get(client_id)
+    types = choice["types"]
+    today = date.today()
+    metrics = []
+    for kind in types:
+        item = {"type": kind, "label": conversion_types.LABELS_HE[kind]}
+        if kind == "form_submit":
+            item["windows"] = [{"days": d, "count": _count_leads(leads.get("rows") or [],
+                                                                today - timedelta(days=d - 1), today)}
+                               for d in WINDOWS]
+            item["source"] = "leads"
+        elif kind in ("whatsapp_click", "phone_click"):
+            field = "whatsapp" if kind == "whatsapp_click" else "calls"
+            counted = [p.get(field) for p in landing or [] if p.get(field) is not None]
+            item["source"] = "landing_pages"
+            item["windows"] = [{"days": 30, "count": sum(counted)}] if counted else []
+            item["is_click"] = True
+        elif kind == "store_sales":
+            item.update(_store_sales(client_id))
+        metrics.append(item)
+    has_click = any(m.get("is_click") for m in metrics)
+    return {"types": types, "confirmed": choice["confirmed"],
+            "primary": "store_sales" if "store_sales" in types else types[0],
+            "metrics": metrics, "click_note": conversion_types.CLICK_NOTE_HE if has_click else ""}
+
+
+def _store_sales(client_id: int) -> dict:
+    """Revenue and orders per period, from the store (aggregates, cached in
+    store_agent). Never a customer detail."""
+    from agents import store_agent
+    from core import woocommerce_service
+    if not store_agent.is_connected(client_id):
+        return {"source": "store", "connected": False, "windows": []}
+    windows = []
+    try:
+        for days, period in ((7, "last_7_days"), (30, "last_30_days"), (90, "last_90_days")):
+            s = store_agent.sales_summary(client_id, period)
+            windows.append({"days": days, "revenue": s.get("net_revenue"), "orders": s.get("paid_orders"),
+                            "average_order_value": s.get("average_order_value"),
+                            "currency": s.get("currency"), "complete": s.get("complete", True)})
+    except woocommerce_service.StoreError as e:
+        print(f"[{SERVICE_NAME}] store sales unreadable for client {client_id}: {e.code}")
+        return {"source": "store", "connected": True, "error": True, "windows": []}
+    return {"source": "store", "connected": True, "windows": windows}
 
 
 def _landing_block(client_id: int) -> list:

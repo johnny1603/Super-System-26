@@ -1405,8 +1405,9 @@ def client_connect_chat(req: ConnectChatRequest, request: Request):
     from agents.client_agent import log_communication
     from agents.support_agent import persona_channel
     channel = persona_channel(result["persona"])
-    chip = {"has": connection_catalog.CHIP_HAS, "none": connection_catalog.CHIP_NONE,
-            "done": connection_catalog.CHIP_DONE}.get(req.step)
+    chips = ({"has": connection_catalog.CHIP_STORE_HAS, "none": connection_catalog.CHIP_STORE_HOW}
+             if key == "store" else {"has": connection_catalog.CHIP_HAS, "none": connection_catalog.CHIP_NONE})
+    chip = {**chips, "done": connection_catalog.CHIP_DONE}.get(req.step)
     if chip:
         log_communication(client_id, "inbound", channel, chip)
     for text in result.get("messages") or []:
@@ -1470,6 +1471,19 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
             return {"success": True, "reply": blocked["reply"], "needs_human_followup": False,
                     "poll": False, "limited": blocked["code"]}
         log_communication(client_id, "inbound", channel, req.message)
+        # One store order's CUSTOMER details, asked explicitly: answered by
+        # code from a live read, never by a model; the chat history keeps a
+        # masked copy only (agents/store_agent.personal_answer, docs/STORE.md)
+        from agents import store_agent
+        personal = {}
+        try:
+            personal = store_agent.personal_answer(client_id, req.message)
+        except Exception as e:
+            print(f"[client-chat] store personal answer failed for client {client_id}: {type(e).__name__}")
+        if personal:
+            log_communication(client_id, "outbound", channel, personal["stored_reply"])
+            return {"success": True, "reply": personal["reply"], "needs_human_followup": False,
+                    "poll": False, "action": None, "personal": True}
         from core.cost_tracker import cost_action
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
         # an article draft started inside it relabels its own calls
@@ -4612,6 +4626,54 @@ def client_tool_disconnect(tool: str, request: Request):
         raise _tool_error(e)
     _creative_state_changed(client_id)
     return {"success": True, "data": result}
+
+# ─── Online store, READ-ONLY (agents/store_agent, docs/STORE.md) ────────────
+
+class StoreConnectRequest(BaseModel):
+    consumer_key: str
+    consumer_secret: str
+    site_url: str = ""
+
+@app.get("/api/client/store")
+def client_store_status(request: Request):
+    # Connected or not + method; never a key
+    client_id = _require_session(request)
+    from agents import store_agent
+    return {"success": True, "data": store_agent.status(client_id)}
+
+@app.post("/api/client/store/connect")
+def client_store_connect(req: StoreConnectRequest, request: Request):
+    # The recommended path: a READ key, verified live before it is stored
+    # (encrypted). The key is never echoed back or logged.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from agents import store_agent
+    result = store_agent.connect(client_id, req.consumer_key, req.consumer_secret, req.site_url)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result["code"], "message": result["error"]})
+    return {"success": True, "data": result}
+
+@app.post("/api/client/store/connect-site")
+def client_store_connect_site(request: Request):
+    # The fallback: the website connection's password, if it can read the store
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from agents import store_agent
+    result = store_agent.connect_with_site(client_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail={"code": result["code"], "message": result["error"]})
+    return {"success": True, "data": result}
+
+@app.post("/api/client/store/disconnect")
+def client_store_disconnect(request: Request):
+    # Deletes the stored store key (the website connection is untouched)
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from agents import store_agent
+    return {"success": True, "data": store_agent.disconnect(client_id)}
 
 # ─── Voice recordings (core/voice_recordings) ───────────────────────────────
 

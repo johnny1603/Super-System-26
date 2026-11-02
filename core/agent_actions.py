@@ -250,7 +250,7 @@ def _media_name(client_id: int, file_id: str) -> str:
 # — gtm_error, gtm_api_disabled, gtm_compiler_error — are ours: _FAILED + alert)
 _GTM_REFUSAL_CODES = {"gtm_not_connected": "gtm_reconnect", "gtm_reconnect_needed": "gtm_reconnect",
                       "gtm_token_dead": "gtm_reconnect", "gtm_container_mismatch": "gtm_container_mismatch",
-                      "no_ga4_id": "no_ga4_id", "already_live": "already_live",
+                      "no_ga4_id": "no_ga4_id", "already_live": "already_live", "no_gtm_types": "no_gtm_types",
                       "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy"}
 
 
@@ -261,6 +261,34 @@ def _run_configure_conversion(client_id: int, params: dict, background_tasks):
         raise ActionFailed(_GTM_REFUSAL_CODES.get(result.get("reason"), "refused_by_action"),
                            "; ".join(map(str, result.get("errors") or ["unknown"])))
     return result
+
+
+def _v_conversion_types(value, client_id: int):
+    from core import conversion_types
+    return conversion_types.clean(value)
+
+
+def _conversion_labels(types) -> str:
+    from core import conversion_types
+    try:
+        return ", ".join(conversion_types.labels(conversion_types.clean(types)))
+    except ValueError:
+        return ""
+
+
+def _run_set_conversion_types(client_id: int, params: dict):
+    from core import conversion_types
+    try:
+        return conversion_types.set_types(client_id, params.get("types"))
+    except (ValueError, RuntimeError) as e:
+        raise ActionFailed("refused_by_action", str(e))
+
+
+def _client_measures(client_id: int, params: dict) -> dict:
+    """configure_conversion's card: the client's own Tag Manager types."""
+    from core import conversion_types
+    types = [t for t in conversion_types.types_for(client_id) if t in conversion_types.GTM_TYPES]
+    return {"measures": ", ".join(conversion_types.labels(types)) or conversion_types.LABELS_HE["form_submit"]}
 
 
 def _run_demo(fn_name: str):
@@ -1633,8 +1661,13 @@ def _gtm_needs_connect(state: dict, client: dict) -> bool:
 
 def _conversion_setup_possible(state: dict, client: dict) -> bool:
     tracking = (state or {}).get("tracking") or {}
-    return (bool(tracking.get("connected")) and not tracking.get("needs_reconnect")
-            and tracking.get("lead_event_live") is not True)
+    if not tracking.get("connected") or tracking.get("needs_reconnect"):
+        return False
+    # Per client (core/conversion_types): one of THEIR Tag Manager types is not live yet
+    pending = tracking.get("conversion_types_not_live")
+    if pending is not None:
+        return bool(pending)
+    return tracking.get("lead_event_live") is not True
 
 
 def _connected(platform: str):
@@ -1700,10 +1733,11 @@ ACTIONS = {
                                           "hint": "G-XXXXXXX, only if known from the data; empty = detected from the site"}},
         "available": _conversion_setup_possible,
         "run": _run_configure_conversion,
+        "display": _client_measures,
         "title": _txt("הפעלת מדידת לידים באתר", "Turn on lead tracking on your website",
                       "Activer le suivi des prospects sur votre site", "تفعيل قياس العملاء المحتملين في موقعكم",
                       "Включить учёт заявок на сайте"),
-        "what": _txt("נוסיף ל-Tag Manager של האתר מדידה של שליחת טופס (אירוע generate_lead) ונפרסם אותה, כך שכל ליד מהאתר ייספר. תגים קיימים לא משתנים.",
+        "what": _txt("נוסיף ל-Tag Manager של האתר מדידה של {measures} ונפרסם אותה, כך שכל פנייה מהאתר תיספר. מה שכבר נמדד לא מתווסף שוב, ותגים קיימים לא משתנים.",
                      "We'll add form-submission tracking (a generate_lead event) to your site's Tag Manager and publish it, so every lead from your site is counted. Existing tags stay as they are.",
                      "Nous ajouterons le suivi des envois de formulaire (événement generate_lead) au Tag Manager de votre site et le publierons, pour compter chaque prospect. Les balises existantes ne changent pas.",
                      "سنضيف قياس إرسال النماذج (حدث generate_lead) إلى Tag Manager في موقعكم وننشره، لكي يُحتسب كل عميل محتمل. الوسوم الحالية لا تتغير.",
@@ -1718,6 +1752,12 @@ ACTIONS = {
             + (f"\nTag Manager: {result['tag_name']} · {result['live_version']}"
                if result.get("tag_name") and result.get("live_version") else "")),
         "refusals": {
+            "no_gtm_types": _txt(
+                "אצלכם התוצאה נמדדת במכירות בחנות, ישירות מהחנות — אין מה להוסיף ל-Tag Manager, ושום דבר לא השתנה.",
+                "Your results are measured as store sales, straight from the store — there's nothing to add to Tag Manager, and nothing changed.",
+                "Vos résultats sont mesurés par les ventes de la boutique — rien à ajouter dans Tag Manager.",
+                "نتائجكم تُقاس بمبيعات المتجر مباشرة — لا شيء يُضاف إلى Tag Manager.",
+                "Ваш результат — продажи магазина, прямо из магазина; в Tag Manager добавлять нечего."),
             "gtm_reconnect": _txt(
                 "החיבור ל-Tag Manager צריך חידוש לפני שאפשר להוסיף את המדידה — שום דבר לא השתנה באתר. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, מול Google), ואז נסו שוב.",
                 "Your Tag Manager connection needs renewing before tracking can be added — nothing on your site changed. Tap the button to reconnect (once, with Google), then try again.",
@@ -2817,6 +2857,48 @@ ACTIONS = {
                      "Откроется карточка сайта — подтвердите там в один клик."),
         "done": _txt("פותח את כרטיס האתר…", "Opening the website card…", "Ouverture de la carte du site…",
                      "جارٍ فتح بطاقة الموقع…", "Открываю карточку сайта…"),
+    },
+    "connect_store": {
+        # "focus": the store key is pasted ONLY in the store card's own fields,
+        # never in a chat; the card's "חבר" button starts the guided steps
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "focus",
+        "focus": "storeBtn",
+        "does": "Opens the online-store connection card: the chat then walks the client through creating a "
+                "READ-ONLY store key, pasted in the card. Reading only — nothing in the store is ever changed.",
+        "params": {},
+        "available": lambda state, client: not ((state or {}).get("store") or {}).get("connected"),
+        "title": _txt("חיבור החנות באתר (קריאה בלבד)", "Connect your online store (read only)",
+                      "Connecter votre boutique (lecture seule)", "ربط المتجر (قراءة فقط)",
+                      "Подключить магазин (только чтение)"),
+        "what": _txt("ייפתח כרטיס החנות, ואסביר צעד-צעד איך יוצרים מפתח קריאה בלבד. כך אוכל לענות על הזמנות ומכירות מהנתונים האמיתיים — בלי לשנות שום דבר בחנות.",
+                     "The store card opens and I'll walk you through creating a read-only key, so I can answer about orders and sales from the real data — without changing anything in the store.",
+                     "La carte boutique s'ouvre ; je vous guide pour créer une clé en lecture seule. Rien n'est modifié dans la boutique.",
+                     "ستفتح بطاقة المتجر وسأشرح خطوة بخطوة إنشاء مفتاح للقراءة فقط — دون تغيير أي شيء في المتجر.",
+                     "Откроется карточка магазина, и я пошагово объясню, как создать ключ только для чтения. В магазине ничего не меняется."),
+        "done": _txt("פותח את כרטיס החנות…", "Opening the store card…", "Ouverture de la carte boutique…",
+                     "جارٍ فتح بطاقة المتجر…", "Открываю карточку магазина…"),
+    },
+    "set_conversion_types": {
+        # What counts as a result for THIS client (core/conversion_types). The
+        # agent proposes it only from what the client said about how customers
+        # reach them; the client's click is the approval.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Saves what counts as a conversion for this client — any of form_submit (a form on the site), "
+                "whatsapp_click, phone_click, store_sales — exactly as the client described how customers reach "
+                "them. Measurement and the Performance page follow it.",
+        "params": {"types": {"required": True, "validate": lambda v, cid: _v_conversion_types(v, cid),
+                             "hint": "list of: form_submit, whatsapp_click, phone_click, store_sales — only "
+                                     "what the client said"}},
+        "available": lambda state, client: True,
+        "display": lambda client_id, params: {"measures": _conversion_labels(params.get("types"))},
+        "run": lambda client_id, params, background_tasks: _run_set_conversion_types(client_id, params),
+        "title": _txt("מה נחשב אצלכם תוצאה", "What counts as a result for you", "Ce qui compte comme résultat",
+                      "ما الذي يُحتسب نتيجة لديكم", "Что считается результатом"),
+        "what": _txt("נמדוד אצלכם: {measures}. כך תיראה גם עמוד הביצועים שלכם.",
+                     "We'll measure: {measures}. Your Performance page will follow it.",
+                     "Nous mesurerons : {measures}.", "سنقيس: {measures}.", "Будем измерять: {measures}."),
+        "done": _txt("נשמר ✓ מעכשיו מודדים בדיוק את זה.", "Saved ✓ This is what we measure from now on.",
+                     "Enregistré ✓", "تم الحفظ ✓", "Сохранено ✓"),
     },
     "change_manager": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",

@@ -42,7 +42,7 @@ PERSONA = {
     "meta": "meta",
     "youtube": "media", "tiktok": "media", "higgsfield": "media", "elevenlabs": "media",
     "creatomate": "media", "uppbeat": "media", "google_drive": "media",
-    "website": "website",
+    "website": "website", "store": "website",
     "gmail": "general", "manychat": "general",
 }
 
@@ -53,7 +53,7 @@ PLATFORMS = {
     "google_ads": ("google_ads",), "meta": ("meta_ads", "meta_page"), "tiktok": ("tiktok",),
     "youtube": ("youtube",), "gmail": ("gmail_send",), "search_console": ("search_console",),
     "analytics": ("google_analytics",), "google_drive": ("google_drive_file",),
-    "tag_manager": ("google_tagmanager",), "website": ("wordpress",),
+    "tag_manager": ("google_tagmanager",), "website": ("wordpress",), "store": ("woocommerce",),
 }
 VENDOR_TOOLS = ("higgsfield", "elevenlabs")
 
@@ -70,7 +70,7 @@ NAMES = {
     "google_ads": "Google Ads", "meta": "פייסבוק ואינסטגרם", "tiktok": "TikTok", "youtube": "YouTube",
     "gmail": "Gmail", "search_console": "Google Search Console", "analytics": "Google Analytics",
     "google_drive": "Google Drive", "tag_manager": "Google Tag Manager",
-    "merchant_center": "Google Merchant Center", "website": "האתר שלך",
+    "merchant_center": "Google Merchant Center", "website": "האתר שלך", "store": "החנות באתר",
     "higgsfield": "Higgsfield", "elevenlabs": "ElevenLabs", "creatomate": "Creatomate",
     "uppbeat": "Uppbeat", "manychat": "ManyChat",
 }
@@ -208,10 +208,60 @@ def _human_fallback(client_id: int, key: str, why: str) -> dict:
     return {"messages": [text], "chips": [], "support": True}
 
 
+# The online store (agents/store_agent): included in the website package, no
+# vendor account to open — the steps create a READ key on the client's own
+# store. Menu path and field names checked in WooCommerce's docs
+# (woocommerce.com/document/woocommerce-rest-api/, 2026-11-02): WooCommerce >
+# Settings > Advanced > REST API > Add Key; Description, User, Permissions
+# (Read / Write / Read/Write); then "Generate API key" shows the Consumer key
+# and Consumer secret once. Vendor words appear because the client must act
+# on that screen.
+CHIP_STORE_HAS = "יש לי מפתח"
+CHIP_STORE_HOW = "איך יוצרים מפתח?"
+CHIP_STORE_MADE = "יצרתי מפתח"
+STORE_STEPS = (
+    "1. נכנסים לניהול האתר (wp-admin) עם משתמש מנהל.",
+    "2. בתפריט: WooCommerce ← Settings (הגדרות) ← Advanced (מתקדם) ← REST API.",
+    "3. לוחצים Add Key (או Create an API key).",
+    "4. ממלאים: Description — uallak. User — המשתמש שלכם. Permissions — Read (קריאה בלבד). חשוב: רק Read.",
+    "5. לוחצים Generate API key. מופיעים Consumer key (מתחיל ב-ck_) ו-Consumer secret (מתחיל ב-cs_) — הם מוצגים פעם אחת בלבד, אז מעתיקים את שניהם.",
+    "6. מדביקים את שניהם בכרטיס \"החנות באתר\" שנפתח כאן (לא בצ׳אט) ולוחצים \"חיבור\".",
+)
+
+
+def _store_flow(client_id: int, step: str) -> dict:
+    base = {"show": True, "key": "store", "persona": "website", "connect": "", "support": False}
+    if step == "start":
+        return {**base, "messages": [
+            "נחבר את החנות באתר כדי שאוכל לענות על הזמנות ומכירות מהנתונים האמיתיים. "
+            "החיבור הוא לקריאה בלבד — אנחנו לא משנים שום דבר בחנות. "
+            "הדרך המומלצת היא מפתח קריאה ייעודי שאתם יוצרים בחנות (ואפשר לבטל אותו שם בכל רגע). יש לכם כבר מפתח כזה?"],
+            "chips": [{"label": CHIP_STORE_HAS, "step": "has"}, {"label": CHIP_STORE_HOW, "step": "none"}]}
+    if step == "has":
+        return {**base, "connect": "store", "chips": [],
+                "messages": ["מעולה. מדביקים את Consumer key ואת Consumer secret בכרטיס \"החנות באתר\" שנפתח (לא בצ׳אט) ולוחצים \"חיבור\" — אני בודק שהמפתח עובד לפני שהוא נשמר."]}
+    if step == "none":
+        return {**base, "connect": "store", "chips": [{"label": CHIP_DONE, "step": "done"}],
+                "messages": ["ככה יוצרים מפתח קריאה, בערך שתי דקות:", "\n".join(STORE_STEPS),
+                             "כשסיימתם, לחצו \"סיימתי\" ואבדוק שהחנות מחוברת."]}
+    if step == "done":
+        if is_connected(client_id, "store"):
+            _clear_reminder(client_id, "store")
+            return {**base, "chips": [], "connected": True,
+                    "messages": ["החנות מחוברת ✓ — מעכשיו אפשר לשאול אותי על הזמנות, מכירות והחזרים."]}
+        _schedule_reminder(client_id, "store")
+        return {**base, "connect": "store", "chips": [], "connected": False,
+                "messages": ["עוד לא רואה את החנות מחוברת. מדביקים את שני הערכים בכרטיס \"החנות באתר\" ולוחצים \"חיבור\" — ואני אבדוק שוב."]}
+    raise ValueError("bad_step")
+
+
 def flow(client_id: int, key: str, step: str) -> dict:
     """One turn of the connect conversation. Pure decision from the table row
     (+ the connection status on "done"); the caller posts `messages` into the
-    persona's thread. Returns {"show": False} for included / unknown keys."""
+    persona's thread. Returns {"show": False} for included / unknown keys —
+    except the store, whose steps are on the client's own site (_store_flow)."""
+    if key == "store":
+        return _store_flow(client_id, step)
     row = entry(key)
     if row and row["tier"] == "included":
         return {"show": False}

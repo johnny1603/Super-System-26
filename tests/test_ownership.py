@@ -412,6 +412,7 @@ DECRYPTING_MODULES = {
     "core/avatar_video.py",      # use_vendor_key → straight into the TTS / render call
     "core/site_traffic.py",      # GA refresh token → straight into analytics_service reads
     "core/drive_storage.py",     # drive.file refresh token → a closure feeding drive_service._headers
+    "agents/store_agent.py",     # the store READ key → straight into woocommerce_service.get (Basic auth)
 }
 
 

@@ -182,6 +182,8 @@ _DATA_TOPIC_NAMES = {
               "ar": "العملاء المحتملين", "ru": "по заявкам"},
     "account": {"he": "החשבון", "en": "account", "fr": "du compte",
                 "ar": "الحساب", "ru": "аккаунта"},
+    "store": {"he": "החנות", "en": "store", "fr": "de la boutique",
+              "ar": "المتجر", "ru": "магазина"},
 }
 
 

@@ -27,6 +27,8 @@ from the readers that already exist:
   creative_tools . vendor_tools.statuses (each tool on its own, no key, no last4)
                    + avatar_video.providers_view
   voice .......... voice_recordings.for_agent (the Drive voice folder listing)
+  store .......... store_agent.section (the online store, READ-ONLY: 30-day
+                   aggregates only, no customer data)
 
 Rules:
 - Read-only. Nothing here writes to a platform; no new platform call exists
@@ -51,6 +53,7 @@ from datetime import datetime, timezone
 SERVICE_NAME = "client_state"
 
 SECTION_TTL = {"channels": 300, "website": 300, "media_folder": 300, "website_traffic": 600,
+               "store": 600,
                # plugin/theme versions move slowly and a cold read is several HTTP calls
                "site_updates": 6 * 3600}
 DEFAULT_TTL = 120
@@ -71,6 +74,8 @@ SECTION_TOPIC = {
     "voice": "voice",
     "website_traffic": "website",
     "site_updates": "website",
+    # Its own topic: an unreadable store must not block website answers
+    "store": "store",
 }
 
 _cache = {}   # (client_id, section) -> (time, value)
@@ -110,7 +115,7 @@ def _channels(client_id: int) -> dict:
     by_channel = {}
     for channel, card in (statuses.get("channels") or {}).items():
         compact = {"status": card.get("status")}
-        for key in ("reason", "note", "key_numbers", "period_days"):
+        for key in ("reason", "note", "key_numbers", "period_days", "live_types"):
             if card.get(key) is not None:
                 compact[key] = card[key]
         when = card.get("data_pulled_at") or card.get("last_checked")
@@ -125,12 +130,41 @@ _TOKEN_HEALTH = {"ok": "ok", "token_dead": "expired_needs_reconnect",
                  "access_pending": "waiting_on_uallak_setup", "unavailable": "could_not_check_now"}
 
 
+def _store(client_id: int) -> dict:
+    """The online store (agents/store_agent): connected or not, and the last
+    30 days as AGGREGATES only — never a customer's name, address, phone or
+    e-mail (those are fetched only for one order on the client's explicit ask)."""
+    from agents import store_agent
+    from core import woocommerce_service
+    try:
+        view = store_agent.section(client_id)
+    except woocommerce_service.StoreError as e:
+        raise _ReadFailed(e.code) from None
+    if view.get("readable") is False:
+        raise _ReadFailed("store connection unreadable")
+    return view
+
+
+def _conversion_choice(client_id: int, live_types) -> dict:
+    """What counts as a conversion for this client (core/conversion_types)
+    and which of the Tag Manager ones are not live yet (None = unknown)."""
+    from core import conversion_types
+    choice = conversion_types.get(client_id)
+    out = {"conversion_types": choice["types"],
+           "conversion_types_he": conversion_types.labels(choice["types"]),
+           "conversion_types_confirmed": choice["confirmed"]}
+    if live_types is not None:
+        out["conversion_types_not_live"] = [t for t in choice["types"]
+                                            if t in conversion_types.GTM_TYPES and t not in live_types]
+    return out
+
+
 def _tracking(client_id: int, channels: dict) -> dict:
     from core import gtm_connection
     from agents.website_agent import gtm_missing_scopes
     view = gtm_connection.connection_view(client_id)
     if not view.get("connected"):
-        return {"connected": False}
+        return {"connected": False, **_conversion_choice(client_id, None)}
     health = _TOKEN_HEALTH.get((view.get("token") or {}).get("state", "ok"), "could_not_check_now")
     missing = bool(gtm_missing_scopes(client_id))
     card = ((channels or {}).get("by_channel") or {}).get("website_tracking") or {}
@@ -152,6 +186,7 @@ def _tracking(client_id: int, channels: dict) -> dict:
         # up yet; None: could not be confirmed on this read
         "lead_event_live": lead_live,
         "checked_at": view.get("checked_at"),
+        **_conversion_choice(client_id, card.get("live_types") if "live_types" in card else None),
     }
 
 
@@ -456,6 +491,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("creative_tools", lambda: _creative_tools(client_id))
     take("voice", lambda: _voice(client_id))
     take("team_requests", lambda: _team_requests(client_id))
+    take("store", lambda: _store(client_id))
     from core.round2_flags import analytics_enabled
     if analytics_enabled():
         take("website_traffic", lambda: _website_traffic(client_id))

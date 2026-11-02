@@ -285,6 +285,41 @@ action), PUBLISHED in the same call.
 - NOT yet run against a live container — see docs/GOOGLE-SCOPES.md "Audit
   findings".
 
+**Conversion types are PER CLIENT (2026-11-02, `core/conversion_types.py`)**:
+`clients.conversion_types` ⊆ form_submit / whatsapp_click / phone_click /
+store_sales; existing clients default to form_submit. Never replace one
+hardcoded default with another. `configure_lead_conversion(client_id, ga4, types=None)`
+builds, per selected type that is NOT live yet, one trigger + one GA4 tag,
+each found by NAME and reused (never duplicated):
+- form_submit: the form-submission trigger + `generate_lead` (unchanged).
+- whatsapp_click: Just Links trigger (`linkClick`) on `{{Click URL}}` matching
+  `wa.me`, `api.whatsapp.com`, `whatsapp:` → `click_whatsapp`.
+- phone_click: the same on `tel:` → `click_to_call`. The built-in Click URL
+  variable is enabled once (`ensure_click_url_variable`, same scope).
+- store_sales: NOT Tag Manager — read from the store (`agents/store_agent`).
+  GA4 purchase tracking on the store would need either a GA4 integration
+  plugin on the client's site (outside our read-only rule) or the round-2
+  Analytics grant to read it — not built.
+Types already live are skipped (`skipped_already_live`); all live →
+`already_live`; store-only → `no_gtm_types`. The client chooses through the
+`set_conversion_types` card (interview: "how do customers reach you?"); the
+agent never guesses. Performance shows the client's own types with Hebrew
+labels, store sales first, and says a click is an indication of an enquiry,
+not a confirmed conversation. WhatsApp/phone click COUNTS today come from our
+landing-page counters only; site click counts need the round-2 Analytics read.
+
+## Online store, READ-ONLY (2026-11-02, docs/STORE.md)
+
+`core/woocommerce_service.py` (GET only — a test scans for any write) +
+`agents/store_agent.py`. Connection: `client_accounts` platform `woocommerce`,
+a REST key with Permissions **Read** (recommended), or the website's app
+password (`method: site`, verified live per site, chat recommends the key).
+Reads: recent orders, one order, sales summary (net revenue, orders, AOV, top
+products, status counts), refunds — paginated, rate limited, aggregates cached.
+אורי answers from `payload["store"]` (live, per message); customer details
+only on an explicit ask, answered by code (`personal_answer`), masked in the
+stored chat. Writes to the store are out of scope.
+
 **v1 limits, stated not hidden**: (a) GTM's built-in Form Submission
 trigger catches standard submits — heavily-AJAXed form builders need a
 custom-event trigger (v2 follow-up); (b) two manual platform steps remain
@@ -711,7 +746,8 @@ Automated theme re-skinning from the brand palette (apply_brand_identity
 records it; applying it to theme CSS/customizer is the deferred half),
 custom-domain mapping automation, plan auto-upgrades (Starter → Plus when a
 site outgrows it — watch disk/CPU manually for now), writing Yoast/Rank Math
-meta fields, WooCommerce anything, comment moderation on WP sites,
+meta fields, WooCommerce WRITES of any kind (reading the store IS built —
+see "Online store" above), comment moderation on WP sites,
 site-speed/uptime monitoring beyond the daily credential scan, media library
 cleanup, multi-site (one WP row per client), token encryption at rest (same
 accepted MVP debt as Google/Meta).

@@ -62,6 +62,7 @@ class FakeGtm:
         # based on the live version, so whatever is in `live` is there too
         self.live = {"trigger": [], "tag": []}
         self.entities = {}
+        self.builtins = []                     # enabled built-in variables (clickUrl, ...)
 
     def _ws(self, path):
         ws = path.rsplit("/", 1)[0]
@@ -92,6 +93,8 @@ class FakeGtm:
             return {"trigger": [dict(t) for t in self._ws(path)["trigger"]]}
         if path.endswith("/tags"):
             return {"tag": [dict(t) for t in self._ws(path)["tag"]]}
+        if path.endswith("/built_in_variables"):
+            return {"builtInVariable": [dict(v) for v in self.builtins]}
         raise AssertionError(f"unexpected GET {path}")
 
     def _create(self, kind, path, body, new_id):
@@ -113,14 +116,18 @@ class FakeGtm:
             return dict(ws)
         if path.endswith(":sync"):
             return {"syncStatus": {"mergeConflict": self.sync_conflict}}
+        if path.endswith("/built_in_variables"):
+            self.builtins.append({"type": (params or {}).get("type")})
+            return {"builtInVariable": [{"type": (params or {}).get("type")}]}
         if path.endswith("/triggers"):
             self._maybe_fail("trigger", "POST", path)
-            return self._create("trigger", path, json_body, "5")
+            # ids 5, 15, 25... so each trigger of a multi-type run is distinct
+            return self._create("trigger", path, json_body, str(5 + 10 * len(self._ws(path)["trigger"])))
         if path.endswith("/tags"):
             self._maybe_fail("tag", "POST", path)
             triggers = [t["triggerId"] for t in self._ws(path)["trigger"]]
             assert json_body["firingTriggerId"][0] in triggers, (json_body, triggers)
-            return self._create("tag", path, json_body, "6")
+            return self._create("tag", path, json_body, str(6 + 10 * len(self._ws(path)["tag"])))
         if path.endswith(":create_version"):
             if self._maybe_fail("version", "POST", path) == "compiler":
                 return {"compilerError": True}
@@ -408,6 +415,124 @@ class GtmFlow(unittest.TestCase):
         finally:
             self.website._get_connection = saved
         self.assertEqual(self.api.calls, [])
+
+    # ── per-client conversion types (core/conversion_types, 2026-11-02) ──────
+
+    def run_types(self, types):
+        return self.website.configure_lead_conversion(27, "G-ABC1234", types=types)
+
+    def _ws9(self, kind):
+        return self.api.entities[f"{CONTAINER}/workspaces/9"][kind]
+
+    def _filter_value(self, trigger):
+        params = {p["key"]: p["value"] for p in trigger["filter"][0]["parameter"]}
+        return params["arg0"], params["arg1"]
+
+    def test_whatsapp_click_creates_a_link_trigger_and_its_tag(self):
+        result = self.run_types(["whatsapp_click"])
+        self.assertTrue(result["success"], result)
+        (trigger,), (tag,) = self._ws9("trigger"), self._ws9("tag")
+        self.assertEqual((trigger["name"], trigger["type"]), ("uallak — WhatsApp click", "linkClick"))
+        arg0, pattern = self._filter_value(trigger)
+        self.assertEqual(arg0, "{{Click URL}}")
+        import re as _re
+        for url in ("https://wa.me/972501234567", "https://api.whatsapp.com/send?phone=972",
+                    "https://www.wa.me/9725", "whatsapp://send?phone=972"):
+            self.assertTrue(_re.search(pattern, url, _re.IGNORECASE), url)
+        for url in ("tel:+972501234567", "https://example.com/wa.me", "https://whatsapp.example.com/"):
+            self.assertFalse(_re.search(pattern, url, _re.IGNORECASE), url)
+        params = {p["key"]: p["value"] for p in tag["parameter"]}
+        self.assertEqual((tag["name"], params["eventName"], tag["firingTriggerId"]),
+                         ("uallak — GA4 click_whatsapp", "click_whatsapp", [trigger["triggerId"]]))
+        self.assertEqual(self.api.builtins, [{"type": "clickUrl"}])     # {{Click URL}} enabled
+        self.assertEqual(result["events"], ["click_whatsapp"])
+
+    def test_phone_click_creates_a_tel_trigger_and_its_tag(self):
+        self.assertTrue(self.run_types(["phone_click"])["success"])
+        (trigger,), (tag,) = self._ws9("trigger"), self._ws9("tag")
+        import re as _re
+        _arg0, pattern = self._filter_value(trigger)
+        self.assertTrue(_re.search(pattern, "tel:+972501234567"))
+        self.assertFalse(_re.search(pattern, "https://wa.me/972"))
+        self.assertEqual({p["key"]: p["value"] for p in tag["parameter"]}["eventName"], "click_to_call")
+
+    def test_form_submit_is_the_original_behaviour(self):
+        self.assertTrue(self.run_types(["form_submit"])["success"])
+        (trigger,), (tag,) = self._ws9("trigger"), self._ws9("tag")
+        self.assertEqual((trigger["name"], trigger["type"]), ("uallak — form submission", "formSubmission"))
+        self.assertEqual({p["key"]: p["value"] for p in tag["parameter"]}["eventName"], "generate_lead")
+        self.assertEqual(self.api.builtins, [])        # no Click URL variable for a form
+
+    def test_all_three_in_one_workspace_and_one_publish(self):
+        result = self.run_types(["form_submit", "whatsapp_click", "phone_click"])
+        self.assertTrue(result["success"], result)
+        self.assertEqual(len(self._ws9("trigger")), 3)
+        self.assertEqual(len(self._ws9("tag")), 3)
+        self.assertEqual(sum(1 for m, p in self.api.calls if p.endswith(":publish")), 1)
+        self.assertEqual(len({t["triggerId"] for t in self._ws9("trigger")}), 3)
+
+    def test_store_sales_alone_touches_no_container(self):
+        self.assertEqual(self.run_types(["store_sales"])["reason"], "no_gtm_types")
+        self.assertEqual(self.api.calls, [])
+
+    def test_rerun_reuses_every_object_and_creates_no_duplicate(self):
+        self.assertTrue(self.run_types(["whatsapp_click", "phone_click"])["success"])
+        # the published result is now the live version a new workspace is based on
+        self.api.live = {k: [dict(e) for e in self._ws9(k)] for k in ("trigger", "tag")}
+        self.api.workspaces = [w for w in self.api.workspaces if not w["path"].endswith("/9")]
+        self.api.entities.clear()
+        self.api.calls.clear()
+        self.assertTrue(self.run_types(["whatsapp_click", "phone_click"])["success"])
+        self.assertFalse(any(m == "POST" and (p.endswith("/triggers") or p.endswith("/tags"))
+                             for m, p in self.api.calls))
+        self.assertEqual(self.api.puts, [])
+        self.assertEqual(self.api.builtins, [{"type": "clickUrl"}])   # enabled once, never twice
+
+    def test_types_already_live_are_skipped_not_doubled(self):
+        saved = self.website.get_conversion_tracking_status
+        self.website.get_conversion_tracking_status = lambda cid: {
+            "configured_live": True, "lead_event_tags": [{"tag_name": "theirs"}],
+            "live_types": ["form_submit", "whatsapp_click"]}
+        try:
+            result = self.run_types(["form_submit", "whatsapp_click", "phone_click"])
+            self.assertTrue(result["success"], result)
+            self.assertEqual(result["types"], ["phone_click"])
+            self.assertEqual(result["skipped_already_live"], ["form_submit", "whatsapp_click"])
+            self.assertEqual([t["name"] for t in self._ws9("trigger")], ["uallak — phone click"])
+            self.api.calls.clear()
+            self.assertEqual(self.run_types(["form_submit", "whatsapp_click"])["reason"], "already_live")
+            self.assertEqual(self.api.calls, [])
+        finally:
+            self.website.get_conversion_tracking_status = saved
+
+    def test_existing_clients_default_to_form_submit_unchanged(self):
+        from core import conversion_types
+        saved = conversion_types.get
+        conversion_types.get = lambda cid: {"types": ["form_submit"], "confirmed": False}
+        try:
+            result = self.website.configure_lead_conversion(27, "G-ABC1234")   # no types: the client's own
+        finally:
+            conversion_types.get = saved
+        self.assertTrue(result["success"], result)
+        posts = [p for m, p in self.api.calls if m == "POST"]
+        self.assertEqual(posts, [f"{CONTAINER}/workspaces", f"{CONTAINER}/workspaces/9/triggers",
+                                 f"{CONTAINER}/workspaces/9/tags", f"{CONTAINER}/workspaces/9:create_version",
+                                 f"{CONTAINER}/versions/12:publish"])
+        self.assertEqual(result["event_name"], "generate_lead")
+
+    def test_live_status_reports_click_types(self):
+        real_status = self._saved_fns["get_conversion_tracking_status"]
+        saved = self.gtm.get_live_version
+        self.gtm.get_live_version = lambda rt, cp: {"name": "v12", "trigger": [{"triggerId": "1", "type": "linkClick"}],
+                                                    "tag": [{"type": "gaawe", "name": "uallak — GA4 click_to_call",
+                                                             "firingTriggerId": ["1"],
+                                                             "parameter": [{"key": "eventName", "value": "click_to_call"}]}]}
+        try:
+            status = real_status(27)
+        finally:
+            self.gtm.get_live_version = saved
+        self.assertEqual(status["live_types"], ["phone_click"])
+        self.assertFalse(status["configured_live"])
 
 
 # ─── The chat cards ──────────────────────────────────────────────────────────

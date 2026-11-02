@@ -1572,6 +1572,31 @@ a.media-item:hover { border-color: var(--accent); }
       </div>
     </div>
 
+    <!-- The online store, READ-ONLY (agents/store_agent). ONE "חבר" button:
+         the steps for creating a read key come in אורי's chat
+         (core/connection_catalog._store_flow); the key is pasted only here. -->
+    <div class="conn-card unlocked" id="storeCard">
+      <div class="conn-top">
+        <div class="conn-icon" style="background:#7F54B3;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><path d="M6 6L5 3H2"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg>
+        </div>
+        <div>
+          <div class="conn-name" data-i18n="store_card">החנות באתר</div>
+          <div class="conn-status" id="storeStatus" data-i18n="not_connected">לא מחובר</div>
+        </div>
+      </div>
+      <button class="conn-btn primary" id="storeBtn" onclick="connectViaChat('store')" data-i18n="conn_connect">חבר</button>
+      <div id="storeForm" style="display:none; margin-top:10px;">
+        <div class="lock-note" data-i18n="store_note">קריאה בלבד: הזמנות ומכירות, כדי שאורי יענה מהנתונים האמיתיים. אנחנו לא משנים דבר בחנות ולא שומרים פרטי לקוחות.</div>
+        <input class="site-input" id="storeSite" dir="ltr" data-i18n-placeholder="store_site_ph" placeholder="כתובת החנות (אם שונה מהאתר)">
+        <input class="site-input" id="storeKey" dir="ltr" type="password" autocomplete="off" placeholder="Consumer key (ck_...)">
+        <input class="site-input" id="storeSecret" dir="ltr" type="password" autocomplete="off" placeholder="Consumer secret (cs_...)">
+        <button class="conn-btn primary" id="storeConnectBtn" onclick="connectStore()" data-i18n="site_connect">חיבור</button>
+        <button class="conn-btn secondary" id="storeSiteBtn" style="margin-top:8px;" onclick="connectStoreViaSite()" data-i18n="store_use_site">להשתמש בחיבור האתר הקיים (פחות מומלץ)</button>
+      </div>
+      <button class="disconnect-link" id="storeDisc" style="display:none;" onclick="disconnectStore(this)" data-i18n="disconnect_link">ניתוק חיבור</button>
+    </div>
+
     <!-- Creative tools: ONE card per tool (core/vendor_tools, /api/client/tools/*).
          Each has its own key, Connect, Test, status, Disconnect (only that
          tool's key), help and consent — one can be connected without the
@@ -1766,6 +1791,18 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
   <div class="conn-grid perf-grid" id="perfChannels"><div class="empty-row" data-i18n="perf_loading">טוען…</div></div>
+
+  <!-- The client's OWN conversion types (core/conversion_types): forms,
+       WhatsApp, phone, store sales. Sales lead when the client sells online. -->
+  <div id="perfConversionsSection" style="display:none;">
+    <div class="section-head">
+      <div>
+        <div class="section-title" data-i18n="conv_title">מה נחשב אצלך תוצאה</div>
+        <div class="section-sub" data-i18n="conv_sub">לפי הדרך שבה הלקוחות שלך פונים אליך — אפשר לשנות בצ׳אט עם אורי</div>
+      </div>
+    </div>
+    <div id="perfConversions"></div>
+  </div>
 
   <!-- Round 2 (ANALYTICS_ENABLED): real visitors from the client's GA4 property; hidden unless the server sends them -->
   <div id="perfTrafficSection" style="display:none;">
@@ -2747,6 +2784,30 @@ const DASH_I18N = {
   perf_title: { he:'ביצועים', en:'Performance', fr:'Performance', ar:'الأداء', ru:'Результаты' },
   perf_sub: { he:'מה שנמדד בפועל בכל ערוץ — בלי הערכות', en:'What is actually measured in each channel — no estimates', fr:'Ce qui est réellement mesuré sur chaque canal — sans estimations', ar:'ما يُقاس فعلًا في كل قناة — بلا تقديرات', ru:'То, что реально измерено в каждом канале, — без оценок' },
   perf_loading: { he:'טוען…', en:'Loading…', fr:'Chargement…', ar:'جارٍ التحميل…', ru:'Загрузка…' },
+  conv_title: { he:'מה נחשב אצלך תוצאה', en:'What counts as a result for you', fr:'Ce qui compte comme résultat', ar:'ما الذي يُحتسب نتيجة لديك', ru:'Что считается результатом' },
+  conv_sub: { he:'לפי הדרך שבה הלקוחות שלך פונים אליך — אפשר לשנות בצ׳אט עם אורי', en:'Based on how your customers reach you — change it in the chat with Uri', fr:'Selon la façon dont vos clients vous contactent — modifiable dans le chat avec Uri', ar:'حسب الطريقة التي يتواصل بها عملاؤك — يمكن تغييره في الدردشة مع أوري', ru:'По тому, как к вам обращаются клиенты — можно изменить в чате с Ури' },
+  conv_type_form_submit: { he:'פניות מטפסים', en:'Form enquiries', fr:'Demandes par formulaire', ar:'طلبات عبر النماذج', ru:'Заявки из форм' },
+  conv_type_whatsapp_click: { he:'פניות בוואטסאפ', en:'WhatsApp enquiries', fr:'Demandes WhatsApp', ar:'طلبات واتساب', ru:'Обращения в WhatsApp' },
+  conv_type_phone_click: { he:'שיחות טלפון', en:'Phone calls', fr:'Appels téléphoniques', ar:'مكالمات هاتفية', ru:'Телефонные звонки' },
+  conv_type_store_sales: { he:'מכירות', en:'Sales', fr:'Ventes', ar:'المبيعات', ru:'Продажи' },
+  conv_count: { he:'{n} ב-{d} ימים', en:'{n} in {d} days', fr:'{n} en {d} jours', ar:'{n} خلال {d} يومًا', ru:'{n} за {d} дн.' },
+  conv_clicks_landing: { he:'נספר מהכפתורים בדפי הנחיתה שלך. לחיצות באתר עצמו יוצגו כאן כשחיבור הנתונים מהאתר יופעל.', en:'Counted from the buttons on your landing pages. Clicks on the site itself will show here once site data is switched on.', fr:'Compté sur les boutons de vos pages d\'atterrissage. Les clics sur le site s\'afficheront quand les données du site seront activées.', ar:'محسوب من أزرار صفحات الهبوط. ستظهر نقرات الموقع نفسه هنا عند تفعيل بيانات الموقع.', ru:'Считается по кнопкам на ваших лендингах. Клики на самом сайте появятся, когда включат данные сайта.' },
+  conv_no_data: { he:'עוד אין נתונים לתקופה הזו.', en:'No data for this period yet.', fr:'Pas encore de données pour cette période.', ar:'لا توجد بيانات لهذه الفترة بعد.', ru:'Пока нет данных за этот период.' },
+  conv_store_not_connected: { he:'החנות עוד לא מחוברת — חברו אותה בכרטיס "החנות באתר" כדי לראות כאן מכירות.', en:'Your store isn\'t connected yet — connect it on the "Online store" card to see sales here.', fr:'Boutique non connectée — connectez-la sur la carte « Boutique » pour voir les ventes.', ar:'المتجر غير مربوط بعد — اربطه من بطاقة "المتجر" لرؤية المبيعات هنا.', ru:'Магазин не подключён — подключите его в карточке «Магазин», чтобы видеть продажи.' },
+  conv_store_error: { he:'לא הצלחנו לקרוא את החנות כרגע — ננסה שוב בטעינה הבאה.', en:'We couldn\'t read the store right now — we\'ll try again on the next load.', fr:'Lecture de la boutique impossible pour le moment.', ar:'تعذّرت قراءة المتجر الآن.', ru:'Сейчас не удалось прочитать магазин.' },
+  conv_revenue: { he:'הכנסות (נטו)', en:'Revenue (net)', fr:'Chiffre d\'affaires (net)', ar:'الإيرادات (صافي)', ru:'Выручка (нетто)' },
+  conv_orders: { he:'הזמנות', en:'Orders', fr:'Commandes', ar:'الطلبات', ru:'Заказы' },
+  conv_aov: { he:'ממוצע להזמנה', en:'Average order', fr:'Panier moyen', ar:'متوسط الطلب', ru:'Средний заказ' },
+  conv_partial: { he:'בתקופה הזו היו יותר הזמנות ממה שנקרא בבת אחת — המספרים הם של ההזמנות האחרונות.', en:'This period had more orders than one read covers — the numbers are for the newest ones.', fr:'Plus de commandes qu\'une lecture n\'en couvre — chiffres des plus récentes.', ar:'كانت هناك طلبات أكثر مما تغطيه قراءة واحدة — الأرقام للأحدث.', ru:'Заказов больше, чем охватывает одно чтение — цифры по последним.' },
+  store_card: { he:'החנות באתר', en:'Online store', fr:'Boutique en ligne', ar:'المتجر الإلكتروني', ru:'Интернет-магазин' },
+  store_note: { he:'קריאה בלבד: הזמנות ומכירות, כדי שאורי יענה מהנתונים האמיתיים. אנחנו לא משנים דבר בחנות ולא שומרים פרטי לקוחות.', en:'Read only: orders and sales, so Uri answers from the real data. We change nothing in the store and keep no customer details.', fr:'Lecture seule : commandes et ventes. Nous ne modifions rien et ne conservons aucune donnée client.', ar:'قراءة فقط: الطلبات والمبيعات. لا نغيّر شيئًا في المتجر ولا نحتفظ ببيانات العملاء.', ru:'Только чтение: заказы и продажи. Мы ничего не меняем в магазине и не храним данные клиентов.' },
+  store_site_ph: { he:'כתובת החנות (אם שונה מהאתר)', en:'Store address (if not the website)', fr:'Adresse de la boutique', ar:'عنوان المتجر', ru:'Адрес магазина' },
+  store_use_site: { he:'להשתמש בחיבור האתר הקיים (פחות מומלץ)', en:'Use the existing website connection (less recommended)', fr:'Utiliser la connexion du site (moins recommandé)', ar:'استخدام ربط الموقع الحالي (أقل تفضيلًا)', ru:'Использовать подключение сайта (менее рекомендуется)' },
+  store_connected: { he:'מחובר — קריאה בלבד ✓', en:'Connected — read only ✓', fr:'Connectée — lecture seule ✓', ar:'مربوط — قراءة فقط ✓', ru:'Подключено — только чтение ✓' },
+  store_connected_site: { he:'מחובר דרך חיבור האתר — מומלץ לעבור למפתח קריאה', en:'Connected through the website connection — a read-only key is recommended', fr:'Connectée via le site — une clé en lecture seule est recommandée', ar:'مربوط عبر الموقع — يُنصح بمفتاح قراءة فقط', ru:'Подключено через сайт — лучше ключ только для чтения' },
+  store_fill: { he:'מדביקים את שני הערכים: Consumer key ו-Consumer secret', en:'Paste both values: Consumer key and Consumer secret', fr:'Collez les deux valeurs', ar:'الصق القيمتين', ru:'Вставьте оба значения' },
+  store_connected_notice: { he:'החנות מחוברת ✓ אפשר לשאול את אורי על הזמנות ומכירות.', en:'Store connected ✓ You can ask Uri about orders and sales.', fr:'Boutique connectée ✓', ar:'تم ربط المتجر ✓', ru:'Магазин подключён ✓' },
+  store_connect_failed: { he:'החיבור לא הצליח — נסו שוב בעוד רגע.', en:'The connection didn\'t work — try again in a moment.', fr:'La connexion a échoué — réessayez.', ar:'فشل الربط — حاول مجددًا.', ru:'Не удалось подключить — попробуйте ещё раз.' },
   perf_error: { he:'לא הצלחנו לטעון את הנתונים כרגע — נסו שוב בעוד רגע.', en:'We couldn\'t load the data right now — please try again in a moment.', fr:'Impossible de charger les données pour le moment — réessayez dans un instant.', ar:'تعذّر تحميل البيانات الآن — حاول مجددًا بعد لحظة.', ru:'Сейчас не удалось загрузить данные — попробуйте чуть позже.' },
   ch_google_ads: { he:'Google Ads', en:'Google Ads', fr:'Google Ads', ar:'Google Ads', ru:'Google Ads' },
   ch_meta: { he:'Meta — פייסבוק + אינסטגרם', en:'Meta — Facebook + Instagram', fr:'Meta — Facebook + Instagram', ar:'Meta — فيسبوك + إنستغرام', ru:'Meta — Facebook + Instagram' },
@@ -3266,6 +3327,7 @@ async function loadDashboard() {
     // Creative tools, each on its own card, and the voice recordings
     loadCreativeTools();
     loadVoiceRecordings();
+    loadStoreStatus();
 
     // The account manager: apply the client's saved choice (or the default),
     // and offer the one-time picker until they've chosen
@@ -4175,6 +4237,76 @@ function paintTool(tool) {
     document.getElementById('toolVoiceConsentBox').style.display = t.consent ? 'none' : '';
     document.getElementById('toolVoiceConsentOn').style.display = t.consent ? 'block' : 'none';
   }
+}
+
+// ─── The online store, READ-ONLY (agents/store_agent) ──────────────────────
+async function loadStoreStatus() {
+  const t = uallakI18n.t;
+  let d = {};
+  try {
+    const res = await fetch('/api/client/store', { credentials: 'same-origin' });
+    const body = await res.json();
+    if (res.ok && body.success) d = body.data || {};
+  } catch (e) {
+    console.error('store status failed', e);
+  }
+  const status = document.getElementById('storeStatus');
+  if (!status) return;
+  status.textContent = d.connected ? t(d.method === 'site' ? 'store_connected_site' : 'store_connected') : t('not_connected');
+  document.getElementById('storeDisc').style.display = d.connected ? 'block' : 'none';
+  if (d.connected && d.method === 'key') document.getElementById('storeForm').style.display = 'none';
+}
+
+async function postStore(path, payload, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(path, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) {
+      showNotice(uallakI18n.t('store_connected_notice'), 'success');
+      await loadStoreStatus();
+      btn.disabled = false;
+      return true;
+    }
+    // The server's own plain Hebrew line (store_agent.ERRORS_HE)
+    const msg = body.detail && body.detail.message;
+    showNotice(msg || uallakI18n.t('store_connect_failed'), 'warn');
+  } catch (e) {
+    console.error('store connect failed', e);
+    showNotice(uallakI18n.t('store_connect_failed'), 'warn');
+  }
+  btn.disabled = false;
+  return false;
+}
+
+async function connectStore() {
+  const key = document.getElementById('storeKey');
+  const secret = document.getElementById('storeSecret');
+  if (!key.value.trim() || !secret.value.trim()) { showNotice(uallakI18n.t('store_fill'), 'warn'); return; }
+  const ok = await postStore('/api/client/store/connect', {
+    consumer_key: key.value.trim(), consumer_secret: secret.value.trim(),
+    site_url: document.getElementById('storeSite').value.trim(),
+  }, document.getElementById('storeConnectBtn'));
+  if (ok) { key.value = ''; secret.value = ''; }
+}
+
+function connectStoreViaSite() {
+  postStore('/api/client/store/connect-site', {}, document.getElementById('storeSiteBtn'));
+}
+
+async function disconnectStore(btn) {
+  btn.disabled = true;
+  try {
+    await fetch('/api/client/store/disconnect', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {
+    console.error('store disconnect failed', e);
+  }
+  btn.disabled = false;
+  await loadStoreStatus();
 }
 
 // The key field: the guide's "I already have a key", or "replace key"
@@ -6238,6 +6370,8 @@ async function interviewTurn(text) {
     typing.remove();
     if (!body.success) { interviewMode = false; return; }
     if (body.data.reply) appendMsg(w.msgsEl, body.data.reply, 'bot');
+    // "How do customers reach you?" → the conversion-types card to approve
+    if (body.data.action) appendActionCard('general', body.data.action);
     // Once it's done, later messages go back to the normal support chat
     if (body.data.complete) interviewMode = false;
   } catch (e) {
@@ -8008,6 +8142,38 @@ function renderTraffic(tr) {
   if (tr.pulled_at) html += `<div class="perf-note">${esc(t('perf_pulled', { t: fmtDateTime(tr.pulled_at) }))}</div>`;
   return html;
 }
+// Every label comes from i18n by type; numbers come from the server as is
+function renderConversions(c) {
+  const t = uallakI18n.t;
+  // The primary metric first (store sales for a client who sells online)
+  const metrics = (c.metrics || []).slice().sort((a, b) => (b.type === c.primary) - (a.type === c.primary));
+  const html = metrics.map(m => {
+    let body = '';
+    if (m.type === 'store_sales') {
+      if (m.connected === false) body = `<div class="empty-row">${esc(t('conv_store_not_connected'))}</div>`;
+      else if (m.error) body = `<div class="empty-row">${esc(t('conv_store_error'))}</div>`;
+      else {
+        const ws = m.windows || [];
+        const head = ws.map(w => `<th>${esc(t('perf_window', { n: w.days }))}</th>`).join('');
+        const row = (label, pick) => `<tr><td>${esc(label)}</td>${ws.map(w => `<td dir="ltr">${esc(pick(w))}</td>`).join('')}</tr>`;
+        body = `<div class="perf-table-wrap"><table class="perf-table"><thead><tr><th></th>${head}</tr></thead><tbody>`
+          + row(t('conv_revenue'), w => perfNum(w.revenue) + ' ' + (w.currency || ''))
+          + row(t('conv_orders'), w => perfNum(w.orders))
+          + row(t('conv_aov'), w => perfNum(w.average_order_value) + ' ' + (w.currency || ''))
+          + '</tbody></table></div>';
+        if (ws.some(w => w.complete === false)) body += `<div class="perf-note">${esc(t('conv_partial'))}</div>`;
+      }
+    } else {
+      const ws = m.windows || [];
+      body = ws.length ? ws.map(w => perfKv(t('perf_window', { n: w.days }), perfNum(w.count))).join('')
+                       : `<div class="perf-note">${esc(t('conv_no_data'))}</div>`;
+      if (m.source === 'landing_pages') body += `<div class="perf-note">${esc(t('conv_clicks_landing'))}</div>`;
+    }
+    return `<div class="perf-block-title">${esc(t('conv_type_' + m.type))}</div>${body}`;
+  }).join('');
+  // A click is an indication of an enquiry, not a confirmed conversation (server text)
+  return html + (c.click_note ? `<div class="perf-note">${esc(c.click_note)}</div>` : '');
+}
 function renderOrganic(o) {
   const t = uallakI18n.t;
   const rows = o.rows || [];
@@ -8050,6 +8216,9 @@ function renderPerformance() {
   // website_traffic exists only while the server's Analytics flag is on
   const order = chs.website_traffic ? PERF_CHANNEL_ORDER.concat(['website_traffic']) : PERF_CHANNEL_ORDER;
   chEl.innerHTML = order.map(id => perfCard(id, chs[id] || { status: 'not_in_plan' })).join('');
+  const conv = PERF_DATA.conversions;
+  document.getElementById('perfConversionsSection').style.display = conv && (conv.metrics || []).length ? '' : 'none';
+  document.getElementById('perfConversions').innerHTML = conv ? renderConversions(conv) : '';
   const traffic = PERF_DATA.traffic;
   document.getElementById('perfTrafficSection').style.display = traffic ? '' : 'none';
   document.getElementById('perfTraffic').innerHTML = traffic ? renderTraffic(traffic) : '';
@@ -8109,6 +8278,7 @@ const CONNECT_ACTIONS = {
   analytics: () => connectAnalytics(), google_drive: () => connectGoogleDrive(), tag_manager: () => connectGtm(),
   website: () => showCardForm('siteExistingForm', toggleExistingSiteForm),
   website_create: () => showCardForm('siteCreateForm', toggleCreateSiteForm),
+  store: () => showCardForm('storeForm', () => { document.getElementById('storeForm').style.display = 'block'; }),
   higgsfield: () => showCardForm('toolForm-higgsfield', () => openToolForm('higgsfield')),
   elevenlabs: () => showCardForm('toolForm-elevenlabs', () => openToolForm('elevenlabs')),
   manychat: () => askAboutAutomation('manychat'),

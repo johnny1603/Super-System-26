@@ -1169,21 +1169,29 @@ def get_conversion_tracking_status(client_id: int) -> dict:
 
     tags = live.get("tag") or []
     triggers = {t.get("triggerId"): t for t in (live.get("trigger") or [])}
-    lead_tags = []
+    lead_tags, click_tags = [], {}
     for tag in tags:
-        if tag.get("type") != "gaawe":
+        if tag.get("type") != "gaawe" or tag.get("paused"):
             continue
         params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
-        if (params.get("eventName") or "").lower() in LEAD_EVENT_NAMES:
-            firing = [triggers.get(tid, {}).get("type", "unknown")
-                      for tid in (tag.get("firingTriggerId") or [])]
+        event = (params.get("eventName") or "").lower()
+        firing = [triggers.get(tid, {}).get("type", "unknown")
+                  for tid in (tag.get("firingTriggerId") or [])]
+        if event in LEAD_EVENT_NAMES:
             lead_tags.append({"tag_name": tag.get("name"), "event_name": params.get("eventName"),
                               "measurement_id": params.get("measurementIdOverride", ""),
                               "trigger_types": firing})
+        elif event in gtm.CLICK_EVENT_NAMES:
+            click_tags.setdefault(gtm.CLICK_EVENT_NAMES[event], []).append(
+                {"tag_name": tag.get("name"), "event_name": event, "trigger_types": firing})
+    live_types = (["form_submit"] if lead_tags else []) + sorted(click_tags)
     return {
         "gtm_api_connected": True,
         "configured_live": bool(lead_tags),
         "lead_event_tags": lead_tags,
+        # WhatsApp / phone click tags live in the PUBLISHED version (core/conversion_types)
+        "click_event_tags": click_tags,
+        "live_types": live_types,
         "live_version_name": live.get("name", ""),
         "note": (None if lead_tags else
                  "published container has no GA4 lead-event tag — conversion data from "
@@ -1233,19 +1241,42 @@ def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: b
                  f"client {client_id}: cleanup after failure incomplete: {e}")
 
 
-def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> dict:
-    """V1 conversion configuration — THE single common case: standard HTML
-    form submission → GA4 'generate_lead' event, created in the default
-    workspace and PUBLISHED (a draft fires nothing). Idempotent: refuses
-    when the live container already has a lead-event tag rather than
-    stacking a duplicate that would double-count every lead, and every GTM
-    object (workspace, trigger, tag) is found by name and reused/updated
-    before anything is created, so a re-run never meets "duplicate name".
-    A failure that is ours is retried once, then alerted. Known v1 limit,
-    stated: GTM's built-in Form Submission trigger catches standard submits;
-    heavily-AJAXed form builders need a custom-event trigger — flagged
-    follow-up, not silently attempted."""
+def _gtm_types(client_id: int, types) -> list:
+    """The client's conversion types that Tag Manager measures, in order.
+    store_sales is measured from the store itself (agents/store_agent)."""
+    from core import conversion_types
+    if types is None:
+        types = conversion_types.types_for(client_id)
+    try:
+        types = conversion_types.clean(types)
+    except ValueError:
+        return []
+    return [t for t in types if t in conversion_types.GTM_TYPES]
+
+
+def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", types=None) -> dict:
+    """Conversion configuration in the client's Tag Manager, PER CLIENT
+    (core/conversion_types — `types` defaults to the client's own choice):
+    - form_submit: standard HTML form submission → GA4 'generate_lead' (the
+      original v1 behaviour, unchanged);
+    - whatsapp_click: a click on a wa.me / api.whatsapp.com / whatsapp:// link
+      → GA4 'click_whatsapp';
+    - phone_click: a click on a tel: link → GA4 'click_to_call'.
+    Created in our own workspace and PUBLISHED (a draft fires nothing).
+    Idempotent: a type already live in the published container is skipped
+    (a second lead tag would double-count every lead), and every GTM object is
+    found by NAME and reused/updated before anything is created, so a re-run
+    never duplicates. A failure that is ours is retried once, then alerted.
+    Known limit, stated: GTM's built-in Form Submission trigger catches
+    standard submits; heavily-AJAXed form builders need a custom-event
+    trigger — flagged follow-up, not silently attempted."""
     from core import gtm_service as gtm
+
+    wanted = _gtm_types(client_id, types)
+    if not wanted:
+        return {"success": False, "reason": "no_gtm_types", "errors": [
+            "none of this client's conversion types is measured in Tag Manager "
+            "(store_sales is read from the store itself)"]}
 
     conn = _gtm_connection(client_id)
     if not conn.get("access_token"):
@@ -1289,39 +1320,66 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
             "property id (G-...) is required for the event tag"]}
 
     status = get_conversion_tracking_status(client_id)
+    live_types = set(status.get("live_types") or [])
     if status.get("configured_live"):
+        live_types.add("form_submit")
+    pending = [t for t in wanted if t not in live_types]
+    if not pending:
         return {"success": False, "reason": "already_live", "errors": [
-            f"live container already has lead-event tag(s) "
-            f"({[t['tag_name'] for t in status['lead_event_tags']]}) — configuring another "
-            "would double-count leads; change the existing one in GTM instead"]}
+            f"every requested conversion type ({wanted}) is already live in the published "
+            f"container (lead tags: {[t['tag_name'] for t in status.get('lead_event_tags') or []]}) — "
+            "configuring another would double-count; change the existing one in GTM instead"]}
 
     refresh_token, container_path = conn["access_token"], conn["account_id"]
     log_step(AGENT_NAME, "configure_lead_conversion",
-             f"client {client_id}: {container_path} → {ga4_measurement_id}")
+             f"client {client_id}: {container_path} → {ga4_measurement_id} for {pending}")
 
-    def attempt():
-        workspace, ours, created = "", False, []
-        try:
-            # Our own workspace: the published version carries ONLY our trigger
-            # and tag, never someone's drafts (gtm_service.lead_workspace).
-            # Trigger and tag are looked up by NAME and reused/updated — a
-            # workspace is based on the live version, so an earlier run's
-            # trigger may already be there (the "duplicate name" 400).
-            workspace, ours = gtm.lead_workspace(refresh_token, container_path)
-            trigger, trigger_outcome = timed_step(AGENT_NAME, "gtm_ensure_trigger",
-                                                  lambda: gtm.ensure_form_submit_trigger(refresh_token, workspace))
-            if trigger_outcome == "created":
-                created.append(trigger.get("path", ""))
+    def ensure_type(workspace: str, kind: str, created: list) -> dict:
+        if kind == "form_submit":
+            trigger, trigger_outcome = timed_step(
+                AGENT_NAME, "gtm_ensure_trigger",
+                lambda: gtm.ensure_form_submit_trigger(refresh_token, workspace))
+        else:
+            trigger, trigger_outcome = timed_step(
+                AGENT_NAME, "gtm_ensure_trigger",
+                lambda: gtm.ensure_click_trigger(refresh_token, workspace, kind))
+        if trigger_outcome == "created":
+            created.append(trigger.get("path", ""))
+        if kind == "form_submit":
             tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
                                           lambda: gtm.ensure_ga4_lead_event_tag(
                                               refresh_token, workspace, ga4_measurement_id,
                                               trigger["triggerId"]))
-            if tag_outcome == "created":
-                created.append(tag.get("path", ""))
+        else:
+            spec = gtm.CLICK_CONVERSIONS[kind]
+            tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
+                                          lambda: gtm.ensure_ga4_event_tag(
+                                              refresh_token, workspace, ga4_measurement_id,
+                                              trigger["triggerId"], spec["event"], spec["tag"]))
+        if tag_outcome == "created":
+            created.append(tag.get("path", ""))
+        return {"trigger": trigger, "tag": tag, "trigger_outcome": trigger_outcome, "tag_outcome": tag_outcome}
+
+    def attempt():
+        workspace, ours, created = "", False, []
+        try:
+            # Our own workspace: the published version carries ONLY our
+            # triggers and tags, never someone's drafts (gtm_service.lead_workspace).
+            # Every trigger and tag is looked up by NAME and reused/updated — a
+            # workspace is based on the live version, so an earlier run's
+            # trigger may already be there (the "duplicate name" 400).
+            workspace, ours = gtm.lead_workspace(refresh_token, container_path)
+            if any(k in gtm.CLICK_CONVERSIONS for k in pending):
+                timed_step(AGENT_NAME, "gtm_click_url_variable",
+                           lambda: gtm.ensure_click_url_variable(refresh_token, workspace))
+            per_type = {kind: ensure_type(workspace, kind, created) for kind in pending}
             published = timed_step(AGENT_NAME, "gtm_publish",
                                    lambda: gtm.publish_workspace(refresh_token, workspace))
-            return {"trigger": trigger, "tag": tag, "published": published,
-                    "outcomes": {"trigger": trigger_outcome, "tag": tag_outcome}}
+            first = per_type[pending[0]]
+            return {"trigger": first["trigger"], "tag": first["tag"], "published": published,
+                    "per_type": per_type,
+                    "outcomes": {kind: {"trigger": v["trigger_outcome"], "tag": v["tag_outcome"]}
+                                 for kind, v in per_type.items()}}
         except Exception as e:
             _undo_gtm_drafts(client_id, refresh_token, workspace, ours, created)
             return {"error": e}
@@ -1344,22 +1402,26 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "") -> d
 
     trigger, tag, published = done["trigger"], done["tag"], done["published"]
     version = (published.get("containerVersion") or {})
+    events = {"form_submit": "generate_lead", **{k: v["event"] for k, v in gtm.CLICK_CONVERSIONS.items()}}
     _log_activity(client_id, "website_conversion_configured",
-                  {"ga4_measurement_id": ga4_measurement_id,
+                  {"ga4_measurement_id": ga4_measurement_id, "types": pending,
+                   "skipped_already_live": [t for t in wanted if t not in pending],
                    "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId"),
                    "gtm_objects": done["outcomes"], "retried": done is not first},
                   {"live_version": version.get("name", "")})
     log_step(AGENT_NAME, "configure_lead_conversion",
-             f"client {client_id}: published as '{version.get('name', '')}'")
-    return {"success": True, "event_name": "generate_lead",
+             f"client {client_id}: published as '{version.get('name', '')}' ({pending})")
+    return {"success": True, "event_name": events[pending[0]],
+            "events": [events[t] for t in pending], "types": pending,
+            "skipped_already_live": [t for t in wanted if t not in pending],
             "ga4_measurement_id": ga4_measurement_id,
             "live_version": version.get("name", ""),
             "live_version_id": version.get("containerVersionId", ""),
             "tag_name": tag.get("name", ""), "trigger_name": trigger.get("name", ""),
-            "note": ("Form submissions now fire GA4 'generate_lead'. Remaining manual "
-                     "platform steps: mark generate_lead as a key event in GA4 and import "
-                     "it as a conversion action in Google Ads (no public API for either "
-                     "from our scopes).")}
+            "tag_names": [v["tag"].get("name", "") for v in done["per_type"].values()],
+            "note": (f"Now firing GA4 {[events[t] for t in pending]}. Remaining manual "
+                     "platform steps: mark them as key events in GA4 and import them as "
+                     "conversion actions in Google Ads (no public API for either from our scopes).")}
 
 
 def _tracking_snippet(gtm_container_id: str = "", ga4_measurement_id: str = "",

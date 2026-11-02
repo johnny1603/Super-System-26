@@ -489,6 +489,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
     `account_state` doesn't show. This is the prompt rule in `ACCOUNT_STATE_RULE`, backed by
     `support_agent._guard_invented` for landing pages.
   - Guarded by `tests/test_landing_chat.py`.
+  **Online store, READ-ONLY + per-client conversion types (2026-11-02, `docs/STORE.md`):**
+  - `core/woocommerce_service.py` has GET only (a test scans for writes); `agents/store_agent.py`
+    reads orders / sales / refunds for אורי (`payload["store"]`, live per message) and
+    `client_state.store` (30-day aggregates). Customer names, addresses, phones and e-mails:
+    only on an explicit ask for one order, answered by code before any model, masked in the
+    stored chat. Never in the DB, logs, alerts, cost rows or the cache.
+  - `clients.conversion_types` (form_submit / whatsapp_click / phone_click / store_sales,
+    default form_submit) is the client's own choice via the `set_conversion_types` card —
+    never a new hardcoded default. `configure_lead_conversion` builds one trigger + tag per
+    selected Tag Manager type, by name, skipping what is live. Guarded by
+    `tests/test_store_reads.py`, `tests/test_conversion_types.py`, `tests/test_google_scope_flows.py`.
   **A failed data read never reaches the model** (no error blocks, no "unavailable"
   list, no chat_fallback rows in `recent_activity`). The model labels each message's
   `data_topic`, and code shows the fixed "can't pull that up" line only when that topic's

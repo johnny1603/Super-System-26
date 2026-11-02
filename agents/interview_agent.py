@@ -173,6 +173,11 @@ JOB 2 — LEARN WHAT ONLY THEY KNOW. Across the conversation, gather:
 - COMPETITORS above all: names AND website links. This is the single most valuable thing
   here — our research agents work far better with real names than with a guess at the
   niche. Ask for 2-3, and ask for links, not just names.
+- HOW CUSTOMERS USUALLY REACH THEM: WhatsApp, a phone call, a form on the site, or buying in
+  their online store (one or several). This decides what we measure as a result for them, so
+  ask it plainly once, and never guess it. Put ONLY what they said in captured.contact_channels
+  using these words: "whatsapp", "phone", "form", "store". The system then shows them a card
+  to confirm — don't describe the card, just thank them.
 - Anything else a specialist could use: who their best customers actually are, what they
   sell most, seasonality, what they've tried before that flopped, whether they're willing
   to appear on camera.
@@ -201,6 +206,7 @@ Return JSON only:
 {{"reply": "your message to the client",
   "speaking_as": "general|google|meta|website|media",
   "captured": {{"competitors": [{{"name": "", "url": ""}}],
+                "contact_channels": [],
                 "notes": {{"key": "short value"}}}},
   "interview_complete": false}}
 
@@ -413,7 +419,9 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
     if reply:
         log_communication(client_id, "outbound", "dashboard_chat", reply)
 
-    captured_count = _store_captured(client_id, result.get("captured") or {})
+    captured = result.get("captured") or {}
+    captured_count = _store_captured(client_id, captured)
+    action = conversion_card(client_id, captured.get("contact_channels") if isinstance(captured, dict) else None)
 
     complete = bool(result.get("interview_complete")) or len(_transcript(client_id)) >= MAX_TURNS * 2
     if complete and not is_completed(client_id):
@@ -426,7 +434,26 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
 
     return {"success": True, "reply": reply,
             "speaking_as": result.get("speaking_as", "general"),
-            "complete": complete, "captured_count": captured_count}
+            "complete": complete, "captured_count": captured_count, "action": action}
+
+
+def conversion_card(client_id: int, channels) -> dict:
+    """What the client said about how customers reach them → the
+    set_conversion_types card to approve (core/conversion_types). Nothing is
+    saved here: the client's click on the card is the decision. None when
+    they said nothing usable, or already confirmed a choice."""
+    from core import agent_actions, conversion_types
+    types = conversion_types.from_channels(channels if isinstance(channels, list) else [])
+    if not types or conversion_types.get(client_id)["confirmed"]:
+        return None
+    try:
+        proposal = agent_actions.propose(client_id, "client_chat", "general",
+                                         {"name": "set_conversion_types", "params": {"types": types}},
+                                         by_code=True)
+    except Exception as e:
+        print(f"[{AGENT_NAME}] conversion card not proposed for client {client_id}: {type(e).__name__}")
+        return None
+    return proposal.get("card")
 
 
 def _store_captured(client_id: int, captured: dict) -> int:

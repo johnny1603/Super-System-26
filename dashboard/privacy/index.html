@@ -95,6 +95,27 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
     so you can see them in your dashboard.</li>
   </ul>
 
+  <h3>Your online store (WooCommerce), if you choose to connect it</h3>
+  <ul>
+    <li><strong>Why:</strong> to answer your questions in the chat and on the Performance page about orders,
+    sales, revenue and refunds from your store's real data.</li>
+    <li><strong>Access:</strong> read only. We recommend a key you create in your store with "Read" permission
+    only, which you can revoke there at any time. We never create, change or delete anything in your store.
+    The key is stored encrypted, like all access credentials (section 7).</li>
+    <li><strong>What is read:</strong> order details: number, status, date, amount, products, shipping method
+    and refunds. Your customers' names, addresses, phone numbers and e-mail addresses are read <strong>only</strong>
+    when you explicitly ask for the customer details of one specific order, and only for that order.</li>
+    <li><strong>What is kept:</strong> your customers' personal details are not kept by us: not in our
+    database, logs, alerts, cost records or analytics. They are shown to you once in the chat, and the copy
+    kept in the chat history is masked. Aggregates (for example total sales for a period) are held in server
+    memory for at most 20 minutes.</li>
+    <li><strong>Who processes it:</strong> the customer details of an order you asked about are shown to you
+    by our own code and are not sent to our AI provider. Order data without personal details (amounts,
+    products, statuses) is sent to our AI provider (Anthropic) only to answer the question you asked. We do
+    not pass store data to anyone else.</li>
+    <li><strong>Disconnecting:</strong> the store card's "Disconnect" button deletes the stored key.</li>
+  </ul>
+
   <h2><span class="num">3.</span>Google user data we access</h2>
   <p>Each Google connection is a separate Google consent screen that asks only for the permissions
   that one feature needs. Nothing is accessed until you approve it, and you can disconnect each one
@@ -194,9 +215,11 @@ footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0
   <ul>
     <li>To find the Tag Manager container installed on your website and check whether lead-conversion
     tracking is already set up.</li>
-    <li>When it is not, to add one form-submission trigger and one Google Analytics 4
-    <code>generate_lead</code> event tag to that container, create a container version and publish it,
-    so the leads your website receives are counted. We do not change or remove your existing tags.</li>
+    <li>When it is not, to add to that container, for each kind of enquiry you chose, one trigger and one
+    Google Analytics 4 event tag: a form submission (<code>generate_lead</code>), a click on a WhatsApp link
+    (<code>click_whatsapp</code>) or a click on a phone link (<code>click_to_call</code>); then create a
+    container version and publish it, so the enquiries your website receives are counted. We do not change
+    or remove your existing tags.</li>
   </ul>
 
   <h3>AI processing</h3>

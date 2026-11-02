@@ -133,6 +133,11 @@ PARITY = {
     "GET /api/client/crm": (READ, "leads"),
     "POST /api/client/crm/connect": (NOT_CHAT, _KEY),
     "POST /api/client/crm/disconnect": (GAP, "P3: disconnect_crm card"),
+    # ── Online store, READ-ONLY (2026-11-02, docs/STORE.md) ──────────────────
+    "GET /api/client/store": (READ, "store"),
+    "POST /api/client/store/connect": (NOT_CHAT, _KEY),
+    "POST /api/client/store/connect-site": (CHAT, "connect_store"),
+    "POST /api/client/store/disconnect": (GAP, "P3: disconnect_store card"),
     # ── Landing pages — full parity (2026-11-02) ─────────────────────────────
     "GET /api/client/landing-pages": (READ, "landing_pages"),
     "POST /api/client/landing-pages": (CHAT, "create_landing_page"),

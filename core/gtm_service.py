@@ -399,6 +399,89 @@ def ensure_ga4_lead_event_tag(refresh_token: str, workspace_path: str,
                          ga4_lead_tag_body(ga4_measurement_id, trigger_id), matches)
 
 
+# ─── Click conversions (2026-11-02, core/conversion_types) ───────────────────
+# A WhatsApp or phone click is measured with GTM's Just Links trigger
+# (type linkClick) filtered on the built-in {{Click URL}} variable, plus a GA4
+# event tag. Same scope as everything above (tagmanager.edit.containers covers
+# workspaces.built_in_variables.list/create). Event names match the landing
+# pages' own dataLayer events (docs/LANDING_PAGES.md §3), so a client's reports
+# show ONE name per kind of click wherever it happened.
+CLICK_CONVERSIONS = {
+    "whatsapp_click": {"trigger": "uallak — WhatsApp click", "tag": "uallak — GA4 click_whatsapp",
+                       "event": "click_whatsapp",
+                       # wa.me, api.whatsapp.com (with or without www) and the whatsapp:// app link
+                       "pattern": r"^(https?://(www\.)?(wa\.me|api\.whatsapp\.com)/|whatsapp:)"},
+    "phone_click": {"trigger": "uallak — phone click", "tag": "uallak — GA4 click_to_call",
+                    "event": "click_to_call", "pattern": r"^tel:"},
+}
+CLICK_EVENT_NAMES = {spec["event"]: kind for kind, spec in CLICK_CONVERSIONS.items()}
+
+
+def ensure_click_url_variable(refresh_token: str, workspace_path: str) -> str:
+    """The built-in Click URL variable must be enabled for a link filter to
+    compile. 'reused' when it already is, 'created' otherwise."""
+    enabled = _get(refresh_token, f"{workspace_path}/built_in_variables").get("builtInVariable") or []
+    if any(v.get("type") == "clickUrl" for v in enabled):
+        return "reused"
+    try:
+        _post(refresh_token, f"{workspace_path}/built_in_variables", params={"type": "clickUrl"})
+    except GtmApiError as e:
+        # Enabled in between by someone else: already there is what we need
+        if e.status == 400 and "already" in str(e).lower():
+            return "reused"
+        raise
+    return "created"
+
+
+def click_trigger_body(kind: str) -> dict:
+    spec = CLICK_CONVERSIONS[kind]
+    return {"name": spec["trigger"], "type": "linkClick",
+            "filter": [{"type": "matchRegex", "parameter": [
+                {"type": "template", "key": "arg0", "value": "{{Click URL}}"},
+                {"type": "template", "key": "arg1", "value": spec["pattern"]},
+                {"type": "boolean", "key": "ignore_case", "value": "true"}]}],
+            "waitForTags": {"type": "boolean", "value": "false"},
+            "checkValidation": {"type": "boolean", "value": "false"}}
+
+
+def _click_trigger_matches(kind: str):
+    pattern = CLICK_CONVERSIONS[kind]["pattern"]
+
+    def matches(trigger):
+        if trigger.get("type") != "linkClick":
+            return False
+        for f in trigger.get("filter") or []:
+            params = {p.get("key"): p.get("value") for p in (f.get("parameter") or [])}
+            if (f.get("type") == "matchRegex" and params.get("arg0") == "{{Click URL}}"
+                    and params.get("arg1") == pattern):
+                return True
+        return False
+    return matches
+
+
+def ensure_click_trigger(refresh_token: str, workspace_path: str, kind: str) -> tuple:
+    """(trigger, outcome) — our WhatsApp / phone click trigger, by name."""
+    return ensure_entity(refresh_token, workspace_path, "triggers", click_trigger_body(kind),
+                         _click_trigger_matches(kind))
+
+
+def ensure_ga4_event_tag(refresh_token: str, workspace_path: str, ga4_measurement_id: str,
+                         trigger_id: str, event_name: str, name: str) -> tuple:
+    """(tag, outcome) — a GA4 event tag on one trigger, by name (the click
+    counterpart of ensure_ga4_lead_event_tag)."""
+    body = ga4_lead_tag_body(ga4_measurement_id, trigger_id, name=name)
+    body["parameter"] = [p if p["key"] != "eventName" else {**p, "value": event_name}
+                         for p in body["parameter"]]
+
+    def matches(tag):
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        return (tag.get("type") == "gaawe" and not tag.get("paused")
+                and params.get("measurementIdOverride") == ga4_measurement_id
+                and params.get("eventName") == event_name
+                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
+    return ensure_entity(refresh_token, workspace_path, "tags", body, matches)
+
+
 def publish_workspace(refresh_token: str, workspace_path: str,
                       version_name: str = "uallak conversion tracking") -> dict:
     """Workspace → version → LIVE. Two calls because that's GTM's model:
@@ -406,7 +489,7 @@ def publish_workspace(refresh_token: str, workspace_path: str,
     the live one. Returns the publish response (contains containerVersion)."""
     created = _post(refresh_token, f"{workspace_path}:create_version",
                     json_body={"name": version_name,
-                               "notes": "uallak: form-submission trigger + GA4 generate_lead tag"})
+                               "notes": "uallak: conversion triggers + GA4 event tags (form / WhatsApp / phone)"})
     if created.get("compilerError"):
         raise GtmCompilerError("create_version: Tag Manager could not compile the workspace")
     version_path = (created.get("containerVersion") or {}).get("path")
