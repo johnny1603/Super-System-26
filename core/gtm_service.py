@@ -31,6 +31,7 @@ tagmanager.edit.containers — accounts.list, containers.list, containers.get,
   workspaces.list, workspaces.getStatus, versions.live (read) and
   workspaces.create / workspaces.delete / workspaces.sync /
   workspaces.triggers.list+create+update / workspaces.tags.list+create+update /
+  workspaces.variables.list+create+update (the store purchase path) /
   triggers.delete / tags.delete (write; every object is looked up by name and
   reused or updated before anything is created; the deletes only remove what
   this flow itself just created, after a failed run).
@@ -301,8 +302,8 @@ def get_live_version(refresh_token: str, container_path: str) -> dict:
 # with duplicate name"), and a workspace is based on the LIVE version — so a
 # trigger or tag that an earlier run published (or left in a draft) is already
 # there. Every object this setup writes is therefore looked up by NAME first
-# and reused (or updated to our spec), never created twice. The setup creates
-# no variables today; a future one goes through ensure_entity("variables").
+# and reused (or updated to our spec), never created twice — the store purchase
+# path's Custom JavaScript variables too (ensure_entity("variables")).
 TRIGGER_NAME = "uallak — form submission"
 TAG_NAME = "uallak — GA4 generate_lead"
 _LIST_KEY = {"triggers": "trigger", "tags": "tag", "variables": "variable"}
@@ -482,6 +483,197 @@ def ensure_ga4_event_tag(refresh_token: str, workspace_path: str, ga4_measuremen
     return ensure_entity(refresh_token, workspace_path, "tags", body, matches)
 
 
+# ─── Store purchase (2026-11-07, conversion type store_sales) ────────────────
+# WHERE an order came from: ONE GA4 'purchase' event when a buyer reaches the
+# WooCommerce order-received ("thank you") page. Same scopes as above —
+# variables are workspaces.variables.list/create/update under
+# tagmanager.edit.containers; nothing new is requested.
+#
+# - The order id comes from the page address WooCommerce itself builds:
+#   /<endpoint>/<id>/ (pretty permalinks) or ?<endpoint>=<id> (plain ones).
+#   The endpoint slug is the store's own setting (default "order-received").
+# - Total and currency: the dataLayer's ecommerce object when the store pushes
+#   one for THIS order (GA4 or the older Enhanced Ecommerce shape), else the
+#   total WooCommerce prints on that page. Missing → sent without; never guessed.
+# - ONCE PER ORDER: "first seen" remembers the last 50 order ids in the
+#   buyer's browser (localStorage) and caches its answer for the page load, so
+#   a refresh, a back-button or a reopened tab never fires a second purchase.
+#   transaction_id also lets GA4 drop a duplicate on its side.
+# - Nothing is installed on the site itself: these are Tag Manager objects in
+#   the client's own container, published only after the client's approval.
+# - The SALE itself is never counted from this event: revenue and orders come
+#   from the store (woocommerce_service.SALE_STATUSES). A thank-you page also
+#   shows for an order still awaiting payment, so this event is attribution.
+PURCHASE = {"trigger": "uallak — purchase (order received)", "tag": "uallak — GA4 purchase",
+            "event": "purchase",
+            "vars": {"order_id": "uallak — order id", "total": "uallak — order total",
+                     "currency": "uallak — order currency", "first_seen": "uallak — order first seen"}}
+PURCHASE_EVENT = PURCHASE["event"]
+SEEN_STORAGE_KEY = "uallak_orders_seen"
+SEEN_KEEP = 50
+# The slug rule lives with the conversion types (no HTTP deps): only
+# [a-z0-9-] ever reaches the JavaScript below — store data is data
+from core.conversion_types import DEFAULT_ORDER_RECEIVED_ENDPOINT, clean_endpoint  # noqa: E402
+
+
+def _js_order_id(slug: str) -> str:
+    return ("function(){var m=(document.location.pathname+document.location.search)"
+            ".match(/(?:\\/|[?&])" + clean_endpoint(slug) + "(?:\\/|=)(\\d+)/);"
+            "return m?m[1]:undefined;}")
+
+
+def _js_ecommerce() -> str:
+    # The newest dataLayer ecommerce object for THIS order (or one carrying no id)
+    v = PURCHASE["vars"]
+    return ("var id={{" + v["order_id"] + "}};var dl=window.dataLayer||[];var e=null;"
+            "for(var i=dl.length-1;i>=0&&!e;i--){var x=dl[i]&&dl[i].ecommerce;if(!x)continue;"
+            "var tid=x.transaction_id||(x.purchase&&x.purchase.actionField&&x.purchase.actionField.id);"
+            "if(!tid||String(tid)===String(id))e=x;}")
+
+
+def _js_total() -> str:
+    return ("function(){" + _js_ecommerce() +
+            "if(e){var v=e.value!=null?e.value:(e.purchase&&e.purchase.actionField?e.purchase.actionField.revenue:null);"
+            "if(v!=null&&!isNaN(parseFloat(v)))return parseFloat(v);}"
+            "var el=document.querySelector('.woocommerce-order-overview__total .amount');"
+            "if(!el)return undefined;var t=(el.textContent||'').replace(/[^\\d.,]/g,'');"
+            "var c=t.lastIndexOf(','),d=t.lastIndexOf('.');"
+            "if(c>d&&t.length-c-1<=2){t=t.replace(/\\./g,'').replace(',','.');}else{t=t.replace(/,/g,'');}"
+            "var n=parseFloat(t);return isNaN(n)?undefined:n;}")
+
+
+def _js_currency() -> str:
+    return ("function(){" + _js_ecommerce() +
+            "if(e&&(e.currency||e.currencyCode))return String(e.currency||e.currencyCode).toUpperCase();"
+            "var el=document.querySelector('.woocommerce-order-overview__total .woocommerce-Price-currencySymbol');"
+            "var s=el?(el.textContent||'').trim():'';"
+            "var map={'\\u20aa':'ILS','$':'USD','\\u20ac':'EUR','\\u00a3':'GBP'};"
+            "return map[s]||undefined;}")
+
+
+def _js_first_seen() -> str:
+    v = PURCHASE["vars"]
+    return ("function(){var id={{" + v["order_id"] + "}};if(!id)return 'no';"
+            "var w=window.__uallakOrders=window.__uallakOrders||{};if(w[id])return w[id];"
+            "var seen=[];try{seen=JSON.parse(window.localStorage.getItem('" + SEEN_STORAGE_KEY + "')||'[]')||[];}"
+            "catch(x){seen=[];}var r=seen.indexOf(id)>-1?'no':'yes';"
+            "if(r==='yes'){seen.push(id);if(seen.length>" + str(SEEN_KEEP) + ")seen=seen.slice(-" + str(SEEN_KEEP) + ");"
+            "try{window.localStorage.setItem('" + SEEN_STORAGE_KEY + "',JSON.stringify(seen));}catch(x){}}"
+            "w[id]=r;return r;}")
+
+
+def purchase_variable_bodies(endpoint: str = DEFAULT_ORDER_RECEIVED_ENDPOINT) -> list:
+    """The four Custom JavaScript variables, in creation order (first_seen
+    reads order_id, so order_id goes first)."""
+    v = PURCHASE["vars"]
+    code = [(v["order_id"], _js_order_id(endpoint)), (v["total"], _js_total()),
+            (v["currency"], _js_currency()), (v["first_seen"], _js_first_seen())]
+    return [{"name": name, "type": "jsm", "parameter": [{"type": "template", "key": "javascript", "value": js}]}
+            for name, js in code]
+
+
+def _variable_matches(body: dict):
+    def matches(var):
+        have = {p.get("key"): p.get("value") for p in (var.get("parameter") or [])}
+        return var.get("type") == "jsm" and have.get("javascript") == body["parameter"][0]["value"]
+    return matches
+
+
+def ensure_purchase_variables(refresh_token: str, workspace_path: str,
+                              endpoint: str = DEFAULT_ORDER_RECEIVED_ENDPOINT) -> dict:
+    """{name: (variable, outcome)} — each found by name, reused or updated."""
+    return {body["name"]: ensure_entity(refresh_token, workspace_path, "variables", body, _variable_matches(body))
+            for body in purchase_variable_bodies(endpoint)}
+
+
+def purchase_trigger_body() -> dict:
+    """DOM Ready (the page's total is printed by then), only when the order
+    on this page was never seen in this browser."""
+    return {"name": PURCHASE["trigger"], "type": "domReady",
+            "filter": [{"type": "equals", "parameter": [
+                {"type": "template", "key": "arg0", "value": "{{" + PURCHASE["vars"]["first_seen"] + "}}"},
+                {"type": "template", "key": "arg1", "value": "yes"}]}]}
+
+
+def _purchase_trigger_matches(trigger: dict) -> bool:
+    if trigger.get("type") != "domReady":
+        return False
+    want = purchase_trigger_body()["filter"][0]
+    for f in trigger.get("filter") or []:
+        if f.get("type") == want["type"] and \
+                {p.get("key"): p.get("value") for p in (f.get("parameter") or [])} == \
+                {p["key"]: p["value"] for p in want["parameter"]}:
+            return True
+    return False
+
+
+def ensure_purchase_trigger(refresh_token: str, workspace_path: str) -> tuple:
+    return ensure_entity(refresh_token, workspace_path, "triggers", purchase_trigger_body(),
+                         _purchase_trigger_matches)
+
+
+def purchase_tag_body(ga4_measurement_id: str, trigger_id: str) -> dict:
+    v = PURCHASE["vars"]
+    body = ga4_lead_tag_body(ga4_measurement_id, trigger_id, name=PURCHASE["tag"])
+    body["parameter"] = [p if p["key"] != "eventName" else {**p, "value": PURCHASE_EVENT}
+                         for p in body["parameter"]]
+    body["parameter"].append({"type": "list", "key": "eventSettingsTable", "list": [
+        {"type": "map", "map": [{"type": "template", "key": "parameter", "value": key},
+                                {"type": "template", "key": "parameterValue", "value": "{{" + var + "}}"}]}
+        for key, var in (("transaction_id", v["order_id"]), ("value", v["total"]), ("currency", v["currency"]))]})
+    return body
+
+
+def _event_settings(tag: dict) -> dict:
+    for p in tag.get("parameter") or []:
+        if p.get("key") == "eventSettingsTable":
+            out = {}
+            for row in p.get("list") or []:
+                m = {x.get("key"): x.get("value") for x in (row.get("map") or [])}
+                out[m.get("parameter")] = m.get("parameterValue")
+            return out
+    return {}
+
+
+def ensure_purchase_tag(refresh_token: str, workspace_path: str, ga4_measurement_id: str,
+                        trigger_id: str) -> tuple:
+    want = _event_settings(purchase_tag_body(ga4_measurement_id, trigger_id))
+
+    def matches(tag):
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        return (tag.get("type") == "gaawe" and not tag.get("paused")
+                and params.get("measurementIdOverride") == ga4_measurement_id
+                and params.get("eventName") == PURCHASE_EVENT
+                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])]
+                and _event_settings(tag) == want)
+    return ensure_entity(refresh_token, workspace_path, "tags",
+                         purchase_tag_body(ga4_measurement_id, trigger_id), matches)
+
+
+def purchase_live(version: dict) -> dict:
+    """Verification against a PUBLISHED version: our trigger (by name, with
+    its once-per-order filter), the four variables, and an unpaused GA4
+    purchase tag firing on that trigger with transaction_id/value/currency.
+    {"live": bool, "missing": [...]}."""
+    missing = []
+    triggers = [t for t in version.get("trigger") or [] if t.get("name") == PURCHASE["trigger"]]
+    trigger = next((t for t in triggers if _purchase_trigger_matches(t)), None)
+    if not trigger:
+        missing.append("trigger")
+    names = {v.get("name") for v in version.get("variable") or [] if v.get("type") == "jsm"}
+    missing += [f"variable:{n}" for n in PURCHASE["vars"].values() if n not in names]
+    tag_ok = False
+    for tag in version.get("tag") or []:
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        if (tag.get("type") == "gaawe" and not tag.get("paused") and params.get("eventName") == PURCHASE_EVENT
+                and trigger and str(trigger.get("triggerId")) in [str(x) for x in tag.get("firingTriggerId") or []]
+                and {"transaction_id", "value", "currency"} <= set(_event_settings(tag))):
+            tag_ok = True
+    if not tag_ok:
+        missing.append("tag")
+    return {"live": not missing, "missing": missing}
+
+
 def publish_workspace(refresh_token: str, workspace_path: str,
                       version_name: str = "uallak conversion tracking") -> dict:
     """Workspace → version → LIVE. Two calls because that's GTM's model:
@@ -489,7 +681,8 @@ def publish_workspace(refresh_token: str, workspace_path: str,
     the live one. Returns the publish response (contains containerVersion)."""
     created = _post(refresh_token, f"{workspace_path}:create_version",
                     json_body={"name": version_name,
-                               "notes": "uallak: conversion triggers + GA4 event tags (form / WhatsApp / phone)"})
+                               "notes": "uallak: conversion triggers + GA4 event tags "
+                                        "(form / WhatsApp / phone / store purchase)"})
     if created.get("compilerError"):
         raise GtmCompilerError("create_version: Tag Manager could not compile the workspace")
     version_path = (created.get("containerVersion") or {}).get("path")

@@ -49,8 +49,25 @@ DETAIL_FIELDS = LIST_FIELDS + ",payment_method_title,shipping_lines"
 # One order WITH the customer's details — only on the client's explicit ask
 PERSONAL_FIELDS = DETAIL_FIELDS + ",billing,shipping,customer_note"
 
-# Orders that count as a sale (WooCommerce's own "paid" statuses)
-PAID_STATUSES = ("processing", "completed", "on-hold")
+# ─── THE definition of a sale (2026-11-07, docs/STORE.md "What counts as a
+# sale"). Every reader — the Performance page, client_state, the manager and
+# the website agent's chat — goes through summarize(), so there is one rule:
+#   SALE      processing (paid, being handled) + completed (paid, fulfilled).
+#   AWAITING  on-hold (WooCommerce: "awaiting payment confirmation", e.g. a
+#             bank transfer) + pending (created, not paid). NOT a sale until
+#             the store moves it to processing/completed; shown separately.
+#   NOT SALES cancelled, failed, refunded (a full refund) — never in revenue,
+#             shown separately (count, and the refunded amount).
+#   IGNORED   checkout-draft, trash — not orders a customer completed.
+# A partial refund on a sale stays a sale; its amount is subtracted for net.
+SALE_STATUSES = ("processing", "completed")
+AWAITING_PAYMENT_STATUSES = ("on-hold", "pending")
+NOT_SALE_STATUSES = ("cancelled", "failed", "refunded")
+IGNORED_STATUSES = ("checkout-draft", "trash")
+PAID_STATUSES = SALE_STATUSES      # the old name, same tuple — never a second definition
+SALE_DEFINITION_HE = ("מכירה = הזמנה בסטטוס 'בטיפול' או 'הושלמה'. הזמנות שממתינות לתשלום מוצגות בנפרד "
+                      "ולא נספרות עד שהתשלום מאושר. הזמנות שבוטלו, נכשלו או הוחזרו לא נספרות כמכירה, "
+                      "והחזר חלקי יורד מהסכום.")
 
 
 class StoreError(Exception):
@@ -264,16 +281,28 @@ def clean_order(order: dict, personal: bool = False) -> dict:
 
 
 def summarize(orders: list) -> dict:
-    """Aggregates only — the one shape that may be cached. Revenue counts the
-    paid statuses (PAID_STATUSES); refunds are subtracted for net."""
+    """Aggregates only — the one shape that may be cached. Revenue counts
+    SALE_STATUSES only; refunds on those are subtracted for net. Orders
+    awaiting payment and the cancelled / failed / refunded ones are counted
+    SEPARATELY (never in revenue) — see the definition above."""
     status_counts, products = {}, {}
     gross, refunded, paid, currency = 0.0, 0.0, 0, ""
+    awaiting = {"orders": 0, "total": 0.0}
+    not_sales = {s: {"orders": 0, "total": 0.0} for s in NOT_SALE_STATUSES}
     for order in orders or []:
         status = order.get("status") or "unknown"
         status_counts[status] = status_counts.get(status, 0) + 1
         currency = currency or order.get("currency") or ""
         order_refunds = sum(r["total"] for r in refunds_of(order))
-        if status in PAID_STATUSES:
+        if status in AWAITING_PAYMENT_STATUSES:
+            awaiting["orders"] += 1
+            awaiting["total"] = round(awaiting["total"] + _money(order.get("total")), 2)
+        elif status in NOT_SALE_STATUSES:
+            not_sales[status]["orders"] += 1
+            # a refunded order's amount is what went back; the others what was never paid
+            amount = order_refunds if status == "refunded" and order_refunds else _money(order.get("total"))
+            not_sales[status]["total"] = round(not_sales[status]["total"] + amount, 2)
+        if status in SALE_STATUSES:
             paid += 1
             gross += _money(order.get("total"))
             refunded += order_refunds
@@ -289,4 +318,6 @@ def summarize(orders: list) -> dict:
     return {"orders": len(orders or []), "paid_orders": paid, "gross_revenue": gross,
             "refunded": refunded, "net_revenue": round(gross - refunded, 2),
             "average_order_value": round(gross / paid, 2) if paid else 0.0,
-            "currency": currency, "status_counts": status_counts, "top_products": top}
+            "currency": currency, "status_counts": status_counts, "top_products": top,
+            "awaiting_payment": awaiting, "not_sales": not_sales,
+            "sale_statuses": list(SALE_STATUSES)}

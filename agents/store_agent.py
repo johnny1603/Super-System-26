@@ -272,6 +272,38 @@ def sales_summary(client_id: int, period: str = "last_30_days", now: datetime = 
     return summary
 
 
+ORDER_RECEIVED_SETTING = "settings/advanced/woocommerce_checkout_order_received_endpoint"
+
+
+def order_received_endpoint(client_id: int) -> dict:
+    """The store's own "order received" endpoint slug — where the purchase
+    event (gtm_service.PURCHASE) listens. One GET of the store's setting.
+    {"slug", "source": "store"|"default", "problem": ""|"endpoint_empty"|
+    "endpoint_unusable"}. Not connected or unreadable → WooCommerce's default
+    ("source": "default"); a value we can't use safely → a problem, never a
+    guess. The value is DATA: only [a-z0-9-] ever reaches Tag Manager."""
+    from core import conversion_types
+    default = {"slug": conversion_types.DEFAULT_ORDER_RECEIVED_ENDPOINT, "source": "default", "problem": ""}
+    try:
+        creds = credentials(client_id)
+    except Exception:
+        return default
+    if not creds:
+        return default
+    try:
+        body, _ = wc.get(creds["site"], wc.API_PREFIX + ORDER_RECEIVED_SETTING, creds["auth"])
+    except wc.StoreError as e:
+        log_step(AGENT_NAME, "order_received_endpoint", f"client {client_id}: setting unreadable ({e.code})")
+        return default
+    value = str((body or {}).get("value") if isinstance(body, dict) else "").strip()
+    if not value:
+        return {"slug": "", "source": "store", "problem": "endpoint_empty"}
+    try:
+        return {"slug": conversion_types.clean_endpoint(value), "source": "store", "problem": ""}
+    except ValueError:
+        return {"slug": "", "source": "store", "problem": "endpoint_unusable"}
+
+
 def recent_orders(client_id: int, period: str = "last_7_days", limit: int = RECENT_LIMIT,
                   now: datetime = None) -> dict:
     """The newest orders of a period — number, status, date, total, items.
@@ -372,7 +404,7 @@ def store_reads(client_id: int, message: str = "") -> dict:
     view = status(client_id)
     if not view.get("connected"):
         return {"connected": False}
-    data = {"connected": True, "method": view["method"]}
+    data = {"connected": True, "method": view["method"], "sale_definition_he": wc.SALE_DEFINITION_HE}
     if not is_store_question(message):
         # Nothing about the store was asked: no read at all
         return data
@@ -451,5 +483,7 @@ def section(client_id: int) -> dict:
         return view
     summary = sales_summary(client_id, "last_30_days")
     keep = ("period", "orders", "paid_orders", "gross_revenue", "refunded", "net_revenue",
-            "average_order_value", "currency", "status_counts", "top_products", "complete", "as_of")
-    return {**view, "last_30_days": {k: summary.get(k) for k in keep}}
+            "average_order_value", "currency", "status_counts", "top_products", "awaiting_payment",
+            "not_sales", "complete", "as_of")
+    return {**view, "last_30_days": {k: summary.get(k) for k in keep},
+            "sale_definition_he": wc.SALE_DEFINITION_HE}

@@ -60,14 +60,16 @@ class FakeGtm:
         self.sync_conflict = False
         # Entities per workspace path, like the real API: a NEW workspace is
         # based on the live version, so whatever is in `live` is there too
-        self.live = {"trigger": [], "tag": []}
+        self.live = {"trigger": [], "tag": [], "variable": []}
         self.entities = {}
         self.builtins = []                     # enabled built-in variables (clickUrl, ...)
+        self.versioned = None                  # the workspace create_version froze
+        self.published = {}                    # what versions:live answers after a publish
 
     def _ws(self, path):
         ws = path.rsplit("/", 1)[0]
-        return self.entities.setdefault(ws, {"trigger": [dict(t) for t in self.live["trigger"]],
-                                              "tag": [dict(t) for t in self.live["tag"]]})
+        return self.entities.setdefault(ws, {k: [dict(t) for t in self.live.get(k, [])]
+                                              for k in ("trigger", "tag", "variable")})
 
     def _maybe_fail(self, key, method, path):
         failure = self.fail.get(key)
@@ -95,6 +97,12 @@ class FakeGtm:
             return {"tag": [dict(t) for t in self._ws(path)["tag"]]}
         if path.endswith("/built_in_variables"):
             return {"builtInVariable": [dict(v) for v in self.builtins]}
+        if path.endswith("/variables"):
+            return {"variable": [dict(v) for v in self._ws(path)["variable"]]}
+        if path.endswith("versions:live"):
+            if not self.published:
+                raise self.gtm.GtmApiError("GET", path, _Resp(404, {"error": {"code": 404}}))
+            return dict(self.published)
         raise AssertionError(f"unexpected GET {path}")
 
     def _create(self, kind, path, body, new_id):
@@ -119,6 +127,9 @@ class FakeGtm:
         if path.endswith("/built_in_variables"):
             self.builtins.append({"type": (params or {}).get("type")})
             return {"builtInVariable": [{"type": (params or {}).get("type")}]}
+        if path.endswith("/variables"):
+            self._maybe_fail("variable", "POST", path)
+            return self._create("variable", path, json_body, str(7 + 10 * len(self._ws(path)["variable"])))
         if path.endswith("/triggers"):
             self._maybe_fail("trigger", "POST", path)
             # ids 5, 15, 25... so each trigger of a multi-type run is distinct
@@ -131,17 +142,21 @@ class FakeGtm:
         if path.endswith(":create_version"):
             if self._maybe_fail("version", "POST", path) == "compiler":
                 return {"compilerError": True}
+            self.versioned = path[:-len(":create_version")]
             return {"containerVersion": {"path": f"{CONTAINER}/versions/12"}}
         if path.endswith(":publish"):
             if self._maybe_fail("publish", "POST", path) == "compiler":
                 return {"compilerError": True}
+            frozen = self.entities.get(self.versioned) or {}
+            self.published = {"name": "uallak conversion tracking",
+                              **{k: [dict(e) for e in frozen.get(k, [])] for k in ("trigger", "tag", "variable")}}
             return {"containerVersion": {"name": "uallak conversion tracking", "containerVersionId": "12"}}
         raise AssertionError(f"unexpected POST {path}")
 
     def put(self, refresh_token, path, json_body=None, params=None):
         self.calls.append(("PUT", path))
         self.puts.append((path, json_body, params))
-        kind = "tag" if "/tags/" in path else "trigger"
+        kind = "tag" if "/tags/" in path else ("variable" if "/variables/" in path else "trigger")
         items = self._ws(path.rsplit("/", 1)[0])[kind]
         for i, item in enumerate(items):
             if item["path"] == path:
@@ -155,8 +170,8 @@ class FakeGtm:
         self.workspaces = [w for w in self.workspaces if w["path"] != path]
         self.entities.pop(path, None)
         for items in self.entities.values():
-            for kind in ("trigger", "tag"):
-                items[kind] = [i for i in items[kind] if i["path"] != path]
+            for kind in ("trigger", "tag", "variable"):
+                items[kind] = [i for i in items.get(kind, []) if i["path"] != path]
 
 
 class GtmFlow(unittest.TestCase):
@@ -194,9 +209,16 @@ class GtmFlow(unittest.TestCase):
         website.get_conversion_tracking_status = lambda cid: {"gtm_api_connected": True,
                                                               "configured_live": False}
         website._log_activity = lambda *a, **k: None
+        # The client's own STORED choice (a failed read sets up nothing —
+        # core/conversion_types.gtm_types_for); these flows are a form client
+        from core import conversion_types
+        cls._saved_ct_get = conversion_types.get
+        conversion_types.get = lambda cid: {"types": ["form_submit"], "confirmed": True, "stored": True}
 
     @classmethod
     def tearDownClass(cls):
+        from core import conversion_types
+        conversion_types.get = cls._saved_ct_get
         for name, fn in cls._saved_fns.items():
             setattr(cls.website, name, fn)
         for name, module in cls._saved_modules.items():
@@ -471,9 +493,8 @@ class GtmFlow(unittest.TestCase):
         self.assertEqual(sum(1 for m, p in self.api.calls if p.endswith(":publish")), 1)
         self.assertEqual(len({t["triggerId"] for t in self._ws9("trigger")}), 3)
 
-    def test_store_sales_alone_touches_no_container(self):
-        self.assertEqual(self.run_types(["store_sales"])["reason"], "no_gtm_types")
-        self.assertEqual(self.api.calls, [])
+    # store_sales (the purchase event on the order-received page) has its own
+    # suite: tests/test_store_purchase.py
 
     def test_rerun_reuses_every_object_and_creates_no_duplicate(self):
         self.assertTrue(self.run_types(["whatsapp_click", "phone_click"])["success"])
@@ -508,7 +529,7 @@ class GtmFlow(unittest.TestCase):
     def test_existing_clients_default_to_form_submit_unchanged(self):
         from core import conversion_types
         saved = conversion_types.get
-        conversion_types.get = lambda cid: {"types": ["form_submit"], "confirmed": False}
+        conversion_types.get = lambda cid: {"types": ["form_submit"], "confirmed": False, "stored": True}
         try:
             result = self.website.configure_lead_conversion(27, "G-ABC1234")   # no types: the client's own
         finally:

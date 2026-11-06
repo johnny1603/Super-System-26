@@ -500,6 +500,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
     never a new hardcoded default. `configure_lead_conversion` builds one trigger + tag per
     selected Tag Manager type, by name, skipping what is live. Guarded by
     `tests/test_store_reads.py`, `tests/test_conversion_types.py`, `tests/test_google_scope_flows.py`.
+  - **Sales + purchases (2026-11-07):** ONE sale definition, `woocommerce_service.SALE_STATUSES`
+    (processing + completed; on-hold/pending and cancelled/failed/refunded only ever beside it), read
+    by Performance, client_state, אורי and the manager (live store read in both chats). store_sales
+    in Tag Manager = ONE GA4 `purchase` on the order-received page (`gtm_service.PURCHASE`: once per
+    order via browser memory, total/currency when exposed, verified on the live version, nothing
+    installed on the site). A store_sales-only client (27) gets NO lead trigger from any path — an
+    unreadable choice sets up nothing (`conversion_types.gtm_types_for`). Purchases by source can't
+    be read back without round-2 Analytics — never claimed. `tests/test_store_purchase.py`.
   **A failed data read never reaches the model** (no error blocks, no "unavailable"
   list, no chat_fallback rows in `recent_activity`). The model labels each message's
   `data_topic`, and code shows the fixed "can't pull that up" line only when that topic's

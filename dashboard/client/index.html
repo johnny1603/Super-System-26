@@ -2799,6 +2799,8 @@ const DASH_I18N = {
   conv_revenue: { he:'הכנסות (נטו)', en:'Revenue (net)', fr:'Chiffre d\'affaires (net)', ar:'الإيرادات (صافي)', ru:'Выручка (нетто)' },
   conv_orders: { he:'הזמנות', en:'Orders', fr:'Commandes', ar:'الطلبات', ru:'Заказы' },
   conv_aov: { he:'ממוצע להזמנה', en:'Average order', fr:'Panier moyen', ar:'متوسط الطلب', ru:'Средний заказ' },
+  conv_awaiting: { he:'ממתינות לתשלום (לא נספרות)', en:'Awaiting payment (not counted)', fr:'En attente de paiement (non comptées)', ar:'بانتظار الدفع (لا تُحتسب)', ru:'Ждут оплаты (не учитываются)' },
+  conv_not_sales: { he:'בוטלו / נכשלו / הוחזרו', en:'Cancelled / failed / refunded', fr:'Annulées / échouées / remboursées', ar:'أُلغيت / فشلت / أُعيدت', ru:'Отменены / не прошли / возвращены' },
   conv_partial: { he:'בתקופה הזו היו יותר הזמנות ממה שנקרא בבת אחת — המספרים הם של ההזמנות האחרונות.', en:'This period had more orders than one read covers — the numbers are for the newest ones.', fr:'Plus de commandes qu\'une lecture n\'en couvre — chiffres des plus récentes.', ar:'كانت هناك طلبات أكثر مما تغطيه قراءة واحدة — الأرقام للأحدث.', ru:'Заказов больше, чем охватывает одно чтение — цифры по последним.' },
   store_card: { he:'החנות באתר', en:'Online store', fr:'Boutique en ligne', ar:'المتجر الإلكتروني', ru:'Интернет-магазин' },
   store_note: { he:'קריאה בלבד: הזמנות ומכירות, כדי שאורי יענה מהנתונים האמיתיים. אנחנו לא משנים דבר בחנות ולא שומרים פרטי לקוחות.', en:'Read only: orders and sales, so Uri answers from the real data. We change nothing in the store and keep no customer details.', fr:'Lecture seule : commandes et ventes. Nous ne modifions rien et ne conservons aucune donnée client.', ar:'قراءة فقط: الطلبات والمبيعات. لا نغيّر شيئًا في المتجر ولا نحتفظ ببيانات العملاء.', ru:'Только чтение: заказы и продажи. Мы ничего не меняем в магазине и не храним данные клиентов.' },
@@ -8189,8 +8191,13 @@ function renderConversions(c) {
           + row(t('conv_revenue'), w => perfNum(w.revenue) + ' ' + (w.currency || ''))
           + row(t('conv_orders'), w => perfNum(w.orders))
           + row(t('conv_aov'), w => perfNum(w.average_order_value) + ' ' + (w.currency || ''))
+          // Beside the sales, never inside them (woocommerce_service: one sale definition)
+          + (ws.some(w => w.awaiting_payment) ? row(t('conv_awaiting'), w => perfNum((w.awaiting_payment || {}).orders)) : '')
+          + (ws.some(w => w.not_sales) ? row(t('conv_not_sales'), w => perfNum(Object.values(w.not_sales || {})
+              .reduce((n, s) => n + ((s && s.orders) || 0), 0))) : '')
           + '</tbody></table></div>';
         if (ws.some(w => w.complete === false)) body += `<div class="perf-note">${esc(t('conv_partial'))}</div>`;
+        if (m.definition_he) body += `<div class="perf-note">${esc(m.definition_he)}</div>`;
       }
     } else {
       const ws = m.windows || [];

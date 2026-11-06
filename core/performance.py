@@ -531,13 +531,20 @@ def _store_sales(client_id: int) -> dict:
     try:
         for days, period in ((7, "last_7_days"), (30, "last_30_days"), (90, "last_90_days")):
             s = store_agent.sales_summary(client_id, period)
+            # THE sale definition (woocommerce_service.summarize): revenue and
+            # orders are processing + completed only; awaiting payment and
+            # cancelled / failed / refunded travel alongside, never inside
             windows.append({"days": days, "revenue": s.get("net_revenue"), "orders": s.get("paid_orders"),
                             "average_order_value": s.get("average_order_value"),
+                            "refunded": s.get("refunded"),
+                            "awaiting_payment": s.get("awaiting_payment"),
+                            "not_sales": s.get("not_sales"),
                             "currency": s.get("currency"), "complete": s.get("complete", True)})
     except woocommerce_service.StoreError as e:
         print(f"[{SERVICE_NAME}] store sales unreadable for client {client_id}: {e.code}")
         return {"source": "store", "connected": True, "error": True, "windows": []}
-    return {"source": "store", "connected": True, "windows": windows}
+    return {"source": "store", "connected": True, "windows": windows,
+            "definition_he": woocommerce_service.SALE_DEFINITION_HE}
 
 
 def _landing_block(client_id: int) -> list:

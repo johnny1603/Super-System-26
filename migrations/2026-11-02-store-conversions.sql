@@ -6,9 +6,12 @@
 -- client approved the choice on its card; NULL = never chosen, so the agents
 -- ask how customers reach the business.
 --
--- Shin Sekai (client 27, internal) is set to whatsapp_click + store_sales —
--- only while it has never been confirmed, so a re-run never overwrites a later
--- choice. No other client changes.
+-- Shin Sekai (client 27, internal) is set to store_sales ONLY — the owner
+-- already gets WhatsApp alerts and does not want WhatsApp / phone / form lead
+-- measurement (changed 2026-11-07 from whatsapp_click + store_sales, so a
+-- re-run can never put WhatsApp back). Only while it has never been
+-- confirmed, so a re-run never overwrites a later choice. No other client
+-- changes.
 --
 -- connection_catalog 'store': included in the website package, no vendor
 -- account to open (the chat walks the client through creating a READ key).
@@ -19,7 +22,7 @@ alter table clients add column if not exists conversion_types text[] not null de
 alter table clients add column if not exists conversion_types_confirmed_at timestamptz;
 
 update clients
-   set conversion_types = '{whatsapp_click,store_sales}',
+   set conversion_types = '{store_sales}',
        conversion_types_confirmed_at = now()
  where id = 27
    and conversion_types_confirmed_at is null;

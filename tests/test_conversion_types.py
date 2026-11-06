@@ -137,9 +137,21 @@ class Migration(unittest.TestCase):
     def test_only_shin_sekai_is_set_and_never_overwritten(self):
         updates = re.findall(r"update clients.*?;", self.body, re.DOTALL)
         self.assertEqual(len(updates), 1)
-        self.assertIn("'{whatsapp_click,store_sales}'", updates[0])
+        # Shin Sekai is store_sales ONLY (2026-11-07): a re-run never re-adds a lead type
+        self.assertIn("'{store_sales}'", updates[0])
+        for lead in ("whatsapp_click", "phone_click", "form_submit"):
+            self.assertNotIn(lead, updates[0])
         self.assertIn("where id = 27", updates[0])
         self.assertIn("conversion_types_confirmed_at is null", updates[0])
+
+    def test_no_migration_ever_gives_27_a_lead_type(self):
+        folder = os.path.join(ROOT, "migrations")
+        for name in sorted(os.listdir(folder)):
+            body = "\n".join(l for l in _src("migrations", name).splitlines() if not l.strip().startswith("--"))
+            for stmt in re.findall(r"update clients.*?;", body, re.DOTALL | re.IGNORECASE):
+                if re.search(r"\bid\s*=\s*27\b", stmt):
+                    for lead in ("whatsapp_click", "phone_click", "form_submit"):
+                        self.assertNotIn(lead, stmt, name)
 
 
 class SelectionCard(ActionTestCase):
@@ -197,9 +209,14 @@ class TrackingCard(unittest.TestCase):
         self.assertTrue(aa._conversion_setup_possible({"tracking": {**base, "lead_event_live": False}}, {}))
         self.assertFalse(aa._conversion_setup_possible({"tracking": {**base, "lead_event_live": True}}, {}))
 
-    def test_store_only_client_gets_its_own_refusal_line(self):
+    def test_unreadable_choice_gets_its_own_refusal_line(self):
         self.assertEqual(aa._GTM_REFUSAL_CODES["no_gtm_types"], "no_gtm_types")
         self.assertIn("no_gtm_types", aa.ACTIONS["configure_conversion"]["refusals"])
+
+    def test_unreadable_choice_offers_no_card(self):
+        base = {"connected": True, "needs_reconnect": False, "lead_event_live": False}
+        self.assertFalse(aa._conversion_setup_possible(
+            {"tracking": {**base, "conversion_types": ["form_submit"], "conversion_types_readable": False}}, {}))
 
 
 class PerformancePage(unittest.TestCase):

@@ -296,12 +296,43 @@ each found by NAME and reused (never duplicated):
   `wa.me`, `api.whatsapp.com`, `whatsapp:` → `click_whatsapp`.
 - phone_click: the same on `tel:` → `click_to_call`. The built-in Click URL
   variable is enabled once (`ensure_click_url_variable`, same scope).
-- store_sales: NOT Tag Manager — read from the store (`agents/store_agent`).
-  GA4 purchase tracking on the store would need either a GA4 integration
-  plugin on the client's site (outside our read-only rule) or the round-2
-  Analytics grant to read it — not built.
+- store_sales (2026-11-07, `gtm_service.PURCHASE`): HOW MANY / HOW MUCH is
+  still read from the store (one sale definition, below). WHERE an order came
+  from is ONE GA4 `purchase` event on the WooCommerce order-received page, same
+  Tag Manager scopes, nothing installed on the site:
+  - 4 Custom JavaScript variables, by name: `uallak — order id` (from the page
+    address: `/<endpoint>/<id>/` or `?<endpoint>=<id>`; the endpoint slug is
+    the store's own setting, `store_agent.order_received_endpoint`, default
+    `order-received`, only `[a-z0-9-]` reaches the JS —
+    `conversion_types.clean_endpoint`), `uallak — order total` /
+    `uallak — order currency` (the dataLayer ecommerce object for THIS order,
+    else what the thank-you page prints; missing → sent without, never
+    guessed), `uallak — order first seen` (once per order: the last 50 ids in
+    the buyer's localStorage + a per-page-load cache — a refresh never
+    re-counts; GA4 also dedupes on `transaction_id`).
+  - Trigger `uallak — purchase (order received)`: DOM Ready, filter
+    `{{uallak — order first seen}}` equals `yes`.
+  - Tag `uallak — GA4 purchase`: `transaction_id`, `value`, `currency`
+    (`eventSettingsTable`).
+  - After publishing, the LIVE version is read back (`gtm.purchase_live`):
+    any piece missing → `purchase_verified: False`, one admin alert, the
+    client is told it is NOT confirmed live. `get_conversion_tracking_status`
+    reports `store_sales` live only when the whole path is in the live version.
+  - Store endpoint empty / unusable → `store_order_page_unknown`: NOTHING is
+    written; the card tells the owner the one setting to fix.
+  - Never attribution we don't measure: the event lands in the client's own
+    GA4; reading purchases by source needs the round-2 Analytics grant (off).
+    Importing `purchase` into Google Ads as a conversion is a manual step in
+    the client's Google Ads (no API in our scopes).
+  - A thank-you page also shows for an order still awaiting payment, so this
+    event is attribution, never the sales number.
+**store_sales-only clients (Shin Sekai, 27) get NO lead trigger from any path**:
+`conversion_types.gtm_types_for` sets up exactly the stored choice, and an
+UNREADABLE choice sets up nothing (never the form_submit default); the card's
+title is neutral and its text says purchases only; `_conversion_setup_possible`
+offers nothing on an unreadable choice. `tests/test_store_purchase.py`.
 Types already live are skipped (`skipped_already_live`); all live →
-`already_live`; store-only → `no_gtm_types`. The client chooses through the
+`already_live`; unreadable/none → `no_gtm_types`. The client chooses through the
 `set_conversion_types` card (interview: "how do customers reach you?"); the
 agent never guesses. Performance shows the client's own types with Hebrew
 labels, store sales first, and says a click is an indication of an enquiry,
@@ -316,6 +347,10 @@ a REST key with Permissions **Read** (recommended), or the website's app
 password (`method: site`, verified live per site, chat recommends the key).
 Reads: recent orders, one order, sales summary (net revenue, orders, AOV, top
 products, status counts), refunds — paginated, rate limited, aggregates cached.
+ONE sale definition (`woocommerce_service.SALE_STATUSES`): processing +
+completed; on-hold/pending = awaiting payment, cancelled/failed/refunded =
+not sales — both shown apart, never in revenue. The manager chat gets the
+same live read as אורי (`_add_store_reads` in both paths).
 אורי answers from `payload["store"]` (live, per message); customer details
 only on an explicit ask, answered by code (`personal_answer`), masked in the
 stored chat. Writes to the store are out of scope.

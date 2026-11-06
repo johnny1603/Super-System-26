@@ -251,7 +251,8 @@ def _media_name(client_id: int, file_id: str) -> str:
 _GTM_REFUSAL_CODES = {"gtm_not_connected": "gtm_reconnect", "gtm_reconnect_needed": "gtm_reconnect",
                       "gtm_token_dead": "gtm_reconnect", "gtm_container_mismatch": "gtm_container_mismatch",
                       "no_ga4_id": "no_ga4_id", "already_live": "already_live", "no_gtm_types": "no_gtm_types",
-                      "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy"}
+                      "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy",
+                      "store_order_page_unknown": "store_order_page_unknown"}
 
 
 def _run_configure_conversion(client_id: int, params: dict, background_tasks):
@@ -284,11 +285,49 @@ def _run_set_conversion_types(client_id: int, params: dict):
         raise ActionFailed("refused_by_action", str(e))
 
 
+_PURCHASE_NOTE_HE = (" ברכישות: כשקונה מגיע לדף 'ההזמנה התקבלה' נרשם אירוע אחד עם מספר ההזמנה, "
+                     "הסכום והמטבע (כשהם מופיעים בדף), ורענון של הדף לא נספר שוב. המקור של כל הזמנה "
+                     "נרשם בחשבון המדידה שלכם — מכאן אנחנו עוד לא קוראים אותו. שום דבר לא מותקן "
+                     "באתר עצמו, והמכירות עצמן ממשיכות להיספר ישירות מהחנות.")
+
+
 def _client_measures(client_id: int, params: dict) -> dict:
-    """configure_conversion's card: the client's own Tag Manager types."""
+    """configure_conversion's card: EXACTLY the client's own Tag Manager
+    types (core/conversion_types.gtm_types_for) — never a lead default. A
+    store_sales-only client's card says purchases, and nothing about leads."""
     from core import conversion_types
-    types = [t for t in conversion_types.types_for(client_id) if t in conversion_types.GTM_TYPES]
-    return {"measures": ", ".join(conversion_types.labels(types)) or conversion_types.LABELS_HE["form_submit"]}
+    types = conversion_types.gtm_types_for(client_id)
+    return {"measures": ", ".join(conversion_types.gtm_labels(types)) or "—",
+            "purchase_note": _PURCHASE_NOTE_HE if "store_sales" in types else ""}
+
+
+_PURCHASE_DONE = _txt(
+    "מדידת הרכישות באתר פעילה ✓ מעכשיו כל הזמנה שמגיעה לדף 'ההזמנה התקבלה' נרשמת פעם אחת בחשבון המדידה שלכם, יחד עם המקור שממנו הקונה הגיע. המכירות עצמן ממשיכות להיספר מהחנות.",
+    "Purchase tracking on your site is live ✓ Every order that reaches the order-received page is recorded once, with where the buyer came from. Sales themselves are still counted from the store.",
+    "Le suivi des achats est actif ✓ Chaque commande arrivant sur la page de confirmation est enregistrée une fois, avec sa source. Les ventes restent comptées depuis la boutique.",
+    "قياس المشتريات فعّال ✓ كل طلب يصل إلى صفحة تأكيد الطلب يُسجَّل مرة واحدة مع مصدره. المبيعات نفسها تُحتسب من المتجر.",
+    "Учёт покупок включён ✓ Каждый заказ, дошедший до страницы подтверждения, записывается один раз вместе с источником. Сами продажи по-прежнему считаются из магазина.")
+_PURCHASE_UNVERIFIED = _txt(
+    "פרסמנו את מדידת הרכישות, אבל הבדיקה שעשינו מיד אחרי הפרסום לא מצאה את כל החלקים במקום — אז אני לא אומר שהיא פעילה. אפשר לבקש ממני לבדוק שוב בעוד כמה דקות.",
+    "We published purchase tracking, but the check right after publishing didn't find every piece in place — so I'm not calling it live. Ask me to check again in a few minutes.",
+    "Nous avons publié le suivi des achats, mais la vérification juste après n'a pas trouvé tous les éléments — je ne le dis donc pas actif. Demandez-moi de revérifier dans quelques minutes.",
+    "نشرنا قياس المشتريات، لكن الفحص بعد النشر مباشرة لم يجد كل الأجزاء — لذلك لا أقول إنه فعّال. اطلبوا مني الفحص مجددًا بعد دقائق.",
+    "Мы опубликовали учёт покупок, но проверка сразу после публикации нашла не все части — поэтому я не называю его включённым. Попросите меня проверить снова через несколько минут.")
+
+
+def _conversion_done(result: dict, lang: str) -> str:
+    """The done line for what was ACTUALLY added: leads, purchases or both."""
+    types = list((result or {}).get("types") or [])
+    lines = []
+    if not types or any(t != "store_sales" for t in types):
+        lines.append(_pick(ACTIONS["configure_conversion"]["done"], lang))
+    if "store_sales" in types:
+        verified = (result or {}).get("purchase_verified")
+        lines.append(_pick(_PURCHASE_UNVERIFIED if verified is False else _PURCHASE_DONE, lang))
+    text = "\n".join(lines)
+    if result.get("tag_name") and result.get("live_version"):
+        text += f"\nTag Manager: {result['tag_name']} · {result['live_version']}"
+    return text
 
 
 def _run_demo(fn_name: str):
@@ -1763,6 +1802,14 @@ def _conversion_setup_possible(state: dict, client: dict) -> bool:
     tracking = (state or {}).get("tracking") or {}
     if not tracking.get("connected") or tracking.get("needs_reconnect"):
         return False
+    # An unreadable choice offers nothing (never a lead default), and a
+    # choice with no Tag Manager type has nothing to set up
+    if tracking.get("conversion_types_readable") is False:
+        return False
+    from core import conversion_types
+    chosen = tracking.get("conversion_types")
+    if chosen is not None and not any(t in conversion_types.GTM_TYPES for t in chosen):
+        return False
     # Per client (core/conversion_types): one of THEIR Tag Manager types is not live yet
     pending = tracking.get("conversion_types_not_live")
     if pending is not None:
@@ -1825,39 +1872,46 @@ ACTIONS = {
         # staff approve it there.
         "approver": "client", "admin_proposable": True, "client_requestable": True,
         "internal_only": False, "kind": "execute",
-        "does": "Adds ONE form-submission trigger and ONE GA4 generate_lead event tag to the client's "
-                "Tag Manager container, creates a version and PUBLISHES it, so leads from their site "
-                "are counted. Refused if the site loads a different container, the connection needs "
-                "renewing, or a lead event is already live.",
+        "does": "Adds to the client's Tag Manager container, for EACH of the client's own conversion types "
+                "not live yet: form submission (GA4 generate_lead), WhatsApp click, phone click, and for "
+                "store_sales ONE purchase event on the store's order-received page (once per order, with "
+                "order id, total and currency) — then creates a version, PUBLISHES it and checks it. Only "
+                "the client's chosen types: a store_sales-only client gets NO lead tracking. Refused if the "
+                "site loads a different container, the connection needs renewing, or it is already live.",
         "params": {"ga4_measurement_id": {"required": False, "validate": _v_ga4,
                                           "hint": "G-XXXXXXX, only if known from the data; empty = detected from the site"}},
         "available": _conversion_setup_possible,
         "run": _run_configure_conversion,
         "display": _client_measures,
-        "title": _txt("הפעלת מדידת לידים באתר", "Turn on lead tracking on your website",
-                      "Activer le suivi des prospects sur votre site", "تفعيل قياس العملاء المحتملين في موقعكم",
-                      "Включить учёт заявок на сайте"),
-        "what": _txt("נוסיף ל-Tag Manager של האתר מדידה של {measures} ונפרסם אותה, כך שכל פנייה מהאתר תיספר. מה שכבר נמדד לא מתווסף שוב, ותגים קיימים לא משתנים.",
-                     "We'll add form-submission tracking (a generate_lead event) to your site's Tag Manager and publish it, so every lead from your site is counted. Existing tags stay as they are.",
-                     "Nous ajouterons le suivi des envois de formulaire (événement generate_lead) au Tag Manager de votre site et le publierons, pour compter chaque prospect. Les balises existantes ne changent pas.",
-                     "سنضيف قياس إرسال النماذج (حدث generate_lead) إلى Tag Manager في موقعكم وننشره، لكي يُحتسب كل عميل محتمل. الوسوم الحالية لا تتغير.",
-                     "Мы добавим в Tag Manager вашего сайта учёт отправки форм (событие generate_lead) и опубликуем его, чтобы считалась каждая заявка. Существующие теги не меняются."),
+        # Neutral title: it measures exactly the client's own types (purchases
+        # for a store, leads for a lead business) — never "leads" by default
+        "title": _txt("הפעלת מדידה באתר", "Turn on tracking on your website",
+                      "Activer la mesure sur votre site", "تفعيل القياس في موقعكم",
+                      "Включить учёт на сайте"),
+        "what": _txt("נוסיף ל-Tag Manager של האתר מדידה של {measures} ונפרסם אותה.{purchase_note} מה שכבר נמדד לא מתווסף שוב, ותגים קיימים לא משתנים.",
+                     "We'll add the tracking you chose to your site's Tag Manager and publish it. What is already measured isn't added again, and existing tags stay as they are.",
+                     "Nous ajouterons la mesure que vous avez choisie au Tag Manager de votre site et la publierons. Ce qui est déjà mesuré n'est pas ajouté à nouveau ; les balises existantes ne changent pas.",
+                     "سنضيف القياس الذي اخترتموه إلى Tag Manager في موقعكم وننشره. ما يُقاس بالفعل لا يُضاف مجددًا، والوسوم الحالية لا تتغير.",
+                     "Мы добавим выбранный вами учёт в Tag Manager сайта и опубликуем его. То, что уже измеряется, не добавляется повторно; существующие теги не меняются."),
         "done": _txt("מדידת הלידים באתר פעילה ✓ מעכשיו כל שליחת טופס נספרת.",
                      "Lead tracking on your site is live ✓ Every form submission is counted from now on.",
                      "Le suivi des prospects est actif ✓ Chaque envoi de formulaire est désormais compté.",
                      "قياس العملاء المحتملين فعّال ✓ من الآن يُحتسب كل إرسال نموذج.",
                      "Учёт заявок на сайте включён ✓ Теперь считается каждая отправка формы."),
-        "done_message": lambda result, lang: (
-            _pick(ACTIONS["configure_conversion"]["done"], lang)
-            + (f"\nTag Manager: {result['tag_name']} · {result['live_version']}"
-               if result.get("tag_name") and result.get("live_version") else "")),
+        "done_message": lambda result, lang: _conversion_done(result, lang),
         "refusals": {
+            "store_order_page_unknown": _txt(
+                "כדי למדוד רכישות צריך לזהות את דף 'ההזמנה התקבלה' בחנות, והכתובת שלו בהגדרות החנות ריקה או בצורה שלא נוכל לזהות בבטחה — אז לא שינינו כלום. השינוי הקטן שצריך: בהגדרות החנות ← מתקדם, בשדה 'הזמנה התקבלה' לכתוב order-received ולשמור. כתבו לי כשזה מוכן, ואכין את המדידה שוב.",
+                "To measure purchases we need to recognise the store's order-received page, and its address in the store settings is empty or in a form we can't match safely — so nothing changed. The small fix: in the store settings → Advanced, set the 'Order received' field to order-received and save. Tell me when it's done and I'll set this up again.",
+                "Pour mesurer les achats, il faut reconnaître la page de confirmation de commande ; son adresse dans les réglages de la boutique est vide ou inutilisable — rien n'a changé. La petite correction : Réglages → Avancé, champ « Commande reçue » = order-received, puis enregistrer. Dites-moi quand c'est fait.",
+                "لقياس المشتريات يجب التعرف على صفحة تأكيد الطلب، وعنوانها في إعدادات المتجر فارغ أو بصيغة لا يمكننا مطابقتها بأمان — لذلك لم يتغير شيء. التعديل الصغير: الإعدادات ← متقدم، حقل «تم استلام الطلب» = order-received ثم حفظ. أخبروني عند الانتهاء.",
+                "Чтобы учитывать покупки, нужно распознать страницу «Заказ получен», а её адрес в настройках магазина пуст или в непригодном виде — ничего не изменено. Небольшая правка: Настройки → Дополнительно, поле «Заказ получен» = order-received, сохранить. Напишите, когда будет готово."),
             "no_gtm_types": _txt(
-                "אצלכם התוצאה נמדדת במכירות בחנות, ישירות מהחנות — אין מה להוסיף ל-Tag Manager, ושום דבר לא השתנה.",
-                "Your results are measured as store sales, straight from the store — there's nothing to add to Tag Manager, and nothing changed.",
-                "Vos résultats sont mesurés par les ventes de la boutique — rien à ajouter dans Tag Manager.",
-                "نتائجكم تُقاس بمبيعات المتجر مباشرة — لا شيء يُضاف إلى Tag Manager.",
-                "Ваш результат — продажи магазина, прямо из магазина; в Tag Manager добавлять нечего."),
+                "לא הצלחתי לקרוא כרגע מה נחשב אצלכם תוצאה, ולכן לא הוספתי שום מדידה ל-Tag Manager — שום דבר לא השתנה. נסו שוב בעוד רגע.",
+                "I couldn't read what counts as a result for you right now, so I added no tracking to Tag Manager — nothing changed. Try again in a moment.",
+                "Je n'ai pas pu lire ce qui compte comme résultat pour vous, donc rien n'a été ajouté dans Tag Manager. Réessayez dans un instant.",
+                "لم أتمكن الآن من قراءة ما يُعتبر نتيجة لديكم، لذلك لم أُضف أي قياس إلى Tag Manager — لم يتغير شيء. حاولوا مجددًا بعد قليل.",
+                "Не удалось прочитать, что у вас считается результатом, поэтому в Tag Manager ничего не добавлено. Повторите чуть позже."),
             "gtm_reconnect": _txt(
                 "החיבור ל-Tag Manager צריך חידוש לפני שאפשר להוסיף את המדידה — שום דבר לא השתנה באתר. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, מול Google), ואז נסו שוב.",
                 "Your Tag Manager connection needs renewing before tracking can be added — nothing on your site changed. Tap the button to reconnect (once, with Google), then try again.",

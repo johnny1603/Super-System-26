@@ -1181,16 +1181,24 @@ def get_conversion_tracking_status(client_id: int) -> dict:
             lead_tags.append({"tag_name": tag.get("name"), "event_name": params.get("eventName"),
                               "measurement_id": params.get("measurementIdOverride", ""),
                               "trigger_types": firing})
+        elif event == gtm.PURCHASE_EVENT:
+            continue                         # judged as a whole by gtm.purchase_live below
         elif event in gtm.CLICK_EVENT_NAMES:
             click_tags.setdefault(gtm.CLICK_EVENT_NAMES[event], []).append(
                 {"tag_name": tag.get("name"), "event_name": event, "trigger_types": firing})
-    live_types = (["form_submit"] if lead_tags else []) + sorted(click_tags)
+    # Store purchase (store_sales): live only when the WHOLE path is in the
+    # published version — trigger with its once-per-order filter, the four
+    # variables, the tag with transaction_id/value/currency (gtm.purchase_live)
+    purchase = gtm.purchase_live(live)
+    live_types = ((["form_submit"] if lead_tags else []) + sorted(click_tags)
+                  + (["store_sales"] if purchase["live"] else []))
     return {
         "gtm_api_connected": True,
         "configured_live": bool(lead_tags),
         "lead_event_tags": lead_tags,
         # WhatsApp / phone click tags live in the PUBLISHED version (core/conversion_types)
         "click_event_tags": click_tags,
+        "purchase_event": purchase,
         "live_types": live_types,
         "live_version_name": live.get("name", ""),
         "note": (None if lead_tags else
@@ -1243,10 +1251,14 @@ def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: b
 
 def _gtm_types(client_id: int, types) -> list:
     """The client's conversion types that Tag Manager measures, in order.
-    store_sales is measured from the store itself (agents/store_agent)."""
+    store_sales = the purchase event on the order-received page (WHERE an
+    order came from; the sale itself is read from the store). With no explicit
+    `types`, the client's OWN choice — and an unreadable choice sets up
+    NOTHING (never the form_submit default: a store-only client must never
+    get a lead trigger from a failed read)."""
     from core import conversion_types
     if types is None:
-        types = conversion_types.types_for(client_id)
+        return conversion_types.gtm_types_for(client_id)
     try:
         types = conversion_types.clean(types)
     except ValueError:
@@ -1261,7 +1273,11 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
       original v1 behaviour, unchanged);
     - whatsapp_click: a click on a wa.me / api.whatsapp.com / whatsapp:// link
       → GA4 'click_whatsapp';
-    - phone_click: a click on a tel: link → GA4 'click_to_call'.
+    - phone_click: a click on a tel: link → GA4 'click_to_call';
+    - store_sales: the store's order-received page → GA4 'purchase', once per
+      order (gtm_service PURCHASE: order id from the page address, total and
+      currency when the page or dataLayer has them, refresh never re-counts),
+      and the live version is read back to VERIFY it after publishing.
     Created in our own workspace and PUBLISHED (a draft fires nothing).
     Idempotent: a type already live in the published container is skipped
     (a second lead tag would double-count every lead), and every GTM object is
@@ -1276,7 +1292,7 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     if not wanted:
         return {"success": False, "reason": "no_gtm_types", "errors": [
             "none of this client's conversion types is measured in Tag Manager "
-            "(store_sales is read from the store itself)"]}
+            "(or the client's choice could not be read — nothing is assumed)"]}
 
     conn = _gtm_connection(client_id)
     if not conn.get("access_token"):
@@ -1330,11 +1346,43 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             f"container (lead tags: {[t['tag_name'] for t in status.get('lead_event_tags') or []]}) — "
             "configuring another would double-count; change the existing one in GTM instead"]}
 
+    # Store purchase: the order-received page must be one we can recognise
+    # (the store's own endpoint setting). If it isn't, NOTHING is written —
+    # the client is told the one small setting to fix (store_order_page_unknown)
+    endpoint = {}
+    if "store_sales" in pending:
+        from agents import store_agent
+        endpoint = store_agent.order_received_endpoint(client_id)
+        if endpoint.get("problem"):
+            return {"success": False, "reason": "store_order_page_unknown", "errors": [
+                f"the store's order-received endpoint is {endpoint['problem']} — the purchase "
+                "trigger has no page to listen on; the client is asked to set it, nothing was written"]}
+
     refresh_token, container_path = conn["access_token"], conn["account_id"]
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: {container_path} → {ga4_measurement_id} for {pending}")
 
+    def ensure_purchase(workspace: str, created: list) -> dict:
+        variables = timed_step(AGENT_NAME, "gtm_ensure_variables",
+                               lambda: gtm.ensure_purchase_variables(refresh_token, workspace, endpoint["slug"]))
+        for var, outcome in variables.values():
+            if outcome == "created":
+                created.append(var.get("path", ""))
+        trigger, trigger_outcome = timed_step(AGENT_NAME, "gtm_ensure_trigger",
+                                              lambda: gtm.ensure_purchase_trigger(refresh_token, workspace))
+        if trigger_outcome == "created":
+            created.append(trigger.get("path", ""))
+        tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
+                                      lambda: gtm.ensure_purchase_tag(refresh_token, workspace, ga4_measurement_id,
+                                                                      trigger["triggerId"]))
+        if tag_outcome == "created":
+            created.append(tag.get("path", ""))
+        return {"trigger": trigger, "tag": tag, "trigger_outcome": trigger_outcome, "tag_outcome": tag_outcome,
+                "variables": {name: outcome for name, (_v, outcome) in variables.items()}}
+
     def ensure_type(workspace: str, kind: str, created: list) -> dict:
+        if kind == "store_sales":
+            return ensure_purchase(workspace, created)
         if kind == "form_submit":
             trigger, trigger_outcome = timed_step(
                 AGENT_NAME, "gtm_ensure_trigger",
@@ -1402,12 +1450,28 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
 
     trigger, tag, published = done["trigger"], done["tag"], done["published"]
     version = (published.get("containerVersion") or {})
-    events = {"form_submit": "generate_lead", **{k: v["event"] for k, v in gtm.CLICK_CONVERSIONS.items()}}
+    events = {"form_submit": "generate_lead", "store_sales": gtm.PURCHASE_EVENT,
+              **{k: v["event"] for k, v in gtm.CLICK_CONVERSIONS.items()}}
+    # The purchase path is VERIFIED after publishing: read back the live
+    # version and check every piece is there (gtm.purchase_live). Not proven
+    # → never called live; one admin alert, the client gets the honest line.
+    purchase_check = None
+    if "store_sales" in pending:
+        try:
+            purchase_check = gtm.purchase_live(gtm.get_live_version(refresh_token, container_path))
+        except Exception as e:
+            purchase_check = {"live": False, "missing": [f"read_failed:{type(e).__name__}"]}
+        if not purchase_check["live"]:
+            agent_alert(AGENT_NAME, [f"client {client_id}: store purchase tracking published but the live "
+                                     f"version check failed (missing {purchase_check['missing']})"])
     _log_activity(client_id, "website_conversion_configured",
                   {"ga4_measurement_id": ga4_measurement_id, "types": pending,
                    "skipped_already_live": [t for t in wanted if t not in pending],
                    "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId"),
-                   "gtm_objects": done["outcomes"], "retried": done is not first},
+                   "gtm_objects": done["outcomes"], "retried": done is not first,
+                   **({"purchase_verified": purchase_check["live"],
+                       "order_received_endpoint": endpoint.get("slug"),
+                       "endpoint_source": endpoint.get("source")} if purchase_check is not None else {})},
                   {"live_version": version.get("name", "")})
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: published as '{version.get('name', '')}' ({pending})")
@@ -1419,6 +1483,7 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             "live_version_id": version.get("containerVersionId", ""),
             "tag_name": tag.get("name", ""), "trigger_name": trigger.get("name", ""),
             "tag_names": [v["tag"].get("name", "") for v in done["per_type"].values()],
+            "purchase_verified": purchase_check["live"] if purchase_check is not None else None,
             "note": (f"Now firing GA4 {[events[t] for t in pending]}. Remaining manual "
                      "platform steps: mark them as key events in GA4 and import them as "
                      "conversion actions in Google Ads (no public API for either from our scopes).")}

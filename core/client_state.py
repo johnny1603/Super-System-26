@@ -152,7 +152,9 @@ def _conversion_choice(client_id: int, live_types) -> dict:
     choice = conversion_types.get(client_id)
     out = {"conversion_types": choice["types"],
            "conversion_types_he": conversion_types.labels(choice["types"]),
-           "conversion_types_confirmed": choice["confirmed"]}
+           "conversion_types_confirmed": choice["confirmed"],
+           # False: the choice could not be read — no setup card is offered on a guess
+           "conversion_types_readable": choice.get("stored", True)}
     if live_types is not None:
         out["conversion_types_not_live"] = [t for t in choice["types"]
                                             if t in conversion_types.GTM_TYPES and t not in live_types]

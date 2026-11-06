@@ -327,14 +327,20 @@ class SummaryMath(Base):
     def test_summarize(self):
         s = wc.summarize(ORDERS)
         self.assertEqual(s["orders"], 5)
-        self.assertEqual(s["paid_orders"], 3)                 # completed + processing + on-hold
-        self.assertEqual(s["gross_revenue"], 340.0)
+        # THE sale definition (2026-11-07): processing + completed only;
+        # on-hold waits for payment and is shown apart, never in revenue
+        self.assertEqual(s["paid_orders"], 2)                 # completed + processing
+        self.assertEqual(s["gross_revenue"], 300.0)
         self.assertEqual(s["refunded"], 20.0)
-        self.assertEqual(s["net_revenue"], 320.0)
-        self.assertEqual(s["average_order_value"], 113.33)
+        self.assertEqual(s["net_revenue"], 280.0)
+        self.assertEqual(s["average_order_value"], 150.0)
         self.assertEqual(s["status_counts"], {"completed": 1, "processing": 1, "cancelled": 1,
                                               "refunded": 1, "on-hold": 1})
-        self.assertEqual([p["name"] for p in s["top_products"]], ["Shoe A", "Lace", "Cap"])
+        self.assertEqual(s["awaiting_payment"], {"orders": 1, "total": 40.0})
+        self.assertEqual(s["not_sales"]["cancelled"], {"orders": 1, "total": 80.0})
+        self.assertEqual(s["not_sales"]["refunded"], {"orders": 1, "total": 60.0})
+        self.assertEqual(s["not_sales"]["failed"], {"orders": 0, "total": 0.0})
+        self.assertEqual([p["name"] for p in s["top_products"]], ["Shoe A", "Lace"])
         self.assertEqual(s["top_products"][0], {"name": "Shoe A", "quantity": 2, "revenue": 250.0})
 
     def test_empty_period(self):
