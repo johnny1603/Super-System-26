@@ -1097,6 +1097,10 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
 .drive-act { background: var(--panel-2); border: 1px solid var(--border); color: var(--white); font-family: inherit;
   font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
 .drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.drive-act.tiktok { border-color: var(--accent); }
+.conn-account { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; min-width: 0; }
+.conn-account img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
+.conn-account .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drive-big-note { font-size: 11px; color: var(--gray); line-height: 1.5; }
 .drive-notice { font-size: 13px; line-height: 1.6; color: var(--white); background: var(--panel-2);
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
@@ -1421,6 +1425,7 @@ a.media-item:hover { border-color: var(--accent); }
         <div>
           <div class="conn-name">TikTok</div>
           <div class="conn-status" id="tiktokStatus" data-i18n="not_connected">לא מחובר</div>
+          <div class="conn-account" id="tiktokAccount" hidden></div>
         </div>
       </div>
       <button class="conn-btn primary" id="tiktokBtn" onclick="connectViaChat('tiktok')" data-i18n="conn_connect">חבר</button>
@@ -2775,6 +2780,14 @@ const DASH_I18N = {
   gads_none_text: { he:'למשתמש Google שאיתו התחברתם אין חשבון פרסום פעיל. אפשר ליצור חשבון ב-ads.google.com (או להשלים את ההגדרה והחיוב בחשבון קיים), ואז ללחוץ שוב על "חבר עכשיו". אם החשבון שייך למשתמש Google אחר — התחברו איתו. ואם משהו לא ברור, נשמח לעזור בצ׳אט.', en:'The Google login you used has no active ad account. You can create one at ads.google.com (or finish the setup and billing of an existing one), then press “Connect now” again. If the account belongs to a different Google login, connect with that one. Anything unclear — we’re happy to help in the chat.', fr:'L’identifiant Google utilisé n’a aucun compte publicitaire actif. Créez-en un sur ads.google.com (ou terminez la configuration et la facturation d’un compte existant), puis cliquez de nouveau sur « Connecter ». Si le compte appartient à un autre identifiant Google, connectez-vous avec celui-ci. Une question ? Écrivez-nous dans le chat.', ar:'لا يملك حساب Google الذي استخدمته حسابًا إعلانيًا نشطًا. يمكنك إنشاء حساب على ads.google.com (أو إكمال الإعداد والفوترة لحساب موجود)، ثم الضغط على "اربط الآن" مجددًا. إذا كان الحساب تابعًا لحساب Google آخر، فاربط به. وإن كان هناك ما هو غير واضح، يسعدنا المساعدة في الدردشة.', ru:'У логина Google, которым вы вошли, нет активного рекламного аккаунта. Создайте его на ads.google.com (или завершите настройку и оплату существующего), затем снова нажмите «Подключить». Если аккаунт принадлежит другому логину Google — подключитесь с ним. Если что-то непонятно, поможем в чате.' },
   gads_none_chat: { he:'לשאול את יואב בצ׳אט', en:'Ask Yoav in the chat', fr:'Demander à Yoav dans le chat', ar:'اسأل يوآف في الدردشة', ru:'Спросить Йоава в чате' },
   notice_meta_connected: { he:'חשבון Meta (פייסבוק + אינסטגרם) חובר בהצלחה ✓', en:'Meta account (Facebook + Instagram) connected ✓', fr:'Compte Meta (Facebook + Instagram) connecté ✓', ar:'تم ربط حساب Meta (فيسبوك + إنستغرام) بنجاح ✓', ru:'Аккаунт Meta (Facebook + Instagram) подключён ✓' },
+  tt_connected_as: { he:'מחובר בתור {name}', en:'Connected as {name}', fr:'Connecté en tant que {name}', ar:'متصل باسم {name}', ru:'Подключено как {name}' },
+  tt_profile_unavailable: { he:'החשבון מחובר (לא הצלחנו להציג את השם כרגע)', en:'Account connected (name not available right now)', fr:'Compte connecté (nom indisponible pour le moment)', ar:'الحساب متصل (تعذّر عرض الاسم حاليًا)', ru:'Аккаунт подключён (имя сейчас недоступно)' },
+  tt_needs_reconnect: { he:'צריך לחבר מחדש', en:'Needs reconnecting', fr:'Reconnexion nécessaire', ar:'يلزم إعادة الربط', ru:'Нужно переподключить' },
+  tt_send: { he:'שליחה לטיקטוק', en:'Send to TikTok', fr:'Envoyer sur TikTok', ar:'إرسال إلى تيك توك', ru:'Отправить в TikTok' },
+  tt_send_opening: { he:'פותחים את כרטיס האישור בצ\'אט...', en:'Opening the approval card in the chat...', fr:'Ouverture de la carte d\'approbation dans le chat...', ar:'جارٍ فتح بطاقة الموافقة في الدردشة...', ru:'Открываем карточку подтверждения в чате...' },
+  tt_send_failed: { he:'לא הצלחנו להכין את השליחה לטיקטוק כרגע. נסו שוב בעוד רגע.', en:'Could not prepare the TikTok send right now. Please try again in a moment.', fr:'Impossible de préparer l\'envoi TikTok pour le moment. Réessayez dans un instant.', ar:'تعذّر تجهيز الإرسال إلى تيك توك حاليًا. حاولوا مرة أخرى بعد قليل.', ru:'Сейчас не удалось подготовить отправку в TikTok. Попробуйте чуть позже.' },
+  tt_not_in_plan: { he:'טיקטוק לא כלול בחבילה הנוכחית שלכם.', en:'TikTok is not part of your current plan.', fr:'TikTok ne fait pas partie de votre offre actuelle.', ar:'تيك توك غير مشمول في باقتكم الحالية.', ru:'TikTok не входит в ваш текущий тариф.' },
+  tt_too_large: { he:'גדול מדי לטיוטות בטיקטוק (עד 64MB)', en:'Too large for TikTok drafts (up to 64 MB)', fr:'Trop lourd pour les brouillons TikTok (64 Mo max)', ar:'كبير جدًا لمسودات تيك توك (حتى 64MB)', ru:'Слишком большой для черновиков TikTok (до 64 МБ)' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
   gtm_card: { he:'מדידת המרות (Google Tag Manager)', en:'Conversion measurement (Google Tag Manager)', fr:'Mesure des conversions (Google Tag Manager)', ar:'قياس التحويلات (Google Tag Manager)', ru:'Измерение конверсий (Google Tag Manager)' },
@@ -3535,6 +3548,79 @@ function connectTiktok() {
   window.location.href = '/api/oauth/tiktok/start';
 }
 
+// "Connected as": the TikTok account's display name + avatar, read live by
+// the server with the client's own grant (user.info.basic) and never stored.
+// Built with textContent / an https img only.
+let TIKTOK_CONNECTED = false;
+async function loadTiktokProfile() {
+  const box = document.getElementById('tiktokAccount');
+  if (!box) return;
+  const t = uallakI18n.t;
+  try {
+    const res = await fetch('/api/client/tiktok/profile', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const p = (await res.json()).data || {};
+    if (!p.connected) return;
+    box.textContent = '';
+    if (p.needs_reconnect) {
+      box.appendChild(ownEl('span', 'who', t('tt_needs_reconnect')));
+    } else if (p.display_name) {
+      if (p.avatar_url && p.avatar_url.startsWith('https://')) {
+        const img = document.createElement('img');
+        img.src = p.avatar_url; img.alt = ''; img.referrerPolicy = 'no-referrer';
+        img.onerror = () => img.remove();
+        box.appendChild(img);
+      }
+      const who = ownEl('span', 'who', t('tt_connected_as', { name: p.display_name }));
+      who.dir = 'auto';
+      box.appendChild(who);
+    } else {
+      box.appendChild(ownEl('span', 'who', t('tt_profile_unavailable')));
+    }
+    box.hidden = false;
+  } catch (e) {
+    console.error('tiktok profile failed', e);
+  }
+}
+
+// A video tile's "Send to TikTok": opens the media agent's chat with the
+// SAME approval card the chat offers (send_tiktok_to_inbox). Nothing is sent
+// until the client presses Approve on that card.
+const TIKTOK_INBOX_MAX_MB = 64;   // core/video_limits.TIKTOK_INBOX_MAX_MB (the server enforces it)
+async function sendVideoToTiktok(fileId, btn) {
+  const t = uallakI18n.t;
+  const note = msg => { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; };
+  if (btn) btn.disabled = true;
+  note(t('tt_send_opening'));
+  try {
+    const res = await fetch('/api/client/media/send-to-tiktok', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drive_file_id: fileId }),
+    });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const d = (await res.json()).data || {};
+    if (d.card) {
+      const persona = d.persona || 'media';
+      const wasOpen = Boolean(CHAT_WINDOWS[persona]);
+      const w = openAgentWindow(persona);
+      if (w && w.historyLoaded) await w.historyLoaded;
+      // The server stored the notice in the thread: a freshly opened window
+      // already loaded it with the history
+      if (d.notice && wasOpen) appendMsg(w.msgsEl, d.notice, 'bot');
+      appendActionCard(persona, d.card);
+      note('');
+    } else {
+      note(d.notice || t(d.error === 'not_available' ? 'tt_not_in_plan'
+                         : d.error === 'invalid_params' ? 'tt_too_large' : 'tt_send_failed'));
+    }
+  } catch (e) {
+    note(t('tt_send_failed'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function markPlatformConnected(statusId, btnId, platformKey) {
   const status = document.getElementById(statusId);
   status.textContent = uallakI18n.t('connected_status');
@@ -3738,7 +3824,14 @@ async function chooseGadsAccount(customerId) {
   }
 }
 function markMetaConnected() { markPlatformConnected('metaStatus', 'metaBtn', 'meta'); }
-function markTiktokConnected() { markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok'); }
+function markTiktokConnected() {
+  markPlatformConnected('tiktokStatus', 'tiktokBtn', 'tiktok');
+  if (!TIKTOK_CONNECTED) {
+    TIKTOK_CONNECTED = true;
+    loadTiktokProfile();
+    if (driveMirror.data) renderDriveMirror();   // the tiles' "Send to TikTok"
+  }
+}
 function markYoutubeConnected() { markPlatformConnected('youtubeStatus', 'youtubeBtn', 'youtube'); }
 // Plain OAuth redirect, no pre-action popup — same exemption as Google Ads/
 // Meta/TikTok connect (a simple 1-2 click provider consent, below the
@@ -7796,6 +7889,11 @@ function renderDriveMirror() {
       ? `<button type="button" class="${thumbCls}" data-view="${viewIdx}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
       : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
     const isVideo = f.download === 'drive' || f.kind === 'video';
+    const tiktokAct = (f.kind === 'video' && TIKTOK_CONNECTED)
+      ? (f.size && f.size > TIKTOK_INBOX_MAX_MB * 1024 * 1024
+          ? `<div class="drive-big-note">${esc(t('tt_too_large'))}</div>`
+          : `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>`)
+      : '';
     const dl = isVideo ? `<div class="drive-big-note">${esc(t('media_video_drive'))}</div>`
       : f.download === 'none' ? ''
       : overCap(f) ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
@@ -7808,9 +7906,13 @@ function renderDriveMirror() {
       <div class="drive-actions">
         ${f.web_view_link ? `<a class="drive-act" href="${esc(f.web_view_link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>` : ''}
         ${dl}
+        ${tiktokAct}
       </div>
     </div>`;
   }).join('');
+  grid.querySelectorAll('[data-tiktok]').forEach(b => {
+    b.onclick = () => sendVideoToTiktok(driveMirror.files[Number(b.dataset.tiktok)].id, b);
+  });
   grid.querySelectorAll('[data-view]').forEach(b => {
     b.onclick = () => uallakMediaViewer.open(viewable, Number(b.dataset.view), mediaViewerOpts('driveMirrorNotice'));
   });

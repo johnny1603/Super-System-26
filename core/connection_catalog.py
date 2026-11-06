@@ -78,6 +78,23 @@ NAMES = {
 CHIP_HAS = "יש לי חשבון"
 CHIP_NONE = "אין לי עדיין"
 CHIP_DONE = "סיימתי"
+# English for the steps a client with an OAuth connection goes through
+# (start → has → done) — what an English-language client (and the TikTok
+# app-review demo) sees. Every other language and step keeps the Hebrew text.
+CHIPS_EN = {"has": "I have an account", "none": "Not yet", "done": "Done"}
+EN = {
+    "start": "Let's connect {name}. Do you already have an account there?",
+    "has_oauth": "Great. Opening the {name} connection for you — approve it on the screen that opens, and that's it.",
+    "connected": "{name} is connected ✓ — we'll take it from here.",
+    "not_yet": ("I don't see {name} connected yet. Once the account is open, approve the connection on the "
+                "screen that opens — and I'll check again."),
+}
+
+
+def chip_label(step: str, lang: str = "he") -> str:
+    if lang == "en" and step in CHIPS_EN:
+        return CHIPS_EN[step]
+    return {"has": CHIP_HAS, "none": CHIP_NONE, "done": CHIP_DONE}.get(step, "")
 
 _cache = {"at": 0.0, "rows": None}
 
@@ -255,11 +272,13 @@ def _store_flow(client_id: int, step: str) -> dict:
     raise ValueError("bad_step")
 
 
-def flow(client_id: int, key: str, step: str) -> dict:
+def flow(client_id: int, key: str, step: str, lang: str = "he") -> dict:
     """One turn of the connect conversation. Pure decision from the table row
     (+ the connection status on "done"); the caller posts `messages` into the
     persona's thread. Returns {"show": False} for included / unknown keys —
-    except the store, whose steps are on the client's own site (_store_flow)."""
+    except the store, whose steps are on the client's own site (_store_flow).
+    `lang` "en": the OAuth steps (start / has / done) in English (EN)."""
+    en = lang == "en"
     if key == "store":
         return _store_flow(client_id, step)
     row = entry(key)
@@ -272,8 +291,9 @@ def flow(client_id: int, key: str, step: str) -> dict:
     name = _name(key)
 
     if step == "start":
-        return {**base, "messages": [f"נחבר את {name}. יש לכם כבר חשבון שם?"],
-                "chips": [{"label": CHIP_HAS, "step": "has"}, {"label": CHIP_NONE, "step": "none"}]}
+        return {**base, "messages": [EN["start"].format(name=name) if en else f"נחבר את {name}. יש לכם כבר חשבון שם?"],
+                "chips": [{"label": chip_label("has", lang), "step": "has"},
+                          {"label": chip_label("none", lang), "step": "none"}]}
 
     if step == "has":
         if key in TEAM_CONNECT:
@@ -283,6 +303,8 @@ def flow(client_id: int, key: str, step: str) -> dict:
         if key == "website":
             return {**base, "connect": key, "chips": [],
                     "messages": ["מעולה. כתבו את כתובת האתר בכרטיס שנפתח — נבדוק בעצמנו במה הוא בנוי ונמשיך מכאן."]}
+        if en and key not in VENDOR_TOOLS:
+            return {**base, "connect": key, "chips": [], "messages": [EN["has_oauth"].format(name=name)]}
         return {**base, "connect": key, "chips": [],
                 "messages": [f"מעולה. פותח לכם את החיבור של {name} — מאשרים במסך שייפתח, וזהו."
                              if key not in VENDOR_TOOLS else
@@ -323,10 +345,11 @@ def flow(client_id: int, key: str, step: str) -> dict:
         if is_connected(client_id, key):
             _clear_reminder(client_id, key)
             return {**base, "chips": [], "connected": True,
-                    "messages": [f"{name} מחובר ✓ — מכאן אנחנו ממשיכים."]}
+                    "messages": [EN["connected"].format(name=name) if en else f"{name} מחובר ✓ — מכאן אנחנו ממשיכים."]}
         _schedule_reminder(client_id, key)
         return {**base, "connect": key, "chips": [], "connected": False,
-                "messages": [f"עוד לא רואה את {name} מחובר. אחרי שהחשבון פתוח, מאשרים את החיבור במסך שנפתח — ואני אבדוק שוב."]}
+                "messages": [EN["not_yet"].format(name=name) if en else
+                             f"עוד לא רואה את {name} מחובר. אחרי שהחשבון פתוח, מאשרים את החיבור במסך שנפתח — ואני אבדוק שוב."]}
 
     raise ValueError("bad_step")
 

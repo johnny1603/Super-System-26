@@ -95,6 +95,8 @@ PARITY = {
     # ── Other platforms ──────────────────────────────────────────────────────
     "GET /api/oauth/meta/start": (CHAT, "connect_meta"),
     "GET /api/oauth/tiktok/start": (CHAT, "connect_tiktok"),
+    "GET /api/client/tiktok/profile": (READ, "channels"),
+    "POST /api/client/media/send-to-tiktok": (CHAT, "send_tiktok_to_inbox"),
     # ── Website ──────────────────────────────────────────────────────────────
     "POST /api/website/connect": (CHAT, "connect_website"),
     "POST /api/website/authorize/start": (CHAT, "connect_website"),

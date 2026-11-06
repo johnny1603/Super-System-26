@@ -1398,16 +1398,19 @@ def client_connect_chat(req: ConnectChatRequest, request: Request):
     key = (req.key or "").strip()
     if not re.fullmatch(r"[a-z_]{1,40}", key) or req.step not in ("start", "has", "none", "done"):
         raise HTTPException(status_code=400, detail={"code": "ERR_BAD_REQUEST"})
-    from core import connection_catalog
-    result = connection_catalog.flow(client_id, key, req.step)
+    from core import agent_actions, connection_catalog
+    lang = agent_actions._lang(client_id)   # the client's stored language, as the cards use
+    result = connection_catalog.flow(client_id, key, req.step, lang=lang)
     if not result.get("show"):
         return {"success": True, "data": {"show": False}}
     from agents.client_agent import log_communication
     from agents.support_agent import persona_channel
     channel = persona_channel(result["persona"])
-    chips = ({"has": connection_catalog.CHIP_STORE_HAS, "none": connection_catalog.CHIP_STORE_HOW}
-             if key == "store" else {"has": connection_catalog.CHIP_HAS, "none": connection_catalog.CHIP_NONE})
-    chip = {**chips, "done": connection_catalog.CHIP_DONE}.get(req.step)
+    if key == "store":
+        chip = {"has": connection_catalog.CHIP_STORE_HAS, "none": connection_catalog.CHIP_STORE_HOW,
+                "done": connection_catalog.CHIP_DONE}.get(req.step)
+    else:
+        chip = connection_catalog.chip_label(req.step, lang)
     if chip:
         log_communication(client_id, "inbound", channel, chip)
     for text in result.get("messages") or []:
@@ -3619,6 +3622,8 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
         performance.forget_engagement(client_id, "tiktok")
         from core import client_state
         client_state.forget(client_id)
+        from agents.tiktok_content_agent import forget_profile
+        forget_profile(client_id)
         log_activity(client_id, "tiktok_content_agent", "account_connected",
                      {"open_id": open_id, "display_name": user.get("display_name", "")}, {})
         return RedirectResponse(url="/dashboard/?connected=tiktok")
@@ -3626,6 +3631,61 @@ def tiktok_oauth_callback(state: str = "", code: str = "", error: str = ""):
         import traceback
         traceback.print_exc()
         return RedirectResponse(url="/dashboard/?connect_error=tiktok")
+
+@app.get("/api/client/tiktok/profile")
+def client_tiktok_profile(request: Request):
+    # The TikTok card's "connected as" (name + avatar): user.info.basic, read
+    # live with the client's own grant, never stored (tiktok_content_agent).
+    # Plain `def`: the TikTok call is blocking.
+    client_id = _require_session(request)
+    from agents import tiktok_content_agent
+    try:
+        profile = tiktok_content_agent.get_profile(client_id)
+    except Exception as e:
+        print(f"[tiktok profile] client {client_id}: {type(e).__name__}")
+        profile = {"connected": True, "unavailable": True, "display_name": "", "avatar_url": ""}
+    return {"success": True, "data": profile}
+
+class TikTokSendRequest(BaseModel):
+    drive_file_id: str
+
+@app.post("/api/client/media/send-to-tiktok")
+def client_media_send_to_tiktok(req: TikTokSendRequest, request: Request):
+    # The video tile's "Send to TikTok" button. It does NOT send: it opens the
+    # SAME send_tiktok_to_inbox approval card the media agent's chat offers
+    # (core/agent_actions — validated there: the file must be a video in this
+    # client's own media folder, within the inbox limit; no/old grant → the
+    # connect_tiktok card instead). Only the client's Approve on that card
+    # uploads (Upload to Inbox, video.upload), so there is still ONE path.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    file_id = (req.drive_file_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", file_id):
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_REQUEST"})
+    from core import agent_actions, client_state
+    client = agent_actions._client(client_id)
+    lang = agent_actions._lang(client_id)
+    try:
+        state = client_state.snapshot(client_id) or {}
+    except Exception:
+        state = {}
+    media = state.get("media_folder") or {}
+    # This one file, as the snapshot would list it; propose() re-proves it
+    # (owner folder + video + size) before anything is stored
+    here = {**state, "media_folder": {**media, "videos": [
+        {"drive_file_id": file_id, "uploadable": True, "tiktok_uploadable": True}]}}
+    result = agent_actions.propose(client_id, "client_chat", "media",
+                                   {"name": "send_tiktok_to_inbox", "params": {"drive_file_id": file_id}},
+                                   state=here, client=client, context={"language": lang, "message": ""})
+    data = {"persona": "media", "card": result.get("card"),
+            "notice": result.get("notice") or result.get("clarify") or result.get("refuse") or "",
+            "error": "" if result.get("card") else (result.get("error") or "not_offered")}
+    if data["notice"]:
+        from agents.client_agent import log_communication
+        from agents.support_agent import persona_channel
+        log_communication(client_id, "outbound", persona_channel("media"), data["notice"])
+    return {"success": True, "data": data}
 
 # ─── Meta execution (admin/scheduler only) ───────────────────────────────────
 

@@ -127,6 +127,61 @@ def check_grant(client_id: int) -> str:
     return tiktok_grant.state(client_id)
 
 
+# ─── The connected account, shown on the dashboard (user.info.basic) ───────
+
+PROFILE_CACHE_SECONDS = 600
+_profile_cache = {}   # client_id -> (time, account_id, profile)
+
+
+def _clean_profile(user: dict) -> dict:
+    name = str((user or {}).get("display_name") or "").strip()[:100]
+    avatar = str((user or {}).get("avatar_url") or "").strip()
+    return {"display_name": name,
+            "avatar_url": avatar if avatar.startswith("https://") and len(avatar) <= 2000 else ""}
+
+
+def get_profile(client_id: int) -> dict:
+    """The TikTok card's "connected as": {connected, display_name,
+    avatar_url, needs_reconnect, unavailable}. This is what user.info.basic
+    is FOR in the product (docs/TIKTOK-REVIEW.md): /v2/user/info/ read live
+    with the client's own token — the stored access token first (it lives
+    24 h), one refresh only when TikTok says it expired. Display data only:
+    nothing is stored; a TikTok avatar URL is signed and short-lived, so it
+    is never persisted either. Cached PROFILE_CACHE_SECONDS per account."""
+    from core import tiktok_grant
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return {"connected": False}
+    hit = _profile_cache.get(client_id)
+    if hit and hit[1] == conn["account_id"] and hit[0] > time.time() - PROFILE_CACHE_SECONDS:
+        return hit[2]
+    if tiktok_grant.state(client_id) == "dead":
+        return {"connected": True, "needs_reconnect": True, "display_name": "", "avatar_url": ""}
+    access_token, _ = tiktok.split_tokens(conn["access_token"])
+    try:
+        try:
+            user = tiktok.get_user_info(access_token)
+        except Exception as e:
+            if not tiktok.is_token_error(e):
+                raise
+            user = tiktok.get_user_info(_live_access_token(client_id, conn))
+    except Exception as e:
+        log_step(AGENT_NAME, "get_profile", f"client {client_id}: user/info failed "
+                 f"({type(e).__name__}, code={getattr(e, 'code', None) or '-'}, "
+                 f"log_id={getattr(e, 'log_id', None) or '-'})")
+        if tiktok.is_dead_grant(e) or tiktok.is_scope_error(e):
+            return {"connected": True, "needs_reconnect": True, "display_name": "", "avatar_url": ""}
+        return {"connected": True, "unavailable": True, "display_name": "", "avatar_url": ""}
+    profile = {"connected": True, **_clean_profile(user),
+               "needs_reconnect": tiktok_grant.needs_reconnect(client_id)}
+    _profile_cache[client_id] = (time.time(), conn["account_id"], profile)
+    return profile
+
+
+def forget_profile(client_id: int):
+    _profile_cache.pop(client_id, None)
+
+
 # ─── Publishing ─────────────────────────────────────────────────────────────
 
 def _wait_for_inbox_delivery(access_token: str, publish_id: str) -> dict:
