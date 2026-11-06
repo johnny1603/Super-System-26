@@ -57,6 +57,11 @@ def _chat(client_id: int, message: str):
 
 # ─── Copy generation ──────────────────────────────────────────────────────────
 
+# One copy call may take at most this long (one transport retry): the edit /
+# create card's whole run has a hard deadline (agent_actions.run_deadline),
+# and the SDK's default 10 minutes × retries outlived it (proposal 16).
+COPY_CALL_TIMEOUT_S = 120
+
 COPY_SYSTEM = f"""You are uallak's conversion copywriter, writing ONE Hebrew landing page
 for an Israeli small business. A landing page is NOT a website page: one offer, one action,
 no navigation, no company history. Every line either moves the reader toward the form or
@@ -121,7 +126,8 @@ def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
             lambda: safe_claude_json_call(COPY_SYSTEM,
                                           json.dumps(payload, ensure_ascii=False),
                                           max_tokens=1600, client_id=client_id,
-                                          cost_category="claude_landing_page"))
+                                          cost_category="claude_landing_page",
+                                          timeout=COPY_CALL_TIMEOUT_S))
     except ClaudeJSONError as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: landing copy generation failed: {e}"])
         return {"success": False, "errors": [str(e)]}
@@ -169,7 +175,8 @@ def propose_publish(client_id: int, page_id: int, intro: str = "", persona: str 
 
 
 def create_page(client_id: int, title: str, goal: str = "",
-                generate: bool = True, persona: str = PERSONA, announce: bool = True) -> dict:
+                generate: bool = True, persona: str = PERSONA, announce: bool = True,
+                images: list = None) -> dict:
     """Create ONE landing page, with generated copy by default, and propose
     publishing it (preview card in the website agent's chat, or in `persona`'s
     — the chat the client asked in). THE one builder: the dashboard's
@@ -181,7 +188,17 @@ def create_page(client_id: int, title: str, goal: str = "",
     call to be told no.
 
     `announce`: post the "I wrote a new page" line with the card. A chat
-    card's run passes False — its own done line says it, once."""
+    card's run passes False — its own done line says it, once.
+    `images`: the card's photo selection, copied in BEFORE the page is
+    opened — a refused photo opens nothing."""
+    refs = []
+    if images:
+        if landing_pages.count_pages(client_id) >= landing_pages.MAX_PAGES_PER_CLIENT:
+            return {"success": False, "code": "ERR_LANDING_PAGE_LIMIT"}
+        imported = _import_images(client_id, images, title)
+        if imported.get("code"):
+            return {"success": False, "code": imported["code"]}
+        refs = imported["refs"]
     created = landing_pages.create_page(client_id, title, goal, copy_source="")
     if not created.get("success"):
         if created.get("code") == "ERR_LANDING_PAGE_LIMIT":
@@ -201,7 +218,9 @@ def create_page(client_id: int, title: str, goal: str = "",
             copy_result = generate_copy(client_id, goal, title)
     fields = {"contact": _default_contact(client_id)}
     if copy_result.get("success"):
-        fields["content"] = copy_result["content"]
+        fields["content"] = {**copy_result["content"], "images": refs}
+    elif refs:
+        fields["content"] = {"images": refs}
     updated = landing_pages.update_page(client_id, page["id"], fields, source="generated")
     if updated.get("success"):
         page = updated["page"]
@@ -258,30 +277,56 @@ def fulfil_team_request(client_id: int, request_id: int, title: str, goal: str =
             "preview_card": bool(created.get("card")), "request_closed": closed}
 
 
+def _import_images(client_id: int, images: list, title: str) -> dict:
+    """The card's photo selection → stored refs, or a refusal code."""
+    from core import landing_images
+    try:
+        return {"refs": landing_images.import_selection(client_id, images, title)}
+    except landing_images.ImageError as e:
+        log_step(AGENT_NAME, "images", f"client {client_id}: refused ({e.code})")
+        return {"code": f"ERR_LANDING_IMAGES_{e.code.upper()}"}
+
+
 def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: str = PERSONA,
-                    announce: bool = True) -> dict:
+                    announce: bool = True, images: list = None) -> dict:
     """Rewrite one page's copy, optionally with the client's own chat feedback
     folded into the goal — which is how "make it warmer / lead with price"
     arrives, since review happens in conversation. The rewrite is a NEW
-    version; the live one stays live until the client approves the card."""
+    version; the live one stays live until the client approves the card.
+
+    `images`: the card's photo selection (landing_images.clean_selection) —
+    the FULL set the new version shows; copied into our store first (before
+    any paid call), so a refused photo stops the run with nothing changed.
+    No feedback + images = only the photos change, the text stays as is.
+    Without `images`, the page keeps the photos it has."""
     page = landing_pages.get_page(client_id, page_id)
     if not page:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND",
                 "errors": ["page not found"]}
-    goal = page.get("goal") or ""
-    if feedback:
-        goal = f"{goal}\n\nCLIENT FEEDBACK ON THE PREVIOUS VERSION: {feedback}".strip()
-
-    with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
-        result = generate_copy(client_id, goal, page.get("title", ""))
-    if not result.get("success"):
-        return result
-    updated = landing_pages.update_page(client_id, page_id, {"content": result["content"]},
-                                        source="rewrite")
+    refs = None
+    if images:
+        imported = _import_images(client_id, images, page.get("title", ""))
+        if imported.get("code"):
+            return {"success": False, "code": imported["code"]}
+        refs = imported["refs"]
+    content = dict(page.get("content") or {})
+    if feedback or not images:
+        goal = page.get("goal") or ""
+        if feedback:
+            goal = f"{goal}\n\nCLIENT FEEDBACK ON THE PREVIOUS VERSION: {feedback}".strip()
+        with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
+            result = generate_copy(client_id, goal, page.get("title", ""))
+        if not result.get("success"):
+            return result
+        content = {**result["content"], "images": (page.get("content") or {}).get("images") or []}
+    if refs is not None:
+        content["images"] = refs
+    updated = landing_pages.update_page(client_id, page_id, {"content": content},
+                                        source="images" if images and not feedback else "rewrite")
     if not updated.get("success"):
         return updated
     _log_activity(client_id, "landing_page_copy_regenerated",
-                  {"page_id": page_id, "had_feedback": bool(feedback)})
+                  {"page_id": page_id, "had_feedback": bool(feedback), "images": len(refs or [])})
     intro = (f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
              f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.') if announce else ""
     card = propose_publish(client_id, page_id, intro, persona=persona)
@@ -551,6 +596,12 @@ def dashboard_payload(client_id: int) -> dict:
             "has_unpublished_changes": bool(page.get("current_version")) and
                 page.get("current_version") != page.get("published_version"),
             "created_at": page.get("created_at", ""),
+            # The photos the newest version shows: where each sits and the
+            # media-folder photo it was copied from (what a chat edit names
+            # to keep it)
+            "images": [{"placement": r["placement"], "section": r.get("section"),
+                        "drive_file_id": r.get("source_file_id", "")}
+                       for r in (landing_pages.normalize_content(page.get("content") or {}).get("images") or [])],
         })
     used = len(pages)
     return {

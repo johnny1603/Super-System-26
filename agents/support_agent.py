@@ -206,8 +206,8 @@ THE EXCEPTION — never a dead end, always in your own voice:
   available action, an answer from account_state, a draft, an upgrade) as a concrete next step.
   Set "capability_gap" to a short ENGLISH description of what was missing — the system logs it
   for the people who build the product; the client never sees it and is never told a request was
-  opened. Never write "I passed it to the team", "the team will do it", "I opened a request" or
-  "someone will get back to you" for these.
+  opened. Never write "I passed it to the team", "the team will do it", "I opened a request",
+  "manual handling" ("טיפול ידני") or "someone will get back to you" for these.
 - MOVE ON: name a limitation once. Don't apologize repeatedly, and don't bring up an earlier
   handoff from conversation_history unless the client does. Their requests to the team and where
   each stands are in account_state.team_requests (open / handled / closed) — answer "what
@@ -702,7 +702,9 @@ def _follow_up(client_id: int, persona_id: str, message: str, reply: str, result
         return {"reply": reply, "needs_human_followup": False}
     gap = str(result.get("capability_gap") or "").strip()
     chat_fallback.alert_capability_gap(client_id, persona_id, message, gap)
-    return {"reply": reply, "needs_human_followup": False}
+    # No team routing on a capability gap — code, not only the prompt
+    return {"reply": chat_fallback.strip_team_routing(reply, _client_language(client_id, message)),
+            "needs_human_followup": False}
 
 
 def _flagged(result: dict) -> bool:
@@ -914,6 +916,7 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
         chat_fallback.alert_capability_gap(
             client_id, persona_id, message,
             f"proposed {_proposed_name(result)} but it was refused ({error})")
+    reply = chat_fallback.strip_team_routing(reply, lang)
     return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
             "needs_human_followup": False}
 

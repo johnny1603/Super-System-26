@@ -172,6 +172,7 @@ def normalize_content(raw: dict) -> dict:
     template renders, with every field length-capped. Unknown keys are DROPPED
     — the renderer only ever reads these, so an extra key could never surface,
     and silently keeping it would suggest otherwise."""
+    from core import landing_images
     raw = raw if isinstance(raw, dict) else {}
     benefits = [_clip(b, MAX_BENEFIT_CHARS) for b in (raw.get("benefits") or [])]
     sections = []
@@ -189,6 +190,8 @@ def normalize_content(raw: dict) -> dict:
         "sections": sections,
         "cta_text": _clip(raw.get("cta_text"), MAX_CTA_CHARS) or "שליחה",
         "form_note": _clip(raw.get("form_note"), MAX_SUB_CHARS),
+        # References to OUR stored copies (core/landing_images) — never a URL
+        "images": landing_images.normalize_refs(raw.get("images")),
     }
 
 
@@ -296,6 +299,20 @@ def update_page(client_id: int, page_id: int, fields: dict, source: str = "clien
     page = get_page(client_id, page_id)
     if not page:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND", "errors": ["page not found"]}
+    if "content" in changes:
+        if not isinstance(fields["content"], dict) or "images" not in fields["content"]:
+            # A text edit (the dashboard editor, a rewrite) keeps the photos
+            changes["content"]["images"] = normalize_content(page.get("content") or {})["images"]
+        refs = changes["content"]["images"]
+        if refs:
+            from core import landing_images
+            known = landing_images.sizes(client_id, [r["id"] for r in refs])
+            if set(known) != {r["id"] for r in refs}:
+                # An id that is not THIS client's never reaches a version
+                return {"success": False, "code": "ERR_LANDING_IMAGE_NOT_FOUND", "errors": ["image"]}
+            if sum(known.values()) > landing_images.MAX_PAGE_IMAGE_BYTES:
+                return {"success": False, "code": "ERR_LANDING_IMAGES_PAGE_TOO_LARGE",
+                        "errors": [f"{sum(known.values())} bytes"]}
     visible = {k: changes[k] for k in ("title", "content", "contact") if k in changes}
     if visible:
         merged = {"title": page.get("title", ""), "content": page.get("content") or {},
@@ -439,7 +456,9 @@ def revert(client_id: int, page_id: int, version: int) -> dict:
     old = get_version(client_id, page_id, version) if page else {}
     if not old:
         return {"success": False, "code": "ERR_LANDING_NO_VERSION"}
-    updated = update_page(client_id, page_id, {"title": old.get("title"), "content": old.get("content"),
+    # The old version's photos exactly (none, for a version from before photos)
+    old_content = {**(old.get("content") or {}), "images": (old.get("content") or {}).get("images") or []}
+    updated = update_page(client_id, page_id, {"title": old.get("title"), "content": old_content,
                                                "contact": old.get("contact")}, source=f"revert:{version}")
     if not updated.get("success"):
         return updated
@@ -537,6 +556,13 @@ button{width:100%;padding:14px;border:0;border-radius:9px;background:var(--accen
 footer{margin-top:40px;font-size:12px;color:var(--muted);text-align:center}
 footer nav{margin-bottom:6px}
 footer nav a{margin:0 8px}
+img{max-width:100%;height:auto;display:block}
+img.hero{width:100%;border-radius:14px;margin:0 0 22px;object-fit:cover;max-height:440px}
+header.bg{border-radius:14px;padding:44px 22px;margin:0 0 26px;background-size:cover;background-position:center;color:#fff}
+header.bg .sub{color:#f1f3f6}
+section.block img{border-radius:11px;margin:0 0 12px;width:100%;object-fit:cover;max-height:360px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:0 0 28px}
+.gallery img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px}
 .legal h1{font-size:26px}
 .legal p,.legal li{color:var(--ink)}
 """
@@ -649,15 +675,47 @@ def render_page(page: dict, capture_url: str, public_url: str,
     # Built with a plain loop rather than a nested f-string comprehension:
     # same-quote nesting inside f-strings only parses on 3.12+ (PEP 701), and
     # this file must not carry a hidden interpreter-version requirement.
+    # Photos: OUR stored copies only (landing_images.image_url — ints and hex,
+    # so safe in an attribute and in url()); never a Drive link. A section
+    # image whose section no longer exists joins the gallery.
+    from core import landing_images
+    owner = int(page.get("client_id") or 0)
+    refs = content["images"] if owner else []
+
+    def img(ref, cls="", lazy=True):
+        attrs = ' class="' + cls + '"' if cls else ""
+        attrs += ' src="' + _e(landing_images.image_url(owner, ref)) + '" alt="' + _e(ref["alt"]) + '"'
+        if ref.get("w") and ref.get("h"):
+            attrs += ' width="' + str(int(ref["w"])) + '" height="' + str(int(ref["h"])) + '"'
+        attrs += ' loading="lazy"' if lazy else ' fetchpriority="high"'
+        return "<img" + attrs + ' decoding="async">'
+
+    hero = next((r for r in refs if r["placement"] == "hero"), None)
+    background = next((r for r in refs if r["placement"] == "background"), None)
+    by_section = {r["section"]: r for r in refs if r["placement"] == "section"
+                  and r["section"] < len(content["sections"])}
+    gallery = [r for r in refs if r["placement"] == "gallery"
+               or (r["placement"] == "section" and r["section"] >= len(content["sections"]))]
+
     section_parts = []
-    for section in content["sections"]:
+    for number, section in enumerate(content["sections"]):
         block = '<section class="block">'
+        if number in by_section:
+            block += img(by_section[number])
         if section["title"]:
             block += f'<h2>{_e(section["title"])}</h2>'
         if section["body"]:
             block += f'<p>{_e(section["body"])}</p>'
         section_parts.append(block + "</section>")
     sections_html = "".join(section_parts)
+    gallery_html = (f'<div class="gallery">{"".join(img(r) for r in gallery)}</div>' if gallery else "")
+    hero_html = img(hero, "hero", lazy=False) if hero else ""
+    heading = f"<h1>{_e(content['headline']) or title}</h1>\n<p class=\"sub\">{_e(content['subheadline'])}</p>"
+    if background:
+        bg_url = _e(landing_images.image_url(owner, background))
+        heading = (f'<header class="bg" role="img" aria-label="{_e(background["alt"])}" '
+                   f'style="background-image:linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url(\'{bg_url}\')">'
+                   f"{heading}</header>")
 
     actions = []
     if links.get("call"):
@@ -695,11 +753,12 @@ def render_page(page: dict, capture_url: str, public_url: str,
 <body>
 <main class="wrap">
 {sent_html}
-<h1>{_e(content['headline']) or title}</h1>
-<p class="sub">{_e(content['subheadline'])}</p>
+{hero_html}
+{heading}
 {actions_html}
 {benefits_html}
 {sections_html}
+{gallery_html}
 <form class="lead" action="{_e(capture_url)}" method="post">
   <label for="lp-name">שם</label>
   <input id="lp-name" name="name" type="text" autocomplete="name" required>

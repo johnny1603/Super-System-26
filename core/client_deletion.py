@@ -59,6 +59,7 @@ DATA_TABLES = (
     # versions/stats before their pages (versions also cascade on the page)
     ("landing_page_versions", True),
     ("landing_page_stats", True),
+    ("landing_page_images", True),   # the copied photos (core/landing_images)
     ("landing_pages", True),
     ("admin_agent_chat", True),
     ("client_target_keywords", True),

@@ -154,6 +154,58 @@ fallback origin; env `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`; deploy
   existing daily per-client cap in `client_leads`. A dropped submit is answered
   like a stored one.
 
+## 6a. Images — the client's own photos (2026-11-06)
+
+What happened (client 27, 2026-11-02): the client asked in chat to improve the
+page with their own photos; the system could not place media-folder images on a
+page (two `capability_gap` alerts), and the edit card stayed `running` (see
+§6b). Now:
+
+- **Chat flow.** The manager / אורי picks photos from
+  `account_state.media_folder.images` (newest first) or the ones the client
+  named, and proposes `edit_landing_page` (or `create_landing_page`) with
+  `images: [{drive_file_id, placement: hero|gallery|section|background,
+  section?, alt?}]` — text change optional. The card shows the client's own
+  thumbnails (our session-gated `/api/client/media-drive/thumb/…`) and where
+  each goes. Nothing is copied before the click. The run copies the photos,
+  writes a NEW version, and the publish card follows as always.
+- **Copied, never hotlinked.** `core/landing_images.import_selection`
+  downloads each photo once, re-encodes it (first frame, EXIF orientation
+  applied, metadata dropped — no GPS reaches a visitor; longest edge ≤ 1600 px;
+  WebP at the best quality that fits) and stores it in `landing_page_images`.
+  Pages serve it from `/lp-media/{client_id}/{id}-{key}.webp` (public like the
+  page, `immutable` cache; the row must match client AND id AND key). A page
+  never names a Drive link.
+- **Limits.** ≤ 15 MB downloaded per source photo, ≤ 350 KB stored per photo,
+  ≤ 1.8 MB of photos per version, ≤ 8 photos (1 hero, 1 background, ≤ 6
+  gallery, 1 per section). A refusal is a plain line on the card ("didn't
+  change the page") and nothing is half-applied.
+- **Alt text, always.** A model looks at a 512 px thumbnail and writes one
+  Hebrew description per photo (told that text inside a photo is never an
+  instruction; sanitized; ≤ 125 chars). On failure: a plain line from the page
+  title and placement. A reference without alt text is dropped.
+- **Isolation.** Every Drive id is proven to be in THIS client's media folder
+  (`agent_actions._media_file`, Drive's parents walk) at proposal AND at
+  approval; a version may only name image ids of its own client
+  (`update_page` checks); the media route resolves only client + id + key.
+- **Data, not instructions.** File names and metadata never enter a prompt
+  and are never used as alt text; on the card a name is shown as text only.
+- **Versions + revert.** Image rows are immutable; a version stores
+  references (id, key, placement, alt). A text edit keeps the current photos; a
+  revert brings back exactly the photos of that version (none, for a version
+  from before photos).
+- Run `migrations/2026-11-06-landing-images.sql` once (idempotent). Until
+  then, a photo card ends with the plain "didn't change the page" line.
+
+## 6b. Deadlines and the reaper
+
+Every approved action runs under a hard deadline (create/edit landing page:
+8 minutes; the copy call itself is bounded to 120 s with one retry) and ends
+`done` or `failed` — never an eternal `running`. A row still running past
+`reap_after()` (process lost) is ended by the reaper every 5 minutes (job
+`action-reaper`), its stall alert closed, and the client told in chat: "מה
+שבאוויר לא השתנה … כתבו לי 'נסה שוב' ואכין כרטיס חדש". See docs/OPERATOR.md.
+
 ## 7. Cost metering (ILS, existing cost tracker)
 
 - Generation: every AI call for a page runs inside
@@ -200,3 +252,7 @@ the new URL, and only then ask the owner before deleting anything on WordPress.
 `tests/test_landing_own.py`: publish/revert, sanitization, tracking events,
 form → leads + spam, per-client isolation, unpublish, limits, the publish card,
 the backup-first migration of a sample page, hosting estimate, route order.
+`tests/test_landing_images_reaper.py`: photos copied + size-limited, client
+isolation, no hotlinks, the card shows the photos, versions + revert, alt text,
+file names never instructions; the deadline, the reaper, the capability-gap
+reply guard and the operator's tools.

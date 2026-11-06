@@ -469,7 +469,7 @@ class ProgressCards(unittest.TestCase):
                                          "created_at": datetime.now(timezone.utc).isoformat()})
         self.assertEqual([c["id"] for c in aa.open_cards(40, "client", "general")], [pid])
 
-    def test_stalled_job_says_the_team_is_checking_and_alerts_once(self):
+    def test_stalled_job_says_what_happens_next_and_alerts_once(self):
         pid, tasks = self.proposal(), Tasks()
         aa.decide(pid, "client", 40, "approve", background_tasks=tasks)
         self.row(pid)["decided_at"] = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()

@@ -2703,6 +2703,7 @@ const DASH_I18N = {
   action_d_hashtags: { he:'האשטגים', en:'Hashtags', fr:'Hashtags', ar:'الوسوم', ru:'Хэштеги' },
   action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
+  action_d_images: { he:'התמונות שלכם בדף', en:'Your photos on the page', fr:'Vos photos sur la page', ar:'صوركم في الصفحة', ru:'Ваши фото на странице' },
   action_d_preview: { he:'לצפייה בדף לפני שמאשרים ←', en:'Preview the page before approving →', fr:'Voir la page avant de valider →', ar:'معاينة الصفحة قبل الموافقة ←', ru:'Посмотреть страницу перед одобрением →' },
   action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
   action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
@@ -5947,6 +5948,34 @@ function actionDetails(d) {
   row('action_d_hashtags', (d.hashtags || []).join(' '));
   row('action_d_tags', (d.tags || []).join(', '));
   (d.links || []).forEach(l => row('action_d_link', (l.label ? l.label + ' — ' : '') + l.url));
+  // A landing card's photos: the client's own thumbnails, from OUR session-gated
+  // thumb route only (never a URL the model wrote); where each one goes, as text
+  const images = Array.isArray(d.images) ? d.images.filter(i => i && typeof i.thumb_url === 'string'
+    && i.thumb_url.indexOf('/api/client/media-drive/thumb/') === 0) : [];
+  if (images.length) {
+    const head = document.createElement('div');
+    const label = document.createElement('b');
+    label.textContent = t('action_d_images') + ':';
+    head.appendChild(label);
+    box.appendChild(head);
+    const grid = document.createElement('div');
+    grid.className = 'action-images';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin:6px 0';
+    images.forEach(i => {
+      const fig = document.createElement('figure');
+      fig.style.cssText = 'margin:0;font-size:12px;text-align:center';
+      const img = document.createElement('img');
+      img.src = i.thumb_url;
+      img.alt = String(i.name || '');
+      img.loading = 'lazy';
+      img.style.cssText = 'width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block';
+      const cap = document.createElement('figcaption');
+      cap.textContent = String(i.placement || '');
+      fig.append(img, cap);
+      grid.appendChild(fig);
+    });
+    box.appendChild(grid);
+  }
   // A landing page's preview: our own session-gated path only, never a link the model wrote
   if (typeof d.preview_url === 'string' && d.preview_url.indexOf('/api/client/landing-pages/') === 0) {
     const a = document.createElement('a');

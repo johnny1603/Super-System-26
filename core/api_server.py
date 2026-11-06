@@ -3382,6 +3382,18 @@ def admin_drive_usage_scan(request: Request):
     _require_admin(request)
     return _drive_usage_scan()
 
+@app.get("/api/actions/reap", dependencies=_admin_only)
+def actions_reap():
+    # Cloud Scheduler job action-reaper (X-Admin-Key, every 5 minutes): ends
+    # every approved action still `running` past its deadline — failed with a
+    # reason, its alert closed, the client told in chat (agent_actions.reap_stuck).
+    # Idempotent: a second run finds nothing new.
+    from core import agent_actions
+    try:
+        return {"success": True, "data": agent_actions.reap_stuck(by="reaper")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=type(e).__name__)
+
 @app.get("/api/drive/usage-scan", dependencies=_admin_only)
 def drive_usage_scan():
     # Daily Cloud Scheduler job (X-Admin-Key), same pattern as
@@ -7345,6 +7357,30 @@ def landing_go(client_segment: str, page_slug: str, kind: str, background_tasks:
     background_tasks.add_task(landing_tracking.bump, page["id"], client_id,
                               {"call": "calls", "whatsapp": "whatsapp", "store": "store"}[kind])
     return RedirectResponse(url=target, status_code=302)
+
+
+_LP_MEDIA_NAME = re.compile(r"^(\d{1,12})-([0-9a-f]{12})\.webp$")
+
+@app.get("/lp-media/{client_id}/{name}", include_in_schema=False)
+def serve_landing_image(client_id: int, name: str):
+    # A landing page's photo: OUR stored copy (core/landing_images), never
+    # Drive. Public like the page itself; the row must match client AND id AND
+    # key, so ids can't be walked across clients. Immutable: a changed photo
+    # is a new row with a new key.
+    from core import landing_images
+    match = _LP_MEDIA_NAME.match(name or "")
+    if not match:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        row = landing_images.get_image(client_id, int(match.group(1)), match.group(2))
+    except Exception:
+        raise HTTPException(status_code=503, detail="temporarily unavailable")
+    if not row:
+        raise HTTPException(status_code=404, detail="not found")
+    import base64 as _b64
+    return Response(content=_b64.b64decode(row["data_b64"]), media_type="image/webp",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable",
+                             "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/lp/{client_segment}/{page_slug}", include_in_schema=False)

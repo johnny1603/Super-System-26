@@ -63,6 +63,7 @@ job lead-volume-scan GET "0 6 * * *" "/api/leads/volume-scan" active "Daily lead
 job engagement-weekly GET "0 9 * * 0" "/api/engagement/weekly" active "Weekly client suggestions (Israeli calendar, trends, performance), Sunday 09:00"
 job engagement-morning GET "30 8 * * 0-5" "/api/engagement/morning" active "Morning briefing 08:30 Sun-Fri, after the 08:00 chat rollover (no Shabbat or chag)"
 retire engagement-daily "folded into the morning briefing (engagement-morning)"
+job action-reaper GET "*/5 * * * *" "/api/actions/reap" active "Ends approved actions stuck running past their deadline: failed with a reason, alert closed, client told in chat"
 job drive-usage-scan GET "30 3 * * *" "/api/drive/usage-scan" active "Daily Shared Drive storage scan (DRIVE_SHARED_ALERT_GB alert on status change)"
 # END JOBS
 

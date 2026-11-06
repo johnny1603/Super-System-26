@@ -263,6 +263,45 @@ def alert_capability_gap(client_id: int, persona: str, message: str, gap: str = 
     return alert_once(CAPABILITY_GAP_SOURCE, client_id, key, text, CAPABILITY_GAP_DAYS)
 
 
+# A capability-gap reply never routes the client to a person: no "the team
+# will handle it", no "manual handling", no "I opened a request" (2026-11-06,
+# client 27: "the system can't place images — pass it to the team"). The
+# model is told so; this is the code-side guarantee — any sentence that does
+# it is dropped, and if nothing is left, a plain line says what we CAN do.
+_TEAM_ROUTING = re.compile("|".join((
+    r"(אעביר|מעביר|מעבירה|העברתי|נעביר|העברנו)\s+(את\s+)?(זה|הבקשה|השאלה|הנושא)?\s*(ל|אל\s+)?(ה)?צוות",
+    r"(ה)?צוות\s+(י|ת)?(טפל|יטפל|תטפל|מטפל|יחזור|יחזרו|יבדוק|יבדקו|בודק|ידאג)",
+    r"איש\s+צוות\s+(יחזור|יטפל|ידאג)", r"טיפול\s+ידני", r"(באופן|בצורה)\s+ידני(ת)?",
+    r"(פתחתי|אפתח|נפתח|נפתחה)\s+(לכם\s+)?בקשה", r"בקשה\s+(ל|אל\s+)?(ה)?צוות",
+    r"pass(ed|ing)?\s+(this|it|that)\s+(on\s+)?to\s+(the|our)\s+team", r"the\s+team\s+will",
+    r"manual(ly)?\s+(handl|process|review)", r"opened\s+a\s+(team\s+)?request",
+    r"someone\s+(from\s+the\s+team\s+)?will\s+get\s+back",
+)), re.IGNORECASE)
+
+_GAP_FALLBACK = {
+    "he": "את זה עוד אין לי דרך לעשות מכאן. ספרו לי מה המטרה, ואציע את הדרך הקרובה ביותר שכן אפשר כבר עכשיו.",
+    "en": "That isn't something I can do from here yet. Tell me the goal and I'll offer the closest thing I can do right now.",
+    "fr": "Je ne peux pas encore faire cela d'ici. Dites-moi l'objectif et je vous propose ce qui s'en approche le plus dès maintenant.",
+    "ar": "لا أستطيع فعل ذلك من هنا بعد. أخبروني بالهدف وسأقترح أقرب شيء يمكن فعله الآن.",
+    "ru": "Отсюда я пока этого сделать не могу. Расскажите о цели — предложу самое близкое, что можно сделать уже сейчас.",
+}
+
+
+def has_team_routing(text: str) -> bool:
+    return bool(_TEAM_ROUTING.search(text or ""))
+
+
+def strip_team_routing(reply: str, language: str = "he") -> str:
+    """The reply without any sentence that routes the client to a person."""
+    if not has_team_routing(reply):
+        return reply
+    parts = re.split(r"(?<=[.!?…])\s+|\n+", reply or "")
+    kept = [p for p in parts if p.strip() and not has_team_routing(p)]
+    text = " ".join(kept).strip()
+    lang = language if language in SUPPORTED_LANGUAGES else "he"
+    return text if len(text) >= 8 else _GAP_FALLBACK[lang]
+
+
 _sales_alerted = {}  # issue_key -> monotonic time of last alert (prospects have no client row)
 
 

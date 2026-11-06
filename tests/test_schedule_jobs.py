@@ -52,6 +52,7 @@ EXPECTED = {
     "engagement-weekly": ("GET", "0 9 * * 0", "/api/engagement/weekly"),
     "drive-usage-scan": ("GET", "30 3 * * *", "/api/drive/usage-scan"),
     "engagement-morning": ("GET", "30 8 * * 0-5", "/api/engagement/morning"),
+    "action-reaper": ("GET", "*/5 * * * *", "/api/actions/reap"),
 }
 RETIRED = sa.parse_retired(SRC)
 

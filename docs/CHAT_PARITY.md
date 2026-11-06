@@ -60,6 +60,7 @@ the chat never has a second implementation.
 | "make me a landing page" | `create_landing_page`, with a concrete title and goal built from the client's real data (at most one question) | `landing_page_agent.create_page`, the "+ דף נחיתה חדש" builder; it writes a **draft**, then a `publish_landing_page` preview card follows in the same thread |
 | "publish it" | `publish_landing_page` | `landing_page_agent.publish_page`; this second click is the only way a page goes live |
 | "change it: …" | `edit_landing_page` | `landing_page_agent.regenerate_copy` writes a new version; what is live stays live until the preview card is approved |
+| "put my photos on the page" / "use the new pictures from my folder" | `edit_landing_page` (or `create_landing_page`) with `images`: the manager picks photos from `account_state.media_folder.images` (or the ones the client named) and proposes where each goes — hero, gallery, a section, background; the card shows the photos | `landing_images.import_selection`: each photo proven to be in THIS client's media folder, COPIED into `landing_page_images` (resized, WebP, metadata dropped, ≤ 350 KB each, ≤ 1.8 MB per page, alt text written by a model that looks at it), served from `/lp-media/…` — never a Drive link; a new version, so revert brings back exactly the earlier photos |
 | "go back to version N" | `revert_landing_page` | `landing_page_agent.revert_page` |
 | "take it down" | `unpublish_landing_page` | `landing_page_agent.unpublish_page` |
 | "delete it" | `delete_landing_page` | `landing_pages.delete_page` |
@@ -235,7 +236,7 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | `update_site_items_without_backup` | client click | execute | opened by code only | The remaining site updates after a backup could not be taken, run WITHOUT a backup on the client's explicit approval. |
 | `publish_landing_page` | client click | execute | — | Puts ONE of the client's landing pages live (account_state.landing_pages), at the version shown in the card's preview. |
 | `create_landing_page` | client click | execute | — | Writes a NEW landing-page DRAFT for the client (never live): the click runs our page writer, and a second card with a preview then asks whether to publish it. |
-| `edit_landing_page` | client click | execute | — | Rewrites ONE of the client's landing pages (account_state.landing_pages) according to the change they asked for in their own words — as a NEW version. |
+| `edit_landing_page` | client click | execute | — | Changes ONE of the client's landing pages (account_state.landing_pages) — its text according to the change they asked for in their own words, and/or the client's OWN photos from their media folder placed as hero, gallery, section images or background. |
 | `revert_landing_page` | client click | execute | — | Brings back an EARLIER version of one landing page (account_state.landing_pages[].versions). |
 | `unpublish_landing_page` | client click | execute | — | Takes ONE live landing page down (instant; visitors stop seeing it). |
 | `delete_landing_page` | client click | execute | — | Deletes ONE landing page for good (it frees a place in the package). |

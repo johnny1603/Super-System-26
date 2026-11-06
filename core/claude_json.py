@@ -240,7 +240,7 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
 
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
                           client_id=None, cost_category="claude_api", effort=None, retry_empty=True,
-                          json_retry=True):
+                          json_retry=True, timeout=None):
     """Call Claude expecting a JSON object back, guarding against the response
     getting cut off mid-JSON or coming back EMPTY.
 
@@ -269,8 +269,14 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
       step is skipped when retry_empty=False, because a routed turn's caller
       (model_routing.routed_turn) escalates itself. json_retry=False: no paid
       retry at all (the turn router: a malformed answer means 'standard').
+    - timeout (seconds): a hard limit per HTTP call with ONE transport retry,
+      for work that runs under an approved action's deadline (landing copy,
+      alt text). Without it the SDK default (10 minutes, 2 retries) applies —
+      long enough to outlive an action's whole run (proposal 16, 2026-11-02).
     """
     client = _client(api_key)
+    if timeout and hasattr(client, "with_options"):
+        client = client.with_options(timeout=float(timeout), max_retries=1)
     # effort is optional: only sent when a caller asks (e.g. "low" for chat turns)
     extra = {"output_config": {"effort": effort}} if effort else {}
 

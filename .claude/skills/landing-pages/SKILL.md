@@ -179,6 +179,18 @@ one, as `package_exception`.
   backup-first migration to versions.
 - InstaWP is for full websites only — never touch it from here.
 
+## The client's own photos (2026-11-06, docs/LANDING_PAGES.md §6a)
+
+- `edit_landing_page` / `create_landing_page` take `images` (drive ids from
+  `media_folder.images` + placement hero/gallery/section/background). The card
+  shows the thumbnails; the click copies them via `core/landing_images.py`
+  into `landing_page_images` (WebP, metadata dropped, ≤ 350 KB, ≤ 1.8 MB per
+  page, alt text from a model that looks) — served from `/lp-media/…`, NEVER a
+  Drive link. Content stores references only (`content.images`), checked
+  against the client in `update_page`. File names are data, never prompts.
+- A text edit keeps the photos; revert restores exactly a version's photos.
+- Runs have a hard deadline; the reaper (`action-reaper`) ends lost ones.
+
 ## Endpoints
 
 Public: `GET /lp/{client_segment}/{page_slug}`, `/lp/{client_segment}/privacy`,

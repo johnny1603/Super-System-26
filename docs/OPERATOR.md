@@ -32,8 +32,8 @@ phone app can use it later (it will need its own auth — see "Recommended next"
 
 | Tier | What | Who triggers | Approval | Code |
 |---|---|---|---|---|
-| 1 — reads | Cloud Run revisions + deploy times, logs (redacted), alerts, `client_state`, Control Room, git history, CI results, the deployed code | the agent, freely | none | `core/operator_agent.py` (read tools), `core/cloud_ops.py`, `core/operator_github.py` |
-| 2 — safe, reversible | health check, token refresh, cache clear (the agent may run these); **rollback / return to latest, flag flips, re-send a failed WhatsApp** (agent only OFFERS a one-tap button) | owner tap (or agent for the diagnostic three) | none — runs at once, audited first | `core/operator_actions.py`, `core/operator_flags.py` |
+| 1 — reads | Cloud Run revisions + deploy times, logs (redacted), alerts, `client_state`, Control Room, git history, CI results, the deployed code, **clients' action cards** (`list_action_cards` by client/status/age, `action_card` with params + the alerts carrying its error, `stuck_actions`), **landing pages with versions** (`landing_pages`) | the agent, freely | none | `core/operator_agent.py` (read tools), `core/agent_actions.operator_*`, `core/cloud_ops.py`, `core/operator_github.py` |
+| 2 — safe, reversible | health check, token refresh, cache clear, `run_reaper` (the agent may run these); **rollback / return to latest, flag flips, re-send a failed WhatsApp, `fail_action` (end a STUCK running card with a reason), `retry_action` (re-offer a failed/expired/cancelled card to the CLIENT as a new card), `resolve_alert`, `mark_request_handled` (a team request → "טופל")** (agent only OFFERS a one-tap button) | owner tap (or agent for the diagnostic four) | none — runs at once, audited first | `core/operator_actions.py`, `core/operator_flags.py` |
 | 3 — code + deploy | the agent proposes edits → **approval 1** opens its own `operator/<id>` branch + PR → **approval 2** merges (bound to the exact head SHA) and starts the deploy workflow | owner only | each approval = a one-time code emailed to `OPERATOR_APPROVAL_EMAIL` | `core/operator_changes.py`, `core/operator_gate.py`, `.github/workflows/deploy.yml` |
 
 Never: a push to master, a deploy without approval 2, a change to `.github/`, the gate, the
@@ -62,6 +62,26 @@ recorded). Rows from before 2026-11-01 kept only 200 characters and are not re-s
 emails are not recorded anywhere today, so they can't be re-sent (deliberately — a login code
 must never be re-sent by an admin).
 
+## Clients' action cards — stuck, failed, re-offered (2026-11-06)
+
+Every approved action runs under a **hard deadline** (`agent_actions.run_deadline`: a slow
+action's `slow.minutes`, otherwise 4 minutes) in a worker thread; past it the row is ended as
+`failed` / outcome `timeout`. The **reaper** (`agent_actions.reap_stuck`, Cloud Scheduler job
+`action-reaper`, every 5 minutes, `GET /api/actions/reap`) ends any row still `running` past
+`reap_after()` — the case where the process itself died (proposal 16, client 27, 2026-11-02: a
+background task after the response, lost or throttled on Cloud Run). Both end a row the same way
+(`finalize_stuck`): compare-and-set (once only), the alerts that name the proposal resolved, a
+resolved history row, and the client told in chat what happened and the next step ("כתבו לי
+'נסה שוב'") — never "the team". A result that arrives after that is never posted.
+
+What איציק does with it: reads (`list_action_cards`, `action_card`, `stuck_actions`,
+`landing_pages`), runs `run_reaper` himself, and OFFERS `fail_action`, `retry_action`,
+`resolve_alert`, `mark_request_handled` as one-tap buttons. **Hard line:** none of these
+approves, publishes or executes a client's proposal — `retry_action` creates a new card the
+CLIENT approves. Code, PR and deploy stay Tier 3 (one-time codes + the GitHub reviewer).
+He never advises routing a client's ask to a manual team request: team requests are only
+legal / tax / contract / billing / package exception; anything else the chat can't do is a
+`capability_gap` alert — a product fix (Tier 3), not a person's job.
 ## Security — the second gate (implemented)
 
 The admin dashboard is one shared password (`ADMIN_PASSWORD`). With it alone you can read,

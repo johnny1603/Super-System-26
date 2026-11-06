@@ -98,10 +98,11 @@ and owner_steps for anything only he can do).
 
 WHAT YOU MAY DO — THREE TIERS, NEVER BLURRED:
 - Tier 1, reads: any read tool, as many as you need.
-- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token and clear_cache
-  yourself when they help the diagnosis. Rollback, return-to-latest, flag changes and
-  re-sending a failed notification you only OFFER with offer_action — a one-tap button he
-  presses. Never say you did one of those; say you put the button there.
+- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token, clear_cache and
+  run_reaper yourself when they help. Rollback, return-to-latest, flag changes, re-sending a
+  failed notification, fail_action, retry_action, resolve_alert and mark_request_handled you
+  only OFFER with offer_action — a one-tap button he presses (every one is audit-logged before it
+  runs). Never say you did one of those; say you put the button there.
   If a deploy in the last few hours lines up with new errors, offer the rollback FIRST
   (one tap, reversible), then keep investigating.
 - Tier 3, code: you may only PROPOSE a fix with propose_code_change (exact edits against
@@ -110,6 +111,24 @@ WHAT YOU MAY DO — THREE TIERS, NEVER BLURRED:
   goes to his email. Tell him that plainly when you propose. Keep fixes minimal and explain
   what changes and why in Hebrew. Never touch secrets, env values, SECRETS_ENCRYPTION_KEY,
   the workflows, the approval gate or the session code — those are his to change by hand.
+
+CLIENTS' ACTION CARDS AND LANDING PAGES — you have tools for these; use them, never tell him to
+do it by hand:
+- Reads: list_action_cards (by client / status / age), action_card (params, outcome, deadline, the
+  alerts with the error text), stuck_actions, landing_pages (versions, live vs newest, photos).
+- A card stuck in "running": every run has a hard deadline and a reaper ends stuck ones every 5
+  minutes (failed, alert closed, the client told in chat). You may run_reaper yourself now. For one
+  specific card, OFFER fail_action with a reason.
+- A failed / expired / cancelled card the client still wants: OFFER retry_action — it puts a NEW card
+  in front of the CLIENT, who approves it. An alert that is dealt with: OFFER resolve_alert. A team
+  request he handled: OFFER mark_request_handled ("טופל").
+- HARD LINE: you never approve, publish or execute a client's proposal for them, and nothing you
+  offer does. The client's click is theirs.
+- THE PRODUCT PRINCIPLE: the client talks to their manager in the chat, and the chat does the work.
+  Never advise routing a client's ask to a manual team request — team requests exist ONLY for legal,
+  tax, contract, billing and package exceptions. When the chat can't do something yet, that is a
+  capability gap (alerts source capability_gap): say what is missing in the product and propose the
+  fix (Tier 3) — not "open a team request".
 
 WHEN SOMETHING NEEDS HIM: a vendor panel, a payment, a decision, a Google review, an IAM
 role, a secret rotation, a migration in the Supabase SQL editor — say so plainly ("this one
@@ -249,6 +268,27 @@ def _git_history(n: int = 15) -> dict:
             "commits": gh.recent_commits(n)}
 
 
+def _landing_overview(client_id) -> dict:
+    """One client's landing pages with versions: what is live, what is the
+    newest, which photos the newest shows (counts by placement)."""
+    from core import landing_pages
+    cid = int(client_id)
+    out = []
+    for page in landing_pages.list_pages(cid):
+        images = landing_pages.normalize_content(page.get("content") or {}).get("images") or []
+        placements = {}
+        for ref in images:
+            placements[ref["placement"]] = placements.get(ref["placement"], 0) + 1
+        out.append({"id": page.get("id"), "title": page.get("title", ""), "status": page.get("status"),
+                    "current_version": page.get("current_version"),
+                    "published_version": page.get("published_version"),
+                    "images_in_newest": placements,
+                    "versions": [{"version": v.get("version"), "source": v.get("source"),
+                                  "at": v.get("created_at"), "size_bytes": v.get("size_bytes")}
+                                 for v in landing_pages.list_versions(cid, page["id"])[:10]]})
+    return {"client_id": cid, "pages": out, "included": landing_pages.MAX_PAGES_PER_CLIENT}
+
+
 def _test_results() -> dict:
     from core import operator_github as gh
     return {"tests": gh.workflow_runs(8, gh.TESTS_WORKFLOW), "deploys": gh.workflow_runs(5, gh.DEPLOY_WORKFLOW)}
@@ -309,9 +349,29 @@ TOOLS = [
      "repo reachable, may create a branch / open a PR / start the deploy (each tested WITHOUT doing it), "
      "deploy workflow, the two Variables, 'production' environment, reviewer, master protection. Plain "
      "Hebrew lines; states only, never values.", "input_schema": _schema({})},
+    {"name": "list_action_cards", "description": "Tier 1 read: clients' action cards (agent_actions) newest "
+     "first. client_id, status (proposed | awaiting_staff | running | done | failed | cancelled | expired), "
+     "older_than_minutes (age since approved, or since created), limit.",
+     "input_schema": _schema({"client_id": _INT, "status": _STR, "older_than_minutes": _INT, "limit": _INT})},
+    {"name": "action_card", "description": "Tier 1 read: ONE action card — params, outcome, its deadline, whether "
+     "it is stuck, and the alerts that name it (where the error text is).",
+     "input_schema": _schema({"proposal_id": _INT}, ["proposal_id"])},
+    {"name": "stuck_actions", "description": "Tier 1 read: every card still running — the stuck ones (past "
+     "their deadline; the reaper ends them every 5 minutes) and the ones still inside their time.",
+     "input_schema": _schema({})},
+    {"name": "landing_pages", "description": "Tier 1 read: one client's landing pages with versions (live vs "
+     "newest, source of each version, photos in the newest by placement).",
+     "input_schema": _schema({"client_id": _INT}, ["client_id"])},
+    {"name": "run_reaper", "description": "Tier 2, runs now: end every stuck card (failed with a reason, its "
+     "alert closed, the client told the next step in chat) — what the 5-minute job does.",
+     "input_schema": _schema({})},
     {"name": "offer_action", "description": "Put a ONE-TAP button in front of the owner (Tier 2; he presses "
      "it, it runs at once). action: rollback (params: optional revision) | restore_latest | flip_flag "
-     "(params: flag, state on/off/default) | resend_notification (params: activity_id).",
+     "(params: flag, state on/off/default) | resend_notification (params: activity_id) | fail_action "
+     "(params: proposal_id, reason — a STUCK running card only) | retry_action (params: proposal_id — "
+     "re-offers a failed/expired/cancelled card to the CLIENT as a new card they approve) | resolve_alert "
+     "(params: alert_id) | mark_request_handled (params: client_id, request_id, note — a team request "
+     "marked \"טופל\").",
      "input_schema": _schema({"action": _STR, "params": {"type": "object"}, "reason_he": _STR},
                              ["action", "reason_he"])},
     {"name": "propose_code_change", "description": "Tier 3: propose a code fix. Each edit replaces `old` "
@@ -385,7 +445,20 @@ def run_tool(name: str, args: dict, turn: _Turn):
     if name == "github_check":
         from core import operator_github
         return operator_github.connection_check()
-    if name in ("run_health_check", "refresh_token", "clear_cache"):
+    if name in ("list_action_cards", "action_card", "stuck_actions"):
+        from core import agent_actions
+        try:
+            if name == "list_action_cards":
+                return agent_actions.operator_list(args.get("client_id"), str(args.get("status") or ""),
+                                                   int(args.get("older_than_minutes") or 0), args.get("limit", 30))
+            if name == "action_card":
+                return agent_actions.operator_detail(int(args.get("proposal_id") or 0))
+            return agent_actions.operator_stuck()
+        except (TypeError, ValueError) as e:
+            return {"error": "bad_params", "detail": str(e)[:80]}
+    if name == "landing_pages":
+        return _landing_overview(args["client_id"])
+    if name in ("run_health_check", "refresh_token", "clear_cache", "run_reaper"):
         action = {"run_health_check": "health_check"}.get(name, name)
         try:
             out = operator_actions.run(action, args, f"operator agent for {turn.who}", by_agent=True)

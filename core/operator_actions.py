@@ -247,7 +247,85 @@ def _restore_latest(params: dict) -> dict:
         raise ActionError("ERR_CLOUD", e.code)
 
 
+def _int_param(params: dict, name: str) -> int:
+    try:
+        value = int(params.get(name))
+    except (TypeError, ValueError):
+        raise ActionError("ERR_PARAM", name)
+    if value <= 0:
+        raise ActionError("ERR_PARAM", name)
+    return value
+
+
+def _refusal(e: ValueError):
+    return ActionError("ERR_REFUSED", str(e)[:80])
+
+
+def _fail_action(params: dict) -> dict:
+    """End a STUCK card (status running) as failed, with a reason — the
+    reaper's own finalize: alert closed, the client told the next step."""
+    from core import agent_actions
+    reason = _clean(params.get("reason") or "", 200).strip()
+    if len(reason) < 3:
+        raise ActionError("ERR_PARAM", "reason")
+    try:
+        return agent_actions.operator_fail(_int_param(params, "proposal_id"), reason, "operator")
+    except ValueError as e:
+        raise _refusal(e)
+
+
+def _retry_action(params: dict) -> dict:
+    """Re-offer a failed / expired / cancelled card to the client as a NEW
+    card. Nothing runs: the client approves it with their own click."""
+    from core import agent_actions
+    try:
+        return agent_actions.operator_retry(_int_param(params, "proposal_id"), "operator")
+    except ValueError as e:
+        raise _refusal(e)
+
+
+def _resolve_alert(params: dict) -> dict:
+    alert_id = _int_param(params, "alert_id")
+    rows = (_db().table("alerts").select("id,source,status").eq("id", alert_id).limit(1).execute().data or [])
+    if not rows:
+        raise ActionError("ERR_REFUSED", "not_found")
+    if rows[0].get("source") == AUDIT_SOURCE:
+        raise ActionError("ERR_REFUSED", "audit_rows_are_history")
+    if rows[0].get("status") != "open":
+        return {"alert_id": alert_id, "resolved": False, "note": "already resolved"}
+    from core import admin_service
+    admin_service.resolve_alerts([alert_id])
+    return {"alert_id": alert_id, "resolved": True}
+
+
+def _mark_request_handled(params: dict) -> dict:
+    from core import agent_actions
+    cid = _client_id(params)
+    try:
+        return agent_actions.operator_mark_request_handled(cid, _int_param(params, "request_id"),
+                                                           _clean(params.get("note") or "", 300), "operator")
+    except ValueError as e:
+        raise _refusal(e)
+
+
+def _run_reaper(params: dict) -> dict:
+    """What the 5-minute scheduler job does, now."""
+    from core import agent_actions
+    return agent_actions.reap_stuck(by="operator")
+
+
 ACTIONS = {
+    "fail_action": {"run": _fail_action, "by_agent": False, "label_he": "סגירת פעולה תקועה ככישלון",
+                    "undo_he": "\"הצעה מחדש ללקוח\" מכינה לו כרטיס חדש לאישור"},
+    "retry_action": {"run": _retry_action, "by_agent": False, "label_he": "הצעה מחדש ללקוח",
+                     "undo_he": "הכרטיס החדש רק מחכה לאישור הלקוח — אם לא יאשר, הוא פג מעצמו"},
+    "resolve_alert": {"run": _resolve_alert, "by_agent": False, "label_he": "סימון התראה כטופלה",
+                      "undo_he": "אם הבעיה חוזרת נפתחת התראה חדשה; ההיסטוריה נשמרת"},
+    "mark_request_handled": {"run": _mark_request_handled, "by_agent": False,
+                             "label_he": "סימון בקשת צוות כ\"טופל\"",
+                             "undo_he": "הבקשה נשמרת; אם משהו עוד פתוח, הלקוח כותב ונפתחת בקשה חדשה"},
+    "run_reaper": {"run": _run_reaper, "by_agent": True, "label_he": "סגירת פעולות תקועות עכשיו",
+                   "undo_he": "\"הצעה מחדש ללקוח\" לכל פעולה שנסגרה"},
     "health_check": {"run": _health_check, "by_agent": True, "label_he": "הרצת בדיקת תקינות",
                      "undo_he": "קריאה בלבד — אין מה לבטל"},
     "refresh_token": {"run": _refresh_token, "by_agent": True, "label_he": "רענון חיבור",

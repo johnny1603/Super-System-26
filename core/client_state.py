@@ -333,6 +333,7 @@ def _landing_pages(client_id: int) -> dict:
                        "current_version": p.get("current_version"),
                        "live_version": p.get("published_version") if p.get("status") == "published" else None,
                        "has_unpublished_changes": p.get("has_unpublished_changes", False),
+                       "images": p.get("images") or [],
                        "versions": _landing_versions(client_id, p.get("id"))}
                       for p in pages]}
 
