@@ -596,6 +596,13 @@ body {
 .chat-load-prev { text-align: center; font-size: 11.5px; color: var(--accent); cursor: pointer; padding: 2px 0 6px; }
 .chat-divider { text-align: center; color: var(--gray); font-size: 11px; margin: 4px 0; }
 .chat-new-day { text-align: center; color: var(--gray); font-size: 11.5px; padding: 2px 0 6px; }
+/* Message times (dashboard/assets/chat-time.js): HH:MM under each message,
+   the full date + time with seconds on hover (title) / long-press / tap */
+.msg-time { display: block; font-size: 10.5px; opacity: 0.72; margin-top: 3px; text-align: end; white-space: nowrap; }
+.msg-time time { cursor: default; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.chat-day { align-self: center; color: var(--gray); font-size: 11px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 2px 10px; margin: 6px 0 2px; }
+.chat-action .when { font-size: 11px; color: var(--gray); margin-top: 6px; }
 .chat-new-day .chat-load-prev { display: inline; padding: 0; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 10px; }
@@ -2219,6 +2226,7 @@ a.media-item:hover { border-color: var(--accent); }
 
 <script src="/assets/i18n.js"></script>
 <script src="/assets/media-viewer.js"></script>
+<script src="/assets/chat-time.js"></script>
 <script>
 // ─── i18n string table (Hebrew = source of truth + fallback) ────────────────
 const DASH_I18N = {
@@ -2719,6 +2727,13 @@ const DASH_I18N = {
   chat_error: { he:'נראה שההודעה הזו לא הגיעה אליי — החזרתי אותה לתיבה, אפשר לשלוח שוב.', en:'Looks like that message didn\'t reach me — I put it back in the box so you can send it again.', fr:'On dirait que ce message ne m\'est pas parvenu — je l\'ai remis dans la zone de saisie pour que vous puissiez le renvoyer.', ar:'يبدو أن هذه الرسالة لم تصلني — أعدتها إلى خانة الكتابة لتتمكنوا من إرسالها مجددًا.', ru:'Похоже, это сообщение до меня не дошло — оно снова в поле ввода, можно отправить ещё раз.' },
   chat_prev: { he:'הצג שיחות קודמות', en:'Show previous conversations', fr:'Voir les discussions précédentes', ar:'عرض المحادثات السابقة', ru:'Показать прошлые беседы' },
   chat_new_day: { he:'יום חדש, הכול שמור', en:'A new day, everything is saved', fr:'Nouvelle journée, tout est conservé', ar:'يوم جديد، كل شيء محفوظ', ru:'Новый день, всё сохранено' },
+  chat_today: { he:'היום', en:'Today', fr:'Aujourd\'hui', ar:'اليوم', ru:'Сегодня' },
+  chat_yesterday: { he:'אתמול', en:'Yesterday', fr:'Hier', ar:'أمس', ru:'Вчера' },
+  action_created: { he:'נוצר {t}', en:'Created {t}', fr:'Créé {t}', ar:'أُنشئ {t}', ru:'Создано {t}' },
+  action_decided: { he:'הוחלט {t}', en:'Decided {t}', fr:'Décidé {t}', ar:'تقرّر {t}', ru:'Решено {t}' },
+  action_by_client: { he:'על ידך', en:'by you', fr:'par vous', ar:'بواسطتك', ru:'вами' },
+  action_by_team: { he:'על ידי הצוות', en:'by the team', fr:'par l\'équipe', ar:'بواسطة الفريق', ru:'командой' },
+  action_by_system: { he:'על ידי המערכת', en:'by the system', fr:'par le système', ar:'بواسطة النظام', ru:'системой' },
   chat_divider: { he:'— שיחה חדשה —', en:'— new conversation —', fr:'— nouvelle discussion —', ar:'— محادثة جديدة —', ru:'— новая беседа —' },
   chat_new_failed: { he:'לא הצלחנו לפתוח שיחה חדשה — נסו שוב', en:'Couldn\'t start a new chat — try again', fr:'Impossible d\'ouvrir une nouvelle discussion — réessayez', ar:'تعذر فتح محادثة جديدة — حاول مجددًا', ru:'Не удалось начать новый чат — попробуйте ещё раз' },
   greet_back: { he:'טוב לראות אותך שוב{name} 👋', en:'Good to see you again{name} 👋', fr:'Ravi de vous revoir{name} 👋', ar:'سعيد برؤيتك مجددًا{name} 👋', ru:'Рады видеть вас снова{name} 👋' },
@@ -3353,6 +3368,9 @@ async function loadDashboard() {
     // Concierge data for the greeting + chips
     chatData.name = (d.client && d.client.name) || '';
     chatData.clientId = (d.client && d.client.id) || '';
+    // The chat's time zone (clients.timezone; "" → the browser's own)
+    const tzNow = (d.client && d.client.timezone) || '';
+    if (tzNow !== CHAT_TZ_SETTING) { CHAT_TZ_SETTING = tzNow; restampChatWindows(); }
     Object.keys(CHAT_WINDOWS).forEach(id => applyWindowSize(id, CHAT_WINDOWS[id].root));
     chatData.gender = (d.client && d.client.owner_gender) || null;
     chatData.firstVisit = !d.tour_completed;
@@ -5805,9 +5823,79 @@ async function decideSuggestion(id, decision, btn) {
 const chatData = { name: '', clientId: '', gender: null, firstVisit: false, conns: [],
                    pendingCount: 0, pendingTitles: [], dashReady: false, suggReady: false };
 
+// ─── Message times (dashboard/assets/chat-time.js, docs/CHAT_TIMESTAMPS.md) ──
+// Stored times are UTC; shown in the client's zone (clients.timezone via
+// /api/dashboard, else the browser's). HH:MM on every message, a day
+// separator (היום / אתמול / dd/mm/yyyy), the full time with seconds on
+// hover (title), long-press (touch) or tap.
+var CHAT_TZ_SETTING = '';
+function chatZone() { return uallakChatTime.resolveZone(CHAT_TZ_SETTING); }
+
+function chatTimeEl(at) {
+  const T = uallakChatTime, tz = chatZone();
+  const box = document.createElement('div');
+  box.className = 'msg-time';
+  const tm = document.createElement('time');
+  tm.dir = 'ltr';
+  const d = T.toDate(at);
+  if (d) tm.dateTime = d.toISOString();
+  const short = T.time(at, tz), long = T.full(at, tz);
+  tm.textContent = short;
+  tm.title = long;
+  let timer = null, pressed = false;
+  const toggle = () => { tm.textContent = tm.textContent === short ? long : short; };
+  tm.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    pressed = false;
+    timer = setTimeout(() => { pressed = true; toggle(); }, 450);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => tm.addEventListener(ev, () => clearTimeout(timer)));
+  tm.addEventListener('contextmenu', e => e.preventDefault());
+  tm.addEventListener('click', () => { if (pressed) { pressed = false; return; } toggle(); });
+  box.appendChild(tm);
+  return box;
+}
+
+function stampMsg(msg, at) {
+  const d = uallakChatTime.toDate(at);
+  if (!d) return;
+  msg.dataset.at = d.toISOString();
+  const old = msg.querySelector(':scope > .msg-time');
+  if (old) old.remove();
+  msg.appendChild(chatTimeEl(msg.dataset.at));
+}
+
+// Separators are recomputed from the messages themselves, so prepending an
+// older thread or appending a live reply can never leave a wrong one
+function paintChatDays(msgsEl) {
+  if (!msgsEl) return;
+  msgsEl.querySelectorAll(':scope > .chat-day').forEach(el => el.remove());
+  const T = uallakChatTime, tz = chatZone(), t = uallakI18n.t;
+  const msgs = Array.from(msgsEl.querySelectorAll(':scope > .support-msg[data-at]'));
+  const labels = { today: t('chat_today'), yesterday: t('chat_yesterday') };
+  const now = new Date();
+  T.separatorIndexes(msgs.map(m => ({ at: m.dataset.at })), tz).forEach(i => {
+    const sep = document.createElement('div');
+    sep.className = 'chat-day';
+    sep.setAttribute('role', 'separator');
+    sep.textContent = T.dayLabel(msgs[i].dataset.at, tz, now, labels);
+    msgs[i].before(sep);
+  });
+}
+
+function restampChatWindows() {
+  Object.values(CHAT_WINDOWS).forEach(w => {
+    if (!w || !w.msgsEl) return;
+    w.msgsEl.querySelectorAll('.support-msg[data-at]').forEach(m => stampMsg(m, m.dataset.at));
+    w.msgsEl.querySelectorAll('.chat-action').forEach(el => { if (el._action) paintActionWhen(el, el._action); });
+    paintChatDays(w.msgsEl);
+  });
+}
+
 // Append a message into a SPECIFIC window's message box (each window owns its
-// own box — messages never bleed between agent conversations).
-function appendMsg(msgsEl, text, cls) {
+// own box — messages never bleed between agent conversations). `at`: the
+// stored UTC time; a live message without one is stamped now.
+function appendMsg(msgsEl, text, cls, at) {
   const msg = document.createElement('div');
   msg.className = `support-msg ${cls}`;
   // Per-message direction: replies match the client's language (Arabic/Hebrew
@@ -5815,6 +5903,10 @@ function appendMsg(msgsEl, text, cls) {
   msg.dir = 'auto';
   msg.innerHTML = linkify(text);
   msgsEl.appendChild(msg);
+  if (!/\btyping\b/.test(cls || '')) {
+    stampMsg(msg, at || new Date());
+    paintChatDays(msgsEl);
+  }
   msgsEl.scrollTop = msgsEl.scrollHeight;
   return msg;
 }
@@ -5879,8 +5971,12 @@ async function loadWindowHistory(personaId) {
       w.msgsEl.prepend(link);
     }
     for (const entry of data.history) {
-      appendMsg(w.msgsEl, entry.content, entry.direction === 'inbound' ? 'user' : 'bot');
+      // The stored UTC time; a row without one gets no time ('none' is
+      // unreadable on purpose), never "now"
+      appendMsg(w.msgsEl, entry.content, entry.direction === 'inbound' ? 'user' : 'bot',
+                entry.created_at || 'none');
     }
+    paintChatDays(w.msgsEl);
     loadWindowActions(personaId);
   } catch (e) {
     console.error('failed to load window history', e);
@@ -5950,6 +6046,8 @@ function appendActionCard(personaId, a) {
     note.textContent = uallakI18n.t(a.action === 'team_request' ? 'action_team_request_open' : 'action_with_team');
   }
   el.appendChild(note);
+  el._action = a;
+  paintActionWhen(el, a);
   w.msgsEl.appendChild(el);
   // A slow action still running (e.g. after a reload): its progress card
   if (a.status === 'running' && a.progress) {
@@ -5957,6 +6055,32 @@ function appendActionCard(personaId, a) {
     watchActionCard(el, a.id);
   }
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+
+// When the card was created, and when + by whom it was decided (UTC from
+// agent_actions, shown in the client's zone). Text only.
+function paintActionWhen(el, a) {
+  const T = uallakChatTime, tz = chatZone(), t = uallakI18n.t;
+  let line = el.querySelector(':scope > .when');
+  const parts = [], titles = [];
+  if (T.toDate(a.created_at)) {
+    parts.push(t('action_created', { t: T.stamp(a.created_at, tz) }));
+    titles.push(t('action_created', { t: T.full(a.created_at, tz) }));
+  }
+  if (T.toDate(a.decided_at)) {
+    const by = { client: 'action_by_client', team: 'action_by_team', system: 'action_by_system' }[a.decided_by];
+    parts.push(t('action_decided', { t: T.stamp(a.decided_at, tz) }) + (by ? ' ' + t(by) : ''));
+    titles.push(t('action_decided', { t: T.full(a.decided_at, tz) }) + (by ? ' ' + t(by) : ''));
+  }
+  if (!parts.length) { if (line) line.remove(); return; }
+  if (!line) {
+    line = document.createElement('div');
+    line.className = 'when';
+    line.dir = 'auto';
+    el.appendChild(line);
+  }
+  line.textContent = parts.join(' · ');
+  line.title = titles.join('\n');
 }
 
 // ─── Progress cards (core/agent_actions "slow") ─────────────────────────────
@@ -6002,6 +6126,7 @@ function watchActionCard(el, id) {
       const body = await res.json();
       if (res.ok && body.success) {
         const c = body.data || {};
+        if (c.decided_at) { el._action = { ...(el._action || {}), ...c }; paintActionWhen(el, el._action); }
         if (c.status !== 'running') { finishActionCard(el, c); return; }
         if (c.progress) paintActionProgress(el, c.progress);
       }
@@ -6140,6 +6265,10 @@ async function decideAction(id, decision, el, personaId, staffAction = false) {
   }
   const row = el.querySelector('.row');
   if (row) row.remove();
+  // Decided now, by this click (the stored decided_at comes back on reload)
+  el._action = { ...(el._action || {}), decided_at: new Date().toISOString(),
+                 decided_by: staffAction ? 'team' : 'client' };
+  paintActionWhen(el, el._action);
   if (r.status === 'running' && r.progress) {
     // A slow action: answered at once with its progress card; the job runs
     // on the server and this same card turns into the result
@@ -6184,6 +6313,7 @@ async function loadPrevInWindow(personaId, linkEl) {
       msg.className = `support-msg ${entry.direction === 'inbound' ? 'user' : 'bot'}`;
       msg.dir = 'auto';
       msg.innerHTML = linkify(entry.content);  // same escaping + clickable links as the current thread
+      stampMsg(msg, entry.created_at || 'none');
       frag.appendChild(msg);
     }
     const divider = document.createElement('div');
@@ -6191,6 +6321,7 @@ async function loadPrevInWindow(personaId, linkEl) {
     divider.textContent = uallakI18n.t('chat_divider');
     frag.appendChild(divider);
     w.msgsEl.prepend(frag);
+    paintChatDays(w.msgsEl);
   } catch (e) {
     console.error('failed to load previous conversations', e);
   }
@@ -6226,13 +6357,16 @@ async function downloadWindowConversation(personaId) {
   }
   const meLabel = uallakI18n.t('chat_dl_me');
   const teamLabel = uallakI18n.t('chat_dl_team');
+  // Every message's time in the client's zone, dd/mm/yyyy HH:MM (chat-time.js);
+  // the zone is named once in the header so the file reads the same anywhere
+  const tz = chatZone();
   const lines = [
     'uallak — ' + who,
-    (chatData.name || '') + '  ·  ' + new Date().toLocaleString(uallakI18n.locale()),
+    (chatData.name || '') + '  ·  ' + uallakChatTime.stamp(new Date(), tz) + ' (' + tz + ')',
     '─────────────────────────────', '',
   ];
   for (const e of entries) {
-    const when = e.created_at ? new Date(e.created_at).toLocaleString(uallakI18n.locale()) : '';
+    const when = uallakChatTime.stamp(e.created_at, tz);
     const speaker = e.direction === 'inbound' ? meLabel : teamLabel;
     lines.push(`[${when}] ${speaker}:`);
     lines.push(e.content || '');

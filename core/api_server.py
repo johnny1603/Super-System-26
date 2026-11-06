@@ -1222,6 +1222,9 @@ async def dashboard_data(request: Request):
             # Client-uploaded data: URL (resized in the browser before upload);
             # null until they set one. Requires the clients.profile_image column.
             "profile_image": client.get("profile_image"),
+            # IANA zone the chat shows times in (clients.timezone, default
+            # Asia/Jerusalem; "" → the browser's zone). dashboard/assets/chat-time.js
+            "timezone": _client_timezone(client),
         },
         # The account manager the client chose (or the default until they do)
         # and the three to choose from — core/manager_identity is the only
@@ -1257,6 +1260,15 @@ async def dashboard_data(request: Request):
         "activity_month_count": activity_month_count,
         "tour_completed": tour_completed,
     }}
+
+_TZ_NAME = re.compile(r"^(UTC|[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){1,2})$")
+
+def _client_timezone(client: dict) -> str:
+    """clients.timezone if it LOOKS like an IANA name, else "" (the browser's
+    zone). Shape only: the browser's Intl checks the zone really exists, so
+    this works without a tz database on the server."""
+    value = str((client or {}).get("timezone") or "").strip()
+    return value if len(value) <= 64 and _TZ_NAME.match(value) else ""
 
 @app.patch("/api/clients/{client_id}/status", dependencies=_admin_only)
 async def api_update_client_status(client_id: int, req: UpdateStatusRequest):

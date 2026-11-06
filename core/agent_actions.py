@@ -3608,7 +3608,20 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             # A slow action: the running card's text, then its plain result
             "progress": progress, "result": _result_text(spec, row, lang),
-            "created_at": row.get("created_at")}
+            # UTC; the chat shows them in the client's zone with who decided
+            "created_at": row.get("created_at"), "decided_at": row.get("decided_at"),
+            "decided_by": _decided_by(row.get("decided_by")) if row.get("decided_at") else ""}
+
+
+def _decided_by(value) -> str:
+    """Who decided, as the chat may say it: the client, the team (admin in the
+    Control Room or staff from the admin view), or the system."""
+    value = str(value or "")
+    if value == "client":
+        return "client"
+    if value in ("admin", "staff"):
+        return "team"
+    return "system" if value else ""
 
 
 def _suggestion_title(client_id, suggestion_id) -> str:

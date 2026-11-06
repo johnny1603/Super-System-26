@@ -668,6 +668,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (picture, external ad-spend transparency report, logout, account closure/transfer),
   admin dashboard `/admin` (ADMIN_PASSWORD login → signed admin_session cookie; separate
   from the X-Admin-Key header that guards server-to-server /api endpoints).
+- **Chat timestamps (2026-11-07, `docs/CHAT_TIMESTAMPS.md`)**: stored times are UTC
+  (`client_communications.created_at`, `agent_actions.created_at/decided_at/decided_by`); the
+  dashboard chat shows them ONLY through `dashboard/assets/chat-time.js` (IANA zones via Intl,
+  never a fixed offset): HH:MM per message, day separators היום/אתמול/dd/mm/yyyy, full time on
+  hover/long-press, created/decided/who on cards, `[dd/mm/yyyy HH:MM]` in the existing TXT
+  download. Zone = `clients.timezone` (default Asia/Jerusalem,
+  `migrations/2026-11-07-chat-timezone.sql`) → browser. `tests/test_chat_timestamps.py` (Node).
 - `dashboard/assets/` — mounted at `/assets`, shared by every page: `i18n.js` and the
   browser mark (`favicon.svg` + `favicon.png` + `apple-touch-icon.png`, the wordmark's
   lowercase "u" in `#FF4C1F` on `#0D0D0D`). All seven pages carry the same three `<link>`
