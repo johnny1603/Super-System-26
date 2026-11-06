@@ -158,6 +158,39 @@ def record_hosting(month: str = None) -> dict:
     return {"recorded": recorded, "month": month}
 
 
+# ─── Designed-page generations (core/landing_creative) ──────────────────────
+
+GENERATION_FIELDS = ("outcome", "model", "input_tokens", "output_tokens", "cache_read_tokens",
+                     "cache_write_tokens", "cost_ils", "duration_s", "retries", "version", "content_hash",
+                     "html_bytes", "exemplar", "stop_reason", "error")
+
+
+def generations_by_page(limit: int = 3000) -> dict:
+    """{page_id: {"count", "ok", "failed", "cost_ils", "latest": {...}}} from
+    the measurement rows every generation writes (client_activity,
+    action_type landing_generation). Measure first, restrict later."""
+    try:
+        rows = (_db().table("client_activity").select("client_id, details, created_at")
+                .eq("action_type", "landing_generation").order("created_at", desc=True)
+                .limit(limit).execute().data or [])
+    except Exception:
+        return {}
+    out = {}
+    for row in rows:
+        details = row.get("details") or {}
+        try:
+            page_id = int(details.get("page_id"))
+        except (TypeError, ValueError):
+            continue
+        acc = out.setdefault(page_id, {"count": 0, "ok": 0, "failed": 0, "cost_ils": 0.0, "latest": None})
+        acc["count"] += 1
+        acc["ok" if details.get("outcome") == "ok" else "failed"] += 1
+        acc["cost_ils"] = round(acc["cost_ils"] + float(details.get("cost_ils") or 0), 4)
+        if acc["latest"] is None:   # rows are newest first
+            acc["latest"] = {**{k: details.get(k) for k in GENERATION_FIELDS}, "at": row.get("created_at")}
+    return out
+
+
 # ─── Overview + takedown ─────────────────────────────────────────────────────
 
 def overview() -> dict:
@@ -174,6 +207,7 @@ def overview() -> dict:
         pass
     stats = landing_tracking.all_stats(days=30)
     costs = costs_by_page()
+    generations = generations_by_page()
     from agents.landing_page_agent import page_url
     from core import landing_domains
     states, clients = {}, {}
@@ -191,7 +225,8 @@ def overview() -> dict:
                     "url": page_url(cid, page, names.get(cid, ""), states[cid]),
                     "views_30d": numbers.get("views", 0), "calls_30d": numbers.get("calls", 0),
                     "whatsapp_30d": numbers.get("whatsapp", 0), "bytes_30d": numbers.get("bytes", 0),
-                    "cost_ai_ils": cost["ai_ils"], "cost_hosting_ils": cost["hosting_ils"]})
+                    "cost_ai_ils": cost["ai_ils"], "cost_hosting_ils": cost["hosting_ils"],
+                    "generations": generations.get(page["id"])})
         acc = clients.setdefault(cid, {"client_id": cid, "business_name": names.get(cid, ""), "pages": 0,
                                        "live": 0, "cost_ai_ils": 0.0, "cost_hosting_ils": 0.0})
         acc["pages"] += 1
@@ -203,7 +238,13 @@ def overview() -> dict:
     return {"pages": out, "clients": sorted(clients.values(), key=lambda c: c["client_id"]),
             "limit": landing_pages.MAX_ACTIVE_PAGES, "rates": rates(),
             "counters_on": landing_tracking._stats_ok["value"],
-            "versions_on": landing_pages._versions_ok["value"]}
+            "versions_on": landing_pages._versions_ok["value"],
+            "creative_on": _creative_on()}
+
+
+def _creative_on() -> bool:
+    from core import landing_creative
+    return landing_creative.enabled()
 
 
 def unpublish(client_id: int, page_id: int, reason: str = "") -> dict:

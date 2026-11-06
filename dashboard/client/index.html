@@ -2353,6 +2353,7 @@ const DASH_I18N = {
   landing_publish: { he:'העלאה לאוויר', en:'Publish', fr:'Publier', ar:'نشر', ru:'Опубликовать' },
   landing_rewrite: { he:'שכתוב הטקסט', en:'Rewrite the copy', fr:'Réécrire le texte', ar:'إعادة كتابة النص', ru:'Переписать текст' },
   landing_rewriting: { he:'כותב מחדש…', en:'Rewriting…', fr:'Réécriture…', ar:'جارٍ إعادة الكتابة…', ru:'Переписываем…' },
+  landing_designing: { he:'הטקסט מוכן, ועכשיו מעצבים את הדף. זה לוקח כמה דקות, והתצוגה המקדימה תגיע בצ׳אט.', en:'The copy is ready and the page is being designed now. It takes a few minutes; the preview will arrive in the chat.', fr:'Le texte est prêt, la page est en cours de conception. Quelques minutes ; l’aperçu arrivera dans le chat.', ar:'النص جاهز والصفحة قيد التصميم الآن. يستغرق ذلك بضع دقائق، وستصل المعاينة في الدردشة.', ru:'Текст готов, сейчас делаем дизайн страницы. Это займёт несколько минут, предпросмотр придёт в чат.' },
   landing_creating: { he:'מכין את הדף — רגע…', en:'Building the page — one moment…', fr:'Création de la page…', ar:'جارٍ إنشاء الصفحة…', ru:'Создаём страницу…' },
   landing_create_failed: { he:'משהו השתבש — נסו שוב או כתבו לנו בצ׳אט', en:'Something went wrong — try again or message us in the chat', fr:'Une erreur est survenue — réessayez ou écrivez-nous', ar:'حدث خطأ — حاول مجددًا أو راسلنا', ru:'Что-то пошло не так — попробуйте снова или напишите нам' },
   landing_leads_count: { he:'{n} לידים מהדף הזה', en:'{n} leads from this page', fr:'{n} prospects depuis cette page', ar:'{n} عملاء من هذه الصفحة', ru:'{n} лидов с этой страницы' },
@@ -7482,6 +7483,8 @@ async function landingCreate() {
       body: JSON.stringify({ title, goal, generate: true }),
     });
     if (!res.ok) throw new Error('create failed');
+    const created = await res.json().catch(() => ({}));
+    if (created.data && created.data.designing) showNotice(uallakI18n.t('landing_designing'), 'success');
     await loadLanding();
   } catch (e) {
     showNotice(uallakI18n.t('landing_create_failed'), 'warn');
@@ -7514,6 +7517,8 @@ async function landingRegenerate(pageId) {
       body: JSON.stringify({ feedback }),
     });
     if (!res.ok) throw new Error('regenerate failed');
+    const rewritten = await res.json().catch(() => ({}));
+    if (rewritten.designing) showNotice(uallakI18n.t('landing_designing'), 'success');
     await loadLanding();
   } catch (e) {
     showNotice(uallakI18n.t('landing_create_failed'), 'warn');

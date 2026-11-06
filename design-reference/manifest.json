@@ -1,0 +1,12 @@
+{
+  "playbook": "DESIGN_PLAYBOOK.md",
+  "exemplars": [
+    {
+      "file": "shin-sekai-gold.html",
+      "name": "shin-sekai-gold",
+      "niches": ["fashion", "apparel", "clothing", "shoes", "sneakers", "custom", "design studio", "gifts",
+                 "streetwear", "accessories", "בגדים", "נעליים", "אופנה", "מתנה", "מתנות", "סטודיו", "עיצוב"],
+      "moods": ["bold", "dark", "editorial", "street", "craft", "premium"]
+    }
+  ]
+}

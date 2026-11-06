@@ -652,8 +652,12 @@ class StaticGuards(unittest.TestCase):
     def test_go_targets_come_only_from_the_stored_contact(self):
         src = _src("core/api_server.py")
         body = src[src.index("def landing_go"):src.index("def serve_landing_page")]
+        body = body[:body.index("_LP_MEDIA_NAME")]
         self.assertNotIn("query_params", body)
-        self.assertIn('visible_of(client_id, page)["contact"]', body)
+        # the number / URL comes from the LIVE version's contact; the request
+        # only supplies the WhatsApp text (tests/test_landing_creative.py)
+        self.assertIn("live = landing_pages.visible_of(client_id, page)", body)
+        self.assertIn('button_target(live["contact"], kind, text=text', body)
 
     def test_dashboard_publish_opens_the_card_never_publishes(self):
         html_text = _src("dashboard/client/index.html")

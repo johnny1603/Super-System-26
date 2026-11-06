@@ -40,6 +40,12 @@ FLAGS = {
         "label_he": "פתיחת יום חדש בצ'אט כל בוקר ב-08:00 (סיכום + ארכיון, בלי למחוק)",
         "can_turn_on": True, "default": True,
         "note_he": "כיבוי עוצר את המעבר היומי מיד; שום דבר לא נמחק בכל מקרה."},
+    # ON unless the env says otherwise — OFF renders every landing page with
+    # the old fixed template (core/landing_creative), designed or not
+    "LANDING_CREATIVE_HTML_ENABLED": {
+        "label_he": "דפי נחיתה בעיצוב חופשי של המודל (כבוי = התבנית הקבועה הישנה לכל הדפים)",
+        "can_turn_on": True, "default": True,
+        "note_he": "כיבוי משפיע תוך 30 שניות: דפים שכבר עוצבו מוצגים בתבנית הקבועה, ודפים חדשים לא מעוצבים."},
     "PRESENTER_VIDEO_ALL_CLIENTS": {
         "label_he": "סרטוני מציג פתוחים לכל הלקוחות (לא רק לחשבונות פנימיים)",
         "can_turn_on": True,

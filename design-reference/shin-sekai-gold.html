@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SHIN SEKAI — נעליים שעוצבו בראש</title>
+<meta name="description" content="SHIN SEKAI מעצב עבורך פריטים אישיים מהבגד ועד הנעל — כולל נעליים בעיצוב ייחודי שאפשר גם להעניק במתנה.">
+<!--
+GOLD-STANDARD LANDING PAGE (design reference for the uallak landing agent).
+System placeholders (the shell replaces them; the model only decides WHERE to use them):
+  {{WHATSAPP_URL}} counting redirect to WhatsApp; must accept ?text= for the prefilled message
+  {{CALL_URL}}     counting redirect to tel:
+  {{FORM_ACTION}}  existing capture endpoint        {{FORM_HIDDEN}} signed form_stamp + attribution + honeypot
+  {{CONSENT}}      consent line + privacy link      {{FOOTER}}      legal links
+Fonts: production links Google Fonts (Secular One, Heebo, Shippori Mincho); this preview embeds local copies.
+No emojis anywhere. Icons are custom inline SVG (one stroke language: 1.8px, round caps, one vermilion accent).
+-->
+<style>
+@font-face{font-family:"Heebo";font-weight:400;src:url(f/heebo-hebrew-400-normal.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:"Heebo";font-weight:700;src:url(f/heebo-hebrew-700-normal.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:"Heebo";font-weight:900;src:url(f/heebo-hebrew-900-normal.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:"Heebo";font-weight:400;src:url(f/heebo-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Heebo";font-weight:700;src:url(f/heebo-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Secular One";font-weight:400;src:url(f/secular-one-hebrew-400-normal.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:"Secular One";font-weight:400;src:url(f/secular-one-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Shippori Mincho";font-weight:800;src:url(f/shippori-mincho-japanese-800-normal.woff2) format("woff2");unicode-range:U+3000-9FFF}
+@font-face{font-family:"Shippori Mincho";font-weight:800;src:url(f/shippori-mincho-latin-800-normal.woff2) format("woff2");unicode-range:U+0000-00FF}
+
+:root{
+  --ink:#0e0c0d; --ink-2:#17121a; --ink-3:#221a26;
+  --bone:#f3ede2; --bone-2:#e6dccb; --paper-ink:#1b1517;
+  --red:#ff4b2b; --red-deep:#d93616; --gold:#f2b84b;
+  --muted:#b7abae; --line:rgba(243,237,226,.14);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --display:"Secular One","Heebo",system-ui,sans-serif;
+  --body:"Heebo",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --mincho:"Shippori Mincho","Secular One",serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ink);color:var(--bone);font-family:var(--body);line-height:1.65;overflow-x:hidden}
+img{max-width:100%;display:block}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--red);outline-offset:3px;border-radius:6px}
+.wrap{width:min(1120px,100% - 40px);margin-inline:auto}
+
+/* ambient background: warm, never the default blue */
+.ambient{position:fixed;inset:0;z-index:-2;background:var(--ink);overflow:hidden}
+.ambient::before,.ambient::after{content:"";position:absolute;width:70vmax;height:70vmax;border-radius:50%;filter:blur(90px);opacity:.55;animation:drift 26s ease-in-out infinite alternate}
+.ambient::before{background:radial-gradient(circle,#ff4b2b55,transparent 62%);top:-28vmax;inset-inline-start:-18vmax}
+.ambient::after{background:radial-gradient(circle,#7a2a6a55,transparent 62%);bottom:-34vmax;inset-inline-end:-20vmax;animation-duration:32s;animation-direction:alternate-reverse}
+@keyframes drift{to{transform:translate3d(8vmax,6vmax,0) scale(1.15)}}
+.grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.07;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>")}
+
+/* loader: logo moment */
+.loader{position:fixed;inset:0;z-index:100;background:var(--ink);display:grid;place-items:center;transition:transform .95s var(--ease),opacity .4s .6s;}
+.loader .mark{text-align:center}
+.loader .kanji{font-family:var(--mincho);font-weight:800;font-size:clamp(54px,12vw,110px);letter-spacing:.08em;line-height:1;display:flex;gap:.06em;justify-content:center;direction:ltr}
+.loader .kanji span{opacity:0;transform:translateY(24px);animation:up .8s var(--ease) forwards;animation-delay:calc(.15s*var(--i))}
+.loader .word{font-family:var(--display);letter-spacing:.5em;font-size:clamp(13px,2.4vw,18px);color:var(--muted);margin-top:18px;opacity:0;animation:fade .8s .7s forwards;direction:ltr;padding-inline-start:.5em}
+.loader .bar{width:min(220px,50vw);height:2px;background:var(--line);margin:26px auto 0;overflow:hidden;border-radius:2px}
+.loader .bar i{display:block;height:100%;width:100%;background:var(--red);transform:translateX(-101%);animation:fill 1.1s .5s var(--ease) forwards}
+body.ready .loader{transform:translateY(-100%);opacity:0;pointer-events:none}
+@keyframes up{to{opacity:1;transform:none}}
+@keyframes fade{to{opacity:1}}
+@keyframes fill{to{transform:none}}
+
+/* header */
+header.top{position:fixed;inset-inline:0;top:0;z-index:50;padding:14px 0;transition:background .3s,backdrop-filter .3s,transform .4s var(--ease)}
+header.top.solid{background:rgba(14,12,13,.78);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo b{font-family:var(--mincho);font-weight:800;font-size:22px;letter-spacing:.06em;direction:ltr}
+.logo small{font-family:var(--display);letter-spacing:.32em;font-size:11px;color:var(--muted);direction:ltr}
+
+/* buttons */
+.btn{--bg:var(--red);--fg:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 26px;border-radius:999px;border:0;background:var(--bg);color:var(--fg);font:700 17px/1 var(--body);text-decoration:none;cursor:pointer;position:relative;overflow:hidden;isolation:isolate;transition:transform .25s var(--ease),box-shadow .25s,background .25s}
+.btn::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 50%,transparent 70%);transform:translateX(120%);transition:transform .7s var(--ease);z-index:-1}
+.btn:hover{transform:translateY(-2px);box-shadow:0 12px 30px -8px rgba(255,75,43,.6)}
+.btn:hover::after{transform:translateX(-120%)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn.ghost{--bg:transparent;--fg:var(--bone);border:1.5px solid var(--line)}
+.btn.ghost:hover{border-color:var(--bone);box-shadow:none}
+.btn.sm{min-height:42px;padding:0 18px;font-size:15px}
+.btn svg{width:20px;height:20px;flex:none}
+
+/* hero */
+.hero{position:relative;min-height:100svh;display:grid;align-items:center;padding:110px 0 70px}
+.kanji-bg{position:absolute;inset-inline-end:-2vw;top:50%;transform:translateY(-50%);font-family:var(--mincho);font-weight:800;writing-mode:vertical-rl;font-size:clamp(150px,26vw,380px);line-height:.9;letter-spacing:.04em;color:transparent;-webkit-text-stroke:1.5px rgba(243,237,226,.09);user-select:none;pointer-events:none}
+.hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,5vw,72px);align-items:center;position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-size:14px;letter-spacing:.14em;color:var(--gold);margin-bottom:18px}
+.eyebrow::before{content:"";width:34px;height:2px;background:var(--gold)}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(36px,5.5vw,78px);line-height:1.06;margin:0 0 22px;letter-spacing:-.01em}
+h1 .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.12em}
+h1 .w>span{display:inline-block;transform:translateY(105%);transition:transform .9s var(--ease);transition-delay:calc(.07s*var(--i) + .15s)}
+body.ready h1 .w>span{transform:none}
+h1 em{font-style:normal;color:var(--red);position:relative;white-space:nowrap}
+h1 em svg{position:absolute;inset-inline:-4%;bottom:-.18em;width:108%;height:.34em;overflow:visible}
+h1 em path{stroke:var(--red);stroke-width:5;fill:none;stroke-linecap:round;stroke-dasharray:420;stroke-dashoffset:420;transition:stroke-dashoffset 1.2s 1.1s var(--ease)}
+body.ready h1 em path{stroke-dashoffset:0}
+.lead{font-size:clamp(17px,2.1vw,21px);color:var(--muted);max-width:34em;margin:0 0 30px}
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:34px}
+.chips{display:flex;flex-wrap:wrap;gap:10px 22px;list-style:none;margin:0;padding:0;color:var(--bone);font-size:15px}
+.chips li{display:flex;align-items:center;gap:9px}
+.chips svg{width:22px;height:22px;flex:none}
+
+.frame{position:relative;perspective:1000px}
+.frame .card{position:relative;border-radius:26px;overflow:hidden;transform:rotate(-2.2deg);box-shadow:0 40px 80px -30px rgba(0,0,0,.8),0 0 0 1px var(--line);transition:transform .35s var(--ease);will-change:transform;background:var(--ink-2)}
+.frame .card img{width:100%;aspect-ratio:850/550;object-fit:cover;transform:scale(1.06);transition:transform 1.4s var(--ease)}
+body.ready .frame .card img{transform:scale(1)}
+.frame .stamp{position:absolute;inset-inline-start:-14px;bottom:-18px;background:var(--red);color:var(--ink);font-family:var(--display);padding:12px 18px;border-radius:14px;transform:rotate(3deg);box-shadow:0 14px 30px -10px rgba(255,75,43,.7);font-size:15px;line-height:1.25;animation:bob 5s ease-in-out infinite}
+.frame .stamp b{display:block;font-family:var(--mincho);font-weight:800;font-size:22px;letter-spacing:.1em;direction:ltr;text-align:center}
+@keyframes bob{50%{transform:rotate(1.5deg) translateY(-6px)}}
+.dots{position:absolute;inset-inline-end:-20px;top:-20px;width:120px;height:120px;background-image:radial-gradient(var(--gold) 1.6px,transparent 1.8px);background-size:14px 14px;opacity:.5;z-index:-1}
+
+/* marquee */
+.marquee{background:var(--red);color:var(--ink);transform:rotate(-1.4deg);margin:10px -2vw;overflow:hidden;border-block:2px solid var(--ink);direction:ltr}
+.marquee .track{display:flex;width:max-content;animation:scroll 34s linear infinite}
+.marquee span{font-family:var(--display);font-size:clamp(20px,3.2vw,32px);padding:14px 0;white-space:nowrap;display:flex;align-items:center}
+.marquee span::after{content:"";width:12px;height:12px;background:var(--ink);transform:rotate(45deg);margin-inline:28px}
+@keyframes scroll{to{transform:translateX(-50%)}}
+
+/* sections */
+section{scroll-margin-top:72px;position:relative;padding:clamp(56px,8vw,104px) 0}
+.kicker{font-family:var(--display);color:var(--gold);letter-spacing:.14em;font-size:14px;display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.kicker i{font-style:normal;font-family:var(--mincho);font-weight:800;color:var(--red);font-size:18px;letter-spacing:.1em}
+h2{font-family:var(--display);font-weight:400;font-size:clamp(30px,4.6vw,56px);line-height:1.1;margin:0 0 18px}
+
+.pair{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.panel{background:linear-gradient(160deg,var(--ink-3),var(--ink-2));border:1px solid var(--line);border-radius:24px;padding:clamp(24px,3.4vw,38px);transition:transform .4s var(--ease),border-color .3s}
+.panel:hover{transform:translateY(-6px);border-color:rgba(255,75,43,.5)}
+.panel .ico{width:62px;height:62px;border-radius:18px;background:rgba(255,75,43,.12);display:grid;place-items:center;margin-bottom:20px}
+.panel .ico svg{width:34px;height:34px}
+.panel h3{font-family:var(--display);font-weight:400;font-size:clamp(21px,2.6vw,28px);margin:0 0 8px;line-height:1.2}
+.panel p{margin:0;color:var(--muted)}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;position:relative;counter-reset:s}
+.steps::before{content:"";position:absolute;top:34px;inset-inline:16%;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 8px,transparent 8px 16px)}
+.step{position:relative;text-align:center;padding:0 8px}
+.step .n{width:68px;height:68px;margin:0 auto 20px;border-radius:50%;background:var(--ink);border:2px solid var(--red);display:grid;place-items:center;position:relative;z-index:1;transition:transform .4s var(--ease),background .3s}
+.step:hover .n{transform:scale(1.1) rotate(-6deg);background:var(--red)}
+.step:hover .n svg *{stroke:var(--ink)}
+.step .n svg{width:32px;height:32px}
+.step h3{font-family:var(--display);font-weight:400;font-size:22px;margin:0 0 6px}
+.step p{margin:0;color:var(--muted);font-size:16px}
+
+/* who it's for: bone paper */
+.paper{background:var(--bone);color:var(--paper-ink);border-radius:clamp(26px,5vw,60px);margin-inline:clamp(8px,2vw,24px);overflow:hidden;position:relative}
+.paper::before{content:"新";position:absolute;inset-inline-start:2%;top:-6%;font-family:var(--mincho);font-weight:800;font-size:clamp(220px,34vw,460px);line-height:1;color:rgba(27,21,23,.06);pointer-events:none}
+.paper .kicker{color:var(--red-deep)}
+.paper h2{font-size:clamp(28px,4.2vw,50px);max-width:20em}
+.paper h2 mark{background:none;color:var(--red-deep);box-shadow:inset 0 -.22em 0 rgba(255,75,43,.28)}
+.paper p.big{font-size:clamp(18px,2.2vw,23px);max-width:34em;margin:0;color:#3a2f33}
+
+/* gallery */
+.gal{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:34px}
+.gal button{all:unset;cursor:zoom-in;display:block;border-radius:20px;overflow:hidden;aspect-ratio:1;position:relative;box-shadow:0 0 0 1px var(--line);transition:transform .45s var(--ease),box-shadow .3s}
+.gal button:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.gal img{width:100%;height:100%;object-fit:cover;transition:transform .8s var(--ease)}
+.gal button:hover img{transform:scale(1.09)}
+.gal button:nth-child(odd){transform:translateY(18px)}
+.gal button:hover{box-shadow:0 0 0 2px var(--red)}
+.gal button::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(14,12,13,.55),transparent 45%);opacity:0;transition:opacity .3s}
+.gal button:hover::after{opacity:1}
+.cap{margin:46px 0 0;color:var(--muted);max-width:36em}
+dialog{border:0;background:transparent;padding:0;max-width:92vw;max-height:92vh}
+dialog::backdrop{background:rgba(8,6,7,.88);backdrop-filter:blur(6px)}
+dialog img{max-height:88vh;border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.7)}
+
+/* form */
+.form-card{background:linear-gradient(160deg,var(--ink-3),var(--ink-2));border:1px solid var(--line);border-radius:30px;padding:clamp(24px,4vw,48px);display:grid;grid-template-columns:.9fr 1.1fr;gap:clamp(24px,5vw,60px);align-items:start;position:relative;overflow:hidden}
+.form-card::before{content:"";position:absolute;inset-inline-end:-80px;top:-80px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(255,75,43,.35),transparent 65%)}
+.progress{display:flex;gap:8px;margin-bottom:22px}
+.progress i{flex:1;height:4px;border-radius:4px;background:var(--line);overflow:hidden;position:relative}
+.progress i::after{content:"";position:absolute;inset:0;background:var(--red);transform:translateX(100%);transition:transform .5s var(--ease)}
+.progress i.on::after{transform:none}
+.fstep{display:none}
+.fstep.on{display:block;animation:in .5s var(--ease)}
+@keyframes in{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+.q{font-family:var(--display);font-size:clamp(22px,3vw,30px);margin:0 0 18px;line-height:1.25}
+.opts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.opt label{display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;border:1.5px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;transition:border-color .25s,background .25s,transform .25s var(--ease);font-weight:700}
+.opt label svg{width:28px;height:28px;flex:none}
+.opt:hover label{border-color:rgba(243,237,226,.45);transform:translateY(-2px)}
+.opt input:checked+label{border-color:var(--red);background:rgba(255,75,43,.14)}
+.opt input:focus-visible+label{outline:2px solid var(--red);outline-offset:3px}
+.field{margin-bottom:16px}
+.field label{display:block;font-weight:700;font-size:14px;margin-bottom:7px;color:var(--bone-2)}
+.field input,.field textarea{width:100%;padding:15px 16px;border-radius:14px;border:1.5px solid var(--line);background:rgba(255,255,255,.04);color:var(--bone);font:inherit;font-size:17px;transition:border-color .25s,box-shadow .25s}
+.field textarea{min-height:110px;resize:vertical}
+.field input:focus,.field textarea:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 4px rgba(255,75,43,.18)}
+.field.bad input{border-color:#ff8a73}
+.err{color:#ffab99;font-size:14px;min-height:20px;margin:-8px 0 8px}
+.nav{display:flex;gap:10px;align-items:center;margin-top:8px}
+.back{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:10px;border-radius:10px}
+.back:hover{color:var(--bone)}
+.consent{font-size:12.5px;color:var(--muted);margin:16px 0 0}
+.consent a{color:inherit}
+.hp{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.done{display:none;text-align:center;padding:10px 0}
+.done.on{display:block;animation:in .6s var(--ease)}
+.done .tick{width:96px;height:96px;margin:0 auto 18px}
+.done .tick circle{stroke:var(--red);stroke-width:3;fill:none;stroke-dasharray:290;stroke-dashoffset:290;animation:draw .8s var(--ease) forwards}
+.done .tick path{stroke:var(--bone);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:draw .6s .6s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.done h3{font-family:var(--display);font-weight:400;font-size:30px;margin:0 0 8px}
+.done p{color:var(--muted);margin:0 0 22px}
+
+/* final + footer */
+.final{text-align:center}
+.final h2{max-width:16em;margin-inline:auto}
+footer{padding:36px 0 110px;color:var(--muted);font-size:13px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:center}
+
+/* floating whatsapp */
+.fab{position:fixed;inset-inline-start:18px;bottom:18px;z-index:60;width:62px;height:62px;border-radius:50%;background:var(--red);display:grid;place-items:center;box-shadow:0 14px 34px -8px rgba(255,75,43,.7);transform:scale(0);transition:transform .5s var(--ease);text-decoration:none}
+.fab.show{transform:none}
+.fab::before{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--red);animation:ping 2.4s infinite}
+.fab:hover{transform:scale(1.08) rotate(-6deg)}
+.fab svg{width:30px;height:30px}
+@keyframes ping{to{transform:scale(1.7);opacity:0}}
+
+/* reveal on scroll */
+[data-reveal]{opacity:0;transform:translateY(34px);transition:opacity .9s var(--ease),transform .9s var(--ease);transition-delay:calc(var(--d,0)*90ms)}
+[data-reveal].in{opacity:1;transform:none}
+.steps [data-reveal],.gal [data-reveal]{--d:var(--i)}
+
+@media (max-width:860px){
+  .hero{padding-top:96px}
+  .hero-grid,.form-card{grid-template-columns:1fr}
+  .frame{order:-1;max-width:520px;margin-inline:auto}
+  .pair{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr;gap:34px}
+  .steps::before{display:none}
+  .gal{grid-template-columns:repeat(2,1fr)}
+  .gal button:nth-child(odd){transform:none}
+  .kanji-bg{opacity:.7}
+}
+@media (max-width:520px){.opts{grid-template-columns:1fr}.btn:not(.sm){width:100%}.cta-row{flex-direction:column}.logo{white-space:nowrap}.logo small{display:none}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;transition-delay:0s!important}
+  [data-reveal]{opacity:1;transform:none}
+  h1 .w>span{transform:none}h1 em path{stroke-dashoffset:0}.loader{display:none}
+}
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div><div class="grain" aria-hidden="true"></div>
+
+<div class="loader" id="loader" aria-hidden="true">
+  <div class="mark">
+    <div class="kanji"><span style="--i:1">新</span><span style="--i:2">世</span><span style="--i:3">界</span></div>
+    <div class="word">SHIN SEKAI</div>
+    <div class="bar"><i></i></div>
+  </div>
+</div>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="logo" href="#" aria-label="SHIN SEKAI"><b>新世界</b><small>SHIN SEKAI</small></a>
+    <a class="btn sm" href="{{WHATSAPP_URL}}" data-wa>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.3-4.2A8 8 0 1 1 8.4 18.9z"/><path d="M9 9.5c.2 2.2 2.3 4.3 4.5 4.5l1.3-1.2-1.8-1-.8.6c-.8-.4-1.5-1.1-1.9-1.9l.6-.8-1-1.8z" fill="currentColor" stroke="none"/></svg>
+      וואטסאפ
+    </a>
+  </div>
+</header>
+
+<main>
+<section class="hero" id="hero">
+  <div class="kanji-bg" aria-hidden="true">新世界</div>
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">סטודיו לעיצוב אישי</div>
+      <h1 id="h1">נעליים שעוצבו בראש — עכשיו <em>קיימות באמת<svg viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path d="M4 12 C 60 2, 120 18, 190 8 S 270 6, 296 11"/></svg></em></h1>
+      <p class="lead">SHIN SEKAI מעצב עבורך פריטים אישיים מהבגד ועד הנעל — כולל נעליים בעיצוב ייחודי שאפשר גם להעניק במתנה.</p>
+      <div class="cta-row">
+        <a class="btn" href="{{WHATSAPP_URL}}" data-wa>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.3-4.2A8 8 0 1 1 8.4 18.9z"/><path d="M9 9.5c.2 2.2 2.3 4.3 4.5 4.5l1.3-1.2-1.8-1-.8.6c-.8-.4-1.5-1.1-1.9-1.9l.6-.8-1-1.8z" fill="currentColor" stroke="none"/></svg>
+          דברו איתנו בוואטסאפ
+        </a>
+        <a class="btn ghost" href="#lead">קבלו הצעה מותאמת</a>
+      </div>
+      <ul class="chips">
+        <li><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22c8 0 6-8 12-8s4 8 12 8"/><circle cx="16" cy="9" r="3" stroke="#ff4b2b"/><path d="M16 12v2"/></svg>עיצוב שמחבר את כל הלוק</li>
+        <li><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 24l4-1 13-13-3-3L7 20z"/><path d="M19 8l3 3" stroke="#ff4b2b"/></svg>סטודיו ולא חנות</li>
+      </ul>
+    </div>
+    <div class="frame" id="frame">
+      <div class="dots" aria-hidden="true"></div>
+      <div class="card" id="card"><img src="img/hero.jpg" alt="נעלי סניקרס בעיצוב אישי בצהוב ושחור עם סמל קבוצה ואריה"></div>
+      <div class="stamp"><b>新世界</b>עבודה מהסטודיו</div>
+    </div>
+  </div>
+</section>
+
+<div class="marquee" aria-hidden="true"><div class="track" id="track"></div></div>
+
+<section id="why">
+  <div class="wrap">
+    <div class="kicker" data-reveal><i>壱</i> למה אצלנו</div>
+    <h2 data-reveal style="--d:1">לא עוד פריט מהמדף</h2>
+    <div class="pair">
+      <article class="panel" data-reveal style="--d:2">
+        <div class="ico"><svg viewBox="0 0 34 34" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 26c6 0 5-9 11-9s5 9 12 9"/><path d="M9 8l2.5 5M25 8l-2.5 5"/><circle cx="17" cy="9" r="2.6" stroke="#ff4b2b"/><path d="M17 11.6V17" stroke="#ff4b2b"/></svg></div>
+        <h3>עיצוב שמחבר את כל הלוק</h3>
+        <p>לא רק נעליים — גם פריטי לבוש נוספים, בשפה עיצובית אחת שמרגישה כמו שלכם.</p>
+      </article>
+      <article class="panel" data-reveal style="--d:3">
+        <div class="ico"><svg viewBox="0 0 34 34" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 27l5.5-1.5L26 12l-4-4L8.500 21.500z"/><path d="M22 8l4 4" stroke="#ff4b2b"/><path d="M6 30h22"/></svg></div>
+        <h3>סטודיו ולא חנות</h3>
+        <p>תשומת לב מלאה לך, לא לשורת הרווח.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="kicker" data-reveal><i>弐</i> איך זה עובד</div>
+    <h2 data-reveal style="--d:1">שלושה צעדים, ואתם בדרך</h2>
+    <div class="steps">
+      <div class="step" data-reveal style="--i:2">
+        <div class="n"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h22v13H14l-6 5v-5H5z"/><path d="M11 13.500h10M11 17h6" stroke="#ff4b2b"/></svg></div>
+        <h3>שולחים הודעה</h3><p>או משאירים פרטים. זה כל מה שצריך כדי להתחיל.</p>
+      </div>
+      <div class="step" data-reveal style="--i:3">
+        <div class="n"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h14v9H10l-4 3v-3H4zM18 14h10v9h-2v3l-4-3h-4z"/><circle cx="11" cy="13.500" r="1" fill="#ff4b2b" stroke="none"/></svg></div>
+        <h3>שיחה קצרה</h3><p>מבינים מה אתם מחפשים, מה הסגנון, לאיזה אירוע או שימוש יומיומי.</p>
+      </div>
+      <div class="step" data-reveal style="--i:4">
+        <div class="n"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h12l5 5v19H8z"/><path d="M20 4v5h5"/><path d="M12 18l3 3 6-7" stroke="#ff4b2b"/></svg></div>
+        <h3>הצעה שמותאמת בדיוק לכם</h3><p>העבודה מתחילה רק כשהכול ברור ומוסכם.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="paper" id="for">
+  <div class="wrap">
+    <div class="kicker" data-reveal><i>参</i> למי זה מתאים</div>
+    <h2 data-reveal style="--d:1">למי שמחפש משהו <mark>שלא ימצא בשום ויטרינה</mark></h2>
+    <p class="big" data-reveal style="--d:2">למי שרוצה להעניק מתנה שמרגישה אמיתית ומחושבת. למי שהסגנון האישי שלו חשוב לו, ורוצה שהנעל או הבגד ישקפו את זה — לא עוד פריט מהמדף.</p>
+  </div>
+</section>
+
+<section id="work">
+  <div class="wrap">
+    <div class="kicker" data-reveal><i>肆</i> עבודות מהסטודיו</div>
+    <h2 data-reveal style="--d:1">כל זוג הוא סיפור אחד</h2>
+    <div class="gal">
+      <button data-full="img/g1.jpg" data-reveal style="--i:1" aria-label="הגדלת תמונה"><img src="img/g1.jpg" alt="נעל בעיצוב אנימה בצהוב ושחור" loading="lazy"></button>
+      <button data-full="img/g2.jpg" data-reveal style="--i:2" aria-label="הגדלת תמונה"><img src="img/g2.jpg" alt="נעל בד עם הדפס אננסים" loading="lazy"></button>
+      <button data-full="img/g3.jpg" data-reveal style="--i:3" aria-label="הגדלת תמונה"><img src="img/g3.jpg" alt="נעל שחורה עם עיצוב אדום" loading="lazy"></button>
+      <button data-full="img/g4.jpg" data-reveal style="--i:4" aria-label="הגדלת תמונה"><img src="img/g4.jpg" alt="נעל לבנה וסגולה בעיצוב ספורט" loading="lazy"></button>
+    </div>
+    <p class="cap" data-reveal>כל פריט שאתם רואים כאן עוצב עבור אדם ספציפי, עם מחשבה ספציפית מאחוריו. אין שני עותקים זהים. זה כל הרעיון.</p>
+  </div>
+</section>
+
+<section id="lead">
+  <div class="wrap">
+    <div class="form-card" data-reveal>
+      <div>
+        <div class="kicker"><i>伍</i> מתחילים</div>
+        <h2>בואו נעצב משהו שלא היה קודם</h2>
+        <p style="color:var(--muted);margin:0">שלוש שאלות קצרות, ואנחנו חוזרים אליכם עם כיוון ראשוני. בלי התחייבות.</p>
+      </div>
+      <div>
+        <form id="lf" method="post" action="{{FORM_ACTION}}" novalidate>
+          {{FORM_HIDDEN}}
+          <div class="progress" aria-hidden="true"><i class="on"></i><i></i><i></i></div>
+
+          <div class="fstep on" data-step="1">
+            <p class="q">מה מחפשים?</p>
+            <div class="opts" role="radiogroup" aria-label="מה מחפשים">
+              <div class="opt"><input type="radio" name="interest" id="o1" value="נעליים"><label for="o1"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c0-1.200.6-2 1.800-2.400l5-1.700 3 2c.8.5 1.700.8 2.700.8H26a3 3 0 0 1 3 3v1.300H3z"/><path d="M13 14l1.500-3M16.500 15.500L18 12.500" stroke="#ff4b2b"/></svg>נעליים</label></div>
+              <div class="opt"><input type="radio" name="interest" id="o2" value="בגד"><label for="o2"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4L4 8l2.500 6L10 12.500V27h12V12.500l3.500 1.500L28 8l-7-4c-.6 1.600-2.200 2.500-5 2.500S11.600 5.600 11 4z"/><path d="M16 9v5" stroke="#ff4b2b"/></svg>בגד</label></div>
+              <div class="opt"><input type="radio" name="interest" id="o3" value="סט שלם"><label for="o3"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11a2.500 2.500 0 1 0-2.500-2.500"/><path d="M16 11v2l12 8.500c.8.600.4 1.800-.6 1.800H4.600c-1 0-1.400-1.200-.6-1.800L16 13" /><path d="M10 22l6-4.500 6 4.500" stroke="#ff4b2b"/></svg>סט שלם</label></div>
+              <div class="opt"><input type="radio" name="interest" id="o4" value="מתנה"><label for="o4"><svg viewBox="0 0 32 32" fill="none" stroke="#f3ede2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="12" width="22" height="15" rx="2"/><path d="M3.500 12h25v-3.500h-25zM16 8.500V27"/><path d="M16 8.500c-1-4-6-4.500-6-1.800 0 2 4 1.800 6 1.800zm0 0c1-4 6-4.500 6-1.800 0 2-4 1.800-6 1.800z" stroke="#ff4b2b"/></svg>מתנה</label></div>
+            </div>
+            <div class="err" id="e1" role="alert"></div>
+            <div class="nav"><button class="btn" type="button" data-next>המשך</button></div>
+          </div>
+
+          <div class="fstep" data-step="2">
+            <p class="q">ספרו לנו בקצרה על הרעיון</p>
+            <div class="field"><label for="msg">אירוע, סגנון, השראה — כל מה שעולה לכם (אפשר לדלג)</label><textarea id="msg" name="message" placeholder="למשל: נעליים בהשראת הקבוצה האהובה שלי, למתנה ליום הולדת"></textarea></div>
+            <div class="nav"><button class="btn" type="button" data-next>המשך</button><button class="back" type="button" data-back>חזרה</button></div>
+          </div>
+
+          <div class="fstep" data-step="3">
+            <p class="q">איך חוזרים אליכם?</p>
+            <div class="field" id="fn"><label for="nm">שם</label><input id="nm" name="name" autocomplete="name" placeholder="השם שלכם"></div>
+            <div class="field" id="fp"><label for="ph">טלפון</label><input id="ph" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050-0000000" dir="ltr" style="text-align:right"></div>
+            <div class="err" id="e3" role="alert"></div>
+            <div class="nav"><button class="btn" type="submit">שלחו לי הצעה</button><button class="back" type="button" data-back>חזרה</button></div>
+            <p class="consent">{{CONSENT}}</p>
+          </div>
+        </form>
+
+        <div class="done" id="done" role="status">
+          <svg class="tick" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46"/><path d="M30 52l14 14 27-30"/></svg>
+          <h3>קיבלנו. מעולה.</h3>
+          <p>נחזור אליכם בהקדם. אם בא לכם להתחיל כבר עכשיו, אפשר להמשיך בוואטסאפ.</p>
+          <a class="btn" href="{{WHATSAPP_URL}}" data-wa>המשיכו בוואטסאפ</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <div class="kicker" style="justify-content:center" data-reveal><i>終</i> עוד שאלה?</div>
+    <h2 data-reveal style="--d:1">פשוט תשלחו הודעה. אנחנו עונים.</h2>
+    <div class="cta-row" style="justify-content:center" data-reveal style="--d:2">
+      <a class="btn" href="{{WHATSAPP_URL}}" data-wa>דברו איתנו בוואטסאפ</a>
+      <a class="btn ghost" href="{{CALL_URL}}">התקשרו</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap"><span>SHIN SEKAI · 新世界</span><span>{{FOOTER}}</span></div></footer>
+
+<a class="fab" id="fab" href="{{WHATSAPP_URL}}" data-wa aria-label="וואטסאפ">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#0e0c0d" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.3-4.2A8 8 0 1 1 8.4 18.9z"/><path d="M9 9.5c.2 2.2 2.3 4.3 4.5 4.5l1.3-1.2-1.8-1-.8.6c-.8-.4-1.5-1.1-1.9-1.9l.6-.8-1-1.8z" fill="#0e0c0d" stroke="none"/></svg>
+</a>
+
+<dialog id="lb"><img id="lbi" alt=""></dialog>
+
+<script>
+(function(){
+  var d=document,b=d.body;
+  // loader: lift when ready, never block the page (fail-safe)
+  var lifted=false;function lift(){if(lifted)return;lifted=true;b.classList.add('ready')}
+  var t0=Date.now();function whenReady(){var left=Math.max(0,1900-(Date.now()-t0));setTimeout(lift,left)}
+  if(d.readyState==='complete')whenReady();else addEventListener('load',whenReady);
+  setTimeout(lift,3200);
+  d.getElementById('loader').addEventListener('click',lift);
+
+  // split headline into words for the reveal
+  var h=d.getElementById('h1'),i=0;
+  (function split(node){
+    Array.prototype.slice.call(node.childNodes).forEach(function(n){
+      if(n.nodeType===3){
+        var frag=d.createDocumentFragment();
+        n.textContent.split(/(\s+)/).forEach(function(p){
+          if(!p)return;
+          if(/^\s+$/.test(p)){frag.appendChild(d.createTextNode(' '));return}
+          var w=d.createElement('span');w.className='w';var s=d.createElement('span');s.style.setProperty('--i',i++);s.textContent=p;w.appendChild(s);frag.appendChild(w)
+        });
+        node.replaceChild(frag,n)
+      }else if(n.nodeType===1&&n.tagName==='EM'){
+        var w=d.createElement('span');w.className='w';n.parentNode.insertBefore(w,n);
+        var s=d.createElement('span');s.style.setProperty('--i',i++);s.appendChild(n);w.appendChild(s)
+      }
+    })
+  })(h);
+
+  // header + fab on scroll
+  var top=d.getElementById('top'),fab=d.getElementById('fab');
+  function sc(){var y=scrollY;top.classList.toggle('solid',y>40);fab.classList.toggle('show',y>520)}
+  addEventListener('scroll',sc,{passive:true});sc();
+
+  // scroll reveals
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.15,rootMargin:'0px 0px -6% 0px'});
+  d.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el)});
+
+  // marquee content (duplicated for seamless loop)
+  var words=['נעליים בעיצוב ייחודי','מהבגד ועד הנעל','אין שני עותקים זהים','מתנה שמרגישה אמיתית','新世界','עיצוב אישי'];
+  var tr=d.getElementById('track'),html='';
+  for(var k=0;k<2;k++)words.forEach(function(w){html+='<span>'+w+'</span>'});
+  tr.innerHTML=html+html;
+
+  // hero image: gentle pointer tilt (desktop only)
+  var fr=d.getElementById('frame'),cd=d.getElementById('card');
+  if(matchMedia('(hover:hover) and (pointer:fine)').matches){
+    fr.addEventListener('pointermove',function(e){var r=fr.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;cd.style.transform='rotate(-2.2deg) rotateY('+(x*-8)+'deg) rotateX('+(y*8)+'deg)'});
+    fr.addEventListener('pointerleave',function(){cd.style.transform=''});
+  }
+
+  // WhatsApp: prefilled message that knows what the visitor already chose
+  function waText(){var sel=d.querySelector('input[name=interest]:checked');return 'היי, הגעתי מהדף של SHIN SEKAI'+(sel?' ואני מחפש/ת '+sel.value:'')+'. אשמח לשמוע עוד.'}
+  d.querySelectorAll('[data-wa]').forEach(function(a){
+    var base=a.getAttribute('href');
+    a.addEventListener('click',function(){a.href=base+(base.indexOf('?')>-1?'&':'?')+'text='+encodeURIComponent(waText())});
+  });
+
+  // gallery lightbox
+  var lb=d.getElementById('lb'),lbi=d.getElementById('lbi');
+  d.querySelectorAll('.gal button').forEach(function(bt){bt.addEventListener('click',function(){lbi.src=bt.dataset.full;lbi.alt=bt.querySelector('img').alt;lb.showModal()})});
+  lb.addEventListener('click',function(){lb.close()});
+
+  // multi-step form
+  var f=d.getElementById('lf'),steps=f.querySelectorAll('.fstep'),bars=f.querySelectorAll('.progress i'),cur=0;
+  function show(n){cur=n;steps.forEach(function(s,k){s.classList.toggle('on',k===n)});bars.forEach(function(p,k){p.classList.toggle('on',k<=n)});var fi=steps[n].querySelector('input:not([type=radio]),textarea');if(fi&&n>0)setTimeout(function(){fi.focus({preventScroll:true})},60)}
+  f.addEventListener('click',function(e){
+    if(e.target.closest('[data-back]'))show(Math.max(0,cur-1));
+    if(e.target.closest('[data-next]')){
+      if(cur===0&&!f.querySelector('input[name=interest]:checked')){d.getElementById('e1').textContent='בחרו אפשרות אחת כדי להמשיך';return}
+      d.getElementById('e1').textContent='';show(cur+1)
+    }
+  });
+  f.querySelectorAll('input[name=interest]').forEach(function(r){r.addEventListener('change',function(){d.getElementById('e1').textContent='';setTimeout(function(){if(cur===0)show(1)},260)})});
+  function finish(){f.style.display='none';d.getElementById('done').classList.add('on')}
+  f.addEventListener('submit',function(e){
+    var nm=f.nm.value.trim(),ph=f.ph.value.replace(/[^\d+]/g,''),ok=true,msg='';
+    d.getElementById('fn').classList.toggle('bad',!nm);d.getElementById('fp').classList.toggle('bad',ph.length<9);
+    if(!nm){ok=false;msg='איך קוראים לכם?'}else if(ph.length<9){ok=false;msg='נראה שחסרה ספרה בטלפון'}
+    d.getElementById('e3').textContent=msg;
+    if(!ok){e.preventDefault();return}
+    // real page: native POST to the capture endpoint, then the page returns with ?sent=1
+    if(f.getAttribute('action')==='#'||!f.getAttribute('action')||f.getAttribute('action').indexOf('{{')>-1){e.preventDefault();finish()}
+  });
+  if(/[?&]sent=1/.test(location.search)){finish();d.getElementById('lead').scrollIntoView()}
+})();
+</script>
+</body>
+</html>

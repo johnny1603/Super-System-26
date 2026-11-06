@@ -60,7 +60,7 @@ code { font-size:12px; word-break:break-all; }
   </div>
   <div class="card">
     <h2>כל הדפים</h2>
-    <div class="scroll"><table><thead><tr><th>לקוח</th><th>דף</th><th>מצב</th><th>צפיות 30 י׳</th><th>שיחות</th><th>וואטסאפ</th><th>עלות</th><th></th></tr></thead>
+    <div class="scroll"><table><thead><tr><th>לקוח</th><th>דף</th><th>מצב</th><th>צפיות 30 י׳</th><th>שיחות</th><th>וואטסאפ</th><th>עלות</th><th>עיצוב (יצירות)</th><th></th></tr></thead>
       <tbody id="pages"></tbody></table></div>
   </div>
   <div class="card">
@@ -98,9 +98,27 @@ async function api(path, body) {
   return data.data;
 }
 
+// One designed-page generation record (core/landing_creative): the latest
+// run's outcome, model, tokens (cache hits), cost, duration, retries, and the
+// counts across all runs of this page
+const num = n => Number(n || 0).toLocaleString("en-US");
+function genCell(g) {
+  if (!g || !g.latest) return '<span class="muted">—</span>';
+  const l = g.latest;
+  const ok = l.outcome === "ok";
+  return `<span class="badge ${ok ? "ok" : "warn"}">${esc(l.outcome || "?")}</span>
+    <div class="muted">${esc(l.model || "")}${l.version ? " · גרסה " + esc(l.version) : ""}</div>
+    <div class="muted">קלט ${num(l.input_tokens)} · מטמון ${num(l.cache_read_tokens)} · פלט ${num(l.output_tokens)}</div>
+    <div class="muted">${ils(l.cost_ils)} · ${esc(l.duration_s)} שנ׳ · ניסיונות חוזרים ${esc(l.retries || 0)}</div>
+    ${l.content_hash ? `<div class="muted"><code>${esc(l.content_hash)}</code></div>` : ""}
+    ${l.error ? `<div class="muted">${esc(String(l.error).slice(0, 80))}</div>` : ""}
+    <div class="muted">סה"כ ${g.count} (${g.ok} הצליחו) · ${ils(g.cost_ils)}</div>`;
+}
+
 function render(d) {
   const state = document.getElementById("state");
   state.innerHTML = `מגבלת דפים באוויר ללקוח: <b>${d.limit}</b> ·
+    עיצוב חופשי: ${d.creative_on ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי — התבנית הקבועה</span>'} ·
     גרסאות: ${d.versions_on ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי — להריץ את migrations/2026-11-01-landing-own.sql</span>'} ·
     מונים: ${d.counters_on ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">כבוי</span>'}`;
   document.getElementById("clients").innerHTML = d.clients.map(c => `<tr>
@@ -115,8 +133,9 @@ function render(d) {
       ${p.current_version ? `<div class="muted">גרסה ${p.current_version}${p.published_version ? " · באוויר " + p.published_version : ""}</div>` : ""}</td>
     <td>${p.views_30d}</td><td>${p.calls_30d}</td><td>${p.whatsapp_30d}</td>
     <td>${ils(p.cost_ai_ils + p.cost_hosting_ils)}</td>
+    <td>${genCell(p.generations)}</td>
     <td>${p.status === "published" ? `<button class="danger" data-client="${p.client_id}" data-page="${p.id}">הורדה מהאוויר</button>` : ""}</td>
-  </tr>`).join("") || '<tr><td colspan="8" class="muted">אין עדיין דפים.</td></tr>';
+  </tr>`).join("") || '<tr><td colspan="9" class="muted">אין עדיין דפים.</td></tr>';
   if (d.rates.ils_per_gb != null) document.getElementById("perGb").value = d.rates.ils_per_gb;
   if (d.rates.ils_per_10k_requests != null) document.getElementById("per10k").value = d.rates.ils_per_10k_requests;
 }

@@ -37,9 +37,9 @@ from core import drive_storage
 SERVICE_NAME = "landing_images"
 TABLE = "landing_page_images"
 
-PLACEMENTS = ("hero", "gallery", "section", "background")
+PLACEMENTS = ("hero", "gallery", "section", "background", "logo")
 PLACEMENT_LABELS_HE = {"hero": "תמונה ראשית", "gallery": "גלריה", "section": "תמונה בפסקה",
-                       "background": "רקע"}
+                       "background": "רקע", "logo": "לוגו"}
 MAX_IMAGES_PER_PAGE = 8
 MAX_GALLERY = 6
 MAX_SOURCE_BYTES = 15 * 1024 * 1024     # what is downloaded from Drive at most
@@ -112,7 +112,7 @@ def normalize_refs(raw, section_count: int = None) -> list:
             if section < 0 or section in seen_sections:
                 continue
             seen_sections.add(section)
-        limit = {"hero": 1, "background": 1, "gallery": MAX_GALLERY}.get(placement, MAX_IMAGES_PER_PAGE)
+        limit = {"hero": 1, "background": 1, "logo": 1, "gallery": MAX_GALLERY}.get(placement, MAX_IMAGES_PER_PAGE)
         if counts.get(placement, 0) >= limit:
             continue
         counts[placement] = counts.get(placement, 0) + 1
@@ -309,7 +309,7 @@ def clean_selection(raw, client_id: int, check_owned: bool = True) -> list:
         if file_id in seen:
             raise ValueError("the same photo twice")
         seen.add(file_id)
-        limit = {"hero": 1, "background": 1, "gallery": MAX_GALLERY}.get(placement, MAX_IMAGES_PER_PAGE)
+        limit = {"hero": 1, "background": 1, "logo": 1, "gallery": MAX_GALLERY}.get(placement, MAX_IMAGES_PER_PAGE)
         counts[placement] = counts.get(placement, 0) + 1
         if counts[placement] > limit:
             raise ValueError(f"too many {placement} images")

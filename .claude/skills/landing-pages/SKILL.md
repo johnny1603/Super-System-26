@@ -63,15 +63,27 @@ When verification fails, the code distinguishes **whose side is incomplete**.
 If `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ZONE_ID` are unset, the client is told
 it's on us and to change nothing — never sent to re-check a correct record.
 
-## Structured content only — a SECURITY boundary
+## The security boundary is the CSP sandbox (2026-11-07, docs/LANDING_PAGES.md §11)
 
-`landing_pages.content` holds STRINGS (headline / subheadline / benefits /
-sections / cta), and `render_page()` escapes every one into a fixed template.
-Raw HTML is never stored and never rendered, because **these pages serve from
-app.uallak.com — the same origin as the client dashboard and its session
-cookie**. Stored raw HTML would be stored XSS against every logged-in client
-and admin. A "custom HTML" feature would have to serve from a different
-origin; do not relax this.
+A designed page is a whole document the model wrote, stored in
+`content["html"]` (core/landing_creative). These pages serve from
+app.uallak.com — the same origin as the dashboard session cookie — so EVERY
+landing response goes out with `landing_pages.page_headers()`: CSP `sandbox
+allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox` and
+**never `allow-same-origin`** (opaque origin: no cookies, no storage, no API).
+That header is the one rail; a new landing HTMLResponse without it is a bug
+(`tests/test_landing_creative.py` scans for it). Freedom first: no validator
+rejects creative output; missing form/consent/footer tokens are repaired.
+
+- References: `design-reference/` (manifest with niche/mood tags,
+  `DESIGN_PLAYBOOK.md`, the exemplar). Few-shot only — a page that looks like
+  the exemplar for another business is a failure.
+- Placeholders: `{{FORM_ACTION}} {{FORM_HIDDEN}} {{WHATSAPP_URL}} {{CALL_URL}}
+  {{STORE_URL}} {{CONSENT}} {{FOOTER}} {{IMG:key}}`, filled per request.
+- Kill switch `LANDING_CREATIVE_HTML_ENABLED` (default ON) → the fixed template.
+- Every generation: `landing_generation` activity row + a cost row; shown in
+  `/admin/landing/`.
+- No emoji anywhere (stripped in code); "עיצוב אישי" is never translated.
 
 `normalize_content()` is the write-side gate: it caps every field and DROPS
 unknown keys (the renderer only reads the known ones, so keeping extras would

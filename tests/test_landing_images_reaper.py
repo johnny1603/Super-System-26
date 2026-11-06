@@ -388,7 +388,7 @@ class Deadlines(Base):
             deadline = aa.run_deadline(spec)
             self.assertGreater(deadline, 0, name)
             self.assertGreater(aa.reap_after(spec).total_seconds(), deadline, name)
-        self.assertEqual(aa.ACTIONS["edit_landing_page"]["slow"]["minutes"], 8)
+        self.assertEqual(aa.ACTIONS["edit_landing_page"]["slow"]["minutes"], 25)   # designed pages (landing_creative)
 
     def test_execute_runs_everything_under_the_deadline(self):
         body = _src("core", "agent_actions.py")
@@ -403,7 +403,7 @@ class Deadlines(Base):
 
 
 class Reaper(Base):
-    def stuck(self, minutes=30, action="edit_landing_page", origin="client_chat", client_id=27):
+    def stuck(self, minutes=70, action="edit_landing_page", origin="client_chat", client_id=27):
         stamp = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
         return self.db.table(aa.TABLE).insert({
             "client_id": client_id, "action": action, "params": {"page_id": 1, "change_request": "x"},
@@ -563,7 +563,7 @@ class OperatorTools(Base):
         self.assertEqual((row["status"], row["decided_by"]), ("done", "staff"))
 
     def test_run_reaper_is_tier2_and_audited(self):
-        stamp = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+        stamp = (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat()
         self.db.table(aa.TABLE).insert({"client_id": 27, "action": "edit_landing_page", "params": {},
                                         "origin": "client_chat", "persona": "general", "approver": "client",
                                         "status": "running", "decided_at": stamp}).execute()

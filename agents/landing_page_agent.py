@@ -1,9 +1,9 @@
 """uallak's landing-page agent — conversion copy + the client-facing lifecycle.
 
 Division of labor (coordinates with, never duplicates):
-- `core/landing_pages.py` owns the data, the 3-page ceiling and the renderer.
-  This agent never writes HTML — it produces STRUCTURED copy that the fixed
-  template escapes (that separation is a security boundary; see that module).
+- `core/landing_pages.py` owns the data, the 3-page ceiling, the renderers
+  and THE rail: every page is served inside a CSP sandbox (page_csp), which
+  is what lets the model write the page's HTML (see that module).
 - `core/landing_domains.py` owns the custom-domain state machine.
 - `core/competitor_research.py` supplies the market view, through the SAME
   `"ads"` lens the campaign drafters use — a landing page and an ad are the
@@ -21,6 +21,12 @@ reviewing generated copy, confirming a DNS record was added — all of it
 surfaces as a `dashboard_chat` communication, the same channel
 website_agent's self-provisioning already talks on. There is deliberately no
 email, no standalone form and no out-of-band channel in this file.
+
+DESIGNED PAGES (2026-11-07): after the structured copy, the model designs
+the whole page (core/landing_creative) as the next version; the fixed
+template is the automatic fallback when that fails or the kill switch
+LANDING_CREATIVE_HTML_ENABLED is off. The copy call keeps its old role as the
+page's FACT base (the designer may restructure it, never add facts to it).
 
 THE FLOW (docs/LANDING_PAGES.md, 2026-11-01): the agent writes (a new
 version) → a `publish_landing_page` card with a preview link in the website
@@ -60,7 +66,9 @@ def _chat(client_id: int, message: str):
 # One copy call may take at most this long (one transport retry): the edit /
 # create card's whole run has a hard deadline (agent_actions.run_deadline),
 # and the SDK's default 10 minutes × retries outlived it (proposal 16).
-COPY_CALL_TIMEOUT_S = 120
+COPY_CALL_TIMEOUT_S = 240
+# No tight cap on the copy (2026-11-07, freedom first): billed by what is used
+COPY_MAX_TOKENS = 8000
 
 COPY_SYSTEM = f"""You are uallak's conversion copywriter, writing ONE Hebrew landing page
 for an Israeli small business. A landing page is NOT a website page: one offer, one action,
@@ -125,7 +133,7 @@ def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
             AGENT_NAME, "copy_llm",
             lambda: safe_claude_json_call(COPY_SYSTEM,
                                           json.dumps(payload, ensure_ascii=False),
-                                          max_tokens=1600, client_id=client_id,
+                                          max_tokens=COPY_MAX_TOKENS, client_id=client_id,
                                           cost_category="claude_landing_page",
                                           timeout=COPY_CALL_TIMEOUT_S))
     except ClaudeJSONError as e:
@@ -139,6 +147,76 @@ def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
     return {"success": True, "content": content,
             "notes": drafted.get("notes_for_johnny", ""),
             "research_grounded": bool(research)}
+
+
+# ─── The designed page (core/landing_creative) ──────────────────────────────
+
+def _creative_html(client_id: int, page: dict, content: dict, contact: dict, feedback: str = "") -> dict:
+    """The model's own page for this copy: {"html", "record"} on success,
+    {"record"} on a failure (the admin is alerted; the fixed template shows),
+    {} when the kill switch is off. Never raises."""
+    from core import landing_creative
+    if not landing_creative.enabled():
+        return {}
+    try:
+        from agents.seo_agent import _business_context
+        business = _business_context(client_id)
+    except Exception:
+        business = {}
+    # Real landing pages in the niche (search + fetch, cached) and the ad
+    # lens the copy already used (a cache hit). Enrichment only: '' on failure.
+    landing_research = competitor_research.summary_for_prompt(client_id, "landing")
+    niche = competitor_research.summary_for_prompt(client_id, "ads")
+    result = timed_step(AGENT_NAME, "creative_llm", lambda: landing_creative.generate(
+        client_id, page, content, contact, content.get("images") or [], business,
+        landing_research=landing_research, niche_research=niche, feedback=feedback))
+    if not result.get("success"):
+        record = result.get("record") or {}
+        landing_creative.record_generation(client_id, record, agent=AGENT_NAME)
+        agent_alert(AGENT_NAME, [f"client {client_id}: designed landing page for page {page.get('id')} failed "
+                                 f"({record.get('outcome')}: {record.get('error') or record.get('stop_reason')}) — "
+                                 f"the fixed template is used for this version"])
+        return {"record": record}
+    return result
+
+
+def _design(client_id: int, page_id: int, feedback: str = "") -> dict:
+    """Design the page's NEWEST version (its copy, photos and contact) as a
+    new version. {"designed": bool, "version": int}."""
+    page = landing_pages.get_page(client_id, page_id)
+    if not page:
+        return {"designed": False}
+    content = landing_pages.normalize_content(page.get("content") or {})
+    content.pop("html", None)
+    contact = landing_pages.normalize_contact(page.get("contact") or {})
+    with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
+        creative = _creative_html(client_id, page, content, contact, feedback)
+    if not creative.get("html"):
+        return {"designed": False}
+    from core import landing_creative
+    updated = landing_pages.update_page(client_id, page_id, {"content": {**content, "html": creative["html"]}},
+                                        source="designed")
+    if not updated.get("success"):
+        record = {**creative["record"], "outcome": "not_stored", "error": str(updated.get("code"))}
+        landing_creative.record_generation(client_id, record, agent=AGENT_NAME)
+        agent_alert(AGENT_NAME, [f"client {client_id}: designed page {page_id} not stored ({updated.get('code')})"])
+        return {"designed": False}
+    version = updated["page"].get("current_version")
+    landing_creative.record_generation(client_id, creative["record"], version=version, agent=AGENT_NAME)
+    _log_activity(client_id, "landing_page_designed",
+                  {"page_id": page_id, "version": version, "content_hash": creative["record"].get("content_hash"),
+                   "exemplar": creative["record"].get("exemplar")})
+    return {"designed": True, "version": version, "page": updated["page"]}
+
+
+def _design_then_propose(client_id: int, page_id: int, feedback: str, persona: str, intro: str):
+    """The dashboard buttons' background step: design, then the card (for the
+    designed version, or for the copy version when designing failed)."""
+    try:
+        _design(client_id, page_id, feedback)
+    except Exception as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: designing page {page_id} crashed ({type(e).__name__})"])
+    propose_publish(client_id, page_id, intro, persona=persona)
 
 
 # ─── Create (the main entry point) ────────────────────────────────────────────
@@ -176,7 +254,7 @@ def propose_publish(client_id: int, page_id: int, intro: str = "", persona: str 
 
 def create_page(client_id: int, title: str, goal: str = "",
                 generate: bool = True, persona: str = PERSONA, announce: bool = True,
-                images: list = None) -> dict:
+                images: list = None, defer=None) -> dict:
     """Create ONE landing page, with generated copy by default, and propose
     publishing it (preview card in the website agent's chat, or in `persona`'s
     — the chat the client asked in). THE one builder: the dashboard's
@@ -190,7 +268,12 @@ def create_page(client_id: int, title: str, goal: str = "",
     `announce`: post the "I wrote a new page" line with the card. A chat
     card's run passes False — its own done line says it, once.
     `images`: the card's photo selection, copied in BEFORE the page is
-    opened — a refused photo opens nothing."""
+    opened — a refused photo opens nothing.
+    The copy is one version; the designed page (core/landing_creative) the
+    next, and the card offers the newest. `defer` (a scheduler such as
+    BackgroundTasks.add_task — the dashboard's synchronous buttons): the
+    design step and the card run after the response, so a request never
+    waits the minutes a designed page takes."""
     refs = []
     if images:
         if landing_pages.count_pages(client_id) >= landing_pages.MAX_PAGES_PER_CLIENT:
@@ -231,20 +314,29 @@ def create_page(client_id: int, title: str, goal: str = "",
                    "research_grounded": copy_result.get("research_grounded", False)},
                   {"notes_for_johnny": copy_result.get("notes", "")})
 
-    card = {}
+    card, designed, designing = {}, False, False
     if copy_result.get("success"):
         intro = (f'הכנתי דף נחיתה חדש: "{page["title"]}" ✍️ '
                  f'בכרטיס יש תצוגה מקדימה. מאשרים, והוא עולה לאוויר. '
                  f'רוצים לשנות משהו? כתבו לי כאן.') if announce else ""
-        card = propose_publish(client_id, page["id"], intro, persona=persona)
+        from core import landing_creative
+        if defer is not None and landing_creative.enabled():
+            defer(_design_then_propose, client_id, page["id"], "", persona, intro)
+            designing = True
+        else:
+            result = _design(client_id, page["id"])
+            designed = result.get("designed", False)
+            page = result.get("page") or page
+            card = propose_publish(client_id, page["id"], intro, persona=persona)
     return {"success": True, "page": page,
             "copy_generated": bool(copy_result.get("success")),
+            "designed": designed, "designing": designing,
             "card": card.get("card"),
             "notes_for_johnny": copy_result.get("notes", "")}
 
 
 def fulfil_team_request(client_id: int, request_id: int, title: str, goal: str = "",
-                        dry_run: bool = False) -> dict:
+                        dry_run: bool = False, defer=None) -> dict:
     """A team request that asked for a landing page before the chat could
     build one (request #6, client 27, 2026-11-02): build the DRAFT now with
     THE builder, in the thread the request came from, and mark the request
@@ -261,7 +353,7 @@ def fulfil_team_request(client_id: int, request_id: int, title: str, goal: str =
     if dry_run:
         return {"success": True, "dry_run": True, **view, "pages_used": landing_pages.count_pages(client_id),
                 "pages_included": landing_pages.MAX_PAGES_PER_CLIENT}
-    created = create_page(client_id, title, goal or request_text, persona=view["persona"])
+    created = create_page(client_id, title, goal or request_text, persona=view["persona"], defer=defer)
     if not created.get("success"):
         return {"success": False, "code": created.get("code", "ERR_LANDING_CREATE_FAILED"), **view}
     if not created.get("copy_generated"):
@@ -274,7 +366,8 @@ def fulfil_team_request(client_id: int, request_id: int, title: str, goal: str =
     _log_activity(client_id, "team_request_fulfilled_by_system",
                   {"request_id": request_id, "page_id": created["page"]["id"]})
     return {"success": True, **view, "page_id": created["page"]["id"], "status": created["page"].get("status"),
-            "preview_card": bool(created.get("card")), "request_closed": closed}
+            "preview_card": bool(created.get("card")) or created.get("designing", False),
+            "request_closed": closed}
 
 
 def _import_images(client_id: int, images: list, title: str) -> dict:
@@ -288,7 +381,7 @@ def _import_images(client_id: int, images: list, title: str) -> dict:
 
 
 def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: str = PERSONA,
-                    announce: bool = True, images: list = None) -> dict:
+                    announce: bool = True, images: list = None, defer=None) -> dict:
     """Rewrite one page's copy, optionally with the client's own chat feedback
     folded into the goal — which is how "make it warmer / lead with price"
     arrives, since review happens in conversation. The rewrite is a NEW
@@ -298,7 +391,9 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: s
     the FULL set the new version shows; copied into our store first (before
     any paid call), so a refused photo stops the run with nothing changed.
     No feedback + images = only the photos change, the text stays as is.
-    Without `images`, the page keeps the photos it has."""
+    Without `images`, the page keeps the photos it has. Either way the page
+    is then designed again (its photos and copy are part of the design);
+    `defer` as in create_page."""
     page = landing_pages.get_page(client_id, page_id)
     if not page:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND",
@@ -310,6 +405,8 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: s
             return {"success": False, "code": imported["code"]}
         refs = imported["refs"]
     content = dict(page.get("content") or {})
+    # The old design shows the old copy and photos: never carried over
+    content.pop("html", None)
     if feedback or not images:
         goal = page.get("goal") or ""
         if feedback:
@@ -329,8 +426,14 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: s
                   {"page_id": page_id, "had_feedback": bool(feedback), "images": len(refs or [])})
     intro = (f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
              f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.') if announce else ""
+    from core import landing_creative
+    if defer is not None and landing_creative.enabled():
+        defer(_design_then_propose, client_id, page_id, feedback, persona, intro)
+        return {"success": True, "page": updated["page"], "card": None, "designing": True}
+    result = _design(client_id, page_id, feedback)
+    page_now = result.get("page") or updated["page"]
     card = propose_publish(client_id, page_id, intro, persona=persona)
-    return {"success": True, "page": updated["page"], "card": card.get("card")}
+    return {"success": True, "page": page_now, "card": card.get("card"), "designed": result.get("designed", False)}
 
 
 def edited(client_id: int, page_id: int) -> dict:
@@ -356,8 +459,15 @@ def publish_page(client_id: int, page_id: int, version: int = None, notify: bool
     page = result["page"]
     state = landing_domains.get_state(client_id)
     url = page_url(client_id, page, state=state)
+    # Which exact content went live: version + hash, in the log and the row
+    live = landing_pages.visible_of(client_id, page, result.get("version") or None)
+    from core.landing_creative import content_hash
+    digest = content_hash(json.dumps(live["content"], ensure_ascii=False, sort_keys=True))
+    print(f"[{AGENT_NAME}] client {client_id} page {page_id} published v{result.get('version')} "
+          f"designed={bool(live['content'].get('html'))} hash={digest}")
     _log_activity(client_id, "landing_page_published",
-                  {"page_id": page_id, "slug": page["slug"], "url": url, "version": result.get("version")})
+                  {"page_id": page_id, "slug": page["slug"], "url": url, "version": result.get("version"),
+                   "content_hash": digest, "designed": bool(live["content"].get("html"))})
     try:
         from core import client_state
         client_state.forget(client_id)

@@ -247,8 +247,111 @@ a landing page by hand), the procedure is: back it up (page HTML + its form's
 leads export), rebuild it here as a landing page, verify live, point ads at
 the new URL, and only then ask the owner before deleting anything on WordPress.
 
+## 11. Creative pages — freedom first (2026-11-07)
+
+**Philosophy:** give the model the freedom it needs; tighten only where a real
+problem shows up. Measure first, restrict later. No default-off flag, no
+client allowlist, no hard generation cap, no validator that rejects creative
+output. There is ONE rail, and it is the browser's, not ours.
+
+### The one rail: the CSP sandbox
+Every landing response (live page, custom domain, privacy/terms, preview)
+carries `landing_pages.page_headers()` → `page_csp()`:
+
+    sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox;
+    default-src 'none'; script-src 'unsafe-inline' cdnjs/jsdelivr/unpkg;
+    style-src 'unsafe-inline' fonts.googleapis.com …; font-src fonts.gstatic.com …;
+    img-src/media-src <our hosts> data: blob:; connect-src 'none'; frame-src 'none';
+    form-action <our hosts>; base-uri 'none'; object-src 'none'; frame-ancestors 'none'
+
+**No `allow-same-origin`**: the page runs in an OPAQUE origin, so its scripts
+cannot read the dashboard's cookies, storage or APIs even though it is served
+from app.uallak.com. That is what makes stored, model-written HTML safe here
+(the old "raw HTML is never stored" rule is replaced by this). `'self'` is
+unreliable under an opaque origin, so hosts are listed explicitly
+(PUBLIC_APP_URL + the client's verified lp host). Tag Manager adds its hosts
+to script/img/connect only on the client's own verified domain.
+
+**Exemplar under the CSP (verified in `tests/test_landing_creative.py`):**
+inline script/style, `dialog.showModal`, native POST, IntersectionObserver and
+`location.search` work. Conflict: its preview copy loads local font files
+(`url(f/…)`) — blocked by font-src; the prompt makes the model use Google Fonts.
+Known costs of the opaque origin: GTM/GA cookies can't persist (measurement on
+custom domains degrades to per-pageview); `tel:` relies on
+allow-popups-to-escape-sandbox (Chrome's rule for external protocols) —
+**not yet tested on real phones**. Recommendation: move pages to their own
+domain (e.g. `uallak-pages.com`) later; there, `allow-same-origin` would be
+safe and analytics cookies would work. Not needed to ship.
+
+### The engine (`core/landing_creative.py`)
+- Copy first (`generate_copy`, 8000 tokens, no 1600 cap), saved as a version →
+  then the DESIGN step: `TIER_MODELS["heavy"]` (claude-opus-5-5), effort high,
+  max_tokens 64000, streamed, adaptive thinking, 900 s timeout, one retry if the
+  first attempt failed fast. The 720px template is only the fallback.
+- References: `design-reference/manifest.json` (exemplars with niche/mood
+  tags + `DESIGN_PLAYBOOK.md`). `pick_exemplar` scores niche 2 / mood 1. The
+  prompt says plainly: a page that looks like the exemplar for a different
+  business is a FAILURE. The exemplar is a few-shot example, never a template.
+- Cached stable prefix (`cached_system`: rules + playbook, then the exemplar);
+  everything per client goes in the user turn as DATA, never instructions.
+- Inputs: business, copy, contact, the client's photos as vision (logo first,
+  ≤5), the `landing` research lens (web search + web_fetch of real pages,
+  14-day cache; never copied, never named), the `ads` lens, client feedback.
+- Output: `<design_brief>{json}</design_brief>` (palette from the logo/photos,
+  never default blue) + a full document. Emoji stripped in code; inline SVG
+  icons; logo entrance animation (wordmark without a logo); mobile-first RTL;
+  reduced motion honoured.
+- Placeholders filled per request by `fill()`: `{{FORM_ACTION}}`,
+  `{{FORM_HIDDEN}}` (stamp, honeypot, source_detail, attribution, redirect),
+  `{{WHATSAPP_URL}}`, `{{CALL_URL}}`, `{{STORE_URL}}`, `{{CONSENT}}`,
+  `{{FOOTER}}`, `{{IMG:key}}` (→ `/lp-media/…`; unknown key → transparent
+  pixel; unknown URL token → `#`). A forgotten form/consent/footer token is
+  REPAIRED, never rejected.
+- The form posts natively; field `interest` reaches the lead
+  (`landing_tracking.clean_payload` folds it into the message). The capture
+  endpoint redirects back without a Referer (the sandbox may drop it) when
+  `redirect_allowed()` proves the target is this client's own page.
+- Stored as `content["html"]` on a NEW version (source `designed`), so
+  versions / preview / approval / revert / publish / images keep working. The
+  approval card pins that newest version. Dashboard buttons design in the
+  background (`defer=background_tasks.add_task`); chat cards inline (slow 25 min).
+- Kill switch `LANDING_CREATIVE_HTML_ENABLED` (operator_flags, **default ON**):
+  OFF renders every page with the fixed template, within 30 s.
+- Failure (API error, refusal, truncated, no html) → the copy version stays,
+  the fixed template renders it, the card still comes, admin alert.
+
+### Buttons — root cause (client 27) and the fix
+1. Preview links were `#` and scripts were blocked (`script-src 'none'`) → the
+   preview now links straight to `tel:` / `wa.me` / the store, uncounted.
+2. `/go/` 404s for a draft → same fix.
+3. WhatsApp stored in local `05X` form made invalid `wa.me/05…` links →
+   `whatsapp_number()` normalizes to `972…`, also on read.
+4. No `?text=` → `/go/whatsapp?text=` forwards it (sanitized, ≤500 chars);
+   without text a default line naming the page.
+5. Relative `go/…` links broke behind a trailing slash → absolute paths.
+Click counting is unchanged (`landing_tracking.bump` per click).
+
+### Visibility
+Each generation writes `client_activity` `landing_generation` (model, effort,
+tokens in/out/cache read/write, cost ILS/USD, duration, retries, outcome,
+stop_reason, exemplar, html_bytes, content_hash, version, brief) and one
+`client_costs` row (`claude_landing_page`, action `landing_page_generate`,
+ref `lp:<id>`). Publish logs page id, version and content hash.
+`/admin/landing/` shows a "עיצוב (יצירות)" column per page. No migration.
+Rough cost: ~25k in (mostly cached) + ~30k out on Opus ≈ $0.8 (~₪3) per design.
+
+### Visual QA (not built)
+A headless browser does not fit the 512Mi service. Follow-up: a separate
+Cloud Run job (Playwright, 2 GiB, ~1 min per page ≈ well under ₪0.1 per
+screenshot pass + one vision critique call ≈ ₪0.5) triggered after a design.
+
 ## Tests
 
+`tests/test_landing_creative.py`: the CSP on every page response, every
+button followed to its final destination (tel:, wa.me with prefilled text,
+store), lead with attribution + interest, click counting, the fallback on
+failure and the kill switch, no emoji, image placeholders, generation and
+cost records, the admin column, the exemplar under the CSP.
 `tests/test_landing_own.py`: publish/revert, sanitization, tracking events,
 form → leads + spam, per-client isolation, unpublish, limits, the publish card,
 the backup-first migration of a sample page, hosting estimate, route order.

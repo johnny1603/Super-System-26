@@ -17,14 +17,19 @@ Pages project-count ceiling that shaped this decision is avoided by not using
 Pages at all. Custom client domains are layered ON TOP of the same single
 route (see `core/landing_domains.py`), never by duplicating the serving path.
 
-## Structured content only — a SECURITY boundary, not a style choice
+## Model-written HTML, behind ONE rail: the CSP sandbox (2026-11-07)
 
-`content` holds strings (headline, sections, CTA), and `render_page()` escapes
-every one of them into a fixed template. Raw HTML is never stored and never
-rendered. These pages are served from **app.uallak.com — the same origin as
-the client dashboard and its session cookie** — so stored raw HTML would be
-stored XSS against every logged-in client and admin. A "custom HTML" feature
-would have to serve from a different origin; do not relax this here.
+`content` holds the structured copy (headline, sections, CTA — escaped into
+the fixed fallback template) AND, for a designed page, `content["html"]`: a
+whole document the model wrote (core/landing_creative). These pages are
+served from **app.uallak.com — the same origin as the client dashboard and
+its session cookie** — so that HTML is only ever served with `page_csp()`:
+a CSP `sandbox` WITHOUT allow-same-origin. The page then runs in an opaque
+origin: its script cannot read our cookies, cannot call our API as the
+visitor (the session cookies are SameSite=Lax and connect-src is closed),
+and cannot touch the dashboard. EVERY response under /lp/, /lp-host/ and the
+preview goes through `page_headers()`; a route that served page HTML without
+it would be stored XSS. The fixed template stays the automatic fallback.
 
 ## Lead capture reuses the existing endpoint, unchanged
 
@@ -71,23 +76,29 @@ MAX_SLUG_CHARS = 60
 MAX_TITLE_CHARS = 120
 MAX_GOAL_CHARS = 300
 
-# Content field caps. Long landing pages convert worse and cost more to
-# generate; these are product limits, enforced on write.
-MAX_HEADLINE_CHARS = 90
-MAX_SUB_CHARS = 200
-MAX_BENEFITS = 6
-MAX_BENEFIT_CHARS = 140
-MAX_SECTIONS = 4
-MAX_SECTION_TITLE_CHARS = 90
-MAX_SECTION_BODY_CHARS = 600
-MAX_CTA_CHARS = 40
+# Content field caps, enforced on write. Raised generously on 2026-11-07
+# (freedom first): the copy is the designed page's fact base, and the
+# designer decides how much of it a page shows.
+MAX_HEADLINE_CHARS = 140
+MAX_SUB_CHARS = 320
+MAX_BENEFITS = 8
+MAX_BENEFIT_CHARS = 220
+MAX_SECTIONS = 8
+MAX_SECTION_TITLE_CHARS = 120
+MAX_SECTION_BODY_CHARS = 1200
+MAX_CTA_CHARS = 60
 
 # Invisible limits (docs/LANDING_PAGES.md §6): pages live at once, and the size
 # of one rendered page. The client never sees a counter; the admin is alerted
 # when a client reaches the live-page limit (landing_page_agent).
 MAX_ACTIVE_PAGES = MAX_PAGES_PER_CLIENT
-MAX_PAGE_BYTES = 64_000
+MAX_PAGE_BYTES = 64_000          # the fixed fallback template
+# A designed page (content["html"]): NOT a creative limit — a storage guard
+# for one version row, far above any page the model writes (the exemplar is
+# ~40KB). Measure first: html_bytes is recorded per generation.
+MAX_CREATIVE_BYTES = 900_000
 MAX_URL_CHARS = 300
+MAX_WHATSAPP_TEXT = 500
 
 _db_instance = None
 _versions_ok = {"value": True}
@@ -183,7 +194,7 @@ def normalize_content(raw: dict) -> dict:
         body = _clip(section.get("body"), MAX_SECTION_BODY_CHARS)
         if title or body:
             sections.append({"title": title, "body": body})
-    return {
+    out = {
         "headline": _clip(raw.get("headline"), MAX_HEADLINE_CHARS),
         "subheadline": _clip(raw.get("subheadline"), MAX_SUB_CHARS),
         "benefits": [b for b in benefits if b][:MAX_BENEFITS],
@@ -193,6 +204,17 @@ def normalize_content(raw: dict) -> dict:
         # References to OUR stored copies (core/landing_images) — never a URL
         "images": landing_images.normalize_refs(raw.get("images")),
     }
+    # The designed page (core/landing_creative), kept as written: it is
+    # served ONLY inside the CSP sandbox (page_csp), which is the boundary —
+    # stripping tags here would destroy it. Emoji are removed (no emojis
+    # anywhere); a page past the storage guard is not kept (the fallback shows).
+    page_html = raw.get("html")
+    if isinstance(page_html, str) and page_html.strip():
+        from core.landing_creative import strip_emoji
+        page_html = strip_emoji(page_html).strip()
+        if len(page_html.encode("utf-8")) <= MAX_CREATIVE_BYTES:
+            out["html"] = page_html
+    return out
 
 
 def _digits(value, lo: int, hi: int) -> str:
@@ -215,14 +237,118 @@ def safe_url(value) -> str:
     return url
 
 
+def whatsapp_number(value) -> str:
+    """International digits for wa.me, Israeli-first — the same reading as
+    client_leads.whatsapp_link: 050-123-4567 → 972501234567, 00972… → 972…,
+    +972… → 972…. wa.me needs the country code: a local 05X number there is
+    a dead link (the button root cause of 2026-11-07). '' when unusable."""
+    digits = re.sub(r"\D", "", sanitize_text(value))
+    if digits.startswith("00"):
+        digits = digits[2:]
+    elif digits.startswith("0"):
+        digits = "972" + digits[1:]
+    return digits if 10 <= len(digits) <= 15 else ""
+
+
 def normalize_contact(raw: dict) -> dict:
-    """The page's action links: phone (click-to-call), WhatsApp number,
-    store URL (a store client's buy button). Anything invalid is dropped."""
+    """The page's action links: phone (click-to-call), WhatsApp number (in
+    international form), store URL (a store client's buy button). Anything
+    invalid is dropped. Applied on READ too (visible_of), so a number stored
+    in local form before 2026-11-07 is fixed on every live page at once."""
     raw = raw if isinstance(raw, dict) else {}
     out = {"phone": _digits(raw.get("phone"), 7, 15),
-           "whatsapp": _digits(raw.get("whatsapp"), 9, 15).lstrip("+"),
+           "whatsapp": whatsapp_number(raw.get("whatsapp")),
            "store_url": safe_url(raw.get("store_url"))}
     return {k: v for k, v in out.items() if v}
+
+
+def whatsapp_default_text(title: str) -> str:
+    return f'היי, הגעתי מהדף "{_clip(title, MAX_TITLE_CHARS)}" ואשמח לשמוע עוד.'
+
+
+def button_target(contact: dict, kind: str, text: str = "", title: str = "") -> str:
+    """Where a button finally lands: tel:, wa.me (WITH the prefilled text —
+    the visitor's own when the page sent one, else a default naming the
+    page) or the store. '' when the page has no such button. The number /
+    URL comes ONLY from the stored contact; `text` is only the message."""
+    from urllib.parse import quote
+    contact = normalize_contact(contact or {})
+    if kind == "call":
+        return f"tel:{contact['phone']}" if contact.get("phone") else ""
+    if kind == "whatsapp":
+        if not contact.get("whatsapp"):
+            return ""
+        message = " ".join(sanitize_text(text).split())[:MAX_WHATSAPP_TEXT] or whatsapp_default_text(title)
+        return f"https://wa.me/{contact['whatsapp']}?text={quote(message, safe='')}"
+    if kind == "store":
+        return contact.get("store_url", "")
+    return ""
+
+
+# ─── The rail: every landing response's headers ─────────────────────────────
+
+SANDBOX = "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+SCRIPT_CDNS = ("https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://unpkg.com")
+FONT_CSS = "https://fonts.googleapis.com"
+FONT_FILES = "https://fonts.gstatic.com"
+# Only when the client's Tag Manager is on (their own verified domain)
+GTM_HOSTS = ("https://www.googletagmanager.com", "https://*.googletagmanager.com",
+             "https://www.google-analytics.com", "https://*.google-analytics.com",
+             "https://*.analytics.google.com", "https://www.google.com", "https://*.doubleclick.net",
+             "https://googleads.g.doubleclick.net", "https://www.googleadservices.com")
+
+
+def _origin(url_or_host: str) -> str:
+    from urllib.parse import urlparse
+    value = (url_or_host or "").strip()
+    if not value:
+        return ""
+    host = urlparse(value).hostname if "://" in value else value.split("/")[0].split(":")[0]
+    host = (host or "").lower()
+    return f"https://{host}" if re.match(r"^[a-z0-9.-]+$", host or "") and "." in host else ""
+
+
+def page_csp(hosts=(), gtm: bool = False) -> str:
+    """THE Content-Security-Policy of every landing page response.
+
+    `sandbox` WITHOUT allow-same-origin is the one hard rule: the page runs
+    in an opaque origin. Hosts are listed explicitly (never 'self': under an
+    opaque origin 'self' is not a reliable match): our app host (photos, the
+    capture form) and the host the visitor is on (the custom domain).
+    Inline script and style are allowed — the model writes the page."""
+    origins = []
+    for value in (os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com"), *hosts):
+        origin = _origin(value)
+        if origin and origin not in origins:
+            origins.append(origin)
+    own = " ".join(origins)
+    tags = " ".join(GTM_HOSTS) if gtm else ""
+    cdns = " ".join(SCRIPT_CDNS)
+    parts = [
+        SANDBOX,
+        "default-src 'none'",
+        f"script-src 'unsafe-inline' {cdns} {tags}".strip(),
+        f"style-src 'unsafe-inline' {FONT_CSS} {cdns}",
+        f"font-src {FONT_FILES} {cdns} data:",
+        f"img-src {own} data: blob: {tags}".strip(),
+        f"media-src {own} data: blob:",
+        f"connect-src {tags}".strip() if gtm else "connect-src 'none'",
+        f"frame-src {tags}".strip() if gtm else "frame-src 'none'",
+        f"form-action {own}",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+    ]
+    return "; ".join(parts)
+
+
+def page_headers(hosts=(), gtm: bool = False, preview: bool = False) -> dict:
+    """Headers for EVERY landing page / legal page / preview response."""
+    headers = {"Cache-Control": "no-store", "Content-Security-Policy": page_csp(hosts, gtm),
+               "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin"}
+    if preview:
+        headers["X-Robots-Tag"] = "noindex"
+    return headers
 
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -318,7 +444,7 @@ def update_page(client_id: int, page_id: int, fields: dict, source: str = "clien
         merged = {"title": page.get("title", ""), "content": page.get("content") or {},
                   "contact": page.get("contact") or {}, **visible}
         size = page_size({**page, **merged})
-        if size > MAX_PAGE_BYTES:
+        if size > size_limit(merged["content"]):
             return {"success": False, "code": "ERR_LANDING_TOO_LARGE", "errors": [f"{size} bytes"]}
         version = _add_version(client_id, page_id, merged, source, size)
         if version:
@@ -431,7 +557,7 @@ def publish(client_id: int, page_id: int, version: int = None) -> dict:
     if page.get("status") != "published" and count_active(client_id) >= MAX_ACTIVE_PAGES:
         return {"success": False, "code": "ERR_LANDING_ACTIVE_LIMIT"}
     visible = visible_of(client_id, page, number or None)
-    if page_size({**page, **visible}) > MAX_PAGE_BYTES:
+    if page_size({**page, **visible}) > size_limit(visible["content"]):
         return {"success": False, "code": "ERR_LANDING_TOO_LARGE"}
     changes = {"status": "published", "updated_at": _now(), "unpublished_reason": ""}
     if number:
@@ -536,7 +662,9 @@ h1{font-size:clamp(26px,5vw,40px);line-height:1.2;margin:0 0 12px}
 .sub{font-size:clamp(16px,2.4vw,19px);color:var(--muted);margin:0 0 28px}
 ul.benefits{list-style:none;padding:0;margin:0 0 32px}
 ul.benefits li{padding:9px 0 9px 0;border-bottom:1px solid var(--line);font-size:16px}
-ul.benefits li::before{content:"✓";color:var(--accent);font-weight:700;margin-inline-end:10px}
+ul.benefits li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-inline-end:12px;vertical-align:middle}
+.logo img{max-height:64px;width:auto;margin:0 0 18px}
+.actions a svg{vertical-align:-3px;margin-inline-end:6px}
 section.block{margin:0 0 28px}
 section.block h2{font-size:20px;margin:0 0 8px}
 section.block p{margin:0;color:var(--muted)}
@@ -630,6 +758,7 @@ def _attribution_hidden_fields(query_params, path: str, referrer: str) -> str:
 
 
 def _footer(business: str, links: dict) -> str:
+    """The fixed template's footer. A designed page gets _footer_inline."""
     nav = ""
     if links.get("privacy") or links.get("terms"):
         nav = "<nav>"
@@ -642,15 +771,96 @@ def _footer(business: str, links: dict) -> str:
     return f"<footer>{nav}{owner}נבנה ומתארח על ידי uallak</footer>"
 
 
+def _form_hidden(slug: str, public_url: str, form_stamp: str, query_params, path: str, referrer: str) -> str:
+    """The form's system fields — the SAME for the fixed template and a
+    designed page: honeypot, signed render stamp, source + page attribution,
+    the thank-you redirect, and the visitor's utm/click ids."""
+    attribution_fields = _attribution_hidden_fields(query_params or {}, path, referrer)
+    return (f'<div class="hp" aria-hidden="true" style="position:absolute;width:1px;height:1px;overflow:hidden;'
+            f'clip-path:inset(50%);white-space:nowrap"><label for="lp-website">אתר</label>'
+            f'<input id="lp-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>\n  '
+            f'<input type="hidden" name="lp_stamp" value="{_e(form_stamp)}">\n  '
+            f'<input type="hidden" name="source" value="website_form">\n  '
+            f'<input type="hidden" name="source_detail" value="{_e(source_detail_for(slug))}">\n  '
+            f'<input type="hidden" name="redirect" value="{_e(public_url)}?sent=1">\n  '
+            f'{attribution_fields}')
+
+
+def _consent_inline(business_name: str, links: dict) -> str:
+    who = _e(business_name) if business_name else "בעל העסק"
+    privacy_link = (f' — <a href="{_e(links["privacy"])}">מדיניות הפרטיות</a>' if links.get("privacy") else "")
+    return f"בשליחת הטופס אתם מאשרים ל{who} לחזור אליכם בנוגע לפנייה. הפרטים נשמרים רק לשם כך{privacy_link}."
+
+
+def _footer_inline(business: str, links: dict) -> str:
+    parts = []
+    if links.get("privacy"):
+        parts.append(f'<a href="{_e(links["privacy"])}">מדיניות פרטיות</a>')
+    if links.get("terms"):
+        parts.append(f'<a href="{_e(links["terms"])}">תנאי שימוש</a>')
+    owner = f"{_e(business)} · " if business else ""
+    return " · ".join(parts) + (" · " if parts else "") + f"{owner}נבנה ומתארח על ידי uallak"
+
+
+def render_creative(page: dict, page_html: str, capture_url: str, public_url: str, query_params=None,
+                    path: str = "", referrer: str = "", visible: dict = None, business_name: str = "",
+                    links: dict = None, gtm_container: str = "", form_stamp: str = "",
+                    preview: bool = False) -> str:
+    """A designed page (core/landing_creative) with its placeholders filled
+    for THIS request. Served only with page_headers() — the sandbox."""
+    from core import landing_creative
+    links = links or {}
+    content = normalize_content((visible or {}).get("content") or page.get("content") or {})
+    slug = re.sub(r"[^a-z0-9-]", "", str(page.get("slug") or ""))
+    owner = int(page.get("client_id") or 0)
+    # A button the page uses but the client has no target for falls back to
+    # the next one, finally to the form — never a dead link
+    fallback = links.get("whatsapp") or links.get("call") or "#lead"
+    values = {
+        "FORM_ACTION": _e(capture_url),
+        "FORM_HIDDEN": _form_hidden(slug, public_url, form_stamp, query_params, path, referrer),
+        "WHATSAPP_URL": _e(links.get("whatsapp") or links.get("call") or "#lead"),
+        "CALL_URL": _e(links.get("call") or links.get("whatsapp") or "#lead"),
+        "STORE_URL": _e(links.get("store") or fallback),
+        "CONSENT": _consent_inline(business_name, links),
+        "FOOTER": _footer_inline(business_name, links),
+    }
+    gtm = _gtm_head(gtm_container) if not preview else ""
+    events = landing_creative.gtm_events_script(slug, TRACKING_EVENTS) if gtm else ""
+    head_extra = '<meta name="robots" content="noindex,nofollow">' if preview else ""
+    return landing_creative.fill(
+        page_html, client_id=owner, refs=content["images"] if owner else [], values=values,
+        head_extra=head_extra + gtm,
+        body_start=landing_creative.PREVIEW_BANNER if preview else "",
+        body_extra=(landing_creative.PREVIEW_SCRIPT if preview else "") + events)
+
+
+# Inline SVG icons for the fixed template's buttons (no emojis anywhere)
+_ICON = {
+    "call": '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 '
+            '5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>',
+    "whatsapp": '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" '
+                'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1.3-4.2A8 8 0 1 1 '
+                '8.4 18.9z"/></svg>',
+    "store": '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" '
+             'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 11a2 2 0 0 1-2 '
+             '1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+}
+
+
 def render_page(page: dict, capture_url: str, public_url: str,
                 sent: bool = False, query_params=None, path: str = "",
                 referrer: str = "", visible: dict = None, business_name: str = "",
                 links: dict = None, gtm_container: str = "", form_stamp: str = "",
-                preview: bool = False) -> str:
-    """The whole page, as one self-contained HTML document. No external CSS,
-    no fonts, and NO JavaScript unless the client's own Tag Manager is on
-    (custom domain only) — a landing page's only job is to load instantly and
-    capture a lead, and every external request is a chance to be slow.
+                preview: bool = False, creative: bool = None) -> str:
+    """The whole page, as one self-contained HTML document.
+
+    A version with a designed page (`content["html"]`) renders through
+    render_creative unless the kill switch is off (`creative`: None = ask
+    landing_creative.enabled()). Otherwise — and as the automatic fallback —
+    the fixed template below: no external CSS, no fonts, and NO JavaScript
+    unless the client's own Tag Manager is on (custom domain only).
 
     `visible`: the version to render (landing_pages.visible_of); default the
     page row itself. `links`: call / whatsapp / store (our counting
@@ -666,6 +876,13 @@ def render_page(page: dict, capture_url: str, public_url: str,
                           "contact": page.get("contact") or {}}
     content = normalize_content(visible.get("content") or {})
     links = links or {}
+    if content.get("html"):
+        if creative is None:
+            from core import landing_creative
+            creative = landing_creative.enabled()
+        if creative:
+            return render_creative(page, content["html"], capture_url, public_url, query_params, path, referrer,
+                                   visible, business_name, links, gtm_container, form_stamp, preview)
     title = _e(visible.get("title") or content["headline"] or "")
     slug = re.sub(r"[^a-z0-9-]", "", str(page.get("slug") or ""))
 
@@ -717,24 +934,26 @@ def render_page(page: dict, capture_url: str, public_url: str,
                    f'style="background-image:linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url(\'{bg_url}\')">'
                    f"{heading}</header>")
 
+    logo = next((r for r in refs if r["placement"] == "logo"), None)
+    if logo:
+        hero_html = (f'<div class="logo">{img(logo, "logo", lazy=False)}</div>' + hero_html)
+
     actions = []
     if links.get("call"):
-        actions.append(f'<a href="{_e(links["call"])}" data-track="call">📞 התקשרו עכשיו</a>')
+        actions.append(f'<a href="{_e(links["call"])}" data-track="call">{_ICON["call"]}התקשרו עכשיו</a>')
     if links.get("whatsapp"):
-        actions.append(f'<a class="wa" href="{_e(links["whatsapp"])}" data-track="whatsapp">💬 וואטסאפ</a>')
+        actions.append(f'<a class="wa" href="{_e(links["whatsapp"])}" data-track="whatsapp">'
+                       f'{_ICON["whatsapp"]}דברו איתנו בוואטסאפ</a>')
     if links.get("store"):
-        actions.append(f'<a href="{_e(links["store"])}" data-track="store">🛒 לרכישה באתר</a>')
+        actions.append(f'<a href="{_e(links["store"])}" data-track="store">{_ICON["store"]}לרכישה באתר</a>')
     actions_html = f'<div class="actions">{"".join(actions)}</div>' if actions else ""
 
-    attribution_fields = _attribution_hidden_fields(query_params or {}, path, referrer)
+    hidden_fields = _form_hidden(slug, public_url, form_stamp, query_params, path, referrer)
 
     sent_html = ('<div class="sent">תודה! קיבלנו את הפרטים ונחזור אליכם בהקדם.</div>'
                  if sent else "")
     note_html = f'<p class="note">{_e(content["form_note"])}</p>' if content["form_note"] else ""
-    who = _e(business_name) if business_name else "בעל העסק"
-    privacy_link = (f' — <a href="{_e(links["privacy"])}">מדיניות הפרטיות</a>' if links.get("privacy") else "")
-    consent_html = (f'<p class="consent">בשליחת הטופס אתם מאשרים ל{who} לחזור אליכם בנוגע לפנייה. '
-                    f'הפרטים נשמרים רק לשם כך{privacy_link}.</p>')
+    consent_html = f'<p class="consent">{_consent_inline(business_name, links)}</p>'
     gtm = _gtm_head(gtm_container) if not preview else ""
     events = _gtm_events(slug) if gtm else ""
     robots = "noindex,nofollow" if preview else "index,follow"
@@ -768,12 +987,7 @@ def render_page(page: dict, capture_url: str, public_url: str,
   <input id="lp-email" name="email" type="email" autocomplete="email">
   <label for="lp-message">הודעה (לא חובה)</label>
   <textarea id="lp-message" name="message"></textarea>
-  <div class="hp" aria-hidden="true"><label for="lp-website">אתר</label><input id="lp-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
-  <input type="hidden" name="lp_stamp" value="{_e(form_stamp)}">
-  <input type="hidden" name="source" value="website_form">
-  <input type="hidden" name="source_detail" value="{_e(source_detail_for(slug))}">
-  <input type="hidden" name="redirect" value="{_e(public_url)}?sent=1">
-  {attribution_fields}
+  {hidden_fields}
   <button type="submit"{' disabled' if preview else ''}>{_e(content['cta_text'])}</button>
   {note_html}
   {consent_html}
@@ -785,13 +999,25 @@ def render_page(page: dict, capture_url: str, public_url: str,
 </html>"""
 
 
+def size_limit(content: dict) -> int:
+    """The fixed template's product limit, or — for a designed page — only
+    the storage guard (never a creative limit)."""
+    return MAX_CREATIVE_BYTES if isinstance(content, dict) and content.get("html") else MAX_PAGE_BYTES
+
+
 def page_size(page: dict) -> int:
-    """Bytes of the rendered page — the size limit's measure."""
-    visible = {"title": page.get("title", ""), "content": page.get("content") or {},
+    """Bytes of the rendered page — the size limit's measure. A designed page
+    is measured as stored (its placeholders are a few hundred bytes either
+    way), so the measure does not depend on the kill switch."""
+    content = page.get("content") or {}
+    if isinstance(content, dict) and content.get("html"):
+        return len(str(content["html"]).encode("utf-8"))
+    visible = {"title": page.get("title", ""), "content": content,
                "contact": page.get("contact") or {}}
     links = {"call": "https://x", "whatsapp": "https://x", "store": "https://x",
              "privacy": "https://x", "terms": "https://x"}
-    return len(render_page(page, "https://x", "https://x", visible=visible, links=links).encode("utf-8"))
+    return len(render_page(page, "https://x", "https://x", visible=visible, links=links,
+                           creative=False).encode("utf-8"))
 
 
 # ─── The legal pages every landing page links to ─────────────────────────────

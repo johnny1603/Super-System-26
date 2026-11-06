@@ -591,9 +591,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   site `website_agent` builds: no shared table, renderer or hosting path. All clients' pages
   are served by ONE route on this app (`/lp/{client_slug}/{page_slug}`) — never a hosting
   project per page. 3 included per client, **enforced server-side**; a 4th is blocked and
-  priced by a human, never by code. Content is STRUCTURED and escaped into a fixed template
-  — raw HTML is never stored, because these serve from the same origin as the dashboard
-  session cookie. **Owned + versioned (2026-11-01, `docs/LANDING_PAGES.md`)**: every write is a
+  priced by a human, never by code. **Creative pages (2026-11-07, `docs/LANDING_PAGES.md`
+  §11):** the copy is structured, then `core/landing_creative` (opus, high effort, 64k tokens)
+  designs a whole page into `content["html"]` on a new version, from `design-reference/`
+  (manifest.json with niche/mood tags + `DESIGN_PLAYBOOK.md` + exemplar — few-shot, never
+  copied). THE rail: every landing response carries `landing_pages.page_headers()` — CSP
+  `sandbox` WITHOUT allow-same-origin (opaque origin, so the dashboard cookie is unreachable).
+  Kill switch `LANDING_CREATIVE_HTML_ENABLED` (default ON → off = the fixed template, which is
+  also the fallback on any failure). Generations logged as `landing_generation` activity +
+  cost rows, shown in `/admin/landing/`. `tests/test_landing_creative.py`. **Owned + versioned (2026-11-01, `docs/LANDING_PAGES.md`)**: every write is a
   `landing_page_versions` row; only the client's `publish_landing_page` card (אורי's chat,
   preview link) puts a version live; one-tap revert; own counters + form anti-spam +
   Tag-Manager-only-on-their-verified-domain in `core/landing_tracking.py`; privacy/terms

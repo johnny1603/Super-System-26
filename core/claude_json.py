@@ -92,6 +92,15 @@ WEB_SEARCH_TOOL = {
     "max_uses": 3,
     "user_location": {"type": "approximate", "country": "IL", "timezone": "Asia/Jerusalem"},
 }
+# Anthropic's server-side web fetch (2026-11-07, the landing lens): reads a
+# page that search returned — its structure, not just a snippet. Capped per
+# answer and per page; no per-fetch fee (tokens only).
+WEB_FETCH_TOOL = {
+    "type": "web_fetch_20260209",
+    "name": "web_fetch",
+    "max_uses": 3,
+    "max_content_tokens": 8000,
+}
 # Server-side tools can pause mid-turn at their iteration limit
 # (stop_reason == "pause_turn"); re-sending the conversation resumes it
 MAX_PAUSE_TURN_CONTINUATIONS = 3
@@ -351,7 +360,7 @@ def _sourced_urls(response) -> list:
 
 def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_MODEL,
                            client_id=None, cost_category="claude_api_search",
-                           with_sources=False):
+                           with_sources=False, fetch=False):
     """TEXT-mode sibling of safe_claude_json_call, for answers that need live
     web search. Deliberately a SEPARATE code path: search results attach
     citations that split the text into multiple blocks, which doesn't mix with
@@ -369,8 +378,11 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
     - `with_sources=True` returns `(text, sourced_urls)` instead of just the
       text - the URLs search actually returned, across every continuation.
       Default False keeps every existing caller's contract unchanged.
+    - `fetch=True` also declares the server-side web_fetch tool (the model
+      may open pages that search returned).
     """
     client = _client()
+    tools = [WEB_SEARCH_TOOL] + ([WEB_FETCH_TOOL] if fetch else [])
     messages = [{"role": "user", "content": user_message}]
     total_input = total_output = total_searches = total_cache_read = total_cache_write = 0
     sourced = []
@@ -382,7 +394,7 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
             max_tokens=max_tokens,
             system=system,
             messages=messages,
-            tools=[WEB_SEARCH_TOOL],
+            tools=tools,
         )
         usage = usage_tokens(response)
         total_input += usage["input"]

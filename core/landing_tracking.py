@@ -213,6 +213,44 @@ def _ip_allowed(client_id: int, ip: str, now: float) -> bool:
     return True
 
 
+INTEREST_FIELD = "interest"
+MAX_INTEREST_CHARS = 120
+
+
 def clean_payload(payload: dict) -> dict:
-    """The fields that are ours, not the visitor's, never reach the lead row."""
-    return {k: v for k, v in payload.items() if k not in (HONEYPOT_FIELD, STAMP_FIELD)}
+    """The fields that are ours, not the visitor's, never reach the lead row.
+    A designed page's `interest` (the option the visitor picked — "נעליים",
+    "סט שלם") has no column of its own, so it leads the lead's message,
+    where the client reads it in the leads list."""
+    out = {k: v for k, v in payload.items() if k not in (HONEYPOT_FIELD, STAMP_FIELD, INTEREST_FIELD)}
+    interest = " ".join(str(payload.get(INTEREST_FIELD) or "").split())[:MAX_INTEREST_CHARS]
+    if interest:
+        message = str(out.get("message") or "").strip()
+        out["message"] = f"מתעניין/ת ב: {interest}" + (f"\n{message}" if message else "")
+    return out
+
+
+def redirect_allowed(client_id: int, target: str) -> bool:
+    """A landing form's thank-you redirect, judged WITHOUT the Referer: a
+    sandboxed page has an opaque origin, so browsers may send no usable
+    Referer at all. Allowed only back to a landing page of THIS client — on
+    our app host under /lp/<…-client_id>/, or on the client's own verified
+    hostname. Anything else is ignored (never an open redirect)."""
+    import os
+    import re
+    from urllib.parse import urlparse
+    parts = urlparse(str(target or "").strip())
+    if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc or parts.port not in (None, 443):
+        return False
+    host = parts.hostname.lower()
+    app_host = (urlparse(os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")).hostname or "").lower()
+    if host == app_host:
+        match = re.match(r"^/lp/[a-z0-9-]*?(\d+)/[a-z0-9-]+/?$", parts.path or "")
+        return bool(match) and int(match.group(1)) == int(client_id)
+    try:
+        from core import landing_domains
+        state = landing_domains.get_state(client_id)
+    except Exception:
+        return False
+    return state.get("mode") == "active" and host == str(state.get("hostname") or "").lower() \
+        and bool(re.match(r"^/[a-z0-9-]+/?$", parts.path or ""))

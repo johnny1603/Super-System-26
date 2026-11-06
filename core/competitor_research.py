@@ -79,12 +79,12 @@ ACTIVITY_TYPE = "competitor_research_completed"
 
 # One lens per consuming agent. The lens decides the prompt and the TTL; the
 # grounding context is identical for all of them.
-LENSES = ("media", "website", "ads")
+LENSES = ("media", "website", "ads", "landing")
 
 # Ads creative rotates fastest, site design slowest — TTLs follow that, and all
 # of them are long enough that research is a per-client-per-fortnight cost, not
 # a per-generation one.
-CACHE_DAYS = {"media": 14, "website": 30, "ads": 7}
+CACHE_DAYS = {"media": 14, "website": 30, "ads": 7, "landing": 14}
 DEFAULT_CACHE_DAYS = 14
 
 # Cap the research spend per call. claude_web_search_call's own WEB_SEARCH_TOOL
@@ -197,6 +197,26 @@ MESSAGING: (up to 4 lines — the hooks, proof points and objections addressed)
 AUDIENCE SIGNALS: (up to 3 lines — who the messaging is visibly aimed at)
 SATURATION: (1-2 lines — how crowded this looks and what that implies for a small budget)
 GAP: (1-2 lines — the angle nobody is running)""",
+
+    # 2026-11-07: REAL landing pages in the niche, read (web_fetch) for their
+    # structure. The designed-page agent (core/landing_creative) learns the
+    # niche's conventions from it and is told never to copy or name them.
+    "landing": """You are the landing-page researcher for uallak, an Israeli marketing agency.
+Before we design a landing page for the client, find REAL landing pages in this niche in Israel
+(campaign / paid-search landing pages, not home pages): search, then FETCH up to 3 of the best
+results and read their STRUCTURE — section order, the hero, how they ask for the enquiry, what
+proof they show and how, the visual register. Say plainly when you could fetch none.
+""" + _COMMON_RULES + """
+- Never quote a page's copy at length and never describe one page so that it could be rebuilt.
+  Describe the conventions across pages.
+Structure, max 16 short lines total:
+PAGES READ: (up to 4 — business name + the search that surfaced it; say which you actually fetched)
+STRUCTURE: (up to 4 lines — the section order and page length that recur)
+HERO PATTERNS: (up to 2 lines)
+CONVERSION MECHANICS: (up to 3 lines — form length and fields, WhatsApp, phone, sticky buttons)
+PROOF AND TRUST: (up to 2 lines — what kind; never invented numbers)
+VISUAL REGISTER: (up to 2 lines — and what reads as dated)
+GAP: (1-2 lines — what none of them does well, i.e. our opening)""",
 }
 
 
@@ -591,7 +611,9 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             max_tokens=RESEARCH_MAX_TOKENS,
             client_id=client_id,
             cost_category=f"claude_competitor_research_{lens}",
-            with_sources=True)
+            with_sources=True,
+            # The landing lens READS the pages it finds (structure, not snippets)
+            fetch=lens == "landing")
         # A YouTube URL came from the API itself, so it is every bit as sourced
         # as a web-search result — fold both in and let one verifier judge them.
         sourced = list(sourced) + [v.get("url", "") for v in youtube_videos] \
