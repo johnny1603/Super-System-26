@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -59,6 +60,7 @@ from core.session import (
     session_token_version, create_google_login_state, verify_google_login_state,
     create_google_link_token, verify_google_link_token,
     create_wp_connect_state, verify_wp_connect_state,
+    create_wc_auth_state, verify_wc_auth_state, verify_store_purchase_token,
     create_admin_view_token, verify_admin_view_token, admin_session_fingerprint,
 )
 from core import admin_view
@@ -1418,11 +1420,7 @@ def client_connect_chat(req: ConnectChatRequest, request: Request):
     from agents.client_agent import log_communication
     from agents.support_agent import persona_channel
     channel = persona_channel(result["persona"])
-    if key == "store":
-        chip = {"has": connection_catalog.CHIP_STORE_HAS, "none": connection_catalog.CHIP_STORE_HOW,
-                "done": connection_catalog.CHIP_DONE}.get(req.step)
-    else:
-        chip = connection_catalog.chip_label(req.step, lang)
+    chip = connection_catalog.chip_label(req.step, lang)
     if chip:
         log_communication(client_id, "inbound", channel, chip)
     for text in result.get("messages") or []:
@@ -4713,11 +4711,6 @@ def client_tool_disconnect(tool: str, request: Request):
 
 # ─── Online store, READ-ONLY (agents/store_agent, docs/STORE.md) ────────────
 
-class StoreConnectRequest(BaseModel):
-    consumer_key: str
-    consumer_secret: str
-    site_url: str = ""
-
 @app.get("/api/client/store")
 def client_store_status(request: Request):
     # Connected or not + method; never a key
@@ -4725,29 +4718,120 @@ def client_store_status(request: Request):
     from agents import store_agent
     return {"success": True, "data": store_agent.status(client_id)}
 
-@app.post("/api/client/store/connect")
-def client_store_connect(req: StoreConnectRequest, request: Request):
-    # The recommended path: a READ key, verified live before it is stored
-    # (encrypted). The key is never echoed back or logged.
+# One-click store connection: WooCommerce's OWN authorization screen
+# (/wc-auth/v1/authorize, scope=read — docs/STORE.md). The client logs in to
+# their store and presses Approve; the store POSTs a read-only key to our
+# callback. No key is ever typed, pasted or shown, and no client route takes one.
+@app.get("/api/oauth/woocommerce/start")
+def store_authorize_start(request: Request):
     client_id = _require_session(request)
     if _admin_view_client(request) is not None:
         raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
     from agents import store_agent
-    result = store_agent.connect(client_id, req.consumer_key, req.consumer_secret, req.site_url)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail={"code": result["code"], "message": result["error"]})
-    return {"success": True, "data": result}
+    site = store_agent.store_site(client_id)
+    if not site:
+        # We don't know the store's address: the website connection comes first
+        return RedirectResponse(url="/dashboard/?connect_error=store_no_site", status_code=303)
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    nonce = secrets.token_urlsafe(24)
+    store_agent.remember_pending(client_id, nonce)
+    state = create_wc_auth_state(client_id, site, nonce)
+    try:
+        url = store_agent.authorize_url(site, state, f"{base}/api/store/wc-auth/return",
+                                        f"{base}/api/store/wc-auth/callback")
+    except ValueError:
+        return RedirectResponse(url="/dashboard/?connect_error=store", status_code=303)
+    return RedirectResponse(url=url, status_code=303)
 
-@app.post("/api/client/store/connect-site")
-def client_store_connect_site(request: Request):
-    # The fallback: the website connection's password, if it can read the store
-    client_id = _require_session(request)
-    if _admin_view_client(request) is not None:
-        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+@app.post("/api/store/wc-auth/callback")
+async def store_authorize_callback(request: Request):
+    # PUBLIC, server-to-server from the client's store. 200 ONLY when the key
+    # is stored: any other answer makes WooCommerce delete the key it just
+    # made. The body (it carries the key) is never logged or echoed.
+    try:
+        raw = await request.body()
+        if len(raw) > 4096:
+            return JSONResponse({"success": False}, status_code=400)
+        body = json.loads(raw or b"{}")
+    except Exception:
+        return JSONResponse({"success": False}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"success": False}, status_code=400)
+    pinned = verify_wc_auth_state(str(body.get("user_id") or ""))
+    if not pinned:
+        print("[store authorize] callback with an invalid or expired state — refused")
+        return JSONResponse({"success": False}, status_code=403)
+    client_id, site, nonce = pinned
     from agents import store_agent
-    result = store_agent.connect_with_site(client_id)
+    if deletion_guard.is_deleting(client_id) or not store_agent.consume_pending(client_id, nonce):
+        print(f"[store authorize] client {client_id}: state already used or not ours — refused")
+        return JSONResponse({"success": False}, status_code=403)
+    result = await asyncio.to_thread(store_agent.connect_authorized, client_id, site, body)
+    if not result.get("success"):
+        return JSONResponse({"success": False, "code": result.get("code")}, status_code=400)
+    try:
+        log_activity(client_id, "store", "store_connected_one_click", {"verified": result.get("verified")}, {})
+    except Exception:
+        pass
+    return JSONResponse({"success": True})
+
+@app.get("/api/store/wc-auth/return")
+def store_authorize_return(request: Request, success: str = "", user_id: str = ""):
+    # The browser comes back here (success=1|0&user_id=<our state>). The
+    # state is checked and then dropped from the address bar by the redirect.
+    pinned = verify_wc_auth_state(user_id)
+    if not pinned:
+        return _wp_connect_redirect("/dashboard/?connect_error=store_expired")
+    from agents import store_agent
+    if success != "1":
+        return _wp_connect_redirect("/dashboard/?connect_error=store_denied")
+    if store_agent.is_connected(pinned[0]):
+        return _wp_connect_redirect("/dashboard/?connected=store")
+    return _wp_connect_redirect("/dashboard/?connect_error=store")
+
+@app.post("/api/store/purchase/{token}")
+async def store_purchase_record(token: str, request: Request):
+    # PUBLIC: the purchase record tag in the client's Tag Manager (core/
+    # store_purchases). Always 204 — a buyer's thank-you page never sees an
+    # error, and a caller learns nothing. Order number / total / currency only.
+    from core import store_purchases
+    client_id = verify_store_purchase_token(token)
+    if not client_id or deletion_guard.is_deleting(client_id):
+        return Response(status_code=204)
+    if not store_purchases.rate_ok(_request_ip(request)):
+        return Response(status_code=204)
+    try:
+        raw = await request.body()
+        payload = json.loads(raw) if raw and len(raw) <= store_purchases.MAX_BODY_BYTES else {}
+    except Exception:
+        payload = {}
+    await asyncio.to_thread(store_purchases.record, client_id, payload)
+    return Response(status_code=204)
+
+class AdminStoreConnectRequest(BaseModel):
+    client_id: int
+    consumer_key: str = ""
+    consumer_secret: str = ""
+    site_url: str = ""
+    use_website_connection: bool = False
+
+@app.post("/api/admin/store/connect")
+def admin_store_connect(req: AdminStoreConnectRequest, request: Request):
+    # ADMIN FALLBACK ONLY (/admin/connections/): a read key the team has, or
+    # the website connection. Never offered to clients. The key is never
+    # echoed back or logged; a rejected key is not stored.
+    _require_admin(request)
+    from agents import store_agent
+    if req.use_website_connection:
+        result = store_agent.connect_with_site(req.client_id)
+    else:
+        result = store_agent.connect(req.client_id, req.consumer_key, req.consumer_secret, req.site_url)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail={"code": result["code"], "message": result["error"]})
+    try:
+        log_activity(req.client_id, "store", "store_connected_by_admin", {"method": result.get("method")}, {})
+    except Exception:
+        pass
     return {"success": True, "data": result}
 
 @app.post("/api/client/store/disconnect")

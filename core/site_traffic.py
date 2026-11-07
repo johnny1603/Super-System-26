@@ -70,6 +70,7 @@ def _today() -> date:
 
 def forget(client_id: int):
     _cache.pop(client_id, None)
+    _ecom_cache.pop(client_id, None)
 
 
 # ─── Pure logic (tested directly) ────────────────────────────────────────────
@@ -259,6 +260,70 @@ def traffic(client_id: int, force_refresh: bool = False) -> dict:
         return failed
     result = {"enabled": True, "connected": True, "property": prop, "pulled_at": _now(), **figures}
     _cache[client_id] = (time.time(), result)
+    return result
+
+
+# ─── Ecommerce (2026-11-07, docs/STORE.md) ───────────────────────────────────
+# GA4's own purchase numbers, from the SAME read-only grant as traffic — no
+# new scope (analytics.readonly). Round 2: while ANALYTICS_ENABLED is off,
+# {"available": False, "why": "not_enabled"} and nothing is read.
+
+ECOMMERCE_METRICS = ("ecommercePurchases", "purchaseRevenue", "transactions")
+ECOMMERCE_RANGES = [_range("last_7_days", "7daysAgo", "yesterday"),
+                    _range("last_30_days", "30daysAgo", "yesterday"),
+                    _range("last_90_days", "90daysAgo", "yesterday")]
+_ecom_cache = {}
+
+
+def parse_ecommerce(report: dict) -> dict:
+    """Pure: runReport rows (dateRange dimension) → {range: {metric: value}}."""
+    out = {}
+    for row in report.get("rows") or []:
+        dims = row.get("dimensionValues") or []
+        name = (dims[0] or {}).get("value") if dims else ""
+        values = row.get("metricValues") or []
+        if name:
+            out[name] = {m: float((values[i] or {}).get("value") or 0) if i < len(values) else 0.0
+                         for i, m in enumerate(ECOMMERCE_METRICS)}
+    return out
+
+
+def ecommerce(client_id: int) -> dict:
+    """{"available": True, "windows": {last_N_days: {purchases, revenue,
+    transactions}}, "pulled_at"} — or {"available": False, "why"}. Never
+    raises. Windows end yesterday, like traffic."""
+    from core.round2_flags import analytics_enabled
+    if not analytics_enabled():
+        return {"available": False, "why": "not_enabled"}
+    cached = _ecom_cache.get(client_id)
+    if cached and cached[0] > time.time() - CACHE_TTL_SECONDS:
+        return cached[1]
+    try:
+        row = _row(client_id)
+    except Exception:
+        return {"available": False, "why": "sync_failed"}
+    prop = (row or {}).get("account_id") or ""
+    if not row:
+        return {"available": False, "why": "not_connected"}
+    if row.get("status") != "active" or not prop.startswith("properties/"):
+        return {"available": False, "why": "property_not_chosen"}
+    from core import analytics_service as ga
+    from core.secrets_vault import get_client_secret
+    try:
+        parsed = parse_ecommerce(ga.run_report(get_client_secret(client_id, PLATFORM, row=row), prop,
+                                               ECOMMERCE_RANGES, list(ECOMMERCE_METRICS), keep_empty_rows=True))
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] ecommerce read failed for client {client_id}: {type(e).__name__}")
+        failed = {"available": False, "why": "sync_failed"}
+        _ecom_cache[client_id] = (time.time() - CACHE_TTL_SECONDS + FAILURE_CACHE_TTL_SECONDS, failed)
+        return failed
+    windows = {r["name"]: {"purchases": int((parsed.get(r["name"]) or {}).get("ecommercePurchases", 0)),
+                           "revenue": round((parsed.get(r["name"]) or {}).get("purchaseRevenue", 0.0), 2),
+                           "transactions": int((parsed.get(r["name"]) or {}).get("transactions", 0))}
+               for r in ECOMMERCE_RANGES}
+    result = {"available": True, "source": "ga4", "property": prop, "windows": windows, "pulled_at": _now(),
+              "currency_note": "revenue is in the GA4 property's own currency"}
+    _ecom_cache[client_id] = (time.time(), result)
     return result
 
 

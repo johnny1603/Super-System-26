@@ -48,6 +48,7 @@ never run with a live grant — same accepted MVP state as every other
 service module before its first real key.
 """
 import os
+import re
 from urllib.parse import urlencode
 
 import httpx
@@ -672,6 +673,64 @@ def purchase_live(version: dict) -> dict:
     if not tag_ok:
         missing.append("tag")
     return {"live": not missing, "missing": missing}
+
+
+# ─── Our own purchase record (2026-11-07, core/store_purchases) ──────────────
+# A Custom HTML tag on the SAME purchase trigger (once per order): it sends
+# the order number, total and currency — the three values the GA4 tag sends —
+# to OUR endpoint, so אורי can answer "how many orders / how much" with no
+# store login and no Analytics permission. Same Tag Manager scopes as above;
+# nothing new is requested. Nothing about the buyer is read or sent.
+# text/plain via sendBeacon: no preflight, never delays the thank-you page.
+PURCHASE_BEACON = {"tag": "uallak — purchase record", "path": "/api/store/purchase/"}
+
+
+def purchase_beacon_html(endpoint_url: str) -> str:
+    url = str(endpoint_url or "")
+    if not re.fullmatch(r"https://[A-Za-z0-9.\-]+(:\d+)?/api/store/purchase/[A-Za-z0-9_=\-]+\.[0-9a-f]{64}", url):
+        raise ValueError("the purchase record address must be our https endpoint with its token")
+    v = PURCHASE["vars"]
+    return ("<script>(function(){try{var o={{" + v["order_id"] + "}};if(!o)return;"
+            "var d=JSON.stringify({o:String(o),v:{{" + v["total"] + "}},c:{{" + v["currency"] + "}}});"
+            "var u='" + url + "';"
+            "if(navigator.sendBeacon&&navigator.sendBeacon(u,d))return;"
+            "var x=new XMLHttpRequest();x.open('POST',u,true);x.setRequestHeader('Content-Type','text/plain');"
+            "x.send(d);}catch(e){}})();</script>")
+
+
+def purchase_beacon_tag_body(endpoint_url: str, trigger_id: str) -> dict:
+    return {"name": PURCHASE_BEACON["tag"], "type": "html",
+            "parameter": [{"type": "template", "key": "html", "value": purchase_beacon_html(endpoint_url)},
+                          {"type": "boolean", "key": "supportDocumentWrite", "value": "false"}],
+            "firingTriggerId": [str(trigger_id)], "tagFiringOption": "oncePerEvent"}
+
+
+def _beacon_html(tag: dict) -> str:
+    return next((p.get("value") or "" for p in tag.get("parameter") or [] if p.get("key") == "html"), "")
+
+
+def ensure_purchase_beacon_tag(refresh_token: str, workspace_path: str, endpoint_url: str,
+                               trigger_id: str) -> tuple:
+    want = purchase_beacon_html(endpoint_url)
+
+    def matches(tag):
+        return (tag.get("type") == "html" and not tag.get("paused") and _beacon_html(tag) == want
+                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
+    return ensure_entity(refresh_token, workspace_path, "tags",
+                         purchase_beacon_tag_body(endpoint_url, trigger_id), matches)
+
+
+def purchase_beacon_live(version: dict) -> dict:
+    """The record tag in a PUBLISHED version: unpaused Custom HTML, our name,
+    posting to our endpoint, firing on the once-per-order purchase trigger."""
+    trigger = next((t for t in version.get("trigger") or []
+                    if t.get("name") == PURCHASE["trigger"] and _purchase_trigger_matches(t)), None)
+    for tag in version.get("tag") or []:
+        if (tag.get("name") == PURCHASE_BEACON["tag"] and tag.get("type") == "html" and not tag.get("paused")
+                and PURCHASE_BEACON["path"] in _beacon_html(tag) and trigger
+                and str(trigger.get("triggerId")) in [str(x) for x in tag.get("firingTriggerId") or []]):
+            return {"live": True, "missing": []}
+    return {"live": False, "missing": ["record_tag" if trigger else "trigger"]}
 
 
 def publish_workspace(refresh_token: str, workspace_path: str,

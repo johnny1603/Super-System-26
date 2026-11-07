@@ -50,6 +50,21 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
   <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
   <div class="card muted">מכאן בלבד הסוכנים לוקחים קישורי הרשמה ומסלולים. שורה כבויה או בלי קישור הרשמה — הלקוח מקבל עזרה מאדם במקום קישור. "כלול" — הלקוח לא רואה כלום.</div>
   <div id="rows"><div class="card muted">טוען…</div></div>
+  <!-- Store: TEAM fallback only (agents/store_agent.connect / connect_with_site).
+       Clients connect in one click; they never see or paste a key. -->
+  <div class="card" id="storeFallback">
+    <h2>חנות — חיבור ידני (גיבוי לצוות בלבד)</h2>
+    <div class="muted">רק כשהחיבור בקליק אחד לא עובד אצל לקוח. מפתח קריאה בלבד שיש לצוות. המפתח נבדק מול החנות לפני שנשמר (מוצפן), ולא מוצג שוב.</div>
+    <label class="muted">מספר לקוח <input type="text" dir="ltr" id="sfClient" inputmode="numeric"></label>
+    <label class="muted">כתובת החנות (ריק = כתובת האתר המחובר) <input type="text" dir="ltr" id="sfSite" placeholder="https://"></label>
+    <label class="muted">Consumer key <input type="password" dir="ltr" id="sfKey" autocomplete="off"></label>
+    <label class="muted">Consumer secret <input type="password" dir="ltr" id="sfSecret" autocomplete="off"></label>
+    <div class="row">
+      <button id="sfKeyBtn">חיבור עם מפתח</button>
+      <button id="sfSiteBtn">חיבור דרך חיבור האתר</button>
+      <span class="muted" id="sfMsg"></span>
+    </div>
+  </div>
 </div>
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -110,6 +125,26 @@ document.getElementById("rows").addEventListener("click", async e => {
       ? "קישור חייב להתחיל ב-https:// ובלי רווחים" : "לא נשמר — לנסות שוב";
   }
 });
+async function storeFallback(useSite) {
+  const msg = document.getElementById("sfMsg");
+  const clientId = parseInt(document.getElementById("sfClient").value, 10);
+  if (!clientId) { msg.textContent = "חסר מספר לקוח"; return; }
+  const key = document.getElementById("sfKey"), secret = document.getElementById("sfSecret");
+  const body = {client_id: clientId, use_website_connection: useSite,
+                site_url: document.getElementById("sfSite").value.trim(),
+                consumer_key: useSite ? "" : key.value.trim(), consumer_secret: useSite ? "" : secret.value.trim()};
+  msg.textContent = "בודק מול החנות…";
+  try {
+    const res = await fetch("/api/admin/store/connect", {method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const data = await res.json().catch(() => ({}));
+    key.value = ""; secret.value = "";
+    msg.textContent = res.ok ? "מחובר ✓ (" + String((data.data && data.data.site) || "") + ")"
+      : ((data.detail && data.detail.message) || "לא חובר") + (data.detail && data.detail.code ? " [" + data.detail.code + "]" : "");
+  } catch (e) { msg.textContent = "לא חובר — לנסות שוב"; }
+}
+document.getElementById("sfKeyBtn").onclick = () => storeFallback(false);
+document.getElementById("sfSiteBtn").onclick = () => storeFallback(true);
 load().catch(err => { if (err.message !== "auth") document.getElementById("rows").innerHTML = '<div class="card muted">הטעינה נכשלה. אפשר לרענן.</div>'; });
 </script>
 <!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->

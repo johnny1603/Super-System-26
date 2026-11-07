@@ -11,7 +11,7 @@ It opens that connection's agent chat (`PERSONA` map) and runs one turn of
 | step | what the client sees |
 |---|---|
 | `start` | one question + two chips: "יש לי חשבון" / "אין לי עדיין" |
-| `has` | the card's existing connect flow (OAuth redirect, the key field on the card, the site check; Google Ads first shows its staff-access consent as a confirmation card; ManyChat goes to the team on WhatsApp) |
+| `has` | the card's existing connect flow (OAuth redirect, the key field on the card, the site check; Google Ads first shows its staff-access consent as a confirmation card; ManyChat goes to the team on WhatsApp). The store has no chips: one click (below) |
 | `none` | sign-up link + short Hebrew steps; **paid tier** adds the plan link, one recommended plan and "paid directly to the vendor, never to uallak" + a "סיימתי" chip. The full-website system (`website`) offers our own build instead, because uallak hosts and bills it (Step 0: InstaWP on our workspace, passed through in PRICING) |
 | `done` | verifies (`client_accounts` platform or `vendor_tools`) → "מחובר ✓"; not yet → ONE reminder after 2 days (`app_settings conn_reminder:<client>:<key>`, sent by `GET /api/connections/reminders`, X-Admin-Key, daily). Connections the system cannot verify go to the team |
 
@@ -31,6 +31,31 @@ never a guess. The owner edits rows at `/admin/connections/` (no deploy, audited
 Keys are pasted only in the card's own field (`/api/client/tools/{tool}/connect`
 → encrypted `client_accounts`). The chat flow never receives, echoes or logs a
 key; staff viewing as the client cannot run it.
+
+## The online store — no technical work, ever (2026-11-07)
+
+The store is the exception to the two-chip flow above. Details: docs/STORE.md.
+
+- **Default: nothing to connect.** Order totals come from data we already
+  have: our own purchase records (the purchase measurement we publish in their
+  Tag Manager also tells us order number, total and currency) and, once
+  Analytics is approved, GA4's ecommerce numbers. With neither, אורי says so
+  in one line and offers to set up purchase measurement (`configure_conversion`).
+- **Deeper order data (one order, statuses, refunds): ONE click.** The store
+  card is hidden until it's needed (connected, or the chat offers
+  `connect_store`). It has one button, "חיבור החנות בקליק אחד", and one line:
+  read-only, revocable. The click opens the store's own approval screen
+  (WooCommerce's built-in authorization); the client logs in to their store
+  and presses Approve; the store sends a read-only key to our server. The
+  `store` chat turn has no chips and no steps.
+- **Never:** a key field, a key in the chat, or wp-admin menus walked
+  through. The old "create a REST key" steps (`STORE_STEPS`) are gone.
+- **Team fallback only:** `/admin/connections/` → "חנות — חיבור ידני": a read
+  key the team has, or the website connection (`POST /api/admin/store/connect`,
+  admin session).
+- **Future, not built:** for sites we build or host (InstaWP or similar), we
+  connect the store from our side with no client action at all; a small uallak
+  WordPress plugin could do the same for any site later.
 
 ## Setup
 

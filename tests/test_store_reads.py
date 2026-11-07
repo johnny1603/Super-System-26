@@ -263,7 +263,7 @@ class Connection(Base):
         self.connect()
         self.assertEqual(DB_WRITES, [("upsert", 1, "woocommerce", "https://shop-one.example")])
         self.assertEqual(store_agent.status(1), {"connected": True, "method": "key", "site": "shop-one.example",
-                                                 "recommend_key": False})
+                                                 "recommend_one_click": False})
         store_agent.recent_orders(1, now=NOW)
         auth = STORE.calls[0][3]["Authorization"]
         self.assertTrue(auth.startswith("Basic "))
@@ -274,7 +274,7 @@ class Connection(Base):
         self.assertTrue(result["success"], result)
         self.assertEqual(ACCOUNTS[1]["access_token"], store_agent.SITE_MARKER)
         self.assertEqual(store_agent.status(1)["method"], "site")
-        self.assertTrue(store_agent.status(1)["recommend_key"])
+        self.assertTrue(store_agent.status(1)["recommend_one_click"])
 
     def test_site_fallback_needs_a_connected_site(self):
         self.assertEqual(store_agent.connect_with_site(2)["code"], "no_website")
@@ -289,36 +289,49 @@ class Connection(Base):
 # ─── Missing connection ──────────────────────────────────────────────────────
 
 class MissingConnection(Base):
-    def test_reads_say_not_connected_and_call_nothing(self):
-        self.assertEqual(store_agent.store_reads(9, "כמה הזמנות היו אתמול?"), {"connected": False})
+    def test_reads_say_not_connected_and_call_no_store(self):
+        reads = store_agent.store_reads(9, "כמה הזמנות היו אתמול?")
+        self.assertIs(reads["connected"], False)
+        # The no-login sources travel instead (nothing recorded in this stub)
+        self.assertIs(reads["measured"]["available"], False)
+        self.assertIn("one_click_possible", reads)
+        self.assertEqual(store_agent.store_reads(9, "שלום"), {"connected": False})   # not a store question
         self.assertEqual(store_agent.sales_summary(9), {"connected": False})
         self.assertEqual(store_agent.personal_answer(9, "מה הכתובת של הזמנה 101?"), {})
         self.assertEqual(STORE.calls, [])
 
-    def test_connect_card_offered_only_when_not_connected(self):
-        src = _src("core", "agent_actions.py")
-        self.assertIn('"connect_store": {', src)
-        self.assertIn('"focus": "storeBtn"', src)
-        self.assertIn("not ((state or {}).get(\"store\") or {}).get(\"connected\")", src)
+    def test_connect_card_is_one_click_and_only_when_not_connected(self):
+        from core import agent_actions as aa
+        spec = aa.ACTIONS["connect_store"]
+        self.assertEqual((spec["kind"], spec["link"]), ("link", "/api/oauth/woocommerce/start"))
+        self.assertTrue(spec["available"]({"store": {"connected": False}}, {}))
+        self.assertFalse(spec["available"]({"store": {"connected": True}}, {}))
+        for lang in ("he", "en"):
+            text = aa._pick(spec["what"], lang) + aa._pick(spec["title"], lang)
+            for word in ("ck_", "cs_", "Consumer", "wp-admin", "REST API", "מפתח", "key"):
+                self.assertNotIn(word, text)
 
-    def test_chat_steps_use_the_documented_menu_path(self):
+    def test_chat_flow_is_one_click_never_wp_admin_steps(self):
         from core import connection_catalog as cc
-        start = cc.flow(5, "store", "start")
-        self.assertTrue(start["show"])
-        self.assertEqual(start["persona"], "website")
-        none = cc.flow(5, "store", "none")
-        steps = "\n".join(none["messages"])
-        self.assertIn("WooCommerce ← Settings (הגדרות) ← Advanced (מתקדם) ← REST API", steps)
-        self.assertIn("Add Key", steps)
-        self.assertIn("Permissions — Read", steps)
-        self.assertIn("לא בצ׳אט", steps)
-        self.assertEqual(none["connect"], "store")
-        self.assertEqual(cc.flow(5, "store", "has")["connect"], "store")
+        self.assertFalse(hasattr(cc, "STORE_STEPS"))
+        for step in ("start", "has", "none"):
+            turn = cc.flow(5, "store", step)
+            self.assertTrue(turn["show"])
+            self.assertEqual((turn["persona"], turn["connect"], turn["chips"]), ("website", "store", []))
+            text = "\n".join(turn["messages"])
+            self.assertIn("בקליק אחד", text)
+            for word in ("wp-admin", "WooCommerce", "Settings", "REST API", "Add Key", "ck_", "מפתח"):
+                self.assertNotIn(word, text)
 
-    def test_persona_prompt_offers_the_connection_and_never_the_admin(self):
+    def test_persona_prompts_never_ask_for_keys_or_walk_through_wp_admin(self):
         src = _src("agents", "support_agent.py")
-        self.assertIn("propose connect_store", src)
+        self.assertNotIn("walk them through creating a read-only key", src)
+        self.assertNotIn("recommend switching to a read-only store key", src)
         self.assertIn("NEVER 'go look in your site's admin / WooCommerce'", src)
+        self.assertIn("NEVER walk them through", src)
+        self.assertIn("NEVER ask for a store key", src)
+        self.assertIn("use it FIRST", src)
+        self.assertIn("propose configure_conversion", src)
 
 
 # ─── Sales summary math ──────────────────────────────────────────────────────

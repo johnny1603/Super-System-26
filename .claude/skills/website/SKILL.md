@@ -314,6 +314,12 @@ each found by NAME and reused (never duplicated):
     `{{uallak — order first seen}}` equals `yes`.
   - Tag `uallak — GA4 purchase`: `transaction_id`, `value`, `currency`
     (`eventSettingsTable`).
+  - Tag `uallak — purchase record` (2026-11-07, `gtm.PURCHASE_BEACON`):
+    Custom HTML on the same trigger, sends order number / total / currency
+    to OUR `POST /api/store/purchase/{token}` (core/store_purchases) — how
+    אורי answers "how many orders" with no store login. Added on a re-run to
+    a purchase path that is already live (`record_missing`); checked in the
+    live version (`purchase_record_verified`). docs/STORE.md.
   - After publishing, the LIVE version is read back (`gtm.purchase_live`):
     any piece missing → `purchase_verified: False`, one admin alert, the
     client is told it is NOT confirmed live. `get_conversion_tracking_status`

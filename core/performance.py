@@ -526,6 +526,17 @@ def _store_sales(client_id: int) -> dict:
     from agents import store_agent
     from core import woocommerce_service
     if not store_agent.is_connected(client_id):
+        # No store login (the default): our own purchase records, labelled
+        # as measurement — orders placed, never "sales" (core/store_purchases)
+        try:
+            from core import store_purchases
+            if store_purchases.has_records(client_id):
+                measured = store_purchases.windows(client_id)
+                if measured:
+                    return {"source": store_purchases.SOURCE, "connected": False, "windows": measured,
+                            "definition_he": store_purchases.MEANING_HE}
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] purchase records unreadable for client {client_id}: {type(e).__name__}")
         return {"source": "store", "connected": False, "windows": []}
     windows = []
     try:

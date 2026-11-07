@@ -65,6 +65,7 @@ DATA_TABLES = (
     ("client_target_keywords", True),
     ("chat_turn_routes", True),
     ("chat_summaries", True),
+    ("store_purchase_events", True),   # our own purchase records (core/store_purchases)
     ("login_codes", False),
 )
 

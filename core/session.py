@@ -210,6 +210,78 @@ def verify_lead_capture_token(token: str):
         return None
 
 
+def _sign_store_purchase(payload_b64: bytes) -> str:
+    # Derived secret: this token sits in the client's PUBLIC Tag Manager
+    # container (the purchase record tag), read by anyone who opens the site
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":store-purchase").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_store_purchase_token(client_id: int) -> str:
+    """Identifies a client to the PUBLIC purchase-record endpoint
+    (POST /api/store/purchase/{token}), embedded in the purchase tag in the
+    client's own Tag Manager container (core/gtm_service PURCHASE_BEACON).
+    NON-EXPIRING for the lead-capture reason: a published tag is not
+    re-published on a schedule. It grants exactly one capability: record an
+    order id / total / currency for this client (core/store_purchases, capped
+    per day). It reads nothing."""
+    payload = json.dumps({"client_id": int(client_id), "purpose": "store_purchase"}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_store_purchase(payload_b64)}"
+
+
+def verify_store_purchase_token(token: str):
+    """The client_id for a well-signed purchase-record token, otherwise None."""
+    if not token or "." not in token or len(token) > 512:
+        return None
+    try:
+        payload_b64_str, signature = token.split(".", 1)
+        payload_b64 = payload_b64_str.encode()
+        if not hmac.compare_digest(signature, _sign_store_purchase(payload_b64)):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        if payload.get("purpose") != "store_purchase":
+            return None
+        return int(payload.get("client_id"))
+    except Exception:
+        return None
+
+
+WC_AUTH_STATE_MAX_AGE_SECONDS = 30 * 60   # may include logging in to the store first
+
+
+def _sign_wc_auth(payload_b64: bytes) -> str:
+    # Derived secret: this state is WooCommerce's `user_id` — it travels to
+    # the client's store and comes back in the store's server-to-server POST
+    secret = hashlib.sha256(get_key("SESSION_SECRET_KEY").encode() + b":wc-auth").digest()
+    return hmac.new(secret, payload_b64, hashlib.sha256).hexdigest()
+
+
+def create_wc_auth_state(client_id: int, site_url: str, nonce: str) -> str:
+    """The `user_id` we hand WooCommerce's /wc-auth/v1/authorize. Pins the
+    client AND the store we sent them to (the callback stores keys for THAT
+    store only, verified against it) plus a single-use nonce kept server-side
+    (the store's POST carries no cookie of ours)."""
+    payload = json.dumps({"client_id": int(client_id), "site": site_url, "nonce": nonce,
+                          "purpose": "wc_auth",
+                          "exp": int(time.time()) + WC_AUTH_STATE_MAX_AGE_SECONDS}).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload)
+    return f"{payload_b64.decode()}.{_sign_wc_auth(payload_b64)}"
+
+
+def verify_wc_auth_state(token: str):
+    """(client_id, site_url, nonce) for a valid, unexpired state, otherwise None."""
+    if not token or len(token) > 1024:
+        return None
+    payload = _verify(token, _sign_wc_auth)
+    if not payload or payload.get("purpose") != "wc_auth":
+        return None
+    try:
+        return int(payload.get("client_id")), str(payload.get("site") or ""), str(payload.get("nonce") or "")
+    except (TypeError, ValueError):
+        return None
+
+
 def create_admin_session_token() -> str:
     """Session for the admin dashboard - authenticated by ADMIN_PASSWORD at
     login, then carried in an 'admin_session' cookie."""

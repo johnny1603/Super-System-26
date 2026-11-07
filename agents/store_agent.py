@@ -5,15 +5,30 @@ questions from. Every number comes from a live read of the client's own store
 through core/woocommerce_service (GET only) — never a guess, never "go look
 in your site's admin".
 
+The client does NO technical work (2026-11-07 redesign):
+- DEFAULT, no store login at all: orders and revenue come from what we
+  already measure — our own purchase records (core/store_purchases, from the
+  purchase tag we publish in their Tag Manager) and, once Analytics is
+  approved, GA4's ecommerce numbers (core/site_traffic.ecommerce). store_reads
+  carries them as "measured" whether or not the store is connected.
+- OPTIONAL deep connection, ONE click: WooCommerce's own authorization
+  screen (/wc-auth/v1/authorize, scope=read). The client logs in to their
+  own store and presses Approve; the store POSTs a read-only key to our
+  HTTPS callback (connect_authorized). Nobody ever copies or pastes a key,
+  and the chat never walks anyone through wp-admin.
+- Admin fallback only (/admin/connections/): connect() with a key the TEAM
+  has, and connect_with_site(). Never shown to clients.
+
 Connection (client_accounts, platform "woocommerce", encrypted like every
 client secret by agents.client_agent.upsert_account):
-- method "key" (RECOMMENDED): account_id = the store address, the secret =
-  "<consumer key>:<consumer secret>" of a REST key with Permissions "Read".
-- method "site": the existing website connection's application password is
-  used (an administrator's password — more access than reading needs, so the
-  chat recommends the key). Nothing new is stored for it: the row's secret is
-  the marker SITE_MARKER and the password stays in the website row only.
-Both are verified with a live read BEFORE anything is stored.
+- method "key": account_id = the store address, the secret =
+  "<consumer key>:<consumer secret>" of a READ key (the one-click flow and
+  the admin fallback store it the same way).
+- method "site" (admin fallback): the website connection's application
+  password is used. Nothing new is stored: the row's secret is the marker
+  SITE_MARKER and the password stays in the website row only.
+Verified with a live read BEFORE anything is stored (one-click: see
+connect_authorized for the one transient case).
 
 Personal data — the rules (tests/test_store_reads.py proves them):
 - Lists, summaries, status counts and refunds never fetch a customer's name,
@@ -48,17 +63,21 @@ STATUS_HE = {"pending": "ממתינה לתשלום", "processing": "בטיפול
              "completed": "הושלמה", "cancelled": "בוטלה", "refunded": "הוחזרה",
              "failed": "נכשלה", "checkout-draft": "טיוטה", "trash": "בפח"}
 
+# Plain Hebrew, no vendor words: the client never handles a key (the admin
+# fallback sees the same lines plus the code)
 ERRORS_HE = {
-    "store_auth": "החנות לא אישרה את המפתח — כדאי לוודא שהעתקתם את שני הערכים במלואם (Consumer key ו-Consumer secret), ושההרשאה היא Read.",
-    "store_not_woocommerce": "לא מצאנו חנות WooCommerce פעילה בכתובת הזו — כדאי לוודא שהכתובת נכונה ושהתוסף של החנות פעיל.",
-    "store_needs_https": "כתובת החנות צריכה להתחיל ב-https — בלי חיבור מאובטח לא נשלח את המפתח.",
+    "store_auth": "החנות לא אישרה את החיבור — אפשר לנסות שוב בלחיצה אחת.",
+    "store_not_woocommerce": "לא מצאנו חנות פעילה בכתובת של האתר.",
+    "store_needs_https": "האתר צריך חיבור מאובטח (https) כדי שנוכל להתחבר לחנות.",
     "store_busy": "החנות ביקשה מאיתנו להאט רגע — ננסה שוב בעוד דקה.",
     "store_not_found": "לא מצאנו הזמנה כזו בחנות.",
     "store_error": "לא הצלחנו לקרוא את החנות כרגע — ננסה שוב בעוד רגע.",
-    "bad_key": "המפתח לא נראה שלם: Consumer key מתחיל ב-ck_ ו-Consumer secret מתחיל ב-cs_.",
+    "bad_key": "פרטי החיבור לא נראים שלמים.",
+    "not_read_only": "החיבור חייב להיות לקריאה בלבד.",
     "no_site": "חסרה כתובת החנות.",
     "no_website": "כדי להשתמש בחיבור האתר הקיים, האתר צריך להיות מחובר קודם.",
 }
+APP_NAME = "uallak"           # what the store's approval screen and key list show
 
 _KEY = re.compile(r"^ck_[A-Za-z0-9]{20,64}$")
 _SECRET = re.compile(r"^cs_[A-Za-z0-9]{20,64}$")
@@ -121,7 +140,9 @@ def status(client_id: int) -> dict:
         return {"connected": False}
     return {"connected": True, "method": creds["method"],
             "site": creds["site"].replace("https://", ""),
-            "recommend_key": creds["method"] == "site"}
+            # Reading through the website password works; the one-click
+            # read-only connection is less access
+            "recommend_one_click": creds["method"] == "site"}
 
 
 def _error(code: str) -> dict:
@@ -138,8 +159,108 @@ def _forget(client_id: int):
         pass
 
 
+def store_site(client_id: int) -> str:
+    """The store address for the one-click connection, from what we already
+    have: an earlier store row of THIS client (any status), else the website
+    connection. "" when we know neither — the client is never asked to type
+    a key, only to connect the website first."""
+    try:
+        rows = (_db().table("client_accounts").select("account_id,client_id")
+                .eq("client_id", client_id).eq("platform", PLATFORM)
+                .order("id", desc=True).limit(1).execute().data or [])
+        if rows and int(rows[0].get("client_id") or client_id) == int(client_id) and rows[0].get("account_id"):
+            return wc.normalize_site(rows[0]["account_id"])
+    except Exception:
+        pass
+    try:
+        site = _website_auth(client_id)[0]
+        return wc.normalize_site(site) if site else ""
+    except Exception:
+        return ""
+
+
+def authorize_url(site: str, user_id: str, return_url: str, callback_url: str) -> str:
+    """WooCommerce's built-in authorization screen (docs: woocommerce.github.io/
+    woocommerce-rest-api-docs/#rest-api-keys; includes/class-wc-auth.php):
+    app_name, scope=read, user_id (OUR signed state, echoed back), return_url
+    (the browser comes back with success=1|0&user_id=…), callback_url (MUST be
+    https; the store POSTs the new key there as JSON). Read-only, always."""
+    from urllib.parse import urlencode
+    if not str(callback_url).startswith("https://"):
+        raise ValueError("WooCommerce only posts keys to an https callback")
+    return wc.normalize_site(site) + "/wc-auth/v1/authorize?" + urlencode({
+        "app_name": APP_NAME, "scope": "read", "user_id": user_id,
+        "return_url": return_url, "callback_url": callback_url})
+
+
+def _pending_key(client_id: int) -> str:
+    return f"store_auth_pending:{int(client_id)}"
+
+
+def remember_pending(client_id: int, nonce: str):
+    """The one-click attempt's nonce, server-side (the store's POST to our
+    callback carries no cookie of ours). A newer attempt replaces it."""
+    _db().table("app_settings").upsert(
+        {"key": _pending_key(client_id), "value": {"nonce": nonce},
+         "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="key").execute()
+
+
+def consume_pending(client_id: int, nonce: str) -> bool:
+    """True once for the latest attempt's nonce, then never again."""
+    import hmac
+    try:
+        rows = (_db().table("app_settings").select("value").eq("key", _pending_key(client_id))
+                .limit(1).execute().data or [])
+        stored = str(((rows[0].get("value") if rows else None) or {}).get("nonce") or "")
+        if not (stored and nonce and hmac.compare_digest(stored, nonce)):
+            return False
+        _db().table("app_settings").delete().eq("key", _pending_key(client_id)).execute()
+        return True
+    except Exception as e:
+        log_step(AGENT_NAME, "consume_pending", f"client {client_id}: unreadable ({type(e).__name__})")
+        return False
+
+
+def connect_authorized(client_id: int, site: str, body: dict) -> dict:
+    """The store's server-to-server POST after the client pressed Approve:
+    {key_id, user_id, consumer_key, consumer_secret, key_permissions}. `site`
+    comes from OUR signed state, never from the body. Refused (and the store
+    then deletes the key) unless the key is READ-ONLY and well-formed, and a
+    live read with it works. One exception, by design: the store is busy
+    serving the client's own approval request while it calls us, so on a
+    small host our verification read can time out — a network-level failure
+    (not a refusal) still stores the key, which the store minted for us
+    seconds ago, read-only, for THIS store; the first real read re-checks it.
+    The key is never logged or echoed."""
+    from agents.client_agent import upsert_account
+    body = body if isinstance(body, dict) else {}
+    key = str(body.get("consumer_key") or "").strip()
+    secret = str(body.get("consumer_secret") or "").strip()
+    if str(body.get("key_permissions") or "").strip().lower() != "read":
+        log_step(AGENT_NAME, "connect_authorized", f"client {client_id}: refused, permissions not read-only")
+        return _error("not_read_only")
+    if not (_KEY.match(key) and _SECRET.match(secret)):
+        return _error("bad_key")
+    try:
+        site = wc.normalize_site(site)
+        wc.verify(site, (key, secret))
+        verified = True
+    except (wc.StoreAuthError, wc.StoreNotWooCommerce, wc.StoreNeedsHttps, wc.StoreNotFound) as e:
+        log_step(AGENT_NAME, "connect_authorized", f"client {client_id}: key refused by the store ({e.code})")
+        return _error(e.code)
+    except wc.StoreError as e:
+        verified = False
+        log_step(AGENT_NAME, "connect_authorized", f"client {client_id}: verify read inconclusive ({e.code}) — "
+                                                   "stored, re-checked on the first read")
+    upsert_account(client_id, PLATFORM, site, f"{key}:{secret}", "active")
+    _forget(client_id)
+    log_step(AGENT_NAME, "connect_authorized", f"client {client_id}: store connected in one click (read only)")
+    return {"success": True, "method": "key", "verified": verified, "site": site.replace("https://", "")}
+
+
 def connect(client_id: int, consumer_key: str, consumer_secret: str, site_url: str = "") -> dict:
-    """The recommended path: a READ key. Verified live, then stored encrypted."""
+    """ADMIN FALLBACK ONLY (/admin/connections/): a READ key the team has.
+    Verified live, then stored encrypted. Clients use the one-click flow."""
     from agents.client_agent import upsert_account
     consumer_key, consumer_secret = (consumer_key or "").strip(), (consumer_secret or "").strip()
     if not (_KEY.match(consumer_key) and _SECRET.match(consumer_secret)):
@@ -160,8 +281,8 @@ def connect(client_id: int, consumer_key: str, consumer_secret: str, site_url: s
 
 
 def connect_with_site(client_id: int) -> dict:
-    """The fallback: the website connection's application password, if it
-    can read /wc/v3 on THIS site (checked live — unverified in general)."""
+    """ADMIN FALLBACK ONLY: the website connection's application password,
+    if it can read /wc/v3 on THIS site (checked live — unverified in general)."""
     from agents.client_agent import upsert_account
     site, user, password = _website_auth(client_id)
     if not (site and user and password):
@@ -396,20 +517,59 @@ def asks_personal(message: str) -> bool:
     return bool(order_number_in(message)) and any(w in text for w in _PERSONAL_WORDS)
 
 
+def measured(client_id: int, period: str = "last_30_days") -> dict:
+    """The no-login sources, in the order the agents use them: our own
+    purchase records (core/store_purchases), then GA4 ecommerce (round 2,
+    core/site_traffic.ecommerce). {"available": False, ...} when neither has
+    anything — the prompt then offers to set up purchase measurement
+    (configure_conversion), never a store key. Aggregates only."""
+    out = {"available": False}
+    try:
+        from core import store_purchases
+        ours = store_purchases.for_agent(client_id, period)
+    except Exception as e:
+        log_step(AGENT_NAME, "measured", f"client {client_id}: purchase records unreadable ({type(e).__name__})")
+        ours = {"available": False, "why": "unreadable"}
+    if ours.get("available"):
+        out = {"available": True, "purchase_records": ours}
+    try:
+        from core import site_traffic
+        ga4 = site_traffic.ecommerce(client_id)
+    except Exception:
+        ga4 = {"available": False, "why": "sync_failed"}
+    if ga4.get("available"):
+        out["available"] = True
+        out["ga4_ecommerce"] = {k: ga4.get(k) for k in ("source", "windows", "pulled_at", "currency_note")}
+    else:
+        out["ga4_ecommerce_unavailable"] = ga4.get("why") or "not_enabled"
+    return out
+
+
 def store_reads(client_id: int, message: str = "") -> dict:
     """What the website persona's prompt gets for THIS message. No customer
-    data in any branch. Not connected → {"connected": False} (the prompt then
-    offers connect_store). A failed read → {"error": code} (the fixed
-    can't-read line, decided in code)."""
+    data in any branch, and no read at all unless the message is about the
+    store. "measured" (no store login needed) comes FIRST; with the store
+    connected, its live numbers are the SALES (the one sale definition).
+    A failed store read → {"error": code} (the fixed can't-read line,
+    decided in code)."""
     view = status(client_id)
+    asked = is_store_question(message)
+    period = detect_period(message)
     if not view.get("connected"):
-        return {"connected": False}
+        data = {"connected": False}
+        if asked:
+            data["asked_period"] = period
+            data["measured"] = measured(client_id, period)
+            # Deeper order data (one order, statuses, refunds) needs the
+            # optional one-click connection — only offered when we know the site
+            data["one_click_possible"] = bool(store_site(client_id))
+        return data
     data = {"connected": True, "method": view["method"], "sale_definition_he": wc.SALE_DEFINITION_HE}
-    if not is_store_question(message):
+    if not asked:
         # Nothing about the store was asked: no read at all
         return data
-    period = detect_period(message)
     data["asked_period"] = period
+    data["measured"] = measured(client_id, period)
     try:
         data["sales_summary"] = sales_summary(client_id, period)
         if any(w in (message or "").lower() for w in _REFUND_WORDS):
@@ -477,9 +637,18 @@ def mask(text: str) -> str:
 
 
 def section(client_id: int) -> dict:
-    """client_state's "store" section: status + the 30-day aggregates."""
+    """client_state's "store" section: status + the 30-day aggregates; not
+    connected → our own purchase records for 30 days (no store login)."""
     view = status(client_id)
     if not view.get("connected"):
+        try:
+            from core import store_purchases
+            if store_purchases.has_records(client_id):
+                s = store_purchases.summary(client_id, "last_30_days")
+                if s.get("available"):
+                    return {**view, "measured_last_30_days": s, "measured_meaning_he": store_purchases.MEANING_HE}
+        except Exception:
+            pass
         return view
     summary = sales_summary(client_id, "last_30_days")
     keep = ("period", "orders", "paid_orders", "gross_revenue", "refunded", "net_revenue",

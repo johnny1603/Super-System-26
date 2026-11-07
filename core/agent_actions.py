@@ -3019,24 +3019,27 @@ ACTIONS = {
                      "جارٍ فتح بطاقة الموقع…", "Открываю карточку сайта…"),
     },
     "connect_store": {
-        # "focus": the store key is pasted ONLY in the store card's own fields,
-        # never in a chat; the card's "חבר" button starts the guided steps
-        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "focus",
-        "focus": "storeBtn",
-        "does": "Opens the online-store connection card: the chat then walks the client through creating a "
-                "READ-ONLY store key, pasted in the card. Reading only — nothing in the store is ever changed.",
+        # ONE click (docs/STORE.md): WooCommerce's own approval screen; the
+        # store sends us a read-only key. Nobody copies or pastes a key.
+        # Only when deeper order data is needed — totals come without it.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
+        "link": "/api/oauth/woocommerce/start",
+        "does": "Opens the client's own store approval screen (one click, read-only, revocable in the store) for "
+                "DEEPER order data: one order, statuses, refunds. Order totals already come from our purchase "
+                "measurement without it. Never ask for keys.",
         "params": {},
         "available": lambda state, client: not ((state or {}).get("store") or {}).get("connected"),
         "title": _txt("חיבור החנות באתר (קריאה בלבד)", "Connect your online store (read only)",
                       "Connecter votre boutique (lecture seule)", "ربط المتجر (قراءة فقط)",
                       "Подключить магазин (только чтение)"),
-        "what": _txt("ייפתח כרטיס החנות, ואסביר צעד-צעד איך יוצרים מפתח קריאה בלבד. כך אוכל לענות על הזמנות ומכירות מהנתונים האמיתיים — בלי לשנות שום דבר בחנות.",
-                     "The store card opens and I'll walk you through creating a read-only key, so I can answer about orders and sales from the real data — without changing anything in the store.",
-                     "La carte boutique s'ouvre ; je vous guide pour créer une clé en lecture seule. Rien n'est modifié dans la boutique.",
-                     "ستفتح بطاقة المتجر وسأشرح خطوة بخطوة إنشاء مفتاح للقراءة فقط — دون تغيير أي شيء في المتجر.",
-                     "Откроется карточка магазина, и я пошагово объясню, как создать ключ только для чтения. В магазине ничего не меняется."),
-        "done": _txt("פותח את כרטיס החנות…", "Opening the store card…", "Ouverture de la carte boutique…",
-                     "جارٍ فتح بطاقة المتجر…", "Открываю карточку магазина…"),
+        "what": _txt("חיבור החנות בקליק אחד: נכנסים לחנות שלכם ולוחצים \"אישור\". קריאה בלבד, ואפשר לבטל בכל רגע.",
+                     "Connect your store in one click: log in to your store and press Approve. Read only, and you can revoke it any time.",
+                     "Connectez votre boutique en un clic : connectez-vous et validez. Lecture seule, révocable à tout moment.",
+                     "ربط المتجر بنقرة واحدة: ادخلوا إلى متجركم واضغطوا موافقة. للقراءة فقط، ويمكن الإلغاء في أي وقت.",
+                     "Подключение магазина в один клик: войдите в магазин и нажмите «Одобрить». Только чтение, можно отменить в любой момент."),
+        "done": _txt("פותח את מסך האישור של החנות…", "Opening your store's approval screen…",
+                     "Ouverture de l'écran de validation de la boutique…", "جارٍ فتح شاشة موافقة المتجر…",
+                     "Открываю окно подтверждения магазина…"),
     },
     "set_conversion_types": {
         # What counts as a result for THIS client (core/conversion_types). The

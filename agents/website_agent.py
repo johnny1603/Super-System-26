@@ -1199,6 +1199,8 @@ def get_conversion_tracking_status(client_id: int) -> dict:
         # WhatsApp / phone click tags live in the PUBLISHED version (core/conversion_types)
         "click_event_tags": click_tags,
         "purchase_event": purchase,
+        # Our own purchase record (core/store_purchases) on the same trigger
+        "purchase_record": gtm.purchase_beacon_live(live),
         "live_types": live_types,
         "live_version_name": live.get("name", ""),
         "note": (None if lead_tags else
@@ -1266,6 +1268,15 @@ def _gtm_types(client_id: int, types) -> list:
     return [t for t in types if t in conversion_types.GTM_TYPES]
 
 
+def purchase_record_url(client_id: int) -> str:
+    """Our public purchase-record endpoint for THIS client (core/store_purchases),
+    with its purpose-bound token — what the record tag in their container posts to."""
+    import os
+    from core.session import create_store_purchase_token
+    base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+    return f"{base}/api/store/purchase/{create_store_purchase_token(client_id)}"
+
+
 def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", types=None) -> dict:
     """Conversion configuration in the client's Tag Manager, PER CLIENT
     (core/conversion_types — `types` defaults to the client's own choice):
@@ -1277,7 +1288,10 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     - store_sales: the store's order-received page → GA4 'purchase', once per
       order (gtm_service PURCHASE: order id from the page address, total and
       currency when the page or dataLayer has them, refresh never re-counts),
-      and the live version is read back to VERIFY it after publishing.
+      plus OUR purchase record tag on the same trigger (core/store_purchases:
+      order number / total / currency to our endpoint — how אורי answers
+      "how many orders" with no store login); the live version is read back
+      to VERIFY both after publishing.
     Created in our own workspace and PUBLISHED (a draft fires nothing).
     Idempotent: a type already live in the published container is skipped
     (a second lead tag would double-count every lead), and every GTM object is
@@ -1339,7 +1353,12 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     live_types = set(status.get("live_types") or [])
     if status.get("configured_live"):
         live_types.add("form_submit")
-    pending = [t for t in wanted if t not in live_types]
+    # store_sales already live but published before our own purchase record
+    # existed (2026-11-07): run the purchase path again — every object is
+    # found by name and reused, so only the record tag is added
+    record_missing = ("store_sales" in wanted and "store_sales" in live_types
+                      and not (status.get("purchase_record") or {}).get("live"))
+    pending = [t for t in wanted if t not in live_types or (t == "store_sales" and record_missing)]
     if not pending:
         return {"success": False, "reason": "already_live", "errors": [
             f"every requested conversion type ({wanted}) is already live in the published "
@@ -1377,7 +1396,16 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
                                                                       trigger["triggerId"]))
         if tag_outcome == "created":
             created.append(tag.get("path", ""))
+        # Our own record of the order (core/store_purchases): same trigger,
+        # order number / total / currency only, to our endpoint
+        record, record_outcome = timed_step(AGENT_NAME, "gtm_ensure_purchase_record",
+                                            lambda: gtm.ensure_purchase_beacon_tag(
+                                                refresh_token, workspace, purchase_record_url(client_id),
+                                                trigger["triggerId"]))
+        if record_outcome == "created":
+            created.append(record.get("path", ""))
         return {"trigger": trigger, "tag": tag, "trigger_outcome": trigger_outcome, "tag_outcome": tag_outcome,
+                "record_outcome": record_outcome,
                 "variables": {name: outcome for name, (_v, outcome) in variables.items()}}
 
     def ensure_type(workspace: str, kind: str, created: list) -> dict:
@@ -1455,21 +1483,28 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     # The purchase path is VERIFIED after publishing: read back the live
     # version and check every piece is there (gtm.purchase_live). Not proven
     # → never called live; one admin alert, the client gets the honest line.
-    purchase_check = None
+    purchase_check = record_check = None
     if "store_sales" in pending:
         try:
-            purchase_check = gtm.purchase_live(gtm.get_live_version(refresh_token, container_path))
+            published_live = gtm.get_live_version(refresh_token, container_path)
+            purchase_check = gtm.purchase_live(published_live)
+            record_check = gtm.purchase_beacon_live(published_live)
         except Exception as e:
             purchase_check = {"live": False, "missing": [f"read_failed:{type(e).__name__}"]}
+            record_check = {"live": False, "missing": purchase_check["missing"]}
         if not purchase_check["live"]:
             agent_alert(AGENT_NAME, [f"client {client_id}: store purchase tracking published but the live "
                                      f"version check failed (missing {purchase_check['missing']})"])
+        elif not record_check["live"]:
+            agent_alert(AGENT_NAME, [f"client {client_id}: our purchase record tag is not in the live "
+                                     f"version (missing {record_check['missing']})"])
     _log_activity(client_id, "website_conversion_configured",
                   {"ga4_measurement_id": ga4_measurement_id, "types": pending,
                    "skipped_already_live": [t for t in wanted if t not in pending],
                    "trigger_id": trigger.get("triggerId"), "tag_id": tag.get("tagId"),
                    "gtm_objects": done["outcomes"], "retried": done is not first,
                    **({"purchase_verified": purchase_check["live"],
+                       "purchase_record_verified": record_check["live"],
                        "order_received_endpoint": endpoint.get("slug"),
                        "endpoint_source": endpoint.get("source")} if purchase_check is not None else {})},
                   {"live_version": version.get("name", "")})
@@ -1484,6 +1519,7 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             "tag_name": tag.get("name", ""), "trigger_name": trigger.get("name", ""),
             "tag_names": [v["tag"].get("name", "") for v in done["per_type"].values()],
             "purchase_verified": purchase_check["live"] if purchase_check is not None else None,
+            "purchase_record_verified": record_check["live"] if record_check is not None else None,
             "note": (f"Now firing GA4 {[events[t] for t in pending]}. Remaining manual "
                      "platform steps: mark them as key events in GA4 and import them as "
                      "conversion actions in Google Ads (no public API for either from our scopes).")}

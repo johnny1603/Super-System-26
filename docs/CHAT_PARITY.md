@@ -194,8 +194,7 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | crm connect | `POST /api/client/crm/connect` | — (allowlisted) | the client's own key or password is pasted ONLY in its card, never in a chat (the chat offers that card) |
 | crm disconnect | `POST /api/client/crm/disconnect` | **none yet** | **P3: disconnect_crm card** |
 | store | `GET /api/client/store` | reads `store` | — |
-| store connect | `POST /api/client/store/connect` | — (allowlisted) | the client's own key or password is pasted ONLY in its card, never in a chat (the chat offers that card) |
-| store connect site | `POST /api/client/store/connect-site` | `connect_store` | — |
+| store connect (one click) | `GET /api/oauth/woocommerce/start` | `connect_store` | — (no client route takes a key; the manual key is admin-only, `/admin/connections/`) |
 | store disconnect | `POST /api/client/store/disconnect` | **none yet** | **P3: disconnect_store card** |
 | landing pages | `GET /api/client/landing-pages` | reads `landing_pages` | — |
 | landing pages | `POST /api/client/landing-pages` | `create_landing_page` | — |
@@ -262,6 +261,6 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | `connect_search_console` | client click | link | — | Opens Google's approval screen for READ-ONLY access to the client's Google Search Console, so the organic section shows their real keyword positions, clicks and impressions. |
 | `connect_analytics` | client click | link | — | Opens Google's approval screen for READ-ONLY access to the client's Google Analytics, so their site traffic shows in the dashboard and the chat. |
 | `connect_website` | client click | focus | — | Opens the website connection card (one-click WordPress approval, or 'build me a site') so the client can connect their site. |
-| `connect_store` | client click | focus | — | Opens the online-store connection card: the chat then walks the client through creating a READ-ONLY store key, pasted in the card. |
+| `connect_store` | client click | link | — | One click: opens the client's own store approval screen (read-only, revocable); the store sends the key to our server. Only for deeper order data — totals come from our purchase measurement without it. |
 | `set_conversion_types` | client click | execute | — | Saves what counts as a conversion for this client — any of form_submit (a form on the site), whatsapp_click, phone_click, store_sales — exactly as the client described how customers reach them. |
 | `change_manager` | client click | execute | — | Switches who the client's account manager is (the name and face in this chat, emails and messages). |

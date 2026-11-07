@@ -288,8 +288,10 @@ class Dashboard(unittest.TestCase):
         keys = re.findall(r"onclick=\"connectViaChat\('([a-z_]+)'\)\" data-i18n=\"conn_connect\">חבר</button>", self.grid)
         self.assertEqual(sorted(keys), sorted(["google_ads", "meta", "tiktok", "youtube", "gmail", "search_console",
                                                "analytics", "google_drive", "tag_manager", "website", "higgsfield",
-                                               "elevenlabs", "manychat", "store"]))
+                                               "elevenlabs", "manychat"]))
         self.assertEqual(len(keys), len(set(keys)))
+        # The store (2026-11-07): ONE one-click button, no chat steps and no key fields
+        self.assertIn('id="storeBtn" onclick="connectStoreOneClick(this)"', self.grid)
 
     def test_cards_start_no_connect_flow_directly(self):
         for direct in ('onclick="connectGoogleAds()"', 'onclick="connectMeta()"', 'onclick="connectYoutube()"',

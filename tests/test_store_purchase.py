@@ -91,7 +91,7 @@ class PurchaseFlow(unittest.TestCase):
         (trigger,) = self.ws("trigger")
         self.assertEqual((trigger["name"], trigger["type"]), ("uallak — purchase (order received)", "domReady"))
         self.assertFalse({t["type"] for t in self.ws("trigger")} & LEAD_TRIGGER_TYPES)
-        (tag,) = self.ws("tag")
+        (tag,) = [t for t in self.ws("tag") if t["type"] == "gaawe"]
         params = {p["key"]: p.get("value") for p in tag["parameter"]}
         self.assertEqual((tag["name"], params["eventName"]), ("uallak — GA4 purchase", "purchase"))
         self.assertNotIn(params["eventName"], ("generate_lead", "click_whatsapp", "click_to_call"))
@@ -111,7 +111,7 @@ class PurchaseFlow(unittest.TestCase):
 
     def test_tag_carries_order_id_total_and_currency(self):
         self.assertTrue(self.own()["success"])
-        (tag,) = self.ws("tag")
+        (tag,) = [t for t in self.ws("tag") if t["type"] == "gaawe"]
         self.assertEqual(self.gtm._event_settings(tag), {
             "transaction_id": "{{uallak — order id}}", "value": "{{uallak — order total}}",
             "currency": "{{uallak — order currency}}"})
@@ -146,7 +146,8 @@ class PurchaseFlow(unittest.TestCase):
     def test_already_live_purchase_is_skipped_not_doubled(self):
         saved = self.website.get_conversion_tracking_status
         self.website.get_conversion_tracking_status = lambda cid: {"configured_live": False,
-                                                                   "live_types": ["store_sales"]}
+                                                                   "live_types": ["store_sales"],
+                                                                   "purchase_record": {"live": True}}
         try:
             self.assertEqual(self.own()["reason"], "already_live")
         finally:

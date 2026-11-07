@@ -225,50 +225,28 @@ def _human_fallback(client_id: int, key: str, why: str) -> dict:
     return {"messages": [text], "chips": [], "support": True}
 
 
-# The online store (agents/store_agent): included in the website package, no
-# vendor account to open — the steps create a READ key on the client's own
-# store. Menu path and field names checked in WooCommerce's docs
-# (woocommerce.com/document/woocommerce-rest-api/, 2026-11-02): WooCommerce >
-# Settings > Advanced > REST API > Add Key; Description, User, Permissions
-# (Read / Write / Read/Write); then "Generate API key" shows the Consumer key
-# and Consumer secret once. Vendor words appear because the client must act
-# on that screen.
-CHIP_STORE_HAS = "יש לי מפתח"
-CHIP_STORE_HOW = "איך יוצרים מפתח?"
-CHIP_STORE_MADE = "יצרתי מפתח"
-STORE_STEPS = (
-    "1. נכנסים לניהול האתר (wp-admin) עם משתמש מנהל.",
-    "2. בתפריט: WooCommerce ← Settings (הגדרות) ← Advanced (מתקדם) ← REST API.",
-    "3. לוחצים Add Key (או Create an API key).",
-    "4. ממלאים: Description — uallak. User — המשתמש שלכם. Permissions — Read (קריאה בלבד). חשוב: רק Read.",
-    "5. לוחצים Generate API key. מופיעים Consumer key (מתחיל ב-ck_) ו-Consumer secret (מתחיל ב-cs_) — הם מוצגים פעם אחת בלבד, אז מעתיקים את שניהם.",
-    "6. מדביקים את שניהם בכרטיס \"החנות באתר\" שנפתח כאן (לא בצ׳אט) ולוחצים \"חיבור\".",
-)
+# The online store (agents/store_agent, docs/STORE.md): ONE click on the
+# client's own store approval screen (WooCommerce's built-in authorization,
+# read-only). No steps to follow, no key to create or paste, never a word
+# about wp-admin menus. Order totals already come from our purchase
+# measurement without it; this is only for deeper order data.
+STORE_ONE_CLICK_HE = ("חיבור החנות בקליק אחד: נפתח מסך האישור של החנות שלכם — נכנסים ולוחצים \"אישור\". "
+                      "קריאה בלבד (הזמנות, סטטוסים והחזרים), ואפשר לבטל בכל רגע.")
 
 
 def _store_flow(client_id: int, step: str) -> dict:
     base = {"show": True, "key": "store", "persona": "website", "connect": "", "support": False}
-    if step == "start":
-        return {**base, "messages": [
-            "נחבר את החנות באתר כדי שאוכל לענות על הזמנות ומכירות מהנתונים האמיתיים. "
-            "החיבור הוא לקריאה בלבד — אנחנו לא משנים שום דבר בחנות. "
-            "הדרך המומלצת היא מפתח קריאה ייעודי שאתם יוצרים בחנות (ואפשר לבטל אותו שם בכל רגע). יש לכם כבר מפתח כזה?"],
-            "chips": [{"label": CHIP_STORE_HAS, "step": "has"}, {"label": CHIP_STORE_HOW, "step": "none"}]}
-    if step == "has":
-        return {**base, "connect": "store", "chips": [],
-                "messages": ["מעולה. מדביקים את Consumer key ואת Consumer secret בכרטיס \"החנות באתר\" שנפתח (לא בצ׳אט) ולוחצים \"חיבור\" — אני בודק שהמפתח עובד לפני שהוא נשמר."]}
-    if step == "none":
-        return {**base, "connect": "store", "chips": [{"label": CHIP_DONE, "step": "done"}],
-                "messages": ["ככה יוצרים מפתח קריאה, בערך שתי דקות:", "\n".join(STORE_STEPS),
-                             "כשסיימתם, לחצו \"סיימתי\" ואבדוק שהחנות מחוברת."]}
+    if step in ("start", "has", "none"):
+        # "has" / "none" kept for old buttons still open in a browser
+        return {**base, "connect": "store", "chips": [], "messages": [STORE_ONE_CLICK_HE]}
     if step == "done":
         if is_connected(client_id, "store"):
             _clear_reminder(client_id, "store")
             return {**base, "chips": [], "connected": True,
-                    "messages": ["החנות מחוברת ✓ — מעכשיו אפשר לשאול אותי על הזמנות, מכירות והחזרים."]}
+                    "messages": ["החנות מחוברת ✓ — מעכשיו אפשר לשאול אותי גם על הזמנה מסוימת, סטטוסים והחזרים."]}
         _schedule_reminder(client_id, "store")
         return {**base, "connect": "store", "chips": [], "connected": False,
-                "messages": ["עוד לא רואה את החנות מחוברת. מדביקים את שני הערכים בכרטיס \"החנות באתר\" ולוחצים \"חיבור\" — ואני אבדוק שוב."]}
+                "messages": ["עוד לא רואה את החנות מחוברת. אפשר לנסות שוב בלחיצה על \"חיבור החנות בקליק אחד\"."]}
     raise ValueError("bad_step")
 
 
