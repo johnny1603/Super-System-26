@@ -143,10 +143,12 @@ class AuthorizeLink(Base):
                                         "https://app.example/api/store/wc-auth/return",
                                         "https://app.example/api/store/wc-auth/callback")
         parsed = urlparse(url)
-        self.assertEqual(f"{parsed.scheme}://{parsed.netloc}{parsed.path}",
-                         "https://shop-one.example/wc-auth/v1/authorize")
+        # The query form of /wc-auth/v1/authorize: WC_Auth reads wc-auth-version
+        # and wc-auth-route from $_GET, so plain permalinks work too
+        self.assertEqual(f"{parsed.scheme}://{parsed.netloc}{parsed.path}", "https://shop-one.example/")
         q = {k: v[0] for k, v in parse_qs(parsed.query).items()}
-        self.assertEqual(q, {"app_name": "uallak", "scope": "read", "user_id": "STATE",
+        self.assertEqual(q, {"wc-auth-version": "1", "wc-auth-route": "authorize",
+                             "app_name": "uallak", "scope": "read", "user_id": "STATE",
                              "return_url": "https://app.example/api/store/wc-auth/return",
                              "callback_url": "https://app.example/api/store/wc-auth/callback"})
 
@@ -160,6 +162,161 @@ class AuthorizeLink(Base):
         self.db.tables["client_accounts"] = [{"client_id": 3, "platform": "woocommerce",
                                               "account_id": "https://old-shop.example"}]
         self.assertEqual(store_agent.store_site(3), "https://old-shop.example")   # an earlier store row
+
+
+class StoreAddress(Base):
+    def test_typed_addresses_are_cleaned_to_https(self):
+        for typed, want in (("shop.co.il", "https://shop.co.il"),
+                            ("https://www.shop.co.il/", "https://www.shop.co.il"),
+                            ("www.shop.co.il/he/", "https://www.shop.co.il/he"),
+                            ("https://shop.co.il/wp-admin/admin.php?page=x", "https://shop.co.il"),
+                            ("https://shop.co.il/shop/", "https://shop.co.il"),
+                            ("SHOP.Example.com", "https://shop.example.com")):
+            with self.subTest(typed=typed):
+                self.assertEqual(store_agent.clean_address(typed), want)
+
+    def test_not_a_public_address(self):
+        for typed in ("", "shop", "localhost", "https://127.0.0.1", "10.0.0.1", "https://[::1]",
+                      "https://user:pw@shop.co.il", "https://shop.co.il:8443", "shop .co.il",
+                      "metadata.google.internal", "printer.local", "ftp://shop.co.il"):
+            with self.subTest(typed=typed):
+                self.assertEqual(store_agent.clean_address(typed), "")
+        with self.assertRaises(wc.StoreNeedsHttps):
+            store_agent.clean_address("http://shop.co.il")
+
+    def test_store_target_codes(self):
+        self.assertEqual(store_agent.store_target(1), {"site": "https://shop-one.example"})
+        self.assertEqual(store_agent.store_target(3), {"code": "store_no_site"})
+        self.assertEqual(store_agent.store_target(3, "my-shop.co.il"), {"site": "https://my-shop.co.il"})
+        self.assertEqual(store_agent.store_target(3, "not an address"), {"code": "store_bad_address"})
+        self.assertEqual(store_agent.store_target(3, "http://my-shop.co.il"), {"code": "store_needs_https"})
+        # A typed address wins over what we know
+        self.assertEqual(store_agent.store_target(1, "other.example"), {"site": "https://other.example"})
+
+    def test_an_http_website_says_https_not_connect_the_website(self):
+        self.db.tables["client_accounts"] = [{"client_id": 3, "platform": "woocommerce",
+                                              "account_id": "http://plain-shop.example"}]
+        self.assertEqual(store_agent.store_target(3), {"code": "store_needs_https"})
+
+
+class ExplicitAsk(Base):
+    ASKS = ("אני רוצה לחבר את החנות", "חבר את החנות", "תחבר לי את החנות בבקשה", "אפשר לחבר את החנות?",
+            "חברו את החנות שלי", "איך מחברים את החנות", "חיבור החנות", "ולחבר גם את החנות",
+            "לחבר את ווקומרס", "connect my store", "Please connect the online store", "link my shop",
+            "can you connect woocommerce")
+    NOT_ASKS = ("כמה מכרנו אתמול?", "חבר שלי פתח חנות", "האם החנות מחוברת?", "לנתק את החנות",
+                "disconnect my store", "מה הסטטוס של הזמנה 101?", "החנות לא עובדת", "")
+
+    def test_explicit_asks_match(self):
+        for text in self.ASKS:
+            with self.subTest(text=text):
+                self.assertTrue(store_agent.wants_to_connect(text))
+
+    def test_other_messages_do_not(self):
+        for text in self.NOT_ASKS:
+            with self.subTest(text=text):
+                self.assertFalse(store_agent.wants_to_connect(text))
+
+    def _with_actions(self, propose):
+        fake = types.ModuleType("core.agent_actions")
+        fake._lang = lambda cid: "he"
+        fake._pick = lambda texts, lang: texts.get(lang) or texts["he"]
+        fake.propose = propose
+        saved = sys.modules.get("core.agent_actions")
+        sys.modules["core.agent_actions"] = fake
+        import core
+        saved_attr = getattr(core, "agent_actions", None)
+        core.agent_actions = fake
+        self.addCleanup(lambda: (sys.modules.__setitem__("core.agent_actions", saved) if saved
+                                 else sys.modules.pop("core.agent_actions", None),
+                                 setattr(core, "agent_actions", saved_attr) if saved_attr
+                                 else (hasattr(core, "agent_actions") and delattr(core, "agent_actions"))))
+
+    def test_an_ask_gets_the_one_click_card_by_code(self):
+        seen = []
+
+        def propose(cid, origin, persona, raw, **kw):
+            seen.append((cid, origin, persona, raw, kw.get("by_code")))
+            return {"card": {"id": 5, "action": "connect_store", "button": "חיבור החנות בקליק אחד"}}
+        self._with_actions(propose)
+        turn = store_agent.connect_turn(3, "אני רוצה לחבר את החנות", "general")
+        self.assertEqual(seen, [(3, "client_chat", "general", {"name": "connect_store", "params": {}}, True)])
+        self.assertEqual(turn["action"]["action"], "connect_store")
+        self.assertIn("בקליק אחד", turn["reply"])
+        for word in ("מפתח", "wp-admin", "ck_", "cs_", "REST"):
+            self.assertNotIn(word, turn["reply"])
+
+    def test_connected_store_gets_one_line_and_no_card(self):
+        self._with_actions(lambda *a, **k: self.fail("no card for a connected store"))
+        ACCOUNTS[1] = {"client_id": 1, "platform": "woocommerce", "account_id": "https://shop-one.example",
+                       "access_token": f"{KEY1[0]}:{KEY1[1]}", "status": "active"}
+        turn = store_agent.connect_turn(1, "חבר את החנות")
+        self.assertIsNone(turn["action"])
+        self.assertIn("כבר מחוברת", turn["reply"])
+
+    def test_not_an_ask_or_no_card_leaves_it_to_the_model(self):
+        self._with_actions(lambda *a, **k: {"error": "storage_unavailable"})
+        self.assertEqual(store_agent.connect_turn(3, "כמה מכרנו אתמול?"), {})
+        self.assertEqual(store_agent.connect_turn(3, "חבר את החנות"), {})
+
+
+class StoreFallbacks(Base):
+    """The two store setups that would make the key-check fail — and the
+    store delete the key it just made."""
+
+    def _plain_permalinks(self):
+        real = STORE.get
+
+        def get(url, headers=None, params=None, timeout=None, follow_redirects=None):
+            params = dict(params or {})
+            if "/wp-json/" in url:
+                STORE.calls.append(("GET", url, params, headers))
+                return sr._Resp(404, "<html>not found</html>", {"content-type": "text/html"})
+            route = params.pop("rest_route", "")
+            return real(url.rstrip("/") + "/wp-json" + route, headers, params, timeout, follow_redirects)
+        return get
+
+    def test_plain_permalinks_use_rest_route(self):
+        saved = sr.STUBS["httpx"].get
+        sr.STUBS["httpx"].get = self._plain_permalinks()
+        try:
+            result = store_agent.connect_authorized(1, "https://shop-one.example", _post())
+            self.assertTrue(result["success"], result)
+            self.assertTrue(result["verified"])
+            self.assertEqual(wc._shape["https://shop-one.example"]["route"], "plain")
+        finally:
+            sr.STUBS["httpx"].get = saved
+
+    def test_auth_header_dropped_uses_query_auth_once(self):
+        real = STORE.get
+
+        def get(url, headers=None, params=None, timeout=None, follow_redirects=None):
+            if "Authorization" in (headers or {}):
+                STORE.calls.append(("GET", url, params, headers))
+                return sr._Resp(401, {"code": "woocommerce_rest_cannot_view"}, {"content-type": "application/json"})
+            return real(url, headers, params, timeout, follow_redirects)
+        saved = sr.STUBS["httpx"].get
+        sr.STUBS["httpx"].get = get
+        try:
+            result = store_agent.connect_authorized(1, "https://shop-one.example", _post())
+            self.assertTrue(result["success"], result)
+            self.assertEqual(wc._shape["https://shop-one.example"]["auth"], "query")
+            self.assertEqual(STORE.calls[-1][2]["consumer_key"], KEY1[0])
+            self.assertNotIn(KEY1[1], self.out.getvalue())
+        finally:
+            sr.STUBS["httpx"].get = saved
+
+    def test_a_real_refusal_is_still_refused(self):
+        STORE.status = 401
+        self.assertEqual(store_agent.connect_authorized(1, "https://shop-one.example", _post())["code"],
+                         "store_auth")
+        self.assertEqual(DB_WRITES, [])
+
+    def test_website_password_never_goes_in_a_url(self):
+        STORE.status = 401
+        with self.assertRaises(wc.StoreAuthError):
+            wc.get("https://shop-one.example", "wc/v3/orders", ("admin", "app pw"))
+        self.assertTrue(all("consumer_key" not in (c[2] or {}) for c in STORE.calls))
 
 
 class AuthState(Base):
@@ -277,6 +434,31 @@ class Routes(unittest.TestCase):
         self.assertEqual(ok, ['{"success": True}'])                    # the ONE 200
         self.assertLess(cb.index("connect_authorized"), cb.index('{"success": True}'))
 
+    def test_explicit_ask_is_answered_by_code_before_any_model(self):
+        chat = self.route('@app.post("/api/client-chat")')
+        self.assertIn("store_agent.connect_turn(client_id, req.message, persona)", chat)
+        self.assertLess(chat.index("connect_turn"), chat.index("answer_support_question(client_id"))
+        self.assertLess(chat.index("chat_guard.check"), chat.index("connect_turn"))
+
+    def test_start_takes_an_address_never_a_key(self):
+        start = self.route('@app.get("/api/oauth/woocommerce/start")')
+        self.assertIn('def store_authorize_start(request: Request, site: str = ""):', start)
+        self.assertIn("store_agent.store_target(client_id, site)", start)
+        for word in ("consumer_key", "consumer_secret", "key"):
+            self.assertNotIn(f"{word}: str", start)
+
+    def test_the_chat_card_button_says_connect_in_one_click(self):
+        src = _src("core", "agent_actions.py")
+        spec = src.split('"connect_store": {', 1)[1].split('\n    },', 1)[0]
+        self.assertIn('"button": _txt("חיבור החנות בקליק אחד", "Connect my store in one click"', spec)
+        self.assertIn('"link": "/api/oauth/woocommerce/start"', spec)
+        self.assertIn('"button": _pick(spec["button"], lang) if spec.get("button") else ""', src)
+
+    def test_prompts_propose_the_card_on_an_explicit_ask(self):
+        src = re.sub(r"\s+", " ", _src("agents", "support_agent.py"))
+        self.assertIn("ASKS to connect the store", src)
+        self.assertGreaterEqual(src.count("propose connect_store at once"), 2)
+
     def test_manual_key_is_admin_only(self):
         admin = self.route('@app.post("/api/admin/store/connect")')
         self.assertIn("_require_admin(request)", admin)
@@ -297,8 +479,17 @@ class ClientScreens(unittest.TestCase):
         for gone in ("storeKey", "storeSecret", "ck_...", "cs_...", "Consumer key", "/api/client/store/connect",
                      "storeForm", "store_fill"):
             self.assertNotIn(gone, html)
-        self.assertIn("window.location.href = '/api/oauth/woocommerce/start'", html)
-        self.assertIn("store_one_click: { he:'חיבור החנות בקליק אחד'", html)
+        self.assertIn("let url = '/api/oauth/woocommerce/start';", html)
+        self.assertIn("window.location.href = url;", html)
+        self.assertIn("store_one_click: { he:'חיבור החנות בקליק אחד', en:'Connect my store in one click'", html)
+        # No known address → ONE address field (never a key), opened by the return codes
+        self.assertIn('id="storeSite"', html)
+        self.assertIn("['store_no_site', 'store_bad_address', 'store_needs_https'].includes(err)) askStoreAddress()",
+                      html)
+        for code in ("store_no_site", "store_bad_address", "store_needs_https"):
+            self.assertIn(f"notice_{code}: {{ he:", html)
+        # A chat card's button may carry its own words
+        self.assertIn("ok.textContent = a.button || uallakI18n.t('action_approve');", html)
         card = html.split('id="storeCard"', 1)[1][:60]
         self.assertIn('style="display:none;"', card)                     # shown only when needed
 

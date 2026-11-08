@@ -1497,6 +1497,18 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
             log_communication(client_id, "outbound", channel, personal["stored_reply"])
             return {"success": True, "reply": personal["reply"], "needs_human_followup": False,
                     "poll": False, "action": None, "personal": True}
+        # "חבר את החנות" — an explicit ask always gets the one-click card,
+        # decided by code (a model may judge the measurement enough and show
+        # nothing). Staff viewing as the client never reach here (read-only).
+        connect = {}
+        try:
+            connect = store_agent.connect_turn(client_id, req.message, persona)
+        except Exception as e:
+            print(f"[client-chat] store connect turn failed for client {client_id}: {type(e).__name__}")
+        if connect:
+            log_communication(client_id, "outbound", channel, connect["reply"])
+            return {"success": True, "reply": connect["reply"], "needs_human_followup": False,
+                    "poll": False, "action": connect.get("action")}
         from core.cost_tracker import cost_action
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
         # an article draft started inside it relabels its own calls
@@ -4723,15 +4735,20 @@ def client_store_status(request: Request):
 # their store and presses Approve; the store POSTs a read-only key to our
 # callback. No key is ever typed, pasted or shown, and no client route takes one.
 @app.get("/api/oauth/woocommerce/start")
-def store_authorize_start(request: Request):
+def store_authorize_start(request: Request, site: str = ""):
+    # `site`: the ADDRESS the client typed on the store card when we know
+    # none (never a key). Pinned in the signed state; nothing is fetched here.
     client_id = _require_session(request)
     if _admin_view_client(request) is not None:
         raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
     from agents import store_agent
-    site = store_agent.store_site(client_id)
-    if not site:
-        # We don't know the store's address: the website connection comes first
-        return RedirectResponse(url="/dashboard/?connect_error=store_no_site", status_code=303)
+    target = store_agent.store_target(client_id, site)
+    if not target.get("site"):
+        # store_no_site → the card asks for the address; store_needs_https /
+        # store_bad_address → the card says why, with the field open
+        return RedirectResponse(url=f"/dashboard/?connect_error={target.get('code') or 'store_no_site'}",
+                                status_code=303)
+    site = target["site"]
     base = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
     nonce = secrets.token_urlsafe(24)
     store_agent.remember_pending(client_id, nonce)

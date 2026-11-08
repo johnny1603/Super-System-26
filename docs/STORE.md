@@ -144,12 +144,29 @@ Checked 2026-11-07 against:
 - the auth guide (developer.woocommerce.com/docs/apis/rest-api/authentication/);
 - the code itself (plugins/woocommerce/includes/class-wc-auth.php, trunk).
 
-1. `GET /api/oauth/woocommerce/start`, the client's session; refused for
-   staff viewing as the client.
-   - The store address comes from what we already have: an earlier store row,
-     else the website connection. Unknown → the dashboard asks them to connect
-     the website first.
-   - We redirect to `{store}/wc-auth/v1/authorize` with:
+0. **How the client gets there (2026-11-08).** An explicit ask in any chat
+   ("חבר את החנות", "אני רוצה לחבר את החנות", "connect my store") is
+   answered by CODE before any model (`store_agent.connect_turn`, called in
+   `api_server.client_chat` right after the personal-details answer): the
+   `connect_store` card, whose button says "חיבור החנות בקליק אחד" (spec
+   `button`), with one fixed line. Already connected → one line, no card.
+   The prompts say the same for asks the pattern misses. Without an ask, the
+   card appears only for deeper order data.
+1. `GET /api/oauth/woocommerce/start[?site=…]`, the client's session; refused
+   for staff viewing as the client.
+   - The store address (`store_agent.store_target`): the address typed on the
+     card if any, else an earlier store row, the website connection, or the
+     existing-site check's address. Unknown → back to the dashboard with
+     `connect_error=store_no_site`, which opens the store card with ONE field,
+     "כתובת החנות שלכם" (an address, never a key). `clean_address` keeps a
+     public https host (+ path), drops wp-admin/shop/cart paths, refuses IP
+     literals, ports, credentials and internal names (`store_bad_address`);
+     http:// → `store_needs_https`. Nothing is fetched at this step.
+   - We redirect to `{store}/?wc-auth-version=1&wc-auth-route=authorize&…` —
+     the query form of `/wc-auth/v1/authorize`. `WC_Auth::handle_auth_requests`
+     reads both from `$_GET` on `parse_request`, so it works on every permalink
+     setting (the path form is only a rewrite rule and 404s with plain
+     permalinks or unflushed rules). Parameters:
      - `app_name=uallak`, `scope=read`;
      - `user_id` = our signed state (client + store + nonce, 30 min);
      - `return_url=…/api/store/wc-auth/return`;
@@ -181,10 +198,22 @@ The key appears in the store's own key list as "uallak - API (<date>)". The
 client can revoke it there at any time; disconnecting on our side deletes our
 copy.
 
-Not checked against a real store (no credentials on this machine). Stores with
-"plain" permalinks may not route `/wc-auth/v1/authorize`. WooCommerce also
-answers `?wc-auth-version=1&wc-auth-route=authorize` there, as an untested
-fallback if a client hits it.
+**Reads that would otherwise fail the key check** (and make the store delete
+the new key) — `woocommerce_service._fetch`, learned per store, GET only:
+- No `/wp-json/` (plain permalinks: a theme 404 page, not JSON) → the same API
+  at `/?rest_route=/wc/v3/…`.
+- 401 for a valid REST key (Apache CGI/FastCGI hosts drop the Authorization
+  header) → once more with `consumer_key`/`consumer_secret` as query
+  parameters over HTTPS, WooCommerce's documented alternative. Only for a
+  `ck_` key — the website password is never put in a URL. URLs are never logged.
+
+Reachability: the callback and return routes are plain public routes (no
+auth middleware; the only app middleware is CORS + a cache header), the
+service is `--allow-unauthenticated`, and `PUBLIC_APP_URL` (default
+`https://app.uallak.com`) makes both URLs https. The session cookie is
+SameSite=Lax, so it rides the top-level redirect back from the store.
+
+Not checked against a real store (no credentials on this machine).
 
 **Team fallback** (`/admin/connections/`, admin session only):
 - a READ key the team has (`store_agent.connect`, verified live first);

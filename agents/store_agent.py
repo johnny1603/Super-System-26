@@ -69,6 +69,7 @@ ERRORS_HE = {
     "store_auth": "החנות לא אישרה את החיבור — אפשר לנסות שוב בלחיצה אחת.",
     "store_not_woocommerce": "לא מצאנו חנות פעילה בכתובת של האתר.",
     "store_needs_https": "האתר צריך חיבור מאובטח (https) כדי שנוכל להתחבר לחנות.",
+    "store_bad_address": "הכתובת לא נראית כמו כתובת של אתר. כתבו אותה כמו שהיא מופיעה בדפדפן, למשל shop.co.il.",
     "store_busy": "החנות ביקשה מאיתנו להאט רגע — ננסה שוב בעוד דקה.",
     "store_not_found": "לא מצאנו הזמנה כזו בחנות.",
     "store_error": "לא הצלחנו לקרוא את החנות כרגע — ננסה שוב בעוד רגע.",
@@ -159,24 +160,83 @@ def _forget(client_id: int):
         pass
 
 
-def store_site(client_id: int) -> str:
-    """The store address for the one-click connection, from what we already
-    have: an earlier store row of THIS client (any status), else the website
-    connection. "" when we know neither — the client is never asked to type
-    a key, only to connect the website first."""
+def _known_addresses(client_id: int) -> list:
+    """Every store address we already have for THIS client, best first: an
+    earlier store row (any status), the website connection, then the site
+    address the client gave for the existing-site check."""
+    out = []
     try:
         rows = (_db().table("client_accounts").select("account_id,client_id")
                 .eq("client_id", client_id).eq("platform", PLATFORM)
                 .order("id", desc=True).limit(1).execute().data or [])
         if rows and int(rows[0].get("client_id") or client_id) == int(client_id) and rows[0].get("account_id"):
-            return wc.normalize_site(rows[0]["account_id"])
+            out.append(rows[0]["account_id"])
     except Exception:
         pass
     try:
         site = _website_auth(client_id)[0]
-        return wc.normalize_site(site) if site else ""
+        if site:
+            out.append(site)
     except Exception:
+        pass
+    try:
+        from agents import website_agent
+        site = (website_agent.latest_assessment(client_id) or {}).get("site_url")
+        if site:
+            out.append(site)
+    except Exception:
+        pass
+    return out
+
+
+def clean_address(typed: str) -> str:
+    """A store address as a person types it ("shop.co.il", "https://shop.co.il/",
+    "www.shop.co.il/he") → "https://host[/path]", or "" when it isn't a public
+    web address. http:// raises StoreNeedsHttps (the API key would travel in
+    the clear). Never fetched here."""
+    from urllib.parse import urlsplit
+    text = str(typed or "").strip()
+    if not text or len(text) > 200 or any(c.isspace() for c in text):
         return ""
+    if text.lower().startswith("http://"):
+        raise wc.StoreNeedsHttps("the store must be served over https")
+    if "://" not in text:
+        text = "https://" + text
+    parts = urlsplit(text)
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or parts.username or parts.password or parts.port not in (None, 443):
+        return ""
+    # A public name only: no IP literal, no single-label or internal host
+    if ("." not in host or host.endswith((".local", ".internal", ".localhost")) or host == "localhost"
+            or re.fullmatch(r"[\d.]+", host) or ":" in host or not re.fullmatch(r"[a-z0-9.-]+", host)):
+        return ""
+    path = re.sub(r"/(wp-admin|wp-login\.php|shop|cart|checkout|my-account)(/.*)?$", "", parts.path or "")
+    return f"https://{host}{path.rstrip('/')}"
+
+
+def store_target(client_id: int, typed: str = "") -> dict:
+    """Where the one-click connection goes: {"site"} or {"code"}. A typed
+    address (the card's one field — an ADDRESS, never a key) wins; otherwise
+    the first address we already know. "store_no_site" when we know none —
+    the card then asks for the address."""
+    candidates = [typed] if str(typed or "").strip() else _known_addresses(client_id)
+    needs_https = False
+    for candidate in candidates:
+        try:
+            site = clean_address(candidate)
+        except wc.StoreNeedsHttps:
+            needs_https = True
+            continue
+        if site:
+            return {"site": site}
+    if needs_https:
+        return {"code": "store_needs_https"}
+    return {"code": "store_bad_address" if str(typed or "").strip() else "store_no_site"}
+
+
+def store_site(client_id: int) -> str:
+    """The store address we already know for the one-click connection, or ""."""
+    return store_target(client_id).get("site", "")
 
 
 def authorize_url(site: str, user_id: str, return_url: str, callback_url: str) -> str:
@@ -184,13 +244,80 @@ def authorize_url(site: str, user_id: str, return_url: str, callback_url: str) -
     woocommerce-rest-api-docs/#rest-api-keys; includes/class-wc-auth.php):
     app_name, scope=read, user_id (OUR signed state, echoed back), return_url
     (the browser comes back with success=1|0&user_id=…), callback_url (MUST be
-    https; the store POSTs the new key there as JSON). Read-only, always."""
+    https; the store POSTs the new key there as JSON). Read-only, always.
+
+    The address is the QUERY form of the same endpoint (?wc-auth-version=1&
+    wc-auth-route=authorize): WC_Auth::handle_auth_requests reads both from
+    $_GET on parse_request, so it works with ANY permalink setting — the
+    /wc-auth/v1/authorize path is only a rewrite rule, which 404s on a store
+    with plain permalinks or unflushed rewrite rules."""
     from urllib.parse import urlencode
     if not str(callback_url).startswith("https://"):
         raise ValueError("WooCommerce only posts keys to an https callback")
-    return wc.normalize_site(site) + "/wc-auth/v1/authorize?" + urlencode({
+    return wc.normalize_site(site) + "/?" + urlencode({
+        "wc-auth-version": "1", "wc-auth-route": "authorize",
         "app_name": APP_NAME, "scope": "read", "user_id": user_id,
         "return_url": return_url, "callback_url": callback_url})
+
+
+# An explicit "connect my store" in the chat — answered by CODE with the
+# one-click card (a model might decide the measurement is enough and show
+# nothing). A verb of connecting right before the store word, nothing else:
+# "חבר שלי פתח חנות" (a friend) or "החנות מחוברת?" don't match.
+_CONNECT_VERB_HE = r"(?:[ושכ]?(?:ל|ת|נ|א)?חבר(?:ו|י|ים|ת)?|[ושכ]?(?:ל|ה)?חיבור|[ושכ]?מחברים|[ושכ]?נחבר)"
+_STORE_WORD_HE = r"(?:ה?חנות|(?:ה?)?ו{1,3}קומרס|woocommerce)"
+_CONNECT_STORE = [
+    re.compile(r"(?:^|[^\w])" + _CONNECT_VERB_HE + r"(?:\s+(?:לי|לנו|לך|לכם|בבקשה|כבר|גם|עכשיו))?"
+               r"\s+(?:את\s+)?(?:ה?)?" + _STORE_WORD_HE + r"(?![\w])", re.IGNORECASE),
+    re.compile(r"(?<!dis)(?<!un)\b(?:connect|link|hook\s+up|integrate)\s+(?:my\s+|our\s+|the\s+)?"
+               r"(?:online\s+)?(?:store|shop|woocommerce)\b", re.IGNORECASE),
+]
+
+
+def wants_to_connect(message: str) -> bool:
+    text = str(message or "")[:500]
+    return any(p.search(text) for p in _CONNECT_STORE)
+
+
+CONNECT_REPLY = {
+    "he": "אפשר לחבר את החנות בקליק אחד: לוחצים על הכפתור, נכנסים לחנות שלכם ולוחצים \"אישור\". "
+          "החיבור לקריאה בלבד, ואפשר לבטל אותו בכל רגע.",
+    "en": "You can connect your store in one click: press the button, log in to your store and press Approve. "
+          "It's read only, and you can revoke it any time.",
+    "fr": "Vous pouvez connecter votre boutique en un clic : appuyez sur le bouton, connectez-vous et validez. "
+          "Lecture seule, révocable à tout moment.",
+    "ar": "يمكن ربط المتجر بنقرة واحدة: اضغطوا على الزر، ادخلوا إلى متجركم واضغطوا موافقة. "
+          "للقراءة فقط، ويمكن الإلغاء في أي وقت.",
+    "ru": "Магазин можно подключить в один клик: нажмите кнопку, войдите в магазин и нажмите «Одобрить». "
+          "Только чтение, можно отменить в любой момент.",
+}
+CONNECTED_REPLY = {
+    "he": "החנות כבר מחוברת ✓ (קריאה בלבד). אפשר לשאול אותי על הזמנות ומכירות.",
+    "en": "Your store is already connected ✓ (read only). Ask me about orders and sales.",
+    "fr": "Votre boutique est déjà connectée ✓ (lecture seule).",
+    "ar": "المتجر مربوط بالفعل ✓ (قراءة فقط).",
+    "ru": "Магазин уже подключён ✓ (только чтение).",
+}
+
+
+def connect_turn(client_id: int, message: str, persona: str = "general") -> dict:
+    """The chat turn for an explicit "connect my store": {} when the message
+    isn't one. Connected → one fixed line. Otherwise the connect_store card
+    (proposed by code, the client's click opens the store's own approval
+    screen) with a fixed line — never a key, never wp-admin steps."""
+    if not wants_to_connect(message):
+        return {}
+    from core import agent_actions
+    lang = agent_actions._lang(client_id)
+    if is_connected(client_id):
+        return {"reply": agent_actions._pick(CONNECTED_REPLY, lang), "action": None}
+    proposal = agent_actions.propose(client_id, "client_chat", persona or "general",
+                                     {"name": "connect_store", "params": {}}, by_code=True,
+                                     context={"message": message, "language": lang})
+    if not proposal.get("card"):
+        log_step(AGENT_NAME, "connect_turn", f"client {client_id}: no card ({proposal.get('error')})")
+        return {}
+    return {"reply": agent_actions._pick(CONNECT_REPLY, lang), "action": proposal["card"]}
 
 
 def _pending_key(client_id: int) -> str:

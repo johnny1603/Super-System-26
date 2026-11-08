@@ -117,6 +117,7 @@ def _check_rate(key: str):
 def _reset_rate():
     with _rate_lock:
         _rate.clear()
+    _shape.clear()
 
 
 def normalize_site(site_url: str) -> str:
@@ -151,14 +152,71 @@ def _log(message: str):
     print(f"[{SERVICE_NAME}] {message}", flush=True)
 
 
+# How each store answers, learned on the first read (per instance, no secret):
+#   "route"  "pretty" = /wp-json/<path> | "plain" = /?rest_route=/<path> — a
+#            store with plain permalinks (or unflushed rewrite rules) has no
+#            /wp-json/ and answers 404 HTML there.
+#   "auth"   "header" = Basic auth | "query" = consumer_key/consumer_secret as
+#            query parameters, WooCommerce's documented alternative for
+#            servers that drop the Authorization header (Apache CGI/FastCGI
+#            hosts → 401 for a valid key). Only for a REST key (ck_…), only
+#            over HTTPS; the URL is never logged.
+_shape = {}
+
+
+def _is_json(response) -> bool:
+    """A REST answer (WordPress always sends JSON there), not a theme's 404 page."""
+    if "json" in ((response.headers or {}).get("content-type") or "").lower():
+        return True
+    try:
+        return isinstance(response.json(), (dict, list))
+    except Exception:
+        return False
+
+
+def _send(site: str, path: str, auth: tuple, params: dict, route: str, auth_mode: str):
+    query = dict(params or {})
+    headers = _headers(auth)
+    if auth_mode == "query":
+        headers = {k: v for k, v in headers.items() if k != "Authorization"}
+        query.update({"consumer_key": auth[0], "consumer_secret": auth[1]})
+    if route == "plain":
+        url = f"{site}/"
+        query = {"rest_route": "/" + path, **query}
+    else:
+        url = f"{site}/wp-json/{path}"
+    return httpx.get(url, headers=headers, params=query, timeout=TIMEOUT, follow_redirects=False)
+
+
+def _fetch(site: str, path: str, auth: tuple, params: dict):
+    shape = _shape.get(site) or {}
+    route, auth_mode = shape.get("route", "pretty"), shape.get("auth", "header")
+    response = _send(site, path, auth, params, route, auth_mode)
+    if response.status_code == 404 and not _is_json(response) and route == "pretty":
+        # No REST API at /wp-json/ — the plain-permalink address of the same API
+        retry = _send(site, path, auth, params, "plain", auth_mode)
+        if _is_json(retry):
+            route, response = "plain", retry
+            _log(f"GET {path}: store answers on ?rest_route= (plain permalinks)")
+    if (response.status_code == 401 and auth_mode == "header"
+            and str(auth[0]).startswith("ck_")):
+        retry = _send(site, path, auth, params, route, "query")
+        if retry.status_code < 400:
+            auth_mode, response = "query", retry
+            _log(f"GET {path}: store drops the auth header, key sent as query parameters")
+    if response.status_code < 400:
+        _shape[site] = {"route": route, "auth": auth_mode}
+    return response
+
+
 def get(site_url: str, path: str, auth: tuple, params: dict = None) -> tuple:
-    """(json body, headers) of ONE read. The only network call in this module."""
+    """(json body, headers) of ONE read (with at most one retry per fallback
+    above). GET only — the only network call in this module."""
     site = normalize_site(site_url)
     path = _path(path)
     _check_rate(site)
     try:
-        response = httpx.get(f"{site}/wp-json/{path}", headers=_headers(auth), params=params or {},
-                             timeout=TIMEOUT, follow_redirects=False)
+        response = _fetch(site, path, auth, params or {})
     except Exception as e:
         _log(f"GET {path} failed: {type(e).__name__}")
         raise StoreError(f"network: {type(e).__name__}") from None

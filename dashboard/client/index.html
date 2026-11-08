@@ -1600,6 +1600,13 @@ a.media-item:hover { border-color: var(--accent); }
         </div>
       </div>
       <div class="lock-note" id="storeNote" data-i18n="store_note">קריאה בלבד, ואפשר לבטל בכל רגע מתוך החנות.</div>
+      <!-- Only when we don't know the store's address yet: the ADDRESS, never a key -->
+      <div id="storeSiteRow" style="display:none; margin:8px 0;">
+        <label for="storeSite" class="lock-note" data-i18n="store_site_label">כתובת החנות שלכם</label>
+        <input id="storeSite" type="text" inputmode="url" autocomplete="url" dir="ltr" placeholder="shop.co.il"
+               style="width:100%; box-sizing:border-box; margin-top:4px;"
+               onkeydown="if (event.key === 'Enter') connectStoreOneClick(document.getElementById('storeBtn'))">
+      </div>
       <button class="conn-btn primary" id="storeBtn" onclick="connectStoreOneClick(this)" data-i18n="store_one_click">חיבור החנות בקליק אחד</button>
       <button class="disconnect-link" id="storeDisc" style="display:none;" onclick="disconnectStore(this)" data-i18n="disconnect_link">ניתוק חיבור</button>
     </div>
@@ -2830,11 +2837,14 @@ const DASH_I18N = {
   store_note: { he:'קריאה בלבד, ואפשר לבטל בכל רגע מתוך החנות.', en:'Read only, and you can revoke it any time from your store.', fr:'Lecture seule, révocable à tout moment depuis votre boutique.', ar:'للقراءة فقط، ويمكن الإلغاء في أي وقت من المتجر.', ru:'Только чтение, можно отменить в любой момент в магазине.' },
   store_connected: { he:'מחובר — קריאה בלבד ✓', en:'Connected — read only ✓', fr:'Connectée — lecture seule ✓', ar:'مربوط — قراءة فقط ✓', ru:'Подключено — только чтение ✓' },
   store_connected_notice: { he:'החנות מחוברת ✓ אפשר לשאול את אורי על הזמנות ומכירות.', en:'Store connected ✓ You can ask Uri about orders and sales.', fr:'Boutique connectée ✓', ar:'تم ربط المتجر ✓', ru:'Магазин подключён ✓' },
-  store_one_click: { he:'חיבור החנות בקליק אחד', en:'Connect my store (one click)', fr:'Connecter ma boutique (un clic)', ar:'ربط متجري (بنقرة واحدة)', ru:'Подключить магазин (один клик)' },
+  store_one_click: { he:'חיבור החנות בקליק אחד', en:'Connect my store in one click', fr:'Connecter ma boutique en un clic', ar:'ربط متجري بنقرة واحدة', ru:'Подключить магазин в один клик' },
   notice_store: { he:'החיבור לחנות לא הושלם — אפשר לנסות שוב בלחיצה אחת.', en:'The store connection didn\'t complete — try again in one click.', fr:'La connexion à la boutique n\'a pas abouti — réessayez en un clic.', ar:'لم يكتمل ربط المتجر — حاولوا مجددًا بنقرة واحدة.', ru:'Подключение магазина не завершилось — попробуйте ещё раз в один клик.' },
   notice_store_denied: { he:'החיבור לחנות לא אושר. אפשר לחזור לזה בכל רגע.', en:'The store connection wasn\'t approved. You can come back to it any time.', fr:'La connexion n\'a pas été validée. Vous pouvez y revenir à tout moment.', ar:'لم تتم الموافقة على ربط المتجر. يمكن العودة لذلك في أي وقت.', ru:'Подключение магазина не одобрено. Можно вернуться к этому в любой момент.' },
   notice_store_expired: { he:'עבר יותר מדי זמן מאז שהתחלתם — אפשר לנסות שוב בלחיצה אחת.', en:'Too much time passed since you started — try again in one click.', fr:'Trop de temps s\'est écoulé — réessayez en un clic.', ar:'مرّ وقت طويل منذ البدء — حاولوا مجددًا بنقرة واحدة.', ru:'Прошло слишком много времени — попробуйте ещё раз в один клик.' },
-  notice_store_no_site: { he:'כדי לחבר את החנות, האתר צריך להיות מחובר קודם (כרטיס "האתר שלך").', en:'To connect the store, your website needs to be connected first (the "Your website" card).', fr:'Pour connecter la boutique, connectez d\'abord votre site.', ar:'لربط المتجر يجب ربط الموقع أولًا.', ru:'Чтобы подключить магазин, сначала подключите сайт.' },
+  notice_store_no_site: { he:'כתבו את כתובת החנות שלכם בכרטיס "החנות באתר" ולחצו שוב על הכפתור.', en:'Type your store\'s address on the "Online store" card and press the button again.', fr:'Indiquez l\'adresse de votre boutique sur la carte et appuyez de nouveau sur le bouton.', ar:'اكتبوا عنوان متجركم في بطاقة المتجر واضغطوا الزر مجددًا.', ru:'Укажите адрес магазина на карточке и нажмите кнопку ещё раз.' },
+  notice_store_bad_address: { he:'הכתובת לא נראית כמו כתובת של אתר. כתבו אותה כמו שהיא מופיעה בדפדפן, למשל shop.co.il.', en:'That doesn\'t look like a website address. Type it as it appears in the browser, e.g. shop.com.', fr:'Cette adresse ne ressemble pas à celle d\'un site. Exemple : boutique.fr.', ar:'هذا لا يبدو عنوان موقع. اكتبوه كما يظهر في المتصفح.', ru:'Это не похоже на адрес сайта. Например: shop.ru.' },
+  notice_store_needs_https: { he:'האתר צריך חיבור מאובטח (https) כדי שנוכל להתחבר לחנות.', en:'The site needs a secure (https) connection before we can connect the store.', fr:'Le site doit être en https pour connecter la boutique.', ar:'يحتاج الموقع إلى اتصال آمن (https) لربط المتجر.', ru:'Для подключения магазина сайт должен работать по https.' },
+  store_site_label: { he:'כתובת החנות שלכם', en:'Your store\'s address', fr:'L\'adresse de votre boutique', ar:'عنوان متجركم', ru:'Адрес вашего магазина' },
   conv_measured_note: { he:'לפי מדידת הרכישות באתר (עמוד התודה אחרי הזמנה) — כולל הזמנות שעדיין ממתינות לתשלום.', en:'From the purchase measurement on your site (the thank-you page after an order) — includes orders still awaiting payment.', fr:'Selon la mesure des achats du site — inclut les commandes en attente de paiement.', ar:'حسب قياس المشتريات في الموقع — يشمل طلبات بانتظار الدفع.', ru:'По измерению покупок на сайте — включая заказы, ожидающие оплаты.' },
   conv_orders_placed: { he:'הזמנות שבוצעו', en:'Orders placed', fr:'Commandes passées', ar:'طلبات تمت', ru:'Оформленные заказы' },
   store_connect_failed: { he:'החיבור לא הצליח — נסו שוב בעוד רגע.', en:'The connection didn\'t work — try again in a moment.', fr:'La connexion a échoué — réessayez.', ar:'فشل الربط — حاول مجددًا.', ru:'Не удалось подключить — попробуйте ещё раз.' },
@@ -4383,8 +4393,25 @@ function showStoreCard() {
 // ONE click: the store's own approval screen (WooCommerce's authorization,
 // read-only). The store sends the key to our server — never through here.
 function connectStoreOneClick(btn) {
+  const row = document.getElementById('storeSiteRow');
+  const input = document.getElementById('storeSite');
+  let url = '/api/oauth/woocommerce/start';
+  if (row && row.style.display !== 'none') {
+    const site = (input && input.value || '').trim();
+    if (!site) { if (input) input.focus(); return; }
+    url += '?site=' + encodeURIComponent(site);
+  }
   if (btn) btn.disabled = true;
-  window.location.href = '/api/oauth/woocommerce/start';
+  window.location.href = url;
+}
+
+// We don't know the store's address (or it needs fixing): one field on the card
+function askStoreAddress() {
+  const row = document.getElementById('storeSiteRow');
+  if (row) row.style.display = '';
+  showStoreCard();
+  const input = document.getElementById('storeSite');
+  if (input) setTimeout(() => input.focus(), 300);
 }
 
 async function disconnectStore(btn) {
@@ -6004,7 +6031,7 @@ function appendActionCard(personaId, a) {
     const ok = document.createElement('button');
     ok.type = 'button';
     ok.className = 'ok';
-    ok.textContent = uallakI18n.t('action_approve');
+    ok.textContent = a.button || uallakI18n.t('action_approve');
     ok.onclick = () => decideAction(a.id, 'approve', el, personaId);
     // A draft the client can read and keep, but not send yet (e.g. sending
     // is not switched on) — the server refuses the approve too
@@ -8774,10 +8801,11 @@ async function loadSupport() {
   } else if (params.get('connected') === 'store') {
     showNotice(uallakI18n.t('store_connected_notice'), 'success');
   } else if ((params.get('connect_error') || '').startsWith('store')) {
-    // store | store_denied | store_expired | store_no_site
+    // store | store_denied | store_expired | store_no_site | store_bad_address | store_needs_https
     const err = params.get('connect_error');
     showNotice(uallakI18n.t('notice_' + err), 'warn');
-    if (err !== 'store_no_site') showStoreCard();
+    if (['store_no_site', 'store_bad_address', 'store_needs_https'].includes(err)) askStoreAddress();
+    else showStoreCard();
   } else if (params.get('connect_error') === 'tiktok_no_account') {
     // TikTok approved the consent but didn't tell us which account it is:
     // nothing was stored and the team has the log_id — say exactly that

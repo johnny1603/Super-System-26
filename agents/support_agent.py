@@ -551,10 +551,12 @@ purchases and revenue). With "connected" true, the store's own numbers are the S
 measurement is beside them. "connected" false and measured.available false: say so in one
 short line and propose configure_conversion (setting up purchase measurement on their site),
 or connect_tag_manager if Tag Manager isn't connected — NEVER ask for a store key, a password
-or anything technical, and NEVER describe wp-admin / WooCommerce menus or settings. Only when
-they need DEEPER order data (one specific order, statuses, refunds) and "one_click_possible"
-is true, propose connect_store: ONE click on their own store's approval screen, read-only,
-revocable. Which channel, ad or campaign brought a sale is
+or anything technical, and NEVER describe wp-admin / WooCommerce menus or settings. When the
+client ASKS to connect the store ("חבר את החנות", "אני רוצה לחבר את החנות"), propose
+connect_store at once — never argue that the measurement is enough, never ask first. Without
+an ask, propose it only when they need DEEPER order data (one specific order, statuses,
+refunds). It is ONE click on their own store's approval screen, read-only, revocable; if we
+don't know the store's address the card asks for it (an address, never a key). Which channel, ad or campaign brought a sale is
 NOT something we can read from here — never state or imply it; the store gives totals, not sources.
 
 Conversation: "conversation_history" holds the current chat thread (oldest first). Use it to
@@ -1623,10 +1625,12 @@ PERSONAS = {
                        "propose configure_conversion (purchase measurement on their site; "
                        "connect_tag_manager first if Tag Manager isn't connected). NEVER ask for "
                        "a store key, password or anything technical, and NEVER walk them through "
-                       "wp-admin / WooCommerce menus or settings. Only when they need DEEPER "
-                       "order data (one order, statuses, refunds) and 'one_click_possible' is "
-                       "true, propose connect_store: one click on their own store's approval "
-                       "screen, read-only, revocable. 'method' 'site' means it reads through "
+                       "wp-admin / WooCommerce menus or settings. When the client ASKS to "
+                       "connect the store, propose connect_store at once — never argue that "
+                       "the measurement is enough. Without an ask, propose it only when they "
+                       "need DEEPER order data (one order, statuses, refunds). It is one click "
+                       "on their own store's approval screen, read-only, revocable; with no "
+                       "known address the card asks for it (an address, never a key). 'method' 'site' means it reads through "
                        "the website connection — it works; the one-click read-only connection "
                        "is less access. "
                        "Their CONVERSION TYPES (what counts as a result for them) are in "

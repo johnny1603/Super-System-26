@@ -48,6 +48,10 @@ The store is the exception to the two-chip flow above. Details: docs/STORE.md.
   (WooCommerce's built-in authorization); the client logs in to their store
   and presses Approve; the store sends a read-only key to our server. The
   `store` chat turn has no chips and no steps.
+- **An explicit ask always gets the card (2026-11-08).** "חבר את החנות" in any
+  chat → the `connect_store` card ("חיבור החנות בקליק אחד"), decided by code
+  before the model (`store_agent.connect_turn`). If we don't know the store's
+  address, the card opens with one address field — an address, never a key.
 - **Never:** a key field, a key in the chat, or wp-admin menus walked
   through. The old "create a REST key" steps (`STORE_STEPS`) are gone.
 - **Team fallback only:** `/admin/connections/` → "חנות — חיבור ידני": a read

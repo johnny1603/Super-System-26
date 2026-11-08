@@ -3040,6 +3040,11 @@ ACTIONS = {
         "done": _txt("פותח את מסך האישור של החנות…", "Opening your store's approval screen…",
                      "Ouverture de l'écran de validation de la boutique…", "جارٍ فتح شاشة موافقة المتجر…",
                      "Открываю окно подтверждения магазина…"),
+        # The card's button says what the click does (the generic "approve"
+        # read as if something were being sent)
+        "button": _txt("חיבור החנות בקליק אחד", "Connect my store in one click",
+                       "Connecter ma boutique en un clic", "ربط متجري بنقرة واحدة",
+                       "Подключить магазин в один клик"),
     },
     "set_conversion_types": {
         # What counts as a result for THIS client (core/conversion_types). The
@@ -3601,6 +3606,8 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
             "title": _pick(spec.get("title") or {"he": row.get("action", "")}, lang),
             "what": what, "params": params if actor == "admin" else {}, "details": details,
             "approver": row.get("approver"), "kind": spec.get("kind", "execute"),
+            # Optional: the approve button's own words (else the generic one)
+            "button": _pick(spec["button"], lang) if spec.get("button") else "",
             "can_decide": row.get("status") in OPEN_STATUSES and row.get("approver") == actor,
             # The admin "enter as client" view offers its staff button only here
             "staff_may_decide": (row.get("status") in OPEN_STATUSES and row.get("approver") == "client"
