@@ -211,6 +211,14 @@ def redirect_uri() -> str:
     return f"{PUBLIC_APP_URL}{REDIRECT_PATH}"
 
 
+def force_consent() -> bool:
+    """TIKTOK_FORCE_CONSENT=1 (env, read per call): always show TikTok's
+    authorization page, even for an account that already approved the app —
+    for recording the app-review video (docs/TIKTOK-REVIEW.md). Off by
+    default; unset it after the review, no code change."""
+    return os.environ.get("TIKTOK_FORCE_CONSENT", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def build_consent_url(state: str) -> str:
     params = {
         "client_key": get_key("TIKTOK_CLIENT_KEY"),
@@ -219,6 +227,11 @@ def build_consent_url(state: str) -> str:
         "scope": ",".join(OAUTH_SCOPES),
         "state": state,
     }
+    if force_consent():
+        # Login Kit for Web, v2 authorize: disable_auto_auth (int 0|1) —
+        # "When set to 1, always displays the authorization page." 0 (TikTok's
+        # default behaviour) skips it for a valid session.
+        params["disable_auto_auth"] = 1
     return f"{OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
 
 

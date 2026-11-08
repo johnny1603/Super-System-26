@@ -44,6 +44,18 @@ Submission fields:
 Record one continuous screen capture with a real test business account and a
 real TikTok account added as a sandbox/target user.
 
+**The consent screen must show.** An account that already approved the app is
+sent straight back by TikTok, so the permissions never appear. Before recording:
+- set `TIKTOK_FORCE_CONSENT=1` on the Cloud Run service. `build_consent_url`
+  then adds `disable_auto_auth=1`. TikTok's Login Kit for Web (v2 authorize)
+  documents it as "When set to 1, always displays the authorization page".
+  Nothing else in the URL changes (scopes, redirect URI, state). Remove the
+  variable after the review;
+- and/or revoke the app on the test account: TikTok app → Profile → ☰ →
+  Settings and privacy → Security & permissions → Apps and services
+  permissions → uallak → Remove access (menu names vary a little by app
+  version). The next connect then asks again.
+
 1. **Website, signed out.** Open `https://app.uallak.com/` in a browser set to
    English. Scroll to "Our services" → the TikTok card ("uallak never posts on
    your behalf"), then the footer with Terms and Privacy Policy.

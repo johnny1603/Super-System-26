@@ -155,6 +155,26 @@ class Scopes(TikTokCase):
         for scope in ("video.publish", "video.list"):
             self.assertNotIn(scope, query["scope"][0])
 
+    def test_force_consent_adds_only_disable_auto_auth(self):
+        saved = os.environ.pop("TIKTOK_FORCE_CONSENT", None)
+        try:
+            base = parse_qs(urlparse(self.service.build_consent_url("st")).query)
+            self.assertNotIn("disable_auto_auth", base)              # off by default
+            for value in ("0", "", "no"):
+                os.environ["TIKTOK_FORCE_CONSENT"] = value
+                self.assertNotIn("disable_auto_auth", parse_qs(urlparse(
+                    self.service.build_consent_url("st")).query))
+            os.environ["TIKTOK_FORCE_CONSENT"] = "1"
+            url = self.service.build_consent_url("st")
+            self.assertTrue(url.startswith("https://www.tiktok.com/v2/auth/authorize/?"))
+            forced = parse_qs(urlparse(url).query)
+            self.assertEqual(forced.pop("disable_auto_auth"), ["1"])
+            self.assertEqual(forced, base)                            # scopes, redirect_uri, state untouched
+        finally:
+            os.environ.pop("TIKTOK_FORCE_CONSENT", None)
+            if saved is not None:
+                os.environ["TIKTOK_FORCE_CONSENT"] = saved
+
     def test_missing_scopes(self):
         self.assertEqual(self.service.missing_scopes("user.info.basic,video.upload"), [])
         # an old grant: video.publish never stands in for video.upload
