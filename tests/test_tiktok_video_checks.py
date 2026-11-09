@@ -153,7 +153,9 @@ class Publish(unittest.TestCase):
         sys.modules["core.tiktok_grant"] = mod("core.tiktok_grant", needs_reconnect=lambda cid: False,
                                                state=lambda cid: "ok", record_scopes=lambda *a: None,
                                                record_dead=lambda *a: None, record_missing_upload=lambda *a: None)
-        sys.modules["core.drive_service"] = mod("core.drive_service", download_file=lambda fid: self.file)
+        sys.modules["core.drive_service"] = mod(
+            "core.drive_service", get_meta=lambda fid, fields="": {"id": fid, "size": str(len(self.file))},
+            read_range=lambda fid, start, length: self.file[start:start + length])
         sys.modules["agents.client_agent"] = mod("agents.client_agent", log_activity=lambda *a, **k: self.calls.append(("activity", a)),
                                                  get_client=lambda cid: {}, log_communication=lambda *a, **k: None,
                                                  upsert_account=lambda *a, **k: None)
@@ -164,7 +166,7 @@ class Publish(unittest.TestCase):
             is_dead_grant=lambda e: False, is_scope_error=lambda e: False, is_pending_limit=lambda e: False,
             is_token_error=lambda e: False,
             init_inbox_upload=lambda *a, **k: self.calls.append(("init", k)) or {"publish_id": "p1", "upload_url": "u"},
-            upload_video_chunk=lambda url, content, **k: self.calls.append(("put", k)),
+            upload_video_stream=lambda url, read, size, **k: self.calls.append(("put", k)) or 201,
             get_post_status=lambda t, p: {"status": "SEND_TO_USER_INBOX"})
         sys.modules.pop("agents.tiktok_content_agent", None)
         # import_module, not "from agents import ...": the package attribute
@@ -204,6 +206,127 @@ class Publish(unittest.TestCase):
         self.assertTrue(result["bad_format"])
         self.assertIn("codec", result["problems"])
         self.assertFalse([c for c in self.calls if c[0] in ("init", "put")])   # nothing reached TikTok
+
+
+# ─── Chunked streaming upload (2026-11-09) ──────────────────────────────────
+
+MB = 1024 * 1024
+
+
+class ChunkPlan(unittest.TestCase):
+    def test_small_file_is_one_whole_chunk(self):
+        from core import video_limits as vl
+        self.assertEqual(vl.tiktok_chunk_plan(3 * MB), [(0, 3 * MB)])
+        self.assertEqual(vl.tiktok_chunk_size(3 * MB), 3 * MB)
+        self.assertEqual(vl.tiktok_chunk_plan(15 * MB), [(0, 15 * MB)])
+        self.assertEqual(vl.tiktok_chunk_plan(0), [])
+
+    def test_large_file_follows_tiktoks_rules(self):
+        from core import video_limits as vl
+        size = int(412.8 * MB)
+        plan = vl.tiktok_chunk_plan(size)
+        self.assertEqual(len(plan), size // vl.TIKTOK_CHUNK_BYTES)          # floor(size / chunk_size)
+        self.assertEqual(sum(n for _, n in plan), size)                    # every byte, once
+        self.assertEqual([s for s, _ in plan], [i * vl.TIKTOK_CHUNK_BYTES for i in range(len(plan))])
+        for _, n in plan[:-1]:
+            self.assertEqual(n, vl.TIKTOK_CHUNK_BYTES)
+        self.assertTrue(vl.TIKTOK_CHUNK_BYTES <= plan[-1][1] < 2 * vl.TIKTOK_CHUNK_BYTES)
+        self.assertLessEqual(plan[-1][1], 128 * MB)
+        self.assertTrue(5 * MB <= vl.TIKTOK_CHUNK_BYTES <= 64 * MB)
+        self.assertLessEqual(len(vl.tiktok_chunk_plan(vl.TIKTOK_INBOX_MAX_BYTES)), vl.TIKTOK_MAX_CHUNKS)
+
+    def test_exact_multiple_has_no_short_tail(self):
+        from core import video_limits as vl
+        plan = vl.tiktok_chunk_plan(3 * vl.TIKTOK_CHUNK_BYTES)
+        self.assertEqual([n for _, n in plan], [vl.TIKTOK_CHUNK_BYTES] * 3)
+
+
+class StreamUpload(unittest.TestCase):
+    def setUp(self):
+        self.saved = sys.modules.get("httpx")
+        self.puts, self.answers = [], []
+
+        class TransportError(Exception):
+            pass
+
+        def put(url, headers=None, content=None, timeout=None):
+            self.puts.append(dict(headers))
+            answer = self.answers.pop(0) if self.answers else 201
+            if isinstance(answer, Exception):
+                raise answer
+            return types.SimpleNamespace(status_code=answer, text="")
+
+        self.TransportError = TransportError
+        sys.modules["httpx"] = types.SimpleNamespace(__name__="httpx", put=put, TransportError=TransportError,
+                                                     Response=object)
+        sys.modules.pop("core.tiktok_service", None)
+        import importlib
+        self.svc = importlib.import_module("core.tiktok_service")
+
+    def tearDown(self):
+        sys.modules.pop("core.tiktok_service", None)
+        if self.saved is None:
+            sys.modules.pop("httpx", None)
+        else:
+            sys.modules["httpx"] = self.saved
+
+    def _file(self, size):
+        return lambda start, length: b"\0" * length
+
+    def test_chunks_are_sequential_with_content_range_206_then_201(self):
+        size = 40 * MB
+        self.answers = [206, 201]
+        sent = self.svc.upload_video_stream("u", self._file(size), size, _sleep=lambda s: None)
+        self.assertEqual(sent, 2)
+        self.assertEqual(self.puts[0]["Content-Range"], f"bytes 0-{16 * MB - 1}/{size}")
+        self.assertEqual(self.puts[1]["Content-Range"], f"bytes {16 * MB}-{size - 1}/{size}")
+        self.assertEqual(self.puts[1]["Content-Length"], str(24 * MB))
+
+    def test_a_5xx_or_dropped_connection_is_retried(self):
+        size = 4 * MB
+        self.answers = [500, self.TransportError("reset"), 201]
+        slept = []
+        self.assertEqual(self.svc.upload_video_stream("u", self._file(size), size, _sleep=slept.append), 1)
+        self.assertEqual(len(self.puts), 3)
+        self.assertEqual(len(slept), 2)
+
+    def test_a_4xx_is_raised_at_once_and_retries_are_bounded(self):
+        self.answers = [400]
+        with self.assertRaises(self.svc.TikTokAPIError):
+            self.svc.upload_video_stream("u", self._file(MB), MB, _sleep=lambda s: None)
+        self.assertEqual(len(self.puts), 1)
+        self.puts.clear()
+        self.answers = [503] * 10
+        with self.assertRaises(self.svc.TikTokAPIError):
+            self.svc.upload_video_stream("u", self._file(MB), MB, _sleep=lambda s: None)
+        self.assertEqual(len(self.puts), self.svc.CHUNK_RETRIES + 1)
+
+    def test_a_short_read_is_an_error_not_a_bad_upload(self):
+        with self.assertRaises(self.svc.TikTokAPIError):
+            self.svc.upload_video_stream("u", lambda s, n: b"\0" * (n - 1), MB, _sleep=lambda s: None)
+        self.assertEqual(self.puts, [])
+
+
+class RangeProbe(unittest.TestCase):
+    def _reader(self, data, log):
+        def read(start, length):
+            log.append(length)
+            return data[start:start + length]
+        return read
+
+    def test_moov_at_the_end_is_found_by_ranges(self):
+        data = box(b"ftyp", b"isom\0\0\0\0isom") + box(b"mdat", b"\0" * 200000) \
+            + box(b"moov", full(b"mvhd", b"\0" * 96) + video_trak() + audio_trak())
+        log = []
+        facts = vp.probe_ranges(self._reader(data, log), len(data))
+        self.assertEqual((facts["container"], facts["video_codec"]), ("mp4", "h264"))
+        self.assertLess(sum(log), len(data))     # never the whole file
+
+    def test_a_read_failure_propagates(self):
+        def read(start, length):
+            raise OSError("drive down")
+        with self.assertRaises(OSError):
+            vp.probe_ranges(read, 1000)
 
 
 # ─── The card: refusal line + bad_format refusal; the list the model sees ───
@@ -296,7 +419,8 @@ class Diagnose(unittest.TestCase):
         self.assertIn('@app.get("/api/admin/tiktok/diagnose", dependencies=_admin_only)', api)
         agent = _read("agents", "tiktok_content_agent.py")
         body = agent[agent.index("def diagnose"):agent.index("# ─── Engagement")]
-        for write in (".insert(", ".update(", ".upsert(", ".delete(", "init_inbox_upload", "upload_video_chunk"):
+        for write in (".insert(", ".update(", ".upsert(", ".delete(", "init_inbox_upload", "upload_video_chunk",
+                      "upload_video_stream"):
             self.assertNotIn(write, body)
         self.assertIn("get_post_status", agent[agent.index("def _status_reader"):agent.index("def diagnose")])
         self.assertNotIn("access_token", body.replace("_status_reader", ""))   # no token in the answer

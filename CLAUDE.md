@@ -644,6 +644,19 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   green/yellow/red (thresholds in app_settings), ONE notice per crossing (alerts + email to
   ADMIN_EMAIL, hourly job `credits-check`), audit rows source `credits`. Warn only — never stops an
   agent. The Console is the source of truth. `docs/ANTHROPIC-CREDITS.md`.
+- **Client chat turns (2026-11-09, `docs/CHAT-TURNS.md`)**: `core/chat_turns` — ONE turn at a time
+  per client × channel (thread lock + `chat_turn_locks` lease), a collection window
+  (`chat_collect_window_seconds`, default 3, 0 = off) that answers consecutive messages as one,
+  `covered` responses (no second bubble) and ONE restart when a message arrives mid-turn with no
+  card yet. `core/chat_timing` — per-message stages (queue/guard/context/model/post) + every Claude
+  call (timed in claude_json), `chat_turn_timings`, `/admin/models/`. MEASUREMENT ONLY — never add
+  min instances without asking. `core/explicit_instruction` → payload `explicit_instruction` (act,
+  no content questions; youtube_metadata never asks). `core/frustration` — free rules on every
+  turn (`client_frustrated` → empathy + one next step, never "the team", never the alert), Haiku
+  confirmation in the background only when flagged (`claude_frustration`), ONE
+  `client_frustration_alerts` row per incident, email to ADMIN_EMAIL + the admin bell
+  (`dashboard/assets/frustration-widget.js`). Migration
+  `migrations/2026-11-09-chat-timing-frustration.sql`. `tests/test_chat_turns.py`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
@@ -656,7 +669,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`tiktok_grant:<id>`, from the callback and every token refresh); a grant without
   `video.upload` or dead → `needs_reconnect` everywhere and the `connect_tiktok` card. The
   client sends a video to their TikTok drafts with the agent_actions card
-  `send_tiktok_to_inbox` (client-approved, ≤ 64 MB `video_limits.TIKTOK_INBOX_MAX_MB`, never
+  `send_tiktok_to_inbox` (client-approved, ≤ 512 MB `video_limits.TIKTOK_INBOX_MAX_MB`, streamed
+  from Drive in 16 MB chunks by `tiktok_service.upload_video_stream` with per-chunk retries, never
   Direct Post, no caption; the file must pass `core/video_probe` — TikTok's container/codec/fps/
   resolution/length rules, from the file's own headers, at the card AND before init; the PUT names
   the real container; read-only diagnosis `scripts/tiktok_diagnose.sh`). `video.list`

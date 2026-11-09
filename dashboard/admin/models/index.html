@@ -61,6 +61,10 @@ select { font-family:inherit; font-size:14px; background:var(--panel-2); color:v
     <h2>יום חדש בצ'אט (08:00)</h2>
     <div id="rollover" class="muted">טוען…</div>
   </div>
+  <div class="card">
+    <h2>זמני תגובה בצ'אט (מדידה)</h2>
+    <div id="timing" class="muted">טוען…</div>
+  </div>
 </div>
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -113,6 +117,48 @@ function renderRollover(r) {
       <span class="muted"> · ממוצע ${r.avg_messages_archived} הודעות בארכיון לחלון · סה"כ ${ils(r.summary_cost_ils)}</span></div>`;
 }
 
+// Per-message timing (core/chat_timing): where the seconds go
+const STAGE_HE = {queue: "המתנה בתור + חלון איסוף", guard: "בדיקה ושמירה", context: "קריאת נתונים והכנה",
+                  model: "מודל", post: "עיבוד אחרי", other: "אחר"};
+const sec = ms => (Number(ms || 0) / 1000).toFixed(1) + "ש'";
+function renderTiming(t) {
+  const el = document.getElementById("timing");
+  if (!t.available) {
+    el.innerHTML = "טבלת המדידה עוד לא קיימת — להריץ את migrations/2026-11-09-chat-timing-frustration.sql ב-Supabase.";
+    return;
+  }
+  if (!t.overall.turns) { el.textContent = "אין עדיין הודעות שנמדדו בתקופה הזו."; return; }
+  const stages = Object.entries(t.overall.stage_avg_ms || {}).sort((a, b) => b[1] - a[1]);
+  const top = stages.length ? stages[0][1] : 1;
+  const stageRows = stages.map(([k, v]) => `<tr><td>${esc(STAGE_HE[k] || k)}</td><td>${sec(v)}
+      <div class="bar" style="width:${Math.round(100 * v / Math.max(top, 1))}%"></div></td>
+      <td>${t.dominant[k] || 0}</td></tr>`).join("");
+  const clientRows = t.per_client.slice(0, 30).map(c => `<tr><td>${esc(c.name || "")} <span class="muted">#${c.client_id}</span></td>
+      <td>${c.turns}</td><td>${sec(c.avg_ms)}</td><td>${sec(c.p90_ms)}</td><td>${esc(STAGE_HE[c.dominant] || c.dominant)}</td></tr>`).join("");
+  const slowRows = t.slowest.slice(0, 15).map(s => {
+    const calls = (s.calls || []).map(c => `${esc(c.model)} ${sec(c.ms)} (${c.in}+${c.cache_read}→${c.out})`).join(" · ");
+    return `<tr><td>${esc(new Date(s.created_at).toLocaleString("he-IL", {dateStyle: "short", timeStyle: "short"}))}</td>
+      <td>${esc(s.name || "")} <span class="muted">#${s.client_id} · ${esc(s.persona)}</span></td>
+      <td>${sec(s.total_ms)}</td><td>${esc(STAGE_HE[s.dominant] || s.dominant)}</td>
+      <td class="muted" style="font-size:12px">${calls}</td></tr>`;
+  }).join("");
+  el.className = "";
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="muted">הודעות שנמדדו</span><b>${t.overall.turns}</b></div>
+      <div class="kpi"><span class="muted">ממוצע</span><b>${sec(t.overall.avg_ms)}</b></div>
+      <div class="kpi"><span class="muted">p90</span><b>${sec(t.overall.p90_ms)}</b></div>
+    </div>
+    <h2 style="margin-top:14px">לפי שלב (ממוצע) · כמה פעמים היה השלב הדומיננטי</h2>
+    <table><thead><tr><th>שלב</th><th>ממוצע</th><th>דומיננטי</th></tr></thead><tbody>${stageRows}</tbody></table>
+    <h2 style="margin-top:14px">לפי לקוח</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>לקוח</th><th>הודעות</th><th>ממוצע</th><th>p90</th><th>שלב דומיננטי</th></tr></thead>
+      <tbody>${clientRows}</tbody></table></div>
+    <h2 style="margin-top:14px">ההודעות האיטיות האחרונות</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>מתי</th><th>לקוח</th><th>סה"כ</th><th>דומיננטי</th><th>קריאות מודל (קלט+מטמון→פלט)</th></tr></thead>
+      <tbody>${slowRows}</tbody></table></div>`;
+}
+
 async function load() {
   const days = document.getElementById("days").value;
   const res = await fetch("/api/admin/model-costs?days=" + encodeURIComponent(days), {credentials: "same-origin"});
@@ -120,6 +166,10 @@ async function load() {
   const body = await res.json();
   renderRouting(body.data.routing);
   renderRollover(body.data.rollover);
+  try {
+    const tr = await fetch("/api/admin/chat-timing?days=" + encodeURIComponent(days), {credentials: "same-origin"});
+    renderTiming((await tr.json()).data);
+  } catch (e) { document.getElementById("timing").textContent = "הטעינה נכשלה. אפשר לרענן."; }
 }
 document.getElementById("days").addEventListener("change", load);
 load().catch(() => { document.getElementById("routing").textContent = "הטעינה נכשלה. אפשר לרענן."; });
@@ -127,5 +177,6 @@ load().catch(() => { document.getElementById("routing").textContent = "הטעי�
 <!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->
 <script src="/assets/itzik-chat.js" defer></script>
 <script src="/assets/credits-widget.js" defer></script>
+<script src="/assets/frustration-widget.js" defer></script>
 </body>
 </html>

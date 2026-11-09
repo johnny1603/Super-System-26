@@ -15,8 +15,10 @@ every limit and rule at the end.
                youtube_service.search_videos for niche phrasing — cached here
                per query, skipped when the key is missing or the shared daily
                search brake (protecting the upload quota) says no.
-  2. DRAFT   — or ONE short clarifying question when the request, the file
-               name and the business data do not say what the video shows.
+  2. DRAFT   — never a question (2026-11-09: "just upload it, as is" must
+               get a card, not "what does the video show?"). An unclear
+               subject → general metadata about the business; a model that
+               still asks gets ONE re-draft, then it is a MetadataError.
   3. CRITIQUE — misleading title, invented detail, stuffing, unnatural
                language, weak opening, links that do not fit.
   4. REVISE  — one pass, applying the critique plus code-detected problems
@@ -286,12 +288,11 @@ _FORMAT = """Write everything in {language}, natural native phrasing.
 DRAFT_SYSTEM = """You write the YouTube title, description and tags for ONE video a small business
 is uploading to its own channel.
 
-FIRST decide whether the subject is clear. If "request", "about" and "file_name" together do NOT
-say what the video shows (e.g. file_name "VID_2031.mp4" and request "upload it"), return ONLY
-{{"needs_clarification": true, "question": "<ONE short question in {language} asking what the video
-shows>"}}.
+NEVER ask a question. When "request", "about" and "file_name" do not say what the video shows
+(e.g. file_name "VID_2031.mp4" and request "upload it, as is"), write honest, general metadata
+about the BUSINESS and what it offers ("business", "site_pages") — no claim about what happens in
+the video. The client can change the card afterwards.
 
-Otherwise:
 """ + _RULES + "\n\n" + _FORMAT + """
 
 Return JSON only:
@@ -541,7 +542,7 @@ def _finish(client_id: int, meta: dict, ground: dict, inv: dict, language: str) 
 
 
 def generate(client_id: int, request: str, file_name: str, about: str, language: str) -> dict:
-    """-> {"clarify": question} | {"metadata": clean} | {"refuse": text}.
+    """-> {"metadata": clean} | {"refuse": text} — never a question.
     Raises MetadataError when the LLM step itself fails."""
     ground = grounding(client_id, request, file_name, about, language)
     inv = inventory(client_id)
@@ -549,10 +550,19 @@ def generate(client_id: int, request: str, file_name: str, about: str, language:
         draft = _llm(DRAFT_SYSTEM.format(language=ground["language"]), ground, "draft", client_id, 2000)
     except Exception as e:
         raise MetadataError(f"draft: {type(e).__name__}: {e}")
-    if draft.get("needs_clarification"):
-        question = clean_line(draft.get("question"), 200)
-        if question:
-            return {"clarify": question}
+    if draft.get("needs_clarification") or not clean_line(draft.get("title"), 100):
+        # Never a content question before a media action (2026-11-09): the
+        # model still asked → ONE re-draft that is told to write from the
+        # business; a second refusal is a failure, not a question.
+        try:
+            draft = _llm(DRAFT_SYSTEM.format(language=ground["language"]),
+                         {**ground, "instruction": "Do not ask. Write the metadata now from the file name "
+                                                   "and the business, without claims about the video's content."},
+                         "draft_no_question", client_id, 2000)
+        except Exception as e:
+            raise MetadataError(f"re-draft: {type(e).__name__}: {e}")
+        if draft.get("needs_clarification") or not clean_line(draft.get("title"), 100):
+            raise MetadataError("draft asked a question twice")
     return _finish(client_id, draft, ground, inv, language)
 
 

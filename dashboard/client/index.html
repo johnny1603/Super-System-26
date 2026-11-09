@@ -2804,7 +2804,7 @@ const DASH_I18N = {
   tt_send_opening: { he:'פותחים את כרטיס האישור בצ\'אט...', en:'Opening the approval card in the chat...', fr:'Ouverture de la carte d\'approbation dans le chat...', ar:'جارٍ فتح بطاقة الموافقة في الدردشة...', ru:'Открываем карточку подтверждения в чате...' },
   tt_send_failed: { he:'לא הצלחנו להכין את השליחה לטיקטוק כרגע. נסו שוב בעוד רגע.', en:'Could not prepare the TikTok send right now. Please try again in a moment.', fr:'Impossible de préparer l\'envoi TikTok pour le moment. Réessayez dans un instant.', ar:'تعذّر تجهيز الإرسال إلى تيك توك حاليًا. حاولوا مرة أخرى بعد قليل.', ru:'Сейчас не удалось подготовить отправку в TikTok. Попробуйте чуть позже.' },
   tt_not_in_plan: { he:'טיקטוק לא כלול בחבילה הנוכחית שלכם.', en:'TikTok is not part of your current plan.', fr:'TikTok ne fait pas partie de votre offre actuelle.', ar:'تيك توك غير مشمول في باقتكم الحالية.', ru:'TikTok не входит в ваш текущий тариф.' },
-  tt_too_large: { he:'גדול מדי לטיוטות בטיקטוק (עד 64MB)', en:'Too large for TikTok drafts (up to 64 MB)', fr:'Trop lourd pour les brouillons TikTok (64 Mo max)', ar:'كبير جدًا لمسودات تيك توك (حتى 64MB)', ru:'Слишком большой для черновиков TikTok (до 64 МБ)' },
+  tt_too_large: { he:'מעל 512MB — שמרו גרסה קטנה יותר', en:'Over 512 MB — save a smaller version', fr:'Plus de 512 Mo — enregistrez une version plus légère', ar:'أكبر من 512MB — احفظوا نسخة أصغر', ru:'Больше 512 МБ — сохраните версию поменьше' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
   gtm_card: { he:'מדידת המרות (Google Tag Manager)', en:'Conversion measurement (Google Tag Manager)', fr:'Mesure des conversions (Google Tag Manager)', ar:'قياس التحويلات (Google Tag Manager)', ru:'Измерение конверсий (Google Tag Manager)' },
@@ -3612,7 +3612,7 @@ async function loadTiktokProfile() {
 // A video tile's "Send to TikTok": opens the media agent's chat with the
 // SAME approval card the chat offers (send_tiktok_to_inbox). Nothing is sent
 // until the client presses Approve on that card.
-const TIKTOK_INBOX_MAX_MB = 64;   // core/video_limits.TIKTOK_INBOX_MAX_MB (the server enforces it)
+const TIKTOK_INBOX_MAX_MB = 512;   // core/video_limits.TIKTOK_INBOX_MAX_MB (the server enforces it)
 async function sendVideoToTiktok(fileId, btn) {
   const t = uallakI18n.t;
   const note = msg => { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; };
@@ -6662,9 +6662,10 @@ async function sendInWindow(personaId, extra) {
   // While the interview is running, the general window's sends are its turns
   // (a help request still goes to the concierge — the client asked for it)
   if (interviewMode && personaId === 'general' && !extra) { await interviewTurn(text); return; }
-  // Typing indicator - upgrade proposals and web searches can take a while,
-  // the client should see the chat is working, not frozen
-  const typing = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+  // ONE typing indicator per window, shown at once and kept while ANY send
+  // of this window is still waiting (core/chat_turns answers messages sent
+  // close together as one turn, so several sends may share one reply)
+  chatPendingStart(w);
   try {
     const res = await fetch('/api/client-chat', {
       method: 'POST',
@@ -6673,21 +6674,43 @@ async function sendInWindow(personaId, extra) {
       body: JSON.stringify(Object.assign({ message: text, persona: personaId }, extra || {})),
     });
     const data = await res.json();
-    typing.remove();
-    if (data.success && data.reply) {
+    chatPendingEnd(w);
+    if (data.success && data.covered) {
+      // this message was answered together with an earlier one — that
+      // reply is (or is about to be) in the window; never a second bubble
+    } else if (data.success && data.reply) {
       // Server-side failures arrive HERE too, as an in-voice handoff line
       // (core/chat_fallback) - the server never answers the chat with a 500
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
       if (data.action) appendActionCard(personaId, data.action);
       if (data.poll) watchForAgentPost(personaId);
+      chatTypingToBottom(w);
     } else {
       chatNotDelivered(w, text);
     }
   } catch (e) {
     console.error('support chat request failed', e);
-    typing.remove();
+    chatPendingEnd(w);
     chatNotDelivered(w, text);
   }
+}
+
+// The window's single typing indicator: a counter of sends in flight. A new
+// bubble is created (never a DOM move) when it must go back under a reply.
+function chatPendingStart(w) {
+  w.pending = (w.pending || 0) + 1;
+  if (!w.typingEl || !w.typingEl.isConnected) {
+    w.typingEl = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+  }
+}
+function chatPendingEnd(w) {
+  w.pending = Math.max((w.pending || 1) - 1, 0);
+  if (!w.pending && w.typingEl) { w.typingEl.remove(); w.typingEl = null; }
+}
+function chatTypingToBottom(w) {
+  if (!w.pending || !w.typingEl) return;
+  w.typingEl.remove();
+  w.typingEl = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
 }
 
 // A reply that says "I'll post here when it's ready" (an article draft runs

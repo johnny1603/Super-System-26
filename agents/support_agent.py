@@ -162,6 +162,35 @@ def _current_thread(client_id: int, chat_started_at: str,
              "text": (r.get("content") or "")[:400]} for r in rows]
 
 
+def _turn_flags(payload: dict, message: str) -> None:
+    """Code-decided flags the prompt rules read (HANDOFF_RULE): EXPLICIT
+    INSTRUCTIONS and FRUSTRATION. Free (regex only); set only when true so a
+    calm turn's payload is unchanged."""
+    from core import explicit_instruction, frustration
+    if explicit_instruction.is_explicit(message):
+        payload["explicit_instruction"] = True
+    try:
+        if frustration.flagged(frustration.rules(message, payload.get("conversation_history"))):
+            payload["client_frustrated"] = True
+    except Exception:
+        pass
+
+
+def frustration_check(client_id: int, channel: str, persona: str, message: str,
+                      waited_s: float = 0) -> dict:
+    """The background half of frustration detection (core/frustration),
+    scheduled by the chat route AFTER the reply. Reloads the thread itself so
+    nothing heavy rides on the chat request."""
+    from core import frustration
+    try:
+        client = get_client(client_id) or {}
+        history, _ = _thread_context(client_id, client.get("chat_started_at"), channel=channel)
+    except Exception:
+        client, history = {}, []
+    return frustration.handle_turn(client_id, channel, persona, message, history, waited_s,
+                                   client_name=client.get("business_name") or client.get("name") or "")
+
+
 def _thread_context(client_id: int, chat_started_at: str, channel: str = "dashboard_chat") -> tuple:
     """(conversation_history, previous_days) for one chat window. The window
     opens at the later of 'new chat' and the daily rollover (core/chat_rollover);
@@ -212,6 +241,22 @@ THE EXCEPTION — never a dead end, always in your own voice:
   handoff from conversation_history unless the client does. Their requests to the team and where
   each stands are in account_state.team_requests (open / handled / closed) — answer "what
   happened with my request?" from there.
+
+EXPLICIT INSTRUCTIONS — when "explicit_instruction" is true (the client gave a direct order such as
+"upload this video to TikTok drafts, just do it, as is"): ACT NOW. Never ask about the content —
+what it shows, a caption, a title, a purpose, an audience, "are you sure". Resolve the file by its
+name from account_state (the closest name match; the newest when several match equally) and
+propose the action in THIS reply. Only a real blocker stops you (nothing matches the name, a
+missing connection, the file breaks a platform rule): then write ONE sentence naming the blocker
+and ONE concrete fix (or its card), and stop. In every conversation: never ask again a question
+the client already answered or brushed aside in conversation_history — use the answer, or act
+without it.
+
+FRUSTRATION — when "client_frustrated" is true, the client is upset (repeating themselves, waiting,
+something failed). Open with one short, genuine line of empathy in your own voice — no grovelling,
+no repeated apologies — then give ONE concrete next step you take or offer right now (an action
+card, the answer, the fix). Never say you are passing it to the team or to a person, and never
+mention that anyone was notified or alerted about this conversation.
 
 DATA TOPIC — label every message with "data_topic", the live account data it asks about:
 "google_ads" (their Google campaigns' numbers or results), "meta_ads" (their Facebook/Instagram
@@ -318,8 +363,11 @@ sees it until they publish it themselves in YouTube Studio, and nothing happens 
 the approve button. If they want a change on the card ("change the title", "shorter description",
 "add this phrase"), propose it again with the SAME drive_file_id and "change_request" = their words;
 the card is rewritten. Which video:
-- the one they name; exactly one uploadable video → that one; several and unclear → ask ONE short
-  question naming them by file name, and propose nothing yet.
+- the one they name (closest file-name match; the newest when several match equally); exactly one
+  uploadable video → that one; several and no name at all → ask ONE short question naming them by
+  file name, and propose nothing yet. That is the ONLY question a media action may need: never ask
+  what a video shows, its caption, title, purpose or audience before proposing — the system writes
+  the text from the file name and the business.
 - Never show or say a drive_file_id; refer to videos by file name only.
 If the action is NOT in available_actions, say exactly why from the data, in plain words: no
 uploadable video (none in the folder, or each is over upload_max_mb), YouTube not connected or
@@ -1087,6 +1135,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     payload["conversation_history"], previous_days = _thread_context(client_id, client.get("chat_started_at"))
     if previous_days:
         payload["previous_days"] = previous_days
+    _turn_flags(payload, message)
     if not payload["client_knowledge"]:
         payload.pop("client_knowledge")  # absent, never an empty block to read into
 
@@ -2203,6 +2252,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         client_id, client.get("chat_started_at"), channel=persona_channel(persona_id))
     if previous_days:
         payload["previous_days"] = previous_days
+    _turn_flags(payload, message)
     if not payload["client_knowledge"]:
         payload.pop("client_knowledge")
     try:

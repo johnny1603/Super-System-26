@@ -436,7 +436,8 @@ class Routes(unittest.TestCase):
 
     def test_explicit_ask_is_answered_by_code_before_any_model(self):
         chat = self.route('@app.post("/api/client-chat")')
-        self.assertIn("store_agent.connect_turn(client_id, req.message, persona)", chat)
+        # `message` = the turn's (possibly merged) client text (core/chat_turns)
+        self.assertIn("store_agent.connect_turn(client_id, message, persona)", chat)
         self.assertLess(chat.index("connect_turn"), chat.index("answer_support_question(client_id"))
         self.assertLess(chat.index("chat_guard.check"), chat.index("connect_turn"))
 

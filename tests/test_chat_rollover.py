@@ -336,7 +336,8 @@ class Wiring(unittest.TestCase):
 
     def test_agents_and_history_use_the_window(self):
         s = self._src("agents", "support_agent.py")
-        self.assertEqual(s.count("_thread_context("), 3)          # def + concierge + persona
+        # def + concierge + persona + the background frustration check
+        self.assertEqual(s.count("_thread_context("), 4)
         self.assertIn('payload["previous_days"] = previous_days', s)
         api = self._src("core", "api_server.py")
         self.assertIn("chat_rollover.window(client_id, channel,", api)

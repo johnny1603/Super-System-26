@@ -537,8 +537,9 @@ class Proposals(unittest.TestCase):
         self.assertTrue(all(raw["params"] == {"drive_file_id": "file123"} for _, _, raw in self.proposed))
 
     def test_too_big_for_tiktok_is_said_at_the_point_of_use(self):
-        lines, cards = self.run_for("video", 100 * MiB, _state())
-        self.assertEqual(self.names(), ["publish_youtube_from_media"])
+        # the TikTok cap is 512 MB since the chunked upload (2026-11-09)
+        lines, cards = self.run_for("video", (vl.TIKTOK_INBOX_MAX_MB + 1) * MiB, _state())
+        self.assertNotIn("send_tiktok_to_inbox", self.names())
         self.assertTrue(any(str(vl.TIKTOK_INBOX_MAX_MB) in line and "טיקטוק" in line for line in lines))
 
     def test_too_big_for_both_still_stored_and_says_which(self):

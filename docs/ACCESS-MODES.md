@@ -82,7 +82,7 @@ what we need from them. **Missing access →**: what the dashboard shows today.
 | | Mode A | Mode B |
 |---|---|---|
 | How | OAuth `user.info.basic` + `video.upload` (Upload-to-Inbox). There is no invite model for a personal/creator account. | Client creates the account on their phone; uallak can only connect it (Mode A). TikTok Ads (Business Center) is **not built** and not offered. |
-| System can | Send a video (≤ 64 MB) to the client's TikTok drafts; the client publishes it in the app. Never Direct Post, never paid ads. Engagement reads off (`ENGAGEMENT_READS_ENABLED`). | Same. |
+| System can | Send a video (≤ 512 MB) to the client's TikTok drafts; the client publishes it in the app. Never Direct Post, never paid ads. Engagement reads off (`ENGAGEMENT_READS_ENABLED`). | Same. |
 | Client provides | The TikTok login on their phone. | A TikTok account. |
 | Missing access → | "לא מחובר"; a grant without `video.upload` or dead → `needs_reconnect` + `connect_tiktok` card; Performance note `engagement_counts_not_available_yet`. | Same. |
 

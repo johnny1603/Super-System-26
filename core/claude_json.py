@@ -1,6 +1,7 @@
 import contextvars
 import json
 import re
+import time
 from contextlib import contextmanager
 
 from anthropic import Anthropic
@@ -71,6 +72,22 @@ def _collect(model, input_tokens, output_tokens, cache_read, cache_write, ils):
     if sink is not None:
         sink.append({"model": model, "input": input_tokens, "output": output_tokens,
                      "cache_read": cache_read, "cache_write": cache_write, "ils": ils})
+
+
+def _time_call(model, started, response, category, kind):
+    """Hand one API call's duration + tokens to the open chat turn
+    (core/chat_timing). Never raises — timing must not break a call."""
+    try:
+        from core import chat_timing
+        if chat_timing.current() is None:
+            return
+        u = usage_tokens(response) if response is not None else {"input": 0, "output": 0,
+                                                                  "cache_read": 0, "cache_write": 0}
+        chat_timing.note_model_call(model, time.perf_counter() - started, u["input"], u["output"],
+                                    u["cache_read"], u["cache_write"], category,
+                                    kind if response is not None else kind + "_failed")
+    except Exception:
+        pass
 
 
 def usage_tokens(response) -> dict:
@@ -233,8 +250,16 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
     max_tokens (a certainty from stop_reason, not a guess from a parse
     failure). Its cost is recorded against that model."""
     def create(tokens):
-        return client.messages.create(model=model, max_tokens=tokens, system=system,
-                                      messages=[{"role": "user", "content": user_message}], **extra)
+        # each API call is timed into the open chat turn (core/chat_timing;
+        # a call outside a chat turn records nothing)
+        started = time.perf_counter()
+        response = None
+        try:
+            response = client.messages.create(model=model, max_tokens=tokens, system=system,
+                                              messages=[{"role": "user", "content": user_message}], **extra)
+            return response
+        finally:
+            _time_call(model, started, response, cost_category, "json")
 
     response = create(max_tokens)
     total = usage_tokens(response)
@@ -389,13 +414,17 @@ def claude_web_search_call(system, user_message, max_tokens=1500, model=DEFAULT_
 
     response = None
     for _ in range(MAX_PAUSE_TURN_CONTINUATIONS + 1):
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            tools=tools,
-        )
+        started, response = time.perf_counter(), None
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=tools,
+            )
+        finally:
+            _time_call(model, started, response, cost_category, "web_search")
         usage = usage_tokens(response)
         total_input += usage["input"]
         total_output += usage["output"]

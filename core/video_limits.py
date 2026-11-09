@@ -52,13 +52,45 @@ def fits(size_bytes) -> bool:
     return 0 < size <= VIDEO_UPLOAD_MAX_BYTES
 
 
-# Drive → TikTok inbox (tiktok_content_agent.publish): ONE FILE_UPLOAD chunk,
-# read whole into memory. TikTok takes a single-chunk upload only up to 64 MB
-# (bigger needs multi-chunk, not built — see the tiktok skill). Read by
+# Drive → TikTok inbox (tiktok_content_agent.publish), STREAMED in chunks
+# (2026-11-09). TikTok's Media Transfer Guide (FILE_UPLOAD): each chunk 5-64
+# MB except the last, which may be bigger (up to 128 MB) and absorbs the
+# remainder; total_chunk_count = floor(video_size / chunk_size), 1-1000;
+# a file under 5 MB goes whole as one chunk; chunks sequential, each PUT with
+# its own Content-Range; 206 = more to come, 201 = all received; the file may
+# be up to 4 GB and the upload_url lives 1 hour. Our cap is 512 MB — the same
+# as the YouTube stream: the click's run deadline (10 min for this card, Drive
+# read + TikTok upload + TikTok's processing) is what bounds it, not TikTok.
+# Memory: one chunk at a time (+ the MP4 header for the format check). Read by
 # client_state (media_folder.videos[].tiktok_uploadable), the
 # send_tiktok_to_inbox validator, and publish() as the root guard.
-TIKTOK_INBOX_MAX_MB = 64
+TIKTOK_INBOX_MAX_MB = 512
 TIKTOK_INBOX_MAX_BYTES = TIKTOK_INBOX_MAX_MB * 1024 * 1024
+TIKTOK_CHUNK_BYTES = 16 * 1024 * 1024        # within 5-64 MB
+TIKTOK_MIN_CHUNK_BYTES = 5 * 1024 * 1024
+TIKTOK_MAX_CHUNKS = 1000
+
+
+def tiktok_chunk_plan(size_bytes: int) -> list:
+    """[(start, length), ...] per TikTok's rules: under one chunk size → one
+    chunk (the whole file, chunk_size = size); otherwise chunks of
+    TIKTOK_CHUNK_BYTES and the LAST one takes the remainder (it is then
+    between 1x and 2x the chunk size, inside TikTok's 128 MB final limit)."""
+    size = int(size_bytes or 0)
+    if size <= 0:
+        return []
+    if size < TIKTOK_CHUNK_BYTES:
+        return [(0, size)]
+    count = size // TIKTOK_CHUNK_BYTES
+    plan = [(i * TIKTOK_CHUNK_BYTES, TIKTOK_CHUNK_BYTES) for i in range(count - 1)]
+    last_start = (count - 1) * TIKTOK_CHUNK_BYTES
+    return plan + [(last_start, size - last_start)]
+
+
+def tiktok_chunk_size(size_bytes: int) -> int:
+    """The init call's chunk_size for this file (see tiktok_chunk_plan)."""
+    size = int(size_bytes or 0)
+    return size if size < TIKTOK_CHUNK_BYTES else TIKTOK_CHUNK_BYTES
 
 
 def fits_tiktok(size_bytes) -> bool:

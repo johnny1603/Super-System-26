@@ -14,7 +14,7 @@ Meta's organic side exactly:
 
 - `core/tiktok_service.py` — HTTP only: OAuth flow, token exchange/refresh,
   Content Posting API (`init_inbox_upload`, `init_direct_post`,
-  `upload_video_chunk`, `get_post_status`), `user/info`, `video/list` +
+  `upload_video_stream` (chunked, streamed from Drive), `get_post_status`), `user/info`, `video/list` +
   `video/query` for stats (behind `ENGAGEMENT_READS_ENABLED`, off — see
   "Engagement tracking"). `TikTokAPIError` carries TikTok's `code`/`log_id`;
   `is_token_error()` spots the two expiry error codes.
@@ -115,12 +115,13 @@ workaround:
 **Source is FILE_UPLOAD, not PULL_FROM_URL.** `PULL_FROM_URL` requires the
 media URL's domain to be pre-verified as ours in the TikTok developer
 dashboard — a `drive.google.com` link can never satisfy that (we don't own
-the domain). Instead `publish()` downloads the video privately via
-`core.drive_service.download_file` (service-account credentials, file never
-made public) and uploads the raw bytes to TikTok directly. Practical
-consequence: **single-chunk upload only** (`total_chunk_count=1`) — fine at
-current content sizes, but a genuinely large video would need real chunking
-support that isn't built.
+the domain). Instead `publish()` reads the video privately by RANGE via
+`core.drive_service.read_range` (file never made public) and streams it to
+TikTok in chunks (`tiktok_service.upload_video_stream`, plan from
+`core.video_limits.tiktok_chunk_plan`: 16 MB chunks, the last takes the
+remainder, files under 16 MB go whole; per-chunk retries on 5xx/429/dropped
+connection). Cap: 512 MB (`TIKTOK_INBOX_MAX_MB`), bounded by the card's run
+deadline, not by TikTok (4 GB).
 
 **Caption is not applied.** Upload-to-Inbox has no caption/title field at
 all — the client writes their own when they finish publishing in the app.

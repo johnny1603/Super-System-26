@@ -1462,6 +1462,19 @@ def admin_connection_catalog_update(key: str, req: AdminCatalogUpdateRequest, re
 @app.post("/api/client-chat")
 def client_chat(req: ClientChatRequest, request: Request, background_tasks: BackgroundTasks):
     client_id = _require_session(request)
+    # Per-message timing (core/chat_timing): measurement only, stored after
+    # the reply via BackgroundTasks
+    from core import chat_timing
+    timing = chat_timing.start(client_id, (req.persona or "general").strip())
+    try:
+        return _client_chat_turn(req, client_id, background_tasks)
+    finally:
+        row = chat_timing.finish(timing)
+        background_tasks.add_task(chat_timing.store, row)
+
+
+def _client_chat_turn(req, client_id: int, background_tasks: BackgroundTasks):
+    from core import chat_timing
     try:
         from agents.support_agent import (PERSONAS, answer_persona_question,
                                            answer_support_question, persona_channel)
@@ -1473,70 +1486,45 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
         # the general concierge and every other specialist — persisted and
         # replayed independently (see support_agent.persona_channel).
         channel = persona_channel(persona)
+        if chat_timing.current() is not None:
+            chat_timing.current()["channel"] = channel
         # Before anything is stored or reaches a model: a credential is never
         # saved, an overlong message or a client past today's cap gets a fixed
         # warm reply (core/chat_guard)
-        from core import chat_guard
-        blocked = chat_guard.check(client_id, req.message)
-        if blocked:
-            log_communication(client_id, "inbound", channel, blocked["store_as"])
-            log_communication(client_id, "outbound", channel, blocked["reply"])
-            return {"success": True, "reply": blocked["reply"], "needs_human_followup": False,
-                    "poll": False, "limited": blocked["code"]}
-        log_communication(client_id, "inbound", channel, req.message)
-        # One store order's CUSTOMER details, asked explicitly: answered by
-        # code from a live read, never by a model; the chat history keeps a
-        # masked copy only (agents/store_agent.personal_answer, docs/STORE.md)
-        from agents import store_agent
-        personal = {}
-        try:
-            personal = store_agent.personal_answer(client_id, req.message)
-        except Exception as e:
-            print(f"[client-chat] store personal answer failed for client {client_id}: {type(e).__name__}")
-        if personal:
-            log_communication(client_id, "outbound", channel, personal["stored_reply"])
-            return {"success": True, "reply": personal["reply"], "needs_human_followup": False,
-                    "poll": False, "action": None, "personal": True}
-        # "חבר את החנות" — an explicit ask always gets the one-click card,
-        # decided by code (a model may judge the measurement enough and show
-        # nothing). Staff viewing as the client never reach here (read-only).
-        connect = {}
-        try:
-            connect = store_agent.connect_turn(client_id, req.message, persona)
-        except Exception as e:
-            print(f"[client-chat] store connect turn failed for client {client_id}: {type(e).__name__}")
-        if connect:
-            log_communication(client_id, "outbound", channel, connect["reply"])
-            return {"success": True, "reply": connect["reply"], "needs_human_followup": False,
-                    "poll": False, "action": connect.get("action")}
-        from core.cost_tracker import cost_action
-        # Every LLM cost of this turn is labelled with it (core/cost_tracker);
-        # an article draft started inside it relabels its own calls
-        with cost_action(f"chat_{persona}"):
-            if persona == "general":
-                result = answer_support_question(client_id, req.message,
-                                                 help_connection=req.help_connection)
-            else:
-                # Specialist path: structurally read-only — no web search, no
-                # action functions reachable (support_agent enforces), except the
-                # website persona's code-run article DRAFT (never publish) and the
-                # same priced upgrade QUOTE the concierge builds
-                result = answer_persona_question(client_id, persona, req.message,
-                                                 background_tasks)
-        # Vendor names never reach a client (core/vendor_tools) — except the
-        # connection help for those very tools, which must name the vendor
-        from core import agent_actions, vendor_tools
-        if req.help_connection not in vendor_tools.TOOLS:
-            result["reply"] = vendor_tools.scrub_vendor_names(result["reply"], agent_actions._lang(client_id))
-        log_communication(client_id, "outbound", channel, result["reply"])
-        # poll: work continues in the background (an article draft) and its
-        # outcome will be posted into this persona's thread — the window
-        # watches for it (appends only; never re-renders the input).
-        # action: a confirmation card for a stored proposal (core/agent_actions)
-        # — the window renders it under the reply; only its button runs it.
-        return {"success": True, "reply": result["reply"],
-                "needs_human_followup": result["needs_human_followup"],
-                "poll": bool(result.get("poll")), "action": result.get("action")}
+        from core import chat_guard, chat_turns
+        with chat_timing.stage("guard"):
+            blocked = chat_guard.check(client_id, req.message)
+            if blocked:
+                log_communication(client_id, "inbound", channel, blocked["store_as"])
+                log_communication(client_id, "outbound", channel, blocked["reply"])
+                return {"success": True, "reply": blocked["reply"], "needs_human_followup": False,
+                        "poll": False, "limited": blocked["code"]}
+            own_row = log_communication(client_id, "inbound", channel, req.message)
+            chat_turns.note_arrival(client_id, channel)
+        # ONE turn at a time per conversation; messages sent close together are
+        # answered together; a request whose message another turn already
+        # answered returns `covered` (core/chat_turns)
+        with chat_turns.Turn(client_id, channel, own_row, req.message) as turn:
+            chat_timing.add_stage("queue", turn.queue_s)
+            if turn.covered:
+                chat_timing.flag("outcome", "covered")
+                return {"success": True, "covered": True, "reply": "", "needs_human_followup": False,
+                        "poll": False, "action": None}
+            response = _client_chat_answer(req, client_id, persona, channel, turn.message, turn,
+                                           background_tasks, answer_support_question,
+                                           answer_persona_question)
+            turn.done()
+            chat_timing.flag("merged_messages", turn.merged)
+            chat_timing.flag("restarted", turn.restarted)
+            if turn.merged > 1:
+                response["merged"] = turn.merged
+            # frustration detection: AFTER the reply, never on its path (core/frustration)
+            from agents.support_agent import frustration_check
+            state = chat_timing.current() or {}
+            import time as _time
+            waited = _time.perf_counter() - state.get("t0", _time.perf_counter())
+            background_tasks.add_task(frustration_check, client_id, channel, persona, turn.message, waited)
+            return response
     except HTTPException:
         raise
     except Exception as e:
@@ -1562,6 +1550,75 @@ def client_chat(req: ClientChatRequest, request: Request, background_tasks: Back
         except Exception:
             pass  # best effort - the history write may be the very thing failing
         return {"success": True, "needs_human_followup": True, "reply": reply}
+
+
+def _client_chat_answer(req, client_id, persona, channel, message, turn, background_tasks,
+                        answer_support_question, answer_persona_question) -> dict:
+    """The answer to one (possibly merged) turn. `message` is every
+    unanswered message of this conversation, combined (core/chat_turns)."""
+    from core import chat_timing
+    with chat_timing.stage("guard"):
+        # One store order's CUSTOMER details, asked explicitly: answered by
+        # code from a live read, never by a model; the chat history keeps a
+        # masked copy only (agents/store_agent.personal_answer, docs/STORE.md)
+        from agents import store_agent
+        personal = {}
+        try:
+            personal = store_agent.personal_answer(client_id, message)
+        except Exception as e:
+            print(f"[client-chat] store personal answer failed for client {client_id}: {type(e).__name__}")
+        if personal:
+            log_communication(client_id, "outbound", channel, personal["stored_reply"])
+            return {"success": True, "reply": personal["reply"], "needs_human_followup": False,
+                    "poll": False, "action": None, "personal": True}
+        # "חבר את החנות" — an explicit ask always gets the one-click card,
+        # decided by code (a model may judge the measurement enough and show
+        # nothing). Staff viewing as the client never reach here (read-only).
+        connect = {}
+        try:
+            connect = store_agent.connect_turn(client_id, message, persona)
+        except Exception as e:
+            print(f"[client-chat] store connect turn failed for client {client_id}: {type(e).__name__}")
+        if connect:
+            log_communication(client_id, "outbound", channel, connect["reply"])
+            return {"success": True, "reply": connect["reply"], "needs_human_followup": False,
+                    "poll": False, "action": connect.get("action")}
+    from core.cost_tracker import cost_action
+    while True:
+        # Every LLM cost of this turn is labelled with it (core/cost_tracker);
+        # an article draft started inside it relabels its own calls
+        with cost_action(f"chat_{persona}"), chat_timing.stage("agent"):
+            if persona == "general":
+                result = answer_support_question(client_id, message,
+                                                 help_connection=req.help_connection)
+            else:
+                # Specialist path: structurally read-only — no web search, no
+                # action functions reachable (support_agent enforces), except the
+                # website persona's code-run article DRAFT (never publish) and the
+                # same priced upgrade QUOTE the concierge builds
+                result = answer_persona_question(client_id, persona, message,
+                                                 background_tasks)
+        # a message arrived while the model worked and nothing was set in
+        # motion yet → ONE restart with everything combined (core/chat_turns)
+        if turn is not None and turn.should_restart(result):
+            message = turn.message
+            continue
+        break
+    with chat_timing.stage("post"):
+        # Vendor names never reach a client (core/vendor_tools) — except the
+        # connection help for those very tools, which must name the vendor
+        from core import agent_actions, vendor_tools
+        if req.help_connection not in vendor_tools.TOOLS:
+            result["reply"] = vendor_tools.scrub_vendor_names(result["reply"], agent_actions._lang(client_id))
+        log_communication(client_id, "outbound", channel, result["reply"])
+    # poll: work continues in the background (an article draft) and its
+    # outcome will be posted into this persona's thread — the window
+    # watches for it (appends only; never re-renders the input).
+    # action: a confirmation card for a stored proposal (core/agent_actions)
+    # — the window renders it under the reply; only its button runs it.
+    return {"success": True, "reply": result["reply"],
+            "needs_human_followup": result["needs_human_followup"],
+            "poll": bool(result.get("poll")), "action": result.get("action")}
 
 @app.get("/api/client-chat/history")
 async def client_chat_history(request: Request, scope: str = "current", persona: str = "general"):
@@ -6845,6 +6902,34 @@ def credits_check():
     view = anthropic_credits.check()
     return {"success": True, "data": {"status": view["status"], "days_left": view["days_left"],
                                       "notified": view.get("notified", False)}}
+
+@app.get("/api/admin/chat-timing")
+def admin_chat_timing(request: Request, days: int = 7):
+    # Per-message chat timing (core/chat_timing): avg / p90 per client, the
+    # slowest recent turns, the dominant stage. Read-only; /admin/models/.
+    _require_admin(request)
+    from core import chat_timing
+    return {"success": True, "data": chat_timing.summary(days=max(1, min(int(days or 7), 30)))}
+
+@app.get("/api/admin/frustration-alerts")
+def admin_frustration_alerts(request: Request, status: str = "open"):
+    # The bell on every admin page (dashboard/assets/frustration-widget.js)
+    _require_admin(request)
+    from core import frustration
+    return {"success": True, "data": frustration.list_alerts(status if status in ("open", "handled", "all") else "open")}
+
+@app.post("/api/admin/frustration-alerts/{alert_id}/handled")
+def admin_frustration_handled(request: Request, alert_id: int):
+    _require_admin(request)
+    from core import frustration
+    try:
+        ok = frustration.mark_handled(alert_id, _credits_who(request))
+    except Exception as e:
+        print(f"[frustration] mark handled failed: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+    if not ok:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    return {"success": True}
 
 @app.get("/api/admin/leads/{lead_id}")
 def admin_lead_detail(request: Request, lead_id: str):

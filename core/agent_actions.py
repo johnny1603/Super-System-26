@@ -186,7 +186,7 @@ def _v_media_video(value, client_id: int):
 
 def _v_tiktok_video(value, client_id: int):
     """_v_media_video's proof (the client's own folder, a video, not trashed)
-    plus TikTok's own cap: the inbox upload is ONE chunk (core/video_limits)."""
+    plus our TikTok cap (core/video_limits.TIKTOK_INBOX_MAX_MB, chunked stream)."""
     file_id = _v_media_video(value, client_id)
     from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
     hit = _media_meta.get((client_id, file_id))
@@ -2851,11 +2851,11 @@ ACTIONS = {
                 "توجد عدة فيديوهات غير منشورة في صندوق الوارد في تيك توك، ولا يقبل تيك توك المزيد حاليًا. انشروا بعضها أو احذفوه في التطبيق ثم أرسلوا مجددًا — لم يُرسل شيء.",
                 "Во входящих TikTok уже ждут несколько неопубликованных видео, и сейчас TikTok больше не принимает. Опубликуйте или удалите часть из них в приложении и отправьте снова — ничего не отправлено."),
             "too_large": _txt(
-                "הסרטון גדול מדי לשליחה לטיקטוק (עד 64MB) — שום דבר לא נשלח. אפשר לבחור גרסה קצרה או דחוסה יותר מתיקיית המדיה.",
-                "This video is too large to send to TikTok (up to 64 MB) — nothing was sent. Pick a shorter or more compressed version from your media folder.",
-                "Cette vidéo est trop lourde pour TikTok (64 Mo max) — rien n'a été envoyé. Choisissez une version plus courte ou plus compressée.",
-                "الفيديو كبير جدًا للإرسال إلى تيك توك (حتى 64MB) — لم يُرسل شيء. اختاروا نسخة أقصر أو مضغوطة أكثر.",
-                "Видео слишком большое для TikTok (до 64 МБ) — ничего не отправлено. Выберите более короткую или сжатую версию."),
+                "הסרטון גדול מ-512MB, אז הוא לא נשלח. שמרו גרסה קצרה או דחוסה יותר בתיקיית המדיה ובקשו שוב.",
+                "The video is over 512 MB, so it wasn't sent. Save a shorter or more compressed version in your media folder and ask again.",
+                "La vidéo dépasse 512 Mo, elle n'a pas été envoyée. Enregistrez une version plus courte ou plus compressée et redemandez.",
+                "الفيديو أكبر من 512MB فلم يُرسل. احفظوا نسخة أقصر أو مضغوطة أكثر في مجلد الوسائط واطلبوا مرة أخرى.",
+                "Видео больше 512 МБ, поэтому не отправлено. Сохраните более короткую или сжатую версию в папке медиа и попросите снова."),
             "bad_format": _txt(
                 "טיקטוק לא תוכל להציג את הקובץ של הסרטון הזה, אז לא שלחתי אותו — שום דבר לא נשלח. צריך קובץ MP4 רגיל, באיכות של לפחות 360 פיקסלים ובאורך של עד 10 דקות. אפשר לשמור את הסרטון מחדש כ-MP4 ולשלוח שוב.",
                 "TikTok can't show this video's file, so I didn't send it — nothing was sent. It needs a regular MP4 file, at least 360 pixels and up to 10 minutes long. Save the video again as MP4 and send it again.",

@@ -458,7 +458,8 @@ class PersonalData(Base):
     def test_chat_route_answers_by_code_and_stores_the_masked_copy(self):
         src = _src("core", "api_server.py")
         route = src.split('@app.post("/api/client-chat")', 1)[1].split("@app.", 1)[0]
-        self.assertIn("store_agent.personal_answer(client_id, req.message)", route)
+        # `message` = the turn's (possibly merged) client text (core/chat_turns)
+        self.assertIn("store_agent.personal_answer(client_id, message)", route)
         self.assertIn('log_communication(client_id, "outbound", channel, personal["stored_reply"])', route)
         # ...before any model is called
         self.assertLess(route.index("personal_answer"), route.index("answer_support_question(client_id"))

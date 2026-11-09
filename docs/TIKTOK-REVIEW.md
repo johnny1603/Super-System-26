@@ -107,8 +107,9 @@ Before recording:
   after), switch the dashboard's language flag to English, and write to the
   chat in English. With `en`, the connect chat (question, buttons, "connected"
   line), the send card, its success line and its refusals are all English.
-- Put a short video (**64 MB or less** — TikTok's single-upload limit, see
-  `core/video_limits.TIKTOK_INBOX_MAX_MB`) in the client's Drive media folder.
+- Put a short video (**512 MB or less** — our cap, see
+  `core/video_limits.TIKTOK_INBOX_MAX_MB`; uploaded in 16 MB chunks) in the
+  client's Drive media folder.
 - The TikTok account must be allowed by the app (sandbox target user while
   unaudited), and its inbox must not already hold too many unpublished drafts
   (TikTok refuses more; the chat explains that with its own line).
@@ -123,13 +124,15 @@ Cloud Shell via the admin endpoint.
 propose → approve → execute shape as `publish_youtube_from_media`:
 - **propose**: the model names a `drive_file_id` from
   `account_state.media_folder.videos` (`tiktok_uploadable`); the validator
-  re-proves it is a video in the client's own Drive folder, ≤ 64 MB. The
+  re-proves it is a video in the client's own Drive folder, ≤ 512 MB. The
   prepare step checks the grant (`tiktok_content_agent.check_grant`: the
   record in `core/tiktok_grant`, or one token refresh when there is none). Not
   connected / dead / no `video.upload` → the `connect_tiktok` card with a
   fixed line instead.
 - **approve**: re-validated from the stored row, claimed once, then
-  `tiktok_content_agent.publish` → `init_inbox_upload` → one-chunk upload →
+  `tiktok_content_agent.publish` → `init_inbox_upload` → chunked upload streamed from Drive
+  (`upload_video_stream`: 16 MB chunks, the last takes the remainder, each
+  chunk retried up to 3 times on 5xx/429/dropped connection) →
   status polling until `SEND_TO_USER_INBOX`. A scope/dead-grant refusal at the
   click posts the reconnect line and returns the `connect_tiktok` card.
 

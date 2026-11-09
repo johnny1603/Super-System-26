@@ -181,11 +181,26 @@ class ThroughTheCard(UploadActionCase):
         self.assertEqual(d["links"], [{"label": "הקולקציה", "url": f"{SITE}/shoes"}])
         self.assertEqual(self.llm_steps, ["draft", "critique"])
 
-    def test_unclear_subject_asks_one_question_and_stores_nothing(self):
+    def test_unclear_subject_never_asks_it_redrafts_once_into_a_card(self):
+        # 2026-11-09: "just upload it, as is" → a card, never "what does the video show?"
         self.draft = {"needs_clarification": True, "question": "מה רואים בסרטון?"}
-        result = self.propose_upload({"drive_file_id": OWN_VIDEO}, message="תעלה את זה")
-        self.assertEqual(result, {"clarify": "מה רואים בסרטון?"})
+        self.revised = DRAFT                    # what the no-question re-draft answers
+        result = self.propose_upload({"drive_file_id": OWN_VIDEO}, message="תעלה את זה כמו שהוא")
+        self.assertIn("card", result)
+        self.assertNotIn("clarify", result)
+        self.assertEqual(self.llm_steps[:2], ["draft", "draft_no_question"])
+
+    def test_a_model_that_asks_twice_is_a_failure_not_a_question(self):
+        self.draft = {"needs_clarification": True, "question": "מה רואים בסרטון?"}
+        self.revised = {"needs_clarification": True, "question": "מה רואים?"}
+        result = self.propose_upload({"drive_file_id": OWN_VIDEO}, message="תעלה")
+        self.assertNotIn("clarify", result)
+        self.assertNotIn("מה רואים", str(result))
         self.assertEqual(self.rows(), [])
+
+    def test_draft_prompt_never_asks(self):
+        self.assertIn("NEVER ask a question", ym.DRAFT_SYSTEM)
+        self.assertNotIn('"needs_clarification": true', ym.DRAFT_SYSTEM)
 
     def test_one_revision_pass_then_a_plain_refusal(self):
         self.draft = {**DRAFT, "title": "נעליים מעוצבות ב-₪399 בלבד"}

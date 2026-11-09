@@ -114,7 +114,9 @@ class TikTokCase(unittest.TestCase):
                                            log_activity=lambda *a, **k: None,
                                            get_client=lambda cid: {},
                                            log_communication=lambda *a, **k: None),
-            "core.drive_service": _module("core.drive_service", download_file=lambda fid: _GOOD_MP4),
+            "core.drive_service": _module("core.drive_service",
+                                          get_meta=lambda fid, fields="": {"id": fid, "size": str(len(_GOOD_MP4))},
+                                          read_range=lambda fid, s, n: _GOOD_MP4[s:s + n]),
         })
         for name in ("core.tiktok_service", "agents.tiktok_content_agent"):
             sys.modules.pop(name, None)

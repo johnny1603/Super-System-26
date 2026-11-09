@@ -27,7 +27,7 @@ SMALL, BIG, IMAGE = "1SmallClipAbcdef", "1BigClipXyz12345", "1LogoImageQwerty"
 FOREIGN = "1SomeoneElseVid0"
 DRIVE = {
     SMALL: {"id": SMALL, "name": "promo-reel.mp4", "mimeType": "video/mp4", "size": str(20 * MB)},
-    BIG: {"id": BIG, "name": "full-event.mov", "mimeType": "video/quicktime", "size": str(200 * MB)},
+    BIG: {"id": BIG, "name": "full-event.mov", "mimeType": "video/quicktime", "size": str(600 * MB)},   # over the 512 MB cap
     IMAGE: {"id": IMAGE, "name": "logo.png", "mimeType": "image/png", "size": str(MB)},
     FOREIGN: {"id": FOREIGN, "name": "not-yours.mp4", "mimeType": "video/mp4", "size": str(MB)},
 }
@@ -226,7 +226,7 @@ class Approve(TikTokActionCase):
         card = self.send()["card"]
         DRIVE_BACKUP = dict(DRIVE[SMALL])
         try:
-            DRIVE[SMALL]["size"] = str(100 * MB)      # replaced by a bigger file meanwhile
+            DRIVE[SMALL]["size"] = str(600 * MB)      # replaced by a bigger file meanwhile
             aa._media_meta.clear()
             self.assertEqual(aa.decide(card["id"], "client", 27, "approve")["code"], "invalid_params")
         finally:
@@ -271,9 +271,10 @@ class Registry(unittest.TestCase):
 
     def test_client_state_marks_tiktok_sized_videos(self):
         from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
-        self.assertEqual(TIKTOK_INBOX_MAX_MB, 64)
-        self.assertTrue(fits_tiktok(64 * MB))
-        self.assertFalse(fits_tiktok(64 * MB + 1))
+        # 512 MB since the upload streams in chunks (2026-11-09)
+        self.assertEqual(TIKTOK_INBOX_MAX_MB, 512)
+        self.assertTrue(fits_tiktok(512 * MB))
+        self.assertFalse(fits_tiktok(512 * MB + 1))
         with open(os.path.join(ROOT, "core", "client_state.py"), encoding="utf-8") as f:
             self.assertIn('"tiktok_uploadable": fits_tiktok(', f.read())
 

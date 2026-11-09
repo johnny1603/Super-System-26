@@ -185,8 +185,15 @@ def forget_profile(client_id: int):
 
 # ─── Publishing ─────────────────────────────────────────────────────────────
 
-def _wait_for_inbox_delivery(access_token: str, publish_id: str) -> dict:
-    for _ in range(STATUS_POLL_MAX_TRIES):
+def poll_tries(size_bytes: int = 0) -> int:
+    """~2 minutes, plus 5 s per 8 MB for a big file TikTok must process,
+    capped so the whole send stays inside the card's 10-minute deadline."""
+    return min(STATUS_POLL_MAX_TRIES + int((size_bytes or 0) // (8 * 1024 * 1024)), 72)
+
+
+def _wait_for_inbox_delivery(access_token: str, publish_id: str, size_bytes: int = 0) -> dict:
+    tries = poll_tries(size_bytes)
+    for _ in range(tries):
         time.sleep(STATUS_POLL_SECONDS)
         status = tiktok.get_post_status(access_token, publish_id)
         state = status.get("status", "")
@@ -196,7 +203,7 @@ def _wait_for_inbox_delivery(access_token: str, publish_id: str) -> dict:
             raise RuntimeError(f"TikTok post {publish_id} failed: {status.get('fail_reason', '')}")
         # PROCESSING_UPLOAD / PROCESSING_DOWNLOAD - keep waiting
     raise RuntimeError(f"TikTok post {publish_id} still processing after "
-                       f"{STATUS_POLL_MAX_TRIES * STATUS_POLL_SECONDS}s")
+                       f"{tries * STATUS_POLL_SECONDS}s")
 
 
 @drive_storage.scoped
@@ -222,7 +229,7 @@ def publish(client_id: int, spec: dict) -> dict:
     from agents.client_agent import log_activity, get_client, log_communication
     from core import drive_service as drive
     from core import tiktok_grant
-    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
+    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok, tiktok_chunk_plan, tiktok_chunk_size
 
     drive_file_id = (spec.get("drive_file_id") or "").strip()
     if not drive_file_id:
@@ -244,36 +251,40 @@ def publish(client_id: int, spec: dict) -> dict:
             # The refresh just learned this grant has no video.upload
             return {"success": False, "needs_reconnect": True,
                     "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
-        video_bytes = timed_step(AGENT_NAME, "download_from_drive",
-                                 lambda: drive.download_file(drive_file_id))
-        size = len(video_bytes)
+        # STREAMED (2026-11-09): the size from Drive's metadata, then the file
+        # range by range — never whole in memory (Cloud Run has 512 Mi)
+        size = int((drive.get_meta(drive_file_id, "id,size") or {}).get("size") or 0)
         if not fits_tiktok(size):
-            # The root guard: one FILE_UPLOAD chunk, whatever path called this
+            # The root guard, whatever path called this
             return {"success": False, "too_large": True,
                     "errors": [f"video is {round(size / 1048576, 1)} MB; the TikTok inbox upload "
                                f"takes up to {TIKTOK_INBOX_MAX_MB} MB"]}
-        # What the file IS, from its own bytes (core/video_probe): a container
-        # or codec TikTok can't show is refused here — before init, so no
-        # broken draft lands in the client's inbox — and the PUT names the
-        # real container instead of always video/mp4
-        facts = video_probe.probe(video_bytes)
+
+        def read(start, length):
+            return drive.read_range(drive_file_id, start, length)
+
+        # What the file IS, from its own headers (core/video_probe, range
+        # reads): a container or codec TikTok can't show is refused here —
+        # before init, so no broken draft lands in the client's inbox — and
+        # the PUT names the real container instead of always video/mp4
+        facts = video_probe.probe_ranges(read, size)
         log_step(AGENT_NAME, "probe", f"client_id={client_id} file={drive_file_id} "
                  f"{_facts_line(facts)} bytes={size}")
         bad = video_probe.problems(facts)
         if bad:
             return {"success": False, "bad_format": True, "problems": bad, "video": _facts_brief(facts),
                     "errors": [f"TikTok can't take this file ({', '.join(bad)}): {_facts_line(facts)}"]}
+        plan = tiktok_chunk_plan(size)
         init = timed_step(
             AGENT_NAME, "init_inbox_upload",
             lambda: tiktok.init_inbox_upload(access_token, video_size=size,
-                                             chunk_size=size, total_chunk_count=1))
+                                             chunk_size=tiktok_chunk_size(size), total_chunk_count=len(plan)))
         publish_id = init["publish_id"]
         timed_step(AGENT_NAME, "upload_video",
-                  lambda: tiktok.upload_video_chunk(init["upload_url"], video_bytes,
-                                                    mime_type=video_probe.content_type(facts["container"]),
-                                                    total_size=size))
+                   lambda: tiktok.upload_video_stream(init["upload_url"], read, size,
+                                                      mime_type=video_probe.content_type(facts["container"])))
         final = timed_step(AGENT_NAME, "await_delivery",
-                           lambda: _wait_for_inbox_delivery(access_token, publish_id))
+                           lambda: _wait_for_inbox_delivery(access_token, publish_id, size))
     except Exception as e:
         if tiktok.is_scope_error(e):
             # A grant from before 2026-10-29 (video.publish, no video.upload):
@@ -367,7 +378,6 @@ def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
     changed or stored (a token refresh, when TikTok says the stored token
     expired, re-stores the rotated pair as every TikTok call does)."""
     from core import drive_service as drive
-    from core.video_limits import TIKTOK_INBOX_MAX_BYTES
     limit = max(1, min(int(limit or 2), DIAGNOSE_MAX))
     rows = (_db().table("agent_actions")
             .select("id,status,outcome,params,persona,created_at,decided_at,finished_at")
@@ -399,8 +409,11 @@ def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
                 info = {k: meta.get(k) for k in ("name", "mimeType", "size", "md5Checksum",
                                                   "modifiedTime", "videoMediaMetadata", "trashed")}
                 info["drive_problems"] = video_probe.drive_meta_problems(meta)
-                if probe_files and 0 < int(meta.get("size") or 0) <= TIKTOK_INBOX_MAX_BYTES:
-                    facts = video_probe.probe(drive.download_file(file_id))
+                if probe_files and int(meta.get("size") or 0) > 0:
+                    # Range reads (headers only), never the whole file
+                    facts = video_probe.probe_ranges(
+                        lambda start, length, fid=file_id: drive.read_range(fid, start, length),
+                        int(meta.get("size") or 0))
                     info["video"] = _facts_brief(facts)
                     info["video_notes"] = facts.get("notes") or []
                     info["tiktok_problems"] = video_probe.problems(facts)

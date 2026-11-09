@@ -65,6 +65,11 @@ DATA_TABLES = (
     ("client_target_keywords", True),
     ("chat_turn_routes", True),
     ("chat_summaries", True),
+    # the chat's timing, turn locks and frustration incidents (core/chat_timing,
+    # core/chat_turns, core/frustration — the alerts quote chat messages)
+    ("chat_turn_timings", True),
+    ("chat_turn_locks", True),
+    ("client_frustration_alerts", True),
     ("store_purchase_events", True),   # our own purchase records (core/store_purchases)
     ("login_codes", False),
 )

@@ -198,6 +198,50 @@ def probe(data: bytes) -> dict:
         return out
 
 
+HEAD_BYTES = 64 * 1024
+WEBM_HEAD_BYTES = 4 * 1024 * 1024
+MOOV_MAX_BYTES = 32 * 1024 * 1024        # a moov this big is not a short-form clip
+TOP_BOXES_MAX = 64
+
+
+def probe_ranges(read, size: int) -> dict:
+    """probe() for a file that is NOT in memory (the streamed TikTok upload):
+    `read(start, length) -> bytes` reads a byte range. MP4/MOV: the top-level
+    boxes are walked by their headers (16 bytes each) to find `moov`, which is
+    read whole and probed after the `ftyp` — wherever it sits (start or end).
+    WebM and anything else: the first bytes. A failed READ raises (that is
+    a Drive problem, never reported as a bad file); parsing never raises."""
+    size = int(size or 0)
+    head = bytes(read(0, min(HEAD_BYTES, size))) if size else b""
+    if len(head) < 12 or head[4:8] not in (b"ftyp", b"moov", b"mdat", b"wide", b"free", b"skip"):
+        if head[:4] == b"\x1a\x45\xdf\xa3" and size > len(head):
+            head = bytes(read(0, min(WEBM_HEAD_BYTES, size)))
+        return probe(head)
+    ftyp, at = b"", 0
+    for _ in range(TOP_BOXES_MAX):
+        if at + 8 > size:
+            break
+        header = head[at:at + 16] if at + 16 <= len(head) else bytes(read(at, min(16, size - at)))
+        box_size, kind = int.from_bytes(header[0:4], "big"), header[4:8]
+        if box_size == 1 and len(header) >= 16:
+            box_size = int.from_bytes(header[8:16], "big")
+        elif box_size == 0:
+            box_size = size - at
+        if box_size < 8 or at + box_size > size:
+            break
+        if kind == b"ftyp" and box_size <= HEAD_BYTES:
+            ftyp = head[at:at + box_size] if at + box_size <= len(head) else bytes(read(at, box_size))
+        if kind == b"moov":
+            if box_size > MOOV_MAX_BYTES:
+                break
+            moov = head[at:at + box_size] if at + box_size <= len(head) else bytes(read(at, box_size))
+            return probe(ftyp + moov if ftyp else moov)
+        at += box_size
+    out = probe(ftyp or head)
+    out["notes"].append("moov not found by range reads")
+    return out
+
+
 def problems(facts: dict) -> list:
     """DEFINITE reasons TikTok can't take the file, as short codes:
     container / codec / no_video / fps / resolution / duration."""
