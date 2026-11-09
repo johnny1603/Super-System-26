@@ -9,6 +9,8 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/uallak-bg.css">
 <script src="/assets/uallak-bg.js" defer></script>
+<!-- Page-driven warm-up: pings at once, every N s while visible, and on return (docs/WARMUP.md) -->
+<script src="/assets/warmup.js" async></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 
@@ -8860,6 +8862,20 @@ async function loadSupport() {
   if (initialView && initialView !== 'home') showView(initialView);
   if (approveLink.spec) openApproval(approveLink.spec, approveLink.persona);
 })();
+
+// The warm-up (assets/warmup.js) reloads onto a new version only when the
+// chat is idle: these count as busy while they run — a chat upload, a voice
+// upload, a message waiting for its reply.
+function busyWhile(fn) {
+  return async function (...args) {
+    window.__uallakBusy = (window.__uallakBusy || 0) + 1;
+    try { return await fn.apply(this, args); }
+    finally { window.__uallakBusy = Math.max(0, (window.__uallakBusy || 1) - 1); }
+  };
+}
+uploadFilesInWindow = busyWhile(uploadFilesInWindow);
+uploadVoiceFile = busyWhile(uploadVoiceFile);
+sendInWindow = busyWhile(sendInWindow);
 </script>
 
 </body>

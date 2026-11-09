@@ -36,6 +36,9 @@ DEFAULT_SETTINGS = {
     # previews/downloads itself. Above it the client (and admin) gets "Open in
     # Drive". Videos never go through us at any size — that is code, not this.
     "media_download_max_mb": 20,
+    # Page-driven warm-up (core/warmup): open dashboards ping every this many
+    # seconds while visible, so the client never meets a cold start. 60-3600.
+    "warmup_interval_seconds": 240,
     # Client chat (core/chat_turns): consecutive messages sent within this many
     # seconds are answered as ONE turn. 0 = off. Clamped to 0-8 in code.
     "chat_collect_window_seconds": 3,

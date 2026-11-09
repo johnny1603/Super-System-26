@@ -7605,6 +7605,27 @@ def admin_pricing_reference(request: Request):
 async def health():
     return {"status": "ok", "service": "uallak-super-system"}
 
+# ─── Page-driven warm-up (core/warmup, docs/WARMUP.md) ───────────────────────
+# Public on purpose (the login page's next stop must already be warm) and
+# touches NOTHING: no Supabase, no Drive, no model. Rate-limited per IP in memory.
+_WARMUP_HEADERS = {"Cache-Control": "no-store"}
+
+@app.get("/api/warmup/")
+async def warmup_ping(request: Request):
+    from core import warmup
+    if not warmup.allow(_request_ip(request)):
+        return JSONResponse({"ok": False}, status_code=429, headers=_WARMUP_HEADERS)
+    return JSONResponse(warmup.ping(), headers=_WARMUP_HEADERS)
+
+@app.get("/api/warmup/config")
+def warmup_config(request: Request):
+    # Once per page load: the ping interval (admin setting, 60 s cache)
+    from core import warmup
+    if not warmup.allow(_request_ip(request)):
+        return JSONResponse({"ok": False}, status_code=429, headers=_WARMUP_HEADERS)
+    return JSONResponse({"ok": True, "interval_seconds": warmup.interval_seconds(), "version": warmup.version()},
+                        headers=_WARMUP_HEADERS)
+
 class DynamicQRequest(BaseModel):
     intro: str
     answers: dict

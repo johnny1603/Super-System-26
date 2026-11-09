@@ -658,6 +658,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `client_frustration_alerts` row per incident, email to ADMIN_EMAIL + the admin bell
   (`dashboard/assets/frustration-widget.js`). Migration
   `migrations/2026-11-09-chat-timing-frustration.sql`. `tests/test_chat_turns.py`.
+- **Dashboard warm-up (2026-11-10, `docs/WARMUP.md`)**: `dashboard/assets/warmup.js` (client dashboard +
+  every admin page) pings `GET /api/warmup/` (`core/warmup`: in memory only — no Supabase/Drive/model,
+  30/min per IP, returns the Cloud Run `K_REVISION`) on load, every `warmup_interval_seconds` (admin
+  setting, default 240) while the tab is visible, and on return; a new version reloads the page only
+  when idle (no focused field, no textarea draft, `window.__uallakBusy` = 0), once per version.
+  Page-driven ONLY: never min instances, --no-cpu-throttling, a Cloud Run change or a scheduler job.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
