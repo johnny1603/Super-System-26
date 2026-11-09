@@ -636,6 +636,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `SERVICES`; only `manual` rows are ever writable. Needs
   `migrations/2026-08-03-operating-costs.sql`; degrades honestly until it runs. See
   `HANDOFF-operating-costs.md`.
+- `core/anthropic_credits.py` + `dashboard/assets/credits-widget.js` — the owner's Claude credits
+  indicator on every admin page (admin session only, never a client page): measured Claude spend from
+  `client_costs` (rows with token counts / web searches — no Anthropic call, no key) vs. the balance
+  the owner types after a top-up (`anthropic_credit_balances`,
+  `migrations/2026-11-09-anthropic-credits.sql`); remaining, 24 h / 7 d, burn, days left,
+  green/yellow/red (thresholds in app_settings), ONE notice per crossing (alerts + email to
+  ADMIN_EMAIL, hourly job `credits-check`), audit rows source `credits`. Warn only — never stops an
+  agent. The Console is the source of truth. `docs/ANTHROPIC-CREDITS.md`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an

@@ -6784,6 +6784,68 @@ def admin_set_operating_cost(request: Request, service_key: str, req: OperatingC
         raise HTTPException(status_code=400, detail=result)
     return {"success": True, "data": result}
 
+# ─── Anthropic credits widget (admin session only, core/anthropic_credits) ───
+# Our own measured Claude spend vs. the balance the owner types after a top-up.
+# No Anthropic call, no key. Warn only — never stops an agent.
+
+class CreditsBalanceRequest(BaseModel):
+    balance_usd: float
+    note: str = ""
+
+class CreditsThresholdsRequest(BaseModel):
+    yellow_days: float
+    red_days: float
+
+def _credits_who(request: Request) -> str:
+    return admin_view.who(admin_session_fingerprint(request.cookies.get("admin_session")),
+                          _request_ip(request))
+
+@app.get("/api/admin/credits")
+def admin_credits(request: Request):
+    _require_admin(request)
+    from core import anthropic_credits
+    try:
+        data = anthropic_credits.check()
+    except Exception as e:
+        print(f"[credits] estimate failed: {type(e).__name__}: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail={"code": "ERR_CREDITS_UNAVAILABLE"})
+    data["history"] = anthropic_credits.history(5)
+    return {"success": True, "data": data}
+
+@app.post("/api/admin/credits/balance")
+def admin_credits_balance(request: Request, req: CreditsBalanceRequest):
+    _require_admin(request)
+    from core import anthropic_credits
+    try:
+        anthropic_credits.record_balance(req.balance_usd, req.note, _credits_who(request))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_AMOUNT", "detail": str(e)})
+    except anthropic_credits.MigrationPending:
+        raise HTTPException(status_code=503, detail={"code": "ERR_MIGRATION_PENDING"})
+    return {"success": True, "data": anthropic_credits.check()}
+
+@app.put("/api/admin/credits/thresholds")
+def admin_credits_thresholds(request: Request, req: CreditsThresholdsRequest):
+    _require_admin(request)
+    from core import anthropic_credits
+    try:
+        anthropic_credits.set_thresholds(req.yellow_days, req.red_days, _credits_who(request))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_THRESHOLDS", "detail": str(e)})
+    except Exception as e:
+        print(f"[credits] thresholds not saved: {type(e).__name__}")
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+    return {"success": True, "data": anthropic_credits.check()}
+
+@app.get("/api/credits/check", dependencies=_admin_only)
+def credits_check():
+    # Hourly Cloud Scheduler job (X-Admin-Key, scripts/schedule_jobs.sh): the
+    # threshold notice also reaches the owner when no admin page is open
+    from core import anthropic_credits
+    view = anthropic_credits.check()
+    return {"success": True, "data": {"status": view["status"], "days_left": view["days_left"],
+                                      "notified": view.get("notified", False)}}
+
 @app.get("/api/admin/leads/{lead_id}")
 def admin_lead_detail(request: Request, lead_id: str):
     _require_admin(request)

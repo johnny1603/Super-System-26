@@ -606,6 +606,20 @@ def send_operator_code(to_email: str, code: str, summary_he: str, minutes: int) 
     return _send(msg, to_email)
 
 
+def send_owner_notice(subject: str, text: str) -> bool:
+    """A short plain notice to the owner (ADMIN_EMAIL) — e.g. the Claude
+    credits widget crossing a threshold (core/anthropic_credits). True only
+    when the mail server accepted it."""
+    from html import escape
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = GMAIL_USER
+    msg['To'] = ADMIN_EMAIL
+    msg.attach(MIMEText(f'<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;">'
+                        f'<p>{escape(text)}</p></div>', 'html'))
+    return _send(msg, ADMIN_EMAIL)
+
+
 def _send(msg, to_email) -> bool:
     if not GMAIL_APP_PASSWORD:
         print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")

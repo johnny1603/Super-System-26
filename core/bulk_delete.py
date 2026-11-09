@@ -39,7 +39,8 @@ from datetime import datetime, timezone
 SERVICE_NAME = "bulk_delete"
 BULK_DELETE_MAX = int(os.environ.get("BULK_DELETE_MAX", "50"))
 KINDS = ("clients", "leads", "client_leads", "alerts")
-AUDIT_SOURCES = ("client_deleted", "bulk_delete", "admin_view", "operator")
+AUDIT_SOURCES = ("client_deleted", "bulk_delete", "admin_view", "operator",
+                 "credits")   # core/anthropic_credits: balance entries + threshold changes
 
 
 def _db():

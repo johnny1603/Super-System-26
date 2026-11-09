@@ -374,7 +374,8 @@ def get_settings() -> dict:
         if str(row["key"]).startswith(("client_settings:", "client_deletion:", "bulk_delete:",
                                        "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
                                        "creative_tools:", "drive_storage:", "drive_usage:",
-                                       "flag_override:", "operator_gate:", "operator_change:")):
+                                       "flag_override:", "operator_gate:", "operator_change:",
+                                       "anthropic_credits:")):
             continue
         settings[row["key"]] = row["value"]
     return settings
