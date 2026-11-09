@@ -15,10 +15,10 @@ Each request forwards its ONE chunk into a Drive resumable session
 
 There is NO size limit of ours. The only ceiling is Google Drive's own
 per-file maximum (DRIVE_MAX_BYTES). Limits that are REAL for a destination —
-YouTube (video_limits.VIDEO_UPLOAD_MAX_MB), TikTok drafts
-(video_limits.TIKTOK_INBOX_MAX_MB), voice tools (voice_recordings.MAX_MB) —
-are explained after the upload, next to the action they block; the file is
-stored either way.
+YouTube (video_limits.VIDEO_UPLOAD_MAX_MB), voice tools
+(voice_recordings.MAX_MB) — are explained after the upload, next to the
+action they block; the file is stored either way. TikTok drafts have no cap
+of ours (core/video_limits, core/tiktok_uploads).
 
 ## Where the file lands
 
@@ -479,7 +479,7 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
     line for each destination the file is too large for, and a plain line
     when nothing is available yet. Nothing runs without the client's click."""
     from core import agent_actions, client_state
-    from core.video_limits import (TIKTOK_INBOX_MAX_MB, VIDEO_UPLOAD_MAX_MB, fits, fits_tiktok)
+    from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits, tiktok_sendable
     client = agent_actions._client(client_id)
     lang = agent_actions._lang(client_id)
     try:
@@ -498,7 +498,7 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
         # "Would it be offered if the file fitted?" tells "too big" apart from "not connected"
         youtube_ok = agent_actions._youtube_upload_possible(with_video(True, True), client)
         tiktok_ok = agent_actions._tiktok_send_possible(with_video(True, True), client)
-        here = with_video(fits(size), fits_tiktok(size))
+        here = with_video(fits(size), tiktok_sendable(size))
         if youtube_ok:
             if fits(size):
                 _offer(client_id, persona, "publish_youtube_from_media", {"drive_file_id": file_id},
@@ -506,13 +506,11 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
             else:
                 lines.append(f"ליוטיוב הוא גדול מדי ({_mb(size)}; אנחנו מעלים ליוטיוב סרטונים עד "
                              f"{VIDEO_UPLOAD_MAX_MB}MB). הוא שמור, ואפשר להעלות גרסה דחוסה יותר.")
-        if tiktok_ok:
-            if fits_tiktok(size):
-                _offer(client_id, persona, "send_tiktok_to_inbox", {"drive_file_id": file_id},
-                       here, client, lang, cards, lines)
-            else:
-                lines.append(f"לטיוטות בטיקטוק הוא גדול מדי (טיקטוק מקבלת מאיתנו עד {TIKTOK_INBOX_MAX_MB}MB). "
-                             f"גרסה קצרה או דחוסה יותר תעבור.")
+        if tiktok_ok and tiktok_sendable(size):
+            # No size line for TikTok: any size goes (above the owner's
+            # threshold the card's prepare asks HIM, not the client)
+            _offer(client_id, persona, "send_tiktok_to_inbox", {"drive_file_id": file_id},
+                   here, client, lang, cards, lines)
         if not youtube_ok and not tiktok_ok:
             cards_by = agent_actions._cards(state)
             outside = [label for channel, label in (("youtube", "יוטיוב"), ("tiktok", "טיקטוק"))

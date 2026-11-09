@@ -1234,6 +1234,10 @@ async function loadSettings() {
       <input id="set-dl-max" type="number" min="1" max="200" value="${esc(s.media_download_max_mb)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">טיקטוק — סף העלאה אוטומטית (MB). עד הסף: עולה מיד באישור הלקוח. מעל הסף: מגיעה אליך בקשת אישור (פעמון + מייל), והלקוח לא נשאל כלום</span>
+      <input id="set-tt-auto-max" type="number" min="1" max="100000" value="${esc(s.tiktok_auto_upload_max_mb)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
@@ -1396,6 +1400,7 @@ async function saveSettings() {
       supabase_size_budget_mb: Number(document.getElementById('set-size-budget').value) || 500,
       supabase_warn_pct: Number(document.getElementById('set-usage-warn').value) || 80,
       media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 20,
+      tiktok_auto_upload_max_mb: Number(document.getElementById('set-tt-auto-max').value) || 1536,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';

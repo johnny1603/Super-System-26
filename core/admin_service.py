@@ -39,7 +39,30 @@ DEFAULT_SETTINGS = {
     # Client chat (core/chat_turns): consecutive messages sent within this many
     # seconds are answered as ONE turn. 0 = off. Clamped to 0-8 in code.
     "chat_collect_window_seconds": 3,
+    # TikTok drafts (core/video_limits, core/tiktok_uploads): a video up to this
+    # many MB uploads on the client's own click; above it ONE approval request
+    # goes to the owner (admin bell + email) — never refused, never asked.
+    "tiktok_auto_upload_max_mb": 1536,
 }
+
+_setting_cache = {}   # key -> (monotonic time, value)
+
+
+def get_setting(key: str, default=None, ttl: float = 60.0):
+    """ONE global setting, read by key (not the whole table) and cached `ttl`
+    seconds. Falls back to DEFAULT_SETTINGS, then `default`."""
+    import time as _time
+    hit = _setting_cache.get(key)
+    if hit and _time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    fallback = DEFAULT_SETTINGS.get(key, default)
+    try:
+        rows = (_db().table("app_settings").select("value").eq("key", key).limit(1).execute().data) or []
+        value = rows[0].get("value") if rows and rows[0].get("value") not in (None, "") else fallback
+    except Exception:
+        return fallback
+    _setting_cache[key] = (_time.monotonic(), value)
+    return value
 
 # Created lazily - no DB client at import time
 _db_instance = None
@@ -378,7 +401,7 @@ def get_settings() -> dict:
                                        "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
                                        "creative_tools:", "drive_storage:", "drive_usage:",
                                        "flag_override:", "operator_gate:", "operator_change:",
-                                       "anthropic_credits:")):
+                                       "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:")):
             continue
         settings[row["key"]] = row["value"]
     return settings
@@ -414,6 +437,7 @@ def update_settings(changes: dict) -> dict:
             {"key": key, "value": value, "updated_at": datetime.now(timezone.utc).isoformat()},
             on_conflict="key",
         ).execute()
+        _setting_cache.pop(key, None)
     return get_settings()
 
 

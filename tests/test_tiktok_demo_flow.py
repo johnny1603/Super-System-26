@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-from test_tiktok_inbox_action import SMALL, BIG, IMAGE, TikTokActionCase, state   # noqa: E402
+from test_tiktok_inbox_action import SMALL, HUGE, EMPTY, IMAGE, TikTokActionCase, state   # noqa: E402
 
 
 def _src(*parts) -> str:
@@ -201,23 +201,30 @@ class SendButton(TikTokActionCase):
         self.assertEqual(data["persona"], "media")
         self.assertEqual(data["card"]["action"], "send_tiktok_to_inbox")
         self.assertIn("promo-reel.mp4", data["card"]["what"])
-        self.assertEqual(self.tiktok.sent, [])                   # only Approve uploads
+        self.assertEqual(self.jobs, [])                          # only Approve uploads
         self.assertEqual(self.rows()[0]["params"], {"drive_file_id": SMALL})
         self.assertEqual(self.click(SMALL)["card"]["id"], data["card"]["id"])   # no second card
 
-    def test_approve_on_that_card_uploads_to_the_inbox(self):
+    def test_approve_on_that_card_starts_the_upload_job(self):
         card = self.click(SMALL)["card"]
         from core import agent_actions
         out = agent_actions.decide(card["id"], "client", 27, "approve")
-        self.assertEqual(self.tiktok.sent, [(27, {"drive_file_id": SMALL})])
+        self.assertEqual([a[:2] for a, _ in self.jobs], [(27, SMALL)])
         self.assertTrue(out.get("success"), out)
 
     def test_wrong_files_are_refused_by_the_same_validator(self):
-        for file_id in (BIG, IMAGE):
+        for file_id in (EMPTY, IMAGE):
             data = self.click(file_id)
             self.assertIsNone(data["card"])
             self.assertEqual(data["error"], "invalid_params")
         self.assertEqual(self.rows(), [])
+
+    def test_a_huge_file_gets_the_calm_line_and_the_owner_is_asked(self):
+        data = self.click(HUGE)
+        self.assertIsNone(data["card"])
+        self.assertIn("אני מטפל בזה", data["notice"])
+        self.assertTrue(self.logged)                             # the line is in the media thread
+        self.assertEqual(len(self.owner_requests), 1)
 
     def test_not_connected_switches_to_the_connect_card_with_its_line(self):
         self.tiktok.grant = "not_connected"
@@ -242,13 +249,15 @@ class SendButton(TikTokActionCase):
         render = render[:render.index("\n}\n")]
         self.assertIn("data-tiktok=", render)
         self.assertIn("TIKTOK_CONNECTED", render)
+        self.assertNotIn("tt_too_large", DASH)                   # no size note on any tile
+        self.assertNotIn("TIKTOK_INBOX_MAX_MB", DASH)
         send = DASH[DASH.index("async function sendVideoToTiktok"):]
         send = send[:send.index("\n}\n")]
         self.assertIn("/api/client/media/send-to-tiktok", send)
         self.assertIn("appendActionCard(", send)
         expected = {"tt_send": "Send to TikTok", "tt_connected_as": "Connected as {name}"}
         for key in ("tt_send", "tt_connected_as", "tt_profile_unavailable", "tt_needs_reconnect",
-                    "tt_send_opening", "tt_send_failed", "tt_not_in_plan", "tt_too_large"):
+                    "tt_send_opening", "tt_send_failed", "tt_not_in_plan"):
             line = re.search(r"^  %s: \{(.*)\},$" % key, DASH, re.M)
             self.assertIsNotNone(line, key)
             for lang in ("he:", "en:", "fr:", "ar:", "ru:"):

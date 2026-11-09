@@ -66,6 +66,7 @@ retire engagement-daily "folded into the morning briefing (engagement-morning)"
 job action-reaper GET "*/5 * * * *" "/api/actions/reap" active "Ends approved actions stuck running past their deadline: failed with a reason, alert closed, client told in chat"
 job drive-usage-scan GET "30 3 * * *" "/api/drive/usage-scan" active "Daily Shared Drive storage scan (DRIVE_SHARED_ALERT_GB alert on status change)"
 job credits-check GET "7 * * * *" "/api/credits/check" active "Hourly Claude credits estimate: one owner notice per threshold crossing (warn only)"
+job tiktok-uploads GET "* * * * *" "/api/tiktok/uploads/run" active "Moves durable Drive to TikTok-inbox uploads forward, chunk by chunk, inside the request (no work when none is due)"
 # END JOBS
 
 AK=""

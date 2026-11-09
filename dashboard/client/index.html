@@ -2804,7 +2804,6 @@ const DASH_I18N = {
   tt_send_opening: { he:'פותחים את כרטיס האישור בצ\'אט...', en:'Opening the approval card in the chat...', fr:'Ouverture de la carte d\'approbation dans le chat...', ar:'جارٍ فتح بطاقة الموافقة في الدردشة...', ru:'Открываем карточку подтверждения в чате...' },
   tt_send_failed: { he:'לא הצלחנו להכין את השליחה לטיקטוק כרגע. נסו שוב בעוד רגע.', en:'Could not prepare the TikTok send right now. Please try again in a moment.', fr:'Impossible de préparer l\'envoi TikTok pour le moment. Réessayez dans un instant.', ar:'تعذّر تجهيز الإرسال إلى تيك توك حاليًا. حاولوا مرة أخرى بعد قليل.', ru:'Сейчас не удалось подготовить отправку в TikTok. Попробуйте чуть позже.' },
   tt_not_in_plan: { he:'טיקטוק לא כלול בחבילה הנוכחית שלכם.', en:'TikTok is not part of your current plan.', fr:'TikTok ne fait pas partie de votre offre actuelle.', ar:'تيك توك غير مشمول في باقتكم الحالية.', ru:'TikTok не входит в ваш текущий тариф.' },
-  tt_too_large: { he:'מעל 512MB — שמרו גרסה קטנה יותר', en:'Over 512 MB — save a smaller version', fr:'Plus de 512 Mo — enregistrez une version plus légère', ar:'أكبر من 512MB — احفظوا نسخة أصغر', ru:'Больше 512 МБ — сохраните версию поменьше' },
   notice_tiktok_connected: { he:'חשבון TikTok חובר בהצלחה ✓', en:'TikTok account connected ✓', fr:'Compte TikTok connecté ✓', ar:'تم ربط حساب TikTok بنجاح ✓', ru:'Аккаунт TikTok подключён ✓' },
   notice_meta_no_page: { he:'חשבון מטא אושר, אבל עוד אין עמוד עסקי — שלחנו לצ\'אט הסבר קצר איך יוצרים אחד (2-3 דקות)', en:'Meta authorized, but there\'s no business Page yet — we sent the chat a short guide for creating one (2-3 minutes)', fr:'Meta autorisé, mais pas encore de Page professionnelle — nous avons envoyé dans le chat un petit guide pour en créer une (2-3 minutes)', ar:'تمت الموافقة على Meta، لكن لا توجد صفحة أعمال بعد — أرسلنا إلى الدردشة دليلًا قصيرًا لإنشائها (2-3 دقائق)', ru:'Meta авторизована, но бизнес-страницы ещё нет — мы отправили в чат короткую инструкцию, как её создать (2-3 минуты)' },
   gtm_card: { he:'מדידת המרות (Google Tag Manager)', en:'Conversion measurement (Google Tag Manager)', fr:'Mesure des conversions (Google Tag Manager)', ar:'قياس التحويلات (Google Tag Manager)', ru:'Измерение конверсий (Google Tag Manager)' },
@@ -3612,7 +3611,7 @@ async function loadTiktokProfile() {
 // A video tile's "Send to TikTok": opens the media agent's chat with the
 // SAME approval card the chat offers (send_tiktok_to_inbox). Nothing is sent
 // until the client presses Approve on that card.
-const TIKTOK_INBOX_MAX_MB = 512;   // core/video_limits.TIKTOK_INBOX_MAX_MB (the server enforces it)
+// No size cap for TikTok (core/video_limits): every video gets the button.
 async function sendVideoToTiktok(fileId, btn) {
   const t = uallakI18n.t;
   const note = msg => { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; };
@@ -3637,8 +3636,7 @@ async function sendVideoToTiktok(fileId, btn) {
       appendActionCard(persona, d.card);
       note('');
     } else {
-      note(d.notice || t(d.error === 'not_available' ? 'tt_not_in_plan'
-                         : d.error === 'invalid_params' ? 'tt_too_large' : 'tt_send_failed'));
+      note(d.notice || t(d.error === 'not_available' ? 'tt_not_in_plan' : 'tt_send_failed'));
     }
   } catch (e) {
     note(t('tt_send_failed'));
@@ -8048,9 +8046,7 @@ function renderDriveMirror() {
       : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
     const isVideo = f.download === 'drive' || f.kind === 'video';
     const tiktokAct = (f.kind === 'video' && TIKTOK_CONNECTED)
-      ? (f.size && f.size > TIKTOK_INBOX_MAX_MB * 1024 * 1024
-          ? `<div class="drive-big-note">${esc(t('tt_too_large'))}</div>`
-          : `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>`)
+      ? `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>`
       : '';
     const dl = isVideo ? `<div class="drive-big-note">${esc(t('media_video_drive'))}</div>`
       : f.download === 'none' ? ''

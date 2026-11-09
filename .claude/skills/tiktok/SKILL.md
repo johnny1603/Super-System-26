@@ -78,15 +78,21 @@ ONE `client_accounts` row:
 
 The client asks in chat → the media persona proposes it with a
 `drive_file_id` from `account_state.media_folder.videos`
-(`tiktok_uploadable`: ≤ `video_limits.TIKTOK_INBOX_MAX_MB`, 64 — one
-FILE_UPLOAD chunk) → a card naming the file (Drive's name) → the client's
-Approve click runs `publish()` and the chat says, in the client's language,
-to open TikTok and publish from the drafts. The prepare step checks the grant
-live when nothing is recorded (`check_grant`, one refresh); without a working
-grant it shows the `connect_tiktok` card with a fixed line instead. Refusals
-with their own lines: `needs_reconnect` (+ the connect card), `pending_limit`
-(TikTok's too-many-unpublished-drafts code), `too_large`. Tests:
-`tests/test_tiktok_inbox_action.py`. Demo: `docs/TIKTOK-REVIEW.md`.
+(`tiktok_uploadable`: any non-empty video — NO size cap of ours since
+2026-11-10) → a card naming the file (Drive's name) → the client's Approve
+click starts a durable job (`core/tiktok_uploads`, see
+`docs/TIKTOK-UPLOADS.md`) and the card's done line says, in the client's
+language, to open TikTok and publish from the drafts. Above the admin setting
+`tiktok_auto_upload_max_mb` (1536) there is no card and no question to the
+client: ONE owner approval (bell + email), a calm "אני מטפל בזה" line; his
+Approve is final. The prepare step checks the grant live when nothing is
+recorded (`check_grant`, one refresh); without a working grant it shows the
+`connect_tiktok` card with a fixed line instead. Refusals with their own
+lines: `needs_reconnect` (+ the connect card), `pending_limit` (TikTok's
+too-many-unpublished-drafts code), `bad_format` (container/codec only),
+`in_hand` (failed on our side after retries: admin alert, calm line). Never a
+size refusal. Tests: `tests/test_tiktok_inbox_action.py`,
+`tests/test_tiktok_uploads.py`. Demo: `docs/TIKTOK-REVIEW.md`.
 
 ## Publishing: Upload-to-Inbox, deliberately never Direct Post
 
@@ -117,11 +123,13 @@ media URL's domain to be pre-verified as ours in the TikTok developer
 dashboard — a `drive.google.com` link can never satisfy that (we don't own
 the domain). Instead `publish()` reads the video privately by RANGE via
 `core.drive_service.read_range` (file never made public) and streams it to
-TikTok in chunks (`tiktok_service.upload_video_stream`, plan from
-`core.video_limits.tiktok_chunk_plan`: 16 MB chunks, the last takes the
-remainder, files under 16 MB go whole; per-chunk retries on 5xx/429/dropped
-connection). Cap: 512 MB (`TIKTOK_INBOX_MAX_MB`), bounded by the card's run
-deadline, not by TikTok (4 GB).
+TikTok in chunks (`tiktok_service.upload_chunk` / `upload_video_stream`, plan
+from `core.video_limits.tiktok_chunk_plan`: 16 MB chunks — grown up to 64 MB
+only past 1000 chunks — the last takes the remainder, files under 16 MB go
+whole; 3 retries per chunk on 5xx/429/dropped connection). No cap of ours;
+TikTok's own limits are not checked in a blocking way. The card's upload is a
+durable job driven by the every-minute scheduler job `tiktok-uploads` and the
+card's poll, each inside its own request (`core/tiktok_uploads`).
 
 **Caption is not applied.** Upload-to-Inbox has no caption/title field at
 all — the client writes their own when they finish publishing in the app.

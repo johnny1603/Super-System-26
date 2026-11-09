@@ -39,8 +39,9 @@ timeout. The only ceiling is Google Drive's own 5 TB per file.
   Another client's token does not open. Nothing is stored server-side → any instance can take the
   next chunk. `SECRETS_ENCRYPTION_KEY` is not used.
 - Limits that are REAL for a destination are explained **after** the upload, next to the action:
-  YouTube `VIDEO_UPLOAD_MAX_MB` (512), TikTok drafts `TIKTOK_INBOX_MAX_MB` (64), voice tools
-  `voice_recordings.MAX_MB` (25). The file is stored either way.
+  YouTube `VIDEO_UPLOAD_MAX_MB` (512), voice tools `voice_recordings.MAX_MB` (25). The file is
+  stored either way. TikTok drafts have NO cap of ours and no size line (2026-11-10,
+  `docs/TIKTOK-UPLOADS.md`).
 
 ## Where it lands
 

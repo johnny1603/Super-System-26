@@ -3733,9 +3733,10 @@ def client_media_send_to_tiktok(req: TikTokSendRequest, request: Request):
     # The video tile's "Send to TikTok" button. It does NOT send: it opens the
     # SAME send_tiktok_to_inbox approval card the media agent's chat offers
     # (core/agent_actions — validated there: the file must be a video in this
-    # client's own media folder, within the inbox limit; no/old grant → the
-    # connect_tiktok card instead). Only the client's Approve on that card
-    # uploads (Upload to Inbox, video.upload), so there is still ONE path.
+    # client's own media folder; no size cap; above the owner's threshold the
+    # owner is asked instead and the client reads a calm line; no/old grant →
+    # the connect_tiktok card instead). Only the client's Approve on that card
+    # (or the owner's approval) uploads (Upload to Inbox, video.upload).
     client_id = _require_session(request)
     if _admin_view_client(request) is not None:
         raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
@@ -3756,7 +3757,8 @@ def client_media_send_to_tiktok(req: TikTokSendRequest, request: Request):
         {"drive_file_id": file_id, "uploadable": True, "tiktok_uploadable": True}]}}
     result = agent_actions.propose(client_id, "client_chat", "media",
                                    {"name": "send_tiktok_to_inbox", "params": {"drive_file_id": file_id}},
-                                   state=here, client=client, context={"language": lang, "message": ""})
+                                   state=here, client=client,
+                                   context={"language": lang, "message": "", "persona": "media"})
     data = {"persona": "media", "card": result.get("card"),
             "notice": result.get("notice") or result.get("clarify") or result.get("refuse") or "",
             "error": "" if result.get("card") else (result.get("error") or "not_offered")}
@@ -6917,6 +6919,43 @@ def admin_frustration_alerts(request: Request, status: str = "open"):
     _require_admin(request)
     from core import frustration
     return {"success": True, "data": frustration.list_alerts(status if status in ("open", "handled", "all") else "open")}
+
+# ─── TikTok uploads as durable jobs (core/tiktok_uploads) ────────────────────
+
+@app.get("/api/tiktok/uploads/run", dependencies=_admin_only)
+def tiktok_uploads_run():
+    # Cloud Scheduler, every minute (scripts/schedule_jobs.sh): moves every
+    # due upload forward inside THIS request (budget under the proxy timeout),
+    # progress saved per chunk — no background work, no always-on instance
+    from core import tiktok_uploads
+    return {"success": True, "data": tiktok_uploads.run_due()}
+
+@app.get("/api/admin/tiktok-uploads")
+def admin_tiktok_uploads(request: Request, status: str = "awaiting_admin"):
+    # The bell's approvals (dashboard/assets/frustration-widget.js). Never the upload_url
+    _require_admin(request)
+    from core import tiktok_uploads
+    if status == "awaiting_admin":
+        jobs = tiktok_uploads.pending_approvals()
+    else:
+        jobs = tiktok_uploads.admin_view(status if status in ("open", "all", "failed", "done", "declined") else "open")
+    return {"success": True, "data": {"jobs": jobs}}
+
+@app.post("/api/admin/tiktok-uploads/{client_id}/{job_id}/{decision}")
+def admin_tiktok_upload_decide(request: Request, client_id: int, job_id: str, decision: str):
+    # The owner's Approve (final: no further cap or question) / Decline (the
+    # client is told plainly in chat). POST + admin session only — the email's
+    # links just open the admin page.
+    _require_admin(request)
+    if decision not in ("approve", "decline") or not re.fullmatch(r"[0-9a-f]{6,32}", job_id or ""):
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_REQUEST"})
+    from core import tiktok_uploads
+    result = tiktok_uploads.decide(client_id, job_id, decision, _credits_who(request))
+    if result.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    if result.get("error") == "already_decided":
+        raise HTTPException(status_code=409, detail={"code": "ERR_ALREADY_DECIDED"})
+    return {"success": True, "data": result}
 
 @app.post("/api/admin/frustration-alerts/{alert_id}/handled")
 def admin_frustration_handled(request: Request, alert_id: int):

@@ -959,7 +959,9 @@ def _settings_keys(ids: list) -> list:
     return [k for i in ids for k in (f"client_settings:{int(i)}", f"gtm_token:{int(i)}",
                                      f"gads_token:{int(i)}", f"tiktok_grant:{int(i)}",
                                      f"php_exposure:{int(i)}", f"creative_tools:{int(i)}",
-                                     f"drive_storage:{int(i)}", f"drive_usage:{int(i)}")]
+                                     f"drive_storage:{int(i)}", f"drive_usage:{int(i)}",
+                                     # TikTok upload jobs + their lease (core/tiktok_uploads)
+                                     f"tiktok_upload:{int(i)}", f"tiktok_upload_lock:{int(i)}")]
 
 
 def _clear_settings(ids: list):

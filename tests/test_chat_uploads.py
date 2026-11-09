@@ -536,18 +536,19 @@ class Proposals(unittest.TestCase):
         self.assertTrue(all(o == "client_chat" and p == "google" for o, p, _ in self.proposed))
         self.assertTrue(all(raw["params"] == {"drive_file_id": "file123"} for _, _, raw in self.proposed))
 
-    def test_too_big_for_tiktok_is_said_at_the_point_of_use(self):
-        # the TikTok cap is 512 MB since the chunked upload (2026-11-09)
-        lines, cards = self.run_for("video", (vl.TIKTOK_INBOX_MAX_MB + 1) * MiB, _state())
-        self.assertNotIn("send_tiktok_to_inbox", self.names())
-        self.assertTrue(any(str(vl.TIKTOK_INBOX_MAX_MB) in line and "טיקטוק" in line for line in lines))
+    def test_tiktok_has_no_size_line_at_any_size(self):
+        # no TikTok cap of ours (owner's policy 2026-11-10): even a 3 GB file is offered;
+        # above the owner's threshold the card's prepare asks HIM, never the client
+        lines, cards = self.run_for("video", 3 * 1024 * MiB, _state())
+        self.assertIn("send_tiktok_to_inbox", self.names())
+        self.assertFalse(any("טיקטוק" in line for line in lines))
 
-    def test_too_big_for_both_still_stored_and_says_which(self):
+    def test_too_big_for_youtube_is_said_and_tiktok_still_offered(self):
         lines, cards = self.run_for("video", (vl.VIDEO_UPLOAD_MAX_MB + 1) * MiB, _state())
-        self.assertEqual(cards, [])
+        self.assertEqual(self.names(), ["send_tiktok_to_inbox"])
         text = "\n".join(lines)
         self.assertIn(str(vl.VIDEO_UPLOAD_MAX_MB), text)
-        self.assertIn(str(vl.TIKTOK_INBOX_MAX_MB), text)
+        self.assertNotIn("טיקטוק", text)
 
     def test_nothing_connected_says_so_plainly(self):
         lines, cards = self.run_for("video", 5 * MiB, _state(youtube=False, tiktok=False))

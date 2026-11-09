@@ -371,44 +371,63 @@ CHUNK_RETRIES = 3
 CHUNK_RETRY_BACKOFF_S = (2, 5, 10)
 
 
-def upload_video_stream(upload_url: str, read, size: int, mime_type: str = "video/mp4",
-                        _sleep=None) -> int:
-    """The whole file, chunk by chunk (core/video_limits.tiktok_chunk_plan —
-    TikTok's FILE_UPLOAD rules), SEQUENTIALLY, never more than one chunk in
-    memory: `read(start, length) -> bytes` supplies each range (Drive). Each
-    PUT carries its own Content-Range / Content-Length; TikTok answers 206 for
-    "more to come" and 201 when everything arrived. A 5xx, a 429 or a dropped
-    connection is retried CHUNK_RETRIES times with backoff; a 4xx is raised at
-    once. Returns the number of chunks sent."""
+def upload_chunk(upload_url: str, read, size: int, index: int, plan: list,
+                 mime_type: str = "video/mp4", _sleep=None) -> int:
+    """ONE chunk of the plan (core/video_limits.tiktok_chunk_plan): read from
+    `read(start, length)` (Drive, by range — only this chunk is in memory),
+    PUT with its own Content-Range / Content-Length. 206 = more to come,
+    201 = everything arrived. A 5xx, a 429 or a dropped connection (on the
+    PUT or on the Drive read) is retried CHUNK_RETRIES times with backoff; a
+    4xx is raised at once. Returns the HTTP status."""
     import time
-    from core.video_limits import tiktok_chunk_plan
     sleep = _sleep or time.sleep
-    plan = tiktok_chunk_plan(size)
-    for index, (start, length) in enumerate(plan):
-        content = read(start, length)
-        if len(content) != length:
-            raise TikTokAPIError(f"chunk {index + 1}/{len(plan)}: read {len(content)} of {length} bytes")
-        last = index == len(plan) - 1
-        for attempt in range(CHUNK_RETRIES + 1):
-            try:
-                response = httpx.put(upload_url, headers={
-                    "Content-Type": mime_type, "Content-Length": str(length),
-                    "Content-Range": f"bytes {start}-{start + length - 1}/{size}"},
-                    content=content, timeout=300)
-            except httpx.TransportError as e:
-                if attempt < CHUNK_RETRIES:
-                    sleep(CHUNK_RETRY_BACKOFF_S[min(attempt, len(CHUNK_RETRY_BACKOFF_S) - 1)])
-                    continue
-                raise TikTokAPIError(f"chunk {index + 1}/{len(plan)}: {type(e).__name__}")
-            ok = (200, 201) if last else (200, 201, 206)
-            if response.status_code in ok:
-                break
-            if (response.status_code >= 500 or response.status_code == 429) and attempt < CHUNK_RETRIES:
-                sleep(CHUNK_RETRY_BACKOFF_S[min(attempt, len(CHUNK_RETRY_BACKOFF_S) - 1)])
+    start, length = plan[index]
+    last = index == len(plan) - 1
+    label = f"chunk {index + 1}/{len(plan)}"
+    for attempt in range(CHUNK_RETRIES + 1):
+        def backoff():
+            sleep(CHUNK_RETRY_BACKOFF_S[min(attempt, len(CHUNK_RETRY_BACKOFF_S) - 1)])
+        try:
+            content = read(start, length)
+        except Exception as e:
+            if attempt < CHUNK_RETRIES:
+                backoff()
                 continue
-            raise TikTokAPIError(f"chunk {index + 1}/{len(plan)} upload failed: "
-                                 f"{response.status_code} {response.text[:300]}")
+            raise TikTokAPIError(f"{label}: Drive read failed ({type(e).__name__})")
+        if len(content) != length:
+            raise TikTokAPIError(f"{label}: read {len(content)} of {length} bytes")
+        try:
+            response = httpx.put(upload_url, headers={
+                "Content-Type": mime_type, "Content-Length": str(length),
+                "Content-Range": f"bytes {start}-{start + length - 1}/{size}"},
+                content=content, timeout=300)
+        except httpx.TransportError as e:
+            del content
+            if attempt < CHUNK_RETRIES:
+                backoff()
+                continue
+            raise TikTokAPIError(f"{label}: {type(e).__name__}")
         del content
+        ok = (200, 201) if last else (200, 201, 206)
+        if response.status_code in ok:
+            return response.status_code
+        if (response.status_code >= 500 or response.status_code == 429) and attempt < CHUNK_RETRIES:
+            backoff()
+            continue
+        raise TikTokAPIError(f"{label} upload failed: {response.status_code} {response.text[:300]}")
+    raise TikTokAPIError(f"{label}: retries exhausted")
+
+
+def upload_video_stream(upload_url: str, read, size: int, mime_type: str = "video/mp4",
+                        _sleep=None, chunk_size: int = None) -> int:
+    """The whole file, chunk by chunk, SEQUENTIALLY (upload_chunk), never
+    more than one chunk in memory. Returns the number of chunks sent. The
+    durable job (core/tiktok_uploads) calls upload_chunk itself so it can
+    stop and resume between chunks."""
+    from core.video_limits import tiktok_chunk_plan
+    plan = tiktok_chunk_plan(size, chunk_size)
+    for index in range(len(plan)):
+        upload_chunk(upload_url, read, size, index, plan, mime_type, _sleep)
     return len(plan)
 
 

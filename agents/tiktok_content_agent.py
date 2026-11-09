@@ -187,7 +187,7 @@ def forget_profile(client_id: int):
 
 def poll_tries(size_bytes: int = 0) -> int:
     """~2 minutes, plus 5 s per 8 MB for a big file TikTok must process,
-    capped so the whole send stays inside the card's 10-minute deadline."""
+    capped at 6 minutes (the inline path runs inside one request)."""
     return min(STATUS_POLL_MAX_TRIES + int((size_bytes or 0) // (8 * 1024 * 1024)), 72)
 
 
@@ -204,6 +204,119 @@ def _wait_for_inbox_delivery(access_token: str, publish_id: str, size_bytes: int
         # PROCESSING_UPLOAD / PROCESSING_DOWNLOAD - keep waiting
     raise RuntimeError(f"TikTok post {publish_id} still processing after "
                        f"{tries * STATUS_POLL_SECONDS}s")
+
+
+# Owner's policy (2026-11-10): TikTok's LIMITS are never checked in a blocking
+# way (size, length, resolution, frame rate — a runtime rejection is handled
+# on our side). Only what TikTok cannot decode at all still stops the send
+# before anything reaches it: no container it takes (the PUT's Content-Type
+# must be mp4 / quicktime / webm), no video codec it plays, no video track.
+BLOCKING_PROBLEMS = ("container", "codec", "no_video")
+
+
+class UploadRefused(Exception):
+    """An explained stop with its own plain client line (agent_actions
+    refusals): needs_reconnect | pending_limit | bad_format."""
+
+    def __init__(self, code: str, errors: list, **extra):
+        super().__init__("; ".join(map(str, errors)))
+        self.code, self.errors, self.extra = code, list(errors), extra
+
+
+def classify_error(client_id: int, e: Exception) -> str:
+    """A TikTok error → its refusal code, or "" (ours to retry / alert)."""
+    from core import tiktok_grant
+    if tiktok.is_scope_error(e):
+        # A grant from before 2026-10-29 (video.publish, no video.upload)
+        tiktok_grant.record_missing_upload(client_id)
+        return "needs_reconnect"
+    if tiktok.is_dead_grant(e):
+        return "needs_reconnect"
+    if tiktok.is_pending_limit(e):
+        return "pending_limit"
+    return ""
+
+
+@drive_storage.scoped
+def begin_upload(client_id: int, drive_file_id: str) -> dict:
+    """Everything before the first chunk: the grant, a fresh token, the size
+    (Drive metadata), the format (the file's own headers, by range) and
+    TikTok's init. -> {publish_id, upload_url, size, chunk_size, chunks,
+    mime, video, warnings, access_token}. Raises UploadRefused for an
+    explained stop; anything else is ours (retried by the job, then alerted).
+    No size check of ours exists here."""
+    from core import drive_service as drive
+    from core import tiktok_grant
+    from core.video_limits import tiktok_chunk_plan, tiktok_chunk_size
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        raise UploadRefused("needs_reconnect", ["no connected TikTok account"])
+    if tiktok_grant.needs_reconnect(client_id):
+        raise UploadRefused("needs_reconnect", [f"TikTok connection must be renewed ({tiktok_grant.state(client_id)})"])
+    try:
+        access_token = timed_step(AGENT_NAME, "refresh_token", lambda: _live_access_token(client_id, conn))
+        if tiktok_grant.needs_reconnect(client_id):
+            raise UploadRefused("needs_reconnect", [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"])
+        size = int((drive.get_meta(drive_file_id, "id,size") or {}).get("size") or 0)
+        if size <= 0:
+            raise RuntimeError("Drive reports no size for this file")
+
+        def read(start, length):
+            return drive.read_range(drive_file_id, start, length)
+
+        facts = video_probe.probe_ranges(read, size)
+        log_step(AGENT_NAME, "probe", f"client_id={client_id} file={drive_file_id} "
+                 f"{_facts_line(facts)} bytes={size}")
+        problems = video_probe.problems(facts)
+        blocking = [p for p in problems if p in BLOCKING_PROBLEMS]
+        if blocking:
+            raise UploadRefused("bad_format", [f"TikTok can't take this file ({', '.join(blocking)}): "
+                                               f"{_facts_line(facts)}"],
+                                problems=blocking, video=_facts_brief(facts))
+        warnings = [p for p in problems if p not in BLOCKING_PROBLEMS]
+        if warnings:
+            # Not ours to enforce (owner's policy): on record, never a refusal
+            log_step(AGENT_NAME, "probe_warning", f"client {client_id}: sending anyway; TikTok may refuse "
+                     f"({', '.join(warnings)}): {_facts_line(facts)}")
+        chunk_size = tiktok_chunk_size(size)
+        plan = tiktok_chunk_plan(size, chunk_size)
+        init = timed_step(AGENT_NAME, "init_inbox_upload",
+                          lambda: tiktok.init_inbox_upload(access_token, video_size=size, chunk_size=chunk_size,
+                                                           total_chunk_count=len(plan)))
+    except UploadRefused:
+        raise
+    except Exception as e:
+        scope = tiktok.is_scope_error(e)
+        code = classify_error(client_id, e)
+        if scope:
+            # Old grant (video.publish, no video.upload) — record_missing_upload
+            # (classify_error) already raised its one admin alert
+            raise UploadRefused(code, [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted): {e}"])
+        if code:
+            raise UploadRefused(code, [str(e)])
+        raise
+    return {"publish_id": init["publish_id"], "upload_url": init["upload_url"], "size": size,
+            "chunk_size": chunk_size, "chunks": len(plan), "mime": video_probe.content_type(facts["container"]),
+            "video": _facts_brief(facts), "warnings": warnings, "access_token": access_token}
+
+
+def delivery_status(client_id: int, publish_id: str) -> tuple:
+    """("done" | "failed" | "processing", detail) — one status read, with the
+    stored token first and one refresh on a token error."""
+    conn = _get_connection(client_id)
+    access_token, _ = tiktok.split_tokens(conn.get("access_token") or "::")
+    try:
+        status = tiktok.get_post_status(access_token, publish_id)
+    except Exception as e:
+        if not tiktok.is_token_error(e):
+            raise
+        status = tiktok.get_post_status(_live_access_token(client_id, conn), publish_id)
+    state = status.get("status", "")
+    if state in ("SEND_TO_USER_INBOX", "PUBLISH_COMPLETE"):
+        return "done", state
+    if state == "FAILED":
+        return "failed", str(status.get("fail_reason", ""))[:200]
+    return "processing", state
 
 
 @drive_storage.scoped
@@ -228,84 +341,40 @@ def publish(client_id: int, spec: dict) -> dict:
     generated caption isn't just lost."""
     from agents.client_agent import log_activity, get_client, log_communication
     from core import drive_service as drive
-    from core import tiktok_grant
-    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok, tiktok_chunk_plan, tiktok_chunk_size
 
     drive_file_id = (spec.get("drive_file_id") or "").strip()
     if not drive_file_id:
         return {"success": False, "errors": ["drive_file_id is required"]}
 
-    conn = _get_connection(client_id)
-    if not (conn.get("access_token") and conn.get("account_id")):
-        return {"success": False, "needs_reconnect": True, "errors": ["no connected TikTok account"]}
-    if tiktok_grant.needs_reconnect(client_id):
-        # Known bad grant: don't call TikTok with it (the record already alerted)
-        return {"success": False, "needs_reconnect": True,
-                "errors": [f"TikTok connection must be renewed ({tiktok_grant.state(client_id)})"]}
-
+    # INLINE, inside the caller's request (the admin route / Cloud Shell
+    # script). The client's chat card uses the durable job instead
+    # (core/tiktok_uploads): same begin_upload / upload_chunk / status, resumable.
     log_step(AGENT_NAME, "publish", f"client_id={client_id} file={drive_file_id}")
     try:
-        access_token = timed_step(AGENT_NAME, "refresh_token",
-                                  lambda: _live_access_token(client_id, conn))
-        if tiktok_grant.needs_reconnect(client_id):
-            # The refresh just learned this grant has no video.upload
-            return {"success": False, "needs_reconnect": True,
-                    "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
-        # STREAMED (2026-11-09): the size from Drive's metadata, then the file
-        # range by range — never whole in memory (Cloud Run has 512 Mi)
-        size = int((drive.get_meta(drive_file_id, "id,size") or {}).get("size") or 0)
-        if not fits_tiktok(size):
-            # The root guard, whatever path called this
-            return {"success": False, "too_large": True,
-                    "errors": [f"video is {round(size / 1048576, 1)} MB; the TikTok inbox upload "
-                               f"takes up to {TIKTOK_INBOX_MAX_MB} MB"]}
+        up = begin_upload(client_id, drive_file_id)
+        size, publish_id = up["size"], up["publish_id"]
 
         def read(start, length):
             return drive.read_range(drive_file_id, start, length)
 
-        # What the file IS, from its own headers (core/video_probe, range
-        # reads): a container or codec TikTok can't show is refused here —
-        # before init, so no broken draft lands in the client's inbox — and
-        # the PUT names the real container instead of always video/mp4
-        facts = video_probe.probe_ranges(read, size)
-        log_step(AGENT_NAME, "probe", f"client_id={client_id} file={drive_file_id} "
-                 f"{_facts_line(facts)} bytes={size}")
-        bad = video_probe.problems(facts)
-        if bad:
-            return {"success": False, "bad_format": True, "problems": bad, "video": _facts_brief(facts),
-                    "errors": [f"TikTok can't take this file ({', '.join(bad)}): {_facts_line(facts)}"]}
-        plan = tiktok_chunk_plan(size)
-        init = timed_step(
-            AGENT_NAME, "init_inbox_upload",
-            lambda: tiktok.init_inbox_upload(access_token, video_size=size,
-                                             chunk_size=tiktok_chunk_size(size), total_chunk_count=len(plan)))
-        publish_id = init["publish_id"]
         timed_step(AGENT_NAME, "upload_video",
-                   lambda: tiktok.upload_video_stream(init["upload_url"], read, size,
-                                                      mime_type=video_probe.content_type(facts["container"])))
+                   lambda: tiktok.upload_video_stream(up["upload_url"], read, size, mime_type=up["mime"],
+                                                      chunk_size=up["chunk_size"]))
         final = timed_step(AGENT_NAME, "await_delivery",
-                           lambda: _wait_for_inbox_delivery(access_token, publish_id, size))
+                           lambda: _wait_for_inbox_delivery(up["access_token"], publish_id, size))
+    except UploadRefused as e:
+        return {"success": False, e.code: True, "errors": e.errors, **e.extra}
     except Exception as e:
-        if tiktok.is_scope_error(e):
-            # A grant from before 2026-10-29 (video.publish, no video.upload):
-            # a fact with one fix — reconnect, which asks for OAUTH_SCOPES.
-            # The record alerts once, on the transition.
-            tiktok_grant.record_missing_upload(client_id)
-            return {"success": False, "needs_reconnect": True,
-                    "errors": [f"TikTok connection must be renewed ({tiktok.UPLOAD_SCOPE} not granted)"]}
-        if tiktok.is_dead_grant(e):
-            return {"success": False, "needs_reconnect": True,
-                    "errors": [f"TikTok connection must be renewed ({e.code})"]}
-        if tiktok.is_pending_limit(e):
-            # Too many unpublished drafts already waiting in their TikTok inbox
-            return {"success": False, "pending_limit": True, "errors": [str(e)]}
+        code = classify_error(client_id, e)
+        if code:
+            return {"success": False, code: True, "errors": [str(e)]}
         agent_alert(AGENT_NAME, [f"TikTok publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])
         return {"success": False, "errors": [str(e)]}
 
     log_activity(client_id, AGENT_NAME, "content_published",
                 {"drive_file_id": drive_file_id, "caption": spec.get("caption", ""),
-                 "size_bytes": size, "video": _facts_brief(facts)},
+                 "size_bytes": size, "video": up["video"]},
                 {"publish_id": publish_id, "status": final.get("status")})
 
     if (spec.get("caption") or "").strip():

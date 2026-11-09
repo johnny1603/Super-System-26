@@ -233,7 +233,22 @@ class ChunkPlan(unittest.TestCase):
         self.assertTrue(vl.TIKTOK_CHUNK_BYTES <= plan[-1][1] < 2 * vl.TIKTOK_CHUNK_BYTES)
         self.assertLessEqual(plan[-1][1], 128 * MB)
         self.assertTrue(5 * MB <= vl.TIKTOK_CHUNK_BYTES <= 64 * MB)
-        self.assertLessEqual(len(vl.tiktok_chunk_plan(vl.TIKTOK_INBOX_MAX_BYTES)), vl.TIKTOK_MAX_CHUNKS)
+        # no cap of ours: even very large files stay within TikTok's chunk rules
+        for gb in (1.5, 4, 20, 60):
+            size = int(gb * 1024 * MB)
+            chunk = vl.tiktok_chunk_size(size)
+            plan = vl.tiktok_chunk_plan(size, chunk)
+            self.assertTrue(5 * MB <= chunk <= 64 * MB, gb)
+            self.assertTrue(1 <= len(plan) <= vl.TIKTOK_MAX_CHUNKS, gb)
+            self.assertEqual(len(plan), size // chunk, gb)
+            self.assertEqual(sum(n for _, n in plan), size, gb)
+            self.assertLessEqual(plan[-1][1], 128 * MB, gb)
+
+    def test_small_file_is_one_whole_chunk(self):
+        from core import video_limits as vl
+        size = 3 * MB
+        self.assertEqual(vl.tiktok_chunk_size(size), size)
+        self.assertEqual(vl.tiktok_chunk_plan(size), [(0, size)])
 
     def test_exact_multiple_has_no_short_tail(self):
         from core import video_limits as vl
@@ -337,7 +352,11 @@ class CardAndList(unittest.TestCase):
         prepare = src[src.index("def _prepare_tiktok"):src.index("def _validate_tiktok_stored")]
         self.assertIn("video_probe.drive_meta_problems", prepare)
         self.assertLess(prepare.index("drive_meta_problems"), prepare.index("import check_grant"))
-        self.assertIn('"bad_format"', src[src.index("def _run_send_tiktok_to_inbox"):src.index("def _prepare_outreach")])
+        # only the container blocks the card; resolution / length never do (owner's policy)
+        self.assertIn('if p == "container"', prepare)
+        # the click's own bad_format comes back from the job (tiktok_uploads → finish_deferred)
+        self.assertIn('"bad_format"', _read("agents", "tiktok_content_agent.py"))
+        self.assertIn("finish_deferred", _read("core", "tiktok_uploads.py"))
         from core import agent_actions as aa
         self.assertIn("bad_format", aa.ACTIONS["send_tiktok_to_inbox"]["refusals"])
         for text in list(aa.ACTIONS["send_tiktok_to_inbox"]["refusals"]["bad_format"].values()) \

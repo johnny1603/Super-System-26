@@ -620,6 +620,24 @@ def send_owner_notice(subject: str, text: str) -> bool:
     return _send(msg, ADMIN_EMAIL)
 
 
+def send_owner_action(subject: str, text: str, buttons: list) -> bool:
+    """A notice to the owner (ADMIN_EMAIL) with link buttons [(label, url)].
+    The links only OPEN an admin page (admin session required there); no
+    link performs an action by itself (core/tiktok_uploads approvals)."""
+    from html import escape
+    links = "".join(
+        f'<a href="{escape(url, quote=True)}" style="display:inline-block;margin:6px 4px;padding:10px 18px;'
+        f'border-radius:8px;background:#0D0D0D;color:#fff;text-decoration:none;font-weight:bold;">'
+        f'{escape(label)}</a>' for label, url in buttons)
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = GMAIL_USER
+    msg['To'] = ADMIN_EMAIL
+    msg.attach(MIMEText(f'<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;">'
+                        f'<p>{escape(text)}</p><p>{links}</p></div>', 'html'))
+    return _send(msg, ADMIN_EMAIL)
+
+
 def _send(msg, to_email) -> bool:
     if not GMAIL_APP_PASSWORD:
         print(f"❌ GMAIL_APP_PASSWORD not set — email to {to_email} NOT sent (set it in the Cloud Run env vars)")

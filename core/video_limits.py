@@ -1,5 +1,5 @@
-"""THE size limits for Drive → YouTube and Drive → TikTok-inbox uploads
-(TIKTOK_INBOX_MAX_MB below). The YouTube one is one constant, read by every
+"""THE size limits for Drive → YouTube uploads, and the Drive → TikTok-inbox
+chunking + owner-approval threshold (below). The YouTube one is one constant, read by every
 place that decides or enforces it, so they can never disagree:
 
   core/client_state ........ media_folder.videos[].uploadable, upload_max_mb
@@ -52,50 +52,85 @@ def fits(size_bytes) -> bool:
     return 0 < size <= VIDEO_UPLOAD_MAX_BYTES
 
 
-# Drive → TikTok inbox (tiktok_content_agent.publish), STREAMED in chunks
-# (2026-11-09). TikTok's Media Transfer Guide (FILE_UPLOAD): each chunk 5-64
-# MB except the last, which may be bigger (up to 128 MB) and absorbs the
-# remainder; total_chunk_count = floor(video_size / chunk_size), 1-1000;
-# a file under 5 MB goes whole as one chunk; chunks sequential, each PUT with
-# its own Content-Range; 206 = more to come, 201 = all received; the file may
-# be up to 4 GB and the upload_url lives 1 hour. Our cap is 512 MB — the same
-# as the YouTube stream: the click's run deadline (10 min for this card, Drive
-# read + TikTok upload + TikTok's processing) is what bounds it, not TikTok.
-# Memory: one chunk at a time (+ the MP4 header for the format check). Read by
-# client_state (media_folder.videos[].tiktok_uploadable), the
-# send_tiktok_to_inbox validator, and publish() as the root guard.
-TIKTOK_INBOX_MAX_MB = 512
-TIKTOK_INBOX_MAX_BYTES = TIKTOK_INBOX_MAX_MB * 1024 * 1024
+# Drive → TikTok inbox: NO size cap of ours (owner's policy, 2026-11-10).
+# - Up to the admin setting `tiktok_auto_upload_max_mb` (default
+#   TIKTOK_AUTO_UPLOAD_MAX_MB_DEFAULT = 1536 = 1.5 GB): the client's own card
+#   click is all it takes.
+# - Above it: never refused, the client is never asked — ONE approval request
+#   goes to the owner (core/tiktok_uploads: admin bell + email); his Approve is
+#   final, with no further cap.
+# TikTok's own limits (4 GB, 10 min, ...) are NOT checked here: a rejection
+# at runtime is handled on our side (an alert), never pushed to the client.
+#
+# The upload STREAMS in chunks as a durable job (core/tiktok_uploads), using
+# TikTok's FILE_UPLOAD chunk rules only so the chunking itself is valid
+# (Media Transfer Guide):
+# - each chunk is 5-64 MB, except the last, which absorbs the remainder (up to 128 MB);
+# - total_chunk_count = floor(video_size / chunk_size), between 1 and 1000;
+# - a file under one chunk size goes whole;
+# - chunks are sent sequentially, each PUT with its own Content-Range;
+# - 206 = more to come, 201 = everything received; the upload_url lives 1 hour.
+#
+# Memory: one chunk at a time, whatever the file size.
+TIKTOK_AUTO_UPLOAD_MAX_MB_DEFAULT = 1536
 TIKTOK_CHUNK_BYTES = 16 * 1024 * 1024        # within 5-64 MB
 TIKTOK_MIN_CHUNK_BYTES = 5 * 1024 * 1024
+TIKTOK_MAX_CHUNK_BYTES = 64 * 1024 * 1024
 TIKTOK_MAX_CHUNKS = 1000
-
-
-def tiktok_chunk_plan(size_bytes: int) -> list:
-    """[(start, length), ...] per TikTok's rules: under one chunk size → one
-    chunk (the whole file, chunk_size = size); otherwise chunks of
-    TIKTOK_CHUNK_BYTES and the LAST one takes the remainder (it is then
-    between 1x and 2x the chunk size, inside TikTok's 128 MB final limit)."""
-    size = int(size_bytes or 0)
-    if size <= 0:
-        return []
-    if size < TIKTOK_CHUNK_BYTES:
-        return [(0, size)]
-    count = size // TIKTOK_CHUNK_BYTES
-    plan = [(i * TIKTOK_CHUNK_BYTES, TIKTOK_CHUNK_BYTES) for i in range(count - 1)]
-    last_start = (count - 1) * TIKTOK_CHUNK_BYTES
-    return plan + [(last_start, size - last_start)]
+_MiB = 1024 * 1024
 
 
 def tiktok_chunk_size(size_bytes: int) -> int:
-    """The init call's chunk_size for this file (see tiktok_chunk_plan)."""
+    """The init call's chunk_size: the whole file when it is under one chunk;
+    else 16 MB, grown (in whole MiB, up to 64 MB) only when 16 MB would need
+    more than 1000 chunks (files over ~16 GB)."""
     size = int(size_bytes or 0)
-    return size if size < TIKTOK_CHUNK_BYTES else TIKTOK_CHUNK_BYTES
+    if size < TIKTOK_CHUNK_BYTES:
+        return size
+    chunk = TIKTOK_CHUNK_BYTES
+    if size // chunk > TIKTOK_MAX_CHUNKS:
+        chunk = min(-(-size // TIKTOK_MAX_CHUNKS // _MiB) * _MiB + _MiB, TIKTOK_MAX_CHUNK_BYTES)
+    return chunk
 
 
-def fits_tiktok(size_bytes) -> bool:
+def tiktok_chunk_plan(size_bytes: int, chunk_size: int = None) -> list:
+    """[(start, length), ...] per TikTok's rules: under one chunk size → one
+    chunk (the whole file); otherwise chunks of `chunk_size` and the LAST one
+    takes the remainder (between 1x and 2x the chunk size)."""
+    size = int(size_bytes or 0)
+    if size <= 0:
+        return []
+    chunk = int(chunk_size or tiktok_chunk_size(size))
+    if size <= chunk:
+        return [(0, size)]
+    count = max(size // chunk, 1)
+    plan = [(i * chunk, chunk) for i in range(count - 1)]
+    last_start = (count - 1) * chunk
+    return plan + [(last_start, size - last_start)]
+
+
+def tiktok_auto_upload_max_mb() -> int:
+    """The owner's threshold (admin setting `tiktok_auto_upload_max_mb`).
+    Unreadable → the default; never below 1."""
+    try:
+        from core import admin_service
+        value = admin_service.get_setting("tiktok_auto_upload_max_mb", TIKTOK_AUTO_UPLOAD_MAX_MB_DEFAULT)
+        return max(int(float(value)), 1)
+    except Exception:
+        return TIKTOK_AUTO_UPLOAD_MAX_MB_DEFAULT
+
+
+def tiktok_needs_owner_approval(size_bytes) -> bool:
     try:
         size = int(size_bytes or 0)
     except (TypeError, ValueError):
         return False
-    return 0 < size <= TIKTOK_INBOX_MAX_BYTES
+    return size > tiktok_auto_upload_max_mb() * _MiB
+
+
+def tiktok_sendable(size_bytes) -> bool:
+    """Any real file can go to TikTok — there is no size cap of ours."""
+    try:
+        return int(size_bytes or 0) > 0
+    except (TypeError, ValueError):
+        return False

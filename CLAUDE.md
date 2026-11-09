@@ -221,7 +221,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (Content-Range per chunk, resume from the server's offset on 308/5xx/dropped connection,
   bounded retries) — memory never grows with the file, and there is no privacy parameter
   (always Private). What bounds the size now is the ~300 s request timeout of a chat click;
-  raising it further means moving the upload to a background job first.
+  raising it further means moving the upload to a durable job first (as TikTok did:
+  `core/tiktok_uploads`). The TikTok side has no cap — see the tiktok_service entry.
 - `core/google_ads_health.py` — the same token-health model for Google Ads: the token refresh
   raises `google_ads_service.GrantRevoked` on a 400 `invalid_grant`/`unauthorized_client` (code
   read from the body, never the token); the readers record it per client + grant
@@ -669,11 +670,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`tiktok_grant:<id>`, from the callback and every token refresh); a grant without
   `video.upload` or dead → `needs_reconnect` everywhere and the `connect_tiktok` card. The
   client sends a video to their TikTok drafts with the agent_actions card
-  `send_tiktok_to_inbox` (client-approved, ≤ 512 MB `video_limits.TIKTOK_INBOX_MAX_MB`, streamed
-  from Drive in 16 MB chunks by `tiktok_service.upload_video_stream` with per-chunk retries, never
-  Direct Post, no caption; the file must pass `core/video_probe` — TikTok's container/codec/fps/
-  resolution/length rules, from the file's own headers, at the card AND before init; the PUT names
-  the real container; read-only diagnosis `scripts/tiktok_diagnose.sh`). `video.list`
+  `send_tiktok_to_inbox` (client-approved, never Direct Post, no caption). **No size cap of ours
+  (owner's policy 2026-11-10, `docs/TIKTOK-UPLOADS.md`):** up to the admin setting
+  `tiktok_auto_upload_max_mb` (1536) the client's click is all; above it NO card and no question
+  to the client — ONE owner approval (admin bell + email with Approve/Decline), the client reads
+  "אני מטפל בזה"; Approve is final. The upload is a DURABLE job (`core/tiktok_uploads`, app_settings
+  `tiktok_upload:<id>` + lease `tiktok_upload_lock:<id>`, no migration): 16 MB chunks streamed from
+  Drive (`tiktok_service.upload_chunk`, 3 retries each), progress saved per chunk, moved by the
+  every-minute scheduler job `tiktok-uploads` (200 s budget per request) and the card's poll —
+  never a background task, never --no-cpu-throttling / min instances. Failure after retries = admin
+  alert + a calm client line, never the error. Only container/codec block (`core/video_probe`);
+  fps/resolution/length are logged and sent anyway. Read-only diagnosis `scripts/tiktok_diagnose.sh`. `video.list`
   (engagement counts) sits behind ONE flag, `ENGAGEMENT_READS_ENABLED` (off): while off,
   `list_videos`/`query_videos` refuse before any HTTP, `tiktok_content_agent.get_engagement_summary`
   answers `engagement_available: False` with no TikTok call, and the Performance card /

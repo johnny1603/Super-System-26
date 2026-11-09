@@ -69,10 +69,7 @@ def window_seconds() -> float:
         return _window_cache[1]
     try:
         from core import admin_service
-        rows = (admin_service._db().table("app_settings").select("value")
-                .eq("key", "chat_collect_window_seconds").limit(1).execute().data) or []
-        value = float(rows[0]["value"]) if rows else float(
-            admin_service.DEFAULT_SETTINGS.get("chat_collect_window_seconds", WINDOW_DEFAULT))
+        value = float(admin_service.get_setting("chat_collect_window_seconds", WINDOW_DEFAULT))
     except Exception:
         value = WINDOW_DEFAULT
     value = max(0.0, min(value, WINDOW_CAP))

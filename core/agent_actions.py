@@ -184,14 +184,21 @@ def _v_media_video(value, client_id: int):
     return file_id
 
 
+@drive_storage.scoped
 def _v_tiktok_video(value, client_id: int):
-    """_v_media_video's proof (the client's own folder, a video, not trashed)
-    plus our TikTok cap (core/video_limits.TIKTOK_INBOX_MAX_MB, chunked stream)."""
-    file_id = _v_media_video(value, client_id)
-    from core.video_limits import TIKTOK_INBOX_MAX_MB, fits_tiktok
-    hit = _media_meta.get((client_id, file_id))
-    if not hit or not fits_tiktok((hit[1] or {}).get("size")):
-        raise ValueError(f"video must be up to {TIKTOK_INBOX_MAX_MB} MB for TikTok")
+    """_media_file's proof (the client's own folder, not trashed) and a video
+    MIME type. NO size cap (owner's policy, core/video_limits): the upload is
+    a chunked, resumable job (core/tiktok_uploads) whose memory never grows
+    with the file; above `tiktok_auto_upload_max_mb` it waits for the owner's
+    approval instead (_prepare_tiktok). Deliberately NOT _v_media_video —
+    that one carries YouTube's cap."""
+    file_id, meta = _media_file(client_id, value)
+    if not str(meta.get("mimeType") or "").startswith("video/"):
+        raise ValueError("not a video")
+    from core.video_limits import tiktok_sendable
+    if not tiktok_sendable(meta.get("size")):
+        raise ValueError("the video file is empty")
+    _media_meta[(client_id, file_id)] = (time.time(), meta)
     return file_id
 
 
@@ -407,25 +414,35 @@ def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> 
     for row in rows:
         if (row.get("params") or {}).get("drive_file_id") == params["drive_file_id"]:
             return {"existing": row}
-    # A file TikTok can't show (wrong container, resolution, length — from
-    # what Drive already knows) gets a plain line, never a card the click
-    # would fail on. The codec is checked from the bytes at the click
-    # (tiktok_content_agent.publish → core/video_probe).
+    lang = (context or {}).get("language") or "he"
+    file_id = params["drive_file_id"]
+    # Only a container TikTok can't take (from Drive's MIME type) is refused
+    # here; resolution / length / fps are TikTok's own rules and are never
+    # checked in a blocking way (owner's policy — TikTok decides at runtime).
     from core import video_probe
-    hit = _media_meta.get((client_id, params["drive_file_id"]))
-    bad = video_probe.drive_meta_problems((hit or (0, {}))[1]) if hit else []
+    hit = _media_meta.get((client_id, file_id))
+    meta = (hit or (0, {}))[1] if hit else {}
+    bad = [p for p in (video_probe.drive_meta_problems(meta) if hit else []) if p == "container"]
     if bad:
         _log(f"client {client_id}: TikTok send refused before the card ({', '.join(bad)})", client_id=client_id)
-        return {"refuse": _pick(_TIKTOK_BAD_FORMAT, (context or {}).get("language") or "he")
-                .replace("{file}", _media_name(client_id, params["drive_file_id"]) or "—")}
+        return {"refuse": _pick(_TIKTOK_BAD_FORMAT, lang).replace("{file}", _media_name(client_id, file_id) or "—")}
     from agents.tiktok_content_agent import check_grant
     grant = check_grant(client_id)
     if grant in ("not_connected", "missing_upload", "dead"):
         notice = _TIKTOK_CONNECT_FIRST if grant == "not_connected" else _TIKTOK_RECONNECT_FIRST
-        text = _pick(notice, (context or {}).get("language") or "he")
+        text = _pick(notice, lang)
         return {"switch_to": "connect_tiktok",
-                "notice": text.replace("{file}", _media_name(client_id, params["drive_file_id"]) or "—")}
-    return {"params": {"drive_file_id": params["drive_file_id"]}}
+                "notice": text.replace("{file}", _media_name(client_id, file_id) or "—")}
+    # Above the owner's threshold: no card, no question to the client — ONE
+    # approval request to the owner (bell + email), and a calm line here.
+    from core.video_limits import tiktok_needs_owner_approval
+    size = int((meta or {}).get("size") or 0)
+    if tiktok_needs_owner_approval(size):
+        from core import tiktok_uploads
+        tiktok_uploads.request_owner_approval(client_id, file_id, _media_name(client_id, file_id) or "",
+                                              size, persona=(context or {}).get("persona") or "media", lang=lang)
+        return {"refuse": _pick(tiktok_uploads.ON_IT, lang)}
+    return {"params": {"drive_file_id": file_id}}
 
 
 def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
@@ -435,22 +452,26 @@ def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
     return {"drive_file_id": _v_tiktok_video(params.get("drive_file_id"), client_id)}
 
 
-def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks):
-    """tiktok_content_agent.publish — the function behind
-    POST /api/tiktok-content/publish: Upload-to-Inbox (video.upload), then
-    status polling until SEND_TO_USER_INBOX. There is no Direct Post on this
-    path and no caption: the owner writes it and publishes inside TikTok."""
-    from agents.tiktok_content_agent import publish
+def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks, row: dict = None):
+    """The click starts a DURABLE upload job (core/tiktok_uploads) instead of
+    uploading inside this request: a big file takes longer than one Cloud Run
+    request may live. The card stays `running` (deferred) and the job ends it
+    through finish_deferred — done / an explained refusal / in hand. Same
+    path as before underneath: Upload-to-Inbox (video.upload) only, no Direct
+    Post, no caption."""
+    from core import tiktok_uploads
     file_id = params["drive_file_id"]
     name = _media_name(client_id, file_id)
-    result = publish(client_id, {"drive_file_id": file_id})
-    if not result.get("success"):
-        for flag in ("needs_reconnect", "pending_limit", "too_large", "bad_format"):
-            if result.get(flag):
-                raise ActionFailed(flag, "; ".join(map(str, result.get("errors") or [flag])))
-        raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
-    return {"publish_id": result.get("publish_id", ""), "status": result.get("status", ""),
-            "source_file": name}
+    hit = _media_meta.get((client_id, file_id))
+    size = int(((hit or (0, {}))[1] or {}).get("size") or 0) if hit else 0
+    row = row or {}
+    job = tiktok_uploads.create(client_id, file_id, name, size,
+                                persona=row.get("persona") or "media", lang=row.get("language") or "he",
+                                proposal_id=row.get("id"))
+    # No background task: work after the response gets almost no CPU on Cloud
+    # Run and would sit on the job's lease. The card's poll (status_card) and
+    # the every-minute scheduler job move it, each inside its own request.
+    return {"deferred": True, "job_id": job["id"], "source_file": name}
 
 
 def _prepare_outreach(client_id: int, params: dict, context: dict, rows: list) -> dict:
@@ -2819,7 +2840,9 @@ ACTIONS = {
         "prepare": lambda client_id, params, context, rows: _prepare_tiktok(client_id, params, context, rows),
         "validate_stored": lambda client_id, params: _validate_tiktok_stored(client_id, params),
         "details": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))},
-        "run": _run_send_tiktok_to_inbox,
+        # inline_start: the click only CREATES the durable job (a quick write),
+        # inside the request — never in a background task Cloud Run may drop
+        "run": _run_send_tiktok_to_inbox, "needs_row": True, "inline_start": True,
         "display": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))
                                               or "—"},
         "title": _txt("שליחת סרטון לטיוטות בטיקטוק", "Send a video to your TikTok drafts",
@@ -2850,18 +2873,20 @@ ACTIONS = {
                 "Plusieurs vidéos non publiées attendent déjà dans votre boîte TikTok, et TikTok n'en accepte pas d'autres pour l'instant. Publiez-en ou supprimez-en dans l'application, puis renvoyez — rien n'a été envoyé.",
                 "توجد عدة فيديوهات غير منشورة في صندوق الوارد في تيك توك، ولا يقبل تيك توك المزيد حاليًا. انشروا بعضها أو احذفوه في التطبيق ثم أرسلوا مجددًا — لم يُرسل شيء.",
                 "Во входящих TikTok уже ждут несколько неопубликованных видео, и сейчас TikTok больше не принимает. Опубликуйте или удалите часть из них в приложении и отправьте снова — ничего не отправлено."),
-            "too_large": _txt(
-                "הסרטון גדול מ-512MB, אז הוא לא נשלח. שמרו גרסה קצרה או דחוסה יותר בתיקיית המדיה ובקשו שוב.",
-                "The video is over 512 MB, so it wasn't sent. Save a shorter or more compressed version in your media folder and ask again.",
-                "La vidéo dépasse 512 Mo, elle n'a pas été envoyée. Enregistrez une version plus courte ou plus compressée et redemandez.",
-                "الفيديو أكبر من 512MB فلم يُرسل. احفظوا نسخة أقصر أو مضغوطة أكثر في مجلد الوسائط واطلبوا مرة أخرى.",
-                "Видео больше 512 МБ, поэтому не отправлено. Сохраните более короткую или сжатую версию в папке медиа и попросите снова."),
             "bad_format": _txt(
-                "טיקטוק לא תוכל להציג את הקובץ של הסרטון הזה, אז לא שלחתי אותו — שום דבר לא נשלח. צריך קובץ MP4 רגיל, באיכות של לפחות 360 פיקסלים ובאורך של עד 10 דקות. אפשר לשמור את הסרטון מחדש כ-MP4 ולשלוח שוב.",
-                "TikTok can't show this video's file, so I didn't send it — nothing was sent. It needs a regular MP4 file, at least 360 pixels and up to 10 minutes long. Save the video again as MP4 and send it again.",
-                "TikTok ne pourra pas afficher le fichier de cette vidéo, je ne l'ai donc pas envoyée — rien n'a été envoyé. Il faut un fichier MP4 standard, d'au moins 360 pixels et de 10 minutes maximum. Réenregistrez la vidéo en MP4 et renvoyez-la.",
-                "لن يتمكن تيك توك من عرض ملف هذا الفيديو، لذلك لم أرسله — لم يُرسل شيء. يلزم ملف MP4 عادي بدقة 360 بكسل على الأقل ومدة حتى 10 دقائق. احفظوا الفيديو من جديد بصيغة MP4 وأرسلوه مرة أخرى.",
-                "TikTok не сможет показать файл этого видео, поэтому я его не отправил — ничего не отправлено. Нужен обычный файл MP4, не меньше 360 пикселей и не длиннее 10 минут. Сохраните видео заново в MP4 и отправьте ещё раз."),
+                "טיקטוק לא תוכל לקרוא את הקובץ של הסרטון הזה, אז לא שלחתי אותו — שום דבר לא נשלח. אפשר לשמור את הסרטון מחדש כקובץ MP4 רגיל ולשלוח שוב.",
+                "TikTok can't read this video's file, so I didn't send it — nothing was sent. Save the video again as a regular MP4 file and send it again.",
+                "TikTok ne pourra pas lire le fichier de cette vidéo, je ne l'ai donc pas envoyée — rien n'a été envoyé. Réenregistrez la vidéo en MP4 standard et renvoyez-la.",
+                "لن يتمكن تيك توك من قراءة ملف هذا الفيديو، لذلك لم أرسله — لم يُرسل شيء. احفظوا الفيديو من جديد كملف MP4 عادي وأرسلوه مرة أخرى.",
+                "TikTok не сможет прочитать файл этого видео, поэтому я его не отправил — ничего не отправлено. Сохраните видео заново как обычный MP4 и отправьте ещё раз."),
+            # Failed after every retry on OUR side: the admin is alerted
+            # (core/tiktok_uploads._fail); the client never sees the error
+            "in_hand": _txt(
+                "ההעלאה לטיקטוק לוקחת יותר זמן מהרגיל. אני ממשיך לטפל בזה ואעדכן כאן.",
+                "The TikTok upload is taking longer than usual. I'm still on it and will update you here.",
+                "L'envoi vers TikTok prend plus de temps que d'habitude. Je continue et je vous tiens au courant ici.",
+                "الرفع إلى تيك توك يستغرق وقتًا أطول من المعتاد. ما زلت أتابع الأمر وسأبلغكم هنا.",
+                "Загрузка в TikTok занимает больше времени, чем обычно. Я продолжаю и сообщу здесь."),
         },
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
@@ -3289,10 +3314,14 @@ for _name in ("create_landing_page", "edit_landing_page"):
         "Le travail sur « {page} » n'a pas abouti à temps ; je l'ai arrêté. Rien n'a changé en ligne. Écrivez « réessaie » et je prépare une nouvelle carte.",
         "العمل على \"{page}\" لم ينتهِ في الوقت، فأوقفته. المنشور لم يتغير. اكتبوا \"حاول مجددًا\" وسأجهز بطاقة جديدة.",
         "Работа над «{page}» не закончилась вовремя, я её остановил. Опубликованное не изменилось. Напишите «ещё раз» — сделаю новую карточку.")
-ACTIONS["send_tiktok_to_inbox"]["slow"] = {"minutes": 10, "eta": _txt(
-    "השליחה לוקחת בדרך כלל דקה-שתיים.", "Sending usually takes a minute or two.",
-    "L'envoi prend généralement une à deux minutes.", "يستغرق الإرسال عادة دقيقة أو دقيقتين.",
-    "Отправка обычно занимает минуту-две.")}
+# 30 min: reap_after = 2×30 + 5 = 65 min, past tiktok_uploads.CARD_JOB_MAX_S
+# (55 min) — the job always ends its own card before the reaper could
+ACTIONS["send_tiktok_to_inbox"]["slow"] = {"minutes": 30, "eta": _txt(
+    "סרטון קטן נשלח בדרך כלל תוך דקה-שתיים; סרטון גדול לוקח יותר. אעדכן כאן כשמוכן.",
+    "A small video usually takes a minute or two; a big one takes longer. I'll update you here when it's ready.",
+    "Une petite vidéo prend une à deux minutes ; une grande, plus. Je vous tiens au courant ici.",
+    "الفيديو الصغير يستغرق عادة دقيقة أو دقيقتين، والكبير أكثر. سأبلغكم هنا عندما يجهز.",
+    "Небольшое видео обычно отправляется за минуту-две, большое — дольше. Сообщу здесь, когда будет готово.")}
 
 _FOLLOWUP_DRAFT_REFUSALS = {
     **_OUTREACH_DRAFT_REFUSALS,
@@ -3334,11 +3363,11 @@ _FOLLOWUP_DRAFT_REFUSALS = {
 # Lines a TikTok send shows INSTEAD of its card when the connection can't
 # carry it (_prepare_tiktok) — paired with the connect_tiktok card
 _TIKTOK_BAD_FORMAT = _txt(
-    "את \"{file}\" טיקטוק לא תוכל להציג, אז לא הכנתי שליחה — שום דבר לא נשלח. צריך קובץ MP4 רגיל, באיכות של לפחות 360 פיקסלים ובאורך של עד 10 דקות. אפשר לשמור את הסרטון מחדש כ-MP4 ולבקש שוב.",
-    "TikTok can't show \"{file}\", so I didn't set up a send — nothing was sent. It needs a regular MP4 file, at least 360 pixels and up to 10 minutes long. Save the video again as MP4 and ask again.",
-    "TikTok ne pourra pas afficher « {file} », je n'ai donc pas préparé d'envoi — rien n'a été envoyé. Il faut un fichier MP4 standard, d'au moins 360 pixels et de 10 minutes maximum. Réenregistrez la vidéo en MP4 et redemandez.",
-    "لن يتمكن تيك توك من عرض \"{file}\"، لذلك لم أجهّز الإرسال — لم يُرسل شيء. يلزم ملف MP4 عادي بدقة 360 بكسل على الأقل ومدة حتى 10 دقائق. احفظوا الفيديو من جديد بصيغة MP4 واطلبوا مرة أخرى.",
-    "TikTok не сможет показать «{file}», поэтому я не стал готовить отправку — ничего не отправлено. Нужен обычный файл MP4, не меньше 360 пикселей и не длиннее 10 минут. Сохраните видео заново в MP4 и попросите ещё раз.")
+    "את הקובץ \"{file}\" טיקטוק לא תוכל לקרוא, אז לא הכנתי שליחה — שום דבר לא נשלח. אפשר לשמור את הסרטון מחדש כקובץ MP4 רגיל ולבקש שוב.",
+    "TikTok can't read the file \"{file}\", so I didn't set up a send — nothing was sent. Save the video again as a regular MP4 file and ask again.",
+    "TikTok ne pourra pas lire le fichier « {file} », je n'ai donc pas préparé d'envoi — rien n'a été envoyé. Réenregistrez la vidéo en MP4 standard et redemandez.",
+    "لن يتمكن تيك توك من قراءة الملف \"{file}\"، لذلك لم أجهّز الإرسال — لم يُرسل شيء. احفظوا الفيديو من جديد كملف MP4 عادي واطلبوا مرة أخرى.",
+    "TikTok не сможет прочитать файл «{file}», поэтому я не стал готовить отправку — ничего не отправлено. Сохраните видео заново как обычный MP4 и попросите ещё раз.")
 _TIKTOK_CONNECT_FIRST = _txt(
     "כדי לשלוח את \"{file}\" לטיוטות בטיקטוק צריך קודם לחבר את חשבון הטיקטוק שלכם. לחצו על הכפתור — זה פעם אחת, דרך טיקטוק, ואז אכין את השליחה.",
     "To send \"{file}\" to your TikTok drafts, your TikTok account needs to be connected first. Tap the button — it's once, through TikTok — and then I'll set up the send.",
@@ -3717,6 +3746,12 @@ def status_card(proposal_id: int, client_id: int) -> dict:
     if not row or int(row.get("client_id") or 0) != int(client_id or 0) or row.get("origin") != "client_chat":
         return {}
     spec = ACTIONS.get(row.get("action")) or {}
+    if row.get("status") == "running" and row.get("action") == "send_tiktok_to_inbox":
+        # While the client watches, this poll request also moves the durable
+        # upload a step (short budget; the scheduler job is the main driver)
+        from core import tiktok_uploads
+        if tiktok_uploads.nudge(int(client_id)):
+            row = _get(proposal_id) or row
     if row.get("status") == "running" and _since(row.get("decided_at") or row.get("created_at")) > reap_after(spec):
         # The card is being looked at and its run is past saving: end it now
         # (the reaper would, minutes later) so the client reads the next step
@@ -3777,7 +3812,8 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     supersedes = None
     if spec.get("prepare"):
         try:
-            prepared = spec["prepare"](client_id, params, {"language": lang, **(context or {})}, open_rows)
+            prepared = spec["prepare"](client_id, params, {"language": lang, "persona": persona,
+                                                           **(context or {})}, open_rows)
         except Exception as e:
             _log(f"client {client_id}: preparing {name} failed: {type(e).__name__}: {str(e)[:300]}",
                  severity="WARNING", client_id=client_id)
@@ -3957,7 +3993,7 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
             out["focus"] = spec["focus"](params) if callable(spec["focus"]) else spec["focus"]
         return out
 
-    if spec.get("slow") and background_tasks is not None:
+    if spec.get("slow") and background_tasks is not None and not spec.get("inline_start"):
         # Waiting is a card, not a spinner: answer the click NOW with what is
         # running and how long it usually takes; the job runs after the
         # response and the same card polls (status_card) into its result
@@ -4301,7 +4337,8 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
     client_id = int(row["client_id"])
     try:
         if spec.get("needs_row"):
-            result = _run_with_deadline(lambda: spec["run"](client_id, params, background_tasks, row=row),
+            row_in = {**row, "language": row.get("language") or lang}
+            result = _run_with_deadline(lambda: spec["run"](client_id, params, background_tasks, row=row_in),
                                         run_deadline(spec)) or {}
         else:
             result = _run_with_deadline(lambda: spec["run"](client_id, params, background_tasks),
@@ -4348,6 +4385,17 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
         _post(row, _pick(_FAILED, lang), to_client=True)
         return {"success": True, "status": "failed", "message": _pick(_FAILED, lang)}
 
+    if result.get("deferred"):
+        # A durable job carries on past this request (send_tiktok_to_inbox →
+        # core/tiktok_uploads); the row stays `running` and the job ends it
+        # with finish_deferred. The card keeps polling status_card.
+        _log(f"client {client_id}: {row['action']} handed to a durable job ({result.get('job_id')})",
+             client_id=client_id, proposal=proposal_id)
+        text = progress_text(spec, lang if actor == "client" else "he")
+        return {"success": True, "status": "running", "message": text,
+                "progress": {"text": text, "started_at": row.get("decided_at") or _now().isoformat(),
+                             "stalled": False}}
+
     if not _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
                                               "outcome": "done"}):
         # Already ended (the reaper got there first): the client was told
@@ -4366,6 +4414,43 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
         _post_admin_message(client_id, row.get("persona", "general"), _admin_summary(spec, result))
     return {"success": True, "status": "done", "message": message,
             "result": result if actor == "admin" else None}
+
+
+def finish_deferred(proposal_id: int, status: str, result: dict = None, code: str = "") -> bool:
+    """Ends a `running` row whose work a durable job did (tiktok_uploads):
+    done → the action's done line; failed → its refusal line for `code` (and
+    its follow-up card). Compare-and-set, so the reaper and this never both
+    post. True when this call ended the row."""
+    row = _get(proposal_id) or {}
+    spec = ACTIONS.get(row.get("action") or "")
+    if not row or not spec:
+        return False
+    client_id = int(row["client_id"])
+    lang = _lang(client_id)
+    to_client = row.get("origin") == "client_chat"
+    if status == "done":
+        if not _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
+                                                  "outcome": "done"}):
+            return False
+        _forget_state(client_id)
+        done_text = (spec["done_message"] if spec.get("done_message")
+                     else (lambda _result, language: _pick(spec["done"], language)))
+        _post(row, done_text(result or {}, lang), to_client=to_client)
+        return True
+    if not _claim(proposal_id, ("running",), {"status": "failed", "finished_at": _now().isoformat(),
+                                              "outcome": code or "error"}):
+        return False
+    refusal = (spec.get("refusals") or {}).get(code) or _FAILED
+    _post(row, _pick(refusal, lang), to_client=to_client)
+    follow = (spec.get("follow_up") or {}).get(code)
+    if follow:
+        try:
+            propose(client_id, row.get("origin") or "client_chat", row.get("persona", "general"),
+                    {"name": follow, "params": {}}, by_code=True)
+        except Exception as e:
+            _log(f"client {client_id}: follow-up {follow} not offered ({type(e).__name__})", severity="WARNING",
+                 client_id=client_id, proposal=proposal_id)
+    return True
 
 
 def _admin_summary(spec: dict, result: dict) -> str:

@@ -385,8 +385,10 @@ list is newest first ("modified"); "sent_to_tiktok_on" is the date a video ALREA
 TikTok drafts. "Another / a different / the new video" means one whose sent_to_tiktok_on is empty —
 never the one sent before; if that leaves more than one, ask ONE question by file name. If the
 TikTok connection is missing or needs renewing, still propose it — the system then shows the
-reconnect button with its own line. If it is NOT in available_actions: no video fits
-(tiktok_uploadable false = over tiktok_upload_max_mb, or no videos), or TikTok is not in their plan.
+reconnect button with its own line. Any file size is fine — never talk about size limits for
+TikTok and never ask the client about a file's size (a very large file is handled on our side; the
+system answers with its own line). If it is NOT in available_actions: no videos (or only empty
+files), or TikTok is not in their plan.
 
 LANDING PAGES — THE WHOLE LIFECYCLE HAPPENS HERE, in this chat, by you. Their pages, each with
 status, live address, results for the last 30 days (leads, views, calls, WhatsApp clicks) and
@@ -1746,8 +1748,8 @@ PERSONAS = {
                        "tap the notification, add a caption and press Post themselves (client_must_do "
                        "says it); we never post for them. not_sent: say plainly it did not go through "
                        "(reason needs_reconnect → offer connect_tiktok; pending_limit → several drafts "
-                       "already wait in their inbox, publish or delete some first; too_large → pick a "
-                       "shorter video). To send a video, propose send_tiktok_to_inbox. "
+                       "already wait in their inbox, publish or delete some first; bad_format → save it again "
+                       "as a regular MP4). To send a video, propose send_tiktok_to_inbox. "
                        "VOICE ('voice_recordings'): how many recordings they uploaded and the newest "
                        "date. A recording is used as the soundtrack of a video exactly as recorded — "
                        "that needs no special permission. CLONING their voice (videos speaking new "

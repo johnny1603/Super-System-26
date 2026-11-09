@@ -107,9 +107,9 @@ Before recording:
   after), switch the dashboard's language flag to English, and write to the
   chat in English. With `en`, the connect chat (question, buttons, "connected"
   line), the send card, its success line and its refusals are all English.
-- Put a short video (**512 MB or less** — our cap, see
-  `core/video_limits.TIKTOK_INBOX_MAX_MB`; uploaded in 16 MB chunks) in the
-  client's Drive media folder.
+- Put a short video in the client's Drive media folder. There is no size cap
+  of ours; keep it under 1.5 GB (`tiktok_auto_upload_max_mb`) so the demo needs
+  no owner approval (`docs/TIKTOK-UPLOADS.md`).
 - The TikTok account must be allowed by the app (sandbox target user while
   unaudited), and its inbox must not already hold too many unpublished drafts
   (TikTok refuses more; the chat explains that with its own line).
@@ -124,26 +124,31 @@ Cloud Shell via the admin endpoint.
 propose → approve → execute shape as `publish_youtube_from_media`:
 - **propose**: the model names a `drive_file_id` from
   `account_state.media_folder.videos` (`tiktok_uploadable`); the validator
-  re-proves it is a video in the client's own Drive folder, ≤ 512 MB. The
+  re-proves it is a video in the client's own Drive folder (no size cap). The
   prepare step checks the grant (`tiktok_content_agent.check_grant`: the
   record in `core/tiktok_grant`, or one token refresh when there is none). Not
   connected / dead / no `video.upload` → the `connect_tiktok` card with a
-  fixed line instead.
-- **approve**: re-validated from the stored row, claimed once, then
-  `tiktok_content_agent.publish` → `init_inbox_upload` → chunked upload streamed from Drive
-  (`upload_video_stream`: 16 MB chunks, the last takes the remainder, each
-  chunk retried up to 3 times on 5xx/429/dropped connection) →
-  status polling until `SEND_TO_USER_INBOX`. A scope/dead-grant refusal at the
-  click posts the reconnect line and returns the `connect_tiktok` card.
+  fixed line instead. Above `tiktok_auto_upload_max_mb` (1.5 GB) there is no
+  card: the owner gets one approval request and the client a calm line.
+- **approve**: re-validated from the stored row, claimed once, then a durable
+  job (`core/tiktok_uploads`): `begin_upload` → `init_inbox_upload` → chunks
+  streamed from Drive (`upload_chunk`: 16 MB chunks, the last takes the
+  remainder, each chunk retried up to 3 times on 5xx/429/dropped connection,
+  progress saved per chunk) → status polling until `SEND_TO_USER_INBOX` → the
+  card's done line (`finish_deferred`). A scope/dead-grant refusal posts the
+  reconnect line and the `connect_tiktok` card.
 
 **The file must be one TikTok can show (2026-11-09).** A demo draft reached
 the inbox but never opened. TikTok's media rules: MP4 / MOV / WebM, H.264
 (recommended) / H.265 / VP8 / VP9, 23–60 fps, 360–4096 px per side, ≤ 10 min.
-`core/video_probe` reads the file's own headers (stdlib, no ffmpeg): the card
-refuses from Drive's metadata (type, size, length) with a plain line, and
-`publish` probes the downloaded bytes and refuses BEFORE `init` (`bad_format`,
-its own line) — and the PUT's Content-Type is the real container, never a
-fixed `video/mp4`. What was sent (container, codecs, size, fps, length) is
+`core/video_probe` reads the file's own headers (stdlib, no ffmpeg). Since
+2026-11-10 (owner's policy) only what TikTok cannot decode at all blocks: the
+card refuses a container TikTok doesn't take (Drive's MIME type), and
+`begin_upload` refuses a missing video track / unplayable codec BEFORE `init`
+(`bad_format`, its own line). Resolution, fps and length are logged as
+`probe_warning` and sent anyway — a TikTok rejection at runtime is ours to
+handle (admin alert), never pushed to the client. The PUT's Content-Type is
+the real container, never a fixed `video/mp4`. What was sent (container, codecs, size, fps, length) is
 recorded on the `content_published` activity row.
 
 **Which video (2026-11-09).** "Send a different video" once re-sent the last

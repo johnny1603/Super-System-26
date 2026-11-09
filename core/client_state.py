@@ -362,7 +362,7 @@ def _media_folder(client_id: int, fresh: bool = False) -> dict:
     now, past drive_mirror's cache (a chat turn about a video — see
     media_turn)."""
     from core import drive_mirror
-    from core.video_limits import TIKTOK_INBOX_MAX_MB, VIDEO_UPLOAD_MAX_MB, fits, fits_tiktok
+    from core.video_limits import VIDEO_UPLOAD_MAX_MB, fits, tiktok_sendable
     root = drive_mirror.list_folder(client_id, refresh=fresh)
     if not root.get("exists"):
         return {"exists": False}
@@ -394,7 +394,8 @@ def _media_folder(client_id: int, fresh: bool = False) -> dict:
                        "modified": str(v.get("modified_time") or "")[:16],
                        "size_mb": round(v["size"] / 1048576, 1) if v.get("size") else None,
                        "uploadable": fits(v.get("size")),
-                       "tiktok_uploadable": fits_tiktok(v.get("size")),
+                       # no size cap for TikTok (owner's policy, core/video_limits)
+                       "tiktok_uploadable": tiktok_sendable(v.get("size")),
                        "sent_to_tiktok_on": sent.get(v.get("id", ""), "")}
                       for v in videos[:MEDIA_VIDEOS_LISTED]],
            # The newest images (e.g. photos uploaded in a chat) — what
@@ -403,7 +404,6 @@ def _media_folder(client_id: int, fresh: bool = False) -> dict:
                        "modified": str(i.get("modified_time") or "")[:10]}
                       for i in images[:MEDIA_IMAGES_LISTED]],
            "upload_max_mb": VIDEO_UPLOAD_MAX_MB,
-           "tiktok_upload_max_mb": TIKTOK_INBOX_MAX_MB,
            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
     try:
         from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, uploads_today
