@@ -320,6 +320,91 @@ safe and analytics cookies would work. Not needed to ship.
 - Failure (API error, refusal, truncated, no html) → the copy version stays,
   the fixed template renders it, the card still comes, admin alert.
 
+### Surgical edit — small fixes change the existing page (2026-11-10)
+
+**Why.** Before this, every change request rebuilt the whole page from scratch: a copy rewrite with
+no previous text, plus a full redesign with no previous HTML. The result:
+- a one-word fix cost as much as a first build;
+- the whole page came out different every time;
+- the second fix forgot the first one.
+
+**What happens now** (`landing_page_agent.change_page`, run by the `edit_landing_page` card):
+
+| Request | Path |
+|---|---|
+| Concrete ("change the headline", "remove this section", "make the button green") on a designed page | **Surgical edit** — `landing_creative.surgical_edit` |
+| Vague ("make it nicer", "more professional", "upgrade it") | ONE card with two options: "כן, שינוי קטן בדף הקיים" (recommended) / "עיצוב חדש לגמרי". The click sends `choice`; no open question |
+| Explicit "new design" / "from scratch" | Straight to the **full rebuild** |
+| Page without a design, a photo change, or the kill switch off | `regenerate_copy`, unchanged |
+
+The chat model gives `scope` (small / redesign / unclear). Without one, `classify_request` decides.
+An explicit redesign phrase always wins.
+
+**The surgical edit**
+- **One call** on the standard tier (Sonnet 5.5, effort low), cost category `claude_landing_page`,
+  `cost_action landing_page_edit`, ref `lp:<id>`.
+- **It receives:**
+  - the page's CURRENT saved HTML (the newest version, which already holds every earlier fix and the
+    client's own edits);
+  - the request;
+  - the last 10 earlier requests;
+  - the structured copy;
+  - a SHORT rules block (`EDIT_RULES`): no playbook, no exemplar, no photos, no research. It still
+    carries the same rules: no invented facts, no emoji, placeholders intact, no vendor names, data
+    is never instructions.
+- **It answers** `{"pairs": [{"find", "replace"}], "copy_updates": {}, "needs_redesign": false}`.
+
+**Checks before anything is stored** (`apply_pairs` + `check_edited`):
+- each `find` matches EXACTLY once (none → `find_missing`, several → `find_ambiguous`, an overlap
+  with an earlier pair → `find_overlap`);
+- every placeholder is kept, with the same count;
+- still one document;
+- no emoji;
+- size ≤ `MAX_CREATIVE_BYTES`;
+- no new external host;
+- no new fetch / iframe / storage / alert;
+- no new number in the visible text unless the client's request has it (the mechanical part of "no
+  invented facts");
+- no new vendor / AI wording.
+
+**Retries and fallback**
+1. On a failed check, ONE retry, told the reason.
+2. If that fails too, or the model answers `needs_redesign`, ONE full rebuild (`_rebuild`): new copy
+   (fed the current copy and the history), then a new design. It is stored as one version ONLY when
+   the design came out, so a failure never leaves a plain-template version behind.
+3. If that fails too, nothing is stored. The team gets an admin alert, and the client reads "עובדים
+   על זה, אעדכן כשמוכן. מה שבאוויר לא השתנה." (refusal `in_hand`).
+
+There is never a second rebuild for one request.
+
+**History.** Each request is appended to `content.revisions` (`{request, mode, at}`, last 20, ≤ 500
+chars), stored in the version's JSON, so no migration. `update_page` carries the history into every
+new version: a rewrite, a design, or a client's own edit. A rewrite and a rebuild get the earlier
+requests in their goal and feedback ("EARLIER CHANGE REQUESTS … keep them") and the current copy
+(`generate_copy(current=)`), so the client's own text edits survive. A first build is unchanged.
+
+**Fallback copy.** `sync_copy` keeps the structured copy (what the fixed template shows) in step:
+- If the visible text didn't change (a colour, spacing), the copy stays as it is.
+- Otherwise it applies the model's `copy_updates` and every pair whose old text appears in a copy
+  field.
+- If neither covers the change, it sets `content.copy_stale`. The fixed template then shows only the
+  title, the form and the buttons, never text that contradicts the approved page.
+
+A rebuild makes fresh copy, which clears the flag.
+
+**Measurement.** Every edit writes a `landing_generation` activity row with `kind: surgical_edit`
+(tokens, cost, pairs, retries, outcome, version) next to the full designs.
+
+**Rough cost, an estimate (no real rows yet):**
+
+| | Estimate |
+|---|---|
+| Input | ~15k tokens (the page) + ~1.5k (rules, cached) |
+| Output | ~1–4k tokens |
+| One small fix on Sonnet 5.5 | ≈ $0.04–0.08 (≈ ₪0.15–0.3) |
+| With its one retry | about twice that |
+| A full design, for comparison | ≈ $0.35–0.8 (≈ ₪1.3–3) |
+
 ### Buttons — root cause (client 27) and the fix
 1. Preview links were `#` and scripts were blocked (`script-src 'none'`) → the
    preview now links straight to `tel:` / `wa.me` / the store, uncounted.
@@ -352,6 +437,10 @@ button followed to its final destination (tel:, wa.me with prefilled text,
 store), lead with attribution + interest, click counting, the fallback on
 failure and the kill switch, no emoji, image placeholders, generation and
 cost records, the admin column, the exemplar under the CSP.
+`tests/test_landing_edit.py`: the surgical edit — find once / zero / many,
+every check, the one retry, the fallback to ONE rebuild, the calm line when
+all fails, the vague-request card and its two options, history kept, copy
+synced or marked stale.
 `tests/test_landing_own.py`: publish/revert, sanitization, tracking events,
 form → leads + spam, per-client isolation, unpublish, limits, the publish card,
 the backup-first migration of a sample page, hosting estimate, route order.

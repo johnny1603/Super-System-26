@@ -112,7 +112,7 @@ class Base(unittest.TestCase):
         aa._log = lambda *a, **k: None
         self.copy_calls = []
 
-        def generate_copy(client_id, goal, title=""):
+        def generate_copy(client_id, goal, title="", current=None):
             self.copy_calls.append((client_id, goal, title))
             return {"success": True, "content": lp.normalize_content(COPY), "notes": "", "research_grounded": False}
         lpa.generate_copy = generate_copy

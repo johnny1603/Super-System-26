@@ -109,9 +109,11 @@ Return JSON only:
   "notes_for_johnny": "English, max 2 sentences — anything the copy deliberately avoided"}}"""
 
 
-def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
+def generate_copy(client_id: int, goal: str, title: str = "", current: dict = None) -> dict:
     """Research-grounded landing copy as STRUCTURED fields. Returns
-    {"success", "content", "notes"} — writes nothing on its own."""
+    {"success", "content", "notes"} — writes nothing on its own.
+    `current`: a rewrite's present copy (it may hold the client's own edits),
+    kept except where the feedback asks otherwise. A first build has none."""
     from agents.seo_agent import _business_context
 
     # Same lens the ad drafters use, so a client who had a campaign drafted this
@@ -124,6 +126,10 @@ def generate_copy(client_id: int, goal: str, title: str = "") -> dict:
     }
     if research:
         payload["competitor_research"] = research
+    if current:
+        payload["current_copy"] = current
+        payload["rewrite_rule"] = ("current_copy is the page as it is now, including the client's own edits: "
+                                   "keep it except where the feedback asks for a change.")
 
     log_step(AGENT_NAME, "generate_copy",
              f"client {client_id}: '{(goal or title)[:60]}' "
@@ -188,6 +194,7 @@ def _design(client_id: int, page_id: int, feedback: str = "") -> dict:
         return {"designed": False}
     content = landing_pages.normalize_content(page.get("content") or {})
     content.pop("html", None)
+    content.pop("copy_stale", None)      # a new design is made FROM this copy
     contact = landing_pages.normalize_contact(page.get("contact") or {})
     with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
         creative = _creative_html(client_id, page, content, contact, feedback)
@@ -407,17 +414,25 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: s
     content = dict(page.get("content") or {})
     # The old design shows the old copy and photos: never carried over
     content.pop("html", None)
+    stale = content.pop("copy_stale", False)
+    history = landing_pages.normalize_revisions(content.get("revisions"))
     if feedback or not images:
         goal = page.get("goal") or ""
         if feedback:
             goal = f"{goal}\n\nCLIENT FEEDBACK ON THE PREVIOUS VERSION: {feedback}".strip()
+        goal = _with_history(goal, history)
+        current = None if stale else _copy_of(content)
         with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
-            result = generate_copy(client_id, goal, page.get("title", ""))
+            result = (generate_copy(client_id, goal, page.get("title", ""), current=current) if current
+                      else generate_copy(client_id, goal, page.get("title", "")))
         if not result.get("success"):
             return result
         content = {**result["content"], "images": (page.get("content") or {}).get("images") or []}
     if refs is not None:
         content["images"] = refs
+    content["revisions"] = history
+    if feedback:
+        content = landing_pages.add_revision(content, feedback, "rewrite")
     updated = landing_pages.update_page(client_id, page_id, {"content": content},
                                         source="images" if images and not feedback else "rewrite")
     if not updated.get("success"):
@@ -427,13 +442,181 @@ def regenerate_copy(client_id: int, page_id: int, feedback: str = "", persona: s
     intro = (f'כתבתי מחדש את "{page.get("title", "")}". הגרסה החדשה בכרטיס — '
              f'מה שבאוויר עכשיו לא משתנה עד שתאשרו.') if announce else ""
     from core import landing_creative
+    design_note = _with_history(feedback, history) if feedback else ""
     if defer is not None and landing_creative.enabled():
-        defer(_design_then_propose, client_id, page_id, feedback, persona, intro)
+        defer(_design_then_propose, client_id, page_id, design_note, persona, intro)
         return {"success": True, "page": updated["page"], "card": None, "designing": True}
-    result = _design(client_id, page_id, feedback)
+    result = _design(client_id, page_id, design_note)
     page_now = result.get("page") or updated["page"]
     card = propose_publish(client_id, page_id, intro, persona=persona)
     return {"success": True, "page": page_now, "card": card.get("card"), "designed": result.get("designed", False)}
+
+
+# ─── Change requests: surgical edit first (2026-11-10) ─────────────────────
+#
+# A change in words to a page that already has a design edits THAT page
+# (core/landing_creative.surgical_edit — one cheap call, find-and-replace
+# pairs, strict checks). It falls back to ONE full rebuild when the edit
+# can't be applied; an explicit "new design" goes straight to the rebuild.
+# Every request is kept on the page (content.revisions) so the next one
+# knows it. Pages without a design, and photo changes, keep regenerate_copy.
+
+EDIT_HISTORY_IN_PROMPT = 10
+
+_REDESIGN_WORDS = ("עיצוב חדש", "עיצוב אחר", "לעצב מחדש", "תעצב מחדש", "תעצבו מחדש", "מעצב מחדש", "מחדש לגמרי",
+                   "מאפס", "מההתחלה", "דף חדש לגמרי", "לבנות מחדש", "תבנה מחדש", "new design", "redesign",
+                   "from scratch", "start over", "rebuild")
+_VAGUE_WORDS = ("יותר יפה", "יפה יותר", "יותר מקצועי", "מקצועי יותר", "לשדרג", "תשדרג", "שדרג", "שדרוג",
+                "לשפר את הדף", "תשפר את הדף", "יותר מודרני", "מודרני יותר", "יותר טוב", "טוב יותר",
+                "יותר מרשים", "יותר מושך", "make it nicer", "nicer", "more professional", "upgrade", "improve it",
+                "look better", "more modern")
+# Something concrete on the page: a request naming one of these is specific
+_SPECIFIC_WORDS = ("כותרת", "כפתור", "צבע", "ירוק", "כחול", "אדום", "שחור", "לבן", "צהוב", "כתום", "סגול", "ורוד",
+                   "אפור", "טקסט", "משפט", "מילה", "פסקה", "סעיף", "חלק", "טופס", "תמונה", "לוגו", "גופן", "פונט",
+                   "מחיר", "טלפון", "וואטסאפ", "שאלות", "להסיר", "תסיר", "תוריד", "להוריד", "למחוק", "תמחק",
+                   "להוסיף", "תוסיף", "לשנות את", "תשנה את", "headline", "button", "color", "colour", "section",
+                   "remove", "font", "text", "form", "logo", "price")
+
+
+def classify_request(text: str) -> str:
+    """'redesign' (an explicit new design), 'unclear' (overall look only:
+    "make it nicer") or 'small' (anything concrete). Deterministic — used when
+    the chat model gave no scope."""
+    low = " ".join(str(text or "").lower().split())
+    if any(w in low for w in _REDESIGN_WORDS):
+        return "redesign"
+    if any(w in low for w in _VAGUE_WORDS) and not any(w in low for w in _SPECIFIC_WORDS):
+        return "unclear"
+    return "small"
+
+
+def _copy_of(content: dict) -> dict:
+    """The structured copy as it is now (it may hold the client's own edits)."""
+    from core.landing_creative import COPY_FIELDS
+    return {k: content.get(k) for k in COPY_FIELDS if content.get(k)}
+
+
+def _with_history(text: str, history: list) -> str:
+    earlier = [h["request"] for h in history or []][-EDIT_HISTORY_IN_PROMPT:]
+    if not earlier:
+        return text
+    lines = "\n".join(f"- {r}" for r in earlier)
+    return f"{text}\n\nEARLIER CHANGE REQUESTS ON THIS PAGE (already made — keep them):\n{lines}".strip()
+
+
+def _surgical(client_id: int, page: dict, request: str, persona: str, intro: str) -> dict:
+    """One surgical edit of the page's CURRENT saved version (it already holds
+    every earlier fix and the client's own edits). {"success", "page"} or
+    {"success": False, "needs_redesign"}; stores nothing on a failure."""
+    from core import landing_creative
+    page_id = page["id"]
+    content = landing_pages.normalize_content(page.get("content") or {})
+    history = content.get("revisions") or []
+    current = {} if content.get("copy_stale") else _copy_of(content)
+    with cost_action("landing_page_edit", ref=f"lp:{page_id}"):
+        result = timed_step(AGENT_NAME, "surgical_llm", lambda: landing_creative.surgical_edit(
+            client_id, page_id, content["html"], request,
+            [h["request"] for h in history][-EDIT_HISTORY_IN_PROMPT:], current))
+    record = result.get("record") or {}
+    if not result.get("success"):
+        landing_creative.record_generation(client_id, record, agent=AGENT_NAME)
+        return {"success": False, "needs_redesign": result.get("needs_redesign", False),
+                "reason": record.get("error") or record.get("outcome")}
+    new_content, stale = landing_creative.sync_copy(content, content["html"], result["html"], result["pairs"],
+                                                    result["copy_updates"])
+    new_content["html"] = result["html"]
+    new_content["copy_stale"] = stale
+    new_content = landing_pages.add_revision(new_content, request, "edit")
+    updated = landing_pages.update_page(client_id, page_id, {"content": new_content}, source="edit")
+    if not updated.get("success"):
+        landing_creative.record_generation(client_id, {**record, "outcome": "not_stored",
+                                                       "error": str(updated.get("code"))}, agent=AGENT_NAME)
+        return {"success": False, "reason": "not_stored"}
+    version = updated["page"].get("current_version")
+    landing_creative.record_generation(client_id, record, version=version, agent=AGENT_NAME)
+    _log_activity(client_id, "landing_page_edited",
+                  {"page_id": page_id, "version": version, "pairs": record.get("pairs"), "copy_stale": stale,
+                   "cost_ils": record.get("cost_ils"), "retries": record.get("retries")})
+    propose_publish(client_id, page_id, intro, persona=persona)
+    return {"success": True, "page": updated["page"], "mode": "edit"}
+
+
+def _rebuild(client_id: int, page: dict, request: str, persona: str, intro: str) -> dict:
+    """The full rebuild of a designed page — new copy, then a new design —
+    stored as ONE version only when the design came out (a failure never
+    leaves a plain-template version behind). Runs at most once per request."""
+    page_id = page["id"]
+    content = landing_pages.normalize_content(page.get("content") or {})
+    stale = content.get("copy_stale")
+    history = content.get("revisions") or []
+    goal = f"{page.get('goal') or ''}\n\nCLIENT FEEDBACK ON THE PREVIOUS VERSION: {request}".strip()
+    goal = _with_history(goal, history)
+    current = None if stale else _copy_of(content)
+    with cost_action("landing_page_generate", ref=f"lp:{page_id}"):
+        copy = (generate_copy(client_id, goal, page.get("title", ""), current=current) if current
+                else generate_copy(client_id, goal, page.get("title", "")))
+        if not copy.get("success"):
+            return {"success": False, "reason": "copy_failed"}
+        new_content = {**copy["content"], "images": content.get("images") or []}
+        contact = landing_pages.normalize_contact(page.get("contact") or {})
+        creative = _creative_html(client_id, page, new_content, contact, _with_history(request, history))
+    if not creative.get("html"):
+        return {"success": False, "reason": "design_failed"}
+    from core import landing_creative
+    new_content = landing_pages.add_revision({**new_content, "html": creative["html"], "revisions": history},
+                                             request, "redesign")
+    updated = landing_pages.update_page(client_id, page_id, {"content": new_content}, source="designed")
+    if not updated.get("success"):
+        landing_creative.record_generation(client_id, {**creative["record"], "outcome": "not_stored",
+                                                       "error": str(updated.get("code"))}, agent=AGENT_NAME)
+        return {"success": False, "reason": "not_stored"}
+    version = updated["page"].get("current_version")
+    landing_creative.record_generation(client_id, creative["record"], version=version, agent=AGENT_NAME)
+    _log_activity(client_id, "landing_page_designed",
+                  {"page_id": page_id, "version": version, "content_hash": creative["record"].get("content_hash"),
+                   "exemplar": creative["record"].get("exemplar"), "rebuild_for_change": True})
+    propose_publish(client_id, page_id, intro, persona=persona)
+    return {"success": True, "page": updated["page"], "mode": "redesign"}
+
+
+def change_page(client_id: int, page_id: int, change_request: str = "", mode: str = "edit",
+                persona: str = PERSONA, images: list = None) -> dict:
+    """THE entry point for a client's change request (the edit card).
+
+    mode "edit": a surgical edit of the designed page; if it can't be applied
+    (after its one retry) → ONE full rebuild; if that fails too → the team is
+    alerted and the client reads a calm line (ERR_LANDING_IN_HAND).
+    mode "redesign": straight to the full rebuild.
+    A page with no design, a photo change, or the kill switch off: the
+    existing rewrite (regenerate_copy)."""
+    from core import landing_creative
+    page = landing_pages.get_page(client_id, page_id)
+    if not page:
+        return {"success": False, "code": "ERR_LANDING_NOT_FOUND", "errors": ["page not found"]}
+    designed = bool((page.get("content") or {}).get("html"))
+    if images or not change_request or not designed or not landing_creative.enabled():
+        return regenerate_copy(client_id, page_id, change_request, persona=persona, announce=False,
+                               images=images or None)
+    if mode == "redesign":
+        result = _rebuild(client_id, page, change_request, persona, "")
+        if result.get("success"):
+            return result
+        agent_alert(AGENT_NAME, [f"client {client_id}: requested redesign of page {page_id} failed "
+                                 f"({result.get('reason')}) — nothing stored, client told it is in hand"])
+        return {"success": False, "code": "ERR_LANDING_IN_HAND"}
+    edited_now = _surgical(client_id, page, change_request, persona, "")
+    if edited_now.get("success"):
+        return edited_now
+    log_step(AGENT_NAME, "change_page", f"client {client_id}: surgical edit of page {page_id} not applied "
+                                        f"({edited_now.get('reason') or 'needs redesign'}) — one full rebuild")
+    rebuilt = _rebuild(client_id, page, change_request, persona, "")
+    if rebuilt.get("success"):
+        return {**rebuilt, "fell_back": True}
+    agent_alert(AGENT_NAME, [f"client {client_id}: change to page {page_id} failed — surgical edit "
+                             f"({edited_now.get('reason') or 'needs redesign'}) and the one rebuild "
+                             f"({rebuilt.get('reason')}); nothing stored, the client was told it is in hand. "
+                             f"Request: {change_request[:200]}"])
+    return {"success": False, "code": "ERR_LANDING_IN_HAND"}
 
 
 def edited(client_id: int, page_id: int) -> dict:

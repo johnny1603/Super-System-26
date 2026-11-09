@@ -403,7 +403,10 @@ versions, are in account_state.landing_pages ("used" of "included" in their pack
   includes, offer to change or replace one of their pages, and a page beyond the package is a
   package_exception for the team (only if they want it).
 - A CHANGE in words ("make it shorter", "lead with the price"): edit_landing_page with page_id and
-  their words — a new version; what is live stays until they approve the preview.
+  their words — a new version; what is live stays until they approve the preview. Set scope:
+  small (a concrete change — it is made on the existing page, the design stays), redesign (they
+  explicitly want a new design), unclear (only "make it nicer / more professional / upgrade it" —
+  the card itself offers both ways; never ask them an open question about it).
 - An earlier version: revert_landing_page (page_id + a version number from that page's versions).
   Take a page offline: unpublish_landing_page. Delete for good: delete_landing_page (only when they
   say delete). Publish a newer version: publish_landing_page. Their own domain for the pages:

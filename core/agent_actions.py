@@ -1072,6 +1072,29 @@ def _validate_page_change(keys: dict):
     return check
 
 
+# How a change in words is made (2026-11-10, surgical edit): "edit" changes
+# the existing designed page, "redesign" builds a new design, "ask" = a vague
+# request ("make it nicer") — ONE card with both options, the click picks.
+EDIT_MODES = ("edit", "redesign", "ask")
+_EDIT_SCOPES = {"small": "edit", "redesign": "redesign", "unclear": "ask"}
+
+
+def _v_edit_scope(value, client_id: int):
+    value = str(value or "").strip().lower()
+    if value not in _EDIT_SCOPES:
+        raise ValueError("scope must be small, redesign or unclear")
+    return value
+
+
+def _page_designed(client_id: int, page_id) -> bool:
+    from core import landing_creative, landing_pages
+    try:
+        page = landing_pages.get_page(client_id, int(page_id))
+    except Exception:
+        return False
+    return bool((page.get("content") or {}).get("html")) and landing_creative.enabled()
+
+
 def _prepare_edit_landing(client_id: int, params: dict, rows: list) -> dict:
     if not params.get("change_request") and not params.get("images"):
         return {"clarify": _pick(_txt(
@@ -1080,14 +1103,22 @@ def _prepare_edit_landing(client_id: int, params: dict, rows: list) -> dict:
             "Que faut-il changer ? En mots, ou choisissez vos photos du dossier média.",
             "ما الذي نغيّره في الصفحة؟ بالكلمات، أو اختاروا صوركم من مجلد الوسائط.",
             "Что изменить на странице? Словами или выберите свои фото из папки медиа."), _lang(client_id))}
-    keys = ("page_id", "change_request", "images")
-    return _prepare_page_change(client_id, {k: v for k, v in params.items() if k in keys and v}, rows,
-                                keys)
+    keys = ("page_id", "change_request", "images", "mode")
+    clean = {k: v for k, v in params.items() if k in keys and v}
+    if params.get("change_request") and not params.get("images") and _page_designed(client_id, params["page_id"]):
+        # A change in words to a designed page: the existing page is edited
+        # unless the client asked for a new design; vague → both options
+        from agents.landing_page_agent import classify_request
+        scope = params.get("scope") or classify_request(params["change_request"])
+        if classify_request(params["change_request"]) == "redesign":
+            scope = "redesign"
+        clean["mode"] = _EDIT_SCOPES.get(scope, "edit")
+    return _prepare_page_change(client_id, clean, rows, keys)
 
 
 def _validate_edit_stored(client_id: int, params: dict) -> dict:
     params = params if isinstance(params, dict) else {}
-    if set(params) - {"page_id", "change_request", "images"}:
+    if set(params) - {"page_id", "change_request", "images", "mode"}:
         raise ValueError("unknown params")
     out = {"page_id": _v_landing_page(params.get("page_id"), client_id)}
     if params.get("change_request"):
@@ -1097,6 +1128,10 @@ def _validate_edit_stored(client_id: int, params: dict) -> dict:
         out["images"] = images
     if len(out) == 1:
         raise ValueError("nothing to change")
+    if params.get("mode"):
+        if params["mode"] not in EDIT_MODES or "change_request" not in out:
+            raise ValueError("bad mode")
+        out["mode"] = params["mode"]
     return out
 
 
@@ -1108,15 +1143,56 @@ def _edit_details(client_id: int, params: dict) -> dict:
     return out
 
 
+_EDIT_CHOICES = (
+    ("edit", _txt("כן, שינוי קטן בדף הקיים", "Yes, a small change on the existing page",
+                  "Oui, une petite modification de la page actuelle", "نعم، تعديل صغير على الصفحة الحالية",
+                  "Да, небольшое изменение текущей страницы")),
+    ("redesign", _txt("עיצוב חדש לגמרי", "A completely new design", "Un tout nouveau design", "تصميم جديد بالكامل",
+                      "Полностью новый дизайн")),
+)
+
+
+def _edit_choices(params: dict):
+    return _EDIT_CHOICES if (params or {}).get("mode") == "ask" else None
+
+
+_EDIT_WHAT = {
+    "edit": _txt(
+        "אעשה את השינוי שביקשתם על \"{page}\" הקיים — העיצוב נשאר כמו שהוא, ומשתנה רק מה שביקשתם. מה שבאוויר לא משתנה עד שתאשרו את התצוגה המקדימה. מאשר?",
+        "I'll make the change you asked for on the existing \"{page}\" — the design stays, only what you asked changes. What's live doesn't change until you approve the preview. OK?",
+        "Je fais la modification demandée sur « {page} » tel qu'il est — le design reste, seul ce que vous avez demandé change. Rien ne change en ligne avant votre accord.",
+        "سأجري التغيير الذي طلبتموه على \"{page}\" الحالية — التصميم يبقى ويتغير ما طلبتموه فقط. المنشور لا يتغير حتى توافقوا على المعاينة.",
+        "Внесу изменение в текущую «{page}» — дизайн остаётся, меняется только то, что вы просили. Опубликованное не меняется до вашего согласия."),
+    "redesign": _txt(
+        "אעצב את \"{page}\" מחדש לגמרי, לפי מה שביקשתם. מה שבאוויר לא משתנה — תקבלו תצוגה מקדימה ותחליטו. מאשר?",
+        "I'll give \"{page}\" a completely new design, as you asked. What's live doesn't change — you'll get a preview and decide. OK?",
+        "Je refais entièrement le design de « {page} » comme demandé. Rien ne change en ligne — vous recevrez un aperçu.",
+        "سأصمم \"{page}\" من جديد بالكامل كما طلبتم. المنشور لا يتغير — ستصلكم معاينة وتقررون.",
+        "Полностью переделаю дизайн «{page}», как вы просили. Опубликованное не меняется — придёт предпросмотр."),
+    "ask": _txt(
+        "אני ממליץ על שינוי קטן בדף הקיים: העיצוב נשאר, ואני משפר רק את מה שצריך — מהיר, ומה שאהבתם נשאר. אם תעדיפו, אפשר גם עיצוב חדש לגמרי ל\"{page}\". מה שבאוויר לא משתנה עד שתאשרו את התצוגה המקדימה. מאשר?",
+        "I suggest a small change on the existing page: the design stays and I improve only what's needed — quick, and what you liked stays. If you prefer, \"{page}\" can also get a completely new design. What's live doesn't change until you approve the preview. OK?",
+        "Je propose une petite modification de la page actuelle : le design reste, j'améliore seulement l'essentiel. Si vous préférez, « {page} » peut aussi avoir un tout nouveau design.",
+        "أقترح تعديلًا صغيرًا على الصفحة الحالية: يبقى التصميم وأحسّن ما يلزم فقط. وإن فضلتم، يمكن أيضًا تصميم جديد بالكامل لـ\"{page}\".",
+        "Предлагаю небольшое изменение текущей страницы: дизайн остаётся, улучшу только нужное. Если хотите, для «{page}» можно сделать и полностью новый дизайн."),
+}
+
+_EDIT_ETA = _txt("שינוי קטן בדף לוקח בדרך כלל דקה-שתיים. אכתוב כאן כשזה מוכן.",
+                 "A small change usually takes a minute or two. I'll write here when it's ready.",
+                 "Une petite modification prend en général une à deux minutes.",
+                 "التعديل الصغير يستغرق عادةً دقيقة أو دقيقتين.",
+                 "Небольшое изменение обычно занимает минуту-две.")
+
+
 def _run_edit_landing_page(client_id: int, params: dict, background_tasks, row: dict = None):
-    from agents.landing_page_agent import regenerate_copy
-    result = regenerate_copy(client_id, params["page_id"], params.get("change_request", ""),
-                             persona=(row or {}).get("persona") or "general", announce=False,
-                             images=params.get("images") or None)
+    from agents.landing_page_agent import change_page
+    result = change_page(client_id, params["page_id"], params.get("change_request", ""),
+                         mode=params.get("mode") or "edit", persona=(row or {}).get("persona") or "general",
+                         images=params.get("images") or None)
     if not result.get("success"):
         code = _image_refusal(result.get("code")) or {
             "ERR_LANDING_TOO_LARGE": "too_large", "ERR_LANDING_NOT_FOUND": "not_found",
-            "ERR_LANDING_IMAGE_NOT_FOUND": "image_missing",
+            "ERR_LANDING_IMAGE_NOT_FOUND": "image_missing", "ERR_LANDING_IN_HAND": "in_hand",
             "ERR_LANDING_IMAGES_PAGE_TOO_LARGE": "images_page_too_large"}.get(
             result.get("code"), "error")
         raise ActionFailed(code, str(result.get("code") or result.get("errors") or ""))
@@ -2279,10 +2355,20 @@ ACTIONS = {
                    "change_request": {"required": False, "validate": _v_change_request,
                                       "hint": "the text change, in the client's own words (Hebrew) — leave out "
                                               "when only photos change"},
-                   "images": {"required": False, "validate": _v_landing_images, "hint": _LANDING_IMAGES_HINT}},
+                   "images": {"required": False, "validate": _v_landing_images, "hint": _LANDING_IMAGES_HINT},
+                   "scope": {"required": False, "validate": _v_edit_scope,
+                             "hint": "small = a concrete change (a text, a section, a colour, a button) made on "
+                                     "the existing page; redesign = the client explicitly asks for a new/different "
+                                     "design or to rebuild the page; unclear = only the overall look, with nothing "
+                                     "specific (\"make it nicer\", \"more professional\", \"upgrade it\") — the card "
+                                     "then offers both, never ask an open question"}},
         "available": _has_landing_pages,
         "prepare": lambda client_id, params, context, rows: _prepare_edit_landing(client_id, params, rows),
         "validate_stored": _validate_edit_stored,
+        # The card's text and its two options follow the stored mode
+        "what_for": lambda params: _EDIT_WHAT.get((params or {}).get("mode") or ""),
+        "choices": _edit_choices,
+        "eta_for": lambda params: _EDIT_ETA if (params or {}).get("mode") == "edit" else None,
         "details": _edit_details,
         "display": lambda client_id, params: {"page": _landing_title(client_id, params.get("page_id"))},
         "run": _run_edit_landing_page,
@@ -2312,6 +2398,12 @@ ACTIONS = {
                 "Версия вышла слишком длинной, я её не сохранил. Напишите, что важнее всего, — сокращу."),
             "not_found": _txt("הדף הזה כבר לא קיים.", "That page no longer exists.", "Cette page n'existe plus.",
                               "هذه الصفحة لم تعد موجودة.", "Этой страницы больше нет."),
+            # The edit and its one rebuild both failed: the team has it (alerted)
+            "in_hand": _txt("עובדים על זה, אעדכן כשמוכן. מה שבאוויר לא השתנה.",
+                            "We're on it — I'll update you when it's ready. What's live hasn't changed.",
+                            "On s'en occupe, je vous tiens au courant. Rien n'a changé en ligne.",
+                            "نعمل على ذلك وسأبلغكم عندما يجهز. المنشور لم يتغير.",
+                            "Мы этим занимаемся, сообщу, когда будет готово. Опубликованное не изменилось."),
         },
     },
     "revert_landing_page": {
@@ -3633,8 +3725,17 @@ def _stalled(row: dict, spec: dict) -> bool:
             and _since(row.get("decided_at") or row.get("created_at")) > timedelta(minutes=2 * slow["minutes"]))
 
 
-def progress_text(spec: dict, lang: str) -> str:
-    return _pick(_PROGRESS, lang).replace("{eta}", _pick(spec["slow"]["eta"], lang))
+def progress_text(spec: dict, lang: str, params: dict = None) -> str:
+    eta = (spec["eta_for"](params or {}) if spec.get("eta_for") else None) or spec["slow"]["eta"]
+    return _pick(_PROGRESS, lang).replace("{eta}", _pick(eta, lang))
+
+
+def card_choices(spec: dict, params: dict) -> list:
+    """[(key, texts)] when the card offers several ways to approve, else []."""
+    try:
+        return list((spec.get("choices") or (lambda p: None))(params or {}) or [])
+    except Exception:
+        return []
 
 
 def _result_text(spec: dict, row: dict, lang: str) -> str:
@@ -3656,12 +3757,18 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
 def card(row: dict, actor: str, lang: str = "he") -> dict:
     spec = ACTIONS.get(row.get("action")) or {}
     params = row.get("params") or {}
-    what = _fill(spec, row, _pick(spec.get("what") or {"he": ""}, lang))
+    what_src = (spec["what_for"](params) if spec.get("what_for") else None) or spec.get("what") or {"he": ""}
+    what = _fill(spec, row, _pick(what_src, lang))
     progress = None
     if row.get("status") == "running" and spec.get("slow"):
         stalled = _stalled(row, spec)
-        progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang),
+        progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang, params),
                     "started_at": row.get("decided_at"), "stalled": stalled}
+    choices = []
+    if row.get("status") in OPEN_STATUSES:
+        # Several ways to approve (a vague landing change: small edit or new
+        # design) — each button sends its key; the server re-checks it
+        choices = [{"key": key, "label": _pick(texts, lang)} for key, texts in card_choices(spec, params)]
     details = None
     if spec.get("details"):
         # Everything the click will send, for the client to read before approving
@@ -3676,6 +3783,7 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
             "approver": row.get("approver"), "kind": spec.get("kind", "execute"),
             # Optional: the approve button's own words (else the generic one)
             "button": _pick(spec["button"], lang) if spec.get("button") else "",
+            "choices": choices,
             "can_decide": row.get("status") in OPEN_STATUSES and row.get("approver") == actor,
             # The admin "enter as client" view offers its staff button only here
             "staff_may_decide": (row.get("status") in OPEN_STATUSES and row.get("approver") == "client"
@@ -3900,9 +4008,11 @@ def staff_may_decide(spec: dict) -> bool:
 
 
 def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
-           background_tasks=None, staff: bool = False) -> dict:
+           background_tasks=None, staff: bool = False, choice: str = "") -> dict:
     """`staff`: a client-chat card decided by staff from the admin view,
-    explicitly marked as a staff action — recorded as decided_by 'staff'."""
+    explicitly marked as a staff action — recorded as decided_by 'staff'.
+    `choice`: on a card with several ways to approve (card_choices), the one
+    clicked; an approve without one takes the first (the recommended) option."""
     if actor not in ("client", "admin"):
         return _refuse("bad_actor", 403)
     if decision not in ("approve", "cancel"):
@@ -3959,6 +4069,14 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
                 out["next_card"] = fix["card"]
         return out
 
+    options = [key for key, _ in card_choices(spec, row.get("params") or {})]
+    if options:
+        choice = str(choice or "").strip() or options[0]
+        if choice not in options:
+            return _refuse("bad_choice")
+        # The click's choice becomes part of the stored proposal (checked below)
+        row = {**row, "params": {**(row.get("params") or {}), "mode": choice}}
+
     # Re-check everything from the STORED row before claiming it
     client = _client(client_id)
     if spec["internal_only"] and not _is_internal(client):
@@ -3975,8 +4093,10 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": by,
                                             "finished_at": stamp, "outcome": "invalid_params"})
         return _refuse("invalid_params")
-    if not _claim(proposal_id, OPEN_STATUSES, {"status": "running", "decided_at": stamp,
-                                               "decided_by": by}):
+    claim = {"status": "running", "decided_at": stamp, "decided_by": by}
+    if options:
+        claim["params"] = params
+    if not _claim(proposal_id, OPEN_STATUSES, claim):
         return {"success": True, "already": True, "status": (_get(proposal_id) or {}).get("status")}
     _log(f"client {client_id}: {row['action']} approved by {by}", client_id=client_id,
          proposal=proposal_id)
@@ -3999,8 +4119,8 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         # response and the same card polls (status_card) into its result
         background_tasks.add_task(_execute_in_background, row, spec, params, actor, client, lang)
         return {"success": True, "status": "running",
-                "message": progress_text(spec, lang if actor == "client" else "he"),
-                "progress": {"text": progress_text(spec, lang if actor == "client" else "he"),
+                "message": progress_text(spec, lang if actor == "client" else "he", params),
+                "progress": {"text": progress_text(spec, lang if actor == "client" else "he", params),
                              "started_at": stamp, "stalled": False}}
     return _execute(row, spec, params, actor, client, lang, background_tasks)
 

@@ -616,6 +616,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
     (admin, dry run by default), run with `scripts/fulfil_landing_request.sh`.
   - Guarded by `tests/test_landing_chat.py`.
 
+  **Surgical edit (2026-11-10, `docs/LANDING_PAGES.md` §Surgical edit)**: a change in words to a
+  DESIGNED page edits that page, through `landing_page_agent.change_page` and
+  `landing_creative.surgical_edit`. One standard-tier call returns find/replace pairs on the current
+  saved HTML. Each find must match exactly once, and the strict checks are in `check_edited`. It
+  gets one retry, then ONE full rebuild, then a calm "עובדים על זה" plus an admin alert. A vague
+  request gets one card with two `choices` (small edit / new design); an explicit "new design" goes
+  straight to the rebuild. History lives in `content.revisions`, and stale fallback copy is marked
+  `content.copy_stale`. No migration. Never send the playbook, exemplar or photos to the edit call,
+  and never rebuild twice for one request. `tests/test_landing_edit.py`.
+
   See `.claude/skills/landing-pages/SKILL.md`.
 - `core/connection_catalog.py` — connections onboarding through the chat (2026-11-01,
   `docs/CONNECTIONS_ONBOARDING.md`). Every dashboard connection card has exactly ONE "חבר"

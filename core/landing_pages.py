@@ -214,7 +214,41 @@ def normalize_content(raw: dict) -> dict:
         page_html = strip_emoji(page_html).strip()
         if len(page_html.encode("utf-8")) <= MAX_CREATIVE_BYTES:
             out["html"] = page_html
+    # The page's change requests, oldest first (2026-11-10, surgical edit):
+    # the next fix reads them, so a second change never undoes the first.
+    # Never rendered on the page.
+    revisions = normalize_revisions(raw.get("revisions"))
+    if revisions:
+        out["revisions"] = revisions
+    # The structured copy no longer matches the designed HTML (an edit changed
+    # text it could not map): the fixed template shows only what can't contradict it
+    if raw.get("copy_stale") is True and out.get("html"):
+        out["copy_stale"] = True
     return out
+
+
+MAX_REVISIONS = 20
+MAX_REVISION_CHARS = 500
+
+
+def normalize_revisions(raw) -> list:
+    out = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        request = _clip(item.get("request"), MAX_REVISION_CHARS)
+        if not request:
+            continue
+        out.append({"request": request, "mode": _clip(item.get("mode"), 20),
+                    "at": _clip(item.get("at"), 40)})
+    return out[-MAX_REVISIONS:]
+
+
+def add_revision(content: dict, request: str, mode: str) -> dict:
+    """content with one more change request on its history."""
+    revisions = normalize_revisions((content or {}).get("revisions"))
+    revisions.append({"request": request, "mode": mode, "at": _now()})
+    return {**(content or {}), "revisions": normalize_revisions(revisions)}
 
 
 def _digits(value, lo: int, hi: int) -> str:
@@ -429,6 +463,12 @@ def update_page(client_id: int, page_id: int, fields: dict, source: str = "clien
         if not isinstance(fields["content"], dict) or "images" not in fields["content"]:
             # A text edit (the dashboard editor, a rewrite) keeps the photos
             changes["content"]["images"] = normalize_content(page.get("content") or {})["images"]
+        if not isinstance(fields["content"], dict) or "revisions" not in fields["content"]:
+            # Every new version carries the page's change history (a rewrite,
+            # a design, a client's own edit) unless the caller set it
+            history = normalize_revisions((page.get("content") or {}).get("revisions"))
+            if history:
+                changes["content"]["revisions"] = history
         refs = changes["content"]["images"]
         if refs:
             from core import landing_images
@@ -883,6 +923,12 @@ def render_page(page: dict, capture_url: str, public_url: str,
         if creative:
             return render_creative(page, content["html"], capture_url, public_url, query_params, path, referrer,
                                    visible, business_name, links, gtm_container, form_stamp, preview)
+    if content.get("copy_stale"):
+        # The copy fields lag behind the designed page (an edit changed text
+        # that could not be mapped back): show only the title, the form and
+        # the buttons — nothing that could contradict what the client approved
+        content = {**content, "headline": visible.get("title") or "", "subheadline": "", "benefits": [],
+                   "sections": [], "form_note": "", "cta_text": "שליחה"}
     title = _e(visible.get("title") or content["headline"] or "")
     slug = re.sub(r"[^a-z0-9-]", "", str(page.get("slug") or ""))
 

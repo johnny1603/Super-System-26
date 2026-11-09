@@ -591,7 +591,7 @@ class Agent(Base):
         super().setUp()
         self.cards = []
         self.saved_agent = {n: getattr(lpa, n) for n in ("generate_copy", "propose_publish")}
-        lpa.generate_copy = lambda client_id, goal, title="": {
+        lpa.generate_copy = lambda client_id, goal, title="", current=None: {
             "success": True, "content": lp.normalize_content(COPY), "notes": "", "research_grounded": False}
         lpa.propose_publish = lambda cid, page_id, intro="", persona="website": (
             self.cards.append((page_id, lp.get_page(cid, page_id).get("current_version"))) or {"card": {"id": 1}})

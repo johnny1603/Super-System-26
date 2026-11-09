@@ -173,6 +173,31 @@ button. A new chat path never reimplements the builder: pass `persona=` and
 A landing-page ask is never a team request. Only a page beyond the package is
 one, as `package_exception`.
 
+## Change requests: surgical edit first (2026-11-10, docs/LANDING_PAGES.md)
+
+- **What a change in words does.** On a designed page, `edit_landing_page` runs
+  `change_page`:
+  - the stored `mode` is `edit` → `landing_creative.surgical_edit`;
+  - if that fails → ONE `_rebuild`;
+  - if that fails too → the refusal `in_hand` (a calm line) plus an admin alert.
+- **The edit call.** It gets ONLY the current saved HTML, the request, the
+  earlier requests, the copy and `EDIT_RULES`. Keep it that way: no playbook,
+  no exemplar, no photos, no research. It runs on the standard tier.
+- **Vague requests.** `mode: ask` gives one card with two `choices`. The click
+  sends `choice` (`decide(..., choice=)`); an approve without one takes the
+  first option. Never answer a vague request with an open question.
+- **Explicit "new design"** → `mode: redesign`, straight to `_rebuild`.
+- **Pages that stay on `regenerate_copy`:** a page without a design, a photo
+  change, the kill switch off, and the dashboard's regenerate button.
+- **Pairs must match exactly once.** New checks go in `check_edited`. Never
+  "repair" a failed edit by stripping or forcing it through.
+- **History.** Every request goes into `content.revisions`. `update_page`
+  carries it into each new version, so don't drop it in a new write path.
+- **Fallback copy.** It is updated from `copy_updates` and the pairs (`sync_copy`)
+  or marked `copy_stale`. While stale, the fixed template shows only the title,
+  the form and the buttons. A rebuild clears the flag.
+- Tests: `tests/test_landing_edit.py`.
+
 ## Owned + versioned (2026-11-01, docs/LANDING_PAGES.md — read it first)
 
 - Every write is a new `landing_page_versions` row; `published_version` is

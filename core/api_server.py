@@ -7254,6 +7254,9 @@ class ActionDecisionRequest(BaseModel):
     decision: str   # approve | cancel
     # Admin "enter as client" only: the explicit "this is a staff action" mark
     staff_action: bool = False
+    # A card with several ways to approve (agent_actions.card_choices): the
+    # option clicked, re-checked against the stored proposal
+    choice: str = ""
 
 @app.get("/api/client/actions")
 def client_open_actions(request: Request, persona: str = "general"):
@@ -7292,7 +7295,8 @@ def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: 
         except admin_view.AuditUnavailable:
             raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
     result = agent_actions.decide(proposal_id, actor="client", actor_client_id=client_id,
-                                  decision=req.decision, background_tasks=background_tasks, staff=staff)
+                                  decision=req.decision, background_tasks=background_tasks, staff=staff,
+                                  choice=req.choice)
     if staff:
         try:
             _admin_view_audit(request, "staff_action_result", client_id,
@@ -7317,7 +7321,7 @@ def admin_decide_action(client_id: int, proposal_id: int, req: ActionDecisionReq
     _require_admin(request)
     from core import agent_actions
     result = agent_actions.decide(proposal_id, actor="admin", actor_client_id=client_id,
-                                  decision=req.decision, background_tasks=background_tasks)
+                                  decision=req.decision, background_tasks=background_tasks, choice=req.choice)
     if not result.get("success"):
         raise HTTPException(status_code=result.get("http", 400), detail={"code": result.get("code")})
     return {"success": True, "data": result}

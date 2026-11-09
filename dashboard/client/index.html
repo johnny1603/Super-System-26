@@ -6028,20 +6028,28 @@ function appendActionCard(personaId, a) {
   } else if (a.can_decide) {
     const row = document.createElement('div');
     row.className = 'row';
-    const ok = document.createElement('button');
-    ok.type = 'button';
-    ok.className = 'ok';
-    ok.textContent = a.button || uallakI18n.t('action_approve');
-    ok.onclick = () => decideAction(a.id, 'approve', el, personaId);
+    // Several ways to approve (a vague landing-page change: a small edit or a
+    // new design): one button per option, the first is the recommended one.
+    // Labels come from the server, set as TEXT.
+    const choices = Array.isArray(a.choices) ? a.choices.filter(c => c && typeof c.key === 'string') : [];
+    const oks = (choices.length ? choices : [null]).map(c => {
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'ok';
+      ok.textContent = a.button || uallakI18n.t('action_approve');
+      if (c) ok.textContent = String(c.label || '');
+      ok.onclick = () => decideAction(a.id, 'approve', el, personaId, false, c ? c.key : '');
+      return ok;
+    });
     // A draft the client can read and keep, but not send yet (e.g. sending
     // is not switched on) — the server refuses the approve too
-    if (a.blocked) { ok.disabled = true; note.textContent = a.blocked; }
+    if (a.blocked) { oks.forEach(b => { b.disabled = true; }); note.textContent = a.blocked; }
     const no = document.createElement('button');
     no.type = 'button';
     no.className = 'no';
     no.textContent = uallakI18n.t('action_cancel');
     no.onclick = () => decideAction(a.id, 'cancel', el, personaId);
-    row.append(ok, no);
+    row.append(...oks, no);
     el.appendChild(row);
   } else if (a.status === 'awaiting_staff') {
     note.textContent = uallakI18n.t(a.action === 'team_request' ? 'action_team_request_open' : 'action_with_team');
@@ -6236,17 +6244,19 @@ function staffDecisionRow(a, el, personaId) {
   return wrap;
 }
 
-async function decideAction(id, decision, el, personaId, staffAction = false) {
+async function decideAction(id, decision, el, personaId, staffAction = false, choice = '') {
   const note = el.querySelector('.note');
   const buttons = el.querySelectorAll('button');
   buttons.forEach(b => { b.disabled = true; });
   note.textContent = uallakI18n.t('action_working');
   let data;
   try {
+    const body = staffAction ? { decision, staff_action: true } : { decision };
+    if (choice) body.choice = choice;
     const res = await fetch(`/api/client/actions/${Number(id)}/decide`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(staffAction ? { decision, staff_action: true } : { decision }),
+      body: JSON.stringify(body),
     });
     data = await res.json();
     if (!res.ok || !data.success) throw new Error('decide refused');
