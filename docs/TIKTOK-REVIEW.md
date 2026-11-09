@@ -132,3 +132,24 @@ propose → approve → execute shape as `publish_youtube_from_media`:
   `tiktok_content_agent.publish` → `init_inbox_upload` → one-chunk upload →
   status polling until `SEND_TO_USER_INBOX`. A scope/dead-grant refusal at the
   click posts the reconnect line and returns the `connect_tiktok` card.
+
+**The file must be one TikTok can show (2026-11-09).** A demo draft reached
+the inbox but never opened. TikTok's media rules: MP4 / MOV / WebM, H.264
+(recommended) / H.265 / VP8 / VP9, 23–60 fps, 360–4096 px per side, ≤ 10 min.
+`core/video_probe` reads the file's own headers (stdlib, no ffmpeg): the card
+refuses from Drive's metadata (type, size, length) with a plain line, and
+`publish` probes the downloaded bytes and refuses BEFORE `init` (`bad_format`,
+its own line) — and the PUT's Content-Type is the real container, never a
+fixed `video/mp4`. What was sent (container, codecs, size, fps, length) is
+recorded on the `content_published` activity row.
+
+**Which video (2026-11-09).** "Send a different video" once re-sent the last
+one. A chat turn about a video now re-reads the media folder from Drive
+(`client_state.media_turn`), and each listed video carries `modified` and
+`sent_to_tiktok_on`; the prompt says "another" means one not sent before.
+
+**Diagnosis (read-only):** `bash scripts/tiktok_diagnose.sh CLIENT_ID [LIMIT]`
+(`GET /api/admin/tiktok/diagnose`, X-Admin-Key) prints, for the last attempts:
+the Drive file each card held (name, size, type, Drive's video metadata), the
+probe (container / codecs / resolution / fps / length / TikTok problems), the
+publish_id and TikTok's LIVE status + fail_reason. No token is printed.

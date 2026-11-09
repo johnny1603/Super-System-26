@@ -37,6 +37,7 @@ from core import tiktok_service as tiktok
 from core.agent_base import agent_alert, log_step, timed_step
 from core.secrets_vault import hydrate
 from core import drive_storage
+from core import video_probe
 
 AGENT_NAME = "tiktok_content_agent"
 TIKTOK_PLATFORM = "tiktok"  # account_id=open_id, access_token='access::refresh' (see tiktok_service)
@@ -251,6 +252,17 @@ def publish(client_id: int, spec: dict) -> dict:
             return {"success": False, "too_large": True,
                     "errors": [f"video is {round(size / 1048576, 1)} MB; the TikTok inbox upload "
                                f"takes up to {TIKTOK_INBOX_MAX_MB} MB"]}
+        # What the file IS, from its own bytes (core/video_probe): a container
+        # or codec TikTok can't show is refused here — before init, so no
+        # broken draft lands in the client's inbox — and the PUT names the
+        # real container instead of always video/mp4
+        facts = video_probe.probe(video_bytes)
+        log_step(AGENT_NAME, "probe", f"client_id={client_id} file={drive_file_id} "
+                 f"{_facts_line(facts)} bytes={size}")
+        bad = video_probe.problems(facts)
+        if bad:
+            return {"success": False, "bad_format": True, "problems": bad, "video": _facts_brief(facts),
+                    "errors": [f"TikTok can't take this file ({', '.join(bad)}): {_facts_line(facts)}"]}
         init = timed_step(
             AGENT_NAME, "init_inbox_upload",
             lambda: tiktok.init_inbox_upload(access_token, video_size=size,
@@ -258,6 +270,7 @@ def publish(client_id: int, spec: dict) -> dict:
         publish_id = init["publish_id"]
         timed_step(AGENT_NAME, "upload_video",
                   lambda: tiktok.upload_video_chunk(init["upload_url"], video_bytes,
+                                                    mime_type=video_probe.content_type(facts["container"]),
                                                     total_size=size))
         final = timed_step(AGENT_NAME, "await_delivery",
                            lambda: _wait_for_inbox_delivery(access_token, publish_id))
@@ -280,7 +293,8 @@ def publish(client_id: int, spec: dict) -> dict:
         return {"success": False, "errors": [str(e)]}
 
     log_activity(client_id, AGENT_NAME, "content_published",
-                {"drive_file_id": drive_file_id, "caption": spec.get("caption", "")},
+                {"drive_file_id": drive_file_id, "caption": spec.get("caption", ""),
+                 "size_bytes": size, "video": _facts_brief(facts)},
                 {"publish_id": publish_id, "status": final.get("status")})
 
     if (spec.get("caption") or "").strip():
@@ -293,6 +307,120 @@ def publish(client_id: int, spec: dict) -> dict:
 
     return {"success": True, "publish_id": publish_id, "status": final.get("status"),
             "note": "sent to the client's TikTok inbox - they review and publish it themselves"}
+
+
+def _facts_brief(facts: dict) -> dict:
+    keys = ("container", "video_codec", "audio_codec", "width", "height", "fps", "duration_s")
+    return {k: (facts or {}).get(k) for k in keys}
+
+
+def _facts_line(facts: dict) -> str:
+    return " ".join(f"{k}={v}" for k, v in _facts_brief(facts).items())
+
+
+# ─── Diagnosis (admin, read-only) ───────────────────────────────────────────
+
+DIAGNOSE_MAX = 5
+STATUS_FIELDS = ("status", "fail_reason", "uploaded_bytes", "downloaded_bytes")
+
+
+def _when(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _status_reader(client_id: int):
+    """get_post_status with the client's own grant: the stored access token
+    first (it lives 24 h), ONE refresh only if TikTok says it expired —
+    exactly get_profile's rule. The token never leaves this function."""
+    conn = _get_connection(client_id)
+    if not (conn.get("access_token") and conn.get("account_id")):
+        return None
+    token = {"value": tiktok.split_tokens(conn["access_token"])[0], "refreshed": False}
+
+    def read(publish_id: str) -> dict:
+        try:
+            try:
+                status = tiktok.get_post_status(token["value"], publish_id)
+            except Exception as e:
+                if token["refreshed"] or not tiktok.is_token_error(e):
+                    raise
+                token["value"], token["refreshed"] = _live_access_token(client_id, conn), True
+                status = tiktok.get_post_status(token["value"], publish_id)
+            return {k: status.get(k) for k in STATUS_FIELDS if k in status}
+        except Exception as e:
+            return {"error": type(e).__name__, "code": getattr(e, "code", None) or "",
+                    "log_id": getattr(e, "log_id", None) or ""}
+    return read
+
+
+@drive_storage.scoped
+def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
+    """The last `limit` send_tiktok_to_inbox attempts, read-only: which Drive
+    file each card held (id, name, size, MIME, Drive's video metadata, md5,
+    modified time), what the file IS (core/video_probe, from its bytes, when
+    probe_files), the publish_id our activity log recorded for it, and
+    TikTok's LIVE status for that publish_id (status, fail_reason, bytes).
+    No token, no secret and no file content is returned. Nothing is sent,
+    changed or stored (a token refresh, when TikTok says the stored token
+    expired, re-stores the rotated pair as every TikTok call does)."""
+    from core import drive_service as drive
+    from core.video_limits import TIKTOK_INBOX_MAX_BYTES
+    limit = max(1, min(int(limit or 2), DIAGNOSE_MAX))
+    rows = (_db().table("agent_actions")
+            .select("id,status,outcome,params,persona,created_at,decided_at,finished_at")
+            .eq("client_id", int(client_id)).eq("action", "send_tiktok_to_inbox")
+            .order("created_at", desc=True).limit(limit).execute().data or [])
+    sent = (_db().table("client_activity").select("created_at,details,result")
+            .eq("client_id", int(client_id)).eq("agent_name", AGENT_NAME)
+            .eq("action_type", "content_published")
+            .order("created_at", desc=True).limit(50).execute().data or [])
+    reader = _status_reader(client_id)
+    files = {}
+    attempts = []
+    for row in rows:
+        file_id = str((row.get("params") or {}).get("drive_file_id") or "")
+        started = _when(row.get("decided_at") or row.get("created_at"))
+        # The activity row this run wrote: same file, at/after the click
+        match = None
+        for act in sorted(sent, key=lambda a: str(a.get("created_at") or "")):
+            at = _when(act.get("created_at"))
+            if (act.get("details") or {}).get("drive_file_id") == file_id and (not started or not at or at >= started):
+                match = act
+                break
+        publish_id = str(((match or {}).get("result") or {}).get("publish_id") or "")
+        if file_id and file_id not in files:
+            info = {}
+            try:
+                meta = drive.get_meta(file_id, "id,name,mimeType,size,md5Checksum,modifiedTime,"
+                                               "videoMediaMetadata,trashed")
+                info = {k: meta.get(k) for k in ("name", "mimeType", "size", "md5Checksum",
+                                                  "modifiedTime", "videoMediaMetadata", "trashed")}
+                info["drive_problems"] = video_probe.drive_meta_problems(meta)
+                if probe_files and 0 < int(meta.get("size") or 0) <= TIKTOK_INBOX_MAX_BYTES:
+                    facts = video_probe.probe(drive.download_file(file_id))
+                    info["video"] = _facts_brief(facts)
+                    info["video_notes"] = facts.get("notes") or []
+                    info["tiktok_problems"] = video_probe.problems(facts)
+            except Exception as e:
+                info["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+            files[file_id] = info
+        attempts.append({
+            "proposal_id": row.get("id"), "status": row.get("status"), "outcome": row.get("outcome"),
+            "persona": row.get("persona"), "created_at": row.get("created_at"),
+            "decided_at": row.get("decided_at"), "finished_at": row.get("finished_at"),
+            "drive_file_id": file_id, "file": files.get(file_id, {}),
+            "publish_id": publish_id,
+            "recorded_video": ((match or {}).get("details") or {}).get("video"),
+            "tiktok_status": (reader(publish_id) if (reader and publish_id) else
+                              {"error": "no publish_id recorded for this attempt" if reader
+                               else "TikTok not connected"}),
+        })
+    same_file = len(attempts) >= 2 and attempts[0]["drive_file_id"] == attempts[1]["drive_file_id"]
+    return {"client_id": int(client_id), "attempts": attempts,
+            "last_two_same_file": same_file}
 
 
 # ─── Engagement (counts only — see the module docstring for why) ──────────

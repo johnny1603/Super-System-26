@@ -47,6 +47,7 @@ Rules:
   carries none, and nothing here reads a credential column.
 """
 import json
+import re
 import time
 from datetime import datetime, timezone
 
@@ -350,23 +351,26 @@ MEDIA_VIDEOS_LISTED = 10
 MEDIA_IMAGES_LISTED = 10
 
 
-def _media_folder(client_id: int) -> dict:
+def _media_folder(client_id: int, fresh: bool = False) -> dict:
     """What is IN the client's Drive media folder (the Media tab's own
     listing, drive_mirror — cached there too): counts by kind, the newest
     videos (with the Drive id an upload proposal must name — never shown to
-    the client — and whether each fits the upload size cap), and today's
-    YouTube uploads against the per-client cap. Without it, "can you upload a
-    video from my media?" had no fact to answer from (2026-10-22)."""
+    the client — whether each fits the upload size cap, its date and whether
+    it was already sent to their TikTok drafts), and today's YouTube uploads
+    against the per-client cap. Without it, "can you upload a video from my
+    media?" had no fact to answer from (2026-10-22). `fresh`: list Drive
+    now, past drive_mirror's cache (a chat turn about a video — see
+    media_turn)."""
     from core import drive_mirror
     from core.video_limits import TIKTOK_INBOX_MAX_MB, VIDEO_UPLOAD_MAX_MB, fits, fits_tiktok
-    root = drive_mirror.list_folder(client_id)
+    root = drive_mirror.list_folder(client_id, refresh=fresh)
     if not root.get("exists"):
         return {"exists": False}
     _ok(root)
     files = list(root.get("files") or [])
     folders = root.get("folders") or []
     for folder in folders[:MEDIA_SUBFOLDERS_READ]:
-        page = drive_mirror.list_folder(client_id, folder["id"])
+        page = drive_mirror.list_folder(client_id, folder["id"], refresh=fresh)
         if not page.get("error"):
             files += page.get("files") or []
     counts = {}
@@ -376,11 +380,22 @@ def _media_folder(client_id: int) -> dict:
                     key=lambda f: f.get("modified_time") or "", reverse=True)
     images = sorted((f for f in files if f.get("kind") == "image"),
                     key=lambda f: f.get("modified_time") or "", reverse=True)
+    try:
+        from core import agent_actions
+        sent = agent_actions.tiktok_sent_files(client_id)
+    except Exception as e:
+        _warn(f"client {client_id}: tiktok_sent_files failed: {type(e).__name__}", client_id=client_id)
+        sent = {}
     out = {"exists": True, "counts": counts,
+           # Newest first. sent_to_tiktok_on = the date it already went to
+           # their TikTok drafts ("" = never): "send a different one" means
+           # one WITHOUT it, never the one sent last
            "videos": [{"drive_file_id": v.get("id", ""), "name": v.get("name", ""),
+                       "modified": str(v.get("modified_time") or "")[:16],
                        "size_mb": round(v["size"] / 1048576, 1) if v.get("size") else None,
                        "uploadable": fits(v.get("size")),
-                       "tiktok_uploadable": fits_tiktok(v.get("size"))}
+                       "tiktok_uploadable": fits_tiktok(v.get("size")),
+                       "sent_to_tiktok_on": sent.get(v.get("id", ""), "")}
                       for v in videos[:MEDIA_VIDEOS_LISTED]],
            # The newest images (e.g. photos uploaded in a chat) — what
            # create_presenter_from_photos is proposed with
@@ -459,13 +474,27 @@ def _section(client_id: int, name: str, fetch, refresh: bool):
     return value, True
 
 
-def snapshot(client_id: int, refresh: bool = False) -> dict:
+# A chat message about a video / TikTok / the media folder: the media list
+# the model picks a drive_file_id from is read from Drive NOW (2026-11-09 —
+# with up to ~8 minutes of caching a video just added to Drive was missing,
+# and "send a different video" sent the previous one again)
+_MEDIA_TURN = re.compile(
+    r"tik\s*tok|טיקטוק|טיק טוק|video|clip|reel|סרטון|סרטונים|וידאו|קליפ|ריל|מדיה|media|drive|דרייב|"
+    r"vidéo|فيديو|تيك|видео|тикток", re.IGNORECASE)
+
+
+def media_turn(message) -> bool:
+    return bool(_MEDIA_TURN.search(str(message or "")))
+
+
+def snapshot(client_id: int, refresh: bool = False, fresh_media: bool = False) -> dict:
     """Never raises. Keys starting with "_" are for code only (for_model
-    strips them): `_failed` lists the sections that could not be read."""
+    strips them): `_failed` lists the sections that could not be read.
+    `fresh_media`: the media_folder section only is read past every cache."""
     state, failed = {"as_of": _now()}, []
 
     def take(name, fetch):
-        value, ok = _section(client_id, name, fetch, refresh)
+        value, ok = _section(client_id, name, fetch, refresh or (fresh_media and name == "media_folder"))
         if ok:
             state[name] = value
         else:
@@ -486,7 +515,7 @@ def snapshot(client_id: int, refresh: bool = False) -> dict:
     take("website", lambda: _website(client_id))
     take("landing_pages", lambda: _landing_pages(client_id))
     take("media", lambda: _media(client_id))
-    take("media_folder", lambda: _media_folder(client_id))
+    take("media_folder", lambda: _media_folder(client_id, fresh=fresh_media))
     take("package", lambda: _package(client_id))
     take("site_security", lambda: _site_security(client_id))
     take("site_updates", lambda: _site_updates(client_id))

@@ -20,6 +20,10 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# publish() now checks the file's format before init (core/video_probe), so
+# the stubbed Drive download must be a real (tiny) H.264 MP4
+from test_tiktok_video_checks import GOOD_MP4 as _GOOD_MP4   # noqa: E402
 
 _STUBBED = ("httpx", "supabase", "agents.keys_agent", "core.agent_base", "core.secrets_vault",
             "agents.client_agent", "core.drive_service", "core.tiktok_service",
@@ -110,7 +114,7 @@ class TikTokCase(unittest.TestCase):
                                            log_activity=lambda *a, **k: None,
                                            get_client=lambda cid: {},
                                            log_communication=lambda *a, **k: None),
-            "core.drive_service": _module("core.drive_service", download_file=lambda fid: b"video-bytes"),
+            "core.drive_service": _module("core.drive_service", download_file=lambda fid: _GOOD_MP4),
         })
         for name in ("core.tiktok_service", "agents.tiktok_content_agent"):
             sys.modules.pop(name, None)

@@ -3843,6 +3843,18 @@ def tiktok_content_engagement(client_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/admin/tiktok/diagnose", dependencies=_admin_only)
+def tiktok_diagnose(client_id: int, limit: int = 2, probe: bool = True):
+    # READ-ONLY (X-Admin-Key): the last send_tiktok_to_inbox attempts — the
+    # Drive file each card held, what that file is (container/codec/fps/size,
+    # core/video_probe), its publish_id and TikTok's LIVE status/fail_reason.
+    # No token or secret in the answer. scripts/tiktok_diagnose.sh calls it.
+    from agents.tiktok_content_agent import diagnose
+    try:
+        return {"success": True, "data": diagnose(client_id, limit, probe_files=probe)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)[:300]}")
+
 # ─── YouTube execution (admin/scheduler only) ────────────────────────────────
 
 class YoutubePublishRequest(BaseModel):

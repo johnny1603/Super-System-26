@@ -649,7 +649,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `video.upload` or dead → `needs_reconnect` everywhere and the `connect_tiktok` card. The
   client sends a video to their TikTok drafts with the agent_actions card
   `send_tiktok_to_inbox` (client-approved, ≤ 64 MB `video_limits.TIKTOK_INBOX_MAX_MB`, never
-  Direct Post, no caption). `video.list`
+  Direct Post, no caption; the file must pass `core/video_probe` — TikTok's container/codec/fps/
+  resolution/length rules, from the file's own headers, at the card AND before init; the PUT names
+  the real container; read-only diagnosis `scripts/tiktok_diagnose.sh`). `video.list`
   (engagement counts) sits behind ONE flag, `ENGAGEMENT_READS_ENABLED` (off): while off,
   `list_videos`/`query_videos` refuse before any HTTP, `tiktok_content_agent.get_engagement_summary`
   answers `engagement_available: False` with no TikTok call, and the Performance card /

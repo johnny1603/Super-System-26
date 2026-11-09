@@ -332,7 +332,10 @@ propose it with "drive_file_id" copied exactly from account_state.media_folder.v
 tiktok_uploadable true). Say plainly: the video goes to THEIR TikTok inbox as a draft, nothing is
 posted, they add the caption and publish it themselves in the TikTok app, and nothing happens until
 they press the approve button. Never promise it will be posted, scheduled or captioned by us. Pick
-the video the same way as for YouTube (named / the only one / ask ONE question by file name). If the
+the video the same way as for YouTube (named / the only one / ask ONE question by file name). The
+list is newest first ("modified"); "sent_to_tiktok_on" is the date a video ALREADY went to their
+TikTok drafts. "Another / a different / the new video" means one whose sent_to_tiktok_on is empty —
+never the one sent before; if that leaves more than one, ask ONE question by file name. If the
 TikTok connection is missing or needs renewing, still propose it — the system then shows the
 reconnect button with its own line. If it is NOT in available_actions: no video fits
 (tiktok_uploadable false = over tiktok_upload_max_mb, or no videos), or TikTok is not in their plan.
@@ -829,14 +832,16 @@ def _data_unavailable(client_id: int, persona_id: str, message: str, result: dic
             "needs_human_followup": True}
 
 
-def _account_context(client_id: int, client: dict, payload: dict) -> dict:
+def _account_context(client_id: int, client: dict, payload: dict, message: str = "") -> dict:
     """core/client_state + the actions this chat may offer, into the payload.
     Returns the snapshot (with its code-only `_failed`). Never raises: no
     snapshot means no account_state and an empty action list, never an error
-    block in front of the model."""
+    block in front of the model. A message about a video re-reads the media
+    folder from Drive (client_state.media_turn) so the model picks from what
+    is there NOW."""
     try:
         from core import agent_actions, client_state
-        state = client_state.snapshot(client_id)
+        state = client_state.snapshot(client_id, fresh_media=client_state.media_turn(message))
         payload["account_state"] = client_state.for_model(state)
         payload["available_actions"] = agent_actions.available(client_id, "client_chat", state,
                                                                client=client)
@@ -1133,7 +1138,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     # client asks the manager "how much did we sell yesterday" first of all
     failed |= _add_store_reads(client_id, message, payload)
     from core import client_state
-    state = _account_context(client_id, client, payload)
+    state = _account_context(client_id, client, payload, message)
     failed |= client_state.failed_topics(state)
 
     user_message = json.dumps(payload, ensure_ascii=False, default=str)
@@ -2215,7 +2220,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         # answered by code before any model, core/api_server client_chat)
         failed |= _add_store_reads(client_id, message, payload)
     from core import client_state
-    state = _account_context(client_id, client, payload)
+    state = _account_context(client_id, client, payload, message)
     failed |= client_state.failed_topics(state)
 
     drafts = persona_id == "website"

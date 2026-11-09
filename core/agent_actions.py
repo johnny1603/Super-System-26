@@ -161,7 +161,7 @@ def _media_file(client_id: int, value) -> tuple:
     except Exception as e:
         raise ValueError(f"could not verify the file ({type(e).__name__})")
     try:
-        meta = drive_service.get_meta(file_id, "id,name,mimeType,size,trashed")
+        meta = drive_service.get_meta(file_id, "id,name,mimeType,size,trashed,videoMediaMetadata")
     except Exception as e:
         raise ValueError(f"could not read the file ({type(e).__name__})")
     if meta.get("trashed"):
@@ -407,6 +407,17 @@ def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> 
     for row in rows:
         if (row.get("params") or {}).get("drive_file_id") == params["drive_file_id"]:
             return {"existing": row}
+    # A file TikTok can't show (wrong container, resolution, length — from
+    # what Drive already knows) gets a plain line, never a card the click
+    # would fail on. The codec is checked from the bytes at the click
+    # (tiktok_content_agent.publish → core/video_probe).
+    from core import video_probe
+    hit = _media_meta.get((client_id, params["drive_file_id"]))
+    bad = video_probe.drive_meta_problems((hit or (0, {}))[1]) if hit else []
+    if bad:
+        _log(f"client {client_id}: TikTok send refused before the card ({', '.join(bad)})", client_id=client_id)
+        return {"refuse": _pick(_TIKTOK_BAD_FORMAT, (context or {}).get("language") or "he")
+                .replace("{file}", _media_name(client_id, params["drive_file_id"]) or "—")}
     from agents.tiktok_content_agent import check_grant
     grant = check_grant(client_id)
     if grant in ("not_connected", "missing_upload", "dead"):
@@ -434,7 +445,7 @@ def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks):
     name = _media_name(client_id, file_id)
     result = publish(client_id, {"drive_file_id": file_id})
     if not result.get("success"):
-        for flag in ("needs_reconnect", "pending_limit", "too_large"):
+        for flag in ("needs_reconnect", "pending_limit", "too_large", "bad_format"):
             if result.get(flag):
                 raise ActionFailed(flag, "; ".join(map(str, result.get("errors") or [flag])))
         raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
@@ -2845,6 +2856,12 @@ ACTIONS = {
                 "Cette vidéo est trop lourde pour TikTok (64 Mo max) — rien n'a été envoyé. Choisissez une version plus courte ou plus compressée.",
                 "الفيديو كبير جدًا للإرسال إلى تيك توك (حتى 64MB) — لم يُرسل شيء. اختاروا نسخة أقصر أو مضغوطة أكثر.",
                 "Видео слишком большое для TikTok (до 64 МБ) — ничего не отправлено. Выберите более короткую или сжатую версию."),
+            "bad_format": _txt(
+                "טיקטוק לא תוכל להציג את הקובץ של הסרטון הזה, אז לא שלחתי אותו — שום דבר לא נשלח. צריך קובץ MP4 רגיל, באיכות של לפחות 360 פיקסלים ובאורך של עד 10 דקות. אפשר לשמור את הסרטון מחדש כ-MP4 ולשלוח שוב.",
+                "TikTok can't show this video's file, so I didn't send it — nothing was sent. It needs a regular MP4 file, at least 360 pixels and up to 10 minutes long. Save the video again as MP4 and send it again.",
+                "TikTok ne pourra pas afficher le fichier de cette vidéo, je ne l'ai donc pas envoyée — rien n'a été envoyé. Il faut un fichier MP4 standard, d'au moins 360 pixels et de 10 minutes maximum. Réenregistrez la vidéo en MP4 et renvoyez-la.",
+                "لن يتمكن تيك توك من عرض ملف هذا الفيديو، لذلك لم أرسله — لم يُرسل شيء. يلزم ملف MP4 عادي بدقة 360 بكسل على الأقل ومدة حتى 10 دقائق. احفظوا الفيديو من جديد بصيغة MP4 وأرسلوه مرة أخرى.",
+                "TikTok не сможет показать файл этого видео, поэтому я его не отправил — ничего не отправлено. Нужен обычный файл MP4, не меньше 360 пикселей и не длиннее 10 минут. Сохраните видео заново в MP4 и отправьте ещё раз."),
         },
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
@@ -3316,6 +3333,12 @@ _FOLLOWUP_DRAFT_REFUSALS = {
 
 # Lines a TikTok send shows INSTEAD of its card when the connection can't
 # carry it (_prepare_tiktok) — paired with the connect_tiktok card
+_TIKTOK_BAD_FORMAT = _txt(
+    "את \"{file}\" טיקטוק לא תוכל להציג, אז לא הכנתי שליחה — שום דבר לא נשלח. צריך קובץ MP4 רגיל, באיכות של לפחות 360 פיקסלים ובאורך של עד 10 דקות. אפשר לשמור את הסרטון מחדש כ-MP4 ולבקש שוב.",
+    "TikTok can't show \"{file}\", so I didn't set up a send — nothing was sent. It needs a regular MP4 file, at least 360 pixels and up to 10 minutes long. Save the video again as MP4 and ask again.",
+    "TikTok ne pourra pas afficher « {file} », je n'ai donc pas préparé d'envoi — rien n'a été envoyé. Il faut un fichier MP4 standard, d'au moins 360 pixels et de 10 minutes maximum. Réenregistrez la vidéo en MP4 et redemandez.",
+    "لن يتمكن تيك توك من عرض \"{file}\"، لذلك لم أجهّز الإرسال — لم يُرسل شيء. يلزم ملف MP4 عادي بدقة 360 بكسل على الأقل ومدة حتى 10 دقائق. احفظوا الفيديو من جديد بصيغة MP4 واطلبوا مرة أخرى.",
+    "TikTok не сможет показать «{file}», поэтому я не стал готовить отправку — ничего не отправлено. Нужен обычный файл MP4, не меньше 360 пикселей и не длиннее 10 минут. Сохраните видео заново в MP4 и попросите ещё раз.")
 _TIKTOK_CONNECT_FIRST = _txt(
     "כדי לשלוח את \"{file}\" לטיוטות בטיקטוק צריך קודם לחבר את חשבון הטיקטוק שלכם. לחצו על הכפתור — זה פעם אחת, דרך טיקטוק, ואז אכין את השליחה.",
     "To send \"{file}\" to your TikTok drafts, your TikTok account needs to be connected first. Tap the button — it's once, through TikTok — and then I'll set up the send.",
@@ -3486,6 +3509,22 @@ def _open_rows(client_id: int, statuses=OPEN_STATUSES) -> list:
 
 TIKTOK_INBOX_NEXT_STEP_HE = ("הסרטון מחכה כטיוטה בתיבת הנכנסים באפליקציית טיקטוק: פותחים את האפליקציה, "
                              "נכנסים להתראה על הסרטון, מוסיפים כיתוב ולוחצים 'פרסם'. אנחנו לא מפרסמים בשמכם.")
+
+
+def tiktok_sent_files(client_id: int, limit: int = 50) -> dict:
+    """{drive_file_id: "YYYY-MM-DD"} — the videos already sent to the
+    client's TikTok drafts (done rows here), newest send per file. So the
+    media list can mark them and "send a DIFFERENT video" has a fact to go
+    by (2026-11-09). Raises when the table is unreadable."""
+    rows = (_db().table(TABLE).select("params,status,created_at,finished_at")
+            .eq("client_id", int(client_id)).eq("action", "send_tiktok_to_inbox").eq("status", "done")
+            .order("created_at", desc=True).limit(int(limit)).execute().data or [])
+    out = {}
+    for row in rows:
+        file_id = str((row.get("params") or {}).get("drive_file_id") or "")
+        if file_id and file_id not in out:
+            out[file_id] = str(row.get("finished_at") or row.get("created_at") or "")[:10]
+    return out
 
 
 def tiktok_drafts_sent(client_id: int, limit: int = 10) -> dict:

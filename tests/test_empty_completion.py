@@ -197,7 +197,7 @@ class ProductionQuestion(unittest.TestCase):
         cls.sa, cls.cf, cls.cs = support_agent, chat_fallback, client_state
         support_agent._latest_lead = lambda client_id: {}
         support_agent._client_knowledge = lambda client_id, persona: {}
-        client_state.snapshot = lambda client_id, refresh=False: dict(STATE)
+        client_state.snapshot = lambda client_id, refresh=False, fresh_media=False: dict(STATE)
         cls.handoffs = []
         chat_fallback.alert_handoff = lambda *a, **k: cls.handoffs.append((a, k))
 
