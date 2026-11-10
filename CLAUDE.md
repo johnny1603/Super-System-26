@@ -256,8 +256,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/operator_agent.py` — **the owner's operator, shown to him as איציק** (`DISPLAY_NAME`;
   floating chat on every admin page via `dashboard/assets/itzik-chat.js` — admin pages only,
   draws nothing without the admin session; badge + one proactive rollback line from
-  `core/operator_presence.py`; workspace `/admin/operator/`; model
-  `model_routing.locked_model("operator")`; `tests/test_itzik.py`. Admin session only,
+  `core/operator_presence.py`; workspace `/admin/operator/`; model ROUTED per message by rules
+  (2026-11-10, `operator_agent.classify`: simple/status → haiku with no / 3 tools, read → sonnet
+  without the change tools, write = code/deploy/any change/doubt →
+  `model_routing.locked_model("operator")`; tools are always a SUBSET); per-task cost cap
+  `operator_task_budget_usd` (admin setting) → ONE "continue?" card; Stop button / "עצור" halts
+  BETWEEN steps; `meta.metrics` per reply → the "מדידה" card (docs/OPERATOR.md §Routing, budget,
+  stop; `tests/test_operator_budget.py`); `tests/test_itzik.py`. Admin session only,
   never on a client surface). Tier 1 reads (`core/cloud_ops` revisions/logs via the runtime SA,
   alerts, client_state, Control Room, `core/operator_github` history/CI, the deployed code) →
   Hebrew diagnosis + report; Tier 2 (`core/operator_actions`, audited to `alerts` source
@@ -271,7 +276,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
 - `core/model_routing.py` — **the ONE place chat models are named** (`TIER_MODELS` simple/
   standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: manager + interview + operator (איציק)
-  locked to heavy). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
+  locked to heavy — for the operator that is the ceiling for code/deploy/changes; its cheaper
+  kinds take their tier from `TIER_MODELS` via `operator_agent.model_for`). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
   empty/malformed/low-confidence/error. Flag `MODEL_ROUTING_ENABLED` (operator_flags, default
   ON; off = all opus). Per-turn log `chat_turn_routes` (migrations/2026-11-01-chat-routing.sql),
   admin page `/admin/models/`. Prompt caching: `claude_json.cached_system()` — static prompt

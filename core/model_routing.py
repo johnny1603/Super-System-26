@@ -18,9 +18,12 @@ error, is retried ONCE one tier up. The client only ever sees the final
 answer. The top tier has nothing above it, so it keeps claude_json's own
 empty-answer retries instead.
 
-LOCKED: the team manager (the concierge), the opening interview and איציק
-(the owner's operator, locked_model("operator")) always run on the heavy
-tier, router or not.
+LOCKED: the team manager (the concierge) and the opening interview always
+run on the heavy tier, router or not. איציק (the owner's operator) is locked
+to heavy for everything that writes code, deploys or changes something
+(locked_model("operator")); since 2026-11-10 his acknowledgements, quick
+status questions and read/diagnose messages take a cheaper tier from
+TIER_MODELS by his own rules (core/operator_agent.classify — doubt goes up).
 
 FLAG: MODEL_ROUTING_ENABLED (core/operator_flags; ON by default, one tap on
 the operator page turns it off) — off sends EVERY turn to the heavy tier.

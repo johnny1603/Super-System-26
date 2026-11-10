@@ -6600,7 +6600,8 @@ def _operator_admin(request: Request) -> tuple:
     return fp, admin_view.who(fp, _request_ip(request))
 
 class OperatorAskRequest(BaseModel):
-    message: str
+    message: str = ""
+    continue_task: str = ""     # the owner tapped "continue" on a task paused at its budget cap
 
 class OperatorActionRequest(BaseModel):
     params: dict = {}
@@ -6657,7 +6658,22 @@ def operator_messages(request: Request):
 def operator_ask(req: OperatorAskRequest, request: Request):
     _, who = _operator_admin(request)
     from core import operator_agent
-    return {"success": True, "data": operator_agent.ask(req.message, who)}
+    return {"success": True, "data": operator_agent.ask(req.message, who, req.continue_task)}
+
+@app.post("/api/admin/operator/stop")
+def operator_stop(request: Request):
+    # Stop button / "עצור": the running loop halts BETWEEN steps; a step that
+    # started (and any owner-approved PR / deploy / code email) finishes
+    _, who = _operator_admin(request)
+    from core import operator_agent
+    return {"success": True, "data": operator_agent.request_stop(who)}
+
+@app.get("/api/admin/operator/metrics")
+def operator_metrics(request: Request):
+    # Response time, model and cost per operator message (reply rows' meta)
+    _operator_admin(request)
+    from core import operator_agent
+    return {"success": True, "data": operator_agent.metrics()}
 
 @app.post("/api/admin/operator/actions/{name}")
 def operator_action(name: str, req: OperatorActionRequest, request: Request):
@@ -6690,9 +6706,10 @@ def operator_change(change_id: str, request: Request):
 @app.post("/api/admin/operator/changes/{change_id}/request-code")
 def operator_change_code(change_id: str, req: OperatorCodeRequest, request: Request):
     fp, who = _operator_admin(request)
-    from core import operator_actions, operator_changes, operator_gate
+    from core import operator_actions, operator_agent, operator_changes, operator_gate
     try:
-        return {"success": True, "data": operator_changes.request_code(change_id, req.step, fp, who)}
+        with operator_agent.irreversible_step("שליחת קוד האישור במייל"):
+            return {"success": True, "data": operator_changes.request_code(change_id, req.step, fp, who)}
     except (operator_changes.ChangeError, operator_gate.GateError) as e:
         raise _operator_error(e)
     except operator_actions.AuditUnavailable:
@@ -6701,9 +6718,10 @@ def operator_change_code(change_id: str, req: OperatorCodeRequest, request: Requ
 @app.post("/api/admin/operator/changes/{change_id}/open-pr")
 def operator_change_open_pr(change_id: str, req: OperatorApproveRequest, request: Request):
     fp, who = _operator_admin(request)
-    from core import operator_actions, operator_changes, operator_github
+    from core import operator_actions, operator_agent, operator_changes, operator_github
     try:
-        return {"success": True, "data": operator_changes.open_pr(change_id, req.gate_id, req.code, fp, who)}
+        with operator_agent.irreversible_step("פתיחת ה-PR ב-GitHub"):
+            return {"success": True, "data": operator_changes.open_pr(change_id, req.gate_id, req.code, fp, who)}
     except operator_changes.ChangeError as e:
         raise _operator_error(e)
     except operator_github.GitHubError as e:
@@ -6714,9 +6732,11 @@ def operator_change_open_pr(change_id: str, req: OperatorApproveRequest, request
 @app.post("/api/admin/operator/changes/{change_id}/merge-deploy")
 def operator_change_merge_deploy(change_id: str, req: OperatorApproveRequest, request: Request):
     fp, who = _operator_admin(request)
-    from core import operator_actions, operator_changes, operator_github
+    from core import operator_actions, operator_agent, operator_changes, operator_github
     try:
-        return {"success": True, "data": operator_changes.merge_and_deploy(change_id, req.gate_id, req.code, fp, who)}
+        with operator_agent.irreversible_step("המיזוג והפריסה לייצור"):
+            return {"success": True, "data": operator_changes.merge_and_deploy(change_id, req.gate_id, req.code,
+                                                                               fp, who)}
     except operator_changes.ChangeError as e:
         raise _operator_error(e)
     except operator_github.GitHubError as e:

@@ -21,8 +21,53 @@ the one-tap rollback — at most once per browser session per revision pair.
 
 **Persona** (in `SYSTEM`, shared by any model): a man in his 30s, hi-tech background, calm,
 sharp, concise, dry humour, first person as a partner; what he found → the evidence → what
-he recommends; owner-only steps as exact numbered steps. Model: locked top tier,
+he recommends; owner-only steps as exact numbered steps. Model: routed per message (below);
+code / deploy / any change always runs on the locked top tier,
 `model_routing.locked_model("operator")`.
+
+## Routing, budget, stop (2026-11-10)
+
+**Routing by request type** (`operator_agent.classify`, rules only, no model call). Doubt
+always goes UP:
+
+| kind | when | model (model_routing.TIER_MODELS) | loaded |
+|---|---|---|---|
+| `simple` | thanks / ok / 👍 (an "ok" after he offered something counts as `write`) | simple (haiku) | `QUICK_SYSTEM`, last 4 rows, **no tools** |
+| `status` | ≤ 60 chars, "מה המצב / הכל תקין / יש התראות", no number, no "למה" | simple | `QUICK_SYSTEM` + 3 reads (production status, alerts, stuck cards), ≤ 3 steps |
+| `read` | diagnose words (בדוק, למה, לוג, שגיאה, לקוח N, why, check…) | standard (sonnet) | full `SYSTEM` + `READ_NOTE`, every tool **except** `propose_code_change` / `run_reaper` |
+| `write` | any change / code / deploy / rollback word, a "yes", > 300 chars, ≥ 3 questions, **anything unclear** | heavy, locked | everything, exactly as before |
+
+Permissions are unchanged: each kind gets a SUBSET of the same `TOOLS`; a tool outside the
+kind's subset is refused in the loop. An empty answer from a cheap kind is retried once as
+`read` (up, never down).
+
+**Per-task budget.** Admin setting `operator_task_budget_usd` (default 1.5, clamped 0.05–50,
+"הגדרות" in /admin/). Before every model call the loop estimates that call (the last call +
+the new tool results as uncached input; the first call from the prompt size). If this step
+plus a summary would pass the cap, it stops: ONE summary call (no tools, ≤ 700 tokens) if it
+still fits, else a code-built line, then ONE card "הגעתי לתקרת המשימה: עלות עד עכשיו $X …
+להמשיך?". The paused conversation is saved in app_settings `operator_task:<id>` (pruned after
+2 days); the card's "המשך" (`POST /ask` with `continue_task`) resumes it with a NEW cap-sized
+slice. Only a `paused` task resumes, once. No tool name or error text is shown.
+
+**Stop.** "⏹ עצור" in the chat while he works, or a message that is ONLY a stop word (`STOP_RX`:
+עצור / חכה / רגע / תפסיק / stop / wait…, same list in the browser) → `POST /api/admin/operator/stop`.
+The signal is checked before every model call and before every tool — never inside one. The
+reply is one line: "עצרתי. בוצע: … לא בוצע: …" (plain labels, `TOOL_LABELS_HE`). An irreversible
+tool that started (`IRREVERSIBLE_TOOLS`: the reaper) finishes and the line says "הושלם עד הסוף".
+The loop itself never deploys, writes to GitHub or sends email; those are the owner-approved
+routes (code email, open PR, merge+deploy), which are marked with `irreversible_step` while
+they run: a stop never interrupts them and the line says "כבר התחיל ומסתיים עד הסוף". The
+signal: a counter on this instance + the app_settings row `operator_stop:signal` for other
+instances (a stop older than the task never touches it). The conversation stays open.
+
+**Measurement.** Every reply row's `meta.metrics` (no migration — `operator_messages.meta`
+already exists): kind, reason, model, seconds, USD, calls, outcome (done / stopped / paused /
+failed / quick), task id, cap. Cost rows in `client_costs` (`claude_operator`, INTERNAL) carry
+`details.operator_task` + `operator_kind`. `GET /api/admin/operator/metrics` → the "מדידה"
+card on /admin/operator/ (per-kind averages and maxima + the latest 40). Tune the cap from it.
+No Cloud Run setting changed (no min instances, no --no-cpu-throttling).
+Tests: `tests/test_operator_budget.py`.
 
 The rest of this page says "the operator" for the same agent.
 Built 2026-11-01. Phone-first page; the API under `/api/admin/operator/*` is plain JSON so a
@@ -142,6 +187,12 @@ clients, client state, code); Cloud Run/logs answer "no permission yet" and Tier
 
 - The agent turn is synchronous (plain `def`, ≤ ~200 s budget, ≤ 14 tool steps). If the phone
   drops, the answer is still stored — reload.
+- A stop lands between steps: a model call already in flight (up to tens of seconds) finishes
+  first. The budget check is an ESTIMATE made before each call; a call that costs far more than
+  the previous one can overshoot the cap by that difference. The "in progress" note for an
+  owner-approved PR / deploy is seen only by the instance running it.
+- Routing, budget and stop have been tested with a scripted fake model only — never against
+  the real API.
 - Cache clear is per instance; other instances expire theirs by TTL.
 - `running_commit` is known only for deploys made by the workflow (`BUILD_COMMIT` file);
   manual Cloud Shell deploys show "unknown".

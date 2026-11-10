@@ -157,8 +157,20 @@
     s.appendChild(row); s.appendChild(out);
     return s;
   }
+  // The ONE budget card: the task paused at its cost cap; "continue" is the
+  // only way it goes on (core/operator_agent.ask with continue_task)
+  function budgetCard(c) {
+    const s = el('div', 'itz-card'); s.dataset.task = c.task_id;
+    s.appendChild(el('div', null, '⏸ ' + c.label_he));
+    const row = el('div', 'itz-row'), out = el('div', 'itz-result');
+    const b = el('button', 'itz-b primary', c.button_he || 'המשך'); b.type = 'button';
+    b.onclick = () => { b.disabled = true; continueTask(c.task_id, out); };
+    row.appendChild(b); s.appendChild(row); s.appendChild(out);
+    return s;
+  }
   function renderCard(c) {
     if (c.type === 'action') return actionCard(c);
+    if (c.type === 'budget') return budgetCard(c);
     if (c.type === 'done') { const s = el('div', 'itz-card'); s.appendChild(el('div', null, '✓ ' + c.label_he)); s.appendChild(el('div', 'itz-small', summarize(c.result))); return s; }
     if (c.type === 'change') return renderChange(c.change);
     return null;              // a report is stored as its own message
@@ -248,6 +260,8 @@
 .itz-b.primary { background:var(--itz-accent); border-color:var(--itz-accent); color:#fff; }
 .itz-b.danger { background:var(--itz-red); border-color:var(--itz-red); color:#fff; }
 .itz-b:disabled { opacity:.45; cursor:default; }
+.itz-b.stop { background:transparent; border-color:var(--itz-red); color:var(--itz-red); }
+.itz-b.stop[hidden] { display:none; }
 .itz-a { color:var(--itz-accent); }
 .itz-code { font-family:inherit; font-size:18px; letter-spacing:5px; width:8.5em; text-align:center; padding:7px; border-radius:9px;
   border:1px solid var(--itz-border); background:#0a0a0a; color:var(--itz-text); direction:ltr; }
@@ -299,10 +313,13 @@
     const input = el('div', 'itz-input');
     const ta = el('textarea'); ta.placeholder = 'מה קרה? למשל: האתר לא עולה'; ta.setAttribute('aria-label', 'הודעה ל' + NAME);
     const send = el('button', 'itz-b primary', 'שלח'); send.type = 'button';
-    input.appendChild(ta); input.appendChild(send); win.appendChild(input);
+    const stop = el('button', 'itz-b stop', '⏹ עצור'); stop.type = 'button'; stop.hidden = true;
+    stop.setAttribute('aria-label', 'לעצור את ' + NAME + ' אחרי הצעד הנוכחי');
+    input.appendChild(ta); input.appendChild(stop); input.appendChild(send); win.appendChild(input);
 
     root.appendChild(win); document.body.appendChild(root);
-    parts = { stage, badge, say, attention, log, thinking, ta, send, min };
+    parts = { stage, badge, say, attention, log, thinking, ta, send, stop, min };
+    stop.addEventListener('click', requestStop);
 
     stage.addEventListener('click', open);
     say.addEventListener('click', open);
@@ -383,12 +400,33 @@
   }
   function minimize() { win.classList.add('minimized'); root.classList.remove('open'); }
 
-  async function sendMessage() {
-    const text = parts.ta.value.trim(); if (!text) return;
-    parts.ta.value = ''; parts.send.disabled = true; parts.thinking.hidden = false;
-    addMessage('owner', text); scrollDown();
+  // ─── Stop: the Stop button or a stop word while he works ───────────────────
+  // Same words as core/operator_agent.STOP_RX (tests compare them). The loop
+  // halts BETWEEN steps; whatever already started finishes.
+  const STOP_RX = /^(stop|wait|hold on|עצור|עצרי|תעצור|חכה|חכי|רגע|תפסיק|הפסק|די)[\s!.]*$/i;
+  const THINKING_HE = NAME + ' בודק — לוגים, גרסאות, התראות… (אפשר לעצור בכל רגע)';
+  let busy = false;
+  function isStopWord(text) { return STOP_RX.test(String(text || '').trim()); }
+  function setBusy(on) {
+    busy = on;
+    parts.stop.hidden = !on; parts.stop.disabled = false;
+    parts.thinking.textContent = THINKING_HE; parts.thinking.hidden = !on;
+    // the warm-up never reloads the page while a task runs (dashboard/assets/warmup.js)
+    window.__uallakBusy = Math.max(0, (window.__uallakBusy || 0) + (on ? 1 : -1));
+  }
+  async function requestStop() {
+    if (!busy) return;
+    parts.stop.disabled = true; parts.thinking.textContent = 'עוצר אחרי הצעד הנוכחי…';
+    try { await post('/stop', {}); }
+    catch (e) { parts.thinking.textContent = errText(e); parts.stop.disabled = false; }
+  }
+
+  // One request at a time; the reply (normal / stopped / paused at the cap) renders the same way
+  async function runAsk(body, ownerText) {
+    setBusy(true);
+    addMessage('owner', ownerText); scrollDown();
     try {
-      const d = await post('/ask', { message: text });
+      const d = await post('/ask', body);
       const m = addMessage('operator', d.reply, d.cards);
       (d.cards || []).filter(c => c.type === 'report').forEach(c => addMessage('operator', reportText(c.report), [], 'report'));
       m.scrollIntoView({ block: 'start' });
@@ -397,7 +435,24 @@
       // A dropped phone connection doesn't lose the answer: it is stored server-side
       addMessage('operator', errText(e) + '\nאם החיבור נפל — התשובה נשמרת אצלי; פתח שוב בעוד דקה.');
     }
-    parts.send.disabled = false; parts.thinking.hidden = true;
+    setBusy(false);
+  }
+
+  async function sendMessage() {
+    const text = parts.ta.value.trim(); if (!text) return;
+    if (busy) {
+      if (isStopWord(text)) { parts.ta.value = ''; addMessage('owner', text); scrollDown(); requestStop(); }
+      else parts.thinking.textContent = NAME + ' באמצע משימה — "עצור" או הכפתור עוצרים אותה; ההודעה שלך מחכה כאן.';
+      return;
+    }
+    parts.ta.value = '';
+    await runAsk({ message: text }, text);
+  }
+
+  async function continueTask(taskId, out) {
+    if (busy) { out.textContent = NAME + ' באמצע משימה אחרת — נסה שוב כשהיא תסתיים.'; return; }
+    out.textContent = '';
+    await runAsk({ message: 'המשך', continue_task: taskId }, 'המשך');
   }
 
   // Admin-only: draw NOTHING until the presence call proves the admin session.
@@ -415,7 +470,7 @@
   }
 
   window.ItzikChat = { mount, open, minimize, refresh, call, post, errText, summarize, runAction, renderChange,
-    reportText, badgeText, proactiveToShow, NAME };
+    reportText, badgeText, proactiveToShow, isStopWord, NAME };
 
   const me = document.currentScript;
   if (!me || me.dataset.mount !== 'manual') {

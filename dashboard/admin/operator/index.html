@@ -54,6 +54,10 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white);
 .report summary { cursor:pointer; font-weight:700; white-space:normal; }
 details summary { cursor:pointer; color:var(--gray); font-size:13px; margin-top:8px; }
 .result { font-size:13px; margin-top:8px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.mtable { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+.mtable th, .mtable td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.mtable th { color:var(--gray); font-weight:500; }
+.mscroll { overflow-x:auto; max-width:100%; }
 .small-pre { direction:ltr; text-align:left; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow:auto; }
 /* The approval cards come from the chat component; give them this page's spacing */
 #pending .itz-card, #changes .itz-card { background:var(--panel-2); }
@@ -72,6 +76,7 @@ details summary { cursor:pointer; color:var(--gray); font-size:13px; margin-top:
     <div class="card" id="statusCard"><h2>הייצור עכשיו</h2><div class="muted">טוען…</div></div>
     <div class="card" id="pending"><h2>מחכה לאישור שלך</h2><div class="muted">טוען…</div></div>
     <div class="card wide" id="reports"><h2>דוחות שמורים</h2><div class="muted">טוען…</div></div>
+    <div class="card wide" id="metricsCard"><h2>מדידה — זמן, מודל ועלות לכל הודעה</h2><div class="muted">טוען…</div></div>
     <div class="card" id="auditCard"><h2>יומן פעולות</h2><div id="audit" class="muted">טוען…</div></div>
     <div class="card"><details id="moreBox"><summary>שינויי קוד אחרונים, מתגים והתראות שנכשלו</summary>
       <div id="changes"></div><div id="flags"></div><div id="failed"></div></details></div>
@@ -191,6 +196,35 @@ async function loadReports() {
   });
 }
 
+// ─── Measurement: response time, model, cost per message (meta.metrics) ──────
+const KIND_HE = { simple: 'קצר', status: 'סטטוס מהיר', read: 'קריאה ואבחון', write: 'שינוי / קוד', stop: 'עצירה', continue: 'המשך' };
+const OUTCOME_HE = { done: 'הושלם', stopped: 'נעצר', paused: 'עצר בתקרה', failed: 'נכשל', quick: 'מיידי' };
+function usd(n) { return '$' + Number(n || 0).toFixed(3); }
+function modelShort(m) { return String(m || '—').replace(/^claude-/, ''); }
+function table(head, rows) {
+  const t = el('table', 'mtable'), tr = el('tr');
+  head.forEach(h => tr.appendChild(el('th', null, h))); t.appendChild(tr);
+  rows.forEach(r => { const row = el('tr'); r.forEach(v => row.appendChild(el('td', null, v))); t.appendChild(row); });
+  const wrap = el('div', 'mscroll'); wrap.appendChild(t); return wrap;
+}
+async function loadMetrics() {
+  const box = $('metricsCard');
+  let d; try { d = await call('/metrics'); } catch (e) { box.lastChild.textContent = IC.errText(e); return; }
+  box.textContent = ''; box.appendChild(el('h2', null, 'מדידה — זמן, מודל ועלות לכל הודעה'));
+  box.appendChild(el('div', 'muted', 'תקרה למשימה: ' + usd(d.cap_usd) + ' (הגדרות ← operator_task_budget_usd) · ' +
+    (d.messages || 0) + ' הודעות נמדדו · סה״כ ' + usd(d.total_usd)));
+  if (!d.table_ready) { box.appendChild(el('div', 'muted', 'טבלת ההודעות לא זמינה — אין מדידות.')); return; }
+  const kinds = Object.keys(d.by_kind || {});
+  if (!kinds.length) { box.appendChild(el('div', 'muted', 'עוד אין מדידות — הן נאספות מכל הודעה חדשה לאיציק.')); return; }
+  box.appendChild(table(['סוג', 'הודעות', 'עלות ממוצעת', 'עלות מרבית', 'זמן ממוצע', 'זמן מרבי', 'עצר בתקרה', 'נעצר'],
+    kinds.map(k => { const s = d.by_kind[k]; return [KIND_HE[k] || k, String(s.messages), usd(s.avg_usd), usd(s.max_usd),
+      s.avg_seconds + ' ש׳', s.max_seconds + ' ש׳', String(s.paused), String(s.stopped)]; })));
+  box.appendChild(el('div', 'muted', 'אחרונות:')).style.marginTop = '12px';
+  box.appendChild(table(['מתי', 'סוג', 'מודל', 'זמן', 'עלות', 'קריאות', 'תוצאה'],
+    (d.recent || []).map(m => [when(m.at), KIND_HE[m.kind] || m.kind, modelShort(m.model), m.seconds + ' ש׳', usd(m.cost_usd),
+      String(m.calls || 0), OUTCOME_HE[m.outcome] || m.outcome || ''])));
+}
+
 // ─── Action log + failed notifications ───────────────────────────────────────
 async function loadAudit() {
   let d; try { d = await call('/audit'); } catch (e) { $('audit').textContent = IC.errText(e); return; }
@@ -210,7 +244,7 @@ async function loadAudit() {
   }
 }
 
-function loadAll() { loadStatus(); loadReports(); loadAudit(); }
+function loadAll() { loadStatus(); loadReports(); loadMetrics(); loadAudit(); }
 $('openChat').onclick = async () => { if (await IC.mount()) IC.open(); };
 // Anything done from the chat or a card refreshes this page
 window.addEventListener('itzik:changed', loadAll);

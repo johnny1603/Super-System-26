@@ -1242,6 +1242,10 @@ async function loadSettings() {
       <input id="set-warmup" type="number" min="60" max="3600" value="${esc(s.warmup_interval_seconds)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">איציק — תקרת עלות למשימה אחת ($). כשמתקרבים אליה הוא עוצר, מסכם ושואל אותך אם להמשיך. 0.05–50. המדידות בדף של איציק</span>
+      <input id="set-operator-budget" type="number" min="0.05" max="50" step="0.05" value="${esc(s.operator_task_budget_usd)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
@@ -1406,6 +1410,7 @@ async function saveSettings() {
       media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 20,
       tiktok_auto_upload_max_mb: Number(document.getElementById('set-tt-auto-max').value) || 1536,
       warmup_interval_seconds: Math.min(3600, Math.max(60, Number(document.getElementById('set-warmup').value) || 240)),
+      operator_task_budget_usd: Math.min(50, Math.max(0.05, Number(document.getElementById('set-operator-budget').value) || 1.5)),
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';

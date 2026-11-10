@@ -46,6 +46,10 @@ DEFAULT_SETTINGS = {
     # many MB uploads on the client's own click; above it ONE approval request
     # goes to the owner (admin bell + email) — never refused, never asked.
     "tiktok_auto_upload_max_mb": 1536,
+    # איציק (core/operator_agent): the most one task may spend on Claude before
+    # it stops, summarizes and asks the owner "continue?" (one card). USD,
+    # clamped 0.05-50 in code. Tune it from the operator page's measurements.
+    "operator_task_budget_usd": 1.5,
 }
 
 _setting_cache = {}   # key -> (monotonic time, value)
@@ -404,6 +408,7 @@ def get_settings() -> dict:
                                        "gtm_token:", "gads_token:", "tiktok_grant:", "php_exposure:",
                                        "creative_tools:", "drive_storage:", "drive_usage:",
                                        "flag_override:", "operator_gate:", "operator_change:",
+                                       "operator_task:", "operator_stop:",
                                        "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:")):
             continue
         settings[row["key"]] = row["value"]
