@@ -376,6 +376,7 @@ into Google Ads itself stays manual (website_agent's GTM work verifies/
 configures the GA4-side event; importing it as a Google Ads conversion
 action has no API in our scopes — see the website skill). Merchant Center
 per-product issue reporting (see above). TikTok equivalent is built (own
-skill). YouTube equivalent is built (own skill — separate consent, not this
+skill). YouTube equivalent is built (own skill and own callback, on the SAME
+six-scope consent since 2026-11-10 — docs/GOOGLE-SCOPES.md §One consent; not this
 agent, since it's a content-publishing platform like Meta/TikTok, not an
 Ads-family product).

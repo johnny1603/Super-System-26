@@ -3,17 +3,18 @@ workspace/tag/trigger/version HTTP calls. Business logic lives in
 agents/website_agent.py's conversion-tracking functions — this module only
 talks HTTP, same split as google_ads_service/meta_service.
 
-Auth model — a SEPARATE consent from Google Ads, on purpose:
-- Same OAuth client (GOOGLE_OAUTH_CLIENT_ID/SECRET), different scopes, its
-  own client_accounts row: platform='google_tagmanager',
-  account_id=container API path ('accounts/X/containers/Y' — every API call
-  needs the path, so the path IS the id; the human-facing GTM-XXXXXX public
-  id goes in the activity log), access_token=refresh token.
-- Separate because: (a) a scope is baked into the grant at consent time, so
-  appending GTM scopes to the Ads consent would force every EXISTING Ads
-  client to reconnect for no benefit; (b) only clients whose SITE we manage
-  need this at all — bundling would put a scarier consent screen in front
-  of every ads-only client.
+Auth model (2026-11-10, ONE consent): every Google connect — this one,
+Google Ads, YouTube — requests the same six scopes on one screen
+(core/google_scopes.GOOGLE_SCOPES, exactly the Cloud Console list; Google's
+verification flagged the old per-product lists as a mismatch). Tag Manager
+keeps its own callback and its own client_accounts row:
+platform='google_tagmanager', account_id=container API path
+('accounts/X/containers/Y' — every API call needs the path, so the path IS
+the id; the human-facing GTM-XXXXXX public id goes in the activity log),
+access_token=refresh token. A grant made before 2026-11-10 may lack these
+scopes: website_agent.gtm_missing_scopes catches it before any write, and the
+chat offers ONE "one more permission" card (connect_tag_manager) that re-runs
+this consent.
 
 SCOPE/VERIFICATION REALITY (checked 2026-07-23): the scopes below are
 Google "SENSITIVE" scopes (NOT "restricted" — no third-party security
@@ -64,13 +65,26 @@ from core.google_ads_service import exchange_code as _google_exchange_code
 GTM_BASE_URL = "https://tagmanager.googleapis.com/tagmanager/v2"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/gtm/callback"
-# THE Tag Manager scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it)
-GTM_SCOPES = [
-    "https://www.googleapis.com/auth/tagmanager.edit.containers",
-    "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
-    "https://www.googleapis.com/auth/tagmanager.publish",
-]
+# What Tag Manager NEEDS — a slice of THE one list (core/google_scopes; the
+# consent requests all six on one screen, 2026-11-10)
+from core import google_scopes  # noqa: E402
+GTM_SCOPES = google_scopes.GTM_SCOPES
 TIMEOUT = 30
+
+# Which scope each Tag Manager write needs (Tag Manager API v2 reference):
+# freezing a workspace into a version needs edit.containerversions, making a
+# version live needs publish, everything else (reads, workspaces, triggers,
+# tags, variables, deletes) edit.containers.
+SCOPE_FOR_ACTION = {":create_version": google_scopes.TAGMANAGER_EDIT_CONTAINERVERSIONS,
+                    ":publish": google_scopes.TAGMANAGER_PUBLISH}
+
+
+def required_scope(path: str) -> str:
+    """The scope a Tag Manager call on `path` needs."""
+    for suffix, scope in SCOPE_FOR_ACTION.items():
+        if str(path).endswith(suffix):
+            return scope
+    return google_scopes.TAGMANAGER_EDIT_CONTAINERS
 
 
 def missing_scopes(granted) -> list:
@@ -92,16 +106,8 @@ def exchange_code(code: str) -> dict:
 
 
 def build_consent_url(state: str) -> str:
-    params = {
-        "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
-        "redirect_uri": redirect_uri(),
-        "response_type": "code",
-        "scope": " ".join(GTM_SCOPES),
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": state,
-    }
-    return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
+    # THE six scopes, one screen (core/google_scopes) — never GTM_SCOPES alone
+    return google_scopes.consent_url(redirect_uri(), state)
 
 
 API_NAME = "tagmanager.googleapis.com"

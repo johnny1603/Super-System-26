@@ -43,14 +43,13 @@ API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/youtube/callback"
-# THE YouTube scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it).
-# upload: videos.insert (upload_video). readonly: channels.list mine=true,
-# playlistItems.list and videos.list on the client's own — often private —
-# uploads (get_own_channel, list_recent_uploads, get_video_stats).
-YOUTUBE_SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
-]
+# What YouTube NEEDS — a slice of THE one list (core/google_scopes; the
+# consent requests all six on one screen). upload: videos.insert
+# (upload_video). readonly: channels.list mine=true, playlistItems.list and
+# videos.list on the client's own — often private — uploads (get_own_channel,
+# list_recent_uploads, get_video_stats).
+from core import google_scopes  # noqa: E402
+YOUTUBE_SCOPES = google_scopes.YOUTUBE_SCOPES
 TIMEOUT = 30
 UPLOAD_TIMEOUT = 600  # a long-form video upload is genuinely slow
 DAILY_UPLOAD_LIMIT = 90  # default project cap is 100 videos.insert/day - brake below it
@@ -67,16 +66,8 @@ def exchange_code(code: str) -> dict:
 
 
 def build_consent_url(state: str) -> str:
-    params = {
-        "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
-        "redirect_uri": redirect_uri(),
-        "response_type": "code",
-        "scope": " ".join(YOUTUBE_SCOPES),
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": state,
-    }
-    return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
+    # THE six scopes, one screen (core/google_scopes) — never YOUTUBE_SCOPES alone
+    return google_scopes.consent_url(redirect_uri(), state)
 
 
 def _get(refresh_token: str, path: str, params: dict) -> dict:

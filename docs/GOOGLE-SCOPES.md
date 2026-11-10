@@ -8,27 +8,80 @@ the same commit** — and the public privacy policy (`dashboard/privacy/index.ht
 + `dashboard/privacy/he/index.html`, served at `/privacy/`), whose "Google user
 data" sections are written from this file.
 
-## Every scope string in the code (grep, 2026-10-30)
+## One consent (2026-11-10)
 
-The ONLY places a Google OAuth scope string exists (one constant per flow; every
-consent URL is built from its constant with `" ".join(...)`, never by hand):
+Google's review found the code requested 3 scopes (adwords, youtube.readonly,
+youtube.upload) while the Console lists 6. Since 2026-11-10 **every client-facing
+Google connect — Google Ads, YouTube and Tag Manager — asks for exactly these
+six, on ONE consent screen**, built by `core/google_scopes.consent_url()`:
 
-| File:line | Constant | Scope string |
+```
+https://www.googleapis.com/auth/adwords
+https://www.googleapis.com/auth/youtube.readonly
+https://www.googleapis.com/auth/youtube.upload
+https://www.googleapis.com/auth/tagmanager.edit.containers
+https://www.googleapis.com/auth/tagmanager.edit.containerversions
+https://www.googleapis.com/auth/tagmanager.publish
+```
+
+- **One source of truth:** `core/google_scopes.GOOGLE_SCOPES`. It is the only file
+  where these strings are written. `ADS_SCOPES` / `YOUTUBE_SCOPES` / `GTM_SCOPES`
+  are slices of it, and say only what each feature needs.
+- **The request:** `access_type=offline`, `prompt=consent`. There is no
+  `include_granted_scopes` (no incremental or partial request), no
+  `prompt=select_account` and no `login_hint`, so the browser's account chooser
+  behaves as before.
+- **Callbacks unchanged:** each product keeps its own redirect URI and stores its
+  own `client_accounts` row (`google_ads`, `youtube`, `google_tagmanager`). A token
+  is never copied from one product to another, because the account chooser may
+  have picked a different Google user.
+- **Older grants:** grants made before this date carry only Ads or YouTube.
+  `website_agent.gtm_missing_scopes` refuses before any Tag Manager write. The
+  client then sees ONE calm card, `connect_tag_manager`, which reads "I need one
+  more permission to set up your sales tracking, approve?" and contains no tool
+  names or errors. The card re-runs the same six-scope consent.
+- **Mid-run refusals:** if Google refuses a scope mid-run even though the
+  pre-check passed, the drafts are undone and ONE admin alert names the scope the
+  failed call needed (`gtm_service.required_scope`). The client gets only the card.
+- **Admin, read-only:** on `/admin/connections/`, the "Google — הרשאות" card calls
+  `GET /api/admin/google/scopes?client_id=27`. It shows the six scopes the code
+  requests and, for each stored connection, the scopes Google says the grant
+  has. It uses tokeninfo; no token is ever returned.
+- **Admin reconnect:** `GET /api/admin/google/reconnect/27?product=gtm` (or
+  `youtube`) forces a fresh six-scope consent. It is for internal
+  (billing_exempt) clients only, e.g. client 27 for the demo video. It is not
+  offered for Google Ads, whose consent needs the client's staff-access tick.
+- **Not requested:** Google sign-in is identity only and stays a separate login.
+  The round-2 scopes (gmail.send, webmasters.readonly, analytics.readonly,
+  drive.file) stay off behind their flags.
+
+Tests: `tests/test_google_one_consent.py`, plus `GtmScopeEnforced` in
+`tests/test_google_scope_flows.py`. The latter runs tag → version → publish
+against a fake that enforces each step's scope.
+
+## Every scope string in the code (grep, 2026-11-10)
+
+The ONLY places a Google OAuth scope string exists:
+
+| File | Constant | Scope string |
 |---|---|---|
-| `core/client_auth.py:77` | `GOOGLE_LOGIN_SCOPES` | `openid` |
-| `core/client_auth.py:77` | `GOOGLE_LOGIN_SCOPES` | `https://www.googleapis.com/auth/userinfo.email` |
-| `core/google_ads_service.py:38` | `ADS_SCOPES` | `https://www.googleapis.com/auth/adwords` |
-| `core/youtube_service.py:51` | `YOUTUBE_SCOPES` | `https://www.googleapis.com/auth/youtube.upload` |
-| `core/youtube_service.py:52` | `YOUTUBE_SCOPES` | `https://www.googleapis.com/auth/youtube.readonly` |
-| `core/gtm_service.py:65` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containers` |
-| `core/gtm_service.py:66` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.edit.containerversions` |
-| `core/gtm_service.py:67` | `GTM_SCOPES` | `https://www.googleapis.com/auth/tagmanager.publish` |
-| `core/drive_service.py:43` | `DRIVE_SCOPES` | `https://www.googleapis.com/auth/drive` — **service account only, never a user consent; not on the consent screen** |
+| `core/client_auth.py` | `GOOGLE_LOGIN_SCOPES` | `openid` |
+| `core/client_auth.py` | `GOOGLE_LOGIN_SCOPES` | `https://www.googleapis.com/auth/userinfo.email` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`ADWORDS`) | `https://www.googleapis.com/auth/adwords` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`YOUTUBE_READONLY`) | `https://www.googleapis.com/auth/youtube.readonly` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`YOUTUBE_UPLOAD`) | `https://www.googleapis.com/auth/youtube.upload` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`TAGMANAGER_EDIT_CONTAINERS`) | `https://www.googleapis.com/auth/tagmanager.edit.containers` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`TAGMANAGER_EDIT_CONTAINERVERSIONS`) | `https://www.googleapis.com/auth/tagmanager.edit.containerversions` |
+| `core/google_scopes.py` | `GOOGLE_SCOPES` (`TAGMANAGER_PUBLISH`) | `https://www.googleapis.com/auth/tagmanager.publish` |
+| `core/drive_service.py` | `DRIVE_SCOPES` | `https://www.googleapis.com/auth/drive` — **service account only, never a user consent; not on the consent screen** |
 
-Consent-URL builders: `client_auth.google_login_url`,
-`google_ads_service.build_consent_url`, `youtube_service.build_consent_url`,
-`gtm_service.build_consent_url`. None sets `include_granted_scopes`, so a grant
-never silently carries scopes from another flow.
+Consent-URL builders:
+- `client_auth.google_login_url` builds the sign-in consent (identity only).
+- `google_ads_service.build_consent_url`, `youtube_service.build_consent_url`
+  and `gtm_service.build_consent_url` all return
+  `google_scopes.consent_url(<own redirect>, state)`.
+
+None sets `include_granted_scopes`.
 
 **The full `https://www.googleapis.com/auth/youtube` scope has never been in
 the code** — not today and not in any commit (`git log -G"auth/youtube[^.a-z]"`
@@ -477,7 +530,9 @@ function backs the Control Room button
 `scripts/gtm_lead_tracking_check.sh`. It refuses, before any write, when:
 - a lead-event tag is already live;
 - the stored grant lacks any of the three scopes
-  (`website_agent.gtm_missing_scopes`);
+  (`website_agent.gtm_missing_scopes`). This covers grants made before the
+  one-consent change of 2026-11-10; the client gets the one calm
+  `connect_tag_manager` card, which re-runs the six-scope consent;
 - the grant is dead;
 - the site loads a different container;
 - no GA4 id is known.

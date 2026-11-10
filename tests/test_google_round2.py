@@ -141,25 +141,32 @@ class Services(FlagEnv):
 
 # ─── Round 1 is frozen ───────────────────────────────────────────────────────
 
-ROUND1 = {
-    ("core/client_auth.py", "GOOGLE_LOGIN_SCOPES"): ["openid", "https://www.googleapis.com/auth/userinfo.email"],
-    ("core/google_ads_service.py", "ADS_SCOPES"): ["https://www.googleapis.com/auth/adwords"],
-    ("core/youtube_service.py", "YOUTUBE_SCOPES"): ["https://www.googleapis.com/auth/youtube.upload",
-                                                    "https://www.googleapis.com/auth/youtube.readonly"],
-    ("core/gtm_service.py", "GTM_SCOPES"): ["https://www.googleapis.com/auth/tagmanager.edit.containers",
-                                            "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
-                                            "https://www.googleapis.com/auth/tagmanager.publish"],
-}
+# Round 1 since 2026-11-10: ONE consent with exactly the six Cloud Console
+# scopes, from core/google_scopes.GOOGLE_SCOPES (tests/test_google_one_consent.py).
+ROUND1_SIX = ["https://www.googleapis.com/auth/adwords",
+              "https://www.googleapis.com/auth/youtube.readonly",
+              "https://www.googleapis.com/auth/youtube.upload",
+              "https://www.googleapis.com/auth/tagmanager.edit.containers",
+              "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
+              "https://www.googleapis.com/auth/tagmanager.publish"]
 ROUND1_BUILDERS = {"core/client_auth.py": ("google_login_url", "GOOGLE_LOGIN_SCOPES"),
-                   "core/google_ads_service.py": ("build_consent_url", "ADS_SCOPES"),
-                   "core/youtube_service.py": ("build_consent_url", "YOUTUBE_SCOPES"),
-                   "core/gtm_service.py": ("build_consent_url", "GTM_SCOPES")}
+                   "core/google_ads_service.py": ("build_consent_url", "google_scopes.consent_url"),
+                   "core/youtube_service.py": ("build_consent_url", "google_scopes.consent_url"),
+                   "core/gtm_service.py": ("build_consent_url", "google_scopes.consent_url")}
 
 
 class Round1Frozen(unittest.TestCase):
     def test_round1_scope_lists_are_unchanged(self):
-        for (path, name), expected in ROUND1.items():
-            self.assertEqual(_list_constant(path, name), expected, f"{path} {name}")
+        from core import google_scopes
+        self.assertEqual(_list_constant("core/client_auth.py", "GOOGLE_LOGIN_SCOPES"),
+                         ["openid", "https://www.googleapis.com/auth/userinfo.email"])
+        self.assertEqual(google_scopes.GOOGLE_SCOPES, ROUND1_SIX)
+        for word in ("gmail", "webmasters", "analytics", "drive"):
+            self.assertFalse([s for s in google_scopes.GOOGLE_SCOPES if word in s], word)
+        consent = _function_source("core/google_scopes.py", "consent_params")
+        for word in ("round2", "GMAIL", "gmail", "webmasters", "include_granted_scopes", "analytics",
+                     "drive.file"):          # prompt / login_hint: checked on the real URL in test_google_one_consent
+            self.assertNotIn(word, consent, word)
 
     def test_round1_consent_builders_use_only_their_own_list(self):
         for path, (function, constant) in ROUND1_BUILDERS.items():

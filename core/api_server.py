@@ -2972,7 +2972,41 @@ def admin_google_ads_select_account(client_id: int, req: GoogleAdsAccountChoice,
         raise HTTPException(status_code=400, detail={"code": result.get("code", "ERR_SELECT_FAILED")})
     return {"success": True, "data": result}
 
-# ─── Google Tag Manager OAuth (separate consent — measurement, not ads) ─────
+# ─── Google scopes: admin checklist + forced fresh consent (core/google_scopes) ─
+
+@app.get("/api/admin/google/scopes")
+def admin_google_scopes(request: Request, client_id: int = 27, live: bool = True):
+    # READ-ONLY: the six scopes the code requests, and per stored Google
+    # connection of this client the scopes its grant actually has (Google
+    # tokeninfo). Never returns a token. Plain `def`: Google calls.
+    _require_admin(request)
+    from core import google_scopes
+    return {"success": True, "data": google_scopes.diagnostic(client_id, live=live)}
+
+_RECONNECT_PRODUCTS = {"gtm": "core.gtm_service", "youtube": "core.youtube_service"}
+
+@app.get("/api/admin/google/reconnect/{client_id}")
+def admin_google_reconnect(client_id: int, request: Request, product: str = "gtm"):
+    # Forces a FRESH consent (all six scopes, one screen) for an INTERNAL test
+    # client — the Google demo video (client 27). The admin's browser goes to
+    # Google; the grant lands on that client through the product's normal
+    # callback. Never for a paying client: their grant is theirs to give.
+    # Google Ads is not offered here: its consent needs the client's own
+    # staff-access tick (GOOGLE_ADS_STAFF_CONSENT).
+    _require_admin(request)
+    client = get_client(client_id) or {}
+    if not client:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NO_CLIENT"})
+    if not client.get("billing_exempt"):
+        raise HTTPException(status_code=403, detail={"code": "ERR_INTERNAL_CLIENTS_ONLY"})
+    if product not in _RECONNECT_PRODUCTS:
+        raise HTTPException(status_code=400, detail={"code": "ERR_PRODUCT", "allowed": list(_RECONNECT_PRODUCTS)})
+    import importlib
+    service = importlib.import_module(_RECONNECT_PRODUCTS[product])
+    print(f"[google oauth] admin forced a fresh {product} consent for internal client {client_id}")
+    return RedirectResponse(url=service.build_consent_url(create_oauth_state_token(client_id)))
+
+# ─── Google Tag Manager OAuth (its own callback; the SAME six-scope consent) ─
 
 @app.get("/api/oauth/gtm/start")
 async def gtm_oauth_start(request: Request):

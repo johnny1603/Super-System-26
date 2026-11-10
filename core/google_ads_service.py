@@ -33,9 +33,11 @@ ADS_BASE_URL = f"https://googleads.googleapis.com/{ADS_API_VERSION}"
 OAUTH_CONSENT_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
-# THE Google Ads scope list (one constant; docs/GOOGLE-SCOPES.md mirrors it).
-# adwords is the Google Ads API's only OAuth scope.
-ADS_SCOPES = ["https://www.googleapis.com/auth/adwords"]
+# What Google Ads NEEDS (adwords, the API's only OAuth scope) — a slice of
+# THE one list, core/google_scopes.GOOGLE_SCOPES, which is what the consent
+# actually requests (all six, one screen; docs/GOOGLE-SCOPES.md).
+from core import google_scopes  # noqa: E402
+ADS_SCOPES = google_scopes.ADS_SCOPES
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/google-ads/callback"
 TIMEOUT = 20
@@ -67,19 +69,11 @@ def redirect_uri() -> str:
 
 
 def build_consent_url(state: str) -> str:
-    """URL for Google's OAuth consent screen. access_type=offline + prompt=consent
-    are required to get a refresh token every time (without prompt=consent Google
-    only returns one on the very first authorization)."""
-    params = {
-        "client_id": get_key("GOOGLE_OAUTH_CLIENT_ID"),
-        "redirect_uri": redirect_uri(),
-        "response_type": "code",
-        "scope": " ".join(ADS_SCOPES),
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": state,
-    }
-    return f"{OAUTH_CONSENT_URL}?{urlencode(params)}"
+    """URL for Google's OAuth consent screen: THE six scopes on one screen
+    (core/google_scopes.consent_url). access_type=offline + prompt=consent
+    are required to get a refresh token every time (without prompt=consent
+    Google only returns one on the very first authorization)."""
+    return google_scopes.consent_url(redirect_uri(), state)
 
 
 def exchange_code(code: str, redirect_uri_override: str = None) -> dict:

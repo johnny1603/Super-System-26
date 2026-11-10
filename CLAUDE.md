@@ -392,7 +392,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   test clients), `publish_youtube_from_media` (Private), `configure_conversion` (lead tag in
   the client's own GTM, client-approved; each failure `reason` → its own plain-language
   refusal). docs/GOOGLE-SCOPES.md holds the evidence matrix and the video v3 script;
-  `tests/test_google_scope_flows.py` guards both. **Google round 2 (built 2026-10-30, OFF)**:
+  `tests/test_google_scope_flows.py` guards both.
+  **ONE Google consent (2026-11-10, docs/GOOGLE-SCOPES.md §One consent):**
+  - Google Ads, YouTube and Tag Manager connects ALL ask for exactly the six Cloud Console
+    scopes on one screen, via `core/google_scopes.consent_url`.
+  - `GOOGLE_SCOPES` is the single source of truth and the only file where those strings are
+    written. The per-product lists are slices of it.
+  - The request is offline with prompt=consent. It never sends include_granted_scopes,
+    select_account or login_hint.
+  - Each product keeps its own callback and row. Tokens are never copied across products.
+  - Old 3-scope grants are refused by `gtm_missing_scopes` before any write. The client then
+    gets the one calm `connect_tag_manager` card ("one more permission").
+  - Admin, on `/admin/connections/`:
+    - read-only `GET /api/admin/google/scopes?client_id=27` (tokeninfo, never a token);
+    - `GET /api/admin/google/reconnect/{id}?product=gtm|youtube`, internal clients only.
+  - Tests: `tests/test_google_one_consent.py`, plus `GtmScopeEnforced` in
+    `tests/test_google_scope_flows.py`.
+
+  **Google round 2 (built 2026-10-30, OFF)**:
   Gmail send (`core/gmail_service.py` send-only + `core/gmail_outreach.py`, card
   `send_outreach_email`, client-approved per email, address must be on the business's own
   site, opt-out line, 10/day per client from `outreach_sends`, suppression first) and Search

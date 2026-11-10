@@ -235,13 +235,21 @@ on the widget POST proves nothing.
 
 ## GTM API — conversion-event verification + configuration (2026-07-23)
 
-**Auth: a SEPARATE Google consent, deliberately** (`/api/oauth/gtm/start` →
-`/api/oauth/gtm/callback`, same OAuth client as Ads, different scopes, own
-`client_accounts` row: `platform='google_tagmanager'`,
-`account_id`=container API path, token=refresh token). Separate because a
-grant's scopes are fixed at consent time — appending GTM scopes to the Ads
-consent would force every existing Ads client to reconnect, and only
-site-managed clients need this at all. The callback prefers the container
+**Auth: its own callback on the ONE six-scope Google consent.** Changed
+2026-11-10; see docs/GOOGLE-SCOPES.md §One consent.
+- The flow is `/api/oauth/gtm/start` → `/api/oauth/gtm/callback`, with the same
+  OAuth client as Ads.
+- It stores its own `client_accounts` row: `platform='google_tagmanager'`,
+  `account_id` = container API path, token = refresh token.
+- Ads, YouTube and GTM all request the same six scopes through
+  `core/google_scopes.consent_url`, which match the Cloud Console list.
+- A grant made before then (Ads/YouTube only) is refused by
+  `gtm_missing_scopes` before any write. The client gets the one calm
+  `connect_tag_manager` card ("one more permission").
+- Each write's scope is `gtm_service.required_scope(path)`. A mid-run scope
+  refusal undoes the drafts and alerts the admin only.
+
+The callback prefers the container
 whose GTM-XXX public id is actually installed on the client's site (from
 the tracking audit), falling back to first-container MVP. Dashboard: the
 measurement button appears on the site card once a site is connected,

@@ -2022,11 +2022,11 @@ ACTIONS = {
                 "لم أتمكن الآن من قراءة ما يُعتبر نتيجة لديكم، لذلك لم أُضف أي قياس إلى Tag Manager — لم يتغير شيء. حاولوا مجددًا بعد قليل.",
                 "Не удалось прочитать, что у вас считается результатом, поэтому в Tag Manager ничего не добавлено. Повторите чуть позже."),
             "gtm_reconnect": _txt(
-                "החיבור ל-Tag Manager צריך חידוש לפני שאפשר להוסיף את המדידה — שום דבר לא השתנה באתר. לחצו על הכפתור כדי לחבר מחדש (פעם אחת, מול Google), ואז נסו שוב.",
-                "Your Tag Manager connection needs renewing before tracking can be added — nothing on your site changed. Tap the button to reconnect (once, with Google), then try again.",
-                "Votre connexion Tag Manager doit être renouvelée — rien n'a changé sur votre site. Touchez le bouton pour reconnecter (une fois, avec Google), puis réessayez.",
-                "يجب تجديد الربط مع Tag Manager قبل إضافة القياس — لم يتغير شيء في موقعكم. اضغطوا على الزر لإعادة الربط (مرة واحدة مع Google) ثم حاولوا مجددًا.",
-                "Подключение Tag Manager нужно обновить — на сайте ничего не изменилось. Нажмите кнопку, чтобы переподключить (один раз, через Google), и повторите."),
+                "כדי להגדיר את המדידה אני צריך עוד הרשאה אחת מ-Google — באתר לא השתנה כלום. אשרו בכפתור (פעם אחת), ואז נמשיך.",
+                "I need one more permission from Google to set up the tracking — nothing on your site changed. Approve with the button (once) and we'll continue.",
+                "J'ai besoin d'une autorisation de plus de Google pour la mesure — rien n'a changé sur votre site. Validez avec le bouton (une fois) et on continue.",
+                "أحتاج إذنًا إضافيًا واحدًا من Google لإعداد القياس — لم يتغير شيء في موقعكم. وافقوا بالزر (مرة واحدة) ونكمل.",
+                "Для настройки учёта нужно ещё одно разрешение Google — на сайте ничего не изменилось. Подтвердите кнопкой (один раз), и продолжим."),
             "gtm_container_mismatch": _txt(
                 "ה-Tag Manager שחובר הוא לא זה שמותקן באתר שלכם, אז לא הוספנו כלום. בכרטיס \"מדידה באתר\" בחרו את הקונטיינר הנכון (החלפת קונטיינר), ואז נסו שוב.",
                 "The connected Tag Manager container isn't the one installed on your site, so nothing was added. In the website measurement card, choose the right container, then try again.",
@@ -2560,17 +2560,22 @@ ACTIONS = {
     "connect_tag_manager": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "link",
         "link": "/api/oauth/gtm/start",
-        "does": "Opens Google's approval screen to (re)connect the client's Tag Manager — the fix when "
-                "tracking is not connected, expired, lost access or lacks permissions.",
+        # ONE calm card (2026-11-10): the same six-scope Google consent as every
+        # Google connect (core/google_scopes). Offered when tracking is not
+        # connected or the stored grant lacks a Tag Manager scope (a grant from
+        # before the one consent), and as the follow-up of a refused setup.
+        "does": "Opens Google's approval screen (the one Google consent, all permissions on one screen) — the "
+                "fix when website/sales tracking is not connected, expired, lost access or lacks a permission.",
         "params": {},
         "available": _gtm_needs_connect,
-        "title": _txt("חיבור מחדש של מדידת האתר", "Reconnect your website tracking",
-                      "Reconnecter le suivi du site", "إعادة ربط قياس الموقع", "Переподключить аналитику сайта"),
-        "what": _txt("ייפתח מסך האישור של Google — מאשרים פעם אחת, וחוזרים לכאן.",
-                     "Google's approval screen opens — approve once and you're back here.",
-                     "L'écran d'autorisation de Google s'ouvre — validez une fois et revenez ici.",
-                     "ستفتح شاشة موافقة Google — وافقوا مرة واحدة وتعودون إلى هنا.",
-                     "Откроется окно подтверждения Google — подтвердите один раз и вернитесь сюда."),
+        "title": _txt("עוד הרשאה אחת מ-Google", "One more permission from Google",
+                      "Une autorisation de plus de Google", "إذن إضافي واحد من Google",
+                      "Ещё одно разрешение Google"),
+        "what": _txt("כדי להגדיר את מדידת המכירות באתר אני צריך עוד הרשאה אחת מ-Google. לאשר? ייפתח מסך האישור של Google — מאשרים פעם אחת וחוזרים לכאן.",
+                     "I need one more permission from Google to set up your sales tracking. Approve? Google's screen opens — approve once and you're back here.",
+                     "J'ai besoin d'une autorisation de plus de Google pour mettre en place le suivi des ventes. On valide ? L'écran Google s'ouvre — une fois, et vous revenez ici.",
+                     "أحتاج إذنًا إضافيًا واحدًا من Google لإعداد قياس المبيعات. نوافق؟ ستفتح شاشة Google — توافقون مرة واحدة وتعودون إلى هنا.",
+                     "Мне нужно ещё одно разрешение Google, чтобы настроить учёт продаж. Подтвердим? Откроется окно Google — один раз, и вы снова здесь."),
         "done": _txt("פותח את מסך האישור של Google…", "Opening Google's approval screen…",
                      "Ouverture de l'écran Google…", "جارٍ فتح شاشة موافقة Google…", "Открываю окно Google…"),
     },

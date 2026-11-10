@@ -65,6 +65,20 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
       <span class="muted" id="sfMsg"></span>
     </div>
   </div>
+  <!-- Google scopes diagnostic: READ-ONLY (GET /api/admin/google/scopes).
+       The six scopes come from core/google_scopes.GOOGLE_SCOPES; the token
+       itself is never returned. "Reconnect" re-runs the same six-scope consent
+       (internal/billing-exempt clients only, for the demo account). -->
+  <div class="card" id="googleScopes">
+    <h2>Google — הרשאות (בדיקה, קריאה בלבד)</h2>
+    <div class="muted">ששת ההרשאות שהקוד מבקש, ומה יש בפועל בטוקן השמור של הלקוח.</div>
+    <div class="row">
+      <label class="muted" style="margin:0;">מספר לקוח <input type="text" dir="ltr" id="gsClient" value="27" inputmode="numeric" style="width:90px;"></label>
+      <button id="gsBtn">בדיקה</button>
+      <a id="gsReconnect" href="/api/admin/google/reconnect/27?product=gtm" class="muted" style="color:var(--accent);">חיבור Google מחדש (מסך אישור חדש)</a>
+    </div>
+    <div id="gsOut" class="muted" style="margin-top:10px;"></div>
+  </div>
 </div>
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -145,6 +159,31 @@ async function storeFallback(useSite) {
 }
 document.getElementById("sfKeyBtn").onclick = () => storeFallback(false);
 document.getElementById("sfSiteBtn").onclick = () => storeFallback(true);
+
+const gsBadge = (ok, yes, no) => ok ? `<span class="badge ok">${esc(yes)}</span>` : `<span class="badge warn">${esc(no)}</span>`;
+async function googleScopes() {
+  const out = document.getElementById("gsOut");
+  const cid = parseInt(document.getElementById("gsClient").value, 10);
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  document.getElementById("gsReconnect").href = "/api/admin/google/reconnect/" + cid + "?product=gtm";
+  out.textContent = "בודק מול Google…";
+  try {
+    const d = await api("/api/admin/google/scopes?client_id=" + cid);
+    const flags = Object.entries(d.round2_flags || {}).map(([k, v]) => `${esc(k)}=${v ? "ON" : "off"}`).join(" · ");
+    const conns = (d.connections || []).map(c => `<div class="card" style="margin-top:8px;">
+        <h2><code>${esc(c.platform)}</code> <span class="badge">${esc(c.status)}</span>
+          ${gsBadge(!(c.missing_for_feature || []).length, "מספיק לפיצ'ר", "חסר לפיצ'ר")}
+          ${gsBadge(!(c.missing_of_six || []).length, "כל השש", "חסר מהשש")}</h2>
+        <div dir="ltr" style="text-align:left;">scopes (${esc(c.source || "")}): ${(c.scopes || []).map(s => `<code>${esc(s)}</code>`).join(" ") || "—"}</div>
+        ${(c.missing_of_six || []).length ? `<div dir="ltr" style="text-align:left;">missing: ${c.missing_of_six.map(s => `<code>${esc(s)}</code>`).join(" ")}</div>` : ""}
+        ${c.error ? `<div dir="ltr" style="text-align:left;">error: <code>${esc(c.error)}</code></div>` : ""}
+      </div>`).join("") || '<div class="muted">אין חיבור Google שמור ללקוח הזה.</div>';
+    out.innerHTML = `<div dir="ltr" style="text-align:left;">code requests: ${(d.code_scopes || []).map(s => `<code>${esc(s)}</code>`).join(" ")}</div>
+      <div style="margin-top:6px;">${gsBadge(d.has_all_six, "יש את כל השש", "חסרות הרשאות — צריך חיבור מחדש")}</div>
+      <div dir="ltr" style="text-align:left;margin-top:6px;">round 2: ${flags}</div>${conns}`;
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gsBtn").onclick = googleScopes;
 load().catch(err => { if (err.message !== "auth") document.getElementById("rows").innerHTML = '<div class="card muted">הטעינה נכשלה. אפשר לרענן.</div>'; });
 </script>
 <!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->

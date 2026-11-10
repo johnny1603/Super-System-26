@@ -413,6 +413,7 @@ DECRYPTING_MODULES = {
     "core/site_traffic.py",      # GA refresh token → straight into analytics_service reads
     "core/drive_storage.py",     # drive.file refresh token → a closure feeding drive_service._headers
     "agents/store_agent.py",     # the store READ key → straight into woocommerce_service.get (Basic auth)
+    "core/google_scopes.py",     # admin scope diagnostic: refresh token → tokeninfo; returns scopes only, never the token
 }
 
 

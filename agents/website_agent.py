@@ -1235,6 +1235,12 @@ def gtm_failure_reason(error: Exception) -> str:
 GTM_RETRYABLE = ("gtm_error", "gtm_api_disabled", "gtm_compiler_error")
 
 
+def _failed_path(error: Exception) -> str:
+    """The Tag Manager path a GtmApiError names ("GTM POST <path> failed: ...")."""
+    parts = str(error).split()
+    return parts[2] if len(parts) > 2 and parts[0] == "GTM" else ""
+
+
 def _undo_gtm_drafts(client_id: int, refresh_token: str, workspace: str, ours: bool, created: list):
     """After a failed run, leave the container as it was: our own workspace is
     deleted whole; in a shared workspace only the trigger/tag we created are.
@@ -1474,6 +1480,14 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
         if reason in GTM_RETRYABLE:
             agent_alert(AGENT_NAME, [f"client {client_id}: GTM conversion configuration failed twice "
                                      f"({reason}): {str(e)[:300]}"])
+        elif reason == "gtm_reconnect_needed":
+            # The scope pre-check passed, yet Google refused a scope / the grant
+            # mid-run: OURS to look at (the recorded scopes were wrong). The
+            # drafts are already undone; the client only gets the one calm
+            # "one more permission" card — never this text.
+            agent_alert(AGENT_NAME, [f"client {client_id}: Tag Manager refused the stored grant mid-run "
+                                     f"(scope pre-check passed; needed {gtm.required_scope(_failed_path(e))}): "
+                                     f"{str(e)[:200]}"])
         return {"success": False, "reason": reason, "errors": [str(e)]}
 
     trigger, tag, published = done["trigger"], done["tag"], done["published"]

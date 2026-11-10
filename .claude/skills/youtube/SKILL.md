@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: How uallak's YouTube integration works — separate Google OAuth consent, private-by-default publishing, engagement tracking, and the decoupled pricing model (management fee, not a generation-cost bucket). Use when touching agents/youtube_content_agent.py, core/youtube_service.py, the /api/oauth/youtube endpoints, or any /api/youtube-content/* endpoint.
+description: How uallak's YouTube integration works — its own callback on the shared six-scope Google consent, private-by-default publishing, engagement tracking, and the decoupled pricing model (management fee, not a generation-cost bucket). Use when touching agents/youtube_content_agent.py, core/youtube_service.py, the /api/oauth/youtube endpoints, or any /api/youtube-content/* endpoint.
 ---
 
 # YouTube integration (organic publishing — paid add-on, decoupled from generation cost)
@@ -10,10 +10,14 @@ description: How uallak's YouTube integration works — separate Google OAuth co
 Mirrors `agents/tiktok_content_agent.py`'s structure exactly: media_agent/
 avatar_agent generate the actual video; this agent is purely the pipe from
 already-generated media (a Drive `file_id`) to the client's YouTube channel.
-No content generation, no LLM calls. Own OAuth consent (not appended to
-Google Ads) for the same reason as GTM/Merchant Center: a grant's scopes are
-fixed at consent time, so bundling would force every Ads client to
-reconnect for scopes only content-publishing clients need.
+No content generation, no LLM calls.
+
+**Consent (changed 2026-11-10, docs/GOOGLE-SCOPES.md §One consent):** the YouTube
+connect asks for ALL SIX round-1 scopes on one screen, through
+`core/google_scopes.consent_url`. Google Ads and Tag Manager do the same. This
+matches the Cloud Console list Google reviews. The callback, the redirect URI
+and the `youtube` row are still YouTube's own. `YOUTUBE_SCOPES` is only the
+slice this feature needs. Never build a YouTube-only consent again.
 
 ## Pricing model — DECOUPLED, a business decision (2026-07-23, CONFIRMED same day)
 

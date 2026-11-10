@@ -558,6 +558,89 @@ class GtmFlow(unittest.TestCase):
 
 # ─── The chat cards ──────────────────────────────────────────────────────────
 
+class ScopedFakeGtm(FakeGtm):
+    """FakeGtm that enforces Google's scope per write, like the real API:
+    workspace/trigger/tag → edit.containers, :create_version →
+    edit.containerversions, :publish → publish. A missing one is a 403
+    ACCESS_TOKEN_SCOPE_INSUFFICIENT."""
+
+    def __init__(self, gtm, granted):
+        super().__init__(gtm)
+        self.granted, self.scopes_used = set(granted), []
+
+    def _check(self, method, path):
+        needed = self.gtm.required_scope(path)
+        self.scopes_used.append((path.rsplit("/", 1)[-1], needed.rsplit("/", 1)[-1]))
+        if needed not in self.granted:
+            body = {"error": {"code": 403, "status": "PERMISSION_DENIED",
+                              "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}
+            raise self.gtm.GtmApiError(method, path, _Resp(403, body))
+
+    def post(self, refresh_token, path, json_body=None, params=None):
+        self._check("POST", path)
+        return super().post(refresh_token, path, json_body, params)
+
+
+class GtmScopeEnforced(GtmFlow):
+    """End to end: create tag → create version → publish, each with its own
+    scope; a grant short of one fails safely and alerts the admin only."""
+
+    SIX = None
+
+    def setUp(self):
+        super().setUp()
+        from core import google_scopes
+        self.SIX = google_scopes.GOOGLE_SCOPES
+
+    def use(self, granted):
+        self.api = ScopedFakeGtm(self.gtm, granted)
+        self.gtm._get, self.gtm._post, self.gtm._delete = self.api.get, self.api.post, self.api.delete
+        self.gtm._put = self.api.put
+
+    def test_full_six_scope_grant_publishes_each_step_with_its_scope(self):
+        self.use(self.SIX)
+        result = self.run_flow()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(self.api.scopes_used, [
+            ("workspaces", "tagmanager.edit.containers"),
+            ("triggers", "tagmanager.edit.containers"),
+            ("tags", "tagmanager.edit.containers"),
+            ("9:create_version", "tagmanager.edit.containerversions"),
+            ("12:publish", "tagmanager.publish")])
+        self.assertEqual(self.alerts, [])
+
+    def test_grant_without_publish_scope_publishes_nothing_and_alerts_admin_only(self):
+        self.use([s for s in self.SIX if not s.endswith("tagmanager.publish")])
+        result = self.run_flow()
+        self.assertEqual(result["reason"], "gtm_reconnect_needed")
+        self.assertEqual(self.api.published, {})
+        self.assertEqual(self.api.deleted, [f"{CONTAINER}/workspaces/9"])     # our drafts undone
+        self.assertEqual(len(self.alerts), 1)
+        self.assertIn("needed https://www.googleapis.com/auth/tagmanager.publish", self.alerts[0][0])
+        self.assertIn("client 27", self.alerts[0][0])
+
+    def test_grant_without_version_scope_stops_before_publish(self):
+        self.use([s for s in self.SIX if not s.endswith("containerversions")])
+        result = self.run_flow()
+        self.assertEqual(result["reason"], "gtm_reconnect_needed")
+        self.assertFalse(any(p.endswith(":publish") for _m, p in self.api.calls))
+        self.assertIn("containerversions", self.alerts[0][0])
+
+    def test_old_three_scope_grant_is_refused_before_any_write(self):
+        # Client 27 today: adwords + youtube only. The stored-scope pre-check
+        # refuses before Google is called; the client gets the one calm card.
+        self.use(self.SIX[:3])
+        saved = self.website.gtm_missing_scopes
+        self.website.gtm_missing_scopes = lambda cid: self.SIX[3:]
+        try:
+            result = self.run_flow()
+        finally:
+            self.website.gtm_missing_scopes = saved
+        self.assertEqual(result["reason"], "gtm_reconnect_needed")
+        self.assertEqual(self.api.calls, [])
+        self.assertEqual(self.alerts, [])
+
+
 class LeadTrackingCard(ActionTestCase):
     def stored(self, client_id=27):
         result = self.propose(client_id, "client_chat", "configure_conversion")
@@ -669,6 +752,11 @@ class ScopeAudit(unittest.TestCase):
         found = set(self.code_scopes()) - SERVICE_ACCOUNT_ONLY - set(ROUND2_SCOPES)
         self.assertEqual(found, FINAL_USER_SCOPES - {"openid"})
         self.assertIn('"openid"', _read("core", "client_auth.py"))
+
+    def test_round1_user_scopes_are_written_only_in_google_scopes(self):
+        found = self.code_scopes()
+        for scope in FINAL_USER_SCOPES - {"openid", "https://www.googleapis.com/auth/userinfo.email"}:
+            self.assertEqual(found.get(scope), {"core/google_scopes.py"}, scope)
 
     def test_round2_scopes_live_only_in_their_own_modules(self):
         found = self.code_scopes()
