@@ -579,6 +579,36 @@ def _rebuild(client_id: int, page: dict, request: str, persona: str, intro: str)
     return {"success": True, "page": updated["page"], "mode": "redesign"}
 
 
+_WHATSAPP_WORDS = ("וואטסאפ", "ווטסאפ", "וואצאפ", "ווצאפ", "whatsapp")
+
+
+def _whatsapp_number_in(request: str) -> str:
+    """The new WhatsApp number when the request is about the WhatsApp number and
+    names exactly ONE usable phone number; else ''. The number on a page lives
+    in its `contact` ({{WHATSAPP_URL}} is filled at render time), so no model
+    edit of the HTML can change it (2026-11-11, card 40)."""
+    import re
+    text = request or ""
+    if not any(w in text.lower() for w in _WHATSAPP_WORDS):
+        return ""
+    found = {landing_pages.whatsapp_number(m) for m in re.findall(r"\+?\d[\d\s-]{7,}\d", text)}
+    found.discard("")
+    return found.pop() if len(found) == 1 else ""
+
+
+def _change_whatsapp(client_id: int, page: dict, number: str, persona: str) -> dict:
+    """A new version with only the WhatsApp number changed, then the publish card."""
+    contact = {**landing_pages.normalize_contact(page.get("contact") or {}), "whatsapp": number}
+    updated = landing_pages.update_page(client_id, page["id"], {"contact": contact}, source="edit")
+    if not updated.get("success"):
+        return {"success": False, "reason": str(updated.get("code"))}
+    _log_activity(client_id, "landing_page_edited", {"page_id": page["id"],
+                                                     "version": updated["page"].get("current_version"),
+                                                     "contact": "whatsapp"})
+    propose_publish(client_id, page["id"], "", persona=persona)
+    return {"success": True, "page": updated["page"], "mode": "contact"}
+
+
 def change_page(client_id: int, page_id: int, change_request: str = "", mode: str = "edit",
                 persona: str = PERSONA, images: list = None) -> dict:
     """THE entry point for a client's change request (the edit card).
@@ -593,6 +623,11 @@ def change_page(client_id: int, page_id: int, change_request: str = "", mode: st
     page = landing_pages.get_page(client_id, page_id)
     if not page:
         return {"success": False, "code": "ERR_LANDING_NOT_FOUND", "errors": ["page not found"]}
+    number = "" if images else _whatsapp_number_in(change_request)
+    if number:
+        changed = _change_whatsapp(client_id, page, number, persona)
+        if changed.get("success"):
+            return changed
     designed = bool((page.get("content") or {}).get("html"))
     if images or not change_request or not designed or not landing_creative.enabled():
         return regenerate_copy(client_id, page_id, change_request, persona=persona, announce=False,
