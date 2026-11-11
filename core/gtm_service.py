@@ -693,11 +693,80 @@ def ensure_purchase_tag(refresh_token: str, workspace_path: str, ga4_measurement
                          _purchase_tag_matcher(ga4_measurement_id, trigger_id))
 
 
+# ─── Existing store tags (2026-11-11, docs/GTM-SAFETY.md §6) ─────────────────
+# A store's container often already measures purchases with tags someone else
+# made (a GA4 "purchase" event, a Google Ads conversion, gtm4wp funnel events).
+# They are READ, named in the preview and NEVER touched. Only an unpaused
+# GA4 purchase tag that isn't ours changes what we add: then our set sends the
+# order ONLY to our own record endpoint — no second GA4 purchase (double counting).
+SHOP_EVENTS = {"purchase", "begin_checkout", "add_to_cart", "add_payment_info", "add_shipping_info",
+               "view_cart", "remove_from_cart", "refund"}
+_SHOP_NAME = re.compile(r"purchase|checkout|order|conversion|רכישה|הזמנה|המרה", re.I)
+
+
+def _params(tag: dict) -> dict:
+    return {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+
+
+def existing_purchase_tags(version: dict) -> list:
+    """Tags NOT ours that already measure the store, for the preview:
+    [{name, type, kind, event, paused}] — kind ga4_purchase (GA4 event
+    'purchase'), ga4_shop (another GA4 shop event: add_to_cart, checkout...),
+    ads_conversion (Google Ads conversion tag, type awct), other (named like
+    a purchase / checkout / order / conversion)."""
+    out = []
+    for tag in version.get("tag") or []:
+        name = str(tag.get("name") or "")
+        if is_ours(name):
+            continue
+        event = str(_params(tag).get("eventName") or "").strip().lower()
+        if tag.get("type") == "gaawe" and event in SHOP_EVENTS:
+            kind = "ga4_purchase" if event == "purchase" else "ga4_shop"
+        elif tag.get("type") == "awct":
+            kind = "ads_conversion"
+        elif _SHOP_NAME.search(name):
+            kind = "other"
+        else:
+            continue
+        out.append({"name": name, "type": tag.get("type") or "", "kind": kind, "event": event,
+                    "paused": bool(tag.get("paused"))})
+    return out
+
+
+def foreign_ga4_purchase_live(version: dict) -> bool:
+    """An unpaused GA4 'purchase' tag someone else made is in this version."""
+    return any(t["kind"] == "ga4_purchase" and not t["paused"] for t in existing_purchase_tags(version))
+
+
+_PLACEHOLDER_ID = re.compile(r"^G-(X+|\d+)$", re.I)
+
+
+def tags_needing_review(version: dict) -> list:
+    """Google / GA4 tags NOT ours whose measurement id looks like a
+    placeholder (G-XXXXXXX) or a date (G-20240613) — a GA4 id carries
+    letters. Flagged "not created by the platform / needs review", never
+    touched. [{name, type, ids}]."""
+    out = []
+    for tag in version.get("tag") or []:
+        name = str(tag.get("name") or "")
+        if is_ours(name) or tag.get("type") not in ("googtag", "gaawc", "gaawe", "ua"):
+            continue
+        params = _params(tag)
+        ids = [str(params.get(k) or "") for k in ("tagId", "measurementId", "measurementIdOverride")]
+        ids += re.findall(r"\bG-[A-Z0-9]+\b", name, re.I)
+        bad = sorted({i.upper() for i in ids if i and "{{" not in i and _PLACEHOLDER_ID.match(i)})
+        if bad:
+            out.append({"name": name, "type": tag.get("type") or "", "ids": bad})
+    return out
+
+
 def purchase_live(version: dict) -> dict:
     """Verification against a PUBLISHED version: our trigger (by name, with
     its once-per-order filter), the four variables, and an unpaused GA4
-    purchase tag firing on that trigger with transaction_id/value/currency.
-    {"live": bool, "missing": [...]}."""
+    purchase tag firing on that trigger with transaction_id/value/currency —
+    or, when someone else's GA4 purchase tag already counts purchases
+    (record_only), our purchase record tag on that trigger instead.
+    {"live": bool, "missing": [...], "mode": "ga4" | "record_only" | ""}."""
     missing = []
     triggers = [t for t in version.get("trigger") or [] if t.get("name") == PURCHASE["trigger"]]
     trigger = next((t for t in triggers if _purchase_trigger_matches(t)), None)
@@ -712,9 +781,12 @@ def purchase_live(version: dict) -> dict:
                 and trigger and str(trigger.get("triggerId")) in [str(x) for x in tag.get("firingTriggerId") or []]
                 and {"transaction_id", "value", "currency"} <= set(_event_settings(tag))):
             tag_ok = True
+    mode = "ga4" if tag_ok else ""
+    if not tag_ok and trigger and foreign_ga4_purchase_live(version) and purchase_beacon_live(version)["live"]:
+        tag_ok, mode = True, "record_only"
     if not tag_ok:
         missing.append("tag")
-    return {"live": not missing, "missing": missing}
+    return {"live": not missing, "missing": missing, "mode": mode if not missing else ""}
 
 
 # ─── Our own purchase record (2026-11-07, core/store_purchases) ──────────────
@@ -852,8 +924,17 @@ def publish_workspace(refresh_token: str, workspace_path: str,
 # tagmanager.edit.containers, versions.publish is tagmanager.publish (the
 # ":publish" suffix in SCOPE_FOR_ACTION). Nothing new is requested.
 
+def purchase_ga4_tag_wanted(live: dict) -> bool:
+    """Do we add "uallak — GA4 purchase"? Yes when no GA4 purchase tag of
+    someone else's is live, or when ours is already there (kept, never
+    duplicated). No when theirs already counts purchases: a second GA4
+    purchase would double every order in GA4 and in Ads imports."""
+    return bool(find_named(live.get("tag") or [], PURCHASE["tag"])) or not foreign_ga4_purchase_live(live)
+
+
 def plan_entities(live: dict, pending: list, ga4_measurement_id: str,
-                  endpoint_slug: str = DEFAULT_ORDER_RECEIVED_ENDPOINT, record_url: str = "") -> list:
+                  endpoint_slug: str = DEFAULT_ORDER_RECEIVED_ENDPOINT, record_url: str = "",
+                  ga4_purchase: bool = True) -> list:
     """READ-ONLY: what configure_lead_conversion would do to each entity,
     computed against the LIVE version with the SAME body builders and the
     SAME "is it already ours and right" checks the write path uses (a new
@@ -878,8 +959,9 @@ def plan_entities(live: dict, pending: list, ga4_measurement_id: str,
                 step("variable", variables, body, _variable_matches(body))
             trigger = step("trigger", triggers, purchase_trigger_body(), _purchase_trigger_matches)
             tid = (trigger or {}).get("triggerId") or "(new)"
-            step("tag", tags, purchase_tag_body(ga4_measurement_id, tid),
-                 _purchase_tag_matcher(ga4_measurement_id, tid))
+            if ga4_purchase:
+                step("tag", tags, purchase_tag_body(ga4_measurement_id, tid),
+                     _purchase_tag_matcher(ga4_measurement_id, tid))
             step("tag", tags, purchase_beacon_tag_body(record_url, tid), _beacon_tag_matcher(record_url, tid))
         elif kind == "form_submit":
             trigger = step("trigger", triggers, form_submit_trigger_body(), _form_trigger_matches)

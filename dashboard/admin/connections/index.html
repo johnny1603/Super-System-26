@@ -228,7 +228,17 @@ document.getElementById("gtmOut").addEventListener("click", async e => {
   box.textContent = "טוען…";
   try {
     const d = await api("/api/admin/gtm/history/" + encodeURIComponent(card.dataset.gtm));
-    box.innerHTML = (d.history || []).map(h => `<div class="card" style="margin-top:6px;">
+    const rv = d.live_review || {};
+    const reviewHtml = rv.error ? `<div class="muted" dir="ltr">live read failed: <code>${esc(rv.error)}</code></div>`
+      : !rv.connected ? "" : `<div class="card" style="margin-top:6px;">
+        <h2>גרסה חיה עכשיו ${ver(rv.version_id, rv.version_name)}</h2>
+        <div>שלנו (uallak —): ${(rv.ours || []).map(x => `<code>${esc(x.name)}</code>`).join(" ") || "—"}</div>
+        <div>תגי רכישה קיימים — לא נוגעים בהם: ${(rv.existing_purchase_tags || []).map(x =>
+          `<code>${esc(x.name)}</code> <span class="muted">${esc(x.kind)}${x.paused ? " · paused" : ""}</span>`).join(" ") || "—"}</div>
+        ${(rv.needs_review || []).length ? `<div><span class="badge warn">לא נוצר ע״י המערכת — לבדיקה</span> ${rv.needs_review.map(x =>
+          `<code>${esc(x.name)}</code> <span class="muted" dir="ltr">${esc((x.ids || []).join(", "))}</span>`).join(" ")}</div>` : ""}
+      </div>`;
+    box.innerHTML = reviewHtml + (d.history || []).map(h => `<div class="card" style="margin-top:6px;">
         <h2><span class="badge">${esc(GTM_OP[h.type] || h.type)}</span> ${esc(String(h.at || "").slice(0, 16).replace("T", " "))}
           <span class="muted">${esc(GTM_VIA[h.via] || h.via || "")}${h.method ? " · " + esc(h.method) : ""}</span></h2>
         <div>לפני: ${ver(h.previous_version_id, h.previous_version_name)} → אחרי: ${ver(h.new_version_id, h.new_version_name)}</div>

@@ -368,6 +368,162 @@ class CardText(unittest.TestCase):
         self.assertEqual(e.exception.code, "gtm_plan_changed")
 
 
+# ─── Store sales next to existing purchase tags (docs/GTM-SAFETY.md §6) ─────
+
+def _tag(tid, name, typ, event=None, trigger="901", **extra):
+    params = [{"type": "template", "key": "eventName", "value": event}] if event else []
+    return {"name": name, "type": typ, "tagId": tid, "fingerprint": "x" + tid,
+            "path": f"{CONTAINER}/workspaces/1/tags/{tid}", "parameter": params,
+            "firingTriggerId": [trigger], **extra}
+
+
+GTM4WP_ORDER = {"name": "gtm4wp.orderCompleteEEC", "type": "customEvent", "triggerId": "901", "fingerprint": "c1",
+                "path": f"{CONTAINER}/workspaces/1/triggers/901"}
+ADS_PURCHASE = _tag("81", "Purchase", "awct")
+ADS_CHECKOUT = _tag("82", "Google Ads - checkout", "awct")
+GA4_CART = _tag("83", "GA4 - add_to_cart", "gaawe", "add_to_cart")
+GA4_CHECKOUT = _tag("84", "GA4 - begin_checkout", "gaawe", "begin_checkout")
+STRAY_X = {**_tag("85", "Google Analytics G-XXXXXXX", "googtag", trigger="2147479573"),
+           "parameter": [{"type": "template", "key": "tagId", "value": "G-XXXXXXX"}]}
+STRAY_DATE = {**_tag("86", "Google Analytics G-20240613", "googtag", trigger="2147479573"),
+              "parameter": [{"type": "template", "key": "tagId", "value": "G-20240613"}]}
+GA4_PURCHASE = _tag("87", "GA4 - purchase", "gaawe", "purchase")
+SHIN_SEKAI = [ADS_PURCHASE, ADS_CHECKOUT, GA4_CART, GA4_CHECKOUT, STRAY_X, STRAY_DATE]
+
+
+class StoreNextToExistingTags(SafetyBase):
+    """Shin Sekai's live container, as described: old purchase / checkout tags
+    on gtm4wp triggers that are not ours, plus two unfinished Google tags."""
+
+    def setUp(self):
+        super().setUp()
+        from core import conversion_types as ct
+        from agents import store_agent
+        self.ct, self.store_agent = ct, store_agent
+        self.saved = (ct.get, store_agent.order_received_endpoint, self.website.get_conversion_tracking_status)
+        ct.get = lambda cid: {"types": ["store_sales"], "confirmed": True, "stored": True}
+        store_agent.order_received_endpoint = lambda cid: {"slug": "order-received", "source": "store", "problem": ""}
+        # The REAL status: is store sales live? (never because of someone else's tag)
+        self.website.get_conversion_tracking_status = self._saved_fns["get_conversion_tracking_status"]
+
+    def tearDown(self):
+        self.ct.get, self.store_agent.order_received_endpoint, self.website.get_conversion_tracking_status = self.saved
+
+    def container(self, *tags):
+        self.api.seed_live("11", "shin-se-kai.co.il 2023", trigger=[GTM4WP_ORDER], tag=list(tags))
+
+    def foreign_untouched(self):
+        ours_prefix = "uallak — "
+        before = {t["name"]: t for t in self.api.versions["11"]["tag"]}
+        after = {t["name"]: t for t in self.api.published["tag"] if not t["name"].startswith(ours_prefix)}
+        self.assertEqual(after, before)
+        self.assertEqual([t for t in self.api.published["trigger"] if not t["name"].startswith(ours_prefix)],
+                         [GTM4WP_ORDER])
+        touched = [p for m, p in self.api.calls if m in ("PUT", "DELETE")]
+        self.assertFalse([p for p in touched if p in {t["path"] for t in before.values()}], touched)
+
+    def test_old_purchase_tags_never_skip_store_sales(self):
+        self.container(*SHIN_SEKAI)
+        status = self.website.get_conversion_tracking_status(27)
+        self.assertNotIn("store_sales", status["live_types"])
+        plan = self.plan()
+        self.assertEqual(plan["types"], ["store_sales"])
+        self.assertEqual(plan["skipped"], [])
+        self.assertEqual(plan["purchase"]["mode"], "ga4")       # no GA4 purchase tag of theirs
+        self.assertEqual([e["name"] for e in plan["entities"]],
+                         list(self.gtm.PURCHASE["vars"].values())
+                         + ["uallak — purchase (order received)", "uallak — GA4 purchase", "uallak — purchase record"])
+        self.assertTrue(all(e["action"] == "create" for e in plan["entities"]))
+        self.assertEqual({t["name"]: t["kind"] for t in plan["purchase"]["existing"]},
+                         {"Purchase": "ads_conversion", "Google Ads - checkout": "ads_conversion",
+                          "GA4 - add_to_cart": "ga4_shop", "GA4 - begin_checkout": "ga4_shop"})
+        self.assertEqual(writes(self.api), [])
+
+    def test_with_their_ga4_purchase_tag_we_add_only_our_record(self):
+        self.container(*SHIN_SEKAI, GA4_PURCHASE)
+        plan = self.plan()
+        self.assertEqual(plan["purchase"]["mode"], "record_only")
+        names = [e["name"] for e in plan["entities"]]
+        self.assertNotIn("uallak — GA4 purchase", names)
+        self.assertEqual(names[-2:], ["uallak — purchase (order received)", "uallak — purchase record"])
+        result = self.website.configure_lead_conversion(27, GA4, expected_plan=plan, via="card")
+        self.assertTrue(result["success"], result)
+        self.assertEqual((result["purchase_mode"], result["purchase_verified"], result["purchase_record_verified"]),
+                         ("record_only", True, True))
+        ours = [t for t in self.api.published["tag"] if t["name"].startswith("uallak — ")]
+        self.assertEqual([(t["name"], t["type"]) for t in ours], [("uallak — purchase record", "html")])
+        self.assertIn("/api/store/purchase/", self.gtm._beacon_html(ours[0]))
+        # Exactly one GA4 purchase tag in the container: theirs
+        self.assertEqual([t["name"] for t in self.api.published["tag"] if t["type"] == "gaawe"
+                          and self.gtm._params(t).get("eventName") == "purchase"], ["GA4 - purchase"])
+        self.assertEqual([t["type"] for t in self.api.published["tag"] if t["type"] == "awct"], ["awct", "awct"])
+        self.foreign_untouched()
+        d = self.rows[-1]["details"]
+        self.assertEqual(d["purchase_mode"], "record_only")
+        self.assertIn("GA4 - purchase", d["existing_purchase_tags_untouched"])
+        # Now live through OUR set — a second run adds nothing (idempotent)
+        self.assertIn("store_sales", self.website.get_conversion_tracking_status(27)["live_types"])
+        self.assertEqual(self.website.plan_lead_conversion(27, GA4)["reason"], "already_live")
+        # The done line says the record, never "with where the buyer came from"
+        line = aa._conversion_done(result, "en")
+        self.assertIn("Our order record is live", line)
+        self.assertNotIn("where the buyer came from", line)
+
+    def test_without_their_ga4_purchase_the_full_set_publishes_beside_their_tags(self):
+        self.container(*SHIN_SEKAI)
+        result = self.publish()
+        self.assertEqual((result["purchase_mode"], result["purchase_verified"]), ("ga4", True))
+        self.assertIn("uallak — GA4 purchase", [t["name"] for t in self.api.published["tag"]])
+        self.foreign_untouched()
+
+    def test_a_paused_ga4_purchase_tag_does_not_count(self):
+        self.container(*SHIN_SEKAI, {**GA4_PURCHASE, "paused": True})
+        self.assertEqual(self.plan()["purchase"]["mode"], "ga4")
+
+    def test_our_own_ga4_purchase_tag_is_kept_never_duplicated(self):
+        self.container(*SHIN_SEKAI, GA4_PURCHASE)
+        self.assertTrue(self.gtm.purchase_ga4_tag_wanted(
+            {"tag": [GA4_PURCHASE, {"name": "uallak — GA4 purchase", "type": "gaawe"}]}))
+
+    def test_undo_after_a_record_only_publish_removes_only_ours(self):
+        self.container(*SHIN_SEKAI, GA4_PURCHASE)
+        self.publish()
+        plan = self.website.plan_revert_conversion(27)["plan"]
+        self.assertEqual(plan["method"], "republish")
+        self.assertTrue(all(e["name"].startswith("uallak — ") for e in plan["remove"]))
+        self.assertTrue(self.website.revert_conversion(27, expected_plan=plan, via="card")["success"])
+        self.assertEqual(self.api.published["tag"], self.api.versions["11"]["tag"])
+
+    def test_unfinished_google_tags_are_flagged_never_touched(self):
+        self.container(*SHIN_SEKAI)
+        plan = self.plan()
+        self.assertEqual([(t["name"], t["ids"]) for t in plan["needs_review"]],
+                         [("Google Analytics G-XXXXXXX", ["G-XXXXXXX"]),
+                          ("Google Analytics G-20240613", ["G-20240613"])])
+        self.assertTrue(all(not e["name"].startswith("Google") for e in plan["entities"]))
+        review = self.gtm.tags_needing_review
+        self.assertEqual(review({"tag": [_tag("1", "GA4 config", "googtag",
+                                              parameter=[{"key": "tagId", "value": "G-ABC1234XYZ"}])]}), [])
+        self.assertEqual(review({"tag": [_tag("2", "GA4 event", "gaawe",
+                                              parameter=[{"key": "measurementIdOverride", "value": "{{GA4 ID}}"}])]}), [])
+        self.assertEqual(review({"tag": [{"name": "uallak — GA4 generate_lead", "type": "gaawe",
+                                          "parameter": [{"key": "measurementIdOverride", "value": "G-XXXXXXX"}]}]}), [])
+
+    def test_the_card_names_what_is_kept_added_and_flagged_in_every_language(self):
+        self.container(*SHIN_SEKAI, GA4_PURCHASE)
+        texts = aa._plan_what({"plan": self.plan()})
+        for lang, text in texts.items():
+            with self.subTest(lang=lang):
+                for part in ("Purchase", "Google Ads - checkout", "GA4 - add_to_cart", "GA4 - purchase",
+                             "uallak — purchase record", "uallak — purchase (order received)",
+                             "Google Analytics G-XXXXXXX", "Google Analytics G-20240613"):
+                    self.assertIn(part, text)
+                self.assertNotIn("uallak — GA4 purchase", text)
+                self.assertIn(aa._pick(aa._PLAN_TXT["record_only"], lang), text)
+                if lang != "he":
+                    self.assertIsNone(HEBREW.search(text), text)
+
+
 from test_agent_actions import ActionTestCase  # noqa: E402
 
 

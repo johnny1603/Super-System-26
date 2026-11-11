@@ -7476,9 +7476,11 @@ def admin_control_room_configure_conversion(client_id: int, req: AdminConfigureC
 @app.get("/api/admin/gtm/history/{client_id}")
 def admin_gtm_history(client_id: int, request: Request):
     _require_admin(request)
-    from agents.website_agent import gtm_history, gtm_rollback_point
+    from agents.website_agent import gtm_history, gtm_live_review, gtm_rollback_point
     return {"success": True, "data": {"history": gtm_history(client_id),
-                                      "rollback_point": gtm_rollback_point(client_id)}}
+                                      "rollback_point": gtm_rollback_point(client_id),
+                                      # one live read: existing store tags + tags needing review
+                                      "live_review": gtm_live_review(client_id)}}
 
 @app.get("/api/admin/gtm/overview")
 def admin_gtm_overview(request: Request):

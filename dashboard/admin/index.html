@@ -4002,9 +4002,15 @@ async function crConfigureConversion(clientId, ev) {
   const lines = (plan.entities || []).map(x => `  ${x.action} · ${x.kind} · ${x.name}`).join('\n');
   const skipped = (plan.skipped || []).map(s => `  ${s.type}: ${(s.tags || []).join(', ')}`).join('\n');
   const rb = plan.rollback_point || {};
+  const pur = plan.purchase || {};
+  const kept = (pur.existing || []).map(t => `  ${t.name} (${t.kind})`).join('\n');
+  const review = (plan.needs_review || []).map(t => `  ${t.name} [${(t.ids || []).join(', ')}]`).join('\n');
+  const extra = (kept ? `\n\nתגי רכישה קיימים — לא נוגעים:\n${kept}` : '')
+              + (pur.mode === 'record_only' ? '\nמצב: רישום הזמנות בלבד (אין GA4 purchase שני)' : '')
+              + (review ? `\n\nלא נוצר ע״י המערכת — לבדיקה:\n${review}` : '');
   if (!confirm(`לפרסם ב-GTM של הלקוח?\nקונטיינר: ${box.name || '?'} (${box.public_id || '?'}) · חשבון ${box.account || '?'}`
                + `\nסביבת עבודה: ${(plan.workspace || {}).name || ''}\nGA4: ${plan.ga4_measurement_id || ''}`
-               + `\n\n${lines}` + (skipped ? `\n\nדילוג (כבר פעיל):\n${skipped}` : '')
+               + `\n\n${lines}` + (skipped ? `\n\nדילוג (כבר פעיל):\n${skipped}` : '') + extra
                + `\n\nנקודת חזרה: ${rb.version_id ? rb.name + ' #' + rb.version_id : 'אין גרסה פעילה'}`
                + '\n(יירשם כפרסום שעקף את כרטיס הלקוח)')) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">מגדיר ומפרסם ב-GTM…</div>';

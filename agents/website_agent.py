@@ -1406,9 +1406,10 @@ def _skipped_because(live: dict, skipped: list, status: dict) -> list:
         elif kind in gtm.CLICK_CONVERSIONS:
             names = [t.get("tag_name") for t in (status.get("click_event_tags") or {}).get(kind) or []]
         else:
-            names = [t.get("name") for t in live.get("tag") or [] if t.get("type") == "gaawe"
-                     and any(p.get("key") == "eventName" and p.get("value") == gtm.PURCHASE_EVENT
-                             for p in t.get("parameter") or [])]
+            # store_sales is "live" only through OUR set (gtm.purchase_live) —
+            # someone else's purchase tag never skips it
+            names = [t.get("name") for t in live.get("tag") or []
+                     if t.get("name") in (gtm.PURCHASE["tag"], gtm.PURCHASE_BEACON["tag"])]
         out.append({"type": kind, "tags": [str(n) for n in names if n][:10]})
     return out
 
@@ -1434,9 +1435,13 @@ def _build_plan(client_id: int, ctx: dict) -> dict:
     rt, path, pending = ctx["refresh_token"], ctx["container_path"], ctx["pending"]
     live = gtm.get_live_version(rt, path)
     record_url = purchase_record_url(client_id) if "store_sales" in pending else ""
+    # Store sales next to someone else's GA4 purchase tag: our set (variables,
+    # trigger, record tag) is added, their tags are left untouched, and NO
+    # second GA4 purchase tag is added (it would double every order)
+    ga4_purchase = gtm.purchase_ga4_tag_wanted(live)
     entities = gtm.plan_entities(live, pending, ctx["ga4"],
                                  (ctx.get("endpoint") or {}).get("slug") or gtm.DEFAULT_ORDER_RECEIVED_ENDPOINT,
-                                 record_url)
+                                 record_url, ga4_purchase=ga4_purchase)
     foreign = [f"{e['kind']}: {e['name']}" for e in entities
                if e["kind"] != "built_in_variable" and not gtm.is_ours(e["name"])]
     leftover = gtm.find_named(gtm.list_workspaces(rt, path), gtm.WORKSPACE_NAME)
@@ -1450,7 +1455,12 @@ def _build_plan(client_id: int, ctx: dict) -> dict:
             "skipped": _skipped_because(live, [t for t in ctx["wanted"] if t not in pending], ctx["status"]),
             "entities": entities, "version_name": gtm.VERSION_NAME,
             "rollback_point": {"version_id": str(live.get("containerVersionId") or ""),
-                               "name": str(live.get("name") or "")}}
+                               "name": str(live.get("name") or "")},
+            # Read only, shown, never touched (docs/GTM-SAFETY.md §6)
+            "needs_review": gtm.tags_needing_review(live)[:10]}
+    if "store_sales" in pending:
+        plan["purchase"] = {"ga4_tag": ga4_purchase, "mode": "ga4" if ga4_purchase else "record_only",
+                            "existing": gtm.existing_purchase_tags(live)[:20]}
     plan["signature"] = _plan_signature(plan)
     return {"plan": plan, "foreign": foreign, "live": live}
 
@@ -1536,6 +1546,8 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     if built["foreign"]:
         return _foreign_refusal(client_id, built["foreign"], "publish")
     plan = built["plan"]
+    # The plan decides: our own GA4 purchase tag, or record only next to theirs
+    purchase_mode = (plan.get("purchase") or {}).get("mode", "ga4")
     if expected_plan is not None and (expected_plan or {}).get("signature") != plan["signature"]:
         return {"success": False, "reason": "gtm_plan_changed", "plan": plan,
                 "errors": ["the container changed since the plan was approved — nothing was written"]}
@@ -1559,11 +1571,13 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
                                               lambda: gtm.ensure_purchase_trigger(refresh_token, workspace))
         if trigger_outcome == "created":
             created.append(trigger.get("path", ""))
-        tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
-                                      lambda: gtm.ensure_purchase_tag(refresh_token, workspace, ga4_measurement_id,
-                                                                      trigger["triggerId"]))
-        if tag_outcome == "created":
-            created.append(tag.get("path", ""))
+        tag, tag_outcome = None, "skipped_existing_ga4_purchase"
+        if purchase_mode == "ga4":
+            tag, tag_outcome = timed_step(AGENT_NAME, "gtm_ensure_tag",
+                                          lambda: gtm.ensure_purchase_tag(refresh_token, workspace, ga4_measurement_id,
+                                                                          trigger["triggerId"]))
+            if tag_outcome == "created":
+                created.append(tag.get("path", ""))
         # Our own record of the order (core/store_purchases): same trigger,
         # order number / total / currency only, to our endpoint
         record, record_outcome = timed_step(AGENT_NAME, "gtm_ensure_purchase_record",
@@ -1572,7 +1586,9 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
                                                 trigger["triggerId"]))
         if record_outcome == "created":
             created.append(record.get("path", ""))
-        return {"trigger": trigger, "tag": tag, "trigger_outcome": trigger_outcome, "tag_outcome": tag_outcome,
+        # record_only: OUR tag for this type is the record tag (it sends only to our endpoint)
+        return {"trigger": trigger, "tag": tag or record, "trigger_outcome": trigger_outcome,
+                "tag_outcome": tag_outcome,
                 "record_outcome": record_outcome,
                 "variables": {name: outcome for name, (_v, outcome) in variables.items()}}
 
@@ -1659,7 +1675,9 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
 
     trigger, tag, published = done["trigger"], done["tag"], done["published"]
     version = (published.get("containerVersion") or {})
-    events = {"form_submit": "generate_lead", "store_sales": gtm.PURCHASE_EVENT,
+    events = {"form_submit": "generate_lead",
+              # record_only: no GA4 event from us — their GA4 purchase tag already sends one
+              "store_sales": gtm.PURCHASE_EVENT if purchase_mode == "ga4" else "purchase_record",
               **{k: v["event"] for k, v in gtm.CLICK_CONVERSIONS.items()}}
     # The purchase path is VERIFIED after publishing: read back the live
     # version and check every piece is there (gtm.purchase_live). Not proven
@@ -1686,6 +1704,9 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
                    "gtm_objects": done["outcomes"], "retried": done is not first,
                    **({"purchase_verified": purchase_check["live"],
                        "purchase_record_verified": record_check["live"],
+                       "purchase_mode": purchase_mode,
+                       "existing_purchase_tags_untouched": [t["name"] for t in
+                                                            (plan.get("purchase") or {}).get("existing") or []],
                        "order_received_endpoint": endpoint.get("slug"),
                        "endpoint_source": endpoint.get("source")} if purchase_check is not None else {}),
                    # The publish record + rollback point (revert_conversion,
@@ -1715,7 +1736,8 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             "tag_names": [v["tag"].get("name", "") for v in done["per_type"].values()],
             "purchase_verified": purchase_check["live"] if purchase_check is not None else None,
             "purchase_record_verified": record_check["live"] if record_check is not None else None,
-            "note": (f"Now firing GA4 {[events[t] for t in pending]}. Remaining manual "
+            "purchase_mode": purchase_mode if "store_sales" in pending else None,
+            "note": (f"Now firing {[events[t] for t in pending]}. Remaining manual "
                      "platform steps: mark them as key events in GA4 and import them as "
                      "conversion actions in Google Ads (no public API for either from our scopes).")}
 
@@ -1910,6 +1932,26 @@ def gtm_history(client_id: int, limit: int = 30) -> list:
                                  for e in (d.get("entities") or d.get("removed") or [])
                                  if isinstance(e, dict)][:40]})
     return out
+
+
+def gtm_live_review(client_id: int) -> dict:
+    """Admin, READ-ONLY: what is live now that is NOT ours — existing store
+    purchase tags (left untouched) and tags that look unfinished (placeholder
+    or date-like G- ids: "not created by the platform / needs review").
+    Every entity this system writes is named "uallak — ...", so nothing
+    listed here was made by us."""
+    from core import gtm_service as gtm
+    conn = _gtm_connection(client_id)
+    if not conn.get("access_token"):
+        return {"connected": False}
+    try:
+        live = gtm.get_live_version(conn["access_token"], conn["account_id"])
+    except Exception as e:
+        return {"connected": True, "error": type(e).__name__}
+    return {"connected": True, "version_id": str(live.get("containerVersionId") or ""),
+            "version_name": str(live.get("name") or ""),
+            "ours": gtm.ours_in(live), "existing_purchase_tags": gtm.existing_purchase_tags(live),
+            "needs_review": gtm.tags_needing_review(live)}
 
 
 def gtm_rollback_point(client_id: int) -> dict:

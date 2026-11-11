@@ -153,7 +153,78 @@ busy workspace. This block adds one more: **nothing not named "uallak — " is t
 - The client sees one calm line ("this would also touch items we didn't create — I
   stopped, nothing changed, the team was told"), never the entity names.
 
+## 6. Store sales next to existing purchase tags (follow-up, 2026-11-11)
+
+Case: Shin Sekai `GTM-NZRNDQN` already has purchase tags that are not ours. They include
+"Purchase" (Google Ads Conversion Tracking), "Google Ads - checkout", and GA4
+add-to-cart / checkout tags on gtm4wp triggers.
+
+**What "live" means for store sales.** `gtm.purchase_live` checks OUR trigger, found by
+name, plus our variables and a tag on that trigger. Someone else's purchase tag never
+makes store sales "live", so it never skips our set. This was already true before this
+change. `tests/test_gtm_safety.py` `test_old_purchase_tags_never_skip_store_sales` runs
+the real status check against such a container to prove it. The store_sales skip reason
+in the plan now names only our own tags.
+
+**What we add.** All names start with "uallak — ":
+- the four variables;
+- the trigger "uallak — purchase (order received)";
+- the tag "uallak — purchase record", which posts order number / total / currency only to
+  our `/api/store/purchase/` endpoint;
+- "uallak — GA4 purchase", **only if** no unpaused GA4 `purchase` tag of someone else's
+  is live (`gtm.purchase_ga4_tag_wanted`). If one is live, the plan is `record_only`:
+  no second GA4 purchase, so no double counting in GA4 or in an Ads import.
+  - We never create a Google Ads conversion tag.
+  - A paused tag of theirs does not count.
+  - If our own GA4 purchase tag is already there, it is kept and reused, never
+    duplicated.
+
+**Live check in record_only mode.** Our trigger, our variables, and our record tag on
+the trigger. Their GA4 tag carries the GA4 event.
+
+**What the preview shows** (`plan.purchase`):
+- `existing`: the purchase tags found and left untouched:
+  - `ga4_purchase`;
+  - `ga4_shop`: add_to_cart, begin_checkout, …;
+  - `ads_conversion`: type `awct`;
+  - `other`: anything named like purchase / checkout / order / conversion.
+- `mode`: `ga4` or `record_only`.
+- The exact entities to add.
+
+The card says all of this in 5 languages. The done line in record_only mode says "our
+order record is live, your existing purchase tags stay as they are". It never claims we
+record where the buyer came from.
+
+**Never touched:** any entity not named "uallak — ". The guards of §4 enforce this:
+`ensure_entity`, and the `getStatus` check before every publish. Rollback (§3) is
+unchanged.
+
+**Flagged, never deleted** (`gtm.tags_needing_review`): a Google / GA4 tag that is not
+ours whose id looks like a placeholder (`G-XXXXXXX`) or a date (`G-20240613`). It is
+shown as "not created by the platform / needs review":
+- in the card;
+- in the Control Room confirm dialog;
+- in `/admin/connections/` → History. The history endpoint now includes `live_review`:
+  ours, the existing purchase tags, and the tags needing review.
+
+**Could our code have created "Google Analytics G-XXXXXXX" or "Google Analytics
+G-20240613"? No.**
+- Since its first commit (caf0da0), `gtm_service` has named every entity "uallak — …".
+- No commit in the history ever wrote a `googtag` / `gaawc` tag, or a name starting
+  with "Google Analytics" (`git log -S`).
+- The only `G-XXXXXXX` strings in the repo are usage hints in a script, a doc and a
+  validator message. None of them is a tag body.
+
 ## 5. Not tested against a real Tag Manager container
+
+- **§6 assumptions:**
+  - that Shin Sekai's tags have the types assumed here: `awct` for Ads conversions,
+    `gaawe` with `eventName` for GA4 events, `googtag` with `tagId` for the Google tag;
+  - that their purchase tags really fire on gtm4wp custom events;
+  - that their GA4 purchase tag, if there is one, is unpaused.
+
+  The preview lists exactly what it finds, so the first dry run on the real container
+  shows whether these hold.
 
 Everything above was tested against the in-memory fake only. These assumptions were not
 checked against a real container:

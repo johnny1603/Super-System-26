@@ -345,6 +345,21 @@ _PLAN_TXT = {
                     "Nous n'ajoutons pas {type} — votre balise existante le mesure déjà : {tags}",
                     "لن نضيف قياس {type} — الوسم الحالي لديكم يقيسه بالفعل: {tags}",
                     "Не добавляем {type} — ваш существующий тег уже это измеряет: {tags}"),
+    "existing_kept": _txt("תגי רכישה שכבר יש לכם ונשארים בדיוק כמו שהם (לא נוגעים בהם): {names}",
+                          "Purchase tags you already have, left exactly as they are (we don't touch them): {names}",
+                          "Balises d'achat que vous avez déjà, laissées telles quelles (nous n'y touchons pas) : {names}",
+                          "وسوم الشراء الموجودة لديكم، تبقى كما هي تمامًا (لا نلمسها): {names}",
+                          "Ваши существующие теги покупок остаются как есть (мы их не трогаем): {names}"),
+    "record_only": _txt("כבר יש לכם תג רכישה של Google Analytics, אז לא נוסיף תג רכישה שני — כדי שאף הזמנה לא תיספר פעמיים. התג שלנו שולח את ההזמנה רק לרישום ההזמנות שלכם אצלנו.",
+                        "You already have a Google Analytics purchase tag, so we won't add a second one — no order is counted twice. Our tag sends the order only to your order record with us.",
+                        "Vous avez déjà une balise d'achat Google Analytics : nous n'en ajoutons pas une seconde — aucune commande n'est comptée deux fois. Notre balise envoie la commande uniquement à votre registre de commandes chez nous.",
+                        "لديكم بالفعل وسم شراء من Google Analytics، لذلك لن نضيف وسمًا ثانيًا — كي لا يُحتسب أي طلب مرتين. وسمنا يرسل الطلب فقط إلى سجل الطلبات لديكم عندنا.",
+                        "У вас уже есть тег покупки Google Analytics, поэтому второй мы не добавляем — ни один заказ не посчитается дважды. Наш тег отправляет заказ только в ваш журнал заказов у нас."),
+    "needs_review": _txt("לא אנחנו יצרנו את התגים האלה, ונראה שהם לא הושלמו (מזהה זמני) — כדאי לבדוק אותם. לא נוגעים בהם: {names}",
+                         "We didn't create these tags and they look unfinished (a placeholder ID) — worth a review. We don't touch them: {names}",
+                         "Nous n'avons pas créé ces balises et elles semblent inachevées (identifiant provisoire) — à vérifier. Nous n'y touchons pas : {names}",
+                         "لم ننشئ هذه الوسوم ويبدو أنها غير مكتملة (معرّف مؤقت) — تستحق المراجعة. لا نلمسها: {names}",
+                         "Эти теги создали не мы, и они выглядят незаконченными (временный ID) — стоит проверить. Мы их не трогаем: {names}"),
     "publish": _txt("אחר כך נפרסם גרסה חדשה בשם \"{version}\".", "Then we publish a new version named \"{version}\".",
                     "Puis nous publions une nouvelle version nommée « {version} ».",
                     "ثم ننشر نسخة جديدة باسم \"{version}\".", "Затем публикуем новую версию «{version}»."),
@@ -426,6 +441,15 @@ def _plan_lines(plan: dict, lang: str) -> str:
         if skip.get("type") in _TYPE_LABEL:
             lines.append("• " + t("skipped").replace("{type}", _pick(_TYPE_LABEL[skip["type"]], lang))
                          .replace("{tags}", ", ".join(skip.get("tags") or []) or "—"))
+    purchase = plan.get("purchase") or {}
+    existing = [str(x.get("name")) for x in purchase.get("existing") or [] if isinstance(x, dict) and x.get("name")]
+    if existing:
+        lines.append("• " + t("existing_kept").replace("{names}", ", ".join(existing)))
+    if purchase.get("mode") == "record_only":
+        lines.append("• " + t("record_only"))
+    review = [str(x.get("name")) for x in plan.get("needs_review") or [] if isinstance(x, dict) and x.get("name")]
+    if review:
+        lines.append("• " + t("needs_review").replace("{names}", ", ".join(review)))
     lines.append(t("publish").replace("{version}", str(plan.get("version_name") or "")))
     rollback = _version_label(plan.get("rollback_point"))
     lines.append(t("rollback").replace("{rollback}", rollback) if rollback else t("rollback_none"))
@@ -598,6 +622,14 @@ _PURCHASE_DONE = _txt(
     "Le suivi des achats est actif ✓ Chaque commande arrivant sur la page de confirmation est enregistrée une fois, avec sa source. Les ventes restent comptées depuis la boutique.",
     "قياس المشتريات فعّال ✓ كل طلب يصل إلى صفحة تأكيد الطلب يُسجَّل مرة واحدة مع مصدره. المبيعات نفسها تُحتسب من المتجر.",
     "Учёт покупок включён ✓ Каждый заказ, дошедший до страницы подтверждения, записывается один раз вместе с источником. Сами продажи по-прежнему считаются из магазина.")
+# Next to the client's own GA4 purchase tag (docs/GTM-SAFETY.md §6): we added
+# only our order record; WHERE an order came from stays in their own tags
+_PURCHASE_RECORD_DONE = _txt(
+    "רישום ההזמנות שלנו פעיל ✓ מעכשיו כל הזמנה שמגיעה לדף 'ההזמנה התקבלה' נרשמת אצלנו פעם אחת. תגי הרכישה שכבר היו לכם נשארו כמו שהם וממשיכים לדווח כרגיל, והמכירות עצמן ממשיכות להיספר מהחנות.",
+    "Our order record is live ✓ Every order that reaches the order-received page is now recorded with us once. The purchase tags you already had stay as they were and keep reporting as before; sales themselves are still counted from the store.",
+    "Notre registre des commandes est actif ✓ Chaque commande arrivant sur la page de confirmation est désormais enregistrée une fois chez nous. Vos balises d'achat existantes restent inchangées et continuent de remonter les données ; les ventes restent comptées depuis la boutique.",
+    "سجل الطلبات لدينا فعّال ✓ كل طلب يصل إلى صفحة تأكيد الطلب يُسجَّل لدينا مرة واحدة. وسوم الشراء الموجودة لديكم بقيت كما هي وتواصل الإبلاغ كالمعتاد، والمبيعات نفسها تُحتسب من المتجر.",
+    "Наш журнал заказов включён ✓ Каждый заказ, дошедший до страницы подтверждения, теперь записывается у нас один раз. Ваши прежние теги покупок не изменились и продолжают работать; сами продажи по-прежнему считаются из магазина.")
 _PURCHASE_UNVERIFIED = _txt(
     "פרסמנו את מדידת הרכישות, אבל הבדיקה שעשינו מיד אחרי הפרסום לא מצאה את כל החלקים במקום — אז אני לא אומר שהיא פעילה. אפשר לבקש ממני לבדוק שוב בעוד כמה דקות.",
     "We published purchase tracking, but the check right after publishing didn't find every piece in place — so I'm not calling it live. Ask me to check again in a few minutes.",
@@ -614,7 +646,8 @@ def _conversion_done(result: dict, lang: str) -> str:
         lines.append(_pick(ACTIONS["configure_conversion"]["done"], lang))
     if "store_sales" in types:
         verified = (result or {}).get("purchase_verified")
-        lines.append(_pick(_PURCHASE_UNVERIFIED if verified is False else _PURCHASE_DONE, lang))
+        done = _PURCHASE_RECORD_DONE if (result or {}).get("purchase_mode") == "record_only" else _PURCHASE_DONE
+        lines.append(_pick(_PURCHASE_UNVERIFIED if verified is False else done, lang))
     text = "\n".join(lines)
     if result.get("tag_name") and result.get("live_version"):
         text += f"\nTag Manager: {result['tag_name']} · {result['live_version']}"

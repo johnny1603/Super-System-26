@@ -229,6 +229,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   entities in workspace "uallak tracking removal" (refused if another entity depends on ours).
   Admin read-only: `/api/admin/gtm/overview`, `/api/admin/gtm/history/{id}`, shown on
   /admin/connections/. No migration (client_activity rows only).
+  Store sales next to someone else's purchase tags (§6): never skipped by them; with an
+  unpaused foreign GA4 `purchase` tag live the plan is `record_only` (variables + trigger +
+  "uallak — purchase record" only, NO second GA4 purchase); their tags are listed in the
+  preview as kept; placeholder/date-like G- ids are flagged "needs review" (`tags_needing_review`).
 - `core/video_limits.py` — THE Drive → YouTube upload size limit (`VIDEO_UPLOAD_MAX_MB`, 512)
   and chunk size, read by client_state, agent_actions, verification_demo and
   `youtube_content_agent.publish` (the root guard). Uploads STREAM: `drive_service.read_range`
