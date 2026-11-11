@@ -144,9 +144,22 @@ def ensure_client_media_root(client_id: int) -> str:
         return where["root"]
 
     from agents.client_agent import get_client
+    from core import drive_mirror
     client = get_client(client_id)
-    folder_name = f"client-{client_id} — {(client.get('name') or 'unnamed').strip()}"
-    root = drive.ensure_folder(folder_name, _media_root_id())
+    media_root = _media_root_id()
+    # FIND with the very rule every reader uses (drive_mirror.shared_client_root:
+    # the recorded folder if it sits in the current root, else the oldest
+    # "client-{id} — " folder there) and create only when there is none.
+    # Before 2026-11-11 this looked up the EXACT name "client-{id} — {name}":
+    # after a rename (of the client, or of the folder in Drive) it created a
+    # SECOND folder, wrote into it, while the Media tab and the agents on other
+    # instances listed the first one — a file dropped into either folder was
+    # missing from one view (docs/DRIVE-PULL.md §Why a dropped file hid).
+    root = drive_mirror.shared_client_root(client_id)
+    if not root:
+        folder_name = f"client-{client_id} — {(client.get('name') or 'unnamed').strip()}"
+        root = drive.ensure_folder(folder_name, media_root)
+    drive_mirror.remember_root(client_id, root)
     _folder_cache[client_id] = {"root": root, "paths": {}, "kind": drive_storage.SHARED}
 
     # First-touch side effects, keyed off an activity row so they run once

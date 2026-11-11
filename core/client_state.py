@@ -381,6 +381,14 @@ def _media_folder(client_id: int, fresh: bool = False) -> dict:
     images = sorted((f for f in files if f.get("kind") == "image"),
                     key=lambda f: f.get("modified_time") or "", reverse=True)
     try:
+        # The newest across the WHOLE tree (videos/tiktok/… included) — the
+        # listing above reaches one level only (2026-11-11, docs/DRIVE-PULL.md)
+        videos = drive_mirror.newest(client_id, "video", MEDIA_VIDEOS_LISTED, refresh=fresh)
+        images = drive_mirror.newest(client_id, "image", MEDIA_IMAGES_LISTED, refresh=fresh)
+    except Exception as e:
+        _warn(f"client {client_id}: whole-tree media listing failed, one level used: {type(e).__name__}",
+              client_id=client_id)
+    try:
         from core import agent_actions
         sent = agent_actions.tiktok_sent_files(client_id)
     except Exception as e:
@@ -404,6 +412,9 @@ def _media_folder(client_id: int, fresh: bool = False) -> dict:
                        "modified": str(i.get("modified_time") or "")[:10]}
                       for i in images[:MEDIA_IMAGES_LISTED]],
            "upload_max_mb": VIDEO_UPLOAD_MAX_MB,
+           # These lists are the NEWEST only; a file the client names that is not
+           # here is found by name with the find_media_file card — never "I can't see it"
+           "listed": "newest_only",
            "complete": len(folders) <= MEDIA_SUBFOLDERS_READ and not root.get("next_page_token")}
     try:
         from agents.youtube_content_agent import DAILY_UPLOADS_PER_CLIENT, uploads_today

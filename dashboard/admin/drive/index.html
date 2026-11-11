@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — משיכה מ-Drive</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* Pull from Drive (core/drive_pull, docs/DRIVE-PULL.md) + the client folder
+   diagnostic (core/drive_mirror.diagnose). Admin session only. Files are
+   copied INSIDE Drive (files.copy) — nothing passes through this page. */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
+  --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.muted { color:var(--gray); font-size:13px; }
+.warn { color:var(--yellow); }
+.ok { color:var(--green); }
+.calm { background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px; margin-top:10px; line-height:1.6; }
+input[type=text], select { font-family:inherit; font-size:14px; background:var(--panel-2); color:var(--white);
+  border:1px solid var(--border); border-radius:10px; padding:7px 10px; margin-top:3px; }
+input[dir=ltr] { text-align:left; }
+button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:6px 12px; cursor:pointer; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#0D0D0D; font-weight:700; }
+button:disabled { opacity:.5; cursor:default; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.grow { flex:1; min-width:200px; }
+code { font-family:ui-monospace,monospace; font-size:12px; direction:ltr; unicode-bidi:embed; word-break:break-all; }
+.list { margin-top:10px; max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.item { display:flex; gap:10px; align-items:center; padding:7px 10px; border-bottom:1px solid var(--border); font-size:13px; }
+.item:last-child { border-bottom:0; }
+.item .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+.bar { height:8px; background:var(--panel-2); border-radius:100px; overflow:hidden; margin-top:8px; }
+.bar > div { height:100%; background:var(--accent); width:0; transition:width .3s; }
+ul.findings { margin:8px 18px 0 0; line-height:1.7; }
+table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+th, td { text-align:right; padding:4px 6px; border-bottom:1px solid var(--border); vertical-align:top; }
+.scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · משיכה מ-Drive</div>
+  <a href="/admin/">→ לניהול</a>
+</div>
+<div class="wrap">
+  <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+
+  <div class="card">
+    <h2>1. לשתף תיקייה אחת עם חשבון השירות</h2>
+    <div class="muted">ב-Drive: לחיצה ימנית על התיקייה ← שיתוף ← להוסיף את הכתובת הזו כ"צופה".</div>
+    <div class="row">
+      <code id="saEmail">…</code>
+      <button id="copyEmail">העתקה</button>
+      <span class="muted" id="copyMsg"></span>
+    </div>
+    <div class="calm warn">לשתף רק את התיקייה שרוצים למשוך ממנה — לא את כל ה-Drive. אפשר לבטל את השיתוף אחרי המשיכה.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. להדביק קישור לתיקייה (או לקובץ)</h2>
+    <div class="row">
+      <input type="text" dir="ltr" id="ref" class="grow" placeholder="https://drive.google.com/drive/folders/...">
+      <button id="browseBtn">הצג</button>
+    </div>
+    <div id="browseMsg"></div>
+    <div id="browseOut" style="display:none;">
+      <div class="row">
+        <strong id="srcName"></strong>
+        <label class="muted"><input type="checkbox" id="wholeFolder"> כל התיקייה (כולל תתי-תיקיות)</label>
+        <label class="muted"><input type="checkbox" id="selectAll"> לסמן הכול ברשימה</label>
+      </div>
+      <div class="list" id="items"></div>
+      <div class="row"><button id="moreBtn" style="display:none;">עוד…</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. לאיזה לקוח, ולאן</h2>
+    <div class="row">
+      <label class="muted">מספר לקוח <input type="text" dir="ltr" id="clientId" inputmode="numeric" style="width:100px;"></label>
+      <label class="muted">תיקיית יעד
+        <select id="target">
+          <option value="auto">לפי סוג הקובץ (וידאו / תמונות / מסמכים)</option>
+          <option value="videos">videos</option>
+          <option value="images">images</option>
+          <option value="documents">documents</option>
+        </select>
+      </label>
+      <button class="primary" id="startBtn">להעתיק</button>
+      <span class="muted" id="startMsg"></span>
+    </div>
+  </div>
+
+  <div class="card" id="jobCard" style="display:none;">
+    <h2>התקדמות</h2>
+    <div id="jobSummary" class="muted"></div>
+    <div class="bar"><div id="jobBar"></div></div>
+    <div class="list" id="jobFiles"></div>
+    <div id="usage" class="calm" style="display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>בדיקת תיקיית לקוח — מה Drive מחזיר מול מה שהמערכת מראה</h2>
+    <div class="muted">קריאה בלבד. משתמש במספר הלקוח שלמעלה.</div>
+    <div class="row"><button id="diagBtn">לבדוק</button><span class="muted" id="diagMsg"></span></div>
+    <div id="diagOut"></div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = id => document.getElementById(id);
+const mb = b => (b == null ? "" : (b / 1048576).toFixed(1) + " MB");
+const KIND = {folder: "תיקייה", video: "וידאו", image: "תמונה", document: "מסמך", audio: "שמע", shortcut: "קיצור דרך", other: "קובץ"};
+let SOURCE = null, NEXT = "", POLL = null;
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
+    : {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (res.status === 401) { $("authNote").style.display = "block"; throw new Error("auth"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("failed");
+  return data;
+}
+
+function clientId() { return parseInt($("clientId").value, 10) || 0; }
+
+async function info() {
+  try {
+    const d = (await api("/api/admin/drive-pull/info")).data || {};
+    $("saEmail").textContent = d.share_with || "—";
+  } catch (e) { $("saEmail").textContent = "—"; }
+}
+
+$("copyEmail").addEventListener("click", async () => {
+  const text = $("saEmail").textContent;
+  try { await navigator.clipboard.writeText(text); $("copyMsg").textContent = "הועתק ✓"; }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents($("saEmail"));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    $("copyMsg").textContent = "מסומן — Ctrl+C";
+  }
+});
+
+function itemHtml(i) {
+  const usable = i.kind !== "folder";
+  return `<label class="item">
+    <input type="checkbox" data-id="${esc(i.id)}" data-kind="${esc(i.kind === "shortcut" ? "file" : i.kind === "folder" ? "folder" : "file")}">
+    <span class="name">${esc(i.name)}</span>
+    <span class="muted">${esc(KIND[i.kind] || i.kind)}${i.kind === "shortcut" ? " (יועתק הקובץ המקורי)" : ""}</span>
+    <span class="muted">${usable ? esc(mb(i.size)) : ""}</span>
+  </label>`;
+}
+
+async function browse(more) {
+  const msg = $("browseMsg");
+  msg.innerHTML = '<div class="muted calm">טוען…</div>';
+  if (!more) { $("items").innerHTML = ""; $("browseOut").style.display = "none"; NEXT = ""; }
+  try {
+    const d = (await api("/api/admin/drive-pull/browse", {ref: $("ref").value, page_token: more ? NEXT : ""})).data || {};
+    if (d.not_shared || d.error) {
+      msg.innerHTML = `<div class="calm">${esc(d.text)}</div>`;
+      return;
+    }
+    msg.innerHTML = "";
+    SOURCE = d.source;
+    NEXT = d.next_page_token || "";
+    $("srcName").textContent = d.source.name || "";
+    $("wholeFolder").parentElement.style.display = d.source.kind === "folder" ? "" : "none";
+    $("items").insertAdjacentHTML("beforeend", (d.items || []).map(itemHtml).join("")
+      || '<div class="item muted">התיקייה ריקה.</div>');
+    $("moreBtn").style.display = NEXT ? "" : "none";
+    $("browseOut").style.display = "block";
+  } catch (e) {
+    if (e.message !== "auth") msg.innerHTML = '<div class="calm">Drive לא ענה כרגע. נסו שוב בעוד רגע.</div>';
+  }
+}
+$("browseBtn").addEventListener("click", () => browse(false));
+$("moreBtn").addEventListener("click", () => browse(true));
+$("selectAll").addEventListener("change", e => {
+  document.querySelectorAll("#items input[type=checkbox]").forEach(c => { c.checked = e.target.checked; });
+});
+
+function selections() {
+  if ($("wholeFolder").checked && SOURCE && SOURCE.kind === "folder") return [{id: SOURCE.id, kind: "folder"}];
+  if (SOURCE && SOURCE.kind !== "folder") return [{id: SOURCE.id, kind: "file"}];
+  return [...document.querySelectorAll("#items input[type=checkbox]:checked")]
+    .map(c => ({id: c.dataset.id, kind: c.dataset.kind}));
+}
+
+$("startBtn").addEventListener("click", async () => {
+  const msg = $("startMsg");
+  const cid = clientId();
+  const items = selections();
+  if (!cid) { msg.textContent = "חסר מספר לקוח."; return; }
+  if (!items.length) { msg.textContent = "לא נבחר אף קובץ."; return; }
+  $("startBtn").disabled = true;
+  msg.textContent = "מתחיל…";
+  try {
+    const r = await api("/api/admin/drive-pull/start", {client_id: cid, items, target: $("target").value});
+    if (!r.success) { msg.textContent = (r.data && r.data.text) || "לא התחיל."; $("startBtn").disabled = false; return; }
+    msg.textContent = "";
+    renderJob(r.data);
+    poll(cid);
+  } catch (e) {
+    $("startBtn").disabled = false;
+    if (e.message !== "auth") msg.textContent = "לא התחיל — לנסות שוב.";
+  }
+});
+
+function renderJob(job) {
+  if (!job || !job.id) return;
+  $("jobCard").style.display = "block";
+  const c = job.counts || {};
+  const done = (job.total || 0) - (c.pending || 0);
+  const active = job.status === "queued" || job.status === "running";
+  const head = active ? "מעתיק…" : job.status === "done" ? "הסתיים ✓" : "הסתיים — חלק מהקבצים לא הועתקו";
+  $("jobSummary").innerHTML = `${esc(head)} · ${done}/${job.total || 0} קבצים`
+    + (job.folders_left ? ` · עוד ${job.folders_left} תיקיות לסריקה` : "")
+    + (job.truncated ? ' · <span class="warn">יותר מ-500 קבצים — הועתקו 500 הראשונים, להריץ שוב לשאר</span>' : "")
+    + (job.folder_errors ? ` · <span class="warn">${job.folder_errors} תיקיות לא נקראו</span>` : "");
+  $("jobBar").style.width = (job.total ? Math.round(100 * done / job.total) : (active ? 5 : 100)) + "%";
+  $("jobFiles").innerHTML = (job.files || []).map(f => `<div class="item">
+      <span class="name">${esc(f.name)}</span>
+      <span class="muted">${esc(f.folder || "")}</span>
+      <span class="muted">${esc(mb(f.size))}</span>
+      <span class="${["copied", "already"].includes(f.status) ? "ok" : f.status === "pending" ? "muted" : "warn"}">${esc(f.label)}${f.status === "pending" && f.attempts ? ` (ניסיון ${f.attempts + 1})` : ""}</span>
+    </div>`).join("");
+  const u = job.usage;
+  if (u && u.gb != null) {
+    $("usage").style.display = "block";
+    $("usage").innerHTML = `נפח הלקוח ב-Shared Drive: <strong>${u.gb} GB</strong> מתוך סף ההתראה ${u.alert_gb} GB`
+      + (u.over ? ' — <span class="warn">מעל הסף (נשלחה התראה אחת)</span>' : ' <span class="ok">✓</span>')
+      + (u.complete === false ? ' <span class="muted">(ספירה חלקית)</span>' : "");
+  } else if (!active) {
+    $("usage").style.display = "block";
+    $("usage").textContent = "את הנפח לא הצלחתי למדוד עכשיו — הסריקה היומית תמדוד.";
+  } else {
+    $("usage").style.display = "none";
+  }
+  if (!active) { $("startBtn").disabled = false; stopPoll(); }
+}
+
+function stopPoll() { if (POLL) { clearTimeout(POLL); POLL = null; } window.__uallakBusy = 0; }
+function poll(cid) {
+  stopPoll();
+  window.__uallakBusy = 1;                       // warmup.js: don't reload mid-copy
+  const tick = async () => {
+    try {
+      const r = await api(`/api/admin/drive-pull/${cid}/step`, {});
+      renderJob(r.data);
+      if (r.data && (r.data.status === "queued" || r.data.status === "running")) POLL = setTimeout(tick, 3000);
+      else stopPoll();
+    } catch (e) { if (e.message !== "auth") POLL = setTimeout(tick, 8000); }
+  };
+  POLL = setTimeout(tick, 1500);
+}
+
+async function showLatest() {
+  const cid = clientId();
+  if (!cid) return;
+  try {
+    const d = (await api(`/api/admin/drive-pull/${cid}`)).data;
+    if (d && d.id) {
+      renderJob(d);
+      if (d.status === "queued" || d.status === "running") { $("startBtn").disabled = true; poll(cid); }
+    }
+  } catch (e) { /* nothing to show */ }
+}
+
+$("diagBtn").addEventListener("click", async () => {
+  const cid = clientId();
+  if (!cid) { $("diagMsg").textContent = "חסר מספר לקוח."; return; }
+  $("diagMsg").textContent = "בודק…";
+  $("diagOut").innerHTML = "";
+  try {
+    const d = (await api(`/api/admin/drive/diagnose/${cid}`)).data || {};
+    $("diagMsg").textContent = "";
+    const counts = Object.entries(d.raw_counts || {}).map(([k, v]) => `${esc(KIND[k] || k)}: ${v}`).join(" · ");
+    const folders = (d.folders_named_like_client || []).map(f => `<tr>
+        <td>${esc(f.name)}</td><td><code>${esc(f.id)}</code></td>
+        <td>${f.under_media_root ? '<span class="ok">בתיקיית המדיה</span>' : '<span class="warn">מחוץ לתיקיית המדיה</span>'}</td>
+        <td>${f.id === d.resolved_folder ? "← בשימוש" : ""}</td>
+        <td>${f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener" style="color:var(--accent)">פתיחה</a>` : ""}</td></tr>`).join("");
+    const files = (d.files || []).map(f => `<tr>
+        <td>${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}</td><td>${esc(f.folder || "/")}</td>
+        <td><code>${esc(f.parent_id)}</code></td>
+        <td>${f.in_media_tab_first_page ? "✓" : "—"}</td><td>${f.in_agent_list ? "✓" : "—"}</td></tr>`).join("");
+    $("diagOut").innerHTML = `
+      <ul class="findings">${(d.findings || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+      <div class="muted" style="margin-top:8px;">חשבון שירות: <code>${esc(d.service_account || "—")}</code> ·
+        מיקום: ${esc(d.location || "—")} · תיקייה בשימוש: <code>${esc(d.resolved_folder || "—")}</code>
+        ${d.resolved_link ? `<a href="${esc(d.resolved_link)}" target="_blank" rel="noopener" style="color:var(--accent)">פתיחה ב-Drive</a>` : ""}</div>
+      ${counts ? `<div class="muted" style="margin-top:6px;">Drive מחזיר: ${counts}${d.files_truncated ? " (נעצר ב-500)" : ""}
+        · לשונית המדיה: ${d.media_tab ? d.media_tab.root_page_items : "—"} פריטים בעמוד הראשון${d.media_tab && d.media_tab.cached ? " (שמור)" : ""}
+        · הסוכנים רואים: ${d.agent_view ? d.agent_view.videos : 0} סרטונים, ${d.agent_view ? d.agent_view.images : 0} תמונות</div>` : ""}
+      ${folders ? `<div class="scroll"><table><tr><th>תיקיות בשם הלקוח</th><th>id</th><th>איפה</th><th></th><th></th></tr>${folders}</table></div>` : ""}
+      ${files ? `<div class="scroll"><table><tr><th>קובץ</th><th>סוג</th><th>תת-תיקייה</th><th>parent</th><th>לשונית מדיה</th><th>סוכנים</th></tr>${files}</table></div>` : ""}`;
+  } catch (e) {
+    if (e.message !== "auth") $("diagMsg").textContent = "הבדיקה לא הצליחה — לנסות שוב.";
+  }
+});
+
+(function init() {
+  const q = new URLSearchParams(location.search);
+  if (q.get("client_id")) $("clientId").value = q.get("client_id").replace(/\D/g, "");
+  if (q.get("ref")) $("ref").value = q.get("ref");
+  $("clientId").addEventListener("change", showLatest);
+  info();
+  showLatest();
+})();
+</script>
+<script src="/assets/itzik-chat.js" defer></script>
+<script src="/assets/credits-widget.js" defer></script>
+<script src="/assets/frustration-widget.js" defer></script>
+<script src="/assets/warmup.js" async></script>
+</body>
+</html>

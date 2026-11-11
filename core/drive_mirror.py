@@ -22,8 +22,14 @@ Rules this module holds:
   stops paging at MAX_ITEMS_PER_FOLDER. Drive's default quota (12,000
   queries/min per project) is several orders of magnitude above what 50
   clients opening their Media tab can produce through this cache.
-- Nothing here ever reaches a chat prompt.
+- The Media tab's listing never reaches a chat prompt. The agents get
+  `newest()` (the newest videos/images across the WHOLE tree) and `find()`
+  (name search across the whole tree), both through client_state /
+  agent_actions — 2026-11-11, docs/DRIVE-PULL.md.
+- `diagnose()` (admin only) shows what Drive itself returns for a client next
+  to what the Media tab and the agents see.
 """
+import re
 import time
 from collections import OrderedDict
 
@@ -61,6 +67,7 @@ def forget(client_id: int):
     """Where the client's files live changed (core/drive_storage.forget)."""
     _root_cache.pop(client_id, None)
     _tree_cache.pop(client_id, None)
+    _folders_cache.pop(client_id, None)
     for key in [k for k in _list_cache if k[0] == client_id]:
         _list_cache.pop(key, None)
     for key in [k for k in _thumb_cache if k[0] == client_id]:
@@ -129,8 +136,18 @@ def shared_client_root(client_id: int) -> str:
         # client's own, and list_folder reports the Drive failure itself
         print(f"[{SERVICE_NAME}] client {client_id}: root resolve failed ({e}) — using the record")
         return hinted
-    _root_cache[client_id] = (time.time(), root)
+    if root:
+        # "No folder yet" is NOT cached: another instance may create it any
+        # moment, and a cached "" hid it here for ROOT_RESOLVE_SECONDS
+        _root_cache[client_id] = (time.time(), root)
     return root
+
+
+def remember_root(client_id: int, root: str):
+    """media_agent found/created the client's folder under the CURRENT root
+    with this rule; every reader in this process uses the same one."""
+    if root:
+        _root_cache[client_id] = (time.time(), root)
 
 
 def _tree(client_id: int, root: str) -> dict:
@@ -165,23 +182,37 @@ def _assert_in_client_tree(client_id: int, root: str, item_id: str):
 
 # ─── Listing ──────────────────────────────────────────────────────────────────
 
-def _shape(item: dict) -> dict:
-    is_folder = item.get("mimeType") == drive.FOLDER_MIME
-    mime = item.get("mimeType") or ""
-    kind = ("folder" if is_folder else "image" if mime.startswith("image/")
+def kind_of(mime: str) -> str:
+    mime = mime or ""
+    return ("folder" if mime == drive.FOLDER_MIME else "shortcut" if mime == drive.SHORTCUT_MIME
+            else "image" if mime.startswith("image/")
             else "video" if mime.startswith("video/")
             else "document" if ("document" in mime or "pdf" in mime or mime.startswith("text/")
                                 or "spreadsheet" in mime or "presentation" in mime)
             else "file")
+
+
+def _shape(item: dict) -> dict:
+    mime = item.get("mimeType") or ""
+    kind = kind_of(mime)
     from core import drive_download   # imports this module; resolved lazily
-    return {"id": item.get("id", ""), "name": item.get("name", ""), "kind": kind,
-            # UI hints only — the download endpoint re-checks everything
-            "download": "none" if is_folder else drive_download.download_kind(mime),
-            "previewable": drive_download.is_previewable(mime),
-            "mime_type": mime, "modified_time": item.get("modifiedTime", ""),
-            "size": int(item["size"]) if str(item.get("size") or "").isdigit() else None,
-            "thumbnail_link": item.get("thumbnailLink", ""),
-            "web_view_link": item.get("webViewLink", "")}
+    shaped = {"id": item.get("id", ""), "name": item.get("name", ""), "kind": kind,
+              # UI hints only — the download endpoint re-checks everything
+              "download": ("none" if kind == "folder" else "drive" if kind == "shortcut"
+                           else drive_download.download_kind(mime)),
+              "previewable": kind != "shortcut" and drive_download.is_previewable(mime),
+              "mime_type": mime, "modified_time": item.get("modifiedTime", ""),
+              "size": int(item["size"]) if str(item.get("size") or "").isdigit() else None,
+              "thumbnail_link": item.get("thumbnailLink", ""),
+              "web_view_link": item.get("webViewLink", "")}
+    if kind == "shortcut":
+        # A SHORTCUT is a pointer; the file itself lives outside the client's
+        # folder, so nothing can be uploaded or published from it. Drive makes
+        # one when a file you don't own is dragged into a Shared Drive folder.
+        details = item.get("shortcutDetails") or {}
+        shaped["target_id"] = details.get("targetId", "")
+        shaped["target_kind"] = kind_of(details.get("targetMimeType", ""))
+    return shaped
 
 
 @drive_storage.scoped
@@ -265,3 +296,268 @@ def thumbnail(client_id: int, file_id: str) -> tuple:
     while len(_thumb_cache) > THUMB_CACHE_ENTRIES:
         _thumb_cache.popitem(last=False)
     return content, content_type
+
+
+# ─── The whole tree: newest + find by name (the agents) ──────────────────────
+# Before 2026-11-11 the agents saw the root and its first 8 subfolders ONE
+# level deep, first page each: a file in videos/tiktok/ (where media_agent
+# itself saves TikTok videos) or deeper never reached them.
+
+TREE_SECONDS = 180
+MAX_TREE_FOLDERS = 200
+FIND_LIMIT = 10
+_folders_cache = {}   # client_id -> (at, root, [{"id", "name", "path"}])
+_KIND_MIME = {"video": "video/", "image": "image/"}
+_WORD = re.compile(r"[0-9A-Za-z֐-׿؀-ۿЀ-ӿ]+")
+# Words that describe the request, not the file's name
+_STOP = {"the", "a", "an", "of", "for", "my", "our", "this", "that", "video", "videos", "clip", "file",
+         "photo", "image", "picture", "use", "send", "upload", "please", "with", "from", "to", "in",
+         "את", "של", "על", "עם", "זה", "הזה", "הזאת", "שלי", "שלנו", "סרטון", "הסרטון", "סרטונים", "וידאו",
+         "הווידאו", "קובץ", "הקובץ", "תמונה", "התמונה", "תמונות", "קליפ", "הקליפ", "תשתמש", "תשלח", "תעלה",
+         "בבקשה", "לי", "מה", "ב", "ל"}
+_HE_PREFIX = "הובלמש"
+
+
+@drive_storage.scoped
+def _walk_folders(client_id: int, root: str, max_depth: int = MAX_PARENT_HOPS, max_folders: int = MAX_TREE_FOLDERS) -> list:
+    """Every folder under root (root included, path ""), breadth first, as
+    whoever the current scope is."""
+    out, pending = [{"id": root, "name": "", "path": ""}], [(root, "", 0)]
+    while pending and len(out) < max_folders:
+        folder, path, depth = pending.pop(0)
+        if depth >= max_depth:
+            continue
+        page_token = ""
+        while True:
+            page = drive.list_children(folder, page_token=page_token, page_size=200,
+                                       fields="nextPageToken,files(id,name,mimeType)")
+            for item in page["files"]:
+                if item.get("mimeType") == drive.FOLDER_MIME and len(out) < max_folders:
+                    sub = f"{path}/{item.get('name', '')}".lstrip("/")
+                    out.append({"id": item["id"], "name": item.get("name", ""), "path": sub})
+                    pending.append((item["id"], sub, depth + 1))
+            page_token = page["next_page_token"]
+            if not page_token:
+                break
+    return out
+
+
+@drive_storage.scoped
+def folder_tree(client_id: int, refresh: bool = False) -> list:
+    """Every folder of the client's media tree with its path ("videos/tiktok"),
+    cached TREE_SECONDS. Each one is proven inside (walked from the root)."""
+    root = client_root_id(client_id)
+    if not root:
+        return []
+    hit = _folders_cache.get(client_id)
+    if hit and not refresh and hit[1] == root and hit[0] > time.time() - TREE_SECONDS:
+        return hit[2]
+    folders = _walk_folders(client_id, root)
+    _folders_cache[client_id] = (time.time(), root, folders)
+    _tree(client_id, root)["folders"].update(f["id"] for f in folders)
+    return folders
+
+
+def _placed(item: dict, paths: dict) -> dict:
+    shaped = _shape(item)
+    shaped["folder"] = paths.get((item.get("parents") or [""])[0], "")
+    return shaped
+
+
+@drive_storage.scoped
+def newest(client_id: int, kind: str, limit: int = 10, refresh: bool = False) -> list:
+    """The newest `kind` ("video" / "image") files anywhere in the client's
+    tree, newest first, each with its folder path. [] without a folder."""
+    folders = folder_tree(client_id, refresh=refresh)
+    if not folders:
+        return []
+    paths = {f["id"]: f["path"] for f in folders}
+    items = drive.search_in_folders([f["id"] for f in folders], mime_prefix=_KIND_MIME[kind], page_size=limit)
+    return [_placed(i, paths) for i in items]
+
+
+def search_words(text: str) -> list:
+    """The words of a request that could be in a file's NAME (longest first,
+    at most 4): "use the video of the new product" → ["product", "new"]."""
+    words, seen = [], set()
+    for w in _WORD.findall(str(text or "").lower()):
+        if len(w) >= 2 and w not in _STOP and w not in seen:
+            seen.add(w)
+            words.append(w)
+    return sorted(words, key=len, reverse=True)[:4]
+
+
+def _variants(word: str) -> list:
+    """Drive's `name contains` matches the START of words in the name, so a
+    Hebrew word with a prefix letter ("המוצר") misses "מוצר": try both."""
+    out = [word]
+    if len(word) >= 4 and word[0] in _HE_PREFIX and "֐" <= word[0] <= "׿":
+        out.append(word[1:])
+    return out
+
+
+def _score(name: str, words: list) -> int:
+    name = (name or "").lower()
+    return sum(1 for w in words if any(v in name for v in _variants(w)))
+
+
+@drive_storage.scoped
+def find(client_id: int, text: str, kind: str = "", limit: int = FIND_LIMIT) -> dict:
+    """Files in the client's WHOLE tree whose name matches the words of
+    `text` — not only the newest ten, not only one level deep. Drive's own
+    `name contains`: first every word together; when nothing has them all,
+    each word alone, keeping only the files that match the MOST words.
+    Shortcuts are left out (the file itself is outside the client's folder).
+    {"matches": [shaped + "folder"], "words": [...], "shortcuts": n}.
+    Raises on Drive trouble (the caller says one calm line)."""
+    words = search_words(text)
+    if not words:
+        return {"matches": [], "words": []}
+    folders = folder_tree(client_id, refresh=True)
+    if not folders:
+        return {"matches": [], "words": words, "no_folder": True}
+    paths = {f["id"]: f["path"] for f in folders}
+    ids = [f["id"] for f in folders]
+    prefix = _KIND_MIME.get(kind, "")
+    items = drive.search_in_folders(ids, name_words=words, mime_prefix=prefix, page_size=limit)
+    if not items:
+        pool = {}
+        for word in words:
+            for variant in _variants(word):
+                for item in drive.search_in_folders(ids, name_words=[variant], mime_prefix=prefix,
+                                                    page_size=limit):
+                    pool[item["id"]] = item
+        scored = [(_score(i.get("name"), words), i) for i in pool.values()]
+        best = max((s for s, _ in scored), default=0)
+        items = sorted((i for s, i in scored if s == best and s > 0),
+                       key=lambda i: i.get("modifiedTime") or "", reverse=True)
+    shaped = [_placed(i, paths) for i in items]
+    matches = [s for s in shaped if s["kind"] != "shortcut"]
+    return {"matches": matches[:limit], "words": words, "shortcuts": len(shaped) - len(matches)}
+
+
+# ─── Admin diagnostic: what Drive returns vs what we show ────────────────────
+
+DIAG_MAX_FILES = 500
+
+
+def _hinted_folder(client_id: int) -> str:
+    from agents import media_agent
+    rows = (media_agent._db().table("client_activity").select("details")
+            .eq("client_id", client_id).eq("agent_name", media_agent.AGENT_NAME)
+            .eq("action_type", "media_folder_created")
+            .order("created_at", desc=True).limit(1).execute().data or [])
+    return ((rows[0].get("details") or {}).get("folder_id") or "") if rows else ""
+
+
+@drive_storage.scoped
+def diagnose(client_id: int, max_files: int = DIAG_MAX_FILES) -> dict:
+    """ADMIN ONLY, read-only. For one client: which folder the system uses and
+    why, every folder in Drive that looks like this client's, the RAW listing
+    Drive returns for the tree (names, kinds, parent ids), and for each file
+    whether the Media tab's first page / the agents' list show it — plus plain
+    findings. Never a token, never a file body."""
+    from agents import media_agent
+    out = {"client_id": int(client_id), "location": drive_storage.location(client_id).get("kind"),
+           "media_root": drive_storage.shared_parent_id(), "findings": []}
+    findings = out["findings"]
+    try:
+        out["service_account"] = drive.service_account_email()
+    except Exception as e:
+        out["service_account"] = ""
+        findings.append(f"מפתח חשבון השירות לא נקרא ({type(e).__name__}) — אין גישה ל-Drive בכלל.")
+        return out
+    _root_cache.pop(client_id, None)       # resolve fresh, like a new instance would
+    writer = (media_agent._folder_cache.get(client_id) or {}).get("root", "")
+    hinted = _hinted_folder(client_id)
+    out["recorded_folder"] = hinted
+    out["writer_folder_this_instance"] = writer
+    try:
+        out["folders_named_like_client"] = [
+            {"id": f.get("id"), "name": f.get("name"), "parents": f.get("parents") or [],
+             "shared_drive": f.get("driveId", ""), "created": f.get("createdTime", ""),
+             "link": f.get("webViewLink", ""),
+             "under_media_root": out["media_root"] in (f.get("parents") or [])}
+            for f in drive.find_folders_named(f"client-{int(client_id)} ")
+            if str(f.get("name") or "").startswith(f"client-{int(client_id)} ")]
+    except Exception as e:
+        out["folders_named_like_client"] = []
+        findings.append(f"החיפוש אחר תיקיות בשם הלקוח נכשל ({drive.classify_error(e)}).")
+    root = client_root_id(client_id)
+    out["resolved_folder"] = root
+    if not root:
+        findings.append("למערכת אין תיקייה ללקוח הזה תחת תיקיית המדיה הנוכחית — היא תיווצר בקובץ הראשון.")
+        return out
+    try:
+        out["resolved_link"] = drive.get_link(root)
+    except Exception:
+        out["resolved_link"] = ""
+    named = out["folders_named_like_client"]
+    under = [f for f in named if f["under_media_root"]]
+    elsewhere = [f for f in named if not f["under_media_root"]]
+    if len(under) > 1:
+        findings.append(f"יש {len(under)} תיקיות ללקוח הזה בתיקיית המדיה. המערכת משתמשת ב-{root}; "
+                        f"קבצים בתיקייה האחרת לא נראים. כדאי להעביר אותם לתיקייה שבשימוש ולמחוק את הכפולה.")
+    if elsewhere:
+        findings.append(f"יש {len(elsewhere)} תיקיות בשם של הלקוח מחוץ לתיקיית המדיה (למשל ב-My Drive הישן). "
+                        f"קבצים שם לא נראים במערכת — משכו אותם בעמוד הזה או העבירו לתיקייה שבשימוש.")
+    if hinted and hinted != root:
+        findings.append(f"התיקייה שנרשמה בפעם הראשונה ({hinted}) היא לא זו שבשימוש — "
+                        f"היא כבר לא בתיקיית המדיה הנוכחית.")
+    if writer and writer != root:
+        findings.append(f"בשרת הזה קבצים חדשים נשמרו לתיקייה אחרת ({writer}) מזו שמוצגת ({root}).")
+
+    folders = _walk_folders(client_id, root)
+    paths = {f["id"]: f["path"] for f in folders}
+    raw, truncated = [], False
+    for folder in folders:
+        page_token = ""
+        while True:
+            page = drive.list_children(folder["id"], page_token=page_token, page_size=200)
+            for item in page["files"]:
+                if item.get("mimeType") == drive.FOLDER_MIME:
+                    continue
+                if len(raw) >= max_files:
+                    truncated = True
+                    break
+                shaped = _placed(item, paths)
+                shaped["parent_id"] = (item.get("parents") or [""])[0]
+                raw.append(shaped)
+            page_token = page["next_page_token"]
+            if truncated or not page_token:
+                break
+        if truncated:
+            break
+    tab = list_folder(client_id)
+    tab_ids = {f["id"] for f in (tab.get("files") or [])} | {f["id"] for f in (tab.get("folders") or [])}
+    try:
+        from core import client_state
+        agent_view = client_state._media_folder(client_id, fresh=True)
+    except Exception as e:
+        agent_view = {"error": type(e).__name__}
+    agent_ids = {v.get("drive_file_id") for v in (agent_view.get("videos") or [])} | \
+                {i.get("drive_file_id") for i in (agent_view.get("images") or [])}
+    for f in raw:
+        f["in_media_tab_first_page"] = f["id"] in tab_ids
+        f["in_agent_list"] = f["id"] in agent_ids
+    shortcuts = [f for f in raw if f["kind"] == "shortcut"]
+    deep = [f for f in raw if "/" in f["folder"]]
+    out.update({"folders": folders, "files": raw, "files_truncated": truncated,
+                "raw_counts": {k: sum(1 for f in raw if f["kind"] == k)
+                               for k in sorted({f["kind"] for f in raw})},
+                "media_tab": {"cached": bool(tab.get("cached")), "listed_at": tab.get("listed_at"),
+                              "root_page_items": len(tab_ids), "error": tab.get("error", "")},
+                "agent_view": {"videos": len(agent_view.get("videos") or []),
+                               "images": len(agent_view.get("images") or []),
+                               "error": agent_view.get("error", "")}})
+    if shortcuts:
+        findings.append(f"{len(shortcuts)} פריטים הם קיצורי דרך (Shortcut) ולא הקובץ עצמו — Drive יוצר אותם "
+                        f"כשגוררים קובץ שלא שלכם. אי אפשר להעלות מהם; משכו את הקובץ המקורי בעמוד הזה.")
+    if deep:
+        findings.append(f"{len(deep)} קבצים יושבים בתת-תיקייה עמוקה (למשל videos/tiktok). עד היום הסוכנים לא ראו "
+                        f"אותם; מעכשיו הם רואים את כל העץ ויכולים לחפש לפי שם.")
+    if tab.get("cached"):
+        findings.append("לשונית המדיה הציגה רשימה שמורה (עד 3 דקות). קובץ שנוסף זה עתה מופיע אחרי רענון.")
+    if not findings:
+        findings.append("Drive והמערכת מראים את אותם קבצים.")
+    return out

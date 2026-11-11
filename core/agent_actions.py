@@ -445,6 +445,168 @@ def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> 
     return {"params": {"drive_file_id": file_id}}
 
 
+# ─── Find a file by NAME (2026-11-11, docs/DRIVE-PULL.md) ────────────────────
+# account_state.media_folder lists only the NEWEST videos/images. When the
+# client names a file that isn't there, the model proposes find_media_file
+# with their words; code searches the whole tree (drive_mirror.find):
+# one match → the card for what they wanted, several → ONE card listing the
+# candidates (their click picks), none → ONE card with their folder. Never
+# "I can't see it", never "passing it to the team".
+
+MEDIA_FIND_TARGETS = {"tiktok": ("send_tiktok_to_inbox", "drive_file_id", "video"),
+                      "youtube": ("publish_youtube_from_media", "drive_file_id", "video"),
+                      "presenter": ("create_presenter_from_photos", "photo_ids", "image")}
+MEDIA_FIND_CANDIDATES = 5
+
+_FOUND_ONE = _txt("מצאתי את \"{file}\" בתיקייה שלכם.", "I found \"{file}\" in your folder.",
+                  "J'ai trouvé « {file} » dans votre dossier.", "وجدت \"{file}\" في مجلدكم.",
+                  "Нашёл «{file}» в вашей папке.")
+_FOUND_SEVERAL = _txt("מצאתי בתיקייה שלכם כמה קבצים שמתאימים. בחרו את הנכון:",
+                      "I found a few matching files in your folder. Pick the right one:",
+                      "J'ai trouvé plusieurs fichiers correspondants dans votre dossier. Choisissez le bon :",
+                      "وجدت في مجلدكم عدة ملفات مطابقة. اختاروا الصحيح:",
+                      "В вашей папке нашлось несколько подходящих файлов. Выберите нужный:")
+_FOUND_NONE = _txt("לא מצאתי קובץ בשם הזה בתיקיית המדיה שלכם.",
+                   "I couldn't find a file with that name in your media folder.",
+                   "Je n'ai pas trouvé de fichier de ce nom dans votre dossier média.",
+                   "لم أجد ملفًا بهذا الاسم في مجلد الوسائط.",
+                   "Файла с таким названием в вашей папке медиа нет.")
+_FIND_TROUBLE = _txt("לא הצלחתי לחפש בתיקייה כרגע. כתבו לי שוב בעוד רגע ואנסה שוב.",
+                     "I couldn't search your folder just now. Write to me again in a moment and I'll retry.",
+                     "Je n'ai pas pu chercher dans votre dossier pour l'instant. Réécrivez-moi dans un instant.",
+                     "لم أتمكن من البحث في المجلد الآن. اكتبوا لي بعد لحظة وسأحاول مجددًا.",
+                     "Сейчас не получилось поискать в папке. Напишите мне через минуту — попробую снова.")
+
+
+def _v_find_for(value, client_id: int) -> str:
+    value = str(value or "").strip().lower()
+    if value not in MEDIA_FIND_TARGETS:
+        raise ValueError("for must be tiktok, youtube or presenter")
+    return value
+
+
+def _find_label(item: dict) -> str:
+    bits = [item.get("name") or "—"]
+    if item.get("folder"):
+        bits.append(f"({item['folder']})")
+    if item.get("modified_time"):
+        bits.append(str(item["modified_time"])[:10])
+    if item.get("size"):
+        bits.append(f"{round(item['size'] / 1048576, 1)} MB")
+    return " · ".join(bits)
+
+
+def _find_usable(item: dict, target: str) -> bool:
+    from core.video_limits import fits, tiktok_sendable
+    if target == "youtube":
+        return fits(item.get("size"))
+    if target == "tiktok":
+        return tiktok_sendable(item.get("size"))
+    return True
+
+
+def _media_find_available(state: dict, client: dict) -> bool:
+    """A media folder exists and at least one of the things a found file is
+    for is offered right now."""
+    if not ((state or {}).get("media_folder") or {}).get("exists"):
+        return False
+    return any(ACTIONS[name]["available"](state, client) for name, _p, _k in MEDIA_FIND_TARGETS.values())
+
+
+def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import drive_mirror
+    lang = (context or {}).get("language") or "he"
+    target = params["for"]
+    action, param, kind = MEDIA_FIND_TARGETS[target]
+    spec = ACTIONS[action]
+    client = _client(client_id)
+    if spec["internal_only"] and not _is_internal(client):
+        raise ValueError(f"{action} is not offered to this client")      # → prepare_failed, no promise made
+    try:
+        from core import client_state
+        if not spec["available"](client_state.snapshot(client_id), client):
+            raise ValueError(f"{action} is not available right now")
+    except ValueError:
+        raise
+    except Exception:
+        pass                                   # unreadable state: the target card re-checks itself
+    try:
+        with drive_storage.scope(client_id):
+            found = drive_mirror.find(client_id, params["name"], kind=kind,
+                                      limit=MEDIA_FIND_CANDIDATES * 2)
+    except Exception as e:
+        _log(f"client {client_id}: find_media_file search failed: {type(e).__name__}: {str(e)[:200]}",
+             severity="WARNING", client_id=client_id)
+        return {"refuse": _pick(_FIND_TROUBLE, lang)}
+    matches = [m for m in found.get("matches") or [] if _find_usable(m, target)][:MEDIA_FIND_CANDIDATES]
+    for m in matches:
+        # what the next card names the file by (Drive's own name, never the model's)
+        _media_meta[(client_id, m["id"])] = (time.time(), {"name": m.get("name"), "mimeType": m.get("mime_type"),
+                                                           "size": m.get("size")})
+    if len(matches) == 1:
+        return {"switch_to": action, "switch_params": {param: matches[0]["id"]},
+                "notice": _pick(_FOUND_ONE, lang).replace("{file}", matches[0].get("name") or "—")}
+    if not matches:
+        return {"switch_to": "media_file_not_found", "switch_params": {"name": params["name"]},
+                "notice": _pick(_FOUND_NONE, lang)}
+    for row in rows:
+        if sorted((row.get("params") or {}).get("candidates") or []) == sorted(m["id"] for m in matches):
+            return {"existing": row}
+    return {"params": {"name": params["name"], "for": target, "candidates": [m["id"] for m in matches],
+                       "labels": {m["id"]: _find_label(m)[:160] for m in matches}},
+            "notice": _pick(_FOUND_SEVERAL, lang)}
+
+
+def _validate_find_stored(client_id: int, params: dict) -> dict:
+    params = dict(params or {})
+    target = _v_find_for(params.get("for"), client_id)
+    candidates = [str(c) for c in params.get("candidates") or []]
+    if not 2 <= len(candidates) <= MEDIA_FIND_CANDIDATES:
+        raise ValueError("a choice card needs 2-5 candidates")
+    for cid in candidates:
+        _media_file(client_id, cid)          # each still in THIS client's folder (parents walk)
+    if params.get("mode") and params["mode"] not in candidates:
+        raise ValueError("the choice is not one of the candidates")
+    labels = params.get("labels") if isinstance(params.get("labels"), dict) else {}
+    out = {"name": _v_short_text(params.get("name"), 120), "for": target, "candidates": candidates,
+           "labels": {c: str(labels.get(c) or "")[:160] for c in candidates}}
+    if params.get("mode"):
+        out["mode"] = params["mode"]
+    return out
+
+
+def _find_choices(params: dict) -> list:
+    labels = (params or {}).get("labels") or {}
+    return [(c, _txt(*([labels.get(c) or c] * 5))) for c in (params or {}).get("candidates") or []]
+
+
+def _run_find_media_file(client_id: int, params: dict, background_tasks, row: dict = None):
+    """The client's pick → the card for what they wanted, with THAT file."""
+    row = row or {}
+    action, param, _kind = MEDIA_FIND_TARGETS[params["for"]]
+    chosen = params.get("mode") or ""
+    if chosen not in params.get("candidates", []):
+        raise ActionFailed("bad_choice", "no candidate chosen")
+    nxt = propose(client_id, row.get("origin") or "client_chat", row.get("persona") or "media",
+                  {"name": action, "params": {param: chosen}}, by_code=True,
+                  context={"language": row.get("language") or "he"})
+    if nxt.get("card"):
+        return {"next_card": nxt["card"], "file": (params.get("labels") or {}).get(chosen, "")}
+    line = nxt.get("clarify") or nxt.get("refuse") or nxt.get("notice") or ""
+    if line:
+        return {"text": line}
+    raise ActionFailed("next_card_refused", f"{action}: {nxt.get('error')}")
+
+
+def _run_media_file_not_found(client_id: int, params: dict, background_tasks, row: dict = None):
+    """Opens the client's media folder in Drive (the owner, from a Control Room
+    chat, gets the Pull-from-Drive page instead)."""
+    if (row or {}).get("origin") == "admin_chat":
+        return {"link": f"/admin/drive/?client_id={int(client_id)}"}
+    from agents.media_agent import get_client_media_link
+    return {"link": get_client_media_link(client_id)}
+
+
 def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
     params = params or {}
     if set(params) != {"drive_file_id"}:
@@ -2988,6 +3150,65 @@ ACTIONS = {
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
     },
+    "find_media_file": {
+        # Find by NAME across the client's whole media tree (docs/DRIVE-PULL.md).
+        # The model never picks among the matches: one → the real card, several →
+        # this card with one button per file, none → media_file_not_found.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "needs_row": True,
+        "does": "Finds ONE file in the client's media folder BY NAME, when they name or describe a video/photo "
+                "that is NOT in account_state.media_folder.videos/images (those list only the newest). Propose "
+                "it with the words they used; the system searches the whole folder and shows the card for "
+                "what they asked (one match), a choice between the matches, or where to add it (none). Never "
+                "say you can't see a file and never pass it to anyone — propose this instead.",
+        "params": {"name": {"required": True, "validate": lambda v, cid: _v_short_text(v, 120),
+                            "hint": "the words the client used for the file (\"the new product video\", "
+                                    "\"launch_final\"), copied as they wrote them"},
+                   "for": {"required": True, "validate": _v_find_for,
+                           "hint": "tiktok (send to their TikTok drafts), youtube (upload private to YouTube) "
+                                   "or presenter (make their presenter from a photo)"}},
+        "available": _media_find_available,
+        "prepare": lambda client_id, params, context, rows: _prepare_find_media(client_id, params, context, rows),
+        "validate_stored": _validate_find_stored,
+        "choices": _find_choices,
+        "run": _run_find_media_file,
+        "display": lambda client_id, params: {"name": params.get("name", "")},
+        "title": _txt("איזה קובץ התכוונתם?", "Which file did you mean?", "Quel fichier vouliez-vous dire ?",
+                      "أي ملف قصدتم؟", "Какой файл вы имели в виду?"),
+        "what": _txt("כמה קבצים בתיקייה שלכם מתאימים ל\"{name}\". בחרו אחד, ואז יופיע הכרטיס לאישור.",
+                     "Several files in your folder match \"{name}\". Pick one, and the card to approve appears.",
+                     "Plusieurs fichiers de votre dossier correspondent à « {name} ». Choisissez-en un, puis la carte à valider apparaît.",
+                     "عدة ملفات في مجلدكم تطابق \"{name}\". اختاروا واحدًا، ثم تظهر بطاقة الموافقة.",
+                     "Под «{name}» подходят несколько файлов в вашей папке. Выберите один — появится карточка для подтверждения."),
+        "done": _txt("בחרתם קובץ ✓ הכרטיס לאישור מחכה למטה.", "File chosen ✓ The card to approve is below.",
+                     "Fichier choisi ✓ La carte à valider est ci-dessous.", "تم اختيار الملف ✓ بطاقة الموافقة أدناه.",
+                     "Файл выбран ✓ Карточка для подтверждения ниже."),
+        "done_message": lambda result, lang: result.get("text") or _pick(ACTIONS["find_media_file"]["done"], lang),
+    },
+    "media_file_not_found": {
+        # Opened by CODE when find_media_file found nothing. ONE decision: open
+        # the folder. The client's folder is shared with them READ-ONLY, so the
+        # honest way to add a file is the chat's + button (it lands there).
+        "approver": "client", "client_requestable": False, "internal_only": False, "kind": "execute",
+        "code_only": True, "needs_row": True,
+        "does": "Shown by the system when a file the client named is not in their media folder.",
+        "params": {"name": {"required": True, "validate": lambda v, cid: _v_short_text(v, 120), "hint": ""}},
+        "available": lambda state, client: False,
+        "run": _run_media_file_not_found,
+        "display": lambda client_id, params: {"name": params.get("name", "")},
+        "button": _txt("לפתוח את התיקייה ב-Drive", "Open the folder in Drive", "Ouvrir le dossier dans Drive",
+                       "فتح المجلد في Drive", "Открыть папку в Drive"),
+        "title": _txt("לא מצאתי את הקובץ", "I couldn't find that file", "Je n'ai pas trouvé ce fichier",
+                      "لم أجد هذا الملف", "Файл не найден"),
+        "what": _txt("אין בתיקיית המדיה שלכם קובץ שמתאים ל\"{name}\". העלו אותו כאן בצ'אט עם ה-+ (הוא נשמר בתיקייה) ואמשיך משם — או פתחו את התיקייה ב-Drive ובדקו איך הוא נקרא.",
+                     "Nothing in your media folder matches \"{name}\". Upload it here in the chat with + (it is saved to the folder) and I'll take it from there — or open the folder in Drive and check its name.",
+                     "Rien dans votre dossier média ne correspond à « {name} ». Ajoutez-le ici avec + (il est enregistré dans le dossier) et je continue — ou ouvrez le dossier dans Drive pour vérifier son nom.",
+                     "لا يوجد في مجلد الوسائط ملف يطابق \"{name}\". ارفعوه هنا في المحادثة عبر + (يُحفظ في المجلد) وسأكمل من هناك — أو افتحوا المجلد في Drive وتحققوا من اسمه.",
+                     "В вашей папке медиа нет файла под «{name}». Загрузите его здесь в чате через + (он сохранится в папке), и я продолжу — или откройте папку в Drive и проверьте название."),
+        "done": _txt("התיקייה שלכם:", "Your folder:", "Votre dossier :", "مجلدكم:", "Ваша папка:"),
+        "done_message": lambda result, lang: (_pick(ACTIONS["media_file_not_found"]["done"], lang)
+                                              + (f"\n{result['link']}" if result.get("link") else "")),
+    },
     # ── Google verification ROUND 2 (docs/GOOGLE-ROUND2.md) — every entry
     # below is unavailable while its flag is off (core/round2_flags) ──
     "connect_gmail_send": {
@@ -3922,7 +4143,7 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     status = "proposed" if approver == actor else "awaiting_staff"
     lang = _lang(client_id) if actor == "client" else "he"
     open_rows = [r for r in _open_rows(client_id) if r.get("action") == name and not _expired(r)]
-    supersedes = None
+    supersedes, prepared_notice = None, ""
     if spec.get("prepare"):
         try:
             prepared = spec["prepare"](client_id, params, {"language": lang, "persona": persona,
@@ -3940,15 +4161,24 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
             # card, with the prepared line in place of the model's reply.
             # state=None: the fix is offered because of what prepare just
             # learned, which the turn's snapshot may not know yet.
+            # by_code: the switch is CODE's decision (prepare), so a code-only
+            # card (media_file_not_found) may be the one it switches to
             switched = propose(client_id, origin, persona,
                                {"name": prepared["switch_to"], "params": prepared.get("switch_params") or {}},
-                               client=client, context=context)
+                               client=client, context=context, by_code=True)
             if switched.get("card"):
-                return {**switched, "notice": prepared.get("notice", "")}
+                notice = " ".join(t for t in (prepared.get("notice", ""), switched.get("notice", "")) if t)
+                return {**switched, "notice": notice}
+            for answer in ("clarify", "refuse"):
+                # The card switched to answered in words itself (a found TikTok
+                # video whose connection needs renewing): that line, as is
+                if switched.get(answer):
+                    return {answer: switched[answer]}
             return {"refuse": prepared.get("notice")} if prepared.get("notice") else switched
         if prepared.get("existing"):
             return {"card": card(prepared["existing"], actor, lang), "status": prepared["existing"].get("status")}
         params, supersedes = prepared["params"], prepared.get("supersedes")
+        prepared_notice = prepared.get("notice", "")
         try:
             params = spec["validate_stored"](client_id, params)
         except ValueError as e:
@@ -3981,7 +4211,10 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     if status == "awaiting_staff":
         _alert(f"client {client_id}: asked in chat for '{name}' — approve or cancel it in the "
                f"Control Room (proposal {row.get('id')})")
-    return {"card": card(row, actor, lang), "status": status}
+    out = {"card": card(row, actor, lang), "status": status}
+    if prepared_notice:
+        out["notice"] = prepared_notice      # the line in place of the model's reply (find_media_file)
+    return out
 
 
 # ─── Decide (the human click) ────────────────────────────────────────────────
@@ -4537,8 +4770,13 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
         _post(row, done_text(result, lang), to_client=True)
     elif row.get("origin") == "admin_chat":
         _post_admin_message(client_id, row.get("persona", "general"), _admin_summary(spec, result))
-    return {"success": True, "status": "done", "message": message,
-            "result": result if actor == "admin" else None}
+    out = {"success": True, "status": "done", "message": message,
+           "result": result if actor == "admin" else None}
+    if isinstance(result.get("next_card"), dict):
+        # The decision this one led to (find_media_file → the card for the file
+        # picked), right under it — one decision per card
+        out["next_card"] = result["next_card"]
+    return out
 
 
 def finish_deferred(proposal_id: int, status: str, result: dict = None, code: str = "") -> bool:

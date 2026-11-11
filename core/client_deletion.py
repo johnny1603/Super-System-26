@@ -961,7 +961,9 @@ def _settings_keys(ids: list) -> list:
                                      f"php_exposure:{int(i)}", f"creative_tools:{int(i)}",
                                      f"drive_storage:{int(i)}", f"drive_usage:{int(i)}",
                                      # TikTok upload jobs + their lease (core/tiktok_uploads)
-                                     f"tiktok_upload:{int(i)}", f"tiktok_upload_lock:{int(i)}")]
+                                     f"tiktok_upload:{int(i)}", f"tiktok_upload_lock:{int(i)}",
+                                     # Pull-from-Drive jobs + their lease (core/drive_pull)
+                                     f"drive_pull:{int(i)}", f"drive_pull_lock:{int(i)}")]
 
 
 def _clear_settings(ids: list):

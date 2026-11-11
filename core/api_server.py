@@ -3520,6 +3520,69 @@ def drive_usage_scan():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ─── Pull from Drive + the Drive diagnostic (admin only, core/drive_pull) ─────
+# docs/DRIVE-PULL.md. The owner's OWN folder, shared with our service account,
+# copied INSIDE Drive into a client's folder in our Shared Drive. No scope, no
+# consent, no Picker. Every answer the page shows is a calm line.
+
+class DrivePullBrowseRequest(BaseModel):
+    ref: str = ""
+    page_token: str = ""
+
+class DrivePullStartRequest(BaseModel):
+    client_id: int
+    items: list = []
+    target: str = "auto"
+
+@app.get("/api/admin/drive-pull/info")
+def admin_drive_pull_info(request: Request):
+    _require_admin(request)
+    from core import drive_pull
+    return {"success": True, "data": {"share_with": drive_pull.share_with(), "targets": list(drive_pull.TARGETS)}}
+
+@app.post("/api/admin/drive-pull/browse")
+def admin_drive_pull_browse(req: DrivePullBrowseRequest, request: Request):
+    # READ-ONLY listing of the pasted folder, as the service account
+    _require_admin(request)
+    from core import drive_pull
+    return {"success": True, "data": drive_pull.browse(req.ref, req.page_token)}
+
+@app.post("/api/admin/drive-pull/start")
+def admin_drive_pull_start(req: DrivePullStartRequest, request: Request):
+    _require_admin(request)
+    from core import drive_pull
+    try:
+        job = drive_pull.start(req.client_id, req.items, req.target, who="admin")
+    except drive_pull.PullRefused as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text}}
+    return {"success": True, "data": drive_pull.step(req.client_id) or job}
+
+@app.post("/api/admin/drive-pull/{client_id}/step")
+def admin_drive_pull_step(client_id: int, request: Request):
+    # The page's poll: moves the job forward a little (≤ 25 s) and returns it
+    _require_admin(request)
+    from core import drive_pull
+    return {"success": True, "data": drive_pull.step(client_id)}
+
+@app.get("/api/admin/drive-pull/{client_id}")
+def admin_drive_pull_latest(client_id: int, request: Request):
+    _require_admin(request)
+    from core import drive_pull
+    return {"success": True, "data": drive_pull.latest(client_id)}
+
+@app.get("/api/admin/drive/diagnose/{client_id}")
+def admin_drive_diagnose(client_id: int, request: Request):
+    # READ-ONLY: what Drive returns for the client's folder next to what the
+    # Media tab and the agents show (core/drive_mirror.diagnose). Plain `def`.
+    _require_admin(request)
+    from core import drive_mirror
+    try:
+        return {"success": True, "data": drive_mirror.diagnose(client_id)}
+    except Exception as e:
+        from core import drive_service
+        return {"success": True, "data": {"client_id": client_id, "findings": [
+            f"Drive לא ענה לבדיקה ({drive_service.classify_error(e)}). נסו שוב בעוד רגע."]}}
+
 # ─── Merchant Center: RETIRED 2026-10-21 ─────────────────────────────────────
 # It never had a feature a client could see (no feed-status screen, the scan
 # was never scheduled), so the `content` scope it requested could not pass
@@ -6981,8 +7044,18 @@ def tiktok_uploads_run():
     # Cloud Scheduler, every minute (scripts/schedule_jobs.sh): moves every
     # due upload forward inside THIS request (budget under the proxy timeout),
     # progress saved per chunk — no background work, no always-on instance
-    from core import tiktok_uploads
-    return {"success": True, "data": tiktok_uploads.run_due()}
+    import time as _time
+    from core import drive_pull, tiktok_uploads
+    started = _time.monotonic()
+    data = tiktok_uploads.run_due()
+    # Pull-from-Drive jobs ride the same minute (no new scheduler job): what
+    # is left of the request's budget, at most 60 s (core/drive_pull)
+    left = min(60.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))
+    try:
+        data["drive_pull"] = drive_pull.run_due(left) if left > 15 else {"skipped": "no budget left"}
+    except Exception as e:
+        data["drive_pull"] = {"error": type(e).__name__}
+    return {"success": True, "data": data}
 
 @app.get("/api/admin/tiktok-uploads")
 def admin_tiktok_uploads(request: Request, status: str = "awaiting_admin"):

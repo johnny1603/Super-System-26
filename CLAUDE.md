@@ -574,6 +574,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   the UI. **Inline only for raster images**: this origin carries the session cookie, so
   everything else is an attachment. Shared UI: `dashboard/assets/media-viewer.js`.
   See `HANDOFF-media-download.md`.
+- **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
+  - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
+    folder with the service account and pastes its link. Files are COPIED INSIDE Drive
+    (`drive_service.copy_file`, `supportsAllDrives`) into the client's
+    `videos/` / `images/` / `documents/`.
+    - It is a durable job: app_settings `drive_pull:<id>` plus the lease
+      `drive_pull_lock:<id>`, idempotent via `appProperties.uallak_pulled_from`.
+    - It is moved by the page's poll and by `/api/tiktok/uploads/run`.
+    - When the job ends, usage is shown against `DRIVE_SHARED_ALERT_GB`.
+  - **Same rule for writer and readers.** `media_agent.ensure_client_media_root` now reuses
+    `drive_mirror.shared_client_root`; a "no folder" answer is never cached.
+  - **Whole tree.** The agents' list is `drive_mirror.newest`, covering every subfolder;
+    shortcuts are their own kind.
+  - **Find by name.** `drive_mirror.find` backs the card `find_media_file`: one match → the
+    real card, several → ONE choice card (`next_card`), none → `media_file_not_found`.
+  - **Diagnostic.** `GET /api/admin/drive/diagnose/{id}` shows the raw Drive listing next to
+    what the Media tab and the agents show.
+  - No new scope, env var or migration. `tests/test_drive_pull.py`.
 - `core/client_leads.py` — the leads a CLIENT receives (`client_leads` table), fed by the
   PUBLIC signed-token endpoint `POST /api/leads/capture/{token}` that a form on the client's
   own site posts to. Read the module docstring before touching it: this is NOT

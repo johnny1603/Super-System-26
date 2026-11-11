@@ -338,9 +338,94 @@ def list_files(folder_id: str, fields: str = "id,name,mimeType,size") -> list:
 
 
 # ─── Read-only listing for the Media tab mirror (core/drive_mirror.py) ───────
-# Metadata only — these never download a file body.
-MIRROR_FILE_FIELDS = "id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLink"
+# Metadata only — these never download a file body. shortcutDetails: a
+# shortcut is NOT the file (its target lives elsewhere), so the mirror must
+# be able to tell (2026-11-11, docs/DRIVE-PULL.md §Why a dropped file hid).
+MIRROR_FILE_FIELDS = ("id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLink,parents,"
+                      "shortcutDetails(targetId,targetMimeType)")
 FOLDER_MIME = "application/vnd.google-apps.folder"
+SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
+
+
+def _q_text(value: str) -> str:
+    """A value inside a Drive query's single quotes."""
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def search_in_folders(folder_ids: list, name_words: list = None, mime_prefix: str = "",
+                      order_by: str = "modifiedTime desc", page_size: int = 50,
+                      fields: str = "") -> list:
+    """Non-folder, non-trashed files DIRECTLY inside any of folder_ids, whose
+    name contains every word of name_words (Drive's own `name contains`) and
+    whose mimeType starts with mime_prefix. One query per 25 folders (Drive's
+    query length), results merged, newest first. Metadata only."""
+    words = [w for w in (name_words or []) if w]
+    out, seen = [], set()
+    ids = [str(f) for f in folder_ids if f]
+    for start in range(0, len(ids), 25):
+        chunk = ids[start:start + 25]
+        parents = " or ".join(f"'{_q_text(f)}' in parents" for f in chunk)
+        q = f"({parents}) and trashed = false and mimeType != '{FOLDER_MIME}'"
+        for word in words:
+            q += f" and name contains '{_q_text(word)}'"
+        if mime_prefix:
+            q += f" and mimeType contains '{_q_text(mime_prefix)}'"
+        response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
+            "q": q, "fields": fields or f"files({MIRROR_FILE_FIELDS})", "orderBy": order_by,
+            "pageSize": int(page_size), "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+        _check(response)
+        for item in _json(response, "search").get("files", []):
+            if item.get("id") not in seen:
+                seen.add(item.get("id"))
+                out.append(item)
+    out.sort(key=lambda f: f.get("modifiedTime") or "", reverse=True)
+    return out[:int(page_size)]
+
+
+def find_folders_named(prefix: str, page_size: int = 20) -> list:
+    """Every non-trashed FOLDER the service account can see (any Shared Drive,
+    or shared with it) whose name contains `prefix` — the diagnostic's look
+    for a second "client-27 — …" folder somewhere else. [{id, name, parents,
+    driveId, createdTime, webViewLink}]"""
+    response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
+        "q": f"mimeType = '{FOLDER_MIME}' and trashed = false and name contains '{_q_text(prefix)}'",
+        "fields": "files(id,name,parents,driveId,createdTime,webViewLink)", "pageSize": int(page_size),
+        "corpora": "allDrives", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+    _check(response)
+    return _json(response, "folder search").get("files", [])
+
+
+def copy_file(file_id: str, parent_id: str, name: str = "", app_properties: dict = None) -> dict:
+    """A server-side copy INSIDE Drive (files.copy): no byte passes through
+    our server, whatever the size. supportsAllDrives — the source may be in a
+    My Drive shared with us, the target is in our Shared Drive.
+    `app_properties`: small facts kept on the copy (where it was pulled from),
+    so a re-run finds it and never copies twice. Returns {id, name, mimeType,
+    size, parents, webViewLink}."""
+    body = {"parents": [parent_id]}
+    if name:
+        body["name"] = name
+    if app_properties:
+        body["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}
+    response = httpx.post(f"{DRIVE_FILES_URL}/{file_id}/copy",
+                          headers={**_headers(), "Content-Type": "application/json"},
+                          params={"supportsAllDrives": "true",
+                                  "fields": "id,name,mimeType,size,parents,webViewLink"},
+                          json=body, timeout=TIMEOUT)
+    _check(response)
+    return _json(response, "copy")
+
+
+def find_by_app_property(parent_id: str, key: str, value: str) -> list:
+    """Non-trashed files directly in parent_id carrying appProperties
+    {key: value} — a pull's "already copied" check."""
+    response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
+        "q": (f"'{_q_text(parent_id)}' in parents and trashed = false and "
+              f"appProperties has {{ key='{_q_text(key)}' and value='{_q_text(value)}' }}"),
+        "fields": "files(id,name,size)", "pageSize": 5,
+        "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+    _check(response)
+    return _json(response, "app property lookup").get("files", [])
 
 
 def list_children(folder_id: str, page_token: str = "", page_size: int = 40, fields: str = "") -> dict:

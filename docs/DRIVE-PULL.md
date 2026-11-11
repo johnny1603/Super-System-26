@@ -1,0 +1,139 @@
+# Pull from Drive, find by name, and why a dropped file hid (2026-11-11)
+
+Step 1 of getting the owner's own files into a client's media folder.
+No new scope, no Google Console change, no env var, no Cloud Run setting, no
+Picker (the Picker is step 2, after Google's round-2 review). Tests:
+`tests/test_drive_pull.py`.
+
+## Why a dropped file hid
+
+The owner said files he dragged into a client's folder in our Shared Drive
+didn't show up. What the code showed:
+
+1. **The writer and the readers picked the folder by different rules.**
+   This is verified in the code and fixed.
+   - Before the fix, `media_agent.ensure_client_media_root` looked up the EXACT
+     name `client-{id} — {current name}`. The readers
+     (`drive_mirror.shared_client_root`) used the recorded hint, or else the
+     oldest `client-{id} — ` prefix match.
+   - So after a client was renamed, the writer created a SECOND folder. Cloud
+     Run instances also disagreed: one that had written (memory cache) listed
+     the new folder, the others listed the old one.
+   - Now the writer first asks `shared_client_root`, and creates a folder only
+     when there is none. Every reader in that process then reuses the result
+     (`remember_root`).
+2. **A "no folder yet" answer was cached for 10 minutes.** This is verified
+   and fixed: only a real folder id is cached now.
+3. **The agents saw only one level, first page.** This is verified and fixed.
+   - `client_state` listed the root plus 8 subfolders, one level deep. Yet
+     `media_agent` itself saves TikTok videos in `videos/tiktok/`.
+   - Now `drive_mirror.newest()` reads the whole tree: up to 200 folders, 6
+     levels deep, newest first.
+4. **Shortcuts.** This is verified in the code; whether it happened in his
+   case is not known.
+   - Drag a file you don't own into a Shared Drive folder and Drive may make a
+     shortcut instead of moving the file.
+   - A shortcut used to be shown as a plain file that nothing could use. Now
+     it is the `shortcut` kind: never offered to agents, and named in the
+     diagnostic.
+5. **The Media tab caches its listing for 3 minutes.** This is unchanged; the
+   diagnostic says when the listing is cached.
+
+**Assumed, not provable from here:** the files went into a folder the system
+doesn't use. That could be an old folder in his My Drive from before the
+Shared Drive move, or a duplicate folder. The admin diagnostic shows this
+directly: `folders_named_like_client`, each marked inside or outside the
+media root.
+
+## The admin diagnostic
+
+`GET /api/admin/drive/diagnose/{client_id}` (admin cookie, read-only), shown
+at the bottom of `/admin/drive/`. It returns:
+
+- the service account;
+- the folder in use and why (`recorded_folder` and `writer_folder_this_instance`);
+- every folder named like the client, anywhere;
+- the raw Drive listing of the tree, with names, kinds, `parent_id` and
+  subfolder path;
+- for each file, whether the Media tab's first page shows it and whether the
+  agents' list shows it;
+- counts, and plain Hebrew findings.
+
+It never returns a token or a file body.
+
+## Pull from Drive (`/admin/drive/`, `core/drive_pull.py`)
+
+1. The owner shares ONE folder with the service-account address. The page
+   shows the address, with a copy button, and warns against sharing the
+   whole Drive.
+2. He pastes the folder (or file) link and clicks "הצג".
+   - `POST /api/admin/drive-pull/browse` lists the folder as the service
+     account.
+   - If we can't open it, the answer is ONE calm line naming the address to
+     share with. It is never an error.
+3. He picks files, or "the whole folder" (subfolders included), the client,
+   and a target: by type → `videos/` / `images/` / `documents/`, or one he
+   chooses. `POST /api/admin/drive-pull/start` starts the job.
+4. **Copying happens inside Drive**: `drive_service.copy_file`
+   (`files.copy`, `supportsAllDrives=true`). No byte goes through our server.
+   Each copy carries `appProperties.uallak_pulled_from=<source id>`, so a
+   re-run says "כבר היה שם" instead of copying twice.
+
+The job is durable and follows the `core/tiktok_uploads` pattern:
+
+- **Where it lives.** `app_settings` `drive_pull:<id>` holds the jobs and
+  `drive_pull_lock:<id>` the lease. No migration is needed.
+- **Progress.** It is saved after every file.
+- **Retries.**
+  - A transient error is retried 3× (20 s / 60 s / 180 s), then the file is
+    `failed`.
+  - `no_access`, `copy_blocked` (the owner disabled copying),
+    `storage_quota`, trashed files and folders are named, not retried.
+- **What moves it.**
+  - The page's poll: `POST /api/admin/drive-pull/{id}/step`, at most 25 s.
+  - The existing every-minute scheduler request `/api/tiktok/uploads/run`,
+    with what is left of its budget.
+  - There is no new scheduler job.
+- **Limits.** Up to 500 files per job, folders up to 6 levels deep.
+- **Who it's for.** Only clients whose files live in our Shared Drive
+  (`drive_storage.location == shared_drive`).
+- **After the job.**
+  - The client's mirror and `client_state` caches are cleared.
+  - Their Shared Drive usage is shown next to `DRIVE_SHARED_ALERT_GB`, using
+    the existing `shared_usage_scan`, which alerts once per status change.
+- **Client deletion** clears both keys.
+
+## Find by name (`drive_mirror.find`, card `find_media_file`)
+
+The agents' `account_state.media_folder` lists only the newest files. When a
+client names a file that isn't there, the model proposes `find_media_file`
+with their words and what it is for (`tiktok` / `youtube` / `presenter`).
+
+- **The search.** Drive's `name contains` runs over the whole tree, all words
+  first. Then it tries each word alone, keeping the best-scoring files. A
+  Hebrew prefix letter is also tried without it ("המוצר" → "מוצר").
+  Shortcuts are left out.
+- **One match:** the real card (for example `send_tiktok_to_inbox`) with that
+  file, plus "מצאתי את …".
+- **Several matches:** ONE card with one button per file. The click proposes
+  the real card for the picked file, and that card is shown right under it
+  (`next_card`). The model never chooses.
+- **No match:** ONE card `media_file_not_found` (code-only).
+  - **A client** gets their folder link. The text says to upload with the
+    chat's +, because a client's folder is shared with them READ-ONLY, so
+    they can't drop files into it.
+  - **The owner** (Control Room chat) gets `/admin/drive/?client_id=X`.
+- **Language rule.** Agents never say "I can't see it" or "passing it to the
+  team". No tool names appear in client text, and no raw errors: a failed
+  search is one calm "try again in a moment".
+
+## Not tested against a real Drive
+
+- `files.copy` from a My Drive into a Shared Drive as the service account,
+  and the copy's owner and quota.
+- The `appProperties has {…}` query.
+- `name contains` tokenisation on real (Hebrew, underscore) names.
+- `mimeType contains`.
+- `corpora=allDrives` folder search (the diagnostic).
+- Shortcut metadata.
+- `capabilities.canCopy`.
