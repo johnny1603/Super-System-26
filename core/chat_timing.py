@@ -123,7 +123,72 @@ def store(row: dict) -> None:
     except Exception as e:
         slim = {k: row.get(k) for k in ("client_id", "persona", "total_ms", "queue_ms", "context_ms",
                                          "model_ms", "post_ms", "model_calls", "dominant")}
+        flags = (row.get("stages") or {}).get("flags") or {}
+        slim.update({k: flags.get(k) for k in ("route", "route_model", "message_chars") if k in flags})
         print(f"[chat_timing] {json.dumps(slim)} (not stored: {type(e).__name__})")
+
+
+# ─── Grouped stats (route chosen, persona, short vs long) — 2026-11-11 ──────
+# The route (core/chat_route: simple / read / work, the tier and the model)
+# and the message length ride in the existing `stages` jsonb (flags), so no
+# column and no migration. Rows from before 2026-11-11 have no route: "—".
+
+SHORT_CHARS = 40          # "thanks", "yes", a quick question
+SLOW_MS = 60000
+
+
+def _median(values: list) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return ordered[mid] if len(ordered) % 2 else int((ordered[mid - 1] + ordered[mid]) / 2)
+
+
+def row_flags(row: dict) -> dict:
+    return ((row.get("stages") or {}).get("flags") or {}) if isinstance(row.get("stages"), dict) else {}
+
+
+def group_stats(rows: list) -> dict:
+    """avg / median / p90 of total_ms, the stage averages, model calls per
+    message, the models that ran, and the dominant stage — for one group."""
+    totals = [int(r.get("total_ms") or 0) for r in rows]
+    n = len(rows)
+    if not n:
+        return {"turns": 0}
+    models, doms = {}, {}
+    for r in rows:
+        for c in ((r.get("stages") or {}).get("calls") or []):
+            models[c.get("model") or "?"] = models.get(c.get("model") or "?", 0) + 1
+        doms[r.get("dominant") or ""] = doms.get(r.get("dominant") or "", 0) + 1
+    return {"turns": n, "avg_ms": int(sum(totals) / n), "median_ms": _median(totals), "p90_ms": _p90(totals),
+            **{f"avg_{k}_ms": int(sum(int(r.get(f"{k}_ms") or 0) for r in rows) / n)
+               for k in ("queue", "context", "model", "post")},
+            "avg_model_calls": round(sum(int(r.get("model_calls") or 0) for r in rows) / n, 2),
+            "models": models, "dominant": max(doms, key=doms.get)}
+
+
+def grouped(rows: list) -> dict:
+    """By route chosen, by persona, short vs long, and how many SHORT
+    messages took more than a minute."""
+    def by(key_fn):
+        groups = {}
+        for r in rows:
+            groups.setdefault(key_fn(r), []).append(r)
+        return {k: group_stats(v) for k, v in sorted(groups.items(), key=lambda kv: str(kv[0]))}
+
+    def length(r):
+        chars = row_flags(r).get("message_chars")
+        if chars is None:
+            return "unknown"
+        return "short" if int(chars) < SHORT_CHARS else "long"
+    short = [r for r in rows if length(r) == "short"]
+    slow_short = sum(1 for r in short if int(r.get("total_ms") or 0) > SLOW_MS)
+    return {"by_route": by(lambda r: f"{row_flags(r).get('route') or '—'}:{row_flags(r).get('route_model') or '—'}"),
+            "by_persona": by(lambda r: r.get("persona") or "general"),
+            "by_length": by(length),
+            "short_over_60s_pct": round(100.0 * slow_short / len(short), 1) if short else None,
+            "short_turns": len(short)}
 
 
 # ─── Admin read ─────────────────────────────────────────────────────────────
@@ -188,8 +253,11 @@ def summary(days: int = 7, limit: int = 2000) -> dict:
                "p90_ms": _p90(totals),
                "stage_avg_ms": {k: int(v / len(rows)) for k, v in stage_avg.items()} if rows else {}}
     return {"available": True, "days": days, "overall": overall, "per_client": per_client,
+            "groups": grouped(rows),
             "slowest": [{"created_at": r.get("created_at"), "client_id": r.get("client_id"),
                          "name": names.get(r.get("client_id"), ""), "persona": r.get("persona"),
+                         "route": row_flags(r).get("route") or "", "route_model": row_flags(r).get("route_model") or "",
+                         "message_chars": row_flags(r).get("message_chars"),
                          "total_ms": r.get("total_ms"), "dominant": r.get("dominant"),
                          "model_calls": r.get("model_calls"), "merged_messages": r.get("merged_messages"),
                          "stages": (r.get("stages") or {}).get("stages") or {},

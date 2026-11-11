@@ -389,7 +389,10 @@ class SaleDefinition(unittest.TestCase):
         src = _src("agents", "support_agent.py")
         self.assertIn("ONLY processing/completed", src)              # the website agent's notes
         self.assertIn("count ONLY processing/completed", src)        # the manager's SYSTEM
-        self.assertEqual(src.count("_add_store_reads(client_id, message, payload)"), 2)
+        # one live store read in the shared loader (_load_context), on for the manager and the website persona
+        self.assertEqual(src.count("_add_store_reads(client_id, message, part)"), 1)
+        self.assertIn("_manager_platform_reads,\n                            store=True", src)
+        self.assertIn("store=persona_id == \"website\"", src)
         self.assertIn("SALES ARE THE HEADLINE NUMBER", src)
         self.assertIn("NOT something we can read from here", src)   # no claimed attribution
 

@@ -48,7 +48,10 @@ class Explicit(unittest.TestCase):
         self.assertIn("ONE sentence naming the blocker and ONE concrete fix", rule)
         self.assertIn("never ask again a question the client already answered or brushed aside", rule)
         self.assertIn('payload["explicit_instruction"] = True', src)
-        self.assertEqual(src.count("_turn_flags(payload, message)"), 2)   # manager + every persona
+        # manager + every persona (full turns) + the light payload of a simple turn
+        self.assertEqual(src.count("_turn_flags(payload, message)"), 3)
+        light = src[src.index("def _light_payload"):src.index("def _strip_light_result")]
+        self.assertIn("_turn_flags(payload, message)", light)
         # the media rules allow ONE question only to pick a file, never about content
         media = _flat(src[src.index("UPLOADING A VIDEO FROM THEIR MEDIA FOLDER"):src.index("LANDING PAGES —")])
         self.assertIn("never ask what a video shows, its caption, title, purpose or audience", media)

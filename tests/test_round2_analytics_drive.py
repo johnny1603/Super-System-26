@@ -173,7 +173,7 @@ class AnalyticsFlagOff(AnalyticsBase):
     def test_flag_gates_in_every_reader(self):
         # Off = the section, the channel and the briefing fact are never even built
         self.assertRegex(_read("core", "client_state.py"),
-                         r"if analytics_enabled\(\):\n\s+take\(\"website_traffic\"")
+                         r"if analytics_enabled\(\):\n\s+independent\[\"website_traffic\"\]")
         self.assertIn("if analytics_enabled():\n        channels = CHANNELS + (TRAFFIC_CHANNEL,)",
                       _read("core", "performance.py"))
         self.assertIn('facts["site_traffic"] = None', _read("agents", "engagement_agent.py"))

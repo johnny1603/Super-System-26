@@ -427,7 +427,9 @@ class CardAndList(unittest.TestCase):
         src = _read("agents", "support_agent.py")
         self.assertIn("sent_to_tiktok_on", src)
         self.assertRegex(" ".join(src.split()), r"never the one sent before")
-        self.assertEqual(len(re.findall(r"_account_context\(client_id, client, payload, message\)", src)), 2)
+        # the snapshot (fresh media on a video message) is read in ONE place both chats use
+        self.assertEqual(len(re.findall(r"_account_context\(client_id, client, part, message\)", src)), 1)
+        self.assertEqual(src.count("ctx = _load_context(client_id, client, message, "), 2)
 
 
 # ─── The diagnose route: admin-only, read-only ──────────────────────────────

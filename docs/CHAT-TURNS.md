@@ -49,6 +49,11 @@ Without the table, each turn is one `[chat_timing]` log line (ids and numbers on
 
 ### Suspected causes of delay (from reading the code — confirm with the data first)
 
+> **2026-11-11 update — see `docs/CHAT-SPEED.md`.** Causes 1, 2 and 4 are now addressed: the
+> manager is no longer locked (it is routed by rules, `core/chat_route`), context reads run in
+> parallel (`core/parallel`), and a simple turn reads no account context at all. Specialists no
+> longer call the Haiku router. The list below is kept as the original analysis.
+
 1. **The manager is locked to Opus 5.5** (`model_routing.ROLE_OVERRIDES["manager"]`). Every
    manager turn pays the strongest model's latency, even for "thanks".
 2. **Context reads are serial** on a cache miss: Google/Meta/website performance, suggestions,
@@ -60,7 +65,7 @@ Without the table, each turn is one `[chat_timing]` log line (ids and numbers on
    the price of merging. Set it to 0 to switch it off.
 6. Several small DB writes and reads per message: inbound log, outbound log, the turn checks.
 
-### Proposed fixes (none applied yet — decide from the measurement)
+### Proposed fixes (the first and third were applied on 2026-11-11 — `docs/CHAT-SPEED.md`)
 
 - No cost: run the independent context reads in parallel (a thread pool, as the router does).
 - No cost: skip the web-search stage unless the model asked for it. This is already the case;

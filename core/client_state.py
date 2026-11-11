@@ -498,46 +498,77 @@ def media_turn(message) -> bool:
     return bool(_MEDIA_TURN.search(str(message or "")))
 
 
+# Every section of the snapshot, in the order the model reads them
+SECTIONS = ("channels", "connections", "tracking", "google_campaigns", "meta_campaigns", "budget",
+            "leads", "approvals", "website", "landing_pages", "media", "media_folder", "package",
+            "site_security", "site_updates", "outreach", "creative_tools", "voice", "team_requests",
+            "store", "website_traffic")
+
+
 def snapshot(client_id: int, refresh: bool = False, fresh_media: bool = False) -> dict:
     """Never raises. Keys starting with "_" are for code only (for_model
     strips them): `_failed` lists the sections that could not be read.
     `fresh_media`: the media_folder section only is read past every cache."""
     state, failed = {"as_of": _now()}, []
 
-    def take(name, fetch):
-        value, ok = _section(client_id, name, fetch, refresh or (fresh_media and name == "media_folder"))
+    def section(name, fetch):
+        return lambda: _section(client_id, name, fetch, refresh or (fresh_media and name == "media_folder"))
+
+    # Every section is its own read (several of them a live call to an outside
+    # provider) — run TOGETHER since 2026-11-11 (core/parallel, docs/CHAT-SPEED.md):
+    # a cold snapshot costs the slowest section, not the sum of ~20. Only
+    # tracking / budget / leads need `channels`, so they start once it's in.
+    from core import parallel
+    from core.round2_flags import analytics_enabled
+    channels_future = parallel.submit(section("channels", lambda: _channels(client_id)))
+    independent = {
+        "connections": lambda: _connections(client_id),
+        "google_campaigns": lambda: _google_campaigns(client_id),
+        "meta_campaigns": lambda: _meta_campaigns(client_id),
+        "approvals": lambda: _approvals(client_id),
+        "website": lambda: _website(client_id),
+        "landing_pages": lambda: _landing_pages(client_id),
+        "media": lambda: _media(client_id),
+        "media_folder": lambda: _media_folder(client_id, fresh=fresh_media),
+        "package": lambda: _package(client_id),
+        "site_security": lambda: _site_security(client_id),
+        "site_updates": lambda: _site_updates(client_id),
+        "outreach": lambda: _outreach(client_id),
+        "creative_tools": lambda: _creative_tools(client_id),
+        "voice": lambda: _voice(client_id),
+        "team_requests": lambda: _team_requests(client_id),
+        "store": lambda: _store(client_id),
+    }
+    if analytics_enabled():
+        independent["website_traffic"] = lambda: _website_traffic(client_id)
+    futures = {name: parallel.submit(section(name, fetch)) for name, fetch in independent.items()}
+    try:
+        channels, channels_ok = channels_future.result()
+    except Exception:
+        channels, channels_ok = None, False
+    results = {"channels": (channels, channels_ok)}
+    if channels_ok and channels is not None:
+        for name, fetch in (("tracking", lambda: _tracking(client_id, channels)),
+                            ("budget", lambda: _budget(client_id, channels)),
+                            ("leads", lambda: _leads(client_id, channels))):
+            futures[name] = parallel.submit(section(name, fetch))
+    else:
+        futures["tracking"] = parallel.submit(section("tracking", lambda: _tracking(client_id, None)))
+        results["budget"] = results["leads"] = (None, False)
+    for name, future in futures.items():
+        try:
+            results[name] = future.result()
+        except Exception:
+            results[name] = (None, False)
+    # the same key order as before, so the model's view reads the same way
+    for name in SECTIONS:
+        if name not in results:
+            continue
+        value, ok = results[name]
         if ok:
             state[name] = value
         else:
             failed.append(name)
-        return value
-
-    channels = take("channels", lambda: _channels(client_id))
-    take("connections", lambda: _connections(client_id))
-    take("tracking", lambda: _tracking(client_id, channels))
-    take("google_campaigns", lambda: _google_campaigns(client_id))
-    take("meta_campaigns", lambda: _meta_campaigns(client_id))
-    if channels is not None:
-        take("budget", lambda: _budget(client_id, channels))
-        take("leads", lambda: _leads(client_id, channels))
-    else:
-        failed += ["budget", "leads"]
-    take("approvals", lambda: _approvals(client_id))
-    take("website", lambda: _website(client_id))
-    take("landing_pages", lambda: _landing_pages(client_id))
-    take("media", lambda: _media(client_id))
-    take("media_folder", lambda: _media_folder(client_id, fresh=fresh_media))
-    take("package", lambda: _package(client_id))
-    take("site_security", lambda: _site_security(client_id))
-    take("site_updates", lambda: _site_updates(client_id))
-    take("outreach", lambda: _outreach(client_id))
-    take("creative_tools", lambda: _creative_tools(client_id))
-    take("voice", lambda: _voice(client_id))
-    take("team_requests", lambda: _team_requests(client_id))
-    take("store", lambda: _store(client_id))
-    from core.round2_flags import analytics_enabled
-    if analytics_enabled():
-        take("website_traffic", lambda: _website_traffic(client_id))
     state["_failed"] = failed
     return state
 

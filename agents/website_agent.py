@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 from supabase import create_client as _supabase_client
 
+from core.parallel import single_flight
 from core import wordpress_service as wp
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import safe_claude_json_call
@@ -667,6 +668,7 @@ def _rebuild_reference(client_id: int) -> dict:
 
 # ─── Overview (support chat + admin) ──────────────────────────────────────────
 
+@single_flight   # one live read per client at a time (core/parallel; the chat reads in parallel)
 def get_site_overview(client_id: int) -> dict:
     """Site name, SEO plugin, recent posts/pages. Cached 5 minutes so the
     support chat can always include it, same as campaign performance."""

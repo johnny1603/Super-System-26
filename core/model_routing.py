@@ -18,8 +18,12 @@ error, is retried ONCE one tier up. The client only ever sees the final
 answer. The top tier has nothing above it, so it keeps claude_json's own
 empty-answer retries instead.
 
-LOCKED: the team manager (the concierge) and the opening interview always
-run on the heavy tier, router or not. איציק (the owner's operator) is locked
+CLIENT CHAT (2026-11-11, docs/CHAT-SPEED.md): the manager and the
+specialists (CHAT_ROLES) take their tier from core/chat_route's RULES —
+simple / read / work → simple / standard / heavy, doubt going up — with no
+router call. The router below is no longer on the client chat's path.
+
+LOCKED: the opening interview always runs on the heavy tier. איציק (the owner's operator) is locked
 to heavy for everything that writes code, deploys or changes something
 (locked_model("operator")); since 2026-11-10 his acknowledgements, quick
 status questions and read/diagnose messages take a cheaper tier from
@@ -51,10 +55,16 @@ TIER_MODELS = {
     "heavy": "claude-opus-5-5",
 }
 ROLE_OVERRIDES = {
-    "manager": "heavy",      # the team manager (concierge)
+    # The team manager (concierge) is NO LONGER locked (2026-11-11,
+    # docs/CHAT-SPEED.md): a "thanks" paid the strongest model's latency on
+    # every turn. It routes by core/chat_route's rules, doubt going UP.
     "interview": "heavy",    # the opening interview
     "operator": "heavy",     # איציק, the owner's operator (core/operator_agent)
 }
+# The client chat's roles: tier from core/chat_route's RULES — no router
+# model call on their path any more (it cost up to ROUTER_TIMEOUT_SECONDS
+# before every specialist answer)
+CHAT_ROLES = ("manager", "specialist")
 ROUTER_TIER = "simple"       # the router runs on this tier's model
 FALLBACK_TIER = "standard"   # router failed / timed out / answered nonsense
 ROUTER_TIMEOUT_SECONDS = 4.0
@@ -175,12 +185,26 @@ def classify(message: str, recent: list, client_id=None) -> dict:
             "router_ils": router_ils}
 
 
+def chat_decision(route: dict) -> dict:
+    """A client-chat turn's decision from core/chat_route.classify (rules)."""
+    if not routing_enabled():
+        return {"tier": "heavy", "model": TIER_MODELS["heavy"], "reason": "routing off", "source": "flag_off",
+                "router_ils": 0.0, "kind": "work"}
+    tier = route.get("tier") if route.get("tier") in TIERS else "heavy"
+    return {"tier": tier, "model": TIER_MODELS[tier], "reason": route.get("reason") or "",
+            "source": "rule", "router_ils": 0.0, "kind": route.get("kind") or "work"}
+
+
 def decide(role: str, message: str = "", recent: list = None, client_id=None) -> dict:
     """{"tier", "model", "reason", "source", "router_ils"} for one turn."""
     if role in ROLE_OVERRIDES:
         tier, reason, source, router_ils = ROLE_OVERRIDES[role], f"{role} is locked", "locked", 0.0
     elif not routing_enabled():
         tier, reason, source, router_ils = "heavy", "routing off", "flag_off", 0.0
+    elif role in CHAT_ROLES:
+        from core import chat_route
+        recent = recent or []
+        return chat_decision(chat_route.classify(message, chat_route.last_reply(recent)))
     else:
         ruled = rule_tier(message)
         if ruled:
@@ -206,13 +230,16 @@ def answer_problem(result):
     return None
 
 
-def routed_turn(role: str, call, message: str = "", recent: list = None, client_id=None):
+def routed_turn(role: str, call, message: str = "", recent: list = None, client_id=None,
+                decision: dict = None):
     """Run one chat turn. `call(model, last_try)` makes the model call with
     the SAME prompt whatever the model (last_try=True: the call may use
     claude_json's own empty-answer retries). Returns the answer; raises only
-    when the final attempt raised (the caller's failure path takes over)."""
+    when the final attempt raised (the caller's failure path takes over).
+    `decision`: one the caller already made (the client chat decides BEFORE
+    loading context, since a simple turn loads less)."""
     from core.claude_json import collect_usage
-    decision = decide(role, message, recent, client_id)
+    decision = decision or decide(role, message, recent, client_id)
     tier = first_tier = decision["tier"]
     can_escalate = decision["source"] not in ("locked", "flag_off")
     up = next_tier(tier) if can_escalate else None

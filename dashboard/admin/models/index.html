@@ -52,7 +52,7 @@ select { font-family:inherit; font-size:14px; background:var(--panel-2); color:v
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <h2 style="margin:0">תורות צ'אט</h2>
       <label class="muted">תקופה
-        <select id="days"><option value="1">יום</option><option value="7" selected>7 ימים</option><option value="30">30 ימים</option></select>
+        <select id="days"><option value="1">יום</option><option value="2">48 שעות</option><option value="7" selected>7 ימים</option><option value="30">30 ימים</option></select>
       </label>
     </div>
     <div id="routing" class="muted" style="margin-top:10px;">טוען…</div>
@@ -95,7 +95,7 @@ function renderRouting(r) {
       : '<span class="badge warn">כבוי — הכול על המודל החזק</span>'}</div>
     <table style="margin-top:12px;"><thead><tr><th>רמה</th><th>תורות</th><th>% מהתורות</th><th>עלות לתור</th><th>סה"כ</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    <div class="muted" style="margin-top:8px;">כולל את עלות המסווג. נעולים (מנהל, ראיון פתיחה) תמיד ברמה "כבד".</div>`;
+    <div class="muted" style="margin-top:8px;">צ'אט הלקוח (מנהל + מומחים) מנותב לפי כללים, בלי מסווג. רק ראיון הפתיחה נעול ברמה "כבד".</div>`;
 }
 
 function renderRollover(r) {
@@ -121,6 +121,29 @@ function renderRollover(r) {
 const STAGE_HE = {queue: "המתנה בתור + חלון איסוף", guard: "בדיקה ושמירה", context: "קריאת נתונים והכנה",
                   model: "מודל", post: "עיבוד אחרי", other: "אחר"};
 const sec = ms => (Number(ms || 0) / 1000).toFixed(1) + "ש'";
+// The route chosen per message (core/chat_route, 2026-11-11) — compare before / after
+const ROUTE_HE = {simple: "פשוט", read: "קריאה", work: "עבודה", "—": "לפני הניתוב"};
+function groupTable(title, groups, label) {
+  const rows = Object.entries(groups || {}).map(([k, g]) => `<tr><td>${esc(label(k))}</td><td>${g.turns}</td>
+      <td>${sec(g.avg_ms)}</td><td>${sec(g.median_ms)}</td><td>${sec(g.p90_ms)}</td>
+      <td class="muted" style="font-size:12px">${sec(g.avg_queue_ms)} / ${sec(g.avg_context_ms)} / ${sec(g.avg_model_ms)} / ${sec(g.avg_post_ms)}</td>
+      <td>${g.avg_model_calls}</td><td>${esc(STAGE_HE[g.dominant] || g.dominant)}</td>
+      <td class="muted" style="font-size:12px">${Object.entries(g.models || {}).map(([m, n]) => esc(m) + " ×" + n).join(" · ")}</td></tr>`).join("");
+  return `<h2 style="margin-top:14px">${esc(title)}</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th></th><th>הודעות</th><th>ממוצע</th><th>חציון</th><th>p90</th>
+      <th>תור / נתונים / מודל / אחרי</th><th>קריאות מודל</th><th>דומיננטי</th><th>מודלים</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function groupsHtml(g) {
+  if (!g) return "";
+  const route = k => { const [r, m] = k.split(":"); return (ROUTE_HE[r] || r) + (m && m !== "—" ? " · " + m : ""); };
+  const len = k => ({short: "קצרה (פחות מ-40 תווים)", long: "ארוכה", unknown: "לפני המדידה"}[k] || k);
+  return `<div class="kpis" style="margin-top:12px">
+      <div class="kpi"><span class="muted">הודעות קצרות מעל דקה</span><b>${g.short_over_60s_pct == null ? "—" : g.short_over_60s_pct + "%"}</b>
+        <span class="muted">${g.short_turns} קצרות</span></div></div>
+    ${groupTable("לפי הניתוב שנבחר", g.by_route, route)}
+    ${groupTable("לפי סוכן", g.by_persona, k => k)}
+    ${groupTable("קצרה מול ארוכה", g.by_length, len)}`;
+}
 function renderTiming(t) {
   const el = document.getElementById("timing");
   if (!t.available) {
@@ -139,7 +162,7 @@ function renderTiming(t) {
     const calls = (s.calls || []).map(c => `${esc(c.model)} ${sec(c.ms)} (${c.in}+${c.cache_read}→${c.out})`).join(" · ");
     return `<tr><td>${esc(new Date(s.created_at).toLocaleString("he-IL", {dateStyle: "short", timeStyle: "short"}))}</td>
       <td>${esc(s.name || "")} <span class="muted">#${s.client_id} · ${esc(s.persona)}</span></td>
-      <td>${sec(s.total_ms)}</td><td>${esc(STAGE_HE[s.dominant] || s.dominant)}</td>
+      <td>${sec(s.total_ms)}${s.route ? `<div class="muted">${esc(ROUTE_HE[s.route] || s.route)} · ${esc(s.message_chars == null ? "" : s.message_chars + " תווים")}</div>` : ""}</td><td>${esc(STAGE_HE[s.dominant] || s.dominant)}</td>
       <td class="muted" style="font-size:12px">${calls}</td></tr>`;
   }).join("");
   el.className = "";
@@ -151,6 +174,7 @@ function renderTiming(t) {
     </div>
     <h2 style="margin-top:14px">לפי שלב (ממוצע) · כמה פעמים היה השלב הדומיננטי</h2>
     <table><thead><tr><th>שלב</th><th>ממוצע</th><th>דומיננטי</th></tr></thead><tbody>${stageRows}</tbody></table>
+    ${groupsHtml(t.groups)}
     <h2 style="margin-top:14px">לפי לקוח</h2>
     <div style="overflow-x:auto"><table><thead><tr><th>לקוח</th><th>הודעות</th><th>ממוצע</th><th>p90</th><th>שלב דומיננטי</th></tr></thead>
       <tbody>${clientRows}</tbody></table></div>

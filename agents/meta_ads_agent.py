@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from supabase import create_client as _supabase_client
 
+from core.parallel import single_flight
 from core import lead_tracking
 from core import meta_service as meta
 from core.agent_base import agent_alert, log_step, timed_step
@@ -105,6 +106,7 @@ def _conversions_from_actions(actions: list) -> float:
                if a.get("action_type") in CONVERSION_ACTION_TYPES)
 
 
+@single_flight   # one live read per client at a time (core/parallel; the chat reads in parallel)
 def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dict:
     """Last-30-days campaign metrics (Facebook + Instagram combined — Meta is
     one platform group in our pricing). Always returns a well-formed dict —

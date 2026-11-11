@@ -1102,6 +1102,137 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
     return _format_proposal_reply(proposal)
 
 
+# ─── One turn's context: decided first, then read AT ONCE (2026-11-11) ───────
+# docs/CHAT-SPEED.md. Before: every read ran one after another (ads, site,
+# store, ~20 client_state sections — several of them live calls to outside
+# providers) and every manager turn ran on the strongest model, so a "thanks"
+# waited for all of it. Now: the turn's kind is decided by RULES first
+# (core/chat_route — doubt goes up); a simple turn reads only the last few
+# messages; every other turn reads everything it read before, in parallel.
+
+def _decide_turn(client_id: int, message: str, history: list, force_work: bool = False) -> dict:
+    """The routing decision for this message (model_routing.chat_decision),
+    recorded on the turn's timing row."""
+    from core import chat_route, chat_timing
+    flags = {"conversation_history": history}
+    _turn_flags(flags, message)
+    route = chat_route.classify(message, chat_route.last_reply(history),
+                                frustrated=bool(flags.get("client_frustrated")),
+                                explicit=bool(flags.get("explicit_instruction")))
+    if force_work and route["kind"] != "work":
+        route = {"kind": "work", "tier": "heavy", "reason": "connection help"}
+    decision = model_routing.chat_decision(route)
+    for name, value in (("route", decision["kind"]), ("route_tier", decision["tier"]),
+                        ("route_model", decision["model"]), ("route_reason", decision["reason"]),
+                        ("message_chars", len(message or ""))):
+        chat_timing.flag(name, value)
+    return decision
+
+
+def _light_payload(payload: dict, message: str, history: list) -> None:
+    """A SIMPLE turn: the message and the last few turns, no account reads."""
+    from core import chat_route
+    payload["client_message"] = message
+    payload["conversation_history"] = history[-chat_route.SIMPLE_HISTORY_TURNS:]
+    payload["turn_note"] = chat_route.SIMPLE_NOTE
+    _turn_flags(payload, message)
+
+
+def _strip_light_result(result) -> None:
+    """A simple turn had no account data and no action list: nothing it
+    'proposed', priced or wanted to search is acted on."""
+    if isinstance(result, dict):
+        for key in ("proposed_action", "upgrade_request", "web_search_query", "article_request",
+                    "revision_request"):
+            result.pop(key, None)
+
+
+def _suggestions_block(client_id: int):
+    try:
+        from agents.engagement_agent import get_suggestions
+        pending = get_suggestions(client_id, status="pending", limit=PENDING_SUGGESTIONS_LIMIT)
+        return [{"title": s.get("title", ""), "kind": s.get("kind", "")} for s in pending] if pending else None
+    except Exception as e:
+        log_step(AGENT_NAME, "platform_context",
+                 f"client {client_id}: suggestions fetch failed (degrading): {e}")
+        return None
+
+
+def _manager_platform_reads(client_id: int) -> dict:
+    """The manager's three live platform reads, together. A throw counts as
+    a failed read, same as an error result (the created_at 500 of 2026-07-16)."""
+    from core import parallel
+    from agents.google_ads_agent import get_campaign_performance as google_performance
+    from agents.meta_ads_agent import get_campaign_performance as meta_performance
+    from agents.website_agent import get_site_overview as website_overview
+    got = parallel.gather({"google_ads_performance": lambda: google_performance(client_id),
+                           "meta_ads_performance": lambda: meta_performance(client_id),
+                           "website_overview": lambda: website_overview(client_id)})
+    reads = {}
+    for field in ("google_ads_performance", "meta_ads_performance", "website_overview"):
+        ok, value = got[field]
+        if not ok:
+            log_step(AGENT_NAME, "platform_context",
+                     f"client {client_id}: {field} fetch failed (degrading): {value}")
+            value = {"connected": True, "error": str(value)}
+        reads[field] = value
+    return reads
+
+
+def _load_context(client_id: int, client: dict, message: str, persona_id: str, reads, store: bool,
+                  suggestions: bool) -> dict:
+    """Every read of a full turn, run together (core/parallel). Returns the
+    pieces; the caller places them in the payload in the usual order."""
+    from core import client_state, parallel
+
+    def account():
+        part = {}
+        return _account_context(client_id, client, part, message), part
+
+    def store_part():
+        part = {}
+        return _add_store_reads(client_id, message, part), part
+
+    tasks = {"lead": lambda: _latest_lead(client_id),
+             "client_knowledge": lambda: _client_knowledge(client_id, persona_id),
+             "recent_activity": lambda: _recent_activity(client_id),
+             "reads": lambda: reads(client_id),
+             "account": account}
+    if store:
+        tasks["store"] = store_part
+    if suggestions:
+        tasks["suggestions"] = lambda: _suggestions_block(client_id)
+    got = parallel.gather(tasks)
+
+    def value(name, default):
+        ok, v = got.get(name, (False, None))
+        return v if ok else default
+
+    failed = set()
+    ok, platform = got["reads"]
+    if ok:
+        reads_part = {}
+        failed |= _add_reads(reads_part, platform or {})
+    else:
+        log_step(AGENT_NAME, "persona_reads",
+                 f"client {client_id}: {persona_id} reads failed (degrading): {platform}")
+        reads_part = {}
+        if persona_id in PERSONA_TOPICS:
+            failed.add(PERSONA_TOPICS[persona_id])
+    store_failed, store_payload = value("store", (set(), {})) if store else (set(), {})
+    if store and not got["store"][0]:
+        store_failed = {"store"}
+    failed |= store_failed
+    ok, acct = got["account"]
+    state, acct_part = acct if ok else ({}, {"available_actions": []})
+    failed |= client_state.failed_topics(state)
+    return {"lead": value("lead", {}) or {}, "client_knowledge": value("client_knowledge", {}) or {},
+            "recent_activity": value("recent_activity", []) or [],
+            "suggestions": value("suggestions", None) if suggestions else None,
+            "reads": reads_part, "store": store_payload, "account": acct_part, "state": state,
+            "failed": failed}
+
+
 def answer_support_question(client_id: int, message: str, help_connection: str = "",
                             dry_run: bool = False) -> dict:
     """The concierge turn. NEVER raises and never returns an empty reply —
@@ -1125,75 +1256,53 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
-    lead = _latest_lead(client_id)
+    history, previous_days = _thread_context(client_id, client.get("chat_started_at"))
+    # The kind of turn FIRST (rules, no model call): a simple one reads nothing
+    # else; "עזרה" on a connection is always a full turn
+    decision = _decide_turn(client_id, message, history, force_work=bool(help_connection))
+    light = decision["kind"] == "simple"
     payload = {
         "client": {
             "name": client.get("name"),
             "package": client.get("package"),
             "status": client.get("status"),
         },
-        "proposal": _proposal_for_chat(lead),
-        "client_knowledge": _client_knowledge(client_id, "general"),
-        "recent_activity": _recent_activity(client_id),
-        "client_message": message,
     }
-    payload["conversation_history"], previous_days = _thread_context(client_id, client.get("chat_started_at"))
-    if previous_days:
-        payload["previous_days"] = previous_days
-    _turn_flags(payload, message)
-    if not payload["client_knowledge"]:
-        payload.pop("client_knowledge")  # absent, never an empty block to read into
+    help_entry = {}
+    if light:
+        _light_payload(payload, message, history)
+        lead, state, failed = {}, {}, set()
+    else:
+        # Every read at once (core/parallel). Real campaign data when the client
+        # has connected an ad platform ({"connected": false} stays in — "not
+        # connected" is a fact the model acts on); the online store live for THIS
+        # message, exactly as אורי gets it (no customer data); the pending
+        # suggestions the chat walks the client through; client_state.
+        ctx = _load_context(client_id, client, message, "general", _manager_platform_reads,
+                            store=True, suggestions=True)
+        lead, state, failed = ctx["lead"], ctx["state"], ctx["failed"]
+        payload["proposal"] = _proposal_for_chat(lead)
+        if ctx["client_knowledge"]:
+            payload["client_knowledge"] = ctx["client_knowledge"]  # absent, never an empty block
+        payload["recent_activity"] = ctx["recent_activity"]
+        payload["client_message"] = message
+        payload["conversation_history"] = history
+        if previous_days:
+            payload["previous_days"] = previous_days
+        _turn_flags(payload, message)
 
-    # "עזרה" on a connection: that ONE entry's steps and links, nothing else
-    from core import admin_service, connection_help
-    help_entry = connection_help.get(help_connection) if help_connection else {}
-    if help_entry:
-        payload["connection_help"] = connection_help.for_agent(
-            help_entry, _client_language(client_id, message),
-            admin_service.display_phone(admin_service.support_whatsapp_number()))
-
-    # The chat owns the homework/suggestions experience - it must know what's
-    # pending so it can walk the client through approving it
-    try:
-        from agents.engagement_agent import get_suggestions
-        pending = get_suggestions(client_id, status="pending",
-                                  limit=PENDING_SUGGESTIONS_LIMIT)
-        if pending:
-            payload["pending_suggestions"] = [
-                {"title": s.get("title", ""), "kind": s.get("kind", "")} for s in pending]
-    except Exception as e:
-        log_step(AGENT_NAME, "platform_context",
-                 f"client {client_id}: suggestions fetch failed (degrading): {e}")
-
-    # Real campaign data when the client has connected an ad platform. Cheap
-    # enough to always include: the agents cache results for 5 minutes, and it
-    # means "how are my campaigns doing?" gets actual numbers, not a canned line.
-    from agents.google_ads_agent import get_campaign_performance as google_performance
-    from agents.meta_ads_agent import get_campaign_performance as meta_performance
-    from agents.website_agent import get_site_overview as website_overview
-    reads = {}
-    for field, fetch in (("google_ads_performance", google_performance),
-                         ("meta_ads_performance", meta_performance),
-                         ("website_overview", website_overview)):
-        # One broken integration must never take down the whole chat (the
-        # created_at 500 of 2026-07-16). A throw counts as a failed read, same
-        # as an error result: left out of the payload, decided on by code.
-        try:
-            reads[field] = fetch(client_id)
-        except Exception as e:
-            log_step(AGENT_NAME, "platform_context",
-                     f"client {client_id}: {field} fetch failed (degrading): {e}")
-            reads[field] = {"connected": True, "error": str(e)}
-    # {"connected": false} stays in: "not connected" is a fact the model acts
-    # on (the connect action), unlike a failure
-    failed = _add_reads(payload, reads)
-    # The online store, live for THIS message, exactly as אורי gets it
-    # (agents/store_agent: one sale definition, no customer data): a store
-    # client asks the manager "how much did we sell yesterday" first of all
-    failed |= _add_store_reads(client_id, message, payload)
-    from core import client_state
-    state = _account_context(client_id, client, payload, message)
-    failed |= client_state.failed_topics(state)
+        # "עזרה" on a connection: that ONE entry's steps and links, nothing else
+        from core import admin_service, connection_help
+        help_entry = connection_help.get(help_connection) if help_connection else {}
+        if help_entry:
+            payload["connection_help"] = connection_help.for_agent(
+                help_entry, _client_language(client_id, message),
+                admin_service.display_phone(admin_service.support_whatsapp_number()))
+        if ctx["suggestions"]:
+            payload["pending_suggestions"] = ctx["suggestions"]
+        payload.update(ctx["reads"])
+        payload.update(ctx["store"])
+        payload.update(ctx["account"])
 
     user_message = json.dumps(payload, ensure_ascii=False, default=str)
     # The name the client chose for their manager — the only per-client part of
@@ -1208,20 +1317,23 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             # call at the default model.
             # Cached: the rules + the manager line (static per manager); the
             # client's data, history and message stay in user_message.
-            # The manager is LOCKED to the strong tier (core/model_routing) —
-            # routed_turn only logs the turn.
+            # The manager's tier comes from the rules (core/chat_route via
+            # _decide_turn, 2026-11-11): simple / read / work → simple /
+            # standard / heavy; same prompt whichever model runs it.
             lambda: model_routing.routed_turn(
                 "manager",
                 lambda model, last_try: safe_claude_json_call(
                     cached_system(SYSTEM + manager_line), user_message, max_tokens=CHAT_TURN_MAX_TOKENS,
                     model=model, effort=CHAT_TURN_EFFORT, client_id=client_id,
                     cost_category="claude_support", retry_empty=last_try),
-                message=message, client_id=client_id),
+                message=message, client_id=client_id, decision=decision),
         )
     except Exception as e:
         # ANY failure — unparseable JSON, but also the API timeouts/overloads
         # that the old `except ClaudeJSONError` let through as a bare 500
         return _technical_failure(client_id, "general", message, "llm_call", e)
+    if light:
+        _strip_light_result(result)
 
     if dry_run:
         return _dry_result(client_id, "general", message, result, failed, state, client)
@@ -2244,39 +2356,39 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     log_step(AGENT_NAME, "answer_persona_question",
              f"client_id={client_id} persona={persona_id}")
     client = get_client(client_id)
-    lead = _latest_lead(client_id)
+    history, previous_days = _thread_context(client_id, client.get("chat_started_at"),
+                                             channel=persona_channel(persona_id))
+    # Rules first (core/chat_route): a simple turn reads nothing else
+    decision = _decide_turn(client_id, message, history)
+    light = decision["kind"] == "simple"
     payload = {
         "client": {"name": client.get("name"), "package": client.get("package"),
                     "status": client.get("status")},
-        "proposal": _proposal_for_chat(lead),
-        "client_knowledge": _client_knowledge(client_id, persona_id),
-        "recent_activity": _recent_activity(client_id),
-        "client_message": message,
     }
-    payload["conversation_history"], previous_days = _thread_context(
-        client_id, client.get("chat_started_at"), channel=persona_channel(persona_id))
-    if previous_days:
-        payload["previous_days"] = previous_days
-    _turn_flags(payload, message)
-    if not payload["client_knowledge"]:
-        payload.pop("client_knowledge")
-    try:
-        failed = _add_reads(payload, persona["reads"](client_id))
-    except Exception as e:
-        # A broken platform read must never 500 the chat. Same as the
-        # concierge: nothing about the failure reaches the model; code decides
-        # on the fixed line if the client asks about this persona's data.
-        log_step(AGENT_NAME, "persona_reads",
-                 f"client {client_id}: {persona_id} reads failed (degrading): {e}")
-        failed = {PERSONA_TOPICS[persona_id]} if persona_id in PERSONA_TOPICS else set()
-    if persona_id == "website":
-        # The online store, live, for THIS message (agents/store_agent): orders,
-        # sales, refunds — never a customer's personal details (those are
-        # answered by code before any model, core/api_server client_chat)
-        failed |= _add_store_reads(client_id, message, payload)
-    from core import client_state
-    state = _account_context(client_id, client, payload, message)
-    failed |= client_state.failed_topics(state)
+    if light:
+        _light_payload(payload, message, history)
+        lead, state, failed = {}, {}, set()
+    else:
+        # Every read at once (core/parallel). A broken platform read never
+        # 500s the chat: nothing about it reaches the model; code decides on
+        # the fixed line if the client asks about this persona's data. The
+        # website persona also reads the online store live for THIS message
+        # (orders, sales, refunds — never a customer's personal details).
+        ctx = _load_context(client_id, client, message, persona_id, persona["reads"],
+                            store=persona_id == "website", suggestions=False)
+        lead, state, failed = ctx["lead"], ctx["state"], ctx["failed"]
+        payload["proposal"] = _proposal_for_chat(lead)
+        if ctx["client_knowledge"]:
+            payload["client_knowledge"] = ctx["client_knowledge"]
+        payload["recent_activity"] = ctx["recent_activity"]
+        payload["client_message"] = message
+        payload["conversation_history"] = history
+        if previous_days:
+            payload["previous_days"] = previous_days
+        _turn_flags(payload, message)
+        payload.update(ctx["reads"])
+        payload.update(ctx["store"])
+        payload.update(ctx["account"])
 
     drafts = persona_id == "website"
     system = PERSONA_SYSTEM_TEMPLATE.format(
@@ -2301,9 +2413,11 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
                     cached_system(system), json.dumps(payload, ensure_ascii=False, default=str),
                     max_tokens=CHAT_TURN_MAX_TOKENS, model=model, effort=CHAT_TURN_EFFORT,
                     client_id=client_id, cost_category="claude_support", retry_empty=last_try),
-                message=message, recent=payload["conversation_history"], client_id=client_id))
+                message=message, recent=history, client_id=client_id, decision=decision))
     except Exception as e:
         return _technical_failure(client_id, persona_id, message, "persona_llm_call", e)
+    if light:
+        _strip_light_result(result)
 
     if dry_run:
         return _dry_result(client_id, persona_id, message, result, failed, state, client)

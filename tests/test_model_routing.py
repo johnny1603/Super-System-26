@@ -84,7 +84,7 @@ GOOD = {"reply": "תשובה", "confidence": "high"}
 class Locked(Base):
     def test_locked_roles_always_get_opus(self):
         os.environ[mr.FLAG] = "1"
-        for role in ("manager", "interview"):
+        for role in ("interview",):
             for message in ("תודה", "כמה קליקים היו?", "תמחק הכול"):
                 d = mr.decide(role, message, [], 5)
                 self.assertEqual((d["model"], d["source"]), (OPUS, "locked"), (role, message))
@@ -92,10 +92,19 @@ class Locked(Base):
 
     def test_locked_turn_never_escalates_and_logs(self):
         models = []
-        self.turn("manager", "היי", lambda model, last: models.append((model, last)) or GOOD)
+        self.turn("interview", "היי", lambda model, last: models.append((model, last)) or GOOD)
         self.assertEqual(models, [(OPUS, True)])
-        self.assertEqual(self.logged[0]["role"], "manager")
+        self.assertEqual(self.logged[0]["role"], "interview")
         self.assertEqual(self.logged[0]["model"], OPUS)
+
+    def test_the_manager_routes_by_the_client_chat_rules(self):
+        # 2026-11-11 (docs/CHAT-SPEED.md): no longer locked; rules, no router call
+        cases = {"תודה": HAIKU, "כמה לידים היו השבוע?": SONNET, "תעלה את הסרטון לטיקטוק": OPUS,
+                 "כן": OPUS, "משהו לא ברור לגמרי": OPUS}
+        for message, model in cases.items():
+            d = mr.decide("manager", message, [], 5)
+            self.assertEqual((d["model"], d["source"]), (model, "rule"), message)
+        self.assertEqual(self.router_calls, [])
 
 
 class Classify(Base):
@@ -119,9 +128,16 @@ class Classify(Base):
             self.assertEqual((d["tier"], d["model"], d["reason"]), ("heavy", OPUS, reason), message)
         self.assertEqual(self.router_calls, [])
 
+    def test_chat_roles_never_call_the_router(self):
+        for role in mr.CHAT_ROLES:
+            for message in ("כמה קליקים היו לי השבוע בגוגל?", "משהו", "תודה", "כן"):
+                self.assertEqual(mr.decide(role, message, [], 5)["source"], "rule", (role, message))
+        self.assertEqual(self.router_calls, [])
+
     def test_standard_example_goes_to_the_router_with_the_last_two_turns(self):
+        # the router itself (no client chat role uses it since 2026-11-11)
         history = [{"from": "client", "text": f"m{i}"} for i in range(10)]
-        d = mr.decide("specialist", "כמה קליקים היו לי השבוע בגוגל?", history, 5)
+        d = mr.decide("other", "כמה קליקים היו לי השבוע בגוגל?", history, 5)
         self.assertEqual((d["tier"], d["model"], d["source"]), ("standard", SONNET, "router"))
         message, recent = self.router_calls[0]
         self.assertEqual(message, "כמה קליקים היו לי השבוע בגוגל?")
@@ -147,7 +163,7 @@ class Classify(Base):
     def test_router_answer_is_respected(self):
         for tier, model in (("simple", HAIKU), ("standard", SONNET), ("heavy", OPUS)):
             self.router(tier)
-            self.assertEqual(mr.decide("specialist", "מה המצב של הקמפיין?", [], 5)["model"], model)
+            self.assertEqual(mr.decide("other", "מה המצב של הקמפיין?", [], 5)["model"], model)
 
 
 class Fallback(Base):
@@ -155,7 +171,7 @@ class Fallback(Base):
         mr.ROUTER_TIMEOUT_SECONDS = 0.2
         self.router(fn=lambda: time.sleep(1.0) or {"tier": "heavy"})
         started = time.time()
-        d = mr.decide("specialist", "מה המצב של הקמפיין?", [], 5)
+        d = mr.decide("other", "מה המצב של הקמפיין?", [], 5)
         self.assertLess(time.time() - started, 0.9)
         self.assertEqual((d["tier"], d["model"], d["source"]), ("standard", SONNET, "timeout"))
 
@@ -163,9 +179,9 @@ class Fallback(Base):
         def boom():
             raise RuntimeError("down")
         self.router(fn=boom)
-        self.assertEqual(mr.decide("specialist", "מה המצב?", [], 5)["source"], "error")
+        self.assertEqual(mr.decide("other", "מה המצב?", [], 5)["source"], "error")
         self.router("ultra")
-        d = mr.decide("specialist", "מה המצב?", [], 5)
+        d = mr.decide("other", "מה המצב?", [], 5)
         self.assertEqual((d["tier"], d["source"]), ("standard", "invalid"))
 
     def test_flag_off_sends_everything_to_opus(self):
@@ -319,7 +335,7 @@ class Persona(unittest.TestCase):
                                message="מה המצב?", client_id=1)
         finally:
             mr._db, mr._ask_router = saved
-        self.assertEqual([m for m, _ in seen], [HAIKU, SONNET])
+        self.assertEqual([m for m, _ in seen], [SONNET, OPUS])      # a short question: read → standard
         self.assertEqual(seen[0][1], seen[1][1])
 
 
@@ -338,7 +354,8 @@ class OneConfig(unittest.TestCase):
         self.assertIn('CLASSIFY_MODEL = TIER_MODELS["simple"]', _src("core", "claude_json.py"))
 
     def test_locked_roles_in_config(self):
-        self.assertEqual(mr.ROLE_OVERRIDES, {"manager": "heavy", "interview": "heavy", "operator": "heavy"})
+        self.assertEqual(mr.ROLE_OVERRIDES, {"interview": "heavy", "operator": "heavy"})
+        self.assertEqual(mr.CHAT_ROLES, ("manager", "specialist"))
         self.assertEqual(mr.locked_model("operator"), OPUS)
         op = _src("core", "operator_agent.py")
         self.assertIn('locked_model("operator")', op)

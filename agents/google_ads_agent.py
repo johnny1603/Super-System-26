@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 
 from supabase import create_client as _supabase_client
 
+from core.parallel import single_flight
 from core import google_ads_service as gads
 from core import lead_tracking
 from core.agent_base import agent_alert, log_step, timed_step
@@ -337,6 +338,7 @@ def select_account(client_id: int, customer_id: str, chosen_by: str) -> dict:
             "name": info.get("name", ""), "status": info.get("status", "")}
 
 
+@single_flight   # one live read per client at a time (core/parallel; the chat reads in parallel)
 def get_campaign_performance(client_id: int, force_refresh: bool = False) -> dict:
     """Last-30-days campaign metrics for the client's connected account.
     Always returns a well-formed dict - never raises into a client-facing flow."""

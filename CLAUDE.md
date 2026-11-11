@@ -275,10 +275,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   never `.github/`. Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
   `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
 - `core/model_routing.py` — **the ONE place chat models are named** (`TIER_MODELS` simple/
-  standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: manager + interview + operator (איציק)
+  standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: interview + operator (איציק)
   locked to heavy — for the operator that is the ceiling for code/deploy/changes; its cheaper
-  kinds take their tier from `TIER_MODELS` via `operator_agent.model_for`). Specialist turns: rules → haiku router (4 s timeout → standard) → one-tier-up retry on
-  empty/malformed/low-confidence/error. Flag `MODEL_ROUTING_ENABLED` (operator_flags, default
+  kinds take their tier from `TIER_MODELS` via `operator_agent.model_for`). Client chat turns
+  (`CHAT_ROLES` = manager + specialists, since 2026-11-11) are routed by `core/chat_route` RULES
+  only (no router call; doubt goes UP) → one-tier-up retry on empty/malformed/low-confidence/error.
+  Other roles: rules → haiku router (4 s timeout → standard). Flag `MODEL_ROUTING_ENABLED` (operator_flags, default
   ON; off = all opus). Per-turn log `chat_turn_routes` (migrations/2026-11-01-chat-routing.sql),
   admin page `/admin/models/`. Prompt caching: `claude_json.cached_system()` — static prompt
   cached, client data after it. `tests/test_model_routing.py`, `tests/test_prompt_caching.py`.
@@ -709,6 +711,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `client_frustration_alerts` row per incident, email to ADMIN_EMAIL + the admin bell
   (`dashboard/assets/frustration-widget.js`). Migration
   `migrations/2026-11-09-chat-timing-frustration.sql`. `tests/test_chat_turns.py`.
+- **Client chat speed (2026-11-11, `docs/CHAT-SPEED.md`)**: `core/chat_route.classify` sorts each
+  message by RULES into simple (thanks/hi → haiku, NO account reads, last 4 messages, anything it
+  proposes is stripped in code) / read (short question → sonnet) / work (any do/change/publish/
+  spend/connect, a "yes", frustration, long, unclear → opus). Doubt goes UP, never down. Full turns
+  read every context source AT ONCE (`core/parallel.gather`, contextvars kept; `@single_flight` on
+  the Google/Meta/website readers), and `client_state.snapshot` runs its `SECTIONS` in parallel —
+  no read deadline (a proposal, not built). Route + message length ride in the timing row's
+  `stages.flags` (no migration) → `/admin/models/` groups. Dashboard: one calm text line after
+  15 s of typing. Read-only 48 h report: `scripts/chat_timing_report.sql`. `tests/test_chat_speed.py`.
 - **Dashboard warm-up (2026-11-10, `docs/WARMUP.md`)**: `dashboard/assets/warmup.js` (client dashboard +
   every admin page) pings `GET /api/warmup/` (`core/warmup`: in memory only — no Supabase/Drive/model,
   30/min per IP, returns the Cloud Run `K_REVISION`) on load, every `warmup_interval_seconds` (admin

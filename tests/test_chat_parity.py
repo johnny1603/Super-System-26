@@ -59,7 +59,10 @@ def session_routes() -> list:
 
 
 def state_sections() -> set:
-    return set(re.findall(r'take\("(\w+)"', _src("core", "client_state.py")))
+    # client_state.SECTIONS: every section the snapshot reads (in parallel since 2026-11-11)
+    src = _src("core", "client_state.py")
+    block = src[src.index("\nSECTIONS = ("):]
+    return set(re.findall(r'"(\w+)"', block[:block.index(")")]))
 
 
 class Parity(unittest.TestCase):

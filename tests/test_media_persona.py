@@ -263,7 +263,10 @@ class CardsThroughTheSharedWhitelist(unittest.TestCase):
     def test_the_persona_path_uses_the_shared_whitelist(self):
         source = _src("agents", "support_agent.py")
         persona = source.split("def _answer_persona_question", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("_account_context(client_id, client, payload, message)", persona)
+        # the shared whitelist, read with every other context read at once (_load_context)
+        self.assertIn("_load_context(client_id, client, message, persona_id, persona[\"reads\"]", persona)
+        loader = source.split("def _load_context", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_account_context(client_id, client, part, message)", loader)
         self.assertIn("_route_proposal(", persona)
 
 

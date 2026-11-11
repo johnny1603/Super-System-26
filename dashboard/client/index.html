@@ -2714,6 +2714,7 @@ const DASH_I18N = {
   chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
+  chat_typing_long: { he:'עובדים על זה ביסודיות — עוד רגע זה אצלך.', en:'Working on it properly — it will be with you in a moment.', fr:'On s\'en occupe sérieusement — c\'est à vous dans un instant.', ar:'نعمل على ذلك بعناية — سيصلك بعد لحظة.', ru:'Готовим как следует — ответ будет через минуту.' },
   action_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Подтвердить' },
   action_d_file: { he:'קובץ', en:'File', fr:'Fichier', ar:'الملف', ru:'Файл' },
   action_d_title: { he:'כותרת', en:'Title', fr:'Titre', ar:'العنوان', ru:'Название' },
@@ -6707,20 +6708,35 @@ async function sendInWindow(personaId, extra) {
 
 // The window's single typing indicator: a counter of sends in flight. A new
 // bubble is created (never a DOM move) when it must go back under a reply.
+// A long wait (a turn that does real work) turns the indicator's text into
+// ONE short progress line — text only: no spinner, no tool names, no DOM move
+// (docs/CHAT-SPEED.md)
+const CHAT_LONG_WAIT_MS = 15000;
+function chatTypingText(w) {
+  return uallakI18n.t(w.pendingSince && Date.now() - w.pendingSince >= CHAT_LONG_WAIT_MS ? 'chat_typing_long' : 'chat_typing');
+}
 function chatPendingStart(w) {
   w.pending = (w.pending || 0) + 1;
   if (!w.typingEl || !w.typingEl.isConnected) {
-    w.typingEl = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+    w.pendingSince = Date.now();
+    w.typingEl = appendMsg(w.msgsEl, chatTypingText(w), 'bot typing');
+    clearTimeout(w.longWaitTimer);
+    w.longWaitTimer = setTimeout(() => {
+      if (w.pending && w.typingEl && w.typingEl.isConnected) w.typingEl.textContent = chatTypingText(w);
+    }, CHAT_LONG_WAIT_MS);
   }
 }
 function chatPendingEnd(w) {
   w.pending = Math.max((w.pending || 1) - 1, 0);
-  if (!w.pending && w.typingEl) { w.typingEl.remove(); w.typingEl = null; }
+  if (!w.pending && w.typingEl) {
+    w.typingEl.remove(); w.typingEl = null;
+    clearTimeout(w.longWaitTimer); w.pendingSince = 0;
+  }
 }
 function chatTypingToBottom(w) {
   if (!w.pending || !w.typingEl) return;
   w.typingEl.remove();
-  w.typingEl = appendMsg(w.msgsEl, uallakI18n.t('chat_typing'), 'bot typing');
+  w.typingEl = appendMsg(w.msgsEl, chatTypingText(w), 'bot typing');
 }
 
 // A reply that says "I'll post here when it's ready" (an article draft runs
