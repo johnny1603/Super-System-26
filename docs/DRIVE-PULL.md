@@ -107,12 +107,18 @@ The job is durable and follows the `core/tiktok_uploads` pattern:
 
 The agents' `account_state.media_folder` lists only the newest files. When a
 client names a file that isn't there, the model proposes `find_media_file`
-with their words and what it is for (`tiktok` / `youtube` / `presenter`).
+with their words and, optionally, what it is for (`tiktok` / `youtube` /
+`presenter`). No purpose (or anything else) = a LOOKUP: the answer is a plain
+line (found, folder, date), never a stored card — see docs/MEDIA-TAB.md §1.
 
-- **The search.** Drive's `name contains` runs over the whole tree, all words
-  first. Then it tries each word alone, keeping the best-scoring files. A
-  Hebrew prefix letter is also tried without it ("המוצר" → "מוצר").
-  Shortcuts are left out.
+- **The search (changed 2026-11-11).** The whole tree is listed once
+  (`drive_mirror.catalog`, the same list the Media tab shows) and ranked by
+  `core/media_search` — THE matcher, shared with the Media tab's search box.
+  Case, spaces, `_` and `-` don't count, the extension is ignored for an exact
+  match, every script works (Thai included), and only the best-scoring group is
+  kept. A Hebrew prefix letter is also tried without it ("המוצר" → "מוצר").
+  Shortcuts are left out. (Drive's `name contains` was dropped: it matched word
+  starts only, so "test 3" missed "test_3.mp4".)
 - **One match:** the real card (for example `send_tiktok_to_inbox`) with that
   file, plus "מצאתי את …".
 - **Several matches:** ONE card with one button per file. The click proposes

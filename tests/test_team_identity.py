@@ -170,7 +170,9 @@ class Faces(unittest.TestCase):
 
     def test_specialists_use_their_portraits(self):
         for persona, face in mi.SPECIALIST_FACES.items():
-            self.assertRegex(self.html, rf"{persona}: \{{ name: '[^']+', roleKey: 'team_role_{persona}', face: '{face}' \}}")
+            # The name is in the string table now (persona_name_<id>, every language)
+            self.assertRegex(self.html, rf"{persona}: \{{ roleKey: 'team_role_{persona}', face: '{face}' \}}")
+            self.assertRegex(self.html, rf"persona_name_{persona}: \{{ he:'[^']+', en:'[^']+'")
         self.assertEqual(mi.SPECIALIST_FACES, {"google": "yoav", "meta": "maya", "website": "uri", "media": "lior"})
 
     def test_webp_first_png_fallback_then_initial(self):

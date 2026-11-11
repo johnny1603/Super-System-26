@@ -198,6 +198,11 @@ class FakeDrive:
                and all(word_hit(f["name"], w) for w in (name_words or []))]
         return sorted(out, key=lambda f: f["modifiedTime"], reverse=True)[:page_size]
 
+    def list_in_folders(self, folder_ids, max_items=2000):
+        out = [copy.deepcopy(f) for f in self.files.values()
+               if set(f["parents"]) & set(folder_ids) and not f["trashed"] and f["mimeType"] != FOLDER]
+        return sorted(out, key=lambda f: f["modifiedTime"], reverse=True)[:max_items]
+
     def find_child_folders_by_prefix(self, parent, prefix):
         return sorted((copy.deepcopy(f) for f in self.files.values()
                        if parent in f["parents"] and f["mimeType"] == FOLDER and f["name"].startswith(prefix)),
@@ -224,7 +229,7 @@ class FakeDrive:
 
 
 DRIVE_FUNCS = ("classify_error", "service_account_email", "get_meta", "get_link", "list_children",
-               "search_in_folders", "find_child_folders_by_prefix", "find_folders_named",
+               "search_in_folders", "list_in_folders", "find_child_folders_by_prefix", "find_folders_named",
                "find_by_app_property", "copy_file")
 
 
@@ -613,6 +618,63 @@ class FindCard(Base):
                 self.aa._run_find_media_file(7, {"for": "tiktok", "candidates": ["v_deep"], "mode": "zzz"}, None)
         finally:
             self.aa.propose = saved
+
+    # ── The client-27 refusal (2026-11-11): "do you see a video in my Drive called test 3"
+    def _replay(self, params):
+        """The manager chat's proposal exactly as support_agent routes it
+        (origin client_chat, persona general), on client 7's tree with the
+        files client 27 had: a lookup has no `for`."""
+        self.fake.add("v_t3", "test 3.mp4", "video/mp4", "V7", 40, "2026-11-11T08:00:00Z")
+        self.fake.add("v_t30", "test 30.mp4", "video/mp4", "V7", 41, "2026-11-11T07:00:00Z")
+        self.fake.add("v_t1", "test_1.mov", "video/quicktime", "T7", 42, "2026-11-10T07:00:00Z")
+        aa = self.aa
+        saved = (aa._lang, aa._open_rows)
+        aa._lang, aa._open_rows = (lambda cid: "en"), (lambda cid: [])
+        try:
+            return aa.propose(7, "client_chat", "general", {"name": "find_media_file", "params": params},
+                              state={"media_folder": {"exists": True}}, client={"id": 7},
+                              context={"message": "do you see a video in my Drive called test 3", "language": "en"})
+        finally:
+            aa._lang, aa._open_rows = saved
+
+    def test_the_test_3_question_is_answered_not_refused(self):
+        for params in ({"name": "test 3"}, {"name": "test 3", "for": ""}, {"name": "test 3", "for": "check"},
+                       {"name": "test 3", "kind": "video"}, {"name": "test_3", "for": "see", "kind": "videos"}):
+            out = self._replay(params)
+            self.assertNotIn("error", out, params)
+            self.assertIn("test 3.mp4", out["clarify"], params)
+            self.assertIn("videos", out["clarify"], params)          # where it is
+            self.assertNotIn("test 30", out["clarify"], params)      # the exact name wins, no near miss
+
+    def test_a_lookup_never_stores_a_card_and_lists_duplicates_with_folder_and_date(self):
+        self.fake.add("v_t3b", "Test-3.mp4", "video/mp4", "T7", 43, "2026-11-09T08:00:00Z")
+        out = self._replay({"name": "test 3"})
+        self.assertNotIn("card", out)
+        self.assertIn("Test-3.mp4 (videos/tiktok · 09/11/2026)", out["clarify"])
+        self.assertIn("test 3.mp4 (videos · 11/11/2026)", out["clarify"])
+        with self.assertRaises(ValueError):
+            self.aa._validate_find_stored(7, {"name": "x", "for": "look", "candidates": ["v_t3", "v_t3b"]})
+
+    def test_a_lookup_that_finds_nothing_is_the_one_folder_card(self):
+        stored = []
+        saved = self.aa._db
+        self.aa._db = lambda: types.SimpleNamespace(table=lambda n: types.SimpleNamespace(
+            insert=lambda row: types.SimpleNamespace(execute=lambda: stored.append(row) or
+                                                     types.SimpleNamespace(data=[{**row, "id": 5}]))))
+        try:
+            out = self._replay({"name": "wedding"})
+        finally:
+            self.aa._db = saved
+        self.assertEqual([r["action"] for r in stored], ["media_file_not_found"])
+        self.assertIn("card", out)
+
+    def test_unknown_param_keys_are_still_refused(self):
+        # the validator's rule stays: an unknown key is a tampered request
+        self.assertEqual(self._replay({"name": "test 3", "query": "x"}), {"error": "invalid_params"})
+
+    def test_the_old_shape_with_a_purpose_still_opens_the_real_card(self):
+        out = self.prepare("launch final")
+        self.assertEqual(out["switch_to"], "send_tiktok_to_inbox")
 
     def test_owner_gets_the_pull_page_client_gets_their_folder(self):
         out = self.aa._run_media_file_not_found(7, {"name": "x"}, None, row={"origin": "admin_chat"})

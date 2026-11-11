@@ -126,6 +126,13 @@ PARITY = {
     "GET /api/client/media-drive/file/{file_id}": (NOT_CHAT, "streams a file to the browser; not a capability"),
     "GET /api/client/media-drive/thumb/{file_id}": (NOT_CHAT, "streams a thumbnail to the browser; not a capability"),
     "GET /api/client/media-assets": (READ, "media"),
+    # Media tab library (2026-11-11): the chat finds files by name with the same matcher
+    "GET /api/client/media-library": (READ, "media_folder"),
+    "POST /api/client/media-library/seen": (NOT_CHAT, "stamps when the client last opened the Media tab, "
+                                                      "for its New badges; UI bookkeeping, nothing to ask for"),
+    "GET /api/client/media-drive/play/{file_id}": (NOT_CHAT, "streams a video into the Media tab's player; "
+                                                             "the chat links the file instead"),
+    "POST /api/client/media/send": (CHAT, "send_tiktok_to_inbox,publish_youtube_from_media"),
     # ── Leads + CRM ──────────────────────────────────────────────────────────
     "GET /api/client/leads": (READ, "leads"),
     "POST /api/client/leads/{lead_id}/status": (GAP, "P1: update_lead_status card (needs lead ids in account_state.leads)"),

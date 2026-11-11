@@ -5911,6 +5911,112 @@ def client_media_drive(request: Request, folder: str = "", page_token: str = "",
 def client_media_drive_thumb(file_id: str, request: Request):
     return _drive_thumb_response(_require_session(request), file_id)
 
+# ─── Media tab library (core/media_library.py, 2026-11-11, docs/MEDIA-TAB.md) ──
+# The whole tree, searched by THE matcher the agents' find_media_file uses
+# (core/media_search). Plain `def`: Drive HTTP calls.
+
+@app.get("/api/client/media-library")
+def client_media_library(request: Request, q: str = "", kind: str = "", folder: str = "*",
+                         sort: str = "newest", offset: int = 0, limit: int = 60, refresh: bool = False,
+                         since: str = ""):
+    client_id = _require_session(request)
+    from core import media_library
+    # `since` (the previous visit, from the seen stamp) only decides which
+    # badges say "new" — a UI hint, never an authority
+    since = since if re.fullmatch(r"[0-9T:\.\-+Z]{0,40}", since or "") else ""
+    data = media_library.view(client_id, q=q, kind=kind, folder=folder, sort=sort, offset=offset,
+                              limit=limit, refresh=refresh, since=since)
+    return {"success": True, "data": data}
+
+@app.post("/api/client/media-library/seen")
+def client_media_library_seen(request: Request):
+    # Stamps this visit and returns the previous one, for the "new" badges.
+    client_id = _require_session(request)
+    from core import media_library
+    return {"success": True, "data": {"previous": media_library.mark_seen(client_id)}}
+
+def _media_play_response(client_id: int, file_id: str, request: Request, by: str):
+    from core import drive_download as dl
+    try:
+        plan = dl.plan_play(client_id, file_id)
+        try:
+            start, end = dl.parse_range(request.headers.get("range", ""), plan["size"])
+        except ValueError:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{plan['size']}"})
+        body = dl.open_play_stream(plan, client_id, start, end, by)
+    except dl.OpenInDrive as e:
+        return {"success": True, "data": e.as_data()}
+    except dl.DownloadRefused as e:
+        return Response(status_code=e.status)
+    return StreamingResponse(body, status_code=206, media_type=plan["send_mime"],
+                             headers=dl.play_headers(plan, start, end))
+
+@app.get("/api/client/media-drive/play/{file_id}")
+def client_media_play(file_id: str, request: Request):
+    client_id = _require_session(request)
+    by = "admin" if _admin_view_client(request) is not None else "client"
+    return _media_play_response(client_id, file_id, request, by)
+
+class MediaSendRequest(BaseModel):
+    target: str
+    drive_file_ids: list
+
+@app.post("/api/client/media/send")
+def client_media_send(req: MediaSendRequest, request: Request):
+    # The Media tab's multi-select (and a tile's YouTube button): opens the
+    # approval card in the media chat — ONE card for the batch. Nothing is
+    # sent until the client approves it (core/agent_actions validates every
+    # file: their own folder, a video).
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    ids = [str(i).strip() for i in (req.drive_file_ids or [])][:10]
+    if not ids or not all(re.fullmatch(r"[A-Za-z0-9_-]{10,200}", i) for i in ids) \
+            or req.target not in ("tiktok", "youtube"):
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_REQUEST"})
+    from core import agent_actions, client_state
+    client = agent_actions._client(client_id)
+    lang = agent_actions._lang(client_id)
+    if req.target == "youtube":
+        if len(ids) != 1:
+            raise HTTPException(status_code=400, detail={"code": "ERR_ONE_AT_A_TIME"})
+        raw, by_code = {"name": "publish_youtube_from_media", "params": {"drive_file_id": ids[0]}}, False
+    elif len(ids) == 1:
+        raw, by_code = {"name": "send_tiktok_to_inbox", "params": {"drive_file_id": ids[0]}}, False
+    else:
+        raw, by_code = {"name": "send_tiktok_batch", "params": {"drive_file_ids": ids}}, True
+    try:
+        state = client_state.snapshot(client_id) or {}
+    except Exception:
+        state = {}
+    # These files, as the snapshot would list them (propose re-proves each:
+    # own folder + video + size) — so "in the plan / connected" is still checked
+    media = state.get("media_folder") or {}
+    state = {**state, "media_folder": {**media, "videos": [
+        {"drive_file_id": i, "uploadable": True, "tiktok_uploadable": True} for i in ids]}}
+    if req.target == "tiktok":
+        possible = agent_actions._tiktok_send_possible(state, client)
+    else:
+        possible = agent_actions.ACTIONS[raw["name"]]["available"](state, client)
+    if not possible:
+        result = {"error": "not_available"}
+    else:
+        # A code-opened batch has no model-facing availability of its own (state=None)
+        result = agent_actions.propose(client_id, "client_chat", "media", raw,
+                                       state=None if by_code else state, client=client,
+                                       context={"language": lang, "message": "", "persona": "media"},
+                                       by_code=by_code)
+    data = {"persona": "media", "card": result.get("card"),
+            "notice": result.get("notice") or result.get("clarify") or result.get("refuse") or "",
+            "error": "" if result.get("card") else (result.get("error") or "not_offered")}
+    if data["notice"]:
+        from agents.client_agent import log_communication
+        from agents.support_agent import persona_channel
+        log_communication(client_id, "outbound", persona_channel("media"), data["notice"])
+    from core import media_library
+    media_library.forget(client_id)
+    return {"success": True, "data": data}
+
 @app.get("/api/admin/control-room/{client_id}/media-drive")
 def admin_media_drive(client_id: int, request: Request, folder: str = "", page_token: str = "",
                       page: int = 0, refresh: bool = False):

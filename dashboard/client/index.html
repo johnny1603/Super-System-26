@@ -1107,6 +1107,48 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
   font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
 .drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .drive-act.tiktok { border-color: var(--accent); }
+/* Media library: search, filters, badges, multi-select, player (docs/MEDIA-TAB.md) */
+.ml-hint { font-size: 12.5px; color: var(--gray); line-height: 1.6; margin: -4px 0 10px; }
+.ml-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.ml-search { flex: 1 1 220px; min-width: 0; min-height: 40px; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--white); border-radius: 9px; padding: 8px 12px; font: inherit; font-size: 14px; }
+.ml-select { flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 40px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 13px; }
+.ml-search:focus-visible, .ml-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ml-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 10px;
+  border: 1px solid rgba(255,76,31,0.35); background: var(--accent-dim); border-radius: 10px; font-size: 13px; }
+.ml-selbar[hidden] { display: none; }
+.ml-selbar .ml-count { font-weight: 700; margin-inline-end: auto; }
+.drive-item { position: relative; }
+.ml-check { position: absolute; top: 8px; inset-inline-start: 8px; z-index: 2; display: flex; align-items: center;
+  justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: rgba(13,13,13,0.72); cursor: pointer; }
+.ml-check input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+.drive-item.selected { border-color: var(--accent); }
+.ml-badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 4px; }
+.ml-badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--gray); white-space: nowrap; }
+.ml-badge.new { color: var(--accent); border-color: rgba(255,76,31,0.45); background: var(--accent-dim); }
+.ml-badge.sent { color: var(--green); border-color: rgba(34,197,94,0.35); }
+.ml-where { font-size: 11.5px; color: var(--gray); overflow-wrap: anywhere; }
+.ml-where.dup { color: var(--white); font-weight: 700; }
+.drive-thumb.doc-thumb { background: var(--panel-2); }
+.drive-thumb.doc-thumb .drive-thumb-ico { opacity: 0.55; font-size: 34px; }
+.media-item-title bdi { overflow-wrap: anywhere; }
+.ml-player { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0.82); display: flex;
+  align-items: center; justify-content: center; padding: 16px; }
+.ml-player-box { width: min(920px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.ml-player-head { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; min-width: 0; }
+.ml-player-head bdi { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.ml-player video { width: 100%; max-height: calc(100vh - 140px); background: #000; border-radius: 10px; }
+.ml-player .drive-big-note { color: #ddd; font-size: 13px; }
+@media (max-width: 640px) {
+  .media-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .ml-toolbar .ml-search { flex-basis: 100%; }
+  .ml-toolbar .ml-select { flex: 1 1 45%; }
+  .drive-act, .media-chip { min-height: 44px; }
+  .ml-check { width: 40px; height: 40px; }
+  .ml-player { padding: 8px; }
+}
 .conn-account { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; min-width: 0; }
 .conn-account img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .conn-account .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1255,7 +1297,8 @@ a.media-item:hover { border-color: var(--accent); }
 </div>
 
 <!-- Admin "enter as client" only — shown when /api/dashboard says admin_view -->
-<div class="admin-view-banner" id="adminViewBanner" role="status">
+<!-- data-i18n-skip: staff-only bar, Hebrew like the admin pages -->
+<div class="admin-view-banner" id="adminViewBanner" role="status" data-i18n-skip>
   <span>👁 צפייה בתור <span id="adminViewName"></span> — מנהל · קריאה בלבד</span>
   <button type="button" onclick="exitAdminView()">יציאה</button>
 </div>
@@ -1286,7 +1329,7 @@ a.media-item:hover { border-color: var(--accent); }
     <span class="nav-count" id="navLeadsCount" style="display:none;">0</span>
   </button>
   <button class="nav-item" data-view="outreach" id="navOutreach" onclick="showView('outreach')" style="display:none;">
-    <span class="nav-ico">✉️</span><span>פניות לעסקים</span>
+    <span class="nav-ico">✉️</span><span data-i18n="or_title">פניות לעסקים</span>
   </button>
   <button class="nav-item" data-view="landing" onclick="showView('landing')">
     <span class="nav-ico">🎯</span><span data-i18n="nav_landing">דפי נחיתה</span>
@@ -1931,8 +1974,8 @@ a.media-item:hover { border-color: var(--accent); }
 <div class="view" id="viewOutreach">
   <div class="section-head">
     <div>
-      <div class="section-title">פניות לעסקים</div>
-      <div class="section-sub">העסקים שהסוכן מצא ופנה אליהם במייל בשמך — כל מייל נשלח רק אחרי שאישרת אותו</div>
+      <div class="section-title" data-i18n="or_title">פניות לעסקים</div>
+      <div class="section-sub" data-i18n="or_sub">העסקים שהסוכן מצא ופנה אליהם במייל בשמך — כל מייל נשלח רק אחרי שאישרת אותו</div>
     </div>
   </div>
 
@@ -1940,30 +1983,30 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="or-off" id="orOff" style="display:none;"></div>
 
   <div class="or-remove-why">
-    <b>מישהו ענה לך "תורידו אותי"?</b> לחצו "ביקשו להסיר" ליד העסק — זה החוק, ומרגע הלחיצה המערכת לא תשלח לעסק הזה שום מייל נוסף, לעולם.
-    <div style="margin-top:6px;color:var(--gray);font-size:12.5px;">ענו לך? לחצו "ענו" — כך לא נציע לשלוח להם מייל מעקב. אנחנו לא קוראים את תיבת המייל שלך, ולכן רק הלחיצות שלך מעדכנות את הסטטוס.</div>
+    <span data-i18n-html="or_remove_why_html"><b>מישהו ענה לך "תורידו אותי"?</b> לחצו "ביקשו להסיר" ליד העסק — זה החוק, ומרגע הלחיצה המערכת לא תשלח לעסק הזה שום מייל נוסף, לעולם.</span>
+    <div style="margin-top:6px;color:var(--gray);font-size:12.5px;" data-i18n="or_replied_hint">ענו לך? לחצו "ענו" — כך לא נציע לשלוח להם מייל מעקב. אנחנו לא קוראים את תיבת המייל שלך, ולכן רק הלחיצות שלך מעדכנות את הסטטוס.</div>
   </div>
 
   <div class="filter-bar">
-    <input class="filter-input" id="orSearch" placeholder="חיפוש בשם העסק, עיר, מייל או נושא…" oninput="renderOutreach()">
+    <input class="filter-input" id="orSearch" placeholder="חיפוש בשם העסק, עיר, מייל או נושא…" data-i18n-placeholder="or_search_ph" oninput="renderOutreach()">
     <select class="filter-select" id="orStatusFilter" onchange="renderOutreach()">
-      <option value="">כל הסטטוסים</option>
-      <option value="found">נמצא</option>
-      <option value="draft_pending">טיוטה ממתינה לאישור</option>
-      <option value="approved">אושר, בשליחה</option>
-      <option value="sent">נשלח</option>
-      <option value="no_response">אין תגובה</option>
-      <option value="replied">ענו</option>
-      <option value="removed">ביקשו להסיר</option>
-      <option value="failed">חזר / נכשל</option>
+      <option value="" data-i18n="or_all_statuses">כל הסטטוסים</option>
+      <option value="found" data-i18n="or_status_found">נמצא</option>
+      <option value="draft_pending" data-i18n="or_status_draft_pending">טיוטה ממתינה לאישור</option>
+      <option value="approved" data-i18n="or_status_approved">אושר, בשליחה</option>
+      <option value="sent" data-i18n="or_status_sent">נשלח</option>
+      <option value="no_response" data-i18n="or_status_no_response">אין תגובה</option>
+      <option value="replied" data-i18n="or_status_replied">ענו</option>
+      <option value="removed" data-i18n="or_status_removed">ביקשו להסיר</option>
+      <option value="failed" data-i18n="or_status_failed">חזר / נכשל</option>
     </select>
     <div class="or-export" id="orExport">
-      <button class="export-btn" type="button" onclick="toggleOutreachExport(event)">⬇ ייצוא</button>
+      <button class="export-btn" type="button" onclick="toggleOutreachExport(event)" data-i18n="or_export">⬇ ייצוא</button>
       <div class="or-export-menu">
-        <button type="button" onclick="exportOutreach('csv')">CSV (לאקסל)</button>
+        <button type="button" onclick="exportOutreach('csv')" data-i18n="or_export_csv">CSV (לאקסל)</button>
         <button type="button" onclick="exportOutreach('xlsx')">Excel (‎.xlsx)</button>
-        <button type="button" onclick="exportOutreach('sheets')">Google Sheets (קובץ לייבוא)</button>
-        <button type="button" onclick="exportOutreach('pdf')">PDF (סיכום להדפסה)</button>
+        <button type="button" onclick="exportOutreach('sheets')" data-i18n="or_export_sheets">Google Sheets (קובץ לייבוא)</button>
+        <button type="button" onclick="exportOutreach('pdf')" data-i18n="or_export_pdf">PDF (סיכום להדפסה)</button>
         <button type="button" onclick="exportOutreach('docx')">Word (‎.docx)</button>
         <div class="or-line" id="orExportScope" style="padding:4px 12px 6px;"></div>
       </div>
@@ -1971,15 +2014,15 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
 
   <div class="or-bulk" id="orBulk">
-    <label><input type="checkbox" id="orSelectAll" onchange="selectAllOutreach(this.checked)"> בחירת הכל</label>
+    <label><input type="checkbox" id="orSelectAll" onchange="selectAllOutreach(this.checked)"> <span data-i18n="or_select_all">בחירת הכל</span></label>
     <span id="orSelCount"></span>
-    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'replied')">סימון: ענו</button>
-    <button class="or-btn-remove" type="button" onclick="markOutreach(null, 'removed')">סימון: ביקשו להסיר</button>
-    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'bounced')">סימון: חזר</button>
-    <button class="lead-note-btn" type="button" onclick="deleteOutreach(null)">מחיקה מהרשימה</button>
+    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'replied')" data-i18n="or_mark_replied">סימון: ענו</button>
+    <button class="or-btn-remove" type="button" onclick="markOutreach(null, 'removed')" data-i18n="or_mark_removed">סימון: ביקשו להסיר</button>
+    <button class="lead-note-btn" type="button" onclick="markOutreach(null, 'bounced')" data-i18n="or_mark_bounced">סימון: חזר</button>
+    <button class="lead-note-btn" type="button" onclick="deleteOutreach(null)" data-i18n="or_delete">מחיקה מהרשימה</button>
   </div>
 
-  <div id="orList"><div class="empty-row">טוען…</div></div>
+  <div id="orList"><div class="empty-row" data-i18n="loading">טוען…</div></div>
 </div><!-- /viewOutreach -->
 
 <!-- ---------- LANDING PAGES ---------- -->
@@ -2028,19 +2071,36 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 
-  <!-- Live mirror of the client's Drive folder (core/drive_mirror.py) -->
+  <!-- The client's WHOLE Drive media tree, searchable (core/media_library.py,
+       the same matcher as the agents' find_media_file: core/media_search.py) -->
   <div class="drive-mirror" id="driveMirror">
     <div class="drive-mirror-head">
       <div class="drive-mirror-title" data-i18n="drive_mirror_title">מה יש בתיקייה שלך ב-Drive</div>
-      <button type="button" class="media-chip" id="driveMirrorRefresh" onclick="loadDriveMirror(driveMirror.folder, true)"
-              data-i18n="drive_mirror_refresh">רענון</button>
+      <button type="button" class="media-chip" id="driveMirrorRefresh" onclick="loadLibrary({ refresh: true })"
+              data-i18n="ml_refresh">רענון מ-Drive</button>
+    </div>
+    <div class="ml-hint" data-i18n="ml_where_hint">כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.</div>
+    <div class="ml-toolbar">
+      <input type="search" id="mlSearch" class="ml-search" dir="auto" autocomplete="off"
+             data-i18n-placeholder="ml_search_ph" placeholder="חיפוש לפי שם…"
+             data-i18n-aria-label="ml_search_aria" aria-label="חיפוש קבצים">
+      <select id="mlFolder" class="ml-select" data-i18n-aria-label="ml_folder_aria" aria-label="תיקייה"></select>
+      <select id="mlSort" class="ml-select" data-i18n-aria-label="ml_sort_aria" aria-label="מיון">
+        <option value="newest" data-i18n="ml_sort_newest">החדשים קודם</option>
+        <option value="oldest" data-i18n="ml_sort_oldest">הישנים קודם</option>
+        <option value="name" data-i18n="ml_sort_name">לפי שם</option>
+      </select>
     </div>
     <div class="media-filters" id="driveMirrorFolders"></div>
+    <div class="ml-selbar" id="mlSelBar" hidden></div>
     <div class="drive-notice" id="driveMirrorNotice" role="status" aria-live="polite"></div>
     <div id="driveMirrorGrid"><div class="empty-row" data-i18n="loading">טוען…</div></div>
     <div id="driveMirrorMore"></div>
   </div>
 
+  <!-- Hidden when everything the system made is already in the list above
+       (no "Nothing created yet" under a full list) -->
+  <div id="mediaIndexSection">
   <div class="section-sub" style="margin:22px 0 10px;" data-i18n="media_index_title">כל מה שהמערכת יצרה עבורך</div>
   <div class="media-filters" id="mediaFilters"></div>
   <div class="export-bar" data-export="media"></div>
@@ -2048,6 +2108,7 @@ a.media-item:hover { border-color: var(--accent); }
 
   <div id="mediaGrid">
     <div class="empty-row" data-i18n="loading">טוען…</div>
+  </div>
   </div>
 
   <div class="info-panel" style="margin-top:22px;">
@@ -2166,7 +2227,7 @@ a.media-item:hover { border-color: var(--accent); }
 
 <div class="chat-greeting" id="chatGreeting" onclick="greetingClick()"></div>
 
-<button class="support-fab" id="supportFabBtn" onclick="toggleLauncher()" aria-label="תמיכה">
+<button class="support-fab" id="supportFabBtn" onclick="toggleLauncher()" data-i18n-aria-label="support_fab_aria" aria-label="תמיכה">
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 </button>
 
@@ -2298,14 +2359,14 @@ const DASH_I18N = {
 
   // ── existing site: detect, then migrate OR rebuild ──
   site_existing_btn: { he:'יש לי אתר קיים — בדקו אותו', en:'I have a site — check it', fr:'J’ai déjà un site — vérifiez-le', ar:'لديّ موقع قائم — افحصوه', ru:'У меня есть сайт — проверьте его' },
-  site_existing_note: { he:'תנו לנו את הכתובת ונבדוק בעצמנו במה האתר בנוי — אין צורך שתדעו. התשובה וההסבר המלא יגיעו אליכם בצ׳אט עם אורי.', en:'Give us the address and we’ll check what it’s built with ourselves — you don’t need to know. The answer and the full explanation arrive in your chat with אורי.', fr:'Donnez-nous l’adresse et nous vérifierons nous-mêmes la technologie — inutile de le savoir. La réponse et l’explication complète arrivent dans votre chat avec אורי.', ar:'أعطونا العنوان وسنفحص بأنفسنا ما بُني به الموقع — لا داعي لأن تعرفوا. الإجابة والشرح الكامل يصلان في الدردشة مع אורי.', ru:'Дайте адрес — мы сами проверим, на чём сделан сайт. Ответ и полное объяснение придут в чат с אורי.' },
+  site_existing_note: { he:'תנו לנו את הכתובת ונבדוק בעצמנו במה האתר בנוי — אין צורך שתדעו. התשובה וההסבר המלא יגיעו אליכם בצ׳אט עם אורי.', en:'Give us the address and we’ll check what it’s built with ourselves — you don’t need to know. The answer and the full explanation arrive in your chat with Uri.', fr:'Donnez-nous l’adresse et nous vérifierons nous-mêmes la technologie — inutile de le savoir. La réponse et l’explication complète arrivent dans votre chat avec Uri.', ar:'أعطونا العنوان وسنفحص بأنفسنا ما بُني به الموقع — لا داعي لأن تعرفوا. الإجابة والشرح الكامل يصلان في الدردشة مع أوري.', ru:'Дайте адрес — мы сами проверим, на чём сделан сайт. Ответ и полное объяснение придут в чат с Ури.' },
   site_existing_check: { he:'בדקו את האתר שלי', en:'Check my site', fr:'Vérifier mon site', ar:'افحصوا موقعي', ru:'Проверить мой сайт' },
   site_existing_checking: { he:'בודקים…', en:'Checking…', fr:'Vérification…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
   site_existing_need_url: { he:'צריך כתובת אתר כדי לבדוק', en:'A site address is needed', fr:'Une adresse de site est nécessaire', ar:'نحتاج عنوان الموقع', ru:'Нужен адрес сайта' },
   site_existing_failed: { he:'הבדיקה נכשלה — נסו שוב בעוד רגע', en:'The check failed — try again shortly', fr:'La vérification a échoué — réessayez', ar:'فشل الفحص — حاولوا لاحقًا', ru:'Проверка не удалась — повторите позже' },
-  site_existing_is_wp: { he:'זה אתר וורדפרס — אפשר להעביר אותו אלינו כמו שהוא. הפרטים בצ׳אט עם אורי.', en:'It’s a WordPress site — it can be migrated to us as it is. Details in your chat with אורי.', fr:'C’est un site WordPress — il peut être migré tel quel. Détails dans le chat avec אורי.', ar:'إنه موقع ووردبريس — يمكن نقله إلينا كما هو. التفاصيل في الدردشة مع אורי.', ru:'Это сайт на WordPress — его можно перенести к нам как есть. Подробности в чате с אורי.' },
-  site_existing_not_wp: { he:'האתר לא בנוי על וורדפרס — אי אפשר להעביר אותו, אבל אפשר לבנות חדש בהשראתו. ההסבר המלא בצ׳אט עם אורי.', en:'The site isn’t WordPress — it can’t be transferred, but we can build a new one based on it. Full explanation in your chat with אורי.', fr:'Le site n’est pas WordPress — il ne peut pas être transféré, mais nous pouvons en construire un nouveau qui s’en inspire. Explication complète dans le chat avec אורי.', ar:'الموقع ليس ووردبريس — لا يمكن نقله، لكن يمكننا بناء موقع جديد مستوحى منه. الشرح الكامل في الدردشة مع אורי.', ru:'Сайт не на WordPress — перенести нельзя, но можно построить новый на его основе. Полное объяснение в чате с אורי.' },
-  site_existing_unreachable: { he:'לא הצלחנו להגיע לאתר כדי לבדוק אותו. בדקו שהכתובת מדויקת, או שנתחיל אתר חדש — פירוט בצ׳אט עם אורי.', en:'We couldn’t reach the site to check it. Check the address is right, or we can start a new site — details in your chat with אורי.', fr:'Nous n’avons pas pu atteindre le site. Vérifiez l’adresse, ou nous pouvons créer un nouveau site — détails dans le chat avec אורי.', ar:'لم نتمكن من الوصول إلى الموقع لفحصه. تحققوا من العنوان، أو نبدأ موقعًا جديدًا — التفاصيل في الدردشة مع אורי.', ru:'Мы не смогли открыть сайт для проверки. Проверьте адрес, либо начнём новый сайт — подробности в чате с אורי.' },
+  site_existing_is_wp: { he:'זה אתר וורדפרס — אפשר להעביר אותו אלינו כמו שהוא. הפרטים בצ׳אט עם אורי.', en:'It’s a WordPress site — it can be migrated to us as it is. Details in your chat with Uri.', fr:'C’est un site WordPress — il peut être migré tel quel. Détails dans le chat avec Uri.', ar:'إنه موقع ووردبريس — يمكن نقله إلينا كما هو. التفاصيل في الدردشة مع أوري.', ru:'Это сайт на WordPress — его можно перенести к нам как есть. Подробности в чате с Ури.' },
+  site_existing_not_wp: { he:'האתר לא בנוי על וורדפרס — אי אפשר להעביר אותו, אבל אפשר לבנות חדש בהשראתו. ההסבר המלא בצ׳אט עם אורי.', en:'The site isn’t WordPress — it can’t be transferred, but we can build a new one based on it. Full explanation in your chat with Uri.', fr:'Le site n’est pas WordPress — il ne peut pas être transféré, mais nous pouvons en construire un nouveau qui s’en inspire. Explication complète dans le chat avec Uri.', ar:'الموقع ليس ووردبريس — لا يمكن نقله، لكن يمكننا بناء موقع جديد مستوحى منه. الشرح الكامل في الدردشة مع أوري.', ru:'Сайт не на WordPress — перенести нельзя, но можно построить новый на его основе. Полное объяснение в чате с Ури.' },
+  site_existing_unreachable: { he:'לא הצלחנו להגיע לאתר כדי לבדוק אותו. בדקו שהכתובת מדויקת, או שנתחיל אתר חדש — פירוט בצ׳אט עם אורי.', en:'We couldn’t reach the site to check it. Check the address is right, or we can start a new site — details in your chat with Uri.', fr:'Nous n’avons pas pu atteindre le site. Vérifiez l’adresse, ou nous pouvons créer un nouveau site — détails dans le chat avec Uri.', ar:'لم نتمكن من الوصول إلى الموقع لفحصه. تحققوا من العنوان، أو نبدأ موقعًا جديدًا — التفاصيل في الدردشة مع أوري.', ru:'Мы не смогли открыть сайт для проверки. Проверьте адрес, либо начнём новый сайт — подробности в чате с Ури.' },
   site_existing_migrate_btn: { he:'בקשת העברה', en:'Request migration', fr:'Demander la migration', ar:'طلب النقل', ru:'Запросить перенос' },
   site_existing_rebuild_btn: { he:'בנו לי אתר חדש', en:'Build me a new site', fr:'Créez-moi un nouveau site', ar:'ابنوا لي موقعًا جديدًا', ru:'Построить новый сайт' },
   site_existing_sending: { he:'שולחים…', en:'Sending…', fr:'Envoi…', ar:'جارٍ الإرسال…', ru:'Отправляем…' },
@@ -2314,8 +2375,8 @@ const DASH_I18N = {
   // ── external CRM (optional, additive) ──
   crm_title: { he:'חיבור ל-CRM חיצוני (אופציונלי)', en:'Connect an external CRM (optional)', fr:'Connecter un CRM externe (facultatif)', ar:'ربط CRM خارجي (اختياري)', ru:'Подключить внешнюю CRM (необязательно)' },
   crm_intro: { he:'יש לך כבר מערכת CRM? אפשר לחבר אותה, וכל ליד חדש שנקלט אצלנו יישלח גם לשם אוטומטית. הלידים ימשיכו להופיע כאן בכל מקרה — זו תוספת, לא החלפה.', en:'Already using a CRM? Connect it and every new lead we capture is sent there too, automatically. Your leads keep appearing here regardless — this adds to it, it doesn’t replace it.', fr:'Vous utilisez déjà un CRM ? Connectez-le et chaque nouveau prospect y sera aussi envoyé automatiquement. Vos prospects restent visibles ici — c’est un ajout, pas un remplacement.', ar:'تستخدم CRM بالفعل؟ اربطه وسيُرسل كل عميل محتمل جديد إليه تلقائيًا. سيظل العملاء يظهرون هنا في كل الأحوال — هذه إضافة وليست بديلًا.', ru:'Уже пользуетесь CRM? Подключите её, и каждый новый лид будет автоматически отправляться туда. Лиды в любом случае продолжат появляться здесь — это дополнение, а не замена.' },
-  crm_help_chat: { he:'לא בטוח איפה למצוא את המפתח? שאלו את אורי בצ׳אט — הוא ילווה אתכם צעד־צעד.', en:'Not sure where to find the key? Ask אורי in the chat — he’ll walk you through it.', fr:'Vous ne trouvez pas la clé ? Demandez à אורי dans le chat — il vous guidera.', ar:'لا تعرف أين تجد المفتاح؟ اسأل אורי في الدردشة — سيرشدك خطوة بخطوة.', ru:'Не знаете, где найти ключ? Спросите אורי в чате — он проведёт вас по шагам.' },
-  crm_ask_btn: { he:'שאלו את אורי בצ׳אט', en:'Ask אורי in the chat', fr:'Demander à אורי', ar:'اسأل אורי في الدردشة', ru:'Спросить אורי в чате' },
+  crm_help_chat: { he:'לא בטוח איפה למצוא את המפתח? שאלו את אורי בצ׳אט — הוא ילווה אתכם צעד־צעד.', en:'Not sure where to find the key? Ask Uri in the chat — he’ll walk you through it.', fr:'Vous ne trouvez pas la clé ? Demandez à Uri dans le chat — il vous guidera.', ar:'لا تعرف أين تجد المفتاح؟ اسأل أوري في الدردشة — سيرشدك خطوة بخطوة.', ru:'Не знаете, где найти ключ? Спросите Ури в чате — он проведёт вас по шагам.' },
+  crm_ask_btn: { he:'שאלו את אורי בצ׳אט', en:'Ask Uri in the chat', fr:'Demander à Uri', ar:'اسأل أوري في الدردشة', ru:'Спросить Ури в чате' },
   crm_choose: { he:'בחרו מערכת', en:'Choose your CRM', fr:'Choisissez votre CRM', ar:'اختر نظام CRM', ru:'Выберите CRM' },
   crm_connect_btn: { he:'חברו את ה-CRM', en:'Connect CRM', fr:'Connecter le CRM', ar:'اربط الـ CRM', ru:'Подключить CRM' },
   crm_connecting: { he:'בודקים את המפתח…', en:'Checking the key…', fr:'Vérification de la clé…', ar:'جارٍ فحص المفتاح…', ru:'Проверяем ключ…' },
@@ -2714,6 +2775,114 @@ const DASH_I18N = {
   chat_intro: { he:'היי! אני כאן לכל שאלה על החבילה שלך, החיובים, או איך המערכת עובדת. איך אפשר לעזור?', en:'Hi! I\'m here for any question about your package, billing, or how the system works. How can I help?', fr:'Bonjour ! Je suis là pour toute question sur votre formule, la facturation ou le fonctionnement. Comment puis-je aider ?', ar:'مرحبًا! أنا هنا لأي سؤال عن باقتك أو الفواتير أو طريقة عمل النظام. كيف أساعدك؟', ru:'Привет! Я здесь для любых вопросов о пакете, платежах или работе системы. Чем помочь?' },
   chat_input_ph: { he:'כתוב הודעה...', en:'Type a message…', fr:'Écrivez un message…', ar:'اكتب رسالة...', ru:'Напишите сообщение…' },
   chat_typing: { he:'כותבים לך תשובה…', en:'Writing you a reply…', fr:'Réponse en cours…', ar:'نكتب لك ردًا…', ru:'Пишем вам ответ…' },
+  // ── Business outreach view (moved into the table 2026-11-11 — it was Hebrew-only) ──
+  or_title: { he:'פניות לעסקים', en:'Business outreach', fr:'Prospection d\'entreprises', ar:'التواصل مع الشركات', ru:'Обращения к компаниям' },
+  or_sub: { he:'העסקים שהסוכן מצא ופנה אליהם במייל בשמך — כל מייל נשלח רק אחרי שאישרת אותו', en:'Businesses the agent found and emailed on your behalf — every email goes out only after you approve it', fr:'Les entreprises que l\'agent a trouvées et contactées par e-mail en votre nom — chaque e-mail part seulement après votre accord', ar:'الشركات التي وجدها الوكيل وراسلها بالبريد باسمك — كل رسالة تُرسل فقط بعد موافقتك', ru:'Компании, которые агент нашёл и которым написал от вашего имени, — каждое письмо уходит только после вашего одобрения' },
+  or_remove_why_html: { he:'<b>מישהו ענה לך "תורידו אותי"?</b> לחצו "ביקשו להסיר" ליד העסק — זה החוק, ומרגע הלחיצה המערכת לא תשלח לעסק הזה שום מייל נוסף, לעולם.', en:'<b>Someone replied "take me off your list"?</b> Click "Asked to be removed" next to the business — that\'s the law, and from that click on the system never emails that business again.', fr:'<b>Quelqu\'un a répondu « retirez-moi » ?</b> Cliquez sur « Demande de retrait » à côté de l\'entreprise — c\'est la loi, et dès ce clic le système ne lui enverra plus jamais d\'e-mail.', ar:'<b>ردّ أحدهم "احذفوني من القائمة"؟</b> اضغطوا "طلبوا الإزالة" بجانب الشركة — هذا هو القانون، ومنذ تلك اللحظة لن يرسل النظام أي بريد إلى هذه الشركة أبدًا.', ru:'<b>Кто-то ответил «уберите меня»?</b> Нажмите «Просили удалить» рядом с компанией — так требует закон, и с этого момента система больше никогда не напишет этой компании.' },
+  or_replied_hint: { he:'ענו לך? לחצו "ענו" — כך לא נציע לשלוח להם מייל מעקב. אנחנו לא קוראים את תיבת המייל שלך, ולכן רק הלחיצות שלך מעדכנות את הסטטוס.', en:'Got a reply? Click "Replied" — then we won\'t suggest a follow-up email. We never read your mailbox, so only your clicks update the status.', fr:'Vous avez reçu une réponse ? Cliquez sur « A répondu » — nous ne proposerons pas de relance. Nous ne lisons jamais votre boîte mail : seuls vos clics mettent le statut à jour.', ar:'وصلكم رد؟ اضغطوا "ردّوا" — فلن نقترح رسالة متابعة. نحن لا نقرأ بريدكم أبدًا، لذا نقراتكم فقط تحدّث الحالة.', ru:'Вам ответили? Нажмите «Ответили» — тогда мы не предложим повторное письмо. Мы не читаем вашу почту, поэтому статус меняют только ваши нажатия.' },
+  or_search_ph: { he:'חיפוש בשם העסק, עיר, מייל או נושא…', en:'Search by business, city, email or subject…', fr:'Rechercher par entreprise, ville, e-mail ou objet…', ar:'ابحث باسم الشركة أو المدينة أو البريد أو الموضوع…', ru:'Поиск по компании, городу, почте или теме…' },
+  or_all_statuses: { he:'כל הסטטוסים', en:'All statuses', fr:'Tous les statuts', ar:'كل الحالات', ru:'Все статусы' },
+  or_status_found: { he:'נמצא', en:'Found', fr:'Trouvée', ar:'تم العثور عليها', ru:'Найдена' },
+  or_status_draft_pending: { he:'טיוטה ממתינה לאישור', en:'Draft awaiting approval', fr:'Brouillon en attente de validation', ar:'مسودة بانتظار الموافقة', ru:'Черновик ждёт одобрения' },
+  or_status_approved: { he:'אושר, בשליחה', en:'Approved, sending', fr:'Validé, envoi en cours', ar:'تمت الموافقة، قيد الإرسال', ru:'Одобрено, отправляется' },
+  or_status_sent: { he:'נשלח', en:'Sent', fr:'Envoyé', ar:'أُرسل', ru:'Отправлено' },
+  or_status_no_response: { he:'אין תגובה', en:'No response', fr:'Pas de réponse', ar:'لا رد', ru:'Нет ответа' },
+  or_status_replied: { he:'ענו', en:'Replied', fr:'A répondu', ar:'ردّوا', ru:'Ответили' },
+  or_status_removed: { he:'ביקשו להסיר', en:'Asked to be removed', fr:'Demande de retrait', ar:'طلبوا الإزالة', ru:'Просили удалить' },
+  or_status_failed: { he:'חזר / נכשל', en:'Bounced / failed', fr:'Rejeté / échec', ar:'ارتد / فشل', ru:'Не доставлено' },
+  or_status_bounced: { he:'חזר', en:'Bounced', fr:'Rejeté', ar:'ارتد', ru:'Не доставлено' },
+  or_export: { he:'⬇ ייצוא', en:'⬇ Export', fr:'⬇ Exporter', ar:'⬇ تصدير', ru:'⬇ Экспорт' },
+  or_export_csv: { he:'CSV (לאקסל)', en:'CSV (for Excel)', fr:'CSV (pour Excel)', ar:'CSV (لـ Excel)', ru:'CSV (для Excel)' },
+  or_export_sheets: { he:'Google Sheets (קובץ לייבוא)', en:'Google Sheets (file to import)', fr:'Google Sheets (fichier à importer)', ar:'Google Sheets (ملف للاستيراد)', ru:'Google Sheets (файл для импорта)' },
+  or_export_pdf: { he:'PDF (סיכום להדפסה)', en:'PDF (printable summary)', fr:'PDF (résumé imprimable)', ar:'PDF (ملخص للطباعة)', ru:'PDF (сводка для печати)' },
+  or_select_all: { he:'בחירת הכל', en:'Select all', fr:'Tout sélectionner', ar:'تحديد الكل', ru:'Выбрать все' },
+  or_select_aria: { he:'בחירה', en:'Select', fr:'Sélectionner', ar:'تحديد', ru:'Выбрать' },
+  or_mark_replied: { he:'סימון: ענו', en:'Mark: replied', fr:'Marquer : a répondu', ar:'تعليم: ردّوا', ru:'Отметить: ответили' },
+  or_mark_removed: { he:'סימון: ביקשו להסיר', en:'Mark: asked to be removed', fr:'Marquer : demande de retrait', ar:'تعليم: طلبوا الإزالة', ru:'Отметить: просили удалить' },
+  or_mark_bounced: { he:'סימון: חזר', en:'Mark: bounced', fr:'Marquer : rejeté', ar:'تعليم: ارتد', ru:'Отметить: не доставлено' },
+  or_delete: { he:'מחיקה מהרשימה', en:'Remove from the list', fr:'Retirer de la liste', ar:'حذف من القائمة', ru:'Удалить из списка' },
+  or_load_failed: { he:'לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.', en:'We couldn\'t load the list just now. Try again in a moment.', fr:'Impossible de charger la liste pour l\'instant. Réessayez dans un instant.', ar:'تعذّر تحميل القائمة الآن. حاولوا مجددًا بعد لحظة.', ru:'Сейчас не удалось загрузить список. Попробуйте через минуту.' },
+  or_sent_today: { he:'נשלחו היום: {sent} מתוך {limit}', en:'Sent today: {sent} of {limit}', fr:'Envoyés aujourd\'hui : {sent} sur {limit}', ar:'أُرسل اليوم: {sent} من {limit}', ru:'Отправлено сегодня: {sent} из {limit}' },
+  or_cap: { he:'עד {limit} מיילים ביום', en:'Up to {limit} emails a day', fr:'Jusqu\'à {limit} e-mails par jour', ar:'حتى {limit} رسائل يوميًا', ru:'До {limit} писем в день' },
+  or_stat_found: { he:'נמצאו', en:'Found', fr:'Trouvées', ar:'تم العثور', ru:'Найдено' },
+  or_stat_sent: { he:'נשלחו', en:'Sent', fr:'Envoyés', ar:'أُرسلت', ru:'Отправлено' },
+  or_stat_cap: { he:'מגבלה יומית', en:'Daily limit', fr:'Limite quotidienne', ar:'الحد اليومي', ru:'Дневной лимит' },
+  or_sending_off: { he:'שליחת המיילים עוד לא הופעלה. אפשר כבר לראות את העסקים שנמצאו ואת הטיוטות — האישור והשליחה ייפתחו כשהשליחה תופעל.', en:'Email sending isn\'t switched on yet. You can already see the businesses found and the drafts — approving and sending open once sending is on.', fr:'L\'envoi d\'e-mails n\'est pas encore activé. Vous voyez déjà les entreprises trouvées et les brouillons — la validation et l\'envoi s\'ouvriront à l\'activation.', ar:'إرسال البريد لم يُفعَّل بعد. يمكنكم رؤية الشركات والمسودات الآن — الموافقة والإرسال يُفتحان عند التفعيل.', ru:'Отправка писем ещё не включена. Найденные компании и черновики уже видны — одобрение и отправка откроются, когда её включат.' },
+  or_gaps: { he:'חלק מהנתונים לא נטענו כרגע, ולכן הרשימה עלולה להיות חסרה. נסו לרענן בעוד רגע.', en:'Some of the data didn\'t load just now, so the list may be incomplete. Try refreshing in a moment.', fr:'Une partie des données ne s\'est pas chargée, la liste peut être incomplète. Actualisez dans un instant.', ar:'لم تُحمَّل بعض البيانات الآن، لذا قد تكون القائمة ناقصة. حاولوا التحديث بعد لحظة.', ru:'Часть данных сейчас не загрузилась, список может быть неполным. Обновите через минуту.' },
+  or_none_filtered: { he:'אין עסקים שמתאימים לסינון.', en:'No businesses match the filter.', fr:'Aucune entreprise ne correspond au filtre.', ar:'لا توجد شركات تطابق التصفية.', ru:'Нет компаний под этот фильтр.' },
+  or_none_yet: { he:'עוד אין כאן עסקים. כשהסוכן ימצא עסקים ויכין טיוטות, הם יופיעו כאן.', en:'No businesses here yet. When the agent finds businesses and prepares drafts, they will appear here.', fr:'Aucune entreprise pour l\'instant. Quand l\'agent en trouvera et préparera des brouillons, elles apparaîtront ici.', ar:'لا توجد شركات بعد. عندما يجد الوكيل شركات ويجهّز مسودات ستظهر هنا.', ru:'Здесь пока нет компаний. Когда агент найдёт компании и подготовит черновики, они появятся здесь.' },
+  or_found_on: { he:'נמצא ב-{date}', en:'Found on {date}', fr:'Trouvée le {date}', ar:'وُجدت في {date}', ru:'Найдена {date}' },
+  or_email: { he:'מייל:', en:'Email:', fr:'E-mail :', ar:'البريد:', ru:'Почта:' },
+  or_taken_from: { he:'נלקח מהעמוד:', en:'Taken from the page:', fr:'Tiré de la page :', ar:'مأخوذ من الصفحة:', ru:'Взято со страницы:' },
+  or_subject: { he:'נושא:', en:'Subject:', fr:'Objet :', ar:'الموضوع:', ru:'Тема:' },
+  or_sent_on: { he:'נשלח ב-{date}', en:'Sent on {date}', fr:'Envoyé le {date}', ar:'أُرسل في {date}', ru:'Отправлено {date}' },
+  or_open_gmail: { he:'לפתוח ב-Gmail', en:'Open in Gmail', fr:'Ouvrir dans Gmail', ar:'فتح في Gmail', ru:'Открыть в Gmail' },
+  or_on_date: { he:'ב-{date}', en:'on {date}', fr:'le {date}', ar:'في {date}', ru:'{date}' },
+  or_draft_waiting: { he:'הטיוטה מחכה לאישורך בצ׳אט עם הסוכן.', en:'The draft is waiting for your approval in the chat with the agent.', fr:'Le brouillon attend votre accord dans le chat avec l\'agent.', ar:'المسودة بانتظار موافقتك في الدردشة مع الوكيل.', ru:'Черновик ждёт вашего одобрения в чате с агентом.' },
+  or_followup_due: { he:'עברו {days} ימים בלי תגובה — אפשר לבקש מהסוכן בצ׳אט מייל מעקב אחד. גם אותו תאשרו לפני שליחה.', en:'{days} days without a reply — you can ask the agent in the chat for one follow-up email. You approve that one too before it goes out.', fr:'{days} jours sans réponse — vous pouvez demander à l\'agent une relance dans le chat. Vous la validez aussi avant l\'envoi.', ar:'مرّت {days} أيام بلا رد — يمكنكم طلب رسالة متابعة واحدة من الوكيل في الدردشة. توافقون عليها أيضًا قبل الإرسال.', ru:'{days} дн. без ответа — можно попросить агента в чате об одном повторном письме. Его вы тоже одобряете перед отправкой.' },
+  or_selected: { he:'נבחרו {n}', en:'{n} selected', fr:'{n} sélectionnée(s)', ar:'تم تحديد {n}', ru:'Выбрано: {n}' },
+  or_export_selected: { he:'ייוצאו {n} השורות שבחרת', en:'The {n} rows you selected will be exported', fr:'Les {n} lignes sélectionnées seront exportées', ar:'سيتم تصدير {n} صفوف اخترتموها', ru:'Будут выгружены выбранные строки: {n}' },
+  or_export_shown: { he:'ייוצאו {n} השורות שמוצגות עכשיו', en:'The {n} rows shown now will be exported', fr:'Les {n} lignes affichées seront exportées', ar:'سيتم تصدير {n} صفوف المعروضة الآن', ru:'Будут выгружены показанные строки: {n}' },
+  or_pick_first: { he:'בחרו קודם עסק אחד או יותר מהרשימה.', en:'First select one or more businesses from the list.', fr:'Sélectionnez d\'abord une ou plusieurs entreprises.', ar:'اختاروا أولًا شركة أو أكثر من القائمة.', ru:'Сначала выберите одну или несколько компаний.' },
+  or_kept: { he:'{n} עסקים כבר קיבלו מייל ולכן נשארים ברשימה — זה התיעוד של מה שנשלח.', en:'{n} businesses already got an email, so they stay on the list — it is the record of what was sent.', fr:'{n} entreprises ont déjà reçu un e-mail et restent donc dans la liste — c\'est la trace de ce qui a été envoyé.', ar:'{n} شركات تلقّت بريدًا بالفعل لذا تبقى في القائمة — فهي سجل ما أُرسل.', ru:'{n} компаний уже получили письмо и остаются в списке — это запись того, что было отправлено.' },
+  or_failed: { he:'{n} עסקים לא עודכנו (הסימון לא מתאים לסטטוס שלהם, או שלא נשמר). נסו שוב.', en:'{n} businesses weren\'t updated (the mark doesn\'t fit their status, or wasn\'t saved). Try again.', fr:'{n} entreprises n\'ont pas été mises à jour (le marquage ne convient pas à leur statut ou n\'a pas été enregistré). Réessayez.', ar:'لم تُحدَّث {n} شركات (العلامة لا تناسب حالتها أو لم تُحفظ). حاولوا مجددًا.', ru:'{n} компаний не обновлены (отметка не подходит к их статусу или не сохранилась). Попробуйте ещё раз.' },
+  or_mark_unavailable: { he:'הסימון עוד לא זמין — אנחנו משלימים הגדרה בצד שלנו. נסו שוב מאוחר יותר.', en:'Marking isn\'t available yet — we\'re finishing a setup on our side. Try again later.', fr:'Le marquage n\'est pas encore disponible — nous terminons un réglage de notre côté. Réessayez plus tard.', ar:'التعليم غير متاح بعد — نُكمل إعدادًا من جهتنا. حاولوا لاحقًا.', ru:'Отметки пока недоступны — мы завершаем настройку со своей стороны. Попробуйте позже.' },
+  or_mark_failed: { he:'הסימון לא נשמר. נסו שוב בעוד רגע.', en:'The mark wasn\'t saved. Try again in a moment.', fr:'Le marquage n\'a pas été enregistré. Réessayez dans un instant.', ar:'لم تُحفظ العلامة. حاولوا بعد لحظة.', ru:'Отметка не сохранилась. Попробуйте через минуту.' },
+  or_marked_removed: { he:'סומן "ביקשו להסיר" ({n}). המערכת לא תשלח להם יותר שום מייל.', en:'Marked "asked to be removed" ({n}). The system will never email them again.', fr:'Marqué « demande de retrait » ({n}). Le système ne leur enverra plus aucun e-mail.', ar:'تم التعليم "طلبوا الإزالة" ({n}). لن يرسل لهم النظام أي بريد بعد الآن.', ru:'Отмечено «просили удалить» ({n}). Система больше никогда им не напишет.' },
+  or_marked_replied: { he:'סומן "ענו" ({n}).', en:'Marked "replied" ({n}).', fr:'Marqué « a répondu » ({n}).', ar:'تم التعليم "ردّوا" ({n}).', ru:'Отмечено «ответили» ({n}).' },
+  or_marked_bounced: { he:'סומן "חזר" ({n}).', en:'Marked "bounced" ({n}).', fr:'Marqué « rejeté » ({n}).', ar:'تم التعليم "ارتد" ({n}).', ru:'Отмечено «не доставлено» ({n}).' },
+  or_delete_confirm: { he:'למחוק {n} עסקים מהרשימה? לחצו שוב על "מחיקה" תוך 5 שניות לאישור. עסק שכבר קיבל מייל לא נמחק.', en:'Remove {n} businesses from the list? Click "Remove" again within 5 seconds to confirm. A business that already got an email is not removed.', fr:'Retirer {n} entreprises de la liste ? Cliquez à nouveau sur « Retirer » dans les 5 secondes pour confirmer. Une entreprise ayant déjà reçu un e-mail n\'est pas retirée.', ar:'حذف {n} شركات من القائمة؟ اضغطوا "حذف" مرة أخرى خلال 5 ثوانٍ للتأكيد. الشركة التي تلقّت بريدًا لا تُحذف.', ru:'Удалить из списка компаний: {n}? Нажмите «Удалить» ещё раз в течение 5 секунд. Компания, которой уже писали, не удаляется.' },
+  or_delete_failed: { he:'המחיקה לא בוצעה. נסו שוב בעוד רגע.', en:'Nothing was removed. Try again in a moment.', fr:'Rien n\'a été retiré. Réessayez dans un instant.', ar:'لم يتم الحذف. حاولوا بعد لحظة.', ru:'Ничего не удалено. Попробуйте через минуту.' },
+  or_deleted: { he:'נמחקו {n} עסקים מהרשימה.', en:'{n} businesses removed from the list.', fr:'{n} entreprises retirées de la liste.', ar:'تم حذف {n} شركات من القائمة.', ru:'Удалено из списка: {n}.' },
+  or_sheets_hint: { he:'הקובץ ירד. ב-Google Sheets: קובץ ← ייבוא ← העלאה, ובחרו את הקובץ.', en:'The file is downloaded. In Google Sheets: File → Import → Upload, and pick the file.', fr:'Le fichier est téléchargé. Dans Google Sheets : Fichier → Importer → Importer, puis choisissez le fichier.', ar:'تم تنزيل الملف. في Google Sheets: ملف ← استيراد ← تحميل، واختاروا الملف.', ru:'Файл скачан. В Google Таблицах: Файл → Импорт → Загрузка, и выберите файл.' },
+  or_export_failed: { he:'הייצוא לא הצליח. נסו שוב בעוד רגע.', en:'The export didn\'t work. Try again in a moment.', fr:'L\'export n\'a pas fonctionné. Réessayez dans un instant.', ar:'لم ينجح التصدير. حاولوا بعد لحظة.', ru:'Выгрузка не удалась. Попробуйте через минуту.' },
+  support_fab_aria: { he:'תמיכה', en:'Support', fr:'Assistance', ar:'الدعم', ru:'Поддержка' },
+  persona_name_google: { he:'יואב', en:'Yoav', fr:'Yoav', ar:'يوآف', ru:'Йоав' },
+  persona_name_meta: { he:'מאיה', en:'Maya', fr:'Maya', ar:'مايا', ru:'Майя' },
+  persona_name_website: { he:'אורי', en:'Uri', fr:'Uri', ar:'أوري', ru:'Ури' },
+  persona_name_media: { he:'ליאור', en:'Lior', fr:'Lior', ar:'ليئور', ru:'Лиор' },
+  pkg_internal: { he:'חשבון פנימי — ללא חיוב', en:'Internal account — no billing', fr:'Compte interne — sans facturation', ar:'حساب داخلي — بدون فوترة', ru:'Внутренний аккаунт — без оплаты' },
+  // Media library (docs/MEDIA-TAB.md)
+  ml_refresh: { he:'רענון מ-Drive', en:'Refresh from Drive', fr:'Actualiser depuis Drive', ar:'تحديث من Drive', ru:'Обновить из Drive' },
+  ml_where_hint: { he:'כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.', en:'To see a file here, send it with the + button in a chat, or put it in your Drive folder (a subfolder works too). The list updates on its own when you open this tab.', fr:'Pour voir un fichier ici, envoyez-le avec le bouton + dans une discussion, ou mettez-le dans votre dossier Drive (un sous-dossier convient aussi). La liste se met à jour seule à l’ouverture de cet onglet.', ar:'لكي يظهر ملف هنا: أرسله بزر + في المحادثة، أو ضعه في مجلدك على Drive (المجلد الفرعي يصلح أيضًا). تتحدث القائمة تلقائيًا عند فتح هذا التبويب.', ru:'Чтобы файл появился здесь, отправьте его кнопкой + в чате или положите в свою папку Drive (подойдёт и вложенная папка). Список обновляется сам, когда вы открываете эту вкладку.' },
+  ml_search_ph: { he:'חיפוש לפי שם…', en:'Search by name…', fr:'Rechercher par nom…', ar:'البحث بالاسم…', ru:'Поиск по имени…' },
+  ml_search_aria: { he:'חיפוש קבצים', en:'Search files', fr:'Rechercher des fichiers', ar:'البحث في الملفات', ru:'Поиск файлов' },
+  ml_folder_aria: { he:'תיקייה', en:'Folder', fr:'Dossier', ar:'المجلد', ru:'Папка' },
+  ml_folder_all: { he:'כל התיקיות', en:'All folders', fr:'Tous les dossiers', ar:'كل المجلدات', ru:'Все папки' },
+  ml_folder_main: { he:'התיקייה הראשית', en:'Main folder', fr:'Dossier principal', ar:'المجلد الرئيسي', ru:'Основная папка' },
+  ml_in_folder: { he:'בתיקייה {folder}', en:'In {folder}', fr:'Dans {folder}', ar:'في {folder}', ru:'В папке {folder}' },
+  ml_sort_aria: { he:'מיון', en:'Sort', fr:'Trier', ar:'الترتيب', ru:'Сортировка' },
+  ml_sort_newest: { he:'החדשים קודם', en:'Newest first', fr:'Les plus récents', ar:'الأحدث أولًا', ru:'Сначала новые' },
+  ml_sort_oldest: { he:'הישנים קודם', en:'Oldest first', fr:'Les plus anciens', ar:'الأقدم أولًا', ru:'Сначала старые' },
+  ml_sort_name: { he:'לפי שם', en:'By name', fr:'Par nom', ar:'حسب الاسم', ru:'По имени' },
+  ml_kind_all: { he:'הכל', en:'All', fr:'Tout', ar:'الكل', ru:'Все' },
+  ml_kind_video: { he:'סרטונים', en:'Videos', fr:'Vidéos', ar:'فيديوهات', ru:'Видео' },
+  ml_kind_image: { he:'תמונות', en:'Images', fr:'Images', ar:'صور', ru:'Изображения' },
+  ml_kind_document: { he:'מסמכים', en:'Documents', fr:'Documents', ar:'مستندات', ru:'Документы' },
+  ml_new: { he:'חדש', en:'New', fr:'Nouveau', ar:'جديد', ru:'Новое' },
+  ml_new_count: { he:'{n} קבצים חדשים מאז הביקור הקודם שלך', en:'{n} new since your last visit', fr:'{n} nouveaux depuis votre dernière visite', ar:'{n} جديدة منذ زيارتك الأخيرة', ru:'Новых с прошлого визита: {n}' },
+  ml_sent_tiktok: { he:'נשלח לטיקטוק', en:'Sent to TikTok', fr:'Envoyé sur TikTok', ar:'أُرسل إلى تيك توك', ru:'Отправлено в TikTok' },
+  ml_sent_youtube: { he:'הועלה ליוטיוב', en:'Sent to YouTube', fr:'Envoyé sur YouTube', ar:'رُفع إلى يوتيوب', ru:'Отправлено на YouTube' },
+  ml_shortcut: { he:'קיצור דרך', en:'Shortcut', fr:'Raccourci', ar:'اختصار', ru:'Ярлык' },
+  ml_dup_hint: { he:'יש עוד קובץ באותו שם — התיקייה והתאריך מבדילים ביניהם', en:'Another file has this name — the folder and date tell them apart', fr:'Un autre fichier porte ce nom — le dossier et la date les distinguent', ar:'يوجد ملف آخر بالاسم نفسه — المجلد والتاريخ يميزان بينهما', ru:'Есть другой файл с таким именем — их различают папка и дата' },
+  ml_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
+  ml_play_aria: { he:'צפייה: {name}', en:'Play: {name}', fr:'Lire : {name}', ar:'تشغيل: {name}', ru:'Смотреть: {name}' },
+  ml_play_failed: { he:'הסרטון לא נפתח כאן כרגע — אפשר לצפות בו ב-Drive.', en:'This video won’t play here right now — you can watch it in Drive.', fr:'Cette vidéo ne se lit pas ici pour l’instant — vous pouvez la regarder dans Drive.', ar:'لا يمكن تشغيل هذا الفيديو هنا الآن — يمكنك مشاهدته في Drive.', ru:'Это видео сейчас не воспроизводится здесь — его можно посмотреть в Drive.' },
+  ml_too_big_play: { he:'סרטון גדול — צפייה והורדה ב-Drive.', en:'Large video — watch and download it in Drive.', fr:'Vidéo volumineuse — regardez-la et téléchargez-la dans Drive.', ar:'فيديو كبير — شاهده ونزّله من Drive.', ru:'Большое видео — смотрите и скачивайте его в Drive.' },
+  ml_close: { he:'סגירה', en:'Close', fr:'Fermer', ar:'إغلاق', ru:'Закрыть' },
+  ml_select_aria: { he:'בחירה: {name}', en:'Select: {name}', fr:'Sélectionner : {name}', ar:'تحديد: {name}', ru:'Выбрать: {name}' },
+  ml_selected: { he:'נבחרו {n}', en:'{n} selected', fr:'{n} sélectionné(s)', ar:'تم تحديد {n}', ru:'Выбрано: {n}' },
+  ml_send_youtube: { he:'העלאה ליוטיוב', en:'Send to YouTube', fr:'Envoyer sur YouTube', ar:'رفع إلى يوتيوب', ru:'Отправить на YouTube' },
+  ml_download: { he:'הורדה', en:'Download', fr:'Télécharger', ar:'تنزيل', ru:'Скачать' },
+  ml_clear: { he:'ניקוי הבחירה', en:'Clear selection', fr:'Effacer la sélection', ar:'مسح التحديد', ru:'Снять выбор' },
+  ml_videos_only: { he:'רק סרטונים נשלחים — {n} קבצים אחרים לא נכללו.', en:'Only videos are sent — {n} other files were left out.', fr:'Seules les vidéos sont envoyées — {n} autres fichiers ont été laissés de côté.', ar:'تُرسل الفيديوهات فقط — لم يُدرج {n} من الملفات الأخرى.', ru:'Отправляются только видео — другие файлы ({n}) не включены.' },
+  ml_youtube_one: { he:'ליוטיוב מעלים סרטון אחד בכל פעם — בחרו סרטון אחד.', en:'YouTube takes one video at a time — pick one video.', fr:'YouTube prend une vidéo à la fois — choisissez une vidéo.', ar:'يُرفع إلى يوتيوب فيديو واحد في كل مرة — اختر فيديو واحدًا.', ru:'На YouTube загружается одно видео за раз — выберите одно.' },
+  ml_tiktok_max: { he:'אפשר לשלוח עד {n} סרטונים בבת אחת.', en:'You can send up to {n} videos at once.', fr:'Vous pouvez envoyer jusqu’à {n} vidéos à la fois.', ar:'يمكنك إرسال حتى {n} فيديوهات دفعة واحدة.', ru:'За раз можно отправить до {n} видео.' },
+  ml_dl_videos_drive: { he:'{n} סרטונים לא יורדים מכאן — מורידים אותם ב-Drive.', en:'{n} videos don’t download from here — download them in Drive.', fr:'{n} vidéos ne se téléchargent pas d’ici — téléchargez-les dans Drive.', ar:'لا تُنزَّل {n} من الفيديوهات من هنا — نزّلها من Drive.', ru:'Видео ({n}) отсюда не скачиваются — скачайте их в Drive.' },
+  ml_no_match: { he:'לא מצאנו קובץ שמתאים לחיפוש.', en:'No file matches this search.', fr:'Aucun fichier ne correspond à cette recherche.', ar:'لا يوجد ملف يطابق هذا البحث.', ru:'Нет файлов по этому запросу.' },
+  ml_checking: { he:'בודקים ב-Drive אם יש משהו חדש…', en:'Checking Drive for anything new…', fr:'Vérification des nouveautés dans Drive…', ar:'نتحقق من Drive بحثًا عن الجديد…', ru:'Проверяем, нет ли нового в Drive…' },
+  ml_updated: { he:'הרשימה עודכנה מ-Drive.', en:'The list is up to date with Drive.', fr:'La liste est à jour avec Drive.', ar:'القائمة محدّثة من Drive.', ru:'Список обновлён из Drive.' },
+  ml_shown: { he:'מוצגים {shown} מתוך {total}', en:'Showing {shown} of {total}', fr:'{shown} sur {total} affichés', ar:'يُعرض {shown} من {total}', ru:'Показано {shown} из {total}' },
   chat_typing_long: { he:'עובדים על זה ביסודיות — עוד רגע זה אצלך.', en:'Working on it properly — it will be with you in a moment.', fr:'On s\'en occupe sérieusement — c\'est à vous dans un instant.', ar:'نعمل على ذلك بعناية — سيصلك بعد لحظة.', ru:'Готовим как следует — ответ будет через минуту.' },
   action_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Подтвердить' },
   action_d_file: { he:'קובץ', en:'File', fr:'Fichier', ar:'الملف', ru:'Файл' },
@@ -3054,7 +3223,7 @@ const DASH_I18N = {
   act_media_video_created: { he:'סרטון חדש נוצר — מחכה בתיקיית ה-Drive שלך', en:'A new video was created — waiting in your Drive folder', fr:'Une nouvelle vidéo a été créée — dans votre dossier Drive', ar:'أُنشئ فيديو جديد — بانتظارك في مجلد Drive', ru:'Создано новое видео — ждёт в вашей папке Drive' },
   act_media_filming_kit_created: { he:'ערכת צילום מוכנה בשבילך — תסריט וטיפים בתיקיית ה-Drive', en:'A filming kit is ready for you — script and tips in your Drive folder', fr:'Un kit de tournage vous attend — script et conseils dans votre Drive', ar:'عدة التصوير جاهزة لك — نص ونصائح في مجلد Drive', ru:'Для вас готов съёмочный набор — сценарий и советы в папке Drive' },
   act_media_plan_proposed: { he:'תוכנית תוכן לשבוע הקרוב מחכה לאישור שלך 🌙', en:'Next week\'s content plan awaits your approval 🌙', fr:'Le plan de contenu de la semaine attend votre validation 🌙', ar:'خطة محتوى الأسبوع القادم بانتظار موافقتك 🌙', ru:'План контента на неделю ждёт вашего одобрения 🌙' },
-  act_media_trend_examples_sent: { he:'שלחנו לך דוגמאות לתוכן שעובד בתחום שלך — בצ׳אט עם ליאור', en:'We sent you examples of content that works in your field — in the chat with ליאור', fr:'Nous vous avons envoyé des exemples de contenu qui marche dans votre domaine — dans le chat avec ליאור', ar:'أرسلنا لك أمثلة على محتوى ناجح في مجالك — في الدردشة مع ליאור', ru:'Мы отправили вам примеры контента, который работает в вашей сфере — в чате с ליאור' },
+  act_media_trend_examples_sent: { he:'שלחנו לך דוגמאות לתוכן שעובד בתחום שלך — בצ׳אט עם ליאור', en:'We sent you examples of content that works in your field — in the chat with Lior', fr:'Nous vous avons envoyé des exemples de contenu qui marche dans votre domaine — dans le chat avec Lior', ar:'أرسلنا لك أمثلة على محتوى ناجح في مجالك — في الدردشة مع ليئور', ru:'Мы отправили вам примеры контента, который работает в вашей сфере — в чате с Лиор' },
   act_media_prepared_for_publishing: { he:'פריט מדיה הוכן לפרסום', en:'A media item was prepared for publishing', fr:'Un média a été préparé pour publication', ar:'جُهّز عنصر وسائط للنشر', ru:'Медиафайл подготовлен к публикации' },
   act_avatar_accounts_connected: { he:'חשבונות האווטאר חוברו בהצלחה', en:'Your avatar accounts were connected', fr:'Vos comptes avatar ont été connectés', ar:'تم ربط حسابات الأفاتار الخاصة بك', ru:'Ваши аккаунты аватара подключены' },
   act_creative_tool_connected: { he:'כלי יצירה חובר', en:'A creative tool was connected', fr:'Un outil de création a été connecté', ar:'تم ربط أداة إنشاء', ru:'Подключён творческий инструмент' },
@@ -3209,7 +3378,7 @@ window.fetch = function (input, init) {
   if (ADMIN_VIEW && method !== 'GET' && method !== 'HEAD'
       && !/^\/api\/client\/actions\/\d+\/decide$/.test(path) && path !== '/api/admin/view-as/exit') {
     if (!ADMIN_VIEW_SILENT.some(p => path.startsWith(p))) {
-      showNotice('צפייה כמנהל — קריאה בלבד. הפעולה לא נשלחה.', 'warn');
+      showNotice('צפייה כמנהל — קריאה בלבד. הפעולה לא נשלחה.', 'warn');  // i18n-ok: staff-only
     }
     return Promise.resolve(new Response(
       JSON.stringify({ success: false, detail: { code: 'ERR_ADMIN_VIEW_READ_ONLY' } }),
@@ -3268,7 +3437,7 @@ async function loadDashboard() {
       showNotice(uallakI18n.t('notice_cancelled'), 'warn');
     }
 
-    const pkg = (d.client && d.client.package) || '';
+    const pkg = pkgLabel((d.client && d.client.package) || '');
     document.getElementById('packageBadge').textContent = pkg || uallakI18n.t('stat_package');
     document.getElementById('statPackage').textContent = pkg || '—';
     document.getElementById('statFee').textContent = d.monthly_fee ? ils(d.monthly_fee) : '—';
@@ -3476,7 +3645,7 @@ async function loadUpgradeOptions() {
     // They route to the chat (the pricing brain), not the direct-billing flow.
     const addonCards = (d.addons || []).map((a, i) => `
       <div class="tier-card">
-        <div class="tier-name">${esc(a.name)}</div>
+        <div class="tier-name">${esc(pkgLabel(a.name))}</div>
         <div class="tier-desc">${esc(a.description)}</div>
         ${a.note ? `<div class="tier-note">${esc(a.note)}</div>` : ''}
         <button class="conn-btn secondary" style="margin-top:10px;" onclick="askAboutAddon(${i})">${uallakI18n.t('addon_ask_btn')}</button>
@@ -3485,7 +3654,7 @@ async function loadUpgradeOptions() {
     box.innerHTML = `
       <div class="tier-card current">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="tier-name">${esc(current.package || uallakI18n.t('tier_yours'))}</span>
+          <span class="tier-name">${esc(pkgLabel(current.package) || uallakI18n.t('tier_yours'))}</span>
           <span class="tier-tag">${uallakI18n.t('tier_current')}</span>
         </div>
         <div class="tier-price">${ils(current.monthly_fee)}<span>${uallakI18n.t('per_month')}</span></div>
@@ -5181,19 +5350,23 @@ function personaMeta(id) {
              face: MANAGER ? MANAGER.key : '' };
   }
   const p = TEAM_PERSONAS[id];
-  return { id: id, name: p.name, initial: p.name.charAt(0), roleKey: p.roleKey, face: p.face };
+  // The name in the reader's script (Lior / ليئور / Лиор), like the managers' names
+  const name = uallakI18n.t('persona_name_' + id);
+  return { id: id, name: name, initial: name.charAt(0), roleKey: p.roleKey, face: p.face };
 }
 function allPersonaIds() { return ['general'].concat(Object.keys(TEAM_PERSONAS)); }
 
 // ─── specialist personas (team strip) ────────────────────────────────────────
 // The specialist chats (backend: support_agent.PERSONAS - ids must match).
-// Names are proper nouns, not translated; roles come from the i18n table;
+// Names are the same people in every language, written in the reader's script
+// (i18n persona_name_<id> — 2026-11-11: Hebrew letters were unreadable in en/fr/ru);
+// roles come from the i18n table;
 // `face` is the asset key in /assets/agents/ (core/manager_identity.SPECIALIST_FACES).
 const TEAM_PERSONAS = {
-  google: { name: 'יואב', roleKey: 'team_role_google', face: 'yoav' },
-  meta: { name: 'מאיה', roleKey: 'team_role_meta', face: 'maya' },
-  website: { name: 'אורי', roleKey: 'team_role_website', face: 'uri' },
-  media: { name: 'ליאור', roleKey: 'team_role_media', face: 'lior' },
+  google: { roleKey: 'team_role_google', face: 'yoav' },
+  meta: { roleKey: 'team_role_meta', face: 'maya' },
+  website: { roleKey: 'team_role_website', face: 'uri' },
+  media: { roleKey: 'team_role_media', face: 'lior' },
 };
 // ─── multi-window manager ────────────────────────────────────────────────────
 // Each persona (general concierge + 4 specialists) can have its OWN window open
@@ -5929,7 +6102,7 @@ function linkify(text) {
 // separate conversation opens in its own voice.
 function threadIntroText(personaId) {
   if (personaId === 'general') return greetingText();
-  const p = TEAM_PERSONAS[personaId];
+  const p = personaMeta(personaId);
   return uallakI18n.t('persona_switch_note',
                       { name: p.name, role: uallakI18n.t(p.roleKey) });
 }
@@ -6025,7 +6198,7 @@ function appendActionCard(personaId, a) {
     // Staff in the client's dashboard: a client-only action stays the
     // client's click; a staff-approvable one needs the explicit staff mark
     if (a.staff_may_decide) el.appendChild(staffDecisionRow(a, el, personaId));
-    else note.textContent = 'רק הלקוח יכול לאשר את הפעולה הזו.';
+    else note.textContent = 'רק הלקוח יכול לאשר את הפעולה הזו.';  // i18n-ok: staff-only
   } else if (a.can_decide) {
     const row = document.createElement('div');
     row.className = 'row';
@@ -6228,16 +6401,16 @@ function staffDecisionRow(a, el, personaId) {
   mark.className = 'staff-mark';
   const box = document.createElement('input');
   box.type = 'checkbox';
-  mark.append(box, document.createTextNode('זו פעולת צוות (נרשמת ביומן הביקורת)'));
+  mark.append(box, document.createTextNode('זו פעולת צוות (נרשמת ביומן הביקורת)'));  // i18n-ok: staff-only
   const row = document.createElement('div');
   row.className = 'row';
   const ok = document.createElement('button');
   ok.type = 'button'; ok.className = 'ok'; ok.disabled = true;
-  ok.textContent = 'אישור כפעולת צוות';
+  ok.textContent = 'אישור כפעולת צוות';  // i18n-ok: staff-only
   ok.onclick = () => decideAction(a.id, 'approve', el, personaId, true);
   const no = document.createElement('button');
   no.type = 'button'; no.className = 'no'; no.disabled = true;
-  no.textContent = 'ביטול כפעולת צוות';
+  no.textContent = 'ביטול כפעולת צוות';  // i18n-ok: staff-only
   no.onclick = () => decideAction(a.id, 'cancel', el, personaId, true);
   box.onchange = () => { ok.disabled = no.disabled = !box.checked; };
   row.append(ok, no);
@@ -6799,8 +6972,8 @@ function greetingText() {
   let hello;
   // Hebrew keeps its gendered welcome-back forms (the client's own choice);
   // the other languages have one natural form
-  if (uallakI18n.current() === 'he' && chatData.gender === 'male') hello = `ברוך שובך${namePart}! 👋`;
-  else if (uallakI18n.current() === 'he' && chatData.gender === 'female') hello = `ברוכה שובך${namePart}! 👋`;
+  if (uallakI18n.current() === 'he' && chatData.gender === 'male') hello = `ברוך שובך${namePart}! 👋`;  // i18n-ok: Hebrew-only gendered branch
+  else if (uallakI18n.current() === 'he' && chatData.gender === 'female') hello = `ברוכה שובך${namePart}! 👋`;  // i18n-ok: Hebrew-only gendered branch
   else hello = t('greet_back', { name: namePart });
 
   if (chatData.firstVisit) {
@@ -6899,7 +7072,8 @@ function showView(name) {
   if (name === 'leads' && !viewLoaded.leads) { viewLoaded.leads = true; loadLeads(); loadLeadCapture(); }
   if (name === 'outreach' && !viewLoaded.outreach) { viewLoaded.outreach = true; loadOutreach(); }
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
-  if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); loadDriveMirror(''); }
+  if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
+  if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
@@ -6987,13 +7161,13 @@ async function loadOutreach() {
   const list = document.getElementById('orList');
   try {
     const d = await fetchOutreach();
-    if (!d) { list.innerHTML = '<div class="empty-row">לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.</div>'; return; }
+    if (!d) { list.innerHTML = `<div class="empty-row">${esc(uallakI18n.t('or_load_failed'))}</div>`; return; }
     OUTREACH = d;
     document.getElementById('navOutreach').style.display = '';
     renderOutreach();
   } catch (e) {
     console.error('outreach load failed', e);
-    list.innerHTML = '<div class="empty-row">לא הצלחנו לטעון את הרשימה כרגע. נסו שוב בעוד רגע.</div>';
+    list.innerHTML = `<div class="empty-row">${esc(uallakI18n.t('or_load_failed'))}</div>`;
   }
 }
 
@@ -7012,19 +7186,27 @@ function orVisibleRows() {
 
 function orSafeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : ''; }
 
+// The internal (admin-made) account's package name is stored in Hebrew by the
+// server (client_auth); show it in the reader's language.
+const PKG_INTERNAL_HE = 'חשבון פנימי — ללא חיוב';  // i18n-ok: the server's stored value, matched
+function pkgLabel(pkg) {
+  return pkg === PKG_INTERNAL_HE ? uallakI18n.t('pkg_internal') : (pkg || '');
+}
+
 function renderOutreach() {
   if (!OUTREACH) return;
+  const t = uallakI18n.t;
   const d = OUTREACH;
   const c = d.counters || {};
   const gaps = (d.gaps || []).length > 0;
   const capLine = d.sending_enabled
-    ? `נשלחו היום: ${Number(d.cap.sent_today || 0)} מתוך ${Number(d.cap.limit || 0)}`
-    : `עד ${Number(d.cap.limit || 0)} מיילים ביום`;
+    ? t('or_sent_today', { sent: Number(d.cap.sent_today || 0), limit: Number(d.cap.limit || 0) })
+    : t('or_cap', { limit: Number(d.cap.limit || 0) });
   // A record we could not read is never shown as a zero
   const num = v => gaps ? '—' : Number(v || 0);
   document.getElementById('orStats').innerHTML = [
-    ['נמצאו', num(c.found)], ['נשלחו', num(c.sent)], ['ענו', num(c.replied)],
-    ['ביקשו להסיר', num(c.removed)], ['מגבלה יומית', capLine],
+    [t('or_stat_found'), num(c.found)], [t('or_stat_sent'), num(c.sent)], [t('or_status_replied'), num(c.replied)],
+    [t('or_status_removed'), num(c.removed)], [t('or_stat_cap'), capLine],
   ].map(([label, val]) => `
     <div class="lead-stat">
       <div class="lead-stat-val" style="${typeof val === 'string' && val !== '—' ? 'font-size:14px;padding-top:5px;' : ''}">${esc(val)}</div>
@@ -7033,8 +7215,8 @@ function renderOutreach() {
 
   const off = document.getElementById('orOff');
   const notes = [];
-  if (!d.sending_enabled) notes.push('שליחת המיילים עוד לא הופעלה. אפשר כבר לראות את העסקים שנמצאו ואת הטיוטות — האישור והשליחה ייפתחו כשהשליחה תופעל.');
-  if (gaps) notes.push('חלק מהנתונים לא נטענו כרגע, ולכן הרשימה עלולה להיות חסרה. נסו לרענן בעוד רגע.');
+  if (!d.sending_enabled) notes.push(t('or_sending_off'));
+  if (gaps) notes.push(t('or_gaps'));
   off.style.display = notes.length ? '' : 'none';
   off.innerHTML = notes.map(esc).join('<br>');
 
@@ -7044,8 +7226,7 @@ function renderOutreach() {
   const list = document.getElementById('orList');
   if (!rows.length) {
     const anyFilter = orFilters().status || orFilters().q;
-    list.innerHTML = `<div class="empty-row">${anyFilter ? 'אין עסקים שמתאימים לסינון.'
-      : 'עוד אין כאן עסקים. כשהסוכן ימצא עסקים ויכין טיוטות, הם יופיעו כאן.'}</div>`;
+    list.innerHTML = `<div class="empty-row">${esc(t(anyFilter ? 'or_none_filtered' : 'or_none_yet'))}</div>`;
   } else {
     list.innerHTML = rows.map(renderOutreachRow).join('');
   }
@@ -7053,35 +7234,38 @@ function renderOutreach() {
 }
 
 function renderOutreachRow(r) {
+  const t = uallakI18n.t;
   const k = esc(r.key);
   const site = orSafeUrl(r.source_url);
   const gmail = orSafeUrl(r.gmail_link);
   const lines = [];
-  const where = [r.area, r.source_label, r.found_date ? 'נמצא ב-' + r.found_date : ''].filter(Boolean).join(' · ');
+  const where = [r.area, r.source_label, r.found_date ? t('or_found_on', { date: r.found_date }) : ''].filter(Boolean).join(' · ');
   if (where) lines.push(esc(where));
-  lines.push('מייל: <span dir="ltr">' + esc(r.to_email) + '</span>'
-    + (site ? ` · נלקח מהעמוד: <a href="${esc(site)}" target="_blank" rel="noopener" dir="ltr">${esc(site)}</a>` : ''));
-  if (r.subject) lines.push('נושא: ' + esc(r.subject));
-  if (r.sent_date) lines.push('נשלח ב-' + esc(r.sent_date)
-    + (gmail ? ` · <a href="${esc(gmail)}" target="_blank" rel="noopener">לפתוח ב-Gmail</a>` : ''));
-  if (r.followup_label) lines.push(esc(r.followup_label) + (r.followup_date ? ' ב-' + esc(r.followup_date) : ''));
-  if (r.status === 'draft_pending') lines.push('הטיוטה מחכה לאישורך בצ׳אט עם הסוכן.');
-  if (r.followup_due) lines.push(`עברו ${Number(OUTREACH.no_response_days || 7)} ימים בלי תגובה — אפשר לבקש מהסוכן בצ׳אט מייל מעקב אחד. גם אותו תאשרו לפני שליחה.`);
+  lines.push(esc(t('or_email')) + ' <span dir="ltr">' + esc(r.to_email) + '</span>'
+    + (site ? ` · ${esc(t('or_taken_from'))} <a href="${esc(site)}" target="_blank" rel="noopener" dir="ltr">${esc(site)}</a>` : ''));
+  if (r.subject) lines.push(esc(t('or_subject')) + ' <span dir="auto">' + esc(r.subject) + '</span>');
+  if (r.sent_date) lines.push(esc(t('or_sent_on', { date: r.sent_date }))
+    + (gmail ? ` · <a href="${esc(gmail)}" target="_blank" rel="noopener">${esc(t('or_open_gmail'))}</a>` : ''));
+  if (r.followup_label) lines.push(esc(r.followup_label) + (r.followup_date ? ' ' + esc(t('or_on_date', { date: r.followup_date })) : ''));
+  if (r.status === 'draft_pending') lines.push(esc(t('or_draft_waiting')));
+  if (r.followup_due) lines.push(esc(t('or_followup_due', { days: Number(OUTREACH.no_response_days || 7) })));
 
   const can = r.can_mark || [];
   const buttons = [];
-  if (can.includes('replied') && r.status !== 'replied') buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="replied" data-key="${k}">ענו</button>`);
-  if (can.includes('removed')) buttons.push(`<button class="or-btn-remove" type="button" data-or-mark="removed" data-key="${k}">ביקשו להסיר</button>`);
-  if (can.includes('bounced')) buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="bounced" data-key="${k}">חזר</button>`);
-  if (r.can_delete) buttons.push(`<button class="lead-note-btn" type="button" data-or-delete data-key="${k}">מחיקה מהרשימה</button>`);
+  if (can.includes('replied') && r.status !== 'replied') buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="replied" data-key="${k}">${esc(t('or_status_replied'))}</button>`);
+  if (can.includes('removed')) buttons.push(`<button class="or-btn-remove" type="button" data-or-mark="removed" data-key="${k}">${esc(t('or_status_removed'))}</button>`);
+  if (can.includes('bounced')) buttons.push(`<button class="lead-note-btn" type="button" data-or-mark="bounced" data-key="${k}">${esc(t('or_status_bounced'))}</button>`);
+  if (r.can_delete) buttons.push(`<button class="lead-note-btn" type="button" data-or-delete data-key="${k}">${esc(t('or_delete'))}</button>`);
+  // The status in the reader's language (the server's label is Hebrew)
+  const statusLabel = DASH_I18N['or_status_' + r.status] ? t('or_status_' + r.status) : (r.status_label || r.status);
 
   return `
     <div class="lead-card or-card">
-      <input type="checkbox" data-or-select data-key="${k}" ${orSelected.has(r.key) ? 'checked' : ''} aria-label="בחירה">
+      <input type="checkbox" data-or-select data-key="${k}" ${orSelected.has(r.key) ? 'checked' : ''} aria-label="${esc(t('or_select_aria'))}">
       <div class="or-body">
         <div class="lead-head">
-          <div class="lead-name">${esc(r.business_name || r.to_email)}</div>
-          <span class="or-status s-${esc(r.status)}">${esc(r.status_label)}</span>
+          <div class="lead-name" dir="auto">${esc(r.business_name || r.to_email)}</div>
+          <span class="or-status s-${esc(r.status)}">${esc(statusLabel)}</span>
         </div>
         ${lines.map(l => `<div class="or-line">${l}</div>`).join('')}
         ${buttons.length ? `<div class="lead-actions">${buttons.join('')}</div>` : ''}
@@ -7092,10 +7276,11 @@ function renderOutreachRow(r) {
 function orSyncSelection(rows) {
   rows = rows || orVisibleRows();
   const n = orSelected.size;
-  document.getElementById('orSelCount').textContent = n ? `נבחרו ${n}` : '';
+  const t = uallakI18n.t;
+  document.getElementById('orSelCount').textContent = n ? t('or_selected', { n }) : '';
   document.getElementById('orSelectAll').checked = rows.length > 0 && n === rows.length;
   document.getElementById('orExportScope').textContent = n
-    ? `ייוצאו ${n} השורות שבחרת` : `ייוצאו ${rows.length} השורות שמוצגות עכשיו`;
+    ? t('or_export_selected', { n }) : t('or_export_shown', { n: rows.length });
 }
 
 function selectAllOutreach(on) {
@@ -7122,7 +7307,7 @@ document.addEventListener('click', e => {
 
 function orTargets(keys) {
   const list = keys || [...orSelected];
-  if (!list.length) showNotice('בחרו קודם עסק אחד או יותר מהרשימה.', 'warn');
+  if (!list.length) showNotice(uallakI18n.t('or_pick_first'), 'warn');
   return list;
 }
 
@@ -7133,8 +7318,8 @@ function orReport(result, doneText) {
   if (failed.length) {
     const kept = failed.filter(f => f.code === 'has_send_record').length;
     showNotice(kept
-      ? `${kept} עסקים כבר קיבלו מייל ולכן נשארים ברשימה — זה התיעוד של מה שנשלח.`
-      : `${failed.length} עסקים לא עודכנו (הסימון לא מתאים לסטטוס שלהם, או שלא נשמר). נסו שוב.`, 'warn');
+      ? uallakI18n.t('or_kept', { n: kept })
+      : uallakI18n.t('or_failed', { n: failed.length }), 'warn');
   }
 }
 
@@ -7148,17 +7333,14 @@ async function markOutreach(keys, mark) {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body.success) {
-      showNotice(res.status === 503
-        ?'הסימון עוד לא זמין — אנחנו משלימים הגדרה בצד שלנו. נסו שוב מאוחר יותר.'
-        : 'הסימון לא נשמר. נסו שוב בעוד רגע.', 'warn');
+      showNotice(uallakI18n.t(res.status === 503 ? 'or_mark_unavailable' : 'or_mark_failed'), 'warn');
       return;
     }
     orSelected.clear();
-    orReport(body.data, n => mark === 'removed'
-      ? `סומן "ביקשו להסיר" (${n}). המערכת לא תשלח להם יותר שום מייל.`
-      : mark === 'replied' ? `סומן "ענו" (${n}).` : `סומן "חזר" (${n}).`);
+    orReport(body.data, n => uallakI18n.t(mark === 'removed' ? 'or_marked_removed'
+      : mark === 'replied' ? 'or_marked_replied' : 'or_marked_bounced', { n }));
   } catch (e) {
-    showNotice('הסימון לא נשמר. נסו שוב בעוד רגע.', 'warn');
+    showNotice(uallakI18n.t('or_mark_failed'), 'warn');
     return;
   }
   loadOutreach();
@@ -7170,7 +7352,7 @@ async function deleteOutreach(keys) {
   // Two clicks, like the CRM disconnect: no browser confirm() dialog
   if (!orDeleteArmed) {
     orDeleteArmed = true;
-    showNotice(`למחוק ${list.length} עסקים מהרשימה? לחצו שוב על "מחיקה" תוך 5 שניות לאישור. עסק שכבר קיבל מייל לא נמחק.`, 'warn');
+    showNotice(uallakI18n.t('or_delete_confirm', { n: list.length }), 'warn');
     setTimeout(() => { orDeleteArmed = false; }, 5000);
     return;
   }
@@ -7181,11 +7363,11 @@ async function deleteOutreach(keys) {
       body: JSON.stringify({ keys: list }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.success) { showNotice('המחיקה לא בוצעה. נסו שוב בעוד רגע.', 'warn'); return; }
+    if (!res.ok || !body.success) { showNotice(uallakI18n.t('or_delete_failed'), 'warn'); return; }
     orSelected.clear();
-    orReport(body.data, n => `נמחקו ${n} עסקים מהרשימה.`);
+    orReport(body.data, n => uallakI18n.t('or_deleted', { n }));
   } catch (e) {
-    showNotice('המחיקה לא בוצעה. נסו שוב בעוד רגע.', 'warn');
+    showNotice(uallakI18n.t('or_delete_failed'), 'warn');
     return;
   }
   loadOutreach();
@@ -7222,12 +7404,12 @@ async function exportOutreach(format) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      if (format === 'sheets') showNotice('הקובץ ירד. ב-Google Sheets: קובץ ← ייבוא ← העלאה, ובחרו את הקובץ.', 'success');
+      if (format === 'sheets') showNotice(uallakI18n.t('or_sheets_hint'), 'success');
     }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (e) {
     if (printWin) printWin.close();
-    showNotice('הייצוא לא הצליח. נסו שוב בעוד רגע.', 'warn');
+    showNotice(uallakI18n.t('or_export_failed'), 'warn');
   }
 }
 
@@ -7917,81 +8099,105 @@ function filterMedia(kind) {
   renderMediaGrid();
 }
 
-// ─── Drive mirror: the client's folder as it is in Drive, listed live ────────
-// Server: core/drive_mirror.py (metadata only, cached ~3 min, "Refresh"
-// bypasses it). The folder is resolved from the session server-side; the
-// browser only ever names subfolders it was shown, and the server re-checks
-// them. Files that came from the system index (client_activity, matched by
-// file_id) are labelled as such and not shown twice in the index below.
-// This only touches #driveMirror — never the chat windows or their inputs.
-const driveMirror = { folder: '', path: [], data: null, files: [], folders: [], next: '', pages: 0,
-                      seenIds: new Set(), loading: false };
+// ─── Media library: the client's WHOLE Drive tree, searchable ───────────────
+// Server: GET /api/client/media-library (core/media_library.py — metadata only;
+// the name matching is core/media_search, the SAME matcher the agents'
+// find_media_file uses, so the search box and the chat find the same files).
+// Opening the tab: stamp the visit (POST …/seen → the previous visit decides
+// the "New" badges), show the cached list, then check Drive silently and
+// re-render only if something changed. "Refresh from Drive" stays as the
+// backup. This only touches #driveMirror — never the chat windows.
+const driveMirror = { data: null, files: [], seenIds: new Set(), selected: new Map(), q: '', kind: '',
+                      folder: '*', sort: 'newest', since: '', seq: 0, opened: false, loading: false };
+const ML_TIKTOK_MAX = 10;     // agent_actions.TIKTOK_BATCH_MAX
+const ML_KIND_ICONS = { video: '🎬', image: '🖼', document: '📄', shortcut: '🔗' };
 
-async function loadDriveMirror(folderId, refresh) {
-  if (driveMirror.loading) return;
-  driveMirror.loading = true;
+function mlNote(msg) { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; }
+
+async function fetchLibrary(refresh, offset) {
+  const qs = new URLSearchParams({ q: driveMirror.q, kind: driveMirror.kind, folder: driveMirror.folder,
+    sort: driveMirror.sort, offset: String(offset || 0), limit: '60', refresh: refresh ? 'true' : 'false',
+    since: driveMirror.since || '' });
+  const res = await fetch('/api/client/media-library?' + qs, { credentials: 'same-origin' });
+  if (res.status === 401) { window.location.href = '/login/'; return null; }
+  const body = await res.json();
+  return body.success ? body.data : { exists: true, error: 'other' };
+}
+
+// What the list shows, so a silent check re-renders only on a real change
+function mlSignature(d) {
+  if (!d || d.error) return '';
+  return d.total + '|' + (d.items || []).map(i => i.id + ':' + i.modified_time + ':' + (i.sent || []).join('+')).join(',');
+}
+
+// opts: { refresh, append, silent }
+async function loadLibrary(opts) {
+  opts = opts || {};
+  const t = uallakI18n.t;
+  const seq = ++driveMirror.seq;          // a newer search replaces an older answer
   const grid = document.getElementById('driveMirrorGrid');
-  document.getElementById('driveMirrorNotice').textContent = '';
-  if (!driveMirror.files.length || folderId !== driveMirror.folder || refresh) {
-    grid.className = '';
-    grid.innerHTML = `<div class="empty-row">${esc(uallakI18n.t('loading'))}</div>`;
+  if (!opts.silent && !opts.append) {
+    mlNote(opts.refresh ? t('ml_checking') : '');
+    if (!driveMirror.files.length) {
+      grid.className = '';
+      grid.innerHTML = `<div class="empty-row">${esc(t('loading'))}</div>`;
+    }
   }
+  driveMirror.loading = true;
+  let data;
   try {
-    const qs = new URLSearchParams({ folder: folderId || '', refresh: refresh ? 'true' : 'false' });
-    const res = await fetch('/api/client/media-drive?' + qs, { credentials: 'same-origin' });
-    if (res.status === 401) { window.location.href = '/login/'; return; }
-    const body = await res.json();
-    driveMirror.data = body.success ? body.data : { error: 'other' };
-    driveMirror.folder = folderId || '';
-    driveMirror.files = (driveMirror.data.files || []).slice();
-    driveMirror.folders = (driveMirror.data.folders || []).slice();
-    driveMirror.next = driveMirror.data.next_page_token || '';
-    driveMirror.pages = 1;
+    data = await fetchLibrary(opts.refresh, opts.append ? driveMirror.files.length : 0);
   } catch (e) {
-    console.error('drive mirror load failed', e);
-    driveMirror.data = { error: 'other' };
+    console.error('media library load failed', e);
+    data = { exists: true, error: 'other' };
   } finally {
-    driveMirror.loading = false;
+    if (seq === driveMirror.seq) driveMirror.loading = false;
+  }
+  if (!data || seq !== driveMirror.seq) return;
+  if (opts.silent && (data.error || mlSignature(data) === mlSignature(driveMirror.data))) return;
+  if (opts.append && !data.error) {
+    driveMirror.files.push(...(data.items || []));
+    driveMirror.data = { ...data, items: driveMirror.files };
+  } else {
+    driveMirror.data = data;
+    driveMirror.files = (data.items || []).slice();
   }
   driveMirror.files.forEach(f => driveMirror.seenIds.add(f.id));
   renderDriveMirror();
-  renderMediaGrid();   // drop index items now visible in the mirror
-}
-
-async function loadMoreDriveMirror() {
-  if (driveMirror.loading || !driveMirror.next) return;
-  driveMirror.loading = true;
-  try {
-    const qs = new URLSearchParams({ folder: driveMirror.folder, page_token: driveMirror.next,
-                                     page: String(driveMirror.pages) });
-    const body = await (await fetch('/api/client/media-drive?' + qs, { credentials: 'same-origin' })).json();
-    if (body.success && !body.data.error) {
-      driveMirror.files.push(...(body.data.files || []));
-      driveMirror.folders.push(...(body.data.folders || []));
-      driveMirror.next = body.data.next_page_token || '';
-      driveMirror.pages += 1;
-      driveMirror.data.truncated = Boolean(body.data.truncated);
-      (body.data.files || []).forEach(f => driveMirror.seenIds.add(f.id));
-    }
-  } catch (e) {
-    console.error('drive mirror page failed', e);
-  } finally {
-    driveMirror.loading = false;
-  }
-  renderDriveMirror();
   renderMediaGrid();
+  if (opts.refresh && !opts.silent) mlNote(data.error ? '' : t('ml_updated'));
 }
 
-function openDriveFolder(id, name) {
-  driveMirror.path.push({ id: driveMirror.folder, name: '' });
-  driveMirror.currentName = name;
-  loadDriveMirror(id, false);
+// Older callers (TikTok connect, language change) keep working
+function loadDriveMirror(_folder, refresh) { return loadLibrary({ refresh: Boolean(refresh) }); }
+
+async function openMediaLibrary() {
+  if (!driveMirror.opened) {
+    driveMirror.opened = true;
+    mlWireToolbar();
+    try {
+      // Refused in the admin read-only view (not a READ endpoint): staff
+      // looking never moves the client's "new since last visit"
+      const r = await fetch('/api/client/media-library/seen', { method: 'POST', credentials: 'same-origin' });
+      if (r.ok) driveMirror.since = ((await r.json()).data || {}).previous || '';
+    } catch (e) { /* no badges is fine */ }
+    await loadLibrary({});
+  }
+  loadLibrary({ refresh: true, silent: true });
 }
 
-function driveFolderUp() {
-  const prev = driveMirror.path.pop();
-  loadDriveMirror(prev ? prev.id : '', false);
+function mlWireToolbar() {
+  let timer = null;
+  const search = document.getElementById('mlSearch');
+  search.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { driveMirror.q = search.value.trim(); loadLibrary({}); }, 250);
+  });
+  document.getElementById('mlFolder').addEventListener('change', e => { driveMirror.folder = e.target.value; loadLibrary({}); });
+  document.getElementById('mlSort').addEventListener('change', e => { driveMirror.sort = e.target.value; loadLibrary({}); });
 }
+
+function mlFilterKind(kind) { driveMirror.kind = kind; loadLibrary({}); }
 
 // Lightbox + download (/assets/media-viewer.js → core/drive_download.py).
 // Messages land in a status line inside the Media tab — never in a chat.
@@ -8013,39 +8219,159 @@ function driveThumbError(img) {
   img.src = '/api/client/media-drive/thumb/' + encodeURIComponent(img.dataset.fileId);
 }
 
+// ─── Built-in player (GET /api/client/media-drive/play/<id>: Range-streamed,
+// only videos up to the admin setting media_video_play_max_mb) ──────────────
+function mlPlayerKey(e) { if (e.key === 'Escape') closeVideoPlayer(); }
+
+function closeVideoPlayer() {
+  const wrap = document.getElementById('mlPlayer');
+  if (!wrap) return;
+  const v = wrap.querySelector('video');
+  if (v) { v.pause(); v.removeAttribute('src'); v.load(); }   // stop the stream
+  wrap.remove();
+  document.removeEventListener('keydown', mlPlayerKey);
+}
+
+function playVideo(f) {
+  const t = uallakI18n.t;
+  closeVideoPlayer();
+  const wrap = document.createElement('div');
+  wrap.className = 'ml-player';
+  wrap.id = 'mlPlayer';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.setAttribute('aria-label', f.name || '');
+  wrap.innerHTML = `<div class="ml-player-box">
+      <div class="ml-player-head"><bdi dir="auto"></bdi>
+        <button type="button" class="drive-act" data-close>${esc(t('ml_close'))}</button></div>
+      <video controls playsinline preload="metadata"></video>
+      <div class="drive-big-note" data-err hidden>${esc(t('ml_play_failed'))}</div>
+      <div class="drive-actions">${f.web_view_link
+        ? `<a class="drive-act" href="${esc(f.web_view_link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>` : ''}</div>
+    </div>`;
+  wrap.querySelector('bdi').textContent = f.name || '';
+  const video = wrap.querySelector('video');
+  video.onerror = () => { wrap.querySelector('[data-err]').hidden = false; };
+  video.src = '/api/client/media-drive/play/' + encodeURIComponent(f.id);
+  wrap.querySelector('[data-close]').onclick = closeVideoPlayer;
+  wrap.addEventListener('click', e => { if (e.target === wrap) closeVideoPlayer(); });
+  document.addEventListener('keydown', mlPlayerKey);
+  document.body.appendChild(wrap);
+  wrap.querySelector('[data-close]').focus();
+}
+
+// ─── Multi-select: one approval card per batch (POST /api/client/media/send) ─
+function mlIsVideo(f) { return f.kind === 'video'; }
+
+function renderSelectionBar() {
+  const t = uallakI18n.t;
+  const bar = document.getElementById('mlSelBar');
+  const files = [...driveMirror.selected.values()];
+  if (!files.length) { bar.hidden = true; bar.innerHTML = ''; return; }
+  const videos = files.filter(mlIsVideo).length;
+  bar.hidden = false;
+  bar.innerHTML = `<span class="ml-count">${esc(t('ml_selected', { n: files.length }))}</span>
+    ${videos && TIKTOK_CONNECTED ? `<button type="button" class="drive-act tiktok" data-ml-send="tiktok">${esc(t('tt_send'))}</button>` : ''}
+    ${videos === 1 ? `<button type="button" class="drive-act" data-ml-send="youtube">${esc(t('ml_send_youtube'))}</button>` : ''}
+    <button type="button" class="drive-act" data-ml-dl>${esc(t('ml_download'))}</button>
+    <button type="button" class="drive-act" data-ml-clear>${esc(t('ml_clear'))}</button>`;
+  bar.querySelectorAll('[data-ml-send]').forEach(b => { b.onclick = () => mlSend(b.dataset.mlSend, b); });
+  bar.querySelector('[data-ml-dl]').onclick = mlDownloadSelected;
+  bar.querySelector('[data-ml-clear]').onclick = () => { driveMirror.selected.clear(); renderDriveMirror(); };
+}
+
+async function mlSend(target, btn) {
+  const t = uallakI18n.t;
+  const files = [...driveMirror.selected.values()];
+  const videos = files.filter(mlIsVideo);
+  const skipped = files.length - videos.length;
+  if (target === 'youtube' && videos.length !== 1) { mlNote(t('ml_youtube_one')); return; }
+  if (target === 'tiktok' && videos.length > ML_TIKTOK_MAX) { mlNote(t('ml_tiktok_max', { n: ML_TIKTOK_MAX })); return; }
+  if (btn) btn.disabled = true;
+  mlNote(t('tt_send_opening'));
+  try {
+    const res = await fetch('/api/client/media/send', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, drive_file_ids: videos.map(f => f.id) }),
+    });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const d = res.ok ? ((await res.json()).data || {}) : {};
+    if (d.card) {
+      const persona = d.persona || 'media';
+      const wasOpen = Boolean(CHAT_WINDOWS[persona]);
+      const w = openAgentWindow(persona);
+      if (w && w.historyLoaded) await w.historyLoaded;
+      if (d.notice && wasOpen) appendMsg(w.msgsEl, d.notice, 'bot');
+      appendActionCard(persona, d.card);
+      driveMirror.selected.clear();
+      renderDriveMirror();
+      mlNote(skipped ? t('ml_videos_only', { n: skipped }) : '');
+    } else {
+      mlNote(d.notice || t(d.error === 'not_available' ? 'tt_not_in_plan' : 'tt_send_failed'));
+    }
+  } catch (e) {
+    mlNote(t('tt_send_failed'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function mlDownloadSelected() {
+  const t = uallakI18n.t;
+  const files = [...driveMirror.selected.values()];
+  const videos = files.filter(f => mlIsVideo(f) || f.download === 'drive');
+  const rest = files.filter(f => !videos.includes(f) && f.download !== 'none');
+  const opts = mediaViewerOpts('driveMirrorNotice');
+  // One at a time: the server checks each file (own folder, size) itself
+  for (const f of rest) {
+    try { await uallakMediaViewer.download(f, opts, '', opts.notify); } catch (e) { console.error('download failed', e); }
+  }
+  if (videos.length) mlNote(t('ml_dl_videos_drive', { n: videos.length }));
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+function renderLibraryToolbar(d) {
+  const t = uallakI18n.t;
+  const folderSel = document.getElementById('mlFolder');
+  const paths = (d.folders || []).filter(p => p);
+  const opts = [['*', t('ml_folder_all')], ['', t('ml_folder_main')], ...paths.map(p => [p, '📁 ' + p])];
+  if (driveMirror.folder !== '*' && driveMirror.folder !== '' && !paths.includes(driveMirror.folder)) driveMirror.folder = '*';
+  folderSel.innerHTML = opts.map(([v, label]) =>
+    `<option value="${esc(v)}"${v === driveMirror.folder ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  document.getElementById('mlSort').value = driveMirror.sort;
+  const counts = d.counts || {};
+  const chip = (kind, label, n) => `<button type="button" class="media-chip${driveMirror.kind === kind ? ' active' : ''}"
+      aria-pressed="${driveMirror.kind === kind}" onclick="mlFilterKind('${kind}')">${label} (${Number(n || 0)})</button>`;
+  document.getElementById('driveMirrorFolders').innerHTML = chip('', esc(t('ml_kind_all')), d.all)
+    + ['video', 'image', 'document'].map(k => chip(k, ML_KIND_ICONS[k] + ' ' + esc(t('ml_kind_' + k)), counts[k])).join('');
+}
+
 function renderDriveMirror() {
   const t = uallakI18n.t;
   const d = driveMirror.data;
   const grid = document.getElementById('driveMirrorGrid');
-  const chips = document.getElementById('driveMirrorFolders');
   const more = document.getElementById('driveMirrorMore');
   if (!d) return;
   more.innerHTML = '';
   if (d.exists === false) {
-    chips.innerHTML = '';
+    document.getElementById('driveMirrorFolders').innerHTML = '';
     grid.className = '';
     grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_none'))}</div>`;
+    renderSelectionBar();
     return;
   }
-  const chipHtml = [];
-  if (driveMirror.folder) {
-    chipHtml.push(`<button type="button" class="media-chip" onclick="driveFolderUp()">${esc(t('drive_mirror_up'))}</button>`);
-  }
-  driveMirror.folders.forEach(f => {
-    chipHtml.push(`<button type="button" class="media-chip" data-folder="${esc(f.id)}">📁 ${esc(f.name)}</button>`);
-  });
-  chips.innerHTML = chipHtml.join('');
-  chips.querySelectorAll('[data-folder]').forEach(b => {
-    b.onclick = () => openDriveFolder(b.dataset.folder, b.textContent.replace('📁', '').trim());
-  });
   if (d.error) {
     grid.className = '';
     grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_unavailable'))}</div>`;
+    renderSelectionBar();
     return;
   }
+  renderLibraryToolbar(d);
   if (!driveMirror.files.length) {
     grid.className = '';
-    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_empty'))}</div>`;
+    grid.innerHTML = `<div class="empty-row">${esc(t(driveMirror.q || driveMirror.kind || driveMirror.folder !== '*'
+      ? 'ml_no_match' : 'drive_mirror_empty'))}</div>`;
+    renderSelectionBar();
     return;
   }
   const byFileId = {};
@@ -8053,45 +8379,71 @@ function renderDriveMirror() {
   grid.className = 'media-grid';
   const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
   // Same rules as core/drive_download (which enforces them): images and
-  // documents through us up to the cap; videos and anything bigger → Drive
+  // documents through us up to the cap; videos play here up to the player
+  // cap, everything bigger opens in Drive
   const overCap = f => (f.download === 'file' && f.size && maxBytes && f.size > maxBytes);
-  const viewable = driveMirror.files.filter(f => f.previewable && !overCap(f));
+  const viewable = driveMirror.files.filter(f => f.previewable && f.kind === 'image' && !overCap(f));
   grid.innerHTML = driveMirror.files.map((f, i) => {
     const fromSystem = byFileId[f.id];
     const label = (fromSystem && fromSystem.title) || f.name;
-    const thumb = f.thumbnail_link
+    const shown = f.kind === 'shortcut' ? (f.target_kind || 'document') : f.kind;
+    // Only images and videos have a real picture; a document's Drive
+    // thumbnail is often a blank white page → a neutral icon instead
+    const pictured = f.kind !== 'shortcut' && (shown === 'image' || shown === 'video') && f.thumbnail_link;
+    const thumb = pictured
       ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(f.thumbnail_link)}"
              data-file-id="${esc(f.id)}" onerror="driveThumbError(this)">`
       : '';
-    const thumbInner = `${thumb}<span class="drive-thumb-ico">${MEDIA_ICONS[f.kind] || '📎'}</span>
-        ${f.kind === 'video' ? '<span class="drive-play">▶</span>' : ''}`;
-    // Raster images under the cap open the lightbox; everything else (videos
-    // included) opens in Drive
-    const thumbCls = `drive-thumb${thumb ? '' : ' no-thumb'}`;
+    const thumbInner = `${thumb}<span class="drive-thumb-ico">${f.kind === 'shortcut' ? ML_KIND_ICONS.shortcut
+        : (ML_KIND_ICONS[shown] || MEDIA_ICONS[shown] || '📎')}</span>
+        ${shown === 'video' ? '<span class="drive-play">▶</span>' : ''}`;
+    const thumbCls = `drive-thumb${thumb ? '' : ' no-thumb'}${pictured ? '' : ' doc-thumb'}`;
     const viewIdx = viewable.indexOf(f);
-    const thumbEl = viewIdx !== -1
+    const thumbEl = f.playable
+      ? `<button type="button" class="${thumbCls}" data-play="${i}" aria-label="${esc(t('ml_play_aria', { name: label }))}">${thumbInner}</button>`
+      : viewIdx !== -1
       ? `<button type="button" class="${thumbCls}" data-view="${viewIdx}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
       : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
-    const isVideo = f.download === 'drive' || f.kind === 'video';
-    const tiktokAct = (f.kind === 'video' && TIKTOK_CONNECTED)
-      ? `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>`
-      : '';
-    const dl = isVideo ? `<div class="drive-big-note">${esc(t('media_video_drive'))}</div>`
-      : f.download === 'none' ? ''
+    const isVideo = f.kind === 'video';
+    const badges = [];
+    if (f.new) badges.push(`<span class="ml-badge new">${esc(t('ml_new'))}</span>`);
+    (f.sent || []).forEach(s => badges.push(`<span class="ml-badge sent">✓ ${esc(t('ml_sent_' + s))}</span>`));
+    if (f.kind === 'shortcut') badges.push(`<span class="ml-badge">${esc(t('ml_shortcut'))}</span>`);
+    const where = (f.folder ? t('ml_in_folder', { folder: f.folder }) : t('ml_folder_main'))
+      + ' · ' + fmtDate(f.created_time || f.modified_time);
+    const tiktokAct = (isVideo && TIKTOK_CONNECTED)
+      ? `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>` : '';
+    const act = f.playable ? `<button type="button" class="drive-act" data-play="${i}">${esc(t('ml_play'))}</button>`
+      : isVideo ? `<div class="drive-big-note">${esc(t('ml_too_big_play'))}</div>`
+      : (f.download === 'none' || f.download === 'drive') ? ''
       : overCap(f) ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
       : `<button type="button" class="drive-act" data-dl="${i}">${esc(t(f.download === 'export' ? 'mv_download_pdf' : 'mv_download'))}</button>`;
-    return `<div class="media-item drive-item" data-kind="${esc(f.kind)}">
+    const selectable = f.kind !== 'shortcut';
+    const checked = driveMirror.selected.has(f.id);
+    return `<div class="media-item drive-item${checked ? ' selected' : ''}" data-kind="${esc(f.kind)}">
+      ${selectable ? `<label class="ml-check"><input type="checkbox" data-sel="${i}"${checked ? ' checked' : ''}
+          aria-label="${esc(t('ml_select_aria', { name: label }))}"></label>` : ''}
       ${thumbEl}
-      <div class="media-item-title" dir="auto">${esc(label)}</div>
-      <div class="media-item-meta">${esc(fmtDateTime(f.modified_time))}</div>
+      <div class="media-item-title"><bdi dir="auto">${esc(label)}</bdi></div>
+      ${badges.length ? `<div class="ml-badges">${badges.join('')}</div>` : ''}
+      <div class="ml-where${f.duplicate ? ' dup' : ''}"${f.duplicate ? ` title="${esc(t('ml_dup_hint'))}"` : ''}><bdi dir="auto">${esc(where)}</bdi></div>
       <div class="drive-src ${fromSystem ? 'system' : 'drive'}">${esc(t(fromSystem ? 'drive_src_system' : 'drive_src_drive'))}</div>
       <div class="drive-actions">
         ${f.web_view_link ? `<a class="drive-act" href="${esc(f.web_view_link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>` : ''}
-        ${dl}
+        ${act}
         ${tiktokAct}
       </div>
     </div>`;
   }).join('');
+  grid.querySelectorAll('[data-sel]').forEach(box => {
+    box.onchange = () => {
+      const f = driveMirror.files[Number(box.dataset.sel)];
+      if (box.checked) driveMirror.selected.set(f.id, f); else driveMirror.selected.delete(f.id);
+      box.closest('.drive-item').classList.toggle('selected', box.checked);
+      renderSelectionBar();
+    };
+  });
+  grid.querySelectorAll('[data-play]').forEach(b => { b.onclick = () => playVideo(driveMirror.files[Number(b.dataset.play)]); });
   grid.querySelectorAll('[data-tiktok]').forEach(b => {
     b.onclick = () => sendVideoToTiktok(driveMirror.files[Number(b.dataset.tiktok)].id, b);
   });
@@ -8104,27 +8456,40 @@ function renderDriveMirror() {
       uallakMediaViewer.download(driveMirror.files[Number(b.dataset.dl)], opts, '', opts.notify);
     };
   });
-  if (driveMirror.next && !d.truncated) {
-    more.innerHTML = `<button type="button" class="media-chip" onclick="loadMoreDriveMirror()">${esc(t('drive_mirror_more'))}</button>`;
-  } else if (d.truncated) {
-    more.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_capped'))}</div>`;
+  const lines = [];
+  if (d.new_count) lines.push(`<div class="ml-hint">${esc(t('ml_new_count', { n: d.new_count }))}</div>`);
+  if (driveMirror.files.length < (d.total || 0)) {
+    lines.push(`<div class="ml-hint">${esc(t('ml_shown', { shown: driveMirror.files.length, total: d.total }))}</div>`);
+    lines.push(`<button type="button" class="media-chip" onclick="loadLibrary({ append: true })">${esc(t('drive_mirror_more'))}</button>`);
   }
+  if (d.truncated) lines.push(`<div class="empty-row">${esc(t('drive_mirror_capped'))}</div>`);
+  more.innerHTML = lines.join('');
+  renderSelectionBar();
 }
 
 function renderMediaGrid() {
   const t = uallakI18n.t;
   const grid = document.getElementById('mediaGrid');
-  // Items already shown in the Drive mirror above aren't listed twice
+  const section = document.getElementById('mediaIndexSection');
+  // Items already shown in the Drive list above aren't listed twice
   const visible = mediaAssetsCache.filter(a => !(a.file_id && driveMirror.seenIds.has(a.file_id)));
   const items = mediaKindFilter
     ? visible.filter(a => a.kind === mediaKindFilter)
     : visible;
 
   if (!items.length) {
+    // "Nothing created yet" only when there is really nothing: never under a
+    // list that already shows the files (or with the system's own items
+    // all in that list)
+    const listHasFiles = (driveMirror.data && !driveMirror.data.error && (driveMirror.data.all || driveMirror.files.length));
+    const hide = Boolean(listHasFiles || (mediaAssetsCache.length && !mediaKindFilter));
+    if (section) section.hidden = hide;
+    if (hide && mediaKindFilter) { mediaKindFilter = ''; renderMediaFilters({}); }
     grid.className = '';
     grid.innerHTML = `<div class="empty-row">${esc(t('media_empty'))}</div>`;
     return;
   }
+  if (section) section.hidden = false;
   grid.className = 'media-grid';
   grid.innerHTML = items.map(asset => {
     // Same fallback idiom as the lead status/source labels: an asset kind with
@@ -8135,7 +8500,7 @@ function renderMediaGrid() {
         <span class="media-kind-ico">${MEDIA_ICONS[asset.kind] || '📎'}</span>
         <span class="media-item-kind">${esc(DASH_I18N[kindKey] ? t(kindKey) : asset.kind)}</span>
       </div>
-      ${asset.title ? `<div class="media-item-title">${esc(asset.title)}</div>` : ''}
+      ${asset.title ? `<div class="media-item-title"><bdi dir="auto">${esc(asset.title)}</bdi></div>` : ''}
       <div class="media-item-meta">
         ${esc(fmtDateTime(asset.created_at))}${asset.platform ? ' · ' + esc(asset.platform) : ''}
       </div>
@@ -8198,7 +8563,7 @@ async function loadAccount() {
 
     const connected = (d.connections || []).filter(c => c.status === 'active').length;
     document.getElementById('packageDetails').innerHTML =
-      detailCard('field_package', d.subscription.package) +
+      detailCard('field_package', pkgLabel(d.subscription.package)) +
       detailCard('field_monthly_fee', d.subscription.monthly_fee ? ils(d.subscription.monthly_fee) + t('per_month') : '') +
       detailCard('field_setup_fee', d.subscription.setup_fee ? ils(d.subscription.setup_fee) : '') +
       detailCard('field_client_since', d.subscription.client_since ? fmtDate(d.subscription.client_since) : '') +

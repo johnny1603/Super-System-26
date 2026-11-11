@@ -570,12 +570,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
 - `core/drive_mirror.py` + `core/drive_download.py` — the Media tab's live listing of
   the client's Drive folder, and its preview/direct-download proxy. A file id from the
   browser is authorised ONLY by walking Drive `parents` up to the client's root, fresh
-  per request. **Videos never go through our server (no player, no download, any role);
-  images/documents only up to `media_download_max_mb` (default 20)** — enforced in
-  `drive_download.plan()` (OpenInDrive → 200 `open_in_drive` / 303 to Drive), not just
-  the UI. **Inline only for raster images**: this origin carries the session cookie, so
+  per request. **Videos are never DOWNLOADED through our server (any role); images/documents
+  only up to `media_download_max_mb` (default 20)** — enforced in `drive_download.plan()`
+  (OpenInDrive → 200 `open_in_drive` / 303 to Drive), not just the UI. The one exception is
+  the built-in PLAYER (`plan_play`, `/api/client/media-drive/play/<id>`): videos up to
+  `media_video_play_max_mb` (admin setting, default 100), 206 Range pieces of ≤ 4 MiB streamed,
+  memory flat. **Inline only for raster images**: this origin carries the session cookie, so
   everything else is an attachment. Shared UI: `dashboard/assets/media-viewer.js`.
   See `HANDOFF-media-download.md`.
+- **Media tab + file lookup (2026-11-11, `docs/MEDIA-TAB.md`)**: `core/media_search` is THE
+  file-name matcher (every script, case/space/_/- ignored, extension ignored for an exact
+  match) — the tab's search box (`core/media_library.view` over `drive_mirror.catalog`, the
+  whole tree, 120 s cache) and the agents' `find_media_file` (`drive_mirror.find`) both use it;
+  never add a second one. `find_media_file`'s `for` is optional: no purpose = a LOOKUP answered
+  as a plain line, never a stored card (this was client 27's `invalid_params`). Tab: search /
+  type / folder / sort, silent Drive check on open, "New" badges (app_settings
+  `media_seen:<id>`, deletion + guard cover it), "Sent" badges, duplicates show folder + date,
+  multi-select → ONE `send_tiktok_batch` card (2–10 videos, a durable job each) or one YouTube
+  card. `tests/test_media_tab.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive
@@ -774,6 +786,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   hover/long-press, created/decided/who on cards, `[dd/mm/yyyy HH:MM]` in the existing TXT
   download. Zone = `clients.timezone` (default Asia/Jerusalem,
   `migrations/2026-11-07-chat-timezone.sql`) → browser. `tests/test_chat_timestamps.py` (Node).
+- **UI translations**: a key missing the reader's language falls back to ENGLISH, then Hebrew
+  (`i18n.js t()`). `python scripts/i18n_report.py` reports missing languages and Hebrew that
+  bypasses the tables on the client pages; `tests/test_media_tab.py` keeps it at zero (Hebrew
+  on purpose = `// i18n-ok` / `data-i18n-skip`).
 - `dashboard/assets/` — mounted at `/assets`, shared by every page: `i18n.js` and the
   browser mark (`favicon.svg` + `favicon.png` + `apple-touch-icon.png`, the wordmark's
   lowercase "u" in `#FF4C1F` on `#0D0D0D`). All seven pages carry the same three `<link>`

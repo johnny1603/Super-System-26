@@ -68,6 +68,7 @@ def forget(client_id: int):
     _root_cache.pop(client_id, None)
     _tree_cache.pop(client_id, None)
     _folders_cache.pop(client_id, None)
+    _catalog_cache.pop(client_id, None)
     for key in [k for k in _list_cache if k[0] == client_id]:
         _list_cache.pop(key, None)
     for key in [k for k in _thumb_cache if k[0] == client_id]:
@@ -202,6 +203,8 @@ def _shape(item: dict) -> dict:
                            else drive_download.download_kind(mime)),
               "previewable": kind != "shortcut" and drive_download.is_previewable(mime),
               "mime_type": mime, "modified_time": item.get("modifiedTime", ""),
+              # when it ARRIVED in Drive (an upload keeps the file's own modified time)
+              "created_time": item.get("createdTime", "") or item.get("modifiedTime", ""),
               "size": int(item["size"]) if str(item.get("size") or "").isdigit() else None,
               "thumbnail_link": item.get("thumbnailLink", ""),
               "web_view_link": item.get("webViewLink", "")}
@@ -308,14 +311,7 @@ MAX_TREE_FOLDERS = 200
 FIND_LIMIT = 10
 _folders_cache = {}   # client_id -> (at, root, [{"id", "name", "path"}])
 _KIND_MIME = {"video": "video/", "image": "image/"}
-_WORD = re.compile(r"[0-9A-Za-z֐-׿؀-ۿЀ-ӿ]+")
-# Words that describe the request, not the file's name
-_STOP = {"the", "a", "an", "of", "for", "my", "our", "this", "that", "video", "videos", "clip", "file",
-         "photo", "image", "picture", "use", "send", "upload", "please", "with", "from", "to", "in",
-         "את", "של", "על", "עם", "זה", "הזה", "הזאת", "שלי", "שלנו", "סרטון", "הסרטון", "סרטונים", "וידאו",
-         "הווידאו", "קובץ", "הקובץ", "תמונה", "התמונה", "תמונות", "קליפ", "הקליפ", "תשתמש", "תשלח", "תעלה",
-         "בבקשה", "לי", "מה", "ב", "ל"}
-_HE_PREFIX = "הובלמש"
+# The words a request drops and how names match: core/media_search (one matcher)
 
 
 @drive_storage.scoped
@@ -378,62 +374,68 @@ def newest(client_id: int, kind: str, limit: int = 10, refresh: bool = False) ->
 
 def search_words(text: str) -> list:
     """The words of a request that could be in a file's NAME (longest first,
-    at most 4): "use the video of the new product" → ["product", "new"]."""
-    words, seen = [], set()
-    for w in _WORD.findall(str(text or "").lower()):
-        if len(w) >= 2 and w not in _STOP and w not in seen:
+    at most 4): "use the video of the new product" → ["product", "new"].
+    core/media_search's words — the one matcher."""
+    from core import media_search
+    seen, out = set(), []
+    for w in media_search.query_words(text):
+        if w not in seen:
             seen.add(w)
-            words.append(w)
-    return sorted(words, key=len, reverse=True)[:4]
+            out.append(w)
+    return sorted(out, key=len, reverse=True)[:4]
 
 
-def _variants(word: str) -> list:
-    """Drive's `name contains` matches the START of words in the name, so a
-    Hebrew word with a prefix letter ("המוצר") misses "מוצר": try both."""
-    out = [word]
-    if len(word) >= 4 and word[0] in _HE_PREFIX and "֐" <= word[0] <= "׿":
-        out.append(word[1:])
-    return out
+# ─── The catalog: every file of the whole tree (Media tab search + find) ─────
+# 2026-11-11 (docs/MEDIA-TAB.md). ONE listing of the tree, matched in Python
+# by core/media_search — Drive's `name contains` could not match "test_3",
+# a lone digit, or Thai.
+
+CATALOG_SECONDS = 120
+CATALOG_MAX_ITEMS = 2000
+_catalog_cache = {}   # client_id -> (at, root, [shaped + "folder"], truncated)
 
 
-def _score(name: str, words: list) -> int:
-    name = (name or "").lower()
-    return sum(1 for w in words if any(v in name for v in _variants(w)))
+@drive_storage.scoped
+def catalog(client_id: int, refresh: bool = False) -> dict:
+    """{"exists", "items": [shaped + folder path], "folders": [paths],
+    "truncated", "listed_at", "cached"} for the client's WHOLE media tree.
+    Shortcuts are items too (kind "shortcut", opened in Drive). Raises on
+    Drive trouble — callers say one calm line."""
+    root = client_root_id(client_id)
+    if not root:
+        return {"exists": False, "items": [], "folders": []}
+    hit = _catalog_cache.get(client_id)
+    if hit and not refresh and hit[1] == root and hit[0] > time.time() - CATALOG_SECONDS:
+        return {**hit[2], "cached": True}
+    folders = folder_tree(client_id, refresh=refresh)
+    paths = {f["id"]: f["path"] for f in folders}
+    raw = drive.list_in_folders([f["id"] for f in folders], max_items=CATALOG_MAX_ITEMS + 1)
+    items = [_placed(i, paths) for i in raw[:CATALOG_MAX_ITEMS]]
+    result = {"exists": True, "items": items, "folders": sorted(p for p in paths.values() if p),
+              "truncated": len(raw) > CATALOG_MAX_ITEMS, "listed_at": int(time.time())}
+    _catalog_cache[client_id] = (time.time(), root, result)
+    return {**result, "cached": False}
 
 
 @drive_storage.scoped
 def find(client_id: int, text: str, kind: str = "", limit: int = FIND_LIMIT) -> dict:
-    """Files in the client's WHOLE tree whose name matches the words of
-    `text` — not only the newest ten, not only one level deep. Drive's own
-    `name contains`: first every word together; when nothing has them all,
-    each word alone, keeping only the files that match the MOST words.
-    Shortcuts are left out (the file itself is outside the client's folder).
+    """Files in the client's WHOLE tree whose NAME matches `text`
+    (core/media_search — the same matcher as the Media tab's search box),
+    fresh from Drive, best matches only. Shortcuts are left out (the file
+    itself is outside the client's folder) and counted.
     {"matches": [shaped + "folder"], "words": [...], "shortcuts": n}.
     Raises on Drive trouble (the caller says one calm line)."""
+    from core import media_search
     words = search_words(text)
     if not words:
         return {"matches": [], "words": []}
-    folders = folder_tree(client_id, refresh=True)
-    if not folders:
+    cat = catalog(client_id, refresh=True)
+    if not cat.get("exists"):
         return {"matches": [], "words": words, "no_folder": True}
-    paths = {f["id"]: f["path"] for f in folders}
-    ids = [f["id"] for f in folders]
-    prefix = _KIND_MIME.get(kind, "")
-    items = drive.search_in_folders(ids, name_words=words, mime_prefix=prefix, page_size=limit)
-    if not items:
-        pool = {}
-        for word in words:
-            for variant in _variants(word):
-                for item in drive.search_in_folders(ids, name_words=[variant], mime_prefix=prefix,
-                                                    page_size=limit):
-                    pool[item["id"]] = item
-        scored = [(_score(i.get("name"), words), i) for i in pool.values()]
-        best = max((s for s, _ in scored), default=0)
-        items = sorted((i for s, i in scored if s == best and s > 0),
-                       key=lambda i: i.get("modifiedTime") or "", reverse=True)
-    shaped = [_placed(i, paths) for i in items]
-    matches = [s for s in shaped if s["kind"] != "shortcut"]
-    return {"matches": matches[:limit], "words": words, "shortcuts": len(shaped) - len(matches)}
+    found = media_search.search(cat["items"], text, kind=kind if kind in ("video", "image", "document") else "",
+                                best_only=True)
+    matches = [f for f in found if f["kind"] != "shortcut"]
+    return {"matches": matches[:limit], "words": words, "shortcuts": len(found) - len(matches)}
 
 
 # ─── Admin diagnostic: what Drive returns vs what we show ────────────────────

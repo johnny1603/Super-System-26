@@ -341,7 +341,7 @@ def list_files(folder_id: str, fields: str = "id,name,mimeType,size") -> list:
 # Metadata only — these never download a file body. shortcutDetails: a
 # shortcut is NOT the file (its target lives elsewhere), so the mirror must
 # be able to tell (2026-11-11, docs/DRIVE-PULL.md §Why a dropped file hid).
-MIRROR_FILE_FIELDS = ("id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLink,parents,"
+MIRROR_FILE_FIELDS = ("id,name,mimeType,modifiedTime,createdTime,size,thumbnailLink,webViewLink,parents,"
                       "shortcutDetails(targetId,targetMimeType)")
 FOLDER_MIME = "application/vnd.google-apps.folder"
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
@@ -380,6 +380,37 @@ def search_in_folders(folder_ids: list, name_words: list = None, mime_prefix: st
                 out.append(item)
     out.sort(key=lambda f: f.get("modifiedTime") or "", reverse=True)
     return out[:int(page_size)]
+
+
+def list_in_folders(folder_ids: list, max_items: int = 2000) -> list:
+    """EVERY non-folder, non-trashed item directly inside any of folder_ids
+    (shortcuts included), all pages, newest first, up to max_items. One query
+    per 25 folders. Metadata only (MIRROR_FILE_FIELDS) — the Media tab's
+    catalog and THE name search (core/media_search) read this."""
+    out, seen = [], set()
+    ids = [str(f) for f in folder_ids if f]
+    for start in range(0, len(ids), 25):
+        parents = " or ".join(f"'{_q_text(f)}' in parents" for f in ids[start:start + 25])
+        q = f"({parents}) and trashed = false and mimeType != '{FOLDER_MIME}'"
+        page_token = ""
+        while len(out) < max_items:
+            params = {"q": q, "fields": f"nextPageToken,files({MIRROR_FILE_FIELDS})",
+                      "orderBy": "modifiedTime desc", "pageSize": 1000,
+                      "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
+            if page_token:
+                params["pageToken"] = page_token
+            response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params=params)
+            _check(response)
+            body = _json(response, "catalog")
+            for item in body.get("files", []):
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    out.append(item)
+            page_token = body.get("nextPageToken", "")
+            if not page_token:
+                break
+    out.sort(key=lambda f: f.get("modifiedTime") or "", reverse=True)
+    return out[:int(max_items)]
 
 
 def find_folders_named(prefix: str, page_size: int = 20) -> list:
@@ -473,21 +504,26 @@ def fetch_thumbnail(thumbnail_link: str, max_bytes: int) -> tuple:
     return b"".join(chunks), content_type
 
 
-def open_download_stream(file_id: str, export_mime: str = "") -> tuple:
+def open_download_stream(file_id: str, export_mime: str = "", byte_range: tuple = None) -> tuple:
     """Open a STREAMED body for the Media tab download proxy
     (core/drive_download.py): alt=media, or files.export when export_mime is
-    set (Google Docs/Sheets/Slides have no bytes of their own). Returns
-    (client, response) with the body NOT yet read; the caller iterates
-    response.iter_bytes() and must close both. Raises (with Drive's error
-    body) on a 4xx/5xx, after closing them itself."""
+    set (Google Docs/Sheets/Slides have no bytes of their own). byte_range
+    (start, end inclusive): only those bytes (the built-in video player's
+    Range requests; alt=media only). Returns (client, response) with the body
+    NOT yet read; the caller iterates response.iter_bytes() and must close
+    both. Raises (with Drive's error body) on a 4xx/5xx, after closing them
+    itself."""
     client = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0),
                           follow_redirects=True)
+    headers = _headers()
     if export_mime:
         url, params = f"{DRIVE_FILES_URL}/{file_id}/export", {"mimeType": export_mime}
     else:
         url, params = f"{DRIVE_FILES_URL}/{file_id}", {"alt": "media", "supportsAllDrives": "true"}
+        if byte_range:
+            headers = {**headers, "Range": f"bytes={int(byte_range[0])}-{int(byte_range[1])}"}
     try:
-        response = client.send(client.build_request("GET", url, headers=_headers(), params=params),
+        response = client.send(client.build_request("GET", url, headers=headers, params=params),
                                stream=True)
         if response.status_code >= 400:
             response.read()   # error bodies are small JSON — needed for _check's message

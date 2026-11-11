@@ -49,6 +49,9 @@ READ_ENDPOINTS = frozenset({
     "client_media_drive_thumb", "client_media_drive_file", "client_media_assets",
     "client_suggestions", "client_open_actions", "client_outreach", "client_ownership",
     "client_tiktok_profile",
+    # the Media tab's library view + built-in player (core/media_library, 2026-11-11);
+    # the visit stamp (a POST) stays blocked, so staff never clear the client's "new" badges
+    "client_media_library", "client_media_play",
 })
 STAFF_DECIDE_ENDPOINT = "client_decide_action"
 READ_METHODS = ("GET", "HEAD")

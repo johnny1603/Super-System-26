@@ -456,6 +456,12 @@ def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> 
 MEDIA_FIND_TARGETS = {"tiktok": ("send_tiktok_to_inbox", "drive_file_id", "video"),
                       "youtube": ("publish_youtube_from_media", "drive_file_id", "video"),
                       "presenter": ("create_presenter_from_photos", "photo_ids", "image")}
+# "Do you see a video called test 3?" has no purpose yet: a LOOKUP answers in
+# words (found where / when, or the choices, or the not-found card) and runs
+# nothing. Before 2026-11-11 `for` was required and only the three targets
+# passed, so that question came back invalid_params (client 27).
+MEDIA_FIND_LOOK = "look"
+MEDIA_FIND_KINDS = ("video", "image", "document")
 MEDIA_FIND_CANDIDATES = 5
 
 _FOUND_ONE = _txt("מצאתי את \"{file}\" בתיקייה שלכם.", "I found \"{file}\" in your folder.",
@@ -478,11 +484,40 @@ _FIND_TROUBLE = _txt("לא הצלחתי לחפש בתיקייה כרגע. כתב
                      "Сейчас не получилось поискать в папке. Напишите мне через минуту — попробую снова.")
 
 
+_FOUND_LOOK = _txt("כן, מצאתי את \"{file}\" בתיקיית המדיה שלכם ({where}). מה תרצו לעשות איתו?",
+                   "Yes, I found \"{file}\" in your media folder ({where}). What would you like to do with it?",
+                   "Oui, j'ai trouvé « {file} » dans votre dossier média ({where}). Que voulez-vous en faire ?",
+                   "نعم، وجدت \"{file}\" في مجلد الوسائط ({where}). ماذا تريدون أن تفعلوا به؟",
+                   "Да, нашёл «{file}» в вашей папке медиа ({where}). Что с ним сделать?")
+_FOUND_LOOK_SEVERAL = _txt("מצאתי בתיקיית המדיה שלכם כמה קבצים שמתאימים:",
+                           "I found a few matching files in your media folder:",
+                           "J'ai trouvé plusieurs fichiers correspondants dans votre dossier média :",
+                           "وجدت عدة ملفات مطابقة في مجلد الوسائط:",
+                           "В вашей папке медиа нашлось несколько подходящих файлов:")
+_FOUND_LOOK_WHICH = _txt("על איזה מהם מדובר, ומה לעשות איתו?", "Which one is it, and what should I do with it?",
+                         "Lequel est-ce, et que dois-je en faire ?", "أيّها تقصدون، وماذا أفعل به؟",
+                         "Какой из них, и что с ним сделать?")
+_MAIN_FOLDER = _txt("בתיקייה הראשית", "main folder", "dossier principal", "المجلد الرئيسي", "главная папка")
+
+
 def _v_find_for(value, client_id: int) -> str:
+    """tiktok / youtube / presenter — or anything else (missing, "check",
+    "see") = a lookup, which runs nothing."""
     value = str(value or "").strip().lower()
-    if value not in MEDIA_FIND_TARGETS:
-        raise ValueError("for must be tiktok, youtube or presenter")
-    return value
+    return value if value in MEDIA_FIND_TARGETS else MEDIA_FIND_LOOK
+
+
+def _v_find_kind(value, client_id: int) -> str:
+    value = str(value or "").strip().lower().rstrip("s")       # "videos" → "video"
+    return value if value in MEDIA_FIND_KINDS else ""
+
+
+def _find_where(item: dict, lang: str) -> str:
+    where = item.get("folder") or _pick(_MAIN_FOLDER, lang)
+    date = str(item.get("modified_time") or "")[:10]
+    if len(date) == 10:
+        date = f"{date[8:10]}/{date[5:7]}/{date[0:4]}"
+    return " · ".join(b for b in (where, date) if b)
 
 
 def _find_label(item: dict) -> str:
@@ -506,30 +541,46 @@ def _find_usable(item: dict, target: str) -> bool:
 
 
 def _media_find_available(state: dict, client: dict) -> bool:
-    """A media folder exists and at least one of the things a found file is
-    for is offered right now."""
-    if not ((state or {}).get("media_folder") or {}).get("exists"):
-        return False
-    return any(ACTIONS[name]["available"](state, client) for name, _p, _k in MEDIA_FIND_TARGETS.values())
+    """A media folder exists — a lookup needs nothing else; a target that is
+    not offered right now is refused in prepare, before any promise."""
+    return bool(((state or {}).get("media_folder") or {}).get("exists"))
+
+
+def _look_answer(client_id: int, params: dict, matches: list, lang: str) -> dict:
+    """A lookup: say what is there, in words. Nothing to approve, nothing runs."""
+    if not matches:
+        return {"switch_to": "media_file_not_found", "switch_params": {"name": params["name"]},
+                "notice": _pick(_FOUND_NONE, lang)}
+    if len(matches) == 1:
+        m = matches[0]
+        return {"clarify": _pick(_FOUND_LOOK, lang).replace("{file}", m.get("name") or "—")
+                .replace("{where}", _find_where(m, lang))}
+    lines = [_pick(_FOUND_LOOK_SEVERAL, lang)]
+    lines += [f"• {m.get('name') or '—'} ({_find_where(m, lang)})" for m in matches]
+    lines.append(_pick(_FOUND_LOOK_WHICH, lang))
+    return {"clarify": "\n".join(lines)}
 
 
 def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list) -> dict:
     from core import drive_mirror
     lang = (context or {}).get("language") or "he"
-    target = params["for"]
-    action, param, kind = MEDIA_FIND_TARGETS[target]
-    spec = ACTIONS[action]
-    client = _client(client_id)
-    if spec["internal_only"] and not _is_internal(client):
-        raise ValueError(f"{action} is not offered to this client")      # → prepare_failed, no promise made
-    try:
-        from core import client_state
-        if not spec["available"](client_state.snapshot(client_id), client):
-            raise ValueError(f"{action} is not available right now")
-    except ValueError:
-        raise
-    except Exception:
-        pass                                   # unreadable state: the target card re-checks itself
+    target = params.get("for") or MEDIA_FIND_LOOK
+    if target != MEDIA_FIND_LOOK:
+        action, param, kind = MEDIA_FIND_TARGETS[target]
+        spec = ACTIONS[action]
+        client = _client(client_id)
+        if spec["internal_only"] and not _is_internal(client):
+            raise ValueError(f"{action} is not offered to this client")      # → prepare_failed, no promise made
+        try:
+            from core import client_state
+            if not spec["available"](client_state.snapshot(client_id), client):
+                raise ValueError(f"{action} is not available right now")
+        except ValueError:
+            raise
+        except Exception:
+            pass                               # unreadable state: the target card re-checks itself
+    else:
+        kind = params.get("kind") or ""
     try:
         with drive_storage.scope(client_id):
             found = drive_mirror.find(client_id, params["name"], kind=kind,
@@ -538,6 +589,8 @@ def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list)
         _log(f"client {client_id}: find_media_file search failed: {type(e).__name__}: {str(e)[:200]}",
              severity="WARNING", client_id=client_id)
         return {"refuse": _pick(_FIND_TROUBLE, lang)}
+    if target == MEDIA_FIND_LOOK:
+        return _look_answer(client_id, params, (found.get("matches") or [])[:MEDIA_FIND_CANDIDATES], lang)
     matches = [m for m in found.get("matches") or [] if _find_usable(m, target)][:MEDIA_FIND_CANDIDATES]
     for m in matches:
         # what the next card names the file by (Drive's own name, never the model's)
@@ -560,6 +613,8 @@ def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list)
 def _validate_find_stored(client_id: int, params: dict) -> dict:
     params = dict(params or {})
     target = _v_find_for(params.get("for"), client_id)
+    if target == MEDIA_FIND_LOOK:
+        raise ValueError("a lookup is never stored")     # it answers in words (_look_answer)
     candidates = [str(c) for c in params.get("candidates") or []]
     if not 2 <= len(candidates) <= MEDIA_FIND_CANDIDATES:
         raise ValueError("a choice card needs 2-5 candidates")
@@ -634,6 +689,101 @@ def _run_send_tiktok_to_inbox(client_id: int, params: dict, background_tasks, ro
     # Run and would sit on the job's lease. The card's poll (status_card) and
     # the every-minute scheduler job move it, each inside its own request.
     return {"deferred": True, "job_id": job["id"], "source_file": name}
+
+
+# ─── Several videos to TikTok in ONE card (2026-11-11, docs/MEDIA-TAB.md) ────
+# The Media tab's multi-select. One decision for the batch; the click creates
+# one DURABLE job per video (core/tiktok_uploads, the same job a single send
+# makes) and each finished job posts its own line in the media chat. Videos
+# above the owner's threshold go to the owner instead (one request each, as
+# for a single send) and are left out of the card.
+
+TIKTOK_BATCH_MAX = 10
+
+
+def _v_tiktok_videos(value, client_id: int) -> list:
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    ids = []
+    for v in raw:
+        v = str(v or "").strip()
+        if v and v not in ids:
+            ids.append(v)
+    if not 2 <= len(ids) <= TIKTOK_BATCH_MAX:
+        raise ValueError(f"a batch is 2-{TIKTOK_BATCH_MAX} videos")
+    return [_v_tiktok_video(v, client_id) for v in ids]
+
+
+_TIKTOK_BATCH_SKIPPED = _txt("{n} מהסרטונים לא נכנסו לכרטיס: {files}.",
+                             "{n} of the videos are not in the card: {files}.",
+                             "{n} des vidéos ne sont pas dans la carte : {files}.",
+                             "{n} من الفيديوهات ليست في البطاقة: {files}.",
+                             "{n} видео не вошли в карточку: {files}.")
+
+
+def _prepare_tiktok_batch(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    lang = (context or {}).get("language") or "he"
+    ids = list(params["drive_file_ids"])
+    for row in rows:
+        if sorted((row.get("params") or {}).get("drive_file_ids") or []) == sorted(ids):
+            return {"existing": row}
+    from agents.tiktok_content_agent import check_grant
+    grant = check_grant(client_id)
+    if grant in ("not_connected", "missing_upload", "dead"):
+        notice = _TIKTOK_CONNECT_FIRST if grant == "not_connected" else _TIKTOK_RECONNECT_FIRST
+        return {"switch_to": "connect_tiktok",
+                "notice": _pick(notice, lang).replace("{file}", _media_name(client_id, ids[0]) or "—")}
+    from core import video_probe, tiktok_uploads
+    from core.video_limits import tiktok_needs_owner_approval
+    keep, skipped, owner = [], [], False
+    for fid in ids:
+        meta = ((_media_meta.get((client_id, fid)) or (0, {}))[1]) or {}
+        if "container" in video_probe.drive_meta_problems(meta):
+            skipped.append(_media_name(client_id, fid) or "—")
+        elif tiktok_needs_owner_approval(int(meta.get("size") or 0)):
+            tiktok_uploads.request_owner_approval(client_id, fid, _media_name(client_id, fid) or "",
+                                                  int(meta.get("size") or 0),
+                                                  persona=(context or {}).get("persona") or "media", lang=lang)
+            owner = True
+        else:
+            keep.append(fid)
+    lines = []
+    if skipped:
+        lines.append(_pick(_TIKTOK_BATCH_SKIPPED, lang).replace("{n}", str(len(skipped)))
+                     .replace("{files}", ", ".join(skipped)))
+    if owner:
+        lines.append(_pick(tiktok_uploads.ON_IT, lang))
+    notice = " ".join(lines)
+    if not keep:
+        return {"refuse": notice or _pick(_FIND_TROUBLE, lang)}
+    if len(keep) == 1:
+        return {"switch_to": "send_tiktok_to_inbox", "switch_params": {"drive_file_id": keep[0]}, "notice": notice}
+    return {"params": {"drive_file_ids": keep}, "notice": notice}
+
+
+def _validate_tiktok_batch_stored(client_id: int, params: dict) -> dict:
+    params = params or {}
+    if set(params) != {"drive_file_ids"}:
+        raise ValueError("stored TikTok batch has unexpected params")
+    return {"drive_file_ids": _v_tiktok_videos(params.get("drive_file_ids"), client_id)}
+
+
+def _run_send_tiktok_batch(client_id: int, params: dict, background_tasks, row: dict = None):
+    from core import tiktok_uploads
+    row = row or {}
+    names = []
+    for fid in params["drive_file_ids"]:
+        name = _media_name(client_id, fid)
+        hit = _media_meta.get((client_id, fid))
+        size = int(((hit or (0, {}))[1] or {}).get("size") or 0) if hit else 0
+        # No proposal_id: the card ends now; each job posts its own done line
+        tiktok_uploads.create(client_id, fid, name, size, persona=row.get("persona") or "media",
+                              lang=row.get("language") or "he")
+        names.append(name or "—")
+    return {"files": names, "count": len(names)}
+
+
+def _batch_files(client_id: int, params: dict) -> str:
+    return ", ".join(_media_name(client_id, f) or "—" for f in (params or {}).get("drive_file_ids") or [])
 
 
 def _prepare_outreach(client_id: int, params: dict, context: dict, rows: list) -> dict:
@@ -3150,23 +3300,58 @@ ACTIONS = {
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
     },
+    "send_tiktok_batch": {
+        # The Media tab's multi-select (2026-11-11). ONE decision for 2-10
+        # videos; same Upload-to-Inbox path, one durable job per video.
+        "approver": "client", "client_requestable": False, "internal_only": False, "kind": "execute",
+        "code_only": True, "needs_row": True, "inline_start": True,
+        "does": "Opened by the Media tab when the client selects several videos to send to their TikTok drafts.",
+        "params": {"drive_file_ids": {"required": True, "validate": _v_tiktok_videos, "hint": ""}},
+        "available": lambda state, client: False,
+        "prepare": lambda client_id, params, context, rows: _prepare_tiktok_batch(client_id, params, context, rows),
+        "validate_stored": lambda client_id, params: _validate_tiktok_batch_stored(client_id, params),
+        "run": _run_send_tiktok_batch,
+        "display": lambda client_id, params: {"files": _batch_files(client_id, params),
+                                              "n": str(len((params or {}).get("drive_file_ids") or []))},
+        "title": _txt("שליחת כמה סרטונים לטיוטות בטיקטוק", "Send several videos to your TikTok drafts",
+                      "Envoyer plusieurs vidéos dans vos brouillons TikTok", "إرسال عدة فيديوهات إلى مسودات تيك توك",
+                      "Отправить несколько видео в черновики TikTok"),
+        "what": _txt("הסרטונים האלה מתיקיית המדיה שלכם יישלחו לתיבת הנכנסים בטיקטוק כטיוטות: {files}. שום דבר לא מתפרסם — אתם מוסיפים כיתוב ומפרסמים בעצמכם באפליקציה.",
+                     "These videos from your media folder will be sent to your TikTok inbox as drafts: {files}. Nothing is posted — you add the caption and publish them yourself in the app.",
+                     "Ces vidéos de votre dossier média seront envoyées dans votre boîte TikTok en brouillons : {files}. Rien n'est publié — vous ajoutez la légende et publiez vous-même dans l'application.",
+                     "ستُرسل هذه الفيديوهات من مجلد الوسائط إلى صندوق الوارد في تيك توك كمسودات: {files}. لا يُنشر شيء — تضيفون النص وتنشرون بأنفسكم في التطبيق.",
+                     "Эти видео из вашей папки медиа будут отправлены во входящие TikTok как черновики: {files}. Ничего не публикуется — подпись и публикацию вы делаете сами в приложении."),
+        "done": _txt("{n} סרטונים בדרך לטיוטות שלכם בטיקטוק ✓ אכתוב כאן כשכל אחד מהם מגיע.",
+                     "{n} videos are on their way to your TikTok drafts ✓ I'll write here as each one lands.",
+                     "{n} vidéos sont en route vers vos brouillons TikTok ✓ Je vous écris ici à l'arrivée de chacune.",
+                     "{n} فيديوهات في طريقها إلى مسودات تيك توك ✓ سأكتب هنا عند وصول كل واحد.",
+                     "{n} видео уже в пути в ваши черновики TikTok ✓ Напишу здесь, когда придёт каждое."),
+        "done_message": lambda result, lang: _pick(ACTIONS["send_tiktok_batch"]["done"], lang)
+            .replace("{n}", str(result.get("count") or 0)),
+    },
     "find_media_file": {
         # Find by NAME across the client's whole media tree (docs/DRIVE-PULL.md).
         # The model never picks among the matches: one → the real card, several →
         # this card with one button per file, none → media_file_not_found.
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "needs_row": True,
-        "does": "Finds ONE file in the client's media folder BY NAME, when they name or describe a video/photo "
-                "that is NOT in account_state.media_folder.videos/images (those list only the newest). Propose "
-                "it with the words they used; the system searches the whole folder and shows the card for "
-                "what they asked (one match), a choice between the matches, or where to add it (none). Never "
-                "say you can't see a file and never pass it to anyone — propose this instead.",
+        "does": "Finds a file in the client's media folder BY NAME, when they name or describe a video/photo/"
+                "document that is NOT in account_state.media_folder.videos/images (those list only the newest), "
+                "or just ask whether it is there (\"do you see a video called test 3?\"). Propose it with the "
+                "words they used; the system searches the whole folder: with a purpose it shows the card for "
+                "it (one match) or a choice between the matches; without one it says what it found and where. "
+                "None → where to add it. Never say you can't see a file and never pass it to anyone — propose "
+                "this instead.",
         "params": {"name": {"required": True, "validate": lambda v, cid: _v_short_text(v, 120),
-                            "hint": "the words the client used for the file (\"the new product video\", "
-                                    "\"launch_final\"), copied as they wrote them"},
-                   "for": {"required": True, "validate": _v_find_for,
-                           "hint": "tiktok (send to their TikTok drafts), youtube (upload private to YouTube) "
-                                   "or presenter (make their presenter from a photo)"}},
+                            "hint": "the file's name as the client wrote it (\"test 3\", \"launch_final\", "
+                                    "\"the new product video\"), copied exactly"},
+                   "for": {"required": False, "validate": _v_find_for,
+                           "hint": "what they want done with it, ONLY if they said so: tiktok (send to their "
+                                   "TikTok drafts), youtube (upload private to YouTube) or presenter (make "
+                                   "their presenter from a photo). Leave it out when they only ask if it is "
+                                   "there."},
+                   "kind": {"required": False, "validate": _v_find_kind,
+                            "hint": "video, image or document, if they said which"}},
         "available": _media_find_available,
         "prepare": lambda client_id, params, context, rows: _prepare_find_media(client_id, params, context, rows),
         "validate_stored": _validate_find_stored,

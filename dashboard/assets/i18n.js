@@ -5,11 +5,14 @@
  *   (locality: strings live next to the markup that uses them) and calls
  *   uallakI18n.init(TABLE) once after the DOM exists.
  * - Static elements carry data-i18n="key" (textContent), data-i18n-placeholder,
- *   or data-i18n-title; JS-generated strings call uallakI18n.t('key', {vars}).
+ *   data-i18n-title or data-i18n-aria-label; JS-generated strings call
+ *   uallakI18n.t('key', {vars}). data-i18n-skip marks staff-only markup that
+ *   stays Hebrew on purpose (scripts/i18n_report.py skips it).
  * - Table shape: { key: { he: '...', en: '...', fr: '...', ar: '...', ru: '...' } }
  *   {name}-style placeholders are interpolated by t().
- * - Hebrew is the source language and the fallback for any missing key, so a
- *   partially translated page degrades to Hebrew, never to raw keys.
+ * - Hebrew is the source language. A key missing the reader's language falls
+ *   back to ENGLISH (2026-11-11), then Hebrew, never to raw keys - a French or
+ *   Russian reader is likelier to read English than Hebrew.
  * - Direction: he/ar are RTL, en/fr/ru are LTR — setLanguage() flips
  *   <html dir> and <html lang>, which cascades to the whole layout.
  * - Choice persists in localStorage ('uallak_lang') across all pages. With
@@ -72,7 +75,8 @@
   // instead of always getting Hebrew. A browser that asks only for languages
   // we don't carry (German, Chinese, ...) gets ENGLISH — the one a foreign
   // visitor or a platform reviewer is likeliest to read. Hebrew stays the
-  // fallback when the browser reports nothing at all, and per missing KEY (t()).
+  // fallback when the browser reports nothing at all (per missing KEY t() tries
+  // English first).
   function browserLang() {
     try {
       var candidates = navigator.languages || [navigator.language];
@@ -101,7 +105,8 @@
 
   function t(key, vars) {
     var entry = table[key] || {};
-    var text = entry[lang] != null ? entry[lang] : entry.he;
+    var text = entry[lang] != null ? entry[lang]
+      : (lang !== 'he' && entry.en != null ? entry.en : entry.he);
     if (text == null) return key; // visible marker for a missing key
     if (vars) {
       Object.keys(vars).forEach(function (name) {
@@ -127,6 +132,9 @@
     });
     document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
       el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+    });
+    document.querySelectorAll('[data-i18n-aria-label]').forEach(function (el) {
+      el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
     });
     if (table._page_title) document.title = t('_page_title');
   }

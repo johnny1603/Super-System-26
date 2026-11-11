@@ -41,7 +41,8 @@ PROGRESS_PREFIX = "client_deletion:"
 # app_settings keys that belong to ONE client ("<prefix><client_id>") —
 # the same rows client_deletion._settings_keys clears
 CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tiktok_grant:",
-                           "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:")
+                           "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:",
+                           "media_seen:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

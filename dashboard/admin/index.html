@@ -1235,6 +1235,10 @@ async function loadSettings() {
       <input id="set-dl-max" type="number" min="1" max="200" value="${esc(s.media_download_max_mb)}">
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">לשונית המדיה — נגן וידאו מובנה עד גודל (MB). סרטון גדול יותר נפתח ב-Drive. הנגן מזרים בחלקים, בלי לטעון את הקובץ לזיכרון</span>
+      <input id="set-play-max" type="number" min="1" max="2000" value="${esc(s.media_video_play_max_mb)}">
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">טיקטוק — סף העלאה אוטומטית (MB). עד הסף: עולה מיד באישור הלקוח. מעל הסף: מגיעה אליך בקשת אישור (פעמון + מייל), והלקוח לא נשאל כלום</span>
       <input id="set-tt-auto-max" type="number" min="1" max="100000" value="${esc(s.tiktok_auto_upload_max_mb)}">
     </div>
@@ -1409,6 +1413,7 @@ async function saveSettings() {
       supabase_size_budget_mb: Number(document.getElementById('set-size-budget').value) || 500,
       supabase_warn_pct: Number(document.getElementById('set-usage-warn').value) || 80,
       media_download_max_mb: Number(document.getElementById('set-dl-max').value) || 20,
+      media_video_play_max_mb: Math.min(2000, Math.max(1, Number(document.getElementById('set-play-max').value) || 100)),
       tiktok_auto_upload_max_mb: Number(document.getElementById('set-tt-auto-max').value) || 1536,
       warmup_interval_seconds: Math.min(3600, Math.max(60, Number(document.getElementById('set-warmup').value) || 240)),
       operator_task_budget_usd: Math.min(50, Math.max(0.05, Number(document.getElementById('set-operator-budget').value) || 1.5)),

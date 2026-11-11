@@ -36,6 +36,10 @@ DEFAULT_SETTINGS = {
     # previews/downloads itself. Above it the client (and admin) gets "Open in
     # Drive". Videos never go through us at any size — that is code, not this.
     "media_download_max_mb": 20,
+    # Media tab built-in video player (core/drive_download.plan_play): videos up
+    # to this size stream through us in Range chunks (memory stays flat); larger
+    # ones open in Drive. 1-2000.
+    "media_video_play_max_mb": 100,
     # Page-driven warm-up (core/warmup): open dashboards ping every this many
     # seconds while visible, so the client never meets a cold start. 60-3600.
     "warmup_interval_seconds": 240,
@@ -409,7 +413,10 @@ def get_settings() -> dict:
                                        "creative_tools:", "drive_storage:", "drive_usage:",
                                        "flag_override:", "operator_gate:", "operator_change:",
                                        "operator_task:", "operator_stop:",
-                                       "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:")):
+                                       "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:",
+                                       # drive_pull: Pull-from-Drive jobs; media_seen: the
+                                       # Media tab's "new since your last visit" mark
+                                       "drive_pull:", "drive_pull_lock:", "media_seen:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

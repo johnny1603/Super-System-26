@@ -97,7 +97,7 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--ink); m
       <div class="chat-status"><span class="status-dot"></span><span data-i18n="status_online">המערכת פעילה</span></div>
     </div>
     <div id="langRow"></div>
-    <button class="chat-dl-btn" onclick="downloadTranscript()" data-i18n-title="dl_title" title="הורדת השיחה" aria-label="הורדת השיחה">⬇</button>
+    <button class="chat-dl-btn" onclick="downloadTranscript()" data-i18n-title="dl_title" title="הורדת השיחה" data-i18n-aria-label="dl_title" aria-label="הורדת השיחה">⬇</button>
   </div>
   <div class="chat-messages" id="messages"></div>
   <div class="chat-input-area">
@@ -159,7 +159,7 @@ const CHROME = {
   bad_phone: { he:'זה לא נראה כמו מספר טלפון תקין 🤔 תוכל לכתוב שוב?', en:'That doesn\'t look like a valid phone number 🤔 Could you re-type it?', fr:'Cela ne ressemble pas à un numéro valide 🤔 Pouvez-vous réessayer ?', ar:'لا يبدو هذا رقم هاتف صحيحًا 🤔 هل يمكنك كتابته مجددًا؟', ru:'Это не похоже на корректный номер 🤔 Напишите ещё раз?' },
   ask_address: { he:'ומה הכתובת של העסק (או כתובת לתיאום, אם אין עדיין כתובת עסק קבועה)?', en:'And the business address (or a contact address if there\'s no fixed one yet)?', fr:'Et l\'adresse de l\'entreprise (ou une adresse de contact s\'il n\'y en a pas encore) ?', ar:'وما عنوان النشاط التجاري (أو عنوان للتواصل إن لم يوجد عنوان ثابت بعد)؟', ru:'Адрес бизнеса (или контактный адрес, если постоянного пока нет)?' },
   ask_business_name: { he:'מה שם העסק (לצורך הפקת חשבוניות)?', en:'What\'s the business name (for invoicing)?', fr:'Quel est le nom de l\'entreprise (pour la facturation) ?', ar:'ما اسم النشاط التجاري (لإصدار الفواتير)؟', ru:'Название бизнеса (для выставления счетов)?' },
-  ask_tax_id: { he:'ומה מספר עוסק מורשה / ח.פ שלך?', en:'And your Israeli business/tax ID (עוסק מורשה / ח.פ)?', fr:'Et votre numéro d\'entreprise israélien (עוסק מורשה / ח.פ) ?', ar:'وما رقم السجل الضريبي / الشركة لديك (עוסק מורשה / ח.פ)؟', ru:'Ваш израильский номер предпринимателя/компании (עוסק מורשה / ח.פ)?' },
+  ask_tax_id: { he:'ומה מספר עוסק מורשה / ח.פ שלך?', en:'And your Israeli business/tax ID (עוסק מורשה / ח.פ)?', fr:'Et votre numéro d\'entreprise israélien (עוסק מורשה / ח.פ) ?', ar:'وما رقم السجل الضريبي / الشركة لديك (עוסק מורשה / ח.פ)؟', ru:'Ваш израильский номер предпринимателя/компании (עוסק מורשה / ח.פ)?' },  // i18n-ok: the Israeli form names, on purpose
   ask_email: { he:'ומה כתובת האימייל שלך?', en:'And your email address?', fr:'Et votre adresse e-mail ?', ar:'وما بريدك الإلكتروني؟', ru:'А ваш адрес электронной почты?' },
   bad_email: { he:'זה לא נראה כמו כתובת מייל תקינה 🤔 תוכל לכתוב שוב?', en:'That doesn\'t look like a valid email 🤔 Could you re-type it?', fr:'Cela ne ressemble pas à un e-mail valide 🤔 Pouvez-vous réessayer ?', ar:'لا يبدو هذا بريدًا إلكترونيًا صحيحًا 🤔 هل يمكنك كتابته مجددًا؟', ru:'Это не похоже на корректный email 🤔 Напишите ещё раз?' },
   preparing_payment: { he:'רגע אחד, מכין את קישור התשלום שלך... 💳', en:'One moment, preparing your payment link… 💳', fr:'Un instant, préparation de votre lien de paiement… 💳', ar:'لحظة واحدة، نجهّز رابط الدفع الخاص بك... 💳', ru:'Секунду, готовим вашу ссылку на оплату… 💳' },
@@ -321,7 +321,7 @@ const Q_I18N = {
 
 // Multi-language detection of the "other / something else" option (both our
 // fixed options and the LLM's translated dynamic ones)
-const OTHER_PREFIXES = ['אחר', 'משהו אחר', 'other', 'something else', 'autre', 'أخرى', 'شيء آخر', 'другое', 'что-то другое'];
+const OTHER_PREFIXES = ['אחר', 'משהו אחר', 'other', 'something else', 'autre', 'أخرى', 'شيء آخر', 'другое', 'что-то другое'];  // i18n-ok: answers matched in every language
 function isOtherOption(opt) {
   const low = (opt || '').trim().toLowerCase();
   return OTHER_PREFIXES.some(p => low.startsWith(p));

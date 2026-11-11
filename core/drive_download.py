@@ -24,8 +24,11 @@ Rules this module holds:
 - **Only images and documents pass through us, and only up to a cap**
   (admin setting `media_download_max_mb`, default 20 MB; Google exports are
   bounded by the same cap and by Drive's own 10 MB export limit). **Videos
-  never do** — no inline player, no proxied download, for any role, admin
-  included. Both cases are enforced HERE, not just hidden in the UI, and a
+  are never DOWNLOADED through us**, for any role, admin included. Since
+  2026-11-11 they may PLAY in the Media tab's built-in player up to
+  `media_video_play_max_mb` (plan_play: Range pieces of ≤ 4 MiB, streamed —
+  memory flat); bigger ones open in Drive. Both cases are enforced HERE, not
+  just hidden in the UI, and a
   refusal is not an error: OpenInDrive → the check answers 200 with
   `open_in_drive`, a direct request is redirected to the file in Drive,
   where Google serves it at any size.
@@ -259,6 +262,137 @@ def plan(client_id: int, file_id: str, inline: bool = False, fmt: str = "pdf") -
             "max_mb": cap_mb}
 
 
+# ─── Built-in video player (2026-11-11, docs/MEDIA-TAB.md) ───────────────────
+# Videos up to the admin setting `media_video_play_max_mb` (default 100) play
+# inside the Media tab; bigger ones still open in Drive. The <video> element
+# asks for byte RANGES; each answer is at most PLAY_CHUNK_BYTES (206 +
+# Content-Length — far under Cloud Run's 32 MiB non-streamed cap) streamed in
+# CHUNK_BYTES pieces, so memory stays flat at any file size. Downloads of
+# videos still never go through us.
+
+DEFAULT_PLAY_MAX_MB = 100
+PLAY_MAX_MB_CEILING = 2000
+PLAY_CHUNK_BYTES = 4 * 1024 * 1024
+PLAYABLE_MIMES = {"video/mp4", "video/webm", "video/quicktime", "video/ogg", "video/x-m4v"}
+_play_settings = {"at": 0.0, "max_mb": DEFAULT_PLAY_MAX_MB}
+
+
+def playable_mime(mime: str) -> bool:
+    return (mime or "") in PLAYABLE_MIMES
+
+
+def play_max_bytes() -> int:
+    if _play_settings["at"] < time.time() - SETTINGS_CACHE_SECONDS:
+        try:
+            from core import admin_service
+            value = admin_service.get_settings().get("media_video_play_max_mb", DEFAULT_PLAY_MAX_MB)
+            _play_settings["max_mb"] = max(1, min(PLAY_MAX_MB_CEILING, int(float(value))))
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] settings read failed ({e}) — keeping {_play_settings['max_mb']} MB to play")
+        _play_settings["at"] = time.time()
+    return _play_settings["max_mb"] * 1024 * 1024
+
+
+def parse_range(header: str, size: int) -> tuple:
+    """(start, end) inclusive for a `Range: bytes=…` header, capped at
+    PLAY_CHUNK_BYTES; no header = the first piece. ValueError = unsatisfiable."""
+    header = (header or "").strip()
+    if not header:
+        start, end = 0, size - 1
+    else:
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", header)
+        if not m or (not m.group(1) and not m.group(2)):
+            raise ValueError("bad range")
+        if not m.group(1):                       # bytes=-N: the last N bytes
+            start, end = max(0, size - int(m.group(2))), size - 1
+        else:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else size - 1
+    end = min(end, size - 1, start + PLAY_CHUNK_BYTES - 1)
+    if start >= size or start > end:
+        raise ValueError("range not satisfiable")
+    return start, end
+
+
+@drive_storage.scoped
+def plan_play(client_id: int, file_id: str) -> dict:
+    """Every check for the built-in player: this client's file (the parents
+    walk), a video the browser can play, size known and within the play cap.
+    Otherwise OpenInDrive (reason video / too_large)."""
+    if not FILE_ID_RE.match(file_id or ""):
+        raise DownloadRefused("not_found")
+    root = drive_mirror.client_root_id(client_id)
+    if not root or file_id == root:
+        raise DownloadRefused("not_found")
+    try:
+        meta = drive.get_meta(file_id, "id,name,mimeType,size,parents,trashed,webViewLink")
+    except Exception as e:
+        reason = drive.classify_error(e, target="file")
+        print(f"[{SERVICE_NAME}] client {client_id}: metadata for {file_id} failed ({reason}): {e}")
+        raise DownloadRefused("not_found" if reason in ("file_not_found", "file_permission") else "unavailable")
+    if meta.get("trashed"):
+        raise DownloadRefused("not_found")
+    _verify_in_client_tree(client_id, root, file_id, (meta.get("parents") or [""])[0])
+    link = meta.get("webViewLink") or ""
+    mime = meta.get("mimeType") or ""
+    size = int(meta["size"]) if str(meta.get("size") or "").isdigit() else 0
+    cap = play_max_bytes()
+    if not mime.startswith("video/") or not playable_mime(mime) or not size:
+        raise OpenInDrive("video", link)
+    if size > cap:
+        raise OpenInDrive("too_large", link, cap // (1024 * 1024))
+    return {"file_id": file_id, "mime": mime, "send_mime": mime, "size": size, "export_mime": "",
+            "inline": True, "limit": PLAY_CHUNK_BYTES, "filename": safe_filename(meta.get("name") or ""),
+            "web_view_link": link, "max_mb": cap // (1024 * 1024)}
+
+
+def play_headers(p: dict, start: int, end: int) -> dict:
+    return {"Content-Range": f"bytes {start}-{end}/{p['size']}", "Accept-Ranges": "bytes",
+            "Content-Length": str(end - start + 1),
+            "Content-Disposition": content_disposition("inline", p["filename"]),
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'; media-src 'self'",
+            "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=300"}
+
+
+@drive_storage.scoped
+def open_play_stream(p: dict, client_id: int, start: int, end: int, by: str = "client"):
+    """One Range piece of the video, streamed (CHUNK_BYTES at a time). Its own
+    rate bucket (a player makes many small requests)."""
+    key = f"play:{by}:{client_id}"
+    slot = _acquire(key)
+    try:
+        http, upstream = drive.open_download_stream(p["file_id"], "", byte_range=(start, end))
+    except Exception as e:
+        _release(key, slot)
+        reason = drive.classify_error(e, target="file")
+        print(f"[{SERVICE_NAME}] client {client_id}: opening {p['file_id']} to play failed ({reason}): {e}")
+        raise DownloadRefused("not_found" if reason in ("file_not_found", "file_permission") else "unavailable")
+    want = end - start + 1
+
+    def body():
+        sent, complete = 0, False
+        try:
+            for chunk in upstream.iter_bytes(CHUNK_BYTES):
+                if sent + len(chunk) > want:
+                    chunk = chunk[:want - sent]      # Drive sent more than asked: never past the range
+                sent += len(chunk)
+                if chunk:
+                    yield chunk
+                if sent >= want:
+                    break
+            complete = sent == want
+        finally:
+            for closer in (upstream.close, http.close):
+                try:
+                    closer()
+                except Exception:
+                    pass
+            _release(key, slot)
+            _log_bytes(client_id, {**p, "inline": True}, sent, complete, by, purpose="play")
+    return body()
+
+
 # ─── File names ───────────────────────────────────────────────────────────────
 
 def safe_filename(name: str, ext: str = "") -> str:
@@ -384,10 +518,11 @@ def open_stream(p: dict, client_id: int, by: str = "client"):
     return body()
 
 
-def _log_bytes(client_id: int, p: dict, sent: int, complete: bool, by: str):
+def _log_bytes(client_id: int, p: dict, sent: int, complete: bool, by: str, purpose: str = ""):
     """Fire-and-forget on a thread: this can run from a generator finalizer."""
     details = {"bytes": sent, "file_id": p["file_id"], "mime": p["mime"],
-               "export": bool(p["export_mime"]), "purpose": "preview" if p["inline"] else "download",
+               "export": bool(p["export_mime"]),
+               "purpose": purpose or ("preview" if p["inline"] else "download"),
                "complete": complete, "by": by, "estimate": True}
     print(f"[{SERVICE_NAME}] client {client_id}: sent {sent} bytes of {p['file_id']} "
           f"({details['purpose']}, by {by}, complete={complete})")

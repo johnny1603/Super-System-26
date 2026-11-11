@@ -35,10 +35,17 @@ description: How multi-language support works in uallak — chat language matchi
 - Engine only — **string tables live in each page** (locality), passed to
   `uallakI18n.init(TABLE)` after the DOM exists.
 - Table shape: `{ key: { he, en, fr, ar, ru } }`; `{name}` placeholders via
-  `t('key', {name: value})`. **Hebrew is source-of-truth and the fallback**
-  for missing keys — partial translation degrades to Hebrew, never to raw keys.
+  `t('key', {name: value})`. **Hebrew is source-of-truth.** A key missing the
+  reader's language falls back to **English** (2026-11-11), then Hebrew, never
+  to raw keys.
 - Static markup: `data-i18n="key"` (textContent), `data-i18n-placeholder`,
-  `data-i18n-title`; `_page_title` key drives `document.title`.
+  `data-i18n-title`, `data-i18n-aria-label`; `_page_title` key drives
+  `document.title`. `data-i18n-skip` marks staff-only markup that stays Hebrew.
+- **Report:** `python scripts/i18n_report.py` lists, per client page, keys
+  missing a language, translations still holding Hebrew, and Hebrew that
+  bypasses the table. `tests/test_media_tab.py` keeps all three at zero. A
+  script line that is Hebrew on purpose (staff-only, a Hebrew-only branch,
+  data matched in every language) carries `// i18n-ok`.
 - JS-generated strings: `uallakI18n.t(...)`; re-render on switch via
   `uallakI18n.onChange(fn)` if the page caches rendered strings.
 - Direction: `setLanguage` flips `<html dir>`/`<html lang>` (he/ar → rtl).
