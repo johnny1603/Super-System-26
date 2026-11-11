@@ -133,6 +133,10 @@ PARITY = {
     "GET /api/client/media-drive/play/{file_id}": (NOT_CHAT, "streams a video into the Media tab's player; "
                                                              "the chat links the file instead"),
     "POST /api/client/media/send": (CHAT, "send_tiktok_to_inbox,publish_youtube_from_media"),
+    # Add by link (2026-11-11): a pasted Drive link in the chat opens the same copy as a card
+    "POST /api/client/media/add-link": (CHAT, "add_media_from_drive_link"),
+    "POST /api/client/media/add-link/step": (NOT_CHAT, "the Media tab's progress poll for a running copy; "
+                                                       "the chat card reports its own outcome"),
     # ── Leads + CRM ──────────────────────────────────────────────────────────
     "GET /api/client/leads": (READ, "leads"),
     "POST /api/client/leads/{lead_id}/status": (GAP, "P1: update_lead_status card (needs lead ids in account_state.leads)"),

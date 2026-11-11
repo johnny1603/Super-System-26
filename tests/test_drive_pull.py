@@ -708,7 +708,7 @@ class Wiring(unittest.TestCase):
             if any("/api/admin/drive-pull" in r or "/api/admin/drive/diagnose" in r for r in routes):
                 hits += 1
                 self.assertIn("_require_admin(request)", ast.get_source_segment(src, node), node.name)
-        self.assertEqual(hits, 6)
+        self.assertEqual(hits, 7)          # + add-link (2026-11-11, tests/test_drive_link.py)
 
     def test_scheduler_minute_moves_pulls_too(self):
         src = _read("core", "api_server.py")
@@ -723,7 +723,7 @@ class Wiring(unittest.TestCase):
         src = _read("agents", "media_agent.py")
         body = src[src.index("def ensure_client_media_root"):]
         body = body[:body.index("\ndef ", 10)]
-        self.assertIn("drive_mirror.shared_client_root(client_id)", body)
+        self.assertIn("drive_mirror.shared_client_root(client_id, strict=True)", body)
         self.assertIn("drive_mirror.remember_root(client_id, root)", body)
         self.assertLess(body.index("shared_client_root"), body.index("drive.ensure_folder("))
 

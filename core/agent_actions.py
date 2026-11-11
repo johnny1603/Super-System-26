@@ -979,6 +979,262 @@ def _run_media_file_not_found(client_id: int, params: dict, background_tasks, ro
     return {"link": get_client_media_link(client_id)}
 
 
+# ─── Add a file / folder from a pasted Drive link (2026-11-11) ───────────────
+# The client pastes a Drive link in the chat (code spots it — support_agent
+# _drive_link_turn — or the model proposes it): ONE card "add this to your
+# media?". The click copies it INSIDE Drive into their folder
+# (core/drive_pull.add_by_link: videos/ images/ documents/ by type, durable,
+# per-file result, never a duplicate). A link we can't open: one calm line
+# with the address to share with — never a card that would fail.
+
+_DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,128}$")
+
+_LINK_NOT_SHARED = _txt(
+    "אין לי עדיין גישה לקישור הזה. ב-Drive: לחיצה ימנית על הקובץ (או התיקייה) ← שיתוף ← הוסיפו את {email} כצופה ← שליחה. ואז שלחו לי את הקישור שוב.",
+    "I can't open this link yet. In Drive: right-click the file (or folder) → Share → add {email} as a viewer → Send. Then send me the link again.",
+    "Je ne peux pas encore ouvrir ce lien. Dans Drive : clic droit sur le fichier (ou dossier) → Partager → ajoutez {email} en lecteur → Envoyer. Puis renvoyez-moi le lien.",
+    "لا أستطيع فتح هذا الرابط بعد. في Drive: انقر بزر الفأرة الأيمن على الملف (أو المجلد) ← مشاركة ← أضيفوا {email} كمشاهد ← إرسال. ثم أرسلوا لي الرابط مجددًا.",
+    "Я пока не могу открыть эту ссылку. В Drive: правый клик по файлу (или папке) → Поделиться → добавьте {email} как читателя → Отправить. Потом пришлите ссылку ещё раз.")
+_LINK_BAD = _txt("זה לא נראה כמו קישור לקובץ ב-Google Drive. העתיקו את הקישור משורת הכתובת או מ\"שיתוף\" ← \"העתקת קישור\".",
+                 "That doesn't look like a Google Drive file link. Copy it from the address bar or Share → Copy link.",
+                 "Cela ne ressemble pas à un lien de fichier Google Drive. Copiez-le depuis la barre d'adresse ou Partager → Copier le lien.",
+                 "هذا لا يبدو كرابط ملف في Google Drive. انسخوه من شريط العنوان أو مشاركة ← نسخ الرابط.",
+                 "Это не похоже на ссылку на файл в Google Drive. Скопируйте её из адресной строки или «Поделиться → Копировать ссылку».")
+_LINK_TRASHED = _txt("הקובץ בקישור הזה נמצא בפח של Drive. שחזרו אותו ושלחו שוב.",
+                     "The file at this link is in the Drive trash. Restore it and send it again.",
+                     "Le fichier de ce lien est dans la corbeille de Drive. Restaurez-le et renvoyez-le.",
+                     "الملف في هذا الرابط موجود في سلة Drive. استعيدوه وأرسلوه مجددًا.",
+                     "Файл по этой ссылке в корзине Drive. Восстановите его и пришлите снова.")
+_LINK_OWN_STORAGE = _txt("הקישור הזה כבר מצביע על אחסון המערכת. אפשר להוסיף כך קבצים מה-Drive שלכם.",
+                         "This link already points into the system's storage. This adds files from your own Drive.",
+                         "Ce lien pointe déjà vers le stockage du système. Cela ajoute des fichiers de votre propre Drive.",
+                         "هذا الرابط يشير إلى تخزين النظام نفسه. هذه الميزة تضيف ملفات من Drive الخاص بكم.",
+                         "Эта ссылка уже ведёт в хранилище системы. Так добавляются файлы из вашего собственного Drive.")
+_LINK_CLIENT_DRIVE = _txt("הקבצים שלכם נשמרים ב-Drive שלכם עצמו — שימו את הקובץ שם, בתיקיית uallak, והוא יופיע אצלנו.",
+                          "Your files live in your own Drive — put the file in your uallak folder there and it shows up here.",
+                          "Vos fichiers sont dans votre propre Drive — placez le fichier dans votre dossier uallak et il apparaîtra ici.",
+                          "ملفاتكم محفوظة في Drive الخاص بكم — ضعوا الملف في مجلد uallak هناك وسيظهر هنا.",
+                          "Ваши файлы хранятся в вашем собственном Drive — положите файл в папку uallak, и он появится здесь.")
+_LINK_TROUBLE = _txt("Drive לא ענה כרגע. שלחו לי את הקישור שוב בעוד רגע.",
+                     "Drive didn't answer just now. Send me the link again in a moment.",
+                     "Drive n'a pas répondu. Renvoyez-moi le lien dans un instant.",
+                     "لم يستجب Drive الآن. أرسلوا لي الرابط مجددًا بعد لحظة.",
+                     "Drive сейчас не ответил. Пришлите ссылку ещё раз через минуту.")
+_LINK_BUSY = _txt("כבר מעתיקים לתיקייה שלכם קבצים מקישור אחר. כשזה יסתיים, שלחו את הקישור הזה שוב.",
+                  "Files from another link are being copied to your folder right now. Send this link again when that's done.",
+                  "Des fichiers d'un autre lien sont en cours de copie. Renvoyez ce lien une fois terminé.",
+                  "يجري الآن نسخ ملفات من رابط آخر إلى مجلدكم. أرسلوا هذا الرابط مجددًا عند الانتهاء.",
+                  "Сейчас в вашу папку копируются файлы по другой ссылке. Пришлите эту ссылку, когда закончится.")
+_LINK_REFUSALS = {"not_shared": _LINK_NOT_SHARED, "bad_ref": _LINK_BAD, "trashed": _LINK_TRASHED,
+                  "own_storage": _LINK_OWN_STORAGE, "client_drive": _LINK_CLIENT_DRIVE,
+                  "drive_trouble": _LINK_TROUBLE, "busy": _LINK_BUSY}
+
+
+# At click time the address is not at hand (refusals are fixed texts): the
+# link stopped being shared between the card and the click.
+_LINK_RUN_REFUSALS = {**_LINK_REFUSALS, "not_shared": _txt(
+    "הקישור הזה כבר לא משותף איתנו, אז לא העתקתי כלום. שתפו אותו שוב ושלחו לי את הקישור.",
+    "This link is no longer shared with us, so nothing was copied. Share it again and send me the link.",
+    "Ce lien n'est plus partagé avec nous, rien n'a été copié. Partagez-le à nouveau et renvoyez-moi le lien.",
+    "لم يعد هذا الرابط مشاركًا معنا، لذلك لم يُنسخ شيء. شاركوه مجددًا وأرسلوا لي الرابط.",
+    "Эта ссылка больше не открыта для нас, поэтому ничего не скопировано. Поделитесь ею снова и пришлите ссылку.")}
+
+
+def link_refusal(code: str, lang: str, email: str = "") -> str:
+    """The calm line for a refused link, in the client's language."""
+    text = _pick(_LINK_REFUSALS.get(code) or _LINK_TROUBLE, lang)
+    return text.replace("{email}", email or "the service account")
+
+
+def _v_drive_link(value, client_id: int) -> str:
+    from core import drive_pull
+    ref = drive_pull.parse_ref(str(value or "")[:2000])
+    if not ref:
+        raise ValueError("not a Drive link or id")
+    return ref
+
+
+def _drive_link_offered(state: dict, client: dict) -> bool:
+    """Always offered to a real client: a client whose files live in their own
+    Drive gets prepare's calm line (where to put it), never "no card"."""
+    return bool((client or {}).get("id"))
+
+
+def _drive_link_available(state: dict, client: dict) -> bool:
+    try:
+        return drive_storage.location(int((client or {}).get("id"))).get("kind") == drive_storage.SHARED
+    except Exception:
+        return False
+
+
+def _prepare_drive_link(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import drive_pull
+    lang = (context or {}).get("language") or "he"
+    if drive_storage.location(client_id).get("kind") != drive_storage.SHARED:
+        return {"refuse": link_refusal("client_drive", lang)}
+    try:
+        src = drive_pull.source(params["link"], for_client=True)
+    except drive_pull.PullRefused as e:
+        return {"refuse": link_refusal(e.code, lang, getattr(e, "share_with", "") or drive_pull.share_with())}
+    for row in rows:
+        if (row.get("params") or {}).get("link") == src["id"]:
+            return {"existing": row}
+    return {"params": {"link": src["id"], "name": src["name"][:160], "kind": src["kind"]},
+            "notice": _pick(_LINK_FOUND, lang).replace("{name}", src["name"] or "—")}
+
+
+_LINK_FOUND = _txt("פתחתי את הקישור — \"{name}\". אשרו כאן ואוסיף אותו לתיקיית המדיה שלכם:",
+                   "I opened the link — \"{name}\". Approve here and I'll add it to your media folder:",
+                   "J'ai ouvert le lien — « {name} ». Validez ici et je l'ajoute à votre dossier média :",
+                   "فتحت الرابط — \"{name}\". وافقوا هنا وسأضيفه إلى مجلد الوسائط:",
+                   "Я открыл ссылку — «{name}». Подтвердите здесь, и я добавлю его в вашу папку медиа:")
+
+
+def _validate_drive_link_stored(client_id: int, params: dict) -> dict:
+    params = params or {}
+    if not set(params) <= {"link", "name", "kind"}:
+        raise ValueError("unexpected params")
+    link = str(params.get("link") or "")
+    if not _DRIVE_ID_RE.match(link):
+        raise ValueError("bad link id")
+    kind = params.get("kind") if params.get("kind") in ("file", "folder") else "file"
+    return {"link": link, "name": _v_short_text(params.get("name") or "—", 160), "kind": kind}
+
+
+def _run_add_drive_link(client_id: int, params: dict, background_tasks, row: dict = None):
+    from core import drive_pull
+    who = f"card:{(row or {}).get('origin') or 'client_chat'}"
+    try:
+        out = drive_pull.add_by_link(client_id, params["link"], who=who, for_client=True, budget_s=15)
+    except drive_pull.PullRefused as e:
+        raise ActionFailed(e.code if e.code in _LINK_REFUSALS else "drive_trouble", e.text) from None
+    job = out.get("job") or {}
+    counts = job.get("counts") or {}
+    added = int(counts.get("copied", 0)) + int(counts.get("already", 0)) + int(counts.get("already_same", 0))
+    _forget_state(client_id)
+    try:
+        from core import media_library
+        media_library.forget(client_id)
+    except Exception:
+        pass
+    return {"job_id": job.get("id"), "status": job.get("status"), "added": added, "total": job.get("total", 0),
+            "not_copied": sum(int(v) for k, v in counts.items()
+                              if k in ("failed", "no_access", "copy_blocked", "storage_quota")),
+            "name": params.get("name", "")}
+
+
+_LINK_DONE = _txt("\"{name}\" נוסף לתיקיית המדיה שלכם ✓", "\"{name}\" was added to your media folder ✓",
+                  "« {name} » a été ajouté à votre dossier média ✓", "تمت إضافة \"{name}\" إلى مجلد الوسائط ✓",
+                  "«{name}» добавлен в вашу папку медиа ✓")
+_LINK_DONE_SOME = _txt("{added} מתוך {total} קבצים נוספו לתיקיית המדיה שלכם ✓ {failed} לא הועתקו (בלשונית המדיה רואים איזה ולמה).",
+                       "{added} of {total} files were added to your media folder ✓ {failed} were not copied (the Media tab shows which and why).",
+                       "{added} fichiers sur {total} ajoutés ✓ {failed} non copiés (l'onglet Médias indique lesquels et pourquoi).",
+                       "أُضيف {added} من {total} ملفات ✓ لم يُنسخ {failed} (تبويب الوسائط يوضح أيها ولماذا).",
+                       "Добавлено {added} из {total} файлов ✓ Не скопировано: {failed} (во вкладке «Медиа» видно, какие и почему).")
+_LINK_UNDERWAY = _txt("ההעתקה של \"{name}\" התחילה ✓ הקבצים מופיעים בלשונית המדיה ככל שהם מגיעים.",
+                      "Copying \"{name}\" has started ✓ The files appear in the Media tab as they arrive.",
+                      "La copie de « {name} » a commencé ✓ Les fichiers apparaissent dans l'onglet Médias au fur et à mesure.",
+                      "بدأ نسخ \"{name}\" ✓ تظهر الملفات في تبويب الوسائط فور وصولها.",
+                      "Копирование «{name}» началось ✓ Файлы появляются во вкладке «Медиа» по мере поступления.")
+
+
+def _drive_link_done(result: dict, lang: str) -> str:
+    name = result.get("name") or "—"
+    if result.get("status") in ("queued", "running"):
+        return _pick(_LINK_UNDERWAY, lang).replace("{name}", name)
+    if result.get("not_copied"):
+        return (_pick(_LINK_DONE_SOME, lang).replace("{added}", str(result.get("added", 0)))
+                .replace("{total}", str(result.get("total", 0))).replace("{failed}", str(result["not_copied"])))
+    return _pick(_LINK_DONE, lang).replace("{name}", name)
+
+
+# ─── Attach an existing file from anywhere (Control Room, admin only) ───────
+# core/drive_pull.find_anywhere searches EVERY drive the service account sees
+# (it sees every client's folder), so this card is never offered to a client
+# chat (approver admin, client_requestable False). One match → one card;
+# several → ONE card, one button per candidate (name · folder · date · size).
+
+ATTACH_CANDIDATES = 6
+
+
+def _attach_label(item: dict) -> str:
+    bits = [item.get("name") or "—"]
+    if item.get("folder"):
+        bits.append(f"({item['folder']})")
+    if item.get("modified_time"):
+        bits.append(str(item["modified_time"])[:10])
+    if item.get("size"):
+        bits.append(f"{round(item['size'] / 1048576, 1)} MB")
+    if item.get("in_client_folder"):
+        bits.append("כבר בתיקייה של הלקוח")
+    return " · ".join(bits)
+
+
+def _prepare_attach(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import drive_pull
+    try:
+        found = drive_pull.find_anywhere(params["query"], client_id, limit=ATTACH_CANDIDATES)
+    except Exception as e:
+        _log(f"client {client_id}: attach search failed: {type(e).__name__}", severity="WARNING",
+             client_id=client_id)
+        return {"refuse": "Drive לא ענה לחיפוש כרגע. נסו שוב בעוד רגע."}
+    if found.get("not_shared"):
+        return {"refuse": f"אין לחשבון השירות גישה לקובץ הזה. שתפו אותו עם {found.get('share_with') or 'חשבון השירות'} ונסו שוב."}
+    candidates = found.get("candidates") or []
+    if not candidates:
+        return {"refuse": f"לא מצאתי קובץ בשם \"{params['query']}\" בשום מקום שחשבון השירות רואה."}
+    ids = [c["id"] for c in candidates]
+    for row in rows:
+        if sorted((row.get("params") or {}).get("candidates") or []) == sorted(ids):
+            return {"existing": row}
+    out = {"query": params["query"], "candidates": ids, "labels": {c["id"]: _attach_label(c)[:200] for c in candidates}}
+    if len(ids) == 1:
+        out["mode"] = ids[0]
+    return {"params": out}
+
+
+def _validate_attach_stored(client_id: int, params: dict) -> dict:
+    params = dict(params or {})
+    if not set(params) <= {"query", "candidates", "labels", "mode"}:
+        raise ValueError("unexpected params")
+    candidates = [str(c) for c in params.get("candidates") or []]
+    if not 1 <= len(candidates) <= ATTACH_CANDIDATES or not all(_DRIVE_ID_RE.match(c) for c in candidates):
+        raise ValueError("bad candidates")
+    if params.get("mode") and params["mode"] not in candidates:
+        raise ValueError("the choice is not one of the candidates")
+    labels = params.get("labels") if isinstance(params.get("labels"), dict) else {}
+    out = {"query": _v_short_text(params.get("query"), 200), "candidates": candidates,
+           "labels": {c: str(labels.get(c) or c)[:200] for c in candidates}}
+    if params.get("mode"):
+        out["mode"] = params["mode"]
+    return out
+
+
+def _attach_choices(params: dict) -> list:
+    cands = (params or {}).get("candidates") or []
+    if len(cands) < 2:
+        return []
+    labels = (params or {}).get("labels") or {}
+    return [(c, _txt(*([labels.get(c) or c] * 5))) for c in cands]
+
+
+def _run_attach_existing(client_id: int, params: dict, background_tasks, row: dict = None):
+    from core import drive_pull
+    chosen = params.get("mode") or ""
+    if chosen not in params.get("candidates", []):
+        raise ActionFailed("bad_choice", "no candidate chosen")
+    try:
+        out = drive_pull.attach_existing(client_id, chosen, who="control_room_card")
+    except drive_pull.PullRefused as e:
+        raise ActionFailed(e.code, e.text) from None
+    job = out.get("job") or {}
+    files = job.get("files") or []
+    _forget_state(client_id)
+    return {"job_id": job.get("id"), "status": job.get("status"),
+            "file": (params.get("labels") or {}).get(chosen, chosen),
+            "outcome": files[0]["label"] if files else ""}
+
+
 def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
     params = params or {}
     if set(params) != {"drive_file_id"}:
@@ -3780,6 +4036,68 @@ ACTIONS = {
         "done": _txt("התיקייה שלכם:", "Your folder:", "Votre dossier :", "مجلدكم:", "Ваша папка:"),
         "done_message": lambda result, lang: (_pick(ACTIONS["media_file_not_found"]["done"], lang)
                                               + (f"\n{result['link']}" if result.get("link") else "")),
+    },
+    "add_media_from_drive_link": {
+        # A pasted Google Drive link → ONE card; the click copies the file (or
+        # the whole folder) INSIDE Drive into the client's media folder
+        # (core/drive_pull.add_by_link). Code proposes it when a message holds
+        # a Drive link (support_agent._drive_link_turn); the model may too.
+        "approver": "client", "admin_proposable": True, "client_requestable": True,
+        "internal_only": False, "kind": "execute", "needs_row": True,
+        "does": "Adds a file or folder the client links from Google Drive (a drive.google.com / docs.google.com "
+                "link, or a file id) to their media folder: copied inside Drive into videos/, images/ or "
+                "documents/ by type; the original is untouched. Propose it whenever they paste a Drive link "
+                "and want it in their media / for a post / for TikTok. If we can't open the link, the system "
+                "itself tells them how to share it.",
+        "params": {"link": {"required": True, "validate": _v_drive_link,
+                            "hint": "the Drive link exactly as they pasted it"}},
+        "available": _drive_link_offered,
+        "prepare": _prepare_drive_link,
+        "validate_stored": _validate_drive_link_stored,
+        "run": _run_add_drive_link,
+        "display": lambda client_id, params: {"name": params.get("name", "")},
+        "button": _txt("כן, להוסיף", "Yes, add it", "Oui, l'ajouter", "نعم، أضفه", "Да, добавить"),
+        "title": _txt("להוסיף את זה לתיקיית המדיה שלכם?", "Add this to your media?",
+                      "Ajouter ceci à vos médias ?", "إضافة هذا إلى الوسائط؟", "Добавить это в ваши медиа?"),
+        "what": _txt("\"{name}\" יועתק מ-Google Drive לתיקיית המדיה שלכם (סרטונים לתיקיית videos, תמונות לתיקיית images). המקור נשאר כמו שהוא — לא מוזז ולא נמחק. אם הוא כבר שם, לא ייווצר כפול.",
+                     "\"{name}\" will be copied from Google Drive into your media folder (videos to videos/, images to images/). The original stays as it is — not moved, not deleted. If it is already there, no duplicate is made.",
+                     "« {name} » sera copié de Google Drive dans votre dossier média (vidéos dans videos/, images dans images/). L'original reste tel quel — ni déplacé ni supprimé. S'il y est déjà, aucun doublon.",
+                     "سيُنسخ \"{name}\" من Google Drive إلى مجلد الوسائط (الفيديوهات إلى videos والصور إلى images). يبقى الأصل كما هو — لا يُنقل ولا يُحذف. إن كان موجودًا لن تُنشأ نسخة مكررة.",
+                     "«{name}» будет скопирован из Google Drive в вашу папку медиа (видео — в videos/, изображения — в images/). Оригинал не перемещается и не удаляется. Если он уже там, дубликата не будет."),
+        "done": _LINK_DONE,
+        "done_message": _drive_link_done,
+        "refusals": _LINK_RUN_REFUSALS,
+    },
+    "attach_existing_media": {
+        # ADMIN ONLY: searches every drive the service account sees (every
+        # client's folder), so it is never offered in a client chat.
+        "approver": "admin", "client_requestable": False, "internal_only": False, "kind": "execute",
+        "needs_row": True,
+        "does": "Finds a file by name (or Drive id/link) ANYWHERE our service account can see — another client's "
+                "folder, this client's second folder, a folder the owner shared — and copies the chosen one into "
+                "this client's connected media folder. Never moves or deletes the original. Several matches → "
+                "one card with a button per file (name, folder, date, size).",
+        "params": {"query": {"required": True, "validate": lambda v, cid: _v_short_text(v, 200),
+                             "hint": "the file name (\"test 3\") or a Drive link / file id"}},
+        "available": _drive_link_available,
+        "prepare": _prepare_attach,
+        "validate_stored": _validate_attach_stored,
+        "choices": _attach_choices,
+        "run": _run_attach_existing,
+        "display": lambda client_id, params: {"query": params.get("query", ""),
+                                              "file": next(iter((params.get("labels") or {}).values()), "")},
+        "title": _txt("צירוף קובץ קיים לתיקיית הלקוח", "Attach an existing file to the client's folder",
+                      "Joindre un fichier existant", "إرفاق ملف موجود", "Прикрепить существующий файл"),
+        "what": _txt("הקובץ שתבחרו ל-\"{query}\" יועתק לתיקיית המדיה המחוברת של הלקוח. המקור לא מוזז ולא נמחק.",
+                     "The file you pick for \"{query}\" is copied into the client's connected media folder. The original is not moved or deleted.",
+                     "Le fichier choisi pour « {query} » est copié dans le dossier média du client. L'original reste en place.",
+                     "يُنسخ الملف الذي تختارونه لـ\"{query}\" إلى مجلد وسائط العميل. لا يُنقل الأصل ولا يُحذف.",
+                     "Выбранный файл для «{query}» копируется в папку медиа клиента. Оригинал не перемещается и не удаляется."),
+        "done": _txt("הקובץ צורף לתיקיית הלקוח ✓", "File attached to the client's folder ✓", "Fichier joint ✓",
+                     "تم إرفاق الملف ✓", "Файл прикреплён ✓"),
+        "done_message": lambda result, lang: (_pick(ACTIONS["attach_existing_media"]["done"], lang)
+                                              + (f"\n{result['file']}" if result.get("file") else "")
+                                              + (f" — {result['outcome']}" if result.get("outcome") else "")),
     },
     # ── Google verification ROUND 2 (docs/GOOGLE-ROUND2.md) — every entry
     # below is unavailable while its flag is off (core/round2_flags) ──

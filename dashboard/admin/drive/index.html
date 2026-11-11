@@ -78,7 +78,9 @@ th, td { text-align:right; padding:4px 6px; border-bottom:1px solid var(--border
     <div class="row">
       <input type="text" dir="ltr" id="ref" class="grow" placeholder="https://drive.google.com/drive/folders/...">
       <button id="browseBtn">הצג</button>
+      <button class="primary" id="addLinkBtn" title="מעתיק את הקובץ / את כל התיקייה ללקוח שבשלב 3, לפי סוג הקובץ">הוספה ישירה ללקוח</button>
     </div>
+    <div class="muted" style="margin-top:6px;">כל קישור עובד: drive.google.com/file/d/…, open?id=…, /folders/…, docs.google.com/…, עם או בלי פרמטרים, או מזהה בלבד. "הוספה ישירה" מעתיקה לתיקיית videos / images / documents של הלקוח — קישור שכבר הועתק לא נוצר פעמיים.</div>
     <div id="browseMsg"></div>
     <div id="browseOut" style="display:none;">
       <div class="row">
@@ -114,6 +116,24 @@ th, td { text-align:right; padding:4px 6px; border-bottom:1px solid var(--border
     <div class="bar"><div id="jobBar"></div></div>
     <div class="list" id="jobFiles"></div>
     <div id="usage" class="calm" style="display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>צירוף קובץ קיים — מכל מקום שחשבון השירות רואה</h2>
+    <div class="muted">תיקייה של לקוח אחר, התיקייה השנייה של אותו לקוח, תיקייה ששיתפתם. הקובץ <strong>מועתק</strong> לתיקייה המחוברת של הלקוח שבשלב 3 — המקור לא זז ולא נמחק.</div>
+    <div class="row">
+      <input type="text" dir="auto" id="anyQuery" class="grow" placeholder="שם קובץ (למשל test 3) או קישור / מזהה">
+      <button id="anyBtn">לחפש</button>
+      <span class="muted" id="anyMsg"></span>
+    </div>
+    <div class="list" id="anyOut" style="display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>איחוד תיקיות של לקוח</h2>
+    <div class="muted">כל התיקיות בשם הלקוח, איזו מחוברת (רק אותה המערכת רואה), וכמה קבצים בכל אחת. "להעתיק לתיקייה המחוברת" מעתיק הכול עם אותו מבנה תתי-תיקיות, מדלג על קובץ שכבר קיים (אותו שם וגודל), ולא מוחק כלום.</div>
+    <div class="row"><button id="mergeBtn">להציג תיקיות</button><span class="muted" id="mergeMsg"></span></div>
+    <div id="mergeOut"></div>
   </div>
 
   <div class="card">
@@ -234,14 +254,16 @@ function renderJob(job) {
   const head = active ? "מעתיק…" : job.status === "done" ? "הסתיים ✓" : "הסתיים — חלק מהקבצים לא הועתקו";
   $("jobSummary").innerHTML = `${esc(head)} · ${done}/${job.total || 0} קבצים`
     + (job.folders_left ? ` · עוד ${job.folders_left} תיקיות לסריקה` : "")
-    + (job.truncated ? ' · <span class="warn">יותר מ-500 קבצים — הועתקו 500 הראשונים, להריץ שוב לשאר</span>' : "")
+    + (job.mode === "merge" ? " · איחוד תיקיות" : "")
+    + (job.source && job.source.name ? ` · מקור: ${esc(job.source.name)}` : "")
+    + (job.truncated ? ' · <span class="warn">הגענו לתקרת הקבצים של משימה אחת — להריץ שוב לשאר (מה שכבר הועתק לא ישוכפל)</span>' : "")
     + (job.folder_errors ? ` · <span class="warn">${job.folder_errors} תיקיות לא נקראו</span>` : "");
   $("jobBar").style.width = (job.total ? Math.round(100 * done / job.total) : (active ? 5 : 100)) + "%";
   $("jobFiles").innerHTML = (job.files || []).map(f => `<div class="item">
       <span class="name">${esc(f.name)}</span>
       <span class="muted">${esc(f.folder || "")}</span>
       <span class="muted">${esc(mb(f.size))}</span>
-      <span class="${["copied", "already"].includes(f.status) ? "ok" : f.status === "pending" ? "muted" : "warn"}">${esc(f.label)}${f.status === "pending" && f.attempts ? ` (ניסיון ${f.attempts + 1})` : ""}</span>
+      <span class="${["copied", "already", "already_same"].includes(f.status) ? "ok" : f.status === "pending" ? "muted" : "warn"}">${esc(f.label)}${f.status === "pending" && f.attempts ? ` (ניסיון ${f.attempts + 1})` : ""}</span>
     </div>`).join("");
   const u = job.usage;
   if (u && u.gb != null) {
@@ -284,6 +306,105 @@ async function showLatest() {
     }
   } catch (e) { /* nothing to show */ }
 }
+
+// ─── Add by link: paste → copied straight into the client's folder ─────────
+$("addLinkBtn").addEventListener("click", async () => {
+  const msg = $("browseMsg");
+  const cid = clientId();
+  if (!cid) { msg.innerHTML = '<div class="calm">חסר מספר לקוח (שלב 3).</div>'; return; }
+  if (!$("ref").value.trim()) { msg.innerHTML = '<div class="calm">הדביקו קישור קודם.</div>'; return; }
+  $("addLinkBtn").disabled = true;
+  msg.innerHTML = '<div class="muted calm">פותח את הקישור…</div>';
+  try {
+    const r = await api("/api/admin/drive-pull/add-link", {client_id: cid, link: $("ref").value});
+    if (!r.success) { msg.innerHTML = `<div class="calm">${esc((r.data && r.data.text) || "לא התחיל.")}</div>`; return; }
+    msg.innerHTML = `<div class="calm ok">מעתיק את "${esc((r.data.source || {}).name || "")}" ללקוח ${cid}.</div>`;
+    renderJob(r.data.job);
+    if (r.data.job && (r.data.job.status === "queued" || r.data.job.status === "running")) poll(cid);
+  } catch (e) {
+    if (e.message !== "auth") msg.innerHTML = '<div class="calm">Drive לא ענה כרגע. נסו שוב בעוד רגע.</div>';
+  } finally { $("addLinkBtn").disabled = false; }
+});
+
+// ─── Attach an existing file from anywhere ─────────────────────────────────
+$("anyBtn").addEventListener("click", async () => {
+  const msg = $("anyMsg"), out = $("anyOut");
+  const q = $("anyQuery").value.trim();
+  if (!q) { msg.textContent = "מה לחפש?"; return; }
+  msg.textContent = "מחפש בכל מה שחשבון השירות רואה…";
+  out.style.display = "none"; out.innerHTML = "";
+  try {
+    const r = await api("/api/admin/drive/find-anywhere", {client_id: clientId(), query: q});
+    const d = r.data || {};
+    if (!r.success) { msg.textContent = d.text || "החיפוש לא הצליח."; return; }
+    if (d.not_shared) { msg.textContent = `אין גישה לקובץ הזה. שתפו אותו עם ${d.share_with || "חשבון השירות"}.`; return; }
+    const c = d.candidates || [];
+    msg.textContent = c.length ? `${c.length} תוצאות` : "לא נמצא קובץ כזה בשום מקום שחשבון השירות רואה.";
+    if (!c.length) return;
+    out.innerHTML = c.map(f => `<div class="item">
+        <span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+        <span class="muted">${esc(f.folder || "")}</span>
+        <span class="muted">${esc(String(f.modified_time || "").slice(0, 10))}</span>
+        <span class="muted">${esc(mb(f.size))}</span>
+        ${f.in_client_folder ? '<span class="ok">כבר אצל הלקוח</span>' : ""}
+        <button data-attach="${esc(f.id)}">לצרף ללקוח</button></div>`).join("");
+    out.style.display = "block";
+  } catch (e) { if (e.message !== "auth") msg.textContent = "החיפוש לא הצליח — לנסות שוב."; }
+});
+$("anyOut").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-attach]");
+  if (!b) return;
+  const cid = clientId();
+  if (!cid) { $("anyMsg").textContent = "חסר מספר לקוח (שלב 3)."; return; }
+  b.disabled = true; b.textContent = "מעתיק…";
+  try {
+    const r = await api("/api/admin/drive/attach", {client_id: cid, file_id: b.dataset.attach});
+    if (!r.success) { b.textContent = (r.data && r.data.text) || "לא הועתק"; return; }
+    const job = r.data.job || {};
+    const f = (job.files || [])[0];
+    b.textContent = f ? f.label : "הועתק ✓";
+    renderJob(job);
+    if (job.status === "queued" || job.status === "running") poll(cid);
+  } catch (err) { b.disabled = false; b.textContent = "לנסות שוב"; }
+});
+
+// ─── Merge a client's second folder into the connected one ─────────────────
+async function showMerge() {
+  const cid = clientId();
+  if (!cid) { $("mergeMsg").textContent = "חסר מספר לקוח (שלב 3)."; return; }
+  $("mergeMsg").textContent = "סופר קבצים בכל תיקייה…";
+  $("mergeOut").innerHTML = "";
+  try {
+    const r = await api(`/api/admin/drive/merge/${cid}`);
+    const d = r.data || {};
+    if (!r.success) { $("mergeMsg").textContent = d.text || "לא הצלחתי לקרוא."; return; }
+    $("mergeMsg").textContent = (d.folders || []).length > 1 ? "" : "יש ללקוח תיקייה אחת בלבד — אין מה לאחד.";
+    $("mergeOut").innerHTML = `<div class="scroll"><table>
+      <tr><th>תיקייה</th><th>id</th><th></th><th>קבצים</th><th>תתי-תיקיות</th><th>נפח</th><th></th></tr>
+      ${(d.folders || []).map(f => `<tr>
+        <td>${f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(f.name)}</a>` : esc(f.name)}</td>
+        <td><code>${esc(f.id)}</code></td>
+        <td>${f.connected ? '<span class="ok">מחוברת — זו שהמערכת רואה</span>' : '<span class="warn">לא מחוברת</span>'}${f.under_media_root ? "" : ' <span class="muted">(מחוץ לתיקיית המדיה)</span>'}</td>
+        <td>${f.files}${f.count_truncated ? "+" : ""}</td><td>${f.subfolders}</td><td>${esc(mb(f.bytes))}</td>
+        <td>${f.connected ? "" : `<button data-merge="${esc(f.id)}">להעתיק לתיקייה המחוברת</button>`}</td></tr>`).join("")}
+    </table></div>`;
+  } catch (e) { if (e.message !== "auth") $("mergeMsg").textContent = "לא הצלחתי לקרוא — לנסות שוב."; }
+}
+$("mergeBtn").addEventListener("click", showMerge);
+$("mergeOut").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-merge]");
+  if (!b) return;
+  const cid = clientId();
+  if (!confirm("להעתיק את כל התוכן של התיקייה הזו לתיקייה המחוברת? שום דבר לא נמחק ולא זז; קובץ שכבר קיים (אותו שם וגודל) ידולג.")) return;
+  b.disabled = true; b.textContent = "מתחיל…";
+  try {
+    const r = await api(`/api/admin/drive/merge/${cid}/start`, {source_folder_id: b.dataset.merge});
+    if (!r.success) { b.disabled = false; b.textContent = (r.data && r.data.text) || "לא התחיל"; return; }
+    b.textContent = "רץ — ההתקדמות למעלה";
+    renderJob(r.data);
+    poll(cid);
+  } catch (err) { b.disabled = false; b.textContent = "לנסות שוב"; }
+});
 
 $("diagBtn").addEventListener("click", async () => {
   const cid = clientId();

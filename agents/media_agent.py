@@ -155,10 +155,18 @@ def ensure_client_media_root(client_id: int) -> str:
     # SECOND folder, wrote into it, while the Media tab and the agents on other
     # instances listed the first one — a file dropped into either folder was
     # missing from one view (docs/DRIVE-PULL.md §Why a dropped file hid).
-    root = drive_mirror.shared_client_root(client_id)
+    # strict: a Drive error during the lookup raises (the write fails and is
+    # retried) instead of reading as "no folder yet" and creating a second one.
+    root = drive_mirror.shared_client_root(client_id, strict=True)
     if not root:
         folder_name = f"client-{client_id} — {(client.get('name') or 'unnamed').strip()}"
         root = drive.ensure_folder(folder_name, media_root)
+        # Two instances may have created one at the same moment: re-resolve by
+        # the SAME rule (the oldest "client-{id} — " folder) so both converge
+        # on one. The extra empty folder is left alone, never deleted.
+        twins = drive.find_child_folders_by_prefix(media_root, f"client-{client_id} — ")
+        if twins:
+            root = twins[0]["id"]
     drive_mirror.remember_root(client_id, root)
     _folder_cache[client_id] = {"root": root, "paths": {}, "kind": drive_storage.SHARED}
 

@@ -426,6 +426,61 @@ def find_folders_named(prefix: str, page_size: int = 20) -> list:
     return _json(response, "folder search").get("files", [])
 
 
+ANYWHERE_FIELDS = "id,name,mimeType,size,modifiedTime,parents,driveId,trashed"
+
+
+def search_everywhere(words: list, page_size: int = 50) -> list:
+    """Non-folder, non-trashed files ANYWHERE the service account can see
+    (every Shared Drive it is in, every file/folder shared with it) whose
+    name contains every word — "attach existing file" (core/drive_pull).
+    corpora=allDrives + supportsAllDrives + includeItemsFromAllDrives.
+    Metadata only, newest first."""
+    q = f"trashed = false and mimeType != '{FOLDER_MIME}'"
+    for word in [w for w in (words or []) if w]:
+        q += f" and name contains '{_q_text(word)}'"
+    response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
+        "q": q, "fields": f"files({ANYWHERE_FIELDS})", "orderBy": "modifiedTime desc",
+        "pageSize": int(page_size), "corpora": "allDrives",
+        "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+    _check(response)
+    return _json(response, "search everywhere").get("files", [])
+
+
+def find_in_folder_by_name(parent_id: str, name: str) -> list:
+    """Non-trashed files directly in parent_id with EXACTLY this name —
+    the merge's "already there" check (same name + same size)."""
+    response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
+        "q": f"'{_q_text(parent_id)}' in parents and trashed = false and name = '{_q_text(name)}'",
+        "fields": "files(id,name,size,mimeType)", "pageSize": 20,
+        "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+    _check(response)
+    return _json(response, "name lookup").get("files", [])
+
+
+def folder_path(file_id: str, max_hops: int = 6, _cache: dict = None) -> str:
+    """"A / B / C": the names of the folders above a file, nearest last, up to
+    max_hops (a Shared Drive's root answers with the drive's own id, which has
+    no readable name for us — the walk stops there). Best-effort: "" on any
+    Drive trouble. _cache: {folder_id: (name, parent)} shared across calls."""
+    cache = _cache if _cache is not None else {}
+    names, current = [], file_id
+    try:
+        parents = get_meta(file_id, "parents").get("parents") or []
+        current = parents[0] if parents else ""
+        for _ in range(max_hops):
+            if not current:
+                break
+            if current not in cache:
+                meta = get_meta(current, "id,name,parents")
+                cache[current] = (meta.get("name") or "", (meta.get("parents") or [""])[0])
+            name, parent = cache[current]
+            names.append(name)
+            current = parent
+    except Exception:
+        pass
+    return " / ".join(reversed([n for n in names if n]))
+
+
 def copy_file(file_id: str, parent_id: str, name: str = "", app_properties: dict = None) -> dict:
     """A server-side copy INSIDE Drive (files.copy): no byte passes through
     our server, whatever the size. supportsAllDrives — the source may be in a

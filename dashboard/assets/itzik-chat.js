@@ -168,12 +168,25 @@
     row.appendChild(b); s.appendChild(row); s.appendChild(out);
     return s;
   }
+  // A card's content as plain text — what the owner sees when a card cannot be
+  // drawn (an unknown type, a broken payload). Never a card that silently vanishes.
+  function cardText(c) {
+    if (!c || typeof c !== 'object') return '';
+    if (c.type === 'report' && c.report) return reportText(c.report);
+    if (c.type === 'change' && c.change) return '🧩 הצעת שינוי קוד: ' + (c.change.title || '') + (c.change.what_he ? '\nמה משתנה: ' + c.change.what_he : '');
+    if (c.type === 'action') return '🔘 הצעה: ' + (c.label_he || '') + (c.reason_he ? '\n' + c.reason_he : '');
+    return c.text_he || c.label_he || c.summary_he || c.title || '';
+  }
   function renderCard(c) {
-    if (c.type === 'action') return actionCard(c);
-    if (c.type === 'budget') return budgetCard(c);
-    if (c.type === 'done') { const s = el('div', 'itz-card'); s.appendChild(el('div', null, '✓ ' + c.label_he)); s.appendChild(el('div', 'itz-small', summarize(c.result))); return s; }
-    if (c.type === 'change') return renderChange(c.change);
-    return null;              // a report is stored as its own message
+    if (c && c.type === 'report') return null;     // a report is drawn as its own message
+    try {
+      if (c.type === 'action') return actionCard(c);
+      if (c.type === 'budget') return budgetCard(c);
+      if (c.type === 'done') { const s = el('div', 'itz-card'); s.appendChild(el('div', null, '✓ ' + c.label_he)); s.appendChild(el('div', 'itz-small', summarize(c.result))); return s; }
+      if (c.type === 'change') return renderChange(c.change);
+    } catch (e) { /* drawn as text below */ }
+    const t = cardText(c);
+    return t ? el('div', 'itz-card itz-small', t) : null;
   }
   function reportText(r) {
     const lines = ['📋 ' + (r.title || ''), '', r.summary_he || '', '', 'סיבה משוערת: ' + (r.cause_he || '')];

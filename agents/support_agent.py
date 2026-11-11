@@ -958,6 +958,22 @@ def _proposed_name(result: dict) -> str:
     return str(raw.get("name") or "").strip() if isinstance(raw, dict) else ""
 
 
+def _drive_link_turn(message: str, result: dict) -> bool:
+    """A pasted Google Drive link IS the request "add this to my media"
+    (2026-11-11): code proposes add_media_from_drive_link with it — ONE card,
+    whatever the model said (it may have answered "I can't open links"). A
+    model's own proposal of something else is kept. Returns True when set."""
+    from core import drive_pull
+    link = drive_pull.find_link(message)
+    if not link:
+        return False
+    if _proposed_name(result) and _proposed_name(result) != "add_media_from_drive_link":
+        return False
+    result["proposed_action"] = {"name": "add_media_from_drive_link", "params": {"link": link}, "summary": ""}
+    result["out_of_scope"] = False
+    return True
+
+
 def _route_proposal(client_id: int, persona_id: str, message: str, result: dict, reply: str,
                     state: dict, client: dict) -> dict:
     """The model's proposed_action through core/agent_actions (which checks
@@ -1338,6 +1354,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     if dry_run:
         return _dry_result(client_id, "general", message, result, failed, state, client)
     reply = _guard_invented(client_id, "general", message, result.get("reply", ""), state, result)
+    if not help_entry and _drive_link_turn(message, result):
+        return _route_proposal(client_id, "general", message, result, reply, state, client)
     if help_entry:
         # A help turn hands out ONLY this connection's configured links, and
         # never starts a purchase or a search
@@ -2422,6 +2440,8 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     if dry_run:
         return _dry_result(client_id, persona_id, message, result, failed, state, client)
     reply = _guard_invented(client_id, persona_id, message, result.get("reply", ""), state, result)
+    if _drive_link_turn(message, result):
+        return _route_proposal(client_id, persona_id, message, result, reply, state, client)
     out_of_scope = bool(result.get("out_of_scope", False))
     if not out_of_scope:
         unavailable = _data_unavailable(client_id, persona_id, message, result, failed)

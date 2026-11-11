@@ -87,7 +87,13 @@ def client_root_id(client_id: int) -> str:
     return shared_client_root(client_id)
 
 
-def shared_client_root(client_id: int) -> str:
+class RootUnknown(RuntimeError):
+    """Drive could not say whether the client already has a folder — the
+    writer must NOT create one then (a transient error used to be read as
+    "no folder yet" → a second folder)."""
+
+
+def shared_client_root(client_id: int, strict: bool = False) -> str:
     """The client's folder in OUR Shared Drive, or "" — whatever the pointer
     says (the migration and the usage scan read it; run as the service
     account).
@@ -134,8 +140,12 @@ def shared_client_root(client_id: int) -> str:
                       f"the current media root — using {root or '(none yet)'}")
     except Exception as e:
         # Drive trouble: not cached; the recorded folder is still THIS
-        # client's own, and list_folder reports the Drive failure itself
+        # client's own, and list_folder reports the Drive failure itself.
+        # strict (the WRITER): never guess — a create after a failed lookup
+        # is how a client gets a second folder.
         print(f"[{SERVICE_NAME}] client {client_id}: root resolve failed ({e}) — using the record")
+        if strict:
+            raise RootUnknown(str(e)[:200]) from None
         return hinted
     if root:
         # "No folder yet" is NOT cached: another instance may create it any

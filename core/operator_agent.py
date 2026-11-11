@@ -109,7 +109,9 @@ Then say: what you found, the PROBABLE CAUSE, the evidence (quote log lines with
 commit SHAs, alert text, file:line), and how sure you are. Never present a guess as a fact;
 if the data doesn't show it, say what is missing.
 Finish every investigation with write_report (title, summary, cause, evidence, next steps,
-and owner_steps for anything only he can do).
+and owner_steps for anything only he can do). The report is a saved copy, not the answer:
+your final message ALWAYS states the findings itself, in full sentences. Never answer with
+"the details are in the cards below" or anything that sends him somewhere else to read.
 
 WHAT YOU MAY DO — THREE TIERS, NEVER BLURRED:
 - Tier 1, reads: any read tool, as many as you need.
@@ -561,10 +563,17 @@ def _conversation(new_message: str, rows=None, turns: int = HISTORY_TURNS) -> li
         if row["kind"] != "message":
             continue
         role = "user" if row["role"] == "owner" else "assistant"
+        content = row["content"]
+        if role == "assistant" and not row.get("cards"):
+            # an old reply that pointed at cards that never existed must not be
+            # learned back as "how I answer" (the 2026-11-11 repeated line)
+            content = strip_card_pointers(content)
+            if not content:
+                continue
         if msgs and msgs[-1]["role"] == role:
-            msgs[-1]["content"] += "\n\n" + row["content"]
+            msgs[-1]["content"] += "\n\n" + content
         else:
-            msgs.append({"role": role, "content": row["content"]})
+            msgs.append({"role": role, "content": content})
     while msgs and msgs[0]["role"] != "user":
         msgs.pop(0)
     if msgs and msgs[-1]["role"] == "user":
@@ -964,6 +973,94 @@ def _text_of(response) -> str:
                    if getattr(b, "type", "") == "text").strip()
 
 
+# ─── The reply text: the findings ALWAYS in the message itself ───────────────
+# Bug 2026-11-11: an empty final model text was replaced by a fixed "done —
+# the details are in the cards below" line even when no card existed, and that
+# line then went back into the history, so the model repeated it. Now:
+# (a) the findings are in the text (a findings call, the text said along the
+# way, the report, the cards' own content), (b) a card the chat cannot draw
+# goes in as text, (c) no "details below" unless a card is really there.
+FINDINGS_NOTE = ("[Your last answer had no text. Do NOT call tools. Write the answer now in plain Hebrew, in the "
+                 "message itself: what you checked, what you found (with the evidence), and what you recommend. "
+                 "Never say the details are in a card or below. Never name tools or internal identifiers.]")
+# The card types the chat (dashboard/assets/itzik-chat.js renderCard + the
+# report bubble) draws. Anything else is sent as text.
+RENDERED_CARD_TYPES = ("action", "budget", "done", "change", "report")
+_POINTER_RX = re.compile(
+    r"[^.!?\n]*(?:(?:פרטים|הפרטים|כרטיס\w*|בכרטיס\w*|הכרטיס\w*)[^.!?\n]*למטה|"
+    r"(?:details|cards?)\s+(?:are\s+)?below|see\s+the\s+cards?)[^.!?\n]*[.!?]?", re.IGNORECASE)
+
+
+def strip_card_pointers(text: str) -> str:
+    """The text without any sentence that sends the reader to cards / details below."""
+    out = _POINTER_RX.sub("", str(text or ""))
+    return re.sub(r"[ \t]+\n", "\n", re.sub(r"\n{3,}", "\n\n", out)).strip(" \t\n—-")
+
+
+def _card_ok(card) -> bool:
+    if not isinstance(card, dict) or card.get("type") not in RENDERED_CARD_TYPES:
+        return False
+    need = {"action": ("action", "label_he"), "budget": ("task_id", "label_he"), "done": ("label_he",),
+            "change": ("change",), "report": ("report",)}[card["type"]]
+    if not all(card.get(k) for k in need):
+        return False
+    if card["type"] == "change":
+        return isinstance(card["change"], dict) and bool(card["change"].get("id"))
+    if card["type"] == "report":
+        return isinstance(card["report"], dict)
+    return True
+
+
+def card_text(card) -> str:
+    """A card's content as plain Hebrew text (never JSON, never a tool name)."""
+    if not isinstance(card, dict):
+        return ""
+    t = card.get("type")
+    if t == "report" and isinstance(card.get("report"), dict):
+        return _report_text(card["report"])
+    if t == "change" and isinstance(card.get("change"), dict):
+        ch = card["change"]
+        return " ".join(x for x in (f"🧩 הצעת שינוי קוד: {ch.get('title') or ''}.",
+                                    f"מה משתנה: {ch['what_he']}." if ch.get("what_he") else "",
+                                    f"למה: {ch['why_he']}." if ch.get("why_he") else "") if x)
+    if t == "action":
+        return " ".join(x for x in (f"🔘 הצעה: {card.get('label_he') or card.get('action') or ''}.",
+                                    str(card.get("reason_he") or "")) if x)
+    if t == "done":
+        return f"✓ {card.get('label_he') or ''}"
+    if t == "budget":
+        return str(card.get("label_he") or "")
+    for k in ("text_he", "label_he", "summary_he", "title"):
+        if card.get(k):
+            return str(card[k])
+    return ""
+
+
+def compose_reply(reply: str, cards: list, trail: list, interim: list = ()) -> tuple:
+    """(text, cards) for one operator message. The text carries the findings;
+    a card that cannot be drawn becomes text; a pointer to cards survives only
+    when a drawable card is really attached."""
+    good = [c for c in (cards or []) if _card_ok(c)]
+    bad = [c for c in (cards or []) if not _card_ok(c)]
+    text = strip_card_pointers(reply)
+    if not text:
+        reports = [c for c in good if c["type"] == "report"]
+        if reports:
+            text = card_text(reports[-1])
+            good = [c for c in good if c["type"] != "report"]       # its content is the text now
+    if not text:
+        text = next((strip_card_pointers(t) for t in reversed(list(interim or [])) if strip_card_pointers(t)), "")
+    if not text:
+        text = "\n".join(t for t in (card_text(c) for c in good if c["type"] != "budget") if t)
+    if not text:
+        text = ("לא הצלחתי לנסח תשובה הפעם" + (f" (בדקתי: {_labels(trail, 6)})" if trail else "") +
+                ", ולא נשאר כאן שום כרטיס. שלח שוב ואנסה מחדש.")
+    extra = [t for t in (card_text(c) for c in bad) if t]
+    if extra:
+        text = text + "\n\n" + "\n".join(extra)
+    return text, good
+
+
 # ─── The task loop ───────────────────────────────────────────────────────────
 
 class _Task:
@@ -975,6 +1072,7 @@ class _Task:
         self.watch = _StopWatch(started_iso)
         self.calls, self.models = 0, []
         self.outcome, self.reply, self.not_started = "done", "", []
+        self.interim = []        # text the model said next to its tool calls (findings often live there)
 
     def _call(self, client, model, tools, system, msgs, max_tokens, effort, no_tools=False):
         kwargs = {"model": model, "max_tokens": max_tokens, "system": system,
@@ -1019,7 +1117,12 @@ class _Task:
             uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
             if response.stop_reason != "tool_use" or not uses or last:
                 self.reply = _text_of(response)
+                if not self.reply and self.turn.trail:
+                    self._findings(client, model, tools, system, last_usd, new_chars, first_chars)
                 return
+            said = _text_of(response)
+            if said:
+                self.interim.append(said)
             self.msgs.append({"role": "assistant", "content": _plain(response.content)})
             results, new_chars = [], 0
             for i, use in enumerate(uses):
@@ -1039,6 +1142,19 @@ class _Task:
             if time.time() > deadline - 20:
                 results.append({"type": "text", "text": "Time is nearly up: answer now with what you have."})
             self.msgs.append({"role": "user", "content": results})
+
+    def _findings(self, client, model, tools, system, last_usd, new_chars, first_chars):
+        """Tools ran but the final answer had no text: ONE more call, no tools,
+        asking for the findings in the message — only if it fits under the cap."""
+        est = estimate_step_usd(model, last_usd, new_chars, first_chars)
+        if self.spent + est > self.limit or self.watch.stopped():
+            return
+        try:
+            response, _ = self._call(client, model, tools, system, _with_note(self.msgs, FINDINGS_NOTE),
+                                     MAX_TOKENS, "low", no_tools=True)
+            self.reply = _text_of(response)
+        except Exception as e:
+            print(f"[{AGENT_NAME}] findings call failed: {type(e).__name__}")
 
     def _pause(self, client, model, tools, system, est):
         """Near the cap: ONE summary (a model call only if it still fits under
@@ -1129,7 +1245,8 @@ def ask(message: str, who: str, continue_task: str = "") -> dict:
             _RUNNING.discard(task_id)
     if task.outcome == "stopped":
         task.reply = stop_line(turn.trail, task.not_started)
-    reply = task.reply or "סיימתי לבדוק — הפרטים בכרטיסים למטה."
+    reply, cards = compose_reply(task.reply, turn.cards, turn.trail, task.interim)
+    turn.cards = cards
     state = {"status": task.outcome, "kind": kind, "started": started_iso, "spent_usd": round(task.spent, 6),
              "done": turn.trail[-60:]}
     if task.outcome == "paused":

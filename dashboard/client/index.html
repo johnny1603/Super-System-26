@@ -2080,6 +2080,16 @@ a.media-item:hover { border-color: var(--accent); }
               data-i18n="ml_refresh">רענון מ-Drive</button>
     </div>
     <div class="ml-hint" data-i18n="ml_where_hint">כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.</div>
+    <!-- Add by link (core/drive_pull.add_by_link): a Drive file / folder link
+         is COPIED inside Drive into this client's folder; nothing uploads -->
+    <div class="ml-toolbar">
+      <input type="url" id="mlLink" class="ml-search" dir="ltr" autocomplete="off"
+             data-i18n-placeholder="ml_link_ph" placeholder="הדביקו קישור לקובץ או לתיקייה ב-Google Drive"
+             data-i18n-aria-label="ml_link_aria" aria-label="קישור ל-Google Drive">
+      <button type="button" class="media-chip" id="mlLinkBtn" onclick="mlAddLink()" data-i18n="ml_link_add">הוספה מקישור</button>
+    </div>
+    <div class="drive-notice" id="mlLinkNotice" role="status" aria-live="polite"></div>
+    <div id="mlLinkFiles"></div>
     <div class="ml-toolbar">
       <input type="search" id="mlSearch" class="ml-search" dir="auto" autocomplete="off"
              data-i18n-placeholder="ml_search_ph" placeholder="חיפוש לפי שם…"
@@ -2844,6 +2854,30 @@ const DASH_I18N = {
   pkg_internal: { he:'חשבון פנימי — ללא חיוב', en:'Internal account — no billing', fr:'Compte interne — sans facturation', ar:'حساب داخلي — بدون فوترة', ru:'Внутренний аккаунт — без оплаты' },
   // Media library (docs/MEDIA-TAB.md)
   ml_refresh: { he:'רענון מ-Drive', en:'Refresh from Drive', fr:'Actualiser depuis Drive', ar:'تحديث من Drive', ru:'Обновить из Drive' },
+  ml_link_ph: { he:'הדביקו קישור לקובץ או לתיקייה ב-Google Drive', en:'Paste a Google Drive file or folder link', fr:'Collez un lien de fichier ou dossier Google Drive', ar:'الصق رابط ملف أو مجلد من Google Drive', ru:'Вставьте ссылку на файл или папку в Google Drive' },
+  ml_link_aria: { he:'קישור ל-Google Drive', en:'Google Drive link', fr:'Lien Google Drive', ar:'رابط Google Drive', ru:'Ссылка на Google Drive' },
+  ml_link_add: { he:'הוספה מקישור', en:'Add from link', fr:'Ajouter depuis le lien', ar:'إضافة من رابط', ru:'Добавить по ссылке' },
+  ml_link_empty: { he:'הדביקו קודם קישור מ-Google Drive.', en:'Paste a Google Drive link first.', fr:'Collez d’abord un lien Google Drive.', ar:'الصق رابطًا من Google Drive أولًا.', ru:'Сначала вставьте ссылку из Google Drive.' },
+  ml_link_opening: { he:'פותחים את הקישור…', en:'Opening the link…', fr:'Ouverture du lien…', ar:'نفتح الرابط…', ru:'Открываем ссылку…' },
+  ml_link_running: { he:'מעתיקים את "{name}" לתיקייה שלך: {done} מתוך {total}…', en:'Copying "{name}" to your folder: {done} of {total}…', fr:'Copie de « {name} » dans votre dossier : {done} sur {total}…', ar:'ننسخ "{name}" إلى مجلدك: {done} من {total}…', ru:'Копируем «{name}» в вашу папку: {done} из {total}…' },
+  ml_link_done: { he:'נוסף לתיקייה שלך ✓ {n} קבצים', en:'Added to your folder ✓ {n} files', fr:'Ajouté à votre dossier ✓ {n} fichiers', ar:'أُضيف إلى مجلدك ✓ {n} ملفات', ru:'Добавлено в вашу папку ✓ файлов: {n}' },
+  ml_link_done_some: { he:'{n} קבצים נוספו ✓ {failed} לא הועתקו — הסיבה ליד כל קובץ.', en:'{n} files added ✓ {failed} not copied — the reason is next to each file.', fr:'{n} fichiers ajoutés ✓ {failed} non copiés — la raison est à côté de chaque fichier.', ar:'أُضيف {n} ملفات ✓ لم يُنسخ {failed} — السبب بجانب كل ملف.', ru:'Добавлено файлов: {n} ✓ Не скопировано: {failed} — причина рядом с каждым файлом.' },
+  ml_link_not_shared: { he:'אין לנו עדיין גישה לקישור הזה. ב-Drive: לחיצה ימנית ← שיתוף ← הוסיפו את הכתובת הזו כצופה ← שליחה, ואז "הוספה מקישור" שוב:', en:'We can’t open this link yet. In Drive: right-click → Share → add this address as a viewer → Send, then “Add from link” again:', fr:'Nous ne pouvons pas encore ouvrir ce lien. Dans Drive : clic droit → Partager → ajoutez cette adresse en lecteur → Envoyer, puis « Ajouter depuis le lien » à nouveau :', ar:'لا يمكننا فتح هذا الرابط بعد. في Drive: انقر بزر الفأرة الأيمن ← مشاركة ← أضف هذا العنوان كمشاهد ← إرسال، ثم «إضافة من رابط» مجددًا:', ru:'Мы пока не можем открыть эту ссылку. В Drive: правый клик → Поделиться → добавьте этот адрес как читателя → Отправить, затем снова «Добавить по ссылке»:' },
+  ml_link_copy_email: { he:'העתקת הכתובת', en:'Copy address', fr:'Copier l’adresse', ar:'نسخ العنوان', ru:'Скопировать адрес' },
+  ml_link_copied: { he:'הועתק ✓', en:'Copied ✓', fr:'Copié ✓', ar:'تم النسخ ✓', ru:'Скопировано ✓' },
+  ml_link_bad: { he:'זה לא נראה כמו קישור ל-Google Drive. העתיקו אותו משורת הכתובת או מ"שיתוף" ← "העתקת קישור".', en:'That doesn’t look like a Google Drive link. Copy it from the address bar or Share → Copy link.', fr:'Cela ne ressemble pas à un lien Google Drive. Copiez-le depuis la barre d’adresse ou Partager → Copier le lien.', ar:'هذا لا يبدو كرابط Google Drive. انسخه من شريط العنوان أو مشاركة ← نسخ الرابط.', ru:'Это не похоже на ссылку Google Drive. Скопируйте её из адресной строки или «Поделиться → Копировать ссылку».' },
+  ml_link_trashed: { he:'הקובץ הזה נמצא בפח של Drive. שחזרו אותו ונסו שוב.', en:'This file is in the Drive trash. Restore it and try again.', fr:'Ce fichier est dans la corbeille de Drive. Restaurez-le et réessayez.', ar:'هذا الملف في سلة Drive. استعده وحاول مجددًا.', ru:'Этот файл в корзине Drive. Восстановите его и попробуйте снова.' },
+  ml_link_own: { he:'הקישור הזה כבר מצביע על אחסון המערכת. כאן מוסיפים קבצים מה-Drive שלכם.', en:'This link already points into the system’s storage. This adds files from your own Drive.', fr:'Ce lien pointe déjà vers le stockage du système. Ici, on ajoute des fichiers de votre propre Drive.', ar:'هذا الرابط يشير إلى تخزين النظام. هنا تُضاف ملفات من Drive الخاص بك.', ru:'Эта ссылка уже ведёт в хранилище системы. Здесь добавляются файлы из вашего собственного Drive.' },
+  ml_link_client_drive: { he:'הקבצים שלכם נשמרים ב-Drive שלכם עצמו — שימו את הקובץ בתיקיית uallak שם והוא יופיע כאן.', en:'Your files live in your own Drive — put the file in your uallak folder there and it shows up here.', fr:'Vos fichiers sont dans votre propre Drive — placez le fichier dans votre dossier uallak et il apparaîtra ici.', ar:'ملفاتك محفوظة في Drive الخاص بك — ضع الملف في مجلد uallak هناك وسيظهر هنا.', ru:'Ваши файлы хранятся в вашем Drive — положите файл в папку uallak, и он появится здесь.' },
+  ml_link_busy: { he:'כבר מעתיקים לתיקייה שלכם קבצים מקישור אחר. כשזה יסתיים, נסו שוב.', en:'Files from another link are being copied to your folder. Try again when that’s done.', fr:'Des fichiers d’un autre lien sont en cours de copie. Réessayez une fois terminé.', ar:'يجري نسخ ملفات من رابط آخر إلى مجلدك. حاول مجددًا عند الانتهاء.', ru:'Сейчас копируются файлы по другой ссылке. Попробуйте снова, когда закончится.' },
+  ml_link_trouble: { he:'Drive לא ענה כרגע. נסו שוב בעוד רגע.', en:'Drive didn’t answer just now. Try again in a moment.', fr:'Drive n’a pas répondu. Réessayez dans un instant.', ar:'لم يستجب Drive الآن. حاول مجددًا بعد لحظة.', ru:'Drive сейчас не ответил. Попробуйте через минуту.' },
+  ml_link_st_pending: { he:'ממתין', en:'Waiting', fr:'En attente', ar:'بالانتظار', ru:'Ожидает' },
+  ml_link_st_copied: { he:'נוסף ✓', en:'Added ✓', fr:'Ajouté ✓', ar:'أُضيف ✓', ru:'Добавлен ✓' },
+  ml_link_st_already: { he:'כבר היה בתיקייה ✓', en:'Already in your folder ✓', fr:'Déjà dans votre dossier ✓', ar:'موجود في مجلدك مسبقًا ✓', ru:'Уже в вашей папке ✓' },
+  ml_link_st_no_access: { he:'אין גישה לקובץ הזה — שתפו גם אותו', en:'No access to this file — share it too', fr:'Pas d’accès à ce fichier — partagez-le aussi', ar:'لا وصول لهذا الملف — شاركه أيضًا', ru:'Нет доступа к этому файлу — откройте доступ и к нему' },
+  ml_link_st_copy_blocked: { he:'בעל הקובץ חסם העתקה שלו', en:'The file’s owner blocked copying it', fr:'Le propriétaire a bloqué la copie', ar:'مالك الملف منع نسخه', ru:'Владелец файла запретил копирование' },
+  ml_link_st_skipped: { he:'דולג (בפח)', en:'Skipped (in trash)', fr:'Ignoré (corbeille)', ar:'تم التخطي (في السلة)', ru:'Пропущен (в корзине)' },
+  ml_link_st_failed: { he:'לא הועתק — נסו שוב מאוחר יותר', en:'Not copied — try again later', fr:'Non copié — réessayez plus tard', ar:'لم يُنسخ — حاول لاحقًا', ru:'Не скопирован — попробуйте позже' },
   ml_where_hint: { he:'כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.', en:'To see a file here, send it with the + button in a chat, or put it in your Drive folder (a subfolder works too). The list updates on its own when you open this tab.', fr:'Pour voir un fichier ici, envoyez-le avec le bouton + dans une discussion, ou mettez-le dans votre dossier Drive (un sous-dossier convient aussi). La liste se met à jour seule à l’ouverture de cet onglet.', ar:'لكي يظهر ملف هنا: أرسله بزر + في المحادثة، أو ضعه في مجلدك على Drive (المجلد الفرعي يصلح أيضًا). تتحدث القائمة تلقائيًا عند فتح هذا التبويب.', ru:'Чтобы файл появился здесь, отправьте его кнопкой + в чате или положите в свою папку Drive (подойдёт и вложенная папка). Список обновляется сам, когда вы открываете эту вкладку.' },
   ml_search_ph: { he:'חיפוש לפי שם…', en:'Search by name…', fr:'Rechercher par nom…', ar:'البحث بالاسم…', ru:'Поиск по имени…' },
   ml_search_aria: { he:'חיפוש קבצים', en:'Search files', fr:'Rechercher des fichiers', ar:'البحث في الملفات', ru:'Поиск файлов' },
@@ -8173,6 +8207,98 @@ async function loadLibrary(opts) {
 
 // Older callers (TikTok connect, language change) keep working
 function loadDriveMirror(_folder, refresh) { return loadLibrary({ refresh: Boolean(refresh) }); }
+
+// ─── Add by link: a Drive file / folder link → copied into this client's
+// folder inside Drive (POST /api/client/media/add-link, core/drive_pull).
+// A link we can't open → ONE calm line + the address to share with (copyable).
+const ML_LINK_ERR = { bad_ref: 'ml_link_bad', trashed: 'ml_link_trashed', own_storage: 'ml_link_own',
+                      client_drive: 'ml_link_client_drive', busy: 'ml_link_busy' };
+const ML_LINK_ST = { pending: 'ml_link_st_pending', copied: 'ml_link_st_copied', already: 'ml_link_st_already',
+                     already_same: 'ml_link_st_already', no_access: 'ml_link_st_no_access',
+                     copy_blocked: 'ml_link_st_copy_blocked', skipped_trashed: 'ml_link_st_skipped',
+                     skipped_folder: 'ml_link_st_skipped' };
+let mlLinkPoll = null;
+
+function mlLinkNote(html) { const el = document.getElementById('mlLinkNotice'); if (el) el.innerHTML = html || ''; }
+
+function mlLinkRender(job) {
+  const t = uallakI18n.t;
+  const box = document.getElementById('mlLinkFiles');
+  if (!job || !job.id) { box.innerHTML = ''; return false; }
+  const c = job.counts || {};
+  const active = job.status === 'queued' || job.status === 'running';
+  const added = (c.copied || 0) + (c.already || 0) + (c.already_same || 0);
+  const failed = (job.total || 0) - added - (c.pending || 0) - (c.skipped_trashed || 0) - (c.skipped_folder || 0);
+  if (active) {
+    mlLinkNote(esc(t('ml_link_running', { name: job.source_name || '', done: (job.total || 0) - (c.pending || 0),
+                                          total: job.total || 0 })));
+  } else {
+    mlLinkNote(esc(failed > 0 ? t('ml_link_done_some', { n: added, failed }) : t('ml_link_done', { n: added })));
+  }
+  box.innerHTML = (job.files || []).length > 1 || failed > 0 ? `<div class="ml-hint">${(job.files || []).map(f =>
+    `${esc(f.name || '')} — ${esc(t(ML_LINK_ST[f.status] || 'ml_link_st_failed'))}`).join('<br>')}</div>` : '';
+  return active;
+}
+
+function mlLinkStopPoll() { if (mlLinkPoll) { clearTimeout(mlLinkPoll); mlLinkPoll = null; } }
+
+async function mlLinkCall(path, body) {
+  const res = await fetch(path, { method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  if (res.status === 401) { window.location.href = '/login/'; return null; }
+  return res.json().catch(() => ({ success: false, data: { code: 'drive_trouble' } }));
+}
+
+function mlLinkRefused(d) {
+  const t = uallakI18n.t;
+  if (d.code === 'not_shared') {
+    mlLinkNote(`${esc(t('ml_link_not_shared'))} <code dir="ltr" id="mlShareWith">${esc(d.share_with || '')}</code>
+      <button type="button" class="media-chip" onclick="mlCopyShareWith(this)">${esc(t('ml_link_copy_email'))}</button>`);
+    return;
+  }
+  mlLinkNote(esc(t(ML_LINK_ERR[d.code] || 'ml_link_trouble')));
+}
+
+async function mlCopyShareWith(btn) {
+  const text = (document.getElementById('mlShareWith') || {}).textContent || '';
+  try { await navigator.clipboard.writeText(text); btn.textContent = uallakI18n.t('ml_link_copied'); }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents(document.getElementById('mlShareWith'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+}
+
+async function mlLinkTick() {
+  mlLinkStopPoll();
+  let body;
+  try { body = await mlLinkCall('/api/client/media/add-link/step'); } catch (e) { body = null; }
+  if (!body) { mlLinkPoll = setTimeout(mlLinkTick, 8000); return; }
+  if (!body.success) { mlLinkRefused(body.data || {}); return; }
+  if (mlLinkRender((body.data || {}).job)) mlLinkPoll = setTimeout(mlLinkTick, 3000);
+  else loadLibrary({ refresh: true, silent: true });
+}
+
+async function mlAddLink() {
+  const t = uallakI18n.t;
+  const input = document.getElementById('mlLink');
+  const link = (input.value || '').trim();
+  if (!link) { mlLinkNote(esc(t('ml_link_empty'))); return; }
+  const btn = document.getElementById('mlLinkBtn');
+  btn.disabled = true;
+  mlLinkStopPoll();
+  document.getElementById('mlLinkFiles').innerHTML = '';
+  mlLinkNote(esc(t('ml_link_opening')));
+  try {
+    const body = await mlLinkCall('/api/client/media/add-link', { link });
+    if (!body) return;
+    if (!body.success) { mlLinkRefused(body.data || {}); return; }
+    input.value = '';
+    if (mlLinkRender((body.data || {}).job)) mlLinkPoll = setTimeout(mlLinkTick, 3000);
+    else loadLibrary({ refresh: true, silent: true });
+  } catch (e) {
+    mlLinkNote(esc(t('ml_link_trouble')));
+  } finally { btn.disabled = false; }
+}
 
 async function openMediaLibrary() {
   if (!driveMirror.opened) {

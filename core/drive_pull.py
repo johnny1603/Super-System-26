@@ -39,6 +39,8 @@ STEP_BUDGET_S = 25             # one poll of the admin page
 FILE_MARGIN_S = 8              # don't start a copy with less than this left
 LEASE_S = 300
 MAX_FILES = 500                # one job
+MERGE_MAX_FILES = 2000         # a folder merge (core/drive_merge)
+MODES = ("pull", "merge")
 MAX_SELECTIONS = 200
 MAX_DEPTH = 6
 RETRIES = 3
@@ -52,6 +54,7 @@ _HOLDER = uuid.uuid4().hex[:10]
 
 # The admin page's words for a file's outcome (never Drive's raw error)
 FILE_LABELS = {"pending": "ממתין", "copied": "הועתק ✓", "already": "כבר היה שם ✓",
+               "already_same": "כבר קיים שם (אותו שם וגודל) ✓",
                "skipped_trashed": "דולג — בפח", "skipped_folder": "דולג — תיקייה",
                "no_access": "אין גישה לקובץ — שתפו אותו עם חשבון השירות",
                "copy_blocked": "הבעלים חסם העתקה של הקובץ הזה",
@@ -96,17 +99,30 @@ def _log(message: str):
 
 _REF_PATTERNS = (re.compile(r"/folders/([A-Za-z0-9_-]{10,})"), re.compile(r"/d/([A-Za-z0-9_-]{10,})"),
                  re.compile(r"[?&]id=([A-Za-z0-9_-]{10,})"))
+# A Google Drive / Docs link inside free text (the client chat): drive.google.com
+# (file/d, open?id=, uc?id=, drive/u/N/folders) and docs.google.com (document,
+# spreadsheets, presentation, forms … /d/ID), with or without query params.
+_LINK_RX = re.compile(r"https?://(?:drive|docs)\.google\.com/[^\s<>\"'()\[\]]+", re.IGNORECASE)
 
 
 def parse_ref(text: str) -> str:
     """A Drive folder/file id from a pasted link (…/folders/ID, …/file/d/ID,
-    …?id=ID) or a bare id; "" when there is none."""
+    docs.google.com/…/d/ID, …open?id=ID, …uc?id=ID — query params and
+    fragments ignored) or a bare id; "" when there is none."""
     text = str(text or "").strip()
     for pattern in _REF_PATTERNS:
         match = pattern.search(text)
         if match:
             return match.group(1)
     return text if _ID_RE.match(text) else ""
+
+
+def find_link(text: str) -> str:
+    """The first Google Drive / Docs link in a chat message whose id parses, or ""."""
+    for match in _LINK_RX.finditer(str(text or "")):
+        if parse_ref(match.group(0)):
+            return match.group(0)
+    return ""
 
 
 def share_with() -> str:
@@ -250,10 +266,22 @@ def _lease_release(client_id, token):
 
 # ─── Start ──────────────────────────────────────────────────────────────────
 
-def start(client_id: int, selections: list, target: str = "auto", who: str = "admin") -> dict:
+def start(client_id: int, selections: list, target: str = "auto", who: str = "admin",
+          mode: str = "pull", source: dict = None) -> dict:
     """A new job: `selections` = [{"id", "kind"}] picked on the page (files
     and/or folders — a folder means everything in it, sub-folders included).
-    Raises PullRefused(code, text) with a calm line."""
+    mode "merge" (core/drive_merge): the folder's own sub-folder structure is
+    kept under the client's root and a file already there with the same name
+    and size is skipped. `source` {id, name, kind}: what was pasted / chosen —
+    an ACTIVE job for the same source is returned as it is (a repeated link
+    never starts a second job). Raises PullRefused(code, text) with a calm line."""
+    if mode not in MODES:
+        raise PullRefused("bad_mode", "סוג משיכה לא מוכר.")
+    if source and source.get("id"):
+        same = next((j for j in load(client_id) if j.get("status") in ACTIVE
+                     and (j.get("source") or {}).get("id") == source["id"] and j.get("mode", "pull") == mode), None)
+        if same:
+            return view(same)
     from agents.client_agent import get_client
     from core import deletion_guard, drive_storage
     client = get_client(int(client_id)) or {}
@@ -278,10 +306,13 @@ def start(client_id: int, selections: list, target: str = "auto", who: str = "ad
     if any(j.get("status") in ACTIVE for j in load(client_id)):
         raise PullRefused("busy", "יש כבר משיכה פעילה ללקוח הזה. חכו שתסתיים.")
     job = {"id": uuid.uuid4().hex[:12], "client_id": int(client_id), "target": target, "who": str(who)[:80],
-           "status": "queued", "created_at": _iso(), "updated_at": _iso(),
-           "folders": [{"id": p["id"], "depth": 0} for p in picked if p["kind"] == "folder"],
-           "files": [{"id": p["id"], "status": "pending", "attempts": 0} for p in picked if p["kind"] == "file"],
+           "mode": mode, "status": "queued", "created_at": _iso(), "updated_at": _iso(),
+           "folders": [{"id": p["id"], "depth": 0, "path": []} for p in picked if p["kind"] == "folder"],
+           "files": [{"id": p["id"], "status": "pending", "attempts": 0, "path": []}
+                     for p in picked if p["kind"] == "file"],
            "truncated": False, "folder_errors": 0, "usage": None}
+    if source:
+        job["source"] = {k: str(source.get(k) or "")[:200] for k in ("id", "name", "kind")}
     jobs = load(client_id)
     jobs.append(job)
     _save(client_id, jobs)
@@ -304,8 +335,10 @@ def _expand(job: dict, deadline: float):
     by MAX_FILES. Shortcuts become their target file."""
     from core import drive_service as drive
     known = {f["id"] for f in job["files"]}
+    limit = MERGE_MAX_FILES if job.get("mode") == "merge" else MAX_FILES
     while job["folders"] and time.monotonic() < deadline - FILE_MARGIN_S:
         folder = job["folders"].pop(0)
+        path = list(folder.get("path") or [])
         page_token = ""
         try:
             while True:
@@ -314,17 +347,18 @@ def _expand(job: dict, deadline: float):
                     item = _item(raw)
                     if item["kind"] == "folder":
                         if folder["depth"] + 1 <= MAX_DEPTH:
-                            job["folders"].append({"id": item["id"], "depth": folder["depth"] + 1})
+                            job["folders"].append({"id": item["id"], "depth": folder["depth"] + 1,
+                                                   "path": path + [item["name"]]})
                         continue
                     fid = item.get("target_id") if item["kind"] == "shortcut" else item["id"]
                     if not fid or fid in known:
                         continue
-                    if len(job["files"]) >= MAX_FILES:
+                    if len(job["files"]) >= limit:
                         job["truncated"] = True
                         break
                     known.add(fid)
                     job["files"].append({"id": fid, "status": "pending", "attempts": 0,
-                                         "name": item["name"], "size": item["size"]})
+                                         "name": item["name"], "size": item["size"], "path": path})
                 page_token = page["next_page_token"]
                 if not page_token or job["truncated"]:
                     break
@@ -362,13 +396,27 @@ def _copy_one(job: dict, entry: dict):
         if (meta.get("capabilities") or {}).get("canCopy") is False:
             entry["status"] = "copy_blocked"
             return
-        folder = _target_folder(meta.get("mimeType") or "", job["target"])
-        parent = media_agent._subfolder(client_id, folder)
+        if job.get("mode") == "merge":
+            # The same sub-folder structure under the client's connected root
+            path = [str(p) for p in (entry.get("path") or []) if str(p).strip()]
+            folder = "/".join(path)
+            parent = media_agent._subfolder(client_id, *path) if path else \
+                media_agent.ensure_client_media_root(client_id)
+        else:
+            folder = _target_folder(meta.get("mimeType") or "", job["target"])
+            parent = media_agent._subfolder(client_id, folder)
         with _service_account():
             existing = drive.find_by_app_property(parent, PULLED_KEY, entry["id"])
             if existing:
                 entry.update(status="already", copy_id=existing[0].get("id"), folder=folder)
                 return
+            if job.get("mode") == "merge":
+                size = str(meta.get("size") or "")
+                same = [f for f in drive.find_in_folder_by_name(parent, meta.get("name") or "")
+                        if str(f.get("size") or "") == size]
+                if same:
+                    entry.update(status="already_same", copy_id=same[0].get("id"), folder=folder)
+                    return
             copied = drive.copy_file(entry["id"], parent, meta.get("name") or "", {PULLED_KEY: entry["id"]})
         entry.update(status="copied", copy_id=copied.get("id"), folder=folder)
     except Exception as e:
@@ -488,6 +536,7 @@ def view(job: dict) -> dict:
         usage = {**usage, "gb": round(usage["bytes"] / 1024 ** 3, 2),
                  "alert_gb": round((usage.get("alert_bytes") or 0) / 1024 ** 3, 1)}
     return {"id": job.get("id"), "client_id": job.get("client_id"), "status": job.get("status"),
+            "mode": job.get("mode", "pull"), "source": job.get("source") or {},
             "target": job.get("target"), "created_at": job.get("created_at"),
             "finished_at": job.get("finished_at", ""), "folders_left": len(job.get("folders") or []),
             "truncated": bool(job.get("truncated")), "folder_errors": int(job.get("folder_errors") or 0),
@@ -496,6 +545,161 @@ def view(job: dict) -> dict:
                        "label": FILE_LABELS.get(f["status"], f["status"]), "folder": f.get("folder", ""),
                        "size": f.get("size"), "attempts": f.get("attempts", 0)} for f in files],
             "usage": usage}
+
+
+# ─── Add by link (Media tab, /admin/drive/, the client chat card) ────────────
+# 2026-11-11. One pasted link → the file (or the whole folder) copied INSIDE
+# Drive into the client's videos/ / images/ / documents/ by type — the same
+# durable job as above. A link we can't open → one calm line naming the
+# address to share with. A repeated link: the same active job, or per file
+# "already there" (appProperties) — never a duplicate.
+
+_media_drive_id = {"at": 0.0, "id": ""}
+
+
+def _our_drive_id() -> str:
+    """The Shared Drive that holds EVERY client's folder (cached 10 min)."""
+    from core import drive_service as drive, drive_storage
+    if _media_drive_id["id"] and _media_drive_id["at"] > time.time() - 600:
+        return _media_drive_id["id"]
+    root = drive_storage.shared_parent_id()
+    drive_id = ""
+    if root:
+        try:
+            with _service_account():
+                drive_id = drive.get_meta(root, "id,driveId").get("driveId") or ""
+        except Exception:
+            drive_id = ""
+    _media_drive_id.update(at=time.time(), id=drive_id)
+    return drive_id
+
+
+def source(ref: str, for_client: bool = False) -> dict:
+    """What a pasted link points at, read as the service account:
+    {id, name, kind ("file"/"folder"), mime_type, size}. Raises PullRefused:
+    bad_ref, not_shared (.share_with on the exception), trashed, own_storage
+    (a CLIENT pasting a link into our Shared Drive — that is every client's
+    storage, so a client never pulls from it), drive_trouble."""
+    from core import drive_service as drive
+    source_id = parse_ref(ref)
+    if not source_id:
+        raise PullRefused("bad_ref", "זה לא נראה כמו קישור לקובץ או לתיקייה ב-Drive. העתיקו את הקישור משורת הכתובת.")
+    try:
+        with _service_account():
+            meta = drive.get_meta(source_id, "id,name,mimeType,size,trashed,driveId,"
+                                             "shortcutDetails(targetId,targetMimeType)")
+            if meta.get("mimeType") == drive.SHORTCUT_MIME and (meta.get("shortcutDetails") or {}).get("targetId"):
+                meta = drive.get_meta(meta["shortcutDetails"]["targetId"],
+                                      "id,name,mimeType,size,trashed,driveId")
+    except Exception as e:
+        if _unreachable(e):
+            refused = PullRefused("not_shared", not_shared_line())
+            refused.share_with = share_with()
+            raise refused from None
+        _log(f"source {source_id} unreadable ({drive.classify_error(e)})")
+        raise PullRefused("drive_trouble", "Drive לא ענה כרגע. נסו שוב בעוד רגע.") from None
+    if meta.get("trashed"):
+        raise PullRefused("trashed", "הקובץ הזה נמצא בפח של Drive.")
+    if for_client and meta.get("driveId") and meta.get("driveId") == _our_drive_id():
+        raise PullRefused("own_storage", "הקישור הזה מצביע על אחסון המערכת עצמה — אפשר להוסיף רק קבצים מה-Drive שלכם.")
+    kind = "folder" if meta.get("mimeType") == drive.FOLDER_MIME else "file"
+    return {"id": meta.get("id") or source_id, "name": meta.get("name") or "", "kind": kind,
+            "mime_type": meta.get("mimeType") or "",
+            "size": int(meta["size"]) if str(meta.get("size") or "").isdigit() else None}
+
+
+def add_by_link(client_id: int, ref: str, who: str = "admin", for_client: bool = False,
+                budget_s: float = 15.0) -> dict:
+    """Paste → copy. Starts (or returns the active) job for this source and
+    moves it a little right away, so a single file is usually done in this
+    request. {"job": view, "source": {...}}. Raises PullRefused."""
+    src = source(ref, for_client=for_client)
+    job = start(client_id, [{"id": src["id"], "kind": src["kind"]}], "auto", who=who, source=src)
+    moved = step(client_id, budget_s) if budget_s > 0 else {}
+    if moved and moved.get("id") == job.get("id"):
+        job = moved
+    return {"job": job, "source": src}
+
+
+# ─── Attach an existing file from ANYWHERE the service account can see ──────
+# Admin action + Control Room card (core/agent_actions attach_existing_media).
+# Another client's folder, the second folder of the same client, a folder the
+# owner shared: searched across every drive (corpora=allDrives), shown as
+# candidates (name, folder path, date, size), the chosen one COPIED into the
+# client's connected folder. The original is never moved or deleted.
+
+ANYWHERE_CANDIDATES = 8
+
+
+def find_anywhere(text: str, client_id: int = 0, limit: int = ANYWHERE_CANDIDATES) -> dict:
+    """{"candidates": [{id, name, kind, folder, modified_time, size,
+    in_client_folder}], "words"} for a file name or a pasted id/link.
+    ADMIN ONLY — it sees every client's files. Raises on Drive trouble."""
+    from core import drive_service as drive, media_search
+    from core.drive_mirror import kind_of
+    ref = parse_ref(text) if (_LINK_RX.search(str(text or "")) or _ID_RE.match(str(text or "").strip())) else ""
+    paths = {}
+    with _service_account():
+        if ref:
+            try:
+                raw = [drive.get_meta(ref, drive.ANYWHERE_FIELDS)]
+            except Exception as e:
+                if _unreachable(e):
+                    return {"candidates": [], "words": [], "not_shared": True, "share_with": share_with()}
+                raise
+            raw = [r for r in raw if r.get("mimeType") != drive.FOLDER_MIME and not r.get("trashed")]
+            words = []
+        else:
+            words = sorted({w for w in media_search.query_words(text) if len(w) >= 2} or
+                           set(media_search.query_words(text)), key=len, reverse=True)
+            if not words:
+                return {"candidates": [], "words": []}
+            raw = drive.search_everywhere(words[:1], page_size=200)
+            if not raw and len(words) > 1:
+                raw = drive.search_everywhere(words[1:2], page_size=200)
+        items = [{"id": r.get("id", ""), "name": r.get("name", ""), "kind": kind_of(r.get("mimeType") or ""),
+                  "mime_type": r.get("mimeType") or "", "modified_time": r.get("modifiedTime", ""),
+                  "size": int(r["size"]) if str(r.get("size") or "").isdigit() else None,
+                  "parents": r.get("parents") or [], "folder": ""} for r in raw]
+        items = [i for i in items if i["kind"] not in ("folder", "shortcut")]
+        if not ref:
+            items = media_search.search(items, text, best_only=True)
+        items = items[:max(1, int(limit))]
+        for item in items:
+            item["folder"] = drive.folder_path(item["id"], _cache=paths)
+    client_root = ""
+    if client_id:
+        try:
+            from core import drive_mirror
+            client_root = drive_mirror.shared_client_root(int(client_id))
+        except Exception:
+            client_root = ""
+    out = []
+    for item in items:
+        item["in_client_folder"] = bool(client_root) and _under(item["parents"], client_root, paths)
+        item.pop("parents", None)
+        out.append(item)
+    return {"candidates": out, "words": words}
+
+
+def _under(parents: list, root: str, paths: dict) -> bool:
+    """Does a file with these parents sit under `root`? Uses the parent walk
+    folder_path already cached ({id: (name, parent)})."""
+    current, hops = (parents or [""])[0], 0
+    while current and hops < MAX_DEPTH + 2:
+        if current == root:
+            return True
+        current = (paths.get(current) or ("", ""))[1]
+        hops += 1
+    return False
+
+
+def attach_existing(client_id: int, file_id: str, who: str = "admin", budget_s: float = 15.0) -> dict:
+    """Copy ONE file the service account can see into the client's connected
+    folder (videos/ images/ documents/ by type). Same job, same idempotency."""
+    if not _ID_RE.match(str(file_id or "")):
+        raise PullRefused("bad_ref", "מזהה קובץ לא תקין.")
+    return add_by_link(client_id, file_id, who=who, for_client=False, budget_s=budget_s)
 
 
 def latest(client_id: int) -> dict:

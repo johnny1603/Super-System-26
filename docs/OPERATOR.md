@@ -69,6 +69,33 @@ card on /admin/operator/ (per-kind averages and maxima + the latest 40). Tune th
 No Cloud Run setting changed (no min instances, no --no-cpu-throttling).
 Tests: `tests/test_operator_budget.py`.
 
+## Reply text — the findings are always in the message (2026-11-11)
+
+**The bug.** The owner asked twice and both times got only "סיימתי לבדוק — הפרטים בכרטיסים למטה",
+with no card under it.
+- When the last model step came back with no text, `ask` replaced the empty text with that fixed
+  line. It did so whether or not a card existed. An empty step can be thinking only, or the
+  findings may have been written next to a tool call such as `write_report`.
+- The line was then stored as Itzik's own answer and fed back as history, so the next run repeated it.
+
+**Now** (`compose_reply`, `strip_card_pointers`, `_Task._findings` in `core/operator_agent.py`):
+- **Tools ran but the final text is empty:** ONE more call with no tools asks for the findings in
+  the message itself. It runs only if it fits under the task cap.
+- **Still empty:** the text is built from what is there, in this order:
+  1. the report's own content;
+  2. the text the model wrote next to its tool calls;
+  3. each card's content;
+  4. an honest line that says what was checked and that no card is attached.
+- **Card types:** a card whose type is not one the chat draws (`RENDERED_CARD_TYPES`), or whose
+  payload is broken, goes into the text and is not sent as a card. The chat (`itzik-chat.js`
+  `renderCard`) also draws any card it cannot render as plain text, so a card never vanishes silently.
+- **Pointers:** a sentence like "the details are in the card(s) below" is removed unless a card the
+  chat can draw is attached. Old replies like that are no longer fed back as history.
+- **The prompt:** it now says the report is a saved copy; the final message states the findings itself.
+
+Tests: `tests/test_operator_reply.py`. It replays the exact case: two asks, an empty final step,
+and the old line in history.
+
 The rest of this page says "the operator" for the same agent.
 Built 2026-11-01. Phone-first page; the API under `/api/admin/operator/*` is plain JSON so a
 phone app can use it later (it will need its own auth — see "Recommended next").

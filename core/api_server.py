@@ -3570,6 +3570,95 @@ def admin_drive_pull_latest(client_id: int, request: Request):
     from core import drive_pull
     return {"success": True, "data": drive_pull.latest(client_id)}
 
+class DriveAddLinkRequest(BaseModel):
+    client_id: int = 0
+    link: str = ""
+
+@app.post("/api/admin/drive-pull/add-link")
+def admin_drive_pull_add_link(req: DriveAddLinkRequest, request: Request):
+    # "Add by link": paste a file / folder link → copied inside Drive into the
+    # client's videos/ images/ documents/ (core/drive_pull.add_by_link)
+    _require_admin(request)
+    from core import drive_pull
+    try:
+        out = drive_pull.add_by_link(req.client_id, req.link, who="admin")
+    except drive_pull.PullRefused as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text,
+                                           "share_with": getattr(e, "share_with", "")}}
+    return {"success": True, "data": out}
+
+class DriveFindAnywhereRequest(BaseModel):
+    client_id: int = 0
+    query: str = ""
+
+@app.post("/api/admin/drive/find-anywhere")
+def admin_drive_find_anywhere(req: DriveFindAnywhereRequest, request: Request):
+    # READ-ONLY: a file by name / id anywhere the service account can see
+    # (every client's folder) — admin only, never a client route
+    _require_admin(request)
+    from core import drive_pull, drive_service
+    try:
+        return {"success": True, "data": drive_pull.find_anywhere(req.query, req.client_id)}
+    except Exception as e:
+        return {"success": False, "data": {"code": drive_service.classify_error(e),
+                                           "text": "Drive לא ענה לחיפוש כרגע. נסו שוב בעוד רגע."}}
+
+class DriveAttachRequest(BaseModel):
+    client_id: int
+    file_id: str
+
+@app.post("/api/admin/drive/attach")
+def admin_drive_attach(req: DriveAttachRequest, request: Request):
+    # Copy ONE file found anywhere into the client's connected folder. The
+    # original is never moved or deleted.
+    _require_admin(request)
+    from core import drive_pull
+    try:
+        return {"success": True, "data": drive_pull.attach_existing(req.client_id, req.file_id, who="admin")}
+    except drive_pull.PullRefused as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text,
+                                           "share_with": getattr(e, "share_with", "")}}
+
+@app.get("/api/admin/drive/merge/{client_id}")
+def admin_drive_merge_plan(client_id: int, request: Request):
+    # READ-ONLY: every folder named like the client, which one is connected,
+    # file counts (core/drive_merge.plan)
+    _require_admin(request)
+    from core import drive_merge, drive_service
+    try:
+        return {"success": True, "data": drive_merge.plan(client_id)}
+    except drive_merge.MergeRefused as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text}}
+    except Exception as e:
+        return {"success": False, "data": {"code": drive_service.classify_error(e),
+                                           "text": "Drive לא ענה כרגע. נסו שוב בעוד רגע."}}
+
+class DriveMergeRequest(BaseModel):
+    source_folder_id: str
+
+@app.post("/api/admin/drive/merge/{client_id}/start")
+def admin_drive_merge_start(client_id: int, req: DriveMergeRequest, request: Request):
+    # COPIES everything from the other folder into the connected one, same
+    # sub-folders, skipping same name+size. Deletes nothing. Durable job —
+    # progress through /api/admin/drive-pull/{client_id}/step.
+    _require_admin(request)
+    from core import drive_merge
+    try:
+        return {"success": True, "data": drive_merge.start(client_id, req.source_folder_id, who="admin")}
+    except drive_merge.MergeRefused as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text}}
+
+@app.get("/api/admin/drive/media-diagnose", dependencies=_admin_only)
+def admin_drive_media_diagnose(client_id: int, find: str = ""):
+    # READ-ONLY (X-Admin-Key): scripts/diagnose_media.py — the stored folder
+    # id, the raw tree of every folder named like the client, the find tools'
+    # answer for `find`. No token, no file body.
+    from core import drive_merge
+    try:
+        return {"success": True, "data": drive_merge.media_diagnosis(client_id, find[:200])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)[:300]}")
+
 @app.get("/api/admin/drive/diagnose/{client_id}")
 def admin_drive_diagnose(client_id: int, request: Request):
     # READ-ONLY: what Drive returns for the client's folder next to what the
@@ -6025,6 +6114,55 @@ def client_media_send(req: MediaSendRequest, request: Request):
     from core import media_library
     media_library.forget(client_id)
     return {"success": True, "data": data}
+
+class ClientAddLinkRequest(BaseModel):
+    link: str = ""
+
+def _client_link_answer(client_id: int, fn) -> dict:
+    from core import drive_pull
+    try:
+        out = fn()
+    except drive_pull.PullRefused as e:
+        return {"success": False, "data": {"code": e.code, "share_with": getattr(e, "share_with", "")}}
+    except Exception as e:
+        print(f"[media add-link] client {client_id}: {type(e).__name__}")
+        return {"success": False, "data": {"code": "drive_trouble", "share_with": ""}}
+    from core import media_library
+    media_library.forget(client_id)
+    job = (out or {}).get("job") if isinstance(out, dict) and "job" in out else out
+    return {"success": True, "data": {"job": _client_job(job or {})}}
+
+def _client_job(job: dict) -> dict:
+    # The client sees names + a status CODE (the tab words it in their
+    # language), never the admin's Hebrew labels or Drive ids
+    return {"id": job.get("id", ""), "status": job.get("status", ""), "total": job.get("total", 0),
+            "counts": job.get("counts") or {}, "source_name": (job.get("source") or {}).get("name", ""),
+            "files": [{"name": f.get("name"), "status": f.get("status"), "folder": f.get("folder", "")}
+                      for f in (job.get("files") or [])[:200]]}
+
+@app.post("/api/client/media/add-link")
+def client_media_add_link(req: ClientAddLinkRequest, request: Request):
+    # The Media tab's "add by link": a Drive file / folder link → copied INSIDE
+    # Drive into the client's own folder (core/drive_pull.add_by_link,
+    # for_client: never from our own Shared Drive). A link we can't open →
+    # code not_shared + the address to share with. Plain `def`: Drive calls.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from core import drive_pull, drive_storage
+    if drive_storage.location(client_id).get("kind") != drive_storage.SHARED:
+        return {"success": False, "data": {"code": "client_drive", "share_with": ""}}
+    return _client_link_answer(client_id, lambda: drive_pull.add_by_link(
+        client_id, req.link[:2000], who="client_media_tab", for_client=True))
+
+@app.post("/api/client/media/add-link/step")
+def client_media_add_link_step(request: Request):
+    # The tab's poll while a copy runs: moves it a little, returns it
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from core import drive_pull
+    return _client_link_answer(client_id, lambda: drive_pull.step(client_id, 15))
 
 @app.get("/api/admin/control-room/{client_id}/media-drive")
 def admin_media_drive(client_id: int, request: Request, folder: str = "", page_token: str = "",

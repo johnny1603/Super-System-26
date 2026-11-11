@@ -607,6 +607,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `media_seen:<id>`, deletion + guard cover it), "Sent" badges, duplicates show folder + date,
   multi-select → ONE `send_tiktok_batch` card (2–10 videos, a durable job each) or one YouTube
   card. `tests/test_media_tab.py`.
+- **Add by link / attach from anywhere / merge folders (2026-11-11, `docs/DRIVE-PULL.md`)**:
+  - **Add by link** (`drive_pull.add_by_link`), on the same durable job as the pull page.
+    - Where: the Media tab field (`/api/client/media/add-link`, `for_client`: never from our own
+      Shared Drive), `/admin/drive/`, and the chat card `add_media_from_drive_link`.
+    - The card: a pasted Drive link → code proposes it (`support_agent._drive_link_turn`).
+  - **Attach from anywhere** (`find_anywhere`, `corpora=allDrives`): admin only. Card
+    `attach_existing_media`, with approver admin, never offered to a client.
+  - **Merge** (`core/drive_merge`): copies the second folder into the connected one with the same
+    sub-folders and skips same name+size. It deletes nothing.
+  - **One resolver.** The writer calls `shared_client_root(strict=True)`: a Drive error never
+    creates a second folder.
+  - **Real-data check:** `scripts/diagnose_media.py 27 "test 3"`. `tests/test_drive_link.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive
