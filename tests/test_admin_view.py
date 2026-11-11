@@ -231,7 +231,9 @@ class Audit(unittest.TestCase):
 
 class StaffDecisions(ActionTestCase):
     def stored(self, action, client_id=40):
-        row = {"id": len(self.rows()) + 1, "client_id": client_id, "action": action, "params": {},
+        from test_agent_actions import SAMPLE_PLAN
+        params = {"plan": SAMPLE_PLAN} if action == "configure_conversion" else {}
+        row = {"id": len(self.rows()) + 1, "client_id": client_id, "action": action, "params": params,
                "origin": "client_chat", "persona": "general", "approver": "client", "status": "proposed",
                "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
         self.db.tables.setdefault(aa.TABLE, []).append(row)

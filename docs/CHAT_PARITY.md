@@ -226,7 +226,8 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 
 | action | approved by | kind | limits | what it does |
 |---|---|---|---|---|
-| `configure_conversion` | client click | execute | — | Adds ONE form-submission trigger and ONE GA4 generate_lead event tag to the client's Tag Manager container, creates a version and PUBLISHES it, so leads from their site are counted. |
+| `configure_conversion` | client click | execute | — | Adds ONE form-submission trigger and ONE GA4 generate_lead event tag to the client's Tag Manager container, creates a version and PUBLISHES it, so leads from their site are counted. The card shows the exact dry-run plan first (docs/GTM-SAFETY.md). |
+| `revert_conversion` | client click | execute | — | "Undo my tracking": republishes the Tag Manager version saved before our publish, or removes only entities named "uallak — …"; the card lists exactly what is removed (docs/GTM-SAFETY.md). |
 | `demo_google_ads_campaign` | staff (Control Room) | execute | internal clients only | Google verification demo: creates ONE test search campaign in the connected Google Ads account, created PAUSED with a 5 ILS/day budget (spends nothing unless enabled). |
 | `google_ads_test_campaign` | client click | execute | internal clients only | Creates ONE test search campaign in the client's connected Google Ads account, created PAUSED with a 5 ILS/day budget, so it spends nothing unless they enable it in Google Ads. |
 | `demo_youtube_upload` | staff (Control Room) | execute | internal clients only | Google verification demo: uploads the smallest video (within the upload size limit) from the client's Drive media folder to their YouTube channel as PRIVATE. |

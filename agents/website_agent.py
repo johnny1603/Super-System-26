@@ -1218,6 +1218,8 @@ def gtm_failure_reason(error: Exception) -> str:
     from core import gtm_service as gtm
     if isinstance(error, gtm.GtmWorkspaceBusy):
         return "gtm_workspace_busy"
+    if isinstance(error, gtm.GtmForeignEntity):
+        return "gtm_foreign_entity"
     if isinstance(error, gtm.GtmCompilerError):
         return "gtm_compiler_error"
     if isinstance(error, gtm.GtmApiError):
@@ -1285,7 +1287,209 @@ def purchase_record_url(client_id: int) -> str:
     return f"{base}/api/store/purchase/{create_store_purchase_token(client_id)}"
 
 
-def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", types=None) -> dict:
+def _gtm_preflight(client_id: int, ga4_measurement_id: str, types) -> dict:
+    """Every guard that runs BEFORE anything is read from or written to the
+    container's workspaces: {"refuse": result} or the context the plan and
+    the write share (wanted / pending types, grant, container, GA4 id,
+    status, store endpoint). Shared by the dry run and the real run, so the
+    two can never disagree on a guard."""
+    from core import gtm_service as gtm
+
+    wanted = _gtm_types(client_id, types)
+    if not wanted:
+        return {"refuse": {"success": False, "reason": "no_gtm_types", "errors": [
+            "none of this client's conversion types is measured in Tag Manager "
+            "(or the client's choice could not be read — nothing is assumed)"]}}
+
+    conn = _gtm_connection(client_id)
+    if not conn.get("access_token"):
+        return {"refuse": {"success": False, "reason": "gtm_not_connected",
+                           "errors": ["GTM API not connected for this client"]}}
+    # Refuse BEFORE creating anything: without every scope the trigger and tag
+    # would be created and then publish would 403, leaving a half-done workspace
+    missing = gtm_missing_scopes(client_id)
+    if missing:
+        return {"refuse": {"success": False, "reason": "gtm_reconnect_needed",
+                           "errors": [f"the stored GTM grant lacks {missing} — the client must reconnect "
+                                      "Tag Manager from the dashboard (the card asks for it)"]}}
+    # Never publish into a container the website does not load, or with a dead
+    # grant (core/gtm_connection, checked fresh)
+    from core import gtm_connection
+    blocked = gtm_connection.publish_block_reason(client_id)
+    if blocked == "gtm_container_mismatch":
+        view = gtm_connection.connection_view(client_id)
+        return {"refuse": {"success": False, "reason": blocked,
+                           "errors": [f"the connected container ({view['container'].get('public_id') or '?'}) "
+                                      f"is not the one the website loads ({view['site'].get('gtm_id') or '?'}) — "
+                                      "the client must choose the right container (החלפת קונטיינר) first"]}}
+    if blocked == "gtm_token_dead":
+        return {"refuse": {"success": False, "reason": blocked,
+                           "errors": ["the stored Tag Manager grant no longer works (invalid_grant) — the "
+                                      "client must reconnect Tag Manager from the dashboard"]}}
+
+    ga4_measurement_id = (ga4_measurement_id or "").strip()
+    if not ga4_measurement_id:
+        # Fall back to what the site itself declares (direct-installed GA4)
+        site = _get_connection(client_id)
+        if site.get("account_id"):
+            try:
+                detected = _detect_tracking_tags(wp.fetch_homepage_html(site["account_id"]))
+                ga4_measurement_id = detected.get("ga4_measurement_id") or ""
+            except Exception:
+                pass
+    if not ga4_measurement_id:
+        return {"refuse": {"success": False, "reason": "no_ga4_id", "errors": [
+            "no ga4_measurement_id given and none detectable on the site — a GA4 "
+            "property id (G-...) is required for the event tag"]}}
+
+    status = get_conversion_tracking_status(client_id)
+    live_types = set(status.get("live_types") or [])
+    if status.get("configured_live"):
+        live_types.add("form_submit")
+    # store_sales already live but published before our own purchase record
+    # existed (2026-11-07): run the purchase path again — every object is
+    # found by name and reused, so only the record tag is added
+    record_missing = ("store_sales" in wanted and "store_sales" in live_types
+                      and not (status.get("purchase_record") or {}).get("live"))
+    pending = [t for t in wanted if t not in live_types or (t == "store_sales" and record_missing)]
+    if not pending:
+        return {"refuse": {"success": False, "reason": "already_live", "errors": [
+            f"every requested conversion type ({wanted}) is already live in the published "
+            f"container (lead tags: {[t['tag_name'] for t in status.get('lead_event_tags') or []]}) — "
+            "configuring another would double-count; change the existing one in GTM instead"]}}
+
+    # Store purchase: the order-received page must be one we can recognise
+    # (the store's own endpoint setting). If it isn't, NOTHING is written —
+    # the client is told the one small setting to fix (store_order_page_unknown)
+    endpoint = {}
+    if "store_sales" in pending:
+        from agents import store_agent
+        endpoint = store_agent.order_received_endpoint(client_id)
+        if endpoint.get("problem"):
+            return {"refuse": {"success": False, "reason": "store_order_page_unknown", "errors": [
+                f"the store's order-received endpoint is {endpoint['problem']} — the purchase "
+                "trigger has no page to listen on; the client is asked to set it, nothing was written"]}}
+    return {"wanted": wanted, "pending": pending, "status": status, "endpoint": endpoint,
+            "ga4": ga4_measurement_id, "refresh_token": conn["access_token"],
+            "container_path": conn["account_id"]}
+
+
+# ─── Dry run: the exact plan, nothing written (docs/GTM-SAFETY.md) ──────────
+
+def _container_label(client_id: int, container_path: str) -> dict:
+    """{path, public_id, name, account} for the card — from the connection
+    view (core/gtm_connection, its own cache); the account id from the path
+    when no name is known. Never raises."""
+    import re as _re
+    account = (_re.match(r"accounts/(\d+)", container_path or "") or [None, ""])[1]
+    out = {"path": container_path, "public_id": "", "name": "", "account": account}
+    try:
+        from core import gtm_connection
+        view = gtm_connection.connection_view(client_id) or {}
+        if (view.get("container_path") or container_path) == container_path:
+            box = view.get("container") or {}
+            out.update(public_id=str(box.get("public_id") or ""), name=str(box.get("name") or ""),
+                       account=str(box.get("account_name") or account))
+    except Exception:
+        pass
+    return out
+
+
+def _skipped_because(live: dict, skipped: list, status: dict) -> list:
+    """For each wanted type already live: the EXISTING live tags that made us
+    skip it (never a second tag — that would double-count)."""
+    from core import gtm_service as gtm
+    out = []
+    for kind in skipped:
+        if kind == "form_submit":
+            names = [t.get("tag_name") for t in status.get("lead_event_tags") or []]
+        elif kind in gtm.CLICK_CONVERSIONS:
+            names = [t.get("tag_name") for t in (status.get("click_event_tags") or {}).get(kind) or []]
+        else:
+            names = [t.get("name") for t in live.get("tag") or [] if t.get("type") == "gaawe"
+                     and any(p.get("key") == "eventName" and p.get("value") == gtm.PURCHASE_EVENT
+                             for p in t.get("parameter") or [])]
+        out.append({"type": kind, "tags": [str(n) for n in names if n][:10]})
+    return out
+
+
+def _plan_signature(plan: dict) -> str:
+    """What the client approves, fingerprinted: container, GA4 id, types,
+    every entity + action, and the rollback point. A click on a card whose
+    plan no longer matches the container is refused (gtm_plan_changed)."""
+    import hashlib
+    import json
+    core_fields = {k: plan.get(k) for k in ("container_path", "ga4_measurement_id", "types", "entities",
+                                            "method", "remove", "restore", "target_version")}
+    core_fields["rollback"] = (plan.get("rollback_point") or {}).get("version_id", "")
+    core_fields["live"] = (plan.get("live_version") or {}).get("version_id", "")
+    return hashlib.sha256(json.dumps(core_fields, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _build_plan(client_id: int, ctx: dict) -> dict:
+    """READ-ONLY. The live version, the entities per pending type, our
+    leftover workspace's own changes (it would be reused), the skipped types
+    and their live tags, the rollback point. Raises on a Tag Manager read error."""
+    from core import gtm_service as gtm
+    rt, path, pending = ctx["refresh_token"], ctx["container_path"], ctx["pending"]
+    live = gtm.get_live_version(rt, path)
+    record_url = purchase_record_url(client_id) if "store_sales" in pending else ""
+    entities = gtm.plan_entities(live, pending, ctx["ga4"],
+                                 (ctx.get("endpoint") or {}).get("slug") or gtm.DEFAULT_ORDER_RECEIVED_ENDPOINT,
+                                 record_url)
+    foreign = [f"{e['kind']}: {e['name']}" for e in entities
+               if e["kind"] != "built_in_variable" and not gtm.is_ours(e["name"])]
+    leftover = gtm.find_named(gtm.list_workspaces(rt, path), gtm.WORKSPACE_NAME)
+    if leftover.get("path"):
+        # Our own workspace from an earlier run would be synced and REUSED:
+        # anything someone else put in it would be published with ours
+        foreign += gtm.workspace_foreign_changes(rt, leftover["path"])
+    plan = {"container_path": path, "container": _container_label(client_id, path),
+            "workspace": {"name": gtm.WORKSPACE_NAME, "reused": bool(leftover.get("path"))},
+            "ga4_measurement_id": ctx["ga4"], "types": list(pending),
+            "skipped": _skipped_because(live, [t for t in ctx["wanted"] if t not in pending], ctx["status"]),
+            "entities": entities, "version_name": gtm.VERSION_NAME,
+            "rollback_point": {"version_id": str(live.get("containerVersionId") or ""),
+                               "name": str(live.get("name") or "")}}
+    plan["signature"] = _plan_signature(plan)
+    return {"plan": plan, "foreign": foreign, "live": live}
+
+
+def _plan_read_reason(error: Exception) -> str:
+    reason = gtm_failure_reason(error)
+    return "gtm_plan_unreadable" if reason in GTM_RETRYABLE else reason
+
+
+def _foreign_refusal(client_id: int, foreign: list, where: str) -> dict:
+    agent_alert(AGENT_NAME, [f"client {client_id}: Tag Manager {where} refused — it would touch entities "
+                             f"not named 'uallak — ...': {foreign[:5]}"])
+    return {"success": False, "reason": "gtm_foreign_entity",
+            "errors": [f"refused: the plan touches entities that are not ours ({foreign[:5]})"]}
+
+
+def plan_lead_conversion(client_id: int, ga4_measurement_id: str = "", types=None) -> dict:
+    """The DRY RUN of configure_lead_conversion: the same guards, then the
+    exact plan computed from reads only — nothing is created, changed or
+    published. {"success": True, "plan": {...}} or the same refusal the
+    real run would give. The approval card shows this plan, and the click
+    runs only if the container still matches it (signature)."""
+    pre = _gtm_preflight(client_id, ga4_measurement_id, types)
+    if "refuse" in pre:
+        return pre["refuse"]
+    try:
+        built = _build_plan(client_id, pre)
+    except Exception as e:
+        reason = _plan_read_reason(e)
+        if reason == "gtm_plan_unreadable":
+            log_step(AGENT_NAME, "plan_lead_conversion", f"client {client_id}: plan read failed: {str(e)[:200]}")
+        return {"success": False, "reason": reason, "errors": [str(e)]}
+    if built["foreign"]:
+        return _foreign_refusal(client_id, built["foreign"], "plan")
+    return {"success": True, "plan": built["plan"]}
+
+
+def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", types=None,
+                              expected_plan: dict = None, via: str = "direct") -> dict:
     """Conversion configuration in the client's Tag Manager, PER CLIENT
     (core/conversion_types — `types` defaults to the client's own choice):
     - form_submit: standard HTML form submission → GA4 'generate_lead' (the
@@ -1307,85 +1511,41 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
     never duplicates. A failure that is ours is retried once, then alerted.
     Known limit, stated: GTM's built-in Form Submission trigger catches
     standard submits; heavily-AJAXed form builders need a custom-event
-    trigger — flagged follow-up, not silently attempted."""
+    trigger — flagged follow-up, not silently attempted.
+
+    Safety (2026-11-11, docs/GTM-SAFETY.md): the dry-run plan is computed
+    first (same reads as plan_lead_conversion) and the run is REFUSED when it
+    would touch an entity not named "uallak — ..." (gtm_foreign_entity, admin
+    alert) or, with `expected_plan` (the approval card's), when the container
+    no longer matches what the client approved (gtm_plan_changed). The live
+    version before the publish is saved in the activity row (the rollback
+    point, revert_conversion). `via`: card | admin_key | control_room |
+    direct — anything but the card first logs gtm_publish_without_card."""
     from core import gtm_service as gtm
 
-    wanted = _gtm_types(client_id, types)
-    if not wanted:
-        return {"success": False, "reason": "no_gtm_types", "errors": [
-            "none of this client's conversion types is measured in Tag Manager "
-            "(or the client's choice could not be read — nothing is assumed)"]}
-
-    conn = _gtm_connection(client_id)
-    if not conn.get("access_token"):
-        return {"success": False, "reason": "gtm_not_connected",
-                "errors": ["GTM API not connected for this client"]}
-    # Refuse BEFORE creating anything: without every scope the trigger and tag
-    # would be created and then publish would 403, leaving a half-done workspace
-    missing = gtm_missing_scopes(client_id)
-    if missing:
-        return {"success": False, "reason": "gtm_reconnect_needed",
-                "errors": [f"the stored GTM grant lacks {missing} — the client must reconnect "
-                           "Tag Manager from the dashboard (the card asks for it)"]}
-    # Never publish into a container the website does not load, or with a dead
-    # grant (core/gtm_connection, checked fresh)
-    from core import gtm_connection
-    blocked = gtm_connection.publish_block_reason(client_id)
-    if blocked == "gtm_container_mismatch":
-        view = gtm_connection.connection_view(client_id)
-        return {"success": False, "reason": blocked,
-                "errors": [f"the connected container ({view['container'].get('public_id') or '?'}) "
-                           f"is not the one the website loads ({view['site'].get('gtm_id') or '?'}) — "
-                           "the client must choose the right container (החלפת קונטיינר) first"]}
-    if blocked == "gtm_token_dead":
-        return {"success": False, "reason": blocked,
-                "errors": ["the stored Tag Manager grant no longer works (invalid_grant) — the "
-                           "client must reconnect Tag Manager from the dashboard"]}
-
-    ga4_measurement_id = (ga4_measurement_id or "").strip()
-    if not ga4_measurement_id:
-        # Fall back to what the site itself declares (direct-installed GA4)
-        site = _get_connection(client_id)
-        if site.get("account_id"):
-            try:
-                detected = _detect_tracking_tags(wp.fetch_homepage_html(site["account_id"]))
-                ga4_measurement_id = detected.get("ga4_measurement_id") or ""
-            except Exception:
-                pass
-    if not ga4_measurement_id:
-        return {"success": False, "reason": "no_ga4_id", "errors": [
-            "no ga4_measurement_id given and none detectable on the site — a GA4 "
-            "property id (G-...) is required for the event tag"]}
-
-    status = get_conversion_tracking_status(client_id)
-    live_types = set(status.get("live_types") or [])
-    if status.get("configured_live"):
-        live_types.add("form_submit")
-    # store_sales already live but published before our own purchase record
-    # existed (2026-11-07): run the purchase path again — every object is
-    # found by name and reused, so only the record tag is added
-    record_missing = ("store_sales" in wanted and "store_sales" in live_types
-                      and not (status.get("purchase_record") or {}).get("live"))
-    pending = [t for t in wanted if t not in live_types or (t == "store_sales" and record_missing)]
-    if not pending:
-        return {"success": False, "reason": "already_live", "errors": [
-            f"every requested conversion type ({wanted}) is already live in the published "
-            f"container (lead tags: {[t['tag_name'] for t in status.get('lead_event_tags') or []]}) — "
-            "configuring another would double-count; change the existing one in GTM instead"]}
-
-    # Store purchase: the order-received page must be one we can recognise
-    # (the store's own endpoint setting). If it isn't, NOTHING is written —
-    # the client is told the one small setting to fix (store_order_page_unknown)
-    endpoint = {}
-    if "store_sales" in pending:
-        from agents import store_agent
-        endpoint = store_agent.order_received_endpoint(client_id)
-        if endpoint.get("problem"):
-            return {"success": False, "reason": "store_order_page_unknown", "errors": [
-                f"the store's order-received endpoint is {endpoint['problem']} — the purchase "
-                "trigger has no page to listen on; the client is asked to set it, nothing was written"]}
-
-    refresh_token, container_path = conn["access_token"], conn["account_id"]
+    pre = _gtm_preflight(client_id, ga4_measurement_id, types)
+    if "refuse" in pre:
+        return pre["refuse"]
+    wanted, pending, endpoint = pre["wanted"], pre["pending"], pre["endpoint"]
+    ga4_measurement_id = pre["ga4"]
+    refresh_token, container_path = pre["refresh_token"], pre["container_path"]
+    try:
+        built = _build_plan(client_id, pre)
+    except Exception as e:
+        return {"success": False, "reason": _plan_read_reason(e), "errors": [str(e)]}
+    if built["foreign"]:
+        return _foreign_refusal(client_id, built["foreign"], "publish")
+    plan = built["plan"]
+    if expected_plan is not None and (expected_plan or {}).get("signature") != plan["signature"]:
+        return {"success": False, "reason": "gtm_plan_changed", "plan": plan,
+                "errors": ["the container changed since the plan was approved — nothing was written"]}
+    if via != "card":
+        # The card is the client's publish path; anything else leaves a trace
+        _log_activity(client_id, "gtm_publish_without_card",
+                      {"via": via, "container_path": container_path,
+                       "container_public_id": plan["container"].get("public_id", ""),
+                       "types": pending, "plan_signature": plan["signature"],
+                       "entities": plan["entities"]})
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: {container_path} → {ga4_measurement_id} for {pending}")
 
@@ -1490,6 +1650,11 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             agent_alert(AGENT_NAME, [f"client {client_id}: Tag Manager refused the stored grant mid-run "
                                      f"(scope pre-check passed; needed {gtm.required_scope(_failed_path(e))}): "
                                      f"{str(e)[:200]}"])
+        elif reason == "gtm_foreign_entity":
+            # The workspace held someone else's change at publish time: our
+            # drafts are undone, nothing went live
+            agent_alert(AGENT_NAME, [f"client {client_id}: Tag Manager publish refused — the workspace held "
+                                     f"changes not named 'uallak — ...': {str(e)[:300]}"])
         return {"success": False, "reason": reason, "errors": [str(e)]}
 
     trigger, tag, published = done["trigger"], done["tag"], done["published"]
@@ -1522,7 +1687,18 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
                    **({"purchase_verified": purchase_check["live"],
                        "purchase_record_verified": record_check["live"],
                        "order_received_endpoint": endpoint.get("slug"),
-                       "endpoint_source": endpoint.get("source")} if purchase_check is not None else {})},
+                       "endpoint_source": endpoint.get("source")} if purchase_check is not None else {}),
+                   # The publish record + rollback point (revert_conversion,
+                   # the admin history): which container, what was live before
+                   # (republished on undo), what went live, by which path
+                   "via": via, "container_path": container_path,
+                   "container_public_id": plan["container"].get("public_id", ""),
+                   "container_name": plan["container"].get("name", ""),
+                   "previous_version_id": plan["rollback_point"]["version_id"],
+                   "previous_version_name": plan["rollback_point"]["name"],
+                   "new_version_id": str(version.get("containerVersionId") or ""),
+                   "new_version_name": version.get("name", ""),
+                   "entities": plan["entities"], "plan_signature": plan["signature"]},
                   {"live_version": version.get("name", "")})
     log_step(AGENT_NAME, "configure_lead_conversion",
              f"client {client_id}: published as '{version.get('name', '')}' ({pending})")
@@ -1532,6 +1708,9 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             "ga4_measurement_id": ga4_measurement_id,
             "live_version": version.get("name", ""),
             "live_version_id": version.get("containerVersionId", ""),
+            "previous_version_id": plan["rollback_point"]["version_id"],
+            "previous_version_name": plan["rollback_point"]["name"],
+            "plan": plan,
             "tag_name": tag.get("name", ""), "trigger_name": trigger.get("name", ""),
             "tag_names": [v["tag"].get("name", "") for v in done["per_type"].values()],
             "purchase_verified": purchase_check["live"] if purchase_check is not None else None,
@@ -1539,6 +1718,213 @@ def configure_lead_conversion(client_id: int, ga4_measurement_id: str = "", type
             "note": (f"Now firing GA4 {[events[t] for t in pending]}. Remaining manual "
                      "platform steps: mark them as key events in GA4 and import them as "
                      "conversion actions in Google Ads (no public API for either from our scopes).")}
+
+
+# ─── Rollback: "undo my tracking" (docs/GTM-SAFETY.md) ──────────────────────
+# Two ways, chosen by what is live NOW:
+# - republish: the live version is still exactly the one our publish made →
+#   make the version saved before it live again (GTM edits nothing; the
+#   container is back to how it was, other names untouched by construction),
+#   provided every non-uallak entity is identical in both versions;
+# - remove: anything else (someone published after us, or nothing was live
+#   before) → our own workspace "uallak tracking removal", based on the live
+#   version, deletes ONLY entities named "uallak — ..." and is published.
+#   Refused when another entity depends on ours (it would break).
+
+GTM_HISTORY_TYPES = ("website_conversion_configured", "gtm_conversion_reverted", "gtm_publish_without_card")
+
+
+def _activity_rows(client_id: int, action_type: str, limit: int = 20) -> list:
+    return (_db().table("client_activity").select("id,action_type,details,result,created_at")
+            .eq("client_id", client_id).eq("agent_name", AGENT_NAME).eq("action_type", action_type)
+            .order("created_at", desc=True).limit(limit).execute().data or [])
+
+
+def _others(version: dict) -> set:
+    """Every entity NOT ours, as (kind, name, fingerprint) — compared across
+    two versions to prove a republish changes nothing of anyone else's."""
+    from core import gtm_service as gtm
+    return {(kind, e.get("name"), e.get("fingerprint") or "") for kind in ("tag", "trigger", "variable")
+            for e in version.get(kind) or [] if not gtm.is_ours(e.get("name"))}
+
+
+def _revert_preflight(client_id: int) -> dict:
+    conn = _gtm_connection(client_id)
+    if not conn.get("access_token"):
+        return {"refuse": {"success": False, "reason": "gtm_not_connected",
+                           "errors": ["GTM API not connected for this client"]}}
+    missing = gtm_missing_scopes(client_id)
+    if missing:
+        return {"refuse": {"success": False, "reason": "gtm_reconnect_needed",
+                           "errors": [f"the stored GTM grant lacks {missing}"]}}
+    from core import gtm_connection
+    if gtm_connection.publish_block_reason(client_id) == "gtm_token_dead":
+        return {"refuse": {"success": False, "reason": "gtm_token_dead",
+                           "errors": ["the stored Tag Manager grant no longer works (invalid_grant)"]}}
+    return {"refresh_token": conn["access_token"], "container_path": conn["account_id"]}
+
+
+def _build_revert_plan(client_id: int, ctx: dict) -> dict:
+    """READ-ONLY. {"plan"} or {"refuse"}."""
+    from core import gtm_service as gtm
+    rt, path = ctx["refresh_token"], ctx["container_path"]
+    live = gtm.get_live_version(rt, path)
+    live_id = str(live.get("containerVersionId") or "")
+    ours_live = gtm.ours_in(live)
+    ours_published = [r for r in _activity_rows(client_id, "website_conversion_configured")
+                      if (r.get("details") or {}).get("container_path") == path
+                      and str((r.get("details") or {}).get("new_version_id") or "")]
+    row = next((r for r in ours_published if live_id and str(r["details"]["new_version_id"]) == live_id), None)
+    plan = {"container_path": path, "container": _container_label(client_id, path),
+            "live_version": {"version_id": live_id, "name": str(live.get("name") or "")},
+            "publish_row_id": (row or {}).get("id"), "restore": [], "target_version": {}}
+    previous = str(((row or {}).get("details") or {}).get("previous_version_id") or "")
+    if row and previous:
+        target = gtm.get_version(rt, path, previous)
+        if _others(target) == _others(live):
+            before = {(e["kind"], e["name"]) for e in gtm.ours_in(target)}
+            plan.update(method="republish",
+                        target_version={"version_id": previous,
+                                        "name": str(target.get("name") or row["details"].get("previous_version_name")
+                                                    or "")},
+                        remove=[e for e in ours_live if (e["kind"], e["name"]) not in before],
+                        restore=[e for e in ours_live if (e["kind"], e["name"]) in before])
+    if not plan.get("method"):
+        if not ours_live:
+            return {"refuse": {"success": False, "reason": "nothing_to_revert",
+                               "errors": ["no entity named 'uallak — ...' is live in this container"]}}
+        refs = gtm.references_to_ours(live)
+        if refs:
+            agent_alert(AGENT_NAME, [f"client {client_id}: undo of Tag Manager tracking refused — other entities "
+                                     f"depend on ours: {refs[:5]}"])
+            return {"refuse": {"success": False, "reason": "gtm_revert_blocked",
+                               "errors": [f"entities not ours depend on ours: {refs[:5]}"]}}
+        plan.update(method="remove", remove=ours_live)
+    if not plan["remove"] and not plan["restore"]:
+        return {"refuse": {"success": False, "reason": "nothing_to_revert",
+                           "errors": ["the earlier version holds the same uallak entities — nothing to undo"]}}
+    plan["signature"] = _plan_signature(plan)
+    return {"plan": plan}
+
+
+def plan_revert_conversion(client_id: int) -> dict:
+    """The DRY RUN of revert_conversion — reads only. {"success", "plan"} or a refusal."""
+    pre = _revert_preflight(client_id)
+    if "refuse" in pre:
+        return pre["refuse"]
+    try:
+        built = _build_revert_plan(client_id, pre)
+    except Exception as e:
+        return {"success": False, "reason": _plan_read_reason(e), "errors": [str(e)]}
+    if "refuse" in built:
+        return built["refuse"]
+    return {"success": True, "plan": built["plan"]}
+
+
+def revert_conversion(client_id: int, expected_plan: dict = None, via: str = "direct") -> dict:
+    """Undo our Tag Manager tracking (see the section comment). The plan is
+    recomputed and must match `expected_plan` (the card's) when given. Every
+    revert is logged (gtm_conversion_reverted) with what was live before and
+    after. Never touches an entity whose name lacks "uallak — "."""
+    from core import gtm_service as gtm
+    pre = _revert_preflight(client_id)
+    if "refuse" in pre:
+        return pre["refuse"]
+    rt, path = pre["refresh_token"], pre["container_path"]
+    try:
+        built = _build_revert_plan(client_id, pre)
+    except Exception as e:
+        return {"success": False, "reason": _plan_read_reason(e), "errors": [str(e)]}
+    if "refuse" in built:
+        return built["refuse"]
+    plan = built["plan"]
+    if expected_plan is not None and (expected_plan or {}).get("signature") != plan["signature"]:
+        return {"success": False, "reason": "gtm_plan_changed", "plan": plan,
+                "errors": ["the container changed since the undo was approved — nothing was changed"]}
+    if via != "card":
+        _log_activity(client_id, "gtm_publish_without_card",
+                      {"via": via, "operation": "revert", "container_path": path,
+                       "plan_signature": plan["signature"], "method": plan["method"]})
+    workspace, removed = "", []
+    try:
+        if plan["method"] == "republish":
+            published = gtm.publish_version(rt, path, plan["target_version"]["version_id"])
+            removed = plan["remove"]
+        else:
+            workspace, ours = gtm.lead_workspace(rt, path, name=gtm.REMOVAL_WORKSPACE_NAME)
+            if not ours:
+                # Deleting inside someone's default workspace could not be undone cleanly
+                raise gtm.GtmWorkspaceBusy("no workspace of our own for the removal")
+            removed = gtm.remove_ours(rt, workspace)
+            published = gtm.publish_workspace(
+                rt, workspace, gtm.REVERT_VERSION_NAME,
+                notes="uallak: removes only its own entities (named 'uallak — ...'), at the client's request")
+    except Exception as e:
+        if workspace and plan["method"] == "remove":
+            _undo_gtm_drafts(client_id, rt, workspace, True, [])
+        reason = gtm_failure_reason(e)
+        if reason in GTM_RETRYABLE or reason == "gtm_foreign_entity":
+            agent_alert(AGENT_NAME, [f"client {client_id}: Tag Manager undo failed ({reason}): {str(e)[:300]}"])
+        return {"success": False, "reason": reason, "errors": [str(e)]}
+    version = published.get("containerVersion") or {}
+    _log_activity(client_id, "gtm_conversion_reverted",
+                  {"via": via, "method": plan["method"], "container_path": path,
+                   "container_public_id": plan["container"].get("public_id", ""),
+                   "container_name": plan["container"].get("name", ""),
+                   "from_version_id": plan["live_version"]["version_id"],
+                   "from_version_name": plan["live_version"]["name"],
+                   "new_version_id": str(version.get("containerVersionId") or ""),
+                   "new_version_name": version.get("name", ""),
+                   "removed": removed, "restored": plan["restore"],
+                   "publish_row_id": plan.get("publish_row_id")},
+                  {"live_version": version.get("name", "")})
+    log_step(AGENT_NAME, "revert_conversion",
+             f"client {client_id}: {plan['method']} → live '{version.get('name', '')}' ({len(removed)} removed)")
+    return {"success": True, "method": plan["method"], "removed": removed, "restored": plan["restore"],
+            "live_version": version.get("name", ""),
+            "live_version_id": str(version.get("containerVersionId") or "")}
+
+
+def gtm_history(client_id: int, limit: int = 30) -> list:
+    """Every publish, undo and card bypass for this client, newest first —
+    the admin's read-only history (no token, no tag body)."""
+    rows = []
+    for kind in GTM_HISTORY_TYPES:
+        rows += _activity_rows(client_id, kind, limit)
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    out = []
+    for r in rows[:limit]:
+        d = r.get("details") or {}
+        out.append({"id": r.get("id"), "type": r.get("action_type"), "at": r.get("created_at"),
+                    "via": d.get("via", ""), "container_path": d.get("container_path", ""),
+                    "container_public_id": d.get("container_public_id", ""),
+                    "container_name": d.get("container_name", ""),
+                    "types": d.get("types") or [], "method": d.get("method", ""),
+                    "operation": d.get("operation", "publish" if r.get("action_type") != "gtm_conversion_reverted"
+                                       else "revert"),
+                    "previous_version_id": d.get("previous_version_id", d.get("from_version_id", "")),
+                    "previous_version_name": d.get("previous_version_name", d.get("from_version_name", "")),
+                    "new_version_id": d.get("new_version_id", ""),
+                    "new_version_name": d.get("new_version_name", (r.get("result") or {}).get("live_version", "")),
+                    "entities": [{"kind": e.get("kind"), "name": e.get("name"), "action": e.get("action", "")}
+                                 for e in (d.get("entities") or d.get("removed") or [])
+                                 if isinstance(e, dict)][:40]})
+    return out
+
+
+def gtm_rollback_point(client_id: int) -> dict:
+    """The last publish row for the CURRENT container: its version and the
+    version saved before it ({} when none)."""
+    conn = _gtm_connection(client_id)
+    path = conn.get("account_id") or ""
+    for r in _activity_rows(client_id, "website_conversion_configured"):
+        d = r.get("details") or {}
+        if d.get("container_path") == path and d.get("new_version_id"):
+            return {"at": r.get("created_at"), "new_version_id": d.get("new_version_id"),
+                    "new_version_name": d.get("new_version_name", ""),
+                    "previous_version_id": d.get("previous_version_id", ""),
+                    "previous_version_name": d.get("previous_version_name", ""), "via": d.get("via", "")}
+    return {}
 
 
 def _tracking_snippet(gtm_container_id: str = "", ga4_measurement_id: str = "",

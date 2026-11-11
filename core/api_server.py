@@ -4337,14 +4337,23 @@ def website_conversion_tracking(client_id: int):
 class ConfigureConversionRequest(BaseModel):
     client_id: int
     ga4_measurement_id: str = ""  # optional — falls back to the id detected on the site
+    dry_run: bool = False         # True: the exact plan only, nothing written (docs/GTM-SAFETY.md)
+    expected_plan_signature: str = ""   # optional: publish only if the plan still matches
 
 @app.post("/api/website/configure-conversion", dependencies=_admin_only)
 def website_configure_conversion(req: ConfigureConversionRequest):
-    # Creates + PUBLISHES the form-submit → GA4 generate_lead setup in the
-    # client's own GTM container. Refuses when a lead tag is already live
-    # (double-counting guard). Plain `def`: multiple GTM API calls.
-    from agents.website_agent import configure_lead_conversion
-    result = configure_lead_conversion(req.client_id, req.ga4_measurement_id)
+    # Creates + PUBLISHES the client's conversion setup in their own GTM
+    # container — or, with dry_run, returns the plan and writes nothing.
+    # The client's own path is the approval card; this X-Admin-Key route
+    # still works but every publish through it logs gtm_publish_without_card.
+    # Plain `def`: multiple GTM API calls.
+    from agents.website_agent import configure_lead_conversion, plan_lead_conversion
+    if req.dry_run:
+        result = plan_lead_conversion(req.client_id, req.ga4_measurement_id)
+    else:
+        result = configure_lead_conversion(
+            req.client_id, req.ga4_measurement_id, via="admin_key",
+            expected_plan={"signature": req.expected_plan_signature} if req.expected_plan_signature else None)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
@@ -7436,21 +7445,68 @@ def admin_control_room_drive_self_test(client_id: int, request: Request):
 
 class AdminConfigureConversionRequest(BaseModel):
     ga4_measurement_id: str = ""  # optional — falls back to the id detected on the site
+    dry_run: bool = False
+    expected_plan_signature: str = ""
 
 @app.post("/api/admin/control-room/{client_id}/configure-conversion")
 def admin_control_room_configure_conversion(client_id: int, req: AdminConfigureConversionRequest,
                                             request: Request):
     # Browser-session twin of /api/website/configure-conversion, which is
-    # X-Admin-Key only - same function, same refusals. Plain `def`: multiple
-    # GTM API calls.
+    # X-Admin-Key only - same function, same refusals, same dry run. The
+    # page runs the dry run first and publishes only the plan it showed
+    # (expected_plan_signature). Logged as gtm_publish_without_card.
+    # Plain `def`: multiple GTM API calls.
     _require_admin(request)
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Client not found")
-    from agents.website_agent import configure_lead_conversion
-    result = configure_lead_conversion(client_id, req.ga4_measurement_id)
+    from agents.website_agent import configure_lead_conversion, plan_lead_conversion
+    if req.dry_run:
+        result = plan_lead_conversion(client_id, req.ga4_measurement_id)
+    else:
+        result = configure_lead_conversion(
+            client_id, req.ga4_measurement_id, via="control_room",
+            expected_plan={"signature": req.expected_plan_signature} if req.expected_plan_signature else None)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("errors", ["unknown error"]))
     return {"success": True, "data": result}
+
+# ─── Tag Manager history + rollback point (admin, READ-ONLY) ─────────────────
+# docs/GTM-SAFETY.md. Never a token, never a tag body — names, versions, who.
+
+@app.get("/api/admin/gtm/history/{client_id}")
+def admin_gtm_history(client_id: int, request: Request):
+    _require_admin(request)
+    from agents.website_agent import gtm_history, gtm_rollback_point
+    return {"success": True, "data": {"history": gtm_history(client_id),
+                                      "rollback_point": gtm_rollback_point(client_id)}}
+
+@app.get("/api/admin/gtm/overview")
+def admin_gtm_overview(request: Request):
+    # Per client with a Tag Manager connection: the container (name +
+    # GTM-XXXX, from gtm_connection's cached view), the last publish and the
+    # saved rollback point. Read-only; one slow client never blanks the rest.
+    _require_admin(request)
+    from agents.website_agent import GTM_PLATFORM, gtm_rollback_point
+    from core import gtm_connection
+    rows = (db.table("client_accounts").select("client_id,account_id,status")
+            .eq("platform", GTM_PLATFORM).eq("status", "active").execute().data or [])
+    out = []
+    for row in sorted(rows, key=lambda r: int(r.get("client_id") or 0)):
+        cid = int(row.get("client_id") or 0)
+        item = {"client_id": cid, "container_path": row.get("account_id") or "", "container": {},
+                "match": "", "last_publish": {}, "error": ""}
+        try:
+            client = get_client(cid) or {}
+            item["client_name"] = client.get("business_name") or client.get("name") or ""
+            view = gtm_connection.connection_view(cid) or {}
+            item["container"] = {k: (view.get("container") or {}).get(k, "")
+                                 for k in ("name", "public_id", "account_name")}
+            item["match"] = view.get("match", "")
+            item["last_publish"] = gtm_rollback_point(cid)
+        except Exception as e:
+            item["error"] = type(e).__name__
+        out.append(item)
+    return {"success": True, "data": {"clients": out}}
 
 # ─── Google verification demo: one-click writes on an INTERNAL test client ───
 # The fallback buttons. core/verification_demo holds the implementation and

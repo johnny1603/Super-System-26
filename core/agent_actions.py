@@ -259,16 +259,300 @@ _GTM_REFUSAL_CODES = {"gtm_not_connected": "gtm_reconnect", "gtm_reconnect_neede
                       "gtm_token_dead": "gtm_reconnect", "gtm_container_mismatch": "gtm_container_mismatch",
                       "no_ga4_id": "no_ga4_id", "already_live": "already_live", "no_gtm_types": "no_gtm_types",
                       "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy",
-                      "store_order_page_unknown": "store_order_page_unknown"}
+                      "store_order_page_unknown": "store_order_page_unknown",
+                      # docs/GTM-SAFETY.md: the container moved on since the card,
+                      # the plan would touch someone else's entity, a read failed
+                      "gtm_plan_changed": "gtm_plan_changed", "gtm_foreign_entity": "gtm_foreign_entity",
+                      "gtm_plan_unreadable": "gtm_plan_unreadable"}
+# revert_conversion's reasons → its refusals
+_GTM_REVERT_REFUSAL_CODES = {"gtm_not_connected": "gtm_reconnect", "gtm_reconnect_needed": "gtm_reconnect",
+                             "gtm_token_dead": "gtm_reconnect", "nothing_to_revert": "nothing_to_revert",
+                             "gtm_revert_blocked": "gtm_revert_blocked", "gtm_plan_changed": "gtm_plan_changed",
+                             "gtm_plan_unreadable": "gtm_plan_unreadable", "gtm_foreign_entity": "gtm_foreign_entity",
+                             "gtm_no_permission": "gtm_no_permission", "gtm_workspace_busy": "gtm_workspace_busy"}
 
 
 def _run_configure_conversion(client_id: int, params: dict, background_tasks):
+    # The card is the client's ONLY publish path: it runs the plan the client
+    # read, or nothing (a card without one is refused — never published blind)
+    if not (params or {}).get("plan"):
+        raise ActionFailed("gtm_plan_changed", "the card carries no plan")
     from agents.website_agent import configure_lead_conversion
-    result = configure_lead_conversion(client_id, params.get("ga4_measurement_id", ""))
+    result = configure_lead_conversion(client_id, params.get("ga4_measurement_id", ""),
+                                       expected_plan=params["plan"], via="card")
     if not result.get("success"):
         raise ActionFailed(_GTM_REFUSAL_CODES.get(result.get("reason"), "refused_by_action"),
                            "; ".join(map(str, result.get("errors") or ["unknown"])))
     return result
+
+
+def _run_revert_conversion(client_id: int, params: dict, background_tasks):
+    if not (params or {}).get("plan"):
+        raise ActionFailed("gtm_plan_changed", "the card carries no plan")
+    from agents.website_agent import revert_conversion
+    result = revert_conversion(client_id, expected_plan=params["plan"], via="card")
+    if not result.get("success"):
+        raise ActionFailed(_GTM_REVERT_REFUSAL_CODES.get(result.get("reason"), "refused_by_action"),
+                           "; ".join(map(str, result.get("errors") or ["unknown"])))
+    return result
+
+
+# ─── The plan, in plain words (docs/GTM-SAFETY.md) ──────────────────────────
+# Built from the STORED plan (our reads), never from the model. Entity names
+# are shown as they will appear in the client's Tag Manager.
+_TYPE_LABEL = {
+    "form_submit": _txt("שליחת טופס", "form submissions", "envois de formulaire", "إرسال النماذج", "отправки форм"),
+    "whatsapp_click": _txt("לחיצה על וואטסאפ", "WhatsApp clicks", "clics WhatsApp", "النقر على واتساب",
+                           "клики по WhatsApp"),
+    "phone_click": _txt("לחיצה על מספר הטלפון", "phone clicks", "clics sur le téléphone", "النقر على رقم الهاتف",
+                        "клики по телефону"),
+    "store_sales": _txt("רכישות בחנות", "store purchases", "achats en boutique", "مشتريات المتجر",
+                        "покупки в магазине"),
+}
+_PLAN_TXT = {
+    "intro": _txt("זה בדיוק מה שאעשה ב-Tag Manager שלכם — עדיין לא השתנה כלום:",
+                  "Here is exactly what I'll do in your Tag Manager — nothing has changed yet:",
+                  "Voici exactement ce que je ferai dans votre Tag Manager — rien n'a encore changé :",
+                  "هذا بالضبط ما سأفعله في Tag Manager لديكم — لم يتغير شيء بعد:",
+                  "Вот что именно я сделаю в вашем Tag Manager — пока ничего не изменено:"),
+    "container": _txt("קונטיינר: {container} · חשבון {account}", "Container: {container} · account {account}",
+                      "Conteneur : {container} · compte {account}", "الحاوية: {container} · الحساب {account}",
+                      "Контейнер: {container} · аккаунт {account}"),
+    "workspace_new": _txt("סביבת עבודה נפרדת משלנו: {ws}", "A separate workspace of our own: {ws}",
+                          "Un espace de travail séparé, le nôtre : {ws}", "مساحة عمل منفصلة خاصة بنا: {ws}",
+                          "Отдельное рабочее пространство: {ws}"),
+    "workspace_reused": _txt("סביבת העבודה שלנו מהפעם הקודמת: {ws}", "Our own workspace from last time: {ws}",
+                             "Notre espace de travail de la dernière fois : {ws}",
+                             "مساحة العمل الخاصة بنا من المرة السابقة: {ws}",
+                             "Наше рабочее пространство с прошлого раза: {ws}"),
+    "measures": _txt("מה יימדד: {types}", "What will be measured: {types}", "Ce qui sera mesuré : {types}",
+                     "ما سيُقاس: {types}", "Что будет измеряться: {types}"),
+    "create": _txt("ייווצר: {names}", "Will be created: {names}", "Sera créé : {names}", "سيُنشأ: {names}",
+                   "Будет создано: {names}"),
+    "update": _txt("יעודכן (שלנו מפעם קודמת): {names}", "Will be updated (ours, from before): {names}",
+                   "Sera mis à jour (le nôtre, d'avant) : {names}", "سيُحدَّث (خاص بنا من قبل): {names}",
+                   "Будет обновлено (наше, с прошлого раза): {names}"),
+    "reuse": _txt("כבר קיים ונשאר כמו שהוא: {names}", "Already there, left as is: {names}",
+                  "Déjà présent, laissé tel quel : {names}", "موجود بالفعل ويبقى كما هو: {names}",
+                  "Уже есть, остаётся как есть: {names}"),
+    "builtin": _txt("יופעל המשתנה המובנה Click URL של Tag Manager (נדרש למדידת לחיצות).",
+                    "Tag Manager's built-in Click URL variable is turned on (needed to measure clicks).",
+                    "La variable intégrée Click URL de Tag Manager est activée (nécessaire pour les clics).",
+                    "يُفعَّل المتغير المدمج Click URL في Tag Manager (مطلوب لقياس النقرات).",
+                    "Включается встроенная переменная Click URL в Tag Manager (нужна для учёта кликов)."),
+    "skipped": _txt("לא נוסיף מדידה של {type} — התג הקיים שלכם כבר מודד את זה: {tags}",
+                    "We won't add {type} — your existing tag already measures it: {tags}",
+                    "Nous n'ajoutons pas {type} — votre balise existante le mesure déjà : {tags}",
+                    "لن نضيف قياس {type} — الوسم الحالي لديكم يقيسه بالفعل: {tags}",
+                    "Не добавляем {type} — ваш существующий тег уже это измеряет: {tags}"),
+    "publish": _txt("אחר כך נפרסם גרסה חדשה בשם \"{version}\".", "Then we publish a new version named \"{version}\".",
+                    "Puis nous publions une nouvelle version nommée « {version} ».",
+                    "ثم ننشر نسخة جديدة باسم \"{version}\".", "Затем публикуем новую версию «{version}»."),
+    "rollback": _txt("הגרסה שפעילה עכשיו ({rollback}) נשמרת, כך שאפשר לבטל את זה בכל רגע.",
+                     "The version live now ({rollback}) is saved, so this can be undone at any time.",
+                     "La version en ligne ({rollback}) est conservée : tout cela peut être annulé à tout moment.",
+                     "النسخة الفعالة الآن ({rollback}) تُحفظ، لذا يمكن التراجع عن ذلك في أي وقت.",
+                     "Текущая версия ({rollback}) сохраняется, так что всё можно отменить в любой момент."),
+    "rollback_none": _txt("כרגע אין גרסה פעילה בקונטיינר, אז ביטול יסיר רק את מה שהוספנו.",
+                          "Nothing is live in the container yet, so an undo removes only what we added.",
+                          "Rien n'est encore en ligne dans le conteneur : une annulation retire seulement nos ajouts.",
+                          "لا توجد نسخة فعالة في الحاوية بعد، لذا يزيل التراجع ما أضفناه فقط.",
+                          "В контейнере пока нет опубликованной версии, поэтому отмена уберёт только добавленное нами."),
+    "untouched": _txt("שום תג, טריגר או משתנה אחר שלכם לא משתנה.",
+                      "None of your other tags, triggers or variables change.",
+                      "Aucune autre de vos balises, déclencheurs ou variables ne change.",
+                      "لا يتغير أي وسم أو مشغّل أو متغير آخر لديكم.",
+                      "Другие ваши теги, триггеры и переменные не меняются."),
+    "ask": _txt("לאשר?", "Approve?", "On valide ?", "نوافق؟", "Подтверждаете?"),
+    "revert_intro": _txt("זה בדיוק מה שהביטול יעשה ב-Tag Manager שלכם — עדיין לא השתנה כלום:",
+                         "Here is exactly what the undo will do in your Tag Manager — nothing has changed yet:",
+                         "Voici exactement ce que fera l'annulation dans votre Tag Manager — rien n'a encore changé :",
+                         "هذا بالضبط ما سيفعله التراجع في Tag Manager لديكم — لم يتغير شيء بعد:",
+                         "Вот что именно сделает отмена в вашем Tag Manager — пока ничего не изменено:"),
+    "republish": _txt("נחזיר לפעילה את הגרסה שהייתה לפני ההוספה שלנו: {target}.",
+                      "We make the version from before our change live again: {target}.",
+                      "Nous remettons en ligne la version d'avant notre ajout : {target}.",
+                      "نعيد تفعيل النسخة التي كانت قبل إضافتنا: {target}.",
+                      "Снова публикуем версию, которая была до нашего изменения: {target}."),
+    "remove_ws": _txt("בסביבת עבודה נפרדת ({ws}) נמחק רק פריטים ששמם מתחיל ב-\"uallak —\", ונפרסם גרסה בשם \"{version}\".",
+                      "In a separate workspace ({ws}) we delete only items whose name starts with \"uallak —\", then publish a version named \"{version}\".",
+                      "Dans un espace séparé ({ws}), nous supprimons seulement les éléments dont le nom commence par « uallak — », puis publions la version « {version} ».",
+                      "في مساحة عمل منفصلة ({ws}) نحذف فقط العناصر التي يبدأ اسمها بـ \"uallak —\"، ثم ننشر نسخة باسم \"{version}\".",
+                      "В отдельном пространстве ({ws}) удаляем только элементы с именем на «uallak —» и публикуем версию «{version}»."),
+    "removed": _txt("יוסר: {names}", "Will be removed: {names}", "Sera retiré : {names}", "سيُزال: {names}",
+                    "Будет удалено: {names}"),
+    "restored": _txt("יחזור למצב שהיה לפני: {names}", "Goes back to how it was before: {names}",
+                     "Revient à son état d'avant : {names}", "يعود إلى ما كان عليه: {names}",
+                     "Вернётся к прежнему виду: {names}"),
+}
+
+
+def _version_label(v: dict) -> str:
+    v = v or {}
+    vid, name = str(v.get("version_id") or ""), str(v.get("name") or "")
+    return " · ".join(x for x in (name, f"#{vid}" if vid else "") if x)
+
+
+def _container_line(plan: dict, lang: str) -> str:
+    box = plan.get("container") or {}
+    label = " ".join(x for x in (box.get("name") or "", f"({box['public_id']})" if box.get("public_id") else "") if x)
+    return (_pick(_PLAN_TXT["container"], lang)
+            .replace("{container}", label or str(plan.get("container_path") or ""))
+            .replace("{account}", str(box.get("account") or "—")))
+
+
+def _names(entities, action=None) -> str:
+    return ", ".join(str(e.get("name")) for e in entities or []
+                     if e.get("kind") != "built_in_variable" and (action is None or e.get("action") == action))
+
+
+def _plan_lines(plan: dict, lang: str) -> str:
+    """configure_conversion's card body: the dry-run plan as one readable list."""
+    t = lambda key: _pick(_PLAN_TXT[key], lang)  # noqa: E731
+    entities = plan.get("entities") or []
+    lines = [t("intro"), "• " + _container_line(plan, lang),
+             "• " + t("workspace_reused" if (plan.get("workspace") or {}).get("reused") else "workspace_new")
+             .replace("{ws}", str((plan.get("workspace") or {}).get("name") or ""))]
+    labels = [_pick(_TYPE_LABEL[k], lang) for k in plan.get("types") or [] if k in _TYPE_LABEL]
+    if labels:
+        lines.append("• " + t("measures").replace("{types}", ", ".join(labels)))
+    for action in ("create", "update", "reuse"):
+        names = _names(entities, action)
+        if names:
+            lines.append("• " + t(action).replace("{names}", names))
+    if any(e.get("kind") == "built_in_variable" and e.get("action") == "enable" for e in entities):
+        lines.append("• " + t("builtin"))
+    for skip in plan.get("skipped") or []:
+        if skip.get("type") in _TYPE_LABEL:
+            lines.append("• " + t("skipped").replace("{type}", _pick(_TYPE_LABEL[skip["type"]], lang))
+                         .replace("{tags}", ", ".join(skip.get("tags") or []) or "—"))
+    lines.append(t("publish").replace("{version}", str(plan.get("version_name") or "")))
+    rollback = _version_label(plan.get("rollback_point"))
+    lines.append(t("rollback").replace("{rollback}", rollback) if rollback else t("rollback_none"))
+    lines += [t("untouched"), t("ask")]
+    return "\n".join(lines)
+
+
+def _revert_lines(plan: dict, lang: str) -> str:
+    t = lambda key: _pick(_PLAN_TXT[key], lang)  # noqa: E731
+    lines = [t("revert_intro"), "• " + _container_line(plan, lang)]
+    if plan.get("method") == "republish":
+        lines.append("• " + t("republish").replace("{target}", _version_label(plan.get("target_version")) or "—"))
+    else:
+        lines.append("• " + t("remove_ws").replace("{ws}", "uallak tracking removal")
+                     .replace("{version}", "uallak tracking removed"))
+    if plan.get("remove"):
+        lines.append("• " + t("removed").replace("{names}", _names(plan["remove"])))
+    if plan.get("restore"):
+        lines.append("• " + t("restored").replace("{names}", _names(plan["restore"])))
+    lines += [t("untouched"), t("ask")]
+    return "\n".join(lines)
+
+
+def _plan_what(params: dict, revert: bool = False):
+    """what_for: the card text from the stored plan in every language (None
+    for a card without one → the generic line)."""
+    plan = (params or {}).get("plan")
+    if not isinstance(plan, dict):
+        return None
+    build = _revert_lines if revert else _plan_lines
+    try:
+        return {lang: build(plan, lang) for lang in LANGS}
+    except Exception:
+        return None
+
+
+def _gtm_prepare_refusal(result: dict, action: str, codes: dict, lang: str) -> dict:
+    """A refused dry run → what the chat shows instead of a card: the
+    reconnect card for a grant problem, else the action's own plain line
+    (never the error text; ours-to-fix reasons get the generic one)."""
+    code = codes.get(result.get("reason"), "")
+    refusals = ACTIONS[action].get("refusals") or {}
+    if code == "gtm_reconnect":
+        return {"switch_to": "connect_tag_manager", "notice": _pick(refusals["gtm_reconnect"], lang)}
+    return {"refuse": _pick(refusals.get(code) or _FAILED, lang)}
+
+
+def _prepare_configure_conversion(client_id: int, params: dict, context: dict, open_rows: list) -> dict:
+    """The DRY RUN before the card exists: the card carries the exact plan
+    (website_agent.plan_lead_conversion — reads only) and the click runs it
+    only if the container still matches."""
+    from agents.website_agent import plan_lead_conversion
+    lang = (context or {}).get("language") or "he"
+    result = plan_lead_conversion(client_id, (params or {}).get("ga4_measurement_id", ""))
+    if not result.get("success"):
+        return _gtm_prepare_refusal(result, "configure_conversion", _GTM_REFUSAL_CODES, lang)
+    plan = result["plan"]
+    for row in open_rows or []:
+        if (((row.get("params") or {}).get("plan")) or {}).get("signature") == plan.get("signature"):
+            return {"existing": row}
+    return {"params": {"ga4_measurement_id": plan.get("ga4_measurement_id", ""), "plan": plan},
+            "supersedes": (open_rows[0].get("id") if open_rows else None)}
+
+
+def _validate_conversion_stored(client_id: int, params: dict) -> dict:
+    from core import gtm_plan
+    params = dict(params or {})
+    unknown = set(params) - {"ga4_measurement_id", "plan"}
+    if unknown:
+        raise ValueError(f"unexpected params {sorted(unknown)}")
+    out = {}
+    if params.get("ga4_measurement_id"):
+        out["ga4_measurement_id"] = _v_ga4(params["ga4_measurement_id"], client_id)
+    out["plan"] = gtm_plan.clean_plan(params.get("plan"))
+    if out.get("ga4_measurement_id") and out["plan"].get("ga4_measurement_id") not in ("", out["ga4_measurement_id"]):
+        raise ValueError("plan GA4 id differs from the card's")
+    return out
+
+
+def _prepare_revert_conversion(client_id: int, params: dict, context: dict, open_rows: list) -> dict:
+    from agents.website_agent import plan_revert_conversion
+    lang = (context or {}).get("language") or "he"
+    result = plan_revert_conversion(client_id)
+    if not result.get("success"):
+        return _gtm_prepare_refusal(result, "revert_conversion", _GTM_REVERT_REFUSAL_CODES, lang)
+    plan = result["plan"]
+    for row in open_rows or []:
+        if (((row.get("params") or {}).get("plan")) or {}).get("signature") == plan.get("signature"):
+            return {"existing": row}
+    return {"params": {"plan": plan}, "supersedes": (open_rows[0].get("id") if open_rows else None)}
+
+
+def _validate_revert_stored(client_id: int, params: dict) -> dict:
+    from core import gtm_plan
+    params = dict(params or {})
+    if set(params) - {"plan"}:
+        raise ValueError("unexpected params")
+    return {"plan": gtm_plan.clean_plan(params.get("plan"), revert=True)}
+
+
+_GTM_SAFETY_REFUSALS = {
+    "gtm_plan_changed": _txt(
+        "משהו ב-Tag Manager של האתר השתנה מאז שהכנתי את הכרטיס, אז לא נגעתי בכלום. בקשו ממני שוב, ואכין כרטיס חדש עם המצב העדכני.",
+        "Something in your site's Tag Manager changed since I prepared this card, so I touched nothing. Ask me again and I'll prepare a fresh card with the current state.",
+        "Quelque chose a changé dans votre Tag Manager depuis cette carte — je n'ai rien touché. Redemandez-moi et je prépare une carte à jour.",
+        "تغيّر شيء في Tag Manager لديكم منذ أن جهّزت هذه البطاقة، لذلك لم ألمس شيئًا. اطلبوا مني مجددًا وسأجهز بطاقة محدّثة.",
+        "С момента подготовки карточки в вашем Tag Manager что-то изменилось, поэтому я ничего не трогал. Попросите ещё раз — подготовлю новую карточку."),
+    "gtm_foreign_entity": _txt(
+        "בדקתי ומצאתי שהפעולה הייתה נוגעת גם בפריטים ב-Tag Manager שלא אנחנו יצרנו — אז עצרתי ולא שיניתי כלום. הצוות שלנו קיבל הודעה ויבדוק את זה.",
+        "I checked and found this would also touch items in your Tag Manager that we didn't create — so I stopped and changed nothing. Our team has been notified and will look into it.",
+        "J'ai vérifié : cela toucherait aussi des éléments de votre Tag Manager que nous n'avons pas créés — je me suis arrêté, rien n'a changé. Notre équipe est prévenue.",
+        "تحققت ووجدت أن ذلك سيمسّ أيضًا عناصر في Tag Manager لم ننشئها — لذلك توقفت ولم أغيّر شيئًا. تم إبلاغ فريقنا وسيتابع.",
+        "Проверка показала, что это затронуло бы элементы в вашем Tag Manager, созданные не нами, — я остановился и ничего не менял. Команда уже в курсе."),
+    "gtm_plan_unreadable": _txt(
+        "לא הצלחתי לקרוא כרגע את ה-Tag Manager של האתר, אז לא שיניתי כלום. נסו שוב בעוד רגע.",
+        "I couldn't read your site's Tag Manager right now, so I changed nothing. Try again in a moment.",
+        "Je n'ai pas pu lire votre Tag Manager pour l'instant — rien n'a changé. Réessayez dans un instant.",
+        "لم أتمكن الآن من قراءة Tag Manager لديكم، لذلك لم أغيّر شيئًا. حاولوا مجددًا بعد قليل.",
+        "Сейчас не удалось прочитать ваш Tag Manager — ничего не изменено. Повторите чуть позже."),
+}
+
+
+def _revert_possible(state: dict, client: dict) -> bool:
+    """Offered when Tag Manager is connected and works; whether anything of
+    ours is live is the dry run's answer (nothing → one plain line)."""
+    tracking = (state or {}).get("tracking") or {}
+    return bool(tracking.get("connected")) and not tracking.get("needs_reconnect")
 
 
 def _v_conversion_types(value, client_id: int):
@@ -2303,6 +2587,12 @@ ACTIONS = {
                                           "hint": "G-XXXXXXX, only if known from the data; empty = detected from the site"}},
         "available": _conversion_setup_possible,
         "run": _run_configure_conversion,
+        # The dry run (docs/GTM-SAFETY.md): the card IS the plan — container,
+        # workspace, every entity created / updated / reused, what is skipped
+        # and why, the rollback point. ONE approve; the click re-checks it.
+        "prepare": _prepare_configure_conversion,
+        "validate_stored": _validate_conversion_stored,
+        "what_for": lambda params: _plan_what(params),
         "display": _client_measures,
         # Neutral title: it measures exactly the client's own types (purchases
         # for a store, leads for a lead business) — never "leads" by default
@@ -2369,6 +2659,70 @@ ACTIONS = {
                 "Le Tag Manager du site a des modifications non publiées et aucun espace de travail libre — nous n'avons rien touché. Publiez-les ou annulez-les (ou supprimez un espace inutilisé), puis réessayez.",
                 "في Tag Manager تغييرات غير منشورة ولا مكان لمساحة عمل إضافية — كي لا ننشر تغييرات غيرنا لم نلمس شيئًا. انشروا التغييرات أو ألغوها (أو احذفوا مساحة غير مستخدمة) ثم حاولوا مجددًا.",
                 "В Tag Manager есть неопубликованные изменения и нет места для ещё одного рабочего пространства — чтобы не опубликовать чужое, мы ничего не трогали. Опубликуйте или отмените их (или удалите лишнее пространство) и повторите."),
+            **_GTM_SAFETY_REFUSALS,
+        },
+        "follow_up": {"gtm_reconnect": "connect_tag_manager"},
+    },
+    "revert_conversion": {
+        # "Undo my tracking" (docs/GTM-SAFETY.md): ONE approve on a card that
+        # lists exactly what is removed. Republishes the version saved before
+        # our publish, or — when the container moved on — deletes ONLY
+        # entities named "uallak — ..." in our own workspace and publishes.
+        "approver": "client", "admin_proposable": True, "client_requestable": True,
+        "internal_only": False, "kind": "execute",
+        "does": "Undoes the tracking we added in the client's Tag Manager: republishes the version that was live "
+                "before our publish, or removes only entities named 'uallak — ...' and publishes. The card lists "
+                "exactly what is removed. Never touches any other tag, trigger or variable.",
+        "params": {},
+        "available": _revert_possible,
+        "run": _run_revert_conversion,
+        "prepare": _prepare_revert_conversion,
+        "validate_stored": _validate_revert_stored,
+        "what_for": lambda params: _plan_what(params, revert=True),
+        "title": _txt("ביטול המדידה שהוספנו באתר", "Undo the tracking we added", "Annuler la mesure ajoutée",
+                      "التراجع عن القياس الذي أضفناه", "Отменить добавленный учёт"),
+        "what": _txt("נבטל ב-Tag Manager של האתר את המדידה שהוספנו, ורק אותה.",
+                     "We'll undo, in your site's Tag Manager, the tracking we added — and only that.",
+                     "Nous annulerons dans le Tag Manager du site la mesure que nous avons ajoutée — et seulement elle.",
+                     "سنتراجع في Tag Manager الخاص بموقعكم عن القياس الذي أضفناه — وعنه فقط.",
+                     "Мы отменим в Tag Manager сайта добавленный нами учёт — и только его."),
+        "done": _txt("המדידה שהוספנו בוטלה ✓ שאר ה-Tag Manager שלכם נשאר כמו שהיה.",
+                     "The tracking we added is undone ✓ The rest of your Tag Manager is as it was.",
+                     "La mesure ajoutée est annulée ✓ Le reste de votre Tag Manager est inchangé.",
+                     "تم التراجع عن القياس الذي أضفناه ✓ بقية Tag Manager لديكم كما كانت.",
+                     "Добавленный учёт отменён ✓ Остальное в вашем Tag Manager без изменений."),
+        "refusals": {
+            "gtm_reconnect": _txt(
+                "כדי לבטל אני צריך עוד הרשאה אחת מ-Google — באתר לא השתנה כלום. אשרו בכפתור (פעם אחת), ואז נמשיך.",
+                "To undo this I need one more permission from Google — nothing on your site changed. Approve with the button (once) and we'll continue.",
+                "Pour annuler, j'ai besoin d'une autorisation de plus de Google — rien n'a changé sur votre site. Validez avec le bouton (une fois).",
+                "للتراجع أحتاج إذنًا إضافيًا واحدًا من Google — لم يتغير شيء في موقعكم. وافقوا بالزر (مرة واحدة) ونكمل.",
+                "Для отмены нужно ещё одно разрешение Google — на сайте ничего не изменилось. Подтвердите кнопкой (один раз)."),
+            "nothing_to_revert": _txt(
+                "לא מצאתי ב-Tag Manager של האתר מדידה שהוספנו — אין מה לבטל, ולא שיניתי כלום.",
+                "I found no tracking of ours in your site's Tag Manager — there's nothing to undo, and I changed nothing.",
+                "Je ne trouve aucune mesure ajoutée par nous dans votre Tag Manager — rien à annuler, rien n'a changé.",
+                "لم أجد في Tag Manager لديكم قياسًا أضفناه — لا شيء للتراجع عنه، ولم أغيّر شيئًا.",
+                "В вашем Tag Manager нет добавленного нами учёта — отменять нечего, ничего не изменено."),
+            "gtm_revert_blocked": _txt(
+                "תג אחר ב-Tag Manager שלכם נשען על פריט שהוספנו, ומחיקה הייתה שוברת אותו — אז לא נגעתי בכלום. הצוות שלנו יבדוק ויחזור אליכם.",
+                "Another tag in your Tag Manager relies on something we added, and removing it would break that tag — so I touched nothing. Our team will check and get back to you.",
+                "Une autre balise de votre Tag Manager dépend d'un élément ajouté par nous ; le retirer la casserait — je n'ai rien touché. Notre équipe vérifie et revient vers vous.",
+                "وسم آخر في Tag Manager لديكم يعتمد على عنصر أضفناه، وإزالته ستعطّله — لذلك لم ألمس شيئًا. سيتحقق فريقنا ويعود إليكم.",
+                "Другой тег в вашем Tag Manager зависит от добавленного нами элемента, и удаление его сломает — я ничего не трогал. Команда проверит и свяжется с вами."),
+            "gtm_no_permission": _txt(
+                "לחשבון Google שחיברתם אין הרשאת פרסום בקונטיינר הזה, אז לא השתנה כלום. בעל הקונטיינר צריך לתת לו הרשאת \"Publish\", ואז נסו שוב.",
+                "The Google account you connected can't publish in this container, so nothing changed. The container owner needs to give it Publish permission, then try again.",
+                "Le compte Google connecté ne peut pas publier dans ce conteneur — rien n'a changé. Le propriétaire doit lui donner le droit Publier, puis réessayez.",
+                "حساب Google المرتبط لا يملك صلاحية النشر في هذه الحاوية، لذلك لم يتغير شيء. يجب أن يمنحه المالك صلاحية Publish ثم حاولوا مجددًا.",
+                "У подключённого аккаунта Google нет права публикации в этом контейнере — ничего не изменилось. Владелец должен выдать право Publish, затем повторите."),
+            "gtm_workspace_busy": _txt(
+                "אין כרגע מקום לסביבת עבודה נפרדת ב-Tag Manager שלכם, ובלעדיה אני לא מוחק כלום — לא השתנה כלום. מחקו סביבת עבודה שלא בשימוש, ואז נסו שוב.",
+                "There's no room for a separate workspace in your Tag Manager right now, and without one I delete nothing — nothing changed. Delete an unused workspace, then try again.",
+                "Pas de place pour un espace de travail séparé dans votre Tag Manager, et sans lui je ne supprime rien — rien n'a changé. Supprimez un espace inutilisé, puis réessayez.",
+                "لا يوجد الآن مكان لمساحة عمل منفصلة في Tag Manager لديكم، وبدونها لا أحذف شيئًا — لم يتغير شيء. احذفوا مساحة غير مستخدمة ثم حاولوا مجددًا.",
+                "Сейчас нет места для отдельного рабочего пространства, а без него я ничего не удаляю — ничего не изменилось. Удалите лишнее пространство и повторите."),
+            **_GTM_SAFETY_REFUSALS,
         },
         "follow_up": {"gtm_reconnect": "connect_tag_manager"},
     },
@@ -3765,6 +4119,7 @@ ACTIONS["create_presenter_from_photos"]["slow"] = {"minutes": 5, "eta": _txt(
 ACTIONS["configure_conversion"]["slow"] = {"minutes": 5, "eta": _txt(
     "זה לוקח בדרך כלל פחות מדקה.", "It usually takes under a minute.", "Cela prend généralement moins d'une minute.",
     "يستغرق ذلك عادة أقل من دقيقة.", "Обычно это занимает меньше минуты.")}
+ACTIONS["revert_conversion"]["slow"] = ACTIONS["configure_conversion"]["slow"]
 ACTIONS["publish_youtube_from_media"]["slow"] = {"minutes": 20, "eta": _txt(
     "העלאה לוקחת בדרך כלל בין דקה לכמה דקות, לפי גודל הסרטון.",
     "An upload usually takes from one to a few minutes, depending on the video's size.",

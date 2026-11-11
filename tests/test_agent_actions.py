@@ -89,6 +89,24 @@ class Recorder:
         return {"success": True, "live_version": "v7", "event_name": "generate_lead"}
 
 
+# The dry-run plan a configure_conversion card carries (website_agent.plan_lead_conversion)
+SAMPLE_PLAN = {"container_path": "accounts/1/containers/2",
+               "container": {"path": "accounts/1/containers/2", "public_id": "GTM-NZRNDQN",
+                             "name": "shin-se-kai.co.il 2023", "account": "Shin Sekai"},
+               "workspace": {"name": "uallak lead tracking", "reused": False},
+               "ga4_measurement_id": "", "types": ["form_submit"], "skipped": [],
+               "entities": [{"kind": "trigger", "name": "uallak — form submission", "action": "create"},
+                            {"kind": "tag", "name": "uallak — GA4 generate_lead", "action": "create"}],
+               "version_name": "uallak conversion tracking",
+               "rollback_point": {"version_id": "11", "name": "site 2023"}, "signature": "a" * 64}
+SAMPLE_REVERT_PLAN = {"container_path": "accounts/1/containers/2", "container": SAMPLE_PLAN["container"],
+                      "method": "republish", "live_version": {"version_id": "12", "name": "uallak conversion tracking"},
+                      "target_version": {"version_id": "11", "name": "site 2023"},
+                      "remove": [{"kind": "tag", "name": "uallak — GA4 generate_lead"},
+                                 {"kind": "trigger", "name": "uallak — form submission"}],
+                      "restore": [], "publish_row_id": 5, "signature": "b" * 64}
+
+
 def install_stubs(pending_suggestions=(11, 12)):
     engagement = types.ModuleType("agents.engagement_agent")
     engagement.get_suggestions = lambda client_id, status="pending", limit=20: [
@@ -96,6 +114,10 @@ def install_stubs(pending_suggestions=(11, 12)):
     engagement.decide_suggestion = Recorder()
     website = types.ModuleType("agents.website_agent")
     website.configure_lead_conversion = Recorder()
+    website.revert_conversion = Recorder()
+    website.plan_lead_conversion = lambda cid, ga4="", types=None: {
+        "success": True, "plan": {**SAMPLE_PLAN, "ga4_measurement_id": ga4}}
+    website.plan_revert_conversion = lambda cid: {"success": True, "plan": dict(SAMPLE_REVERT_PLAN)}
     sys.modules["agents.engagement_agent"] = engagement
     sys.modules["agents.website_agent"] = website
     return engagement, website
@@ -368,7 +390,7 @@ class DecideGuards(ActionTestCase):
 
     def test_staff_request_approved_by_admin_runs_and_tells_the_client(self):
         pid = self.stored(client_id=40, action="configure_conversion", origin="client_chat",
-                          approver="admin", status="awaiting_staff")
+                          approver="admin", status="awaiting_staff", params={"plan": SAMPLE_PLAN})
         result = aa.decide(pid, "admin", 40, "approve")
         self.assertEqual(result["status"], "done")
         self.assertEqual(len(self.website.configure_lead_conversion.calls), 1)

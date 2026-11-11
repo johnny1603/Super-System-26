@@ -272,6 +272,14 @@ would be exactly the false confidence this exists to kill. Reports GA4
 lead-event tags (`gaawe` with a `LEAD_EVENT_NAMES` event) and their trigger
 types; "no published version at all" is its own explicit state.
 
+**Safety (2026-11-11, docs/GTM-SAFETY.md):** the card shows the DRY-RUN plan
+(`plan_lead_conversion`, reads only) and publishes only if the container still
+matches it; admin routes take `dry_run` and log `gtm_publish_without_card`;
+nothing not named "uallak — " is ever written or published (`gtm_plan.OUR_PREFIX`,
+`publish_workspace` checks `workspaces.getStatus`); each publish saves the previous
+live version, and the `revert_conversion` card ("undo my tracking") republishes it
+or deletes only "uallak — …" entities.
+
 **Configure — v1 scope = the single common case**
 (`configure_lead_conversion`; the client's own chat card `configure_conversion`
 — client-approved since 2026-10-30 — plus `POST /api/website/configure-conversion`

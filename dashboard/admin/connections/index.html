@@ -79,6 +79,16 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     </div>
     <div id="gsOut" class="muted" style="margin-top:10px;"></div>
   </div>
+  <!-- Tag Manager per client: READ-ONLY (GET /api/admin/gtm/overview +
+       /api/admin/gtm/history/{id}, docs/GTM-SAFETY.md). The connected
+       container, the last publish, and the rollback point saved before it.
+       Publishing and undo stay on the client's approval cards. -->
+  <div class="card" id="gtmSafety">
+    <h2>Tag Manager — קונטיינר, פרסום אחרון ונקודת חזרה (קריאה בלבד)</h2>
+    <div class="muted">פרסום וביטול נעשים רק מכרטיס האישור של הלקוח. נקודת החזרה = הגרסה שהייתה פעילה לפני הפרסום שלנו.</div>
+    <div class="row"><button id="gtmBtn">טעינה</button></div>
+    <div id="gtmOut" class="muted" style="margin-top:10px;"></div>
+  </div>
 </div>
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -184,6 +194,48 @@ async function googleScopes() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
 }
 document.getElementById("gsBtn").onclick = googleScopes;
+
+const GTM_OP = {website_conversion_configured: "פרסום", gtm_conversion_reverted: "ביטול", gtm_publish_without_card: "עקיפת כרטיס"};
+const GTM_VIA = {card: "כרטיס הלקוח", admin_key: "X-Admin-Key", control_room: "חדר הבקרה", direct: "קוד"};
+const ver = (id, name) => id || name ? `<code>${esc(name || "")}${id ? " #" + esc(id) : ""}</code>` : "—";
+function gtmClientHtml(c) {
+  const box = c.container || {}, last = c.last_publish || {};
+  return `<div class="card" style="margin-top:8px;" data-gtm="${esc(c.client_id)}">
+    <h2>לקוח ${esc(c.client_id)} ${esc(c.client_name || "")}
+      ${c.match === "match" ? '<span class="badge ok">תואם לאתר</span>' : c.match ? `<span class="badge warn">${esc(c.match)}</span>` : ""}</h2>
+    <div>קונטיינר: <bdi dir="ltr">${esc(box.name || "?")} · <code>${esc(box.public_id || "?")}</code></bdi>
+      <span class="muted" dir="ltr">${esc(c.container_path)}</span></div>
+    <div>פרסום אחרון: ${last.new_version_id ? ver(last.new_version_id, last.new_version_name) + " · " + esc(GTM_VIA[last.via] || last.via || "") + " · " + esc(String(last.at || "").slice(0, 16).replace("T", " ")) : "—"}</div>
+    <div>נקודת חזרה: ${last.new_version_id ? (last.previous_version_id ? ver(last.previous_version_id, last.previous_version_name) : "לא הייתה גרסה פעילה — ביטול מוחק רק את uallak —") : "—"}</div>
+    ${c.error ? `<div class="muted" dir="ltr">error: <code>${esc(c.error)}</code></div>` : ""}
+    <div class="row"><button data-gtm-history>היסטוריה</button></div>
+    <div data-gtm-out></div>
+  </div>`;
+}
+async function gtmOverview() {
+  const out = document.getElementById("gtmOut");
+  out.textContent = "טוען…";
+  try {
+    const d = await api("/api/admin/gtm/overview");
+    out.innerHTML = (d.clients || []).map(gtmClientHtml).join("") || "אין לקוח עם חיבור Tag Manager פעיל.";
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gtmBtn").onclick = gtmOverview;
+document.getElementById("gtmOut").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-gtm-history]");
+  if (!b) return;
+  const card = b.closest("[data-gtm]"), box = card.querySelector("[data-gtm-out]");
+  box.textContent = "טוען…";
+  try {
+    const d = await api("/api/admin/gtm/history/" + encodeURIComponent(card.dataset.gtm));
+    box.innerHTML = (d.history || []).map(h => `<div class="card" style="margin-top:6px;">
+        <h2><span class="badge">${esc(GTM_OP[h.type] || h.type)}</span> ${esc(String(h.at || "").slice(0, 16).replace("T", " "))}
+          <span class="muted">${esc(GTM_VIA[h.via] || h.via || "")}${h.method ? " · " + esc(h.method) : ""}</span></h2>
+        <div>לפני: ${ver(h.previous_version_id, h.previous_version_name)} → אחרי: ${ver(h.new_version_id, h.new_version_name)}</div>
+        <div dir="ltr" style="text-align:left;">${(h.entities || []).map(x => `<code>${esc(x.action ? x.action + " " : "")}${esc(x.name)}</code>`).join(" ") || ""}</div>
+      </div>`).join("") || '<div class="muted">אין עדיין פרסום או ביטול.</div>';
+  } catch (err) { box.textContent = err.message === "auth" ? "" : "הטעינה נכשלה"; }
+});
 load().catch(err => { if (err.message !== "auth") document.getElementById("rows").innerHTML = '<div class="card muted">הטעינה נכשלה. אפשר לרענן.</div>'; });
 </script>
 <!-- איציק: the owner's operator, minimised in the corner; draws nothing without the admin session -->

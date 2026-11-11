@@ -520,8 +520,18 @@ publishes them, so leads from the client's site are counted. Calls:
 | `tagmanager.edit.containers` | `gtm_service.ensure_purchase_variables`, `ensure_purchase_trigger`, `ensure_purchase_tag` (store_sales, 2026-11-07) | `workspaces.variables.list` / `.create` / `.update`, `workspaces.triggers.*`, `workspaces.tags.*` | **writes**, only for a client whose chosen type is store_sales and only on the client's card approval: 4 Custom JavaScript variables (order id from the page address, total, currency, once-per-order), one DOM Ready trigger, one GA4 `purchase` tag — each looked up by name and reused or updated, never duplicated; read back from `versions.live` after publishing. Same scope, no new one |
 | `tagmanager.edit.containerversions` | `gtm_service.publish_workspace` | `workspaces.create_version` | **writes** a container version from the workspace |
 | `tagmanager.publish` | `gtm_service.publish_workspace` | `versions.publish` | **publishes** that version (makes it live) |
+| `tagmanager.edit.containers` | `gtm_service.plan_entities`, `workspace_foreign_changes` (← `website_agent.plan_lead_conversion`, the dry run, 2026-11-11) | `versions.live`, `workspaces.list`, `workspaces.getStatus` | **reads only**: the exact plan the approval card shows; before every publish, the workspace's own change list — any change to an entity not named "uallak — …" stops it |
+| `tagmanager.edit.containers` | `gtm_service.get_version` (← `website_agent.plan_revert_conversion`) | `versions.get` | **reads** the version saved before our publish (the rollback point) |
+| `tagmanager.publish` | `gtm_service.publish_version` (← `website_agent.revert_conversion`, "undo my tracking" card) | `versions.publish` | **republishes** the version that was live before our publish |
+| `tagmanager.edit.containers` + `edit.containerversions` + `publish` | `gtm_service.remove_ours` + `publish_workspace` (← `revert_conversion`, when the container changed since) | `workspaces.create`, `tags/triggers/variables.delete`, `create_version`, `versions.publish` | in a workspace "uallak tracking removal": deletes ONLY entities named "uallak — …", then publishes. Same three scopes, nothing new |
 
-All writes run from `website_agent.configure_lead_conversion`. The
+Safety (docs/GTM-SAFETY.md, 2026-11-11): the card shows the dry-run plan and
+is the client's only publish path; the admin routes log
+`gtm_publish_without_card`; every publish saves the previous live version;
+"undo my tracking" is its own one-approval card.
+
+All writes run from `website_agent.configure_lead_conversion` (and the undo
+from `website_agent.revert_conversion`). The
 user-facing path is the client chat card `configure_conversion` (the client
 approves it; since 2026-10-30, before that staff approved it). The same
 function backs the Control Room button

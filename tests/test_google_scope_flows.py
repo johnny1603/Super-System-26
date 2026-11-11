@@ -65,6 +65,35 @@ class FakeGtm:
         self.builtins = []                     # enabled built-in variables (clickUrl, ...)
         self.versioned = None                  # the workspace create_version froze
         self.published = {}                    # what versions:live answers after a publish
+        self.versions = {}                     # version id -> its frozen entities (versions/{id})
+        self.next_version = 12
+        self.version_names = {}
+
+    def seed_live(self, version_id="11", name="site 2023", **entities):
+        """A container that already has a published version: the same entities
+        are live AND the base of every new workspace, and the version is kept
+        so it can be read (versions/{id}) and republished."""
+        snap = {k: [dict(e) for e in entities.get(k, [])] for k in ("trigger", "tag", "variable")}
+        self.live = {k: [dict(e) for e in v] for k, v in snap.items()}
+        self.versions[version_id] = snap
+        self.version_names[version_id] = name
+        self.published = {"name": name, "containerVersionId": version_id,
+                          **{k: [dict(e) for e in v] for k, v in snap.items()}}
+
+    def _changes(self, ws_path):
+        """workspaces.getStatus: what this workspace changes against the live base."""
+        if ws_path.endswith("/workspaces/1") and self.default_has_changes:
+            return [{"tag": {}}]
+        if ws_path not in self.entities:
+            return []
+        out = []
+        for kind in ("trigger", "tag", "variable"):
+            base = {e["name"]: e for e in self.live.get(kind, [])}
+            now = {e["name"]: e for e in self.entities[ws_path].get(kind, [])}
+            out += [{kind: e, "changeStatus": "added" if n not in base else "updated"}
+                    for n, e in now.items() if base.get(n) != e]
+            out += [{kind: e, "changeStatus": "deleted"} for n, e in base.items() if n not in now]
+        return out
 
     def _ws(self, path):
         ws = path.rsplit("/", 1)[0]
@@ -90,7 +119,8 @@ class FakeGtm:
         if path == f"{CONTAINER}/workspaces":
             return {"workspace": [dict(w) for w in self.workspaces]}
         if path.endswith("/status"):
-            return {"workspaceChange": [{"tag": {}}]} if self.default_has_changes else {}
+            changes = self._changes(path[:-len("/status")])
+            return {"workspaceChange": changes} if changes else {}
         if path.endswith("/triggers"):
             return {"trigger": [dict(t) for t in self._ws(path)["trigger"]]}
         if path.endswith("/tags"):
@@ -103,6 +133,10 @@ class FakeGtm:
             if not self.published:
                 raise self.gtm.GtmApiError("GET", path, _Resp(404, {"error": {"code": 404}}))
             return dict(self.published)
+        if "/versions/" in path and path.rsplit("/", 1)[-1] in self.versions:
+            vid = path.rsplit("/", 1)[-1]
+            return {"containerVersionId": vid, "name": self.version_names.get(vid, ""),
+                    **{k: [dict(e) for e in v] for k, v in self.versions[vid].items()}}
         raise AssertionError(f"unexpected GET {path}")
 
     def _create(self, kind, path, body, new_id):
@@ -143,14 +177,24 @@ class FakeGtm:
             if self._maybe_fail("version", "POST", path) == "compiler":
                 return {"compilerError": True}
             self.versioned = path[:-len(":create_version")]
-            return {"containerVersion": {"path": f"{CONTAINER}/versions/12"}}
+            vid = str(self.next_version)
+            self.next_version += 1
+            frozen = self.entities.get(self.versioned) or {}
+            self.versions[vid] = {k: [dict(e) for e in frozen.get(k, [])] for k in ("trigger", "tag", "variable")}
+            self.version_names[vid] = (json_body or {}).get("name", "")
+            return {"containerVersion": {"path": f"{CONTAINER}/versions/{vid}"}}
         if path.endswith(":publish"):
             if self._maybe_fail("publish", "POST", path) == "compiler":
                 return {"compilerError": True}
-            frozen = self.entities.get(self.versioned) or {}
-            self.published = {"name": "uallak conversion tracking",
-                              **{k: [dict(e) for e in frozen.get(k, [])] for k in ("trigger", "tag", "variable")}}
-            return {"containerVersion": {"name": "uallak conversion tracking", "containerVersionId": "12"}}
+            vid = path[:-len(":publish")].rsplit("/", 1)[-1]
+            if vid not in self.versions:
+                raise self.gtm.GtmApiError("POST", path, _Resp(404, {"error": {"code": 404}}))
+            name = self.version_names.get(vid, "")
+            self.published = {"name": name, "containerVersionId": vid,
+                              **{k: [dict(e) for e in v] for k, v in self.versions[vid].items()}}
+            # A published version is the base of every NEW workspace from now on
+            self.live = {k: [dict(e) for e in v] for k, v in self.versions[vid].items()}
+            return {"containerVersion": {"name": name, "containerVersionId": vid}}
         raise AssertionError(f"unexpected POST {path}")
 
     def put(self, refresh_token, path, json_body=None, params=None):
@@ -647,7 +691,7 @@ class LeadTrackingCard(ActionTestCase):
         return result["card"]["id"]
 
     def failing(self, reason):
-        def run(cid, ga4=""):
+        def run(cid, ga4="", **kw):
             return {"success": False, "reason": reason, "errors": [f"detail for {reason}"]}
         self.website.configure_lead_conversion = run
 

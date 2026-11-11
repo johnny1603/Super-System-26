@@ -214,6 +214,21 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   never created twice (a workspace is based on the LIVE version, so a published trigger is
   already there: the client-27 "duplicate name" 400). Failures that are ours retry once, then
   one admin alert; the client sees only the fixed line.
+- GTM safety (docs/GTM-SAFETY.md, 2026-11-11): `website_agent.plan_lead_conversion` is the DRY
+  RUN (same guards via `_gtm_preflight`, reads only) — the `configure_conversion` card carries
+  that plan (container name + GTM-XXXX + account, workspace, every "uallak — …" entity
+  create/update/reuse, skipped types + the live tags that caused it, rollback point) in 5
+  languages, and the click publishes only if the recomputed plan's signature still matches
+  (`gtm_plan_changed`). The card is the client's ONLY publish path; the X-Admin-Key and Control
+  Room routes (both take `dry_run`) log `gtm_publish_without_card` first. NOTHING not named
+  `gtm_plan.OUR_PREFIX` ("uallak — ") is ever written, deleted or published: `ensure_entity`
+  refuses it, `publish_workspace` reads `workspaces.getStatus` and refuses any foreign change
+  (`gtm_foreign_entity` + admin alert). Each publish row (`website_conversion_configured`) saves
+  the previous live version = the rollback point; `revert_conversion` (card "undo my
+  tracking") republishes it when our version is still live, else deletes only "uallak — …"
+  entities in workspace "uallak tracking removal" (refused if another entity depends on ours).
+  Admin read-only: `/api/admin/gtm/overview`, `/api/admin/gtm/history/{id}`, shown on
+  /admin/connections/. No migration (client_activity rows only).
 - `core/video_limits.py` — THE Drive → YouTube upload size limit (`VIDEO_UPLOAD_MAX_MB`, 512)
   and chunk size, read by client_state, agent_actions, verification_demo and
   `youtube_content_agent.publish` (the root guard). Uploads STREAM: `drive_service.read_range`

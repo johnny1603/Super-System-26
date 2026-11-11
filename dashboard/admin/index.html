@@ -3976,15 +3976,45 @@ async function crConfigureConversion(clientId, ev) {
   };
   if (!Number.isFinite(Number(clientId))) { fail('מזהה לקוח חסר'); return; }
   const ga4 = ((document.getElementById('crGa4Id') || {}).value || '').trim();
-  if (!confirm('ליצור ולפרסם (Publish) ב-GTM של הלקוח טריגר שליחת טופס + תג GA4 generate_lead?'
-               + (ga4 ? `\nGA4: ${ga4}` : '\nGA4: יזוהה מהאתר'))) return;
+  // Dry run FIRST (nothing written): the exact plan, then publish only that
+  // plan (expected_plan_signature). docs/GTM-SAFETY.md
+  el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">מחשב תוכנית (בלי לשנות כלום)…</div>';
+  let plan;
+  try {
+    const pr = await fetch(`/api/admin/control-room/${Number(clientId)}/configure-conversion`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ga4_measurement_id: ga4, dry_run: true }),
+    });
+    if (pr.status === 401) { fail('פג תוקף ההתחברות לניהול — התחבר מחדש והרץ שוב'); showLogin(); return; }
+    const pb = await pr.json().catch(() => null);
+    if (!pr.ok || !pb || !pb.success) {
+      const d = pb && pb.detail;
+      fail(`✕ התוכנית נדחתה (HTTP ${pr.status})${d ? '\n' + (Array.isArray(d) ? d.join('\n') : JSON.stringify(d)) : ''}`);
+      return;
+    }
+    plan = pb.data.plan;
+  } catch (e) {
+    console.error('configure-conversion dry run failed', e);
+    fail('הבקשה לא הגיעה לשרת (רשת / timeout) — נסה שוב');
+    return;
+  }
+  const box = plan.container || {};
+  const lines = (plan.entities || []).map(x => `  ${x.action} · ${x.kind} · ${x.name}`).join('\n');
+  const skipped = (plan.skipped || []).map(s => `  ${s.type}: ${(s.tags || []).join(', ')}`).join('\n');
+  const rb = plan.rollback_point || {};
+  if (!confirm(`לפרסם ב-GTM של הלקוח?\nקונטיינר: ${box.name || '?'} (${box.public_id || '?'}) · חשבון ${box.account || '?'}`
+               + `\nסביבת עבודה: ${(plan.workspace || {}).name || ''}\nGA4: ${plan.ga4_measurement_id || ''}`
+               + `\n\n${lines}` + (skipped ? `\n\nדילוג (כבר פעיל):\n${skipped}` : '')
+               + `\n\nנקודת חזרה: ${rb.version_id ? rb.name + ' #' + rb.version_id : 'אין גרסה פעילה'}`
+               + '\n(יירשם כפרסום שעקף את כרטיס הלקוח)')) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="panel-pad" style="color:var(--gray);">מגדיר ומפרסם ב-GTM…</div>';
   let res, body;
   try {
     res = await fetch(`/api/admin/control-room/${Number(clientId)}/configure-conversion`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ga4_measurement_id: ga4 }),
+      body: JSON.stringify({ ga4_measurement_id: plan.ga4_measurement_id || ga4,
+                             expected_plan_signature: plan.signature }),
     });
   } catch (e) {
     console.error('configure-conversion request failed', e);
@@ -4009,7 +4039,8 @@ async function crConfigureConversion(clientId, ev) {
     <div class="drawer-label" style="color:var(--green);">✓ Lead conversion tracking published</div>
     <div class="drawer-stat-row"><span class="drawer-stat-label">event</span><span dir="ltr">${esc(r.event_name || '')}</span></div>
     <div class="drawer-stat-row"><span class="drawer-stat-label">GA4</span><span dir="ltr">${esc(r.ga4_measurement_id || '')}</span></div>
-    <div class="drawer-stat-row"><span class="drawer-stat-label">live version</span><span dir="ltr">${esc(r.live_version || '')}</span></div>
+    <div class="drawer-stat-row"><span class="drawer-stat-label">live version</span><span dir="ltr">${esc(r.live_version || '')} #${esc(r.live_version_id || '')}</span></div>
+    <div class="drawer-stat-row"><span class="drawer-stat-label">rollback point</span><span dir="ltr">${r.previous_version_id ? esc((r.previous_version_name || '') + ' #' + r.previous_version_id) : '—'}</span></div>
     ${r.note ? `<div style="font-size:12px;color:var(--yellow);margin-top:8px;line-height:1.6;direction:ltr;text-align:left;">${esc(r.note)}</div>` : ''}
   </div>`;
 }

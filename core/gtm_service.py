@@ -35,7 +35,9 @@ tagmanager.edit.containers — accounts.list, containers.list, containers.get,
   workspaces.variables.list+create+update (the store purchase path) /
   triggers.delete / tags.delete (write; every object is looked up by name and
   reused or updated before anything is created; the deletes only remove what
-  this flow itself just created, after a failed run).
+  this flow itself just created, after a failed run — or, on the client's
+  "undo my tracking" card, entities named "uallak — ..." and nothing else).
+  Also versions.get (read: the rollback point). docs/GTM-SAFETY.md.
 tagmanager.edit.containerversions — workspaces.create_version. Missing
   until 2026-10-17, so every publish_workspace call would have failed with
   403; grants made before then lack it and must reconnect
@@ -180,6 +182,18 @@ class GtmWorkspaceBusy(RuntimeError):
     would publish their drafts too, so we stop."""
 
 
+# Every trigger / tag / variable this system writes carries OUR_PREFIX — and
+# NOTHING without it is ever created, changed, deleted or published by us
+# (docs/GTM-SAFETY.md). ensure_entity refuses a body without it, and
+# publish_workspace refuses a workspace holding any change to another name.
+from core.gtm_plan import OUR_PREFIX, is_ours  # noqa: E402,F401
+
+
+class GtmForeignEntity(RuntimeError):
+    """A write or publish would touch an entity NOT named "uallak — ..." —
+    someone else's tag, trigger or variable. Nothing is written or published."""
+
+
 # ─── Discovery ────────────────────────────────────────────────────────────────
 
 def list_accounts(refresh_token: str) -> list:
@@ -209,6 +223,10 @@ def find_container_by_public_id(refresh_token: str, public_id: str) -> dict:
     return {}
 
 
+def list_workspaces(refresh_token: str, container_path: str) -> list:
+    return _get(refresh_token, f"{container_path}/workspaces").get("workspace", [])
+
+
 def default_workspace_path(refresh_token: str, container_path: str) -> str:
     """GTM edits happen in a workspace. Every container has at least one
     ('Default Workspace') — first one wins, matching first-asset MVP style."""
@@ -225,9 +243,16 @@ def workspace_has_changes(refresh_token: str, workspace_path: str) -> bool:
 
 
 WORKSPACE_NAME = "uallak lead tracking"
+# The revert's own workspace (undo: deletes only "uallak — ..." entities)
+REMOVAL_WORKSPACE_NAME = "uallak tracking removal"
+_WORKSPACE_DESCRIPTION = {
+    WORKSPACE_NAME: "Created by uallak to add lead tracking; removed by Tag Manager when the version is created.",
+    REMOVAL_WORKSPACE_NAME: "Created by uallak to remove its own tracking (entities named 'uallak — ...' only); "
+                            "removed by Tag Manager when the version is created.",
+}
 
 
-def lead_workspace(refresh_token: str, container_path: str) -> tuple:
+def lead_workspace(refresh_token: str, container_path: str, name: str = WORKSPACE_NAME) -> tuple:
     """(workspace_path, ours). A NEW workspace is based on the latest
     container version, so the version made from it carries only our trigger
     and tag — never drafts someone left in the default workspace — and GTM
@@ -240,7 +265,7 @@ def lead_workspace(refresh_token: str, container_path: str) -> tuple:
     REUSED, never duplicated: synced to the live version first, and replaced
     by a fresh one only when the sync reports a conflict."""
     workspaces = _get(refresh_token, f"{container_path}/workspaces").get("workspace", [])
-    mine = next((w for w in workspaces if (w.get("name") or "") == WORKSPACE_NAME and w.get("path")), {})
+    mine = next((w for w in workspaces if (w.get("name") or "") == name and w.get("path")), {})
     if mine:
         try:
             synced = _post(refresh_token, f"{mine['path']}:sync")
@@ -257,9 +282,8 @@ def lead_workspace(refresh_token: str, container_path: str) -> tuple:
                 raise
     try:
         created = _post(refresh_token, f"{container_path}/workspaces",
-                        json_body={"name": WORKSPACE_NAME,
-                                   "description": "Created by uallak to add lead tracking; "
-                                                  "removed by Tag Manager when the version is created."})
+                        json_body={"name": name,
+                                   "description": _WORKSPACE_DESCRIPTION.get(name, "Created by uallak.")})
         if created.get("path"):
             return created["path"], True
     except GtmApiError as e:
@@ -344,7 +368,11 @@ def ensure_entity(refresh_token: str, workspace_path: str, kind: str, body: dict
     one exists but differs (rewritten to our spec, with its fingerprint so a
     concurrent edit is never clobbered), 'created' otherwise. A create that
     still meets a duplicate name (someone added it in between) re-reads and
-    takes that path instead of failing."""
+    takes that path instead of failing. A body not named "uallak — ..." is
+    refused before any call (GtmForeignEntity): found by exact name, so the
+    entity it would update carries our prefix too."""
+    if not is_ours(body.get("name")):
+        raise GtmForeignEntity(f"refusing to write {kind} {body.get('name')!r}: not a uallak entity")
     existing = find_named(list_entities(refresh_token, workspace_path, kind), body["name"])
     if not existing:
         try:
@@ -385,11 +413,27 @@ def ga4_lead_tag_body(ga4_measurement_id: str, trigger_id: str, name: str = TAG_
             "firingTriggerId": [str(trigger_id)]}
 
 
+def _form_trigger_matches(trigger: dict) -> bool:
+    return (trigger.get("type") == "formSubmission" and not trigger.get("filter")
+            and not trigger.get("autoEventFilter"))
+
+
+def _ga4_event_tag_matcher(ga4_measurement_id: str, trigger_id, event_name: str):
+    """Reused only if it already fires on THIS trigger with this measurement
+    id and event, and is not paused."""
+    def matches(tag):
+        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
+        return (tag.get("type") == "gaawe" and not tag.get("paused")
+                and params.get("measurementIdOverride") == ga4_measurement_id
+                and params.get("eventName") == event_name
+                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
+    return matches
+
+
 def ensure_form_submit_trigger(refresh_token: str, workspace_path: str) -> tuple:
     """(trigger, outcome) — our form-submission trigger, reused if present."""
     return ensure_entity(refresh_token, workspace_path, "triggers", form_submit_trigger_body(),
-                         lambda t: t.get("type") == "formSubmission" and not t.get("filter")
-                         and not t.get("autoEventFilter"))
+                         _form_trigger_matches)
 
 
 def ensure_ga4_lead_event_tag(refresh_token: str, workspace_path: str,
@@ -397,14 +441,9 @@ def ensure_ga4_lead_event_tag(refresh_token: str, workspace_path: str,
     """(tag, outcome) — our GA4 generate_lead tag, reused only if it already
     fires on THIS trigger with this measurement id and is not paused;
     otherwise rewritten so the GA4 tag is attached to the trigger."""
-    def matches(tag):
-        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
-        return (tag.get("type") == "gaawe" and not tag.get("paused")
-                and params.get("measurementIdOverride") == ga4_measurement_id
-                and params.get("eventName") == "generate_lead"
-                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
     return ensure_entity(refresh_token, workspace_path, "tags",
-                         ga4_lead_tag_body(ga4_measurement_id, trigger_id), matches)
+                         ga4_lead_tag_body(ga4_measurement_id, trigger_id),
+                         _ga4_event_tag_matcher(ga4_measurement_id, trigger_id, "generate_lead"))
 
 
 # ─── Click conversions (2026-11-02, core/conversion_types) ───────────────────
@@ -477,17 +516,16 @@ def ensure_ga4_event_tag(refresh_token: str, workspace_path: str, ga4_measuremen
                          trigger_id: str, event_name: str, name: str) -> tuple:
     """(tag, outcome) — a GA4 event tag on one trigger, by name (the click
     counterpart of ensure_ga4_lead_event_tag)."""
+    return ensure_entity(refresh_token, workspace_path, "tags",
+                         ga4_event_tag_body(ga4_measurement_id, trigger_id, event_name, name),
+                         _ga4_event_tag_matcher(ga4_measurement_id, trigger_id, event_name))
+
+
+def ga4_event_tag_body(ga4_measurement_id: str, trigger_id, event_name: str, name: str) -> dict:
     body = ga4_lead_tag_body(ga4_measurement_id, trigger_id, name=name)
     body["parameter"] = [p if p["key"] != "eventName" else {**p, "value": event_name}
                          for p in body["parameter"]]
-
-    def matches(tag):
-        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
-        return (tag.get("type") == "gaawe" and not tag.get("paused")
-                and params.get("measurementIdOverride") == ga4_measurement_id
-                and params.get("eventName") == event_name
-                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
-    return ensure_entity(refresh_token, workspace_path, "tags", body, matches)
+    return body
 
 
 # ─── Store purchase (2026-11-07, conversion type store_sales) ────────────────
@@ -642,19 +680,17 @@ def _event_settings(tag: dict) -> dict:
     return {}
 
 
+def _purchase_tag_matcher(ga4_measurement_id: str, trigger_id):
+    want = _event_settings(purchase_tag_body(ga4_measurement_id, trigger_id))
+    base = _ga4_event_tag_matcher(ga4_measurement_id, trigger_id, PURCHASE_EVENT)
+    return lambda tag: base(tag) and _event_settings(tag) == want
+
+
 def ensure_purchase_tag(refresh_token: str, workspace_path: str, ga4_measurement_id: str,
                         trigger_id: str) -> tuple:
-    want = _event_settings(purchase_tag_body(ga4_measurement_id, trigger_id))
-
-    def matches(tag):
-        params = {p.get("key"): p.get("value") for p in (tag.get("parameter") or [])}
-        return (tag.get("type") == "gaawe" and not tag.get("paused")
-                and params.get("measurementIdOverride") == ga4_measurement_id
-                and params.get("eventName") == PURCHASE_EVENT
-                and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])]
-                and _event_settings(tag) == want)
     return ensure_entity(refresh_token, workspace_path, "tags",
-                         purchase_tag_body(ga4_measurement_id, trigger_id), matches)
+                         purchase_tag_body(ga4_measurement_id, trigger_id),
+                         _purchase_tag_matcher(ga4_measurement_id, trigger_id))
 
 
 def purchase_live(version: dict) -> dict:
@@ -715,15 +751,20 @@ def _beacon_html(tag: dict) -> str:
     return next((p.get("value") or "" for p in tag.get("parameter") or [] if p.get("key") == "html"), "")
 
 
-def ensure_purchase_beacon_tag(refresh_token: str, workspace_path: str, endpoint_url: str,
-                               trigger_id: str) -> tuple:
+def _beacon_tag_matcher(endpoint_url: str, trigger_id):
     want = purchase_beacon_html(endpoint_url)
 
     def matches(tag):
         return (tag.get("type") == "html" and not tag.get("paused") and _beacon_html(tag) == want
                 and str(trigger_id) in [str(t) for t in (tag.get("firingTriggerId") or [])])
+    return matches
+
+
+def ensure_purchase_beacon_tag(refresh_token: str, workspace_path: str, endpoint_url: str,
+                               trigger_id: str) -> tuple:
     return ensure_entity(refresh_token, workspace_path, "tags",
-                         purchase_beacon_tag_body(endpoint_url, trigger_id), matches)
+                         purchase_beacon_tag_body(endpoint_url, trigger_id),
+                         _beacon_tag_matcher(endpoint_url, trigger_id))
 
 
 def purchase_beacon_live(version: dict) -> dict:
@@ -739,15 +780,62 @@ def purchase_beacon_live(version: dict) -> dict:
     return {"live": False, "missing": ["record_tag" if trigger else "trigger"]}
 
 
+VERSION_NAME = "uallak conversion tracking"
+REVERT_VERSION_NAME = "uallak tracking removed"
+# Entity kinds a workspace change can carry (workspaces.getStatus → Entity)
+_CHANGE_KEYS = ("tag", "trigger", "variable", "folder", "client", "zone", "customTemplate",
+                "transformation", "gtagConfig")
+
+
+def foreign_changes(changes) -> list:
+    """The workspace changes that touch anything NOT ours, as short labels
+    ("tag: Facebook pixel"). The one allowed exception is the built-in
+    Click URL variable our click triggers need (a GTM switch, not a named
+    entity). An unreadable change counts as foreign — never assumed safe."""
+    out = []
+    for change in changes or []:
+        if not isinstance(change, dict):
+            out.append("unreadable change")
+            continue
+        if "builtInVariable" in change:
+            builtin = change.get("builtInVariable") or {}
+            kind = builtin.get("type") if isinstance(builtin, dict) else ""
+            if kind != "clickUrl":
+                out.append(f"built-in variable: {kind or '?'}")
+            continue
+        key = next((k for k in _CHANGE_KEYS if isinstance(change.get(k), dict)), "")
+        if not key:
+            out.append("unreadable change")
+            continue
+        name = change[key].get("name")
+        if not is_ours(name):
+            out.append(f"{key}: {name or '(no name)'}")
+    return out
+
+
+def workspace_foreign_changes(refresh_token: str, workspace_path: str) -> list:
+    """foreign_changes of what this workspace would publish (getStatus, read-only)."""
+    status = _get(refresh_token, f"{workspace_path}/status")
+    return foreign_changes(status.get("workspaceChange") or [])
+
+
 def publish_workspace(refresh_token: str, workspace_path: str,
-                      version_name: str = "uallak conversion tracking") -> dict:
+                      version_name: str = VERSION_NAME, notes: str = "") -> dict:
     """Workspace → version → LIVE. Two calls because that's GTM's model:
     create_version freezes the workspace into a version, publish makes it
-    the live one. Returns the publish response (contains containerVersion)."""
+    the live one. Returns the publish response (contains containerVersion).
+
+    Guard (docs/GTM-SAFETY.md): the workspace's own change list is read first
+    and ANY change to an entity not named "uallak — ..." stops the publish
+    (GtmForeignEntity) — whatever path led here, someone else's tag is never
+    frozen into a version by us."""
+    foreign = workspace_foreign_changes(refresh_token, workspace_path)
+    if foreign:
+        raise GtmForeignEntity(f"{workspace_path} holds changes that are not ours: {foreign[:5]}")
     created = _post(refresh_token, f"{workspace_path}:create_version",
                     json_body={"name": version_name,
-                               "notes": "uallak: conversion triggers + GA4 event tags "
-                                        "(form / WhatsApp / phone / store purchase)"})
+                               "notes": notes or "uallak: conversion triggers + GA4 event tags "
+                                                 "(form / WhatsApp / phone / store purchase)"})
     if created.get("compilerError"):
         raise GtmCompilerError("create_version: Tag Manager could not compile the workspace")
     version_path = (created.get("containerVersion") or {}).get("path")
@@ -757,3 +845,114 @@ def publish_workspace(refresh_token: str, workspace_path: str,
     if published.get("compilerError"):
         raise GtmCompilerError(f"publish: Tag Manager could not compile {version_path}")
     return published
+
+
+# ─── Dry run + rollback (2026-11-11, docs/GTM-SAFETY.md) ─────────────────────
+# Same scopes as above: versions.get / versions.live are reads under
+# tagmanager.edit.containers, versions.publish is tagmanager.publish (the
+# ":publish" suffix in SCOPE_FOR_ACTION). Nothing new is requested.
+
+def plan_entities(live: dict, pending: list, ga4_measurement_id: str,
+                  endpoint_slug: str = DEFAULT_ORDER_RECEIVED_ENDPOINT, record_url: str = "") -> list:
+    """READ-ONLY: what configure_lead_conversion would do to each entity,
+    computed against the LIVE version with the SAME body builders and the
+    SAME "is it already ours and right" checks the write path uses (a new
+    workspace is based on the live version). [{kind, name, action}] with
+    action create / update / reuse; the built-in Click URL switch, when a
+    click type is pending, as kind built_in_variable (enable / reuse)."""
+    triggers, tags, variables = live.get("trigger") or [], live.get("tag") or [], live.get("variable") or []
+    out = []
+
+    def step(kind, items, body, matches):
+        existing = find_named(items, body["name"])
+        out.append({"kind": kind, "name": body["name"],
+                    "action": "create" if not existing else ("reuse" if matches(existing) else "update")})
+        return existing
+
+    if any(k in CLICK_CONVERSIONS for k in pending):
+        enabled = any(v.get("type") == "clickUrl" for v in live.get("builtInVariable") or [])
+        out.append({"kind": "built_in_variable", "name": "Click URL", "action": "reuse" if enabled else "enable"})
+    for kind in pending:
+        if kind == "store_sales":
+            for body in purchase_variable_bodies(endpoint_slug):
+                step("variable", variables, body, _variable_matches(body))
+            trigger = step("trigger", triggers, purchase_trigger_body(), _purchase_trigger_matches)
+            tid = (trigger or {}).get("triggerId") or "(new)"
+            step("tag", tags, purchase_tag_body(ga4_measurement_id, tid),
+                 _purchase_tag_matcher(ga4_measurement_id, tid))
+            step("tag", tags, purchase_beacon_tag_body(record_url, tid), _beacon_tag_matcher(record_url, tid))
+        elif kind == "form_submit":
+            trigger = step("trigger", triggers, form_submit_trigger_body(), _form_trigger_matches)
+            tid = (trigger or {}).get("triggerId") or "(new)"
+            step("tag", tags, ga4_lead_tag_body(ga4_measurement_id, tid),
+                 _ga4_event_tag_matcher(ga4_measurement_id, tid, "generate_lead"))
+        elif kind in CLICK_CONVERSIONS:
+            spec = CLICK_CONVERSIONS[kind]
+            trigger = step("trigger", triggers, click_trigger_body(kind), _click_trigger_matches(kind))
+            tid = (trigger or {}).get("triggerId") or "(new)"
+            step("tag", tags, ga4_event_tag_body(ga4_measurement_id, tid, spec["event"], spec["tag"]),
+                 _ga4_event_tag_matcher(ga4_measurement_id, tid, spec["event"]))
+    return out
+
+
+def get_version(refresh_token: str, container_path: str, version_id: str) -> dict:
+    """One saved container version (its tags / triggers / variables)."""
+    return _get(refresh_token, f"{container_path}/versions/{version_id}")
+
+
+def publish_version(refresh_token: str, container_path: str, version_id: str) -> dict:
+    """Make an EXISTING version live again (the rollback: the version saved
+    before our publish). Nothing is edited — GTM just switches what is live."""
+    if not re.fullmatch(r"\d+", str(version_id or "")):
+        raise ValueError("a version id is digits")
+    published = _post(refresh_token, f"{container_path}/versions/{version_id}:publish")
+    if published.get("compilerError"):
+        raise GtmCompilerError(f"publish: Tag Manager could not compile version {version_id}")
+    return published
+
+
+def ours_in(version: dict) -> list:
+    """[{kind, name}] of every "uallak — ..." trigger / tag / variable in a version or workspace."""
+    return [{"kind": kind, "name": e.get("name")} for kind in ("tag", "trigger", "variable")
+            for e in version.get(kind) or [] if is_ours(e.get("name"))]
+
+
+def references_to_ours(version: dict) -> list:
+    """Entities NOT ours that depend on ours (a tag firing or blocked on our
+    trigger, anything reading a {{uallak — ...}} variable). Removing ours
+    would break them, so the removal refuses instead."""
+    import json
+    our_triggers = {str(t.get("triggerId")) for t in version.get("trigger") or [] if is_ours(t.get("name"))}
+    out = []
+    for kind in ("tag", "trigger", "variable"):
+        for entity in version.get(kind) or []:
+            if is_ours(entity.get("name")):
+                continue
+            fired = {str(x) for x in (entity.get("firingTriggerId") or []) + (entity.get("blockingTriggerId") or [])}
+            if (kind == "tag" and fired & our_triggers) or \
+                    ("{{" + OUR_PREFIX) in json.dumps(entity, ensure_ascii=False):
+                out.append(f"{kind}: {entity.get('name') or '(no name)'}")
+    return out
+
+
+# Deletion order: tags first (they point at triggers), then triggers, then
+# variables — the purchase variables newest-first (first_seen reads order_id)
+_REMOVE_ORDER = {"tags": 0, "triggers": 1, "variables": 2}
+_VAR_ORDER = {name: i for i, name in enumerate(reversed(list(PURCHASE["vars"].values())))}
+
+
+def remove_ours(refresh_token: str, workspace_path: str) -> list:
+    """Delete, in THIS workspace, every entity named "uallak — ..." and
+    nothing else. Each name is re-checked right before its delete. Returns
+    [{kind, name}] removed."""
+    removed = []
+    for kind in sorted(_REMOVE_ORDER, key=_REMOVE_ORDER.get):
+        items = [e for e in list_entities(refresh_token, workspace_path, kind) if is_ours(e.get("name"))]
+        if kind == "variables":
+            items.sort(key=lambda e: _VAR_ORDER.get(e.get("name"), -1))
+        for entity in items:
+            if not is_ours(entity.get("name")) or not entity.get("path"):
+                continue
+            delete_entity(refresh_token, entity["path"])
+            removed.append({"kind": _LIST_KEY[kind], "name": entity.get("name")})
+    return removed
