@@ -536,7 +536,7 @@ class Tree(Base):
         deep = next(f for f in out["files"] if f["id"] == "v_deep")
         self.assertEqual((deep["parent_id"], deep["folder"]), ("T7", "videos/tiktok"))
         self.assertIn("in_agent_list", deep)
-        self.assertIn("in_media_tab_first_page", deep)
+        self.assertIn("in_media_tab", deep)
         self.assertEqual(out["raw_counts"]["video"], 3)
         text = " ".join(out["findings"])
         self.assertIn("מחוץ לתיקיית המדיה", text)

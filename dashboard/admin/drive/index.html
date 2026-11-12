@@ -318,6 +318,11 @@ $("addLinkBtn").addEventListener("click", async () => {
   try {
     const r = await api("/api/admin/drive-pull/add-link", {client_id: cid, link: $("ref").value});
     if (!r.success) { msg.innerHTML = `<div class="calm">${esc((r.data && r.data.text) || "לא התחיל.")}</div>`; return; }
+    if (r.data.already_in_folder) {
+      msg.innerHTML = `<div class="calm ok">"${esc((r.data.source || {}).name || "")}" כבר נמצא בתיקייה של לקוח ${cid}` +
+        ` (${esc(r.data.folder || "בתיקייה הראשית")}). לא הועתק כלום; לשונית המדיה מציגה אותו.</div>`;
+      return;
+    }
     msg.innerHTML = `<div class="calm ok">מעתיק את "${esc((r.data.source || {}).name || "")}" ללקוח ${cid}.</div>`;
     renderJob(r.data.job);
     if (r.data.job && (r.data.job.status === "queued" || r.data.job.status === "running")) poll(cid);
@@ -423,14 +428,14 @@ $("diagBtn").addEventListener("click", async () => {
     const files = (d.files || []).map(f => `<tr>
         <td>${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}</td><td>${esc(f.folder || "/")}</td>
         <td><code>${esc(f.parent_id)}</code></td>
-        <td>${f.in_media_tab_first_page ? "✓" : "—"}</td><td>${f.in_agent_list ? "✓" : "—"}</td></tr>`).join("");
+        <td>${f.in_media_tab ? "✓" : "—"}</td><td>${f.in_agent_list ? "✓" : "—"}</td></tr>`).join("");
     $("diagOut").innerHTML = `
       <ul class="findings">${(d.findings || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
       <div class="muted" style="margin-top:8px;">חשבון שירות: <code>${esc(d.service_account || "—")}</code> ·
         מיקום: ${esc(d.location || "—")} · תיקייה בשימוש: <code>${esc(d.resolved_folder || "—")}</code>
         ${d.resolved_link ? `<a href="${esc(d.resolved_link)}" target="_blank" rel="noopener" style="color:var(--accent)">פתיחה ב-Drive</a>` : ""}</div>
       ${counts ? `<div class="muted" style="margin-top:6px;">Drive מחזיר: ${counts}${d.files_truncated ? " (נעצר ב-500)" : ""}
-        · לשונית המדיה: ${d.media_tab ? d.media_tab.root_page_items : "—"} פריטים בעמוד הראשון${d.media_tab && d.media_tab.cached ? " (שמור)" : ""}
+        · לשונית המדיה: ${d.media_tab ? d.media_tab.catalog_items : "—"} קבצים ברשימה${d.media_tab && d.media_tab.cached ? " (שמור)" : ""}
         · הסוכנים רואים: ${d.agent_view ? d.agent_view.videos : 0} סרטונים, ${d.agent_view ? d.agent_view.images : 0} תמונות</div>` : ""}
       ${folders ? `<div class="scroll"><table><tr><th>תיקיות בשם הלקוח</th><th>id</th><th>איפה</th><th></th><th></th></tr>${folders}</table></div>` : ""}
       ${files ? `<div class="scroll"><table><tr><th>קובץ</th><th>סוג</th><th>תת-תיקייה</th><th>parent</th><th>לשונית מדיה</th><th>סוכנים</th></tr>${files}</table></div>` : ""}`;

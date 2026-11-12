@@ -574,12 +574,38 @@ def _our_drive_id() -> str:
     return drive_id
 
 
-def source(ref: str, for_client: bool = False) -> dict:
+class AlreadyInFolder(PullRefused):
+    """The pasted link IS a file (or folder) already inside this client's
+    media folder — nothing to copy; say so and show it (2026-11-12: this used
+    to be refused as own_storage, "nothing happens")."""
+
+    def __init__(self, src: dict, folder: str):
+        super().__init__("already_in_folder", f"\"{src.get('name') or ''}\" כבר נמצא בתיקיית המדיה של הלקוח.")
+        self.source, self.folder = src, folder
+
+
+def refresh_listing(client_id: int):
+    """Drop this instance's cached listings of the client's media, so the Media
+    tab and the agents read Drive afresh on their next look."""
+    from core import drive_mirror
+    drive_mirror.forget(int(client_id))
+    for name in ("media_library", "client_state"):
+        try:
+            module = __import__(f"core.{name}", fromlist=[name])
+            module.forget(int(client_id))
+        except Exception:
+            pass
+
+
+def source(ref: str, for_client: bool = False, client_id: int = 0) -> dict:
     """What a pasted link points at, read as the service account:
     {id, name, kind ("file"/"folder"), mime_type, size}. Raises PullRefused:
-    bad_ref, not_shared (.share_with on the exception), trashed, own_storage
-    (a CLIENT pasting a link into our Shared Drive — that is every client's
-    storage, so a client never pulls from it), drive_trouble."""
+    bad_ref, not_shared (.share_with on the exception), trashed,
+    already_in_folder (AlreadyInFolder: with `client_id`, the link is inside
+    THAT client's own media folder — .source and .folder on it), own_storage
+    (a CLIENT pasting a link into our Shared Drive outside their own folder —
+    that is every client's storage, so a client never pulls from it),
+    drive_trouble."""
     from core import drive_service as drive
     source_id = parse_ref(ref)
     if not source_id:
@@ -600,20 +626,40 @@ def source(ref: str, for_client: bool = False) -> dict:
         raise PullRefused("drive_trouble", "Drive לא ענה כרגע. נסו שוב בעוד רגע.") from None
     if meta.get("trashed"):
         raise PullRefused("trashed", "הקובץ הזה נמצא בפח של Drive.")
-    if for_client and meta.get("driveId") and meta.get("driveId") == _our_drive_id():
-        raise PullRefused("own_storage", "הקישור הזה מצביע על אחסון המערכת עצמה — אפשר להוסיף רק קבצים מה-Drive שלכם.")
     kind = "folder" if meta.get("mimeType") == drive.FOLDER_MIME else "file"
-    return {"id": meta.get("id") or source_id, "name": meta.get("name") or "", "kind": kind,
-            "mime_type": meta.get("mimeType") or "",
-            "size": int(meta["size"]) if str(meta.get("size") or "").isdigit() else None}
+    src = {"id": meta.get("id") or source_id, "name": meta.get("name") or "", "kind": kind,
+           "mime_type": meta.get("mimeType") or "",
+           "size": int(meta["size"]) if str(meta.get("size") or "").isdigit() else None}
+    if meta.get("driveId") and meta.get("driveId") == _our_drive_id():
+        if client_id:
+            from core import drive_mirror
+            try:
+                with _service_account():
+                    where = drive_mirror.path_in_client_tree(int(client_id), src["id"])
+            except Exception as e:
+                _log(f"source {source_id}: client {client_id} tree check failed ({drive.classify_error(e)})")
+                raise PullRefused("drive_trouble", "Drive לא ענה כרגע. נסו שוב בעוד רגע.") from None
+            if where is not None:
+                raise AlreadyInFolder(src, where)
+        if for_client:
+            raise PullRefused("own_storage", "הקישור הזה מצביע על אחסון המערכת עצמה — אפשר להוסיף רק קבצים מה-Drive שלכם.")
+    return src
 
 
 def add_by_link(client_id: int, ref: str, who: str = "admin", for_client: bool = False,
                 budget_s: float = 15.0) -> dict:
     """Paste → copy. Starts (or returns the active) job for this source and
     moves it a little right away, so a single file is usually done in this
-    request. {"job": view, "source": {...}}. Raises PullRefused."""
-    src = source(ref, for_client=for_client)
+    request. {"job": view, "source": {...}} — or, for a link that is already
+    inside this client's media folder, {"already_in_folder": True, "source",
+    "folder"} with nothing copied and the cached listings dropped (it shows in
+    the Media tab at once). Raises PullRefused."""
+    try:
+        src = source(ref, for_client=for_client, client_id=client_id)
+    except AlreadyInFolder as e:
+        refresh_listing(client_id)
+        _log(f"client {client_id}: link {e.source.get('id')} is already in their folder ({e.folder or '/'})")
+        return {"already_in_folder": True, "source": e.source, "folder": e.folder}
     job = start(client_id, [{"id": src["id"], "kind": src["kind"]}], "auto", who=who, source=src)
     moved = step(client_id, budget_s) if budget_s > 0 else {}
     if moved and moved.get("id") == job.get("id"):

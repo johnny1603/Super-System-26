@@ -2867,6 +2867,8 @@ const DASH_I18N = {
   ml_link_copied: { he:'הועתק ✓', en:'Copied ✓', fr:'Copié ✓', ar:'تم النسخ ✓', ru:'Скопировано ✓' },
   ml_link_bad: { he:'זה לא נראה כמו קישור ל-Google Drive. העתיקו אותו משורת הכתובת או מ"שיתוף" ← "העתקת קישור".', en:'That doesn’t look like a Google Drive link. Copy it from the address bar or Share → Copy link.', fr:'Cela ne ressemble pas à un lien Google Drive. Copiez-le depuis la barre d’adresse ou Partager → Copier le lien.', ar:'هذا لا يبدو كرابط Google Drive. انسخه من شريط العنوان أو مشاركة ← نسخ الرابط.', ru:'Это не похоже на ссылку Google Drive. Скопируйте её из адресной строки или «Поделиться → Копировать ссылку».' },
   ml_link_trashed: { he:'הקובץ הזה נמצא בפח של Drive. שחזרו אותו ונסו שוב.', en:'This file is in the Drive trash. Restore it and try again.', fr:'Ce fichier est dans la corbeille de Drive. Restaurez-le et réessayez.', ar:'هذا الملف في سلة Drive. استعده وحاول مجددًا.', ru:'Этот файл в корзине Drive. Восстановите его и попробуйте снова.' },
+  ml_link_already_in: { he:'"{name}" כבר נמצא בתיקיית המדיה שלך ({folder}) ✓ הוא מופיע כאן ברשימה.', en:'"{name}" is already in your media folder ({folder}) ✓ It is shown in the list here.', fr:'« {name} » est déjà dans votre dossier média ({folder}) ✓ Il apparaît dans la liste ici.', ar:'"{name}" موجود بالفعل في مجلد الوسائط الخاص بك ({folder}) ✓ يظهر في القائمة هنا.', ru:'«{name}» уже есть в вашей папке медиа ({folder}) ✓ Он показан в списке здесь.' },
+  ml_link_main_folder: { he:'התיקייה הראשית', en:'main folder', fr:'dossier principal', ar:'المجلد الرئيسي', ru:'главная папка' },
   ml_link_own: { he:'הקישור הזה כבר מצביע על אחסון המערכת. כאן מוסיפים קבצים מה-Drive שלכם.', en:'This link already points into the system’s storage. This adds files from your own Drive.', fr:'Ce lien pointe déjà vers le stockage du système. Ici, on ajoute des fichiers de votre propre Drive.', ar:'هذا الرابط يشير إلى تخزين النظام. هنا تُضاف ملفات من Drive الخاص بك.', ru:'Эта ссылка уже ведёт в хранилище системы. Здесь добавляются файлы из вашего собственного Drive.' },
   ml_link_client_drive: { he:'הקבצים שלכם נשמרים ב-Drive שלכם עצמו — שימו את הקובץ בתיקיית uallak שם והוא יופיע כאן.', en:'Your files live in your own Drive — put the file in your uallak folder there and it shows up here.', fr:'Vos fichiers sont dans votre propre Drive — placez le fichier dans votre dossier uallak et il apparaîtra ici.', ar:'ملفاتك محفوظة في Drive الخاص بك — ضع الملف في مجلد uallak هناك وسيظهر هنا.', ru:'Ваши файлы хранятся в вашем Drive — положите файл в папку uallak, и он появится здесь.' },
   ml_link_busy: { he:'כבר מעתיקים לתיקייה שלכם קבצים מקישור אחר. כשזה יסתיים, נסו שוב.', en:'Files from another link are being copied to your folder. Try again when that’s done.', fr:'Des fichiers d’un autre lien sont en cours de copie. Réessayez une fois terminé.', ar:'يجري نسخ ملفات من رابط آخر إلى مجلدك. حاول مجددًا عند الانتهاء.', ru:'Сейчас копируются файлы по другой ссылке. Попробуйте снова, когда закончится.' },
@@ -8293,6 +8295,14 @@ async function mlAddLink() {
     if (!body) return;
     if (!body.success) { mlLinkRefused(body.data || {}); return; }
     input.value = '';
+    const d = body.data || {};
+    if (d.already_in_folder) {
+      // Already in their folder: nothing to copy — say where, and show it now
+      document.getElementById('mlLinkFiles').innerHTML = '';
+      mlLinkNote(esc(t('ml_link_already_in', { name: d.name || '', folder: d.folder || t('ml_link_main_folder') })));
+      loadLibrary({ refresh: true, silent: true });
+      return;
+    }
     if (mlLinkRender((body.data || {}).job)) mlLinkPoll = setTimeout(mlLinkTick, 3000);
     else loadLibrary({ refresh: true, silent: true });
   } catch (e) {

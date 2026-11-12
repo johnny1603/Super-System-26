@@ -191,6 +191,32 @@ def _assert_in_client_tree(client_id: int, root: str, item_id: str):
     raise NotInClientFolder(item_id)
 
 
+@drive_storage.scoped
+def path_in_client_tree(client_id: int, item_id: str):
+    """Where item_id sits inside the client's media folder: the folder path
+    ("" = the root itself, "videos/tiktok" …), or None when it is not inside
+    it. A fresh parents walk (never the browser's word), whoever the current
+    scope is. A pasted link to a file already in the folder → "it's there"
+    (core/drive_pull.AlreadyInFolder). Raises on Drive trouble."""
+    root = client_root_id(client_id)
+    if not root or not item_id:
+        return None
+    if item_id == root:
+        return ""
+    names, current = [], item_id
+    for hop in range(MAX_PARENT_HOPS + 1):
+        meta = drive.get_meta(current, "id,name,parents")
+        if hop:
+            names.append(meta.get("name") or "")
+        parents = meta.get("parents") or []
+        if not parents:
+            return None
+        if parents[0] == root:
+            return "/".join(reversed(names))
+        current = parents[0]
+    return None
+
+
 # ─── Listing ──────────────────────────────────────────────────────────────────
 
 def kind_of(mime: str) -> str:
@@ -325,23 +351,42 @@ _KIND_MIME = {"video": "video/", "image": "image/"}
 
 
 @drive_storage.scoped
-def _walk_folders(client_id: int, root: str, max_depth: int = MAX_PARENT_HOPS, max_folders: int = MAX_TREE_FOLDERS) -> list:
+def _walk_folders(client_id: int, root: str, max_depth: int = MAX_PARENT_HOPS, max_folders: int = MAX_TREE_FOLDERS,
+                  files: list = None, max_files: int = 0) -> list:
     """Every folder under root (root included, path ""), breadth first, as
-    whoever the current scope is."""
+    whoever the current scope is.
+
+    `files` (a list): also collect every non-folder item of every listed
+    folder into it (shaped, with its folder path), up to max_files — THE
+    catalog read. Each folder is read with ONE single-parent query
+    (drive.list_children), the same call the Media tab's folder view and the
+    diagnose tree use. 2026-11-12, client 27: the old catalog asked Drive for
+    `('a' in parents or 'b' in parents …)` with no `corpora`; on a Shared
+    Drive that searched only the service account's own "user" corpus, so a
+    file the owner dropped in by hand (test3.mp4 at the folder root) never
+    came back, and find_media_file / the tab search said "not found"."""
+    with_files = files is not None
+    fields = "" if with_files else "nextPageToken,files(id,name,mimeType)"
     out, pending = [{"id": root, "name": "", "path": ""}], [(root, "", 0)]
-    while pending and len(out) < max_folders:
+    # Collecting files: every folder already found is listed (≤ max_folders);
+    # only finding new ones stops at the cap
+    while pending and (with_files or len(out) < max_folders):
         folder, path, depth = pending.pop(0)
-        if depth >= max_depth:
+        if depth >= max_depth and not with_files:
             continue
         page_token = ""
         while True:
-            page = drive.list_children(folder, page_token=page_token, page_size=200,
-                                       fields="nextPageToken,files(id,name,mimeType)")
+            page = drive.list_children(folder, page_token=page_token, page_size=200, fields=fields)
             for item in page["files"]:
-                if item.get("mimeType") == drive.FOLDER_MIME and len(out) < max_folders:
-                    sub = f"{path}/{item.get('name', '')}".lstrip("/")
-                    out.append({"id": item["id"], "name": item.get("name", ""), "path": sub})
-                    pending.append((item["id"], sub, depth + 1))
+                if item.get("mimeType") == drive.FOLDER_MIME:
+                    if len(out) < max_folders and depth < max_depth:
+                        sub = f"{path}/{item.get('name', '')}".lstrip("/")
+                        out.append({"id": item["id"], "name": item.get("name", ""), "path": sub})
+                        pending.append((item["id"], sub, depth + 1))
+                elif with_files and len(files) < max_files:
+                    shaped = _shape(item)
+                    shaped["folder"] = path
+                    files.append(shaped)
             page_token = page["next_page_token"]
             if not page_token:
                 break
@@ -373,13 +418,15 @@ def _placed(item: dict, paths: dict) -> dict:
 @drive_storage.scoped
 def newest(client_id: int, kind: str, limit: int = 10, refresh: bool = False) -> list:
     """The newest `kind` ("video" / "image") files anywhere in the client's
-    tree, newest first, each with its folder path. [] without a folder."""
-    folders = folder_tree(client_id, refresh=refresh)
-    if not folders:
+    tree, newest first, each with its folder path. [] without a folder.
+    Read from the catalog (one single-parent listing per folder) — never a
+    multi-parent Drive search, which missed hand-dropped Shared Drive files."""
+    if kind not in _KIND_MIME:
         return []
-    paths = {f["id"]: f["path"] for f in folders}
-    items = drive.search_in_folders([f["id"] for f in folders], mime_prefix=_KIND_MIME[kind], page_size=limit)
-    return [_placed(i, paths) for i in items]
+    cat = catalog(client_id, refresh=refresh)
+    if not cat.get("exists"):
+        return []
+    return [dict(i) for i in cat["items"] if i.get("kind") == kind][:max(0, int(limit))]
 
 
 def search_words(text: str) -> list:
@@ -417,11 +464,13 @@ def catalog(client_id: int, refresh: bool = False) -> dict:
     hit = _catalog_cache.get(client_id)
     if hit and not refresh and hit[1] == root and hit[0] > time.time() - CATALOG_SECONDS:
         return {**hit[2], "cached": True}
-    folders = folder_tree(client_id, refresh=refresh)
-    paths = {f["id"]: f["path"] for f in folders}
-    raw = drive.list_in_folders([f["id"] for f in folders], max_items=CATALOG_MAX_ITEMS + 1)
-    items = [_placed(i, paths) for i in raw[:CATALOG_MAX_ITEMS]]
-    result = {"exists": True, "items": items, "folders": sorted(p for p in paths.values() if p),
+    raw = []
+    folders = _walk_folders(client_id, root, files=raw, max_files=CATALOG_MAX_ITEMS + 1)
+    _folders_cache[client_id] = (time.time(), root, folders)
+    _tree(client_id, root)["folders"].update(f["id"] for f in folders)
+    raw.sort(key=lambda i: i.get("modified_time") or "", reverse=True)
+    items = raw[:CATALOG_MAX_ITEMS]
+    result = {"exists": True, "items": items, "folders": sorted(f["path"] for f in folders if f["path"]),
               "truncated": len(raw) > CATALOG_MAX_ITEMS, "listed_at": int(time.time())}
     _catalog_cache[client_id] = (time.time(), root, result)
     return {**result, "cached": False}
@@ -540,8 +589,13 @@ def diagnose(client_id: int, max_files: int = DIAG_MAX_FILES) -> dict:
                 break
         if truncated:
             break
-    tab = list_folder(client_id)
-    tab_ids = {f["id"] for f in (tab.get("files") or [])} | {f["id"] for f in (tab.get("folders") or [])}
+    # The Media tab IS the catalog (media_library.view) — compare with that,
+    # not with a one-folder page the tab no longer shows
+    try:
+        tab = catalog(client_id, refresh=True)
+    except Exception as e:
+        tab = {"error": drive.classify_error(e)}
+    tab_ids = {f["id"] for f in (tab.get("items") or [])}
     try:
         from core import client_state
         agent_view = client_state._media_folder(client_id, fresh=True)
@@ -550,7 +604,7 @@ def diagnose(client_id: int, max_files: int = DIAG_MAX_FILES) -> dict:
     agent_ids = {v.get("drive_file_id") for v in (agent_view.get("videos") or [])} | \
                 {i.get("drive_file_id") for i in (agent_view.get("images") or [])}
     for f in raw:
-        f["in_media_tab_first_page"] = f["id"] in tab_ids
+        f["in_media_tab"] = f["id"] in tab_ids
         f["in_agent_list"] = f["id"] in agent_ids
     shortcuts = [f for f in raw if f["kind"] == "shortcut"]
     deep = [f for f in raw if "/" in f["folder"]]
@@ -558,7 +612,7 @@ def diagnose(client_id: int, max_files: int = DIAG_MAX_FILES) -> dict:
                 "raw_counts": {k: sum(1 for f in raw if f["kind"] == k)
                                for k in sorted({f["kind"] for f in raw})},
                 "media_tab": {"cached": bool(tab.get("cached")), "listed_at": tab.get("listed_at"),
-                              "root_page_items": len(tab_ids), "error": tab.get("error", "")},
+                              "catalog_items": len(tab_ids), "error": tab.get("error", "")},
                 "agent_view": {"videos": len(agent_view.get("videos") or []),
                                "images": len(agent_view.get("images") or []),
                                "error": agent_view.get("error", "")}})

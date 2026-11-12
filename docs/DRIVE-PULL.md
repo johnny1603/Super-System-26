@@ -163,6 +163,50 @@ durable job above, with a per-file result.
 **A client never pulls from our own Shared Drive** (`own_storage`): it holds every client's folder.
 The admin may (attach, below).
 
+**A link to a file ALREADY in the client's folder (2026-11-12).** Before this, such a link was
+refused as `own_storage` ("this link points into the system's storage"), so nothing visible
+happened. Now `drive_pull.source(…, client_id=)` walks the file's parents fresh
+(`drive_mirror.path_in_client_tree`) and raises `AlreadyInFolder`. Then:
+- `add_by_link` returns `{"already_in_folder", "source", "folder"}`. It copies nothing, starts no job,
+  and drops the cached listings (`drive_pull.refresh_listing`: drive_mirror, media_library,
+  client_state).
+- **Media tab:** "X is already in your media folder (folder)", and the list reloads from Drive.
+- **Chat:** no card; the reply is that same line (`_LINK_ALREADY_IN`, 5 languages). It is never just
+  "I opened the link".
+- **Admin page:** says so too.
+- **A click on an older card** for a file that got there meanwhile gets the same line.
+- Every successful copy also drops the cached listings right away, not only when the job ends.
+
+## Why test3.mp4 was "not found" (2026-11-12, client 27)
+
+The real data: `scripts/diagnose_media.py` on client 27. The connected folder's raw tree listed
+`test3.mp4` at its ROOT. Find-inside (agents + Media tab) returned nothing, but find-everywhere found
+it "already in the client folder".
+
+**Root cause.** `drive_mirror.catalog` is the ONE list behind `find_media_file`, the Media tab and the
+agents' newest-10. It asked Drive one multi-parent query, `('root' in parents or 'images' in parents
+or …)`, with NO `corpora`.
+- On a Shared Drive, that searches only the service account's own "user" corpus. So a file someone
+  else dropped in by hand never came back. The name matcher never saw it.
+- The single-parent listing (`list_children`) that the diagnose tree uses did see it, and so did the
+  `corpora=allDrives` search everywhere.
+- `newest()` had the same miss (`search_in_folders`).
+- The Media tab is that catalog too, so the tab also hid hand-dropped files. Its old "folder"
+  listing would have shown them.
+
+**Fix.** The catalog (and so `find`, `newest`, the tab) lists every folder of the tree with ONE
+single-parent `list_children` per folder (`_walk_folders(files=…)`). That is the same call as the
+diagnose tree, and the number of queries is about the same as before. `list_in_folders` /
+`search_in_folders` now send `corpora=allDrives`, but the mirror no longer uses them (a test enforces
+both).
+
+**The matcher was not the cause.** "test3", "test 3", "TEST3" and "test3 " all score 300 against
+test3.mp4. It got one fix: an exact name that contains a request word ("בדיקה - תמונה גדולה")
+now scores 300 too.
+
+**Tests:** `tests/test_media_find_real_names.py`, with a fake Drive that answers multi-parent queries
+the way production did.
+
 ## Attach an existing file from anywhere (admin only)
 
 `drive_pull.find_anywhere` searches every drive the service account sees: `corpora=allDrives`,
@@ -218,12 +262,18 @@ else the oldest `client-{id} — ` folder there). Readers and the writer both us
 - **What it prints:**
   - the stored folder id and the resolved one;
   - the raw tree of every folder named like the client, connected or not (up to 300 files each);
-  - the find result for the name: inside the connected folder (agents + Media tab) and everywhere
-    (attach).
+  - the catalog size, and every file of the connected folder MISSING from the catalog (`catalog_missing`);
+  - the find result for the name, each through the SAME function the product calls: the agents'
+    `find_media_file` (`agent_actions.find_media_lookup`), the Media tab's search box
+    (`media_library.view`), and everywhere (attach). A mismatch between the raw tree and what the
+    product sees can no longer hide.
 
 ## Not tested against a real Drive
 
 This block's calls:
+- the Shared Drive "user corpus" explanation of the test3.mp4 miss is inferred from the real
+  diagnose output (single-parent listing saw it, the multi-parent query didn't); the new catalog
+  uses only the single-parent call that provably saw it;
 - `corpora=allDrives` name search and its prefix matching on real names;
 - the parent walk for folder paths on a Shared Drive root and on a My Drive root;
 - the exact-name query with quotes / Hebrew;

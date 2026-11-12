@@ -9,9 +9,13 @@ Prints, for the client:
   2. the RAW tree of EVERY folder named "client-27 …" the service account
      can see — which one is connected, file counts, each file with its
      sub-folder, size and date (up to 300 files per folder);
-  3. what the find tools return for the name: inside the client's folder
-     (what the agents' find_media_file and the Media tab search see) and
-     everywhere the service account can see (attach existing file).
+  3. the catalog the agents and the Media tab are built from, and any file of
+     the connected folder it is MISSING (the 2026-11-12 test3.mp4 miss);
+  4. what the find tools return for the name, each through the SAME function
+     the product calls: the agents' find_media_file
+     (agent_actions.find_media_lookup), the Media tab search box
+     (media_library.view), and everywhere the service account can see
+     (attach existing file).
 
 It calls GET /api/admin/drive/media-diagnose (core/drive_merge.media_diagnosis)
 on the live service with the ADMIN_KEY read from the Cloud Run env (or typed,
@@ -97,14 +101,25 @@ def main():
             print(f"   - {item.get('folder') or '/'} :: {item.get('name')}  [{item.get('mime_type')}]  "
                   f"{mb(item.get('size'))}  {str(item.get('modified_time') or '')[:10]}  id={item.get('id')}")
     print(line)
-    print(f'find "{find}" INSIDE the client\'s connected folder (agents + Media tab):')
-    if d.get("find_in_client_folder_error"):
-        print(f"   failed: {d['find_in_client_folder_error']}")
-    for m in d.get("find_in_client_folder") or []:
-        print(f"   - {m.get('name')}  in {m.get('folder') or '/'}  {mb(m.get('size'))}  "
-              f"{str(m.get('modified_time') or '')[:10]}  id={m.get('id')}")
-    if not d.get("find_in_client_folder") and not d.get("find_in_client_folder_error"):
-        print("   (nothing)")
+    print(f"catalog (what the agents and the Media tab are built from): {d.get('catalog_files', '?')} files"
+          f"{'  failed: ' + d['catalog_error'] if d.get('catalog_error') else ''}")
+    missing = d.get("catalog_missing")
+    if missing:
+        print(f"   !! {len(missing)} file(s) in the connected folder are MISSING from the catalog:")
+        for m in missing:
+            print(f"   - {m.get('folder') or '/'} :: {m.get('name')}  id={m.get('id')}")
+    elif missing is not None:
+        print("   every file of the connected folder is in the catalog")
+    for field, title in (("find_in_client_folder", "the agents' find_media_file (agent_actions.find_media_lookup)"),
+                       ("find_in_media_tab", "the Media tab search box (media_library.view)")):
+        print(f'find "{find}" INSIDE the connected folder - {title}:')
+        if d.get(f"{field}_error"):
+            print(f"   failed: {d[f'{field}_error']}")
+        for m in d.get(field) or []:
+            print(f"   - {m.get('name')}  in {m.get('folder') or '/'}  {mb(m.get('size'))}  "
+                  f"{str(m.get('modified_time') or '')[:10]}  id={m.get('id')}")
+        if not d.get(field) and not d.get(f"{field}_error"):
+            print("   (nothing)")
     print(f'find "{find}" EVERYWHERE the service account can see (attach existing file):')
     anywhere = d.get("find_anywhere") or {}
     if d.get("find_anywhere_error"):

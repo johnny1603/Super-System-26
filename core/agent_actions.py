@@ -878,8 +878,17 @@ def _look_answer(client_id: int, params: dict, matches: list, lang: str) -> dict
     return {"clarify": "\n".join(lines)}
 
 
-def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list) -> dict:
+def find_media_lookup(client_id: int, name: str, kind: str = "") -> dict:
+    """THE search behind find_media_file: the client's own Drive scope, the
+    whole tree, core/media_search. scripts/diagnose_media.py (via
+    drive_merge.media_diagnosis) calls THIS function, so the diagnosis and the
+    agent can never disagree again. Raises on Drive trouble."""
     from core import drive_mirror
+    with drive_storage.scope(client_id):
+        return drive_mirror.find(client_id, name, kind=kind or "", limit=MEDIA_FIND_CANDIDATES * 2)
+
+
+def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list) -> dict:
     lang = (context or {}).get("language") or "he"
     target = params.get("for") or MEDIA_FIND_LOOK
     if target != MEDIA_FIND_LOOK:
@@ -899,9 +908,7 @@ def _prepare_find_media(client_id: int, params: dict, context: dict, rows: list)
     else:
         kind = params.get("kind") or ""
     try:
-        with drive_storage.scope(client_id):
-            found = drive_mirror.find(client_id, params["name"], kind=kind,
-                                      limit=MEDIA_FIND_CANDIDATES * 2)
+        found = find_media_lookup(client_id, params["name"], kind=kind)
     except Exception as e:
         _log(f"client {client_id}: find_media_file search failed: {type(e).__name__}: {str(e)[:200]}",
              severity="WARNING", client_id=client_id)
@@ -1073,7 +1080,15 @@ def _prepare_drive_link(client_id: int, params: dict, context: dict, rows: list)
     if drive_storage.location(client_id).get("kind") != drive_storage.SHARED:
         return {"refuse": link_refusal("client_drive", lang)}
     try:
-        src = drive_pull.source(params["link"], for_client=True)
+        src = drive_pull.source(params["link"], for_client=True, client_id=client_id)
+    except drive_pull.AlreadyInFolder as e:
+        # Already in THEIR folder: no card, nothing to copy — say where it is
+        # and make the Media tab show it now (2026-11-12: this was refused as
+        # "the system's storage" and nothing visible happened)
+        drive_pull.refresh_listing(client_id)
+        where = e.folder or _pick(_LINK_MAIN_FOLDER, lang)
+        return {"clarify": _pick(_LINK_ALREADY_IN, lang).replace("{name}", e.source.get("name") or "—")
+                .replace("{folder}", where)}
     except drive_pull.PullRefused as e:
         return {"refuse": link_refusal(e.code, lang, getattr(e, "share_with", "") or drive_pull.share_with())}
     for row in rows:
@@ -1088,6 +1103,14 @@ _LINK_FOUND = _txt("פתחתי את הקישור — \"{name}\". אשרו כאן
                    "J'ai ouvert le lien — « {name} ». Validez ici et je l'ajoute à votre dossier média :",
                    "فتحت الرابط — \"{name}\". وافقوا هنا وسأضيفه إلى مجلد الوسائط:",
                    "Я открыл ссылку — «{name}». Подтвердите здесь, и я добавлю его в вашу папку медиа:")
+
+
+_LINK_ALREADY_IN = _txt("\"{name}\" כבר נמצא בתיקיית המדיה שלכם ({folder}) ✓ לא צריך להעתיק כלום — הוא מופיע עכשיו בלשונית המדיה.",
+                        "\"{name}\" is already in your media folder ({folder}) ✓ Nothing to copy — it shows in the Media tab now.",
+                        "« {name} » est déjà dans votre dossier média ({folder}) ✓ Rien à copier — il apparaît maintenant dans l'onglet Médias.",
+                        "\"{name}\" موجود بالفعل في مجلد الوسائط ({folder}) ✓ لا حاجة للنسخ — يظهر الآن في تبويب الوسائط.",
+                        "«{name}» уже есть в вашей папке медиа ({folder}) ✓ Копировать ничего не нужно — он виден во вкладке «Медиа».")
+_LINK_MAIN_FOLDER = _txt("התיקייה הראשית", "main folder", "dossier principal", "المجلد الرئيسي", "главная папка")
 
 
 def _validate_drive_link_stored(client_id: int, params: dict) -> dict:
@@ -1108,15 +1131,18 @@ def _run_add_drive_link(client_id: int, params: dict, background_tasks, row: dic
         out = drive_pull.add_by_link(client_id, params["link"], who=who, for_client=True, budget_s=15)
     except drive_pull.PullRefused as e:
         raise ActionFailed(e.code if e.code in _LINK_REFUSALS else "drive_trouble", e.text) from None
+    if out.get("already_in_folder"):
+        # Became part of their folder between the card and the click
+        return {"already_in_folder": True, "folder": out.get("folder", ""), "status": "done",
+                "added": 0, "total": 0, "not_copied": 0,
+                "name": (out.get("source") or {}).get("name") or params.get("name", "")}
     job = out.get("job") or {}
     counts = job.get("counts") or {}
     added = int(counts.get("copied", 0)) + int(counts.get("already", 0)) + int(counts.get("already_same", 0))
     _forget_state(client_id)
-    try:
-        from core import media_library
-        media_library.forget(client_id)
-    except Exception:
-        pass
+    # The Media tab and the agents see the copy on their next look — not only
+    # once the job ends (_finish forgets too, but maybe on another request)
+    drive_pull.refresh_listing(client_id)
     return {"job_id": job.get("id"), "status": job.get("status"), "added": added, "total": job.get("total", 0),
             "not_copied": sum(int(v) for k, v in counts.items()
                               if k in ("failed", "no_access", "copy_blocked", "storage_quota")),
@@ -1140,6 +1166,9 @@ _LINK_UNDERWAY = _txt("ההעתקה של \"{name}\" התחילה ✓ הקבצי�
 
 def _drive_link_done(result: dict, lang: str) -> str:
     name = result.get("name") or "—"
+    if result.get("already_in_folder"):
+        return (_pick(_LINK_ALREADY_IN, lang).replace("{name}", name)
+                .replace("{folder}", result.get("folder") or _pick(_LINK_MAIN_FOLDER, lang)))
     if result.get("status") in ("queued", "running"):
         return _pick(_LINK_UNDERWAY, lang).replace("{name}", name)
     if result.get("not_copied"):

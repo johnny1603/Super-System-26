@@ -14,9 +14,11 @@ Rules:
 - Separators don't count: spaces, _ - . , ( ) [ ] etc. "test 3", "test_3",
   "Test-3" and "TEST3" are the same name.
 - The file extension is ignored for the exact match ("test 3.mp4" IS "test 3").
-- Score, best first: exact name (300) > the whole query inside the name (200)
-  > every word inside the name (100 + words) > some words (count). Nothing in
-  common → no match.
+- Score, best first: exact name (300 — with or without the request words, so
+  "בדיקה - תמונה גדולה" IS "בדיקה - תמונה גדולה.jpg") > everything typed,
+  request words included, inside the name (250) > the query's name words
+  inside the name (200) > every word inside the name (100 + words) > some
+  words (count). Nothing in common → no match.
 - Words that describe the REQUEST ("the video", "הסרטון", "my") are dropped,
   unless that would leave nothing — then they are the name.
 """
@@ -102,11 +104,14 @@ def score(name: str, query: str) -> int:
     if not qwords:
         return 0
     joined = "".join(qwords)
+    typed = compact(query)          # request words kept: a NAME may contain "תמונה" / "video"
     full = compact(name)
     if not full:
         return 0
-    if compact(stem(name)) == joined:
+    if compact(stem(name)) in (joined, typed):
         return 300
+    if len(typed) > 1 and typed != joined and typed in full:
+        return 250                  # everything typed, request words included, is in the name
     if joined in full:
         return 200
     hits = sum(1 for w in qwords if any(v in full for v in _variants(w)))

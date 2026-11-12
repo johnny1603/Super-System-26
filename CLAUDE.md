@@ -619,6 +619,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   - **One resolver.** The writer calls `shared_client_root(strict=True)`: a Drive error never
     creates a second folder.
   - **Real-data check:** `scripts/diagnose_media.py 27 "test 3"`. `tests/test_drive_link.py`.
+    It calls the agents' own `agent_actions.find_media_lookup` and `media_library.view`, and names
+    files missing from the catalog (`catalog_missing`).
+  - **Catalog = one `list_children` per folder (2026-11-12).** NEVER a multi-parent
+    `('a' in parents or …)` query: on the Shared Drive it hid hand-dropped files. That was client 27's
+    "test3.mp4 not found" (docs/DRIVE-PULL.md §Why test3.mp4). `tests/test_media_find_real_names.py`.
+  - **A link to a file already in the client's folder** is answered "already there (folder)"
+    (`drive_pull.AlreadyInFolder`), copies nothing, and drops the cached listings. It is never
+    refused as `own_storage`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive

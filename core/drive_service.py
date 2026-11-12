@@ -358,7 +358,11 @@ def search_in_folders(folder_ids: list, name_words: list = None, mime_prefix: st
     """Non-folder, non-trashed files DIRECTLY inside any of folder_ids, whose
     name contains every word of name_words (Drive's own `name contains`) and
     whose mimeType starts with mime_prefix. One query per 25 folders (Drive's
-    query length), results merged, newest first. Metadata only."""
+    query length), results merged, newest first. Metadata only.
+    corpora=allDrives (2026-11-12): without it a multi-parent query on a
+    Shared Drive searched only the caller's own "user" corpus and missed files
+    someone else put there (client 27's test3.mp4). core/drive_mirror no
+    longer uses this — it lists each folder with list_children."""
     words = [w for w in (name_words or []) if w]
     out, seen = [], set()
     ids = [str(f) for f in folder_ids if f]
@@ -372,7 +376,8 @@ def search_in_folders(folder_ids: list, name_words: list = None, mime_prefix: st
             q += f" and mimeType contains '{_q_text(mime_prefix)}'"
         response = httpx.get(DRIVE_FILES_URL, headers=_headers(), timeout=TIMEOUT, params={
             "q": q, "fields": fields or f"files({MIRROR_FILE_FIELDS})", "orderBy": order_by,
-            "pageSize": int(page_size), "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
+            "pageSize": int(page_size), "corpora": "allDrives",
+            "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
         _check(response)
         for item in _json(response, "search").get("files", []):
             if item.get("id") not in seen:
@@ -385,8 +390,9 @@ def search_in_folders(folder_ids: list, name_words: list = None, mime_prefix: st
 def list_in_folders(folder_ids: list, max_items: int = 2000) -> list:
     """EVERY non-folder, non-trashed item directly inside any of folder_ids
     (shortcuts included), all pages, newest first, up to max_items. One query
-    per 25 folders. Metadata only (MIRROR_FILE_FIELDS) — the Media tab's
-    catalog and THE name search (core/media_search) read this."""
+    per 25 folders. Metadata only (MIRROR_FILE_FIELDS). corpora=allDrives —
+    see search_in_folders. NOT the Media tab's catalog any more
+    (core/drive_mirror lists each folder with list_children, 2026-11-12)."""
     out, seen = [], set()
     ids = [str(f) for f in folder_ids if f]
     for start in range(0, len(ids), 25):
@@ -395,7 +401,7 @@ def list_in_folders(folder_ids: list, max_items: int = 2000) -> list:
         page_token = ""
         while len(out) < max_items:
             params = {"q": q, "fields": f"nextPageToken,files({MIRROR_FILE_FIELDS})",
-                      "orderBy": "modifiedTime desc", "pageSize": 1000,
+                      "orderBy": "modifiedTime desc", "pageSize": 1000, "corpora": "allDrives",
                       "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
             if page_token:
                 params["pageToken"] = page_token

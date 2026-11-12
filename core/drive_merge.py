@@ -194,15 +194,39 @@ def media_diagnosis(client_id: int, find: str = "") -> dict:
                             "connected": f.get("id") == out["resolved_folder_id"],
                             "under_media_root": out["media_root"] in (f.get("parents") or []), **walk})
     out["folders_named_like_client"] = folders
+    # What the agents and the Media tab are built from (drive_mirror.catalog),
+    # next to the raw tree of the connected folder: any file in Drive that the
+    # catalog lacks is named here — the client-27 test3.mp4 miss, made visible.
+    keep = ("id", "name", "folder", "kind", "size", "modified_time")
+    connected = next((f for f in folders if f.get("connected")), None)
+    try:
+        with drive_storage.scope(client_id):
+            cat = drive_mirror.catalog(client_id, refresh=True)
+        cat_ids = {i.get("id") for i in cat.get("items") or []}
+        out["catalog_files"] = len(cat_ids)
+        if connected and not connected.get("error") and not connected.get("truncated") and not cat.get("truncated"):
+            out["catalog_missing"] = [{k: t.get(k) for k in keep if k in t} for t in connected.get("tree") or []
+                                      if t.get("mime_type") != drive.FOLDER_MIME and t.get("id") not in cat_ids]
+    except Exception as e:
+        out["catalog_error"] = drive.classify_error(e)
     if find:
+        # EXACTLY the agents' find_media_file search (agent_actions.find_media_lookup)
         try:
-            with drive_storage.scope(client_id):
-                hit = drive_mirror.find(client_id, find, limit=10)
-            out["find_in_client_folder"] = [{k: m.get(k) for k in ("id", "name", "folder", "kind", "size",
-                                                                    "modified_time")}
-                                            for m in hit.get("matches") or []]
+            from core import agent_actions
+            hit = agent_actions.find_media_lookup(client_id, find)
+            out["find_in_client_folder"] = [{k: m.get(k) for k in keep} for m in hit.get("matches") or []]
         except Exception as e:
             out["find_in_client_folder_error"] = drive.classify_error(e)
+        # EXACTLY the Media tab's search box (media_library.view)
+        try:
+            from core import media_library
+            tab = media_library.view(client_id, q=find, limit=10)
+            if tab.get("error"):
+                out["find_in_media_tab_error"] = tab["error"]
+            else:
+                out["find_in_media_tab"] = [{k: m.get(k) for k in keep} for m in tab.get("items") or []]
+        except Exception as e:
+            out["find_in_media_tab_error"] = drive.classify_error(e)
         try:
             out["find_anywhere"] = drive_pull.find_anywhere(find, client_id)
         except Exception as e:

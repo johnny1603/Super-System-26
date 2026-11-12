@@ -6129,6 +6129,12 @@ def _client_link_answer(client_id: int, fn) -> dict:
         return {"success": False, "data": {"code": "drive_trouble", "share_with": ""}}
     from core import media_library
     media_library.forget(client_id)
+    if isinstance(out, dict) and out.get("already_in_folder"):
+        # The link IS a file already in their folder: say so, the tab reloads
+        # it from Drive (drive_pull dropped the cached listing)
+        return {"success": True, "data": {"already_in_folder": True,
+                                          "name": (out.get("source") or {}).get("name", ""),
+                                          "folder": out.get("folder", "")}}
     job = (out or {}).get("job") if isinstance(out, dict) and "job" in out else out
     return {"success": True, "data": {"job": _client_job(job or {})}}
 

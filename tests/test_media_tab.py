@@ -197,7 +197,7 @@ class Library(tdp.Base):
     def test_drive_trouble_is_one_calm_code(self):
         def boom(*a, **k):
             raise tdp.DriveError("unavailable")
-        self.drv.list_in_folders = boom
+        self.drv.list_children = boom
         self.dm.forget(7)
         self.assertEqual(self.view(), {"exists": True, "error": "unavailable"})
 
