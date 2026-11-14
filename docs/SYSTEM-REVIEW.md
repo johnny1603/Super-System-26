@@ -316,3 +316,38 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
 - **Migration:** none. **Deploy:** needed. **The homepage stays off by default.**
 - **Estimated cost so far:** about $40 (rough; `/cost` in the terminal is the real number).
   This reaches the proposed cap; nothing further is run without the owner.
+
+---
+
+# Round 2 (2026-11-15) — three improvements asked by the owner
+
+Parts were done in the order 3, 1, 2 (the chat change first, because it is the smallest and
+the most separate). **Cost for this round:** proposed cap of $25 on top of the first run's
+about $40; I stop and ask before passing it.
+
+## Checkpoint R2-3 — small talk must not look like work
+
+- **Found:** a greeting was already on the cheapest tier with no account reads, but three
+  things still made it feel like work. (1) Every message waited 3 seconds before any
+  answer started, so that quick messages could be collected into one turn — a "היי" too.
+  (2) "מה קורה?", "מה הולך?" and "מה נשמע" were not on the greeting list at all: they counted
+  as a question and loaded the whole account. (3) The reply instructions allowed a small
+  status report.
+- **Changed:** `core/chat_route.small_talk` — rules only, five languages, the whole message
+  must be small talk. `core/chat_turns` skips the collection wait for it. The reply note now
+  asks for one short human line, not a report. The dashboard never shows the progress line
+  or a time estimate for it (`dashboard/assets/small-talk.js`, display only). Timing rows
+  carry `small_talk`. `docs/CHAT-SPEED.md` section 4b.
+- **Kept:** doubt goes up. A thanks or an "ok" right after an offer of ours still takes the
+  full path (it may be a yes). "מה המצב?" and "מה חדש?" stay a real question. A request
+  inside a greeting ("היי, תעלה לי את הסרטון") takes the full path on the strongest tier.
+  The safety checks before the client sees an answer are untouched.
+- **Tests:** 75/75 test files pass (new: `tests/test_small_talk.py`, 15 tests, with the
+  owner's exact phrases and their equivalents in he/en/fr/ar/ru, on the server rules and on
+  the dashboard file in Node).
+- **NOT tested:** a real model — whether the cheapest model really answers "מה קורה?" in one
+  warm line in each agent's voice is unverified. Real response time was not measured (no
+  access to production timings); the saving of the 3-second wait is by code, the rest is
+  an estimate.
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost of this round so far:** about $6 (rough).

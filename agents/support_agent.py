@@ -1142,6 +1142,8 @@ def _decide_turn(client_id: int, message: str, history: list, force_work: bool =
                         ("route_model", decision["model"]), ("route_reason", decision["reason"]),
                         ("message_chars", len(message or ""))):
         chat_timing.flag(name, value)
+    if route.get("small_talk") and decision["kind"] == "simple":
+        chat_timing.flag("small_talk", True)
     return decision
 
 

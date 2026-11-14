@@ -2387,6 +2387,7 @@ a.media-item:hover { border-color: var(--accent); }
 <script src="/assets/media-viewer.js"></script>
 <script src="/assets/chat-time.js"></script>
 <script src="/assets/voice-input.js"></script>
+<script src="/assets/small-talk.js" defer></script>
 <script>
 // ─── i18n string table (Hebrew = source of truth + fallback) ────────────────
 const DASH_I18N = {
@@ -7257,6 +7258,9 @@ async function sendInWindow(personaId, extra) {
   // ONE typing indicator per window, shown at once and kept while ANY send
   // of this window is still waiting (core/chat_turns answers messages sent
   // close together as one turn, so several sends may share one reply)
+  // Small talk alone in flight keeps the plain indicator; any real message
+  // sent meanwhile brings the progress line back
+  w.smallTalk = chatSmallTalk(text) && !extra && (!w.pending || w.smallTalk);
   chatPendingStart(w);
   try {
     const res = await fetch('/api/client-chat', {
@@ -7293,7 +7297,16 @@ async function sendInWindow(personaId, extra) {
 // ONE short progress line — text only: no spinner, no tool names, no DOM move
 // (docs/CHAT-SPEED.md)
 const CHAT_LONG_WAIT_MS = 15000;
+// Small talk (a greeting, a thanks — any of the five languages) is not work:
+// its wait never turns into the progress line or a time estimate. Display
+// only — the server decides the real route by its own rules
+// (core/chat_route.small_talk). The phrase list lives in assets/small-talk.js;
+// anything it misses, or the file not loading, just behaves as before.
+function chatSmallTalk(text) {
+  try { return !!(window.uallakSmallTalk && window.uallakSmallTalk(text)); } catch (e) { return false; }
+}
 function chatTypingText(w) {
+  if (w.smallTalk) return uallakI18n.t('chat_typing');
   const long = w.pendingSince && Date.now() - w.pendingSince >= CHAT_LONG_WAIT_MS;
   // With measured history: the usual time in plain words; without: the fixed calm line
   if (long && chatPace.text && chatPace.lang === uallakI18n.current()) return chatPace.text;
@@ -7314,7 +7327,7 @@ function chatPendingEnd(w) {
   w.pending = Math.max((w.pending || 1) - 1, 0);
   if (!w.pending && w.typingEl) {
     w.typingEl.remove(); w.typingEl = null;
-    clearTimeout(w.longWaitTimer); w.pendingSince = 0;
+    clearTimeout(w.longWaitTimer); w.pendingSince = 0; w.smallTalk = false;
   }
 }
 function chatTypingToBottom(w) {

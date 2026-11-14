@@ -128,6 +128,37 @@ minutes." The admin alert behind it is unchanged.
 
 Tests: `tests/test_task_eta.py`.
 
+## 4b. Small talk is not work (2026-11-15)
+
+"מה קורה?", "מה הולך?", "היי", "מה נשמע", "תודה", "אחלה" and their equivalents in the five
+languages are answered like a person answers them.
+
+| Step | Small talk | Any other message |
+|---|---|---|
+| Deciding what it is | rules in `core/chat_route.small_talk` — no model call | same rules |
+| Collection wait (`core/chat_turns`, 3 s by default) | **skipped** | unchanged |
+| Account reads | none (only the last 4 messages of the thread) | all, in parallel |
+| Model | the cheapest tier | by the rules, doubt goes up |
+| Card / search / upgrade | never (stripped by code) | as before |
+| Typing indicator | the plain one only — never the progress line or a time estimate | as before |
+| Safety checks before the client sees it | unchanged | unchanged |
+
+- **The whole message must be small talk.** Greeting words, thanks words, a name ("היי
+  ג'וני") and punctuation only, up to 70 characters, one line. "היי, תעלה לי את הסרטון"
+  matches nothing and takes the full path on the strongest tier.
+- **Two kinds.** A greeting ("היי", "מה קורה?") is never a yes to anything. A thanks or an
+  "ok" ("אחלה", "תודה") right after we offered something may be a yes, so it still goes UP,
+  as before.
+- **Left on the full path on purpose:** "מה המצב?" and "מה חדש?" (a client may mean the
+  account), a name alone, anything from a frustrated client.
+- **The reply.** The model is told: one short line, like a colleague — not a status report,
+  no numbers, no list of what it can do.
+- **Sent right after a greeting:** a second message gets its own turn, or replaces the
+  greeting's answer through the existing one-restart rule.
+- The dashboard keeps a shorter copy of the list for display only; a phrase it misses just
+  behaves as before. `tests/test_small_talk.py` runs both lists on the same phrases.
+- Timing rows carry `small_talk: true`, so `/admin/models/` can show the difference.
+
 ## 5. Not tested against a real model or a real chat
 
 - Haiku's answer quality and voice on simple turns (only stubs in tests).

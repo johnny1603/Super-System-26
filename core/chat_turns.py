@@ -227,6 +227,15 @@ class Turn:
 
     def _collect(self, t0):
         window = window_seconds()
+        # Small talk ("היי", "מה קורה?", "תודה") is answered at once — nobody
+        # sends a greeting in three parts. A message that follows it gets its
+        # own turn, or the one restart below (core/chat_route.small_talk).
+        try:
+            from core import chat_route
+            if chat_route.small_talk(self.own_text):
+                window = 0
+        except Exception:
+            pass
         if window > 0:
             while True:
                 last = _arrivals.get(self.key, 0)
