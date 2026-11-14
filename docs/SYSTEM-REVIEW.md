@@ -202,3 +202,27 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   setting.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost so far:** about $19 (rough). Cap proposed: $40.
+
+## Checkpoint 3 — humanizing: agent motions and the celebration
+
+- **Found:** the standing figures of minimised chat windows already existed with an unused
+  animation hook; nothing moved, and a finished task changed a card's text only.
+- **Changed:** `dashboard/assets/agent-life.js` + `agent-life.css` (new), loaded deferred by
+  the client dashboard only. Idle motions (breathe, weight shift, glance, nod, lean toward a
+  neighbour who nods back) with random figure, motion and pause; one confetti + balloon burst
+  per finished task, from the waiting agent. Hooks in `finishActionCard` / `decideAction`.
+  A switch in "My account" (5 languages). `docs/AGENT-LIFE.md`.
+- **Rules kept:** never during an active conversation; transforms only; no library; no loop
+  between motions; paused on a hidden tab; nothing at all under `prefers-reduced-motion`;
+  once per task; chat speed and load path untouched (deferred, no fetch).
+- **Tests:** 71/71 test files pass (new: `tests/test_agent_life.py`, 12 tests; the behaviour
+  half runs the real script in Node against a small fake page).
+- **NOT tested:** a real browser. Not seen with real eyes: whether the motions read as
+  natural on the real figure images, the look of the confetti, iOS Safari, RTL placement of
+  the burst. CPU cost was reasoned (one class toggle every few seconds, a 2.6 s canvas), not
+  profiled.
+- **Limits:** client dashboard only (Itzik's figure on admin pages is not animated); the
+  figures are flat images, so a glance is a small lean, not a head turn; the switch is per
+  browser.
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost so far:** about $24 (rough). Cap proposed: $40.

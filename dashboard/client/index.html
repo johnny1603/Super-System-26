@@ -11,6 +11,10 @@
 <script src="/assets/uallak-bg.js" defer></script>
 <!-- Page-driven warm-up: pings at once, every N s while visible, and on return (docs/WARMUP.md) -->
 <script src="/assets/warmup.js" async></script>
+<!-- Small signs of life for the agents' standing figures + one celebration per finished task
+     (docs/AGENT-LIFE.md): deferred, no library, off under reduced motion and on a hidden tab -->
+<link rel="stylesheet" href="/assets/agent-life.css">
+<script src="/assets/agent-life.js" defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 
@@ -2174,6 +2178,7 @@ a.media-item:hover { border-color: var(--accent); }
     <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
       <a class="export-btn" href="/profile/" data-i18n="personal_profile_btn">⚙ הגדרות פרופיל ותמונה</a>
       <button class="export-btn" onclick="showView('support')" data-i18n="personal_support_btn">💬 פנייה לנציג</button>
+      <button class="export-btn" id="lifeToggle" type="button" aria-pressed="true" onclick="toggleLife(this)"></button>
     </div>
   </div>
 </div><!-- /viewPersonal -->
@@ -2530,6 +2535,8 @@ const DASH_I18N = {
   personal_billing: { he:'היסטוריית חיובים', en:'Billing history', fr:'Historique de facturation', ar:'سجل الفواتير', ru:'История платежей' },
   personal_edit_title: { he:'צריך לעדכן פרט?', en:'Need to update something?', fr:'Besoin de modifier une information ?', ar:'تحتاج لتحديث معلومة؟', ru:'Нужно что-то изменить?' },
   personal_edit_text: { he:'פרטי העסק נשמרים בדיוק כפי שנמסרו בהרשמה, כדי שהחשבוניות והחוזה יישארו תקפים. לעדכון — פנו אלינו בצ׳אט או בוואטסאפ ונטפל בזה מיד.', en:'Business details are kept exactly as given at signup so invoices and the contract stay valid. To change one, message us in the chat or on WhatsApp and we will handle it.', fr:"Les informations sont conservées telles que fournies à l'inscription. Pour les modifier, écrivez-nous.", ar:'تُحفظ تفاصيل العمل كما قُدّمت عند التسجيل. للتعديل تواصل معنا.', ru:'Данные хранятся так, как указаны при регистрации. Чтобы изменить — напишите нам.' },
+  life_on: { he:'✨ תנועה ואנימציות: פועלות', en:'✨ Motion & animations: on', fr:'✨ Mouvements et animations : activés', ar:'✨ الحركة والرسوم المتحركة: مفعّلة', ru:'✨ Движение и анимации: включены' },
+  life_off: { he:'✨ תנועה ואנימציות: כבויות', en:'✨ Motion & animations: off', fr:'✨ Mouvements et animations : désactivés', ar:'✨ الحركة والرسوم المتحركة: متوقفة', ru:'✨ Движение и анимации: выключены' },
   personal_profile_btn: { he:'⚙ הגדרות פרופיל ותמונה', en:'⚙ Profile & picture settings', fr:'⚙ Profil et photo', ar:'⚙ إعدادات الملف والصورة', ru:'⚙ Профиль и фото' },
   personal_support_btn: { he:'💬 פנייה לנציג', en:'💬 Talk to a human', fr:'💬 Parler à un humain', ar:'💬 التحدث مع ممثل', ru:'💬 Связаться с человеком' },
   field_business_name: { he:'שם העסק', en:'Business name', fr:"Nom de l'entreprise", ar:'اسم العمل', ru:'Название бизнеса' },
@@ -6366,6 +6373,26 @@ function finishActionCard(el, c) {
   if (box) box.remove();
   // linkify() escapes first — the result may carry a link (the Drive file)
   el.querySelector('.note').innerHTML = linkify(c.result || '');
+  if (c.status === 'done') celebrateTask(el, c.id);
+}
+
+// A task finished: ONE small celebration, from the agent's standing figure
+// when its window is minimised (it was waiting), else from the card. Once per
+// task, never repeated; nothing at all under reduced motion or when the
+// client switched motion off (dashboard/assets/agent-life.js).
+function celebrateTask(el, id) {
+  try { if (window.uallakLife && id != null) window.uallakLife.celebrateFor(el, 'action:' + id); }
+  catch (e) { /* decoration only */ }
+}
+function lifeToggleLabel() {
+  const on = !window.uallakLife || window.uallakLife.enabled();
+  return uallakI18n.t(on ? 'life_on' : 'life_off');
+}
+function toggleLife(btn) {
+  if (!window.uallakLife) return;
+  window.uallakLife.setEnabled(!window.uallakLife.enabled());
+  btn.textContent = lifeToggleLabel();
+  btn.setAttribute('aria-pressed', window.uallakLife.enabled() ? 'true' : 'false');
 }
 
 function watchActionCard(el, id) {
@@ -6534,6 +6561,7 @@ async function decideAction(id, decision, el, personaId, staffAction = false, ch
   }
   // linkify() escapes first — the outcome may carry a link (YouTube Studio)
   note.innerHTML = linkify(r.message || '');
+  if (r.status === 'done' && decision === 'approve') celebrateTask(el, id);
   // An explained refusal may come with the card that fixes it (e.g. a TikTok
   // send that needs a reconnect → the reconnect card, right below)
   if (r.next_card && personaId) appendActionCard(personaId, r.next_card);
@@ -9281,10 +9309,23 @@ async function loadSupport() {
 (function () {
   uallakI18n.init(DASH_I18N);
   uallakI18n.mountSwitcher(document.getElementById('langRow'));
+  // The motion switch's label depends on its state, so it is set here (and on
+  // every language change), not by data-i18n
+  const paintLifeToggle = () => {
+    const b = document.getElementById('lifeToggle');
+    if (!b) return;
+    b.textContent = lifeToggleLabel();
+    b.setAttribute('aria-pressed', (!window.uallakLife || window.uallakLife.enabled()) ? 'true' : 'false');
+    // with reduced motion set on the device nothing moves anyway: no switch to offer
+    b.style.display = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : '';
+  };
+  paintLifeToggle();
+  window.addEventListener('DOMContentLoaded', paintLifeToggle);   // agent-life.js is deferred
   // Re-render every JS-built area in the new language (server data is cached
   // ~5min by the agents, so the refetches are cheap). Static text is handled
   // by the engine's applyDom.
   uallakI18n.onChange(() => {
+    paintLifeToggle();
     loadDashboard(); loadBilling(); loadSuggestions(); loadConnectionHelp();
     // The nav sections are JS-built too, so re-render whichever ones the
     // client has actually opened (an unopened section re-renders on first

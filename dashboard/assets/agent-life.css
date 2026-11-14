@@ -1,0 +1,54 @@
+/* agent-life.css — the idle motions of the agents' standing figures and the
+   celebration canvas (dashboard/assets/agent-life.js, docs/AGENT-LIFE.md).
+
+   Transforms only, on .cw-figure-body (its transform-origin is the feet), so
+   nothing here causes layout or repaints the page around it. Each class is
+   added by the script for ONE motion and removed when it ends — nothing
+   loops. --al-dir is 1 or -1: the side the figure turns to.
+
+   Everything sits inside prefers-reduced-motion: no-preference; with reduced
+   motion the classes do nothing at all (and the script never adds them). */
+
+.al-burst { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483000; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cw-figure-body.al-breathe { animation: alBreathe 3.4s ease-in-out 2; }
+  .cw-figure-body.al-shift   { animation: alShift 3s ease-in-out 1; }
+  .cw-figure-body.al-glance  { animation: alGlance 2.2s ease-in-out 1; }
+  .cw-figure-body.al-nod     { animation: alNod 1.3s ease-in-out 1; }
+  .cw-figure-body.al-lean    { animation: alLean 2.8s ease-in-out 1; }
+  .cw-figure-body.al-hop     { animation: alHop 0.75s cubic-bezier(.3,.7,.4,1) 1; }
+
+  @keyframes alBreathe {
+    0%, 100% { transform: scale(1, 1); }
+    50%      { transform: scale(1.006, 1.014); }
+  }
+  @keyframes alShift {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    30%, 70% { transform: translateX(calc(var(--al-dir, 1) * 2.5px)) rotate(calc(var(--al-dir, 1) * 0.9deg)); }
+  }
+  @keyframes alGlance {
+    0%, 100% { transform: rotate(0deg); }
+    25%, 60% { transform: translateX(calc(var(--al-dir, 1) * 1.5px)) rotate(calc(var(--al-dir, 1) * 1.6deg)); }
+  }
+  @keyframes alNod {
+    0%, 100% { transform: translateY(0); }
+    25%      { transform: translateY(2.5px) scale(1, 0.992); }
+    50%      { transform: translateY(0); }
+    75%      { transform: translateY(2px) scale(1, 0.994); }
+  }
+  @keyframes alLean {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    30%, 65% { transform: translateX(calc(var(--al-dir, 1) * 4px)) rotate(calc(var(--al-dir, 1) * 2.4deg)); }
+    45%      { transform: translateX(calc(var(--al-dir, 1) * 4px)) rotate(calc(var(--al-dir, 1) * 2.4deg)) translateY(-1.5px); }
+  }
+  @keyframes alHop {
+    0%, 100% { transform: translateY(0) scale(1, 1); }
+    35%      { transform: translateY(-7px) scale(0.99, 1.02); }
+    70%      { transform: translateY(0) scale(1.01, 0.985); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .al-burst { display: none; }
+}
