@@ -802,6 +802,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `decideAction`; the key is remembered before drawing). Nothing under `prefers-reduced-motion`,
   on a hidden tab, or when switched off ("אזור אישי", localStorage `uallak_life`). No library, no
   loop between motions, no DOM move. `tests/test_agent_life.py` (runs the script in Node).
+- **Onboarding hub (2026-11-15, `docs/ONBOARDING-UI.md`)**: the connections guide on the client
+  dashboard is a compact hub — progress ring, one chip per REQUIRED step, ONE next action — and
+  the connection cards are GROUPED (next / after that / connected ✓ / more), the last two folded
+  behind one tap. What is required still comes ONLY from `client_journey.connection_status`; the
+  page draws it. Cards are never moved: `layoutConnCards` sets `data-ob` and CSS `order` groups
+  them; a package that can't be read = no hub, no grouping (the plain grid). **Anything that
+  scrolls the client to a connection card must call `connReveal(el)` first** (a folded card must
+  never be a dead end). The journey track is one summary line with the full track on request. A
+  completed step = ring pulse + one line + the one-per-key burst. `tests/test_onboarding_ui.py`.
 - **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
   microphone in each client chat window; the BROWSER's speech recognition turns speech into text
   in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is

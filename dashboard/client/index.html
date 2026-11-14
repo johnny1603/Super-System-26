@@ -982,6 +982,63 @@ body {
 .conn-card.conn-dimmed { opacity: 0.45; transition: opacity 0.2s; }
 .conn-card.conn-dimmed:hover { opacity: 1; }
 
+/* ---------- ONBOARDING HUB (2026-11-15, docs/ONBOARDING-UI.md) ----------
+   The guide as a compact hub: a progress ring, one chip per required step,
+   ONE next step. The grid below it is the same cards with the same buttons —
+   only grouped: next step first, then what is left, with the completed and
+   the optional ones folded behind one tap each. Nothing is moved in the DOM:
+   cards get a data-ob attribute and CSS `order` does the grouping. */
+.conn-guide.ob-hub { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; }
+.ob-ring { position: relative; width: 86px; height: 86px; flex-shrink: 0; }
+.ob-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+.ob-ring circle { fill: none; stroke-width: 8; }
+.ob-ring .ob-ring-bg { stroke: var(--panel-2); }
+.ob-ring .ob-ring-fg { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 226.2; stroke-dashoffset: 226.2;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+.ob-hub.ob-complete .ob-ring .ob-ring-fg { stroke: var(--green); }
+.ob-ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 800; direction: ltr; font-variant-numeric: tabular-nums; }
+.ob-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ob-chip { font-family: inherit; font-size: 11.5px; font-weight: 700; line-height: 1; padding: 7px 11px; border-radius: 100px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--gray); cursor: pointer; white-space: nowrap; }
+.ob-chip.done { color: var(--green); border-color: rgba(0,201,110,0.35); background: rgba(0,201,110,0.08); }
+.ob-chip.next { color: #fff; background: var(--accent); border-color: var(--accent); }
+.ob-chip:focus-visible, .ob-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-hub .sugg-btn.approve { margin-top: 14px; }
+.ob-hub.ob-complete .sugg-btn.approve { display: none; }
+/* Group headers live inside the grid and span it */
+.ob-group { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800;
+  margin-top: 4px; }
+.ob-group[hidden] { display: none; }
+.ob-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.ob-toggle { font-family: inherit; font-size: 12px; font-weight: 700; color: var(--gray); background: none;
+  border: 1px solid var(--border); border-radius: 100px; padding: 5px 12px; cursor: pointer; order: 2; }
+.ob-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.ob-group[data-ob-head="next"] { order: 0; color: var(--accent); }
+.conn-card[data-ob="next"] { order: 1; }
+.ob-group[data-ob-head="todo"] { order: 10; }
+.conn-card[data-ob="todo"] { order: 11; }
+.ob-group[data-ob-head="done"] { order: 20; }
+.conn-card[data-ob="done"] { order: 21; }
+.ob-group[data-ob-head="more"] { order: 30; }
+.conn-card[data-ob="more"] { order: 31; }
+#connGrid:not(.show-done) > .conn-card[data-ob="done"],
+#connGrid:not(.show-more) > .conn-card[data-ob="more"] { display: none !important; }
+/* The journey: one line by default, the whole track on request */
+.jn-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--gray); }
+.jn-summary b { color: var(--white, #F5F5F5); font-weight: 700; }
+#journeyPanel.jn-collapsed .jn-track { display: none; }
+#journeyPanel.jn-collapsed .jn-bar { margin-bottom: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-ring.ob-pulse { animation: obPulse 0.9s ease-out 1; }
+  @keyframes obPulse { 0% { transform: scale(1); } 35% { transform: scale(1.09); } 100% { transform: scale(1); } }
+}
+@media (max-width: 640px) {
+  .conn-guide.ob-hub { gap: 12px; padding: 14px; align-items: start; }
+  .ob-ring { width: 62px; height: 62px; }
+  .ob-ring-num { font-size: 13.5px; }
+}
+
 /* ---------- PROGRESS JOURNEY ---------- */
 .jn-bar {
   height: 6px; border-radius: 100px; background: var(--panel-2);
@@ -1413,7 +1470,13 @@ a.media-item:hover { border-color: var(--accent); }
       <span class="pending-badge" id="journeyProgressText">…</span>
     </div>
     <div class="jn-bar"><div class="jn-bar-fill" id="journeyBarFill"></div></div>
-    <div class="jn-track" id="journeyTrack"></div>
+    <!-- Compact by default: the last milestone reached and the next one; the full track on request -->
+    <div class="jn-summary">
+      <span id="journeySummary"></span>
+      <button type="button" class="ob-toggle" id="journeyToggle" aria-expanded="false" aria-controls="journeyTrack"
+              onclick="toggleJourneyTrack()"></button>
+    </div>
+    <div class="jn-track" id="journeyTrack" style="margin-top:16px;"></div>
   </div>
 
   <div class="section-head">
@@ -1426,20 +1489,36 @@ a.media-item:hover { border-color: var(--accent); }
   <!-- Guided walkthrough: ONE next step at a time, derived server-side from
        the client's purchased package. The grid below is unchanged — this
        spotlights the next card in it rather than replacing it. -->
-  <div class="conn-guide" id="connGuide" style="display:none;">
-    <div class="conn-guide-head">
-      <div class="conn-guide-title" id="connGuideTitle">…</div>
-      <span class="pending-badge" id="connGuideCount">…</span>
+  <div class="conn-guide ob-hub" id="connGuide" style="display:none;">
+    <!-- The ring: how many required steps are done (connGuideCount is its number) -->
+    <div class="ob-ring" id="obRing" role="img">
+      <svg viewBox="0 0 86 86" aria-hidden="true">
+        <circle class="ob-ring-bg" cx="43" cy="43" r="36"/>
+        <circle class="ob-ring-fg" id="obRingFill" cx="43" cy="43" r="36"/>
+      </svg>
+      <div class="ob-ring-num" id="connGuideCount">…</div>
     </div>
-    <div class="conn-guide-text" id="connGuideText"></div>
-    <!-- A step that is connected but cannot run yet: said plainly, never a silent ✓ -->
-    <div class="conn-guide-text" id="connGuideNotice" style="display:none; margin-top:8px;"></div>
-    <div class="jn-bar" style="margin:12px 0 0;"><div class="jn-bar-fill" id="connGuideBarFill"></div></div>
-    <button class="sugg-btn approve" style="margin-top:14px;" onclick="scrollToNextConnCard()"
-            data-i18n="conn_guide_jump">קחו אותי לשלב הבא</button>
+    <div>
+      <div class="conn-guide-title" id="connGuideTitle">…</div>
+      <div class="conn-guide-text" id="connGuideText"></div>
+      <!-- A step that is connected but cannot run yet: said plainly, never a silent ✓ -->
+      <div class="conn-guide-text" id="connGuideNotice" style="display:none; margin-top:8px;"></div>
+      <!-- One chip per required step, in order: done ✓, the next one lit -->
+      <div class="ob-steps" id="obSteps"></div>
+      <button class="sugg-btn approve" onclick="scrollToNextConnCard()"
+              data-i18n="conn_guide_jump">קחו אותי לשלב הבא</button>
+    </div>
   </div>
 
   <div class="conn-grid" id="connGrid">
+    <!-- Group headers (docs/ONBOARDING-UI.md): shown only when the required steps are known.
+         The cards below are grouped by CSS order from their data-ob attribute — never moved. -->
+    <div class="ob-group" data-ob-head="next" hidden><span data-i18n="ob_next_label">השלב הבא</span></div>
+    <div class="ob-group" data-ob-head="todo" hidden><span data-i18n="ob_group_todo">אחר כך</span></div>
+    <div class="ob-group" data-ob-head="done" hidden><span data-ob-count="done"></span>
+      <button type="button" class="ob-toggle" data-ob-toggle="done" aria-expanded="false" onclick="toggleConnGroup('done')"></button></div>
+    <div class="ob-group" data-ob-head="more" hidden><span data-ob-count="more"></span>
+      <button type="button" class="ob-toggle" data-ob-toggle="more" aria-expanded="false" onclick="toggleConnGroup('more')"></button></div>
 
     <div class="conn-card unlocked">
       <div class="conn-top">
@@ -2419,6 +2498,19 @@ const DASH_I18N = {
   conn_notice_avatar: { he:'סרטוני מגיש עם הדמות שלך עוד לא פתוחים אצלנו — הם בבדיקות אחרונות, ונעדכן ברגע שייפתחו.', en:'Presenter videos with your character are not open yet — they are in final testing, and we will tell you the moment they open.', fr:'Les vidéos avec votre présentateur ne sont pas encore ouvertes — tests finaux en cours ; nous vous préviendrons dès leur ouverture.', ar:'فيديوهات المقدِّم بشخصيتك غير متاحة بعد — إنها في الاختبارات الأخيرة، وسنبلغك فور فتحها.', ru:'Видео с вашим ведущим пока не открыты — идут финальные проверки, мы сообщим, как только откроем.' },
 
   // ── progress journey ──
+  // ── onboarding hub (ring, step chips, grouped connection cards) ──
+  ob_next_label: { he:'השלב הבא', en:'Next step', fr:'Étape suivante', ar:'الخطوة التالية', ru:'Следующий шаг' },
+  ob_group_todo: { he:'אחר כך', en:'After that', fr:'Ensuite', ar:'بعد ذلك', ru:'Затем' },
+  ob_group_done: { he:'מחוברים ({n}) ✓', en:'Connected ({n}) ✓', fr:'Connectés ({n}) ✓', ar:'متصلة ({n}) ✓', ru:'Подключено ({n}) ✓' },
+  ob_group_more: { he:'עוד חיבורים ({n})', en:'More connections ({n})', fr:'Autres connexions ({n})', ar:'اتصالات أخرى ({n})', ru:'Другие подключения ({n})' },
+  ob_show: { he:'הצגה', en:'Show', fr:'Afficher', ar:'عرض', ru:'Показать' },
+  ob_hide: { he:'הסתרה', en:'Hide', fr:'Masquer', ar:'إخفاء', ru:'Скрыть' },
+  ob_step_completed: { he:'שלב הושלם — יפה! ✓', en:'Step completed — nicely done! ✓', fr:'Étape terminée — bravo ! ✓', ar:'اكتملت الخطوة — أحسنتم! ✓', ru:'Шаг выполнен — отлично! ✓' },
+  journey_last: { he:'הושלם לאחרונה: {what}', en:'Latest reached: {what}', fr:'Dernière étape atteinte : {what}', ar:'آخر ما تحقق: {what}', ru:'Последняя веха: {what}' },
+  journey_next: { he:'הבא בתור: {what}', en:'Coming next: {what}', fr:'À venir : {what}', ar:'التالي: {what}', ru:'Далее: {what}' },
+  journey_all_done: { he:'כל אבני הדרך הושלמו', en:'Every milestone reached', fr:'Toutes les étapes sont atteintes', ar:'تحققت كل المحطات', ru:'Все вехи достигнуты' },
+  journey_show_all: { he:'כל אבני הדרך', en:'All milestones', fr:'Toutes les étapes', ar:'كل المحطات', ru:'Все вехи' },
+  journey_hide_all: { he:'הסתרת אבני הדרך', en:'Hide milestones', fr:'Masquer les étapes', ar:'إخفاء المحطات', ru:'Скрыть вехи' },
   journey_title: { he:'המסע שלך עם uallak', en:'Your journey with uallak', fr:'Votre parcours avec uallak', ar:'رحلتك مع uallak', ru:'Ваш путь с uallak' },
   journey_sub: { he:'כל אבן דרך מאז היום הראשון — מתעדכן מעצמו', en:'Every milestone since day one — updates itself', fr:'Chaque étape depuis le premier jour — mise à jour automatique', ar:'كل محطة منذ اليوم الأول — تتحدث تلقائيًا', ru:'Каждая веха с первого дня — обновляется сама' },
   journey_progress: { he:'{done} מתוך {total}', en:'{done} of {total}', fr:'{done} sur {total}', ar:'{done} من {total}', ru:'{done} из {total}' },
@@ -4616,6 +4708,7 @@ function showStoreCard() {
   const card = document.getElementById('storeCard');
   if (!card) return;
   card.style.display = '';
+  connReveal(card);
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -4914,6 +5007,7 @@ async function saveLikenessConsent() {
 function focusToolCard(tool) {
   const card = document.getElementById('toolCard-' + tool);
   if (!card) return;
+  connReveal(card);
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   card.style.outline = '2px solid var(--accent)';
   setTimeout(() => { card.style.outline = ''; }, 4000);
@@ -5190,7 +5284,7 @@ function handleWordpressReturn(err) {
   }
   if (err === 'wordpress_rejected') openAgentWindow('website');
   const card = document.getElementById('siteChoiceRow');
-  if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (card && card.scrollIntoView) { connReveal(card); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 }
 
 // ─── faces: every agent's portrait (and standing figure) ─────────────────────
@@ -6602,6 +6696,7 @@ async function decideAction(id, decision, el, personaId, staffAction = false, ch
   } else if (r.focus) {
     const target = document.getElementById(r.focus);
     if (target) {
+      connReveal(target);
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       target.style.outline = '2px solid var(--accent)';
       setTimeout(() => { target.style.outline = ''; }, 4000);
@@ -6774,11 +6869,46 @@ async function loadJourney() {
         <div class="jn-label">${esc(uallakI18n.t(m.key))}</div>
         <div class="jn-when">${m.done && m.at ? esc(fmtDate(m.at)) : ''}</div>
       </div>`).join('');
-    document.getElementById('journeyPanel').style.display = 'block';
+    // Compact by default: the last milestone reached + the next one (the same
+    // list, the same order — nothing new is derived here)
+    const reached = d.milestones.filter(m => m.done);
+    const upcoming = d.milestones.find(m => !m.done);
+    const summary = document.getElementById('journeySummary');
+    summary.textContent = '';
+    const line = (key, what) => {
+      const span = document.createElement('span');
+      const parts = uallakI18n.t(key, { what: '\u0001' }).split('\u0001');
+      span.appendChild(document.createTextNode(parts[0] || ''));
+      const b = document.createElement('b'); b.textContent = what; span.appendChild(b);
+      span.appendChild(document.createTextNode(parts[1] || ''));
+      return span;
+    };
+    if (reached.length) summary.appendChild(line('journey_last', uallakI18n.t(reached[reached.length - 1].key)));
+    if (reached.length && upcoming) summary.appendChild(document.createTextNode(' · '));
+    if (upcoming) summary.appendChild(line('journey_next', uallakI18n.t(upcoming.key)));
+    else summary.appendChild(document.createTextNode((reached.length ? ' · ' : '') + uallakI18n.t('journey_all_done')));
+    const panel = document.getElementById('journeyPanel');
+    if (!panel.dataset.opened) panel.classList.add('jn-collapsed');
+    paintJourneyToggle();
+    panel.style.display = 'block';
   } catch (e) {
     // Non-fatal: the panel simply stays hidden
     document.getElementById('journeyPanel').style.display = 'none';
   }
+}
+
+function paintJourneyToggle() {
+  const panel = document.getElementById('journeyPanel'), btn = document.getElementById('journeyToggle');
+  if (!panel || !btn) return;
+  const open = !panel.classList.contains('jn-collapsed');
+  btn.textContent = uallakI18n.t(open ? 'journey_hide_all' : 'journey_show_all');
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function toggleJourneyTrack() {
+  const panel = document.getElementById('journeyPanel');
+  panel.classList.toggle('jn-collapsed');
+  panel.dataset.opened = panel.classList.contains('jn-collapsed') ? '' : '1';
+  paintJourneyToggle();
 }
 
 // ─── guided connection walkthrough ───────────────────────────────────────────
@@ -6846,15 +6976,25 @@ function renderConnectionGuide(status) {
   markNotInPlanCards(status);
   if (!status.expected || !status.expected.length) {
     // Either nothing is required or — more likely — the purchased package
-    // couldn't be read. Say nothing rather than implying they're done.
+    // couldn't be read. Say nothing rather than implying they're done: no hub,
+    // no groups — the plain full grid, as it always was.
     guide.style.display = 'none';
+    OB_STATUS = null;
+    layoutConnCards();
     return;
   }
-  guide.style.display = 'block';
-  document.getElementById('connGuideCount').textContent =
-    uallakI18n.t('conn_step_count', { done: status.done_count, total: status.total_count });
-  document.getElementById('connGuideBarFill').style.width =
-    Math.round((status.done_count / status.total_count) * 100) + '%';
+  guide.style.display = 'grid';
+  guide.classList.toggle('ob-complete', !!status.complete);
+  // The ring: done / total of the REQUIRED steps (the server's own counts)
+  document.getElementById('connGuideCount').textContent = status.done_count + '/' + status.total_count;
+  const ring = document.getElementById('obRing');
+  ring.setAttribute('aria-label', uallakI18n.t('conn_step_count', { done: status.done_count, total: status.total_count }));
+  const share = status.total_count ? status.done_count / status.total_count : 0;
+  document.getElementById('obRingFill').style.strokeDashoffset = String(OB_RING_LENGTH * (1 - share));
+  renderObSteps(status);
+  OB_STATUS = status;
+  layoutConnCards();
+  obCelebrateProgress(status);
 
   const titleEl = document.getElementById('connGuideTitle');
   const textEl = document.getElementById('connGuideText');
@@ -6884,25 +7024,162 @@ const CONN_STEP_ANCHOR = {
   media: ['toolStatus-higgsfield'], avatar: ['toolStatus-higgsfield'],
 };
 
+function connStepCards(stepKey) {
+  return (CONN_STEP_ANCHOR[stepKey] || [])
+    .map(id => document.getElementById(id))
+    .map(anchor => anchor && anchor.closest('.conn-card'))
+    .filter(Boolean);
+}
+
+// The next step's card(s) get the accent frame. The rest are no longer dimmed:
+// they are grouped (layoutConnCards) — what is done or optional is folded away.
 function highlightNextConnCard(stepKey) {
   document.querySelectorAll('#connGrid .conn-card').forEach(c => {
     c.classList.remove('conn-next', 'conn-dimmed');
   });
   if (!stepKey) return;
-  const cards = (CONN_STEP_ANCHOR[stepKey] || [])
-    .map(id => document.getElementById(id))
-    .map(anchor => anchor && anchor.closest('.conn-card'))
-    .filter(Boolean);
-  if (!cards.length) return;
-  document.querySelectorAll('#connGrid .conn-card').forEach(c => {
-    if (!cards.includes(c)) c.classList.add('conn-dimmed');
-  });
-  cards.forEach(card => card.classList.add('conn-next'));
+  connStepCards(stepKey).forEach(card => card.classList.add('conn-next'));
 }
 
 function scrollToNextConnCard() {
   const card = document.querySelector('#connGrid .conn-card.conn-next');
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (card) { connReveal(card); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+}
+
+// ─── Onboarding hub: ring, step chips, grouped cards (docs/ONBOARDING-UI.md) ──
+// The REQUIRED list, its order, what is done and what is next all come from
+// the server (core/client_journey.connection_status) exactly as before; this
+// only draws them compactly. Cards are never moved: each gets data-ob =
+// next | todo | done | more and CSS `order` groups them; "done" and "more" are
+// folded behind one tap. With no readable package nothing is grouped at all.
+const OB_RING_LENGTH = 226.2;        // 2πr of the ring (r = 36)
+let OB_STATUS = null;
+
+function renderObSteps(status) {
+  const box = document.getElementById('obSteps');
+  box.textContent = '';
+  (status.steps || []).forEach(step => {
+    const chip = document.createElement('button');
+    const state = step.key === status.next_step ? 'next' : (step.done ? 'done' : 'todo');
+    chip.type = 'button';
+    chip.className = 'ob-chip ' + state;
+    chip.textContent = (step.done ? '✓ ' : '') + uallakI18n.t('conn_step_' + step.key);
+    if (state === 'next') chip.setAttribute('aria-current', 'step');
+    chip.onclick = () => {
+      const card = connStepCards(step.key)[0];
+      if (card) { connReveal(card); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    };
+    box.appendChild(chip);
+  });
+}
+
+function layoutConnCards() {
+  const grid = document.getElementById('connGrid');
+  if (!grid) return;
+  const status = OB_STATUS;
+  const cards = Array.from(grid.children).filter(n => n.classList.contains('conn-card'));
+  const heads = Array.from(grid.children).filter(n => n.classList.contains('ob-group'));
+  if (!status || !(status.steps || []).length) {
+    cards.forEach(c => { if (c.hasAttribute('data-ob')) c.removeAttribute('data-ob'); });
+    heads.forEach(h => { h.hidden = true; });
+    return;
+  }
+  const rank = { next: 3, todo: 2, done: 1 };
+  const byCard = new Map();
+  status.steps.forEach(step => connStepCards(step.key).forEach(card => {
+    const state = step.key === status.next_step ? 'next' : (step.done ? 'done' : 'todo');
+    if (!byCard.has(card) || rank[state] > rank[byCard.get(card)]) byCard.set(card, state);
+  }));
+  const counts = { next: 0, todo: 0, done: 0, more: 0 };
+  cards.forEach(card => {
+    // Not a required step: connected ones count as done, the rest are "more"
+    const group = byCard.get(card) || (card.querySelector('.conn-status.connected') ? 'done' : 'more');
+    if (card.dataset.ob !== group) card.dataset.ob = group;
+    if (card.style.display !== 'none') counts[group] += 1;
+  });
+  heads.forEach(head => {
+    const group = head.dataset.obHead;
+    head.hidden = !counts[group];
+    const label = head.querySelector('[data-ob-count]');
+    if (label) label.textContent = uallakI18n.t('ob_group_' + group, { n: counts[group] });
+    const toggle = head.querySelector('[data-ob-toggle]');
+    if (toggle) {
+      const open = grid.classList.contains('show-' + group);
+      toggle.textContent = uallakI18n.t(open ? 'ob_hide' : 'ob_show');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+  });
+}
+
+function toggleConnGroup(group) {
+  document.getElementById('connGrid').classList.toggle('show-' + group);
+  layoutConnCards();
+}
+
+// Anything that sends the client TO a connection card opens its group first,
+// so a folded card is never a dead end (help buttons, chat cards, the tour).
+function connReveal(el) {
+  const card = el && el.closest ? el.closest('#connGrid > .conn-card') : null;
+  if (!card) return;
+  const group = card.dataset.ob;
+  if (group === 'done' || group === 'more') {
+    document.getElementById('connGrid').classList.add('show-' + group);
+    layoutConnCards();
+  }
+}
+
+// A connection that just completed moves its card to "done" by itself: the
+// statuses are painted by several loaders, so the grid is watched for a
+// status class or a card being shown / hidden, and regrouped on the next frame.
+(function watchConnGrid() {
+  const grid = document.getElementById('connGrid');
+  if (!grid || !window.MutationObserver) return;
+  let queued = false, refetchTimer = null, lastRefetch = 0, lastConnected = -1;
+  const loadedAt = Date.now();
+  const again = () => { queued = false; layoutConnCards(); };
+  // A status that changed well after the page loaded = something was just
+  // connected on this page (a key pasted in a card): ask the server for the
+  // checklist again so the ring, the chips and the next step follow at once.
+  const refetch = async () => {
+    if (!OB_STATUS || Date.now() - lastRefetch < 5000) return;
+    lastRefetch = Date.now();
+    try {
+      const res = await fetch('/api/client/connection-checklist', { credentials: 'same-origin' });
+      const body = await res.json();
+      if (body.success) renderConnectionGuide(body.data);
+    } catch (e) { /* the hub keeps what it showed */ }
+  };
+  new MutationObserver(records => {
+    const status = records.some(r => r.target.classList && r.target.classList.contains('conn-status'));
+    const relevant = status || records.some(r => r.type === 'childList'
+      || (r.attributeName === 'style' && r.target.classList && r.target.classList.contains('conn-card')));
+    if (relevant && !queued) { queued = true; requestAnimationFrame(again); }
+    if (!status) return;
+    // only when the NUMBER of connected cards really changed (loaders repaint the same state often)
+    const connected = grid.querySelectorAll('.conn-status.connected').length;
+    const changed = connected !== lastConnected;
+    lastConnected = connected;
+    if (changed && Date.now() - loadedAt > 8000) { clearTimeout(refetchTimer); refetchTimer = setTimeout(refetch, 1500); }
+  }).observe(grid, { subtree: true, attributes: true, attributeFilter: ['class', 'style'], childList: true });
+})();
+
+// A required step was completed since the last visit: one small celebration
+// from the ring (the same one-per-key burst as a finished task) and a line.
+// The count is remembered per client in this browser; the first visit only
+// records it — nothing is celebrated that the client did not just do.
+function obCelebrateProgress(status) {
+  if (!chatData.clientId || ADMIN_VIEW) return;
+  const key = 'uallak_ob_done_' + chatData.clientId;
+  let before = null;
+  try { const raw = localStorage.getItem(key); before = raw === null ? null : Number(raw); } catch (e) { return; }
+  try { localStorage.setItem(key, String(status.done_count)); } catch (e) { /* this visit only */ }
+  if (before === null || !(status.done_count > before)) return;
+  showNotice(uallakI18n.t(status.complete ? 'conn_guide_done_title' : 'ob_step_completed'), 'success');
+  const ring = document.getElementById('obRing');
+  ring.classList.remove('ob-pulse'); void ring.offsetWidth; ring.classList.add('ob-pulse');
+  try {
+    if (window.uallakLife) window.uallakLife.celebrate(ring, 'ob:' + chatData.clientId + ':' + status.done_count);
+  } catch (e) { /* decoration only */ }
 }
 
 async function runConnectionNudge() {
@@ -9165,7 +9442,7 @@ function perfGoConnect(elId) {
   showView('home');
   setTimeout(() => {
     const el = document.getElementById(elId);
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+    if (el) { connReveal(el); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
   }, 300);
 }
 
@@ -9222,6 +9499,7 @@ function showCardForm(formId, open) {
   const form = document.getElementById(formId);
   if (!form) return;
   if (form.style.display === 'none') open();
+  connReveal(form);
   form.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -9359,6 +9637,8 @@ async function loadSupport() {
   // by the engine's applyDom.
   uallakI18n.onChange(() => {
     paintLifeToggle();
+    // The onboarding hub (ring label, step chips, group headers) is JS-built
+    if (OB_STATUS) renderConnectionGuide(OB_STATUS); else layoutConnCards();
     loadDashboard(); loadBilling(); loadSuggestions(); loadConnectionHelp();
     // The nav sections are JS-built too, so re-render whichever ones the
     // client has actually opened (an unopened section re-renders on first

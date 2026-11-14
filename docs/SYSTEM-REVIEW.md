@@ -257,3 +257,32 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   browser, usually better Hebrew) — needs a new service, key, env var and a policy change.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost so far:** about $29 (rough). Cap proposed: $40.
+
+## Checkpoint 5 — client onboarding
+
+- **Reviewed:** the whole first-login path (checklist from the purchased package, the
+  connection nudge, connect-through-chat, the 90-day clock stamp, the interview gate, the
+  journey panel). The logic is sound and was not changed. Found: the connections area is one
+  long undifferentiated grid of up to 17 cards; progress is a thin bar; the journey is a
+  sideways-scrolling row; nothing marks a completed step; and (bug) the guide stayed in the
+  old language after a language switch.
+- **Changed (`dashboard/client/index.html` only):** the guide is now a hub: progress ring,
+  one chip per required step, one highlighted next action. The same cards are grouped (next
+  step / after that / connected / more), the last two folded behind one tap. Journey shown
+  as one summary line with the full track on request. A completed step pulses the ring,
+  shows one line and fires the one-time burst. The language switch repaints the hub; the
+  hub also follows a connection made on the page without a reload.
+- **Kept:** what is required, its order and what counts as done still come only from the
+  server; one decision per card (same nodes, same single connect button, same handlers);
+  an unreadable package shows no hub and no grouping, exactly the old plain grid.
+- **Tests:** 73/73 test files pass (new: `tests/test_onboarding_ui.py`, 15 tests; the
+  grouping function itself runs in Node against a fake grid).
+- **NOT tested:** a real browser, a real client account, a phone. Unverified by eye: the
+  ring and chips layout in RTL and on a narrow screen, the look of the folded groups, the
+  scroll-to-card behaviour after a group opens, and the first-login sequence (nudge, then
+  interview) end to end with the new layout.
+- **Risk to watch after deploy:** optional cards (voice recordings, CRM, automation, second
+  creative tool) now sit behind "More connections". Every in-app path to them opens the
+  group first, but a client hunting for one by eye needs one extra tap.
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost so far:** about $35 (rough). Cap proposed: $40.
