@@ -7024,6 +7024,31 @@ def operator_stop(request: Request):
     from core import operator_agent
     return {"success": True, "data": operator_agent.request_stop(who)}
 
+@app.get("/api/admin/operator/progress")
+def operator_progress(request: Request):
+    # The running task's progress line + measured time estimate (the chat polls
+    # it while it waits for /ask). Read-only.
+    _operator_admin(request)
+    from core import operator_agent
+    return {"success": True, "data": operator_agent.progress()}
+
+@app.get("/api/admin/operator/ideas")
+def operator_ideas(request: Request):
+    # The improvement ideas איציק raised (core/operator_insight). Read-only.
+    _operator_admin(request)
+    from core import operator_insight
+    return {"success": True, "data": {"ideas": operator_insight.ideas(), "memory": operator_insight.task_memory()}}
+
+@app.post("/api/admin/operator/ideas/{idea_id}/{status}")
+def operator_idea_status(idea_id: str, status: str, request: Request):
+    # The owner marks an idea done / dismissed / open again. His notebook only.
+    _operator_admin(request)
+    from core import operator_insight
+    out = operator_insight.set_idea_status(idea_id, status)
+    if not out.get("saved"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "not_saved")
+    return {"success": True, "data": out}
+
 @app.get("/api/admin/operator/metrics")
 def operator_metrics(request: Request):
     # Response time, model and cost per operator message (reply rows' meta)

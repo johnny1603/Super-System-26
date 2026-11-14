@@ -413,6 +413,7 @@ def get_settings() -> dict:
                                        "creative_tools:", "drive_storage:", "drive_usage:",
                                        "flag_override:", "operator_gate:", "operator_change:",
                                        "operator_task:", "operator_stop:",
+                                       "operator_memory:", "operator_ideas:",
                                        "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:",
                                        # drive_pull: Pull-from-Drive jobs; media_seen: the
                                        # Media tab's "new since your last visit" mark

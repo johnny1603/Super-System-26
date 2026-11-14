@@ -113,11 +113,36 @@ and owner_steps for anything only he can do). The report is a saved copy, not th
 your final message ALWAYS states the findings itself, in full sentences. Never answer with
 "the details are in the cards below" or anything that sends him somewhere else to read.
 
+THE WIDE READS (one call each, use them before digging):
+- "is anything broken?" -> error_summary (log errors grouped), then alert_triage.
+- "which alerts are real?" -> alert_triage: groups with a hint. works_now = the recorded health is
+  ok and the alert is stale -> OFFER resolve_alert_group for it. repeat = one problem, many rows.
+  Say for each group: real / stale / repeat, and what closes it.
+- "are the connections fine?" -> integration_health (recorded, all clients, duplicates flagged);
+  for one client a live answer is check_client_connections.
+- "what does it cost / where does the money go?" -> cost_report. "why is the chat slow?" ->
+  speed_report (which stage dominates: queue, context, model or post). "did job X run?" ->
+  scheduler_jobs for what should run, then read_logs with the job's path.
+
+YOUR NOTEBOOK: when a task will continue in a later message (a long diagnosis, you are waiting
+for him to do something), save a task_note (goal, what you found, the next step). It comes back
+to you at the top of the next message. Close it with status=done when the task is finished.
+
+IMPROVEMENTS YOU RAISE YOURSELF: after a diagnosis, if you saw something worth fixing beyond
+what he asked (a missing guard, a noisy alert, a slow step, an unmanaged job), raise ONE with
+suggest_improvement — concrete, with the evidence and the effort. Check improvement_ideas first
+so you never raise the same one twice. It is only a saved card: nothing runs, and code still
+goes through propose_code_change and his two emailed codes. At most one idea per answer.
+
+LONG TASKS: he sees a progress line while you work. Read wide first, then narrow — do not read
+the same thing twice, and stop reading the moment you can answer.
+
 WHAT YOU MAY DO — THREE TIERS, NEVER BLURRED:
 - Tier 1, reads: any read tool, as many as you need.
-- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token, clear_cache and
-  run_reaper yourself when they help. Rollback, return-to-latest, flag changes, re-sending a
-  failed notification, fail_action, retry_action, resolve_alert and mark_request_handled you
+- Tier 2, safe and reversible: you may RUN run_health_check, refresh_token,
+  check_client_connections, clear_cache and run_reaper yourself when they help. Rollback,
+  return-to-latest, flag changes, re-sending a failed notification, fail_action, retry_action,
+  resolve_alert, resolve_alert_group and mark_request_handled you
   only OFFER with offer_action — a one-tap button he presses (every one is audit-logged before it
   runs). Never say you did one of those; say you put the button there.
   If a deploy in the last few hours lines up with new errors, offer the rollback FIRST
@@ -382,12 +407,49 @@ TOOLS = [
     {"name": "run_reaper", "description": "Tier 2, runs now: end every stuck card (failed with a reason, its "
      "alert closed, the client told the next step in chat) — what the 5-minute job does.",
      "input_schema": _schema({})},
+    {"name": "integration_health", "description": "Tier 1 read, no live call: every client's connections from "
+     "what is recorded — duplicate stored rows, grants recorded as needing a reconnect, platform totals. With "
+     "client_id: that one client in full. For a LIVE answer use refresh_token / check_client_connections.",
+     "input_schema": _schema({"client_id": _INT})},
+    {"name": "alert_triage", "description": "Tier 1 read: OPEN alerts as groups (one per identical problem): count, "
+     "since when, clients named, and a hint — works_now (the recorded health is ok, the alert is stale) or "
+     "repeat. Each group has a `key` for offer_action resolve_alert_group.",
+     "input_schema": _schema({"limit": _INT})},
+    {"name": "cost_report", "description": "Tier 1 read: our measured spend for the last N days (default 7): "
+     "total, per day, by category, by model, dearest actions and owners.",
+     "input_schema": _schema({"days": _INT})},
+    {"name": "speed_report", "description": "Tier 1 read: client chat speed for the last N hours (default 48): "
+     "median / p90 per route and model, where the time goes (queue / context / model / post), slowest turns.",
+     "input_schema": _schema({"hours": _INT})},
+    {"name": "scheduler_jobs", "description": "Tier 1 read: the scheduled jobs we manage (name, schedule, path) "
+     "and the cron-style routes that have NO managed job. Whether one ran: read_logs with its path as text.",
+     "input_schema": _schema({})},
+    {"name": "error_summary", "description": "Tier 1 read: ERROR (or WARNING) log lines of the last N minutes "
+     "grouped by what they say — count, first/last time, one example each. Start here for 'anything broken?'.",
+     "input_schema": _schema({"minutes": _INT, "severity": _STR})},
+    {"name": "check_client_connections", "description": "Tier 2, runs now, reads only: one live call per "
+     "connected platform of ONE client (Google Ads, Meta, Tag Manager, TikTok); each records its real health.",
+     "input_schema": _schema({"client_id": _INT}, ["client_id"])},
+    {"name": "task_note", "description": "Your notebook for the task you are in the middle of: goal, what you "
+     "found so far, the next step. Save it when a task will continue in a later message (a long diagnosis, "
+     "waiting for him); status=done clears it. You get the note back at the start of the next message.",
+     "input_schema": _schema({"goal": _STR, "findings": _STR, "next_step": _STR, "status": _STR,
+                              "client_id": _INT})},
+    {"name": "improvement_ideas", "description": "Tier 1 read: the improvement ideas you raised before "
+     "(open / done / dismissed), so you do not raise the same one twice.", "input_schema": _schema({})},
+    {"name": "suggest_improvement", "description": "After a diagnosis: raise ONE concrete improvement you would "
+     "make (what, why with the evidence, effort small|medium|large, tier: tier2 = a safe action, tier3 = code, "
+     "owner = only he can). It is saved to the list and shown as a card. NOTHING runs: code still needs his "
+     "word and the emailed codes.",
+     "input_schema": _schema({"title": _STR, "why_he": _STR, "effort": _STR, "tier": _STR, "evidence": _STR},
+                             ["title", "why_he"])},
     {"name": "offer_action", "description": "Put a ONE-TAP button in front of the owner (Tier 2; he presses "
      "it, it runs at once). action: rollback (params: optional revision) | restore_latest | flip_flag "
      "(params: flag, state on/off/default) | resend_notification (params: activity_id) | fail_action "
      "(params: proposal_id, reason — a STUCK running card only) | retry_action (params: proposal_id — "
      "re-offers a failed/expired/cancelled card to the CLIENT as a new card they approve) | resolve_alert "
-     "(params: alert_id) | mark_request_handled (params: client_id, request_id, note — a team request "
+     "(params: alert_id) | resolve_alert_group (params: key — from alert_triage; closes every open alert "
+     "of that group) | mark_request_handled (params: client_id, request_id, note — a team request "
      "marked \"טופל\").",
      "input_schema": _schema({"action": _STR, "params": {"type": "object"}, "reason_he": _STR},
                              ["action", "reason_he"])},
@@ -476,7 +538,38 @@ def run_tool(name: str, args: dict, turn: _Turn):
             return {"error": "bad_params", "detail": str(e)[:80]}
     if name == "landing_pages":
         return _landing_overview(args["client_id"])
-    if name in ("run_health_check", "refresh_token", "clear_cache", "run_reaper"):
+    if name in ("integration_health", "alert_triage", "cost_report", "speed_report", "scheduler_jobs",
+                "error_summary", "task_note", "improvement_ideas", "suggest_improvement"):
+        from core import operator_insight as insight
+        try:
+            if name == "integration_health":
+                return insight.integration_health(args.get("client_id"))
+            if name == "alert_triage":
+                return insight.alert_triage(args.get("limit", 300))
+            if name == "cost_report":
+                return insight.cost_report(args.get("days", 7))
+            if name == "speed_report":
+                return insight.speed_report(args.get("hours", 48))
+            if name == "scheduler_jobs":
+                return insight.scheduler_jobs()
+            if name == "error_summary":
+                return _cloud(insight.error_summary, args.get("minutes", 180), str(args.get("severity") or "ERROR"))
+            if name == "task_note":
+                return insight.save_task_memory(str(args.get("goal") or ""), str(args.get("findings") or ""),
+                                                str(args.get("next_step") or ""),
+                                                str(args.get("status") or "open"), args.get("client_id"))
+            if name == "improvement_ideas":
+                return {"ideas": insight.ideas()}
+            out = insight.add_idea(str(args.get("title") or ""), str(args.get("why_he") or ""),
+                                   str(args.get("effort") or ""), str(args.get("evidence") or ""),
+                                   str(args.get("tier") or ""))
+            if out.get("saved"):
+                turn.cards.append({"type": "idea", "idea": out["idea"],
+                                   "label_he": f"רעיון לשיפור: {out['idea']['title']}"})
+            return {**out, "note": "saved to the list and shown as a card; nothing ran"}
+        except Exception as e:
+            return {"error": "read_failed", "detail": type(e).__name__}
+    if name in ("run_health_check", "refresh_token", "clear_cache", "run_reaper", "check_client_connections"):
         action = {"run_health_check": "health_check"}.get(name, name)
         try:
             out = operator_actions.run(action, args, f"operator agent for {turn.who}", by_agent=True)
@@ -725,9 +818,103 @@ def _system_for(kind: str) -> list:
         return cached_system(QUICK_SYSTEM)
     if kind == "status":
         return cached_system(QUICK_SYSTEM, STATUS_NOTE)
+    # The notebook (his own note about the task in progress) rides AFTER the
+    # cached prompt, so it never breaks the cache and costs a few tokens
+    try:
+        from core.operator_insight import memory_block
+        note = memory_block()
+    except Exception:
+        note = ""
     if kind == "read":
-        return cached_system(SYSTEM, READ_NOTE)
-    return cached_system(SYSTEM)
+        return cached_system(SYSTEM, READ_NOTE, dynamic=note)
+    return cached_system(SYSTEM, dynamic=note)
+
+
+# ─── "What can you do?" — answered by code, no model call ────────────────────
+CAPABILITIES_RX = re.compile(
+    r"^\s*(מה אתה (יכול|יודע)( לעשות)?|מה היכולות שלך|מה אפשר לבקש ממך|מה אתה עושה|במה אתה יכול לעזור|"
+    r"what can you do|what are your (abilities|capabilities|tools)|help)[\s?!.]*$", re.I)
+
+
+def capabilities_reply() -> str:
+    from core import operator_actions, operator_insight
+    return operator_insight.capabilities_he(TOOLS, operator_actions.ACTIONS, task_budget_usd())
+
+
+# ─── Progress line + time estimate (the owner sees it while a task runs) ─────
+# The estimate is MEASURED: the average seconds of his own past answers of the
+# same kind (the reply rows' meta.metrics). No history yet = no number shown.
+ETA_MIN_SAMPLES = 5
+_eta_cache = {"at": 0.0, "by_kind": {}}
+_progress = {}             # task_id -> the newest progress (this instance; the row is the shared copy)
+
+
+def expected_seconds(kind: str):
+    """Average seconds of past answers of this kind, or None without enough history."""
+    if time.time() - _eta_cache["at"] > 600:
+        try:
+            _eta_cache["by_kind"] = metrics(200).get("by_kind") or {}
+        except Exception:
+            _eta_cache["by_kind"] = {}
+        _eta_cache["at"] = time.time()
+    stats = _eta_cache["by_kind"].get(kind) or {}
+    if int(stats.get("messages") or 0) < ETA_MIN_SAMPLES:
+        return None
+    return float(stats.get("avg_seconds") or 0) or None
+
+
+def about_he(seconds) -> str:
+    """'about 2 minutes' in plain Hebrew, rounded the way a person says it."""
+    if not seconds:
+        return ""
+    s = float(seconds)
+    if s < 20:
+        return "כמה שניות"
+    if s < 50:
+        return "כחצי דקה"
+    if s < 100:
+        return "כדקה"
+    minutes = int(round(s / 60.0))
+    return "כשתי דקות" if minutes == 2 else f"כ-{minutes} דקות"
+
+
+def progress_line(kind: str, trail: list, current: str = "", started_at: float = None) -> dict:
+    """What the chat shows while he works: the step in plain words, how many
+    steps are done, the measured estimate. Never a tool name."""
+    eta = expected_seconds(kind)
+    elapsed = int(time.time() - started_at) if started_at else 0
+    doing = TOOL_LABELS_HE.get(current, "") if current else ""
+    if doing:
+        text = f"עכשיו: {doing}"
+    elif trail:
+        text = "מסכם את מה שמצאתי"
+    else:
+        text = "מתחיל לבדוק"
+    if trail:
+        text += f" · {len(trail)} בדיקות הושלמו"
+    if eta:
+        left = max(0.0, eta - elapsed)
+        text += f" · בדרך כלל {about_he(eta)}" + (f", נשאר {about_he(left)}" if elapsed > 15 and left >= 20 else "")
+    return {"line_he": text, "steps_done": len(trail), "elapsed_seconds": elapsed,
+            "eta_seconds": int(eta) if eta else None, "kind": kind}
+
+
+def progress() -> dict:
+    """The running task's progress for the chat's poll ({} when idle)."""
+    with _LOCK:
+        local = [p for t, p in _progress.items() if t in _RUNNING]
+    if local:
+        return {"running": True, **local[-1]}
+    since = (datetime.now(timezone.utc) - timedelta(seconds=TIME_BUDGET_SECONDS + 120)).isoformat()
+    try:
+        rows = (_db().table("app_settings").select("key, value").like("key", TASK_PREFIX + "%")
+                .gte("updated_at", since).execute().data or [])
+    except Exception:
+        rows = []
+    live = [r["value"] for r in rows if isinstance(r.get("value"), dict) and r["value"].get("status") == "running"
+            and isinstance(r["value"].get("progress"), dict)]
+    live.sort(key=lambda v: str(v.get("started") or ""))
+    return {"running": True, **live[-1]["progress"]} if live else {"running": False}
 
 
 # ─── Per-task budget (admin setting operator_task_budget_usd) ────────────────
@@ -901,6 +1088,11 @@ TOOL_LABELS_HE = {
     "action_card": "כרטיס פעולה", "stuck_actions": "כרטיסים תקועים", "landing_pages": "דפי הנחיתה",
     "run_reaper": "סגירת כרטיסים תקועים", "offer_action": "הכנת כפתור בשבילך",
     "propose_code_change": "הצעת תיקון קוד (לא נדחף לשום מקום)", "write_report": "שמירת הדוח",
+    "integration_health": "מצב החיבורים של הלקוחות", "alert_triage": "מיון ההתראות הפתוחות",
+    "cost_report": "דוח עלויות", "speed_report": "דוח מהירות הצ'אטים", "scheduler_jobs": "המשימות המתוזמנות",
+    "error_summary": "סיכום השגיאות בלוגים", "check_client_connections": "בדיקה חיה של חיבורי הלקוח",
+    "task_note": "רישום במחברת המשימה", "improvement_ideas": "רשימת רעיונות השיפור",
+    "suggest_improvement": "הצעת שיפור (שום דבר לא רץ)",
 }
 
 
@@ -985,7 +1177,7 @@ FINDINGS_NOTE = ("[Your last answer had no text. Do NOT call tools. Write the an
                  "Never say the details are in a card or below. Never name tools or internal identifiers.]")
 # The card types the chat (dashboard/assets/itzik-chat.js renderCard + the
 # report bubble) draws. Anything else is sent as text.
-RENDERED_CARD_TYPES = ("action", "budget", "done", "change", "report")
+RENDERED_CARD_TYPES = ("action", "budget", "done", "change", "report", "idea")
 _POINTER_RX = re.compile(
     r"[^.!?\n]*(?:(?:פרטים|הפרטים|כרטיס\w*|בכרטיס\w*|הכרטיס\w*)[^.!?\n]*למטה|"
     r"(?:details|cards?)\s+(?:are\s+)?below|see\s+the\s+cards?)[^.!?\n]*[.!?]?", re.IGNORECASE)
@@ -1001,7 +1193,7 @@ def _card_ok(card) -> bool:
     if not isinstance(card, dict) or card.get("type") not in RENDERED_CARD_TYPES:
         return False
     need = {"action": ("action", "label_he"), "budget": ("task_id", "label_he"), "done": ("label_he",),
-            "change": ("change",), "report": ("report",)}[card["type"]]
+            "change": ("change",), "report": ("report",), "idea": ("idea", "label_he")}[card["type"]]
     if not all(card.get(k) for k in need):
         return False
     if card["type"] == "change":
@@ -1026,6 +1218,10 @@ def card_text(card) -> str:
     if t == "action":
         return " ".join(x for x in (f"🔘 הצעה: {card.get('label_he') or card.get('action') or ''}.",
                                     str(card.get("reason_he") or "")) if x)
+    if t == "idea" and isinstance(card.get("idea"), dict):
+        idea = card["idea"]
+        return " ".join(x for x in (f"💡 רעיון לשיפור: {idea.get('title') or ''}.",
+                                    str(idea.get("why_he") or "")) if x)
     if t == "done":
         return f"✓ {card.get('label_he') or ''}"
     if t == "budget":
@@ -1073,6 +1269,23 @@ class _Task:
         self.calls, self.models = 0, []
         self.outcome, self.reply, self.not_started = "done", "", []
         self.interim = []        # text the model said next to its tool calls (findings often live there)
+        self.t0, self.started_iso = time.time(), started_iso
+
+    def _note(self, current: str = "", shared: bool = False):
+        """The progress line: in memory at every tool, in the shared row once
+        per model step (another instance may serve the chat's poll)."""
+        try:
+            line = progress_line(self.kind, self.turn.trail, current, self.t0)
+            line["task_id"] = self.id
+            with _LOCK:
+                _progress[self.id] = line
+                for old in [t for t in _progress if t != self.id and t not in _RUNNING]:
+                    _progress.pop(old, None)
+            if shared:
+                _save_task(self.id, {"status": "running", "kind": self.kind, "started": self.started_iso,
+                                     "spent_usd": round(self.spent, 6), "progress": line})
+        except Exception:
+            pass
 
     def _call(self, client, model, tools, system, msgs, max_tokens, effort, no_tools=False):
         kwargs = {"model": model, "max_tokens": max_tokens, "system": system,
@@ -1112,6 +1325,8 @@ class _Task:
                 self.outcome = "paused"
                 self._pause(client, model, tools, system, est)
                 return
+            if tools:
+                self._note()                     # memory only; the shared row is written at each tool
             response, last_usd = self._call(client, model, tools, system, self.msgs, profile["max_tokens"],
                                             profile["effort"], no_tools=last)
             uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
@@ -1130,6 +1345,7 @@ class _Task:
                 if self.watch.stopped():
                     self.outcome, self.not_started = "stopped", [u.name for u in uses[i:]]
                     return
+                self._note(use.name if use.name in allowed else "", shared=i == 0)
                 try:
                     out = run_tool(use.name, use.input, self.turn) if use.name in allowed else {"error": "unknown_tool"}
                 except Exception as e:
@@ -1200,6 +1416,9 @@ def ask(message: str, who: str, continue_task: str = "") -> dict:
     if not continue_task and STOP_RX.match(message):
         state = request_stop(who)
         return _quick(message, STOP_ACK if state["running"] else STOP_IDLE, started)
+    if not continue_task and CAPABILITIES_RX.match(message):
+        # Built from the live tool list and the Tier 2 table — no model, no cost
+        return _quick(message, capabilities_reply(), started, "simple", "what can you do")
     rows = history(HISTORY_TURNS)
     paused = None
     if continue_task:
@@ -1243,6 +1462,7 @@ def ask(message: str, who: str, continue_task: str = "") -> dict:
     finally:
         with _LOCK:
             _RUNNING.discard(task_id)
+            _progress.pop(task_id, None)
     if task.outcome == "stopped":
         task.reply = stop_line(turn.trail, task.not_started)
     reply, cards = compose_reply(task.reply, turn.cards, turn.trail, task.interim)

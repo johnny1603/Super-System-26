@@ -201,7 +201,8 @@ class OperatorLoop(unittest.TestCase):
 
     def test_loop_sends_cached_system(self):
         s = _src("core", "operator_agent.py")
-        self.assertIn("return cached_system(SYSTEM)", s)            # the full prompt (write tier)
+        # the full prompt (write tier) is the CACHED part; his notebook note rides after it, unmarked
+        self.assertIn("return cached_system(SYSTEM, dynamic=note)", s)
         self.assertIn('"messages": _with_tail_marker(msgs)', s)
 
 

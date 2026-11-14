@@ -170,8 +170,32 @@
   }
   // A card's content as plain text — what the owner sees when a card cannot be
   // drawn (an unknown type, a broken payload). Never a card that silently vanishes.
+  // An improvement idea he raised after a diagnosis. Nothing runs from here:
+  // "prepare the fix" only SENDS him a message, and code still needs the two
+  // emailed codes. "not now" marks it dismissed in his list.
+  function ideaCard(c) {
+    const idea = c.idea || {};
+    const s = el('div', 'itz-card'); s.dataset.idea = idea.id || '';
+    s.appendChild(el('div', null, '💡 ' + (idea.title || '')));
+    if (idea.why_he) s.appendChild(el('div', 'itz-small', idea.why_he));
+    const meta = [];
+    if (idea.effort) meta.push('מאמץ: ' + ({ small: 'קטן', medium: 'בינוני', large: 'גדול' }[idea.effort] || idea.effort));
+    if (idea.tier) meta.push({ tier2: 'פעולה בטוחה', tier3: 'שינוי קוד — באישור במייל', owner: 'רק אתה יכול' }[idea.tier] || '');
+    if (meta.length) s.appendChild(el('div', 'itz-small', meta.filter(Boolean).join(' · ')));
+    const row = el('div', 'itz-row'), out = el('div', 'itz-result');
+    if (idea.tier !== 'owner') {
+      const go = el('button', 'itz-b primary', 'תכין הצעה'); go.type = 'button';
+      go.onclick = () => { if (busy) { out.textContent = NAME + ' באמצע משימה — נסה שוב כשיסיים.'; return; } go.disabled = true; runAsk({ message: 'תכין הצעת תיקון לרעיון: ' + (idea.title || '') }, 'תכין הצעה: ' + (idea.title || '')); };
+      row.appendChild(go);
+    }
+    const no = el('button', 'itz-b', 'לא עכשיו'); no.type = 'button';
+    no.onclick = async () => { no.disabled = true; try { await post('/ideas/' + encodeURIComponent(idea.id) + '/dismissed', {}); out.textContent = 'ירד מהרשימה.'; } catch (e) { out.textContent = errText(e); no.disabled = false; } };
+    row.appendChild(no); s.appendChild(row); s.appendChild(out);
+    return s;
+  }
   function cardText(c) {
     if (!c || typeof c !== 'object') return '';
+    if (c.type === 'idea' && c.idea) return '💡 רעיון לשיפור: ' + (c.idea.title || '') + (c.idea.why_he ? '\n' + c.idea.why_he : '');
     if (c.type === 'report' && c.report) return reportText(c.report);
     if (c.type === 'change' && c.change) return '🧩 הצעת שינוי קוד: ' + (c.change.title || '') + (c.change.what_he ? '\nמה משתנה: ' + c.change.what_he : '');
     if (c.type === 'action') return '🔘 הצעה: ' + (c.label_he || '') + (c.reason_he ? '\n' + c.reason_he : '');
@@ -184,6 +208,7 @@
       if (c.type === 'budget') return budgetCard(c);
       if (c.type === 'done') { const s = el('div', 'itz-card'); s.appendChild(el('div', null, '✓ ' + c.label_he)); s.appendChild(el('div', 'itz-small', summarize(c.result))); return s; }
       if (c.type === 'change') return renderChange(c.change);
+      if (c.type === 'idea' && c.idea && c.idea.id) return ideaCard(c);
     } catch (e) { /* drawn as text below */ }
     const t = cardText(c);
     return t ? el('div', 'itz-card itz-small', t) : null;
@@ -357,7 +382,7 @@
     const first = parts.log.firstChild;
     const frag = document.createDocumentFragment();
     const hold = parts.log; parts.log = frag;
-    if (!rows.length) addMessage('operator', 'היי, אני ' + NAME + '. ספר לי מה קרה — אני בודק גרסאות ופריסות, לוגים, התראות, מצב לקוח וקוד, ואומר לך מה מצאתי, מה הראיות ומה אני ממליץ.');
+    if (!rows.length) addMessage('operator', 'היי, אני ' + NAME + '. ספר לי מה קרה — אני בודק גרסאות ופריסות, לוגים, התראות, מצב לקוח וקוד, ואומר לך מה מצאתי, מה הראיות ומה אני ממליץ. רוצה את הרשימה המלאה? כתוב "מה אתה יכול לעשות".');
     rows.forEach(m => addMessage(m.role, m.content, m.cards, m.kind === 'report' ? 'report' : ''));
     parts.log = hold; hold.insertBefore(frag, first);
     scrollDown();
@@ -420,18 +445,34 @@
   const THINKING_HE = NAME + ' בודק — לוגים, גרסאות, התראות… (אפשר לעצור בכל רגע)';
   let busy = false;
   function isStopWord(text) { return STOP_RX.test(String(text || '').trim()); }
+  // While he works: ONE progress line (the step in plain words, how many checks
+  // are done, the measured usual time). Polled only while a task runs and the
+  // tab is visible; any failure just leaves the calm default line.
+  const PROGRESS_MS = 2500;
+  let progressTimer = null, stopping = false;
+  function progressText(p) {
+    if (!p || !p.running || !p.line_he) return '';
+    return NAME + ' — ' + p.line_he + ' (אפשר לעצור בכל רגע)';
+  }
+  async function pollProgress() {
+    if (!busy || stopping || document.hidden) return;
+    try { const t = progressText(await call('/progress')); if (t && busy && !stopping) parts.thinking.textContent = t; }
+    catch (e) { /* the default line stays */ }
+  }
   function setBusy(on) {
-    busy = on;
+    busy = on; stopping = false;
     parts.stop.hidden = !on; parts.stop.disabled = false;
     parts.thinking.textContent = THINKING_HE; parts.thinking.hidden = !on;
+    if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    if (on) progressTimer = setInterval(pollProgress, PROGRESS_MS);
     // the warm-up never reloads the page while a task runs (dashboard/assets/warmup.js)
     window.__uallakBusy = Math.max(0, (window.__uallakBusy || 0) + (on ? 1 : -1));
   }
   async function requestStop() {
     if (!busy) return;
-    parts.stop.disabled = true; parts.thinking.textContent = 'עוצר אחרי הצעד הנוכחי…';
+    parts.stop.disabled = true; stopping = true; parts.thinking.textContent = 'עוצר אחרי הצעד הנוכחי…';
     try { await post('/stop', {}); }
-    catch (e) { parts.thinking.textContent = errText(e); parts.stop.disabled = false; }
+    catch (e) { parts.thinking.textContent = errText(e); parts.stop.disabled = false; stopping = false; }
   }
 
   // One request at a time; the reply (normal / stopped / paused at the cap) renders the same way

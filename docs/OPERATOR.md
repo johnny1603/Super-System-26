@@ -69,6 +69,47 @@ card on /admin/operator/ (per-kind averages and maxima + the latest 40). Tune th
 No Cloud Run setting changed (no min instances, no --no-cpu-throttling).
 Tests: `tests/test_operator_budget.py`.
 
+## Insight, notebook, progress (2026-11-15)
+
+More strength INSIDE the three tiers. No approval was removed and none was added.
+
+**New Tier 1 reads** (`core/operator_insight.py` — states, counts, seconds and money only;
+never a token, a key, contact details or a chat message; no vendor call):
+
+| Tool | What it answers |
+|---|---|
+| `integration_health` | Every client's connections from what is recorded: duplicate stored rows, grants recorded as needing a reconnect. One client in full with `client_id`. |
+| `alert_triage` | Open alerts as groups (one per identical problem) with a hint: `works_now` (recorded health is ok — stale) or `repeat`. |
+| `cost_report` | Our measured spend for N days: per day, category, model, dearest actions and owners. |
+| `speed_report` | Client chat speed: median / p90 per route, where the time goes, slowest turns. |
+| `scheduler_jobs` | The managed jobs, and cron-style routes with no managed job. |
+| `error_summary` | ERROR log lines grouped by what they say. |
+| `improvement_ideas` | The ideas he raised before. |
+
+**New Tier 2 actions** (`core/operator_actions.ACTIONS`, audited before they run like the rest):
+
+- `check_client_connections` — by the agent. One live READ per connected platform of one
+  client (the same reads as `refresh_token`); each records its real health.
+- `resolve_alert_group` — **owner tap only**. Closes every open alert of one triage group,
+  re-read at the moment of the tap. Audit rows are never in a group.
+
+**His notebook** (app_settings `operator_memory:current`, `operator_ideas:list` — not client
+data, nothing a client sees): `task_note` saves goal / findings / next step of a task that will
+continue; the note comes back as a block AFTER the cached prompt on the next read/write
+message (a week at most; `status=done` clears it). `suggest_improvement` saves ONE idea after
+a diagnosis and shows it as a card with "תכין הצעה" (which only sends him a message — code still
+goes through `propose_code_change` and the two emailed codes) and "לא עכשיו".
+
+**"מה אתה יכול לעשות?"** is answered by code (`capabilities_reply`), built from the live tool
+list and the Tier 2 table — no model call, no cost, cannot drift.
+
+**Progress line.** While a task runs the chat polls `GET /api/admin/operator/progress` every
+2.5 s (visible tab only): the current step in plain words, how many checks are done, and the
+usual time for this kind of message — the AVERAGE of his own past answers
+(`meta.metrics`), shown only with at least 5 of them. The Stop button is unchanged.
+
+Guard: `tests/test_operator_insight.py`.
+
 ## Reply text — the findings are always in the message (2026-11-11)
 
 **The bug.** The owner asked twice and both times got only "סיימתי לבדוק — הפרטים בכרטיסים למטה",

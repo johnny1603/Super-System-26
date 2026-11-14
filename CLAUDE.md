@@ -291,7 +291,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`core/operator_changes`): proposal → PR on `operator/<id>` → merge+deploy
   (`.github/workflows/deploy.yml`, dispatch only, WIF), EACH step behind an emailed one-time
   code (`core/operator_gate`, checked inside operator_changes). Never master, never secrets,
-  never `.github/`. Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
+  never `.github/`. **Insight (2026-11-15, `core/operator_insight`):** wide Tier 1 reads
+  (integration_health, alert_triage, cost_report, speed_report, scheduler_jobs, error_summary),
+  his notebook (`task_note` → app_settings `operator_memory:current`, back as a block after the
+  cached prompt; `suggest_improvement` → an idea card, nothing runs), a code-built "what can you
+  do" answer, a progress line with a MEASURED time estimate (`/api/admin/operator/progress`), and
+  two Tier 2 actions (`check_client_connections` by the agent, reads only; `resolve_alert_group`
+  owner tap only) — tiers and approvals unchanged, `tests/test_operator_insight.py`.
+  **Alert hygiene (`core/alert_hygiene`):** ONE open alert per key at the one sink
+  (`master_agent._persist_alert`); connection alerts close themselves on the dead→ok transition
+  (`connection_works`); `upsert_account` updates the NEWEST row (the one readers take).
+  Setup: `scripts/setup_operator.sh`. See `docs/OPERATOR.md`;
   `tests/test_operator.py`. CI: `.github/workflows/tests.yml` runs `scripts/run_tests.py`.
 - `core/model_routing.py` — **the ONE place chat models are named** (`TIER_MODELS` simple/
   standard/heavy = haiku/sonnet/opus 5.5, `ROLE_OVERRIDES`: interview + operator (איציק)

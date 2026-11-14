@@ -298,6 +298,45 @@ def _resolve_alert(params: dict) -> dict:
     return {"alert_id": alert_id, "resolved": True}
 
 
+def _resolve_alert_group(params: dict) -> dict:
+    """Every OPEN alert of one triage group (core/operator_insight.alert_triage
+    `key`), in one update. Re-read now: only alerts that are still open and
+    still carry that key. Audit rows are never in a group."""
+    from core import admin_service, operator_insight
+    key = str(params.get("key") or "")
+    if not re.fullmatch(r"[0-9a-f]{24}", key):
+        raise ActionError("ERR_PARAM", "key")
+    ids = operator_insight.group_alert_ids(key)
+    if not ids:
+        return {"key": key, "resolved": 0, "note": "nothing open in this group any more"}
+    done = admin_service.resolve_alerts(ids)
+    return {"key": key, "resolved": int((done or {}).get("resolved") or 0), "alert_ids": ids[:50]}
+
+
+# The connections refresh_token can ask about, by the platform row that proves
+# the client has one
+_CHECKABLE = {"google_ads": "google_ads", "meta_ads": "meta", "google_tagmanager": "gtm", "tiktok": "tiktok"}
+
+
+def _check_client_connections(params: dict) -> dict:
+    """One live read per connected platform of ONE client (the same reads as
+    refresh_token, each recording its real health). Reads only."""
+    cid = _client_id(params)
+    from agents.client_agent import get_accounts
+    platforms = {a.get("platform") for a in get_accounts(cid) if a.get("status") == "active"}
+    results = {}
+    for row_platform, name in _CHECKABLE.items():
+        if row_platform not in platforms:
+            continue
+        try:
+            out = _refresh_token({"client_id": cid, "platform": name})
+            results[name] = {k: out.get(k) for k in ("ok", "state", "error") if out.get(k) is not None}
+        except Exception as e:
+            results[name] = {"ok": False, "state": "error", "error": _clean(type(e).__name__, 80)}
+    return {"client_id": cid, "checked": results,
+            "not_connected": sorted(n for p, n in _CHECKABLE.items() if p not in platforms)}
+
+
 def _mark_request_handled(params: dict) -> dict:
     from core import agent_actions
     cid = _client_id(params)
@@ -321,6 +360,12 @@ ACTIONS = {
                      "undo_he": "הכרטיס החדש רק מחכה לאישור הלקוח — אם לא יאשר, הוא פג מעצמו"},
     "resolve_alert": {"run": _resolve_alert, "by_agent": False, "label_he": "סימון התראה כטופלה",
                       "undo_he": "אם הבעיה חוזרת נפתחת התראה חדשה; ההיסטוריה נשמרת"},
+    "resolve_alert_group": {"run": _resolve_alert_group, "by_agent": False,
+                            "label_he": "סימון קבוצת התראות זהות כטופלה",
+                            "undo_he": "אם הבעיה חוזרת נפתחת התראה חדשה; ההיסטוריה נשמרת"},
+    "check_client_connections": {"run": _check_client_connections, "by_agent": True,
+                                 "label_he": "בדיקה חיה של כל החיבורים של לקוח",
+                                 "undo_he": "קריאה חיה אחת לכל חיבור — אין מה לבטל"},
     "mark_request_handled": {"run": _mark_request_handled, "by_agent": False,
                              "label_he": "סימון בקשת צוות כ\"טופל\"",
                              "undo_he": "הבקשה נשמרת; אם משהו עוד פתוח, הלקוח כותב ונפתחת בקשה חדשה"},

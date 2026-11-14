@@ -156,7 +156,7 @@ class Source(unittest.TestCase):
         body = js.split("function renderCard(c)")[1].split("\n  }\n")[0]
         self.assertIn("try {", body)
         self.assertIn("cardText(c)", body)
-        self.assertSetEqual(set(op.RENDERED_CARD_TYPES), {"action", "budget", "done", "change", "report"})
+        self.assertSetEqual(set(op.RENDERED_CARD_TYPES), {"action", "budget", "done", "change", "report", "idea"})
         for t in op.RENDERED_CARD_TYPES:
             self.assertIn(f"'{t}'", js)
 

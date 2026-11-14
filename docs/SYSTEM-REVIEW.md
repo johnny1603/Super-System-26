@@ -140,3 +140,30 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   invalid_grant was reproduced); client 27's real rows were not read.
 - **Migration:** none. **Deploy:** needed for the fixes to take effect.
 - **Estimated cost so far:** about $6 (rough; `/cost` is the real number). Cap proposed: $40.
+
+## Checkpoint 1 — Itzik (operator agent)
+
+- **Found:** he could read one thing at a time (a log window, one client, the newest alerts)
+  but had no wide view: no "all connections", no alert grouping, no cost or speed report, no
+  list of what should be scheduled. Nothing was remembered between messages except the chat
+  text. A long task showed one fixed line ("up to about 3 minutes"). "What can you do?" cost
+  a model call and could drift from the real tool list.
+- **Changed:** `core/operator_insight.py` (new): 7 wide reads, his notebook (task note +
+  improvement ideas), the code-built self-description. `core/operator_agent.py`: 10 new tools
+  wired in, prompt sections for wide reads / notebook / ideas / long tasks, the progress line
+  with a measured time estimate, the notebook block after the cached prompt.
+  `core/operator_actions.py`: `check_client_connections` (agent, reads only) and
+  `resolve_alert_group` (owner tap only). `core/api_server.py`: 3 admin-only routes
+  (progress, ideas, idea status). `dashboard/assets/itzik-chat.js`: progress polling, idea
+  card. Docs: `docs/OPERATOR.md` section "Insight, notebook, progress".
+- **Tiers:** unchanged. Code + deploy still need the emailed code at each step; the budget
+  cap, the stop control and routing by request type are untouched. The only new write the
+  agent can make on its own is to its own notebook rows.
+- **Tests:** 69/69 test files pass (new: `tests/test_operator_insight.py`, 29 tests).
+- **NOT tested:** with a real model (whether he picks the new tools well, and whether the
+  longer prompt changes his answers); the real `client_costs` / `chat_turn_timings` /
+  `alerts` tables; Cloud Logging for `error_summary`; the chat in a real browser (the JS was
+  parse-checked only); two Cloud Run instances serving one task (the progress row is shared
+  through app_settings by design, not exercised).
+- **Migration:** none (app_settings rows only). **Deploy:** needed.
+- **Estimated cost so far:** about $13 (rough). Cap proposed: $40.
