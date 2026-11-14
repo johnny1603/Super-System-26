@@ -226,3 +226,34 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   browser.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost so far:** about $24 (rough). Cap proposed: $40.
+
+## Checkpoint 4 — voice messages
+
+- **Checked first:** no transcription capability exists in the code or in any connected
+  service (Claude takes no audio; ElevenLabs is cloning and text-to-speech on each client's
+  own key; nothing transcribes). A server engine would be a new paid service and key, so it
+  was NOT added and is left as the owner's decision.
+- **Built without a new service:** `dashboard/assets/voice-input.js`. A microphone button in
+  every client chat window; the browser's own speech recognition writes the words into the
+  input box; the client reviews, edits and sends ordinary text. Recording strip with elapsed
+  time, Cancel (restores the box) and Done; 2-minute cap; calm lines for a refused or missing
+  microphone, silence and an unreachable service; stops on send, minimise, close and a hidden
+  tab; 5 languages (Arabic falls back across locales). `docs/VOICE-INPUT.md`.
+- **Raw audio:** uallak never receives it and stores nothing. The script does not open the
+  microphone itself, records nothing and uploads nothing (a test scans the file for
+  getUserMedia, MediaRecorder, fetch and storage calls). The browser vendor's speech service
+  processes the audio; that is why the privacy-policy TODO above exists. The policy text was
+  not touched.
+- **Coverage (from documentation, not from devices):** Chrome, Edge, Safari including iOS
+  14.5+ with Dictation enabled. Not Firefox and not most in-app browsers: there the button
+  is not drawn.
+- **Tests:** 72/72 test files pass (new: `tests/test_voice_input.py`, 16 tests; the
+  behaviour half runs the real script in Node with a fake recogniser).
+- **NOT tested:** any real browser or phone. Specifically unverified: iOS Safari end to end,
+  the quality of Hebrew and Arabic recognition, the Android restart behaviour with real
+  audio, the layout of the strip in a narrow chat window, and the microphone permission
+  prompt wording per browser.
+- **Open decision for the owner:** a paid server transcription engine (works in every
+  browser, usually better Hebrew) — needs a new service, key, env var and a policy change.
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost so far:** about $29 (rough). Cap proposed: $40.

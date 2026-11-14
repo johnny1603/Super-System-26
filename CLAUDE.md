@@ -794,6 +794,24 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   setting, default 240) while the tab is visible, and on return; a new version reloads the page only
   when idle (no focused field, no textarea draft, `window.__uallakBusy` = 0), once per version.
   Page-driven ONLY: never min instances, --no-cpu-throttling, a Cloud Run change or a scheduler job.
+- **Agent life (2026-11-15, `docs/AGENT-LIFE.md`)**: `dashboard/assets/agent-life.js` + `.css`,
+  client dashboard only, deferred. Idle motions on the standing figures of minimised chat windows
+  (one at a time, random figure / motion / 4–10 s pause, CSS transforms only, a class added and
+  removed) — NEVER while a chat window is open, a reply is pending or the client typed in the last
+  6 s. ONE confetti + balloon burst per finished task (`celebrateTask` in `finishActionCard` /
+  `decideAction`; the key is remembered before drawing). Nothing under `prefers-reduced-motion`,
+  on a hidden tab, or when switched off ("אזור אישי", localStorage `uallak_life`). No library, no
+  loop between motions, no DOM move. `tests/test_agent_life.py` (runs the script in Node).
+- **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
+  microphone in each client chat window; the BROWSER's speech recognition turns speech into text
+  in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is
+  stored by us**: the script never calls getUserMedia / MediaRecorder / fetch (a test scans for
+  them), and there is no server route, key or env var. Not drawn where recognition is missing
+  (Firefox) or for staff view. 2-minute cap, Cancel restores the box, calm lines for a refused
+  microphone, stops on send / minimise / close / hidden tab. A paid server engine is the owner's
+  open decision. The privacy policy must mention it before it is promoted (TODO in
+  `docs/SYSTEM-REVIEW.md`; the policy text is frozen until Google answers).
+  `tests/test_voice_input.py`.
 - `core/export_service.py` — .xlsx written with stdlib `zipfile` (no openpyxl), a
   print-styled HTML view the browser turns into a PDF (Hebrew needs an embedded font +
   bidi shaping the container lacks), and Google Doc HTML for `drive_service`. Adding an
