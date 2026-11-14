@@ -87,6 +87,14 @@ def _record_health(client_id: int, ok: bool, reason: str = ""):
             on_conflict="key").execute()
     except Exception as e:
         print(f"[{SERVICE_NAME}] token health not stored for client {client_id}: {type(e).__name__}")
+    if ok and previous.get("ok") is not True:
+        # Proven working again (a reconnect, or Google restored it): the open
+        # Tag Manager alerts for this client are no longer true
+        try:
+            from core.alert_hygiene import connection_works
+            connection_works(client_id, "gtm")
+        except Exception:
+            pass
 
 
 def _age_seconds(iso) -> float:
@@ -101,7 +109,10 @@ def _failure(e: Exception) -> dict:
     from core.performance import _classify_google_failure
     failure = _classify_google_failure(e, "tagmanager.googleapis.com")
     google_reason = failure.get("google_reason") or ""
-    if google_reason in _TOKEN_DEAD:
+    if google_reason in _TOKEN_DEAD or failure.get("http_status") == 401:
+        # 401 from Tag Manager = Google rejects the access itself (revoked
+        # while our short-lived token was still cached). Same answer as the
+        # write path (website_agent.gtm_failure_reason): reconnect.
         state = "token_dead"
     elif failure.get("http_status") in (403, 404) and failure.get("reason") != "access_pending":
         state = "container_unavailable"   # the login lost access, or the container is gone

@@ -29,6 +29,7 @@ in the sales chat have no client row yet, so theirs dedupe in process memory
 """
 import hashlib
 import re
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -219,6 +220,10 @@ def _recently_alerted(client_id: int, issue_key: str, days: int) -> bool:
     return bool(rows)
 
 
+_ALERT_ONCE_LOCK = threading.Lock()
+_alert_once_memo = {}   # (client_id, issue_key) -> time raised/seen, this instance, at most a day
+
+
 def alert_once(source_agent: str, client_id: int, issue_key: str, message: str,
                days: int) -> bool:
     """One admin alert per (client, issue_key) per `days`, durably deduped by a
@@ -226,15 +231,30 @@ def alert_once(source_agent: str, client_id: int, issue_key: str, message: str,
     both skip agent_name='chat_fallback'), the same dedup alert_handoff uses
     for clients. For a read that runs on every chat turn and dashboard load
     (the ads performance getters) and would otherwise alert once per call.
-    Never raises."""
+    Never raises.
+
+    The check and the marker write happen under one lock, with an in-process
+    memo: the chat reads its context sources in parallel (core/parallel), and
+    two readers that both saw "no marker yet" used to raise the same alert
+    twice (the duplicate "no sales lead linked" alert)."""
     try:
-        if _recently_alerted(client_id, issue_key, days):
-            log_step(AGENT_NAME, "alert_once", f"client {client_id}: deduped {issue_key}")
-            return False
-        agent_alert(source_agent, [message])
-        from agents.client_agent import log_activity
-        log_activity(client_id, AGENT_NAME, HANDOFF_ACTION,
-                     {"issue_key": issue_key, "source_agent": source_agent})
+        memo_key = (int(client_id or 0), str(issue_key))
+        with _ALERT_ONCE_LOCK:
+            raised = _alert_once_memo.get(memo_key)
+            if raised and time.time() - raised < min(days, 1) * 86400:
+                return False
+            if _recently_alerted(client_id, issue_key, days):
+                _alert_once_memo[memo_key] = time.time()
+                log_step(AGENT_NAME, "alert_once", f"client {client_id}: deduped {issue_key}")
+                return False
+            _alert_once_memo[memo_key] = time.time()
+            if len(_alert_once_memo) > 2000:
+                for old in sorted(_alert_once_memo, key=_alert_once_memo.get)[:1000]:
+                    _alert_once_memo.pop(old, None)
+            agent_alert(source_agent, [message])
+            from agents.client_agent import log_activity
+            log_activity(client_id, AGENT_NAME, HANDOFF_ACTION,
+                         {"issue_key": issue_key, "source_agent": source_agent})
         return True
     except Exception as e:
         print(f"[{AGENT_NAME}] could not raise alert ({issue_key}): {e}")

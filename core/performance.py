@@ -285,7 +285,10 @@ def _classify_google_failure(e: Exception, api: str) -> dict:
 
     if google_reason in _ACCESS_PENDING_REASONS:
         reason = "access_pending"
-    elif google_reason in ("invalid_grant", "unauthorized_client") or google_reason in _RECONNECT_REASONS:
+    elif (google_reason in ("invalid_grant", "unauthorized_client") or google_reason in _RECONNECT_REASONS
+          or status == 401):
+        # 401 = Google rejects the access itself: only a new consent fixes it
+        # (was "sync_failed", which re-alerted daily and told the client nothing)
         reason = "reconnect"
     elif status in (429, 500, 502, 503, 504):
         reason = "temporary"

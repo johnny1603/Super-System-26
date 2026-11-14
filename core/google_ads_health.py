@@ -141,6 +141,14 @@ def record_ok(client_id: int, grant: str):
     now = _now()
     _write(client_id, {"ok": True, "reason": "", "grant": grant, "checked_at": now,
                        "dead_since": None, "last_ok_at": now})
+    if previous.get("ok") is not True or previous.get("grant") != grant:
+        # First proven-working call of this grant (after a reconnect, or after
+        # a dead mark): the open "needs reconnect" alerts are no longer true
+        try:
+            from core.alert_hygiene import connection_works
+            connection_works(client_id, "google_ads")
+        except Exception:
+            pass
 
 
 def clear(client_id: int):

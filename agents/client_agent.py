@@ -140,13 +140,19 @@ def upsert_account(client_id: int, platform: str, account_id: str = "",
     """Reconnecting a platform must replace the stored credentials, not pile up
     duplicate rows (get-connection queries assume one live row per platform).
     Matched by (client_id, platform) only — never across clients — and the
-    client must exist."""
+    client must exist.
+
+    The row updated is the NEWEST one (highest id) — the same row every
+    reader takes (`order("id", desc=True).limit(1)`). Without the ORDER BY the
+    database chose: where an older duplicate row existed, a reconnect could
+    land in the row nobody reads, and the client kept being told to reconnect
+    although the new grant worked (docs/SYSTEM-REVIEW.md Part 0)."""
     from core.secrets_vault import public_account, sealed_fields
     _require_client(client_id)
     existing = (
         _db().table("client_accounts").select("id,client_id")
         .eq("client_id", client_id).eq("platform", platform)
-        .limit(1).execute()
+        .order("id", desc=True).limit(1).execute()
     )
     values = {"account_id": account_id, **sealed_fields(access_token, client_id, platform),
               "status": status}

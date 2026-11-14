@@ -81,6 +81,12 @@ def _write(client_id: int, value: dict):
             on_conflict="key").execute()
     except Exception as e:
         print(f"[{SERVICE_NAME}] record not stored for client {client_id}: {type(e).__name__}")
+    if value["state"] == "ok" and previous != "ok":
+        try:
+            from core.alert_hygiene import connection_works
+            connection_works(client_id, "tiktok")
+        except Exception:
+            pass
     if value["state"] in BAD_STATES and previous != value["state"]:
         why = ("the connected account never granted video.upload (an older connection made for "
                "video.publish, or the box was unticked)" if value["state"] == "missing_upload"

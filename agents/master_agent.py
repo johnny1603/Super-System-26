@@ -34,6 +34,16 @@ def _persist_alert(label: str, issues: list):
     the admin dashboard reads alert history from here. alert() is called from
     error paths, so a DB failure must never raise out of this function."""
     try:
+        # One OPEN alert per key (core/alert_hygiene): the same problem
+        # reported again while its alert is still open is not stored twice
+        try:
+            from core.alert_hygiene import open_duplicate
+            duplicate = open_duplicate(_db(), label, issues)
+        except Exception:
+            duplicate = None
+        if duplicate:
+            print(f"[master_agent] alert already open (id {duplicate}) - not stored again")
+            return
         _db().table("alerts").insert({
             "source": label,
             "issues": issues,
