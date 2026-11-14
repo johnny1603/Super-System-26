@@ -41,7 +41,7 @@ AUDIT_SOURCE = "admin_view"
 READ_ENDPOINTS = frozenset({
     "dashboard_data", "client_account", "client_performance", "client_connection_help",
     "client_tools", "client_voice_list",
-    "client_chat_history", "client_chat_unread", "client_upgrade_options", "client_billing",
+    "client_chat_history", "client_chat_unread", "client_chat_pace", "client_upgrade_options", "client_billing",
     "client_interview_state", "client_connection_checklist", "client_journey_view",
     "client_external_costs", "google_ads_accounts", "gtm_connection_status", "gtm_containers",
     "client_search_console_sites", "client_leads_list", "client_lead_capture_setup",

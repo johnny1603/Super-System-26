@@ -4873,7 +4873,16 @@ def _stalled(row: dict, spec: dict) -> bool:
 
 def progress_text(spec: dict, lang: str, params: dict = None) -> str:
     eta = (spec["eta_for"](params or {}) if spec.get("eta_for") else None) or spec["slow"]["eta"]
-    return _pick(_PROGRESS, lang).replace("{eta}", _pick(eta, lang))
+    text = _pick(_PROGRESS, lang).replace("{eta}", _pick(eta, lang))
+    # + the MEASURED usual time of this action ("It usually takes about 2
+    # minutes."), only when enough past runs exist (core/task_eta)
+    try:
+        from core import task_eta
+        name = next((n for n, s in ACTIONS.items() if s is spec), "")
+        usual = task_eta.usually(name, lang) if name else ""
+    except Exception:
+        usual = ""
+    return f"{text} {usual}".strip() if usual else text
 
 
 def card_choices(spec: dict, params: dict) -> list:

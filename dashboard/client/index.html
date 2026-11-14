@@ -5890,7 +5890,38 @@ function wireChatInput(el, onSend) {
     e.preventDefault();
     onSend();
   });
-  el.addEventListener('input', () => autoGrowChatInput(el));
+  el.addEventListener('input', () => { autoGrowChatInput(el); chatPrewarm(); });
+  el.addEventListener('focus', chatPrewarm);
+}
+
+// The client is about to write: the server reads the turn's context NOW (the
+// same reads the turn makes), so the answer starts sooner. Fire and forget —
+// at most once per 90 s, never while a reply is pending, never an error shown
+// (docs/CHAT-SPEED.md §Prewarm).
+const CHAT_PREWARM_EVERY_MS = 90000;
+let chatPrewarmAt = 0;
+function chatPrewarm() {
+  const now = Date.now();
+  if (now - chatPrewarmAt < CHAT_PREWARM_EVERY_MS || document.hidden) return;
+  chatPrewarmAt = now;
+  try {
+    fetch('/api/client-chat/prewarm', { method: 'POST', credentials: 'same-origin', keepalive: true }).catch(() => {});
+    chatPaceLoad();
+  } catch (e) { /* the chat works the same without it */ }
+}
+
+// The measured "an answer like this usually takes about X" sentence for the
+// long-wait line. Empty until the server has enough history — then the fixed
+// calm line (chat_typing_long) is used, never an invented number.
+let chatPace = { lang: '', text: '', at: 0 };
+function chatPaceLoad() {
+  const lang = uallakI18n.current();
+  if (chatPace.lang === lang && Date.now() - chatPace.at < 30 * 60 * 1000) return;
+  chatPace = { lang, text: chatPace.lang === lang ? chatPace.text : '', at: Date.now() };
+  fetch('/api/client-chat/pace?lang=' + encodeURIComponent(lang), { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then(d => { if (d && d.success && d.data && d.data.measured && chatPace.lang === lang) chatPace.text = String(d.data.long_wait_text || ''); })
+    .catch(() => {});
 }
 
 // Programmatic value changes (send, pre-fills) fire no 'input' event
@@ -6925,7 +6956,10 @@ async function sendInWindow(personaId, extra) {
 // (docs/CHAT-SPEED.md)
 const CHAT_LONG_WAIT_MS = 15000;
 function chatTypingText(w) {
-  return uallakI18n.t(w.pendingSince && Date.now() - w.pendingSince >= CHAT_LONG_WAIT_MS ? 'chat_typing_long' : 'chat_typing');
+  const long = w.pendingSince && Date.now() - w.pendingSince >= CHAT_LONG_WAIT_MS;
+  // With measured history: the usual time in plain words; without: the fixed calm line
+  if (long && chatPace.text && chatPace.lang === uallakI18n.current()) return chatPace.text;
+  return uallakI18n.t(long ? 'chat_typing_long' : 'chat_typing');
 }
 function chatPendingStart(w) {
   w.pending = (w.pending || 0) + 1;

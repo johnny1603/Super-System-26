@@ -46,6 +46,9 @@ DEFAULT_SETTINGS = {
     # Client chat (core/chat_turns): consecutive messages sent within this many
     # seconds are answered as ONE turn. 0 = off. Clamped to 0-8 in code.
     "chat_collect_window_seconds": 3,
+    # core/chat_prewarm: read the chat's context while the client is typing
+    # (same reads the turn makes, just earlier). false = off.
+    "chat_prewarm_enabled": True,
     # TikTok drafts (core/video_limits, core/tiktok_uploads): a video up to this
     # many MB uploads on the client's own click; above it ONE approval request
     # goes to the owner (admin bell + email) — never refused, never asked.

@@ -781,6 +781,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   no read deadline (a proposal, not built). Route + message length ride in the timing row's
   `stages.flags` (no migration) → `/admin/models/` groups. Dashboard: one calm text line after
   15 s of typing. Read-only 48 h report: `scripts/chat_timing_report.sql`. `tests/test_chat_speed.py`.
+  **Second pass (2026-11-15):** `core/chat_prewarm` — the dashboard calls
+  `POST /api/client-chat/prewarm` when the client focuses / types in a chat box, and the turn's
+  context reads (same readers, no model, no write, 1 per 90 s per client, setting
+  `chat_prewarm_enabled`) run THEN. `core/task_eta` — MEASURED "about 2 minutes" in 5 languages
+  (median of real runs, ≥5 samples, else no number): appended to a running card's progress text
+  and served to the chat's long-wait line (`GET /api/client-chat/pace`). Never show an estimate
+  that is not measured. `tests/test_task_eta.py`.
 - **Dashboard warm-up (2026-11-10, `docs/WARMUP.md`)**: `dashboard/assets/warmup.js` (client dashboard +
   every admin page) pings `GET /api/warmup/` (`core/warmup`: in memory only — no Supabase/Drive/model,
   30/min per IP, returns the Cloud Run `K_REVISION`) on load, every `warmup_interval_seconds` (admin

@@ -42,6 +42,8 @@ PARITY = {
     "POST /api/client/connection-help/{connection_id}/assist": (CHAT, "request_connection_help"),
     "POST /api/client/connect-chat": (NOT_CHAT, _PLUMBING),
     "POST /api/client-chat": (NOT_CHAT, _PLUMBING),
+    "POST /api/client-chat/prewarm": (NOT_CHAT, _PLUMBING),
+    "GET /api/client-chat/pace": (NOT_CHAT, _PLUMBING),
     "GET /api/client-chat/history": (NOT_CHAT, _PLUMBING),
     "GET /api/client-chat/unread": (NOT_CHAT, _PLUMBING),
     "POST /api/client-chat/new": (NOT_CHAT, _PLUMBING),

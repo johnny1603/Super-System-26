@@ -62,12 +62,15 @@ _LABELS = {
 # purpose: the general concierge's gender is the client's choice, and a fixed
 # line must fit every speaker.
 
+# No "passed to the team" (2026-11-15): the line says what is true — it is
+# already being looked at (the admin alert is raised in the same breath) and
+# trying again shortly is the client's next step.
 _TECHNICAL_OPENING = {
-    "he": "יש לי כרגע קושי לשלוף את זה — כבר העברתי לצוות שיבדקו, ויחזרו אליכם אם צריך.",
-    "en": "I'm having trouble pulling that up right now — I've already passed it to the team to check, and they'll get back to you if needed.",
-    "fr": "J'ai du mal à récupérer cela pour le moment — j'ai déjà transmis à l'équipe pour vérification, et elle reviendra vers vous si besoin.",
-    "ar": "أواجه صعوبة في جلب ذلك حاليًا — لقد حوّلت الأمر للفريق للتحقق، وسيعودون إليكم إذا لزم الأمر.",
-    "ru": "Сейчас не получается это достать — вопрос уже у команды, они проверят и вернутся к вам, если нужно.",
+    "he": "יש לי כרגע קושי לשלוף את זה. זה כבר בבדיקה — שווה לנסות שוב בעוד כמה דקות.",
+    "en": "I'm having trouble pulling that up right now. It's already being looked at — it's worth trying again in a few minutes.",
+    "fr": "J'ai du mal à récupérer cela pour le moment. C'est déjà en cours de vérification — réessayez dans quelques minutes.",
+    "ar": "أواجه صعوبة في جلب ذلك حاليًا. الأمر قيد الفحص بالفعل — يُستحسن المحاولة مجددًا بعد بضع دقائق.",
+    "ru": "Сейчас не получается это достать. Это уже проверяется — стоит попробовать ещё раз через несколько минут.",
 }
 
 _OUT_OF_SCOPE_OPENING = {

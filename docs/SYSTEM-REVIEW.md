@@ -167,3 +167,38 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   through app_settings by design, not exercised).
 - **Migration:** none (app_settings rows only). **Deploy:** needed.
 - **Estimated cost so far:** about $13 (rough). Cap proposed: $40.
+
+## Checkpoint 2 — speed of all chats
+
+- **Data:** `chat_turn_timings` was NOT reachable (no production credentials on this
+  machine). Everything here is code analysis and is labelled ESTIMATE in
+  `docs/CHAT-SPEED.md` section 4a. The real numbers: Itzik "why is the chat slow" (his new
+  speed report) or `/admin/models/`.
+- **Found:** the earlier pass already routes by request type and reads context in parallel.
+  What a full turn still waits for: the 3 s collect window, the slowest live context read
+  whenever the per-instance cache has expired (120 to 600 s), and the model. The context
+  reads do not depend on the message, so they can start before it is sent. No time estimate
+  was shown anywhere except one fixed line after 15 s.
+- **Changed:** `core/chat_prewarm.py` (new) + `POST /api/client-chat/prewarm`: the context is
+  read when the client focuses a chat box or starts typing. `core/task_eta.py` (new) +
+  `GET /api/client-chat/pace`: measured time in plain words, 5 languages, for running action
+  cards and for the chat long-wait line. `dashboard/client/index.html`: the two triggers and
+  the measured line. `core/chat_fallback.py`: the fixed technical line no longer says
+  "passed to the team". Internal chat (Itzik): the progress line from Part 1.
+- **Answer quality:** unchanged by construction. No prompt, model tier, token limit or
+  safety check was touched; nothing is skipped; the same readers run, only earlier.
+- **Before / after (ESTIMATE):** a turn after a pause longer than about 2 minutes loses most
+  of its context wait when the client typed for longer than the reads take. A turn inside
+  the cache window, the collect window and the model time are unchanged.
+- **Tests:** 70/70 test files pass (new: `tests/test_task_eta.py`, 18 tests).
+- **NOT tested:** real latency before and after; vendor rate limits when a prewarm and a
+  turn overlap (single-flight covers the Google, Meta and website readers, by code only);
+  the estimates against real `agent_actions` rows; the dashboard in a real browser (inline
+  JS parse-checked only); more than one Cloud Run instance.
+- **Left for the owner:** the out-of-scope fixed line (`chat_fallback._OUT_OF_SCOPE_OPENING`)
+  still says the question was passed on and someone will get back. That is true today (it
+  raises an "answer personally" alert to the owner), so removing it changes what the client
+  is promised: a product decision, not done. The collect window (3 s) is an existing admin
+  setting.
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost so far:** about $19 (rough). Cap proposed: $40.

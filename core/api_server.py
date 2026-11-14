@@ -1620,6 +1620,23 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
             "needs_human_followup": result["needs_human_followup"],
             "poll": bool(result.get("poll")), "action": result.get("action")}
 
+@app.post("/api/client-chat/prewarm")
+def client_chat_prewarm(request: Request):
+    # The client focused a chat box / started typing: do the turn's context
+    # reads NOW so the turn itself goes almost straight to the model
+    # (core/chat_prewarm — same readers, no model, no write, 1 per 90 s).
+    client_id = _require_session(request)
+    from core import chat_prewarm
+    return {"success": True, "data": chat_prewarm.run(client_id)}
+
+@app.get("/api/client-chat/pace")
+def client_chat_pace(request: Request, lang: str = "he"):
+    # The measured "an answer like this usually takes about X" sentence for
+    # the chat's long-wait line (core/task_eta). {} until there is history.
+    _require_session(request)
+    from core import task_eta
+    return {"success": True, "data": task_eta.chat_pace(lang)}
+
 @app.get("/api/client-chat/history")
 async def client_chat_history(request: Request, scope: str = "current", persona: str = "general"):
     # scope=current -> the active thread only (bounded by clients.chat_started_at,

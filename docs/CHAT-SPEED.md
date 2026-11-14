@@ -80,6 +80,54 @@ emptying the in-memory caches (ASSUMED, not measured).
 | Cloud Run min instances | removes cold starts | monthly cost; **not done, per the rule** |
 | Streaming the reply | first words sooner | larger change to the chat UI + the JSON contract |
 
+## 4a. Second pass (2026-11-15): prewarm + measured time estimates
+
+`chat_turn_timings` was again NOT reachable from the dev machine, so the remaining slow spots
+come from **code analysis**, labelled as such. Itzik can now read the real numbers
+(`speed_report`), and `/admin/models/` shows them.
+
+**What a full turn still waits for (code analysis):**
+
+| Stage | Where the time goes | Changed now? |
+|---|---|---|
+| Queue | the 3 s collect window on EVERY message (`chat_collect_window_seconds`) + lease reads | No — it is what merges quick consecutive messages; shortening it is an owner setting already (`0` = off). |
+| Context | the slowest of ~25 parallel reads; section cache 120–600 s per instance, so a message after a pause re-reads live | **Yes — prewarm** (below). |
+| Model | one call on the routed tier; the biggest share on `work` turns (ASSUMED) | No — quality first; depth is untouched. |
+| Post | scrub, logs, 2 synchronous DB writes per model call (~0.1–0.3 s, ASSUMED) | No — small gain, a lost cost row is the risk. |
+
+**Prewarm (`core/chat_prewarm`).** The context reads do not depend on the message, so they
+now start when the client FOCUSES a chat box or types the first character
+(`POST /api/client-chat/prewarm`, at most once per 90 s per client, never two at once). The
+same readers a turn uses (`client_state.snapshot`, `_manager_platform_reads`,
+`client_knowledge`), no model call, no write. By the time the message is sent the caches are
+warm and the turn goes almost straight to the model. Answers are exactly as deep and as
+fresh — only WHEN the reads happen moved. Kill switch: admin setting `chat_prewarm_enabled`.
+Not a Cloud Run setting, not a scheduler job, no min instances.
+
+- *Expected effect (ESTIMATE, not measured):* on a turn after a pause of more than ~2
+  minutes, the context stage drops from "the slowest live read" (seconds to tens of seconds)
+  to roughly cache-read time, whenever the client typed for longer than the reads take. A
+  turn sent within the cache TTL of the previous one is unchanged. The model stage is
+  unchanged.
+- *Honest limit:* caches are per instance. If the message lands on a different instance than
+  the prewarm, the turn reads as before — never slower.
+
+**Time estimates in plain words (`core/task_eta`).** Measured, never guessed:
+
+- A running action card's progress text gains "It usually takes about 2 minutes." — the
+  MEDIAN of that action's last finished runs (`agent_actions` decided→finished), shown only
+  with at least 5 runs, in the client's language.
+- The chat's long-wait line (after 15 s) becomes "…an answer like this usually takes about a
+  minute." — the median of last week's LONG turns (`GET /api/client-chat/pace`). Without
+  enough history the fixed calm line stays. Text only, one line.
+- Itzik's progress line uses the same rule from his own history (docs/OPERATOR.md).
+
+**Fixed technical line.** `chat_fallback._TECHNICAL_OPENING` no longer says "passed to the
+team" (all five languages): "It's already being looked at — it's worth trying again in a few
+minutes." The admin alert behind it is unchanged.
+
+Tests: `tests/test_task_eta.py`.
+
 ## 5. Not tested against a real model or a real chat
 
 - Haiku's answer quality and voice on simple turns (only stubs in tests).
