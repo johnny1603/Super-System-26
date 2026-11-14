@@ -351,3 +351,30 @@ about $40; I stop and ask before passing it.
   an estimate.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost of this round so far:** about $6 (rough).
+
+## Checkpoint R2-1 — idle animations with a character each
+
+- **Found:** every figure is one flat picture, and the first version only nudged the whole
+  picture by a pixel or two — which is exactly what read as "grows and shrinks a little".
+- **Changed:** each figure is now three layers cut from its own picture (legs, upper body,
+  head), so the head turns, nods and tilts and the upper body leans and sways. 22 behaviours.
+  Each of the seven characters has its own set and its own favourites (table in
+  `docs/AGENT-LIFE.md`). Two standing side by side sometimes interact (a glance, turning to
+  talk, leaning in, a laugh). A small bubble over the head shows what the picture cannot
+  (a watch, nails, a phone, a tune). Random figure, random behaviour, random pauses, never
+  the same twice in a row.
+- **Kept:** nothing moves during a conversation; new: an agent with a running task or a
+  pending reply stands still. Reduced motion, hidden tab and the off switch as before.
+- **Honest limit:** arms cannot move — the pictures are flat and the hands are drawn in
+  place. "Looking at her nails" is the head going down plus a 💅 bubble. Real arm and hair
+  gestures need layered artwork per character (new art, not code).
+- **Tests:** 75/75 test files pass (`tests/test_agent_life.py` rewritten, 22 tests).
+- **Checked in a real browser (Chrome, desktop, a local demo page with the real pictures,
+  styles and script):** the layered figures are identical to the originals at rest, the
+  poses show no visible seam, bubbles render, the scheduler and a pair scene run, no console
+  errors.
+- **NOT tested:** a phone, Safari/iOS, Firefox, the real dashboard with a logged-in client,
+  and how it feels over minutes of watching (stills and class changes were checked, not
+  the smoothness of the motion).
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost of this round so far:** about $14 (rough).

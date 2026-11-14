@@ -1,51 +1,374 @@
-/* agent-life.css — the idle motions of the agents' standing figures and the
+/* agent-life.css — the idle behaviours of the agents' standing figures and the
    celebration canvas (dashboard/assets/agent-life.js, docs/AGENT-LIFE.md).
 
-   Transforms only, on .cw-figure-body (its transform-origin is the feet), so
-   nothing here causes layout or repaints the page around it. Each class is
-   added by the script for ONE motion and removed when it ends — nothing
-   loops. --al-dir is 1 or -1: the side the figure turns to.
+   THE RIG. A figure is one flat picture. The script lays three copies of that
+   same picture (already in the browser's cache) over it — legs, upper body,
+   head — each cut out with a soft mask, so the head can turn, nod and tilt on
+   the neck and the upper body can lean and sway on the hips. At rest the three
+   pieces add up to exactly the original picture.
+     .cw-figure-body            the whole figure (origin: the feet)
+       .al-rig                  the three layers + the small thought bubble
+         .al-legs
+         .al-upper              origin: the hips   (--al-px, --al-hip)
+           .al-torso
+           .al-head             origin: the neck   (--al-px, --al-neck)
+         .al-emote
+       .agent-figure            the original picture — hidden while a rig exists
 
-   Everything sits inside prefers-reduced-motion: no-preference; with reduced
-   motion the classes do nothing at all (and the script never adds them). */
+   A BEHAVIOUR is one class on .cw-figure-body (al-<name>), added by the script
+   for one play and removed when it ends. Nothing loops. --al-dir is 1 or -1:
+   the side the figure turns to. --al-u is the size unit (smaller on a phone,
+   where the figures are small).
+
+   Transforms and opacity only — no layout. Everything that moves sits inside
+   prefers-reduced-motion: no-preference; with reduced motion the classes do
+   nothing (and the script never adds them, and builds no rig). */
 
 .al-burst { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483000; }
 
-@media (prefers-reduced-motion: no-preference) {
-  .cw-figure-body.al-breathe { animation: alBreathe 3.4s ease-in-out 2; }
-  .cw-figure-body.al-shift   { animation: alShift 3s ease-in-out 1; }
-  .cw-figure-body.al-glance  { animation: alGlance 2.2s ease-in-out 1; }
-  .cw-figure-body.al-nod     { animation: alNod 1.3s ease-in-out 1; }
-  .cw-figure-body.al-lean    { animation: alLean 2.8s ease-in-out 1; }
-  .cw-figure-body.al-hop     { animation: alHop 0.75s cubic-bezier(.3,.7,.4,1) 1; }
+.cw-figure-body { --al-u: 1px; }
+.al-rig { position: absolute; inset: 0; display: block; pointer-events: none; }
+.al-rig + .agent-figure { visibility: hidden; }
+.al-legs, .al-upper, .al-torso, .al-head { position: absolute; inset: 0; display: block; }
+.al-rig img { position: absolute; top: 0; left: 0; display: block; height: 100%; width: auto; max-width: none;
+  user-select: none; pointer-events: none; }
+.al-upper { transform-origin: var(--al-px, 50%) var(--al-hip, 50%); }
+.al-head { transform-origin: var(--al-px, 50%) var(--al-neck, 22%); }
+.al-head img {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--al-neck, 22%) - 1%), transparent calc(var(--al-neck, 22%) + 1.5%));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--al-neck, 22%) - 1%), transparent calc(var(--al-neck, 22%) + 1.5%)); }
+.al-torso img {
+  -webkit-mask-image: linear-gradient(to bottom, transparent calc(var(--al-neck, 22%) - 1%), #000 calc(var(--al-neck, 22%) - 1%), #000 calc(var(--al-hip, 50%) + 1%), transparent calc(var(--al-hip, 50%) + 3%));
+  mask-image: linear-gradient(to bottom, transparent calc(var(--al-neck, 22%) - 1%), #000 calc(var(--al-neck, 22%) - 1%), #000 calc(var(--al-hip, 50%) + 1%), transparent calc(var(--al-hip, 50%) + 3%)); }
+.al-legs img {
+  -webkit-mask-image: linear-gradient(to bottom, transparent var(--al-hip, 50%), #000 var(--al-hip, 50%));
+  mask-image: linear-gradient(to bottom, transparent var(--al-hip, 50%), #000 var(--al-hip, 50%)); }
+/* The small thought bubble: what the agent is busy with (a watch, a phone, a tune) */
+.al-emote { position: absolute; top: -5%; left: var(--al-px, 50%); width: 22px; height: 22px; margin-left: -11px;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1;
+  border-radius: 50%; background: #1b1b1b; border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4); opacity: 0; }
+@media (max-width: 640px) {
+  .cw-figure-body { --al-u: 0.45px; }
+  .al-emote { width: 15px; height: 15px; margin-left: -7.5px; font-size: 8px; top: -12%; }
+}
 
-  @keyframes alBreathe {
-    0%, 100% { transform: scale(1, 1); }
-    50%      { transform: scale(1.006, 1.014); }
+@media (prefers-reduced-motion: no-preference) {
+  .al-emote.al-emote-on { animation: alEmote 3s ease-out 1; }
+  @keyframes alEmote {
+    0% { opacity: 0; transform: translate(calc(var(--al-dir, 1) * 14px), 8px) scale(0.3); }
+    12% { opacity: 1; transform: translate(calc(var(--al-dir, 1) * 20px), 0) scale(1.12); }
+    20%, 72% { opacity: 1; transform: translate(calc(var(--al-dir, 1) * 20px), 0) scale(1); }
+    100% { opacity: 0; transform: translate(calc(var(--al-dir, 1) * 22px), -10px) scale(0.9); }
   }
-  @keyframes alShift {
-    0%, 100% { transform: translateX(0) rotate(0deg); }
-    30%, 70% { transform: translateX(calc(var(--al-dir, 1) * 2.5px)) rotate(calc(var(--al-dir, 1) * 0.9deg)); }
+
+  /* ── nod: two clear nods ── */
+  .cw-figure-body.al-nod .al-head { animation: alHnod 1.4s ease-in-out 1; }
+  @keyframes alHnod {
+    0%, 40%, 80%, 100% { transform: none; }
+    20% { transform: translateY(calc(var(--al-u, 1px) * 3)) scaleY(0.88); }
+    60% { transform: translateY(calc(var(--al-u, 1px) * 2.4)) scaleY(0.91); }
   }
-  @keyframes alGlance {
-    0%, 100% { transform: rotate(0deg); }
-    25%, 60% { transform: translateX(calc(var(--al-dir, 1) * 1.5px)) rotate(calc(var(--al-dir, 1) * 1.6deg)); }
+
+  /* ── shake: the head goes side to side (curls, disbelief) ── */
+  .cw-figure-body.al-shake .al-head { animation: alHshake 1.5s ease-in-out 1; }
+  @keyframes alHshake {
+    0%, 100% { transform: none; }
+    15% { transform: rotate(-9deg); }
+    35% { transform: rotate(9deg); }
+    55% { transform: rotate(-7deg); }
+    75% { transform: rotate(5deg); }
   }
-  @keyframes alNod {
-    0%, 100% { transform: translateY(0); }
-    25%      { transform: translateY(2.5px) scale(1, 0.992); }
-    50%      { transform: translateY(0); }
-    75%      { transform: translateY(2px) scale(1, 0.994); }
+
+  /* ── tilt: head to one side, held ── */
+  .cw-figure-body.al-tilt .al-head { animation: alHtilt 2.6s ease-in-out 1; }
+  .cw-figure-body.al-tilt .al-upper { animation: alUtilt 2.6s ease-in-out 1; }
+  @keyframes alHtilt {
+    0%, 100% { transform: none; }
+    25%, 70% { transform: rotate(calc(var(--al-dir, 1) * 13deg)); }
   }
-  @keyframes alLean {
-    0%, 100% { transform: translateX(0) rotate(0deg); }
-    30%, 65% { transform: translateX(calc(var(--al-dir, 1) * 4px)) rotate(calc(var(--al-dir, 1) * 2.4deg)); }
-    45%      { transform: translateX(calc(var(--al-dir, 1) * 4px)) rotate(calc(var(--al-dir, 1) * 2.4deg)) translateY(-1.5px); }
+  @keyframes alUtilt {
+    0%, 100% { transform: none; }
+    25%, 70% { transform: rotate(calc(var(--al-dir, 1) * 1.5deg)); }
   }
-  @keyframes alHop {
-    0%, 100% { transform: translateY(0) scale(1, 1); }
-    35%      { transform: translateY(-7px) scale(0.99, 1.02); }
-    70%      { transform: translateY(0) scale(1.01, 0.985); }
+
+  /* ── look: a glance to one side ── */
+  .cw-figure-body.al-look .al-head { animation: alHlook 2.6s ease-in-out 1; }
+  .cw-figure-body.al-look .al-upper { animation: alUlook 2.6s ease-in-out 1; }
+  @keyframes alHlook {
+    0%, 100% { transform: none; }
+    20%, 72% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 3.5)) rotate(calc(var(--al-dir, 1) * 5deg)) scaleX(0.88); }
+  }
+  @keyframes alUlook {
+    0%, 100% { transform: none; }
+    20%, 72% { transform: rotate(calc(var(--al-dir, 1) * 2deg)); }
+  }
+
+  /* ── lookaround: one side, then the other ── */
+  .cw-figure-body.al-lookaround .al-head { animation: alHaround 4.2s ease-in-out 1; }
+  .cw-figure-body.al-lookaround .al-upper { animation: alUaround 4.2s ease-in-out 1; }
+  @keyframes alHaround {
+    0%, 42%, 100% { transform: none; }
+    12%, 32% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 3.5)) rotate(calc(var(--al-dir, 1) * 5deg)) scaleX(0.88); }
+    55%, 80% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * -3.5)) rotate(calc(var(--al-dir, 1) * -5deg)) scaleX(0.88); }
+  }
+  @keyframes alUaround {
+    0%, 42%, 100% { transform: none; }
+    12%, 32% { transform: rotate(calc(var(--al-dir, 1) * 2deg)); }
+    55%, 80% { transform: rotate(calc(var(--al-dir, 1) * -2deg)); }
+  }
+
+  /* ── lookup: chin up, thinking ── */
+  .cw-figure-body.al-lookup .al-head { animation: alHup 3s ease-in-out 1; }
+  .cw-figure-body.al-lookup .al-upper { animation: alUup 3s ease-in-out 1; }
+  @keyframes alHup {
+    0%, 100% { transform: none; }
+    22%, 74% { transform: translateY(calc(var(--al-u, 1px) * -2.5)) rotate(calc(var(--al-dir, 1) * -8deg)) scaleY(1.06); }
+  }
+  @keyframes alUup {
+    0%, 100% { transform: none; }
+    22%, 74% { transform: rotate(calc(var(--al-dir, 1) * -1.5deg)); }
+  }
+
+  /* ── lookdown: head down at a hand (a watch, nails, a phone), a second look, back ── */
+  .cw-figure-body.al-lookdown .al-head { animation: alHdown 3.4s ease-in-out 1; }
+  .cw-figure-body.al-lookdown .al-upper { animation: alUdown 3.4s ease-in-out 1; }
+  @keyframes alHdown {
+    0%, 100% { transform: none; }
+    18%, 44% { transform: translateY(calc(var(--al-u, 1px) * 4)) rotate(calc(var(--al-dir, 1) * 9deg)) scaleY(0.86); }
+    54% { transform: translateY(calc(var(--al-u, 1px) * 2.5)) rotate(calc(var(--al-dir, 1) * 5deg)) scaleY(0.92); }
+    64%, 80% { transform: translateY(calc(var(--al-u, 1px) * 4.4)) rotate(calc(var(--al-dir, 1) * 10deg)) scaleY(0.85); }
+  }
+  @keyframes alUdown {
+    0%, 100% { transform: none; }
+    18%, 80% { transform: rotate(calc(var(--al-dir, 1) * 3deg)); }
+  }
+
+  /* ── shift: weight onto one leg, shoulders the other way ── */
+  .cw-figure-body.al-shift { animation: alBshift 3.2s ease-in-out 1; }
+  .cw-figure-body.al-shift .al-upper { animation: alUshift 3.2s ease-in-out 1; }
+  .cw-figure-body.al-shift .al-head { animation: alHshift 3.2s ease-in-out 1; }
+  @keyframes alBshift {
+    0%, 100% { transform: none; }
+    25%, 75% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 7)) rotate(calc(var(--al-dir, 1) * 2.4deg)); }
+  }
+  @keyframes alUshift {
+    0%, 100% { transform: none; }
+    28%, 75% { transform: rotate(calc(var(--al-dir, 1) * -4.5deg)); }
+  }
+  @keyframes alHshift {
+    0%, 100% { transform: none; }
+    32%, 75% { transform: rotate(calc(var(--al-dir, 1) * 4deg)); }
+  }
+
+  /* ── sway: shoulders left and right, twice ── */
+  .cw-figure-body.al-sway { animation: alBsway 3.6s ease-in-out 1; }
+  .cw-figure-body.al-sway .al-upper { animation: alUsway 3.6s ease-in-out 1; }
+  .cw-figure-body.al-sway .al-head { animation: alHsway 3.6s ease-in-out 1; }
+  @keyframes alBsway {
+    0%, 50%, 100% { transform: none; }
+    25% { transform: translateX(calc(var(--al-u, 1px) * 3)); }
+    75% { transform: translateX(calc(var(--al-u, 1px) * -3)); }
+  }
+  @keyframes alUsway {
+    0%, 50%, 100% { transform: none; }
+    12%, 62% { transform: rotate(5deg); }
+    37%, 87% { transform: rotate(-5deg); }
+  }
+  @keyframes alHsway {
+    0%, 50%, 100% { transform: none; }
+    12%, 62% { transform: rotate(-4deg); }
+    37%, 87% { transform: rotate(4deg); }
+  }
+
+  /* ── stretch: up on the toes, back arched, and a settle ── */
+  .cw-figure-body.al-stretch { animation: alBstretch 3.4s ease-in-out 1; }
+  .cw-figure-body.al-stretch .al-upper { animation: alUstretch 3.4s ease-in-out 1; }
+  .cw-figure-body.al-stretch .al-head { animation: alHstretch 3.4s ease-in-out 1; }
+  @keyframes alBstretch {
+    0%, 100% { transform: none; }
+    28%, 55% { transform: scale(0.985, 1.055); }
+    74% { transform: scale(1.015, 0.98); }
+  }
+  @keyframes alUstretch {
+    0%, 74%, 100% { transform: none; }
+    28%, 55% { transform: rotate(calc(var(--al-dir, 1) * -5deg)) scaleY(1.03); }
+  }
+  @keyframes alHstretch {
+    0%, 74%, 100% { transform: none; }
+    28%, 55% { transform: rotate(calc(var(--al-dir, 1) * -11deg)) translateY(calc(var(--al-u, 1px) * -2)); }
+  }
+
+  /* ── shrug: shoulders up, head to the side ── */
+  .cw-figure-body.al-shrug .al-upper { animation: alUshrug 1.6s ease-in-out 1; }
+  .cw-figure-body.al-shrug .al-head { animation: alHshrug 1.6s ease-in-out 1; }
+  @keyframes alUshrug {
+    0%, 100% { transform: none; }
+    25%, 50% { transform: translateY(calc(var(--al-u, 1px) * -5)) scaleY(1.03); }
+  }
+  @keyframes alHshrug {
+    0%, 100% { transform: none; }
+    25%, 50% { transform: translateY(calc(var(--al-u, 1px) * 3.5)) rotate(calc(var(--al-dir, 1) * 8deg)); }
+  }
+
+  /* ── bounce: up on the heels, twice ── */
+  .cw-figure-body.al-bounce { animation: alBbounce 1.5s cubic-bezier(.3,.7,.4,1) 1; }
+  .cw-figure-body.al-bounce .al-head { animation: alHbounce 1.5s ease-in-out 1; }
+  @keyframes alBbounce {
+    0%, 100% { transform: none; }
+    18% { transform: translateY(calc(var(--al-u, 1px) * -9)) scale(0.985, 1.025); }
+    38% { transform: translateY(0) scale(1.025, 0.97); }
+    58% { transform: translateY(calc(var(--al-u, 1px) * -6)) scale(0.99, 1.015); }
+    78% { transform: translateY(0) scale(1.015, 0.98); }
+  }
+  @keyframes alHbounce {
+    0%, 100% { transform: none; }
+    38%, 78% { transform: translateY(calc(var(--al-u, 1px) * 2)); }
+  }
+
+  /* ── rock: heel to toe, slowly, hands in the pockets ── */
+  .cw-figure-body.al-rock { animation: alBrock 4s ease-in-out 1; }
+  .cw-figure-body.al-rock .al-upper { animation: alUrock 4s ease-in-out 1; }
+  @keyframes alBrock {
+    0%, 50%, 100% { transform: none; }
+    25%, 75% { transform: rotate(3deg) translateY(calc(var(--al-u, 1px) * -2)); }
+    38%, 88% { transform: rotate(-2.4deg); }
+  }
+  @keyframes alUrock {
+    0%, 50%, 100% { transform: none; }
+    25%, 75% { transform: rotate(-2deg); }
+    38%, 88% { transform: rotate(1.6deg); }
+  }
+
+  /* ── step: one step aside and back ── */
+  .cw-figure-body.al-step { animation: alBstep 2.4s ease-in-out 1; }
+  .cw-figure-body.al-step .al-upper { animation: alUstep 2.4s ease-in-out 1; }
+  @keyframes alBstep {
+    0%, 100% { transform: none; }
+    12% { transform: translate(calc(var(--al-dir, 1) * var(--al-u, 1px) * 6), calc(var(--al-u, 1px) * -4)) rotate(calc(var(--al-dir, 1) * 3deg)); }
+    24%, 62% { transform: translate(calc(var(--al-dir, 1) * var(--al-u, 1px) * 12), 0); }
+    80% { transform: translate(calc(var(--al-dir, 1) * var(--al-u, 1px) * 5), calc(var(--al-u, 1px) * -4)) rotate(calc(var(--al-dir, 1) * -3deg)); }
+  }
+  @keyframes alUstep {
+    0%, 24%, 62%, 100% { transform: none; }
+    12% { transform: rotate(calc(var(--al-dir, 1) * -3deg)); }
+    80% { transform: rotate(calc(var(--al-dir, 1) * 3deg)); }
+  }
+
+  /* ── hairflip: the head goes back and across, the hair follows ── */
+  .cw-figure-body.al-hairflip .al-head { animation: alHflip 2s cubic-bezier(.4,0,.2,1) 1; }
+  .cw-figure-body.al-hairflip .al-upper { animation: alUflip 2s ease-in-out 1; }
+  @keyframes alHflip {
+    0%, 100% { transform: none; }
+    16% { transform: rotate(calc(var(--al-dir, 1) * -15deg)) translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * -2.5)); }
+    36% { transform: rotate(calc(var(--al-dir, 1) * 12deg)) translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 2)); }
+    56% { transform: rotate(calc(var(--al-dir, 1) * -5deg)); }
+    74% { transform: rotate(calc(var(--al-dir, 1) * 2deg)); }
+  }
+  @keyframes alUflip {
+    0%, 100% { transform: none; }
+    16% { transform: rotate(calc(var(--al-dir, 1) * -2deg)); }
+    36% { transform: rotate(calc(var(--al-dir, 1) * 3deg)); }
+  }
+
+  /* ── groove: a tune in the head — four beats ── */
+  .cw-figure-body.al-groove { animation: alBgroove 3.2s ease-in-out 1; }
+  .cw-figure-body.al-groove .al-upper { animation: alUgroove 3.2s ease-in-out 1; }
+  .cw-figure-body.al-groove .al-head { animation: alHgroove 3.2s ease-in-out 1; }
+  @keyframes alBgroove {
+    0%, 25%, 50%, 75%, 100% { transform: none; }
+    12%, 62% { transform: translateY(calc(var(--al-u, 1px) * 4)) scale(1.012, 0.98) rotate(1.6deg); }
+    37%, 87% { transform: translateY(calc(var(--al-u, 1px) * 4)) scale(1.012, 0.98) rotate(-1.6deg); }
+  }
+  @keyframes alUgroove {
+    0%, 25%, 50%, 75%, 100% { transform: none; }
+    12%, 62% { transform: rotate(4deg); }
+    37%, 87% { transform: rotate(-4deg); }
+  }
+  @keyframes alHgroove {
+    0%, 25%, 50%, 75%, 100% { transform: none; }
+    12%, 62% { transform: rotate(9deg) translateY(calc(var(--al-u, 1px) * 2)); }
+    37%, 87% { transform: rotate(-9deg) translateY(calc(var(--al-u, 1px) * 2)); }
+  }
+
+  /* ── sigh: a deep breath in, and out ── */
+  .cw-figure-body.al-sigh .al-upper { animation: alUsigh 3s ease-in-out 1; }
+  .cw-figure-body.al-sigh .al-head { animation: alHsigh 3s ease-in-out 1; }
+  @keyframes alUsigh {
+    0%, 100% { transform: none; }
+    35% { transform: translateY(calc(var(--al-u, 1px) * -3)) scale(1.02, 1.045); }
+    68% { transform: translateY(calc(var(--al-u, 1px) * 2)) scale(1, 0.965); }
+  }
+  @keyframes alHsigh {
+    0%, 100% { transform: none; }
+    35% { transform: rotate(calc(var(--al-dir, 1) * -5deg)); }
+    68% { transform: translateY(calc(var(--al-u, 1px) * 3)) rotate(calc(var(--al-dir, 1) * 6deg)); }
+  }
+
+  /* ── laugh: the shoulders shake, the head goes back ── */
+  .cw-figure-body.al-laugh .al-upper { animation: alUlaugh 1.6s ease-in-out 1; }
+  .cw-figure-body.al-laugh .al-head { animation: alHlaugh 1.6s ease-in-out 1; }
+  @keyframes alUlaugh {
+    0%, 100% { transform: none; }
+    12%, 36%, 60%, 84% { transform: translateY(calc(var(--al-u, 1px) * -3)); }
+    24%, 48%, 72% { transform: translateY(calc(var(--al-u, 1px) * 1.5)); }
+  }
+  @keyframes alHlaugh {
+    0%, 100% { transform: none; }
+    15%, 80% { transform: rotate(calc(var(--al-dir, 1) * -8deg)) scaleY(1.04); }
+  }
+
+  /* ── perk: something caught their attention ── */
+  .cw-figure-body.al-perk { animation: alBperk 1.5s cubic-bezier(.3,.7,.4,1) 1; }
+  .cw-figure-body.al-perk .al-head { animation: alHperk 1.5s ease-in-out 1; }
+  @keyframes alBperk {
+    0%, 100% { transform: none; }
+    18% { transform: translateY(calc(var(--al-u, 1px) * -5)) scale(0.99, 1.03); }
+    36% { transform: scale(1.01, 0.985); }
+    52% { transform: none; }
+  }
+  @keyframes alHperk {
+    0%, 100% { transform: none; }
+    18%, 70% { transform: translateY(calc(var(--al-u, 1px) * -3)) scaleY(1.07) rotate(calc(var(--al-dir, 1) * 4deg)); }
+  }
+
+  /* ── turn: the whole figure turns to the one beside it ── */
+  .cw-figure-body.al-turn { animation: alBturn 3.4s ease-in-out 1; }
+  .cw-figure-body.al-turn .al-upper { animation: alUturn 3.4s ease-in-out 1; }
+  .cw-figure-body.al-turn .al-head { animation: alHturn 3.4s ease-in-out 1; }
+  @keyframes alBturn {
+    0%, 100% { transform: none; }
+    20%, 76% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 6)) scaleX(0.9); }
+  }
+  @keyframes alUturn {
+    0%, 100% { transform: none; }
+    22%, 76% { transform: rotate(calc(var(--al-dir, 1) * 4.5deg)); }
+    48% { transform: rotate(calc(var(--al-dir, 1) * 6.5deg)); }
+  }
+  @keyframes alHturn {
+    0%, 100% { transform: none; }
+    24%, 76% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 3.5)) rotate(calc(var(--al-dir, 1) * 6deg)) scaleX(0.9); }
+    44%, 56% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 3.5)) rotate(calc(var(--al-dir, 1) * 6deg)) scaleX(0.9) translateY(calc(var(--al-u, 1px) * 2.5)); }
+  }
+
+  /* ── lean: leaning in toward the one beside it ── */
+  .cw-figure-body.al-lean { animation: alBlean 2.8s ease-in-out 1; }
+  .cw-figure-body.al-lean .al-head { animation: alHlean 2.8s ease-in-out 1; }
+  @keyframes alBlean {
+    0%, 100% { transform: none; }
+    28%, 68% { transform: translateX(calc(var(--al-dir, 1) * var(--al-u, 1px) * 8)) rotate(calc(var(--al-dir, 1) * 5deg)); }
+  }
+  @keyframes alHlean {
+    0%, 100% { transform: none; }
+    32%, 68% { transform: rotate(calc(var(--al-dir, 1) * 8deg)); }
+  }
+
+  /* ── hop: the small jump of a finished task ── */
+  .cw-figure-body.al-hop { animation: alBhop 0.75s cubic-bezier(.3,.7,.4,1) 1; }
+  @keyframes alBhop {
+    0%, 100% { transform: none; }
+    35% { transform: translateY(calc(var(--al-u, 1px) * -9)) scale(0.985, 1.03); }
+    70% { transform: translateY(0) scale(1.02, 0.975); }
   }
 }
 

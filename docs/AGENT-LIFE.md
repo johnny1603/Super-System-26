@@ -1,50 +1,93 @@
-# Agent life — idle motions and one celebration (2026-11-15)
+# Agent life — idle behaviours per character, and celebrations (2026-11-15)
 
-Small signs of life for the agents' standing figures on the client dashboard.
-`dashboard/assets/agent-life.js` + `agent-life.css`. No library, no network call, no image.
+The agents' standing figures on the client dashboard are alive.
+`dashboard/assets/agent-life.js` + `agent-life.css`. No library, no network call, no new image.
 
-## What the client sees
+## Why it was rebuilt (the same day)
 
-- **Agents waiting next to each other** (minimised chat windows show the standing figures):
-  every 4–10 seconds ONE of them does one small thing — breathes, shifts its weight, glances
-  aside, nods — or leans toward its neighbour, who answers with a small nod a moment later.
-  A random figure (never the same one twice in a row when there are several), a random
-  motion, a random pause. Most of the time nothing moves.
-- **A task finishes**: one burst of confetti and one balloon rise from the agent that did it
-  (from its standing figure when the window is minimised — "the agent was waiting" — else
-  from the finished card), and the figure gives a small hop. ONCE per task: the task's key is
-  remembered before anything is drawn (sessionStorage + memory), so a re-render, a poll or a
-  reload in the same session never repeats it.
+The first version moved the whole flat picture by a pixel or two. The owner's verdict: "the
+avatar just grows and shrinks a little". Now the picture is cut into three layers and each
+character has its own behaviours.
 
-## Rules (all enforced in code, guarded by `tests/test_agent_life.py`)
+## How a flat picture moves
+
+Each figure is ONE picture (`/assets/agents/<name>-figure.webp`). The script lays three masked
+copies of that same picture over it — legs, upper body, head. The file is already in the
+browser's cache, so nothing is downloaded. The head turns on the neck, the upper body leans on
+the hips, the whole figure steps and bounces on its feet. At rest the three layers add up to
+exactly the original picture.
+
+Where each picture bends (neck, hips, centre line) is a small table in the script (`RIG`), one
+row per character.
+
+**What a flat picture cannot do: move an arm.** Hands stay where the artist drew them (mostly
+in pockets). So "looking at her nails" is the head going down and to the side, plus a small
+bubble over the head showing 💅. "Checking a watch" is the same with ⌚. Folding arms or really
+touching hair needs new layered artwork per character — not done, see Limits.
+
+## The characters
+
+| Who | Character | Does most | Also |
+|---|---|---|---|
+| ג'וני (manager) | composed, watches the time and the team | looks around, checks his watch ⌚ | shifts weight, nods, rocks, stretches, gets an idea 💡 |
+| ניסים (manager) | easygoing | stretches, checks his phone 📱 | shrugs, sways, bounces, laughs, steps aside |
+| אלינור (manager) | poised | flips her hair ✨, looks at her nails 💅 | shifts her weight, tilts her head, a cool side glance |
+| יואב | the analyst, hands in pockets | rocks on his heels, looks up thinking 💭 | tilts, nods slowly, checks numbers 📊, adjusts his glasses 👓 |
+| אורי | the builder, cannot stand still | bounces, looks around, gets ideas 💡 | laughs, nods, steps aside, shrugs |
+| מאיה | warm and social | checks her phone 📱 💬, flips her hair | tilts, sways, laughs, shifts her weight |
+| ליאור | the artist | moves to a tune 🎵 🎧 | sways, looks up for inspiration ✨, bounces, shakes his curls |
+
+The table in the script (`CAST`) is the whole definition: behaviour, weight, bubble. A figure
+never plays the same behaviour twice in a row. An unknown figure gets a neutral set.
+
+**Two side by side** (within reach of each other) sometimes do something together: a glance
+and a nod back; turning to each other with 💬 and a laugh; leaning in and a shrug; a "hey" 👋
+and a nod; a question and a head shake. One alone never gestures at nobody.
+
+## Timing
+
+No loop. Every 1.3–3.4 seconds the script looks for a figure that is free and plays one
+behaviour (1.4–4.2 seconds long). After it, that figure rests 1.8–5.2 seconds. With three
+agents waiting, something is usually happening, but never all at once.
+
+## Rules (enforced in code, guarded by `tests/test_agent_life.py`)
 
 | Rule | How |
 |---|---|
-| Never during an active conversation | no idle motion while any chat window is open, a reply is awaited (`.typing`), or a key was pressed in the last 6 s |
-| Never distracting | one motion at a time, a few pixels / under 2.5°, pauses of 4–10 s |
-| Light | CSS transforms on the figure only (no layout); the script only adds a class and removes it on `animationend`. The canvas exists only for the 2.6 s of a burst (≤76 pieces, 42 on a phone, DPR ≤ 2) and is removed after. No animation loop runs in between |
-| Hidden tab | the timer is cleared on `visibilitychange`; a burst in progress ends |
-| `prefers-reduced-motion` | the script does nothing; the CSS keyframes sit inside `no-preference`; the canvas is `display:none` |
-| A setting to turn it off | "אזור אישי" → "✨ תנועה ואנימציות: פועלות / כבויות" (5 languages). Stored in `localStorage` (`uallak_life` = `off`) — per browser, like the chat window sizes. Hidden when the device asks for reduced motion |
-| Load speed | both files are small, the script is `defer`, nothing runs before the page is interactive, nothing is fetched |
-| Chat speed | untouched: no chat code path waits on it; the celebration call is wrapped so a failure can never break a card |
-| No DOM moves | figures only gain / lose a class; the canvas is appended to `<body>` and removed (the CLAUDE.md re-parenting trap) |
+| Never during an active conversation | nothing moves while any chat window is open, a reply is awaited, or a key was pressed in the last 6 s |
+| Never while the agent is working | a figure whose own window has a running task or a pending reply stands still |
+| Clearly visible | heads turn up to 15°, the upper body leans up to 6°, steps of 12 px; no scale-only pulse |
+| Light | transforms and opacity only (no layout). The script adds one class and removes it by timer. Three small layers per figure, built once |
+| Phone | the figures are small there, so every distance is scaled down (`--al-u`) and the bubble is smaller |
+| Hidden tab | all timers are cleared on `visibilitychange`; a burst in progress ends |
+| `prefers-reduced-motion` | nothing is scheduled, no layers are built; every keyframe sits inside `no-preference` |
+| The off switch | unchanged: "אזור אישי" → "✨ תנועה ואנימציות" (5 languages), kept per browser |
+| Browser without masks | no layers; only the whole-figure behaviours play (shift, bounce, rock, step) |
+| No DOM moves | nothing existing is re-parented. Added: the layers inside a minimised figure (new nodes, not focusable) and the celebration canvas |
+| Chat speed | untouched: no chat code path waits on any of this |
 
-## Where it hooks in
+## Celebration
 
-`dashboard/client/index.html`: `finishActionCard` (a slow card that turned into its result) and
-`decideAction` (a card that finished on the click) call `celebrateTask(el, id)` →
-`uallakLife.celebrateFor(card, 'action:<id>')`.
-
-## API
-
+One burst of confetti and one balloon when a task finishes, once per task.
 `window.uallakLife`: `celebrate(originEl, key)`, `celebrateFor(cardEl, key)`,
 `setEnabled(bool)`, `enabled()`, `reduced()`.
 
-## Not done / limits
+## Checked in a real browser
 
+Chrome on desktop, with a local demo page that uses the real pictures, stylesheet and script:
+the layered figure is identical to the original at rest for all seven; the head and
+upper-body poses show no visible seam at 168 px and at 420 px; bubbles render; the scheduler
+runs, including a pair scene; no console errors.
+
+## Limits
+
+- **Arms do not move.** Real gestures (nails, hair, folded arms, a wave) need layered artwork
+  per character: separate arm, hand and hair pieces, or a short sprite sequence. That is new
+  art, not code.
+- Not checked: a real phone, Safari / iOS, Firefox, the dashboard itself with a logged-in
+  client (the demo page copies the dashboard's figure styles), and how smooth it feels over
+  minutes of watching.
+- The bubbles are emoji, drawn by the device's own emoji font — they look slightly different
+  on each platform.
 - Admin pages (Itzik's figure) are not animated — client dashboard only.
-- The figures are single flat images, so a "glance" is a small lean of the whole figure, not
-  a head turn. Real gestures would need layered artwork per agent.
-- The switch is per browser, not per account (no migration, no server call).
-- Not tested in a real browser — see docs/SYSTEM-REVIEW.md checkpoint 3.
+- The switch is per browser, not per account.
