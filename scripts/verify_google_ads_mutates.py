@@ -137,7 +137,7 @@ def main(client_id: int):
                                         {"text": "uallak"}],
                           "descriptions": [{"text": "וריאציית מודעה לבדיקת ממשק."},
                                            {"text": "נוצרה אוטומטית בחשבון בדיקה."}],
-                      }}}]))
+                      }}}}]))
 
     # ── 4. Restructure threshold logic (pure arithmetic, no API) ─────────────
     print("\n4. State 1 -> 2 threshold logic (synthetic data - cannot come from a test account)")

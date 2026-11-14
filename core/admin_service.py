@@ -46,6 +46,9 @@ DEFAULT_SETTINGS = {
     # Client chat (core/chat_turns): consecutive messages sent within this many
     # seconds are answered as ONE turn. 0 = off. Clamped to 0-8 in code.
     "chat_collect_window_seconds": 3,
+    # core/homepage_v2: the public homepage's new look. OFF until Google has
+    # answered the OAuth verification — off = today's page, byte for byte.
+    "homepage_v2_enabled": False,
     # core/chat_prewarm: read the chat's context while the client is typing
     # (same reads the turn makes, just earlier). false = off.
     "chat_prewarm_enabled": True,

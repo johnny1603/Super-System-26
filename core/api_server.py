@@ -8386,5 +8386,37 @@ def serve_host_go(page_slug: str, kind: str, request: Request, background_tasks:
 def serve_host_page(page_slug: str, request: Request, background_tasks: BackgroundTasks):
     return serve_landing_page(_lp_host_segment(request), page_slug, request, background_tasks)
 
+# ─── The public homepage (reviewed by Google and TikTok) ─────────────────────
+# ONE static handler serves it, exactly as before. The route below exists only
+# for the v2 look (core/homepage_v2, docs/HOMEPAGE-V2.md): with the admin
+# setting homepage_v2_enabled OFF (the default) it hands the request to that
+# same handler and the same file — byte-for-byte today's page. ON (or the
+# owner's own preview, /?home=v2) = the same HTML with two tags added.
+# (_landing_static is the same handler class on the same folder as the root
+# mount at the bottom of this file, which still serves every other path.)
+_landing_static = StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True)
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def homepage(request: Request):
+    from core import homepage_v2
+    try:
+        v2 = homepage_v2.wants_preview(request.query_params.get(homepage_v2.PREVIEW_PARAM)) or homepage_v2.enabled()
+        if v2:
+            # no-store: switching the setting off must show the old page at once
+            return HTMLResponse(homepage_v2.page() if request.method == "GET" else "",
+                                headers={"Cache-Control": "no-store"})
+    except Exception as e:
+        print(f"[homepage_v2] falling back to the current page ({type(e).__name__})")
+    try:
+        return await _landing_static.get_response("index.html", request.scope)
+    except Exception as e:
+        # Belt and braces for the one page the platforms review: the same
+        # file, sent directly. The homepage never answers with an error
+        # because of this route.
+        print(f"[homepage_v2] static handler failed ({type(e).__name__}) — sending the file directly")
+        from fastapi.responses import FileResponse
+        return FileResponse(os.path.join(BASE_DIR, "dashboard", "landing", "index.html"), media_type="text/html")
+
 # Must be last — catch-all for the landing page
 app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "dashboard", "landing"), html=True), name="landing")

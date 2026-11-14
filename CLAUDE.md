@@ -855,6 +855,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   to the code: TikTok is inbox upload, never paid ads or auto-posting), show the pricing
   STRUCTURE (no numbers — those live in `PRICING`), contact `johnny_support@uallak.com`, and
   footer links to `/terms/` and `/privacy/` (Hebrew: `/privacy/he/`) in every language.
+  **Homepage v2 (2026-11-15, `docs/HOMEPAGE-V2.md`)**: a presentation layer
+  (`dashboard/assets/home-v2.css` + `.js`) behind the admin setting `homepage_v2_enabled`,
+  **default OFF**. `dashboard/landing/index.html` carries NO reference to it: the `/` route
+  (`core/homepage_v2`) hands the request to the same static handler when off (byte-identical
+  page) and adds exactly two tags when on (or for the owner's preview `/?home=v2`). The layer
+  may never add, hide or rewrite text or links; the switch is read from memory (background
+  refresh) so the public page never waits on the DB. Do not turn it on, and do not edit the
+  page's text, until Google has answered the verification. `tests/test_homepage_v2.py`.
 - `dashboard/` — static HTML pages served by FastAPI mounts: landing `/`, chat `/chat/`,
   terms `/terms/`, privacy policy `/privacy/` (English, static, no JS — the URL on the Google
   OAuth consent screen; Hebrew twin at `/privacy/he/`; its Google-data sections must stay in step

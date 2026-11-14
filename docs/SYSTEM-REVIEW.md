@@ -286,3 +286,33 @@ part blocks another, and 3 (animations) gives 5 (onboarding celebration) its con
   group first, but a client hunting for one by eye needs one extra tap.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost so far:** about $35 (rough). Cap proposed: $40.
+
+## Checkpoint 6 — uallak homepage
+
+- **Found:** the homepage already has orbs, scroll reveals and a before/after slider; it
+  reads as good, not advanced: everything in a row appears at once, hover states are flat,
+  the hero is static after load, headings wrap unevenly, and keyboard focus is barely
+  visible.
+- **Changed:** a v2 presentation layer, shipped dark. `dashboard/assets/home-v2.css` +
+  `home-v2.js` (hero entrance and moving accent ink, pointer light, settling nav and reading
+  progress line, staggered reveals, card and button micro-interactions, balanced type,
+  focus rings). `core/homepage_v2.py` + the `/` route: setting `homepage_v2_enabled`,
+  default OFF; preview at `/?home=v2`; a checkbox in Admin settings. `docs/HOMEPAGE-V2.md`.
+- **What Google sees after this deploy:** exactly what it sees today. The page file was not
+  edited and has no reference to v2; with the setting off the route serves the same file
+  through the same static handler, with a direct-file fallback. Same URL, privacy and terms
+  links, app name, purpose statement and Google-data description. v2 itself adds two tags
+  and no text; a test compares the readable text of both versions.
+- **Also fixed:** `scripts/verify_google_ads_mutates.py` had a syntax error (a missing
+  closing brace) and could not run at all; found by a syntax sweep of every Python file.
+- **Tests:** 74/74 test files pass (new: `tests/test_homepage_v2.py`, 18 tests). All 243
+  Python files parse.
+- **NOT tested:** the `/` route was not executed (no FastAPI on this machine) — it is
+  covered by source checks and the fallback, not by a real request. The v2 look was not seen
+  in any browser: the animations, the RTL progress line, the pointer light and the mobile
+  layout are unverified by eye. Use the preview link before switching it on.
+- **First thing to check after the deploy:** open `https://app.uallak.com/` and confirm the
+  homepage looks exactly as before (this route is new, even though it serves the old file).
+- **Migration:** none. **Deploy:** needed. **The homepage stays off by default.**
+- **Estimated cost so far:** about $40 (rough; `/cost` in the terminal is the real number).
+  This reaches the proposed cap; nothing further is run without the owner.
