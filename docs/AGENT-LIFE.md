@@ -68,9 +68,43 @@ agents waiting, something is usually happening, but never all at once.
 
 ## Celebration
 
-One burst of confetti and one balloon when a task finishes, once per task.
-`window.uallakLife`: `celebrate(originEl, key)`, `celebrateFor(cardEl, key)`,
-`setEnabled(bool)`, `enabled()`, `reduced()`.
+One short burst of confetti and one balloon (2.3 seconds) for **every task that completes
+successfully, anywhere on the dashboard** — not only when an agent stands waiting.
+
+| What completed | Where it is hooked | Rises from |
+|---|---|---|
+| A card the client approved, finished (a page built, a video sent, a post published — anything that runs as a card) | `decideAction`, `finishActionCard` | the agent's figure if it stands waiting, else the card |
+| A slow job that finished (the card was "running") | `finishActionCard`, from the card's own polling | same |
+| A connection completed (coming back from the provider's consent screen) | the `?connected=` return | the notice line |
+| A connection completed on the page (ads account chosen, tag container saved, site connected, site built, site moved, landing domain verified) | `showNotice(..., 'success', connectionDone(...))` | the notice line |
+| An onboarding step done | `obCelebrateProgress` | the progress ring |
+| A paid upgrade | the `?upgrade=success` return | the notice line |
+| An export ready | `showNotice(..., { key })` | the notice line |
+
+Notices that only say "started", "sent", "saved" or "removed" are not tasks completing and
+stay plain. Half-way returns (a page or a channel still to be created) do not celebrate.
+
+**The rules** (in `celebrate`, guarded by tests):
+
+- **Once per task.** Each task has a key. It is remembered before anything is drawn, in this
+  browser (`localStorage`), so a re-render, a poll or a reload never repeats it.
+- **Several at once = one burst.** Tasks finishing within 1.5 seconds of a burst's start
+  share it.
+- **Never stacked.** A task finishing while a burst is on screen gets one burst right after
+  it — however many arrive, there is never more than one on screen and one waiting.
+- **The same event reported twice = one.** A connection and the onboarding step it completes
+  are one celebration (a 20-second group).
+- **Finished while the tab was hidden:** one burst when the client comes back.
+- **Skipped for good** under `prefers-reduced-motion` and when the motion switch is off.
+- **Never for staff** viewing the dashboard as the client.
+- The flight is timed by the clock, not by the frame, so it is the same on a slow phone.
+
+`window.uallakLife`: `celebrate(originEl, key, { group })`, `celebrateFor(cardEl, key)`,
+`setEnabled(bool)`, `enabled()`, `reduced()`. On the page: `celebrateDone(key, el, group)`.
+
+**Not celebrated, on purpose:** a message an agent posts later in the chat (for example an
+article draft that took minutes) — the page cannot tell a success from an apology there. The
+pre-signup pages (the proposal chat and payment) do not load this script.
 
 ## Checked in a real browser
 

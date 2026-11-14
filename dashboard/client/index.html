@@ -3444,10 +3444,36 @@ function fmtDateTime(iso) {
 }
 
 // ─── notice banner (?connected / ?upgrade query params) ─────────────────────
-function showNotice(text, kind) {
+// `done`: this notice says a TASK just completed (a connection made, a site
+// built, an export ready) — it also gets the one celebration (celebrateDone).
+// Notices that only say "started" / "sent" / "saved" pass nothing.
+function showNotice(text, kind, done) {
   const banner = document.getElementById('noticeBanner');
   banner.textContent = text;
   banner.className = 'notice-banner ' + kind;
+  if (done && kind === 'success') celebrateDone(done.key, banner, done.group);
+}
+// One celebration per completed task, anywhere on the dashboard — once per
+// key (kept in this browser), merged when several finish together, nothing
+// under reduced motion or with the motion switch off (assets/agent-life.js).
+// Decoration only: it can never break what called it. Not for staff viewing
+// as the client.
+function celebrateDone(key, originEl, group) {
+  try {
+    if (ADMIN_VIEW || key == null) return;
+    if (!window.uallakLife) {            // the script is deferred: an early call waits for it once
+      if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', () => celebrateDone(key, originEl, group), { once: true });
+      }
+      return;
+    }
+    window.uallakLife.celebrate(originEl || null, key, group ? { group: group } : undefined);
+  } catch (e) { /* decoration only */ }
+}
+// A connection completed. Per day, so reconnecting next month celebrates again;
+// one group, so the connection and the onboarding step it completes are ONE burst.
+function connectionDone(name) {
+  return { key: 'connected:' + name + ':' + new Date().toISOString().slice(0, 10), group: 'connection' };
 }
 
 // ─── welcome tour ────────────────────────────────────────────────────────────
@@ -3677,7 +3703,7 @@ async function loadDashboard() {
     if (hasSite) {
       const wasProvisioning = !!window._siteProvisionPoll;
       markWebsiteConnected();
-      if (wasProvisioning) showNotice(uallakI18n.t('site_create_done_notice'), 'success');
+      if (wasProvisioning) showNotice(uallakI18n.t('site_create_done_notice'), 'success', connectionDone('site_built'));
     } else {
       handleSiteProvisionStatus(d.website_provision_status);
     }
@@ -4164,7 +4190,7 @@ async function chooseGadsAccount(customerId) {
     box.style.display = 'none';
     markGoogleAdsConnected();
     showGadsConnected(body.data.display_id, body.data.name);
-    showNotice(uallakI18n.t('notice_gads_connected'), 'success');
+    showNotice(uallakI18n.t('notice_gads_connected'), 'success', connectionDone('google_ads'));
   } catch (e) {
     console.error('google ads account select failed', e);
     renderGadsPicker();
@@ -4427,7 +4453,7 @@ async function chooseGtmContainer(path) {
     if (!res.ok || !body.success) throw new Error('select failed');
     closeGtmPicker();
     renderGtmConnection(body.data);
-    showNotice(uallakI18n.t('notice_gtm_container_saved'), 'success');
+    showNotice(uallakI18n.t('notice_gtm_container_saved'), 'success', connectionDone('gtm_container'));
   } catch (e) {
     console.error('gtm container select failed', e);
     box.querySelectorAll('button').forEach(b => { b.disabled = false; });
@@ -4532,7 +4558,7 @@ async function requestMigration(btn) {
                             { method: 'POST', credentials: 'same-origin' });
     const body = await res.json();
     if (res.ok && body.success) {
-      showNotice(t('site_existing_migrate_ok'), 'success');
+      showNotice(t('site_existing_migrate_ok'), 'success', connectionDone('site_migrated'));
       document.getElementById('existingSiteResult').innerHTML =
         `<div class="lock-note" style="color:var(--green);">${esc(t('site_existing_migrate_ok'))}</div>`;
       openAgentWindow('website');
@@ -5222,7 +5248,7 @@ async function connectWebsite() {
     const body = await res.json();
     if (res.ok && body.success) {
       markWebsiteConnected();
-      showNotice(uallakI18n.t('site_connected_notice'), 'success');
+      showNotice(uallakI18n.t('site_connected_notice'), 'success', connectionDone('wordpress'));
       return;
     }
   } catch (e) {
@@ -7179,7 +7205,9 @@ function obCelebrateProgress(status) {
   const ring = document.getElementById('obRing');
   ring.classList.remove('ob-pulse'); void ring.offsetWidth; ring.classList.add('ob-pulse');
   try {
-    if (window.uallakLife) window.uallakLife.celebrate(ring, 'ob:' + chatData.clientId + ':' + status.done_count);
+    // the same group as a completed connection: the connection and the step it completes are ONE burst
+    if (window.uallakLife) window.uallakLife.celebrate(ring, 'ob:' + chatData.clientId + ':' + status.done_count,
+                                                       { group: 'connection' });
   } catch (e) { /* decoration only */ }
 }
 
@@ -7541,7 +7569,7 @@ async function exportGoogleDoc(dataset, btn) {
       return;
     }
     if (body.data && body.data.link) window.open(body.data.link, '_blank', 'noopener');
-    showNotice(t('export_gdoc_done'), 'success');
+    showNotice(t('export_gdoc_done'), 'success', { key: 'export:' + Date.now() });   // each export is its own task
   } catch (e) {
     showNotice(t('export_gdoc_fail'), 'warn');
   } finally {
@@ -8435,7 +8463,7 @@ async function landingVerifyDomain() {
     });
     const body = await res.json();
     if (body.success && body.data.verified) {
-      showNotice(uallakI18n.t('landing_domain_ok'), 'success');
+      showNotice(uallakI18n.t('landing_domain_ok'), 'success', connectionDone('landing_domain'));
     } else {
       // The detailed reason (including "it's on our side") is delivered in the
       // chat by the agent — the toast just says to look there.
@@ -9780,6 +9808,16 @@ async function loadSupport() {
     showNotice(uallakI18n.t('notice_upgrade_pending'), 'warn');
   } else if (params.get('upgrade') === 'error') {
     showNotice(uallakI18n.t('notice_upgrade_error'), 'warn');
+  }
+  // A connection that was just completed (or a paid upgrade): the one
+  // celebration. Not for the half-way returns (a page / channel still to be
+  // created, a folder still pending) — those are not done yet.
+  const justConnected = params.get('connected') || '';
+  if (justConnected && !/(_pending|_no_page|_no_channel)$/.test(justConnected)) {
+    const done = connectionDone(justConnected);
+    celebrateDone(done.key, document.getElementById('noticeBanner'), done.group);
+  } else if (params.get('upgrade') === 'success') {
+    celebrateDone('upgrade:' + new Date().toISOString().slice(0, 10), document.getElementById('noticeBanner'));
   }
   if ([...params.keys()].length) history.replaceState(null, '', window.location.pathname);
 

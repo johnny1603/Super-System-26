@@ -378,3 +378,36 @@ about $40; I stop and ask before passing it.
   the smoothness of the motion).
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost of this round so far:** about $14 (rough).
+
+## Checkpoint R2-2 — confetti for every completed task, everywhere
+
+- **Found:** the burst existed but was tied to two places only (a card finishing, an
+  onboarding step). A second task finishing during a burst was silently dropped, a task
+  whose element was hidden got nothing, and a task that finished while the tab was in the
+  background never celebrated.
+- **Changed:** one rule for the whole dashboard (`celebrate` in `agent-life.js`,
+  `celebrateDone` on the page). Hooked: finished cards and slow jobs, every completed
+  connection (the return from the provider and the ones completed on the page), a site
+  built or moved, a landing domain verified, an onboarding step, a paid upgrade, an export.
+  Once per task (remembered in this browser, so not after a reload either). Several at once
+  share one burst. One finishing during a burst waits and plays right after — never two on
+  screen. A connection and the onboarding step it completes are one. Finished while the tab
+  was hidden: one burst on return. The flight is timed by the clock, so a slow phone gets
+  the same 2.3 seconds.
+- **Kept:** nothing under reduced motion or with the switch off; never for staff viewing as
+  the client; decoration can never break the card or the notice that called it.
+- **Not celebrated, on purpose:** notices that only say started / sent / saved / removed;
+  half-way connections (a page or channel still to create); a message an agent posts later
+  in the chat (the page cannot tell a success from an apology); the pre-signup pages.
+- **Tests:** 75/75 test files pass (`tests/test_agent_life.py` now 30 tests: once, at once,
+  queued, grouped, hidden tab, reload, no origin, every hook on the page).
+- **Checked in a real browser (Chrome, local demo page):** the merge and queue rules ran
+  live — four calls gave one burst, one merged, one queued, one refused as a repeat, and
+  there was never more than one canvas; the canvas painted confetti at the figure and was
+  removed.
+- **NOT tested:** the flight itself was not watched (the automation window draws about one
+  frame a second), no phone, no Safari; none of the real hooks was triggered by a real
+  event (a real card finishing, a real connection return, a real upgrade).
+- **Migration:** none. **Deploy:** needed.
+- **Estimated cost of this round:** about $22 (rough; `/cost` is the real number). Under
+  the $25 proposed for this round.

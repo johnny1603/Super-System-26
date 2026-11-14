@@ -99,6 +99,37 @@ class Static(unittest.TestCase):
         for other in ("admin", "landing", "login", "onboarding", "profile", "terms", "privacy"):
             self.assertNotIn("agent-life", _src("dashboard", other, "index.html"), other)
 
+    def test_celebration_rules_in_the_script(self):
+        code = self.js.split("*/", 1)[1]
+        fn = code[code.index("function celebrate(origin, key, opts)"):code.index("function burst(origin)")]
+        self.assertLess(fn.index("remember(key)"), fn.index("burst(origin)"))     # remembered before anything is drawn
+        for needle in ("if (!enabled() || reduced()) return false;", "MERGE_MS", "GROUP_MS", "queued = { origin: origin };",
+                       "document.hidden"):
+            self.assertIn(needle, fn)
+        self.assertEqual(code.count("document.body.appendChild(canvas)"), 1)       # one canvas, in one place
+        self.assertIn("DURATION = 2300", code)                                    # short
+
+    def test_every_completed_task_on_the_dashboard_celebrates(self):
+        page = self.page
+        notice = page[page.index("function showNotice(text, kind, done)"):page.index("function connectionDone")]
+        self.assertIn("if (done && kind === 'success') celebrateDone(done.key, banner, done.group);", notice)
+        self.assertIn("if (ADMIN_VIEW || key == null) return;", notice)           # never for staff viewing as the client
+        self.assertIn("try {", notice)
+        self.assertIn("'DOMContentLoaded'", notice)                               # the script is deferred
+        for hook in ("connectionDone('google_ads')", "connectionDone('gtm_container')", "connectionDone('wordpress')",
+                     "connectionDone('site_built')", "connectionDone('site_migrated')", "connectionDone('landing_domain')",
+                     "{ key: 'export:' + Date.now() }", "const done = connectionDone(justConnected);",
+                     "celebrateDone('upgrade:'", "{ group: 'connection' });"):
+            self.assertIn(hook, page, hook)
+        # half-way returns are not done yet
+        self.assertIn("!/(_pending|_no_page|_no_channel)$/.test(justConnected)", page)
+        # notices that only say started / sent / removed stay plain
+        for plain in ("showNotice(uallakI18n.t('landing_creating'), 'success');",
+                      "showNotice(uallakI18n.t('landing_unpublished'), 'success');",
+                      "showNotice(uallakI18n.t('landing_domain_sent'), 'success');",
+                      "showNotice(uallakI18n.t('voice_deleted'), 'success');"):
+            self.assertIn(plain, page, plain)
+
     def test_hooks_and_switch(self):
         finish = self.page[self.page.index("function finishActionCard"):self.page.index("function celebrateTask")]
         self.assertIn("if (c.status === 'done') celebrateTask(el, c.id);", finish)
@@ -120,7 +151,7 @@ class Static(unittest.TestCase):
 
 HARNESS = r"""
 const fs = require('fs'), vm = require('vm');
-let log = [], clock = 1e6, timers = [], rigsBuilt = 0;
+let log = [], clock = 1e6, timers = [], rigsBuilt = 0, frame = null, perf = 0, shown = 0;
 function node(tag) {
   const cls = new Set();
   const n = { tag, children: [], props: {}, style: { setProperty: (k, v) => { n.props[k] = v; } }, textContent: '',
@@ -145,7 +176,7 @@ function figure(name, left, opts) {
   return el;
 }
 function page(opts) {
-  log = []; timers = []; rigsBuilt = 0;
+  log = []; timers = []; rigsBuilt = 0; frame = null; perf = 0; shown = 0;
   const figures = (opts.figures || []).map((n, i) => figure(n, 100 + i * (opts.spacing || 120), opts));
   const canvases = [];
   const store = () => { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); },
@@ -158,20 +189,22 @@ function page(opts) {
     createElement: tag => tag === 'canvas'
       ? { setAttribute() {}, getContext: () => new Proxy({}, { get: () => () => {} }), parentNode: null }
       : node(tag),
-    body: { appendChild: c => { c.parentNode = { removeChild: () => { canvases.splice(canvases.indexOf(c), 1); } }; canvases.push(c); } } };
+    body: { appendChild: c => { c.parentNode = { removeChild: () => { canvases.splice(canvases.indexOf(c), 1); } }; canvases.push(c); shown++; } } };
   const win = { document: doc, innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1,
-    localStorage: store(), sessionStorage: store(),
+    localStorage: opts.local || store(), sessionStorage: store(),
     CSS: { supports: () => !opts.noMask },
     matchMedia: () => ({ matches: !!opts.reduced, addEventListener() {} }),
-    performance: { now: () => 0 }, requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+    performance: { now: () => perf }, requestAnimationFrame: f => { frame = f; return 1; }, cancelAnimationFrame() {},
     setTimeout: (f, ms) => { timers.push(f); return timers.length; }, clearTimeout() {},
     Math, Date: { now: () => clock }, JSON, console, WeakMap };
   win.window = win;
   if (opts.off) win.localStorage.setItem('uallak_life', 'off');
   vm.runInNewContext(fs.readFileSync(process.argv[1], 'utf8'), win);
-  return { life: win.uallakLife, figures, canvases, win, timersAtLoad: timers.length };
+  return { life: win.uallakLife, figures, canvases, win, doc, timersAtLoad: timers.length };
 }
 // every pending timer that is not the scheduler's own tick: the answers of a pair scene
+// the burst on screen runs out; whatever waited behind it gets its turn
+function endBurst() { perf += 5000; const f = frame; frame = null; if (f) f(perf); const run = timers.slice(); timers.length = 0; run.forEach(g => { try { g(); } catch (e) {} }); }
 function flush(skip) { const run = timers.slice(skip); timers.length = skip; run.forEach(f => { try { f(); } catch (e) {} }); }
 function idle(opts, times, prepare) {
   const p = page(opts);
@@ -210,7 +243,36 @@ out.normalTimers = page({ figures: ['maya'] }).timersAtLoad;
 { const p = page({ figures: ['maya'], reduced: true }); out.reducedBurst = p.life.celebrate(p.figures[0], 'action:8');
   out.reducedCanvases = p.canvases.length; out.reducedRemembered = p.life.celebrate(p.figures[0], 'action:8'); }
 { const p = page({ figures: ['maya'], off: true }); out.offBurst = p.life.celebrate(p.figures[0], 'action:9'); }
-{ const p = page({ figures: ['maya'], hidden: true }); out.hiddenBurst = p.life.celebrate(p.figures[0], 'action:10'); }
+{ const p = page({ figures: ['maya'], hidden: true }); out.hiddenBurst = p.life.celebrate(p.figures[0], 'action:10');
+  out.hiddenCanvases = p.canvases.length; p.doc.hidden = false; p.doc._l.visibilitychange();
+  const run = timers.slice(); timers.length = 0; run.forEach(g => { try { g(); } catch (e) {} });
+  out.backCanvases = p.canvases.length; out.backAgain = p.life.celebrate(p.figures[0], 'action:10'); }
+{ const p = page({ figures: [] }); out.noOrigin = p.life.celebrate(null, 'export:1'); out.noOriginCanvases = p.canvases.length;
+  out.hiddenOrigin = (endBurst(), p.life.celebrate({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0, bottom: 0 }) }, 'export:2'));
+  out.storedKeys = JSON.parse(p.win.localStorage.getItem('uallak_life_done')); }
+{ // several finish at once: ONE burst
+  const p = page({ figures: [] }); const got = [];
+  got.push(p.life.celebrate(null, 't:1')); clock += 300; got.push(p.life.celebrate(null, 't:2')); clock += 300; got.push(p.life.celebrate(null, 't:3'));
+  out.together = { got, canvases: p.canvases.length, shown }; endBurst(); out.together.after = p.canvases.length; out.together.shownAfter = shown; }
+{ // one finishes while another's burst is on screen: queued, never stacked
+  const p = page({ figures: [] }); const got = [], most = [];
+  got.push(p.life.celebrate(null, 'q:1')); most.push(p.canvases.length);
+  clock += 2000; got.push(p.life.celebrate(null, 'q:2')); most.push(p.canvases.length);
+  clock += 100; got.push(p.life.celebrate(null, 'q:3')); most.push(p.canvases.length);
+  endBurst(); most.push(p.canvases.length); const afterFirst = shown;
+  endBurst(); most.push(p.canvases.length);
+  endBurst();
+  out.queue = { got, most, afterFirst, total: shown, left: p.canvases.length }; }
+{ // the same event reported twice (a connection + the onboarding step it completes)
+  const p = page({ figures: [] }); const got = [];
+  got.push(p.life.celebrate(null, 'connected:meta:2026-11-15', { group: 'connection' })); endBurst();
+  clock += 5000; got.push(p.life.celebrate(null, 'ob:27:3', { group: 'connection' }));
+  clock += 30000; got.push(p.life.celebrate(null, 'ob:27:4', { group: 'connection' }));
+  out.group = { got, shown }; }
+{ // a reload: the browser remembers
+  const m = {}; const local = { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } };
+  const a = page({ figures: [], local }); const first = a.life.celebrate(null, 'action:500');
+  const b = page({ figures: [], local }); out.reload = { first, again: b.life.celebrate(null, 'action:500'), other: b.life.celebrate(null, 'action:501') }; }
 { const p = page({ figures: ['maya'] });
   const card = { getBoundingClientRect: () => ({ left: 10, top: 10, width: 200, height: 80 }),
                  closest: () => ({ classList: { contains: () => true }, querySelector: () => p.figures[0] }) };
@@ -338,7 +400,38 @@ class Behaviour(unittest.TestCase):
         self.assertEqual(self.out["reducedCanvases"], 0)
         self.assertFalse(self.out["reducedRemembered"])     # and it does not fire later either
         self.assertFalse(self.out["offBurst"])
-        self.assertFalse(self.out["hiddenBurst"])
+
+    def test_finished_while_the_tab_was_hidden_celebrates_once_on_return(self):
+        self.assertTrue(self.out["hiddenBurst"])
+        self.assertEqual(self.out["hiddenCanvases"], 0)       # nothing is drawn on a hidden tab
+        self.assertEqual(self.out["backCanvases"], 1)         # one burst when they are back
+        self.assertFalse(self.out["backAgain"])
+
+    def test_anywhere_not_only_from_a_waiting_agent(self):
+        self.assertTrue(self.out["noOrigin"])                 # no element at all: still celebrated
+        self.assertEqual(self.out["noOriginCanvases"], 1)
+        self.assertTrue(self.out["hiddenOrigin"])             # a hidden element: from the bottom of the screen
+        self.assertEqual(self.out["storedKeys"], ["export:1", "export:2"])
+
+    def test_several_finishing_at_once_are_one_burst(self):
+        t = self.out["together"]
+        self.assertEqual(t["got"], [True, False, False])
+        self.assertEqual((t["canvases"], t["shown"]), (1, 1))
+        self.assertEqual((t["after"], t["shownAfter"]), (0, 1))                   # and nothing follows
+
+    def test_one_finishing_during_a_burst_is_queued_never_stacked(self):
+        q = self.out["queue"]
+        self.assertEqual(q["got"], [True, True, True])
+        self.assertLessEqual(max(q["most"]), 1)                                   # never two canvases
+        self.assertEqual(q["afterFirst"], 2)                                      # the queued one plays after
+        self.assertEqual((q["total"], q["left"]), (2, 0))                         # three tasks, two bursts
+
+    def test_a_connection_and_its_onboarding_step_are_one_celebration(self):
+        self.assertEqual(self.out["group"]["got"], [True, False, True])
+        self.assertEqual(self.out["group"]["shown"], 2)
+
+    def test_never_again_after_a_reload(self):
+        self.assertEqual(self.out["reload"], {"first": True, "again": False, "other": True})
 
     def test_it_rises_from_the_waiting_agent(self):
         self.assertTrue(self.out["fromFigure"])

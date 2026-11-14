@@ -20,7 +20,9 @@
       being awaited, typing in the last few seconds) and never for an agent
       that is working (a running task or a pending reply in its own window).
 
-   2. ONE CELEBRATION per finished task — confetti and a balloon.
+   2. ONE CELEBRATION per finished task, anywhere on the dashboard — confetti
+      and a balloon. Once per task, merged when several finish together,
+      queued (never stacked) when one finishes during another's burst.
 
    Rules that hold everywhere:
    - prefers-reduced-motion: nothing moves, nothing is built, nothing is drawn.
@@ -37,7 +39,7 @@
   if (window.uallakLife) return;                       // one instance even if loaded twice
 
   var KEY = 'uallak_life';                             // 'off' = the client switched it off
-  var DONE_KEY = 'uallak_life_done';                   // task keys already celebrated (session)
+  var DONE_KEY = 'uallak_life_done';                   // task keys already celebrated (this browser)
   var FIGURE = '.chat-window.minimized .cw-figure-body';
   var OPEN_CHAT = '.chat-window:not(.minimized)';
   var PENDING = '.chat-window .typing';                // a reply is being awaited
@@ -272,34 +274,73 @@
     for (var i = 0; i < nodes.length; i++) still(nodes[i]);
   }
 
-  // ─── The one celebration ──────────────────────────────────────────────────
-  function celebrated(key) {
-    var s = store('sessionStorage');
-    try { return (JSON.parse((s && s.getItem(DONE_KEY)) || '[]')).indexOf(String(key)) !== -1; } catch (e) { return false; }
-  }
-  function remember(key) {
-    var s = store('sessionStorage');
-    try {
-      var list = JSON.parse((s && s.getItem(DONE_KEY)) || '[]');
-      list.push(String(key));
-      if (s) s.setItem(DONE_KEY, JSON.stringify(list.slice(-200)));
-    } catch (e) { /* then it is remembered for this page only (memory) */ }
-    memory[String(key)] = true;
-  }
-  var memory = {};
+  // ─── Celebrations: one burst per finished task, anywhere ─────────────────
+  // celebrate(origin, key, opts) is called for EVERY task that completed
+  // successfully (a card that finished, a connection made, an onboarding step,
+  // a site built, an export ready) — not only when an agent stands waiting.
+  //   once      a key is remembered BEFORE anything is drawn (this browser:
+  //             localStorage, else the session, else this page) — a re-render,
+  //             a poll or a reload never repeats it
+  //   merged    tasks that finish together (within MERGE_MS of a burst's
+  //             start) share that burst; opts.group = the same event reported
+  //             twice (a connection and the onboarding step it completes)
+  //   queued    a task that finishes while a burst is on screen gets ONE burst
+  //             right after it — however many arrive, never two at once
+  //   origin    the element it rises from; none or a hidden one = the bottom
+  //             centre of the screen
+  var MERGE_MS = 1500, GROUP_MS = 20000, GAP_MS = 450, DURATION = 2300, KEPT = 300;
+  var memory = {}, burstStarted = 0, queued = null, waiting = null, groups = {};
+  var BACK_MS = 700;                                   // after the tab is shown again, before the burst that waited
   var COLORS = ['#FF4C1F', '#FFC53D', '#3DD68C', '#4DA3FF', '#F5F5F5', '#C1272D'];
 
-  // origin: the element the burst rises from (the agent's figure when it is
-  // standing, else the finished card). key: one celebration per key, ever.
-  function celebrate(origin, key) {
+  function doneList() {
+    var kinds = ['localStorage', 'sessionStorage'];
+    for (var i = 0; i < kinds.length; i++) {
+      var s = store(kinds[i]);
+      try { if (s) return { s: s, list: JSON.parse(s.getItem(DONE_KEY) || '[]') || [] }; } catch (e) { /* try the next */ }
+    }
+    return { s: null, list: [] };
+  }
+  function celebrated(key) {
+    if (memory[String(key)]) return true;
+    try { return doneList().list.indexOf(String(key)) !== -1; } catch (e) { return false; }
+  }
+  function remember(key) {
+    memory[String(key)] = true;
+    try {
+      var d = doneList();
+      d.list.push(String(key));
+      if (d.s) d.s.setItem(DONE_KEY, JSON.stringify(d.list.slice(-KEPT)));
+    } catch (e) { /* then it is remembered for this page only (memory) */ }
+  }
+
+  function celebrate(origin, key, opts) {
     if (key != null) {
-      if (memory[String(key)] || celebrated(key)) return false;
+      if (celebrated(key)) return false;
       remember(key);                                   // remembered BEFORE drawing: never twice
     }
-    if (!allowed() || burstRunning || !origin || !origin.getBoundingClientRect) return false;
-    var rect = origin.getBoundingClientRect();
-    if (!rect.width && !rect.height) return false;
+    if (!enabled() || reduced()) return false;         // switched off / reduced motion: skipped for good
+    var t = now(), group = opts && opts.group;
+    if (group) {
+      if (t - (groups[group] || 0) < GROUP_MS) return false;   // the same event, already celebrated
+      groups[group] = t;
+    }
+    if (document.hidden) {                             // finished while they were away: ONE burst when they are back
+      waiting = { origin: origin };
+      return true;
+    }
+    if (burstRunning) {
+      if (t - burstStarted < MERGE_MS) return false;   // finished together: the burst on screen is theirs too
+      queued = { origin: origin };                     // one more, right after — however many arrive
+      return true;
+    }
+    return burst(origin);
+  }
+
+  function burst(origin) {
     var w = window.innerWidth, h = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var rect = origin && origin.getBoundingClientRect ? origin.getBoundingClientRect() : null;
+    var seen = rect && (rect.width || rect.height) && rect.bottom > 0 && rect.top < h;
     var canvas = document.createElement('canvas');
     canvas.className = 'al-burst'; canvas.setAttribute('aria-hidden', 'true');
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
@@ -307,9 +348,11 @@
     if (!ctx) return false;
     ctx.scale(dpr, dpr);
     document.body.appendChild(canvas);
-    burstRunning = true;
+    burstRunning = true; burstStarted = now();
 
-    var ox = Math.min(Math.max(rect.left + rect.width / 2, 24), w - 24), oy = Math.max(rect.top + rect.height * 0.25, 40);
+    // from the element when it is on screen, else from the bottom centre
+    var ox = seen ? Math.min(Math.max(rect.left + rect.width / 2, 24), w - 24) : w / 2;
+    var oy = seen ? Math.min(Math.max(rect.top + rect.height * 0.25, 40), h - 20) : h * 0.86;
     var count = w < 640 ? 42 : 76, parts = [];
     for (var i = 0; i < count; i++) {
       var angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.9, speed = 5 + Math.random() * 7.5;
@@ -318,25 +361,35 @@
                    color: COLORS[i % COLORS.length], round: i % 5 === 0 });
     }
     var balloon = { x: ox, y: oy, r: w < 640 ? 15 : 19, sway: Math.random() * 6.28, color: COLORS[0] };
-    var started = performance.now(), DURATION = 2600, frame = 0;
+    var started = performance.now(), last = started, frame = 0;
 
+    var over = false;
     function end() {
+      if (over) return;
+      over = true;
       burstRunning = false;
       if (frame) cancelAnimationFrame(frame);
       document.removeEventListener('visibilitychange', onHide);
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      var next = queued;
+      queued = null;
+      // the one that waited: a short breath, then its own burst (not on a hidden tab)
+      if (next && allowed()) setTimeout(function () { if (allowed() && !burstRunning) burst(next.origin); }, GAP_MS);
     }
-    function onHide() { if (document.hidden) end(); }
+    function onHide() { if (document.hidden) { if (queued) waiting = queued; queued = null; end(); } }
     document.addEventListener('visibilitychange', onHide);
 
-    function draw(now) {
-      var t = now - started;
+    function draw(nowMs) {
+      var t = nowMs - started;
       if (t >= DURATION || document.hidden) { end(); return; }
+      // by the clock, not by the frame: the same flight on a slow phone as on a fast screen
+      var dt = Math.min(Math.max((nowMs - last) / 16.67, 0), 3);
+      last = nowMs;
       var fade = t > DURATION - 700 ? Math.max(0, (DURATION - t) / 700) : 1;
       ctx.clearRect(0, 0, w, h);
       for (var i = 0; i < parts.length; i++) {
         var p = parts[i];
-        p.vy += 0.24; p.vx *= 0.985; p.x += p.vx; p.y += p.vy; p.rot += p.spin;
+        p.vy += 0.24 * dt; p.vx *= Math.pow(0.985, dt); p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt;
         ctx.save();
         ctx.globalAlpha = fade;
         ctx.translate(p.x, p.y); ctx.rotate(p.rot);
@@ -346,7 +399,7 @@
         ctx.restore();
       }
       // the balloon: rises, sways a little, its string trailing
-      balloon.y -= 2.3; balloon.sway += 0.07;
+      balloon.y -= 2.3 * dt; balloon.sway += 0.07 * dt;
       var bx = balloon.x + Math.sin(balloon.sway) * 9, by = balloon.y;
       ctx.save();
       ctx.globalAlpha = fade;
@@ -363,18 +416,19 @@
       frame = requestAnimationFrame(draw);
     }
     frame = requestAnimationFrame(draw);
-    // the agent itself gives a small hop
-    if (origin.classList && origin.classList.contains('cw-figure-body')) play(origin, 'hop', 1);
+    // a window that draws no frames (covered, throttled) must not keep the burst open
+    setTimeout(end, DURATION + 500);
+    // an agent that stands waiting gives a small hop
+    if (origin && origin.classList && origin.classList.contains('cw-figure-body')) play(origin, 'hop', 1);
     return true;
   }
 
   // A finished task inside a chat window: rise from the standing figure when
   // the window is minimised (the agent is waiting), else from the card itself.
-  function celebrateFor(cardEl, key) {
-    if (!cardEl) return false;
-    var win = cardEl.closest ? cardEl.closest('.chat-window') : null;
+  function celebrateFor(cardEl, key, opts) {
+    var win = cardEl && cardEl.closest ? cardEl.closest('.chat-window') : null;
     var figure = win && win.classList.contains('minimized') ? win.querySelector('.cw-figure-body') : null;
-    return celebrate(figure || cardEl, key);
+    return celebrate(figure || cardEl || null, key, opts);
   }
 
   // ─── Switch ───────────────────────────────────────────────────────────────
@@ -385,7 +439,13 @@
     return enabled();
   }
 
-  document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); else schedule(); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { stop(); return; }
+    schedule();
+    var back = waiting;
+    waiting = null;
+    if (back) setTimeout(function () { if (allowed() && !burstRunning) burst(back.origin); }, BACK_MS);
+  });
   document.addEventListener('keydown', function () { lastTyped = Date.now(); }, true);
   if (window.matchMedia) {
     var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
