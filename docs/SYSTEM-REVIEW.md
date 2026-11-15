@@ -449,3 +449,29 @@ about $40; I stop and ask before passing it.
 - **Not built:** an admin screen for the quote and the grant (two admin endpoints exist);
   מאיה's published posts do not read the kit yet.
 - **Migration:** none. **Deploy:** needed.
+
+## Checkpoint R3-2 — The organic SEO report, professional grade
+
+- **Built:** a consultant-style report (`docs/SEO-REPORT.md`): bottom line, where the site
+  stands, keyword opportunities, backlink opportunities (site, type, quality score, why it
+  fits, what to do, ready outreach draft), next steps. Box in the Performance tab: open as a
+  page (print → PDF) or download Word / Excel / CSV. Chat card `build_seo_report`.
+- **Free and gated:** no price for a report anywhere. Package covers organic → it is built.
+  Package does not → no questions and no research; ONE card `upgrade_to_organic` explains the
+  service and its fixed price and prepares the normal upgrade offer (existing pricing path, no
+  new billing).
+- **Enforced in code after the model:** paid links / exchanges / PBNs dropped; promised
+  rankings removed; a site is listed only if the web search returned it; vendors never named;
+  the module sends nothing.
+- **Quality score:** judgment only, labelled so on every row, until `OPEN_PAGERANK_API_KEY`
+  exists. With it: half judgment, half the public number. Only third-party domains are sent.
+- **Found while building:** Open PageRank moved under another company, and a free key now
+  works from one fixed IP address only. Cloud Run has none, so a free key may be refused. The
+  report then stays judgment-only. A fix (paid key or fixed outbound address) is the owner's
+  decision.
+- **DataForSEO:** connector written, `ENABLED = False`, no key, never called.
+- **Tests:** `tests/test_seo_report.py`, 39 tests. A test caught the client's own domain
+  being sent to the authority lookup; fixed before commit.
+- **NOT tested:** a real model writing a report, a real web search, the Open PageRank call,
+  the box with a logged-in client, the exports opened in Word / Excel, a phone, RTL by eye.
+- **Migration:** none. **Deploy:** needed.

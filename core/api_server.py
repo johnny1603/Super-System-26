@@ -6219,6 +6219,57 @@ def client_branding_view(attempt: int, request: Request):
         raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
     return HTMLResponse(page, headers=brand_mockups.page_headers())
 
+# ─── The organic SEO report (core/seo_report) — free, part of the organic service ───
+@app.get("/api/client/seo-report")
+def client_seo_report(request: Request):
+    # The Performance tab's box: is organic in the package, is there a report, where to open it
+    client_id = _require_session(request)
+    from core import seo_report
+    return {"success": True, "data": seo_report.status(client_id)}
+
+def _stored_seo_report(client_id: int) -> dict:
+    from core import seo_report
+    try:
+        value = seo_report.latest(client_id)
+    except Exception as e:
+        print(f"[seo_report] client {client_id}: stored report unreadable ({type(e).__name__})")
+        raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+    if not value:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    return value
+
+@app.get("/api/client/seo-report/view")
+def client_seo_report_view(request: Request):
+    # The stored report as one printable page (the browser's print makes the
+    # PDF), under a sandbox CSP with no script source.
+    client_id = _require_session(request)
+    from core import seo_report
+    return HTMLResponse(seo_report.page_html(_stored_seo_report(client_id)), headers=seo_report.page_headers())
+
+@app.get("/api/client/seo-report/export")
+def client_seo_report_export(request: Request, format: str = "docx"):
+    # The same stored report as a file: Word, Excel or CSV (core/export_service). No model, no Google API.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    if format not in ("docx", "xlsx", "csv"):
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_FORMAT"})
+    from core import export_service, seo_report
+    table = seo_report.export_table(_stored_seo_report(client_id))
+    if format == "docx":
+        body = export_service.to_docx(table["title"], table["subtitle"], table["columns"], table["rows"],
+                                      summary=table["summary"], rtl=table["rtl"])
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif format == "xlsx":
+        body = export_service.to_xlsx(table["title"], table["columns"], table["rows"])
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        body = export_service.to_csv(table["columns"], table["rows"])
+        media = "text/csv; charset=utf-8"
+    return Response(content=body, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="seo-report.{format}"',
+                             "Cache-Control": "no-store"})
+
 class BrandingQuoteRequest(BaseModel):
     costs: dict            # {item: OUR cost in ILS}; items from branding.QUOTE_ITEMS
     note: str = ""

@@ -823,6 +823,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (registered into ACTIONS). Agent rules: `support_agent.STUDIO_RULE` (also: a live site is never
   redesigned by the system — human hands only, no automatic price). app_settings `branding:<id>`
   + `brand_kit:<id>`, cleared with the client. `tests/test_branding.py`.
+- **Organic SEO report (2026-11-15, `docs/SEO-REPORT.md`)**: `core/seo_report` — site state,
+  keyword opportunities, backlink OPPORTUNITIES (site, type, score, why, what to do, outreach
+  draft). **FREE, never priced, gated by the package** (`covered()`: no research or model call
+  for a client without organic → the ONE `upgrade_to_organic` card, existing upgrade pricing).
+  `clean()` runs after the model: paid links / exchanges / PBNs dropped, promised rankings
+  removed, only sites the web search returned, vendors scrubbed. Sends nothing. Score =
+  judgment only (labelled) unless `OPEN_PAGERANK_API_KEY` is set (`core/open_pagerank`,
+  third-party domains only; a free key is bound to one IP and may be refused from Cloud Run).
+  `core/dataforseo_connector` is written and DISABLED (`ENABLED = False` constant) — never
+  call it or add a key without the owner. Cards in `core/seo_report_actions`; rule in
+  `support_agent.STUDIO_RULE`; app_settings `seo_report:<id>`. `tests/test_seo_report.py`.
 - **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
   microphone in each client chat window; the BROWSER's speech recognition turns speech into text
   in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is

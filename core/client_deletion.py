@@ -967,7 +967,9 @@ def _settings_keys(ids: list) -> list:
                                      # the Media tab's last-visit mark (core/media_library)
                                      f"media_seen:{int(i)}",
                                      # branding attempts + the approved brand kit (core/branding)
-                                     f"branding:{int(i)}", f"brand_kit:{int(i)}")]
+                                     f"branding:{int(i)}", f"brand_kit:{int(i)}",
+                                     # the stored organic SEO report (core/seo_report)
+                                     f"seo_report:{int(i)}")]
 
 
 def _clear_settings(ids: list):

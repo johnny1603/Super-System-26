@@ -137,6 +137,11 @@ PARITY = {
     "POST /api/client/media/send": (CHAT, "send_tiktok_to_inbox,publish_youtube_from_media"),
     # Add by link (2026-11-11): a pasted Drive link in the chat opens the same copy as a card
     "POST /api/client/media/add-link": (CHAT, "add_media_from_drive_link"),
+    "GET /api/client/seo-report": (CHAT, "build_seo_report"),
+    "GET /api/client/seo-report/view": (NOT_CHAT, "the stored report as a printable page; asking for the report in "
+                                                  "the chat is build_seo_report"),
+    "GET /api/client/seo-report/export": (NOT_CHAT, "a file download of the stored report (Word / Excel / CSV); a "
+                                                    "chat cannot hand over a file"),
     "GET /api/client/branding": (CHAT, "create_brand_mockups"),
     "GET /api/client/branding/view/{attempt}": (NOT_CHAT, "the mockup page a branding card links to; the card itself "
                                                           "(approve_branding) is the chat's path"),

@@ -64,6 +64,11 @@ KEYS = {
     # (Tier 3 also needs OPERATOR_APPROVAL_EMAIL + OPERATOR_CODE_ENABLED —
     # plain settings, not secrets, so they are not listed here.)
     "OPERATOR_GITHUB_TOKEN": os.environ.get("OPERATOR_GITHUB_TOKEN", ""),
+    # Open PageRank (core/open_pagerank, docs/SEO-REPORT.md): a FREE key the
+    # owner creates, for the public domain-authority number in the organic SEO
+    # report's quality score. Absent is a SUPPORTED state: the report scores
+    # by editorial judgment only and says so on every row.
+    "OPEN_PAGERANK_API_KEY": os.environ.get("OPEN_PAGERANK_API_KEY", ""),
 }
 
 def get_key(name):

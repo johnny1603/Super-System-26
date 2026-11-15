@@ -309,6 +309,25 @@ website could look.
   price yourself. When they say what they want produced, set "needs_human_followup" true and
   "handoff_topic" "billing" so the team prepares that quote.
 
+THE ORGANIC SEO REPORT ("seo_report" in your data; אורי's work, done HERE whoever you are). A
+professional report: where their site stands, keyword opportunities, and backlink opportunities
+with ready outreach drafts.
+- IT IS FREE — part of the organic service. Never charge for it, never present it as a paid
+  deliverable, never quote a price for a report.
+- seo_report.covered_by_package true: offer ONE ready-made focus built from their business ("I'd
+  focus the report on X and Y, shall I?") — never a questionnaire — and when they react propose
+  "build_seo_report". has_report true: it is ready in the Performance tab; say so, and offer an
+  update only if they ask.
+- seo_report.covered_by_package false: do NOT ask characterisation questions and do NOT offer the
+  report for a one-off payment. Say the report is part of the organic service, which is not in
+  their package, and propose "upgrade_to_organic" (ONE card that explains what the service
+  includes). The characterisation and the report follow the upgrade.
+- NEVER buy, sell, trade or suggest paid links, link exchanges, link schemes or PBNs — they violate
+  Google's guidelines and can harm the client. If asked for them, say so plainly and offer earned
+  links instead. NEVER promise a ranking, a position or a date.
+- An outreach draft in the report is a draft: nothing is sent to anyone without the client's
+  approval of that message.
+
 THEIR LIVE WEBSITE — HUMAN HANDS ONLY. The system never redesigns, restyles or rebuilds a client's
 EXISTING live website. When they ask for that, do not refuse bluntly. Explain warmly that a change
 to a live site is made only by human hands, because an unsupervised change to a site their
@@ -951,6 +970,10 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             block = branding.prompt_block(client_id, _client_language(client_id, message))
             if block:
                 payload["branding"] = block
+            from core import seo_report
+            report_block = seo_report.prompt_block(client_id)
+            if report_block:
+                payload["seo_report"] = report_block
         except Exception as e:
             log_step(AGENT_NAME, "account_context", f"client {client_id}: branding block left out: {type(e).__name__}")
         return state

@@ -4375,6 +4375,10 @@ ACTIONS = {
 import sys as _sys
 from core import branding_actions as _branding_actions
 ACTIONS.update(_branding_actions.build(_sys.modules[__name__]))
+# The organic SEO report (free, part of the organic service) and the ONE
+# upgrade card for a package without it — core/seo_report_actions
+from core import seo_report_actions as _seo_report_actions
+ACTIONS.update(_seo_report_actions.build(_sys.modules[__name__]))
 
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",

@@ -1969,6 +1969,21 @@ a.media-item:hover { border-color: var(--accent); }
     <div id="perfTraffic"></div>
   </div>
 
+  <!-- The organic SEO report (core/seo_report): free, part of the organic service.
+       Not in the package → the button opens the chat, where ONE card explains the service -->
+  <div class="brand-box" id="seoBox" hidden>
+    <div class="brand-text">
+      <div class="brand-title" data-i18n="seo_box_title">דוח קידום אורגני</div>
+      <div class="brand-sub" id="seoBoxSub" dir="auto"></div>
+    </div>
+    <div class="brand-actions">
+      <button type="button" class="sugg-btn approve" id="seoBoxBtn" onclick="seoReportAsk()"></button>
+      <a class="media-chip" id="seoBoxView" target="_blank" rel="noopener" hidden data-i18n="seo_box_open">לפתוח את הדוח</a>
+      <a class="media-chip" id="seoBoxWord" hidden data-i18n="seo_box_word">הורדה כ-Word</a>
+      <a class="media-chip" id="seoBoxExcel" hidden data-i18n="seo_box_excel">הורדה כ-Excel</a>
+    </div>
+  </div>
+
   <div class="section-head">
     <div>
       <div class="section-title" data-i18n="paid_title">פרסום ממומן</div>
@@ -3070,6 +3085,18 @@ const DASH_I18N = {
   action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
   action_d_images: { he:'התמונות שלכם בדף', en:'Your photos on the page', fr:'Vos photos sur la page', ar:'صوركم في الصفحة', ru:'Ваши фото на странице' },
+  seo_box_title: { he:'דוח קידום אורגני', en:'Organic SEO report', fr:'Rapport de référencement naturel', ar:'تقرير تحسين محركات البحث', ru:'Отчёт по органическому продвижению' },
+  seo_box_sub_none: { he:'דוח מקצועי: מצב האתר, הזדמנויות במילות מפתח והזדמנויות לקישורים עם טיוטות פנייה מוכנות. חלק מהשירות שלכם, בלי תשלום נוסף.', en:'A professional report: the site\'s state, keyword opportunities and backlink opportunities with ready outreach drafts. Part of your service, at no extra charge.', fr:'Un rapport professionnel : état du site, opportunités de mots-clés et de liens avec des brouillons de messages. Inclus dans votre service, sans supplément.', ar:'تقرير مهني: حالة الموقع، فرص الكلمات المفتاحية وفرص الروابط مع مسودات رسائل جاهزة. جزء من خدمتكم دون رسوم إضافية.', ru:'Профессиональный отчёт: состояние сайта, возможности по ключевым словам и ссылкам с готовыми черновиками писем. Входит в вашу услугу, без доплаты.' },
+  seo_box_sub_ready: { he:'הדוח שלכם מ-{date} מוכן, עם {n} הזדמנויות לקישורים. שום פנייה לא נשלחת בלי אישור שלכם.', en:'Your report from {date} is ready, with {n} backlink opportunities. No message is sent without your approval.', fr:'Votre rapport du {date} est prêt, avec {n} opportunités de liens. Aucun message n\'est envoyé sans votre accord.', ar:'تقريركم بتاريخ {date} جاهز، مع {n} فرص للروابط. لا تُرسل أي رسالة دون موافقتكم.', ru:'Ваш отчёт от {date} готов: возможностей для ссылок — {n}. Ни одно письмо не уходит без вашего одобрения.' },
+  seo_box_sub_upgrade: { he:'הדוח הוא חלק משירות הקידום האורגני, שלא כלול כרגע בחבילה שלכם. הוא לא נמכר בנפרד.', en:'The report is part of the organic SEO service, which isn\'t in your package right now. It is never sold separately.', fr:'Le rapport fait partie du service de référencement naturel, absent de votre formule pour l\'instant. Il n\'est jamais vendu séparément.', ar:'التقرير جزء من خدمة التحسين المجاني غير المشمولة في باقتكم حاليًا. لا يُباع منفردًا.', ru:'Отчёт входит в услугу органического продвижения, которой сейчас нет в вашем пакете. Отдельно он не продаётся.' },
+  seo_box_btn_build: { he:'להכין לי את הדוח', en:'Prepare my report', fr:'Préparer mon rapport', ar:'جهّزوا تقريري', ru:'Подготовить отчёт' },
+  seo_box_btn_refresh: { he:'לעדכן את הדוח', en:'Update the report', fr:'Mettre à jour le rapport', ar:'تحديث التقرير', ru:'Обновить отчёт' },
+  seo_box_btn_upgrade: { he:'מה כולל הקידום האורגני?', en:'What does organic SEO include?', fr:'Que comprend le référencement naturel ?', ar:'ماذا يشمل التحسين المجاني؟', ru:'Что входит в органическое продвижение?' },
+  seo_box_open: { he:'לפתוח את הדוח', en:'Open the report', fr:'Ouvrir le rapport', ar:'فتح التقرير', ru:'Открыть отчёт' },
+  seo_box_word: { he:'הורדה כ-Word', en:'Download as Word', fr:'Télécharger en Word', ar:'تنزيل بصيغة Word', ru:'Скачать в Word' },
+  seo_box_excel: { he:'הורדה כ-Excel', en:'Download as Excel', fr:'Télécharger en Excel', ar:'تنزيل بصيغة Excel', ru:'Скачать в Excel' },
+  seo_chat_build: { he:'אני רוצה את דוח הקידום האורגני של העסק שלי', en:'I want the organic SEO report for my business', fr:'Je veux le rapport de référencement naturel de mon entreprise', ar:'أريد تقرير تحسين محركات البحث لعملي', ru:'Хочу отчёт по органическому продвижению моего бизнеса' },
+  seo_chat_upgrade: { he:'מה כולל שירות הקידום האורגני?', en:'What does the organic SEO service include?', fr:'Que comprend le service de référencement naturel ?', ar:'ماذا تشمل خدمة التحسين المجاني؟', ru:'Что входит в услугу органического продвижения?' },
   brand_title: { he:'איך העסק שלך ייראה תחת המיתוג הכי טוב שלו?', en:'How would your business look under its best branding?', fr:'À quoi ressemblerait votre entreprise sous sa meilleure identité ?', ar:'كيف سيبدو عملكم بأفضل هوية له؟', ru:'Как выглядел бы ваш бизнес с лучшим брендингом?' },
   brand_sub: { he:'ליאור מציע כיוון, ואתם רואים הדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר ואיך אתר יכול להיראות. הדמיות בלבד, עד שתחליטו.', en:'Lior suggests a direction and you see mockups: logo, business card, signage, flyer, poster and how a website could look. Mockups only, until you decide.', fr:'Lior propose une direction et vous voyez des maquettes : logo, carte de visite, enseigne, flyer, affiche et un aperçu de site. Des maquettes seulement, jusqu\'à votre décision.', ar:'ليئور يقترح اتجاهًا وأنتم ترون نماذج: شعار، بطاقة عمل، لافتة، منشور، ملصق وكيف يمكن أن يبدو الموقع. نماذج فقط إلى أن تقرروا.', ru:'Лиор предлагает направление, а вы видите макеты: логотип, визитку, вывеску, флаер, постер и вид сайта. Только макеты, пока вы не решите.' },
   brand_btn: { he:'להראות לי את המיתוג', en:'Show me my branding', fr:'Montrez-moi mon identité', ar:'أروني هويتي', ru:'Показать мой брендинг' },
@@ -9330,6 +9357,7 @@ let PERF_DATA = null;
 const PERF_CHANNEL_ORDER = ['google_ads', 'meta', 'tiktok', 'organic_seo', 'youtube',
                             'website_tracking', 'leads'];
 async function loadPerformance() {
+  loadSeoReport();   // the organic report box: its own small read, never blocks the numbers
   try {
     const res = await fetch('/api/client/performance', { credentials: 'same-origin' });
     if (res.status === 401) { window.location.href = '/login/'; return; }
@@ -9700,6 +9728,43 @@ function brandStart() {
   if (!w) return;
   setChatInput(w.inputEl, uallakI18n.t(d.approved ? 'brand_chat_produce' : d.attempts_used ? 'brand_chat_again' : 'brand_chat_msg'));
   sendInWindow('media');
+}
+
+// ─── The organic SEO report box (GET /api/client/seo-report, core/seo_report) ─
+let SEO_STATE = null;
+async function loadSeoReport() {
+  const box = document.getElementById('seoBox');
+  if (!box) return;
+  let d = null;
+  try {
+    const res = await fetch('/api/client/seo-report', { credentials: 'same-origin' });
+    const body = await res.json();
+    d = res.ok && body.success ? body.data : null;
+  } catch (e) { d = null; }
+  // a package we could not read: no box (never "not in your package" on a guess)
+  if (!d || !d.available || !d.package_readable) { box.hidden = true; return; }
+  SEO_STATE = d;
+  const t = uallakI18n.t;
+  const ready = d.covered_by_package && d.has_report;
+  document.getElementById('seoBoxSub').textContent = !d.covered_by_package ? t('seo_box_sub_upgrade')
+    : ready ? t('seo_box_sub_ready', { date: String(d.built_at || '').slice(0, 10), n: d.opportunities || 0 })
+    : t('seo_box_sub_none');
+  document.getElementById('seoBoxBtn').textContent = t(!d.covered_by_package ? 'seo_box_btn_upgrade'
+    : ready ? 'seo_box_btn_refresh' : 'seo_box_btn_build');
+  [['seoBoxView', '/api/client/seo-report/view'], ['seoBoxWord', '/api/client/seo-report/export?format=docx'],
+   ['seoBoxExcel', '/api/client/seo-report/export?format=xlsx']].forEach(([id, href]) => {
+    const a = document.getElementById(id);
+    a.hidden = !ready;
+    if (ready) a.href = href;
+  });
+  box.hidden = false;
+}
+function seoReportAsk() {
+  const d = SEO_STATE || {};
+  const w = openAgentWindow('website');
+  if (!w) return;
+  setChatInput(w.inputEl, uallakI18n.t(d.covered_by_package ? 'seo_chat_build' : 'seo_chat_upgrade'));
+  sendInWindow('website');
 }
 
 // The general concierge, not a specialist: automation isn't ads, site or media,
