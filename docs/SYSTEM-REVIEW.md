@@ -578,3 +578,13 @@ about $40; I stop and ask before passing it.
   SEO report's default focus.
 - 79/79 files pass. **Migration:** none. **Deploy:** needed.
 
+## Checkpoint 2026-11-16: home upgrade, Part 5 (the 3-month goal path)
+
+- After the goals are agreed, home shows a simple path with three steps: social run by Maya,
+  organic on the agreed keywords only, and what must improve. Each step shows the goal, where it
+  stands now and the next step.
+- "Now" uses real data: prepared media, measured keyword positions only when a source returned
+  them, articles, and leads 30 days against the 30 before. Each one is tagged measured or not
+  measured yet. No promise of results.
+- Docs: `docs/HOME-FOCUS.md` §4-5. **Migration:** none. **Deploy:** needed.
+

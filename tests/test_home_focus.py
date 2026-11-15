@@ -303,6 +303,71 @@ class Onboarding(unittest.TestCase):
                 self.assertIn(lang + ":", line)
 
 
+class GoalTrack(unittest.TestCase):
+    def setUp(self):
+        from core import content_team, quarter_goals as qg
+        self.qg = qg
+        self.db = FakeDB()
+        self.plan = {}
+        self.saved = [(qg, "_db", qg._db), (qg, "_positions", qg._positions),
+                      (content_team, "current", content_team.current)]
+        qg._db = lambda: self.db
+        qg._positions = lambda cid, words: {}
+        content_team.current = lambda cid: self.plan
+        now = datetime.now(timezone.utc)
+        self.recent = (now - timedelta(days=2)).isoformat()
+        self.old = (now - timedelta(days=40)).isoformat()
+
+    def tearDown(self):
+        for mod, name, value in self.saved:
+            setattr(mod, name, value)
+
+    def test_nothing_until_agreed(self):
+        self.assertEqual(self.qg.track(7, "en"), {})
+
+    def test_the_path_from_real_rows(self):
+        self.qg.save(7, ["divorce lawyer", "family mediation"], 3, "more calls")
+        self.db.tables["client_activity"] = [
+            {"client_id": 7, "action_type": "media_image_created", "created_at": self.recent},
+            {"client_id": 7, "action_type": "media_video_created", "created_at": self.recent},
+            {"client_id": 7, "action_type": "media_image_created", "created_at": self.old},       # outside 7 days
+            {"client_id": 7, "action_type": "seo_article_generated", "created_at": self.recent}]
+        self.db.tables["client_leads"] = [{"client_id": 7, "created_at": self.recent},
+                                          {"client_id": 7, "created_at": self.old}]
+        self.plan = {"status": "proposed"}
+        g = self.qg.track(7, "en")
+        self.assertEqual(g["month"], "Month 1 of 3")
+        social, organic, improve = g["steps"]
+        self.assertIn("3 items a week", social["goal"])
+        self.assertEqual(social["now"], "Measured: items prepared in the last 7 days: 2")
+        self.assertTrue(social["measured"])
+        self.assertEqual(social["next"], self.qg.T["social_next_approve"]["en"])
+        self.assertIn("divorce lawyer, family mediation", organic["goal"])
+        self.assertFalse(organic["measured"])          # no tracking source: said plainly
+        self.assertIn("last 30 days: 1", organic["now"])
+        self.assertEqual(organic["next"], self.qg.T["organic_next_site"]["en"])   # no site connected
+        self.assertIn("more calls", improve["goal"])
+        self.assertEqual(improve["now"], "Measured: enquiries in the last 30 days: 1 (the 30 days before: 1)")
+
+    def test_positions_only_when_measured(self):
+        self.qg.save(7, ["a b", "c d"], 2)
+        self.qg._positions = lambda cid, words: {"a b": 7.4}
+        organic = self.qg.track(7, "he")["steps"][1]
+        self.assertTrue(organic["measured"])
+        self.assertIn("1", organic["now"])
+
+    def test_words_in_five_languages_and_no_promise(self):
+        for table in self.qg.T.values():
+            self.assertEqual(set(table), set(LANGS))
+            for lang in LANGS:
+                self.assertNotRegex(table[lang], r"(?i)guarantee|we promise|מבטיחים|garanti")
+
+    def test_the_page_draws_it(self):
+        page = _src("dashboard", "client", "index.html")
+        for needle in ('id="goalTrack"', "function renderGoalTrack(", "gt_not_measured", "renderGoalTrack(d ? d.goals"):
+            self.assertIn(needle, page)
+
+
 class Wiring(unittest.TestCase):
     def test_routes_parity_and_staff_view(self):
         api = _src("core", "api_server.py")

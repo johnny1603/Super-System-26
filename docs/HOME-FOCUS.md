@@ -65,8 +65,8 @@ before you approve it".
    sends the original request to that agent.
 
 **In the chat:** the same check reaches every agent as `prerequisites` in the payload
-(`prompt_block`, cached 60 s), with each item's connect card. Its rule is
-`support_agent.PREREQ_RULE`.
+(`prompt_block`, cached 60 s), with each item's connect card. Its rule is the PREREQUISITES part
+of `support_agent.STUDIO_RULE`.
 
 ## 3. New-client focus: the first three tasks
 
@@ -90,4 +90,31 @@ before you approve it".
 
 **Fail closed:** a state that cannot be read (`known: false`) shows the normal home, never a
 focus mode built on a guess. In the staff view the task buttons are not drawn.
+
+## 4-5. The 3-month goals and their path on home
+
+Module: `core/quarter_goals.py`. Card: `agree_quarter_goals` (`core/quarter_goals_actions`).
+Store: app_settings `quarter_goals:<id>`.
+
+**The card:** after the characterisation the manager proposes ONE card with three tracks:
+- **Social:** posts a week, run by Maya.
+- **Organic:** the keywords, starting from the sales chat's `organic_target_phrases` and only
+  phrases the client agreed to.
+- **What must improve.**
+
+The click stores the goals, and a new card replaces them. Once agreed, the organic work focuses
+ONLY on those keywords: STUDIO_RULE, and the SEO report's default focus.
+
+**The path on home** (`track()`, `#goalTrack`): one step per track, each with the goal, where it
+stands now and the next step. The page shows the month (1-3) and one honesty line ("shared
+goals, not a promise").
+
+| Step | "Now" (measured) | "Now" (not measured) | Next step |
+|---|---|---|---|
+| Social | images and videos prepared in the last 7 days (activity rows) | — | from the week's plan: approve it / in production / ask Maya |
+| Organic | how many agreed phrases have a position, only when a tracking source really returned one | positions not measured yet, plus articles written in 30 days | connect the site / approve the next article |
+| Improve | enquiries in the last 30 days against the 30 before (`client_leads`) | — | answer every new enquiry quickly |
+
+Every "now" carries a measured / not-measured-yet tag. Nothing is estimated silently and nothing
+is promised.
 

@@ -1190,6 +1190,23 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
 .hf-task button { min-height: 44px; }
 .hf-lock { font-size: 13px; opacity: .85; }
 body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList { display: none !important; }
+/* The 3-month goal path (core/quarter_goals.track): goal, where it stands, next step */
+.goal-track { border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin: 0 0 24px; background: var(--panel); }
+.goal-track[hidden] { display: none; }
+.gt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.gt-title { font-weight: 800; font-size: 16px; }
+.gt-month { font-size: 12.5px; color: #FF4C1F; font-weight: 700; }
+.gt-steps { display: grid; gap: 0; }
+.gt-step { display: flex; gap: 12px; padding: 0 0 16px; position: relative; }
+.gt-step:not(:last-child)::after { content: ""; position: absolute; inset-inline-start: 21px; top: 46px; bottom: 4px;
+  border-inline-start: 2px dashed rgba(255,76,31,.45); }
+.gt-step .bh-face { width: 44px; height: 44px; }
+.gt-body { flex: 1; min-width: 0; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.5; }
+.gt-goal { font-weight: 700; font-size: 14.5px; }
+.gt-tag { display: inline-block; font-size: 11.5px; border-radius: 999px; padding: 1px 8px; margin-inline-start: 6px;
+  border: 1px solid var(--border); opacity: .9; }
+.gt-tag.measured { border-color: rgba(34,197,94,.6); }
+.gt-honest { font-size: 12.5px; opacity: .8; }
 /* Agent invitation cards (home, core/home_focus): the same look as the branding
    banner — the agent's face + one persuasive line + a chevron. At most three. */
 .agent-invites { display: grid; gap: 10px; margin: -8px 0 24px; }
@@ -1575,6 +1592,13 @@ a.media-item:hover { border-color: var(--accent); }
   <!-- Agent invitations (core/home_focus): one card per real service the client has not started.
        A click opens that agent's chat; missing connections are asked for first. -->
   <div class="agent-invites" id="agentInvites" hidden></div>
+
+  <!-- The agreed 3-month goals as a path (core/quarter_goals): real data where it exists, labelled -->
+  <section class="goal-track" id="goalTrack" hidden aria-labelledby="gtTitle">
+    <div class="gt-head"><span class="gt-title" id="gtTitle"></span><span class="gt-month" id="gtMonth"></span></div>
+    <div class="gt-steps" id="gtSteps"></div>
+    <div class="gt-honest" id="gtHonest"></div>
+  </section>
 
   <div class="stat-grid" id="statGridMain">
     <div class="stat-card">
@@ -3296,6 +3320,10 @@ const DASH_I18N = {
   hf_goals_opener: { he:"בואו נסכם את היעדים שלנו ל-3 החודשים הקרובים.", en:"Let's agree on our goals for the next 3 months.", fr:"Convenons de nos objectifs pour les 3 prochains mois.", ar:"لنتفق على أهدافنا للأشهر الثلاثة القادمة.", ru:"Давайте согласуем наши цели на ближайшие 3 месяца." },
   hf_done: { he:"בוצע ✓", en:"Done ✓", fr:"Fait ✓", ar:"تم ✓", ru:"Готово ✓" },
   hf_lock: { he:"עוד {n} רעיונות והצעות מחכים לכם, ויפתחו כשהבסיס מוכן.", en:"{n} more ideas and suggestions are waiting for you and will open once the basics are set.", fr:"{n} autres idées et suggestions vous attendent et s'ouvriront une fois l'essentiel en place.", ar:"{n} أفكار واقتراحات أخرى بانتظاركم وستُفتح عند جاهزية الأساس.", ru:"Ещё {n} идей и предложений ждут вас и откроются, когда основа будет готова." },
+  gt_now: { he:"איפה זה עומד:", en:"Where it stands:", fr:"Où on en est :", ar:"أين نقف:", ru:"Где мы сейчас:" },
+  gt_next: { he:"הצעד הבא:", en:"Next step:", fr:"Prochaine étape :", ar:"الخطوة التالية:", ru:"Следующий шаг:" },
+  gt_measured: { he:"נמדד", en:"measured", fr:"mesuré", ar:"مقاس", ru:"измерено" },
+  gt_not_measured: { he:"עוד לא נמדד", en:"not measured yet", fr:"pas encore mesuré", ar:"لم يُقس بعد", ru:"пока не измерено" },
   invite_failed: { he:"לא הצלחתי לפתוח את השיחה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open the conversation right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir la conversation pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح المحادثة الآن. حاولوا مجددًا بعد لحظة.", ru:"Не удалось открыть разговор. Попробуйте ещё раз через минуту." },
   prereq_connect: { he:"לחבר: {what}", en:"Connect: {what}", fr:"Connecter : {what}", ar:"ربط: {what}", ru:"Подключить: {what}" },
   bs_title: { he:"סטודיו המיתוג", en:"Branding studio", fr:"Studio d'identité", ar:"استوديو الهوية", ru:"Студия брендинга" },
@@ -9923,6 +9951,37 @@ async function connectViaChat(key, step) {
   }
   if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
   if (data.connected) loadDashboard();
+}
+
+// ─── The 3-month goal path (home-focus .goals, core/quarter_goals.track) ──────
+// Goal → where it stands (measured, or said plainly that it isn't yet) → next
+// step. Every text is the server's, put in as TEXT.
+const GT_FACE = { meta: 'maya', website: 'uri', google: 'yoav', media: 'lior' };
+function renderGoalTrack(g) {
+  const box = document.getElementById('goalTrack');
+  if (!box) return;
+  if (!g || !g.agreed || !Array.isArray(g.steps) || !g.steps.length) { box.hidden = true; return; }
+  const t = uallakI18n.t;
+  document.getElementById('gtTitle').textContent = g.title || '';
+  document.getElementById('gtMonth').textContent = g.month || '';
+  document.getElementById('gtHonest').textContent = g.honest || '';
+  const steps = document.getElementById('gtSteps');
+  steps.textContent = '';
+  g.steps.forEach(st => {
+    const row = bsEl('div', 'gt-step');
+    const face = bsEl('span', 'bh-face');
+    if (GT_FACE[st.persona]) face.innerHTML = faceHtml(GT_FACE[st.persona], t('persona_name_' + st.persona).charAt(0));
+    else { const m = personaMeta('general'); face.innerHTML = faceHtml(m.face, m.initial); }
+    const body = bsEl('div', 'gt-body');
+    body.appendChild(bsEl('div', 'gt-goal', st.goal || ''));
+    const now = bsEl('div', '', t('gt_now') + ' ' + (st.now || ''));
+    now.appendChild(bsEl('span', 'gt-tag' + (st.measured ? ' measured' : ''), t(st.measured ? 'gt_measured' : 'gt_not_measured')));
+    body.appendChild(now);
+    body.appendChild(bsEl('div', '', t('gt_next') + ' ' + (st.next || '')));
+    row.append(face, body);
+    steps.appendChild(row);
+  });
+  box.hidden = false;
 }
 
 // ─── The first tasks (home_focus.onboarding) ─────────────────────────────────
