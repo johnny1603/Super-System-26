@@ -1183,6 +1183,21 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
 .brand-state { margin-top: 6px; font-weight: 700; opacity: 1; }
 .brand-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .brand-actions a { text-decoration: none; }
+/* The weekly content plan (Media tab): one row per item, wraps on a phone */
+.plan-box { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 18px; background: var(--panel-2); }
+.plan-box[hidden] { display: none; }
+.plan-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.plan-items { display: grid; gap: 10px; margin-top: 12px; }
+.plan-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.plan-item.today { border-color: rgba(255,76,31,.6); }
+.plan-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 12.5px; opacity: .85; align-items: center; }
+.plan-meta b { opacity: 1; }
+.plan-pill { border: 1px solid var(--border); border-radius: 99px; padding: 1px 9px; font-size: 12px; }
+.plan-item-title { font-weight: 700; margin: 4px 0 2px; overflow-wrap: anywhere; }
+.plan-mode, .plan-note { font-size: 12.5px; opacity: .8; line-height: 1.5; }
+.plan-caption { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(127,127,127,.12);
+  border-radius: 8px; padding: 6px 8px; margin-top: 6px; }
+.plan-note { margin-top: 10px; }
 .ml-search { flex: 1 1 220px; min-width: 0; min-height: 40px; background: var(--panel-2); border: 1px solid var(--border);
   color: var(--white); border-radius: 9px; padding: 8px 12px; font: inherit; font-size: 14px; }
 .ml-select { flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 40px; background: var(--panel-2);
@@ -2198,6 +2213,20 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 
+  <!-- The weekly content plan (core/content_team): one plan, approved as a whole in one card;
+       every item says how it gets published. Texts of the items come from the server. -->
+  <div class="plan-box" id="planBox" hidden>
+    <div class="plan-head">
+      <div class="brand-text">
+        <div class="brand-title" data-i18n="plan_title">תוכנית התוכן השבועית</div>
+        <div class="brand-sub" id="planSub" dir="auto"></div>
+      </div>
+      <button type="button" class="sugg-btn approve" id="planBtn" onclick="planAsk()"></button>
+    </div>
+    <div class="plan-items" id="planItems"></div>
+    <div class="plan-note" id="planNote" dir="auto"></div>
+  </div>
+
   <!-- The client's WHOLE Drive media tree, searchable (core/media_library.py,
        the same matcher as the agents' find_media_file: core/media_search.py) -->
   <div class="drive-mirror" id="driveMirror">
@@ -3104,6 +3133,17 @@ const DASH_I18N = {
   brand_btn_produce: { he:'לקבל הצעת מחיר לייצור', en:'Get a production quote', fr:'Recevoir un devis de production', ar:'الحصول على عرض سعر للإنتاج', ru:'Получить цену на производство' },
   brand_view: { he:'ההדמיות האחרונות', en:'Latest mockups', fr:'Dernières maquettes', ar:'أحدث النماذج', ru:'Последние макеты' },
   brand_state_left: { he:'נשארו {left} מתוך {free} ניסיונות בחינם', en:'{left} of {free} free attempts left', fr:'Il reste {left} essais gratuits sur {free}', ar:'بقي {left} من {free} محاولات مجانية', ru:'Осталось бесплатных попыток: {left} из {free}' },
+  plan_title: { he:'תוכנית התוכן השבועית', en:'The weekly content plan', fr:'Le plan de contenu hebdomadaire', ar:'خطة المحتوى الأسبوعية', ru:'Недельный план контента' },
+  plan_sub_none: { he:'מאיה מתכננת את השבוע, ליאור מפיק, ואתם מאשרים את כל התוכנית בכרטיס אחד.', en:'Maya plans the week, Lior produces it, and you approve the whole plan in one card.', fr:'Maya planifie la semaine, Lior produit, et vous validez tout le plan en une seule carte.', ar:'مايا تخطط للأسبوع، ليئور ينتج، وأنتم توافقون على الخطة كلها في بطاقة واحدة.', ru:'Майя планирует неделю, Лиор готовит материалы, а вы одобряете весь план одной карточкой.' },
+  plan_sub_proposed: { he:'התוכנית מוכנה ומחכה לאישור אחד שלכם.', en:'The plan is ready and waiting for your one approval.', fr:'Le plan est prêt et attend votre validation.', ar:'الخطة جاهزة وتنتظر موافقتكم الواحدة.', ru:'План готов и ждёт одного вашего одобрения.' },
+  plan_sub_approved: { he:'אישרתם את התוכנית ✓ כך היא מתקדמת:', en:'You approved the plan ✓ Here is how it is going:', fr:'Vous avez validé le plan ✓ Voici où il en est :', ar:'وافقتم على الخطة ✓ هكذا تتقدم:', ru:'Вы одобрили план ✓ Вот как он продвигается:' },
+  plan_btn_build: { he:'להכין לי תוכנית לשבוע', en:'Prepare my plan for the week', fr:'Préparer mon plan de la semaine', ar:'جهّزوا لي خطة الأسبوع', ru:'Подготовить план на неделю' },
+  plan_btn_review: { he:'לראות ולאשר', en:'Review and approve', fr:'Voir et valider', ar:'عرض وموافقة', ru:'Посмотреть и одобрить' },
+  plan_today: { he:'היום', en:'Today', fr:"Aujourd'hui", ar:'اليوم', ru:'Сегодня' },
+  plan_copy: { he:'להעתיק את הכיתוב', en:'Copy the caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
+  plan_copied: { he:'הועתק ✓', en:'Copied ✓', fr:'Copié ✓', ar:'تم النسخ ✓', ru:'Скопировано ✓' },
+  plan_chat_build: { he:'אשמח לתוכנית תוכן לשבוע הקרוב', en:'I would like a content plan for the coming week', fr:'Je voudrais un plan de contenu pour la semaine à venir', ar:'أرغب في خطة محتوى للأسبوع القادم', ru:'Хочу план контента на ближайшую неделю' },
+  plan_chat_review: { he:'אשמח לראות את תוכנית התוכן שמחכה לאישור', en:'I would like to see the content plan that is waiting for approval', fr:'Je voudrais voir le plan de contenu en attente de validation', ar:'أرغب في رؤية خطة المحتوى التي تنتظر الموافقة', ru:'Хочу посмотреть план контента, который ждёт одобрения' },
   brand_state_none: { he:'הניסיונות שבחינם נוצלו. אפשר לאשר כיוון שראיתם, או לדבר עם ליאור.', en:'The free attempts are used. You can approve a direction you saw, or talk to Lior.', fr:'Les essais gratuits sont utilisés. Vous pouvez valider une direction vue, ou en parler à Lior.', ar:'استُخدمت المحاولات المجانية. يمكن اعتماد اتجاه رأيتموه أو التحدث مع ليئور.', ru:'Бесплатные попытки использованы. Можно утвердить увиденное направление или написать Лиору.' },
   brand_state_approved: { he:'אישרתם כיוון ✓ ערכת המותג שלכם שמורה ומשמשת בדפי הנחיתה, בסרטונים ובפוסטים.', en:'Direction approved ✓ Your brand kit is saved and used in your landing pages, videos and posts.', fr:'Direction validée ✓ Votre kit de marque est enregistré et utilisé dans vos pages, vidéos et publications.', ar:'تم اعتماد الاتجاه ✓ عدّة علامتكم محفوظة وتُستخدم في صفحات الهبوط والفيديوهات والمنشورات.', ru:'Направление утверждено ✓ Бренд-кит сохранён и используется в лендингах, видео и постах.' },
   brand_chat_msg: { he:'אני רוצה לראות איך העסק שלי ייראה תחת המיתוג הכי טוב שלו', en:'I want to see how my business would look under its best branding', fr:'Je veux voir à quoi ressemblerait mon entreprise sous sa meilleure identité', ar:'أريد أن أرى كيف سيبدو عملي بأفضل هوية له', ru:'Хочу увидеть, как мой бизнес выглядел бы с лучшим брендингом' },
@@ -8668,6 +8708,7 @@ async function loadLibrary(opts) {
   const seq = ++driveMirror.seq;          // a newer search replaces an older answer
   const grid = document.getElementById('driveMirrorGrid');
   if (!opts.append && !opts.silent) loadBranding();   // the branding box above the list (its own small read)
+  if (!opts.append && !opts.silent) loadContentPlan();   // the weekly plan box (its own small read)
   if (!opts.silent && !opts.append) {
     mlNote(opts.refresh ? t('ml_checking') : '');
     if (!driveMirror.files.length) {
@@ -9728,6 +9769,67 @@ function brandStart() {
   if (!w) return;
   setChatInput(w.inputEl, uallakI18n.t(d.approved ? 'brand_chat_produce' : d.attempts_used ? 'brand_chat_again' : 'brand_chat_msg'));
   sendInWindow('media');
+}
+
+// ─── The weekly content plan box (GET /api/client/content-plan, core/content_team) ─
+// Read-only here: the ONE approval is the card in the chat. Every text of an
+// item is the server's (already in the client's language) and goes in as text.
+let PLAN_STATE = null;
+async function loadContentPlan() {
+  const box = document.getElementById('planBox');
+  if (!box) return;
+  let d = null;
+  try {
+    const res = await fetch('/api/client/content-plan?lang=' + encodeURIComponent(uallakI18n.current()),
+                            { credentials: 'same-origin' });
+    const body = await res.json();
+    d = res.ok && body.success ? body.data : null;
+  } catch (e) { d = null; }
+  if (!d || !d.available) { box.hidden = true; return; }
+  PLAN_STATE = d;
+  const t = uallakI18n.t;
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls;
+                                   if (text != null) n.textContent = text; return n; };
+  document.getElementById('planSub').textContent = t(!d.has_plan ? 'plan_sub_none'
+    : d.status === 'approved' ? 'plan_sub_approved' : 'plan_sub_proposed');
+  const btn = document.getElementById('planBtn');
+  btn.hidden = !!d.has_plan && d.status === 'approved';
+  btn.textContent = t(d.has_plan ? 'plan_btn_review' : 'plan_btn_build');
+  const list = document.getElementById('planItems');
+  list.textContent = '';
+  (d.has_plan ? d.items || [] : []).forEach(item => {
+    const row = el('div', 'plan-item' + (item.is_today ? ' today' : ''));
+    row.dir = 'auto';
+    const meta = el('div', 'plan-meta');
+    meta.appendChild(el('b', '', item.is_today ? t('plan_today') + ' · ' + item.day : item.day));
+    meta.appendChild(el('span', '', item.channel));
+    meta.appendChild(el('span', '', item.format));
+    meta.appendChild(el('span', 'plan-pill', item.status_text));
+    row.appendChild(meta);
+    row.appendChild(el('div', 'plan-item-title', item.title));
+    row.appendChild(el('div', 'plan-mode', item.mode_text));
+    if (item.caption) {
+      row.appendChild(el('div', 'plan-caption', item.caption));
+      const copy = el('button', 'media-chip', t('plan_copy'));
+      copy.type = 'button';
+      copy.style.marginTop = '6px';
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(item.caption); copy.textContent = t('plan_copied'); } catch (e) {}
+      });
+      row.appendChild(copy);
+    }
+    list.appendChild(row);
+  });
+  document.getElementById('planNote').textContent = d.has_plan ? [d.team, d.note].filter(Boolean).join(' ') : '';
+  box.hidden = false;
+}
+function planAsk() {
+  const d = PLAN_STATE || {};
+  const persona = d.has_plan && (d.persona === 'meta' || d.persona === 'media') ? d.persona : 'media';
+  const w = openAgentWindow(persona);
+  if (!w) return;
+  setChatInput(w.inputEl, uallakI18n.t(d.has_plan ? 'plan_chat_review' : 'plan_chat_build'));
+  sendInWindow(persona);
 }
 
 // ─── The organic SEO report box (GET /api/client/seo-report, core/seo_report) ─

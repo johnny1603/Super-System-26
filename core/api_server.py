@@ -6219,6 +6219,15 @@ def client_branding_view(attempt: int, request: Request):
         raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
     return HTMLResponse(page, headers=brand_mockups.page_headers())
 
+# ─── The weekly content plan (core/content_team): one plan, one approval card ───
+@app.get("/api/client/content-plan")
+def client_content_plan(request: Request):
+    client_id = _require_session(request)
+    from core import content_team
+    lang = request.query_params.get("lang") or "he"
+    return {"success": True, "data": content_team.view(client_id, lang)}
+
+
 # ─── The organic SEO report (core/seo_report) — free, part of the organic service ───
 @app.get("/api/client/seo-report")
 def client_seo_report(request: Request):

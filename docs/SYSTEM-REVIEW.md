@@ -475,3 +475,24 @@ about $40; I stop and ask before passing it.
 - **NOT tested:** a real model writing a report, a real web search, the Open PageRank call,
   the box with a logged-in client, the exports opened in Word / Excel, a phone, RTL by eye.
 - **Migration:** none. **Deploy:** needed.
+
+## Checkpoint R3-3 — מאיה and ליאור as one team
+
+- **Built:** one weekly content plan (`docs/CONTENT-TEAM.md`). מאיה plans (day, channel,
+  format, ready caption), the client approves the WHOLE plan in one card, ליאור produces every
+  item in the background, the Media tab shows the plan with each item's status and caption.
+- **Shared:** the planning call gets the approved brand kit, the client's recent media files
+  and the connected channels. Every agent's data carries the plan and the kit.
+- **Saturday run:** opens the one card. Falls back to the old per-item suggestions only if the
+  card cannot be opened.
+- **Publishing, honest:** auto-publishing is off on every channel (Meta verification, TikTok
+  approval). Each item says "we prepare and schedule, you publish in one tap" or "waits in
+  your media library". No auto-publish code exists yet, on purpose.
+- **Agent rules:** never send the client to another agent; never "I can't" for what the team
+  does; inspiration is research only, never a copy of a competitor's material.
+- **Tests:** `tests/test_content_team.py`, 22 tests.
+- **NOT tested:** a real planning call, real production from an approved plan, the Saturday
+  run live, the box and the card with a logged-in client, a phone, RTL by eye.
+- **Not built:** auto-publishing, a reminder on the item's day, editing one item of a waiting
+  plan (a change writes a new plan).
+- **Migration:** none. **Deploy:** needed.

@@ -810,13 +810,35 @@ Propose 2-3 concrete MEDIA items for the coming week. Each must be:
   kit for them to film).
 Respect sensitive calendar events: near one, propose toned-down content, not promotions.
 
-Rules: don't repeat recent titles. Hebrew only (this surfaces in the Hebrew dashboard).
+ONE TEAM, ONE PLAN: this is the week's plan the client approves as a WHOLE in one card. The
+social specialist plans and schedules it, the creative specialist produces it. So every item
+also gets its DAY and a ready CAPTION:
+- day: 0-6 (0 = Sunday ... 6 = Saturday), spread over the week, never on Saturday, and not on a
+  sensitive calendar day.
+- caption: the post text for that channel, ready to publish, max 60 words, in the client's
+  language, with at most 3 hashtags. No invented facts, prices or offers — only what the
+  business context states. Empty for a website image.
+- brand_kit, when provided, is the client's APPROVED brand (colours, style): the visuals follow
+  it; never propose a look that fights it.
+- media_library_recent, when provided, are files the client already has: prefer building on a
+  real file of theirs (name it in the body) over generating from nothing.
+- publishing_by_channel says which channels are connected. Prefer connected channels.
+
+client_request, when present, is what the client asked this plan to focus on or to change:
+follow it.
+
+INSPIRATION IS RESEARCH ONLY: never copy a competitor's ad, creative, slogan, character, music
+or trademarked material, and never name a competitor in a title, body or caption.
+
+Rules: don't repeat recent titles. Write every text in the language named in "language"
+(Hebrew when missing).
 HARD LIMITS: max 3 items; title max 10 words; body 2-3 sentences ending with what we'll
 prepare once they approve.
 
 Return JSON only:
-{"items": [{"title": "Hebrew", "body": "Hebrew", "format": "image|video|self_filmed",
-            "platform": "instagram|facebook|tiktok|website", "event_slug": ""}]}"""
+{"items": [{"title": "", "body": "", "format": "image|video|self_filmed",
+            "platform": "instagram|facebook|tiktok|youtube|website", "day": 2, "caption": "",
+            "event_slug": ""}]}"""
 
 
 def _recent_media_plan_exists(client_id: int) -> bool:
@@ -827,12 +849,37 @@ def _recent_media_plan_exists(client_id: int) -> bool:
     return bool(rows)
 
 
-def _checkin_for_client(client: dict, events: list) -> int:
-    """One client's Saturday check-in: plan → client_suggestions rows
-    (kind=media_plan) → chat nudge. Returns items stored."""
+def _team_context(client_id: int) -> dict:
+    """What makes the plan a TEAM plan: the approved brand kit, the files the
+    client already has, and where publishing really stands. Every piece is
+    optional — the sacred Saturday run must never fail on one of them."""
+    out = {}
+    try:
+        from core import branding
+        kit = branding.kit_for_prompt(client_id)
+        if kit:
+            out["brand_kit"] = kit
+    except Exception as e:
+        log_step(AGENT_NAME, "weekly_plan", f"client {client_id}: brand kit skipped: {type(e).__name__}")
+    try:
+        from core import drive_mirror
+        names = [f.get("name") for kind in ("video", "image") for f in drive_mirror.newest(client_id, kind, limit=6)]
+        if names:
+            out["media_library_recent"] = [n for n in names if n][:12]
+    except Exception as e:
+        log_step(AGENT_NAME, "weekly_plan", f"client {client_id}: media library skipped: {type(e).__name__}")
+    try:
+        from core import content_team
+        out["publishing_by_channel"] = {c: m for c, m in content_team.channel_modes(client_id).items() if c != "website"}
+    except Exception as e:
+        log_step(AGENT_NAME, "weekly_plan", f"client {client_id}: channels skipped: {type(e).__name__}")
+    return out
+
+
+def plan_week(client: dict, events: list, request: str = "") -> list:
+    """ONE planning call → the week's raw items (the Saturday run and the
+    chat's `build_content_plan` card both use it)."""
     client_id = client["id"]
-    if _recent_media_plan_exists(client_id):
-        return 0
     # Reuse the engagement engine's context builder — calendar + performance +
     # business context, one source of truth (no second trend mechanism)
     from agents.engagement_agent import _client_context
@@ -843,11 +890,63 @@ def _checkin_for_client(client: dict, events: list) -> int:
     research = competitor_research.summary_for_prompt(client_id, "media")
     if research:
         payload["competitor_research"] = research
-    result = safe_claude_json_call(WEEKLY_PLAN_SYSTEM, json.dumps(payload, ensure_ascii=False),
-                                   max_tokens=900, client_id=client_id,
+    payload["language"] = client.get("language") or "he"
+    if request:
+        payload["client_request"] = str(request)[:300]
+    payload.update(_team_context(client_id))
+    result = safe_claude_json_call(WEEKLY_PLAN_SYSTEM, json.dumps(payload, ensure_ascii=False, default=str),
+                                   max_tokens=1500, client_id=client_id,
                                    cost_category="claude_media")
+    return (result.get("items") or [])[:3]
+
+
+def _propose_team_plan(client_id: int, items: list, lang: str) -> int:
+    """The whole week as ONE approval card (core/content_team). 0 when the
+    card could not be opened — the caller then falls back to per-item rows."""
+    from core import content_team
+    out = content_team.propose(client_id, items, lang)
+    plan = out.get("plan") or {}
+    if not out.get("card") or not plan:
+        return 0
+    from agents.client_agent import log_activity, log_communication
+    from agents.support_agent import persona_channel
+    titles = [i["title"] for i in plan["items"]]
+    log_activity(client_id, AGENT_NAME, "media_plan_proposed",
+                 {"count": len(titles), "titles": titles, "one_card": True}, {})
+    log_communication(client_id, "outbound", persona_channel(plan.get("persona") or "media"),
+                      content_team.pick(content_team.TEXT["nudge"], plan.get("language") or lang))
+    return len(titles)
+
+
+def _checkin_for_client(client: dict, events: list) -> int:
+    """One client's Saturday check-in: plan → ONE approval card for the whole
+    week (core/content_team). Falls back to the older per-item
+    client_suggestions rows (kind=media_plan) only if that card cannot be
+    opened. Returns items stored."""
+    client_id = client["id"]
+    if _recent_media_plan_exists(client_id):
+        return 0
+    try:
+        from core import content_team
+        if content_team.open_plan(client_id):
+            return 0
+    except Exception as e:
+        log_step(AGENT_NAME, "weekly_plan", f"client {client_id}: open-plan check skipped: {type(e).__name__}")
+    items = plan_week(client, events)
+    try:
+        count = _propose_team_plan(client_id, items, client.get("language") or "he")
+    except Exception as e:
+        count = 0
+        log_step(AGENT_NAME, "weekly_plan", f"client {client_id}: one-card plan failed ({type(e).__name__}), "
+                                            "falling back to per-item suggestions")
+    if count:
+        try:
+            send_trend_examples(client_id)
+        except Exception as e:
+            log_step(AGENT_NAME, "trend_examples", f"client {client_id}: skipped during weekly check-in: {e}")
+        return count
     stored = []
-    for item in (result.get("items") or [])[:3]:
+    for item in items:
         title, body = (item.get("title") or "").strip(), (item.get("body") or "").strip()
         if not title or not body:
             continue
@@ -870,10 +969,8 @@ def _checkin_for_client(client: dict, events: list) -> int:
                           'אשרו מה שמתאים באזור "ממתין לאישור שלך" — ומיד נתחיל להכין. '
                           "רוצים משהו אחר? כתבו לי כאן.")
         # Same beat, the other half of the promise: the plan says what we'll
-        # make, the examples show what is already working in their niche. The
-        # research it reads is the one this check-in just used, so it is a
-        # cache hit, not a second paid pass. Fully swallowed: an example
-        # message is a bonus, and the sacred run must never fail because of it.
+        # make, the examples show what is already working in their niche.
+        # Fully swallowed: the sacred run must never fail because of it.
         try:
             send_trend_examples(client_id)
         except Exception as e:

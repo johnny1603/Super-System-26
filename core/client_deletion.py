@@ -969,7 +969,9 @@ def _settings_keys(ids: list) -> list:
                                      # branding attempts + the approved brand kit (core/branding)
                                      f"branding:{int(i)}", f"brand_kit:{int(i)}",
                                      # the stored organic SEO report (core/seo_report)
-                                     f"seo_report:{int(i)}")]
+                                     f"seo_report:{int(i)}",
+                                     # the weekly content plan (core/content_team)
+                                     f"content_plan:{int(i)}")]
 
 
 def _clear_settings(ids: list):

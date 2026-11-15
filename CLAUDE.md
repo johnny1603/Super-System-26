@@ -834,6 +834,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `core/dataforseo_connector` is written and DISABLED (`ENABLED = False` constant) — never
   call it or add a key without the owner. Cards in `core/seo_report_actions`; rule in
   `support_agent.STUDIO_RULE`; app_settings `seo_report:<id>`. `tests/test_seo_report.py`.
+- **Content team (2026-11-15, `docs/CONTENT-TEAM.md`)**: מאיה + ליאור = ONE weekly plan
+  (`core/content_team`, app_settings `content_plan:<id>`): `media_agent.plan_week` (brand kit +
+  recent media files + channel modes in the prompt) → ONE card `approve_content_plan` for the
+  whole week → `produce()` in the background via the existing media_agent functions. The
+  Saturday run opens that card; per-item `client_suggestions` rows are only the fallback.
+  **`AUTO_PUBLISH` is False everywhere and the module has NO publish call on purpose** — do not
+  add one or flip it without the owner and a tested path; every item states its mode
+  (`client_publishes` / `not_connected` / `library`). Chat entry: `build_content_plan` (any
+  agent). Rules in `support_agent.STUDIO_RULE` (ONE TEAM: never send the client to another
+  agent; inspiration is research only). `tests/test_content_team.py`.
 - **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
   microphone in each client chat window; the BROWSER's speech recognition turns speech into text
   in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is
