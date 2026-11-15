@@ -266,3 +266,24 @@ clients, client state, code); Cloud Run/logs answer "no permission yet" and Tier
   manual Cloud Shell deploys show "unknown".
 - Nothing here has run against live GCP/GitHub yet — the API shapes are from the docs; the
   likeliest first-run fix is an IAM permission the script missed.
+
+## Conversations: archive, read, delete (2026-11-16)
+
+`core/operator_threads`. The 🗂 button in איציק's header opens the panel.
+
+- **➕ New conversation** archives the current one. Nothing is deleted. His memory
+  (`history()`) starts from the new conversation.
+- **Archive list:** each entry shows its title (your first line), its dates and its size, with
+  "open to read" (read-only).
+- **Delete…** works only on an archived conversation. You type "מחק" in the page (no browser
+  dialog) and press a second button. Only that conversation's message rows go. Saved reports
+  stay.
+- **Audit:** both archive and delete are written to the operator audit (alerts, source
+  "operator") BEFORE they happen; no audit row means nothing happens. The audit log, the three
+  tiers and the emailed codes are not touched.
+- **Storage:** no migration. Conversations are time ranges of `operator_messages`, with the
+  bookkeeping in app_settings `operator_threads`. The 30-day prune is unchanged.
+- **Routes** (admin session): `GET /api/admin/operator/conversations`,
+  `POST …/conversations/archive`, `GET …/conversations/{id}`, `POST …/conversations/{id}/delete`
+  `{confirm}`.
+- **Tests:** `tests/test_operator_threads.py`.

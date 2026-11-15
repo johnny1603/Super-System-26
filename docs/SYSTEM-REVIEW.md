@@ -672,3 +672,11 @@ about $40; I stop and ask before passing it.
 - Limit: the cap applies to the idea feed. The invitation cards already cap themselves at 3, and
   chat cards are per conversation.
 - 82/82 files pass. **Migration:** none. **Deploy:** needed.
+
+### Part 7 — איציק: archive and delete conversations
+
+- "New conversation" archives the current thread; nothing is deleted. Archived ones can be read.
+  Delete works only on an archived one, with the typed phrase "מחק". Reports stay. Archive and
+  delete are audited before they run, and the audit log, tiers and emailed codes are unchanged.
+- No migration (time ranges + app_settings). `tests/test_operator_threads.py`.
+- **Deploy:** needed.

@@ -640,8 +640,14 @@ def history(limit: int = 60) -> list:
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=HISTORY_DAYS)).isoformat()
         _db().table(TABLE).delete().lt("created_at", cutoff).execute()
-        rows = (_db().table(TABLE).select("id, created_at, role, kind, content, cards")
-                .order("id", desc=True).limit(int(limit)).execute().data or [])
+        # The CURRENT conversation only: an archived one is read on its own
+        # (core/operator_threads) and is not his memory any more
+        from core import operator_threads
+        start = operator_threads.current_started_at()
+        query = _db().table(TABLE).select("id, created_at, role, kind, content, cards")
+        if start:
+            query = query.gte("created_at", start)
+        rows = query.order("id", desc=True).limit(int(limit)).execute().data or []
     except Exception:
         return []
     return list(reversed(rows))

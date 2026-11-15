@@ -7320,6 +7320,53 @@ def operator_messages(request: Request):
     from core import operator_agent
     return {"success": True, "data": operator_agent.history()}
 
+# ─── איציק's conversations: archive first, delete only an archived one ───────
+# (core/operator_threads). Each is audited BEFORE it happens; the action audit
+# and the approval tiers are untouched.
+class OperatorThreadDeleteRequest(BaseModel):
+    confirm: str = ""
+
+def _thread_error(e):
+    return HTTPException(status_code=400, detail={"code": e.code})
+
+@app.get("/api/admin/operator/conversations")
+def operator_conversations(request: Request):
+    _operator_admin(request)
+    from core import operator_threads
+    return {"success": True, "data": {"archived": operator_threads.archived(),
+                                      "current_started_at": operator_threads.current_started_at()}}
+
+@app.post("/api/admin/operator/conversations/archive")
+def operator_conversation_archive(request: Request):
+    _, who = _operator_admin(request)
+    from core import operator_actions, operator_threads
+    try:
+        return {"success": True, "data": operator_threads.archive(who)}
+    except operator_threads.ThreadError as e:
+        raise _thread_error(e)
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
+@app.get("/api/admin/operator/conversations/{thread_id}")
+def operator_conversation_read(thread_id: str, request: Request):
+    _operator_admin(request)
+    from core import operator_threads
+    try:
+        return {"success": True, "data": operator_threads.read(thread_id)}
+    except operator_threads.ThreadError as e:
+        raise _thread_error(e)
+
+@app.post("/api/admin/operator/conversations/{thread_id}/delete")
+def operator_conversation_delete(thread_id: str, req: OperatorThreadDeleteRequest, request: Request):
+    _, who = _operator_admin(request)
+    from core import operator_actions, operator_threads
+    try:
+        return {"success": True, "data": operator_threads.delete(thread_id, req.confirm, who)}
+    except operator_threads.ThreadError as e:
+        raise _thread_error(e)
+    except operator_actions.AuditUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
+
 @app.post("/api/admin/operator/ask")
 def operator_ask(req: OperatorAskRequest, request: Request):
     _, who = _operator_admin(request)

@@ -54,7 +54,9 @@
     ERR_TESTS_FAILED: 'הבדיקות נכשלו ב-PR — לא ממזג', ERR_TESTS_PENDING: 'הבדיקות עוד רצות — נסה שוב בעוד דקה',
     ERR_PR_CHANGED: 'מישהו דחף ל-PR אחרי שביקשת אישור — בקש קוד חדש', ERR_MASTER_MOVED: 'master השתנה מתחת לשינוי — בקש מאיציק להציע מחדש',
     ERR_OWNER_TAP_ONLY: 'רק בלחיצה שלך', ERR_NO_PREVIOUS_REVISION: 'אין גרסה קודמת מוכנה', ERR_FLAG_OWNER_ONLY: 'את זה אפשר רק לכבות מכאן',
-    ERR_MESSAGE_TRUNCATED: 'ההודעה נשמרה מקוצרת (לפני 1.11) — לא שולח שוב', ERR_AUDIT_UNAVAILABLE: 'יומן הפעולות לא זמין — לא בוצע כלום'
+    ERR_MESSAGE_TRUNCATED: 'ההודעה נשמרה מקוצרת (לפני 1.11) — לא שולח שוב', ERR_AUDIT_UNAVAILABLE: 'יומן הפעולות לא זמין — לא בוצע כלום',
+    ERR_NOTHING_TO_ARCHIVE: 'אין עדיין מה לשמור בארכיון', ERR_NO_SUCH_CONVERSATION: 'השיחה הזו כבר לא בארכיון',
+    ERR_CONFIRM_PHRASE: 'כדי למחוק צריך להקליד: מחק', ERR_NOT_ARCHIVED: 'אפשר למחוק רק שיחה מהארכיון'
   };
   function errText(e) { if (e && e.auth) return '⚠ לא מחובר לניהול'; const code = String(e.message || e).split(' — ')[0]; return '⚠ ' + (ERR_HE[code] || e.message || e); }
 
@@ -309,6 +311,10 @@
 .itz-root details summary { cursor:pointer; color:var(--itz-gray); font-size:12.5px; margin-top:6px; }
 .itz-thinking { padding:0 14px 8px; color:var(--itz-gray); font-size:12.5px; }
 .itz-thinking[hidden] { display:none; }
+.itz-threads { padding:10px 12px; border-bottom:1px solid var(--itz-border); background:#121212; max-height:55%; overflow-y:auto; }
+.itz-threads[hidden] { display:none; }
+.itz-thread { padding:8px 0; border-top:1px solid var(--itz-border); }
+.itz-thread:first-of-type { border-top:none; }
 .itz-input { padding:10px 12px; border-top:1px solid var(--itz-border); display:flex; gap:8px; align-items:flex-end; }
 .itz-input textarea { flex:1; min-width:0; font-family:inherit; font-size:14px; resize:none; height:44px; max-height:140px; padding:10px 12px;
   border-radius:12px; border:1px solid var(--itz-border); background:#0f0f0f; color:var(--itz-text); }
@@ -344,7 +350,10 @@
     titles.appendChild(el('span', 'itz-sub', 'השותף הטכני שלך · רק אתה רואה אותו')); head.appendChild(titles);
     const ws = el('a', 'itz-btn', '📋 הדף שלי'); ws.href = WORKSPACE; ws.title = 'דוחות, יומן פעולות, אישורים וחזרה לאחור';
     const min = el('button', 'itz-btn', '–'); min.type = 'button'; min.setAttribute('aria-label', 'מזעור');
-    head.appendChild(ws); head.appendChild(min); win.appendChild(head);
+    const th = el('button', 'itz-btn', '🗂'); th.type = 'button'; th.title = 'שיחות: חדשה, ארכיון, מחיקה';
+    th.setAttribute('aria-label', 'שיחות'); th.setAttribute('aria-expanded', 'false');
+    head.appendChild(th); head.appendChild(ws); head.appendChild(min); win.appendChild(head);
+    const threads = el('div', 'itz-threads'); threads.hidden = true; win.appendChild(threads);
     const attention = el('div', 'itz-attention'); attention.hidden = true; win.appendChild(attention);
     const log = el('div', 'itz-messages'); log.setAttribute('aria-live', 'polite'); win.appendChild(log);
     const thinking = el('div', 'itz-thinking', NAME + ' בודק — לוגים, גרסאות, התראות… (עד כ-3 דקות)'); thinking.hidden = true; win.appendChild(thinking);
@@ -356,7 +365,8 @@
     input.appendChild(ta); input.appendChild(stop); input.appendChild(send); win.appendChild(input);
 
     root.appendChild(win); document.body.appendChild(root);
-    parts = { stage, badge, say, attention, log, thinking, ta, send, stop, min };
+    parts = { stage, badge, say, attention, log, thinking, ta, send, stop, min, threads, th };
+    th.addEventListener('click', toggleThreads);
     stop.addEventListener('click', requestStop);
 
     stage.addEventListener('click', open);
@@ -386,6 +396,70 @@
     rows.forEach(m => addMessage(m.role, m.content, m.cards, m.kind === 'report' ? 'report' : ''));
     parts.log = hold; hold.insertBefore(frag, first);
     scrollDown();
+  }
+
+  // ─── Conversations (core/operator_threads): archive first, delete only from the archive ───
+  async function toggleThreads() {
+    const box = parts.threads, open = box.hidden;
+    box.hidden = !open; parts.th.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) await renderThreads();
+  }
+  async function renderThreads(note) {
+    const box = parts.threads; box.textContent = '';
+    if (note) box.appendChild(el('div', 'itz-result', note));
+    const row = el('div', 'itz-row');
+    const fresh = el('button', 'itz-b primary', '➕ שיחה חדשה'); fresh.type = 'button';
+    fresh.title = 'השיחה הנוכחית נשמרת בארכיון, שום דבר לא נמחק';
+    const out = el('div', 'itz-result');
+    fresh.onclick = async () => {
+      if (busy) { out.textContent = NAME + ' באמצע משימה — אפשר אחרי שיסיים.'; return; }
+      fresh.disabled = true;
+      try { const a = await post('/conversations/archive', {});
+            parts.log.textContent = ''; historyLoaded = false; await loadHistory();
+            await renderThreads('✓ השיחה "' + a.title + '" נשמרה בארכיון. מתחילים שיחה חדשה.'); }
+      catch (e) { out.textContent = errText(e); fresh.disabled = false; }
+    };
+    row.appendChild(fresh); box.appendChild(row); box.appendChild(out);
+    box.appendChild(el('div', 'itz-small', 'שיחה חדשה שומרת את הנוכחית בארכיון. מחיקה אפשרית רק לשיחה מהארכיון, ויומן הפעולות נשאר תמיד.'));
+    let d; try { d = await call('/conversations'); } catch (e) { box.appendChild(el('div', 'itz-result', errText(e))); return; }
+    const list = d.archived || [];
+    if (!list.length) { box.appendChild(el('div', 'itz-muted', 'אין שיחות בארכיון.')); return; }
+    list.forEach(a => box.appendChild(threadRow(a)));
+  }
+  function threadRow(a) {
+    const s = el('div', 'itz-thread');
+    s.appendChild(el('div', null, a.title || 'שיחה'));
+    s.appendChild(el('div', 'itz-small', when(a.started_at) + ' – ' + when(a.ended_at) + ' · ' + (a.count || 0) + ' הודעות'));
+    const row = el('div', 'itz-row'), out = el('div', 'itz-result');
+    const view = el('button', 'itz-b', 'פתח לקריאה'); view.type = 'button';
+    view.onclick = async () => {
+      view.disabled = true;
+      try { const t = await call('/conversations/' + encodeURIComponent(a.id));
+            const pane = el('div', 'itz-card');
+            (t.messages || []).forEach(m => pane.appendChild(el('div', 'itz-small', (m.role === 'owner' ? 'אתה: ' : NAME + ': ') + m.content)));
+            s.appendChild(pane); }
+      catch (e) { out.textContent = errText(e); view.disabled = false; }
+    };
+    const del = el('button', 'itz-b danger', 'מחיקה…'); del.type = 'button';
+    del.onclick = () => {
+      // In-page confirmation (no browser dialog): type the word, then a second button
+      del.disabled = true;
+      out.textContent = 'המחיקה סופית: ההודעות של השיחה הזו יימחקו. דוחות שמורים ויומן הפעולות נשארים. כדי לאשר, הקלד "מחק":';
+      const r2 = el('div', 'itz-row'), inp = el('input', 'itz-code'); inp.style.letterSpacing = '0'; inp.style.direction = 'rtl';
+      inp.setAttribute('aria-label', 'הקלד מחק כדי לאשר');
+      const ok = el('button', 'itz-b danger', 'מחק לצמיתות'); ok.type = 'button';
+      const no = el('button', 'itz-b', 'ביטול'); no.type = 'button';
+      no.onclick = () => { r2.remove(); out.textContent = ''; del.disabled = false; };
+      ok.onclick = async () => {
+        ok.disabled = true;
+        try { await post('/conversations/' + encodeURIComponent(a.id) + '/delete', { confirm: inp.value.trim() });
+              await renderThreads('✓ השיחה נמחקה. יומן הפעולות לא השתנה.'); }
+        catch (e) { out.textContent = errText(e); ok.disabled = false; }
+      };
+      r2.appendChild(inp); r2.appendChild(ok); r2.appendChild(no); s.appendChild(r2); inp.focus();
+    };
+    row.appendChild(view); row.appendChild(del); s.appendChild(row); s.appendChild(out);
+    return s;
   }
 
   async function loadPending() {
