@@ -1131,9 +1131,17 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
     has it, and the team is alerted."""
     from core import agent_actions
     lang = _client_language(client_id, message)
-    proposal = agent_actions.propose(client_id, "client_chat", persona_id,
-                                     result.get("proposed_action"), state=state, client=client,
-                                     context={"message": message, "language": lang})
+    try:
+        proposal = agent_actions.propose(client_id, "client_chat", persona_id,
+                                         result.get("proposed_action"), state=state, client=client,
+                                         context={"message": message, "language": lang})
+    except Exception as e:
+        # A bug in one card's code must never cost the client the whole reply
+        # (2026-11-16, client 27: KeyError 'validate_stored' → "יש לי קושי"):
+        # the model's answer stays, the card is taken back honestly, we alert
+        log_step(AGENT_NAME, "proposal_crashed",
+                 f"client {client_id} ({persona_id}): {_proposed_name(result)}: {type(e).__name__}: {e}")
+        proposal = {"error": "prepare_failed", "crash": f"{type(e).__name__}: {str(e)[:150]}"}
     if proposal.get("card"):
         # A prepared action that switched to the card fixing it (a TikTok send
         # with no working connection → connect_tiktok) carries its own fixed
@@ -1158,7 +1166,8 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
     if error in ("storage_unavailable", "prepare_failed"):
         chat_fallback.alert_handoff(
             chat_fallback.KIND_TECHNICAL, AGENT_NAME,
-            f'card for {_proposed_name(result)} not shown ({error}). Client asked: "{message[:300]}"',
+            f'card for {_proposed_name(result)} not shown ({error}'
+            f'{"; " + proposal["crash"] if proposal.get("crash") else ""}). Client asked: "{message[:300]}"',
             client_id=client_id, persona=persona_id,
             issue_key=f"technical:proposal:{_proposed_name(result)}:{error}")
     else:

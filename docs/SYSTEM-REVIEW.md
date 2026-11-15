@@ -635,3 +635,25 @@ about $40; I stop and ask before passing it.
 12. **Admin "enter as client":** the cards show but are disabled, there are no task buttons, and
     no stored request is consumed.
 
+## Seven improvements (2026-11-16)
+
+### Part 6 — the `KeyError: 'validate_stored'` in client 27's meta chat (fixed first: production bug)
+
+- **Root cause.** The model proposed `build_content_plan`. Its prepare hook switches to
+  `approve_content_plan`. That card has a prepare hook but had no `validate_stored`, and
+  `agent_actions.propose` read `spec["validate_stored"]` directly, so it raised `KeyError`. The
+  error escaped the persona turn, so the client got the fixed technical line. The Saturday run
+  opens the same card the same way, so it fell back to per-item rows every week. The content-team
+  tests replaced `propose` with a fake, so they never ran the real path.
+- **Fix.**
+  - `propose` falls back to `validate_params` when an action has no stored-row validator.
+  - Both content-team cards now have one.
+  - `_route_proposal` catches any crash in a card's code. The model's reply stays, the card is
+    taken back with `NO_CARD`, and the technical alert carries the error name.
+  - The fixed technical line no longer says "difficulty". Each lane's tail is a real next step
+    the chat can do (meta/media: "write 'content plan'"; google: "ask how the campaigns are";
+    website: "ask how the site is"; general: "tell me what you'd like").
+- **Test.** `tests/test_chat_card_crash.py` replays the exact message through the real propose
+  path, covers the Saturday path and the crash path, and checks every prepared card for a
+  validator.
+- 81/81 files pass. **Migration:** none. **Deploy:** needed.

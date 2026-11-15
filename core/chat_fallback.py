@@ -65,12 +65,14 @@ _LABELS = {
 # No "passed to the team" (2026-11-15): the line says what is true — it is
 # already being looked at (the admin alert is raised in the same breath) and
 # trying again shortly is the client's next step.
+# 2026-11-16: no "difficulty" line either. Calm, says it is being fixed, and the
+# TAIL (below) gives a real next step the chat can actually do in that lane.
 _TECHNICAL_OPENING = {
-    "he": "יש לי כרגע קושי לשלוף את זה. זה כבר בבדיקה — שווה לנסות שוב בעוד כמה דקות.",
-    "en": "I'm having trouble pulling that up right now. It's already being looked at — it's worth trying again in a few minutes.",
-    "fr": "J'ai du mal à récupérer cela pour le moment. C'est déjà en cours de vérification — réessayez dans quelques minutes.",
-    "ar": "أواجه صعوبة في جلب ذلك حاليًا. الأمر قيد الفحص بالفعل — يُستحسن المحاولة مجددًا بعد بضع دقائق.",
-    "ru": "Сейчас не получается это достать. Это уже проверяется — стоит попробовать ещё раз через несколько минут.",
+    "he": "התשובה המלאה לזה לא עברה אצלי הפעם, ואני כבר מטפל בזה.",
+    "en": "My full answer to that didn't go through this time, and I'm already on it.",
+    "fr": "Ma réponse complète n'est pas passée cette fois, et je m'en occupe déjà.",
+    "ar": "إجابتي الكاملة لم تصل هذه المرة، وأنا أعمل على ذلك بالفعل.",
+    "ru": "Мой полный ответ в этот раз не прошёл, я уже этим занимаюсь.",
 }
 
 _OUT_OF_SCOPE_OPENING = {
@@ -83,41 +85,43 @@ _OUT_OF_SCOPE_OPENING = {
 
 # The "and we carry on" tail, in each speaker's own lane — this is what keeps
 # the line in character and the conversation moving instead of dwelling.
+# Each tail is a REAL next step the chat can do in that lane right now
+# (2026-11-16): never only "try again", never a dead end.
 _TAILS = {
     "general": {
-        "he": "בינתיים אפשר להמשיך איתי בכל נושא אחר.",
-        "en": "Meanwhile, feel free to carry on with anything else.",
-        "fr": "En attendant, on peut continuer sur n'importe quel autre sujet.",
-        "ar": "في هذه الأثناء، يمكننا المتابعة في أي موضوع آخر.",
-        "ru": "А пока можем продолжить о чём угодно другом.",
+        "he": "בואו נמשיך: כתבו לי במשפט אחד מה הייתם רוצים שיקרה, ואציע את הצעד הבא.",
+        "en": "Let's keep going: tell me in one sentence what you'd like to happen, and I'll suggest the next step.",
+        "fr": "Continuons : dites-moi en une phrase ce que vous aimeriez obtenir, et je vous propose la suite.",
+        "ar": "لنكمل: اكتبوا لي في جملة واحدة ما تودّون حدوثه، وسأقترح الخطوة التالية.",
+        "ru": "Продолжим: напишите в одном предложении, чего вы хотите, и я предложу следующий шаг.",
     },
     "google": {
-        "he": "בינתיים אפשר לשאול אותי כל דבר אחר על הקמפיינים בגוגל.",
-        "en": "Meanwhile, ask me anything else about your Google campaigns.",
-        "fr": "En attendant, posez-moi toute autre question sur vos campagnes Google.",
-        "ar": "في هذه الأثناء، اسألوني أي شيء آخر عن حملاتكم في Google.",
-        "ru": "А пока спрашивайте что угодно ещё о ваших кампаниях в Google.",
+        "he": "בינתיים אוכל להראות לכם איך הקמפיינים בגוגל עשו השבוע — פשוט שאלו \"איך הקמפיינים?\".",
+        "en": "Meanwhile I can show you how your Google campaigns did this week — just ask \"how are the campaigns?\".",
+        "fr": "En attendant, je peux vous montrer les résultats de vos campagnes Google cette semaine — demandez simplement « où en sont les campagnes ? ».",
+        "ar": "في هذه الأثناء يمكنني أن أريكم أداء حملاتكم في Google هذا الأسبوع — فقط اسألوا \"كيف حال الحملات؟\".",
+        "ru": "А пока могу показать, как прошли ваши кампании в Google на этой неделе — просто спросите «как кампании?».",
     },
     "meta": {
-        "he": "בינתיים אפשר לשאול אותי כל דבר אחר על פייסבוק ואינסטגרם.",
-        "en": "Meanwhile, ask me anything else about Facebook and Instagram.",
-        "fr": "En attendant, posez-moi toute autre question sur Facebook et Instagram.",
-        "ar": "في هذه الأثناء، اسألوني أي شيء آخر عن فيسبوك وإنستغرام.",
-        "ru": "А пока спрашивайте что угодно ещё о Facebook и Instagram.",
+        "he": "בינתיים אוכל להכין לכם תוכנית תוכן לשבוע הקרוב לאישור בלחיצה אחת — כתבו \"תוכנית תוכן\".",
+        "en": "Meanwhile I can prepare next week's content plan for one-click approval — just write \"content plan\".",
+        "fr": "En attendant, je peux préparer le plan de contenu de la semaine, à valider en un clic — écrivez « plan de contenu ».",
+        "ar": "في هذه الأثناء يمكنني تجهيز خطة محتوى للأسبوع القادم للموافقة بنقرة واحدة — اكتبوا \"خطة محتوى\".",
+        "ru": "А пока могу подготовить план контента на неделю для одобрения в один клик — напишите «план контента».",
     },
     "website": {
-        "he": "בינתיים אפשר לשאול אותי כל דבר אחר על האתר וה-SEO.",
-        "en": "Meanwhile, ask me anything else about your website and SEO.",
-        "fr": "En attendant, posez-moi toute autre question sur votre site et le SEO.",
-        "ar": "في هذه الأثناء، اسألوني أي شيء آخر عن موقعكم وتحسين محركات البحث.",
-        "ru": "А пока спрашивайте что угодно ещё о сайте и SEO.",
+        "he": "בינתיים אוכל לבדוק איתכם את מצב האתר כרגע — כתבו \"מה מצב האתר?\".",
+        "en": "Meanwhile I can go over your site's current state with you — just write \"how is the site?\".",
+        "fr": "En attendant, je peux faire le point sur l'état actuel du site — écrivez « où en est le site ? ».",
+        "ar": "في هذه الأثناء يمكنني مراجعة حالة موقعكم الحالية معكم — اكتبوا \"ما حال الموقع؟\".",
+        "ru": "А пока могу разобрать с вами текущее состояние сайта — напишите «как сайт?».",
     },
     "media": {
-        "he": "בינתיים אפשר לשאול אותי כל דבר אחר על התוכן והמדיה.",
-        "en": "Meanwhile, ask me anything else about your content and media.",
-        "fr": "En attendant, posez-moi toute autre question sur vos contenus et médias.",
-        "ar": "في هذه الأثناء، اسألوني أي شيء آخر عن المحتوى والوسائط.",
-        "ru": "А пока спрашивайте что угодно ещё о контенте и медиа.",
+        "he": "בינתיים אוכל להכין לכם תוכנית תוכן לשבוע הקרוב לאישור בלחיצה אחת — כתבו \"תוכנית תוכן\".",
+        "en": "Meanwhile I can prepare next week's content plan for one-click approval — just write \"content plan\".",
+        "fr": "En attendant, je peux préparer le plan de contenu de la semaine, à valider en un clic — écrivez « plan de contenu ».",
+        "ar": "في هذه الأثناء يمكنني تجهيز خطة محتوى للأسبوع القادم للموافقة بنقرة واحدة — اكتبوا \"خطة محتوى\".",
+        "ru": "А пока могу подготовить план контента на неделю для одобрения в один клик — напишите «план контента».",
     },
     # Sales chat: the way forward is the packages on screen
     "sales": {

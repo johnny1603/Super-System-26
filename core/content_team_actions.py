@@ -127,6 +127,7 @@ def build(aa) -> dict:
             "params": {"plan": {"required": True, "validate": v_plan, "hint": ""}},
             "available": lambda state, client: False,
             "prepare": prepare_approve,
+            "validate_stored": lambda client_id, params: {"plan": v_plan((params or {}).get("plan"), client_id)},
             "display": display_plan,
             "run": run_approve,
             "button": _txt("מאשר/ת את כל התוכנית", "Approve the whole plan", "Valider tout le plan", "الموافقة على الخطة كلها",
@@ -164,6 +165,8 @@ def build(aa) -> dict:
                                    "hint": "true only when they asked to change a plan that is waiting for approval"}},
             "available": lambda state, client: True,
             "prepare": prepare_build,
+            "validate_stored": lambda client_id, params: aa.validate_params(
+                aa.ACTIONS["build_content_plan"], params, client_id),
             "run": lambda client_id, params, background_tasks, row=None: {},     # never reached: prepare always switches
             "title": _txt("תוכנית תוכן שבועית", "Weekly content plan", "Plan de contenu hebdomadaire", "خطة محتوى أسبوعية",
                           "Недельный план контента"),

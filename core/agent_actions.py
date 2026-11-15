@@ -5139,7 +5139,12 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
         params, supersedes = prepared["params"], prepared.get("supersedes")
         prepared_notice = prepared.get("notice", "")
         try:
-            params = spec["validate_stored"](client_id, params)
+            # An action may have a prepare hook and no stored-row validator of its
+            # own (approve_content_plan, 2026-11-16: the KeyError that broke
+            # client 27's meta chat): the ordinary param check is the floor
+            validator = spec.get("validate_stored")
+            params = (validator(client_id, params) if validator
+                      else validate_params(spec, params, client_id))
         except ValueError as e:
             _log(f"client {client_id}: prepared {name} failed validation: {e}", severity="WARNING",
                  client_id=client_id)
