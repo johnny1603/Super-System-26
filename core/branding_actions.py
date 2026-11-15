@@ -80,7 +80,7 @@ def build(aa) -> dict:
                 branding._save(client_id, value)
                 aa._alert(f"client {client_id}: used all {branding.FREE_ATTEMPTS} free branding attempts and asked "
                           "for another. The extra-attempt charge is OFF (core/branding."
-                          "EXTRA_ATTEMPT_CHARGE_ENABLED) — grant attempts from the admin if you want them to go on.")
+                          "EXTRA_ATTEMPT_CHARGE_ENABLED) — to let them go on, open more attempts in the Control Room: the client's page, section מיתוג.")
             return {"refuse": _pick(refusals[code], lang)}
         clean = {"direction": params["direction"]}
         for row in rows:

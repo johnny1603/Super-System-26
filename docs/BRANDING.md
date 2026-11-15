@@ -46,6 +46,9 @@ The mockup page is served with a sandbox CSP that has no script source at all.
   is chosen so the worst case fits under the cap BEFORE the call; no retry is paid for. The
   measured cost is a `client_costs` row (category media, action `branding_attempt`) and is kept
   on the attempt. A failed call uses no attempt.
+- **Owner's decision (2026-11-16):** the charge stays off until another payment system is in.
+  Meanwhile the owner opens more attempts by hand: Control Room → the client → "מיתוג" (two
+  buttons, +1 / +3; also shows attempts used, left and what they cost us).
 - **Extra attempts: the charge is OFF** (`EXTRA_ATTEMPT_CHARGE_ENABLED = False`). The system has
   no per-attempt charge today — only the monthly subscription and e-mailed invoices. Past the 5
   free attempts nothing runs: the client gets one plain line, the team gets one alert, and staff

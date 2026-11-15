@@ -3369,6 +3369,10 @@ async function openControlRoom(clientId) {
           <div id="crManager"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">🎨 מיתוג — ניסיונות הדמיה</div>
+          <div id="crBranding"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">⚙️ הגדרות לקוח — מגבלות מאמרים ופעולות</div>
           <div id="crSettings"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3405,6 +3409,46 @@ async function openControlRoom(clientId) {
   crLoadManager(clientId);
   crLoadSettings(clientId);
   crLoadCosts(clientId);
+  crLoadBranding(clientId);
+}
+
+// ─── branding attempts (core/branding) ───────────────────────────────────────
+// The charge for attempts past the free ones is OFF (owner's decision, 2026-11-16,
+// until another payment system is in). Past the free ones nothing runs for the
+// client; this is where the owner opens more attempts by hand.
+async function crLoadBranding(clientId, notice) {
+  const el = document.getElementById('crBranding');
+  if (!el) return;
+  try {
+    const d = (await api(`/api/admin/branding/${Number(clientId)}`)).data;
+    if (crState.clientId !== clientId || !el.isConnected) return;
+    const sum = d.summary || {};
+    const spent = (d.attempts || []).reduce((a, x) => a + (Number(x.cost_ils) || 0), 0);
+    el.innerHTML = `
+      <div class="drawer-stat-row"><span class="drawer-stat-label">ניסיונות שנוצלו</span><span>${esc(sum.attempts_used ?? 0)}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">ניסיונות שנשארו</span><span>${esc(sum.attempts_left_free ?? 0)}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">עלות הניסיונות לנו</span><span>${ils(spent)}</span></div>
+      <div class="drawer-stat-row"><span class="drawer-stat-label">מצב</span><span>${sum.approved ? 'הלקוח אישר כיוון ✓ (אין ניסיונות נוספים)' : 'עדיין לא אושר כיוון'}</span></div>
+      ${sum.approved ? '' : `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+        <button type="button" class="manage-btn" onclick="crGrantBranding(${Number(clientId)}, 1)">לפתוח עוד ניסיון אחד</button>
+        <button type="button" class="manage-btn" onclick="crGrantBranding(${Number(clientId)}, 3)">לפתוח עוד 3</button>
+        <span id="crBrandingMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span>
+      </div>`}`;
+  } catch (e) {
+    if (el.isConnected) el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--gray);">שגיאה בטעינת המיתוג</div>';
+  }
+}
+async function crGrantBranding(clientId, count) {
+  const msg = document.getElementById('crBrandingMsg');
+  try {
+    const res = await api(`/api/admin/branding/${Number(clientId)}/grant`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempts: count }),
+    });
+    if (!res.success) throw new Error('grant failed');
+    crLoadBranding(clientId, 'נפתח ✓');
+  } catch (e) {
+    if (msg) msg.textContent = 'הפתיחה נכשלה, נסו שוב';
+  }
 }
 
 // ─── the client's account manager (core/manager_identity) ───────────────────

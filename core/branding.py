@@ -45,7 +45,9 @@ FREE_ATTEMPTS = 5
 KEPT_ATTEMPTS = 12                 # concepts kept per client (older ones drop their concept)
 ATTEMPT_COST_CAP_ILS = 1.5         # one attempt may never cost us more than this
 ATTEMPT_MAX_TOKENS = 1800
-EXTRA_ATTEMPT_CHARGE_ENABLED = False   # see the module docstring — the owner's decision
+# OWNER'S DECISION 2026-11-16: stays OFF until another payment system is in. Past the free
+# attempts the team is alerted and the owner opens more by hand (Control Room → the client → מיתוג).
+EXTRA_ATTEMPT_CHARGE_ENABLED = False
 EXTRA_ATTEMPT_MARGIN = 0.25        # cost + a small margin
 EXTRA_ATTEMPT_MIN_ILS = 5          # symbolic floor
 QUOTE_MULTIPLIER = 2.0             # price = cost × 2 → about 50% cost / 50% margin
