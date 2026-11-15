@@ -557,3 +557,13 @@ about $40; I stop and ask before passing it.
 - Organic without the service asks for no connection: the taste and the upgrade card come first.
 - 79/79 files pass. **Migration:** none. **Deploy:** needed.
 
+## Checkpoint 2026-11-16: home upgrade, Part 3 (organic path)
+
+- **Without organic in the package:** Uri gives a small taste (`seo_report.taste`, kinds of
+  places only, no site names, no list, no drafts), then the ONE upgrade card. The same taste is
+  the notice when the report card switches to the upgrade card.
+- **With organic but no account yet:** the prerequisites line plus the connect conversation
+  (sign-up link from the catalog), then back to the organic work.
+- The report stays free and is never priced; rankings are never promised.
+- Docs: `docs/SEO-REPORT.md`. 79/79 files pass. **Migration:** none. **Deploy:** needed.
+

@@ -81,8 +81,10 @@ def build(aa) -> dict:
         if not cover["readable"]:
             return {"refuse": _pick(refusals["package_unreadable"], lang)}
         if not cover["covered"]:
-            # Never a report (or its characterisation) before the organic service: the ONE upgrade card
-            return {"switch_to": "upgrade_to_organic", "switch_params": {}, "notice": _pick(upgrade_notice, lang)}
+            # Never a report (or its characterisation) before the organic service: a SMALL taste
+            # (kinds of places, code-built — no names, no drafts) and the ONE upgrade card
+            return {"switch_to": "upgrade_to_organic", "switch_params": {},
+                    "notice": seo_report.taste(lang) + "\n\n" + _pick(upgrade_notice, lang)}
         stored = seo_report.latest(client_id)
         if stored and seo_report.fresh_enough(stored):
             return {"refuse": _pick(fresh, lang).replace("{date}", str(stored.get("built_at"))[:10])

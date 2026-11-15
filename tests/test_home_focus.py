@@ -209,6 +209,41 @@ class Chat(unittest.TestCase):
         self.assertIn("home_focus.prompt_block(client_id", _src("agents", "support_agent.py"))
 
 
+class OrganicTaste(unittest.TestCase):
+    def test_the_taste_is_small_plain_and_names_no_site(self):
+        from core import seo_report
+        for lang in LANGS:
+            text = seo_report.taste(lang)
+            self.assertEqual(text.count("\u2022"), len(seo_report.TASTE_SHOWN))   # three kinds, not a list
+            self.assertIsNone(re.search(r"https?://|www\.|\.co\.il|\.com\b", text))
+            self.assertIsNone(VENDORS.search(text))
+        for table in list(seo_report.TASTE_KIND.values()) + [seo_report.TASTE_INTRO, seo_report.TASTE_OUTRO]:
+            self.assertEqual(set(table), set(LANGS))
+
+    def test_without_the_service_the_agents_get_the_kinds(self):
+        from core import seo_report
+        saved = seo_report.status
+        try:
+            seo_report._block_cache.clear()
+            seo_report.status = lambda cid: {"available": True, "package_readable": True, "covered_by_package": False,
+                                             "has_report": False, "built_at": ""}
+            block = seo_report.prompt_block(8)
+            self.assertEqual(len(block["taste_kinds"]), len(seo_report.TYPES))
+            seo_report._block_cache.clear()
+            seo_report.status = lambda cid: {"available": True, "package_readable": True, "covered_by_package": True,
+                                             "has_report": False, "built_at": ""}
+            self.assertNotIn("taste_kinds", seo_report.prompt_block(8))
+        finally:
+            seo_report.status = saved
+            seo_report._block_cache.clear()
+
+    def test_the_card_path_and_the_rule(self):
+        self.assertIn("seo_report.taste(lang)", _src("core", "seo_report_actions.py"))
+        from agents import support_agent
+        self.assertIn("SMALL TASTE", support_agent.STUDIO_RULE)
+        self.assertIn("NEVER a real site's name", support_agent.STUDIO_RULE)
+
+
 class Wiring(unittest.TestCase):
     def test_routes_parity_and_staff_view(self):
         api = _src("core", "api_server.py")

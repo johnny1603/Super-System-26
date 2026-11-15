@@ -146,6 +146,55 @@ TYPE_TEXT = {
                                      "ملف النشاط التجاري على Google", "Профиль компании в Google"),
 }
 
+# The SMALL TASTE a client without the organic service gets (2026-11-16): the
+# KINDS of places we would approach, said in code — never a real site's name,
+# never the opportunity list, never an outreach draft. The full report stays
+# with the service.
+TASTE_KIND = {
+    "directory": _five("אינדקסים ופורטלים של התחום והאזור, שבהם לקוחות מחפשים עסק כמו שלכם",
+                       "Industry and local directories where customers look for a business like yours",
+                       "Des annuaires du secteur et locaux où les clients cherchent une entreprise comme la vôtre",
+                       "أدلة القطاع والأدلة المحلية التي يبحث فيها العملاء عن نشاط مثل نشاطكم",
+                       "Отраслевые и местные каталоги, где клиенты ищут бизнес вроде вашего"),
+    "unlinked_mention": _five("מקומות שכבר מזכירים את העסק שלכם בלי קישור לאתר",
+                              "Places that already mention your business without a link to your site",
+                              "Des pages qui citent déjà votre entreprise sans lien vers votre site",
+                              "أماكن تذكر نشاطكم بالفعل دون رابط إلى موقعكم",
+                              "Места, где ваш бизнес уже упоминают без ссылки на сайт"),
+    "guest_post": _five("אתרים בתחום שלכם שמפרסמים כתבות של אנשי מקצוע",
+                        "Sites in your field that publish articles by professionals",
+                        "Des sites de votre secteur qui publient des articles de professionnels",
+                        "مواقع في مجالكم تنشر مقالات لأصحاب الاختصاص",
+                        "Сайты вашей сферы, которые публикуют статьи специалистов"),
+    "partnership": _five("עסקים משלימים, פודקאסטים וקהילות שישמחו לשיתוף פעולה",
+                         "Neighbouring businesses, podcasts and communities that would welcome a collaboration",
+                         "Des entreprises complémentaires, des podcasts et des communautés ouverts à une collaboration",
+                         "أنشطة مكمّلة وبودكاستات ومجتمعات ترحّب بالتعاون",
+                         "Смежные бизнесы, подкасты и сообщества, готовые к сотрудничеству"),
+    "google_business_profile": _five("פרופיל העסק שלכם בגוגל, מלא ומעודכן",
+                                     "Your business profile on Google, complete and up to date",
+                                     "Votre fiche d'établissement Google, complète et à jour",
+                                     "ملف نشاطكم التجاري على Google، مكتمل ومحدّث",
+                                     "Профиль вашей компании в Google — полный и актуальный"),
+}
+TASTE_SHOWN = ("directory", "partnership", "google_business_profile")
+TASTE_INTRO = _five("טעימה קטנה ממה שהייתי מחפש בשביל העסק שלכם:",
+                    "A small taste of what I'd look for for your business:",
+                    "Un petit aperçu de ce que je chercherais pour votre entreprise :",
+                    "لمحة صغيرة عمّا كنت سأبحث عنه لنشاطكم:",
+                    "Небольшой пример того, что я бы искал для вашего бизнеса:")
+TASTE_OUTRO = _five("את ההזדמנויות עצמן, עם טיוטות פנייה מוכנות, מקבלים בדוח המלא, שהוא חלק משירות הקידום האורגני.",
+                    "The opportunities themselves, with ready outreach drafts, come in the full report, which is part of the organic service.",
+                    "Les opportunités elles-mêmes, avec des brouillons de messages, figurent dans le rapport complet, inclus dans le service de référencement naturel.",
+                    "الفرص نفسها مع مسودات رسائل جاهزة تأتي في التقرير الكامل، وهو جزء من خدمة التحسين المجاني.",
+                    "Сами возможности с готовыми черновиками писем — в полном отчёте, он входит в услугу органического продвижения.")
+
+
+def taste(lang: str) -> str:
+    """The small taste, code-built: three KINDS of places, no names, no drafts."""
+    lang = lang if lang in LANGS else "en"
+    return "\n".join([TASTE_INTRO[lang]] + [f"• {TASTE_KIND[k][lang]}" for k in TASTE_SHOWN] + [TASTE_OUTRO[lang]])
+
 
 def t(key: str, lang: str) -> str:
     table = TEXT[key]
@@ -225,6 +274,9 @@ def prompt_block(client_id: int) -> dict:
         return {}
     out = {"covered_by_package": data["covered_by_package"], "has_report": data["has_report"],
            "built_at": data["built_at"][:10], "is_free_part_of_the_organic_service": True}
+    if not data["covered_by_package"]:
+        # The SMALL TASTE (STUDIO_RULE): kinds only — the model picks the ones that fit
+        out["taste_kinds"] = [TASTE_KIND[k]["en"] for k in TYPES]
     _block_cache[int(client_id)] = (time.time(), out)
     return out
 

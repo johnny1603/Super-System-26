@@ -88,3 +88,29 @@ One web-search call + one writing call on the heavy model. Recorded in `client_c
 ## Storage
 
 `app_settings` `seo_report:<id>` (latest report only). Cleared with the client. No migration.
+
+## Small taste for a package without organic (2026-11-16)
+
+A client without the organic service gets a small, code-built taste, then the ONE
+`upgrade_to_organic` card.
+
+- **What the taste is:** `seo_report.taste(lang)` gives three KINDS of places we would approach
+  (directories, partners, their Google business profile). It names no real site, gives no
+  opportunity list and no outreach draft.
+- **Where it shows:** it is the notice of the `build_seo_report` → `upgrade_to_organic` switch.
+- **In the chat:** `prompt_block` adds `taste_kinds`. STUDIO_RULE tells the agent to describe two
+  or three of them for the client's field, never a named site.
+- **Unchanged:** the full report (opportunities, scores, drafts) stays with the service. It is
+  never priced on its own, and rankings are never promised.
+
+## Accounts the organic work needs
+
+The organic job needs the website connected (`home_focus.SERVICES["organic"]`), plus the site's
+Google search data when that round-2 flag is on.
+
+- A client without them gets the calm "connect first" line from Uri. It names those items only.
+- Each item has a connect button. Its conversation (`connection_catalog.flow`) gives the sign-up
+  link from the catalog, or offers to build the site.
+- The organic request comes back once they are connected (`docs/HOME-FOCUS.md` §2).
+- A client without the service is never asked to connect anything for it.
+
