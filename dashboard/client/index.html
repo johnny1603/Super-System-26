@@ -1171,6 +1171,18 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
 /* Media library: search, filters, badges, multi-select, player (docs/MEDIA-TAB.md) */
 .ml-hint { font-size: 12.5px; color: var(--gray); line-height: 1.6; margin: -4px 0 10px; }
 .ml-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+/* Branding box (Media tab): text + one button, stacked on a phone */
+.brand-box { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+  border: 1px solid rgba(255,76,31,.35); border-radius: 14px; padding: 16px; margin-bottom: 18px;
+  background: rgba(255,76,31,.06); }
+.brand-box[hidden] { display: none; }
+.brand-text { flex: 1 1 280px; min-width: 0; }
+.brand-title { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+.brand-sub, .brand-terms, .brand-state { font-size: 13.5px; line-height: 1.55; opacity: .85; }
+.brand-terms { margin-top: 6px; }
+.brand-state { margin-top: 6px; font-weight: 700; opacity: 1; }
+.brand-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.brand-actions a { text-decoration: none; }
 .ml-search { flex: 1 1 220px; min-width: 0; min-height: 40px; background: var(--panel-2); border: 1px solid var(--border);
   color: var(--white); border-radius: 9px; padding: 8px 12px; font: inherit; font-size: 14px; }
 .ml-select { flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 40px; background: var(--panel-2);
@@ -2154,6 +2166,23 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
   </div>
 
+  <!-- Branding (core/branding): the button opens ליאור's chat; the terms line
+       comes from the server (a fixed promise, in the client's language) -->
+  <div class="brand-box" id="brandBox" hidden>
+    <div class="brand-text">
+      <div class="brand-title" data-i18n="brand_title">איך העסק שלך ייראה תחת המיתוג הכי טוב שלו?</div>
+      <div class="brand-sub" data-i18n="brand_sub">ליאור מציע כיוון, ואתם רואים הדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר ואיך אתר יכול להיראות. הדמיות בלבד, עד שתחליטו.</div>
+      <div class="brand-terms" id="brandTerms" dir="auto"></div>
+      <div class="brand-state" id="brandState" dir="auto"></div>
+    </div>
+    <div class="brand-actions">
+      <button type="button" class="sugg-btn approve" id="brandBtn" onclick="brandStart()"
+              data-i18n="brand_btn">להראות לי את המיתוג</button>
+      <a class="media-chip" id="brandView" target="_blank" rel="noopener" hidden
+         data-i18n="brand_view">ההדמיות האחרונות</a>
+    </div>
+  </div>
+
   <!-- The client's WHOLE Drive media tree, searchable (core/media_library.py,
        the same matcher as the agents' find_media_file: core/media_search.py) -->
   <div class="drive-mirror" id="driveMirror">
@@ -3041,6 +3070,19 @@ const DASH_I18N = {
   action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
   action_d_images: { he:'התמונות שלכם בדף', en:'Your photos on the page', fr:'Vos photos sur la page', ar:'صوركم في الصفحة', ru:'Ваши фото на странице' },
+  brand_title: { he:'איך העסק שלך ייראה תחת המיתוג הכי טוב שלו?', en:'How would your business look under its best branding?', fr:'À quoi ressemblerait votre entreprise sous sa meilleure identité ?', ar:'كيف سيبدو عملكم بأفضل هوية له؟', ru:'Как выглядел бы ваш бизнес с лучшим брендингом?' },
+  brand_sub: { he:'ליאור מציע כיוון, ואתם רואים הדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר ואיך אתר יכול להיראות. הדמיות בלבד, עד שתחליטו.', en:'Lior suggests a direction and you see mockups: logo, business card, signage, flyer, poster and how a website could look. Mockups only, until you decide.', fr:'Lior propose une direction et vous voyez des maquettes : logo, carte de visite, enseigne, flyer, affiche et un aperçu de site. Des maquettes seulement, jusqu\'à votre décision.', ar:'ليئور يقترح اتجاهًا وأنتم ترون نماذج: شعار، بطاقة عمل، لافتة، منشور، ملصق وكيف يمكن أن يبدو الموقع. نماذج فقط إلى أن تقرروا.', ru:'Лиор предлагает направление, а вы видите макеты: логотип, визитку, вывеску, флаер, постер и вид сайта. Только макеты, пока вы не решите.' },
+  brand_btn: { he:'להראות לי את המיתוג', en:'Show me my branding', fr:'Montrez-moi mon identité', ar:'أروني هويتي', ru:'Показать мой брендинг' },
+  brand_btn_again: { he:'לנסות כיוון נוסף', en:'Try another direction', fr:'Essayer une autre direction', ar:'تجربة اتجاه آخر', ru:'Попробовать другое направление' },
+  brand_btn_produce: { he:'לקבל הצעת מחיר לייצור', en:'Get a production quote', fr:'Recevoir un devis de production', ar:'الحصول على عرض سعر للإنتاج', ru:'Получить цену на производство' },
+  brand_view: { he:'ההדמיות האחרונות', en:'Latest mockups', fr:'Dernières maquettes', ar:'أحدث النماذج', ru:'Последние макеты' },
+  brand_state_left: { he:'נשארו {left} מתוך {free} ניסיונות בחינם', en:'{left} of {free} free attempts left', fr:'Il reste {left} essais gratuits sur {free}', ar:'بقي {left} من {free} محاولات مجانية', ru:'Осталось бесплатных попыток: {left} из {free}' },
+  brand_state_none: { he:'הניסיונות שבחינם נוצלו. אפשר לאשר כיוון שראיתם, או לדבר עם ליאור.', en:'The free attempts are used. You can approve a direction you saw, or talk to Lior.', fr:'Les essais gratuits sont utilisés. Vous pouvez valider une direction vue, ou en parler à Lior.', ar:'استُخدمت المحاولات المجانية. يمكن اعتماد اتجاه رأيتموه أو التحدث مع ليئور.', ru:'Бесплатные попытки использованы. Можно утвердить увиденное направление или написать Лиору.' },
+  brand_state_approved: { he:'אישרתם כיוון ✓ ערכת המותג שלכם שמורה ומשמשת בדפי הנחיתה, בסרטונים ובפוסטים.', en:'Direction approved ✓ Your brand kit is saved and used in your landing pages, videos and posts.', fr:'Direction validée ✓ Votre kit de marque est enregistré et utilisé dans vos pages, vidéos et publications.', ar:'تم اعتماد الاتجاه ✓ عدّة علامتكم محفوظة وتُستخدم في صفحات الهبوط والفيديوهات والمنشورات.', ru:'Направление утверждено ✓ Бренд-кит сохранён и используется в лендингах, видео и постах.' },
+  brand_chat_msg: { he:'אני רוצה לראות איך העסק שלי ייראה תחת המיתוג הכי טוב שלו', en:'I want to see how my business would look under its best branding', fr:'Je veux voir à quoi ressemblerait mon entreprise sous sa meilleure identité', ar:'أريد أن أرى كيف سيبدو عملي بأفضل هوية له', ru:'Хочу увидеть, как мой бизнес выглядел бы с лучшим брендингом' },
+  brand_chat_again: { he:'אני רוצה לנסות כיוון מיתוג נוסף', en:'I want to try another branding direction', fr:'Je veux essayer une autre direction d\'identité', ar:'أريد تجربة اتجاه آخر للهوية', ru:'Хочу попробовать другое направление брендинга' },
+  brand_chat_produce: { he:'אני רוצה הצעת מחיר לייצור המיתוג שאישרתי', en:'I want a quote for producing the branding I approved', fr:'Je veux un devis pour produire l\'identité que j\'ai validée', ar:'أريد عرض سعر لإنتاج الهوية التي اعتمدتها', ru:'Хочу цену на производство утверждённого брендинга' },
+  brand_d_preview: { he:'לפתוח את ההדמיות ←', en:'Open the mockups →', fr:'Ouvrir les maquettes →', ar:'فتح النماذج ←', ru:'Открыть макеты →' },
   action_d_preview: { he:'לצפייה בדף לפני שמאשרים ←', en:'Preview the page before approving →', fr:'Voir la page avant de valider →', ar:'معاينة الصفحة قبل الموافقة ←', ru:'Посмотреть страницу перед одобрением →' },
   action_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
   action_working: { he:'מבצעים…', en:'Working on it…', fr:'En cours…', ar:'جارٍ التنفيذ…', ru:'Выполняем…' },
@@ -6640,6 +6682,16 @@ function actionDetails(d) {
     a.textContent = t('action_d_preview');
     box.appendChild(a);
   }
+  // A branding attempt's mockups: our own session-gated page only
+  if (typeof d.preview_url === 'string' && /^\/api\/client\/branding\/view\/\d+$/.test(d.preview_url)) {
+    const a = document.createElement('a');
+    a.href = d.preview_url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'preview-link';
+    a.textContent = t('brand_d_preview');
+    box.appendChild(a);
+  }
   return box;
 }
 
@@ -8588,6 +8640,7 @@ async function loadLibrary(opts) {
   const t = uallakI18n.t;
   const seq = ++driveMirror.seq;          // a newer search replaces an older answer
   const grid = document.getElementById('driveMirrorGrid');
+  if (!opts.append && !opts.silent) loadBranding();   // the branding box above the list (its own small read)
   if (!opts.silent && !opts.append) {
     mlNote(opts.refresh ? t('ml_checking') : '');
     if (!driveMirror.files.length) {
@@ -9610,6 +9663,43 @@ async function connectViaChat(key, step) {
   }
   if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
   if (data.connected) loadDashboard();
+}
+
+// ─── Branding (GET /api/client/branding, core/branding) ──────────────────────
+// The box in the Media tab: where the client stands + ONE button that opens
+// ליאור's chat with the request already said. The terms line is the server's.
+let BRAND_STATE = null;
+async function loadBranding() {
+  const box = document.getElementById('brandBox');
+  if (!box) return;
+  let d = null;
+  try {
+    const res = await fetch('/api/client/branding', { credentials: 'same-origin' });
+    const body = await res.json();
+    d = res.ok && body.success ? body.data : null;
+  } catch (e) { d = null; }
+  if (!d || !d.available) { box.hidden = true; return; }
+  BRAND_STATE = d;
+  const t = uallakI18n.t;
+  document.getElementById('brandTerms').textContent = d.approved ? '' : [d.terms, d.value].filter(Boolean).join(' ');
+  document.getElementById('brandState').textContent = d.approved ? t('brand_state_approved')
+    : d.attempts_used ? (d.attempts_left_free > 0
+        ? t('brand_state_left', { left: d.attempts_left_free, free: d.free_attempts }) : t('brand_state_none'))
+    : '';
+  const btn = document.getElementById('brandBtn');
+  btn.textContent = t(d.approved ? 'brand_btn_produce' : d.attempts_used ? 'brand_btn_again' : 'brand_btn');
+  btn.hidden = !d.approved && !!d.attempts_used && !d.can_try_now;
+  const view = document.getElementById('brandView');
+  view.hidden = !(typeof d.view_url === 'string' && /^\/api\/client\/branding\/view\/\d+$/.test(d.view_url));
+  if (!view.hidden) view.href = d.view_url;
+  box.hidden = false;
+}
+function brandStart() {
+  const d = BRAND_STATE || {};
+  const w = openAgentWindow('media');
+  if (!w) return;
+  setChatInput(w.inputEl, uallakI18n.t(d.approved ? 'brand_chat_produce' : d.attempts_used ? 'brand_chat_again' : 'brand_chat_msg'));
+  sendInWindow('media');
 }
 
 // The general concierge, not a specialist: automation isn't ads, site or media,

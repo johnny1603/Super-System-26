@@ -270,3 +270,7 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | `connect_store` | client click | link | — | One click: opens the client's own store approval screen (read-only, revocable); the store sends the key to our server. Only for deeper order data — totals come from our purchase measurement without it. |
 | `set_conversion_types` | client click | execute | — | Saves what counts as a conversion for this client — any of form_submit (a form on the site), whatsapp_click, phone_click, store_sales — exactly as the client described how customers reach them. |
 | `change_manager` | client click | execute | — | Switches who the client's account manager is (the name and face in this chat, emails and messages). |
+| `create_brand_mockups` | client click | execute | — | Branding: ONE attempt — a branding direction shown as mockups drawn in code (logo, business card, shop sign, flyer, poster, how a website could look). 5 free attempts; the card carries the fixed terms line (docs/BRANDING.md). |
+| `approve_branding` | client click | execute | opened by code only (under a finished attempt) | The mockup link and "this is my direction": saves the brand kit and closes the attempts. |
+| `request_logo_designer` | client click | execute | — | The logo with our human designer instead; the team is alerted, the designer gives the price. |
+| `approve_production_quote` | client click | execute | opened by code only (staff send the quote) | The price of real branding production (our cost × 2), approved before anything is made. |

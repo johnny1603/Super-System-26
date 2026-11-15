@@ -137,6 +137,9 @@ PARITY = {
     "POST /api/client/media/send": (CHAT, "send_tiktok_to_inbox,publish_youtube_from_media"),
     # Add by link (2026-11-11): a pasted Drive link in the chat opens the same copy as a card
     "POST /api/client/media/add-link": (CHAT, "add_media_from_drive_link"),
+    "GET /api/client/branding": (CHAT, "create_brand_mockups"),
+    "GET /api/client/branding/view/{attempt}": (NOT_CHAT, "the mockup page a branding card links to; the card itself "
+                                                          "(approve_branding) is the chat's path"),
     "POST /api/client/media/add-link/step": (NOT_CHAT, "the Media tab's progress poll for a running copy; "
                                                        "the chat card reports its own outcome"),
     # ── Leads + CRM ──────────────────────────────────────────────────────────

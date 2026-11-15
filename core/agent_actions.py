@@ -4370,6 +4370,12 @@ ACTIONS = {
     },
 }
 
+# Branding (2026-11-15): ליאור's mockup attempts, the approval that saves the
+# brand kit, the human designer, the production quote — core/branding_actions
+import sys as _sys
+from core import branding_actions as _branding_actions
+ACTIONS.update(_branding_actions.build(_sys.modules[__name__]))
+
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",
                         "Cette adresse e-mail n'est pas valide — pas de brouillon.", "عنوان البريد غير صالح، لذلك لم أجهّز مسودة.",

@@ -273,6 +273,53 @@ don't have it in front of you this time — never guess it."""
 
 # Shared by the concierge and every persona (core/client_state + core/agent_actions).
 # Brace-free: concatenated into PERSONA_SYSTEM_TEMPLATE before .format().
+# Branding + the live-site rule (2026-11-15, docs/BRANDING.md). In BOTH
+# templates, so whichever agent the client talks to does the work in that
+# chat. No braces: the persona template is .format()-ed.
+STUDIO_RULE = """
+
+BRANDING ("branding" in your data; the creative work is ליאור's, but it is done HERE, in this chat,
+whoever you are — never send the client to another chat). The client sees how their business would
+look under its best branding, as MOCKUPS: logo, business card, shop sign, flyer, poster, and how a
+website could look.
+- BEFORE THE FIRST ATTEMPT (branding.attempts_used is 0): say branding.terms_line once, WORD FOR
+  WORD, and branding.value_line once, word for word. Never add to them, never promise more than
+  they say.
+- A SHORT, LIGHT CHARACTERISATION, NEVER A FORM: do not ask open questions. Offer ONE ready-made
+  direction built from what you know about THEIR business, that they only react to — for example
+  "for a business like yours I'd go with warm colours and a minimal logo, shall I?". At most two or
+  three such proposals in the whole conversation (the colours' feeling, the style, the kind of
+  logo); one message may carry them together. Keep the quality for the creation, not the questions.
+- THEY REACTED (a yes, or a change): propose "create_brand_mockups" with the agreed direction.
+  branding.can_try_now false: do not propose it — say why from branding (approved already, or the
+  free attempts are used) and offer what is open: approving a direction they saw, or
+  "request_logo_designer".
+- BRANDING IS THE OWNER'S, NOT OURS. In marketing media we lead; a brand is something the owner
+  lives with every day and has to connect with emotionally. Say so. Never push them to approve, and
+  never argue with "it doesn't feel like me" — offer another direction.
+- THE LOGO: if they do not connect with it, tell them they can have the logo designed directly with
+  a human designer who works with us in the system, and propose "request_logo_designer". Never
+  quote a price for it.
+- MOCKUPS ONLY. Nothing is printed, ordered or built by an attempt. Branding NEVER includes
+  building a website — only a mockup of how one could look; if they like it, a site is a separate
+  service paid separately.
+- AFTER THEY APPROVED A DIRECTION (branding.approved true): no more attempts. Real production
+  (final logo files, printed cards, signage, flyers, posters) is priced per request and reaches
+  them as a quote card they approve BEFORE anything is made. Never state, estimate or hint at a
+  price yourself. When they say what they want produced, set "needs_human_followup" true and
+  "handoff_topic" "billing" so the team prepares that quote.
+
+THEIR LIVE WEBSITE — HUMAN HANDS ONLY. The system never redesigns, restyles or rebuilds a client's
+EXISTING live website. When they ask for that, do not refuse bluntly. Explain warmly that a change
+to a live site is made only by human hands, because an unsupervised change to a site their
+customers are using right now is sensitive and risky; and that a price is given only after a short
+characterisation with a person from the team. Never state or estimate a price for it. Then set
+"needs_human_followup" true and "handoff_topic" "package_exception". What the system DOES build:
+a new website on a new domain; and when their existing site is not WordPress, either a new site on
+a new domain or a landing page connected to their existing site. (Articles, landing pages, plugin
+updates and anything else in available_actions are NOT this rule — do those as usual.)
+"""
+
 ACCOUNT_STATE_RULE = """
 
 ACCOUNT STATE — YOU SEE THE WHOLE ACCOUNT. "account_state" is a snapshot of this client's
@@ -669,7 +716,7 @@ Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
  "handoff_topic": "", "capability_gap": "", "data_topic": "", "web_search_query": "",
  "upgrade_request": "", "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
-    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
+    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + STUDIO_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are a person on the uallak team —
@@ -898,6 +945,14 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
         payload["account_state"] = client_state.for_model(state)
         payload["available_actions"] = agent_actions.available(client_id, "client_chat", state,
                                                                client=client)
+        try:
+            # Branding (STUDIO_RULE): where they stand + the fixed terms line. Cached 60 s.
+            from core import branding
+            block = branding.prompt_block(client_id, _client_language(client_id, message))
+            if block:
+                payload["branding"] = block
+        except Exception as e:
+            log_step(AGENT_NAME, "account_context", f"client {client_id}: branding block left out: {type(e).__name__}")
         return state
     except Exception as e:
         log_step(AGENT_NAME, "account_context",
@@ -2341,7 +2396,7 @@ Return JSON only:
 {{"reply": "client-language text", "confidence": "high", "needs_human_followup": true/false,
  "out_of_scope": true/false, "handoff_topic": "", "capability_gap": "", "data_topic": "",
  "upgrade_request": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
-    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + NO_SECRETS_RULE \
+    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + STUDIO_RULE + NO_SECRETS_RULE \
     + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
 
 

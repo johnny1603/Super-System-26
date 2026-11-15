@@ -411,3 +411,41 @@ about $40; I stop and ask before passing it.
 - **Migration:** none. **Deploy:** needed.
 - **Estimated cost of this round:** about $22 (rough; `/cost` is the real number). Under
   the $25 proposed for this round.
+
+---
+
+# Round 3 — the agents' real capabilities (2026-11-15)
+
+**Proposed cost cap for this round: $45.** Work stops before passing it.
+
+## Checkpoint R3-1 — Branding: ליאור shows the business under its best branding
+
+- **Built:** a branding flow that ends in mockups the client approves or rejects
+  (`docs/BRANDING.md`). A button in the Media tab opens ליאור's chat. The agent offers a
+  ready-made direction the client reacts to (no form). One card runs one attempt; a second
+  card carries the link to the mockups and the approval.
+- **Mockups:** logo, business card, shop sign, flyer, poster, and how a website could look.
+  Drawn in code as SVG (`core/brand_mockups.py`). Every letter and logo is composed in code.
+  No image model is used. Under each item: what it takes to actually get it.
+- **Money, as built:** 5 free attempts. One model call per attempt, capped at ₪1.5 and
+  checked before the call; each attempt's measured cost is recorded in `client_costs`. After
+  approval there are no more attempts. Production is quoted at our cost × 2 on a card the
+  client approves before anything is made (staff enter the costs).
+- **Left behind a switch, for the owner:** the charge for attempts past the free five. The
+  system has no per-attempt charge mechanism (only the subscription and e-mailed invoices),
+  so `EXTRA_ATTEMPT_CHARGE_ENABLED` is off. Past five, nothing runs: one plain line to the
+  client, one alert to the team, and staff can grant attempts.
+- **Brand kit:** the approved palette, fonts, style and mark are saved per client and read
+  by generated media and by designed landing pages.
+- **Websites:** branding never includes a site, only a mockup. The agents never redesign a
+  live site: a warm explanation (human hands only, price after a human characterisation),
+  and a tracked team request. No automatic price.
+- **Tests:** 76/76 test files pass (`tests/test_branding.py`, 27 tests).
+- **Checked in a real browser:** one Hebrew sample page in Chrome on desktop. Two
+  right-to-left alignment bugs were found and fixed; the second fix (contact lines on the
+  business card) was not looked at again.
+- **NOT tested:** a real model designing a concept, a real client, the chat flow end to end,
+  the dashboard box with a logged-in client, a phone, Arabic / Russian / French pages by eye.
+- **Not built:** an admin screen for the quote and the grant (two admin endpoints exist);
+  מאיה's published posts do not read the kit yet.
+- **Migration:** none. **Deploy:** needed.

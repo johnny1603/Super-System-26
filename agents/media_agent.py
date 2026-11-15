@@ -470,6 +470,12 @@ Return JSON only:
 
 
 def _brand_palette(client_id: int) -> list:
+    # The brand kit the client approved (core/branding) comes first; the
+    # website's recorded palette is the older fallback
+    from core import branding
+    kit_palette = branding.kit_palette_list(client_id)
+    if kit_palette:
+        return kit_palette
     rows = (_db().table("client_activity").select("details")
             .eq("client_id", client_id).eq("action_type", "website_brand_identity")
             .order("created_at", desc=True).limit(1).execute().data)

@@ -811,6 +811,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   scrolls the client to a connection card must call `connReveal(el)` first** (a folded card must
   never be a dead end). The journey track is one summary line with the full track on request. A
   completed step = ring pulse + one line + the one-per-key burst. `tests/test_onboarding_ui.py`.
+- **Branding (2026-11-15, `docs/BRANDING.md`)**: ליאור's "how would your business look" flow.
+  `core/brand_mockups` draws the mockups (logo, card, sign, flyer, poster, website mockup) as SVG
+  IN CODE — never an image model, never text inside a generated image; the page is rebuilt from
+  the stored concept and served under a script-less sandbox CSP. `core/branding`: 5 free attempts,
+  ONE model call per attempt capped BEFORE the call (`ATTEMPT_COST_CAP_ILS`), cost on the attempt
+  + in client_costs, approval → the BRAND KIT (`kit_for_prompt` / `kit_palette_list` are its only
+  readers: media_agent, landing_creative), production quote = our cost × 2 on a client card.
+  `EXTRA_ATTEMPT_CHARGE_ENABLED` is OFF — charging per attempt is a new billing mechanism and the
+  owner's decision; past the free attempts nothing runs. Cards in `core/branding_actions`
+  (registered into ACTIONS). Agent rules: `support_agent.STUDIO_RULE` (also: a live site is never
+  redesigned by the system — human hands only, no automatic price). app_settings `branding:<id>`
+  + `brand_kit:<id>`, cleared with the client. `tests/test_branding.py`.
 - **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
   microphone in each client chat window; the BROWSER's speech recognition turns speech into text
   in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is

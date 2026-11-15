@@ -965,7 +965,9 @@ def _settings_keys(ids: list) -> list:
                                      # Pull-from-Drive jobs + their lease (core/drive_pull)
                                      f"drive_pull:{int(i)}", f"drive_pull_lock:{int(i)}",
                                      # the Media tab's last-visit mark (core/media_library)
-                                     f"media_seen:{int(i)}")]
+                                     f"media_seen:{int(i)}",
+                                     # branding attempts + the approved brand kit (core/branding)
+                                     f"branding:{int(i)}", f"brand_kit:{int(i)}")]
 
 
 def _clear_settings(ids: list):

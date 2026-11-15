@@ -423,7 +423,9 @@ def get_settings() -> dict:
                                        "anthropic_credits:", "tiktok_upload:", "tiktok_upload_lock:",
                                        # drive_pull: Pull-from-Drive jobs; media_seen: the
                                        # Media tab's "new since your last visit" mark
-                                       "drive_pull:", "drive_pull_lock:", "media_seen:")):
+                                       "drive_pull:", "drive_pull_lock:", "media_seen:",
+                                       # branding attempts + brand kit (core/branding)
+                                       "branding:", "brand_kit:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

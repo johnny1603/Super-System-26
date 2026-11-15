@@ -6187,6 +6187,78 @@ def client_media_add_link_step(request: Request):
     from core import drive_pull
     return _client_link_answer(client_id, lambda: drive_pull.step(client_id, 15))
 
+# ─── Branding (core/branding): mockup attempts, brand kit, production quote ───
+@app.get("/api/client/branding")
+def client_branding(request: Request):
+    # The dashboard's branding button: where the client stands (attempts used /
+    # free ones left / approved) and the fixed terms line, in their language.
+    client_id = _require_session(request)
+    from core import agent_actions, branding
+    lang = agent_actions._lang(client_id)
+    data = branding.summary(client_id)
+    if data.get("available"):
+        data["terms"] = branding.terms_line(lang)
+        data["value"] = branding.text(branding.VALUE, lang)
+        data["view_url"] = branding.view_path(data["latest_attempt"]) if data.get("latest_attempt") else ""
+    return {"success": True, "data": data}
+
+@app.get("/api/client/branding/view/{attempt}")
+def client_branding_view(attempt: int, request: Request):
+    # One attempt's mockup page: SVG drawn in code from the stored concept
+    # (core/brand_mockups), under a sandbox CSP with no script source — it
+    # cannot reach this origin's session.
+    client_id = _require_session(request)
+    from fastapi.responses import HTMLResponse
+    from core import agent_actions, brand_mockups, branding
+    try:
+        page = branding.page(client_id, attempt, agent_actions._lang(client_id))
+    except Exception as e:
+        print(f"[branding] client {client_id}: mockup page unreadable ({type(e).__name__})")
+        raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+    if not page:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    return HTMLResponse(page, headers=brand_mockups.page_headers())
+
+class BrandingQuoteRequest(BaseModel):
+    costs: dict            # {item: OUR cost in ILS}; items from branding.QUOTE_ITEMS
+    note: str = ""
+
+class BrandingGrantRequest(BaseModel):
+    attempts: int = 1
+
+@app.get("/api/admin/branding/{client_id}")
+def admin_branding(client_id: int, request: Request):
+    _require_admin(request)
+    from core import branding
+    value = branding.state(client_id)
+    return {"success": True, "data": {
+        "summary": branding.summary(client_id), "kit": branding.kit(client_id), "quote": value.get("quote") or {},
+        "extra_attempt_price_ils": branding.extra_attempt_price_ils(value),
+        "attempts": [{"n": a.get("n"), "at": a.get("at"), "direction": a.get("direction"),
+                      "cost_ils": a.get("cost_ils"), "model": a.get("model")} for a in value.get("attempts") or []]}}
+
+@app.post("/api/admin/branding/{client_id}/quote")
+def admin_branding_quote(client_id: int, req: BrandingQuoteRequest, request: Request):
+    # Staff enter what each item costs US; the client's price is cost × 2
+    # (core/branding.QUOTE_MULTIPLIER) and reaches them as ONE approval card.
+    _require_admin(request)
+    from core import branding, branding_actions
+    try:
+        result = branding_actions.send_quote(client_id, req.costs or {}, req.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_QUOTE", "message": str(e)})
+    except branding.BrandingError as e:
+        raise HTTPException(status_code=409, detail={"code": e.code})
+    return {"success": not result.get("error"), "data": {"quote": result["quote"], "card_sent": bool(result.get("card"))}}
+
+@app.post("/api/admin/branding/{client_id}/grant")
+def admin_branding_grant(client_id: int, req: BrandingGrantRequest, request: Request):
+    # More free attempts for one client (the manual answer while the
+    # extra-attempt charge is switched off)
+    _require_admin(request)
+    from core import branding
+    return {"success": True, "data": branding.grant_attempts(client_id, req.attempts)}
+
 @app.get("/api/admin/control-room/{client_id}/media-drive")
 def admin_media_drive(client_id: int, request: Request, folder: str = "", page_token: str = "",
                       page: int = 0, refresh: bool = False):

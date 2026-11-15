@@ -164,6 +164,9 @@ PROCESS (in your head, then on the page):
    (one expressive display face + one calm text face); layout rhythm; ONE signature moment; an
    iconography style (custom inline SVG, one stroke language). Optionally a secondary script tied to
    the brand name (only when the brand name itself comes from that language).
+   EXCEPTION: when the page data carries "client_approved_brand_kit", the client already approved
+   that palette, font pairing and style as their brand. Use exactly those colours and fonts
+   (palette_source "brand_kit") and design in that style; do not derive new ones.
 3. Build. 4. Critique against the playbook's checklist and fix before you answer.
 
 OUTPUT FORMAT, exactly, nothing before or after:
@@ -291,6 +294,14 @@ def build_request(client_id: int, page: dict, copy: dict, contact: dict, refs: l
         "has_logo": any(r.get("placement") == "logo" for r in refs or []),
         "images": image_list(refs),
     }
+    try:
+        # The brand kit the client approved in the branding flow (core/branding); {} = none
+        from core import branding
+        kit = branding.kit_for_prompt(client_id)
+        if kit:
+            payload["client_approved_brand_kit"] = kit
+    except Exception:
+        pass
     if feedback:
         payload["client_feedback"] = feedback
     if landing_research:
