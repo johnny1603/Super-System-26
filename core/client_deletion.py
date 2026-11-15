@@ -973,7 +973,8 @@ def _settings_keys(ids: list) -> list:
                                      # the weekly content plan (core/content_team)
                                      f"content_plan:{int(i)}",
                                      f"avatar_photos:{int(i)}", f"invite_resume:{int(i)}",
-                                     f"quarter_goals:{int(i)}", f"organic_plan:{int(i)}")]
+                                     f"quarter_goals:{int(i)}", f"organic_plan:{int(i)}",
+                                     f"competitor_watch:{int(i)}")]
 
 
 def _clear_settings(ids: list):

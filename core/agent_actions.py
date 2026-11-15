@@ -4410,6 +4410,10 @@ ACTIONS.update(_quarter_goals_actions.build(_sys.modules[__name__]))
 from core import organic_plan_actions as _organic_plan_actions
 ACTIONS.update(_organic_plan_actions.build(_sys.modules[__name__]))
 
+# מאיה follows the competitors' public social presence (2026-11-16) — core/competitor_watch_actions
+from core import competitor_watch_actions as _competitor_watch_actions
+ACTIONS.update(_competitor_watch_actions.build(_sys.modules[__name__]))
+
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",
                         "Cette adresse e-mail n'est pas valide — pas de brouillon.", "عنوان البريد غير صالح، لذلك لم أجهّز مسودة.",

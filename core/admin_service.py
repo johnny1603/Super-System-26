@@ -430,7 +430,7 @@ def get_settings() -> dict:
                                        # branding attempts + brand kit (core/branding)
                                        "branding:", "brand_kit:", "seo_report:", "content_plan:",
                                        "avatar_photos:", "invite_resume:", "quarter_goals:",
-                                       "organic_plan:")):
+                                       "organic_plan:", "competitor_watch:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

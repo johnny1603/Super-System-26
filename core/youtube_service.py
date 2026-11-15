@@ -332,6 +332,56 @@ def _get_with_key(path: str, params: dict) -> dict:
     return response.json()
 
 
+CHANNEL_RECENT_MAX = 10
+
+
+def public_channel_recent(handle: str = "", channel_id: str = "", max_videos: int = CHANNEL_RECENT_MAX) -> dict:
+    """A PUBLIC channel's recent videos with their PUBLIC counts (core/competitor_watch).
+    API key only, no user token. 3 quota units (channels.list + playlistItems.list +
+    videos.list, 1 each) — never search.list. A count the owner hid is simply absent
+    (None), never 0. {} when the key is unset or the channel is not found."""
+    if not search_available() or not (handle or channel_id):
+        return {}
+    params = {"part": "snippet,contentDetails,statistics"}
+    if channel_id:
+        params["id"] = channel_id
+    else:
+        params["forHandle"] = handle if handle.startswith("@") else f"@{handle}"
+    items = _get_with_key("channels", params).get("items") or []
+    if not items:
+        return {}
+    channel = items[0]
+    uploads = ((channel.get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads")
+    stats = channel.get("statistics") or {}
+    out = {"channel_id": channel.get("id"), "title": (channel.get("snippet") or {}).get("title", ""),
+           "url": CHANNEL_URL.format(channel.get("id")),
+           "subscribers": None if stats.get("hiddenSubscriberCount") else _int(stats.get("subscriberCount")),
+           "videos": []}
+    if not uploads:
+        return out
+    listing = _get_with_key("playlistItems", {"part": "contentDetails", "playlistId": uploads,
+                                              "maxResults": min(max_videos, 50)}).get("items") or []
+    ids = [((i.get("contentDetails") or {}).get("videoId") or "") for i in listing]
+    ids = [i for i in ids if i]
+    if not ids:
+        return out
+    for video in _get_with_key("videos", {"part": "snippet,statistics,contentDetails", "id": ",".join(ids)}).get("items") or []:
+        snippet, vstats = video.get("snippet") or {}, video.get("statistics") or {}
+        out["videos"].append({"video_id": video.get("id"), "url": WATCH_URL.format(video.get("id")),
+                              "title": snippet.get("title", ""), "published_at": snippet.get("publishedAt", ""),
+                              "duration": (video.get("contentDetails") or {}).get("duration", ""),
+                              "views": _int(vstats.get("viewCount")), "likes": _int(vstats.get("likeCount")),
+                              "comments": _int(vstats.get("commentCount"))})
+    return out
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def search_videos(query: str, max_results: int = SEARCH_MAX_RESULTS,
                   published_within_days: int = SEARCH_WINDOW_DAYS,
                   region_code: str = "IL", relevance_language: str = "he") -> list:

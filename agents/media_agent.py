@@ -893,6 +893,15 @@ def plan_week(client: dict, events: list, request: str = "") -> list:
     research = competitor_research.summary_for_prompt(client_id, "media")
     if research:
         payload["competitor_research"] = research
+    # מאיה's latest competitor read (core/competitor_watch): stored, no new call —
+    # inspiration for the week, never a template
+    try:
+        from core import competitor_watch
+        watched = competitor_watch.prompt_lines(client_id)
+        if watched:
+            payload["competitor_watch"] = watched
+    except Exception:
+        pass
     payload["language"] = client.get("language") or "he"
     if request:
         payload["client_request"] = str(request)[:300]

@@ -744,3 +744,19 @@ about $40; I stop and ask before passing it.
 - **Not tested against a real model:** the research and strategy quality.
   `tests/test_organic_plan.py`.
 - **Migration:** none. **Deploy:** needed.
+
+### Part 5 — מאיה follows the competitors
+
+- **Cards:** `track_competitor` (the client's own competitors, plus the interview's) and
+  `competitor_digest`, the weekly read: what works, what works less, and ORIGINAL ideas to do
+  better. The latest read feeds the weekly content plan.
+- **Allowed methods only:**
+  - real numbers from public YouTube channels (API key, 3 units, never search.list);
+  - an impression from public search elsewhere, said so;
+  - no scraping and no paid service.
+- **Never copy:** long quotes dropped, unsourced links removed, vendor names scrubbed.
+- **STOP-AND-ASK:** real Instagram numbers need the scope `instagram_manage_insights` (Business
+  Discovery, App Review, clients reconnect). It is not requested. Facebook and TikTok would need a
+  paid data service, which we have not asked for.
+- **Not tested against a real API or model.** `tests/test_competitor_watch.py`.
+- **Migration:** none. **Deploy:** needed.

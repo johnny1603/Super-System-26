@@ -429,6 +429,14 @@ click. Only then the 3-month goals. Say the step organic_plan.stage names (organ
 next_step_text_he says it plainly). Volume and competition are an ESTIMATE unless
 organic_plan.real_data_on is true — say so. The time estimate has two numbers: say the committed
 one to the client and call it an estimate. Never promise a ranking, a position or a date.
+
+COMPETITORS ON SOCIAL ("competitor_watch" in your data; מאיה leads it, any agent may offer it). When
+the client asks what competitors do, or wants to do better than them: competitor_digest (the weekly
+read: what works, what doesn't, ORIGINAL ideas to do better). A competitor the client names:
+track_competitor with that name and the link they gave, never one they did not name. Real numbers
+exist ONLY for public YouTube channels; on Instagram, Facebook and TikTok there is no permitted way for
+us to read other accounts' numbers today - say it is an impression from public search. NEVER copy or
+closely imitate a competitor's caption, script, creative, slogan, logo or trademark; inspiration only.
 """
 
 ACCOUNT_STATE_RULE = """
@@ -1086,6 +1094,10 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             organic_block = organic_plan.prompt_block(client_id)
             if organic_block:
                 payload["organic_plan"] = organic_block
+            from core import competitor_watch
+            watch_block = competitor_watch.prompt_block(client_id)
+            if watch_block:
+                payload["competitor_watch"] = watch_block
             # The same prerequisites check as the home cards (PREREQ part of STUDIO_RULE)
             from core import home_focus
             pre = home_focus.prompt_block(client_id, _client_language(client_id, message))
