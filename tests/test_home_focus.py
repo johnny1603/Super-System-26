@@ -51,7 +51,10 @@ class Base(unittest.TestCase):
         self.started = set()
         self.presenter = True
         self.posted = []
-        self.saved = [(hf, n, getattr(hf, n)) for n in ("_db", "_package", "_started", "_search_console_on")]
+        self.covered = True
+        self.saved = [(hf, n, getattr(hf, n)) for n in ("_db", "_package", "_started", "_search_console_on",
+                                                         "_organic_covered")]
+        hf._organic_covered = lambda cid: self.covered
         hf._db = lambda: self.db
         hf._package = lambda cid: {"resolved": self.resolved, "steps": set(self.steps), "services": ["seo"]}
         hf._started = lambda cid, service, cover: service in self.started
@@ -174,6 +177,12 @@ class Prerequisites(Base):
         self.assertEqual(hf.resume(7), {})
         self.assertFalse(self.db.tables["app_settings"])
 
+    def test_organic_without_the_service_asks_for_nothing_first(self):
+        self.covered = False
+        out = hf.start(7, "organic", "en")
+        self.assertTrue(out["ready"])           # the taste and the upgrade card come first
+        self.assertNotIn("organic", hf.prompt_block(7, "en"))
+
     def test_unknown_service_refused(self):
         with self.assertRaises(ValueError):
             hf.start(7, "rockets", "en")
@@ -188,6 +197,16 @@ class Prerequisites(Base):
         for entry in block.values():
             for name in entry["connect_cards"]:
                 self.assertIn(name, agent_actions.ACTIONS)
+
+
+class Chat(unittest.TestCase):
+    def test_the_rule_and_the_payload(self):
+        from agents import support_agent
+        rule = support_agent.STUDIO_RULE
+        self.assertIn("PREREQUISITES", rule)
+        self.assertIn("connect_cards", rule)
+        self.assertNotIn("{", rule)              # it goes through a .format() template
+        self.assertIn("home_focus.prompt_block(client_id", _src("agents", "support_agent.py"))
 
 
 class Wiring(unittest.TestCase):

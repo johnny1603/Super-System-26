@@ -545,3 +545,15 @@ about $40; I stop and ask before passing it.
   `POST /api/client/invite`.
 - Tests: `tests/test_home_focus.py`. 79/79 files pass. **Migration:** none. **Deploy:** needed.
 
+## Checkpoint 2026-11-16: home upgrade, Part 2 (connect first, calmly)
+
+- One prerequisites check per job (`home_focus.SERVICES[...]["needs"]`, `prerequisites()`),
+  used by every invitation card and by the chat. The chat side is the payload `prerequisites`
+  plus the PREREQUISITES part of `support_agent.STUDIO_RULE`.
+- A click with something missing: one calm line in the agent's own thread, exactly the missing
+  items, one connect button each (the existing connect conversation, with the catalog's sign-up
+  link), and the request kept (`invite_resume:<id>`, 14 days). It is handed back once when
+  everything is connected.
+- Organic without the service asks for no connection: the taste and the upgrade card come first.
+- 79/79 files pass. **Migration:** none. **Deploy:** needed.
+

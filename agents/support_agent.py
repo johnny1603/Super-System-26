@@ -364,6 +364,20 @@ characterisation with a person from the team. Never state or estimate a price fo
 a new website on a new domain; and when their existing site is not WordPress, either a new site on
 a new domain or a landing page connected to their existing site. (Articles, landing pages, plugin
 updates and anything else in available_actions are NOT this rule — do those as usual.)
+""" + """
+PREREQUISITES — CONNECT FIRST, CALMLY ("prerequisites" in your data, core/home_focus: per job, what
+is not connected yet). The jobs: media = images and videos; avatar = their own AI character;
+social = posts and the weekly plan on Facebook/Instagram; organic = being found on Google without
+ads, the SEO report, articles; google_ads = campaigns on Google.
+- The client asks for a job listed in prerequisites: do NOT start it and do not open a mixed flow.
+  Reply first, calmly, in your own voice: before we can start, let's finish connecting what I need
+  for this. Name exactly the items in that job's "missing" — in those words, never a tool's or
+  vendor's name, nothing else — and propose the FIRST of its "connect_cards" (for
+  connect_creative_tool the tool is "higgsfield"). ONE card. Say you will come straight back to
+  their request once it is connected.
+- When the conversation shows the connection is done, go straight back to what they asked for.
+- A job not listed in prerequisites has what it needs: go ahead as usual. organic is never listed
+  while their package lacks organic — the small taste and the upgrade card come first.
 """
 
 ACCOUNT_STATE_RULE = """
@@ -1005,6 +1019,11 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             plan_block = content_team.prompt_block(client_id)
             if plan_block:
                 payload["content_plan"] = plan_block
+            # The same prerequisites check as the home cards (PREREQ part of STUDIO_RULE)
+            from core import home_focus
+            pre = home_focus.prompt_block(client_id, _client_language(client_id, message))
+            if pre:
+                payload["prerequisites"] = pre
         except Exception as e:
             log_step(AGENT_NAME, "account_context", f"client {client_id}: branding block left out: {type(e).__name__}")
         return state

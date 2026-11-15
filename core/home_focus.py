@@ -295,6 +295,20 @@ def missing(service: str, connected: set) -> list:
     return [s for s in needs(service) if not any(p in connected for p in STEPS[s]["platforms"])]
 
 
+def _organic_covered(client_id: int) -> bool:
+    """Organic's connections matter only once the client HAS the service: a
+    package without it gets Uri's small taste and the ONE upgrade card first,
+    never "connect your site" for a service they don't have."""
+    from core import seo_report
+    return bool(seo_report.coverage(client_id).get("covered"))
+
+
+def gaps_for(client_id: int, service: str, connected: set) -> list:
+    if service == "organic" and not _organic_covered(client_id):
+        return []
+    return missing(service, connected)
+
+
 def prerequisites(client_id: int, service: str, lang: str = "he", connected: set = None) -> dict:
     """What THIS service's agent needs connected, and what is still missing.
     `ready` False → the agent says FOCUS_LINE and lists `items` (one connect
@@ -304,7 +318,7 @@ def prerequisites(client_id: int, service: str, lang: str = "he", connected: set
     lang = lang if lang in LANGS else "he"
     if connected is None:
         connected = _connected_platforms(client_id)
-    gaps = missing(service, connected)
+    gaps = gaps_for(client_id, service, connected)
     items = [{"step": s, "connect": STEPS[s]["connect"], "label": pick(STEP_LABEL[s], lang),
               "why": pick(WHY.get((service, s), {}), lang)} for s in gaps]
     lines = [pick(FOCUS_LINE, lang)] + [f"• {i['label']}" + (f" — {i['why']}" if i["why"] else "") for i in items]
@@ -435,7 +449,7 @@ def resume(client_id: int, connected: set = None) -> dict:
     service, lang = value["service"], value.get("language") or "he"
     if connected is None:
         connected = _connected_platforms(client_id)
-    if missing(service, connected):
+    if gaps_for(client_id, service, connected):
         return {}
     forget_resume(client_id)
     return {"service": service, "persona": SERVICES[service]["persona"],
@@ -459,7 +473,10 @@ def prompt_block(client_id: int, lang: str = "he") -> dict:
         return {}
     out = {}
     for service in SERVICES:
-        gaps = missing(service, connected)
+        try:
+            gaps = gaps_for(client_id, service, connected)
+        except Exception:
+            continue   # unknown coverage: no claim about this job
         if gaps:
             out[service] = {"missing": [pick(STEP_LABEL[s], lang) for s in gaps],
                             "connect_cards": [_CONNECT_CARD[s] for s in gaps]}
