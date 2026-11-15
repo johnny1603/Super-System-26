@@ -1168,6 +1168,13 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
   font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
 .drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .drive-act.tiktok { border-color: var(--accent); }
+/* Agent invitation cards (home, core/home_focus): the same look as the branding
+   banner — the agent's face + one persuasive line + a chevron. At most three. */
+.agent-invites { display: grid; gap: 10px; margin: -8px 0 24px; }
+.agent-invites[hidden] { display: none; }
+.agent-invites .brand-hero { margin: 0; }
+.agent-invites .brand-hero:disabled { cursor: default; opacity: .7; }
+.prereq-row .chip { border-color: rgba(255,76,31,.55); }
 /* The branding entry (home, top): Lior's face + one line, stands apart from the
    navigation; the studio is a sheet over the page (full screen on a phone). */
 .brand-hero { display: flex; align-items: center; gap: 14px; width: 100%; text-align: start; cursor: pointer;
@@ -1533,6 +1540,10 @@ a.media-item:hover { border-color: var(--accent); }
     </span>
     <span class="bh-go" aria-hidden="true">›</span>
   </button>
+
+  <!-- Agent invitations (core/home_focus): one card per real service the client has not started.
+       A click opens that agent's chat; missing connections are asked for first. -->
+  <div class="agent-invites" id="agentInvites" hidden></div>
 
   <div class="stat-grid" id="statGridMain">
     <div class="stat-card">
@@ -3238,6 +3249,8 @@ const DASH_I18N = {
   bh_sub_progress: { he:"נוצלו {used} מתוך {free} ניסיונות. כל מה שראיתם מחכה בגלריה.", en:"{used} of {free} attempts used. Everything you saw is waiting in the gallery.", fr:"{used} essais utilisés sur {free}. Tout ce que vous avez vu vous attend dans la galerie.", ar:"استُخدمت {used} من {free} محاولات. كل ما رأيتموه ينتظركم في المعرض.", ru:"Использовано {used} из {free} попыток. Всё, что вы видели, — в галерее." },
   bh_sub_approved: { he:"ערכת המותג שלכם שמורה ✓ כאן גם מה צריך כדי להפיק כל פריט.", en:"Your brand kit is saved ✓ Here is also what it takes to produce each item.", fr:"Votre kit de marque est enregistré ✓ Et ici, ce qu'il faut pour produire chaque élément.", ar:"عدّة علامتكم محفوظة ✓ وهنا أيضًا ما يلزم لإنتاج كل عنصر.", ru:"Ваш бренд-кит сохранён ✓ Здесь же — что нужно для изготовления каждого элемента." },
   bh_sub_upgrade: { he:"חלק משירות התוכן והמדיה. לחצו כדי לראות מה הוא כולל.", en:"Part of the content and media service. Tap to see what it includes.", fr:"Fait partie du service contenus et médias. Touchez pour voir ce qu'il comprend.", ar:"جزء من خدمة المحتوى والوسائط. انقروا لرؤية ما تتضمنه.", ru:"Входит в услугу контента и медиа. Нажмите, чтобы узнать, что в неё входит." },
+  invite_failed: { he:"לא הצלחתי לפתוח את השיחה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open the conversation right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir la conversation pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح المحادثة الآن. حاولوا مجددًا بعد لحظة.", ru:"Не удалось открыть разговор. Попробуйте ещё раз через минуту." },
+  prereq_connect: { he:"לחבר: {what}", en:"Connect: {what}", fr:"Connecter : {what}", ar:"ربط: {what}", ru:"Подключить: {what}" },
   bs_title: { he:"סטודיו המיתוג", en:"Branding studio", fr:"Studio d'identité", ar:"استوديو الهوية", ru:"Студия брендинга" },
   bs_by: { he:"עם {name}", en:"With {name}", fr:"Avec {name}", ar:"مع {name}", ru:"С {name}" },
   bs_close: { he:"סגירה", en:"Close", fr:"Fermer", ar:"إغلاق", ru:"Закрыть" },
@@ -3969,6 +3982,7 @@ async function loadDashboard() {
     chatData.dashReady = true;
     maybeShowGreeting();
     loadBranding();   // the branding entry on home (its own small read, never blocks the page)
+    loadHomeFocus();  // the agent invitations, the first-tasks focus and the goal track (core/home_focus)
 
     // Connections come FIRST, guided one step at a time; the deep interview
     // waits for them (and so does the 90-day clock). The static tour is still
@@ -9861,6 +9875,106 @@ async function connectViaChat(key, step) {
   }
   if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
   if (data.connected) loadDashboard();
+}
+
+// ─── Agent invitations + prerequisites (GET /api/client/home-focus, core/home_focus) ─
+// Each card is a service that really exists and the client has not started.
+// A click asks the server first: ready → the client's own opening line goes
+// to that agent, who answers with a ready proposal; not ready → the agent's
+// calm "let's finish connecting first" (already in its thread) + one connect
+// button per missing item (the existing connect conversation). The request
+// is handed back (resume) once those connections are there.
+let HOME_FOCUS = null;
+let INVITE_RESUMED = false;
+async function loadHomeFocus() {
+  let d = null;
+  try {
+    const res = await fetch('/api/client/home-focus?lang=' + encodeURIComponent(uallakI18n.current()),
+                            { credentials: 'same-origin' });
+    const body = await res.json();
+    d = res.ok && body.success ? body.data : null;
+  } catch (e) { d = null; }
+  HOME_FOCUS = d;
+  renderInvites(d ? d.invites : []);
+  if (typeof applyOnboardingFocus === 'function') applyOnboardingFocus(d ? d.onboarding : null);
+  if (typeof renderGoalTrack === 'function') renderGoalTrack(d ? d.goals : null);
+  if (d && d.resume && d.resume.persona && d.resume.opener && !ADMIN_VIEW) resumeInvite(d.resume);
+}
+function inviteFaceHtml(inv) {
+  if (!inv.face) { const m = personaMeta('general'); return faceHtml(m.face, m.initial); }
+  return faceHtml(inv.face, uallakI18n.t('persona_name_' + inv.persona).charAt(0));
+}
+function renderInvites(list) {
+  const box = document.getElementById('agentInvites');
+  if (!box) return;
+  box.textContent = '';
+  (list || []).forEach(inv => {
+    if (!inv || !TEAM_PERSONAS[inv.persona] && inv.persona !== 'general') return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'brand-hero agent-invite';
+    b.dataset.service = inv.id;
+    b.innerHTML = `<span class="bh-face">${inviteFaceHtml(inv)}</span>`
+      + '<span class="bh-text"><span class="bh-title"></span><span class="bh-sub" dir="auto"></span></span>'
+      + '<span class="bh-go" aria-hidden="true">›</span>';
+    b.querySelector('.bh-title').textContent = inv.title || '';
+    b.querySelector('.bh-sub').textContent = inv.sub || '';
+    if (ADMIN_VIEW) b.disabled = true;   // staff see the cards; only the client starts a conversation
+    else b.onclick = () => openInvite(inv.id, b);
+    box.appendChild(b);
+  });
+  box.hidden = !box.children.length;
+}
+function appendPrereqButtons(w, items) {
+  w.msgsEl.querySelectorAll('.prereq-row').forEach(el => el.remove());   // only the latest list has buttons
+  if (!(items || []).length) return;
+  const row = document.createElement('div');
+  row.className = 'chip-row prereq-row';
+  items.forEach(it => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = uallakI18n.t('prereq_connect', { what: it.label || '' });
+    b.onclick = () => connectViaChat(it.connect);
+    row.appendChild(b);
+  });
+  w.msgsEl.appendChild(row);
+  w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+}
+async function sendOpener(personaId, text) {
+  const w = openAgentWindow(personaId);
+  if (!w) return;
+  try { await w.historyLoaded; } catch (e) { /* the message is sent anyway */ }
+  setChatInput(w.inputEl, text);
+  sendInWindow(personaId);
+}
+async function openInvite(service, btn) {
+  if (ADMIN_VIEW) return;
+  if (btn) btn.disabled = true;
+  let d = null;
+  try {
+    const res = await fetch('/api/client/invite', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service, lang: uallakI18n.current() }),
+    });
+    const body = await res.json();
+    d = res.ok && body.success ? body.data : null;
+  } catch (e) { d = null; }
+  if (btn) btn.disabled = false;
+  if (!d || (!TEAM_PERSONAS[d.persona] && d.persona !== 'general')) { showNotice(uallakI18n.t('invite_failed'), 'warn'); return; }
+  if (d.ready) { sendOpener(d.persona, d.opener || ''); return; }
+  const fresh = !CHAT_WINDOWS[d.persona];
+  const w = openAgentWindow(d.persona);
+  if (!w) return;
+  try { await w.historyLoaded; } catch (e) { /* the buttons are added anyway */ }
+  // A freshly opened window already replayed the focus message from the stored thread
+  if (!fresh && d.message) appendMsg(w.msgsEl, d.message, 'bot');
+  appendPrereqButtons(w, d.items);
+}
+function resumeInvite(r) {
+  if (INVITE_RESUMED) return;
+  INVITE_RESUMED = true;
+  sendOpener(r.persona, r.opener);
 }
 
 // ─── Branding (GET /api/client/branding, core/branding) ──────────────────────

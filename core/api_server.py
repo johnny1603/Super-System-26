@@ -6187,6 +6187,48 @@ def client_media_add_link_step(request: Request):
     from core import drive_pull
     return _client_link_answer(client_id, lambda: drive_pull.step(client_id, 15))
 
+# ─── Home: agent invitations + prerequisites + onboarding focus (core/home_focus) ─
+def _home_lang(client_id: int, lang: str) -> str:
+    from core import agent_actions, home_focus
+    return lang if lang in home_focus.LANGS else agent_actions._lang(client_id)
+
+@app.get("/api/client/home-focus")
+def client_home_focus(request: Request, lang: str = ""):
+    # The home page's agent invitation cards, the request to hand back once its
+    # connections are there (resume), the first-tasks focus and the 3-month
+    # goal track. Each part is read on its own: a failed one is left out.
+    client_id = _require_session(request)
+    from core import home_focus
+    lang = _home_lang(client_id, lang)
+    data = {"invites": home_focus.invites(client_id, lang)}
+    # Staff viewing the client's dashboard must not consume the client's resume
+    data["resume"] = {} if _admin_view_client(request) is not None else home_focus.resume(client_id)
+    data["onboarding"] = home_focus.onboarding(client_id)
+    try:
+        from core import quarter_goals
+        data["goals"] = quarter_goals.track(client_id, lang)
+    except Exception as e:
+        print(f"[home_focus] client {client_id}: goal track left out ({type(e).__name__})")
+        data["goals"] = {}
+    return {"success": True, "data": data}
+
+class InviteRequest(BaseModel):
+    service: str
+    lang: str = ""
+
+@app.post("/api/client/invite")
+def client_invite(req: InviteRequest, request: Request):
+    # An invitation card's click: the opening line for that agent's chat, or —
+    # when what the agent needs is not connected — the focus message first,
+    # one connect item per gap, and the request kept to hand back afterwards.
+    client_id = _require_session(request)
+    from core import home_focus
+    try:
+        data = home_focus.start(client_id, req.service, _home_lang(client_id, req.lang))
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "ERR_UNKNOWN_SERVICE"})
+    return {"success": True, "data": data}
+
 # ─── Branding (core/branding): mockup attempts, brand kit, production quote ───
 @app.get("/api/client/branding")
 def client_branding(request: Request):

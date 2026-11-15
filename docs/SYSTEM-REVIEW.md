@@ -533,3 +533,15 @@ about $40; I stop and ask before passing it.
     the explanation and ONE upgrade card.
 11. Admin "enter as client": the studio opens but has no action buttons.
 12. After 5 attempts: a calm line, no start button. Control Room +1 opens one more.
+
+## Checkpoint 2026-11-16: home upgrade, Part 1 (agent invitation cards)
+
+- New `core/home_focus.py`: invitation cards in the branding banner's style (face + one line +
+  chevron), at most three, each a real service the client has not started. The cards cover the
+  AI character (Lior), social (Maya), organic (Uri, who owns SEO in the code), Google Ads (Yoav)
+  and chat automation (the manager). A click sends the client's own opening line to that agent,
+  who proposes the next step by its existing rules. Details: `docs/HOME-FOCUS.md`.
+- Routes: `GET /api/client/home-focus` (staff view: read-only, never consumes a resume) and
+  `POST /api/client/invite`.
+- Tests: `tests/test_home_focus.py`. 79/79 files pass. **Migration:** none. **Deploy:** needed.
+

@@ -143,6 +143,10 @@ PARITY = {
                                                   "the chat is build_seo_report"),
     "GET /api/client/seo-report/export": (NOT_CHAT, "a file download of the stored report (Word / Excel / CSV); a "
                                                     "chat cannot hand over a file"),
+    "GET /api/client/home-focus": (NOT_CHAT, _PAGE_LOAD),
+    "POST /api/client/invite": (NOT_CHAT, "a home invitation card's click; it only opens that agent's chat with the "
+                                          "client's own opening line, and the chat applies the same prerequisites "
+                                          "check (payload prerequisites, PREREQ_RULE)"),
     "GET /api/client/branding": (CHAT, "create_brand_mockups"),
     "GET /api/client/branding/view/{attempt}": (NOT_CHAT, "the mockup page a branding card links to; the card itself "
                                                           "(approve_branding) is the chat's path"),
