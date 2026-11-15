@@ -308,6 +308,19 @@ class PresenterFromPhotos(Base):
     def setUp(self):
         super().setUp()
         aa._client = lambda cid: dict(INTERNAL, id=cid)
+        # The photo-SET check (core/avatar_photos) is tested in test_avatar_photos;
+        # here the set always passes, so these tests keep guarding the card flow.
+        from core import avatar_photos
+        self._ap = (avatar_photos.merge, avatar_photos.review, avatar_photos.remember)
+        avatar_photos.merge = lambda cid, ids: list(ids)
+        avatar_photos.review = lambda cid, ids: {"ready": True, "best": ids[0], "best_position": 1,
+                                                 "count": len(ids), "good": len(ids), "needed": 0, "photos": []}
+        avatar_photos.remember = lambda cid, ids: None
+
+    def tearDown(self):
+        from core import avatar_photos
+        avatar_photos.merge, avatar_photos.review, avatar_photos.remember = self._ap
+        super().tearDown()
 
     def propose(self, photos, state=None, client=None):
         return aa.propose(40, "client_chat", "media", {"name": "create_presenter_from_photos",
@@ -332,7 +345,7 @@ class PresenterFromPhotos(Base):
         out = self.propose(["imgA", "imgB"])
         self.assertEqual(out["card"]["action"], "create_presenter_from_photos")
         self.assertTrue(out["card"]["can_decide"])
-        self.assertIn("התמונה שבחרתם", out["card"]["what"])
+        self.assertIn("התמונה הקדמית הכי ברורה", out["card"]["what"])
         self.assertIn("עד 15 שניות", out["card"]["what"])          # length said before the click
         self.assertIsNone(VENDOR.search(out["card"]["what"]))
 
@@ -404,6 +417,63 @@ class PresenterFromPhotos(Base):
             aa._v_media_images([], 40)
         with self.assertRaises(ValueError):
             aa._v_media_images([f"i{n}" for n in range(aa.PRESENTER_PHOTOS_MAX + 1)], 40)
+
+
+class PhotoSetGate(Base):
+    """Own photos need a checked SET (core/avatar_photos) before any card;
+    an AI image we made skips it. The review itself is faked here, so this
+    guards the wiring; the checks are in tests/test_avatar_photos.py."""
+
+    def setUp(self):
+        super().setUp()
+        aa._client = lambda cid: dict(INTERNAL, id=cid)
+        from core import avatar_photos
+        self.ap = avatar_photos
+        self._ap = (avatar_photos.stored, avatar_photos.remember, avatar_photos.review)
+        self.kept = {"ids": []}
+        avatar_photos.stored = lambda cid: list(self.kept["ids"])
+        avatar_photos.remember = lambda cid, ids: self.kept.update(ids=list(ids))
+        self.ready = False
+
+        def review(cid, ids):
+            photos = [{"id": i, "issues": [], "usable": True, "score": 1.0, "md5": "", "fingerprint": ""}
+                      for i in ids]
+            ready = self.ready and len(ids) >= avatar_photos.MIN_PHOTOS
+            return {"count": len(ids), "good": len(ids), "needed": max(0, avatar_photos.MIN_PHOTOS - len(ids)),
+                    "ready": ready, "best": ids[-1] if ids else "", "best_position": len(ids), "photos": photos}
+        avatar_photos.review = review
+
+    def tearDown(self):
+        self.ap.stored, self.ap.remember, self.ap.review = self._ap
+        super().tearDown()
+
+    def propose(self, photos):
+        return aa.propose(40, "client_chat", "media", {"name": "create_presenter_from_photos",
+                                                       "params": {"photo_ids": photos}},
+                          state=_state(), client=INTERNAL, context={"language": "he"})
+
+    def test_too_few_own_photos_ask_for_more_with_the_reason(self):
+        out = self.propose(["imgA"])
+        self.assertNotIn("card", out)
+        self.assertIn("בגובה העיניים", out["clarify"])
+        self.assertIn("שלחו עוד 4", out["clarify"])
+        self.assertIsNone(VENDOR.search(out["clarify"]))
+        self.assertEqual(self.rows("create_presenter_from_photos"), [])
+        self.assertEqual(self.kept["ids"], ["imgA"])                      # kept for the next upload
+
+    def test_photos_sent_one_by_one_add_up_to_one_card_best_first(self):
+        self.ready = True
+        for name in ("p1", "p2", "p3", "p4"):
+            self.assertIn("clarify", self.propose([name]))
+        out = self.propose(["p5"])
+        self.assertEqual(out["card"]["action"], "create_presenter_from_photos")
+        photo_ids = self.rows("create_presenter_from_photos")[0]["params"]["photo_ids"]
+        self.assertEqual(sorted(photo_ids), ["p1", "p2", "p3", "p4", "p5"])
+        self.assertIn("בחרתי את התמונה הקדמית", out["notice"])
+
+    def test_an_ai_image_we_made_skips_the_set(self):
+        AVATAR.update(generated={"imgA"})
+        self.assertEqual(self.propose(["imgA"])["card"]["action"], "create_presenter_from_photos")
 
 
 # ─── Capability visibility ───────────────────────────────────────────────────

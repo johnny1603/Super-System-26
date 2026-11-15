@@ -2599,6 +2599,21 @@ def _prepare_presenter_photos(client_id: int, params: dict, context: dict, rows:
             if set(photos) == set(earlier):
                 return {"existing": row}
             break
+    if not _all_generated(client_id, photos):
+        # Own photos: a SET of 5-6, checked before anything is made (core/avatar_photos).
+        # Not ready = the plain why + what to fix + "send more", and the set is kept so
+        # the next upload adds to it. Ready = the clearest front photo goes first: it is
+        # the one the presenter starts from.
+        from core import avatar_photos
+        photos = avatar_photos.merge(client_id, photos)[:PRESENTER_PHOTOS_MAX]
+        checked = avatar_photos.review(client_id, photos)
+        avatar_photos.remember(client_id, photos)
+        if not checked["ready"]:
+            return {"clarify": avatar_photos.message(checked, lang)}
+        best = checked["best"]
+        photos = [best] + [p for p in photos if p != best]
+        return {"params": {**params, "photo_ids": photos}, "supersedes": supersedes,
+                "notice": avatar_photos.message(checked, lang)}
     return {"params": {**params, "photo_ids": photos}, "supersedes": supersedes}
 
 
@@ -2608,6 +2623,8 @@ def _run_create_presenter_from_photos(client_id: int, params: dict, background_t
     from agents.avatar_agent import create_avatar
     result = create_avatar(client_id, params.get("avatar_name", ""), photo_ids=params["photo_ids"])
     if result.get("success"):
+        from core import avatar_photos
+        avatar_photos.clear(client_id)
         return {"method": result.get("method", ""), "name": result.get("name", "")}
     code = result.get("code", "")
     mapped = {"missing_tool": "missing_tool", "no_consent": "no_consent",
@@ -3699,7 +3716,9 @@ ACTIONS = {
                 "their media folder (account_state.media_folder.images): a clear photo of them, or an AI "
                 "image we generated for them that they liked. Propose it whenever they ask to make a "
                 "presenter/character/avatar from a photo — if the tool or the likeness consent is missing, "
-                "the system answers with the one card that fixes it.",
+                "the system answers with the one card that fixes it. For their OWN photos the system first "
+                "checks a SET of 5-6 (core/avatar_photos) and answers with what is still missing; pass "
+                "every photo id they sent.",
         "params": {"photo_ids": {"required": True, "validate": _v_media_images,
                                  "hint": "drive_file_id values from account_state.media_folder.images "
                                          "(comma-separated, up to 10) — the photos the client means"},
@@ -3714,11 +3733,11 @@ ACTIONS = {
         "title": _txt("יצירת הדמות המגישה שלכם מתמונה", "Create your presenter from a photo",
                       "Créer votre présentateur à partir d'une photo", "إنشاء شخصيتكم المقدِّمة من صورة",
                       "Создать вашего ведущего по фото"),
-        "what": _txt("התמונה שבחרתם (הראשונה, אם בחרתם כמה) תהפוך לדמות שמדברת בסרטוני המגיש שלכם. כל סרטון כזה הוא קליפ קצר, עד 15 שניות. שום דבר לא מתפרסם.",
-                     "The photo you chose (the first, if you chose several) becomes the presenter who speaks in your presenter videos. Each such video is a short clip, up to 15 seconds. Nothing is published.",
-                     "La photo choisie (la première, si vous en avez choisi plusieurs) devient le présentateur de vos vidéos. Chaque vidéo est un clip court, 15 secondes au plus. Rien n'est publié.",
-                     "الصورة التي اخترتموها (الأولى إن اخترتم عدة صور) تصبح الشخصية التي تتكلم في فيديوهاتكم. كل فيديو مقطع قصير حتى 15 ثانية. لا يُنشر شيء.",
-                     "Выбранное фото (первое, если вы выбрали несколько) станет ведущим ваших видео. Каждое такое видео — короткий клип до 15 секунд. Ничего не публикуется."),
+        "what": _txt("מתוך התמונות שלכם בחרתי את התמונה הקדמית הכי ברורה, והיא תהפוך לדמות שמדברת בסרטוני המגיש שלכם. כל סרטון כזה הוא קליפ קצר, עד 15 שניות. שום דבר לא מתפרסם.",
+                     "From your photos I chose the clearest front photo; it becomes the presenter who speaks in your presenter videos. Each such video is a short clip, up to 15 seconds. Nothing is published.",
+                     "Parmi vos photos j'ai choisi la photo de face la plus nette ; elle devient le présentateur de vos vidéos. Chaque vidéo est un clip court, 15 secondes au plus. Rien n'est publié.",
+                     "من بين صوركم اخترت الصورة الأمامية الأوضح، وهي تصبح الشخصية التي تتكلم في فيديوهاتكم. كل فيديو مقطع قصير حتى 15 ثانية. لا يُنشر شيء.",
+                     "Из ваших фото я выбрал самое чёткое фото анфас — оно станет ведущим ваших видео. Каждое такое видео — короткий клип до 15 секунд. Ничего не публикуется."),
         "done": _txt("הדמות שלכם מוכנה ✓ מעכשיו אפשר להכין איתה סרטוני מגיש קצרים (עד 15 שניות כל אחד), בקול מהקלטה שלכם או בקול המשובט.",
                      "Your presenter is ready ✓ You can now make short presenter videos with it (up to 15 seconds each), in a voice from your recording or your cloned voice.",
                      "Votre présentateur est prêt ✓ Vous pouvez maintenant créer de courtes vidéos (15 secondes au plus), avec votre enregistrement ou votre voix clonée.",

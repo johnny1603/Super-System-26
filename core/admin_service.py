@@ -425,7 +425,8 @@ def get_settings() -> dict:
                                        # Media tab's "new since your last visit" mark
                                        "drive_pull:", "drive_pull_lock:", "media_seen:",
                                        # branding attempts + brand kit (core/branding)
-                                       "branding:", "brand_kit:", "seo_report:", "content_plan:")):
+                                       "branding:", "brand_kit:", "seo_report:", "content_plan:",
+                                       "avatar_photos:", "invite_resume:", "quarter_goals:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

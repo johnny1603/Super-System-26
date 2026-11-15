@@ -42,7 +42,8 @@ PROGRESS_PREFIX = "client_deletion:"
 # the same rows client_deletion._settings_keys clears
 CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tiktok_grant:",
                            "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:",
-                           "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:")
+                           "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:",
+                           "avatar_photos:", "invite_resume:", "quarter_goals:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

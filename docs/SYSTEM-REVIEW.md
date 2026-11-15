@@ -693,3 +693,25 @@ about $40; I stop and ask before passing it.
 - Not tested against a real model: whether it keeps to one question per message and how many
   exchanges it takes. `tests/test_brand_designer.py`.
 - **Migration:** none. **Deploy:** needed.
+
+### Part 2 — ליאור and the AI presenter: a checked photo set
+
+- **What the generation path supports today (checked in code):** the presenter clip takes ONE
+  still image as its start frame plus the voice. No multi-photo identity training is wired, so the
+  set is used to CHOOSE the clearest front photo and to check quality before anything is made. A
+  character trained from the whole set would need a vendor call verified live first. It is not
+  built, and nothing claims it.
+- **Lior asks for 5-6 photos** (front, eye level, soft daylight, a few angles and expressions)
+  and says why. The prompt rule is in `support_agent` and the source kit.
+- **Code checks every photo:** image type, size from Drive's own metadata, and light, contrast,
+  sharpness and duplicates from a small thumbnail (Pillow). Code cannot see angles or
+  expressions, so Lior asks the client to confirm those.
+- **Fewer than 5 good photos = no card:** the client gets the reason, what to fix per photo and
+  "send N more". The set adds up across uploads (app_settings `avatar_photos:<id>`, 30 days) and
+  is cleared once the presenter is made.
+- **Deletion gap fixed:** `avatar_photos:`, plus the earlier `invite_resume:` and
+  `quarter_goals:`, are now in client_deletion, deletion_guard and the admin settings skip list.
+- **Not tested:** the light and sharpness thresholds against real client photos (Pillow isn't on
+  this machine; prod has it). Only a clearly soft photo blocks, until they are calibrated.
+  `tests/test_avatar_photos.py`, plus `PhotoSetGate` in `tests/test_concierge_manager.py`.
+- **Migration:** none. **Deploy:** needed.

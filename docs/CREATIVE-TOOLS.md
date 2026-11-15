@@ -157,3 +157,21 @@ then "כבר יש לי מפתח" or "נתקעתי — עשו את זה איתי"
 card, runs in BackgroundTasks, and the dashboard polls until the same card becomes the result.
 Slow today: `configure_conversion`, `publish_youtube_from_media`, `send_tiktok_to_inbox`,
 `clone_voice`, `make_presenter_video`.
+
+
+## 9. Photo set for the presenter (2026-11-16, `core/avatar_photos`)
+
+- **Today the presenter starts from ONE image.** `PRESENTER_MODEL` takes `start_image` plus the
+  audio. With own photos, the client sends 5-6, checked before any card:
+  - **checked by code:** type, size (short side ≥ 720 px is good, < 400 px is refused), light
+    (too dark or too bright is refused, flat is a note), sharpness (only clearly soft is refused),
+    and duplicates (same md5 or the same 8x8 fingerprint);
+  - **asked of the client:** angles and expressions.
+- **Below 5 good photos:** a plain message with the why, the issues per photo and "send N more".
+  At 5 or more, the best photo goes first in `photo_ids`, and that is the one `create_avatar`
+  uses.
+- **Storage:** the set is kept in app_settings `avatar_photos:<id>` (30 days), cleared on
+  success and with the client.
+- **AI images we generated** skip the set.
+- **Multi-reference identity** (a character trained from all photos) is NOT built. It needs a live
+  check of what the vendor offers first.
