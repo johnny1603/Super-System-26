@@ -1168,6 +1168,28 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
   font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
 .drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .drive-act.tiktok { border-color: var(--accent); }
+/* The first tasks (core/home_focus.onboarding): while setup is not done, home
+   shows only these three; the idea feed waits behind a small counter. */
+.home-focus { border: 1.5px solid rgba(255,76,31,.55); border-radius: 16px; padding: 16px; margin: 0 0 24px;
+  background: var(--panel); display: grid; gap: 12px; }
+.home-focus[hidden] { display: none; }
+.hf-title { font-weight: 800; font-size: 17px; }
+.hf-sub { font-size: 13px; opacity: .85; margin-top: -6px; }
+.hf-tasks { display: grid; gap: 10px; }
+.hf-task { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px; background: var(--panel-2); }
+.hf-task.now { border-color: #FF4C1F; }
+.hf-task.done { opacity: .75; }
+.hf-task.big .bh-face { width: 64px; height: 64px; }
+.hf-num { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  font-weight: 800; border: 1.5px solid #FF4C1F; color: #FF4C1F; }
+.hf-task.done .hf-num { background: #FF4C1F; color: #fff; }
+.hf-text { flex: 1 1 200px; min-width: 0; }
+.hf-name { display: block; font-weight: 700; font-size: 15px; }
+.hf-line { display: block; font-size: 13px; opacity: .85; margin-top: 2px; }
+.hf-task button { min-height: 44px; }
+.hf-lock { font-size: 13px; opacity: .85; }
+body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList { display: none !important; }
 /* Agent invitation cards (home, core/home_focus): the same look as the branding
    banner — the agent's face + one persuasive line + a chevron. At most three. */
 .agent-invites { display: grid; gap: 10px; margin: -8px 0 24px; }
@@ -1531,6 +1553,15 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="greeting" id="greeting">שלום 👋</div>
   <div class="greeting-sub" data-i18n="greeting_sub">הנה מה שקורה בעסק שלך היום</div>
 
+  <!-- The first tasks (core/home_focus.onboarding): connect, the deep characterisation with the
+       manager, the 3-month goals. While they are not done, the idea feed waits (body.onboarding-focus). -->
+  <section class="home-focus" id="homeFocus" hidden aria-labelledby="hfTitle">
+    <div class="hf-title" id="hfTitle" data-i18n="hf_title">קודם כל, מסדרים את הבסיס</div>
+    <div class="hf-sub" data-i18n="hf_sub">שלושה צעדים, ואז נפתח לכם כל השאר.</div>
+    <div class="hf-tasks" id="hfTasks"></div>
+    <div class="hf-lock" id="hfLock" hidden></div>
+  </section>
+
   <!-- Branding (core/branding): ליאור's dedicated entry, at the top of home. Opens the studio. -->
   <button type="button" class="brand-hero" id="brandHero" hidden onclick="openBrandStudio(this)">
     <span class="bh-face" id="bhFace"></span>
@@ -1573,7 +1604,7 @@ a.media-item:hover { border-color: var(--accent); }
     <div class="timeline-note" data-i18n="timeline_note">תוצאות אורגניות משמעותיות בדרך כלל מורגשות סביב חודש 6</div>
   </div>
 
-  <div class="section-head">
+  <div class="section-head" id="pendingHead">
     <div>
       <div class="section-title" data-i18n="pending_title">ממתין לאישור שלך</div>
       <div class="section-sub" data-i18n="pending_sub">חומרים שהמערכת מכינה יחכו כאן לאור ירוק ממך</div>
@@ -3249,6 +3280,22 @@ const DASH_I18N = {
   bh_sub_progress: { he:"נוצלו {used} מתוך {free} ניסיונות. כל מה שראיתם מחכה בגלריה.", en:"{used} of {free} attempts used. Everything you saw is waiting in the gallery.", fr:"{used} essais utilisés sur {free}. Tout ce que vous avez vu vous attend dans la galerie.", ar:"استُخدمت {used} من {free} محاولات. كل ما رأيتموه ينتظركم في المعرض.", ru:"Использовано {used} из {free} попыток. Всё, что вы видели, — в галерее." },
   bh_sub_approved: { he:"ערכת המותג שלכם שמורה ✓ כאן גם מה צריך כדי להפיק כל פריט.", en:"Your brand kit is saved ✓ Here is also what it takes to produce each item.", fr:"Votre kit de marque est enregistré ✓ Et ici, ce qu'il faut pour produire chaque élément.", ar:"عدّة علامتكم محفوظة ✓ وهنا أيضًا ما يلزم لإنتاج كل عنصر.", ru:"Ваш бренд-кит сохранён ✓ Здесь же — что нужно для изготовления каждого элемента." },
   bh_sub_upgrade: { he:"חלק משירות התוכן והמדיה. לחצו כדי לראות מה הוא כולל.", en:"Part of the content and media service. Tap to see what it includes.", fr:"Fait partie du service contenus et médias. Touchez pour voir ce qu'il comprend.", ar:"جزء من خدمة المحتوى والوسائط. انقروا لرؤية ما تتضمنه.", ru:"Входит в услугу контента и медиа. Нажмите, чтобы узнать, что в неё входит." },
+  hf_title: { he:"קודם כל, מסדרים את הבסיס", en:"First, let's set up the basics", fr:"D'abord, mettons en place l'essentiel", ar:"أولًا، لنجهّز الأساس", ru:"Сначала — основа" },
+  hf_sub: { he:"שלושה צעדים, ואז נפתח לכם כל השאר.", en:"Three steps, and then everything else opens up.", fr:"Trois étapes, et tout le reste s'ouvre ensuite.", ar:"ثلاث خطوات ثم يُفتح لكم كل الباقي.", ru:"Три шага — и откроется всё остальное." },
+  hf_connect_title: { he:"לחבר את מה שהחבילה שלכם צריכה", en:"Connect what your package needs", fr:"Connecter ce dont votre formule a besoin", ar:"ربط ما تحتاجه باقتكم", ru:"Подключить то, что нужно вашему пакету" },
+  hf_connect_sub: { he:"{done} מתוך {total} מחוברים", en:"{done} of {total} connected", fr:"{done} sur {total} connectés", ar:"{done} من {total} مربوطة", ru:"Подключено {done} из {total}" },
+  hf_connect_btn: { he:"להמשיך לחבר", en:"Continue connecting", fr:"Continuer à connecter", ar:"متابعة الربط", ru:"Продолжить подключение" },
+  hf_char_title: { he:"אפיון עומק של העסק עם {name}", en:"An in-depth look at your business with {name}", fr:"Une présentation approfondie de votre entreprise avec {name}", ar:"تعريف معمّق بنشاطكم مع {name}", ru:"Подробный разговор о вашем бизнесе с {name}" },
+  hf_char_sub: { he:"שיחה קצרה שבה {name} לומד את העסק, הלקוחות והמתחרים, כדי שכל הצוות יעבוד בשבילכם נכון.", en:"A short conversation where {name} learns your business, customers and competitors, so the whole team works for you the right way.", fr:"Une courte conversation où {name} découvre votre activité, vos clients et vos concurrents, pour que toute l'équipe travaille juste pour vous.", ar:"محادثة قصيرة يتعرّف فيها {name} على نشاطكم وعملائكم ومنافسيكم، ليعمل الفريق كله لأجلكم بالشكل الصحيح.", ru:"Короткий разговор, где {name} узнаёт ваш бизнес, клиентов и конкурентов, чтобы вся команда работала на вас правильно." },
+  hf_char_wait: { he:"נפתח מיד אחרי שהחיבורים מוכנים.", en:"Opens as soon as the connections are ready.", fr:"S'ouvre dès que les connexions sont prêtes.", ar:"يُفتح فور جاهزية الربط.", ru:"Откроется, как только подключения будут готовы." },
+  hf_char_btn: { he:"להתחיל את האפיון", en:"Start the conversation", fr:"Commencer la conversation", ar:"بدء المحادثة", ru:"Начать разговор" },
+  hf_goals_title: { he:"לסכם יעדים ל-3 החודשים הקרובים", en:"Agree goals for the next 3 months", fr:"Convenir des objectifs des 3 prochains mois", ar:"الاتفاق على أهداف الأشهر الثلاثة القادمة", ru:"Согласовать цели на 3 месяца" },
+  hf_goals_sub: { he:"{name} יציע יעדים בכרטיס אחד, ואתם מאשרים או משנים.", en:"{name} proposes the goals in one card; you approve or change them.", fr:"{name} propose les objectifs en une carte ; vous validez ou modifiez.", ar:"يقترح {name} الأهداف في بطاقة واحدة، وأنتم توافقون أو تعدّلون.", ru:"{name} предложит цели в одной карточке — вы одобрите или измените." },
+  hf_goals_wait: { he:"אחרי האפיון.", en:"After the conversation.", fr:"Après la conversation.", ar:"بعد المحادثة.", ru:"После разговора." },
+  hf_goals_btn: { he:"לסכם יעדים", en:"Agree the goals", fr:"Convenir des objectifs", ar:"الاتفاق على الأهداف", ru:"Согласовать цели" },
+  hf_goals_opener: { he:"בואו נסכם את היעדים שלנו ל-3 החודשים הקרובים.", en:"Let's agree on our goals for the next 3 months.", fr:"Convenons de nos objectifs pour les 3 prochains mois.", ar:"لنتفق على أهدافنا للأشهر الثلاثة القادمة.", ru:"Давайте согласуем наши цели на ближайшие 3 месяца." },
+  hf_done: { he:"בוצע ✓", en:"Done ✓", fr:"Fait ✓", ar:"تم ✓", ru:"Готово ✓" },
+  hf_lock: { he:"עוד {n} רעיונות והצעות מחכים לכם, ויפתחו כשהבסיס מוכן.", en:"{n} more ideas and suggestions are waiting for you and will open once the basics are set.", fr:"{n} autres idées et suggestions vous attendent et s'ouvriront une fois l'essentiel en place.", ar:"{n} أفكار واقتراحات أخرى بانتظاركم وستُفتح عند جاهزية الأساس.", ru:"Ещё {n} идей и предложений ждут вас и откроются, когда основа будет готова." },
   invite_failed: { he:"לא הצלחתי לפתוח את השיחה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open the conversation right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir la conversation pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح المحادثة الآن. حاولوا مجددًا بعد لحظة.", ru:"Не удалось открыть разговор. Попробуйте ещё раз через минуту." },
   prereq_connect: { he:"לחבר: {what}", en:"Connect: {what}", fr:"Connecter : {what}", ar:"ربط: {what}", ru:"Подключить: {what}" },
   bs_title: { he:"סטודיו המיתוג", en:"Branding studio", fr:"Studio d'identité", ar:"استوديو الهوية", ru:"Студия брендинга" },
@@ -6431,6 +6478,7 @@ function renderSuggestions(items) {
   chatData.pendingCount = items.length;
   chatData.pendingTitles = items.slice(0, 3).map(s => s.title || '');
   chatData.suggReady = true;
+  if (typeof paintFocusLock === 'function') paintFocusLock();   // the "more will open" counter
   maybeShowGreeting();
   const list = document.getElementById('pendingApprovalList');
   if (!items.length) {
@@ -9875,6 +9923,55 @@ async function connectViaChat(key, step) {
   }
   if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
   if (data.connected) loadDashboard();
+}
+
+// ─── The first tasks (home_focus.onboarding) ─────────────────────────────────
+// While the client has not finished setup (connections, the deep
+// characterisation with the manager, the 3-month goals), home shows only
+// these three; the idea feed hides behind a small counter. Real approval
+// cards live in the chats and are never hidden.
+let FOCUS_ON = false;
+function hfTask(n, state, face, title, line, label, onclick, big) {
+  const row = document.createElement('div');
+  row.className = 'hf-task ' + state + (big ? ' big' : '');
+  if (face) {
+    const f = document.createElement('span'); f.className = 'bh-face'; f.innerHTML = face; row.appendChild(f);
+  } else {
+    row.appendChild(bsEl('span', 'hf-num', state === 'done' ? '✓' : String(n)));
+  }
+  const text = bsEl('span', 'hf-text');
+  text.append(bsEl('span', 'hf-name', title), bsEl('span', 'hf-line', line));
+  row.appendChild(text);
+  if (state === 'done') row.appendChild(bsEl('span', 'hf-line', uallakI18n.t('hf_done')));
+  else if (state === 'now' && label && !ADMIN_VIEW) row.appendChild(bsButton(label, 'sugg-btn approve', onclick));
+  return row;
+}
+function applyOnboardingFocus(ob) {
+  FOCUS_ON = !!(ob && ob.known && !ob.done);
+  document.body.classList.toggle('onboarding-focus', FOCUS_ON);
+  const box = document.getElementById('homeFocus');
+  if (!box) return;
+  if (!FOCUS_ON) { box.hidden = true; paintFocusLock(); return; }
+  const t = uallakI18n.t, c = ob.connections || {}, m = personaMeta('general');
+  const tasks = document.getElementById('hfTasks');
+  tasks.textContent = '';
+  tasks.appendChild(hfTask(1, c.complete ? 'done' : 'now', '', t('hf_connect_title'),
+    t('hf_connect_sub', { done: c.done || 0, total: c.total || 0 }), t('hf_connect_btn'), () => scrollToNextConnCard()));
+  tasks.appendChild(hfTask(2, ob.characterised ? 'done' : c.complete ? 'now' : 'wait', faceHtml(m.face, m.initial),
+    t('hf_char_title', { name: m.name }), c.complete || ob.characterised ? t('hf_char_sub', { name: m.name }) : t('hf_char_wait'),
+    t('hf_char_btn'), () => startInterview(), true));
+  tasks.appendChild(hfTask(3, ob.goals_agreed ? 'done' : ob.characterised ? 'now' : 'wait', '', t('hf_goals_title'),
+    ob.characterised ? t('hf_goals_sub', { name: m.name }) : t('hf_goals_wait'), t('hf_goals_btn'),
+    () => sendOpener('general', t('hf_goals_opener'))));
+  box.hidden = false;
+  paintFocusLock();
+}
+function paintFocusLock() {
+  const lock = document.getElementById('hfLock');
+  if (!lock) return;
+  const n = Number(chatData.pendingCount || 0);
+  lock.hidden = !FOCUS_ON || !n;
+  if (!lock.hidden) lock.textContent = uallakI18n.t('hf_lock', { n });
 }
 
 // ─── Agent invitations + prerequisites (GET /api/client/home-focus, core/home_focus) ─

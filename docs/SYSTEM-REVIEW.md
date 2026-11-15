@@ -567,3 +567,14 @@ about $40; I stop and ask before passing it.
 - The report stays free and is never priced; rankings are never promised.
 - Docs: `docs/SEO-REPORT.md`. 79/79 files pass. **Migration:** none. **Deploy:** needed.
 
+## Checkpoint 2026-11-16: home upgrade, Part 4 (new-client focus)
+
+- **While setup is not done:** home shows only three tasks: connect, the deep characterisation
+  with the manager (the large card with the manager's face), and the 3-month goals. The
+  suggestion feed (seasonal ideas, generic ideas, the "waiting for your approval" list) hides
+  behind a small "more will open" counter. Chat approval cards are untouched.
+- **New card** `agree_quarter_goals` (`core/quarter_goals_actions`). Its store is
+  `core/quarter_goals`, app_settings `quarter_goals:<id>`. Once agreed, the keywords become the
+  SEO report's default focus.
+- 79/79 files pass. **Migration:** none. **Deploy:** needed.
+

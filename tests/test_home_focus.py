@@ -244,6 +244,65 @@ class OrganicTaste(unittest.TestCase):
         self.assertIn("NEVER a real site's name", support_agent.STUDIO_RULE)
 
 
+class Onboarding(unittest.TestCase):
+    def setUp(self):
+        from agents import interview_agent
+        from core import client_journey, quarter_goals
+        self.status = {"resolved": True, "complete": False, "done_count": 1, "total_count": 3, "next_step": "meta"}
+        self.interviewed, self.goals = False, {}
+        self.saved = [(client_journey, "connection_status", client_journey.connection_status),
+                      (interview_agent, "is_completed", interview_agent.is_completed),
+                      (quarter_goals, "agreed", quarter_goals.agreed)]
+        client_journey.connection_status = lambda cid: dict(self.status)
+        interview_agent.is_completed = lambda cid: self.interviewed
+        quarter_goals.agreed = lambda cid: self.goals
+
+    def tearDown(self):
+        for mod, name, value in self.saved:
+            setattr(mod, name, value)
+
+    def test_focus_until_all_three_are_done(self):
+        ob = hf.onboarding(7)
+        self.assertEqual((ob["known"], ob["done"]), (True, False))
+        self.assertEqual(ob["connections"], {"complete": False, "done": 1, "total": 3, "next": "meta"})
+        self.status["complete"] = True
+        self.interviewed = True
+        self.assertFalse(hf.onboarding(7)["done"])          # goals not agreed yet
+        self.goals = {"agreed_at": "2026-11-16"}
+        self.assertTrue(hf.onboarding(7)["done"])
+
+    def test_unknown_state_never_builds_a_focus_mode(self):
+        self.status["resolved"] = False
+        self.assertEqual(hf.onboarding(7), {"known": False, "done": True})
+        from core import client_journey
+        client_journey.connection_status = lambda cid: (_ for _ in ()).throw(RuntimeError("down"))
+        self.assertEqual(hf.onboarding(7), {"known": False, "done": True})
+
+    def test_the_goals_card(self):
+        from core import agent_actions
+        spec = agent_actions.ACTIONS["agree_quarter_goals"]
+        self.assertEqual(spec["approver"], "client")
+        for key in ("title", "what", "done", "button"):
+            self.assertEqual(set(spec[key]), set(LANGS))
+            for lang in LANGS:
+                self.assertNotRegex(spec[key][lang], r"(?i)guarantee|מובטח|garanti")
+        words = spec["params"]["keywords"]["validate"]("עורך דין גירושין, עורך דין גירושין , ליווי משפטי", 7)
+        self.assertEqual(words, ["עורך דין גירושין", "ליווי משפטי"])
+        with self.assertRaises(ValueError):
+            spec["params"]["posts_per_week"]["validate"](9, 7)
+
+    def test_the_page_focus(self):
+        page = _src("dashboard", "client", "index.html")
+        for needle in ('id="homeFocus"', 'id="pendingHead"', "function applyOnboardingFocus(",
+                       "body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList",
+                       "() => startInterview()", "hf_goals_opener", "function paintFocusLock("):
+            self.assertIn(needle, page)
+        for key in ("hf_title", "hf_lock", "hf_char_title", "hf_goals_title"):
+            line = next(l for l in page.splitlines() if l.strip().startswith(key + ":"))
+            for lang in LANGS:
+                self.assertIn(lang + ":", line)
+
+
 class Wiring(unittest.TestCase):
     def test_routes_parity_and_staff_view(self):
         api = _src("core", "api_server.py")

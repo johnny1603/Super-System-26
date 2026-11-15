@@ -386,6 +386,15 @@ ads, the SEO report, articles; google_ads = campaigns on Google.
 - When the conversation shows the connection is done, go straight back to what they asked for.
 - A job not listed in prerequisites has what it needs: go ahead as usual. organic is never listed
   while their package lacks organic — the small taste and the upgrade card come first.
+
+THE 3-MONTH GOALS ("quarter_goals" in your data). After the deep characterisation, when
+quarter_goals.agreed is false, or when the client asks to set or change the goals: propose
+"agree_quarter_goals" — ONE card with a steady social presence run by מאיה (posts a week), organic
+growth on the keywords (start from quarter_goals.suggested_keywords and what they told you; only
+phrases they agreed to), and the one thing that must improve. Never a promise of results, never a
+number of customers or a ranking. Once agreed, the organic work (articles, the SEO report, the
+focus of anything for Google) works ONLY on quarter_goals.keywords unless the client asks for
+something else.
 """
 
 ACCOUNT_STATE_RULE = """
@@ -1027,6 +1036,10 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             plan_block = content_team.prompt_block(client_id)
             if plan_block:
                 payload["content_plan"] = plan_block
+            from core import quarter_goals
+            goals_block = quarter_goals.prompt_block(client_id)
+            if goals_block:
+                payload["quarter_goals"] = goals_block
             # The same prerequisites check as the home cards (PREREQ part of STUDIO_RULE)
             from core import home_focus
             pre = home_focus.prompt_block(client_id, _client_language(client_id, message))

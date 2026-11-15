@@ -4382,6 +4382,9 @@ ACTIONS.update(_seo_report_actions.build(_sys.modules[__name__]))
 # The weekly content plan as ONE approval card (מאיה plans, ליאור produces) — core/content_team_actions
 from core import content_team_actions as _content_team_actions
 ACTIONS.update(_content_team_actions.build(_sys.modules[__name__]))
+# The agreed 3-month goals (2026-11-16): ONE card after the characterisation — core/quarter_goals_actions
+from core import quarter_goals_actions as _quarter_goals_actions
+ACTIONS.update(_quarter_goals_actions.build(_sys.modules[__name__]))
 
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",

@@ -90,6 +90,15 @@ def build(aa) -> dict:
             return {"refuse": _pick(fresh, lang).replace("{date}", str(stored.get("built_at"))[:10])
                     .replace("{where}", WHERE.get(lang, WHERE["en"]))}
         clean = {"focus": params["focus"]} if params.get("focus") else {}
+        if not clean:
+            # The agreed 3-month keywords are the report's focus unless the client asked for another
+            try:
+                from core import quarter_goals
+                words = (quarter_goals.agreed(client_id) or {}).get("keywords") or []
+                if words:
+                    clean = {"focus": ", ".join(words)[:300]}
+            except Exception:
+                pass
         if rows:
             return {"existing": rows[0]}
         return {"params": clean}

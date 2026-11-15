@@ -67,3 +67,27 @@ before you approve it".
 **In the chat:** the same check reaches every agent as `prerequisites` in the payload
 (`prompt_block`, cached 60 s), with each item's connect card. Its rule is
 `support_agent.PREREQ_RULE`.
+
+## 3. New-client focus: the first three tasks
+
+`home_focus.onboarding()` reports whether the client has done all three:
+
+1. **Every required connection** (`client_journey.connection_status`). The button continues the
+   connection walkthrough.
+2. **The deep characterisation with the manager** (`interview_agent.is_completed`). This task
+   is the large card with the manager's face. Its button starts the interview, which opens only
+   once the connections are complete.
+3. **Agreed 3-month goals** (`quarter_goals.agreed`). The button asks the manager, who proposes
+   the ONE `agree_quarter_goals` card.
+
+**While not done** (`body.onboarding-focus`):
+- The home page shows the task panel (`#homeFocus`) at the top.
+- The idea feed is hidden: the "waiting for your approval" list with its seasonal and generic
+  ideas. A small counter says how many ideas will open later.
+- Approval cards in the chats are never hidden.
+- The invitation cards stay, below the tasks. A click from a client with nothing connected gets
+  the calm "connect first" line.
+
+**Fail closed:** a state that cannot be read (`known: false`) shows the normal home, never a
+focus mode built on a guess. In the staff view the task buttons are not drawn.
+
