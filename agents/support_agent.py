@@ -410,11 +410,25 @@ ads, the SEO report, articles; google_ads = campaigns on Google.
 THE 3-MONTH GOALS ("quarter_goals" in your data). After the deep characterisation, when
 quarter_goals.agreed is false, or when the client asks to set or change the goals: propose
 "agree_quarter_goals" — ONE card with a steady social presence run by מאיה (posts a week), organic
-growth on the keywords (start from quarter_goals.suggested_keywords and what they told you; only
-phrases they agreed to), and the one thing that must improve. Never a promise of results, never a
-number of customers or a ranking. Once agreed, the organic work (articles, the SEO report, the
-focus of anything for Google) works ONLY on quarter_goals.keywords unless the client asks for
-something else.
+growth on the keywords the client APPROVED (the system fills them; never type keywords there), and
+the one thing that must improve. Never a promise of results, never a number of customers or a
+ranking. Once agreed, the organic work (articles, the SEO report, the focus of anything for Google)
+works ONLY on quarter_goals.keywords unless the client asks for something else. The click starts
+the 3-month clock and saves a dated starting point; every progress line and the monthly report
+compare against it, on the agreed keywords and metric only.
+
+ORGANIC, IN THE PROFESSIONAL ORDER ("organic_plan" in your data). NO KEYWORD IN CONVERSATION BEFORE
+RESEARCH: never suggest, list or invent search phrases yourself until organic_plan.research_done is
+true — quarter_goals.client_phrases_for_research_only are the client's own words, an input to the
+research, not a proposal. The order, one step at a time: (1) the current state report and the
+competitors, (2) professional keyword research with intent, volume and competition, (3) the client
+approves a small set of at most 5 (approve_organic_keywords, phrases copied exactly from
+organic_plan.candidates), (4) the backlink check, (5) the strategy: what, in what order and why,
+with a time estimate. Steps 1-2 run on the advance_organic_plan card; 4-5 run on the approval's own
+click. Only then the 3-month goals. Say the step organic_plan.stage names (organic_plan.
+next_step_text_he says it plainly). Volume and competition are an ESTIMATE unless
+organic_plan.real_data_on is true — say so. The time estimate has two numbers: say the committed
+one to the client and call it an estimate. Never promise a ranking, a position or a date.
 """
 
 ACCOUNT_STATE_RULE = """
@@ -1068,6 +1082,10 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             goals_block = quarter_goals.prompt_block(client_id)
             if goals_block:
                 payload["quarter_goals"] = goals_block
+            from core import organic_plan
+            organic_block = organic_plan.prompt_block(client_id)
+            if organic_block:
+                payload["organic_plan"] = organic_block
             # The same prerequisites check as the home cards (PREREQ part of STUDIO_RULE)
             from core import home_focus
             pre = home_focus.prompt_block(client_id, _client_language(client_id, message))

@@ -1602,7 +1602,9 @@ a.media-item:hover { border-color: var(--accent); }
   <!-- The agreed 3-month goals as a path (core/quarter_goals): real data where it exists, labelled -->
   <section class="goal-track" id="goalTrack" hidden aria-labelledby="gtTitle">
     <div class="gt-head"><span class="gt-title" id="gtTitle"></span><span class="gt-month" id="gtMonth"></span></div>
+    <div class="gt-honest" id="gtBaseline" hidden></div>
     <div class="gt-steps" id="gtSteps"></div>
+    <div class="gt-honest" id="gtEstimate" hidden></div>
     <div class="gt-honest" id="gtHonest"></div>
   </section>
 
@@ -9978,6 +9980,11 @@ function renderGoalTrack(g) {
   document.getElementById('gtTitle').textContent = g.title || '';
   document.getElementById('gtMonth').textContent = g.month || '';
   document.getElementById('gtHonest').textContent = g.honest || '';
+  // The dated starting point and the plan's estimate (both the server's text)
+  [['gtBaseline', g.baseline], ['gtEstimate', g.estimate]].forEach(([id, text]) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = text || ''; el.hidden = !text; }
+  });
   const steps = document.getElementById('gtSteps');
   steps.textContent = '';
   g.steps.forEach(st => {

@@ -7,6 +7,12 @@
   week), organic growth focused ONLY on the keywords agreed here, and what
   must improve to reach the goals. The client's click stores it
   (app_settings `quarter_goals:<id>`); a new card replaces it.
+- BASELINE (2026-11-16, docs/ORGANIC-PLAN.md): the click that agrees the goals
+  starts the 3-month clock AND captures a dated baseline — leads, store sales,
+  site visitors and the agreed keywords' positions, each MEASURED or marked
+  not measured. Every later "now" and the monthly report compare against it,
+  on the agreed keywords and metric ONLY (the management-fee commitment is
+  measured on exactly these).
 - TRACK: `track()` turns it into a simple path — goal, where it stands now,
   the next step — from data that already exists. Every "now" says whether it
   was MEASURED or is not measured yet; nothing is estimated silently and
@@ -60,9 +66,13 @@ def clean_keywords(value) -> list:
     return out[:MAX_KEYWORDS]
 
 
-def save(client_id: int, keywords: list, posts_per_week: int, improve: str = "") -> dict:
-    value = {"agreed_at": _now().isoformat(), "keywords": clean_keywords(keywords),
-             "posts_per_week": max(1, min(7, int(posts_per_week))), "improve": str(improve or "")[:300]}
+def save(client_id: int, keywords: list, posts_per_week: int, improve: str = "", plan: dict = None) -> dict:
+    words = clean_keywords(keywords)
+    value = {"agreed_at": _now().isoformat(), "keywords": words,
+             "posts_per_week": max(1, min(7, int(posts_per_week))), "improve": str(improve or "")[:300],
+             "baseline": capture_baseline(client_id, words), "reported_months": []}
+    if plan:
+        value["plan"] = plan
     _db().table("app_settings").upsert({"key": f"{PREFIX}{int(client_id)}", "value": value,
                                         "updated_at": _now().isoformat()}, on_conflict="key").execute()
     return value
@@ -112,6 +122,40 @@ def _site_connected(client_id: int) -> bool:
     rows = (_db().table("client_accounts").select("platform").eq("client_id", client_id)
             .eq("platform", "wordpress").eq("status", "active").limit(1).execute().data or [])
     return bool(rows)
+
+
+def _sales_30(client_id: int):
+    """Net store revenue of the last 30 days, or None when no store / unreadable."""
+    from agents import store_agent
+    out = store_agent.sales_summary(client_id, "last_30_days")
+    if not out.get("connected"):
+        return None
+    return {"net_revenue": out.get("net_revenue"), "paid_orders": out.get("paid_orders"),
+            "currency": out.get("currency", ""), "complete": bool(out.get("complete"))}
+
+
+def _visitors_30(client_id: int):
+    from core import site_traffic
+    view = site_traffic.for_agent(site_traffic.traffic(client_id))
+    if not view.get("has_data"):
+        return None
+    return (view.get("windows") or {}).get("last_30_days", {}).get("visitors")
+
+
+def capture_baseline(client_id: int, keywords: list) -> dict:
+    """The dated starting point. Each figure is a measurement or None (= not
+    measured, said so) — never a guess and never a zero for "unknown"."""
+    out = {"captured_at": _now().isoformat()}
+    for name, read in (("leads_30d", lambda: _count_leads(client_id, 30, 0)),
+                       ("sales_30d", lambda: _sales_30(client_id)),
+                       ("visitors_30d", lambda: _visitors_30(client_id)),
+                       ("positions", lambda: _positions(client_id, keywords) if keywords else {})):
+        try:
+            out[name] = read()
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] client {client_id}: baseline {name} not measured ({type(e).__name__})")
+            out[name] = None
+    return out
 
 
 # ─── Words ───────────────────────────────────────────────────────────────────
@@ -184,6 +228,31 @@ T = {
                           "الرد بسرعة على كل استفسار جديد؛ يواصل الفريق تقوية القنوات التي تجلبها",
                           "Быстро отвечать на каждое обращение; команда усиливает каналы, которые их приносят"),
     "not_measured": _five("עוד לא נמדד", "Not measured yet", "Pas encore mesuré", "لم يُقس بعد", "Пока не измерено"),
+    "baseline": _five("נקודת ההתחלה ({d})", "Starting point ({d})", "Point de départ ({d})", "نقطة البداية ({d})",
+                      "Точка отсчёта ({d})"),
+    "base_leads": _five("פניות ב-30 יום: {n}", "enquiries in 30 days: {n}", "demandes sur 30 jours : {n}",
+                        "استفسارات خلال 30 يومًا: {n}", "обращений за 30 дней: {n}"),
+    "base_positions": _five("ביטויים עם מיקום בגוגל: {n} מתוך {t}", "phrases with a Google position: {n} of {t}",
+                            "expressions positionnées sur Google : {n} sur {t}", "عبارات لها موقع في Google: {n} من {t}",
+                            "фраз с позицией в Google: {n} из {t}"),
+    "estimate": _five("הערכה: יעד פנימי כ-{i} חודשים, היעד מולכם {c} חודשים. הערכה, לא הבטחה.",
+                      "Estimate: an internal target of about {i} months; the target with you: {c} months. An estimate, not a promise.",
+                      "Estimation : objectif interne d'environ {i} mois ; l'objectif avec vous : {c} mois. Une estimation, pas une promesse.",
+                      "تقدير: هدف داخلي نحو {i} أشهر؛ الهدف معكم {c} أشهر. تقدير وليس وعدًا.",
+                      "Оценка: внутренняя цель — около {i} мес.; цель перед вами — {c} мес. Это оценка, а не обещание."),
+    "monthly_title": _five("📊 דוח חודש {m} מול נקודת ההתחלה ({d})", "📊 Month {m} report against the starting point ({d})",
+                           "📊 Rapport du mois {m} par rapport au point de départ ({d})", "📊 تقرير الشهر {m} مقارنة بنقطة البداية ({d})",
+                           "📊 Отчёт за месяц {m} относительно точки отсчёта ({d})"),
+    "monthly_leads": _five("פניות ב-30 יום: {a} (בהתחלה: {b})", "Enquiries in 30 days: {a} (at the start: {b})",
+                           "Demandes sur 30 jours : {a} (au départ : {b})", "الاستفسارات خلال 30 يومًا: {a} (في البداية: {b})",
+                           "Обращений за 30 дней: {a} (в начале: {b})"),
+    "monthly_kw": _five("{k}: מיקום {a} (בהתחלה: {b})", "{k}: position {a} (at the start: {b})", "{k} : position {a} (au départ : {b})",
+                        "{k}: الموقع {a} (في البداية: {b})", "{k}: позиция {a} (в начале: {b})"),
+    "monthly_scope": _five("נמדד רק על הביטויים והמדד שסיכמנו. מה שלא נמדד מסומן כך.",
+                           "Measured only on the phrases and the metric we agreed. Whatever is not measured says so.",
+                           "Mesuré uniquement sur les expressions et l'indicateur convenus. Ce qui n'est pas mesuré est indiqué.",
+                           "يُقاس فقط على العبارات والمؤشر المتفق عليها. ما لم يُقس مذكور كذلك.",
+                           "Измеряется только по согласованным фразам и показателю. Неизмеренное так и отмечено."),
 }
 
 
@@ -248,6 +317,75 @@ def _improve(client_id: int, value: dict, lang: str) -> dict:
     return out
 
 
+def _fmt(value, lang: str) -> str:
+    return pick(T["not_measured"], lang) if value is None else str(value)
+
+
+def _baseline_line(value: dict, lang: str) -> str:
+    base = value.get("baseline") or {}
+    if not base:
+        return ""
+    parts = [_t("base_leads", lang, n=_fmt(base.get("leads_30d"), lang))]
+    words = value.get("keywords") or []
+    if words:
+        positions = base.get("positions")
+        parts.append(_t("base_positions", lang, n=_fmt(len(positions) if positions is not None else None, lang),
+                        t=len(words)))
+    return _t("baseline", lang, d=str(base.get("captured_at", ""))[:10]) + ": " + " · ".join(parts)
+
+
+def month_of(value: dict) -> int:
+    try:
+        days = (_now() - datetime.fromisoformat(str(value["agreed_at"]).replace("Z", "+00:00"))).days
+    except (KeyError, TypeError, ValueError):
+        return 0
+    return days // 30
+
+
+def monthly_report(client_id: int, value: dict, lang: str = "he") -> str:
+    """The month's report against the dated baseline, on the agreed keywords and metric only."""
+    base = value.get("baseline") or {}
+    lines = [_t("monthly_title", lang, m=max(1, month_of(value)), d=str(base.get("captured_at", value.get("agreed_at", "")))[:10])]
+    try:
+        now_leads = _count_leads(client_id, 30, 0)
+    except Exception:
+        now_leads = None
+    lines.append("• " + _t("monthly_leads", lang, a=_fmt(now_leads, lang), b=_fmt(base.get("leads_30d"), lang)))
+    words = value.get("keywords") or []
+    try:
+        now_pos = _positions(client_id, words) if words else {}
+    except Exception:
+        now_pos = {}
+    before = base.get("positions") or {}
+    for word in words:
+        lines.append("• " + _t("monthly_kw", lang, k=word, a=_fmt(now_pos.get(word), lang), b=_fmt(before.get(word), lang)))
+    lines.append(pick(T["monthly_scope"], lang))
+    return "\n".join(lines)
+
+
+def due_month(value: dict) -> int:
+    """The completed month (1, 2 or 3) whose report has not been posted yet; 0 = none due."""
+    month = min(3, month_of(value))
+    if month >= 1 and month not in (value.get("reported_months") or []):
+        return month
+    return 0
+
+
+def post_monthly_if_due(client_id: int, lang: str = "he") -> bool:
+    """Posts the due monthly report ONCE into the manager's chat. The month is
+    marked BEFORE posting, so a retry never posts it twice."""
+    value = agreed(client_id)
+    month = due_month(value) if value else 0
+    if not month:
+        return False
+    value["reported_months"] = sorted(set((value.get("reported_months") or []) + [month]))
+    _db().table("app_settings").upsert({"key": f"{PREFIX}{int(client_id)}", "value": value,
+                                        "updated_at": _now().isoformat()}, on_conflict="key").execute()
+    from core import agent_actions
+    agent_actions._post_client_message(client_id, "general", monthly_report(client_id, value, lang))
+    return True
+
+
 def track(client_id: int, lang: str = "he") -> dict:
     """{} until goals are agreed. Otherwise the title, the month, the honesty
     line and three steps {key, persona, goal, now, measured, next}."""
@@ -260,8 +398,11 @@ def track(client_id: int, lang: str = "he") -> dict:
     except (TypeError, ValueError):
         days = 0
     month = max(1, min(3, days // 30 + 1))
+    plan = value.get("plan") or {}
+    estimate = (_t("estimate", lang, i=plan["internal_months"], c=plan["committed_months"])
+                if plan.get("committed_months") else "")
     return {"agreed": True, "title": pick(T["title"], lang), "month": _t("month", lang, m=month),
-            "honest": pick(T["honest"], lang),
+            "honest": pick(T["honest"], lang), "baseline": _baseline_line(value, lang), "estimate": estimate,
             "steps": [_social(client_id, value, lang), _organic(client_id, value, lang), _improve(client_id, value, lang)]}
 
 
@@ -278,8 +419,13 @@ def prompt_block(client_id: int) -> dict:
     try:
         value = agreed(client_id)
         out = ({"agreed_on": value["agreed_at"][:10], "keywords": value.get("keywords") or [],
-                "posts_per_week": value.get("posts_per_week"), "improve": value.get("improve", "")}
-               if value else {"agreed": False, "suggested_keywords": suggested_keywords(client_id)})
+                "posts_per_week": value.get("posts_per_week"), "improve": value.get("improve", ""),
+                "baseline": value.get("baseline") or {}, "plan_estimate": value.get("plan") or {},
+                "measure_only_these": True}
+               if value else {"agreed": False,
+                              # the client's OWN phrases are an INPUT to the keyword research
+                              # (core/organic_plan) — never proposed as goals before it ran
+                              "client_phrases_for_research_only": suggested_keywords(client_id)})
     except Exception:
         return {}
     _block_cache[int(client_id)] = (time.time(), out)

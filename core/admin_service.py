@@ -60,6 +60,9 @@ DEFAULT_SETTINGS = {
     # it stops, summarizes and asks the owner "continue?" (one card). USD,
     # clamped 0.05-50 in code. Tune it from the operator page's measurements.
     "operator_task_budget_usd": 1.5,
+    # core/dataforseo_connector: real keyword volumes + backlink data (a PAID
+    # service). OFF; on also needs the owner's DATAFORSEO_LOGIN/PASSWORD.
+    "dataforseo_enabled": False,
 }
 
 _setting_cache = {}   # key -> (monotonic time, value)
@@ -426,7 +429,8 @@ def get_settings() -> dict:
                                        "drive_pull:", "drive_pull_lock:", "media_seen:",
                                        # branding attempts + brand kit (core/branding)
                                        "branding:", "brand_kit:", "seo_report:", "content_plan:",
-                                       "avatar_photos:", "invite_resume:", "quarter_goals:")):
+                                       "avatar_photos:", "invite_resume:", "quarter_goals:",
+                                       "organic_plan:")):
             continue
         settings[row["key"]] = row["value"]
     return settings

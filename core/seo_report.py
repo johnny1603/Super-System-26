@@ -486,8 +486,8 @@ def build(client_id: int, focus: str = "", lang: str = "he") -> dict:
         # returned — never the client's own domain, never a dropped or invented one.
         report = clean(raw, sourced, data["domain"])
         domains = [b["site"] for b in report["backlink_opportunities"] if b["site"]]
-        # dataforseo_connector is disabled and never called here (its ENABLED is False)
-        authority = open_pagerank.scores(domains) if not dataforseo_connector.ENABLED else {}
+        # dataforseo_connector is never called from the report (core/organic_plan uses it when on)
+        authority = open_pagerank.scores(domains) if not dataforseo_connector.enabled() else {}
         if authority:
             report = clean(raw, sourced, data["domain"], authority)
     if not (report["site_state"] or report["keyword_opportunities"] or report["backlink_opportunities"]):

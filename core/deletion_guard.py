@@ -43,7 +43,8 @@ PROGRESS_PREFIX = "client_deletion:"
 CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tiktok_grant:",
                            "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:",
                            "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:",
-                           "avatar_photos:", "invite_resume:", "quarter_goals:")
+                           "avatar_photos:", "invite_resume:", "quarter_goals:",
+                           "organic_plan:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

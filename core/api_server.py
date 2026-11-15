@@ -6241,6 +6241,14 @@ def client_home_focus(request: Request, lang: str = ""):
     except Exception as e:
         print(f"[home_focus] client {client_id}: goal track left out ({type(e).__name__})")
         data["goals"] = {}
+    if _admin_view_client(request) is None:
+        # The monthly report against the dated baseline: posted ONCE per month, by
+        # the client's own visit (no scheduler job, no Cloud Run change). Staff viewing never posts it.
+        try:
+            from core import quarter_goals
+            quarter_goals.post_monthly_if_due(client_id, lang)
+        except Exception as e:
+            print(f"[home_focus] client {client_id}: monthly report not posted ({type(e).__name__})")
     if _simulating_new(request):
         from core import client_journey, new_client_view
         try:

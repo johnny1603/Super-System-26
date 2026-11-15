@@ -715,3 +715,32 @@ about $40; I stop and ask before passing it.
   this machine; prod has it). Only a clearly soft photo blocks, until they are calibrated.
   `tests/test_avatar_photos.py`, plus `PhotoSetGate` in `tests/test_concierge_manager.py`.
 - **Migration:** none. **Deploy:** needed.
+
+### Part 3 — goals and organic, in the professional order
+
+- **No keyword before research.** The order is: state report + competitors → keyword research
+  (the client's own phrases, related searches and competitor terms, each with intent, volume and
+  competition) → the client approves 1-5 → backlinks → strategy with a time estimate.
+  - The estimate has an internal target and a committed one: internal + 15%, rounded up to the
+    half month.
+  - Two client clicks run the five steps: `advance_organic_plan` and `approve_organic_keywords`.
+  - Code: `core/organic_plan`.
+- **Goals wait for the plan.** For an organic package, `agree_quarter_goals` waits for the plan
+  and takes only the approved phrases. It shows the estimate and the terms of measurement before
+  the click.
+- **The click starts the clock and saves a dated baseline:** leads, store sales, visitors and
+  keyword positions, each measured or "not measured".
+  - Home shows the starting point and the estimate.
+  - A monthly report is posted once per month against the baseline, on the client's own visit:
+    no scheduler job and no Cloud Run change.
+- **Google Ads:** our token is at Explorer access, which Google does not allow to use Keyword
+  Planner. So there are no Google Ads volumes, and no scope was added. Basic access is an
+  application, and the owner's decision.
+- **DataForSEO** is now a setting (`dataforseo_enabled`, OFF) plus the owner's login, and every
+  caller checks it first. Off means "judgment-based", said so.
+- **The commitment:** it appears only on the public landing page. The terms of service do not
+  mention it, and §6 says no refund for a paid period. That gap is the owner's and the lawyer's
+  to close. Proposed wording points are in docs/ORGANIC-PLAN.md; it is not legal text.
+- **Not tested against a real model:** the research and strategy quality.
+  `tests/test_organic_plan.py`.
+- **Migration:** none. **Deploy:** needed.

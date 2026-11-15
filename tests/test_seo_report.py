@@ -227,26 +227,47 @@ class Scores(Base):
 
 
 class PaidConnector(unittest.TestCase):
-    def test_disabled_before_any_request(self):
-        self.assertIs(dataforseo_connector.ENABLED, False)
-        for call in (lambda: dataforseo_connector.summary("a.co.il"),
-                     lambda: dataforseo_connector.referring_domains("a.co.il"),
-                     lambda: dataforseo_connector.link_gap("a.co.il", ["b.co.il"]),
-                     lambda: dataforseo_connector._post("/x", {}, "", "")):
-            with self.assertRaises(dataforseo_connector.Disabled):
-                call()
+    """OFF by default; ON = the admin setting AND the owner's login (2026-11-16)."""
 
-    def test_no_key_and_no_caller(self):
-        source = _src("core", "dataforseo_connector.py")
-        self.assertNotIn("os.environ", source)
-        self.assertNotIn("DATAFORSEO", _src("agents", "keys_agent.py"))
+    def setUp(self):
+        self.saved = (dataforseo_connector._setting_on, dataforseo_connector._login)
+
+    def tearDown(self):
+        dataforseo_connector._setting_on, dataforseo_connector._login = self.saved
+
+    def calls(self):
+        return (lambda: dataforseo_connector.summary("a.co.il"),
+                lambda: dataforseo_connector.referring_domains("a.co.il"),
+                lambda: dataforseo_connector.link_gap("a.co.il", ["b.co.il"]),
+                lambda: dataforseo_connector.keyword_volumes(["קפה"]),
+                lambda: dataforseo_connector._post("/x", {}))
+
+    def test_off_by_default_and_with_only_one_half(self):
+        from core import admin_service
+        self.assertIs(admin_service.DEFAULT_SETTINGS["dataforseo_enabled"], False)
+        for setting, login in ((False, ("", "")), (True, ("", "")), (False, ("l", "p"))):
+            dataforseo_connector._setting_on = lambda s=setting: s
+            dataforseo_connector._login = lambda l=login: l
+            self.assertFalse(dataforseo_connector.enabled())
+            for call in self.calls():
+                with self.assertRaises(dataforseo_connector.Disabled):
+                    call()                                   # refused BEFORE any request
+        dataforseo_connector._setting_on = lambda: True
+        dataforseo_connector._login = lambda: ("l", "p")
+        self.assertTrue(dataforseo_connector.enabled())
+        self.assertNotIn("p", str(dataforseo_connector.status().values()).replace("True", "").replace("False", ""))
+
+    def test_no_startup_key_and_every_caller_checks_the_switch(self):
+        self.assertNotIn("DATAFORSEO", _src("agents", "keys_agent.py"))   # never nags; the owner adds it
         for folder in ("core", "agents"):
             for name in os.listdir(os.path.join(ROOT, folder)):
                 if not name.endswith(".py") or name == "dataforseo_connector.py":
                     continue
                 text = _src(folder, name)
-                for function in ("summary", "referring_domains", "link_gap", "_post"):
-                    self.assertNotIn(f"dataforseo_connector.{function}(", text, f"{folder}/{name}")
+                for function in ("summary", "referring_domains", "link_gap", "keyword_volumes", "_post"):
+                    at = text.find(f"dataforseo_connector.{function}(")
+                    if at >= 0:
+                        self.assertIn("dataforseo_connector.enabled()", text[:at], f"{folder}/{name}: {function}")
 
 
 class Building(Base):

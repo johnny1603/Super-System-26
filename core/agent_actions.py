@@ -4405,6 +4405,11 @@ ACTIONS.update(_content_team_actions.build(_sys.modules[__name__]))
 from core import quarter_goals_actions as _quarter_goals_actions
 ACTIONS.update(_quarter_goals_actions.build(_sys.modules[__name__]))
 
+# Organic in the professional order (2026-11-16): state → research → the client's
+# keyword choice → backlinks → strategy, before any organic goal — core/organic_plan_actions
+from core import organic_plan_actions as _organic_plan_actions
+ACTIONS.update(_organic_plan_actions.build(_sys.modules[__name__]))
+
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",
                         "Cette adresse e-mail n'est pas valide — pas de brouillon.", "عنوان البريد غير صالح، لذلك لم أجهّز مسودة.",
