@@ -710,13 +710,13 @@ CRITICAL RULES:
     lead-response bot, a CRM connection so no enquiry is lost)
   Include 5-7 items. A minority (1-2) may be outcome projections; the rest must be actions.
   Never invent a deliverable the chosen packages do not actually contain
-- MARKETING AUTOMATION (ManyChat) — mention it in goals_90_days ONLY when it genuinely fits
+- MARKETING AUTOMATION (chat automation; never name the tool) — mention it in goals_90_days ONLY when it genuinely fits
   this business (they handle enquiries through WhatsApp/Instagram/Messenger DMs, or they described
   losing leads to slow manual follow-up). Phrase it strictly as a POSSIBILITY to explore with the
   team, never as an included deliverable and NEVER with a price: it is built manually and priced
   personally after a needs assessment, so it is not part of any package's numbers. It must not
   appear in recommended_services, setup_fee_breakdown, monthly_breakdown, or any total. Example
-  register: "אפשר גם לבחון בניית אוטומציה שיווקית (ManyChat) שתענה ללידים אוטומטית — נבדק
+  register: "אפשר גם לבחון בניית אוטומציה שיווקית שתענה ללידים אוטומטית — נבדק
   ומתומחר אישית מול הצוות". When it doesn't fit, omit it entirely — no filler mention
 - goals_90_days and kpis are ESTIMATES, NEVER guaranteed exact numbers. Write every financial
   target, lead/follower-count target, and search-ranking target as a range or approximation
@@ -760,8 +760,9 @@ CRITICAL RULES:
     articles: the advertising budget itself is paid by the client directly to the platform on their
     own account/card, on top of the management fee, and is tracked in their dashboard
   - MEDIA GENERATION — when a package includes ongoing image/video content production: the client
-    opens their own Higgsfield account and pays that subscription directly (from about $15/month at
-    the entry plan); we operate the tool for them
+    opens their own account on the AI image and video tool we work with and pays that subscription
+    directly (from about $15/month at the entry plan); we operate the tool for them. Describe the tool
+    by what it does — never name the vendor
   - AVATAR — when a package includes the avatar/presenter add-on: the same creative-tool account as
     media generation (no extra signup), plus a voice tool for cloning if relevant, paid by the
     client directly on their own account, per BUDGET PYRAMID #9 (never name the vendors)

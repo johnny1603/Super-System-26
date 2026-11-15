@@ -588,3 +588,47 @@ about $40; I stop and ask before passing it.
   measured yet. No promise of results.
 - Docs: `docs/HOME-FOCUS.md` §4-5. **Migration:** none. **Deploy:** needed.
 
+## Checkpoint 2026-11-16: home upgrade, Part 6 (no vendor names to clients)
+
+- New `core/vendor_names.py`: the one list of behind-the-scenes tools and the plain words in 5
+  languages that replace them. Links are never touched; the client's own platforms are not vendors.
+- **Backstops** on model text: the chat reply, the idea cards (the "AI video" card), every client
+  card, the proposal QA guard, the stored weekly plan, the briefing, login moment, announcement
+  and interview.
+- **Prompts:** the weekly ideas, the weekly plan and the proposal now say what a tool does.
+- **Static fixes:** the automation card label and its prefills, the feature list entry.
+- **Guard test:** `tests/test_vendor_names.py`. Allow-list: connection help and sign-up,
+  ownership, legal pages, admin. Doc: `docs/VENDOR-NAMES.md`.
+- 80/80 files pass. **Migration:** none. **Deploy:** needed.
+
+### Manual QA checklist: home upgrade (Parts 1-6, no screenshots needed)
+
+1. **A new client with nothing connected** sees the "set up the basics first" panel at the top of
+   home with 3 tasks. Task 1 is lit, tasks 2-3 wait. The "waiting for your approval" list is gone,
+   and a line says how many ideas will open later.
+2. **Same client, the Maya card** ("ready to take your social presence a step further?"): Maya's
+   window opens with one calm "let's finish connecting what I need" message listing only Facebook
+   and Instagram, plus one "Connect: ..." button.
+3. **The connect button** opens the existing connect conversation. "Not yet" shows the sign-up
+   link. After connecting, reload home: Maya's chat reopens with the original request and she
+   proposes the weekly plan card.
+4. **The Uri card on a package without organic:** no "connect first". Uri gives a 2-3 line taste
+   (kinds of places, no site names, no drafts), then ONE upgrade card.
+5. **The Uri card on a package with organic** and no website connected: the calm line names
+   "Your website" only.
+6. **In any chat, without clicking a card,** ask for something whose connection is missing (e.g.
+   "make me a video"). The agent asks to connect first, with one connect card.
+7. **Once connected:** task 2 shows the manager's face. "Start the conversation" starts the deep
+   characterisation.
+8. **After it,** "Agree the goals" makes the manager propose ONE goals card. Approving it hides
+   the focus panel, the idea feed returns, and the goal path appears: 3 steps, each with a
+   "measured" or "not measured yet" tag.
+9. **The idea cards** (approval list) and every chat card show no tool or vendor names. The
+   connect sign-up step still names the site where the account is opened.
+10. **Switch to Arabic and Russian:** cards, tasks and path change language, RTL mirrors for
+    he/ar, and the chevrons point the right way.
+11. **On a phone width,** cards and tasks wrap and buttons are thumb-sized. With reduce motion
+    on, nothing animates.
+12. **Admin "enter as client":** the cards show but are disabled, there are no task buttons, and
+    no stored request is consumed.
+

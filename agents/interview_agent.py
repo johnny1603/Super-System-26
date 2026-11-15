@@ -64,6 +64,7 @@ ask about platforms it can actually see. It fails CLOSED on a package it
 cannot resolve, and it blocks only the OPENING turn, so an interview already
 under way is never dead-ended mid-sentence by a disconnect.
 """
+from core import vendor_names
 import json
 import os
 from datetime import datetime, timezone
@@ -318,7 +319,7 @@ def connection_nudge(client_id: int, language: str = "he") -> dict:
 
     if not message:
         return {"success": True, "message": "", "sent": False}
-    log_communication(client_id, "outbound", "dashboard_chat", message)
+    log_communication(client_id, "outbound", "dashboard_chat", vendor_names.scrub_auto(message))
     _log_activity(client_id, NUDGE_ACTION,
                   {"next_step": status["next_step"], "remaining": status["missing"]})
     return {"success": True, "message": message, "sent": True,
@@ -417,7 +418,7 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
 
     reply = (result.get("reply") or "").strip()
     if reply:
-        log_communication(client_id, "outbound", "dashboard_chat", reply)
+        log_communication(client_id, "outbound", "dashboard_chat", vendor_names.scrub_auto(reply))
 
     captured = result.get("captured") or {}
     captured_count = _store_captured(client_id, captured)

@@ -42,6 +42,7 @@ team — v1 fulfillment is human; agents pick approved work up as their
 execution surfaces grow. Future client-facing AI avatars will reuse this
 same suggestion/approval pipe — don't fold approval UX into chat replies.
 """
+from core import vendor_names
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -80,6 +81,9 @@ Generate 2-3 NEW suggestions the client can approve or reject with one tap:
 Rules: never repeat or trivially rephrase the recent titles. Every suggestion must be
 something uallak can actually do for them (content, campaigns, site, promotions) — when
 materials are needed, say the team will prepare drafts after approval. Hebrew only.
+NEVER name a tool or vendor that runs behind our service (AI video, image or voice tools, SEO tools,
+hosting, automation tools) — say what it does ("סרטון AI קצר", "כלי הווידאו"). The client's own
+platforms (Google, YouTube, Facebook, Instagram, TikTok, WhatsApp) may be named.
 HARD LIMITS: max 3 suggestions; title max 10 words; body 2-3 sentences.
 
 Return JSON only:
@@ -275,7 +279,8 @@ def _generate_for_client(client: dict, events: list) -> int:
         from agents.client_agent import log_activity, log_communication
         log_activity(client_id, AGENT_NAME, "suggestions_added",
                      {"count": len(stored), "titles": stored}, {})
-        bullets = "\n".join(f"• {t}" for t in stored)
+        from core import vendor_names
+        bullets = vendor_names.scrub("\n".join(f"• {t}" for t in stored), "he")
         log_communication(client_id, "outbound", "dashboard_chat",
                           f"הכנו לך {len(stored)} הצעות חדשות לשבוע הקרוב 🎯\n{bullets}\n"
                           'אפשר לאשר או לדחות כל אחת באזור "ממתין לאישור שלך" בדשבורד.')
@@ -350,7 +355,7 @@ def notify_client_urgent(client_id: int, message_he: str) -> dict:
     message_he = f"{message_he}\n\n— {manager_identity.signoff(manager_identity.for_client(client or {}, 'he'), 'he')}"
     sent = send_whatsapp(client.get("phone", ""), message_he)
     try:
-        log_communication(client_id, "outbound", "dashboard_chat", message_he)
+        log_communication(client_id, "outbound", "dashboard_chat", vendor_names.scrub_auto(message_he))
     except Exception as e:
         print(f"[engagement_agent] chat fallback failed for client {client_id}: {e}")
     if not sent and whatsapp_configured():
@@ -580,7 +585,7 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
     if not message:
         return {"success": True, "message": "", "sent": False}
 
-    log_communication(client_id, "outbound", "dashboard_chat", message)
+    log_communication(client_id, "outbound", "dashboard_chat", vendor_names.scrub_auto(message))
     log_activity(client_id, AGENT_NAME, LOGIN_MOMENT_ACTION,
                  {"part_of_day": facts["part_of_day"],
                   "pending": len(facts["pending_suggestions"]),
@@ -710,7 +715,7 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
 
     # Into the OWNING persona's thread, so it shows up as an unread dot on that
     # specialist rather than in the concierge's window.
-    log_communication(client_id, "outbound", persona_channel(persona_id), message)
+    log_communication(client_id, "outbound", persona_channel(persona_id), vendor_names.scrub_auto(message))
     feature_announcements.mark_sent(client_id, announcement)
     log_step(AGENT_NAME, "feature_announcement",
              f"client {client_id}: #{announcement.get('id')} "

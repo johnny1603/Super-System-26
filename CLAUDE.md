@@ -826,6 +826,20 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`openBrandStudio`, gallery / reject / cards via `POST /api/client/branding/card`); a package
   without branding gets ONE `upgrade_to_branding` card; internal accounts count as covered.
   `tests/test_branding.py`.
+- **Home focus (2026-11-16, `docs/HOME-FOCUS.md`)**: `core/home_focus` — agent invitation cards
+  (branding-banner style, ≤3, only real services not started, a package that can't be read = none),
+  ONE prerequisites check per job (`SERVICES[...]["needs"]`) for cards AND chat (payload
+  `prerequisites`, PREREQUISITES part of `support_agent.STUDIO_RULE`): missing connections → the
+  agent's calm "connect first" line + one connect button each, request kept in `invite_resume:<id>`
+  and handed back once. New clients see ONLY the first three tasks (connect, deep characterisation,
+  3-month goals; `onboarding()`), the idea feed waits. `core/quarter_goals` + card
+  `agree_quarter_goals`: the goal path on home, measured or labelled, never a promise; organic works
+  only on the agreed keywords. `tests/test_home_focus.py`.
+- **No vendor names to clients (2026-11-16, `docs/VENDOR-NAMES.md`)**: `core/vendor_names` is THE
+  list + plain words; backstops on every model text that reaches a client (chat, idea cards,
+  client cards, proposal QA, weekly plan, briefing/interview posts), never on links. Allow-list:
+  connection help/sign-up, ownership, legal, admin. `tests/test_vendor_names.py` fails on a name in
+  client-facing text.
 - **Organic SEO report (2026-11-15, `docs/SEO-REPORT.md`)**: `core/seo_report` — site state,
   keyword opportunities, backlink OPPORTUNITIES (site, type, score, why, what to do, outreach
   draft). **FREE, never priced, gated by the package** (`covered()`: no research or model call

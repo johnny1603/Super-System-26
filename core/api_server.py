@@ -6923,10 +6923,13 @@ def admin_outreach_export(req: OutreachExportRequest, request: Request):
 async def client_suggestions(request: Request):
     client_id = _require_session(request)
     from agents.engagement_agent import get_suggestions
+    from core import agent_actions, vendor_names
     pending = get_suggestions(client_id, status="pending")
+    # Idea cards are written by a model: no tool or vendor name reaches the client (core/vendor_names)
+    lang = agent_actions._lang(client_id)
     return {"success": True, "data": [
-        {"id": s["id"], "kind": s.get("kind"), "title": s.get("title"),
-         "body": s.get("body"), "created_at": s.get("created_at")}
+        {"id": s["id"], "kind": s.get("kind"), "title": vendor_names.scrub(s.get("title") or "", lang),
+         "body": vendor_names.scrub(s.get("body") or "", lang), "created_at": s.get("created_at")}
         for s in pending
     ]}
 

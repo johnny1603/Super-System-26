@@ -4926,6 +4926,20 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
 
 
 def card(row: dict, actor: str, lang: str = "he") -> dict:
+    out = _card(row, actor, lang)
+    if actor != "admin":
+        # What a client reads never names a tool or vendor (core/vendor_names) — the
+        # backstop for text a model or a stored row carried into the card
+        from core import vendor_names
+        for key in ("title", "what", "result", "blocked"):
+            if isinstance(out.get(key), str):
+                out[key] = vendor_names.scrub(out[key], lang)
+        if isinstance(out.get("progress"), dict) and isinstance(out["progress"].get("text"), str):
+            out["progress"]["text"] = vendor_names.scrub(out["progress"]["text"], lang)
+    return out
+
+
+def _card(row: dict, actor: str, lang: str = "he") -> dict:
     spec = ACTIONS.get(row.get("action")) or {}
     params = row.get("params") or {}
     what_src = (spec["what_for"](params) if spec.get("what_for") else None) or spec.get("what") or {"he": ""}

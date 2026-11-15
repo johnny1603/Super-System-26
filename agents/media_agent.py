@@ -838,7 +838,10 @@ prepare once they approve.
 Return JSON only:
 {"items": [{"title": "", "body": "", "format": "image|video|self_filmed",
             "platform": "instagram|facebook|tiktok|youtube|website", "day": 2, "caption": "",
-            "event_slug": ""}]}"""
+            "event_slug": ""}]}
+NEVER name a tool or vendor that runs behind our service (AI video, image or voice tools, editing or
+music tools) in a title, body or caption — say what it does ("סרטון AI קצר"). The client's own
+platforms (Instagram, Facebook, TikTok, YouTube) may be named."""
 
 
 def _recent_media_plan_exists(client_id: int) -> bool:

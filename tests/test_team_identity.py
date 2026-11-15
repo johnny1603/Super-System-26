@@ -451,7 +451,10 @@ class MakeRemoved(unittest.TestCase):
         entry = feature_catalog.feature("marketing_automation")
         for field in ("name_he", "what_he", "where_he"):
             self.assertNotIn("Make", entry[field])
-        self.assertIn("ManyChat", entry["name_he"])
+        # 2026-11-16: no tool or vendor name in client-facing text (core/vendor_names) — the
+        # entry says what it does; ManyChat stays the one automation vendor in the code
+        self.assertNotIn("ManyChat", entry["name_he"])
+        self.assertIn("אוטומציית שיחות", entry["name_he"])
 
     def test_client_facing_text(self):
         for parts in (("dashboard", "client", "index.html"), ("agents", "onboarding_agent.py"),

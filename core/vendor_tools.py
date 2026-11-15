@@ -98,7 +98,9 @@ def scrub_vendor_names(text: str, lang: str = "he") -> str:
     def swap(match):
         tool = _VENDOR_TOOL.get(re.sub(r"\s", "", match.group(1).lower()), "")
         return client_label(tool, lang) or match.group(0)
-    return _VENDOR_RE.sub(swap, text or "")
+    # Then every other behind-the-scenes tool (core/vendor_names, the one list)
+    from core import vendor_names
+    return vendor_names.scrub(_VENDOR_RE.sub(swap, text or ""), lang)
 CONNECTED = ("connected", "connected_unverified")
 PROBE_TIMEOUT = 15
 

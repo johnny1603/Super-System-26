@@ -241,6 +241,28 @@ def _enforce_invariants(proposal: dict) -> dict:
     scrubbed = _scrub_seo_vendors(proposal)
     if scrubbed:
         fixes.append(f"removed SEO vendor names from {scrubbed} field(s)")
+    # Every other behind-the-scenes tool (core/vendor_names): the plain words, in the
+    # proposal's own language. recommended_services are our tokens, left alone.
+    from core import vendor_names
+    lang = vendor_names.guess_lang(proposal.get("business_summary") or proposal.get("honest_note") or "")
+    named = sum(vendor_names.scrub_tree(value, lang) if isinstance(value, (dict, list)) else 0
+                for key, value in proposal.items() if key != "packages")
+    for pkg in proposal.get("packages") or []:
+        if not isinstance(pkg, dict):
+            continue
+        for key in [k for k in pkg if k != "recommended_services"]:
+            if isinstance(pkg[key], str):
+                clean = vendor_names.scrub(pkg[key], lang)
+                if clean != pkg[key]:
+                    pkg[key], named = clean, named + 1
+            elif isinstance(pkg[key], (dict, list)):
+                named += vendor_names.scrub_tree(pkg[key], lang)
+    for key in [k for k, v in proposal.items() if isinstance(v, str)]:
+        clean = vendor_names.scrub(proposal[key], lang)
+        if clean != proposal[key]:
+            proposal[key], named = clean, named + 1
+    if named:
+        fixes.append(f"replaced tool/vendor names in {named} field(s)")
 
     if fixes:
         print(f"QA/Review deterministic fixes applied: {fixes}")

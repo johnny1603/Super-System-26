@@ -220,6 +220,10 @@ def current(client_id: int) -> dict:
 
 
 def store(client_id: int, items: list, lang: str = "he", source: str = "weekly") -> dict:
+    # The planner is a model: no tool or vendor name reaches the plan the client reads
+    from core import vendor_names
+    if isinstance(items, list):
+        vendor_names.scrub_tree(items, lang if lang in LANGS else "he")
     items = clean_items(items)
     if not items:
         return {}
