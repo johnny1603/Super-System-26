@@ -6192,15 +6192,87 @@ def client_media_add_link_step(request: Request):
 def client_branding(request: Request):
     # The dashboard's branding button: where the client stands (attempts used /
     # free ones left / approved) and the fixed terms line, in their language.
+    # Also the branding STUDIO: every attempt (gallery), the kit, the per-item
+    # help and the fixed lines (core/branding.gallery).
     client_id = _require_session(request)
     from core import agent_actions, branding
     lang = agent_actions._lang(client_id)
-    data = branding.summary(client_id)
+    data = branding.gallery(client_id, lang)
     if data.get("available"):
-        data["terms"] = branding.terms_line(lang)
-        data["value"] = branding.text(branding.VALUE, lang)
         data["view_url"] = branding.view_path(data["latest_attempt"]) if data.get("latest_attempt") else ""
     return {"success": True, "data": data}
+
+@app.get("/api/client/branding/thumb/{attempt}")
+def client_branding_thumb(attempt: int, request: Request):
+    # One attempt's logo as an SVG IMAGE for the studio gallery (<img>: an
+    # SVG shown that way never runs anything), under the mockups' sandbox CSP.
+    client_id = _require_session(request)
+    from fastapi.responses import Response
+    from core import agent_actions, brand_mockups, branding
+    try:
+        svg = branding.logo_svg(client_id, attempt, agent_actions._lang(client_id))
+    except Exception as e:
+        print(f"[branding] client {client_id}: logo thumb unreadable ({type(e).__name__})")
+        raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+    if not svg:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    return Response(svg, media_type="image/svg+xml", headers=brand_mockups.page_headers())
+
+class BrandingCardRequest(BaseModel):
+    kind: str            # approve | designer | upgrade | quote
+    attempt: int = 0
+
+# The studio's buttons never decide anything themselves: each one opens (or
+# re-shows) THE card for that decision in ליאור's chat, and the client's click
+# on the card is the decision — the same path as a card the agent proposed.
+_BRAND_CARDS = {"approve": "approve_branding", "designer": "request_logo_designer",
+                "upgrade": "upgrade_to_branding", "quote": "approve_production_quote"}
+
+@app.post("/api/client/branding/card")
+def client_branding_card(req: BrandingCardRequest, request: Request):
+    client_id = _require_session(request)
+    from core import agent_actions, branding
+    name = _BRAND_CARDS.get(req.kind)
+    if not name:
+        raise HTTPException(status_code=400, detail={"code": "ERR_BAD_KIND"})
+    lang = agent_actions._lang(client_id)
+    params = {}
+    if req.kind == "approve":
+        params = {"attempt": int(req.attempt)}
+    elif req.kind == "quote":
+        try:
+            current = branding.quote(client_id)
+        except Exception:
+            raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+        if current.get("status") != "sent":
+            raise HTTPException(status_code=409, detail={"code": "no_open_quote"})
+        params = {"quote": current.get("at")}
+    out = agent_actions.propose(client_id, "client_chat", "media", {"name": name, "params": params},
+                                context={"language": lang}, by_code=True)
+    if not out.get("card"):
+        # A plain refusal line (in their language) when the card itself refused
+        line = out.get("refuse") or out.get("clarify") or ""
+        raise HTTPException(status_code=409, detail={"code": out.get("error") or "refused", "message": line})
+    return {"success": True, "data": {"card": out["card"], "notice": out.get("notice", "")}}
+
+class BrandingRejectRequest(BaseModel):
+    attempt: int
+
+@app.post("/api/client/branding/reject")
+def client_branding_reject(req: BrandingRejectRequest, request: Request, background_tasks: BackgroundTasks):
+    # "Not this one" from the studio gallery: noted on the attempt (it uses no
+    # attempt), and that attempt's open approval card is cancelled.
+    client_id = _require_session(request)
+    from core import agent_actions, branding
+    try:
+        result = branding.reject(client_id, req.attempt)
+    except branding.BrandingError as e:
+        raise HTTPException(status_code=409, detail={"code": e.code})
+    for row in agent_actions._open_rows(client_id):
+        if row.get("action") == "approve_branding" and int((row.get("params") or {}).get("attempt") or 0) == int(req.attempt):
+            agent_actions.decide(row["id"], actor="client", actor_client_id=client_id, decision="cancel",
+                                 background_tasks=background_tasks)
+    return {"success": True, "data": result}
 
 @app.get("/api/client/branding/view/{attempt}")
 def client_branding_view(attempt: int, request: Request):

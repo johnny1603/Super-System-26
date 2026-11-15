@@ -63,11 +63,11 @@ def _five(he, en, fr, ar, ru):
 
 # The ONE line the client reads before starting. Fixed text: it is a promise.
 TERMS = _five(
-    "לפני שמתחילים: {free} ניסיונות הדמיה הם בחינם. אחריהם, כל ניסיון נוסף עולה סכום סמלי שתראו ותאשרו לפני שהוא רץ. אחרי שאישרתם כיוון ועברנו לייצור, אין ניסיונות נוספים.",
-    "Before we start: {free} mockup attempts are free. After that, each extra attempt costs a small symbolic amount you see and approve before it runs. Once you approve a direction and we move to production, there are no more attempts.",
-    "Avant de commencer : {free} essais de maquettes sont gratuits. Ensuite, chaque essai supplémentaire coûte une somme symbolique que vous voyez et validez avant qu'il ne démarre. Une fois une direction validée et la production lancée, il n'y a plus d'essais.",
-    "قبل أن نبدأ: {free} محاولات للنماذج مجانية. بعدها، كل محاولة إضافية بمبلغ رمزي ترونه وتوافقون عليه قبل تنفيذها. بعد اعتماد اتجاه والانتقال إلى الإنتاج لا توجد محاولات إضافية.",
-    "Перед началом: {free} попыток макетов бесплатны. После этого каждая дополнительная попытка стоит символическую сумму, которую вы видите и одобряете заранее. После утверждения направления и перехода к производству новых попыток нет.")
+    "לפני שמתחילים: {free} ניסיונות הדמיה בחינם. אחרי שתאשרו כיוון, הייצור הסופי מקבל הצעת מחיר נפרדת, ואין יותר ניסיונות.",
+    "Before we start: {free} mockup attempts are free. Once you approve a direction, final production gets its own quote, and no more attempts are included.",
+    "Avant de commencer : {free} essais de maquettes sont gratuits. Une fois une direction validée, la production finale fait l'objet d'un devis séparé, et aucun autre essai n'est inclus.",
+    "قبل أن نبدأ: {free} محاولات للنماذج مجانية. بعد اعتماد اتجاه، يحصل الإنتاج النهائي على عرض سعر منفصل، ولا تُشمل محاولات إضافية.",
+    "Перед началом: {free} попыток макетов бесплатны. После утверждения направления финальное производство оценивается отдельно, и новых попыток больше нет.")
 # What it is worth — and not one word more than that.
 VALUE = _five(
     "בחוץ, תהליך כזה של לראות ולהחליט לפני שמתחייבים עולה אלפי שקלים. כאן הוא בחינם עד לנקודת האישור.",
@@ -75,6 +75,27 @@ VALUE = _five(
     "Ailleurs, ce genre de processus pour voir avant de décider coûte des milliers de shekels. Ici, il est gratuit jusqu'au moment de la validation.",
     "في الخارج، عملية كهذه لرؤية النتيجة قبل القرار تكلّف آلاف الشواكل. هنا هي مجانية حتى نقطة الموافقة.",
     "На стороне такой процесс «увидеть до решения» стоит тысячи шекелей. Здесь он бесплатен до момента утверждения.")
+
+
+# The studio's fixed lines (dashboard "branding studio", docs/BRANDING.md)
+LIVE_SITE = _five(
+    "האתר הקיים שלכם, אם כבר יש לכם אחד באוויר, לא מעוצב מחדש כאן. שינויים באתר חי נעשים רק בידיים של אדם מהצוות, והמחיר ניתן רק אחרי אפיון אנושי, אף פעם לא אוטומטית.",
+    "Your existing website, if you already have one live, is not redesigned here. Changes to a live site are made only by a person on our team, and the price is given only after a human characterisation, never automatically.",
+    "Votre site existant, s'il est déjà en ligne, n'est pas refait ici. Les changements sur un site en ligne sont faits uniquement par une personne de l'équipe, et le prix n'est donné qu'après un cadrage humain, jamais automatiquement.",
+    "موقعكم الحالي، إن كان لديكم موقع منشور، لا يُعاد تصميمه هنا. التغييرات على موقع منشور يقوم بها شخص من الفريق فقط، والسعر يُعطى بعد توصيف بشري فقط، وليس تلقائيًا أبدًا.",
+    "Ваш действующий сайт, если он уже есть, здесь не переделывается. Изменения на живом сайте делает только человек из команды, а цену называют только после человеческой оценки, никогда автоматически.")
+PRODUCTION = _five(
+    "רוצים להפיק באמת? כתבו לליאור מה תרצו, ותקבלו הצעת מחיר בכרטיס אחד לאישור לפני שמשהו מיוצר.",
+    "Want it actually produced? Tell Lior what you'd like, and you'll get a quote in one card to approve before anything is made.",
+    "Vous voulez le produire pour de vrai ? Dites à Lior ce que vous voulez, et vous recevrez un devis en une seule carte, à valider avant toute fabrication.",
+    "تريدون الإنتاج فعلًا؟ اكتبوا لليئور ما تريدونه، وستحصلون على عرض سعر في بطاقة واحدة للموافقة قبل تصنيع أي شيء.",
+    "Хотите изготовить по-настоящему? Напишите Лиору, что нужно, и получите цену одной карточкой на одобрение до начала изготовления.")
+NOT_COVERED = _five(
+    "הדמיות המיתוג הן חלק משירות התוכן והמדיה, והשירות הזה לא כלול כרגע בחבילה שלכם. בלחיצה תקבלו כרטיס אחד שמסביר מה השירות כולל ומכין הצעת שדרוג.",
+    "Branding mockups are part of the content and media service, and that service isn't in your package right now. One tap gives you one card that explains what the service includes and prepares an upgrade offer.",
+    "Les maquettes d'identité font partie du service contenus et médias, qui n'est pas dans votre formule pour l'instant. Un geste vous donne une carte qui explique ce que comprend le service et prépare une offre.",
+    "نماذج الهوية جزء من خدمة المحتوى والوسائط، وهذه الخدمة غير مشمولة في باقتكم حاليًا. بنقرة تحصلون على بطاقة واحدة تشرح ما تتضمنه الخدمة وتجهّز عرض ترقية.",
+    "Макеты брендинга входят в услугу контента и медиа, а её сейчас нет в вашем пакете. Одно нажатие — и вы получите карточку с описанием услуги и подготовленным предложением.")
 
 
 def text(table: dict, lang: str) -> str:
@@ -158,6 +179,33 @@ def can_attempt(value: dict) -> str:
     return "attempts_used"
 
 
+# ─── Who gets it: the package ────────────────────────────────────────────────
+# Branding is ליאור's craft, so it is part of the content & media service.
+BRAND_TOKENS = ("brand", "מיתוג")
+
+
+def covered(services) -> bool:
+    from core.client_journey import step_in_services
+    return step_in_services("media", services) or any(
+        any(token in str(s).strip().lower() for token in BRAND_TOKENS) for s in services or [])
+
+
+def coverage(client_id: int) -> dict:
+    """{"readable", "covered"}. An internal (billing_exempt) account is covered
+    — the owner tests everything there. A package that cannot be read is NOT
+    covered (fail closed) and is said to be unreadable."""
+    try:
+        from agents.client_agent import get_client
+        if (get_client(client_id) or {}).get("billing_exempt"):
+            return {"readable": True, "covered": True}
+        from core.client_journey import _chosen_package
+        package = _chosen_package(client_id) or {}
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: package unreadable ({type(e).__name__})")
+        return {"readable": False, "covered": False}
+    return {"readable": bool(package), "covered": covered(package.get("recommended_services") or [])}
+
+
 def summary(client_id: int) -> dict:
     """What the agents and the dashboard read. Never raises: unreadable
     storage is `available: False`, which hides the feature for this turn."""
@@ -169,6 +217,7 @@ def summary(client_id: int) -> dict:
     attempts = value.get("attempts") or []
     approved = value.get("approved") or {}
     quote = value.get("quote") or {}
+    cover = coverage(client_id)
     return {
         "available": True,
         "free_attempts": FREE_ATTEMPTS,
@@ -183,6 +232,9 @@ def summary(client_id: int) -> dict:
         "human_designer_requested": bool(value.get("designer_requested")),
         "quote_status": quote.get("status") or "",
         "has_brand_kit": bool(approved),
+        "rejected_attempts": sorted(int(n) for n in value.get("rejected") or []),
+        "package_readable": cover["readable"],
+        "covered_by_package": cover["covered"],
     }
 
 
@@ -204,7 +256,7 @@ def prompt_block(client_id: int, lang: str = "he") -> dict:
             _block_cache[int(client_id)] = (time.time(), data)
     if not data.get("available"):
         return {}
-    out = {k: v for k, v in data.items() if k != "available"}
+    out = {k: v for k, v in data.items() if k not in ("available", "rejected_attempts")}
     if not data.get("approved"):
         out["terms_line"] = terms_line(lang)
         out["value_line"] = text(VALUE, lang)
@@ -394,6 +446,73 @@ def page(client_id: int, n: int, lang: str = "he") -> str:
     """The mockup page of one stored attempt ("" when there is none)."""
     item = attempt(client_id, n)
     return brand_mockups.page_html(item["concept"], lang, int(n)) if item else ""
+
+
+def logo_svg(client_id: int, n: int, lang: str = "he") -> str:
+    """One attempt's logo as a standalone SVG (the studio gallery's thumbnail,
+    shown as an <img>, so it can never run anything). "" when there is none."""
+    item = attempt(client_id, n)
+    if not item:
+        return ""
+    svg = brand_mockups.render(item["concept"], lang)["logo"]
+    return svg if "xmlns=" in svg else svg.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"', 1)
+
+
+def reject(client_id: int, n: int) -> dict:
+    """The client said "not this one" about attempt `n` in the studio. Kept so
+    the gallery shows it and the next attempt can avoid it; uses no attempt."""
+    value = state(client_id)
+    if value.get("approved"):
+        raise BrandingError("already_approved")
+    if not any(int(a.get("n") or 0) == int(n) for a in value.get("attempts") or []):
+        raise BrandingError("attempt_missing")
+    rejected = {int(x) for x in value.get("rejected") or []}
+    rejected.add(int(n))
+    value["rejected"] = sorted(rejected)
+    _save(client_id, value)
+    return {"rejected": value["rejected"]}
+
+
+def gallery(client_id: int, lang: str = "he") -> dict:
+    """Everything the studio shows: every attempt the client saw (newest
+    first) with its colours, fonts and style, the kit when approved, and the
+    fixed lines. Never raises: {"available": False} on a failed read."""
+    data = summary(client_id)
+    if not data.get("available"):
+        return data
+    try:
+        value = state(client_id)
+    except Exception:
+        return {"available": False}
+    approved_n = (value.get("approved") or {}).get("n")
+    rejected = {int(x) for x in value.get("rejected") or []}
+    attempts = []
+    for item in reversed(value.get("attempts") or []):
+        concept = item.get("concept") or {}
+        n = int(item.get("n") or 0)
+        fonts = concept.get("fonts") or {}
+        attempts.append({
+            "n": n, "at": item.get("at", ""), "direction": item.get("direction", ""),
+            "palette": [concept.get("palette", {}).get(k) for k in ("accent", "secondary", "ink", "paper")
+                        if brand_mockups.is_hex(concept.get("palette", {}).get(k))],
+            "fonts": [brand_mockups.FONTS.get(fonts.get(k), "") for k in ("display", "text") if fonts.get(k)],
+            "style": concept.get("style", ""), "has_mockups": bool(concept),
+            "view_url": view_path(n) if concept else "", "thumb_url": f"/api/client/branding/thumb/{n}" if concept else "",
+            "approved": n == approved_n, "rejected": n in rejected})
+    kit_value = kit(client_id) if approved_n else {}
+    kit_view = {}
+    if kit_value:
+        fonts = kit_value.get("fonts") or {}
+        kit_view = {"palette": [(k, kit_value["palette"].get(k)) for k in ("accent", "secondary", "ink", "paper")
+                                if brand_mockups.is_hex(kit_value["palette"].get(k))],
+                    "fonts": [brand_mockups.FONTS.get(fonts.get(k), "") for k in ("display", "text") if fonts.get(k)],
+                    "style": kit_value.get("style", ""), "tagline": kit_value.get("tagline", "")}
+    items = [{"item": i, "name": text(brand_mockups.ITEM_TEXT[i]["name"], lang),
+              "get": text(brand_mockups.ITEM_TEXT[i]["get"], lang)} for i in brand_mockups.ITEMS]
+    return {**data, "attempts": attempts, "kit": kit_view, "items": items,
+            "terms": terms_line(lang), "value": text(VALUE, lang),
+            "heart": text(brand_mockups.PAGE_TEXT["heart"], lang), "live_site": text(LIVE_SITE, lang),
+            "production": text(PRODUCTION, lang), "not_covered": text(NOT_COVERED, lang)}
 
 
 def grant_attempts(client_id: int, count: int, who: str = "admin") -> dict:

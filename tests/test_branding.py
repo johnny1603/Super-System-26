@@ -57,7 +57,9 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.db = FakeDB()
         self.alerts, self.posted, self.calls = [], [], []
-        self.saved = [(branding, n, getattr(branding, n)) for n in ("_db", "_alert", "_client_facts")]
+        self.saved = [(branding, n, getattr(branding, n)) for n in ("_db", "_alert", "_client_facts", "coverage")]
+        self.cover = {"readable": True, "covered": True}
+        branding.coverage = lambda cid: dict(self.cover)
         self.saved += [(aa, n, getattr(aa, n)) for n in ("_db", "_client", "_post_client_message", "_alert", "_log")]
         self.saved += [(claude_json, "safe_claude_json_call", claude_json.safe_claude_json_call)]
         branding._db = lambda: self.db
@@ -388,7 +390,7 @@ class Wiring(unittest.TestCase):
 
     def test_the_dashboard_box(self):
         page = _src("dashboard", "client", "index.html")
-        for needle in ('id="brandBox"', 'onclick="brandStart()"', "async function loadBranding()",
+        for needle in ('id="brandBox"', 'onclick="openBrandStudio(this)"', "async function loadBranding()",
                        "fetch('/api/client/branding'", "openAgentWindow('media')", "sendInWindow('media')",
                        "t('brand_d_preview')"):
             self.assertIn(needle, page, needle)
@@ -403,6 +405,190 @@ class Wiring(unittest.TestCase):
         self.assertIn("document.getElementById('brandTerms').textContent", page)
         # only our own mockup path becomes a link
         self.assertIn(r"/^\/api\/client\/branding\/view\/\d+$/.test(d.preview_url)", page)
+
+
+class Studio(Base):
+    """The dedicated entry + the studio (2026-11-16)."""
+
+    def test_the_one_line_promises_nothing_that_is_off(self):
+        for lang in LANGS:
+            line = branding.terms_line(lang)
+            self.assertIn(str(branding.FREE_ATTEMPTS), line)
+        self.assertIn("final production gets its own quote", branding.terms_line("en"))
+        self.assertIn("no more attempts", branding.terms_line("en"))
+        for word in ("symbolic", "costs a small"):             # the extra-attempt charge is OFF
+            self.assertNotIn(word, branding.terms_line("en"))
+        self.assertNotIn("סמלי", branding.terms_line("he"))
+        self.assertIn("thousands of shekels", branding.VALUE["en"])
+        for table in (branding.LIVE_SITE, branding.PRODUCTION, branding.NOT_COVERED):
+            self.assertEqual(set(table), set(LANGS))
+            self.assertTrue(all(table.values()))
+        self.assertIn("never automatically", branding.LIVE_SITE["en"])
+
+    def test_who_is_covered(self):
+        for services in (["media"], ["content creation"], ["video"], ["branding"], ["מיתוג"]):
+            self.assertTrue(branding.covered(services), services)
+        for services in ([], None, ["google", "meta", "organic_seo"]):
+            self.assertFalse(branding.covered(services), services)
+
+    def test_coverage_fails_closed_and_internal_accounts_are_covered(self):
+        branding.coverage = self.saved[3][2]                 # the real one
+        import agents.client_agent as client_agent
+        import core.client_journey as journey
+        saved = (client_agent.get_client, journey._chosen_package)
+        try:
+            client_agent.get_client = lambda cid: {"id": cid, "billing_exempt": False}
+            journey._chosen_package = lambda cid: (_ for _ in ()).throw(RuntimeError("db"))
+            self.assertEqual(branding.coverage(27), {"readable": False, "covered": False})
+            journey._chosen_package = lambda cid: {"recommended_services": ["google"]}
+            self.assertEqual(branding.coverage(27), {"readable": True, "covered": False})
+            journey._chosen_package = lambda cid: {"recommended_services": ["media", "meta"]}
+            self.assertEqual(branding.coverage(27), {"readable": True, "covered": True})
+            client_agent.get_client = lambda cid: {"id": cid, "billing_exempt": True}
+            journey._chosen_package = lambda cid: {}
+            self.assertEqual(branding.coverage(27), {"readable": True, "covered": True})
+        finally:
+            client_agent.get_client, journey._chosen_package = saved
+
+    def test_not_in_the_package_is_one_upgrade_card_and_no_attempt(self):
+        self.cover = {"readable": True, "covered": False}
+        out = aa.propose(27, "client_chat", "media", {"name": "create_brand_mockups", "params": {"direction": "חם"}},
+                         context={"language": "en"},
+                         state={"package": {"readable": True, "services": ["google"]}})
+        self.assertEqual(out["card"]["action"], "upgrade_to_branding")
+        self.assertIn(branding.NOT_COVERED["en"], out.get("notice", ""))
+        self.assertEqual(self.calls, [])
+        self.cover = {"readable": False, "covered": False}
+        refused = aa.propose(27, "client_chat", "media", {"name": "create_brand_mockups", "params": {"direction": "חם"}},
+                             context={"language": "he"})
+        self.assertNotIn("card", refused)
+        self.assertEqual(self.calls, [])
+
+    def test_the_upgrade_card(self):
+        spec = aa.ACTIONS["upgrade_to_branding"]
+        self.assertEqual((spec["approver"], spec["internal_only"]), ("client", False))
+        for key in ("title", "what", "done", "button"):
+            self.assertEqual(set(spec[key]), set(LANGS), key)
+        for code, texts in spec["refusals"].items():
+            self.assertEqual(set(texts), set(LANGS), code)
+        self.assertTrue(spec["available"]({"package": {"readable": True, "services": ["google"]}}, {}))
+        self.assertFalse(spec["available"]({"package": {"readable": True, "services": ["media"]}}, {}))
+        self.assertFalse(spec["available"]({"package": {"readable": False}}, {}))
+        self.assertIn("nothing is charged before you approve", spec["what"]["en"])
+        with self.assertRaises(aa.ActionFailed) as caught:              # covered: nothing to upgrade
+            spec["run"](27, {}, None)
+        self.assertEqual(caught.exception.code, "already_covered")
+        source = _src("core", "branding_actions.py").lower()
+        self.assertIn("_build_upgrade_proposal", source)
+        for forbidden in ("create_invoice", "paypal", "create_order"):
+            self.assertNotIn(forbidden, source)
+
+    def test_the_gallery(self):
+        branding.create_attempt(27, "חם ומינימלי", "he")
+        self.answer = dict(RAW, style="bold")
+        branding.create_attempt(27, "נועז", "he")
+        data = branding.gallery(27, "en")
+        self.assertEqual([a["n"] for a in data["attempts"]], [2, 1])          # newest first
+        for a in data["attempts"]:
+            self.assertTrue(all(re.match(r"^#[0-9a-fA-F]{6}$", c) for c in a["palette"]))
+            self.assertEqual(a["thumb_url"], f"/api/client/branding/thumb/{a['n']}")
+            self.assertEqual(a["view_url"], f"/api/client/branding/view/{a['n']}")
+        self.assertEqual(data["attempts_used"], 2)
+        self.assertEqual([i["item"] for i in data["items"]], list(bm.ITEMS))
+        self.assertTrue(all(i["name"] and i["get"] for i in data["items"]))
+        for key in ("terms", "value", "heart", "live_site", "production", "not_covered"):
+            self.assertTrue(data[key], key)
+        self.assertEqual(data["kit"], {})
+        branding.reject(27, 2)
+        self.assertTrue(branding.gallery(27, "en")["attempts"][0]["rejected"])
+        self.assertEqual(branding.attempts_left(branding.state(27)), 3)    # a "not this one" uses no attempt
+        with self.assertRaises(branding.BrandingError):
+            branding.reject(27, 9)
+        branding.approve(27, 1)
+        data = branding.gallery(27, "en")
+        self.assertTrue(data["attempts"][1]["approved"])
+        self.assertTrue(data["kit"]["palette"] and data["kit"]["fonts"])
+        with self.assertRaises(branding.BrandingError) as caught:
+            branding.reject(27, 1)
+        self.assertEqual(caught.exception.code, "already_approved")
+
+    def test_the_logo_thumbnail_is_an_inert_image(self):
+        self.assertEqual(branding.logo_svg(27, 1), "")
+        self.answer = dict(RAW, tagline="<script>alert(1)</script>")
+        branding.create_attempt(27, "חם", "he")
+        svg = branding.logo_svg(27, 1, "he")
+        self.assertTrue(svg.startswith("<svg"))
+        self.assertIn('xmlns="http://www.w3.org/2000/svg"', svg)
+        self.assertNotIn("<script", svg)
+
+    def test_the_studio_routes(self):
+        api = _src("core", "api_server.py")
+        thumb = api[api.index("def client_branding_thumb"):api.index("class BrandingCardRequest")]
+        for needle in ("_require_session(request)", 'media_type="image/svg+xml"', "brand_mockups.page_headers()"):
+            self.assertIn(needle, thumb)
+        card = api[api.index("def client_branding_card"):api.index("class BrandingRejectRequest")]
+        self.assertIn("by_code=True", card)
+        self.assertIn('"client_chat", "media"', card)
+        self.assertIn('_BRAND_CARDS = {"approve": "approve_branding", "designer": "request_logo_designer",', api)
+        self.assertNotIn(".decide(", card)                       # the studio never decides: the card does
+        reject = api[api.index("def client_branding_reject"):]
+        reject = reject[:reject.index("\n@app.")]
+        self.assertIn('decision="cancel"', reject)
+        self.assertNotIn('decision="approve"', reject)
+        from core import admin_view, chat_parity
+        self.assertIn("client_branding_thumb", admin_view.READ_ENDPOINTS)
+        for name in ("client_branding_card", "client_branding_reject"):
+            self.assertNotIn(name, admin_view.READ_ENDPOINTS)        # staff viewing as the client cannot click
+        for route in ("GET /api/client/branding/thumb/{attempt}", "POST /api/client/branding/card",
+                      "POST /api/client/branding/reject"):
+            self.assertIn(route, chat_parity.PARITY)
+        self.assertIn("`upgrade_to_branding`", _src("docs", "CHAT_PARITY.md"))
+
+    def test_the_agents_know(self):
+        source = _src("agents", "support_agent.py")
+        self.assertIn("NOT IN THEIR PACKAGE (branding.covered_by_package false)", source)
+        self.assertIn('"upgrade_to_branding"', source)
+        from agents import support_agent
+        self.assertNotIn("{", support_agent.STUDIO_RULE)
+
+    def test_the_dashboard_entry_and_studio(self):
+        page = _src("dashboard", "client", "index.html")
+        home = page[page.index('id="viewHome"'):page.index('id="statGridMain"')]
+        self.assertIn('id="brandHero"', home)                       # top of home, above the stats
+        self.assertIn('onclick="openBrandStudio(this)"', home)
+        self.assertIn("faceHtml('lior'", page)                      # Lior's face next to it
+        # the studio sits OUTSIDE every view (a hidden view would hide it)
+        self.assertLess(page.index('id="brandStudio"'), page.index('<div class="main">'))
+        self.assertIn('role="dialog" aria-modal="true"', page)
+        # Lior's chat window has its own way in
+        self.assertIn("id === 'media' ? `<button class=\"cw-btn cw-brand\" data-act=\"brand\"", page)
+        self.assertIn("openBrandStudio(brandBtnInChat)", page)
+        # loaded with the dashboard, not only with the Media tab
+        self.assertIn("loadBranding();   // the branding entry on home", page)
+        studio = page[page.index("function renderBrandStudio"):page.index("function brandStart()")]
+        self.assertNotIn("innerHTML", studio)                        # server text goes in as text
+        self.assertIn("BRAND_HEX.test", studio)                      # colours only after a check
+        self.assertIn("brandOpenCard('approve', n", studio)
+        self.assertIn("brandReject(n", studio)
+        self.assertIn("brandOpenCard('upgrade'", studio)
+        self.assertIn("brandOpenCard('designer'", studio)
+        self.assertIn("brandOpenCard('quote'", studio)
+        self.assertIn("ADMIN_VIEW", studio)
+        css = page[page.index(".brand-hero {"):page.index("/* Media library: search, filters")]
+        self.assertIn("@media (prefers-reduced-motion: no-preference)", css)
+        self.assertNotIn("transition", css.split("@media (prefers-reduced-motion: no-preference)")[0])
+        self.assertIn("@media (max-width: 640px)", css)
+        self.assertIn("e.key === 'Escape'", page)
+        for key in ("bh_title", "bh_sub_start", "bh_sub_progress", "bh_sub_approved", "bh_sub_upgrade", "bs_title",
+                    "bs_by", "bs_close", "bs_loading", "bs_failed", "bs_counter", "bs_start", "bs_again",
+                    "bs_upgrade_btn", "bs_gallery", "bs_empty", "bs_attempt", "bs_open", "bs_approve", "bs_reject",
+                    "bs_tag_approved", "bs_tag_rejected", "bs_rejected_note", "bs_tell_lior", "bs_tell_text",
+                    "bs_colors", "bs_fonts", "bs_style", "bs_kit", "bs_kit_used", "bs_help", "bs_designer_btn",
+                    "bs_designer_asked", "bs_produce_btn", "bs_quote_btn", "bs_quote_approved"):
+            line = re.search(r"^\s*" + key + r": \{(.*)\},?\s*$", page, re.M)
+            self.assertTrue(line, key)
+            for lang in LANGS:
+                self.assertRegex(line.group(1), rf"\b{lang}:\"", (key, lang))
 
 
 if __name__ == "__main__":

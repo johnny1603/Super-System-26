@@ -146,6 +146,11 @@ PARITY = {
     "GET /api/client/branding": (CHAT, "create_brand_mockups"),
     "GET /api/client/branding/view/{attempt}": (NOT_CHAT, "the mockup page a branding card links to; the card itself "
                                                           "(approve_branding) is the chat's path"),
+    "GET /api/client/branding/thumb/{attempt}": (NOT_CHAT, "a logo thumbnail image for the studio gallery; the "
+                                                           "chat links the full mockup page"),
+    "POST /api/client/branding/card": (CHAT, "request_logo_designer,upgrade_to_branding"),
+    "POST /api/client/branding/reject": (NOT_CHAT, "a gallery \"not this one\" mark; in the chat the client says "
+                                                   "what doesn't sit well and the agent proposes another direction"),
     "POST /api/client/media/add-link/step": (NOT_CHAT, "the Media tab's progress poll for a running copy; "
                                                        "the chat card reports its own outcome"),
     # ── Leads + CRM ──────────────────────────────────────────────────────────

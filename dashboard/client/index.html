@@ -1168,6 +1168,71 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
   font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 8px; cursor: pointer; text-decoration: none; }
 .drive-act:hover, .drive-act:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .drive-act.tiktok { border-color: var(--accent); }
+/* The branding entry (home, top): Lior's face + one line, stands apart from the
+   navigation; the studio is a sheet over the page (full screen on a phone). */
+.brand-hero { display: flex; align-items: center; gap: 14px; width: 100%; text-align: start; cursor: pointer;
+  font-family: inherit; color: inherit; border: 1.5px solid rgba(255,76,31,.55); border-radius: 16px;
+  padding: 14px 16px; margin: -8px 0 24px; background: linear-gradient(120deg, rgba(255,76,31,.20), rgba(255,76,31,.05) 60%, var(--panel)); }
+.brand-hero[hidden] { display: none; }
+.brand-hero:focus-visible, .bs-panel button:focus-visible, .bs-panel a:focus-visible { outline: 2px solid #FF4C1F; outline-offset: 2px; }
+.bh-face { width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; box-shadow: 0 0 0 2px #FF4C1F; }
+.bh-text { flex: 1; min-width: 0; display: block; }
+.bh-title { display: block; font-weight: 800; font-size: 16.5px; line-height: 1.35; }
+.bh-sub { display: block; font-size: 13px; opacity: .85; margin-top: 3px; }
+.bh-go { font-size: 26px; color: #FF4C1F; flex-shrink: 0; line-height: 1; }
+[dir="rtl"] .bh-go { transform: scaleX(-1); }
+@media (prefers-reduced-motion: no-preference) {
+  .brand-hero { transition: transform .18s ease, box-shadow .18s ease; }
+  .brand-hero:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(255,76,31,.18); }
+}
+.cw-btn.cw-brand { border-color: rgba(255,76,31,.55); color: #FF4C1F; }
+body.bs-open { overflow: hidden; }
+.brand-studio { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.6); display: flex;
+  align-items: center; justify-content: center; padding: 16px; }
+.brand-studio[hidden] { display: none; }
+.bs-panel { width: 100%; max-width: 760px; max-height: 100%; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.bs-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.bs-head .bh-face { width: 42px; height: 42px; }
+.bs-titles { flex: 1; min-width: 0; }
+.bs-title { font-weight: 800; font-size: 17px; }
+.bs-by { font-size: 12.5px; opacity: .8; }
+.bs-close { width: 36px; height: 36px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border);
+  color: inherit; cursor: pointer; font-size: 15px; flex-shrink: 0; font-family: inherit; }
+.bs-body { overflow-y: auto; padding: 16px; display: grid; gap: 14px; }
+.bs-note { font-size: 14px; line-height: 1.6; background: var(--panel-2); border-radius: 12px; padding: 12px 14px; }
+.bs-note.heart { border-inline-start: 4px solid #FF4C1F; }
+.bs-terms { font-size: 14px; line-height: 1.6; font-weight: 600; }
+.bs-counter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.bs-dots { display: flex; gap: 5px; }
+.bs-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #FF4C1F; }
+.bs-dot.used { background: #FF4C1F; }
+.bs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bs-actions button, .bs-actions a { min-height: 40px; }
+.bs-msg { font-size: 13px; opacity: .9; }
+.bs-h { font-weight: 800; font-size: 15px; margin-top: 4px; }
+.bs-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.bs-att { border: 1px solid var(--border); border-radius: 14px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.bs-att.approved { border-color: #2fbf71; }
+.bs-att.rejected { opacity: .6; }
+.bs-thumb { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #fff; border-radius: 10px; }
+.bs-att-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; flex-wrap: wrap; }
+.bs-att-head b { font-size: 13.5px; }
+.bs-dir { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.bs-sw { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.bs-sw span { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); }
+.bs-meta { font-size: 12.5px; opacity: .85; overflow-wrap: anywhere; }
+.bs-tag { font-size: 12px; font-weight: 700; }
+.bs-kit-sw { display: flex; gap: 10px; flex-wrap: wrap; }
+.bs-kit-sw div { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.bs-kit-sw span { width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); }
+.bs-help { display: grid; gap: 8px; }
+.bs-help div { font-size: 13.5px; line-height: 1.55; }
+@media (max-width: 640px) {
+  .brand-studio { padding: 0; }
+  .bs-panel { max-width: none; height: 100%; border-radius: 0; border: 0; }
+  .bh-title { font-size: 15.5px; }
+}
 /* Media library: search, filters, badges, multi-select, player (docs/MEDIA-TAB.md) */
 .ml-hint { font-size: 12.5px; color: var(--gray); line-height: 1.6; margin: -4px 0 10px; }
 .ml-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -1437,6 +1502,20 @@ a.media-item:hover { border-color: var(--accent); }
   </button>
 </div>
 
+<div class="brand-studio" id="brandStudio" hidden role="dialog" aria-modal="true" aria-labelledby="bsTitle">
+  <div class="bs-panel">
+    <div class="bs-head">
+      <span class="bh-face" id="bsFace"></span>
+      <div class="bs-titles">
+        <div class="bs-title" id="bsTitle" data-i18n="bs_title">סטודיו המיתוג</div>
+        <div class="bs-by" id="bsBy" dir="auto"></div>
+      </div>
+      <button type="button" class="bs-close" id="bsClose" onclick="closeBrandStudio()">✕</button>
+    </div>
+    <div class="bs-body" id="bsBody" dir="auto"></div>
+  </div>
+</div>
+
 <div class="main">
   <div class="notice-banner" id="noticeBanner"></div>
 
@@ -1444,6 +1523,16 @@ a.media-item:hover { border-color: var(--accent); }
 
   <div class="greeting" id="greeting">שלום 👋</div>
   <div class="greeting-sub" data-i18n="greeting_sub">הנה מה שקורה בעסק שלך היום</div>
+
+  <!-- Branding (core/branding): ליאור's dedicated entry, at the top of home. Opens the studio. -->
+  <button type="button" class="brand-hero" id="brandHero" hidden onclick="openBrandStudio(this)">
+    <span class="bh-face" id="bhFace"></span>
+    <span class="bh-text">
+      <span class="bh-title" data-i18n="bh_title">איך העסק שלכם ייראה במיתוג הכי טוב שלו?</span>
+      <span class="bh-sub" id="bhSub" dir="auto"></span>
+    </span>
+    <span class="bh-go" aria-hidden="true">›</span>
+  </button>
 
   <div class="stat-grid" id="statGridMain">
     <div class="stat-card">
@@ -2206,7 +2295,7 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="brand-state" id="brandState" dir="auto"></div>
     </div>
     <div class="brand-actions">
-      <button type="button" class="sugg-btn approve" id="brandBtn" onclick="brandStart()"
+      <button type="button" class="sugg-btn approve" id="brandBtn" onclick="openBrandStudio(this)"
               data-i18n="brand_btn">להראות לי את המיתוג</button>
       <a class="media-chip" id="brandView" target="_blank" rel="noopener" hidden
          data-i18n="brand_view">ההדמיות האחרונות</a>
@@ -3144,6 +3233,42 @@ const DASH_I18N = {
   plan_copied: { he:'הועתק ✓', en:'Copied ✓', fr:'Copié ✓', ar:'تم النسخ ✓', ru:'Скопировано ✓' },
   plan_chat_build: { he:'אשמח לתוכנית תוכן לשבוע הקרוב', en:'I would like a content plan for the coming week', fr:'Je voudrais un plan de contenu pour la semaine à venir', ar:'أرغب في خطة محتوى للأسبوع القادم', ru:'Хочу план контента на ближайшую неделю' },
   plan_chat_review: { he:'אשמח לראות את תוכנית התוכן שמחכה לאישור', en:'I would like to see the content plan that is waiting for approval', fr:'Je voudrais voir le plan de contenu en attente de validation', ar:'أرغب في رؤية خطة المحتوى التي تنتظر الموافقة', ru:'Хочу посмотреть план контента, который ждёт одобрения' },
+  bh_title: { he:"איך העסק שלכם ייראה במיתוג הכי טוב שלו?", en:"See your business in its best branding", fr:"Découvrez votre entreprise sous sa meilleure identité", ar:"شاهدوا عملكم بأفضل هوية له", ru:"Увидьте свой бизнес в его лучшем брендинге" },
+  bh_sub_start: { he:"ליאור מראה לכם הדמיות: לוגו, כרטיס ביקור, שילוט ועוד. {free} ניסיונות בחינם.", en:"Lior shows you mockups: logo, business card, signage and more. {free} free attempts.", fr:"Lior vous montre des maquettes : logo, carte de visite, enseigne et plus. {free} essais gratuits.", ar:"يعرض عليكم ليئور نماذج: شعار، بطاقة عمل، لافتة والمزيد. {free} محاولات مجانية.", ru:"Лиор покажет макеты: логотип, визитку, вывеску и не только. {free} бесплатных попыток." },
+  bh_sub_progress: { he:"נוצלו {used} מתוך {free} ניסיונות. כל מה שראיתם מחכה בגלריה.", en:"{used} of {free} attempts used. Everything you saw is waiting in the gallery.", fr:"{used} essais utilisés sur {free}. Tout ce que vous avez vu vous attend dans la galerie.", ar:"استُخدمت {used} من {free} محاولات. كل ما رأيتموه ينتظركم في المعرض.", ru:"Использовано {used} из {free} попыток. Всё, что вы видели, — в галерее." },
+  bh_sub_approved: { he:"ערכת המותג שלכם שמורה ✓ כאן גם מה צריך כדי להפיק כל פריט.", en:"Your brand kit is saved ✓ Here is also what it takes to produce each item.", fr:"Votre kit de marque est enregistré ✓ Et ici, ce qu'il faut pour produire chaque élément.", ar:"عدّة علامتكم محفوظة ✓ وهنا أيضًا ما يلزم لإنتاج كل عنصر.", ru:"Ваш бренд-кит сохранён ✓ Здесь же — что нужно для изготовления каждого элемента." },
+  bh_sub_upgrade: { he:"חלק משירות התוכן והמדיה. לחצו כדי לראות מה הוא כולל.", en:"Part of the content and media service. Tap to see what it includes.", fr:"Fait partie du service contenus et médias. Touchez pour voir ce qu'il comprend.", ar:"جزء من خدمة المحتوى والوسائط. انقروا لرؤية ما تتضمنه.", ru:"Входит в услугу контента и медиа. Нажмите, чтобы узнать, что в неё входит." },
+  bs_title: { he:"סטודיו המיתוג", en:"Branding studio", fr:"Studio d'identité", ar:"استوديو الهوية", ru:"Студия брендинга" },
+  bs_by: { he:"עם {name}", en:"With {name}", fr:"Avec {name}", ar:"مع {name}", ru:"С {name}" },
+  bs_close: { he:"סגירה", en:"Close", fr:"Fermer", ar:"إغلاق", ru:"Закрыть" },
+  bs_loading: { he:"טוען…", en:"Loading…", fr:"Chargement…", ar:"جارٍ التحميل…", ru:"Загрузка…" },
+  bs_failed: { he:"לא הצלחתי לפתוח את זה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open that right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir cela pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح ذلك الآن. حاولوا مجددًا بعد لحظة.", ru:"Сейчас не получилось открыть. Попробуйте через минуту." },
+  bs_counter: { he:"נוצלו {used} מתוך {free} ניסיונות", en:"{used} of {free} attempts used", fr:"{used} essais utilisés sur {free}", ar:"استُخدمت {used} من {free} محاولات", ru:"Использовано {used} из {free} попыток" },
+  bs_start: { he:"להתחיל עם ליאור", en:"Start with Lior", fr:"Commencer avec Lior", ar:"ابدأوا مع ليئور", ru:"Начать с Лиором" },
+  bs_again: { he:"כיוון אחר עם ליאור", en:"Another direction with Lior", fr:"Une autre direction avec Lior", ar:"اتجاه آخر مع ليئور", ru:"Другое направление с Лиором" },
+  bs_upgrade_btn: { he:"לראות מה השירות כולל", en:"See what the service includes", fr:"Voir ce que comprend le service", ar:"شاهدوا ما تتضمنه الخدمة", ru:"Посмотреть, что входит в услугу" },
+  bs_gallery: { he:"כל מה שראיתם", en:"Everything you have seen", fr:"Tout ce que vous avez vu", ar:"كل ما رأيتموه", ru:"Всё, что вы видели" },
+  bs_empty: { he:"עוד אין הדמיות. ליאור יציע לכם כיוון מוכן, ואתם רק מגיבים.", en:"No mockups yet. Lior will offer you a ready-made direction, and you just react.", fr:"Pas encore de maquettes. Lior vous propose une direction toute prête, vous n'avez qu'à réagir.", ar:"لا توجد نماذج بعد. سيقترح عليكم ليئور اتجاهًا جاهزًا وأنتم فقط تتفاعلون.", ru:"Макетов пока нет. Лиор предложит готовое направление, а вы просто отреагируете." },
+  bs_attempt: { he:"ניסיון {n}", en:"Attempt {n}", fr:"Essai {n}", ar:"المحاولة {n}", ru:"Вариант {n}" },
+  bs_open: { he:"לפתוח את כל ההדמיות", en:"Open all mockups", fr:"Ouvrir toutes les maquettes", ar:"فتح كل النماذج", ru:"Открыть все макеты" },
+  bs_approve: { he:"זה הכיוון שלי", en:"This is my direction", fr:"C'est ma direction", ar:"هذا اتجاهي", ru:"Это моё направление" },
+  bs_reject: { he:"לא זה", en:"Not this one", fr:"Pas celle-ci", ar:"ليس هذا", ru:"Не то" },
+  bs_tag_approved: { he:"הכיוון שאישרתם ✓", en:"Your approved direction ✓", fr:"Votre direction validée ✓", ar:"الاتجاه الذي اعتمدتموه ✓", ru:"Ваше утверждённое направление ✓" },
+  bs_tag_rejected: { he:"לא בשבילכם", en:"Not for you", fr:"Pas pour vous", ar:"ليس لكم", ru:"Не ваше" },
+  bs_rejected_note: { he:"נרשם. ספרו לליאור מה לא ישב, והכיוון הבא יתחשב בזה.", en:"Noted. Tell Lior what didn't sit well, and the next direction will take it into account.", fr:"C'est noté. Dites à Lior ce qui ne vous allait pas, la prochaine direction en tiendra compte.", ar:"تم التسجيل. قولوا لليئور ما الذي لم يناسب، وسيأخذه الاتجاه التالي بالحسبان.", ru:"Отмечено. Скажите Лиору, что не понравилось, и следующее направление это учтёт." },
+  bs_tell_lior: { he:"לספר לליאור", en:"Tell Lior", fr:"Le dire à Lior", ar:"أخبروا ليئور", ru:"Сказать Лиору" },
+  bs_tell_text: { he:"ניסיון {n} לא מרגיש לי, כי ", en:"Attempt {n} doesn't feel like me, because ", fr:"L'essai {n} ne me ressemble pas, parce que ", ar:"المحاولة {n} لا تشبهني، لأن ", ru:"Вариант {n} — не моё, потому что " },
+  bs_colors: { he:"צבעים", en:"Colours", fr:"Couleurs", ar:"الألوان", ru:"Цвета" },
+  bs_fonts: { he:"גופנים", en:"Fonts", fr:"Polices", ar:"الخطوط", ru:"Шрифты" },
+  bs_style: { he:"סגנון", en:"Style", fr:"Style", ar:"الأسلوب", ru:"Стиль" },
+  bs_kit: { he:"ערכת המותג שלכם", en:"Your brand kit", fr:"Votre kit de marque", ar:"عدّة علامتكم", ru:"Ваш бренд-кит" },
+  bs_kit_used: { he:"דפי הנחיתה, הסרטונים והפוסטים משתמשים בה מעכשיו.", en:"Your landing pages, videos and posts use it from now on.", fr:"Vos pages, vidéos et publications l'utilisent désormais.", ar:"تستخدمها صفحات الهبوط والفيديوهات والمنشورات من الآن.", ru:"Лендинги, видео и посты теперь используют его." },
+  bs_help: { he:"מה צריך כדי לקבל כל פריט באמת", en:"What it takes to actually get each item", fr:"Ce qu'il faut pour obtenir chaque élément", ar:"ما يلزم للحصول على كل عنصر فعلًا", ru:"Что нужно, чтобы получить каждый элемент" },
+  bs_designer_btn: { he:"לעצב את הלוגו מול מעצב אנושי", en:"Design the logo with a human designer", fr:"Concevoir le logo avec un designer humain", ar:"تصميم الشعار مع مصمم بشري", ru:"Сделать логотип с дизайнером-человеком" },
+  bs_designer_asked: { he:"ביקשתם מעצב אנושי ללוגו ✓ הוא ייצור איתכם קשר.", en:"You asked for a human designer for the logo ✓ They will contact you.", fr:"Vous avez demandé un designer humain pour le logo ✓ Il vous contactera.", ar:"طلبتم مصممًا بشريًا للشعار ✓ سيتواصل معكم.", ru:"Вы попросили дизайнера-человека для логотипа ✓ Он свяжется с вами." },
+  bs_produce_btn: { he:"לספר לליאור מה להפיק", en:"Tell Lior what to produce", fr:"Dire à Lior quoi produire", ar:"أخبروا ليئور بما يجب إنتاجه", ru:"Сказать Лиору, что изготовить" },
+  bs_quote_btn: { he:"לראות את הצעת המחיר לייצור", en:"See the production quote", fr:"Voir le devis de production", ar:"عرض سعر الإنتاج", ru:"Посмотреть цену на производство" },
+  bs_quote_approved: { he:"אישרתם את הצעת המחיר ✓ הצוות ישלח בקשת תשלום.", en:"You approved the quote ✓ The team will send a payment request.", fr:"Vous avez validé le devis ✓ L'équipe enverra une demande de paiement.", ar:"وافقتم على العرض ✓ سيرسل الفريق طلب دفع.", ru:"Вы одобрили цену ✓ Команда отправит запрос на оплату." },
   brand_state_none: { he:'הניסיונות שבחינם נוצלו. אפשר לאשר כיוון שראיתם, או לדבר עם ליאור.', en:'The free attempts are used. You can approve a direction you saw, or talk to Lior.', fr:'Les essais gratuits sont utilisés. Vous pouvez valider une direction vue, ou en parler à Lior.', ar:'استُخدمت المحاولات المجانية. يمكن اعتماد اتجاه رأيتموه أو التحدث مع ليئور.', ru:'Бесплатные попытки использованы. Можно утвердить увиденное направление или написать Лиору.' },
   brand_state_approved: { he:'אישרתם כיוון ✓ ערכת המותג שלכם שמורה ומשמשת בדפי הנחיתה, בסרטונים ובפוסטים.', en:'Direction approved ✓ Your brand kit is saved and used in your landing pages, videos and posts.', fr:'Direction validée ✓ Votre kit de marque est enregistré et utilisé dans vos pages, vidéos et publications.', ar:'تم اعتماد الاتجاه ✓ عدّة علامتكم محفوظة وتُستخدم في صفحات الهبوط والفيديوهات والمنشورات.', ru:'Направление утверждено ✓ Бренд-кит сохранён и используется в лендингах, видео и постах.' },
   brand_chat_msg: { he:'אני רוצה לראות איך העסק שלי ייראה תחת המיתוג הכי טוב שלו', en:'I want to see how my business would look under its best branding', fr:'Je veux voir à quoi ressemblerait mon entreprise sous sa meilleure identité', ar:'أريد أن أرى كيف سيبدو عملي بأفضل هوية له', ru:'Хочу увидеть, как мой бизнес выглядел бы с лучшим брендингом' },
@@ -3843,6 +3968,7 @@ async function loadDashboard() {
     chatData.conns = conns;
     chatData.dashReady = true;
     maybeShowGreeting();
+    loadBranding();   // the branding entry on home (its own small read, never blocks the page)
 
     // Connections come FIRST, guided one step at a time; the deep interview
     // waits for them (and so does the 90-day clock). The static tour is still
@@ -5761,6 +5887,7 @@ function buildWindow(id) {
     `<span class="cw-ava" data-role="ava">${faceHtml(p.face, p.initial)}</span>`
     + `<span class="cw-titles"><span class="cw-title" data-role="title">${esc(p.name)}</span>`
     + `<span class="cw-sub" data-role="sub">${esc(uallakI18n.t(p.roleKey))}</span></span>`
+    + (id === 'media' ? `<button class="cw-btn cw-brand" data-act="brand" title="${esc(uallakI18n.t('bs_title'))}" aria-label="${esc(uallakI18n.t('bs_title'))}">🎨</button>` : '')
     + `<button class="cw-btn" data-act="dl" title="${esc(uallakI18n.t('chat_download'))}">⬇</button>`
     + `<button class="cw-btn" data-act="new" title="${esc(uallakI18n.t('new_chat'))}">✎</button>`
     + `<button class="cw-btn" data-act="min" title="${esc(uallakI18n.t('chat_minimize'))}">–</button>`
@@ -5811,6 +5938,8 @@ function buildWindow(id) {
   }
   head.querySelector('[data-act="dl"]').onclick = () => downloadWindowConversation(id);
   head.querySelector('[data-act="new"]').onclick = () => newChatInWindow(id);
+  const brandBtnInChat = head.querySelector('[data-act="brand"]');
+  if (brandBtnInChat) brandBtnInChat.onclick = () => openBrandStudio(brandBtnInChat);
   head.querySelector('[data-act="min"]').onclick = () => minimizeWindow(id);
   head.querySelector('[data-act="close"]').onclick = () => closeAgentWindow(id);
   root.appendChild(head); root.appendChild(msgs);
@@ -9747,21 +9876,271 @@ async function loadBranding() {
     const body = await res.json();
     d = res.ok && body.success ? body.data : null;
   } catch (e) { d = null; }
-  if (!d || !d.available) { box.hidden = true; return; }
   BRAND_STATE = d;
+  paintBrandHero(d);
+  if (!d || !d.available || !d.package_readable) { box.hidden = true; return; }
   const t = uallakI18n.t;
-  document.getElementById('brandTerms').textContent = d.approved ? '' : [d.terms, d.value].filter(Boolean).join(' ');
+  document.getElementById('brandTerms').textContent = !d.covered_by_package ? (d.not_covered || '')
+    : d.approved ? '' : [d.terms, d.value].filter(Boolean).join(' ');
   document.getElementById('brandState').textContent = d.approved ? t('brand_state_approved')
     : d.attempts_used ? (d.attempts_left_free > 0
         ? t('brand_state_left', { left: d.attempts_left_free, free: d.free_attempts }) : t('brand_state_none'))
     : '';
   const btn = document.getElementById('brandBtn');
   btn.textContent = t(d.approved ? 'brand_btn_produce' : d.attempts_used ? 'brand_btn_again' : 'brand_btn');
-  btn.hidden = !d.approved && !!d.attempts_used && !d.can_try_now;
+  if (!d.covered_by_package) btn.textContent = t('bs_upgrade_btn');
+  btn.hidden = false;   // it opens the studio: the gallery and the options stay reachable after the free attempts
   const view = document.getElementById('brandView');
   view.hidden = !(typeof d.view_url === 'string' && /^\/api\/client\/branding\/view\/\d+$/.test(d.view_url));
   if (!view.hidden) view.href = d.view_url;
   box.hidden = false;
+}
+// ─── The branding studio (the same /api/client/branding read) ────────────────
+// One sheet: the terms line + the counter, the gallery of every attempt, the kit
+// and the per-item help. Its buttons NEVER decide anything: each opens (or
+// re-shows) THE card for that decision in ליאור's chat (POST
+// /api/client/branding/card) — the client's click on that card is the decision.
+// Every server text goes in as TEXT; colours only after a #RRGGBB check.
+let BRAND_OPENER = null;
+const BRAND_HEX = /^#[0-9a-fA-F]{6}$/;
+function bsEl(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function bsButton(label, cls, onclick) {
+  const b = bsEl('button', cls || 'sugg-btn', label);
+  b.type = 'button';
+  b.onclick = onclick;
+  return b;
+}
+function brandTotal(d) { return Number(d.attempts_used || 0) + Number(d.attempts_left_free || 0); }
+function paintBrandHero(d) {
+  const hero = document.getElementById('brandHero');
+  if (!hero) return;
+  if (!d || !d.available || !d.package_readable) { hero.hidden = true; return; }
+  const face = document.getElementById('bhFace');
+  if (!face.firstChild) face.innerHTML = faceHtml('lior', uallakI18n.t('persona_name_media').charAt(0));
+  const t = uallakI18n.t;
+  document.getElementById('bhSub').textContent = !d.covered_by_package ? t('bh_sub_upgrade')
+    : d.approved ? t('bh_sub_approved')
+    : d.attempts_used ? t('bh_sub_progress', { used: d.attempts_used, free: brandTotal(d) })
+    : t('bh_sub_start', { free: d.free_attempts });
+  hero.hidden = false;
+}
+function openBrandStudio(opener) {
+  BRAND_OPENER = opener || document.activeElement;
+  const box = document.getElementById('brandStudio');
+  const t = uallakI18n.t;
+  const face = document.getElementById('bsFace');
+  if (!face.firstChild) face.innerHTML = faceHtml('lior', t('persona_name_media').charAt(0));
+  document.getElementById('bsBy').textContent = t('bs_by', { name: t('persona_name_media') });
+  const close = document.getElementById('bsClose');
+  close.title = t('bs_close'); close.setAttribute('aria-label', t('bs_close'));
+  const body = document.getElementById('bsBody');
+  body.textContent = '';
+  body.appendChild(bsEl('div', 'bs-msg', t('bs_loading')));
+  box.hidden = false;
+  document.body.classList.add('bs-open');
+  close.focus();
+  refreshBrandStudio();
+}
+function closeBrandStudio() {
+  const box = document.getElementById('brandStudio');
+  if (!box || box.hidden) return;
+  box.hidden = true;
+  document.body.classList.remove('bs-open');
+  if (BRAND_OPENER && BRAND_OPENER.focus && BRAND_OPENER.isConnected) BRAND_OPENER.focus();
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('brandStudio').hidden) closeBrandStudio();
+});
+document.getElementById('brandStudio').addEventListener('click', e => {
+  if (e.target && e.target.id === 'brandStudio') closeBrandStudio();   // a tap outside the sheet
+});
+async function refreshBrandStudio() {
+  await loadBranding();
+  renderBrandStudio(BRAND_STATE);
+}
+async function brandShowCard(card) {
+  closeBrandStudio();
+  const w = openAgentWindow('media');
+  if (!w || !card) return;
+  try { await w.historyLoaded; } catch (e) { /* the card is added below anyway */ }
+  appendActionCard('media', card);
+  const el = w.msgsEl.querySelector(`.chat-action[data-action-id="${Number(card.id)}"]`);
+  if (!el) return;
+  const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
+  el.classList.add('approval-focus');
+  setTimeout(() => el.classList.remove('approval-focus'), 4000);
+}
+async function brandOpenCard(kind, attempt, btn, msgEl) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/client/branding/card', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: kind, attempt: Number(attempt) || 0 }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success && body.data && body.data.card) { brandShowCard(body.data.card); return; }
+    const line = body && body.detail && typeof body.detail.message === 'string' ? body.detail.message : '';
+    if (msgEl) msgEl.textContent = line || uallakI18n.t('bs_failed');
+  } catch (e) {
+    if (msgEl) msgEl.textContent = uallakI18n.t('bs_failed');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+async function brandReject(n, btn, msgEl) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/client/branding/reject', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attempt: Number(n) }),
+    });
+    if (!res.ok) throw new Error('reject failed');
+    await refreshBrandStudio();
+    const note = document.getElementById('bsRejected');
+    if (note) { note.hidden = false; note.dataset.n = String(Number(n)); }
+  } catch (e) {
+    if (msgEl) msgEl.textContent = uallakI18n.t('bs_failed');
+    if (btn) btn.disabled = false;
+  }
+}
+function brandTellLior(n) {
+  closeBrandStudio();
+  const w = openAgentWindow('media');
+  if (!w) return;
+  setChatInput(w.inputEl, uallakI18n.t('bs_tell_text', { n: Number(n) }));   // not sent: they finish the sentence
+  w.inputEl.focus();
+}
+function brandSwatches(colors, cls) {
+  const row = bsEl('div', cls || 'bs-sw');
+  (colors || []).filter(c => BRAND_HEX.test(String(c))).forEach(c => {
+    const s = bsEl('span'); s.style.background = c; s.title = c; row.appendChild(s);
+  });
+  return row;
+}
+function renderBrandStudio(d) {
+  const t = uallakI18n.t;
+  const body = document.getElementById('bsBody');
+  if (!body) return;
+  body.textContent = '';
+  if (!d || !d.available || !d.package_readable) { body.appendChild(bsEl('div', 'bs-msg', t('bs_failed'))); return; }
+  const readOnly = !!ADMIN_VIEW;
+  body.appendChild(bsEl('div', 'bs-note heart', d.heart || ''));
+  if (!d.covered_by_package) {
+    // Not in the package: the service explained in ONE card, never the flow
+    body.appendChild(bsEl('div', 'bs-note', d.not_covered || ''));
+    const row = bsEl('div', 'bs-actions'); const msg = bsEl('span', 'bs-msg');
+    if (!readOnly) {
+      const b = bsButton(t('bs_upgrade_btn'), 'sugg-btn approve', () => brandOpenCard('upgrade', 0, b, msg));
+      row.appendChild(b);
+    }
+    row.appendChild(msg); body.appendChild(row);
+    return;
+  }
+  if (!d.approved) body.appendChild(bsEl('div', 'bs-terms', [d.terms, d.value].filter(Boolean).join(' ')));
+  // The counter: one dot per attempt open to them (the free ones + any the team opened)
+  const counter = bsEl('div', 'bs-counter');
+  const dots = bsEl('div', 'bs-dots');
+  dots.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < brandTotal(d); i++) dots.appendChild(bsEl('span', 'bs-dot' + (i < d.attempts_used ? ' used' : '')));
+  counter.append(dots, bsEl('span', '', t('bs_counter', { used: d.attempts_used || 0, free: brandTotal(d) })));
+  body.appendChild(counter);
+  if (!d.approved) {
+    const row = bsEl('div', 'bs-actions'); const msg = bsEl('span', 'bs-msg');
+    if (d.can_try_now && !readOnly) {
+      row.appendChild(bsButton(t(d.attempts_used ? 'bs_again' : 'bs_start'), 'sugg-btn approve', () => { closeBrandStudio(); brandStart(); }));
+    } else if (!d.can_try_now) {
+      body.appendChild(bsEl('div', 'bs-note', t('brand_state_none')));
+    }
+    if (!d.can_try_now && !d.human_designer_requested && !readOnly) {
+      const b = bsButton(t('bs_designer_btn'), 'sugg-btn', () => brandOpenCard('designer', 0, b, msg));
+      row.appendChild(b);
+    }
+    row.appendChild(msg); body.appendChild(row);
+  }
+  // After approval: the kit, then what it takes to get each item, then production
+  if (d.approved && d.kit) {
+    body.appendChild(bsEl('div', 'bs-h', t('bs_kit')));
+    const sw = bsEl('div', 'bs-kit-sw');
+    (d.kit.palette || []).forEach(pair => {
+      const c = Array.isArray(pair) ? pair[1] : '';
+      if (!BRAND_HEX.test(String(c))) return;
+      const item = bsEl('div'); const chip = bsEl('span'); chip.style.background = c;
+      item.append(chip, bsEl('span', '', c)); sw.appendChild(item);
+    });
+    body.appendChild(sw);
+    const meta = [];
+    if ((d.kit.fonts || []).length) meta.push(t('bs_fonts') + ': ' + d.kit.fonts.filter(Boolean).join(' · '));
+    if (d.kit.style) meta.push(t('bs_style') + ': ' + d.kit.style);
+    if (meta.length) body.appendChild(bsEl('div', 'bs-meta', meta.join('  |  ')));
+    body.appendChild(bsEl('div', 'bs-meta', t('bs_kit_used')));
+    body.appendChild(bsEl('div', 'bs-h', t('bs_help')));
+    const help = bsEl('div', 'bs-help');
+    (d.items || []).forEach(i => {
+      const line = bsEl('div'); line.appendChild(bsEl('b', '', (i.name || '') + ': ')); line.appendChild(document.createTextNode(i.get || ''));
+      help.appendChild(line);
+    });
+    body.appendChild(help);
+    body.appendChild(bsEl('div', 'bs-note', d.live_site || ''));
+    const row = bsEl('div', 'bs-actions'); const msg = bsEl('span', 'bs-msg');
+    if (d.human_designer_requested) row.appendChild(bsEl('span', 'bs-msg', t('bs_designer_asked')));
+    else if (!readOnly) { const b = bsButton(t('bs_designer_btn'), 'sugg-btn', () => brandOpenCard('designer', 0, b, msg)); row.appendChild(b); }
+    if (d.quote_status === 'approved') row.appendChild(bsEl('span', 'bs-msg', t('bs_quote_approved')));
+    else if (!readOnly && d.quote_status === 'sent') { const b = bsButton(t('bs_quote_btn'), 'sugg-btn approve', () => brandOpenCard('quote', 0, b, msg)); row.appendChild(b); }
+    else if (!readOnly) {
+      body.appendChild(bsEl('div', 'bs-meta', d.production || ''));
+      row.appendChild(bsButton(t('bs_produce_btn'), 'sugg-btn approve', () => { closeBrandStudio(); brandStart(); }));
+    }
+    row.appendChild(msg); body.appendChild(row);
+  }
+  // The gallery: every attempt they saw, newest first, each with its own decision
+  body.appendChild(bsEl('div', 'bs-h', t('bs_gallery')));
+  const rejected = bsEl('div', 'bs-note'); rejected.id = 'bsRejected'; rejected.hidden = true;
+  rejected.appendChild(bsEl('span', '', t('bs_rejected_note') + ' '));
+  if (!readOnly) rejected.appendChild(bsButton(t('bs_tell_lior'), 'sugg-btn', () => brandTellLior(rejected.dataset.n)));
+  body.appendChild(rejected);
+  const attempts = Array.isArray(d.attempts) ? d.attempts : [];
+  if (!attempts.length) { body.appendChild(bsEl('div', 'bs-msg', t('bs_empty'))); return; }
+  const grid = bsEl('div', 'bs-grid');
+  attempts.forEach(a => {
+    const n = Number(a.n) || 0;
+    const card = bsEl('div', 'bs-att' + (a.approved ? ' approved' : a.rejected ? ' rejected' : ''));
+    card.dir = 'auto';
+    if (typeof a.thumb_url === 'string' && /^\/api\/client\/branding\/thumb\/\d+$/.test(a.thumb_url)) {
+      const img = bsEl('img', 'bs-thumb'); img.loading = 'lazy'; img.decoding = 'async'; img.alt = t('bs_attempt', { n: n });
+      img.src = a.thumb_url; img.onerror = () => img.remove();
+      card.appendChild(img);
+    }
+    const head = bsEl('div', 'bs-att-head');
+    head.appendChild(bsEl('b', '', t('bs_attempt', { n: n })));
+    if (a.approved) head.appendChild(bsEl('span', 'bs-tag', t('bs_tag_approved')));
+    else if (a.rejected) head.appendChild(bsEl('span', 'bs-tag', t('bs_tag_rejected')));
+    card.appendChild(head);
+    if (a.direction) card.appendChild(bsEl('div', 'bs-dir', a.direction));
+    card.appendChild(brandSwatches(a.palette));
+    const meta = [];
+    if ((a.fonts || []).length) meta.push(a.fonts.filter(Boolean).join(' · '));
+    if (a.style) meta.push(a.style);
+    if (meta.length) card.appendChild(bsEl('div', 'bs-meta', meta.join('  |  ')));
+    const row = bsEl('div', 'bs-actions'); const msg = bsEl('div', 'bs-msg');
+    if (typeof a.view_url === 'string' && /^\/api\/client\/branding\/view\/\d+$/.test(a.view_url)) {
+      const link = bsEl('a', 'media-chip', t('bs_open')); link.href = a.view_url; link.target = '_blank'; link.rel = 'noopener';
+      row.appendChild(link);
+    }
+    if (!d.approved && !a.rejected && a.has_mockups && !readOnly) {
+      const ok = bsButton(t('bs_approve'), 'sugg-btn approve', () => brandOpenCard('approve', n, ok, msg));
+      const no = bsButton(t('bs_reject'), 'sugg-btn', () => brandReject(n, no, msg));
+      row.append(ok, no);
+    }
+    card.append(row, msg);
+    grid.appendChild(card);
+  });
+  body.appendChild(grid);
 }
 function brandStart() {
   const d = BRAND_STATE || {};

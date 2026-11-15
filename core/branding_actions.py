@@ -7,6 +7,10 @@ Four cards, one decision each:
 - `request_logo_designer`     the logo with our human designer instead.
 - `approve_production_quote`  opened by code when staff send a quote: the
                               price of real production, approved BEFORE it.
+- `upgrade_to_branding`       a package without the content & media service:
+                              ONE card that explains the service; the click
+                              prepares the upgrade offer through the existing
+                              pricing path. No characterisation before it.
 
 `build(aa)` gets the agent_actions module itself, so this file imports
 nothing from it at import time (agent_actions imports us).
@@ -58,6 +62,24 @@ def build(aa) -> dict:
             "Je n'ai pas retrouvé cette maquette : rien n'a été validé. Écrivez-moi et je prépare une nouvelle direction.",
             "لم أجد هذا النموذج، لذلك لم يُعتمد شيء. اكتبوا لي وسأجهّز اتجاهًا جديدًا.",
             "Я не нашёл этот макет, ничего не утверждено. Напишите — подготовлю новое направление."),
+        "package_unreadable": _txt(
+            "כרגע אני לא מצליח לראות מה כלול בחבילה שלכם, אז לא התחלתי. נסו שוב בעוד כמה דקות.",
+            "I can't see what your package includes right now, so I didn't start. Please try again in a few minutes.",
+            "Je ne parviens pas à voir ce que comprend votre formule pour l'instant ; je n'ai donc rien lancé. Réessayez dans quelques minutes.",
+            "لا أستطيع الآن رؤية ما تتضمنه باقتكم، لذلك لم أبدأ. حاولوا مجددًا بعد دقائق.",
+            "Сейчас я не вижу, что входит в ваш пакет, поэтому не начал. Попробуйте через несколько минут."),
+        "already_covered": _txt(
+            "שירות התוכן והמדיה כבר כלול בחבילה שלכם, אז אין מה לשדרג. אפשר להתחיל את המיתוג עכשיו.",
+            "The content and media service is already in your package, so there is nothing to upgrade. You can start the branding now.",
+            "Le service contenus et médias est déjà dans votre formule : rien à ajouter. Vous pouvez commencer l'identité maintenant.",
+            "خدمة المحتوى والوسائط مشمولة بالفعل في باقتكم، فلا حاجة للترقية. يمكنكم بدء الهوية الآن.",
+            "Услуга контента и медиа уже в вашем пакете, расширять нечего. Можно начинать брендинг."),
+        "proposal_failed": _txt(
+            "לא הצלחתי להכין את ההצעה הפעם, והצוות קיבל התראה וישלח לכם אותה.",
+            "I couldn't prepare the offer this time; the team was alerted and will send it to you.",
+            "Je n'ai pas pu préparer l'offre cette fois ; l'équipe est prévenue et vous l'enverra.",
+            "لم أتمكن من تجهيز العرض هذه المرة؛ تم تنبيه الفريق وسيرسلونه إليكم.",
+            "В этот раз предложение не подготовилось; команда уведомлена и пришлёт его вам."),
         "no_open_quote": _txt(
             "הצעת המחיר הזאת כבר לא פתוחה, אז לא אישרתי כלום.",
             "That quote is no longer open, so nothing was approved.",
@@ -72,6 +94,13 @@ def build(aa) -> dict:
 
     def prepare_create(client_id, params, context, rows):
         lang = (context or {}).get("language") or "he"
+        cover = branding.coverage(client_id)
+        if not cover["readable"]:
+            return {"refuse": _pick(refusals["package_unreadable"], lang)}
+        if not cover["covered"]:
+            # Never a characterisation or an attempt outside the package: the ONE upgrade card
+            return {"switch_to": "upgrade_to_branding", "switch_params": {},
+                    "notice": branding.text(branding.NOT_COVERED, lang)}
         value = branding.state(client_id)
         code = branding.can_attempt(value)
         if code:
@@ -166,7 +195,59 @@ def build(aa) -> dict:
             raise ActionFailed(e.code if e.code in refusals else "error", str(e))
         return {"total": current.get("total_ils")}
 
+    # ── upgrade_to_branding ─────────────────────────────────────────────────
+    def branding_missing(state, client):
+        package = (state or {}).get("package") or {}
+        return bool(package.get("readable")) and not branding.covered(package.get("services") or [])
+
+    def run_upgrade(client_id, params, background_tasks):
+        if branding.coverage(client_id)["covered"]:
+            raise ActionFailed("already_covered", "content & media is already in the package")
+        from agents import support_agent
+        client = aa._client(client_id)
+        try:
+            reply = support_agent._build_upgrade_proposal(
+                client_id, client, support_agent._latest_lead(client_id),
+                "Add the content and media service (visual content, filming kits and branding mockups) "
+                "to my current package.")
+        except Exception as e:
+            aa._alert(f"client {client_id}: asked to add the content & media service (for branding) and the "
+                      f"upgrade proposal failed to build ({type(e).__name__}) — send them the offer by hand")
+            raise ActionFailed("proposal_failed", f"{type(e).__name__}: {e}")
+        return {"reply": str(reply or "")}
+
+    upgrade_ready = _txt("הכנתי את הצעת השדרוג. היא כאן למטה.", "I prepared the upgrade offer. It is right below.",
+                         "J'ai préparé l'offre de mise à niveau. Elle est juste en dessous.", "جهّزت عرض الترقية. تجدونه أدناه.",
+                         "Я подготовил предложение по расширению. Оно ниже.")
+
     return {
+        "upgrade_to_branding": {
+            "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+            "does": "BRANDING for a client whose package does not include the content & media service "
+                    "(branding.covered_by_package false): ONE card explaining what the service includes; the click "
+                    "prepares the priced upgrade offer. Propose it instead of any branding question or attempt.",
+            "params": {},
+            "available": branding_missing,
+            "run": run_upgrade,
+            "slow": {"minutes": 4, "eta": _txt(
+                "הכנת ההצעה לוקחת בדרך כלל כדקה.", "Preparing the offer usually takes about a minute.",
+                "La préparation de l'offre prend en général une minute environ.", "تجهيز العرض يستغرق عادةً نحو دقيقة.",
+                "Подготовка предложения обычно занимает около минуты.")},
+            "button": _txt("להכין לי הצעת שדרוג", "Prepare my upgrade offer", "Préparer mon offre", "جهّزوا لي عرض الترقية",
+                           "Подготовить предложение"),
+            "title": _txt("מיתוג לעסק: מה השירות כולל", "Branding for your business: what the service includes",
+                          "L'identité de votre entreprise : ce que comprend le service",
+                          "هوية لعملكم: ما تتضمنه الخدمة", "Брендинг для бизнеса: что входит в услугу"),
+            "what": _txt(
+                "שירות התוכן והמדיה של ליאור כולל: תמונות וסרטונים לעסק, ערכות צילום עם תסריט והדרכה, ותהליך מיתוג שבו אתם רואים איך העסק נראה תחת המיתוג הכי טוב שלו, בהדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר ואיך אתר יכול להיראות. 5 ניסיונות הדמיה בחינם; אחרי שתאשרו כיוון, הייצור הסופי מקבל הצעת מחיר נפרדת. השירות לא כלול כרגע בחבילה שלכם. הלחיצה כאן רק מכינה לכם הצעת שדרוג מסודרת עם המחיר; שום דבר לא מחויב לפני שאישרתם אותה.",
+                "Lior's content and media service includes: images and videos for your business, filming kits with a script and coaching, and a branding process where you see how your business looks under its best branding, as mockups: logo, business card, signage, flyer, poster and how a website could look. 5 mockup attempts are free; once you approve a direction, final production gets its own quote. The service isn't in your package right now. This click only prepares an orderly upgrade offer with the price; nothing is charged before you approve it.",
+                "Le service contenus et médias de Lior comprend : images et vidéos pour votre entreprise, kits de tournage avec script et coaching, et un processus d'identité où vous voyez votre entreprise sous sa meilleure image, en maquettes : logo, carte de visite, enseigne, flyer, affiche et un aperçu de site. 5 essais gratuits ; une fois une direction validée, la production finale fait l'objet d'un devis séparé. Ce service n'est pas dans votre formule pour l'instant. Ce clic prépare seulement une offre avec le prix ; rien n'est facturé avant votre validation.",
+                "تشمل خدمة المحتوى والوسائط لدى ليئور: صورًا وفيديوهات لعملكم، عدّة تصوير مع نص وتوجيه، وعملية هوية ترون فيها كيف يبدو عملكم بأفضل هوية له، كنماذج: شعار، بطاقة عمل، لافتة، منشور، ملصق وكيف يمكن أن يبدو الموقع. 5 محاولات مجانية؛ بعد اعتماد اتجاه يحصل الإنتاج النهائي على عرض سعر منفصل. الخدمة غير مشمولة في باقتكم حاليًا. هذه النقرة تجهّز عرض ترقية بالسعر فقط؛ لا يُخصم شيء قبل موافقتكم.",
+                "Услуга контента и медиа Лиора включает: изображения и видео для бизнеса, съёмочные наборы со сценарием и подсказками, и брендинг, где вы видите свой бизнес в лучшем образе на макетах: логотип, визитка, вывеска, флаер, постер и вид сайта. 5 бесплатных попыток; после утверждения направления финальное производство оценивается отдельно. Сейчас услуги нет в вашем пакете. Это нажатие только готовит предложение с ценой; ничего не списывается до вашего одобрения."),
+            "done": upgrade_ready,
+            "done_message": lambda result, lang: result.get("reply") or _pick(upgrade_ready, lang),
+            "refusals": {k: refusals[k] for k in ("already_covered", "proposal_failed")},
+        },
         "create_brand_mockups": {
             "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
             "needs_row": True,
@@ -199,7 +280,8 @@ def build(aa) -> dict:
                 branding.TERMS),
             "done": created,
             "done_message": lambda result, lang: _pick(created, lang).replace("{left}", str(result.get("left", ""))),
-            "refusals": {k: refusals[k] for k in ("attempts_used", "already_approved", "design_failed", "cost_cap")},
+            "refusals": {k: refusals[k] for k in ("attempts_used", "already_approved", "design_failed", "cost_cap",
+                                                  "package_unreadable")},
         },
         "approve_branding": {
             "approver": "client", "client_requestable": False, "internal_only": False, "kind": "execute",

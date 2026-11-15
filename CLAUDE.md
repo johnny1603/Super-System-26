@@ -822,7 +822,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   owner's decision; past the free attempts nothing runs. Cards in `core/branding_actions`
   (registered into ACTIONS). Agent rules: `support_agent.STUDIO_RULE` (also: a live site is never
   redesigned by the system — human hands only, no automatic price). app_settings `branding:<id>`
-  + `brand_kit:<id>`, cleared with the client. `tests/test_branding.py`.
+  + `brand_kit:<id>`, cleared with the client. Client entry (2026-11-16): home hero + Lior's 🎨 header button + the Media button → ONE studio
+  (`openBrandStudio`, gallery / reject / cards via `POST /api/client/branding/card`); a package
+  without branding gets ONE `upgrade_to_branding` card; internal accounts count as covered.
+  `tests/test_branding.py`.
 - **Organic SEO report (2026-11-15, `docs/SEO-REPORT.md`)**: `core/seo_report` — site state,
   keyword opportunities, backlink OPPORTUNITIES (site, type, score, why, what to do, outreach
   draft). **FREE, never priced, gated by the package** (`covered()`: no research or model call

@@ -496,3 +496,40 @@ about $40; I stop and ask before passing it.
 - **Not built:** auto-publishing, a reminder on the item's day, editing one item of a waiting
   plan (a change writes a new plan).
 - **Migration:** none. **Deploy:** needed.
+
+## Checkpoint 2026-11-16: the branding entry point (client dashboard)
+
+- **Before:** one branding button, in the Media tab only, below the fold, with no avatar.
+  Nothing on home, nothing in Lior's chat.
+- **Now:** a home hero with Lior's face, a 🎨 button in Lior's window, and the Media button. All
+  three open one studio: terms line, counter, start, gallery with approve / reject, kit and help
+  after approval, and the quote card. A package without branding gets ONE upgrade card. Details:
+  `docs/BRANDING.md` §The branding studio.
+- **New routes:** `GET /api/client/branding/thumb/{n}`, `POST /api/client/branding/card`,
+  `POST /api/client/branding/reject`. New card: `upgrade_to_branding`.
+- **Terms line corrected:** it no longer mentions a paid attempt (the charge is off).
+- **Tests:** `tests/test_branding.py` (class `Studio`), 78/78 files pass.
+- **Migration:** none. **Deploy:** needed.
+
+### Manual QA checklist (branding studio, no screenshots needed)
+
+1. Log in as a client whose package includes content/media. Without scrolling, the home page
+   shows the branding hero with Lior's face.
+2. Click the hero. The studio opens, shows the terms line once, the counter reads "0 of 5", and
+   Escape closes it and returns focus to the hero.
+3. Open Lior's chat window. The 🎨 button in its header opens the same studio. The Media-tab
+   button does too.
+4. Press start. Lior's chat opens with his proposals; no empty form appears anywhere.
+5. After one attempt: the gallery shows it with a thumbnail, colours and fonts; "see all six"
+   opens the mockups page.
+6. "Not this one" tags it rejected and the counter does not move. Approve opens ONE card in
+   Lior's chat; approving it there shows the kit, the per-item help, the designer offer and the
+   live-site line.
+7. Switch the language to Arabic and to Russian: the texts change, the layout mirrors for Arabic
+   and Hebrew, and the arrow points the right way.
+8. On a phone width, the studio is a full-screen sheet and the buttons are at least thumb-sized.
+9. With "reduce motion" on in the OS, nothing slides or animates.
+10. A client WITHOUT the content/media service: the same hero appears, and the studio shows only
+    the explanation and ONE upgrade card.
+11. Admin "enter as client": the studio opens but has no action buttons.
+12. After 5 attempts: a calm line, no start button. Control Room +1 opens one more.

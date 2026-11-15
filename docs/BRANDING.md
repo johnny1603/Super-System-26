@@ -72,8 +72,47 @@ by human hands, because an unsupervised change to a live site is risky, and that
 only after a characterisation with a person. No automatic price. A tracked team request is opened.
 A non-WordPress site: a new site on a new domain, or a landing page connected to the existing one.
 
+## The branding studio (client dashboard, 2026-11-16)
+
+Before this round the only button was in the Media tab, below the fold, with no avatar, and it
+loaded only with that tab. It was extended, not duplicated: all three entry points open ONE studio.
+
+- **Entry points:** the home hero (`#brandHero`, right under the greeting, Lior's face, the line
+  "See how your business would look under its best branding" in 5 languages; it stands out from
+  the navigation), the 🎨 button in Lior's chat-window header, and the existing Media-tab button.
+- **Studio** (`#brandStudio`, a dialog; full-screen sheet on a phone; Escape / backdrop / close
+  return focus to the opener; no motion under `prefers-reduced-motion`). It draws
+  `GET /api/client/branding` (`branding.gallery`). In order: the heart note (the owner must feel
+  the brand is theirs), ONE terms line (5 free attempts; after approval, final production is
+  quoted separately and no more attempts are included; outside this process this kind of work
+  costs a lot, here it is free up to approval), the counter (dots plus "N of 5 used"), then start
+  or try again. Lior brings the characterisation as ready proposals in his chat, never an empty
+  form (STUDIO_RULE).
+- **Gallery:** every attempt, newest first, as an inert SVG thumbnail
+  (`GET /api/client/branding/thumb/{n}`, served under the mockup page's sandbox headers), plus
+  direction, colours, fonts, style, a link to all six mockups, and Approve / Not this one.
+- **One decision per card:** Approve, designer, upgrade and the production quote never act from
+  the studio. `POST /api/client/branding/card` (`kind` approve / designer / upgrade / quote)
+  proposes the real card by code, and the studio shows it in Lior's chat. "Not this one"
+  (`POST /api/client/branding/reject`, `branding.reject`) only marks the attempt, uses no
+  attempt, and cancels that attempt's open approval card. An approved attempt cannot be rejected.
+- **After approval:** the kit (colours, fonts, style), practical help per item, the
+  human-designer offer for the logo, the live-site line (a person only, priced after a human
+  characterisation, never automatically), and the production quote: the ONE approval card when
+  the team has sent it, otherwise the "tell Lior" production line.
+- **Package without branding** (`branding.covered`: the media/content service via
+  `client_journey.step_in_services`, or a "brand" service): the same hero and button, but the
+  studio explains the service and offers ONE `upgrade_to_branding` card (existing upgrade
+  pricing). `create_brand_mockups` switches to it. A package that cannot be read refuses with a
+  calm line (fail closed). **Internal (billing_exempt) accounts count as covered**, so the owner
+  can test.
+- **Charge stays OFF.** After 5 attempts the studio shows the calm line and the existing options
+  (approve one, the designer). The Control Room +1 / +3 buttons still open more attempts.
+- **Staff view:** the studio is read-only (no action buttons).
+
 ## Limits
 
+- The studio was never opened in a real browser or a phone, and RTL was never checked by eye.
 - Never run against a real model or a real client. The sample page was checked in Chrome on
   desktop (Hebrew, right-to-left); the last alignment fix on the business card was not re-checked.
 - The mockups are schematic (flat shapes), not photographs of printed goods.
