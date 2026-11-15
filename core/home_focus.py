@@ -509,5 +509,7 @@ def onboarding(client_id: int) -> dict:
         return {"known": False, "done": True}
     connections = {"complete": bool(status.get("complete")), "done": status.get("done_count", 0),
                    "total": status.get("total_count", 0), "next": status.get("next_step") or ""}
-    return {"known": True, "done": connections["complete"] and characterised and agreed,
+    # Onboarding = the connections + the deep characterisation (the owner's definition). The
+    # goals are the third task: still shown until agreed, but alone they never hide the feed.
+    return {"known": True, "done": connections["complete"] and characterised,
             "connections": connections, "characterised": characterised, "goals_agreed": agreed}

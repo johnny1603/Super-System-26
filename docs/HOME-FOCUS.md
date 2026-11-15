@@ -80,6 +80,9 @@ of `support_agent.STUDIO_RULE`.
 3. **Agreed 3-month goals** (`quarter_goals.agreed`). The button asks the manager, who proposes
    the ONE `agree_quarter_goals` card.
 
+**"Done" means** the connections plus the characterisation (the owner's definition). Once those
+are done and the goals are not agreed yet, the panel shows the goals task alone and hides nothing.
+
 **While not done** (`body.onboarding-focus`):
 - The home page shows the task panel (`#homeFocus`) at the top.
 - The idea feed is hidden: the "waiting for your approval" list with its seasonal and generic

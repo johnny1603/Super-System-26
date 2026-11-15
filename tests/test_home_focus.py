@@ -266,10 +266,13 @@ class Onboarding(unittest.TestCase):
         self.assertEqual((ob["known"], ob["done"]), (True, False))
         self.assertEqual(ob["connections"], {"complete": False, "done": 1, "total": 3, "next": "meta"})
         self.status["complete"] = True
+        self.assertFalse(hf.onboarding(7)["done"])          # not characterised yet
         self.interviewed = True
-        self.assertFalse(hf.onboarding(7)["done"])          # goals not agreed yet
+        ob = hf.onboarding(7)
+        # Connections + characterisation = onboarding done; the goals alone never hide the feed
+        self.assertEqual((ob["done"], ob["goals_agreed"]), (True, False))
         self.goals = {"agreed_at": "2026-11-16"}
-        self.assertTrue(hf.onboarding(7)["done"])
+        self.assertTrue(hf.onboarding(7)["goals_agreed"])
 
     def test_unknown_state_never_builds_a_focus_mode(self):
         self.status["resolved"] = False
@@ -295,7 +298,8 @@ class Onboarding(unittest.TestCase):
         page = _src("dashboard", "client", "index.html")
         for needle in ('id="homeFocus"', 'id="pendingHead"', "function applyOnboardingFocus(",
                        "body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList",
-                       "() => startInterview()", "hf_goals_opener", "function paintFocusLock("):
+                       "() => startInterview()", "hf_goals_opener", "function paintFocusLock(",
+                       "const goalsOnly = !!(ob && ob.known && ob.done && !ob.goals_agreed)"):
             self.assertIn(needle, page)
         for key in ("hf_title", "hf_lock", "hf_char_title", "hf_goals_title"):
             line = next(l for l in page.splitlines() if l.strip().startswith(key + ":"))

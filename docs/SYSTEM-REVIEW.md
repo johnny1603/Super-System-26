@@ -600,6 +600,9 @@ about $40; I stop and ask before passing it.
 - **Guard test:** `tests/test_vendor_names.py`. Allow-list: connection help and sign-up,
   ownership, legal pages, admin. Doc: `docs/VENDOR-NAMES.md`.
 - 80/80 files pass. **Migration:** none. **Deploy:** needed.
+- **Fix after Part 4:** onboarding "done" is connections + characterisation only, as specified.
+  Unagreed goals show as one task and hide nothing. Before the fix, every existing client would
+  have lost the idea feed until they agreed goals.
 
 ### Manual QA checklist: home upgrade (Parts 1-6, no screenshots needed)
 

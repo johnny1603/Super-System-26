@@ -10010,10 +10010,19 @@ function applyOnboardingFocus(ob) {
   document.body.classList.toggle('onboarding-focus', FOCUS_ON);
   const box = document.getElementById('homeFocus');
   if (!box) return;
-  if (!FOCUS_ON) { box.hidden = true; paintFocusLock(); return; }
+  // Onboarding done but the goals not agreed yet: only the goals task, nothing hidden
+  const goalsOnly = !!(ob && ob.known && ob.done && !ob.goals_agreed);
+  if (!FOCUS_ON && !goalsOnly) { box.hidden = true; paintFocusLock(); return; }
   const t = uallakI18n.t, c = ob.connections || {}, m = personaMeta('general');
   const tasks = document.getElementById('hfTasks');
   tasks.textContent = '';
+  if (goalsOnly) {
+    tasks.appendChild(hfTask(3, 'now', faceHtml(m.face, m.initial), t('hf_goals_title'), t('hf_goals_sub', { name: m.name }),
+      t('hf_goals_btn'), () => sendOpener('general', t('hf_goals_opener')), true));
+    box.hidden = false;
+    paintFocusLock();
+    return;
+  }
   tasks.appendChild(hfTask(1, c.complete ? 'done' : 'now', '', t('hf_connect_title'),
     t('hf_connect_sub', { done: c.done || 0, total: c.total || 0 }), t('hf_connect_btn'), () => scrollToNextConnCard()));
   tasks.appendChild(hfTask(2, ob.characterised ? 'done' : c.complete ? 'now' : 'wait', faceHtml(m.face, m.initial),
