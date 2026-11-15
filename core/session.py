@@ -314,10 +314,11 @@ def admin_session_fingerprint(admin_token: str) -> str:
     return hashlib.sha256((admin_token or "").encode()).hexdigest()[:16]
 
 
-def create_admin_view_token(client_id: int, admin_token: str) -> str:
+def create_admin_view_token(client_id: int, admin_token: str, mode: str = "") -> str:
     """The admin "enter as client" cookie: which client, bound to the admin
-    session that opened it (logging out of admin ends it), 2 hours at most."""
-    payload = json.dumps({"client_id": int(client_id), "purpose": "admin_view",
+    session that opened it (logging out of admin ends it), 2 hours at most.
+    `mode` "new_client" = the brand-new-client simulation (core/new_client_view)."""
+    payload = json.dumps({"client_id": int(client_id), "purpose": "admin_view", "mode": str(mode or ""),
                           "as": admin_session_fingerprint(admin_token),
                           "exp": int(time.time()) + ADMIN_VIEW_MAX_AGE_SECONDS}).encode()
     payload_b64 = base64.urlsafe_b64encode(payload)
@@ -334,6 +335,14 @@ def verify_admin_view_token(token: str, admin_token: str):
             and hmac.compare_digest(str(payload.get("as", "")), admin_session_fingerprint(admin_token))):
         return None
     return payload.get("client_id")
+
+
+def admin_view_mode(token: str, admin_token: str) -> str:
+    """The view's mode ("" or "new_client"), only for a valid view token."""
+    if verify_admin_view_token(token, admin_token) is None:
+        return ""
+    payload = _verify(token, _sign_admin_view) or {}
+    return str(payload.get("mode") or "")
 
 
 def _verify(token: str, sign_fn):

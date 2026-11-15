@@ -121,3 +121,31 @@ goals, not a promise").
 Every "now" carries a measured / not-measured-yet tag. Nothing is estimated silently and nothing
 is promised.
 
+## Only the three tasks, a few ideas at a time, and the new-client view (2026-11-16)
+
+- **During onboarding** (connections plus the characterisation not done), `body.onboarding-focus`
+  hides the idea list and its pace line, the branding banner, the invitation cards, the goal
+  path, the stats, the timeline and the journey. What stays is the greeting, the three tasks and
+  the connection cards that task 1 leads to. The weekly ideas are still written, but
+  `engagement_agent` does not announce them in the chat until onboarding is done.
+- **Client 27.** It is internal and fully set up: connections complete and an old first-login
+  interview on record, so `onboarding().done` is True and the feed shows. That was correct. What
+  was wrong is that the banner and the invitations stayed visible during the focus; now they hide.
+  Use the new-client view to see day one.
+- **A few at a time** (`core/home_feed`). `/api/client/suggestions` returns at most 3 by
+  importance and timing, plus `waiting`.
+  - The order: a sensitive day first, then a dated event by how near it is, then a promotion,
+    then tweaks, then plans and content documents, then ideas, then homework. Ties go to the
+    newest.
+  - Deciding one opens the next on reload, because the order is recomputed every time.
+  - One calm line (`feed_pace`, 5 languages) says how many are waiting.
+- **"View as a brand-new client"** (`core/new_client_view`): the admin client list has a "כלקוח
+  חדש" button. It opens the same read-only admin view with the cookie mode `new_client` (signed,
+  bound to the admin session, 2 hours, audited with "mode new_client").
+  - What it shows: the dashboard, checklist, journey, interview state, home-focus, suggestions,
+    open cards and chat history all answer as day one. Nothing is connected, there is no
+    characterisation, no goals, no ideas, no cards, and the chat is empty. The required steps
+    are the client's real package.
+  - What it touches: nothing is written. It skips `note_connections_complete`, and it does not
+    consume a resume.
+  - The banner says "כלקוח חדש".

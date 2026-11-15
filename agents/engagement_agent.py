@@ -279,6 +279,14 @@ def _generate_for_client(client: dict, events: list) -> int:
         from agents.client_agent import log_activity, log_communication
         log_activity(client_id, AGENT_NAME, "suggestions_added",
                      {"count": len(stored), "titles": stored}, {})
+        # A client still in onboarding (connections + characterisation) sees only
+        # the three first tasks: the ideas wait quietly, no chat line about them
+        try:
+            from core import home_focus
+            if not home_focus.onboarding(client_id).get("done", True):
+                return len(stored)
+        except Exception as e:
+            print(f"[{AGENT_NAME}] client {client_id}: onboarding state unknown ({type(e).__name__})")
         from core import vendor_names
         bullets = vendor_names.scrub("\n".join(f"• {t}" for t in stored), "he")
         log_communication(client_id, "outbound", "dashboard_chat",

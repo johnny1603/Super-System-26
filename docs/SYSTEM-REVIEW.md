@@ -657,3 +657,18 @@ about $40; I stop and ask before passing it.
   path, covers the Saturday path and the crash path, and checks every prepared card for a
   validator.
 - 81/81 files pass. **Migration:** none. **Deploy:** needed.
+
+### Part 4 — a process, not a wall of items
+
+- **Client 27's logic was right; the page was not.** Client 27 is internal with every connection
+  live and an old interview on record, so onboarding counts as done and the feed shows. The real
+  gap: during the focus only the approval list was hidden. The branding banner, the invitation
+  cards, the stats and the journey stayed. Now everything but the three tasks and the connection
+  cards hides, and the weekly ideas are not announced in the chat while onboarding runs.
+- **New-client view:** the admin "כלקוח חדש" button. It is read-only and writes nothing, the
+  mode lives in the signed admin-view cookie, and it uses the real package.
+- **Gradual release:** at most 3 ideas, ordered by importance and timing, plus one calm line;
+  the rest open as these are handled. `tests/test_home_feed.py`.
+- Limit: the cap applies to the idea feed. The invitation cards already cap themselves at 3, and
+  chat cards are per conversation.
+- 82/82 files pass. **Migration:** none. **Deploy:** needed.

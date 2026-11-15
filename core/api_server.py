@@ -61,7 +61,7 @@ from core.session import (
     create_google_link_token, verify_google_link_token,
     create_wp_connect_state, verify_wp_connect_state,
     create_wc_auth_state, verify_wc_auth_state, verify_store_purchase_token,
-    create_admin_view_token, verify_admin_view_token, admin_session_fingerprint,
+    create_admin_view_token, verify_admin_view_token, admin_session_fingerprint, admin_view_mode,
 )
 from core import admin_view
 from core import client_auth
@@ -880,6 +880,13 @@ def _admin_view_client(request: Request):
         return None
     return verify_admin_view_token(token, request.cookies.get("admin_session"))
 
+def _simulating_new(request: Request) -> bool:
+    """Admin "view as a brand-new client" (core/new_client_view): the read
+    endpoints answer as if nothing were connected or started. Admin view only."""
+    from core import new_client_view
+    token = request.cookies.get(admin_view.COOKIE)
+    return bool(token) and admin_view_mode(token, request.cookies.get("admin_session")) == new_client_view.MODE
+
 def _request_ip(request: Request) -> str:
     forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
     return forwarded or (request.client.host if request.client else "")
@@ -1261,7 +1268,20 @@ async def dashboard_data(request: Request):
         "activity": activity[:10],
         "activity_month_count": activity_month_count,
         "tour_completed": tour_completed,
-    }}
+    }} if not _simulating_new(request) else _new_client_dashboard(request, client, accounts, activity)
+
+def _new_client_dashboard(request: Request, client: dict, accounts: list, activity: list) -> dict:
+    # The same answer rebuilt, then passed through the day-one view (core/new_client_view)
+    from core import new_client_view
+    data = {"client": {"id": client.get("id"), "name": client.get("name"), "email": client.get("email"),
+                       "package": client.get("package"), "status": client.get("status"),
+                       "created_at": client.get("created_at"), "owner_gender": client.get("owner_gender"),
+                       "profile_image": client.get("profile_image"), "timezone": _client_timezone(client)},
+            "manager": manager_identity.for_client(client, client.get("language") or "he"),
+            "manager_options": manager_identity.options(client.get("language") or "he"),
+            "monthly_fee": None, "next_billing_date": None, "billing_exempt": bool(client.get("billing_exempt")),
+            "features": _round2_features(client.get("id")), "admin_view": True}
+    return {"success": True, "data": new_client_view.dashboard(data)}
 
 _TZ_NAME = re.compile(r"^(UTC|[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){1,2})$")
 
@@ -1657,6 +1677,8 @@ async def client_chat_history(request: Request, scope: str = "current", persona:
     boundary = window["start"]
     current = ([h for h in history if (h.get("created_at") or "") >= boundary]
                if boundary else history)
+    if _simulating_new(request):
+        history, current = [], []      # day one: an empty chat (core/new_client_view)
     return {
         "success": True,
         "history": history if scope == "all" else current,
@@ -2002,12 +2024,13 @@ def client_interview_state(request: Request):
     from agents.interview_agent import captured_facts, readiness
     facts = captured_facts(client_id)
     state = readiness(client_id)
-    return {"success": True, "data": {
-        "completed": state["completed"],
-        "ready": state["ready"],
-        "connection_status": state["connection_status"],
-        "competitors_captured": len(facts.get("competitors") or []),
-    }}
+    data = {"completed": state["completed"], "ready": state["ready"],
+            "connection_status": state["connection_status"],
+            "competitors_captured": len(facts.get("competitors") or [])}
+    if _simulating_new(request):
+        from core import new_client_view
+        data = new_client_view.interview(dict(data, connection_status=new_client_view.status(state["connection_status"])))
+    return {"success": True, "data": data}
 
 @app.get("/api/client/connection-checklist")
 def client_connection_checklist(request: Request):
@@ -2018,6 +2041,10 @@ def client_connection_checklist(request: Request):
     from core import client_journey
     try:
         status = client_journey.connection_status(client_id)
+        if _simulating_new(request):
+            from core import new_client_view
+            return {"success": True, "data": {**new_client_view.status(status), "completed_at": "",
+                                              "newly_completed": False}}
         # Stamp the 90-day clock start the first time the last step lands.
         # Idempotent and a no-op unless the checklist is resolved AND complete.
         completion = client_journey.note_connections_complete(client_id)
@@ -2086,7 +2113,11 @@ def client_journey_view(request: Request):
     client_id = _require_session(request)
     from core import client_journey
     try:
-        return {"success": True, "data": client_journey.journey(client_id)}
+        data = client_journey.journey(client_id)
+        if _simulating_new(request):
+            from core import new_client_view
+            data = new_client_view.journey(data)
+        return {"success": True, "data": data}
     except Exception as e:
         print(f"[journey] client {client_id}: {e}")
         raise HTTPException(status_code=503, detail={"code": "ERR_JOURNEY_UNAVAILABLE"})
@@ -6210,6 +6241,12 @@ def client_home_focus(request: Request, lang: str = ""):
     except Exception as e:
         print(f"[home_focus] client {client_id}: goal track left out ({type(e).__name__})")
         data["goals"] = {}
+    if _simulating_new(request):
+        from core import client_journey, new_client_view
+        try:
+            data = new_client_view.home_focus(data, client_journey.connection_status(client_id))
+        except Exception as e:
+            print(f"[home_focus] client {client_id}: new-client view unavailable ({type(e).__name__})")
     return {"success": True, "data": data}
 
 class InviteRequest(BaseModel):
@@ -6924,13 +6961,16 @@ async def client_suggestions(request: Request):
     client_id = _require_session(request)
     from agents.engagement_agent import get_suggestions
     from core import agent_actions, vendor_names
-    pending = get_suggestions(client_id, status="pending")
+    from core import home_feed
+    pending = [] if _simulating_new(request) else get_suggestions(client_id, status="pending")
+    # A few at a time (core/home_feed): ≤ 3 by importance and timing, the rest wait
+    released = home_feed.release(pending)
     # Idea cards are written by a model: no tool or vendor name reaches the client (core/vendor_names)
     lang = agent_actions._lang(client_id)
-    return {"success": True, "data": [
+    return {"success": True, "waiting": released["waiting"], "data": [
         {"id": s["id"], "kind": s.get("kind"), "title": vendor_names.scrub(s.get("title") or "", lang),
          "body": vendor_names.scrub(s.get("body") or "", lang), "created_at": s.get("created_at")}
-        for s in pending
+        for s in released["active"]
     ]}
 
 class SuggestionDecideRequest(BaseModel):
@@ -7096,18 +7136,22 @@ def admin_clients(request: Request):
 # cookie; never a client session, never touches the client's credentials.
 
 @app.post("/api/admin/clients/{client_id}/view-as")
-def admin_view_as_start(client_id: int, request: Request, response: Response):
+def admin_view_as_start(client_id: int, request: Request, response: Response, mode: str = ""):
+    # mode=new_client: the same read-only view, answering as a brand-new client
+    # with nothing connected or started (core/new_client_view)
     _require_admin(request)
+    from core import new_client_view
+    mode = new_client_view.MODE if mode == new_client_view.MODE else ""
     client = get_client(client_id)
     if _locked_out(client):
         raise HTTPException(status_code=404, detail={"code": "ERR_CLIENT_NOT_VIEWABLE"})
     try:
-        _admin_view_audit(request, "view_as_start", client_id)
+        _admin_view_audit(request, "view_as_start", client_id, f"mode {mode}" if mode else "")
     except admin_view.AuditUnavailable:
         raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
     response.set_cookie(
         key=admin_view.COOKIE,
-        value=create_admin_view_token(client_id, request.cookies.get("admin_session")),
+        value=create_admin_view_token(client_id, request.cookies.get("admin_session"), mode),
         httponly=True, secure=True, samesite="lax",
         max_age=2 * 60 * 60, path="/",
     )
@@ -7988,6 +8032,8 @@ class ActionDecisionRequest(BaseModel):
 def client_open_actions(request: Request, persona: str = "general"):
     # The window re-shows its open cards after a reload (history has the text)
     client_id = _require_session(request)
+    if _simulating_new(request):
+        return {"success": True, "data": []}          # day one: no cards (core/new_client_view)
     from core import agent_actions
     return {"success": True, "data": agent_actions.open_cards(client_id, actor="client",
                                                               persona=(persona or "general").strip())}

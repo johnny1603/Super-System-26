@@ -714,7 +714,7 @@ async function loadClients() {
       <div>${wa
         ? `<button class="wa-quick-btn" onclick="window.open('${wa}','_blank');event.stopPropagation();">💬</button>`
         : '<button class="wa-quick-btn" disabled title="אין מספר טלפון">💬</button>'}</div>
-      <div style="white-space:nowrap;"><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button><button class="manage-btn" style="margin-inline-start:6px;" onclick="enterAsClient(${Number(c.id)});event.stopPropagation();" title="פתיחת הדשבורד של הלקוח כפי שהוא רואה אותו — קריאה בלבד, נרשם ביומן">כניסה כלקוח</button><button class="del-btn" onclick="openDeleteClient(${Number(c.id)});event.stopPropagation();" title="מחיקה מלאה של הלקוח">מחיקת לקוח</button></div>
+      <div style="white-space:nowrap;"><button class="manage-btn" onclick="openDrawer(${c.id})">ניהול</button><button class="manage-btn" style="margin-inline-start:6px;" onclick="enterAsClient(${Number(c.id)});event.stopPropagation();" title="פתיחת הדשבורד של הלקוח כפי שהוא רואה אותו — קריאה בלבד, נרשם ביומן">כניסה כלקוח</button><button class="manage-btn" style="margin-inline-start:6px;" onclick="enterAsClient(${Number(c.id)}, 'new_client');event.stopPropagation();" title="הדשבורד כפי שלקוח חדש לגמרי רואה אותו: שום דבר לא מחובר, בלי אפיון, בלי רעיונות. קריאה בלבד, שום נתון לא משתנה">כלקוח חדש</button><button class="del-btn" onclick="openDeleteClient(${Number(c.id)});event.stopPropagation();" title="מחיקה מלאה של הלקוח">מחיקת לקוח</button></div>
     </div>`;
   }).join('');
 
@@ -730,9 +730,10 @@ async function loadClients() {
 // ─── enter as client (core/admin_view) ───────────────────────────────────────
 // Read-only view of the client's own dashboard; the server audits the start
 // before it sets the view cookie. No client session is created.
-async function enterAsClient(clientId) {
+async function enterAsClient(clientId, mode) {
   try {
-    const res = await api(`/api/admin/clients/${Number(clientId)}/view-as`, { method: 'POST' });
+    const q = mode === 'new_client' ? '?mode=new_client' : '';
+    const res = await api(`/api/admin/clients/${Number(clientId)}/view-as${q}`, { method: 'POST' });
     if (res.success && res.redirect) { window.location.href = res.redirect; return; }
     const code = res.detail && res.detail.code;
     const box = document.getElementById('viewAsAudit');

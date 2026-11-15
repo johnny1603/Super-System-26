@@ -1189,7 +1189,13 @@ button.drive-thumb:focus-visible, a.drive-thumb:focus-visible { outline: 2px sol
 .hf-line { display: block; font-size: 13px; opacity: .85; margin-top: 2px; }
 .hf-task button { min-height: 44px; }
 .hf-lock { font-size: 13px; opacity: .85; }
-body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList { display: none !important; }
+/* Onboarding: ONLY the three tasks (and the connections they lead to). Promotions, ideas,
+   invitations, the branding banner and the stats all wait (2026-11-16). */
+body.onboarding-focus #pendingHead, body.onboarding-focus #pendingApprovalList,
+body.onboarding-focus #brandHero, body.onboarding-focus #agentInvites, body.onboarding-focus #goalTrack,
+body.onboarding-focus #statGridMain, body.onboarding-focus #timelineCard,
+body.onboarding-focus #journeyPanel, body.onboarding-focus #feedPace { display: none !important; }
+.feed-pace { font-size: 13px; color: var(--muted, #8a8a8a); margin: -6px 0 12px; }
 /* The 3-month goal path (core/quarter_goals.track): goal, where it stands, next step */
 .goal-track { border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin: 0 0 24px; background: var(--panel); }
 .goal-track[hidden] { display: none; }
@@ -1498,7 +1504,7 @@ a.media-item:hover { border-color: var(--accent); }
 <!-- Admin "enter as client" only — shown when /api/dashboard says admin_view -->
 <!-- data-i18n-skip: staff-only bar, Hebrew like the admin pages -->
 <div class="admin-view-banner" id="adminViewBanner" role="status" data-i18n-skip>
-  <span>👁 צפייה בתור <span id="adminViewName"></span> — מנהל · קריאה בלבד</span>
+  <span>👁 צפייה בתור <span id="adminViewName"></span> — מנהל · קריאה בלבד<span id="adminViewNew" hidden> · כלקוח חדש (שום דבר לא מחובר)</span></span>
   <button type="button" onclick="exitAdminView()">יציאה</button>
 </div>
 
@@ -1635,6 +1641,7 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
     <span class="pending-badge" id="pendingBadge">0</span>
   </div>
+  <div class="feed-pace" id="feedPace" hidden dir="auto"></div>
   <div class="activity-list" id="pendingApprovalList" style="margin-bottom:36px;">
     <div class="empty-row" data-i18n="pending_empty">אין חומרים שממתינים לאישור כרגע — כשיהיו, הם יופיעו כאן</div>
   </div>
@@ -3325,6 +3332,7 @@ const DASH_I18N = {
   gt_measured: { he:"נמדד", en:"measured", fr:"mesuré", ar:"مقاس", ru:"измерено" },
   gt_not_measured: { he:"עוד לא נמדד", en:"not measured yet", fr:"pas encore mesuré", ar:"لم يُقس بعد", ru:"пока не измерено" },
   invite_failed: { he:"לא הצלחתי לפתוח את השיחה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open the conversation right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir la conversation pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح المحادثة الآن. حاولوا مجددًا بعد لحظة.", ru:"Не удалось открыть разговор. Попробуйте ещё раз через минуту." },
+  feed_pace: { he:"אנחנו מציגים כמה דברים בכל פעם, כדי שלא יצטבר. עוד {n} מחכים ויפתחו כשתטפלו באלה.", en:"We show a few things at a time so nothing piles up. {n} more are waiting and open as you handle these.", fr:"Nous montrons quelques éléments à la fois pour que rien ne s'accumule. {n} autres attendent et s'ouvriront au fur et à mesure.", ar:"نعرض بضعة أمور في كل مرة حتى لا تتراكم. {n} أخرى بالانتظار وستُفتح عندما تنتهون من هذه.", ru:"Мы показываем по несколько пунктов, чтобы ничего не копилось. Ещё {n} ждут и откроются, когда вы разберётесь с этими." },
   prereq_connect: { he:"לחבר: {what}", en:"Connect: {what}", fr:"Connecter : {what}", ar:"ربط: {what}", ru:"Подключить: {what}" },
   bs_title: { he:"סטודיו המיתוג", en:"Branding studio", fr:"Studio d'identité", ar:"استوديو الهوية", ru:"Студия брендинга" },
   bs_by: { he:"עם {name}", en:"With {name}", fr:"Avec {name}", ar:"مع {name}", ru:"С {name}" },
@@ -3917,6 +3925,7 @@ async function loadDashboard() {
     dashboardData = body.data;
     const d = dashboardData;
     if (d.admin_view) enterAdminViewMode((d.client && d.client.name) || '');
+    if (d.simulated_new_client) document.getElementById('adminViewNew').hidden = false;
 
     const name = (d.client && d.client.name) || '';
     document.getElementById('greeting').textContent =
@@ -6488,7 +6497,7 @@ async function loadSuggestions() {
     const res = await fetch('/api/client/suggestions', { credentials: 'same-origin' });
     const body = await res.json();
     if (!body.success) return;
-    renderSuggestions(body.data || []);
+    renderSuggestions(body.data || [], Number(body.waiting) || 0);
   } catch (e) {
     console.error('suggestions load failed', e);
     // Don't hold the greeting hostage on a failed suggestions fetch
@@ -6497,10 +6506,14 @@ async function loadSuggestions() {
   }
 }
 
-function renderSuggestions(items) {
+function renderSuggestions(items, waiting) {
   const badge = document.getElementById('pendingBadge');
   badge.textContent = uallakI18n.t('pending_badge', { n: items.length });
   badge.classList.toggle('has-items', items.length > 0);
+  // A few at a time (core/home_feed): one calm line when more are waiting
+  const pace = document.getElementById('feedPace');
+  pace.hidden = !(waiting > 0);
+  pace.textContent = waiting > 0 ? uallakI18n.t('feed_pace', { n: waiting }) : '';
 
   // The chat owns the suggestions experience - keep it in the loop
   chatData.pendingCount = items.length;

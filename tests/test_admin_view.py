@@ -296,7 +296,7 @@ class Dashboards(unittest.TestCase):
     def test_admin_list_has_enter_as_client(self):
         html = _read("dashboard", "admin", "index.html")
         self.assertIn("enterAsClient(${Number(c.id)})", html)
-        self.assertIn("/view-as`, { method: 'POST' }", html)
+        self.assertIn("/view-as${q}`, { method: 'POST' }", html)
         self.assertIn("/api/admin/view-as/audit", html)
 
 
