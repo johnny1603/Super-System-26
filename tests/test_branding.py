@@ -275,8 +275,9 @@ class Quote(Base):
 
 class Cards(Base):
     def _propose(self, direction="צבעים חמים ולוגו מינימלי"):
-        return aa.propose(27, "client_chat", "media", {"name": "create_brand_mockups", "params": {"direction": direction}},
-                          context={"language": "he"})
+        return aa.propose(27, "client_chat", "media", {"name": "create_brand_mockups", "params": {
+            "direction": direction, "business_name": "קפה נועה", "field": "בית קפה שכונתי",
+            "understood": "בית קפה שכונתי חם, לא תעשייתי"}}, context={"language": "he", "message": "כן, בדיוק"})
 
     def test_the_whole_flow_through_the_cards(self):
         first = self._propose()

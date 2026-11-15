@@ -551,12 +551,34 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
                    here, client, lang, cards, lines)
         elif in_package is False:
             lines.append(agent_actions._pick(agent_actions.PRESENTER_NOT_IN_PACKAGE, lang))
+        # In ליאור's chat while the branding is still open: the image may be INSPIRATION.
+        # He cannot see inside it, so he asks what draws them to it and folds the answer in.
+        if persona == "media" and _branding_open(client_id):
+            lines.append(BRANDING_INSPIRATION.get(lang) or BRANDING_INSPIRATION["he"])
         if not cards and in_package is not False:
             lines.append("היא שמורה — אפשר לכתוב לי מה תרצו לעשות איתה.")
     else:
         lines.append("המסמך שמור. עדיין אין לי פעולה אוטומטית למסמכים שעולים מהצ'אט — "
                      "אפשר לכתוב לי מה תרצו לעשות איתו.")
     return lines, cards
+
+
+BRANDING_INSPIRATION = {
+    "he": "אם זו השראה למיתוג, ספרו לי מה מושך אתכם בה: הצבעים, התחושה או האותיות? אכניס את זה לכיוון.",
+    "en": "If this is inspiration for your branding, tell me what draws you to it: the colours, the feeling or the lettering? I'll fold it into the direction.",
+    "fr": "Si c'est une inspiration pour votre identité, dites-moi ce qui vous attire : les couleurs, l'ambiance ou la typographie ? Je l'intègre à la direction.",
+    "ar": "إذا كانت هذه إلهامًا لهويتكم، أخبروني ما الذي يجذبكم فيها: الألوان أم الإحساس أم الخط؟ سأدمج ذلك في الاتجاه.",
+    "ru": "Если это вдохновение для брендинга, расскажите, что вас в нём привлекает: цвета, ощущение или шрифт? Я учту это в направлении.",
+}
+
+
+def _branding_open(client_id: int) -> bool:
+    try:
+        from core import branding
+        data = branding.summary(client_id)
+        return bool(data.get("available") and data.get("covered_by_package") and not data.get("approved"))
+    except Exception:
+        return False
 
 
 def finish(client_id: int, payload: dict, drive_file: dict) -> dict:

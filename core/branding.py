@@ -54,6 +54,7 @@ QUOTE_MULTIPLIER = 2.0             # price = cost × 2 → about 50% cost / 50% 
 QUOTE_ITEMS = ("logo", "business_card", "signage", "flyer", "poster")   # never "website": its own service
 STYLES = ("minimal", "warm", "bold", "elegant", "playful", "natural", "modern", "classic")
 MAX_DIRECTION_CHARS = 400
+MAX_BRIEF_CHARS = 300
 LANGS = ("he", "en", "fr", "ar", "ru")
 
 
@@ -235,6 +236,9 @@ def summary(client_id: int) -> dict:
         "rejected_attempts": sorted(int(n) for n in value.get("rejected") or []),
         "package_readable": cover["readable"],
         "covered_by_package": cover["covered"],
+        # The brief the owner CONFIRMED on the last attempt (business name, field, what was
+        # understood): reused, never asked twice. {} before the first attempt.
+        "confirmed_brief": dict((attempts[-1].get("brief") or {})) if attempts else {},
     }
 
 
@@ -269,8 +273,10 @@ CONCEPT_SYSTEM = f"""You are a senior brand designer. Design ONE brand direction
 You do NOT draw: your JSON is rendered by code into mockups (logo, business card, shop sign, flyer, poster and
 a website mockup), so every choice must come from the lists below.
 
-Design it for THIS business — its field, its customers and the direction the owner reacted to. A direction
-that would fit any business is a failure. If earlier attempts are listed, this one must look clearly
+Design it for THIS business — its field, its customers and the brief the owner CONFIRMED
+("brief_the_owner_confirmed": their name, their field, what they want people to feel, what they do not want
+to look like, their taste and inspiration). A direction that would fit any business is a failure. Draw on
+the trade itself: its materials, textures, setting and the feeling its customers come for. If earlier attempts are listed, this one must look clearly
 different from each of them (different palette family, different mark, different font feeling), unless the
 owner asked for a small change to one of them.
 
@@ -344,7 +350,9 @@ def _client_facts(client_id: int) -> tuple:
     """(display name, contact dict, business context) from OUR records."""
     from agents.client_agent import get_client
     client = get_client(client_id) or {}
-    name = client.get("business_name") or client.get("name") or ""
+    # The BUSINESS name only. clients.name is often the owner's own name: printing it on a
+    # sign was the 2026-11-16 complaint. The name the owner confirmed in the chat wins over this.
+    name = client.get("business_name") or ""
     contact = {"phone": client.get("phone") or "", "address": client.get("address") or ""}
     context = {}
     try:
@@ -382,10 +390,34 @@ class BrandingError(Exception):
         self.code = code
 
 
-def create_attempt(client_id: int, direction: str, lang: str = "he") -> dict:
+def clean_brief(brief) -> dict:
+    """The owner-confirmed brief: business name, field, the summary they said
+    yes to, and what they told about taste and inspiration. Text only, cut."""
+    brief = brief if isinstance(brief, dict) else {}
+    return {k: _cut(brief.get(k), MAX_BRIEF_CHARS if k != "business_name" else 60)
+            for k in ("business_name", "field", "understood", "inspiration") if _cut(brief.get(k), 5)}
+
+
+# The owner's "yes" to the summary. A negation anywhere first wins ("לא נכון", "not quite").
+_NO = re.compile(r"(^|\s)(לא|no|nope|not|non|pas|لا|нет|не)(\s|[.,!?]|$)", re.IGNORECASE)
+_YES = re.compile(r"(כן|נכון|בדיוק|מדויק|סגור|יאללה|מאשר|מאשרת|קדימה|תתחיל|מעולה|יופי|סבבה|לגמרי|מצוין|בסדר|זה זה|"
+                  r"\byes\b|\byep\b|\byeah\b|correct|exactly|\bright\b|go ahead|sounds good|perfect|\bok\b|okay|"
+                  r"\bsure\b|do it|let'?s go|\boui\b|exact|parfait|d'accord|c'est ça|vas-y|allez-y|"
+                  r"نعم|أجل|صحيح|تمام|بالضبط|موافق|ممتاز|"
+                  r"\bда\b|верно|точно|отлично|согласен|согласна|давай|подходит|хорошо)", re.IGNORECASE)
+
+
+def confirms(message: str) -> bool:
+    """True when the owner's message is a yes to "did I get that right?"."""
+    text = " ".join(str(message or "").split())
+    return bool(text) and len(text) <= 160 and not _NO.search(text) and bool(_YES.search(text))
+
+
+def create_attempt(client_id: int, direction: str, lang: str = "he", brief: dict = None) -> dict:
     """ONE attempt: refuse when none is allowed, design the concept with one
     capped model call, store it. Returns {"n", "concept", "left"}. A failed
-    call stores nothing and uses no attempt."""
+    call stores nothing and uses no attempt. `brief` = what the owner confirmed
+    (clean_brief); its business name is the one printed on the mockups."""
     import json
     from core import claude_json
     from core.cost_tracker import cost_action
@@ -394,11 +426,14 @@ def create_attempt(client_id: int, direction: str, lang: str = "he") -> dict:
     if refusal:
         raise BrandingError(refusal)
     name, contact, context = _client_facts(client_id)
+    brief = clean_brief(brief) or dict((value.get("attempts") or [{}])[-1].get("brief") or {})
+    name = brief.get("business_name") or name
     earlier = [{"attempt": a.get("n"), "direction": a.get("direction", ""),
                 "palette": (a.get("concept") or {}).get("palette"), "mark": ((a.get("concept") or {}).get("logo") or {}).get("mark"),
                 "fonts": (a.get("concept") or {}).get("fonts"), "style": (a.get("concept") or {}).get("style")}
                for a in (value.get("attempts") or [])[-FREE_ATTEMPTS:] if a.get("concept")]
     user = json.dumps({"language": lang if lang in LANGS else "he", "business_name": name, "business": context,
+                       "brief_the_owner_confirmed": brief,
                        "direction_the_owner_reacted_to": _cut(direction, MAX_DIRECTION_CHARS),
                        "earlier_attempts": earlier}, ensure_ascii=False)
     model = pick_model(len(CONCEPT_SYSTEM) + len(user))
@@ -425,7 +460,7 @@ def create_attempt(client_id: int, direction: str, lang: str = "he") -> dict:
     if refusal:
         raise BrandingError(refusal)
     n = attempts_used(value) + 1
-    value["attempts"].append({"n": n, "at": _now(), "direction": _cut(direction, MAX_DIRECTION_CHARS),
+    value["attempts"].append({"n": n, "at": _now(), "direction": _cut(direction, MAX_DIRECTION_CHARS), "brief": brief,
                               "concept": concept, "cost_ils": cost, "model": model, "language": lang})
     _save(client_id, value)
     return {"n": n, "concept": concept, "left": attempts_left(value), "cost_ils": cost}

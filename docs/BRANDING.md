@@ -122,3 +122,34 @@ loaded only with that tab. It was extended, not duplicated: all three entry poin
 - Posts published by מאיה do not read the kit yet (the weekly plan does, in the team round).
 
 Tests: `tests/test_branding.py`.
+
+## The designer conversation (2026-11-16)
+
+ליאור behaves like a real brand designer. He no longer jumps to "I'll design a direction".
+
+- **Before any mockup there is a human conversation.**
+  - One question per message, each a proposal to react to ("for carpentry like yours I'd go with
+    oak and graphite tones, what do you think?").
+  - Three layers, woven together:
+    - general: who it serves, what is different, the feeling, competitors and what NOT to look
+      like, likes and dislikes;
+    - the trade: its materials, textures, setting, and why its customers come;
+    - open: taste and inspiration at any point, including an image.
+  - He decides when he understands enough. Then he sums up in one or two lines and asks "did I
+    get that right?".
+- **Never invented.** The business name and field come from the owner. He reuses
+  client_knowledge, account_state (site, media) and `branding.confirmed_brief` before asking.
+  `_client_facts` no longer falls back to `clients.name`, which is often the owner's own name.
+  The name printed on the mockups is the one the owner confirmed.
+- **Code enforces the end of the conversation** (`branding_actions.prepare_create`):
+  - no `business_name` means the card asks for it;
+  - no `field` means it asks what the business does and for whom;
+  - no yes in the client's message (`branding.confirms`, 5 languages, a negation wins) means it
+    asks the summary question.
+  
+  Only a yes opens the card, and the card shows the name and "what I understood and you
+  confirmed". The brief is stored on the attempt and reused for the next one.
+- **An image uploaded in ליאור's chat while branding is open** gets one line asking what draws them
+  to it. He cannot see inside an image, and says so in the rule.
+- Unchanged: 5 free attempts, mockups only, no website building.
+- `tests/test_brand_designer.py`.

@@ -92,6 +92,28 @@ def build(aa) -> dict:
     def v_direction(value, client_id):
         return aa._v_short_text(value, branding.MAX_DIRECTION_CHARS)
 
+    def v_brief_text(value, client_id):
+        return aa._v_short_text(value, branding.MAX_BRIEF_CHARS)
+
+    # Before ANY mockup: the business name and field come from the owner (never from memory or
+    # another client), and the one-or-two-line summary got their "yes" (2026-11-16)
+    ask_name = _txt(
+        "רגע לפני שאני מעצב: איך בדיוק קוראים לעסק, כמו שהשם צריך להופיע על השלט?",
+        "One thing before I design: what exactly is the business called, the way it should appear on the sign?",
+        "Une chose avant de créer : quel est le nom exact de l'entreprise, tel qu'il doit apparaître sur l'enseigne ?",
+        "شيء واحد قبل أن أصمّم: ما الاسم الدقيق للعمل كما يجب أن يظهر على اللافتة؟",
+        "Один вопрос перед дизайном: как точно называется бизнес — так, как это должно быть на вывеске?")
+    ask_field = _txt(
+        "ובמשפט אחד: מה העסק עושה, ולמי?", "And in one sentence: what does the business do, and for whom?",
+        "Et en une phrase : que fait l'entreprise, et pour qui ?", "وفي جملة واحدة: ماذا يفعل العمل، ولمن؟",
+        "И одним предложением: чем занимается бизнес и для кого?")
+    ask_confirm = _txt(
+        "לפני שאני יוצר, רק לוודא שהבנתי נכון: {understood} הבנתי נכון?",
+        "Before I create anything, let me check I understood: {understood} Did I get that right?",
+        "Avant de créer, je vérifie que j'ai bien compris : {understood} C'est bien ça ?",
+        "قبل أن أبدأ، دعوني أتأكد أنني فهمت: {understood} هل فهمت صحيحًا؟",
+        "Прежде чем создавать, проверю, правильно ли я понял: {understood} Я правильно понял?")
+
     def prepare_create(client_id, params, context, rows):
         lang = (context or {}).get("language") or "he"
         cover = branding.coverage(client_id)
@@ -111,30 +133,51 @@ def build(aa) -> dict:
                           "for another. The extra-attempt charge is OFF (core/branding."
                           "EXTRA_ATTEMPT_CHARGE_ENABLED) — to let them go on, open more attempts in the Control Room: the client's page, section מיתוג.")
             return {"refuse": _pick(refusals[code], lang)}
-        clean = {"direction": params["direction"]}
+        brief = branding.clean_brief(params)
+        if not brief.get("business_name"):
+            return {"clarify": _pick(ask_name, lang)}
+        if not brief.get("field"):
+            return {"clarify": _pick(ask_field, lang)}
+        if not brief.get("understood"):
+            brief["understood"] = params["direction"]
+        if not branding.confirms((context or {}).get("message", "")):
+            # Code's half of "did I get that right?": no card until the owner said yes to the summary
+            return {"clarify": _pick(ask_confirm, lang).replace("{understood}", brief["understood"].rstrip(".") + ".")}
+        clean = {"direction": params["direction"], **{k: brief[k] for k in brief}}
         for row in rows:
             if (row.get("params") or {}) == clean:
                 return {"existing": row}
         return {"params": clean, "supersedes": rows[0].get("id") if rows else None}
 
+    BRIEF_KEYS = ("business_name", "field", "understood", "inspiration")
+
     def validate_create(client_id, params):
         params = params if isinstance(params, dict) else {}
-        if set(params) - {"direction"}:
+        if set(params) - {"direction", *BRIEF_KEYS}:
             raise ValueError("unknown params")
-        return {"direction": v_direction(params.get("direction"), client_id)}
+        out = {"direction": v_direction(params.get("direction"), client_id)}
+        for key in BRIEF_KEYS:
+            if params.get(key):
+                out[key] = v_brief_text(params[key], client_id)
+        return out
 
     def display_create(client_id, params):
         try:
             value = branding.state(client_id)
             return {"n": branding.attempts_used(value) + 1, "free": branding.FREE_ATTEMPTS,
-                    "direction": params.get("direction", "")}
+                    "direction": params.get("direction", ""),
+                    "understood": params.get("understood") or params.get("direction", ""),
+                    "business_name": params.get("business_name", "")}
         except Exception:
-            return {"n": "", "free": branding.FREE_ATTEMPTS, "direction": params.get("direction", "")}
+            return {"n": "", "free": branding.FREE_ATTEMPTS, "direction": params.get("direction", ""),
+                    "understood": params.get("understood") or params.get("direction", ""),
+                    "business_name": params.get("business_name", "")}
 
     def run_create(client_id, params, background_tasks, row=None):
         row = row or {}
         try:
-            result = branding.create_attempt(client_id, params["direction"], lang=row.get("language") or "he")
+            result = branding.create_attempt(client_id, params["direction"], lang=row.get("language") or "he",
+                                             brief={k: params.get(k) for k in BRIEF_KEYS})
         except branding.BrandingError as e:
             if e.code == "cost_cap":
                 aa._alert(f"client {client_id}: a branding attempt was refused by the per-attempt cost cap")
@@ -253,13 +296,22 @@ def build(aa) -> dict:
             "needs_row": True,
             "does": "BRANDING: designs ONE branding direction for the client's business and shows it as MOCKUPS "
                     "(logo, business card, shop sign, flyer, poster, and how a website could look). Mockups only — "
-                    "nothing is printed, ordered or built. Propose it only after the client reacted to the direction "
-                    "you suggested (see BRANDING in your notes) or asked for a change to an earlier attempt. "
-                    "branding.can_try_now false → do not propose it; say why from branding.",
+                    "nothing is printed, ordered or built. Propose it ONLY after the designer conversation (see "
+                    "BRANDING in your notes) and only in the turn where the client said YES to your one-or-two-line "
+                    "summary. branding.can_try_now false → do not propose it; say why from branding.",
             "params": {"direction": {"required": True, "validate": v_direction,
-                                     "hint": "one or two sentences in the client's language: the colours feeling, the "
-                                             "style, the kind of logo and anything they asked to change — from what "
-                                             "they agreed to in this chat"}},
+                                     "hint": "one or two sentences in the client's language: the colours, materials and "
+                                             "feeling, the style, the kind of logo and anything they asked to change"},
+                       "business_name": {"required": False, "validate": v_brief_text,
+                                         "hint": "the business name exactly as THE CLIENT gave or confirmed it in this "
+                                                 "chat — never a guess, never the owner's own name"},
+                       "field": {"required": False, "validate": v_brief_text,
+                                 "hint": "what the business does and for whom, in the client's words"},
+                       "understood": {"required": False, "validate": v_brief_text,
+                                      "hint": "the one-or-two-line summary the client just said yes to"},
+                       "inspiration": {"required": False, "validate": v_brief_text,
+                                       "hint": "optional: what they told you they like or dislike, including about an "
+                                               "image they shared"}},
             "available": lambda state, client: True,
             "prepare": prepare_create,
             "validate_stored": validate_create,
@@ -272,11 +324,11 @@ def build(aa) -> dict:
             "title": _txt("הדמיית מיתוג לעסק", "Branding mockups for your business", "Maquettes d'identité pour votre entreprise",
                           "نماذج هوية لعملكم", "Макеты брендинга для вашего бизнеса"),
             "what": _with(_txt(
-                "אעצב כיוון מיתוג אחד ואראה לכם אותו בהדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר, ואיך אתר יכול להיראות. הכיוון: \"{direction}\". זה ניסיון {n} מתוך {free} בחינם. אלו הדמיות בלבד.",
-                "I'll design one branding direction and show it to you as mockups: logo, business card, signage, flyer, poster, and how a website could look. The direction: \"{direction}\". This is attempt {n} of {free} free ones. These are mockups only.",
-                "Je conçois une direction de marque et vous la montre en maquettes : logo, carte de visite, enseigne, flyer, affiche et un aperçu de site. La direction : « {direction} ». C'est l'essai {n} sur {free} gratuits. Ce ne sont que des maquettes.",
-                "سأصمّم اتجاهًا واحدًا للهوية وأعرضه عليكم كنماذج: شعار، بطاقة عمل، لافتة، منشور، ملصق، وكيف يمكن أن يبدو الموقع. الاتجاه: \"{direction}\". هذه المحاولة {n} من {free} مجانية. هذه نماذج فقط.",
-                "Я разработаю одно направление и покажу его на макетах: логотип, визитка, вывеска, флаер, постер и вид сайта. Направление: «{direction}». Это попытка {n} из {free} бесплатных. Это только макеты."),
+                "אעצב ל\"{business_name}\" כיוון מיתוג אחד ואראה לכם אותו בהדמיות: לוגו, כרטיס ביקור, שילוט, פלייר, פוסטר, ואיך אתר יכול להיראות. מה שהבנתי ואישרתם: \"{understood}\". הכיוון: \"{direction}\". זה ניסיון {n} מתוך {free} בחינם. אלו הדמיות בלבד.",
+                "I'll design one branding direction for \"{business_name}\" and show it to you as mockups: logo, business card, signage, flyer, poster, and how a website could look. What I understood and you confirmed: \"{understood}\". The direction: \"{direction}\". This is attempt {n} of {free} free ones. These are mockups only.",
+                "Je conçois une direction de marque pour « {business_name} » et vous la montre en maquettes : logo, carte de visite, enseigne, flyer, affiche et un aperçu de site. Ce que j'ai compris et que vous avez confirmé : « {understood} ». La direction : « {direction} ». C'est l'essai {n} sur {free} gratuits. Ce ne sont que des maquettes.",
+                "سأصمّم لـ\"{business_name}\" اتجاهًا واحدًا للهوية وأعرضه عليكم كنماذج: شعار، بطاقة عمل، لافتة، منشور، ملصق، وكيف يمكن أن يبدو الموقع. ما فهمته وأكدتموه: \"{understood}\". الاتجاه: \"{direction}\". هذه المحاولة {n} من {free} مجانية. هذه نماذج فقط.",
+                "Я разработаю для «{business_name}» одно направление и покажу его на макетах: логотип, визитка, вывеска, флаер, постер и вид сайта. Что я понял и вы подтвердили: «{understood}». Направление: «{direction}». Это попытка {n} из {free} бесплатных. Это только макеты."),
                 branding.TERMS),
             "done": created,
             "done_message": lambda result, lang: _pick(created, lang).replace("{left}", str(result.get("left", ""))),

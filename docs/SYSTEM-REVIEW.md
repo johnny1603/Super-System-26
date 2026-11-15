@@ -680,3 +680,16 @@ about $40; I stop and ask before passing it.
   delete are audited before they run, and the audit log, tiers and emailed codes are unchanged.
 - No migration (time ranges + app_settings). `tests/test_operator_threads.py`.
 - **Deploy:** needed.
+
+### Part 1 — ליאור as a real brand designer
+
+- The prompt rule now calls for a human conversation: one proposal-question at a time, three
+  layers, he decides when it is enough, then a summary and "did I get that right?".
+- Code enforces the end of it: name and field from the owner, and a yes in the client's message,
+  before the card opens.
+- The invented-name bug: `_client_facts` used `clients.name` (often the owner's own name) as the
+  business name. Now only `business_name`, or the name the owner confirmed in the chat.
+- An inspiration image gets an honest question, since he can't see the image.
+- Not tested against a real model: whether it keeps to one question per message and how many
+  exchanges it takes. `tests/test_brand_designer.py`.
+- **Migration:** none. **Deploy:** needed.
