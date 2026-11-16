@@ -555,6 +555,18 @@ section { padding: 110px 6%; }
 .contact-line a { color: var(--ink); }
 .contact-line a:hover { color: var(--accent); }
 
+/* App purpose for Google's OAuth review (2026-11-17): static EN + HE, always visible, no data-i18n,
+   no .reveal (never hidden until scroll). tests/test_homepage_purpose.py */
+.app-purpose { padding: 48px 6% 24px; }
+.app-purpose-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.app-purpose-block { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 26px 24px; }
+.app-purpose-block h2 { font-size: 21px; line-height: 1.35; margin-bottom: 12px; }
+.app-purpose-block p, .app-purpose-block li { font-size: 15px; color: #444; line-height: 1.7; }
+.app-purpose-block ul { margin: 10px 0 12px; padding-inline-start: 20px; }
+.app-purpose-block li { margin-bottom: 6px; }
+.app-purpose-block a { color: var(--ink); text-decoration: underline; }
+@media (max-width: 760px) { .app-purpose-inner { grid-template-columns: 1fr; } }
+
 footer { text-align: center; padding: 40px 6% 100px; color: #5f5f5f; font-size: 14px; line-height: 2; }
 footer a { color: inherit; text-decoration: underline; }
 </style>
@@ -581,6 +593,45 @@ footer a { color: inherit; text-decoration: underline; }
   <div class="scroll-hint">
     <div class="scroll-line"></div>
     <div class="scroll-dot"></div>
+  </div>
+</section>
+
+<!-- What uallak is and which Google data it uses: plain HTML in English AND Hebrew, in the
+     source served at "/", never translated or hidden by script (Google OAuth verification). -->
+<section class="app-purpose" id="about-uallak" aria-label="About uallak">
+  <div class="app-purpose-inner">
+    <div class="app-purpose-block" lang="en" dir="ltr">
+      <h2>What uallak is, and how it uses Google data</h2>
+      <p><strong>uallak</strong> is an AI marketing management platform for small and medium businesses. It plans, runs and reports on a business's marketing (Google Ads campaigns, YouTube videos, website conversion tracking, social media and organic search) from one dashboard.</p>
+      <p><strong>Who it is for:</strong> business owners who sign up and connect their <em>own</em> accounts. uallak works only on the accounts the owner connects.</p>
+      <p><strong>The Google data uallak accesses, and why</strong> (all six permissions are asked for on one Google consent screen):</p>
+      <ul>
+        <li><strong>Google Ads</strong> (<code>adwords</code>): read the performance of the owner's campaigns, and create or change campaigns, budgets and ads only after the owner approves each change.</li>
+        <li><strong>YouTube, read</strong> (<code>youtube.readonly</code>): read the owner's channel and video data, to show which channel is connected and how its videos perform.</li>
+        <li><strong>YouTube, upload</strong> (<code>youtube.upload</code>): upload a video the owner approved to the owner's channel, as Private; the owner decides when to publish it.</li>
+        <li><strong>Tag Manager, edit containers</strong> (<code>tagmanager.edit.containers</code>): create the conversion-tracking tags and triggers the owner approved in the owner's own container.</li>
+        <li><strong>Tag Manager, container versions</strong> (<code>tagmanager.edit.containerversions</code>): save those approved changes as a new container version, which is also the point the owner can roll back to.</li>
+        <li><strong>Tag Manager, publish</strong> (<code>tagmanager.publish</code>): publish that approved version so the conversion tracking goes live on the owner's website.</li>
+      </ul>
+      <p><strong>The owner approves every action.</strong> uallak proposes; nothing is created, changed, uploaded or published in a Google account until the business owner approves that specific action in their dashboard. Access can be disconnected at any time.</p>
+      <p><a href="/privacy/">Privacy Policy</a> &nbsp;·&nbsp; <a href="/terms/">Terms of Service</a></p>
+    </div>
+    <div class="app-purpose-block" lang="he" dir="rtl" data-i18n-skip>
+      <h2>מה זה uallak, ואיך היא משתמשת בנתוני גוגל</h2>
+      <p><strong>uallak</strong> היא פלטפורמה לניהול שיווק מבוססת בינה מלאכותית לעסקים קטנים ובינוניים. היא מתכננת, מפעילה ומדווחת על השיווק של העסק (קמפיינים ב-Google Ads, סרטונים ביוטיוב, מדידת המרות באתר, רשתות חברתיות וקידום אורגני) מדשבורד אחד.</p>
+      <p><strong>למי היא מיועדת:</strong> לבעלי עסקים שנרשמים ומחברים את החשבונות <em>שלהם</em>. uallak עובדת רק על החשבונות שבעל העסק חיבר.</p>
+      <p><strong>לאילו נתוני גוגל uallak ניגשת, ולמה</strong> (כל שש ההרשאות מתבקשות במסך הסכמה אחד של גוגל):</p>
+      <ul>
+        <li><strong>Google Ads</strong> (<code>adwords</code>): קריאת הביצועים של הקמפיינים של בעל העסק, ויצירה או שינוי של קמפיינים, תקציבים ומודעות רק אחרי שבעל העסק אישר כל שינוי.</li>
+        <li><strong>יוטיוב, קריאה</strong> (<code>youtube.readonly</code>): קריאת נתוני הערוץ והסרטונים של בעל העסק, כדי להראות איזה ערוץ מחובר ואיך הסרטונים שלו מתפקדים.</li>
+        <li><strong>יוטיוב, העלאה</strong> (<code>youtube.upload</code>): העלאת סרטון שבעל העסק אישר לערוץ שלו, כסרטון פרטי; בעל העסק מחליט מתי לפרסם.</li>
+        <li><strong>Tag Manager, עריכת קונטיינרים</strong> (<code>tagmanager.edit.containers</code>): יצירת תגי וטריגרים למדידת המרות שבעל העסק אישר, בקונטיינר שלו.</li>
+        <li><strong>Tag Manager, גרסאות קונטיינר</strong> (<code>tagmanager.edit.containerversions</code>): שמירת השינויים שאושרו כגרסה חדשה של הקונטיינר, שהיא גם הנקודה שאליה אפשר לחזור.</li>
+        <li><strong>Tag Manager, פרסום</strong> (<code>tagmanager.publish</code>): פרסום הגרסה שאושרה, כדי שמדידת ההמרות תפעל באתר של בעל העסק.</li>
+      </ul>
+      <p><strong>בעל העסק מאשר כל פעולה.</strong> uallak מציעה; שום דבר לא נוצר, משתנה, מועלה או מתפרסם בחשבון גוגל לפני שבעל העסק אישר את הפעולה הספציפית הזו בדשבורד שלו. אפשר לנתק את הגישה בכל רגע.</p>
+      <p><a href="/privacy/he/">מדיניות פרטיות</a> &nbsp;·&nbsp; <a href="/terms/">תקנון</a></p>
+    </div>
   </div>
 </section>
 

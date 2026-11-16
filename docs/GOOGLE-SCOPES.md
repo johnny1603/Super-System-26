@@ -582,3 +582,18 @@ it to the consent screen.**
   Drive self-test's probe file, `media_agent.drive_self_test`).
 - Why not `drive.file`: clients add their own files to their media folder, and
   `drive.file` only sees files the app itself created.
+
+
+## The homepage explains the purpose (2026-11-17)
+
+Google blocked verification on "Your homepage does not explain the purpose of your app". The live page at
+`/` (`dashboard/landing/index.html`, not the v2 layer) now carries `#about-uallak` right after the hero.
+- **Format:** static HTML in English AND Hebrew, untouched by the language switcher.
+- **Content:**
+  - what uallak is and who it is for;
+  - each of the six scopes above in plain words, with its scope name;
+  - that the owner approves every action;
+  - the privacy and terms links.
+- **Unchanged:** the same URL, app name and branding.
+- **Guard:** `tests/test_homepage_purpose.py`, which also fails if the scope list here changes and the
+  page doesn't.

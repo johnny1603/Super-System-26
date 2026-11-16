@@ -760,3 +760,15 @@ about $40; I stop and ask before passing it.
   paid data service, which we have not asked for.
 - **Not tested against a real API or model.** `tests/test_competitor_watch.py`.
 - **Migration:** none. **Deploy:** needed.
+
+### Google verification — the homepage explains the app (2026-11-17)
+
+- **What changed:** the live homepage (`/`) has a new section after the hero, `#about-uallak`, in
+  English and Hebrew in the HTML source. It covers what uallak is, who it is for, the six Google
+  scopes in plain words, and that the owner approves every action, with the privacy and terms
+  links.
+- **Not done by script:** no translation or hiding by JS, and not an image.
+- **Unchanged:** the same URL, name and branding, and the footer links.
+- `tests/test_homepage_purpose.py`.
+- **Migration:** none. **Deploy:** needed before replying to Google.
+- **Not tested** in a real browser (mobile layout included).
