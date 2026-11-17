@@ -2051,8 +2051,8 @@ a.media-item:hover { border-color: var(--accent); }
           <div class="conn-status" data-i18n="manual_service_status">שירות בהתאמה אישית</div>
         </div>
       </div>
-      <div class="conn-note" data-i18n="manychat_note">מענה אוטומטי לפניות בוואטסאפ, אינסטגרם ומסנג׳ר. זה לא שירות במחיר קבוע — בונים אותו לפי הצורך המדויק שלכם, ולכן מתחילים בשיחה קצרה איתנו שבה נבין מה נכון לעסק שלכם ורק אז נתמחר.</div>
-      <button class="conn-btn primary" id="manychatBtn" onclick="connectViaChat('manychat')" data-i18n="conn_connect">חבר</button>
+      <div class="conn-note" data-i18n="manychat_note">מענה מיידי לכל פנייה, בכל שעה, עם סינון של מי רציני ומה הוא צריך עוד לפני שאתם מדברים איתו. איש צוות שלנו בונה את זה איתכם אישית, ואין כאן מה לחבר לבד.</div>
+      <button class="conn-btn primary" id="automationBtn" onclick="openInvite('automation', this)" data-i18n="automation_more">ספרו לי עוד</button>
     </div>
 
     <div class="conn-card unlocked">
@@ -3073,12 +3073,8 @@ const DASH_I18N = {
   // Marketing automation — a manual, personally-priced service (no connect flow)
   manychat_card: { he:'אוטומציית שיחות', en:'Chat automation', fr:'Automatisation des conversations', ar:'أتمتة المحادثات', ru:'Автоматизация переписки' },
   manual_service_status: { he:'שירות בהתאמה אישית', en:'Tailored service', fr:'Service sur mesure', ar:'خدمة مخصصة', ru:'Индивидуальная услуга' },
-  manychat_note: { he:'מענה אוטומטי לפניות בוואטסאפ, אינסטגרם ומסנג׳ר. זה לא שירות במחיר קבוע — בונים אותו לפי הצורך המדויק שלכם, ולכן מתחילים בשיחה קצרה איתנו שבה נבין מה נכון לעסק שלכם ורק אז נתמחר.', en:'Automatic replies to enquiries on WhatsApp, Instagram and Messenger. This isn’t a fixed-price service — it’s built around what you actually need, so we start with a short conversation to work out what fits your business, and only then price it.', fr:'Réponses automatiques aux demandes sur WhatsApp, Instagram et Messenger. Ce n’est pas un service à prix fixe — il est construit selon vos besoins réels : on commence par un court échange pour définir ce qui convient, et le prix vient ensuite.', ar:'ردود تلقائية على الاستفسارات في واتساب وإنستغرام وماسنجر. هذه ليست خدمة بسعر ثابت — تُبنى حسب احتياجك الفعلي، لذلك نبدأ بمحادثة قصيرة لنفهم ما يناسب عملك ثم نحدد السعر.', ru:'Автоматические ответы на обращения в WhatsApp, Instagram и Messenger. Это не услуга с фиксированной ценой — её собирают под ваши реальные задачи, поэтому начинаем с короткого разговора, а цену называем уже после.' },
-  automation_talk: { he:'דברו איתנו על זה', en:'Talk to us about it', fr:'Parlons-en', ar:'تحدث معنا عن ذلك', ru:'Обсудить с нами' },
-  automation_chat: { he:'יש לי שאלה — בצ׳אט', en:'I have a question — in the chat', fr:'J’ai une question — dans le chat', ar:'لدي سؤال — في المحادثة', ru:'Есть вопрос — в чате' },
-  automation_wa_prefill: { he:'שלום, אני {name}. אשמח לשמוע על אוטומציה שיווקית לעסק שלי.', en:'Hi, this is {name}. I’d like to hear about marketing automation for my business.', fr:'Bonjour, ici {name}. J’aimerais en savoir plus sur l’automatisation marketing pour mon entreprise.', ar:'مرحبًا، أنا {name}. أود معرفة المزيد عن أتمتة التسويق لعملي.', ru:'Здравствуйте, это {name}. Хочу узнать про маркетинговую автоматизацию для моего бизнеса.' },
-  automation_chat_msg: { he:'אני רוצה לשמוע על אוטומציה שיווקית — מה זה יכול לעשות לעסק שלי ואיך זה עובד?', en:'I’d like to hear about marketing automation — what could it do for my business and how does it work?', fr:'J’aimerais en savoir plus sur l’automatisation marketing — que peut-elle faire pour mon entreprise et comment ça marche ?', ar:'أود معرفة المزيد عن أتمتة التسويق — ماذا يمكن أن تفعل لعملي وكيف تعمل؟', ru:'Хочу узнать про маркетинговую автоматизацию — что она может дать моему бизнесу и как это работает?' },
-  automation_wa_unavailable: { he:'מספר הוואטסאפ לא זמין כרגע — שלחו לנו הודעה בצ׳אט ונחזור אליכם', en:'The WhatsApp number isn’t available right now — message us in the chat and we’ll get back to you', fr:'Le numéro WhatsApp n’est pas disponible — écrivez-nous dans le chat et nous reviendrons vers vous', ar:'رقم واتساب غير متاح حاليًا — راسلنا في المحادثة وسنعود إليك', ru:'Номер WhatsApp сейчас недоступен — напишите нам в чат, и мы ответим' },
+  manychat_note: { he:'מענה מיידי לכל פנייה, בכל שעה, עם סינון של מי רציני ומה הוא צריך עוד לפני שאתם מדברים איתו. איש צוות שלנו בונה את זה איתכם אישית, ואין כאן מה לחבר לבד.', en:'An instant reply to every enquiry, at any hour, sorting out who is serious and what they need before you talk to them. A member of our team builds it with you personally, so there is nothing for you to connect.', fr:'Une réponse immédiate à chaque demande, à toute heure, qui repère qui est sérieux et ce qu’il cherche avant que vous lui parliez. Un membre de notre équipe la construit avec vous, il n’y a rien à connecter vous-même.', ar:'ردّ فوري على كل استفسار في أي ساعة، مع فرز من هو جادّ وما الذي يحتاجه قبل أن تتحدثوا معه. يبنيه معكم أحد أعضاء فريقنا شخصيًا، فلا يوجد ما تربطونه بأنفسكم.', ru:'Мгновенный ответ на каждое обращение в любое время и отбор тех, кто настроен серьёзно и что ему нужно, ещё до разговора с вами. Сотрудник нашей команды настраивает это вместе с вами, самим ничего подключать не нужно.' },
+  automation_more: { he:'ספרו לי עוד', en:'Tell me more', fr:'En savoir plus', ar:'أخبروني المزيد', ru:'Расскажите подробнее' },
   coming_soon_status: { he:'חיבור יתווסף בקרוב', en:'Connection coming soon', fr:'Connexion bientôt disponible', ar:'الربط سيتوفر قريبًا', ru:'Подключение скоро появится' },
   coming_soon: { he:'בקרוב', en:'Soon', fr:'Bientôt', ar:'قريبًا', ru:'Скоро' },
   disconnect_link: { he:'ניתוק חיבור', en:'Disconnect', fr:'Déconnecter', ar:'فصل الاتصال', ru:'Отключить' },
@@ -9594,35 +9590,11 @@ function ownExportStarted() {
 if (uallakI18n.onChange) uallakI18n.onChange(() => { if (viewLoaded.ownership) loadOwnership(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MARKETING AUTOMATION (ManyChat) — ROUTE TO A HUMAN, NEVER A FLOW
+// CHAT AUTOMATION — A SALES TALK, NEVER A CONNECT FLOW (core/chat_automation)
 // ═══════════════════════════════════════════════════════════════════════════
-// This card has no connect action on purpose: the service is scoped and
-// priced personally, so both buttons end in a conversation. Credentials, if the
-// client goes ahead, are handed over in that conversation and stored admin-side
-// — this page never collects them. See core/automation_service.py.
-const AUTOMATION_NAMES = { manychat: 'ManyChat' };
-
-// The support number lives in app_settings and is served by /api/client/support
-// (same source the תמיכה view uses). Cached because these cards sit on the home
-// view, which must not fire a request per click.
-let supportLinkPromise = null;
-function supportLink() {
-  if (!supportLinkPromise) {
-    supportLinkPromise = fetch('/api/client/support', { credentials: 'same-origin' })
-      .then(res => res.json())
-      .then(body => (body.success && body.data ? body.data.whatsapp_link : '') || '')
-      .catch(() => '');
-  }
-  return supportLinkPromise;
-}
-
-async function askAboutAutomation(vendor) {
-  const name = (dashboardData && dashboardData.client && dashboardData.client.name) || '';
-  const link = await supportLink();
-  if (!link) { showNotice(uallakI18n.t('automation_wa_unavailable'), 'warn'); return; }
-  const text = uallakI18n.t('automation_wa_prefill', { name, vendor: AUTOMATION_NAMES[vendor] || vendor });
-  window.open(link + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
-}
+// The card's "tell me more" opens the manager's chat with the invite opener
+// (openInvite('automation')): the manager explains it and offers ONE card to
+// schedule a call with a representative. Nothing is connected or priced here.
 
 // ─── Performance ("ביצועים") ────────────────────────────────────────────────
 // Paints /api/client/performance. Every status, number and "no data" decision
@@ -9889,7 +9861,7 @@ const CONNECT_ACTIONS = {
   store: () => showStoreCard(),
   higgsfield: () => showCardForm('toolForm-higgsfield', () => openToolForm('higgsfield')),
   elevenlabs: () => showCardForm('toolForm-elevenlabs', () => openToolForm('elevenlabs')),
-  manychat: () => askAboutAutomation('manychat'),
+  manychat: () => openInvite('automation'),
 };
 
 function showCardForm(formId, open) {
@@ -9964,6 +9936,7 @@ async function connectViaChat(key, step) {
     w.msgsEl.appendChild(row);
     w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
   }
+  if (data.card) appendActionCard(data.persona, data.card);   // chat automation: the ONE next step
   if (data.connect && CONNECT_ACTIONS[data.connect]) CONNECT_ACTIONS[data.connect]();
   if (data.connected) loadDashboard();
 }
@@ -10549,13 +10522,6 @@ function seoReportAsk() {
 
 // The general concierge, not a specialist: automation isn't ads, site or media,
 // and the concierge is the persona that knows this is a manual, unpriced service.
-function chatAboutAutomation(vendor) {
-  const w = openAgentWindow('general');
-  if (!w) return;
-  setChatInput(w.inputEl, uallakI18n.t('automation_chat_msg', { vendor: AUTOMATION_NAMES[vendor] || vendor }));
-  sendInWindow('general');
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // HUMAN SUPPORT
 // ═══════════════════════════════════════════════════════════════════════════

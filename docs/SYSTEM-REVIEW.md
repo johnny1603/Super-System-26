@@ -772,3 +772,23 @@ about $40; I stop and ask before passing it.
 - `tests/test_homepage_purpose.py`.
 - **Migration:** none. **Deploy:** needed before replying to Google.
 - **Not tested** in a real browser (mobile layout included).
+
+### Chat automation becomes a sales talk with one card (2026-11-17)
+
+- **The home card's button:** "ספרו לי עוד" instead of "חבר". It opens the manager's chat.
+- **The manager sells it in their own voice.** They cover:
+  - the value, with an example from the client's industry;
+  - questions as ready guesses;
+  - how it works: our platform is the bridge and a team member builds it with the client;
+  - the cost: a one-off setup fee plus a software subscription, with the price only after the call.
+- **The only next step** is one card, "לקבוע שיחה עם נציג", which opens a tracked team request.
+- **Removed:**
+  - the tool name, the "do you have an account" question, and the connect step;
+  - the "starting from ₪" price in the upgrade panel's automation entry.
+- **Unchanged:** the WhatsApp Business card is still "coming soon".
+- **Docs and tests:** `docs/CHAT-AUTOMATION.md`, `tests/test_chat_automation.py`, and the vendor-name
+  test now covers this flow.
+- **Migration:** none. **Deploy:** needed.
+- **Not tested** against a real browser, a real model or a real client.
+- **Open item:** the sales chat's own proposals still use `PRICING["automation"]`. That is a separate
+  flow and was not changed.

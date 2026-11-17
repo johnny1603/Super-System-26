@@ -126,6 +126,22 @@ class ClientFacingText(unittest.TestCase):
             for path, text in _strings(table):
                 self.assertEqual(vn.find(text), [], f"{path}: {text[:80]}")
 
+    def test_chat_automation_flow(self):
+        # 2026-11-17: the automation card's whole flow (pitch, card, the manager's rule,
+        # every step of the old connect flow, the upgrade panel) names no tool
+        from core import chat_automation, connection_catalog
+        from agents import onboarding_agent
+        for path, text in _strings(chat_automation.TEXT):
+            self.assertEqual(vn.find(text), [], f"chat_automation{path}: {text[:80]}")
+        self.assertEqual(vn.find(chat_automation.SALES_RULE), [])
+        for step in ("start", "has", "none", "done"):
+            for lang in LANGS:
+                for text in connection_catalog.flow(5, "manychat", step, lang=lang)["messages"]:
+                    self.assertEqual(vn.find(text), [], f"{step}/{lang}")
+        self.assertEqual(vn.find(connection_catalog.NAMES["manychat"]), [])
+        for addon in onboarding_agent.get_upgrade_addons():
+            self.assertEqual(vn.find(addon["description"] + addon["chat_request"]), [], addon["id"])
+
 
 class Backstops(unittest.TestCase):
     def test_wired_where_model_text_reaches_a_client(self):

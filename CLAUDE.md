@@ -368,6 +368,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   buttons render from ACTIVE entries, and the concierge may only give that entry's links
   (`strip_foreign_links`). Every URL there already existed in the code — never add a guessed
   one; leave `url` empty instead.
+- **Chat automation (2026-11-17, `docs/CHAT-AUTOMATION.md`)**: `core/chat_automation` — the home card's "ספרו לי עוד"
+  opens the manager's sales talk (`SALES_RULE` = `support_agent._AUTOMATION_RULE`: value, industry example, ready guesses,
+  bridge + a team member, one-off setup + software subscription, NO number) that ends in ONE card `book_automation_call`
+  (a tracked team request, topic `automation_call` in `CARD_TEAM_TOPICS` — never a model handoff). No vendor name, no
+  account question, no connect step anywhere in it (`tests/test_chat_automation.py`). The admin side below is unchanged.
 - `core/automation_service.py` — ManyChat (Make was retired 2026-10-31: those automations are built
   in-house; `RETIRED_VENDORS` — never offered, but a client's stored row is left intact and
   ownership/disconnect still see it), the one integration that is deliberately

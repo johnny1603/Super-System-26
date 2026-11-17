@@ -194,8 +194,13 @@ class HumanFallback(Base):
         self.assertIn("no_signup_url", self.alerts[-1][2])
 
     def test_missing_row_falls_back(self):
-        r = cc.flow(5, "manychat", "none")   # known connection, no row in this table
+        r = cc.flow(5, "gmail", "none")   # known connection, no row in this table
         self.assertTrue(r["support"])
+
+    def test_chat_automation_is_never_a_connect_flow(self):
+        # 2026-11-17 (core/chat_automation): the pitch + ONE card, no chips, no link
+        r = cc.flow(5, "manychat", "start")
+        self.assertEqual((r["chips"], r["connect"], r["card_action"]), ([], "", "book_automation_call"))
 
     def test_no_whatsapp_still_says_a_person_will_help(self):
         cc._support_link = lambda: ""
@@ -288,7 +293,9 @@ class Dashboard(unittest.TestCase):
         keys = re.findall(r"onclick=\"connectViaChat\('([a-z_]+)'\)\" data-i18n=\"conn_connect\">חבר</button>", self.grid)
         self.assertEqual(sorted(keys), sorted(["google_ads", "meta", "tiktok", "youtube", "gmail", "search_console",
                                                "analytics", "google_drive", "tag_manager", "website", "higgsfield",
-                                               "elevenlabs", "manychat"]))
+                                               "elevenlabs"]))
+        # Chat automation has nothing to connect: "tell me more" opens the sales talk (2026-11-17)
+        self.assertIn('id="automationBtn" onclick="openInvite(\'automation\', this)" data-i18n="automation_more"', self.grid)
         self.assertEqual(len(keys), len(set(keys)))
         # The store (2026-11-07): ONE one-click button, no chat steps and no key fields
         self.assertIn('id="storeBtn" onclick="connectStoreOneClick(this)"', self.grid)

@@ -2652,6 +2652,9 @@ def _v_avatar_name(value, client_id: int):
 # admin alert, never a "request" the client is shown. Older rows may carry a
 # retired topic (manual_task, complaint, ...): they still display and close.
 TEAM_REQUEST_TOPICS = ("legal", "tax", "contract", "billing", "package_exception")
+# Opened by a CARD the client approved, never by a model's handoff (team_topic()
+# ignores them): book_automation_call (core/chat_automation, 2026-11-17)
+CARD_TEAM_TOPICS = ("automation_call",)
 _RETIRED_TEAM_TOPICS = ("refund", "complaint", "manual_task", "action_not_offered", "other")
 TEAM_REQUEST_TTL_HOURS = 24 * 14
 # A refund is a billing matter (one request topic, not two)
@@ -2666,7 +2669,8 @@ def team_topic(value) -> str:
 
 
 def _v_team_topic(value, client_id: int):
-    topic = team_topic(value)
+    topic = str(value or "").strip().lower()
+    topic = topic if topic in CARD_TEAM_TOPICS else team_topic(value)
     if not topic:
         raise ValueError(f"not a team topic: {topic[:40]}")
     return topic
@@ -2678,7 +2682,7 @@ def _validate_team_request_stored(client_id: int, params: dict) -> dict:
     if set(params) - {"topic", "request", "system_note"}:
         raise ValueError("unknown params")
     topic = str(params.get("topic") or "").strip().lower()
-    if topic not in TEAM_REQUEST_TOPICS + _RETIRED_TEAM_TOPICS:
+    if topic not in TEAM_REQUEST_TOPICS + CARD_TEAM_TOPICS + _RETIRED_TEAM_TOPICS:
         raise ValueError("unknown topic")
     return {"topic": topic, "request": _v_team_request(params.get("request"), client_id)}
 
@@ -4413,6 +4417,11 @@ ACTIONS.update(_organic_plan_actions.build(_sys.modules[__name__]))
 # מאיה follows the competitors' public social presence (2026-11-16) — core/competitor_watch_actions
 from core import competitor_watch_actions as _competitor_watch_actions
 ACTIONS.update(_competitor_watch_actions.build(_sys.modules[__name__]))
+
+# Chat automation: a sales talk that ends in ONE "schedule a call" card (2026-11-17) — core/chat_automation
+from core import chat_automation as _chat_automation
+ACTIONS.update(_chat_automation.build(_sys.modules[__name__]))
+_TEAM_TOPIC_LABEL[_chat_automation.TEAM_TOPIC] = _chat_automation.TEAM_LABEL
 
 _OUTREACH_DRAFT_REFUSALS = {
     "bad_address": _txt("כתובת המייל לא תקינה, אז לא הכנתי טיוטה.", "That e-mail address isn't valid, so I didn't prepare a draft.",

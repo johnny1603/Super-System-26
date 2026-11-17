@@ -61,7 +61,9 @@ VENDOR_TOOLS = ("higgsfield", "elevenlabs")
 # workspace, passed through in PRICING) — "אין לי" offers our build, not links
 BUILD_INSTEAD = {"website"}
 
-# No self-service connect: the credentials go to the team (core/automation_service)
+# No self-service connect (2026-11-17, core/chat_automation): every step is the
+# manager's short pitch + the ONE "schedule a call with a representative" card.
+# Never "do you have an account", never a link, never a vendor name.
 TEAM_CONNECT = {"manychat"}
 
 # Names the client reads (Hebrew). Vendor names appear only where the client
@@ -72,7 +74,7 @@ NAMES = {
     "google_drive": "Google Drive", "tag_manager": "Google Tag Manager",
     "merchant_center": "Google Merchant Center", "website": "האתר שלך", "store": "החנות באתר",
     "higgsfield": "Higgsfield", "elevenlabs": "ElevenLabs", "creatomate": "Creatomate",
-    "uppbeat": "Uppbeat", "manychat": "ManyChat",
+    "uppbeat": "Uppbeat", "manychat": "אוטומציית שיחות",
 }
 
 CHIP_HAS = "יש לי חשבון"
@@ -259,6 +261,10 @@ def flow(client_id: int, key: str, step: str, lang: str = "he") -> dict:
     en = lang == "en"
     if key == "store":
         return _store_flow(client_id, step)
+    if key in TEAM_CONNECT:
+        from core import chat_automation
+        return {"show": True, "key": key, "persona": "general", "connect": "", "support": False, "chips": [],
+                "messages": [chat_automation.pitch(lang)], "card_action": chat_automation.CALL_ACTION}
     row = entry(key)
     if row and row["tier"] == "included":
         return {"show": False}
@@ -274,10 +280,6 @@ def flow(client_id: int, key: str, step: str, lang: str = "he") -> dict:
                           {"label": chip_label("none", lang), "step": "none"}]}
 
     if step == "has":
-        if key in TEAM_CONNECT:
-            return {**base, "connect": key, "chips": [],
-                    "messages": [f"מעולה. את החיבור של {name} עושים יחד עם הצוות שלנו — "
-                                 "נפתחת לכם שיחת וואטסאפ איתנו, ומשם ממשיכים."]}
         if key == "website":
             return {**base, "connect": key, "chips": [],
                     "messages": ["מעולה. כתבו את כתובת האתר בכרטיס שנפתח — נבדוק בעצמנו במה הוא בנוי ונמשיך מכאן."]}

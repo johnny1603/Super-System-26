@@ -46,9 +46,9 @@ VENDORS = {
 # INTACT (never deleted by this change); see RETIRED_VENDORS.
 RETIRED_VENDORS = ("make",)
 
-# Said to the client verbatim (support_agent) before they open an account. The
-# Google warning is the operational point, not a style choice: Johnny signs in
-# to these accounts later.
+# For the REPRESENTATIVE's call only (2026-11-17): no agent says this any more —
+# the chat never asks about an account (core/chat_automation). The Google
+# warning is the operational point: Johnny signs in to these accounts later.
 SIGNUP_RULE_HE = (
     "חשוב: פותחים את החשבון עם אימייל וסיסמה רגילים — לא דרך "
     "\"התחברות עם Google\". חשבון שנפתח דרך Google יוצר התנגשות כשאנחנו "
@@ -57,11 +57,12 @@ SIGNUP_RULE_HE = (
 
 # What the support chat is allowed to say about how this is sold. No prices.
 POLICY_NOTE = (
-    "ManyChat is a MANUAL service: there is no fixed price and no "
-    "self-service setup in the system. The client talks to the team on WhatsApp, "
-    "a personal needs assessment happens, and only then is the automation priced "
-    "and built for them. NEVER quote a price, a price range, or a setup fee for "
-    "this, and never promise a delivery date."
+    "Chat automation is a MANUAL service: there is no fixed price and no "
+    "self-service setup in the system. The client approves ONE card to schedule a "
+    "call with a representative (core/chat_automation), a personal characterisation "
+    "happens, and only then is it priced (one-off setup + an ongoing software "
+    "subscription) and built. NEVER quote a price, a price range, or a setup fee "
+    "for this, and never promise a delivery date."
 )
 
 

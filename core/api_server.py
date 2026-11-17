@@ -1445,6 +1445,12 @@ def client_connect_chat(req: ConnectChatRequest, request: Request):
         log_communication(client_id, "inbound", channel, chip)
     for text in result.get("messages") or []:
         log_communication(client_id, "outbound", channel, text)
+    if result.get("card_action"):
+        # Chat automation (core/chat_automation): the pitch ends in ONE card, never a connect step
+        proposal = agent_actions.propose(client_id, "client_chat", result["persona"],
+                                         {"name": result["card_action"], "params": {}}, by_code=True,
+                                         context={"language": lang})
+        result = {**result, "card": proposal.get("card")}
     return {"success": True, "data": result}
 
 @app.get("/api/connections/reminders", dependencies=_admin_only)

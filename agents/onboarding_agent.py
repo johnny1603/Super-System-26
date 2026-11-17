@@ -313,10 +313,12 @@ def get_upgrade_addons() -> list:
         {
             "id": "automation",
             "name": "אוטומציות לעסק",
-            "description": (f"בוט מענה ללידים, חיבור CRM ואוטומציות נוספות — הקמה החל "
-                            f"מ-₪{p['automation']['base_setup_fee']}, לפי היקף ומורכבות."),
+            # No number here (2026-11-17, core/chat_automation): the price is given
+            # only after the call with a representative
+            "description": ("מענה מיידי ללידים ואוטומציות נוספות. דמי הקמה חד-פעמיים ומנוי שוטף "
+                            "לתוכנה לפי הצורך; המחיר ניתן אחרי שיחת אפיון עם נציג."),
             "note": "",
-            "chat_request": "אני רוצה לשמוע על אוטומציות לעסק שלי — מה אפשר לחבר ומה העלות?",
+            "chat_request": "אני רוצה לשמוע על אוטומציה לשיחות בעסק שלי: מה זה נותן ואיך זה עובד?",
         },
     ]
 

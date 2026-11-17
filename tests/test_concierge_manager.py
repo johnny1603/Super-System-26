@@ -561,7 +561,9 @@ class Prompts(unittest.TestCase):
         text = sa.PERSONA_SYSTEM_TEMPLATE.format(name="n", domain="d", voice="v", data_notes="x",
                                                  action_exception="", action_rule="", extra_fields="")
         self.assertIn('"upgrade_request"', text)
-        self.assertIn("Automation {is} quoted by hand.", text)    # the automation rule's braces survive
+        # the automation rule (core/chat_automation, 2026-11-17) reaches the personas intact
+        self.assertIn("CHAT AUTOMATION", text)
+        self.assertIn('"book_automation_call"', text)
 
     def test_persona_upgrade_is_the_concierges_build(self):
         body = _src("agents", "support_agent.py").split("def _answer_persona_question(", 1)[1]

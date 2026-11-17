@@ -466,8 +466,9 @@ class MakeRemoved(unittest.TestCase):
         html = _src("dashboard", "client", "index.html")
         for gone in ("make_card", "make_note", "askAboutAutomation('make')"):
             self.assertNotIn(gone, html)
-        self.assertIn("const AUTOMATION_NAMES = { manychat: 'ManyChat' };", html)
-        self.assertIn("askAboutAutomation('manychat')", html)
+        # 2026-11-17 (core/chat_automation): the card is a sales talk, the page names no vendor
+        self.assertNotIn("AUTOMATION_NAMES", html)
+        self.assertIn("openInvite('automation', this)", html)
 
     def test_admin_labels(self):
         admin = _src("dashboard", "admin", "index.html")

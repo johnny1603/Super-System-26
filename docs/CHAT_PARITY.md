@@ -284,3 +284,4 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | `approve_branding` | client click | execute | opened by code only (under a finished attempt) | The mockup link and "this is my direction": saves the brand kit and closes the attempts. |
 | `request_logo_designer` | client click | execute | — | The logo with our human designer instead; the team is alerted, the designer gives the price. |
 | `approve_production_quote` | client click | execute | opened by code only (staff send the quote) | The price of real branding production (our cost × 2), approved before anything is made. |
+| `book_automation_call` | client click | execute | — | Chat automation's ONE next step: schedule a call with a representative, who characterises the needs and only then quotes (one-off setup + an ongoing software subscription). Opens a tracked team request; nothing is built, connected or priced by the click (core/chat_automation). |

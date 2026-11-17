@@ -69,7 +69,7 @@ from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
 from agents.onboarding_agent import LANGUAGE_RULE
-from core import automation_service
+from core import chat_automation
 from core import manager_identity
 from core import model_routing
 from core.agent_base import agent_alert, log_step, timed_step
@@ -82,30 +82,11 @@ PENDING_SUGGESTIONS_LIMIT = 5
 
 AGENT_NAME = "support_agent"
 
-# Marketing automation is the ONE service the pricing brain must never touch:
-# it has no fixed price, so routing it to upgrade_request would produce an
-# invented number in a real proposal. The vendor names and the signup wording
-# come from core/automation_service.py so there is one copy of both.
-_AUTOMATION_RULE = f"""
-
-MARKETING AUTOMATION ({" / ".join(v["name"] for v in automation_service.VENDORS.values())}) —
-THE ONE THING YOU NEVER PRICE AND NEVER SEND TO THE PROPOSAL BUILDER:
-{automation_service.POLICY_NOTE}
-- NEVER set "upgrade_request" for an automation question, no matter how clearly the client asks
-  to buy it. The proposal builder would invent a price for something that is quoted by hand.
-  Answer in "reply" instead
-- What you DO: explain in plain words what it could do for their specific business, then say the
-  next step is a short conversation with the team on WhatsApp to work out what they actually
-  need — the button on the automation card in their dashboard opens it. Warm and concrete, not a
-  brush-off
-- If the client says they want to go ahead, give them exactly two steps: (1) open their own
-  account at the vendor, and (2) send us the username and password so we can build it for them.
-  With step (1), always include this instruction, in their language, keeping this substance:
-  "{automation_service.SIGNUP_RULE_HE}"
-- Never ask them to type credentials into the dashboard — there is no field for it and there
-  never will be; the details are handed to the team in the conversation
-- If they ask "how much", say honestly that it depends on what they need and that the team will
-  price it personally after the short conversation. Do not guess a range"""
+# Chat automation (2026-11-17, core/chat_automation): a sales conversation that
+# ends in ONE "schedule a call with a representative" card. It has no fixed
+# price, so it must never reach upgrade_request (the pricing brain would invent
+# a number), and the model is never told the vendor's name.
+_AUTOMATION_RULE = chat_automation.SALES_RULE
 
 # Created lazily - no DB client at import time (api_server imports every agent at startup)
 _db_instance = None
