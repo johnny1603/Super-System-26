@@ -4958,6 +4958,9 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
         refusal = (spec.get("refusals") or {}).get(row.get("outcome") or "")
         return _pick(refusal or _FAILED, lang)
     if row.get("status") == "cancelled":
+        if row.get("outcome") == "stopped":
+            from core import chat_approval
+            return _pick(chat_approval.STOPPED, lang)
         return _pick(spec.get("cancelled") or _CANCELLED, lang)
     return ""
 
@@ -4982,10 +4985,14 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
     what_src = (spec["what_for"](params) if spec.get("what_for") else None) or spec.get("what") or {"he": ""}
     what = _fill(spec, row, _pick(what_src, lang))
     progress = None
+    from core import chat_approval
     if row.get("status") == "running" and spec.get("slow"):
         stalled = _stalled(row, spec)
+        # + the bar: real fraction where the action reports it, else the measured
+        # usual time (>= 5 runs), else none (the card shows work running, no number)
         progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang, params),
-                    "started_at": row.get("decided_at"), "stalled": stalled}
+                    "started_at": row.get("decided_at"), "stalled": stalled,
+                    **chat_approval.progress_extra(row, spec)}
     choices = []
     if row.get("status") in OPEN_STATUSES:
         # Several ways to approve (a vague landing change: small edit or new
@@ -5016,6 +5023,9 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             # A slow action: the running card's text, then its plain result
             "progress": progress, "result": _result_text(spec, row, lang),
+            # Heavy / paid / irreversible: whether it can be undone, said BEFORE it runs
+            "undo_note": (chat_approval.undo_note(row.get("action") or "", spec, lang)
+                          if row.get("status") in OPEN_STATUSES else ""),
             # UTC; the chat shows them in the client's zone with who decided
             "created_at": row.get("created_at"), "decided_at": row.get("decided_at"),
             "decided_by": _decided_by(row.get("decided_by")) if row.get("decided_at") else ""}
@@ -5095,7 +5105,18 @@ def status_card(proposal_id: int, client_id: int) -> dict:
                                      f"is still running after {2 * spec['slow']['minutes']} min — check it", days=7)
         except Exception:
             pass
-    return card(row, "client", _lang(client_id))
+    out = card(row, "client", _lang(client_id))
+    if row.get("status") == "done":
+        # The undo card a background run offered when it finished (one per action)
+        from core import chat_approval
+        build = chat_approval.UNDO.get(row.get("action") or "")
+        if build:
+            name = build(row)["name"]
+            open_undo = [r for r in _open_rows(int(client_id))
+                         if r.get("action") == name and r.get("origin") == "client_chat" and not _expired(r)]
+            if open_undo:
+                out["next_card"] = card(open_undo[0], "client", _lang(client_id))
+    return out
 
 
 # ─── Propose ─────────────────────────────────────────────────────────────────
@@ -5356,12 +5377,58 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         # Waiting is a card, not a spinner: answer the click NOW with what is
         # running and how long it usually takes; the job runs after the
         # response and the same card polls (status_card) into its result
-        background_tasks.add_task(_execute_in_background, row, spec, params, actor, client, lang)
+        background_tasks.add_task(_execute_after_window, row, spec, params, actor, client, lang)
+        from core import chat_approval
+        extra = chat_approval.progress_extra(row, spec)
         return {"success": True, "status": "running",
                 "message": progress_text(spec, lang if actor == "client" else "he", params),
                 "progress": {"text": progress_text(spec, lang if actor == "client" else "he", params),
-                             "started_at": stamp, "stalled": False}}
+                             "started_at": stamp, "stalled": False, **extra}}
     return _execute(row, spec, params, actor, client, lang, background_tasks)
+
+
+def _sleep(seconds: float):
+    import time
+    time.sleep(seconds)
+
+
+def _execute_after_window(row: dict, spec: dict, params: dict, actor: str, client: dict, lang: str):
+    """The stop window first: nothing starts for STOP_WINDOW_SECONDS, and the
+    row is re-read before anything runs — a stop (stop_run, a compare-and-set
+    to cancelled) inside the window means it never starts."""
+    waited = 0.0
+    while waited < STOP_WINDOW_SECONDS:
+        _sleep(min(STOP_POLL_SECONDS, STOP_WINDOW_SECONDS - waited))
+        waited += STOP_POLL_SECONDS
+        try:
+            current = _get(row.get("id")) or {}
+        except Exception:
+            current = {"status": "running"}     # unreadable: the run goes on as approved
+        if current.get("status") != "running":
+            _log(f"client {row.get('client_id')}: {row.get('action')} stopped in its window, nothing ran",
+                 client_id=row.get("client_id"), proposal=row.get("id"))
+            return
+    _execute_in_background(row, spec, params, actor, client, lang)
+
+
+def stop_run(row: dict) -> bool:
+    """Stops a run that has not started yet (inside its stop window): the row
+    becomes cancelled ("stopped") by compare-and-set, so the waiting start
+    sees it and never runs. False once the window has passed (it continues)."""
+    spec = ACTIONS.get(row.get("action")) or {}
+    if row.get("status") != "running" or not spec.get("slow") or spec.get("inline_start"):
+        return False
+    started = row.get("decided_at") or row.get("created_at")
+    # A second of margin: the start re-reads the row right at the window's end
+    if _since(started) >= timedelta(seconds=max(STOP_WINDOW_SECONDS - 1, 0)):
+        return False
+    stamp = _now().isoformat()
+    if not _claim(row.get("id"), ("running",), {"status": "cancelled", "finished_at": stamp, "outcome": "stopped"}):
+        return False
+    _log(f"client {row.get('client_id')}: {row.get('action')} stopped by the client before it started",
+         client_id=row.get("client_id"), proposal=row.get("id"))
+    _forget_state(int(row.get("client_id") or 0))
+    return True
 
 
 def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, client: dict, lang: str):
@@ -5394,6 +5461,11 @@ def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, clie
 # 2. the REAPER (reap_stuck, Cloud Scheduler job action-reaper) ends any row
 #    still `running` past reap_after() — the case where the process itself
 #    died — the same way, idempotently (compare-and-set on the row).
+
+# The stop window (2026-11-17, core/chat_approval): a slow run waits this long
+# after the approval before it starts; "stop" inside it cancels it completely.
+STOP_WINDOW_SECONDS = 8
+STOP_POLL_SECONDS = 1.0
 
 RUN_TIMEOUT_DEFAULT_S = 240     # a run inside the request (Cloud Run's request limit is longer)
 REAP_DEFAULT_MINUTES = 15       # a non-slow row still running after this has no process behind it
@@ -5777,6 +5849,12 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
         # The decision this one led to (find_media_file → the card for the file
         # picked), right under it — one decision per card
         out["next_card"] = result["next_card"]
+    elif row.get("origin") == "client_chat" and actor == "client":
+        # Where it can genuinely be undone: ONE undo card (core/chat_approval.UNDO)
+        from core import chat_approval
+        undo = chat_approval.undo_card(client_id, row, lang)
+        if undo:
+            out["next_card"] = undo
     return out
 
 

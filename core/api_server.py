@@ -1609,6 +1609,16 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
             log_communication(client_id, "outbound", channel, connect["reply"])
             return {"success": True, "reply": connect["reply"], "needs_human_followup": False,
                     "poll": False, "action": connect.get("action")}
+        # The obvious yes / stop for an open card (an explicit "approve" with ONE card
+        # open, "stop" during a run): no model needed — the same decide() as the
+        # button. Anything else is the model's reading (core/chat_approval).
+        from core import agent_actions as _aa_fast, chat_approval
+        fast = chat_approval.fast_turn(client_id, persona, message, background_tasks, _aa_fast._lang(client_id))
+        if fast:
+            chat_timing.flag("outcome", "card_fast_path")
+            log_communication(client_id, "outbound", channel, fast["reply"])
+            return {"success": True, "reply": fast["reply"], "needs_human_followup": False, "poll": False,
+                    "action": fast.get("action"), "next_card": fast.get("next_card")}
     from core.cost_tracker import cost_action
     while True:
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
@@ -1616,7 +1626,8 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
         with cost_action(f"chat_{persona}"), chat_timing.stage("agent"):
             if persona == "general":
                 result = answer_support_question(client_id, message,
-                                                 help_connection=req.help_connection)
+                                                 help_connection=req.help_connection,
+                                                 background_tasks=background_tasks)
             else:
                 # Specialist path: structurally read-only — no web search, no
                 # action functions reachable (support_agent enforces), except the
@@ -1636,6 +1647,21 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
         from core import agent_actions, vendor_tools
         if req.help_connection not in vendor_tools.TOOLS:
             result["reply"] = vendor_tools.scrub_vendor_names(result["reply"], agent_actions._lang(client_id))
+        # Never a card that isn't there, never the same "it's on the card" line a
+        # third time (core/chat_approval)
+        from core import chat_approval
+        lang = agent_actions._lang(client_id)
+        guarded = ({} if result.get("no_card") else
+                   chat_approval.claim_guard(client_id, persona, result["reply"], result.get("action"), lang))
+        if guarded:
+            result = {**result, **guarded}
+        if result.get("action"):
+            try:
+                previous = [h.get("content") or "" for h in reversed(get_communications(client_id, limit=8, channel=channel))
+                            if h.get("direction") == "outbound"]
+            except Exception:
+                previous = []
+            result["reply"] = chat_approval.loop_guard(client_id, result["reply"], result["action"], previous, lang)
         log_communication(client_id, "outbound", channel, result["reply"])
     # poll: work continues in the background (an article draft) and its
     # outcome will be posted into this persona's thread — the window
@@ -1644,7 +1670,8 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
     # — the window renders it under the reply; only its button runs it.
     return {"success": True, "reply": result["reply"],
             "needs_human_followup": result["needs_human_followup"],
-            "poll": bool(result.get("poll")), "action": result.get("action")}
+            "poll": bool(result.get("poll")), "action": result.get("action"),
+            "next_card": result.get("next_card")}
 
 @app.post("/api/client-chat/prewarm")
 def client_chat_prewarm(request: Request):

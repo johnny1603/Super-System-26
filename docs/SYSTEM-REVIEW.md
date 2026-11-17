@@ -792,3 +792,25 @@ about $40; I stop and ask before passing it.
 - **Not tested** against a real browser, a real model or a real client.
 - **Open item:** the sales chat's own proposals still use `PRICING["automation"]`. That is a separate
   flow and was not changed.
+
+### Approval cards in the chat: a typed yes, stop, undo, progress (2026-11-17)
+
+- **The incident:** client 27 uploaded test3.mp4. The agent said "I've put a card right below", but the card
+  sat higher up (or did not exist), and "ok upload it", "i approve" and "תעלה" did nothing.
+- **Root causes (verified in the code):**
+  - the dashboard's `appendActionCard` returned early for a card already in the thread, so a re-offered
+    card stayed where it was first drawn;
+  - only the card's button called `decide()`, and nothing read a typed yes;
+  - a reply could claim a card when none was proposed.
+- **Now** (`core/chat_approval`):
+  - The chat model reads the yes, cancel, stop or undo (`card_decision`) and it runs through the same
+    `decide()` as the button.
+  - With several open cards, the agent asks one question.
+  - Heavy or paid actions get one line before they run.
+  - An 8-second stop window cancels a run completely; after it, the run continues and the agent says so.
+  - Where undo is genuinely possible, the agent offers one undo card.
+  - A progress bar shows: real progress, a measured estimate (at least 5 runs), or "working" with no number.
+  - A claim guard and a loop guard.
+- **Docs and tests:** `docs/CHAT-APPROVALS.md`, `tests/test_chat_approvals.py`.
+- **Migration:** none (existing columns, no new settings key). **Deploy:** needed.
+- **Not tested** against a real browser, a real model or a real client.

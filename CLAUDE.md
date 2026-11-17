@@ -368,6 +368,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   buttons render from ACTIVE entries, and the concierge may only give that entry's links
   (`strip_foreign_links`). Every URL there already existed in the code — never add a guessed
   one; leave `url` empty instead.
+- **Approval cards in the chat (2026-11-17, `docs/CHAT-APPROVALS.md`)**: `core/chat_approval` — a typed yes runs
+  the card EXACTLY like the button (same `decide()`): the chat model sets `card_decision` {verdict approve|cancel|stop|undo,
+  card_id} from `pending_cards`/`running_cards` in its payload; `FAST_APPROVE`/`FAST_STOP` are only a fast path (one card).
+  Several cards → one question. Slow runs wait `STOP_WINDOW_SECONDS` (`_execute_after_window`); `stop_run` cancels inside it.
+  `UNDO` map → one undo card when done. `claim_guard` (no "card below" without a card) + `loop_guard` (3rd repeat → the
+  exact blocker) run in `_client_chat_answer`. The dashboard re-appends a known card at the BOTTOM (never `return` on a
+  duplicate) and draws the bar from `progress.fraction` / `expected_seconds` (task_eta, >=5 runs) / none.
 - **Chat automation (2026-11-17, `docs/CHAT-AUTOMATION.md`)**: `core/chat_automation` — the home card's "ספרו לי עוד"
   opens the manager's sales talk (`SALES_RULE` = `support_agent._AUTOMATION_RULE`: value, industry example, ready guesses,
   bridge + a team member, one-off setup + software subscription, NO number) that ends in ONE card `book_automation_call`

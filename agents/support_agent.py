@@ -69,7 +69,7 @@ from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
 from agents.onboarding_agent import LANGUAGE_RULE
-from core import chat_automation
+from core import chat_approval, chat_automation
 from core import manager_identity
 from core import model_routing
 from core.agent_base import agent_alert, log_step, timed_step
@@ -488,9 +488,10 @@ the client asks for one of them, or one of them is the fix for a problem you jus
 fill "proposed_action": "name" copied exactly from available_actions, "params" holding ONLY the
 params listed for it (values copied from the data — never invented; leave a param out when you
 don't have its value), and "summary" one plain sentence of what will happen. The system shows a
-confirmation card under your reply; only a human click runs it.
-- approver "client": they approve it themselves — tell them to press the approve button on the
-  card below.
+confirmation card under your reply; the client's yes runs it — the button, or the same yes in
+their own words in the chat (CARDS WAITING FOR THE CLIENT).
+- approver "client": they approve it themselves — say they can approve it on the card or simply
+  tell you here.
 - approver "staff": it changes something live (publishing, spend), so the team approves it — say
   plainly that it waits for the team's approval on the card below and what happens once it's
   approved.
@@ -823,8 +824,10 @@ and conversation_history — see CLIENT LANGUAGE; Hebrew default).
 Return JSON only:
 {"reply": "client-language text", "needs_human_followup": true/false, "out_of_scope": true/false,
  "handoff_topic": "", "capability_gap": "", "data_topic": "", "web_search_query": "",
- "upgrade_request": "", "proposed_action": {"name": "", "params": {}, "summary": ""}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
-    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + STUDIO_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE
+ "upgrade_request": "", "proposed_action": {"name": "", "params": {}, "summary": ""},
+ "card_decision": {"verdict": "none", "card_id": 0}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
+    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + STUDIO_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE \
+    + chat_approval.SUPPORT_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
 already-paying client inside their private dashboard. You are a person on the uallak team —
@@ -1214,8 +1217,11 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
             client_id, persona_id, message,
             f"proposed {_proposed_name(result)} but it was refused ({error})")
     reply = chat_fallback.strip_team_routing(reply, lang)
+    reply = chat_approval._drop_card_sentences(reply)       # no "card below" next to "no card was made"
+    # no_card: this reply already says honestly that no card was made (the
+    # api's claim_guard leaves it alone)
     return {"reply": f"{reply}\n\n{agent_actions._pick(agent_actions.NO_CARD, lang)}".strip(),
-            "needs_human_followup": False}
+            "needs_human_followup": False, "no_card": True}
 
 
 def _dry_result(client_id: int, persona_id: str, message: str, result: dict, failed: set,
@@ -1345,12 +1351,37 @@ def _decide_turn(client_id: int, message: str, history: list, force_work: bool =
 
 
 def _light_payload(payload: dict, message: str, history: list) -> None:
-    """A SIMPLE turn: the message and the last few turns, no account reads."""
+    """A SIMPLE turn: the message and the last few turns, no account reads
+    (the waiting cards are added by _cards_payload: "סבבה" may be a yes)."""
     from core import chat_route
     payload["client_message"] = message
     payload["conversation_history"] = history[-chat_route.SIMPLE_HISTORY_TURNS:]
     payload["turn_note"] = chat_route.SIMPLE_NOTE
     _turn_flags(payload, message)
+
+
+def _cards_payload(client_id: int, persona_id: str, payload: dict, message: str) -> None:
+    """The cards waiting for the client's yes and the runs in progress
+    (core/chat_approval) — absent when there are none."""
+    try:
+        payload.update(chat_approval.for_model(client_id, persona_id, _client_language(client_id, message)))
+    except Exception as e:
+        log_step(AGENT_NAME, "cards_payload", f"client {client_id}: left out ({type(e).__name__})")
+
+
+def _card_decision(client_id: int, persona_id: str, message: str, result: dict, background_tasks) -> dict:
+    """The model read the message as a yes / cancel / stop / undo for a card:
+    it runs exactly like the button (core/chat_approval). {} = nothing to do."""
+    out = chat_approval.from_result(client_id, persona_id, result, background_tasks,
+                                    _client_language(client_id, message))
+    if not out:
+        return {}
+    reply = {"reply": out.get("reply") or "", "needs_human_followup": False}
+    if out.get("action"):
+        reply["action"] = out["action"]
+    if out.get("next_card"):
+        reply["next_card"] = out["next_card"]
+    return reply
 
 
 def _strip_light_result(result) -> None:
@@ -1449,7 +1480,7 @@ def _load_context(client_id: int, client: dict, message: str, persona_id: str, r
 
 
 def answer_support_question(client_id: int, message: str, help_connection: str = "",
-                            dry_run: bool = False) -> dict:
+                            dry_run: bool = False, background_tasks=None) -> dict:
     """The concierge turn. NEVER raises and never returns an empty reply —
     anything that breaks becomes an in-voice technical handoff (see
     core/chat_fallback), so the chat always gets something it can show.
@@ -1457,7 +1488,7 @@ def answer_support_question(client_id: int, message: str, help_connection: str =
     (core/connection_help). `dry_run`: the admin capability check — no
     proposal, alert, upgrade build or search (core/agent_actions)."""
     try:
-        result = _answer_support_question(client_id, message, help_connection, dry_run)
+        result = _answer_support_question(client_id, message, help_connection, dry_run, background_tasks)
     except Exception as e:
         return _technical_failure(client_id, "general", message, "support_turn", e)
     if not (result.get("reply") or "").strip():
@@ -1467,7 +1498,7 @@ def answer_support_question(client_id: int, message: str, help_connection: str =
 
 
 def _answer_support_question(client_id: int, message: str, help_connection: str = "",
-                             dry_run: bool = False) -> dict:
+                             dry_run: bool = False, background_tasks=None) -> dict:
     log_step(AGENT_NAME, "answer_support_question", f"client_id={client_id}")
 
     client = get_client(client_id)
@@ -1518,6 +1549,8 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
         payload.update(ctx["reads"])
         payload.update(ctx["store"])
         payload.update(ctx["account"])
+    if not dry_run and not help_connection:
+        _cards_payload(client_id, "general", payload, message)
 
     user_message = json.dumps(payload, ensure_ascii=False, default=str)
     # The name the client chose for their manager — the only per-client part of
@@ -1552,6 +1585,10 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
 
     if dry_run:
         return _dry_result(client_id, "general", message, result, failed, state, client)
+    if not help_entry:
+        decided = _card_decision(client_id, "general", message, result, background_tasks)
+        if decided:
+            return decided
     reply = _guard_invented(client_id, "general", message, result.get("reply", ""), state, result)
     if not help_entry and _drive_link_turn(message, result):
         return _route_proposal(client_id, "general", message, result, reply, state, client)
@@ -2538,9 +2575,11 @@ stronger colleague answers instead — the client never sees this field); otherw
 Return JSON only:
 {{"reply": "client-language text", "confidence": "high", "needs_human_followup": true/false,
  "out_of_scope": true/false, "handoff_topic": "", "capability_gap": "", "data_topic": "",
- "upgrade_request": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}}{extra_fields}}}""" \
+ "upgrade_request": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}},
+ "card_decision": {{"verdict": "none", "card_id": 0}}{extra_fields}}}""" \
     + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + STUDIO_RULE + NO_SECRETS_RULE \
-    + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
+    + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}") \
+    + chat_approval.SUPPORT_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
 
 
 def answer_persona_question(client_id: int, persona_id: str, message: str,
@@ -2607,6 +2646,8 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         payload.update(ctx["reads"])
         payload.update(ctx["store"])
         payload.update(ctx["account"])
+    if not dry_run:
+        _cards_payload(client_id, persona_id, payload, message)
 
     drafts = persona_id == "website"
     system = PERSONA_SYSTEM_TEMPLATE.format(
@@ -2639,6 +2680,9 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
 
     if dry_run:
         return _dry_result(client_id, persona_id, message, result, failed, state, client)
+    decided = _card_decision(client_id, persona_id, message, result, background_tasks)
+    if decided:
+        return decided
     reply = _guard_invented(client_id, persona_id, message, result.get("reply", ""), state, result)
     if _drive_link_turn(message, result):
         return _route_proposal(client_id, persona_id, message, result, reply, state, client)

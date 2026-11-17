@@ -655,6 +655,18 @@ body {
   border-inline-start: 3px solid var(--accent); font-size: 12.5px; }
 .chat-action .progress .ago { color: var(--gray); font-size: 11.5px; margin-top: 2px; }
 .chat-action .progress.stalled { border-inline-start-color: #FFB020; }
+/* The progress bar (2026-11-17, core/chat_approval): real fraction, measured time, or "working" (no number) */
+.chat-action .pbar { position: relative; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 6px; }
+.chat-action .pbar > i { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; background: var(--accent);
+  border-radius: 3px; transition: width .9s linear; }
+.chat-action .pbar.indet > i { width: 35%; animation: pbar-run 1.6s ease-in-out infinite; }
+.chat-action .progress.stalled .pbar > i { background: #FFB020; animation: none; }
+.chat-action .pbar-left { font-size: 11.5px; color: var(--gray); margin-top: 3px; }
+@keyframes pbar-run { 0% { inset-inline-start: -35%; } 100% { inset-inline-start: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-action .pbar > i { transition: none; }
+  .chat-action .pbar.indet > i { animation: none; width: 100%; opacity: .45; }
+}
 
 .support-input-area { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
 /* A one-row <textarea> (Shift+Enter = new line) that grows with its content up
@@ -3025,6 +3037,10 @@ const DASH_I18N = {
   tool_guide_minutes: { he:'בערך {n} דקות, בלי ידע טכני.', en:'About {n} minutes, no technical knowledge needed.', fr:'Environ {n} minutes, sans connaissances techniques.', ar:'نحو {n} دقائق، دون معرفة تقنية.', ru:'Около {n} минут, без технических знаний.' },
   tool_guide_error: { he:'לא הצלחנו לטעון את ההדרכה כרגע. אפשר ללחוץ "נתקעתי" ונעשה את זה יחד.', en:'We couldn\'t load the guide right now. Click "Stuck?" and we\'ll do it together.', fr:'Impossible de charger le guide pour le moment. Cliquez sur « Bloqué ? » et nous le ferons ensemble.', ar:'تعذّر تحميل الإرشاد الآن. اضغطوا "علقت" وسنفعل ذلك معًا.', ru:'Сейчас не удалось загрузить инструкцию. Нажмите «Застрял(а)», и мы сделаем это вместе.' },
   action_started_ago: { he:'התחיל לפני {n} דק׳', en:'Started {n} min ago', fr:'Commencé il y a {n} min', ar:'بدأ قبل {n} دقيقة', ru:'Начато {n} мин назад' },
+  action_left_min: { he:'נשארו בערך {n} דק׳', en:'About {n} min left', fr:'Environ {n} min restantes', ar:'تبقّى نحو {n} دقيقة', ru:'Осталось около {n} мин' },
+  action_left_sec: { he:'עוד רגע קט', en:'Almost there', fr:'Presque terminé', ar:'أوشك على الانتهاء', ru:'Почти готово' },
+  action_running_now: { he:'עובד על זה עכשיו', en:'Working on it now', fr:'En cours', ar:'جارٍ العمل عليه الآن', ru:'Сейчас в работе' },
+  action_stop_hint: { he:'אפשר עוד לכתוב "עצור" בצ׳אט, ושום דבר לא יקרה', en:'You can still write "stop" in the chat and nothing will happen', fr:'Vous pouvez encore écrire « stop » dans le chat, rien ne se passera', ar:'ما زال بإمكانكم كتابة "توقف" في الدردشة ولن يحدث شيء', ru:'Ещё можно написать «стоп» в чате, и ничего не произойдёт' },
   tool_test_btn: { he:'בדיקת חיבור', en:'Test connection', fr:'Tester la connexion', ar:'فحص الاتصال', ru:'Проверить подключение' },
   tool_testing: { he:'בודקים…', en:'Testing…', fr:'Test…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
   tool_replace_key: { he:'החלפת מפתח', en:'Replace key', fr:'Remplacer la clé', ar:'استبدال المفتاح', ru:'Заменить ключ' },
@@ -6744,7 +6760,11 @@ async function loadWindowActions(personaId) {
 function appendActionCard(personaId, a) {
   const w = CHAT_WINDOWS[personaId];
   if (!w || !a || !Number.isFinite(Number(a.id))) return;
-  if (w.msgsEl.querySelector(`.chat-action[data-action-id="${Number(a.id)}"]`)) return;
+  // The same card again (re-offered, or decided by a typed yes): the old copy
+  // goes and a fresh one is built at the BOTTOM, under the message about it —
+  // never a second card, never one left higher up the thread (2026-11-17)
+  const old = w.msgsEl.querySelector(`.chat-action[data-action-id="${Number(a.id)}"]`);
+  if (old) old.remove();
   const el = document.createElement('div');
   el.className = 'chat-action';
   el.dir = 'auto';
@@ -6796,6 +6816,15 @@ function appendActionCard(personaId, a) {
     el.appendChild(row);
   } else if (a.status === 'awaiting_staff') {
     note.textContent = uallakI18n.t(a.action === 'team_request' ? 'action_team_request_open' : 'action_with_team');
+  } else if (a.result && a.status !== 'running') {
+    note.innerHTML = linkify(a.result);   // decided in words: the outcome, as the button would show it
+  }
+  if (a.undo_note && a.can_decide) {
+    // Whether it can be undone, said BEFORE it runs (heavy / paid / irreversible)
+    const undo = document.createElement('div');
+    undo.className = 'note undo-note';
+    undo.textContent = a.undo_note;
+    el.insertBefore(undo, el.querySelector('.row'));
   }
   el.appendChild(note);
   el._action = a;
@@ -6807,6 +6836,7 @@ function appendActionCard(personaId, a) {
     watchActionCard(el, a.id);
   }
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
+  try { el.scrollIntoView({ block: 'nearest' }); } catch (e) { /* scrollTop already did it */ }
 }
 
 // When the card was created, and when + by whom it was decided (UTC from
@@ -6858,6 +6888,68 @@ function paintActionProgress(el, progress) {
     ago.textContent = uallakI18n.t('action_started_ago', { n: Math.max(0, Math.round((Date.now() - started) / 60000)) });
     box.appendChild(ago);
   }
+  // The bar: the real fraction when the action reports it, else the measured
+  // usual time (server sends it only with >= 5 past runs), else "working" with
+  // no number. Stalled = frozen amber; finished/failed = the bar is removed.
+  const bar = document.createElement('div');
+  bar.className = 'pbar';
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
+  bar.appendChild(document.createElement('i'));
+  const left = document.createElement('div');
+  left.className = 'pbar-left';
+  box.append(bar, left);
+  el._progress = { ...progress, seenAt: Date.now() };
+  paintActionBar(el);
+  if (!el._barTimer) {
+    el._barTimer = setInterval(() => {
+      if (!document.body.contains(el) || !el.querySelector('.pbar')) { clearInterval(el._barTimer); el._barTimer = null; return; }
+      paintActionBar(el);
+    }, 1000);
+  }
+}
+
+// Pure: what the bar shows for a progress object at time `now` (ms) —
+// {pct: 0-100 or null (= no number), leftS: seconds or null, stopHint}
+function actionBarState(p, now) {
+  const started = Date.parse((p && p.started_at) || '');
+  const elapsed = isNaN(started) ? 0 : Math.max(0, (now - started) / 1000);
+  const stopUntil = Date.parse((p && p.stop_until) || '');
+  const stopHint = !isNaN(stopUntil) && now < stopUntil;
+  if (p && typeof p.fraction === 'number' && p.fraction >= 0) {
+    const f = Math.min(1, p.fraction);
+    const leftS = f > 0.05 && elapsed > 0 ? elapsed * (1 - f) / f : null;
+    return { pct: Math.round(f * 100), leftS, stopHint };
+  }
+  if (p && Number(p.expected_seconds) > 0) {
+    const expected = Number(p.expected_seconds);
+    return { pct: Math.min(95, Math.round(100 * elapsed / expected)), leftS: Math.max(0, expected - elapsed), stopHint };
+  }
+  return { pct: null, leftS: null, stopHint };
+}
+function paintActionBar(el) {
+  const p = el._progress || {};
+  const bar = el.querySelector('.pbar'), left = el.querySelector('.pbar-left');
+  if (!bar || !left) return;
+  const t = uallakI18n.t, st = actionBarState(p, Date.now());
+  const fill = bar.firstChild;
+  if (p.stalled) {
+    bar.classList.remove('indet');
+    left.textContent = '';
+    return;
+  }
+  if (st.pct == null) {
+    bar.classList.add('indet');
+    bar.removeAttribute('aria-valuenow');
+    left.textContent = st.stopHint ? t('action_stop_hint') : t('action_running_now');
+    return;
+  }
+  bar.classList.remove('indet');
+  fill.style.width = st.pct + '%';
+  bar.setAttribute('aria-valuenow', String(st.pct));
+  const tail = st.leftS == null ? '' : (st.leftS < 60 ? t('action_left_sec') : t('action_left_min', { n: Math.round(st.leftS / 60) }));
+  left.textContent = st.stopHint ? t('action_stop_hint') : tail;
 }
 
 function finishActionCard(el, c) {
@@ -6890,7 +6982,8 @@ function toggleLife(btn) {
 function watchActionCard(el, id) {
   if (el.dataset.watching) return;
   el.dataset.watching = '1';
-  let delay = 8000;
+  // Quick at first (the stop window, real progress), then backing off
+  let delay = 3000;
   const tick = async () => {
     if (!document.body.contains(el)) return;   // the window re-rendered: its new card polls
     try {
@@ -6899,7 +6992,11 @@ function watchActionCard(el, id) {
       if (res.ok && body.success) {
         const c = body.data || {};
         if (c.decided_at) { el._action = { ...(el._action || {}), ...c }; paintActionWhen(el, el._action); }
-        if (c.status !== 'running') { finishActionCard(el, c); return; }
+        if (c.status !== 'running') {
+          finishActionCard(el, c);
+          if (c.next_card) appendActionCard(el.closest('.chat-window') ? el.closest('.chat-window').dataset.persona : 'general', c.next_card);
+          return;
+        }
         if (c.progress) paintActionProgress(el, c.progress);
       }
     } catch (e) {
@@ -7647,6 +7744,9 @@ async function sendInWindow(personaId, extra) {
       body: JSON.stringify(Object.assign({ message: text, persona: personaId }, extra || {})),
     });
     const data = await res.json();
+    // A freshly opened window may still be loading its history: the reply and
+    // its card go UNDER it, never above (2026-11-17)
+    if (w.historyLoaded) { try { await w.historyLoaded; } catch (e) { /* shown anyway */ } }
     chatPendingEnd(w);
     if (data.success && data.covered) {
       // this message was answered together with an earlier one — that
@@ -7656,6 +7756,7 @@ async function sendInWindow(personaId, extra) {
       // (core/chat_fallback) - the server never answers the chat with a 500
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
       if (data.action) appendActionCard(personaId, data.action);
+      if (data.next_card) appendActionCard(personaId, data.next_card);
       if (data.poll) watchForAgentPost(personaId);
       chatTypingToBottom(w);
     } else {
