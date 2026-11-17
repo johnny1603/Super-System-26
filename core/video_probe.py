@@ -261,6 +261,21 @@ def problems(facts: dict) -> list:
     return out
 
 
+# Accepted by TikTok's docs, but not its RECOMMENDED codec: an H.265 / VP8 /
+# VP9 file uploads fine and may still be refused at TikTok's processing step
+# (client 27, test3.mp4 = h265, 2026-11-17). A WARNING, never a block.
+RECOMMENDED_VIDEO_CODEC = "h264"
+
+
+def advisories(facts: dict) -> list:
+    """Non-blocking warnings: ["codec_not_h264"] when the video codec was read
+    and is not H.264 (an unreadable codec warns about nothing)."""
+    codec = (facts or {}).get("video_codec")
+    if codec and codec != RECOMMENDED_VIDEO_CODEC and codec in ALLOWED_VIDEO_CODECS:
+        return ["codec_not_h264"]
+    return []
+
+
 def _size_problems(width, height, duration_s) -> list:
     out = []
     try:

@@ -1264,6 +1264,51 @@ def _run_attach_existing(client_id: int, params: dict, background_tasks, row: di
             "outcome": files[0]["label"] if files else ""}
 
 
+_TIKTOK_CODEC_WARNING = _txt(
+    "שימו לב: הסרטון מקודד ב-{codec}. טיקטוק מקבלת אותו, אבל ממליצה על H.264, ולפעמים דוחה קבצים כאלה אחרי ההעלאה. אפשר לשלוח כך, או לייצא קודם כ-MP4 בקידוד H.264.",
+    "Note: this video is encoded in {codec}. TikTok accepts it but recommends H.264, and sometimes rejects such files after the upload. You can send it as is, or first export it as an MP4 in H.264.",
+    "Attention : cette vidéo est encodée en {codec}. TikTok l'accepte mais recommande le H.264, et refuse parfois ces fichiers après l'envoi. Vous pouvez l'envoyer telle quelle, ou l'exporter d'abord en MP4 H.264.",
+    "تنبيه: هذا الفيديو مُرمّز بـ {codec}. يقبله تيك توك لكنه يوصي بـ H.264، وأحيانًا يرفض مثل هذه الملفات بعد الرفع. يمكنكم إرساله كما هو، أو تصديره أولًا كملف MP4 بترميز H.264.",
+    "Обратите внимание: видео закодировано в {codec}. TikTok его принимает, но рекомендует H.264 и иногда отклоняет такие файлы после загрузки. Можно отправить как есть или сначала экспортировать в MP4 с H.264.")
+_CODEC_NAMES = {"h265": "H.265 (HEVC)", "vp8": "VP8", "vp9": "VP9"}
+_codec_cache = {}            # (client_id, file_id) -> (stamp, codec or "")
+_CODEC_CACHE_S = 6 * 3600
+
+
+def _tiktok_codec(client_id: int, file_id: str) -> str:
+    """The file's video codec from its own headers (range reads, cached) —
+    "" when unknown. Never raises."""
+    import time as _time
+    key = (int(client_id), str(file_id or ""))
+    hit = _codec_cache.get(key)
+    if hit and hit[0] > _time.time() - _CODEC_CACHE_S:
+        return hit[1]
+    codec = ""
+    try:
+        from core import drive_service as drive, drive_storage, video_probe
+
+        @drive_storage.scoped
+        def read(client_id):
+            size = int((drive.get_meta(file_id, "id,size") or {}).get("size") or 0)
+            if size <= 0:
+                return ""
+            facts = video_probe.probe_ranges(lambda s, n: drive.read_range(file_id, s, n), size)
+            return str(facts.get("video_codec") or "")
+        codec = read(int(client_id))
+    except Exception as e:
+        _log(f"client {client_id}: codec not read for the card ({type(e).__name__})", severity="WARNING")
+    _codec_cache[key] = (_time.time(), codec)
+    return codec
+
+
+def _tiktok_codec_warning(client_id: int, params: dict, lang: str) -> str:
+    from core import video_probe
+    codec = _tiktok_codec(client_id, (params or {}).get("drive_file_id"))
+    if not video_probe.advisories({"video_codec": codec}):
+        return ""
+    return _pick(_TIKTOK_CODEC_WARNING, lang).replace("{codec}", _CODEC_NAMES.get(codec, codec.upper()))
+
+
 def _validate_tiktok_stored(client_id: int, params: dict) -> dict:
     params = params or {}
     if set(params) != {"drive_file_id"}:
@@ -3944,6 +3989,8 @@ ACTIONS = {
         "prepare": lambda client_id, params, context, rows: _prepare_tiktok(client_id, params, context, rows),
         "validate_stored": lambda client_id, params: _validate_tiktok_stored(client_id, params),
         "details": lambda client_id, params: {"file": _media_name(client_id, params.get("drive_file_id", ""))},
+        # Not blocking: a codec TikTok accepts but does not recommend (H.265 …)
+        "card_warning": lambda client_id, params, lang: _tiktok_codec_warning(client_id, params, lang),
         # inline_start: the click only CREATES the durable job (a quick write),
         # inside the request — never in a background task Cloud Run may drop
         "run": _run_send_tiktok_to_inbox, "needs_row": True, "inline_start": True,
@@ -4012,6 +4059,12 @@ ACTIONS = {
                 "TikTok a reçu le fichier mais l'a refusé à cause de son format, de sa résolution ou de sa fréquence d'images. Rien n'a été publié. Réenregistrez-le en MP4 standard (vertical, 30 i/s) et renvoyez-le.",
                 "استلم تيك توك الملف لكنه رفضه بسبب الصيغة أو الدقة أو معدل الإطارات. لم يُنشر شيء. احفظوه من جديد كملف MP4 عادي (عمودي، 30 إطارًا في الثانية) وأرسلوه مجددًا.",
                 "TikTok получил файл, но отклонил его из-за формата, разрешения или частоты кадров. Ничего не опубликовано. Сохраните его заново как обычный MP4 (вертикальный, 30 кадр/с) и отправьте снова."),
+            "rejected_codec": _txt(
+                "טיקטוק דחתה את הסרטון אחרי ההעלאה. הוא מקודד ב-H.265 (HEVC), וטיקטוק ממליצה על H.264. שום דבר לא פורסם. ייצאו אותו שוב כ-MP4 בקידוד H.264 ושלחו שוב.",
+                "TikTok rejected the video after the upload. It is encoded in H.265 (HEVC), and TikTok recommends H.264. Nothing was posted. Export it again as an MP4 in H.264 and send it again.",
+                "TikTok a refusé la vidéo après l'envoi. Elle est encodée en H.265 (HEVC), et TikTok recommande le H.264. Rien n'a été publié. Exportez-la à nouveau en MP4 H.264 et renvoyez-la.",
+                "رفض تيك توك الفيديو بعد رفعه. إنه مُرمّز بـ H.265 (HEVC) ويوصي تيك توك بـ H.264. لم يُنشر شيء. صدّروه مجددًا كملف MP4 بترميز H.264 وأرسلوه مرة أخرى.",
+                "TikTok отклонил видео после загрузки. Оно закодировано в H.265 (HEVC), а TikTok рекомендует H.264. Ничего не опубликовано. Экспортируйте его заново в MP4 с H.264 и отправьте снова."),
             "rejected_length": _txt(
                 "טיקטוק דחתה את הסרטון בגלל האורך שלו. שום דבר לא פורסם. קצרו אותו ושלחו שוב.",
                 "TikTok rejected the video because of its length. Nothing was posted. Trim it and send it again.",
@@ -5035,6 +5088,17 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
     return ""
 
 
+def _card_warning(spec: dict, row: dict, lang: str) -> str:
+    """Shown on an OPEN card or a RUNNING one (the client watches it); "" else."""
+    hook = spec.get("card_warning")
+    if not hook or row.get("status") not in OPEN_STATUSES + ("running",):
+        return ""
+    try:
+        return hook(int(row.get("client_id") or 0), row.get("params") or {}, lang) or ""
+    except Exception:
+        return ""
+
+
 def card(row: dict, actor: str, lang: str = "he") -> dict:
     out = _card(row, actor, lang)
     if actor != "admin":
@@ -5095,6 +5159,8 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             # A slow action: the running card's text, then its plain result
             "progress": progress, "result": _result_text(spec, row, lang),
+            # A non-blocking warning about the file (TikTok: a codec it accepts but does not recommend)
+            "warning": _card_warning(spec, row, lang),
             # Heavy / paid / irreversible: whether it can be undone, said BEFORE it runs
             "undo_note": (chat_approval.undo_note(row.get("action") or "", spec, lang)
                           if row.get("status") in OPEN_STATUSES else ""),

@@ -74,9 +74,28 @@ for a in data.get("attempts") or []:
         print(f"  probe: container={v.get('container')} video={v.get('video_codec')} audio={v.get('audio_codec')} "
               f"{v.get('width')}x{v.get('height')} fps={v.get('fps')} duration={v.get('duration_s')}s")
         print(f"  TikTok format problems: {f.get('tiktok_problems') or 'none'}  notes: {f.get('video_notes') or '-'}")
+        warn = f.get("tiktok_warnings") or []
+        if "codec_not_h264" in warn:
+            print(f"  TikTok format WARNING: video codec is {v.get('video_codec')}, not H.264 (TikTok's recommended "
+                  f"codec) - TikTok may reject it at processing after a successful upload")
+        elif warn:
+            print(f"  TikTok format warnings: {warn}")
     if f.get("error"):
         print(f"  file read error: {f.get('error')}")
+    j = a.get("job") or {}
+    if j:
+        print(f"  upload job {j.get('id', '-')}: status={j.get('status')} outcome={j.get('outcome', '-')} "
+              f"size={j.get('size')} chunk_size={j.get('chunk_size', '-')} chunks={j.get('chunks', '-')} "
+              f"sent={j.get('next', 0)} attempts={j.get('attempts', 0)} restarts={j.get('restarts', 0)}")
+        if j.get("warnings"):
+            print(f"  job warnings: {j.get('warnings')}")
+        if j.get("last_error_message") or j.get("last_error"):
+            print(f"  LAST TikTok ERROR at step '{j.get('last_error_step', '-')}' ({j.get('last_error_at', '-')}):")
+            print(f"    message: {j.get('last_error_message') or j.get('last_error')}")
+            print(f"    code: {j.get('last_error_code') or '-'}   log_id: {j.get('last_error_log_id') or '-'}")
     print(f"  publish_id: {a.get('publish_id') or '-'}")
+    if not a.get("publish_id") and j.get("last_error_step") == "init":
+        print("  (no publish_id: TikTok refused the upload at init - see the LAST TikTok ERROR above)")
     print(f"  TikTok status: {json.dumps(t, ensure_ascii=False)}")
 print("-" * 70)
 print(f"last two attempts used the SAME file: {data.get('last_two_same_file')}")

@@ -56,6 +56,28 @@ So the upload is a sequence of steps, each one **inside an active request**:
 
 **Chunks**
 - TikTok's FILE_UPLOAD rules (`video_limits.tiktok_chunk_plan`) are applied only so the chunking itself is valid.
+- **Chunking (fixed 2026-11-17):** production init failed with "400 invalid_params: The chunk size is invalid".
+  This was client 27, an 18 MB file, sent with chunk_size 16 MiB and total_chunk_count 1. The rule now follows TikTok's
+  Media Transfer Guide (developers.tiktok.com/doc/content-posting-api-media-transfer-guide):
+  - **up to 64 MB:** ONE chunk, and `chunk_size == video_size`;
+  - **above 64 MB:**
+    - 16 MiB chunks (grown only past 1000 chunks);
+    - `total_chunk_count = floor(video_size / chunk_size)`;
+    - the last chunk takes the remainder (under 2× chunk_size, at most 128 MB);
+    - chunk_size always 5–64 MB.
+
+  The limits use MB = 10^6 bytes, the stricter reading. `video_limits.tiktok_init_params` checks the combination
+  before the call. Tests: `tests/test_tiktok_chunking.py`.
+- **Codec warning:** a file that is not H.264 (H.265/HEVC, VP8, VP9) carries `codec_not_h264`. TikTok's docs list these
+  codecs as supported, with H.264 recommended, so this is never a block. It appears:
+  - on the card (`warning`);
+  - in the job's `warnings`;
+  - in `scripts/tiktok_diagnose.sh`.
+
+  A post-upload rejection of such a file ends as `rejected_codec`, whose line says to export as H.264.
+- **A failed step is on record:** the job keeps the step (`init` / `chunks` / `processing`), TikTok's error message,
+  its code and its log_id (`tiktok_uploads.error_record`). The diagnose script prints them, so an init refusal is
+  visible even though no publish_id exists.
 - Chunks are 16 MB. They grow, up to 64 MB, only if 16 MB would need more than 1000 chunks.
 - Files under 16 MB go whole. The last chunk takes the remainder.
 - One chunk is in memory at a time, read from Drive by range. Memory stays flat for any size.

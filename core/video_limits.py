@@ -63,29 +63,40 @@ def fits(size_bytes) -> bool:
 # at runtime is handled on our side (an alert), never pushed to the client.
 #
 # The upload STREAMS in chunks as a durable job (core/tiktok_uploads), using
-# TikTok's FILE_UPLOAD chunk rules only so the chunking itself is valid
-# (Media Transfer Guide):
-# - each chunk is 5-64 MB, except the last, which absorbs the remainder (up to 128 MB);
-# - total_chunk_count = floor(video_size / chunk_size), between 1 and 1000;
-# - a file under one chunk size goes whole;
-# - chunks are sent sequentially, each PUT with its own Content-Range;
-# - 206 = more to come, 201 = everything received; the upload_url lives 1 hour.
+# TikTok's FILE_UPLOAD rules (Content Posting API → Media Transfer Guide,
+# developers.tiktok.com/doc/content-posting-api-media-transfer-guide, read 2026-11-17):
+# - "Each chunk must be at least 5 MB but no greater than 64 MB, except for the
+#   final chunk, which can be greater than chunk_size (up to 128 MB) to
+#   accommodate any trailing bytes";
+# - total_chunk_count "should be equal to video_size divided by chunk_size,
+#   rounded down to the nearest integer"; between 1 and 1000 chunks;
+# - a file under 5 MB goes whole, chunk_size = the file's full size;
+# - "Videos with a total size greater than 64 MB must be uploaded in multiple chunks";
+# - chunks are sent sequentially, each PUT with its own Content-Range.
+# PRODUCTION (client 27, 2026-11-17): an 18 MB file was initialised with
+# chunk_size 16 MiB and total_chunk_count 1 → "400 invalid_params: The chunk
+# size is invalid". So: ONE chunk ⇔ chunk_size == video_size. Every file TikTok
+# lets go as one chunk (up to 64 MB) goes whole; above it, 16 MiB chunks, the
+# last one absorbing the remainder, always at least 2 chunks.
+# "MB" is read as 10^6 bytes on the limits (the stricter reading of both).
 #
-# Memory: one chunk at a time, whatever the file size.
+# Memory: one chunk at a time (at most ~64 MB for a whole small file).
 TIKTOK_AUTO_UPLOAD_MAX_MB_DEFAULT = 1536
-TIKTOK_CHUNK_BYTES = 16 * 1024 * 1024        # within 5-64 MB
-TIKTOK_MIN_CHUNK_BYTES = 5 * 1024 * 1024
-TIKTOK_MAX_CHUNK_BYTES = 64 * 1024 * 1024
+TIKTOK_CHUNK_BYTES = 16 * 1024 * 1024        # the multi-chunk size, within 5-64 MB
+TIKTOK_MIN_CHUNK_BYTES = 5 * 1000 * 1000
+TIKTOK_MAX_CHUNK_BYTES = 64 * 1000 * 1000
+TIKTOK_SINGLE_CHUNK_MAX_BYTES = TIKTOK_MAX_CHUNK_BYTES   # the largest file sent as ONE chunk
+TIKTOK_MAX_FINAL_CHUNK_BYTES = 128 * 1000 * 1000
 TIKTOK_MAX_CHUNKS = 1000
 _MiB = 1024 * 1024
 
 
 def tiktok_chunk_size(size_bytes: int) -> int:
-    """The init call's chunk_size: the whole file when it is under one chunk;
-    else 16 MB, grown (in whole MiB, up to 64 MB) only when 16 MB would need
-    more than 1000 chunks (files over ~16 GB)."""
+    """The init call's chunk_size: the WHOLE file up to 64 MB (one chunk, so
+    chunk_size == video_size); above it 16 MiB, grown (whole MiB, up to 64 MB)
+    only when 16 MiB would need more than 1000 chunks (files over ~16 GB)."""
     size = int(size_bytes or 0)
-    if size < TIKTOK_CHUNK_BYTES:
+    if size <= TIKTOK_SINGLE_CHUNK_MAX_BYTES:
         return size
     chunk = TIKTOK_CHUNK_BYTES
     if size // chunk > TIKTOK_MAX_CHUNKS:
@@ -94,9 +105,9 @@ def tiktok_chunk_size(size_bytes: int) -> int:
 
 
 def tiktok_chunk_plan(size_bytes: int, chunk_size: int = None) -> list:
-    """[(start, length), ...] per TikTok's rules: under one chunk size → one
-    chunk (the whole file); otherwise chunks of `chunk_size` and the LAST one
-    takes the remainder (between 1x and 2x the chunk size)."""
+    """[(start, length), ...] per TikTok's rules: chunk_size >= the file → ONE
+    chunk (the whole file); otherwise floor(size / chunk_size) chunks of
+    `chunk_size`, the LAST one taking the remainder (between 1x and 2x)."""
     size = int(size_bytes or 0)
     if size <= 0:
         return []
@@ -107,6 +118,29 @@ def tiktok_chunk_plan(size_bytes: int, chunk_size: int = None) -> list:
     plan = [(i * chunk, chunk) for i in range(count - 1)]
     last_start = (count - 1) * chunk
     return plan + [(last_start, size - last_start)]
+
+
+def tiktok_init_params(size_bytes: int) -> dict:
+    """{video_size, chunk_size, total_chunk_count} for the init call, checked
+    against every rule above — ValueError instead of a call TikTok refuses."""
+    size = int(size_bytes or 0)
+    chunk = tiktok_chunk_size(size)
+    plan = tiktok_chunk_plan(size, chunk)
+    count = len(plan)
+    if size <= 0 or not plan:
+        raise ValueError("empty file")
+    if count == 1 and chunk != size:
+        raise ValueError("one chunk must be the whole file")
+    if count > 1:
+        if not (TIKTOK_MIN_CHUNK_BYTES <= chunk <= TIKTOK_MAX_CHUNK_BYTES):
+            raise ValueError("chunk_size out of range")
+        if count != size // chunk or count > TIKTOK_MAX_CHUNKS:
+            raise ValueError("total_chunk_count does not match")
+        if plan[-1][1] > TIKTOK_MAX_FINAL_CHUNK_BYTES:
+            raise ValueError("final chunk too large")
+    elif size > TIKTOK_SINGLE_CHUNK_MAX_BYTES:
+        raise ValueError("a file over 64 MB must go in several chunks")
+    return {"video_size": size, "chunk_size": chunk, "total_chunk_count": count}
 
 
 def tiktok_auto_upload_max_mb() -> int:

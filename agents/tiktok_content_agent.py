@@ -247,7 +247,7 @@ def begin_upload(client_id: int, drive_file_id: str) -> dict:
     No size check of ours exists here."""
     from core import drive_service as drive
     from core import tiktok_grant
-    from core.video_limits import tiktok_chunk_plan, tiktok_chunk_size
+    from core.video_limits import tiktok_chunk_plan, tiktok_init_params
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         raise UploadRefused("needs_reconnect", ["no connected TikTok account"])
@@ -273,16 +273,18 @@ def begin_upload(client_id: int, drive_file_id: str) -> dict:
             raise UploadRefused("bad_format", [f"TikTok can't take this file ({', '.join(blocking)}): "
                                                f"{_facts_line(facts)}"],
                                 problems=blocking, video=_facts_brief(facts))
-        warnings = [p for p in problems if p not in BLOCKING_PROBLEMS]
+        warnings = [p for p in problems if p not in BLOCKING_PROBLEMS] + video_probe.advisories(facts)
         if warnings:
             # Not ours to enforce (owner's policy): on record, never a refusal
             log_step(AGENT_NAME, "probe_warning", f"client {client_id}: sending anyway; TikTok may refuse "
                      f"({', '.join(warnings)}): {_facts_line(facts)}")
-        chunk_size = tiktok_chunk_size(size)
+        # TikTok's chunk rules, checked BEFORE the call (core/video_limits): one
+        # chunk ⇔ chunk_size == video_size (the 2026-11-17 "chunk size is invalid")
+        init_params = tiktok_init_params(size)
+        chunk_size = init_params["chunk_size"]
         plan = tiktok_chunk_plan(size, chunk_size)
         init = timed_step(AGENT_NAME, "init_inbox_upload",
-                          lambda: tiktok.init_inbox_upload(access_token, video_size=size, chunk_size=chunk_size,
-                                                           total_chunk_count=len(plan)))
+                          lambda: tiktok.init_inbox_upload(access_token, **init_params))
     except UploadRefused:
         raise
     except Exception as e:
@@ -436,6 +438,20 @@ def _status_reader(client_id: int):
     return read
 
 
+def _job_for(client_id: int, proposal_id) -> dict:
+    """The upload job a card started (core/tiktok_uploads), without the
+    upload_url: status, the chunk numbers sent at init, and the last error."""
+    try:
+        from core import tiktok_uploads
+        job = next((j for j in tiktok_uploads.load(int(client_id)) if j.get("proposal_id") == proposal_id), {})
+    except Exception as e:
+        return {"error": f"jobs unreadable ({type(e).__name__})"}
+    keys = ("id", "status", "outcome", "size", "chunk_size", "chunks", "next", "attempts", "restarts",
+            "warnings", "last_error", "last_error_step", "last_error_code", "last_error_message",
+            "last_error_log_id", "last_error_at")
+    return {k: job.get(k) for k in keys if job.get(k) not in (None, "", [])}
+
+
 @drive_storage.scoped
 def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
     """The last `limit` send_tiktok_to_inbox attempts, read-only: which Drive
@@ -486,9 +502,11 @@ def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
                     info["video"] = _facts_brief(facts)
                     info["video_notes"] = facts.get("notes") or []
                     info["tiktok_problems"] = video_probe.problems(facts)
+                    info["tiktok_warnings"] = video_probe.advisories(facts)
             except Exception as e:
                 info["error"] = f"{type(e).__name__}: {str(e)[:200]}"
             files[file_id] = info
+        job = _job_for(client_id, row.get("id"))
         attempts.append({
             "proposal_id": row.get("id"), "status": row.get("status"), "outcome": row.get("outcome"),
             "persona": row.get("persona"), "created_at": row.get("created_at"),
@@ -499,6 +517,9 @@ def diagnose(client_id: int, limit: int = 2, probe_files: bool = True) -> dict:
             "tiktok_status": (reader(publish_id) if (reader and publish_id) else
                               {"error": "no publish_id recorded for this attempt" if reader
                                else "TikTok not connected"}),
+            # The upload job's own record: TikTok's error (message + code) at the
+            # step that failed — e.g. init, where no publish_id is ever issued
+            "job": job,
         })
     same_file = len(attempts) >= 2 and attempts[0]["drive_file_id"] == attempts[1]["drive_file_id"]
     return {"client_id": int(client_id), "attempts": attempts,

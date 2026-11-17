@@ -207,6 +207,95 @@ class Publish(unittest.TestCase):
         self.assertIn("codec", result["problems"])
         self.assertFalse([c for c in self.calls if c[0] in ("init", "put")])   # nothing reached TikTok
 
+    # ── 2026-11-17, production: client 27, test3.mp4 (18 MB, H.265) refused at
+    #    init "400 invalid_params: The chunk size is invalid" (16 MiB x 1 chunk)
+    def _sized(self, size, video=None):
+        head = mp4(video=video, moov_last=False)
+        self.file = head + b"\0" * (size - len(head))
+
+    def test_production_18mb_file_is_one_whole_chunk_at_init(self):
+        self._sized(18 * 1000 * 1000 + 123, video=video_trak(b"hvc1"))
+        up = self.agent.begin_upload(27, "f1")
+        init = [c for c in self.calls if c[0] == "init"][0][1]
+        self.assertEqual(init, {"video_size": len(self.file), "chunk_size": len(self.file), "total_chunk_count": 1})
+        self.assertEqual((up["chunk_size"], up["chunks"]), (len(self.file), 1))
+        # H.265 is TikTok-accepted: a WARNING on record, never a refusal
+        self.assertIn("codec_not_h264", up["warnings"])
+
+    def test_a_70mb_file_goes_in_several_chunks_at_init(self):
+        self._sized(70 * 1000 * 1000)
+        self.agent.begin_upload(27, "f1")
+        init = [c for c in self.calls if c[0] == "init"][0][1]
+        self.assertEqual(init["chunk_size"], 16 * MB)
+        self.assertEqual(init["total_chunk_count"], len(self.file) // (16 * MB))
+        self.assertGreaterEqual(init["total_chunk_count"], 2)
+
+    def test_an_h264_file_has_no_codec_warning(self):
+        self._sized(6 * 1000 * 1000)
+        self.assertNotIn("codec_not_h264", self.agent.begin_upload(27, "f1")["warnings"])
+
+
+class CodecAdvisory(unittest.TestCase):
+    def test_not_h264_warns_never_blocks(self):
+        for fourcc, codec in ((b"hvc1", "h265"), (b"hev1", "h265"), (b"vp09", "vp9")):
+            facts = vp.probe(mp4(video=video_trak(fourcc)))
+            self.assertEqual(facts["video_codec"], codec)
+            self.assertEqual(vp.advisories(facts), ["codec_not_h264"], codec)
+            self.assertNotIn("codec", vp.problems(facts))           # TikTok's docs accept it
+        self.assertEqual(vp.advisories(vp.probe(GOOD_MP4)), [])
+        self.assertEqual(vp.advisories({"video_codec": None}), [])   # unknown warns about nothing
+        self.assertEqual(vp.advisories({"video_codec": "prores"}), [])   # that one is a block, not a warning
+
+    def test_the_card_and_the_diagnose_script_show_it(self):
+        from core import agent_actions as aa
+        saved = aa._tiktok_codec
+        aa._tiktok_codec = lambda cid, fid: "h265"
+        try:
+            for lang in ("he", "en", "fr", "ar", "ru"):
+                text = aa._tiktok_codec_warning(27, {"drive_file_id": "f"}, lang)
+                self.assertIn("H.265", text, lang)
+                self.assertIn("H.264", text, lang)
+            aa._tiktok_codec = lambda cid, fid: "h264"
+            self.assertEqual(aa._tiktok_codec_warning(27, {"drive_file_id": "f"}, "en"), "")
+        finally:
+            aa._tiktok_codec = saved
+        self.assertIn("card_warning", aa.ACTIONS["send_tiktok_to_inbox"])
+        self.assertEqual(set(aa.ACTIONS["send_tiktok_to_inbox"]["refusals"]["rejected_codec"]),
+                         {"he", "en", "fr", "ar", "ru"})
+        script = _read("scripts", "tiktok_diagnose.sh")
+        self.assertIn("not H.264", script)
+        self.assertIn("tiktok_warnings", script)
+        self.assertIn('info["tiktok_warnings"] = video_probe.advisories(facts)', _read("agents", "tiktok_content_agent.py"))
+        html = _read("dashboard", "client", "index.html")
+        self.assertIn("warn.textContent = a.warning;", html)
+
+
+class InitErrorIsVisible(unittest.TestCase):
+    def test_the_job_keeps_tiktoks_message_and_code(self):
+        from core import tiktok_uploads as tu
+
+        class TikTokAPIError(RuntimeError):
+            def __init__(self, message, code=None, log_id=None):
+                super().__init__(message)
+                self.code, self.log_id = code, log_id
+        err = TikTokAPIError("400 (code invalid_params): The chunk size is invalid", code="invalid_params",
+                             log_id="2026111713441700")
+        rec = tu.error_record({"status": "queued"}, err)
+        self.assertEqual(rec["last_error_step"], "init")
+        self.assertIn("The chunk size is invalid", rec["last_error_message"])
+        self.assertEqual((rec["last_error_code"], rec["last_error_log_id"]), ("invalid_params", "2026111713441700"))
+        self.assertEqual(tu.error_record({"status": "uploading"}, err)["last_error_step"], "chunks")
+
+    def test_the_diagnose_script_prints_it(self):
+        script = _read("scripts", "tiktok_diagnose.sh")
+        for needle in ("LAST TikTok ERROR at step", "message:", "code:", "log_id:",
+                       "TikTok refused the upload at init"):
+            self.assertIn(needle, script)
+        agent = _read("agents", "tiktok_content_agent.py")
+        self.assertIn('"job": job,', agent)
+        self.assertIn('"last_error_message"', agent)
+        self.assertNotIn('"upload_url"', agent.split("def _job_for", 1)[1].split("def diagnose", 1)[0])
+
 
 # ─── Chunked streaming upload (2026-11-09) ──────────────────────────────────
 
@@ -220,6 +309,9 @@ class ChunkPlan(unittest.TestCase):
         self.assertEqual(vl.tiktok_chunk_size(3 * MB), 3 * MB)
         self.assertEqual(vl.tiktok_chunk_plan(15 * MB), [(0, 15 * MB)])
         self.assertEqual(vl.tiktok_chunk_plan(0), [])
+        # 18 MB: the production bug — one chunk, chunk_size == the whole file
+        self.assertEqual(vl.tiktok_chunk_size(18 * MB), 18 * MB)
+        self.assertEqual(vl.tiktok_chunk_plan(18 * MB), [(0, 18 * MB)])
 
     def test_large_file_follows_tiktoks_rules(self):
         from core import video_limits as vl
@@ -234,11 +326,11 @@ class ChunkPlan(unittest.TestCase):
         self.assertLessEqual(plan[-1][1], 128 * MB)
         self.assertTrue(5 * MB <= vl.TIKTOK_CHUNK_BYTES <= 64 * MB)
         # no cap of ours: even very large files stay within TikTok's chunk rules
-        for gb in (1.5, 4, 20, 60):
+        for gb in (1.5, 4, 20, 59):
             size = int(gb * 1024 * MB)
             chunk = vl.tiktok_chunk_size(size)
             plan = vl.tiktok_chunk_plan(size, chunk)
-            self.assertTrue(5 * MB <= chunk <= 64 * MB, gb)
+            self.assertTrue(5 * 1000 * 1000 <= chunk <= 64 * 1000 * 1000, gb)
             self.assertTrue(1 <= len(plan) <= vl.TIKTOK_MAX_CHUNKS, gb)
             self.assertEqual(len(plan), size // chunk, gb)
             self.assertEqual(sum(n for _, n in plan), size, gb)
@@ -252,8 +344,8 @@ class ChunkPlan(unittest.TestCase):
 
     def test_exact_multiple_has_no_short_tail(self):
         from core import video_limits as vl
-        plan = vl.tiktok_chunk_plan(3 * vl.TIKTOK_CHUNK_BYTES)
-        self.assertEqual([n for _, n in plan], [vl.TIKTOK_CHUNK_BYTES] * 3)
+        plan = vl.tiktok_chunk_plan(5 * vl.TIKTOK_CHUNK_BYTES)      # 80 MiB: over the single-chunk max
+        self.assertEqual([n for _, n in plan], [vl.TIKTOK_CHUNK_BYTES] * 5)
 
 
 class StreamUpload(unittest.TestCase):
@@ -289,13 +381,13 @@ class StreamUpload(unittest.TestCase):
         return lambda start, length: b"\0" * length
 
     def test_chunks_are_sequential_with_content_range_206_then_201(self):
-        size = 40 * MB
-        self.answers = [206, 201]
+        size = 70 * MB          # over the 64 MB single-chunk max: floor(70/16) = 4 chunks
+        self.answers = [206, 206, 206, 201]
         sent = self.svc.upload_video_stream("u", self._file(size), size, _sleep=lambda s: None)
-        self.assertEqual(sent, 2)
+        self.assertEqual(sent, 4)
         self.assertEqual(self.puts[0]["Content-Range"], f"bytes 0-{16 * MB - 1}/{size}")
-        self.assertEqual(self.puts[1]["Content-Range"], f"bytes {16 * MB}-{size - 1}/{size}")
-        self.assertEqual(self.puts[1]["Content-Length"], str(24 * MB))
+        self.assertEqual(self.puts[3]["Content-Range"], f"bytes {48 * MB}-{size - 1}/{size}")
+        self.assertEqual(self.puts[3]["Content-Length"], str(22 * MB))
 
     def test_a_5xx_or_dropped_connection_is_retried(self):
         size = 4 * MB

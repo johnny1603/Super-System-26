@@ -835,3 +835,24 @@ about $40; I stop and ask before passing it.
   - updated assertions in `test_tiktok_uploads` and `test_tiktok_inbox_action`.
 - **Migration:** none. **Deploy:** needed.
 - **Not tested** against the real TikTok API, so TikTok's actual `fail_reason` strings and error codes are unverified.
+
+### TikTok init refused, "chunk size is invalid" (2026-11-17)
+
+- **Production:**
+  - client 27, job d4e8304966d2, test3.mp4 (18 MB, H.265);
+  - three init refusals, "400 invalid_params: The chunk size is invalid";
+  - no publish_id, so nothing was uploaded.
+- **Cause:** for a file between 16 MiB and 32 MiB, the code sent chunk_size 16 MiB with total_chunk_count 1. One chunk
+  must be the whole file.
+- **Fix** (`core/video_limits`), per TikTok's Media Transfer Guide:
+  - every file up to 64 MB is one chunk, with `chunk_size == video_size`;
+  - above 64 MB, 16 MiB chunks, with `floor(size / chunk_size)` chunks and the last one taking the remainder;
+  - `tiktok_init_params` checks the combination before the call.
+- **Also:**
+  - an advisory `codec_not_h264`, shown on the card and in the diagnose script (never a block, since TikTok's docs
+    accept H.265);
+  - the job records TikTok's error message, code, log_id and step;
+  - the diagnose script prints them.
+- **Tests:** `tests/test_tiktok_chunking.py`, plus `tests/test_tiktok_video_checks.py`.
+- **Migration:** none. **Deploy:** needed.
+- **Not tested** against the real TikTok API.

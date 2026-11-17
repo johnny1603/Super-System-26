@@ -656,6 +656,7 @@ body {
 .chat-action .progress .ago { color: var(--gray); font-size: 11.5px; margin-top: 2px; }
 .chat-action .progress.stalled { border-inline-start-color: #FFB020; }
 .chat-action.failed { border-inline-start: 3px solid #FFB020; }
+.chat-action .warn-note { border-inline-start: 3px solid #FFB020; padding-inline-start: 8px; margin-top: 6px; }
 .chat-action.failed .note { color: var(--text); }
 /* The progress bar (2026-11-17, core/chat_approval): real fraction, measured time, or "working" (no number) */
 .chat-action .pbar { position: relative; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 6px; }
@@ -6848,6 +6849,14 @@ function appendActionCard(personaId, a) {
     note.textContent = uallakI18n.t(a.action === 'team_request' ? 'action_team_request_open' : 'action_with_team');
   } else if (a.result && a.status !== 'running') {
     note.innerHTML = linkify(a.result);   // decided in words: the outcome, as the button would show it
+  }
+  if (a.warning && (a.can_decide || a.status === 'running')) {
+    // A non-blocking warning about the file (e.g. a codec TikTok accepts but does not recommend)
+    const warn = document.createElement('div');
+    warn.className = 'note warn-note';
+    warn.setAttribute('role', 'note');
+    warn.textContent = a.warning;
+    el.insertBefore(warn, el.querySelector('.row'));
   }
   if (a.undo_note && a.can_decide) {
     // Whether it can be undone, said BEFORE it runs (heavy / paid / irreversible)

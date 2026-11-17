@@ -395,7 +395,12 @@ def _advance(client_id: int, job: dict, deadline: float):
                 if state == "done":
                     return _done(job, detail)
                 if state == "failed":
-                    return _fail(job, f"TikTok processing failed: {detail}", rejection_code(detail))
+                    code = rejection_code(detail)
+                    if code in ("rejected_format", "rejected") and "codec_not_h264" in (job.get("warnings") or []):
+                        code = "rejected_codec"        # the warning the card showed came true
+                    _update(client_id, job_id, last_error_step="processing", last_error_message=str(detail)[:300],
+                            last_error_at=_iso())
+                    return _fail(job, f"TikTok processing failed: {detail}", code)
                 if _age(job.get("sent_at")) > PROCESSING_MAX_S:
                     return _fail(job, "TikTok still processing after 30 min", "processing_slow")
                 time.sleep(STATUS_POLL_S)
@@ -459,6 +464,7 @@ def _retry_later(job: dict, error: Exception):
          f"({type(error).__name__}: {str(error)[:200]}) — attempt {attempts}", severity="WARNING")
     code = error_code(error)
     if attempts >= MAX_ATTEMPTS:
+        _update(job["client_id"], job["id"], **error_record(job, error))
         if job.get("status") == "uploading" and code not in ("too_big", "file_unreadable"):
             # the session itself may be broken: a fresh init, then more attempts
             _update(job["client_id"], job["id"], last_code=code)
@@ -466,7 +472,7 @@ def _retry_later(job: dict, error: Exception):
         return _fail(job, f"{type(error).__name__}: {str(error)[:300]}", code)
     wait = RETRY_AFTER_S[min(attempts - 1, len(RETRY_AFTER_S) - 1)]
     _update(job["client_id"], job["id"], attempts=attempts, retry_at=_iso(_now() + timedelta(seconds=wait)),
-            last_error=f"{type(error).__name__}"[:80], last_code=code)
+            last_error=f"{type(error).__name__}"[:80], last_code=code, **error_record(job, error))
 
 
 # ─── Why it failed, in the card's words (agent_actions refusals) ────────────
@@ -475,6 +481,17 @@ def _retry_later(job: dict, error: Exception):
 # send_failed (our retries ran out) · rejected_format | rejected_length |
 # rejected_account | rejected (TikTok refused it after the upload) ·
 # processing_slow (TikTok still processing after 30 min).
+
+
+def error_record(job: dict, error: Exception) -> dict:
+    """What the diagnose script prints for a failed step: the step (init =
+    "queued", chunks = "uploading", "processing"), TikTok's error message and
+    code and its log_id. Redacted; never the upload_url or a token."""
+    from core.redaction import redact
+    step = {"queued": "init", "uploading": "chunks"}.get(job.get("status"), job.get("status") or "")
+    return {"last_error_step": step, "last_error_message": redact(str(error))[:300],
+            "last_error_code": str(getattr(error, "code", "") or "")[:80],
+            "last_error_log_id": str(getattr(error, "log_id", "") or "")[:80], "last_error_at": _iso()}
 
 
 def rejection_code(fail_reason: str) -> str:

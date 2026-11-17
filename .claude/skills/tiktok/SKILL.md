@@ -125,7 +125,8 @@ dashboard — a `drive.google.com` link can never satisfy that (we don't own
 the domain). Instead `publish()` reads the video privately by RANGE via
 `core.drive_service.read_range` (file never made public) and streams it to
 TikTok in chunks (`tiktok_service.upload_chunk` / `upload_video_stream`, plan
-from `core.video_limits.tiktok_chunk_plan`: 16 MB chunks — grown up to 64 MB
+from `core.video_limits.tiktok_chunk_plan` (2026-11-17: a file up to 64 MB is ONE chunk with chunk_size ==
+video_size — 16 MiB x 1 for an 18 MB file was TikTok's "chunk size is invalid"; above 64 MB): 16 MiB chunks — grown up to 64 MB
 only past 1000 chunks — the last takes the remainder, files under 16 MB go
 whole; 3 retries per chunk on 5xx/429/dropped connection). No cap of ours;
 TikTok's own limits are not checked in a blocking way. The card's upload is a
