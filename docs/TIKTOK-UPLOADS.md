@@ -64,7 +64,11 @@ So the upload is a sequence of steps, each one **inside an active request**:
 - Each chunk is retried 3 times on 5xx, 429 or a dropped connection (`upload_chunk`).
 - If a step still fails, it is retried later with a backoff (30 s, 2 min, 5 min, 10 min), up to `MAX_ATTEMPTS`.
 - After that, a broken session starts over with a new init (`MAX_RESTARTS`).
-- When everything is exhausted: one admin alert, the job is `failed`, and the client gets a calm "still on it" line (refusal `in_hand`).
+- When everything is exhausted: one admin alert, the job is `failed`, and the card shows the reason and the next step (2026-11-17):
+  `send_failed`, `no_answer` (TikTok didn't answer), `too_big`, `file_unreadable`. After the upload, TikTok's own
+  `fail_reason` maps to `rejected_format`, `rejected_length`, `rejected_account`, `rejected` or `needs_reconnect`.
+  Still processing after 30 minutes → `processing_slow`. `in_hand` (older rows) now reads like `send_failed`. Every line
+  is in `docs/CHAT-APPROVALS.md`.
 
 **Other limits**
 - TikTok's `upload_url` lives 1 hour. A session older than 50 minutes starts over.

@@ -814,3 +814,24 @@ about $40; I stop and ask before passing it.
 - **Docs and tests:** `docs/CHAT-APPROVALS.md`, `tests/test_chat_approvals.py`.
 - **Migration:** none (existing columns, no new settings key). **Deploy:** needed.
 - **Not tested** against a real browser, a real model or a real client.
+
+### Follow-up: the card order verified; every TikTok ending explained (2026-11-17)
+
+- **The verified cause** (shown by running the previous code in a DOM harness):
+  - a message sent while the history loaded landed above all of it;
+  - a waiting card was never kept last, so later messages pushed it up;
+  - two loads at once drew the history twice.
+- **The fix:**
+  - `keepCardsLast`, applied after every message, history load and older page;
+  - the history is inserted under the intro;
+  - the cards are part of `historyLoaded`;
+  - the newest load wins.
+- **The TikTok send:** every ending has its own reason and next step on the card (15 codes, listed in
+  `docs/CHAT-APPROVALS.md`). The bar is removed when the send ends, a failed card is marked, and every ending
+  after the upload sends one admin alert. `in_hand` no longer says "still on it" on an ended card.
+- **Tests:**
+  - `tests/test_chat_approvals.py`: `CardOrderInTheBrowserCode`, using `tests/js/chat_card_order.js`;
+  - `tests/test_chat_approvals.py`: `TikTokFailures`;
+  - updated assertions in `test_tiktok_uploads` and `test_tiktok_inbox_action`.
+- **Migration:** none. **Deploy:** needed.
+- **Not tested** against the real TikTok API, so TikTok's actual `fail_reason` strings and error codes are unverified.

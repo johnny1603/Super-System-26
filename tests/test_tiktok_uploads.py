@@ -287,7 +287,7 @@ class Job(Case):
         self.assertEqual(j["status"], "failed")
         self.assertEqual(len(self.alerts), 1)                      # ours: ONE alert
         self.assertIn("client 27", self.alerts[0])
-        self.assertEqual(self.finished, [(5, "failed", "in_hand")])  # the card's calm line
+        self.assertEqual(self.finished, [(5, "failed", "send_failed")])  # the card's plain reason + next step
         self.assertGreaterEqual(self.agent.inits, 2)               # a fresh session was tried
 
     def test_a_transient_failure_recovers(self):
@@ -316,7 +316,8 @@ class Job(Case):
         j = self.run_all()
         self.assertEqual(j["status"], "failed")
         self.assertEqual(len(self.alerts), 1)
-        self.assertEqual(self.finished, [(5, "failed", "in_hand")])
+        # TikTok's own fail_reason → the card's reason (file_format_check_failed)
+        self.assertEqual(self.finished, [(5, "failed", "rejected_format")])
 
     def test_an_old_upload_session_starts_over(self):
         self.job(size=40 * MiB)

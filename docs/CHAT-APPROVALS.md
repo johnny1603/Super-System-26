@@ -77,3 +77,61 @@ All three were verified by reading the code.
 - The agent proposes and the client approves. There is one decision per card, and the click route and
   every safety check are the same.
 - No new key, env var, settings key or table, so no migration.
+
+
+## Follow-up (2026-11-17): the card order, verified
+
+The harness `tests/js/chat_card_order.js` runs the dashboard's real window functions on a small DOM. Run against
+the previous code (e42b4c5), it showed three causes:
+
+1. **A message sent while the history loaded landed ABOVE all of it.** `loadWindowHistory` cleared the window and
+   then waited for the fetch. Anything appended meanwhile (the client's message, the typing dots) came first, and
+   the history was appended after it.
+2. **A waiting card was never kept last.** It was placed at the bottom only when it was drawn. Every later message
+   went under it: the client's own message, a reply without a card, a background post.
+3. **Two loads at once** (for example, "new chat" during a load) drew the history twice.
+
+The assumed cause, "a reopened window's history pushes the card up", was **not** what happened on a clean
+reopen: the cards were drawn after the history. The card moved up because of (2), and the history order broke
+because of (1).
+
+The fix is `keepCardsLast`: every waiting card (`.chat-action.awaiting`) is moved to the bottom after every
+message, after a history load and after an older page loads, and only the typing dots go below it. The history
+also changed:
+
+- it is inserted right under the intro;
+- the cards are part of `historyLoaded`;
+- only the newest load draws (`loadSeq`).
+
+A decided card is no longer kept at the bottom.
+
+## TikTok endings (what the card says)
+
+Every way a TikTok send can end shows the reason and the next step on the card itself
+(`ACTIONS["send_tiktok_to_inbox"]["refusals"]`, in 5 languages). The bar is removed and the card is marked failed.
+Every ending after the upload sends one admin alert.
+
+| Code | When | The card says (short) |
+|---|---|---|
+| `invalid_params` | at approval, the file is gone or changed | no longer in the media folder, pick it again |
+| `error` | the send could not start | nothing sent, write "send it again" in a minute |
+| `needs_reconnect` | no account, expired or revoked connection, missing permission, `auth_*` fail reason | renew the connection, with the reconnect card attached |
+| `pending_limit` | too many unpublished drafts in TikTok | publish or delete some, then send again |
+| `bad_format` | the file can't be decoded (container, codec, no video), before sending | save as a regular MP4 and send again |
+| `too_big` | TikTok refuses the size | save a shorter or compressed version, tell me |
+| `file_unreadable` | Drive read failed, or the file was moved or deleted | check it is still there, tell me again |
+| `no_answer` | TikTok timed out after every retry, or the job ran past its time | stopped, nothing posted, "send it again" later |
+| `send_failed` (and the older `in_hand`) | API errors after every retry and restart | couldn't get it through, team alerted, "send it again" in a few minutes |
+| `rejected_format` | after the upload: format, resolution or frame rate | save as a regular vertical MP4 at 30 fps, send again |
+| `rejected_length` | after the upload: duration | trim it and send again |
+| `rejected_account` | after the upload: spam or limit, account banned | check the TikTok app, try tomorrow |
+| `rejected` | after the upload: any other reason | team alerted, try another video meanwhile |
+| `processing_slow` | TikTok still processing after 30 min | may still arrive, "send it again" if it isn't there in an hour |
+| `timeout` | the reaper ended the card | `timed_out`: didn't finish in time, "send it again" for a new card |
+
+While the send runs:
+
+- the bar shows the real chunk progress;
+- "TikTok didn't answer, retrying" while a retry waits;
+- "fully uploaded, TikTok is processing" with no number;
+- the plain stalled line past twice the usual time.

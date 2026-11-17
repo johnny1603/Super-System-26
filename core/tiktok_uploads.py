@@ -29,11 +29,13 @@ TikTok's upload_url lives 1 hour: a session older than URL_REFRESH_S starts
 over with a new init (bounded restarts).
 
 Failures: each chunk has 3 retries (tiktok_service.upload_chunk); a step that
-still fails is retried later (MAX_ATTEMPTS, backoff), then the job ends on OUR
-side — one admin alert, and the client reads a calm line, never the error.
-Explained stops (reconnect TikTok, too many drafts waiting, a file TikTok
-cannot decode) keep their own plain refusal lines. TikTok's limits (size,
-length, ...) are never checked here.
+still fails is retried later (MAX_ATTEMPTS, backoff); while it waits the card
+says it is retrying. When it ends, the card ends with ONE plain reason and the next step (agent_actions refusals,
+docs/CHAT-APPROVALS.md "TikTok endings"): needs_reconnect (+ the reconnect card), pending_limit,
+bad_format, too_big, file_unreadable, no_answer, send_failed, rejected_format, rejected_length,
+rejected_account, rejected, processing_slow; at approval invalid_params / error; the reaper's
+timeout → timed_out. Never "still on it" on an ended card; always ONE admin alert after the upload.
+TikTok's limits (size, length, ...) are never checked here.
 
 Storage: one app_settings row per client, `tiktok_upload:<id>` = {"jobs": [...]}
 (no migration). The row holds TikTok's upload_url while a session is open —
@@ -370,7 +372,7 @@ def _advance(client_id: int, job: dict, deadline: float):
     job_id = job["id"]
     limit = CARD_JOB_MAX_S if job.get("proposal_id") else None
     if limit and _age(job.get("approved_at") or job.get("created_at")) > limit:
-        return _fail(job, "card job past its time")
+        return _fail(job, "card job past its time", "no_answer")
     try:
         if job["status"] == "queued":
             up = agent.begin_upload(client_id, job["file_id"])
@@ -393,9 +395,9 @@ def _advance(client_id: int, job: dict, deadline: float):
                 if state == "done":
                     return _done(job, detail)
                 if state == "failed":
-                    return _fail(job, f"TikTok processing failed: {detail}")
+                    return _fail(job, f"TikTok processing failed: {detail}", rejection_code(detail))
                 if _age(job.get("sent_at")) > PROCESSING_MAX_S:
-                    return _fail(job, "TikTok still processing after 30 min")
+                    return _fail(job, "TikTok still processing after 30 min", "processing_slow")
                 time.sleep(STATUS_POLL_S)
     except agent.UploadRefused as e:
         return _refused(job, e.code, e.errors)
@@ -445,7 +447,7 @@ def _maybe_progress(job: dict):
 def _restart(job: dict, why: str):
     restarts = int(job.get("restarts") or 0) + 1
     if restarts > MAX_RESTARTS:
-        return _fail(job, f"too many restarts ({why})")
+        return _fail(job, f"too many restarts ({why})", job.get("last_code") or "send_failed")
     _log(f"client {job['client_id']}: TikTok job {job['id']} restarts ({why})")
     _update(job["client_id"], job["id"], status="queued", restarts=restarts, next=0, upload_url=None,
             publish_id=None, attempts=0, retry_at=None)
@@ -455,14 +457,54 @@ def _retry_later(job: dict, error: Exception):
     attempts = int(job.get("attempts") or 0) + 1
     _log(f"client {job['client_id']}: TikTok job {job['id']} step failed "
          f"({type(error).__name__}: {str(error)[:200]}) — attempt {attempts}", severity="WARNING")
+    code = error_code(error)
     if attempts >= MAX_ATTEMPTS:
-        if job.get("status") == "uploading":
+        if job.get("status") == "uploading" and code not in ("too_big", "file_unreadable"):
             # the session itself may be broken: a fresh init, then more attempts
-            return _restart({**job, "attempts": 0}, f"{type(error).__name__} x{attempts}")
-        return _fail(job, f"{type(error).__name__}: {str(error)[:300]}")
+            _update(job["client_id"], job["id"], last_code=code)
+            return _restart({**job, "attempts": 0, "last_code": code}, f"{type(error).__name__} x{attempts}")
+        return _fail(job, f"{type(error).__name__}: {str(error)[:300]}", code)
     wait = RETRY_AFTER_S[min(attempts - 1, len(RETRY_AFTER_S) - 1)]
     _update(job["client_id"], job["id"], attempts=attempts, retry_at=_iso(_now() + timedelta(seconds=wait)),
-            last_error=f"{type(error).__name__}"[:80])
+            last_error=f"{type(error).__name__}"[:80], last_code=code)
+
+
+# ─── Why it failed, in the card's words (agent_actions refusals) ────────────
+# Every ending a card can show (2026-11-17): needs_reconnect | pending_limit |
+# bad_format (before anything is sent) · too_big | file_unreadable | no_answer |
+# send_failed (our retries ran out) · rejected_format | rejected_length |
+# rejected_account | rejected (TikTok refused it after the upload) ·
+# processing_slow (TikTok still processing after 30 min).
+
+
+def rejection_code(fail_reason: str) -> str:
+    """TikTok's post-upload fail_reason → the card's code."""
+    reason = str(fail_reason or "").lower()
+    if "auth" in reason or "token" in reason or "scope" in reason:
+        return "needs_reconnect"
+    if "size" in reason and "picture" not in reason:
+        return "too_big"
+    if any(k in reason for k in ("format", "picture", "frame", "resolution", "codec", "decode")):
+        return "rejected_format"
+    if "duration" in reason or "length" in reason:
+        return "rejected_length"
+    if "spam" in reason or "banned" in reason or "too_many" in reason or "limit" in reason:
+        return "rejected_account"
+    return "rejected"
+
+
+def error_code(error: Exception) -> str:
+    """A step's exception (after its own retries) → the card's code."""
+    name = type(error).__name__.lower()
+    text = str(error).lower()
+    if "drive" in text or "no size" in text or "file not found" in text:
+        return "file_unreadable"
+    code = str(getattr(error, "code", "") or "").lower()
+    if "size" in code or ("size" in text and ("exceed" in text or "too large" in text or "too_large" in text)):
+        return "too_big"
+    if "timeout" in name or "timed out" in text or "timeout" in text:
+        return "no_answer"
+    return "send_failed"
 
 
 def _done(job: dict, detail: str):
@@ -498,17 +540,22 @@ def _refused(job: dict, code: str, errors: list):
             _say(job, agent_actions._pick(refusal, job.get("lang") or "he"))
 
 
-def _fail(job: dict, why: str):
-    """Ends on OUR side: one admin alert; the client reads a calm line."""
-    job = _update(job["client_id"], job["id"], status="failed", outcome="in_hand", finished_at=_iso(),
+def _fail(job: dict, why: str, code: str = "send_failed"):
+    """Ends the job: the card (or the chat) reads the REASON in plain words
+    and the next step (agent_actions refusals[code]) — never "still on it" on
+    something that has ended. Always ONE admin alert: the send has not yet run
+    against the real TikTok API, so every ending after the upload is looked at."""
+    job = _update(job["client_id"], job["id"], status="failed", outcome=code, finished_at=_iso(),
                   upload_url=None, last_error=why[:300]) or job
     _alert(f"client {job['client_id']}: TikTok upload of \"{job.get('file_name')}\" "
-           f"({round((job.get('size') or 0) / 1048576)} MB, job {job['id']}) failed after retries: {why[:300]}")
+           f"({round((job.get('size') or 0) / 1048576)} MB, job {job['id']}) failed ({code}): {why[:300]}")
     from core import agent_actions
     if job.get("proposal_id"):
-        agent_actions.finish_deferred(job["proposal_id"], "failed", code="in_hand")
+        agent_actions.finish_deferred(job["proposal_id"], "failed", code=code)
     else:
-        _say(job, _pick(STILL_ON_IT, job.get("lang")).replace("{file}", job.get("file_name") or "—"))
+        refusal = (agent_actions.ACTIONS["send_tiktok_to_inbox"].get("refusals") or {}).get(code)
+        _say(job, agent_actions._pick(refusal, job.get("lang") or "he") if refusal
+             else _pick(STILL_ON_IT, job.get("lang")).replace("{file}", job.get("file_name") or "—"))
 
 
 def _say(job: dict, text: str):

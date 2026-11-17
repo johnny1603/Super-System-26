@@ -655,6 +655,8 @@ body {
   border-inline-start: 3px solid var(--accent); font-size: 12.5px; }
 .chat-action .progress .ago { color: var(--gray); font-size: 11.5px; margin-top: 2px; }
 .chat-action .progress.stalled { border-inline-start-color: #FFB020; }
+.chat-action.failed { border-inline-start: 3px solid #FFB020; }
+.chat-action.failed .note { color: var(--text); }
 /* The progress bar (2026-11-17, core/chat_approval): real fraction, measured time, or "working" (no number) */
 .chat-action .pbar { position: relative; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 6px; }
 .chat-action .pbar > i { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; background: var(--accent);
@@ -6666,6 +6668,7 @@ function appendMsg(msgsEl, text, cls, at) {
   if (!/\btyping\b/.test(cls || '')) {
     stampMsg(msg, at || new Date());
     paintChatDays(msgsEl);
+    keepCardsLast(msgsEl);   // a card still waiting for the client stays under the newest message
   }
   msgsEl.scrollTop = msgsEl.scrollHeight;
   return msg;
@@ -6696,9 +6699,22 @@ function threadIntroText(personaId) {
 // is a fully separate conversation, persisted and replayed on its own channel
 // (see support_agent.persona_channel / the /api/client-chat/history persona
 // param). Nothing mixes because each window only ever reads its own channel.
+// A card still waiting for the client's decision is ALWAYS at the bottom, under
+// the newest message (2026-11-17): every later message, a history (re)load and
+// an older page all leave the waiting cards last, in the order they came; only
+// the typing dots go below them. Moving a node keeps its listeners and timers.
+function keepCardsLast(msgsEl) {
+  if (!msgsEl) return;
+  msgsEl.querySelectorAll('.chat-action.awaiting').forEach(card => msgsEl.appendChild(card));
+  msgsEl.querySelectorAll('.support-msg.typing').forEach(dots => msgsEl.appendChild(dots));
+}
+
 async function loadWindowHistory(personaId) {
   const w = CHAT_WINDOWS[personaId];
   if (!w) return;
+  // Only the newest load may draw (a "new chat" reload during an open one)
+  const seq = (w.loadSeq || 0) + 1;
+  w.loadSeq = seq;
   w.msgsEl.innerHTML = '';
   const intro = document.createElement('div');
   intro.className = 'support-msg bot';
@@ -6710,7 +6726,7 @@ async function loadWindowHistory(personaId) {
     const res = await fetch('/api/client-chat/history?persona=' + encodeURIComponent(personaId),
                             { credentials: 'same-origin' });
     const data = await res.json();
-    if (!data.success) return;
+    if (!data.success || w.loadSeq !== seq) return;
     if (data.rolled_over) {
       // The daily 08:00 rollover: one quiet line, never a reset message —
       // the agent remembers (summaries) and every message is still here
@@ -6730,14 +6746,21 @@ async function loadWindowHistory(personaId) {
       link.onclick = () => loadPrevInWindow(personaId, link);
       w.msgsEl.prepend(link);
     }
+    // The stored history goes right under the intro — ABOVE anything that
+    // arrived while it loaded (the client's first message, a live post) —
+    // never after it
+    const box = document.createElement('div');
     for (const entry of data.history) {
       // The stored UTC time; a row without one gets no time ('none' is
       // unreadable on purpose), never "now"
-      appendMsg(w.msgsEl, entry.content, entry.direction === 'inbound' ? 'user' : 'bot',
+      appendMsg(box, entry.content, entry.direction === 'inbound' ? 'user' : 'bot',
                 entry.created_at || 'none');
     }
+    intro.after(...box.childNodes);
     paintChatDays(w.msgsEl);
-    loadWindowActions(personaId);
+    // Part of "history loaded": a reply sent right after waits for the cards too
+    await loadWindowActions(personaId, seq);
+    keepCardsLast(w.msgsEl);
   } catch (e) {
     console.error('failed to load window history', e);
   }
@@ -6748,12 +6771,17 @@ async function loadWindowHistory(personaId) {
 // what will happen. The client's click is what runs it — the server
 // re-checks everything from the stored proposal (only its id is sent).
 // A card the team must approve shows no buttons, just where it stands.
-async function loadWindowActions(personaId) {
+async function loadWindowActions(personaId, seq) {
   try {
     const res = await fetch('/api/client/actions?persona=' + encodeURIComponent(personaId),
                             { credentials: 'same-origin' });
     const data = await res.json();
-    if (data.success) (data.data || []).forEach(a => appendActionCard(personaId, a));
+    const w = CHAT_WINDOWS[personaId];
+    if (seq != null && (!w || w.loadSeq !== seq)) return;   // a newer load draws them
+    // Oldest first, so the newest waiting card ends up last
+    if (data.success) (data.data || []).slice()
+      .sort((x, y) => String(x.created_at || '').localeCompare(String(y.created_at || '')))
+      .forEach(a => appendActionCard(personaId, a));
   } catch (e) { /* the history itself loaded; cards come back on the next open */ }
 }
 
@@ -6767,6 +6795,8 @@ function appendActionCard(personaId, a) {
   if (old) old.remove();
   const el = document.createElement('div');
   el.className = 'chat-action';
+  // Waiting for THIS client's decision: kept at the bottom (keepCardsLast)
+  if (a.can_decide && a.status === 'proposed') el.classList.add('awaiting');
   el.dir = 'auto';
   el.dataset.actionId = String(Number(a.id));
   // Whose card this is: the agent's face + name (the manager's for the concierge)
@@ -6835,6 +6865,7 @@ function appendActionCard(personaId, a) {
     paintActionProgress(el, a.progress);
     watchActionCard(el, a.id);
   }
+  keepCardsLast(w.msgsEl);
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
   try { el.scrollIntoView({ block: 'nearest' }); } catch (e) { /* scrollTop already did it */ }
 }
@@ -6954,7 +6985,9 @@ function paintActionBar(el) {
 
 function finishActionCard(el, c) {
   const box = el.querySelector('.progress');
-  if (box) box.remove();
+  if (box) box.remove();   // the bar never stays behind on an ended card
+  el.classList.remove('awaiting');
+  el.classList.toggle('failed', c.status === 'failed' || c.status === 'expired');
   // linkify() escapes first — the result may carry a link (the Drive file)
   el.querySelector('.note').innerHTML = linkify(c.result || '');
   if (c.status === 'done') celebrateTask(el, c.id);
@@ -7146,6 +7179,8 @@ async function decideAction(id, decision, el, personaId, staffAction = false, ch
   }
   const row = el.querySelector('.row');
   if (row) row.remove();
+  el.classList.remove('awaiting');   // decided: it stays where it is in the thread
+  if (r.status === 'failed') el.classList.add('failed');
   // Decided now, by this click (the stored decided_at comes back on reload)
   el._action = { ...(el._action || {}), decided_at: new Date().toISOString(),
                  decided_by: staffAction ? 'team' : 'client' };

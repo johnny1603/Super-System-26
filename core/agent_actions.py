@@ -3983,15 +3983,84 @@ ACTIONS = {
                 "TikTok ne pourra pas lire le fichier de cette vidéo, je ne l'ai donc pas envoyée — rien n'a été envoyé. Réenregistrez la vidéo en MP4 standard et renvoyez-la.",
                 "لن يتمكن تيك توك من قراءة ملف هذا الفيديو، لذلك لم أرسله — لم يُرسل شيء. احفظوا الفيديو من جديد كملف MP4 عادي وأرسلوه مرة أخرى.",
                 "TikTok не сможет прочитать файл этого видео, поэтому я его не отправил — ничего не отправлено. Сохраните видео заново как обычный MP4 и отправьте ещё раз."),
-            # Failed after every retry on OUR side: the admin is alerted
-            # (core/tiktok_uploads._fail); the client never sees the error
+            # Failed after every retry on OUR side (core/tiktok_uploads): the card
+            # ends with the REASON in plain words and the next step — never "still
+            # on it" on a card that has ended (2026-11-17). in_hand = older rows.
             "in_hand": _txt(
-                "ההעלאה לטיקטוק לוקחת יותר זמן מהרגיל. אני ממשיך לטפל בזה ואעדכן כאן.",
-                "The TikTok upload is taking longer than usual. I'm still on it and will update you here.",
-                "L'envoi vers TikTok prend plus de temps que d'habitude. Je continue et je vous tiens au courant ici.",
-                "الرفع إلى تيك توك يستغرق وقتًا أطول من المعتاد. ما زلت أتابع الأمر وسأبلغكم هنا.",
-                "Загрузка в TikTok занимает больше времени, чем обычно. Я продолжаю и сообщу здесь."),
+                "לא הצלחתי להעביר את הסרטון לטיקטוק, גם אחרי כמה ניסיונות. שום דבר לא נשלח ולא פורסם. הצוות קיבל התראה. אפשר לכתוב לי \"שלח שוב\" בעוד כמה דקות.",
+                "I couldn't get the video through to TikTok, even after several tries. Nothing was sent or posted. The team has been alerted. You can write \"send it again\" in a few minutes.",
+                "Je n'ai pas réussi à transmettre la vidéo à TikTok, même après plusieurs essais. Rien n'a été envoyé ni publié. L'équipe est prévenue. Vous pouvez écrire « renvoie-la » dans quelques minutes.",
+                "لم أتمكن من إيصال الفيديو إلى تيك توك حتى بعد عدة محاولات. لم يُرسل ولم يُنشر شيء. تم تنبيه الفريق. يمكنكم كتابة \"أرسل مجددًا\" بعد بضع دقائق.",
+                "Не удалось передать видео в TikTok даже после нескольких попыток. Ничего не отправлено и не опубликовано. Команда уведомлена. Можно написать «отправь снова» через несколько минут."),
+            "send_failed": None,      # = in_hand (filled below)
+            # (not "timeout": that outcome is the reaper's, with its own timed_out line)
+            "no_answer": _txt(
+                "טיקטוק לא ענתה בזמן, גם אחרי כמה ניסיונות, אז עצרתי את השליחה. שום דבר לא פורסם. כתבו לי \"שלח שוב\" מאוחר יותר.",
+                "TikTok didn't answer in time, even after several tries, so I stopped the send. Nothing was posted. Write \"send it again\" later.",
+                "TikTok n'a pas répondu à temps, même après plusieurs essais : j'ai arrêté l'envoi. Rien n'a été publié. Écrivez « renvoie-la » plus tard.",
+                "لم يستجب تيك توك في الوقت حتى بعد عدة محاولات، فأوقفت الإرسال. لم يُنشر شيء. اكتبوا \"أرسل مجددًا\" لاحقًا.",
+                "TikTok не ответил вовремя даже после нескольких попыток, поэтому я остановил отправку. Ничего не опубликовано. Напишите «отправь снова» позже."),
+            "too_big": _txt(
+                "טיקטוק לא מקבלת קובץ בגודל הזה, אז הסרטון לא נשלח. שמרו בתיקיית המדיה גרסה קצרה או דחוסה יותר וכתבו לי, ואשלח אותה.",
+                "TikTok won't take a file this large, so the video wasn't sent. Save a shorter or more compressed version in your media folder, tell me, and I'll send it.",
+                "TikTok n'accepte pas un fichier aussi lourd : la vidéo n'a pas été envoyée. Enregistrez une version plus courte ou plus compressée dans votre dossier média, dites-le-moi, et je l'envoie.",
+                "لا يقبل تيك توك ملفًا بهذا الحجم، لذلك لم يُرسل الفيديو. احفظوا نسخة أقصر أو مضغوطة أكثر في مجلد الوسائط وأخبروني وسأرسلها.",
+                "TikTok не принимает файл такого размера, поэтому видео не отправлено. Сохраните более короткую или сжатую версию в папке медиа, напишите мне, и я отправлю."),
+            "rejected_format": _txt(
+                "טיקטוק קיבלה את הקובץ אבל דחתה אותו בגלל הפורמט, הרזולוציה או קצב הפריימים. שום דבר לא פורסם. שמרו אותו מחדש כ-MP4 רגיל (אנכי, 30 פריימים לשנייה) ושלחו שוב.",
+                "TikTok received the file but rejected it because of its format, resolution or frame rate. Nothing was posted. Save it again as a regular MP4 (vertical, 30 fps) and send it again.",
+                "TikTok a reçu le fichier mais l'a refusé à cause de son format, de sa résolution ou de sa fréquence d'images. Rien n'a été publié. Réenregistrez-le en MP4 standard (vertical, 30 i/s) et renvoyez-le.",
+                "استلم تيك توك الملف لكنه رفضه بسبب الصيغة أو الدقة أو معدل الإطارات. لم يُنشر شيء. احفظوه من جديد كملف MP4 عادي (عمودي، 30 إطارًا في الثانية) وأرسلوه مجددًا.",
+                "TikTok получил файл, но отклонил его из-за формата, разрешения или частоты кадров. Ничего не опубликовано. Сохраните его заново как обычный MP4 (вертикальный, 30 кадр/с) и отправьте снова."),
+            "rejected_length": _txt(
+                "טיקטוק דחתה את הסרטון בגלל האורך שלו. שום דבר לא פורסם. קצרו אותו ושלחו שוב.",
+                "TikTok rejected the video because of its length. Nothing was posted. Trim it and send it again.",
+                "TikTok a refusé la vidéo à cause de sa durée. Rien n'a été publié. Raccourcissez-la et renvoyez-la.",
+                "رفض تيك توك الفيديو بسبب طوله. لم يُنشر شيء. قصّروه وأرسلوه مجددًا.",
+                "TikTok отклонил видео из-за длительности. Ничего не опубликовано. Сократите его и отправьте снова."),
+            "rejected_account": _txt(
+                "טיקטוק לא מקבלת כרגע העלאות נוספות מהחשבון שלכם. שום דבר לא פורסם. בדקו באפליקציית טיקטוק אם יש הודעה, ונסו שוב מחר.",
+                "TikTok isn't accepting more uploads from your account right now. Nothing was posted. Check the TikTok app for a notice, and try again tomorrow.",
+                "TikTok n'accepte plus d'envois depuis votre compte pour le moment. Rien n'a été publié. Vérifiez s'il y a un avis dans l'application TikTok et réessayez demain.",
+                "لا يقبل تيك توك حاليًا رفعًا إضافيًا من حسابكم. لم يُنشر شيء. تحققوا من وجود إشعار في تطبيق تيك توك وحاولوا غدًا.",
+                "TikTok сейчас не принимает новые загрузки с вашего аккаунта. Ничего не опубликовано. Проверьте уведомления в приложении TikTok и попробуйте завтра."),
+            "rejected": _txt(
+                "טיקטוק דחתה את הסרטון אחרי שהועלה, בלי סיבה שאפשר לתקן מכאן. שום דבר לא פורסם. הצוות קיבל התראה ויבדוק. אפשר לנסות סרטון אחר בינתיים.",
+                "TikTok rejected the video after it was uploaded, without a reason we can fix from here. Nothing was posted. The team has been alerted and will look into it. You can try another video meanwhile.",
+                "TikTok a refusé la vidéo après l'envoi, sans raison que l'on puisse corriger d'ici. Rien n'a été publié. L'équipe est prévenue et va vérifier. Vous pouvez essayer une autre vidéo en attendant.",
+                "رفض تيك توك الفيديو بعد رفعه دون سبب يمكن إصلاحه من هنا. لم يُنشر شيء. تم تنبيه الفريق وسيتحقق. يمكنكم تجربة فيديو آخر في الأثناء.",
+                "TikTok отклонил видео после загрузки без причины, которую можно исправить отсюда. Ничего не опубликовано. Команда уведомлена и проверит. Пока можно попробовать другое видео."),
+            "processing_slow": _txt(
+                "הסרטון הגיע לטיקטוק, אבל העיבוד שם לוקח יותר מחצי שעה. ייתכן שהוא עוד יופיע בתיבת הנכנסים באפליקציה. אם הוא לא שם בעוד שעה, כתבו לי \"שלח שוב\".",
+                "The video reached TikTok, but its processing there is taking over half an hour. It may still show up in your inbox in the app. If it isn't there within an hour, write \"send it again\".",
+                "La vidéo est arrivée chez TikTok, mais son traitement y prend plus d'une demi-heure. Elle peut encore apparaître dans votre boîte de réception. Si elle n'y est pas dans une heure, écrivez « renvoie-la ».",
+                "وصل الفيديو إلى تيك توك لكن معالجته هناك تستغرق أكثر من نصف ساعة. قد يظهر لاحقًا في صندوق الوارد في التطبيق. إن لم يظهر خلال ساعة اكتبوا \"أرسل مجددًا\".",
+                "Видео дошло до TikTok, но обработка там идёт больше получаса. Оно ещё может появиться во входящих в приложении. Если через час его нет, напишите «отправь снова»."),
+            "file_unreadable": _txt(
+                "לא הצלחתי לקרוא את הסרטון מתיקיית המדיה שלכם. אולי הוא הועבר או נמחק. שום דבר לא נשלח. בדקו שהוא עדיין שם וכתבו לי שוב.",
+                "I couldn't read the video from your media folder. It may have been moved or deleted. Nothing was sent. Check it's still there and tell me again.",
+                "Je n'ai pas pu lire la vidéo dans votre dossier média. Elle a peut-être été déplacée ou supprimée. Rien n'a été envoyé. Vérifiez qu'elle y est toujours et redites-le-moi.",
+                "لم أتمكن من قراءة الفيديو من مجلد الوسائط. ربما نُقل أو حُذف. لم يُرسل شيء. تأكدوا أنه ما زال هناك وأخبروني مجددًا.",
+                "Не удалось прочитать видео из вашей папки медиа. Возможно, его переместили или удалили. Ничего не отправлено. Проверьте, что оно на месте, и напишите снова."),
+            "invalid_params": _txt(
+                "הסרטון הזה כבר לא זמין בתיקיית המדיה (הוא הועבר, נמחק או השתנה), אז לא שלחתי אותו. בחרו אותו שוב בלשונית המדיה או כתבו לי איזה סרטון.",
+                "This video is no longer available in your media folder (moved, deleted or changed), so I didn't send it. Pick it again in the Media tab or tell me which video.",
+                "Cette vidéo n'est plus disponible dans votre dossier média (déplacée, supprimée ou modifiée) : je ne l'ai pas envoyée. Choisissez-la à nouveau dans l'onglet Médias ou dites-moi laquelle.",
+                "لم يعد هذا الفيديو متاحًا في مجلد الوسائط (نُقل أو حُذف أو تغيّر)، لذلك لم أرسله. اختاروه مجددًا في تبويب الوسائط أو أخبروني بأي فيديو.",
+                "Это видео больше недоступно в папке медиа (перемещено, удалено или изменено), поэтому я его не отправил. Выберите его снова во вкладке «Медиа» или напишите, какое видео."),
+            "error": _txt(
+                "לא הצלחתי להתחיל את השליחה כרגע. שום דבר לא נשלח. כתבו לי \"שלח שוב\" בעוד דקה.",
+                "I couldn't start the send just now. Nothing was sent. Write \"send it again\" in a minute.",
+                "Je n'ai pas pu lancer l'envoi pour l'instant. Rien n'a été envoyé. Écrivez « renvoie-la » dans une minute.",
+                "لم أتمكن من بدء الإرسال الآن. لم يُرسل شيء. اكتبوا \"أرسل مجددًا\" بعد دقيقة.",
+                "Не удалось начать отправку прямо сейчас. Ничего не отправлено. Напишите «отправь снова» через минуту."),
         },
+        "timed_out": _txt(
+            "השליחה לטיקטוק לא הסתיימה בזמן, אז עצרתי אותה. שום דבר לא פורסם. כתבו לי \"שלח שוב\" ואכין כרטיס חדש.",
+            "The send to TikTok didn't finish in time, so I stopped it. Nothing was posted. Write \"send it again\" and I'll make a new card.",
+            "L'envoi vers TikTok n'a pas abouti à temps : je l'ai arrêté. Rien n'a été publié. Écrivez « renvoie-la » et je prépare une nouvelle carte.",
+            "لم ينتهِ الإرسال إلى تيك توك في الوقت، فأوقفته. لم يُنشر شيء. اكتبوا \"أرسل مجددًا\" وسأجهز بطاقة جديدة.",
+            "Отправка в TikTok не завершилась вовремя, я её остановил. Ничего не опубликовано. Напишите «отправь снова», и я сделаю новую карточку."),
         # After an explained refusal, the card that fixes it (shown right away)
         "follow_up": {"needs_reconnect": "connect_tiktok"},
     },
@@ -4421,6 +4490,7 @@ ACTIONS.update(_competitor_watch_actions.build(_sys.modules[__name__]))
 # Chat automation: a sales talk that ends in ONE "schedule a call" card (2026-11-17) — core/chat_automation
 from core import chat_automation as _chat_automation
 ACTIONS.update(_chat_automation.build(_sys.modules[__name__]))
+ACTIONS["send_tiktok_to_inbox"]["refusals"]["send_failed"] = ACTIONS["send_tiktok_to_inbox"]["refusals"]["in_hand"]
 _TEAM_TOPIC_LABEL[_chat_automation.TEAM_TOPIC] = _chat_automation.TEAM_LABEL
 
 _OUTREACH_DRAFT_REFUSALS = {
@@ -4990,9 +5060,11 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
         stalled = _stalled(row, spec)
         # + the bar: real fraction where the action reports it, else the measured
         # usual time (>= 5 runs), else none (the card shows work running, no number)
+        extra = chat_approval.progress_extra(row, spec)
+        if stalled:
+            extra.pop("text", None)        # stalled says so plainly, whatever the job's line
         progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang, params),
-                    "started_at": row.get("decided_at"), "stalled": stalled,
-                    **chat_approval.progress_extra(row, spec)}
+                    "started_at": row.get("decided_at"), "stalled": stalled, **extra}
     choices = []
     if row.get("status") in OPEN_STATUSES:
         # Several ways to approve (a vague landing change: small edit or new
@@ -5106,6 +5178,13 @@ def status_card(proposal_id: int, client_id: int) -> dict:
         except Exception:
             pass
     out = card(row, "client", _lang(client_id))
+    follow = (spec.get("follow_up") or {}).get(row.get("outcome") or "") if row.get("status") == "failed" else ""
+    if follow:
+        # The card that fixes it (reconnect TikTok), offered when the job ended
+        fix = [r for r in _open_rows(int(client_id))
+               if r.get("action") == follow and r.get("origin") == "client_chat" and not _expired(r)]
+        if fix:
+            out["next_card"] = card(fix[0], "client", _lang(client_id))
     if row.get("status") == "done":
         # The undo card a background run offered when it finished (one per action)
         from core import chat_approval
@@ -5352,6 +5431,10 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
              severity="WARNING", client_id=client_id, proposal=proposal_id)
         _claim(proposal_id, OPEN_STATUSES, {"status": "failed", "decided_at": stamp, "decided_by": by,
                                             "finished_at": stamp, "outcome": "invalid_params"})
+        own = (spec.get("refusals") or {}).get("invalid_params")
+        if own:
+            # The card ends with the plain reason + next step, not "not sent, try again"
+            return {"success": True, "status": "failed", "code": "invalid_params", "message": _pick(own, lang)}
         return _refuse("invalid_params")
     claim = {"status": "running", "decided_at": stamp, "decided_by": by}
     if options:

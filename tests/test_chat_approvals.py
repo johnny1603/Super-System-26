@@ -346,8 +346,12 @@ class Progress(Base):
         finally:
             if saved is not None:
                 sys.modules["core.tiktok_uploads"] = saved
+            else:
+                sys.modules.pop("core.tiktok_uploads", None)
             if saved_attr is not None:
                 core.tiktok_uploads = saved_attr
+            else:
+                delattr(core, "tiktok_uploads")
 
     def test_stop_until_only_inside_the_window(self):
         p = aa.card(self.running_row(seconds_ago=1), "client", "he")["progress"]
@@ -515,6 +519,194 @@ class Dashboard(unittest.TestCase):
 
     def test_finished_card_hands_over_the_undo_card(self):
         self.assertIn("if (c.next_card) appendActionCard(", self.html)
+
+
+class CardOrderInTheBrowserCode(unittest.TestCase):
+    """tests/js/chat_card_order.js runs the dashboard's REAL window functions on
+    a tiny DOM: reopen a window with history (two sessions), the client types
+    while it loads, replies and a background post arrive, an older page loads,
+    a card is re-offered, two loads race, a card is decided."""
+
+    @classmethod
+    def setUpClass(cls):
+        node = shutil.which("node")
+        if not node:
+            raise unittest.SkipTest("node not installed")
+        res = subprocess.run([node, os.path.join(ROOT, "tests", "js", "chat_card_order.js")],
+                             capture_output=True, text=True, encoding="utf-8", timeout=60)
+        if res.returncode:
+            raise AssertionError(res.stderr[-2000:])
+        import json
+        cls.out = json.loads(res.stdout)
+
+    def last_real(self, shape):
+        return [x for x in shape if x != "typing"][-1]
+
+    def test_reopened_window_with_history_has_the_waiting_card_last(self):
+        shape = self.out["reopen"]
+        self.assertEqual(self.last_real(shape), "card:7:awaiting")
+        # the history is above the message typed while it loaded, never below it
+        self.assertLess(shape.index("msg:sure"), shape.index("msg:ok upload it"))
+        self.assertEqual(shape[-1], "typing")
+
+    def test_later_messages_never_push_it_up(self):
+        self.assertEqual(self.last_real(self.out["afterReplies"]), "card:7:awaiting")
+        self.assertEqual(self.last_real(self.out["afterPrevPage"]), "card:7:awaiting")
+        self.assertEqual(self.out["afterPrevPage"][0], "msg:last week")
+
+    def test_reoffered_card_is_one_copy_and_newest_last(self):
+        shape = self.out["reoffered"]
+        self.assertEqual(shape.count("card:7:awaiting"), 1)
+        self.assertEqual([x for x in shape if x.startswith("card:")][-2:], ["card:9:awaiting", "card:7:awaiting"])
+
+    def test_racing_loads_draw_once(self):
+        shape = self.out["doubleLoad"]
+        self.assertEqual(shape.count("msg:sure"), 1)
+        self.assertEqual(shape[-1], "card:11:awaiting")
+
+    def test_a_decided_card_is_no_longer_pinned(self):
+        shape = self.out["afterDecision"]
+        self.assertLess(shape.index("card:7"), shape.index("msg:after decision"))
+        self.assertEqual(self.last_real(shape), "card:9:awaiting")
+        self.assertTrue(self.out["failedClass"])
+
+
+# ─── 6. The TikTok send: every ending is a reason + a next step ──────────────
+
+TIKTOK_CODES = ("needs_reconnect", "pending_limit", "bad_format", "too_big", "file_unreadable", "no_answer",
+                "send_failed", "in_hand", "rejected_format", "rejected_length", "rejected_account", "rejected",
+                "processing_slow", "invalid_params", "error")
+NEXT_STEP = re.compile(r"שוב|שלחו|כתבו|לחצו|בדקו|קצרו|בחרו|פרסמו|נסו|שמרו|אפשר", re.IGNORECASE)
+
+
+class TikTokFailures(Base):
+    def setUp(self):
+        super().setUp()
+        from core import tiktok_uploads as tu
+        self.tu = tu
+        self.saved_tu = (tu._update, tu._alert, tu._say, aa.finish_deferred)
+        self.ended, self.alerts = [], []
+        tu._update = lambda cid, jid, **ch: {"id": jid, "client_id": cid, "proposal_id": 5, "file_name": "a.mp4",
+                                             "size": 10, **ch}
+        tu._alert = lambda issue: self.alerts.append(issue)
+        tu._say = lambda job, text: None
+        aa.finish_deferred = lambda pid, status, result=None, code="": self.ended.append((pid, status, code))
+
+    def tearDown(self):
+        self.tu._update, self.tu._alert, self.tu._say, aa.finish_deferred = self.saved_tu
+        super().tearDown()
+
+    def test_every_code_has_its_own_line_in_five_languages(self):
+        refusals = aa.ACTIONS["send_tiktok_to_inbox"]["refusals"]
+        for code in TIKTOK_CODES:
+            self.assertIn(code, refusals, code)
+            self.assertEqual(set(refusals[code]), set(LANGS), code)
+            self.assertNotEqual(refusals[code], aa._FAILED, code)
+            self.assertRegex(refusals[code]["he"], NEXT_STEP, code)
+            for text in refusals[code].values():
+                self.assertEqual([n for n in vn.find(text) if n.lower() not in ("tiktok", "mp4")], [], code)
+        self.assertNotIn("ממשיך לטפל", refusals["in_hand"]["he"])    # an ended card never says "still on it"
+        self.assertEqual(set(aa.ACTIONS["send_tiktok_to_inbox"]["timed_out"]), set(LANGS))
+
+    def test_tiktoks_fail_reasons(self):
+        rc = self.tu.rejection_code
+        self.assertEqual(rc("file_format_check_failed"), "rejected_format")
+        self.assertEqual(rc("picture_size_check_failed"), "rejected_format")
+        self.assertEqual(rc("frame_rate_check_failed"), "rejected_format")
+        self.assertEqual(rc("duration_check_failed"), "rejected_length")
+        self.assertEqual(rc("file_size_check_failed"), "too_big")
+        self.assertEqual(rc("auth_removed"), "needs_reconnect")
+        self.assertEqual(rc("spam_risk_too_many_posts"), "rejected_account")
+        self.assertEqual(rc("internal"), "rejected")
+        self.assertEqual(rc(""), "rejected")
+
+    def test_errors_after_retries(self):
+        ec = self.tu.error_code
+        self.assertEqual(ec(RuntimeError("Drive reports no size for this file")), "file_unreadable")
+        self.assertEqual(ec(RuntimeError("chunk 2: Drive read failed (HttpError)")), "file_unreadable")
+        self.assertEqual(ec(TimeoutError("timed out")), "no_answer")
+        self.assertEqual(ec(type("ReadTimeout", (Exception,), {})("x")), "no_answer")
+        big = RuntimeError("400 (code invalid_params): video size exceeds the limit")
+        self.assertEqual(ec(big), "too_big")
+        self.assertEqual(ec(RuntimeError("500: server error")), "send_failed")
+
+    def test_the_job_ends_the_card_with_its_code(self):
+        job = {"id": "j1", "client_id": 27, "proposal_id": 5, "file_name": "a.mp4", "size": 10, "attempts": 3,
+               "status": "queued"}
+        self.tu._retry_later(job, TimeoutError("timed out"))
+        self.assertEqual(self.ended[-1], (5, "failed", "no_answer"))
+        self.assertTrue(self.alerts)                       # ours: the team is told
+        self.alerts.clear()
+        self.tu._fail(job, "TikTok processing failed: duration_check_failed", "rejected_length")
+        self.assertEqual(self.ended[-1], (5, "failed", "rejected_length"))
+        self.assertEqual(len(self.alerts), 1)              # never run against the real API yet: always looked at
+
+    def test_the_card_shows_the_reason_never_the_generic_line(self):
+        refusals = aa.ACTIONS["send_tiktok_to_inbox"]["refusals"]
+        for code in TIKTOK_CODES:
+            row = self.card_row(action="send_tiktok_to_inbox", params={"drive_file_id": "f"}, status="failed",
+                                outcome=code)
+            c = aa.card(row, "client", "en")
+            self.assertEqual(c["result"], refusals[code]["en"], code)
+            self.assertIsNone(c["progress"], code)          # no bar on an ended card
+        # the reaper's own ending (outcome "timeout"): the action's timed_out line, never the generic one
+        timed = self.card_row(action="send_tiktok_to_inbox", params={"drive_file_id": "f"}, status="failed",
+                              outcome="timeout")
+        self.assertEqual(aa.card(timed, "client", "he")["result"],
+                         aa._pick(aa.ACTIONS["send_tiktok_to_inbox"]["timed_out"], "he"))
+
+    def test_reconnect_card_is_handed_over_with_the_failed_card(self):
+        failed = self.card_row(action="send_tiktok_to_inbox", params={"drive_file_id": "f"}, status="failed",
+                               outcome="needs_reconnect")
+        fix = self.card_row(action="connect_tiktok", params={})
+        import core.tiktok_uploads as tu
+        saved = tu.nudge
+        tu.nudge = lambda cid: 0
+        try:
+            out = aa.status_card(failed["id"], 27)
+        finally:
+            tu.nudge = saved
+        self.assertEqual(out["next_card"]["id"], fix["id"])
+
+    def test_a_file_gone_at_approval_says_so(self):
+        spec = aa.ACTIONS["send_tiktok_to_inbox"]
+        saved = spec["validate_stored"]
+
+        def gone(cid, params):
+            raise ValueError("not in the media folder")
+        spec["validate_stored"] = gone
+        try:
+            row = self.card_row(action="send_tiktok_to_inbox", params={"drive_file_id": "f"})
+            out = aa.decide(row["id"], "client", 27, "approve", background_tasks=Tasks())
+        finally:
+            spec["validate_stored"] = saved
+        self.assertEqual((out["status"], out["code"]), ("failed", "invalid_params"))
+        self.assertEqual(out["message"], spec["refusals"]["invalid_params"]["he"])
+
+    def test_while_running_the_card_says_retrying_or_processing(self):
+        row = self.card_row(action="send_tiktok_to_inbox", params={"drive_file_id": "f"}, status="running",
+                            decided_at=datetime.now(timezone.utc).isoformat())
+        jobs = {"j": {"proposal_id": row["id"], "chunks": 4, "next": 2, "status": "uploading", "attempts": 1,
+                      "lang": "en"}}
+        saved = ca._job
+        ca._job = lambda r: jobs["j"]
+        try:
+            p = aa.card(row, "client", "en")["progress"]
+            self.assertEqual((p["fraction"], p["text"]), (0.5, ca.JOB_RETRYING["en"]))
+            jobs["j"] = {**jobs["j"], "status": "processing", "attempts": 0}
+            p = aa.card(row, "client", "en")["progress"]
+            self.assertIsNone(p["fraction"])                 # no number while TikTok processes it
+            self.assertEqual(p["text"], ca.JOB_PROCESSING["en"])
+            # stalled wins over the job's line
+            self.db.tables[aa.TABLE][-1]["decided_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            p = aa.card(self.row(row["id"]), "client", "en")["progress"]
+            self.assertEqual(p["text"], aa._pick(aa._STALLED, "en"))
+        finally:
+            ca._job = saved
+
+    def test_the_card_job_ends_before_the_reaper(self):
+        spec = aa.ACTIONS["send_tiktok_to_inbox"]
+        self.assertLess(self.tu.CARD_JOB_MAX_S, aa.reap_after(spec).total_seconds())
 
 
 if __name__ == "__main__":

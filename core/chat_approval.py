@@ -497,26 +497,58 @@ def loop_guard(client_id: int, reply: str, action, previous_replies: list, lang:
 
 # ─── The progress the card shows ─────────────────────────────────────────────
 
-def real_fraction(row: dict):
-    """0..1 where the action itself reports progress (the chunked TikTok
-    upload), else None."""
+JOB_RETRYING = _five("טיקטוק לא ענתה בניסיון האחרון. אני מנסה שוב אוטומטית, ושום דבר לא אבד.",
+                    "TikTok didn't answer the last try. I'm retrying automatically, and nothing is lost.",
+                    "TikTok n'a pas répondu au dernier essai. Je réessaie automatiquement, rien n'est perdu.",
+                    "لم يستجب تيك توك في المحاولة الأخيرة. أعيد المحاولة تلقائيًا ولم يضع شيء.",
+                    "TikTok не ответил на последнюю попытку. Повторяю автоматически, ничего не потеряно.")
+JOB_PROCESSING = _five("הסרטון הועלה במלואו. טיקטוק מעבדת אותו עכשיו, וזה בדרך כלל לוקח כמה דקות.",
+                       "The video is fully uploaded. TikTok is processing it now, which usually takes a few minutes.",
+                       "La vidéo est entièrement envoyée. TikTok la traite maintenant, cela prend en général quelques minutes.",
+                       "تم رفع الفيديو بالكامل. يعالجه تيك توك الآن، وعادةً يستغرق ذلك بضع دقائق.",
+                       "Видео загружено полностью. TikTok сейчас его обрабатывает, обычно это занимает несколько минут.")
+TEXT.update(JOB_RETRYING=JOB_RETRYING, JOB_PROCESSING=JOB_PROCESSING)
+
+
+def _job(row: dict) -> dict:
     if row.get("action") != "send_tiktok_to_inbox":
-        return None
+        return {}
     try:
         from core import tiktok_uploads
-        for job in tiktok_uploads.load(int(row["client_id"])):
-            if job.get("proposal_id") == row.get("id") and job.get("chunks"):
-                return max(0.0, min(1.0, int(job.get("next") or 0) / int(job["chunks"])))
+        return next((j for j in tiktok_uploads.load(int(row["client_id"]))
+                     if j.get("proposal_id") == row.get("id")), {})
     except Exception:
+        return {}
+
+
+def real_fraction(row: dict, job: dict = None):
+    """0..1 where the action itself reports progress (the chunked TikTok
+    upload), else None. While TikTok processes it: None (no number to show)."""
+    job = _job(row) if job is None else job
+    if not job.get("chunks") or job.get("status") == "processing":
         return None
-    return None
+    return max(0.0, min(1.0, int(job.get("next") or 0) / int(job["chunks"])))
+
+
+def job_text(row: dict, lang: str, job: dict = None) -> str:
+    """The line a TikTok card shows while its job retries or TikTok processes it."""
+    job = _job(row) if job is None else job
+    if job.get("status") == "processing":
+        return pick(JOB_PROCESSING, lang)
+    if job.get("status") in ("queued", "uploading") and int(job.get("attempts") or 0) > 0:
+        return pick(JOB_RETRYING, lang)
+    return ""
 
 
 def progress_extra(row: dict, spec: dict) -> dict:
     """{"fraction", "expected_seconds", "stop_until"} for a running card. A
     measured expectation only with enough past runs (core/task_eta), else None
     — the card then shows work running, never a made-up number."""
-    out = {"fraction": real_fraction(row), "expected_seconds": None, "stop_until": None}
+    job = _job(row)
+    out = {"fraction": real_fraction(row, job), "expected_seconds": None, "stop_until": None}
+    note = job_text(row, (job or {}).get("lang") or "he", job) if job else ""
+    if note:
+        out["text"] = note          # replaces the generic line on the card
     try:
         from core import task_eta
         seconds = task_eta.action_seconds(row.get("action") or "")

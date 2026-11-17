@@ -90,7 +90,8 @@ recorded (`check_grant`, one refresh); without a working grant it shows the
 `connect_tiktok` card with a fixed line instead. Refusals with their own
 lines: `needs_reconnect` (+ the connect card), `pending_limit` (TikTok's
 too-many-unpublished-drafts code), `bad_format` (container/codec only),
-`in_hand` (failed on our side after retries: admin alert, calm line). Never a
+`send_failed` / `no_answer` / `too_big` / `file_unreadable` / `rejected_*` / `processing_slow` (2026-11-17:
+each its own plain reason + next step on the card, one admin alert; `in_hand` = older rows). Never a
 size refusal. Tests: `tests/test_tiktok_inbox_action.py`,
 `tests/test_tiktok_uploads.py`. Demo: `docs/TIKTOK-REVIEW.md`.
 

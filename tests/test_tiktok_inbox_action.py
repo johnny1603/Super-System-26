@@ -290,7 +290,10 @@ class Approve(TikTokActionCase):
         card, _ = self.approve()
         aa.finish_deferred(card["id"], "failed", code="in_hand")
         text = self.posted_client[-1][2]
-        self.assertIn("ממשיך לטפל", text)
+        # an ended card says what happened and the next step — never "still on it"
+        self.assertIn("שום דבר לא נשלח", text)
+        self.assertIn("שלח שוב", text)
+        self.assertNotIn("ממשיך לטפל", text)
         self.assertNotRegex(text, r"(?i)error|שגיאה|תקלה|500")
 
     def test_cancel_starts_nothing(self):
