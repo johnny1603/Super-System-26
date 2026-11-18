@@ -121,3 +121,16 @@ So the upload is a sequence of steps, each one **inside an active request**:
 - The live Cloud Run request timeout. Check it with:
   `gcloud run services describe super-system --region me-west1 --format='value(spec.template.spec.timeoutSeconds)'`
   The design assumes at least 240 s. The default is 300 s.
+
+## Stop and stuck (2026-11-19)
+
+- **Stop:** `stop_job` / `stop_for_proposal` / `stop_client_jobs` set status `stopped` while the job is
+  `awaiting_admin`, `queued` or `uploading`.
+  - Nothing reaches TikTok: a draft exists only after the full upload + processing.
+  - The chunk loop checks `_halted` (the job's status, or its card cancelled) before every chunk and
+    before init.
+  - `processing` can't be cut.
+- **Stuck:** `NO_PROGRESS_S` = 20 min with no new chunk (`progress_at`) ends the job as `stuck`. The
+  card shows its plain line, and one admin alert is raised.
+- **Retry cap:** `MAX_TOTAL_ATTEMPTS` = 8 failed steps over the job's life, restarts included. Before
+  this, up to 16 were possible.

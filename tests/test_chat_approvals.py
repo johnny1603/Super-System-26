@@ -265,7 +265,8 @@ class StopWindow(Base):
         self.db.tables[aa.TABLE][0]["decided_at"] = past
         out = self.model_says("stop", 0)
         self.assertEqual(self.row(card["id"])["status"], "running")      # not interrupted mid-upload
-        self.assertIn("ממשיך עד הסוף", out["reply"])
+        self.assertEqual(self.row(card["id"])["outcome"], "stop_requested")
+        self.assertIn("אי אפשר לעצור באמצע", out["reply"])               # finish mode: it says so (2026-11-19)
 
     def test_stop_with_nothing_running_drops_the_open_card(self):
         card = self.card_row()

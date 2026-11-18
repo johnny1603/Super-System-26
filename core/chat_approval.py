@@ -16,11 +16,13 @@ What is true now (docs/CHAT-APPROVALS.md):
   or a clear reference → it runs.
 - Before a heavy (slow) or paid action: one line — what is about to happen, the
   cost if there is one, whether it can be undone. Never a demand to click.
-- STOP: a slow run waits STOP_WINDOW_SECONDS before it starts
-  (agent_actions._execute_after_window); a stop inside the window cancels it
-  completely (compare-and-set on the row, the operator's "signal + re-check"
-  pattern). After the window it continues and the client reads what already
-  happened; an upload in flight finishes and says so.
+- STOP, at ANY stage (2026-11-19): every running card has a Stop button and a
+  typed "stop" works the whole time. Inside the first STOP_WINDOW_SECONDS
+  nothing has run yet (cancelled completely). After it, agent_actions.stop_action
+  decides by the action's stop mode: drafts/research end at once and nothing
+  more is shown; a TikTok upload stops between chunks; a step that can't be
+  cut (publish, site update, paid render) finishes and the card says so. One
+  line always says what did and did not happen.
 - UNDO: where it is genuinely possible (UNDO below) the finished action offers
   ONE undo card; where it is not, that is said BEFORE it runs (the card's
   `undo_note` and the heads-up line).
@@ -117,11 +119,11 @@ CAN_UNDO = _five("אם תתחרטו, אפשר לבטל את זה אחר כך: פ
 CANNOT_UNDO = _five("את זה אי אפשר לבטל אחרי שזה רץ.", "This can't be undone once it has run.",
                     "Cela ne peut pas être annulé une fois lancé.", "لا يمكن التراجع عن هذا بعد تنفيذه.",
                     "Это нельзя отменить после выполнения.")
-STOP_HINT = _five("בשניות הראשונות אפשר עוד לכתוב \"עצור\", ושום דבר לא יקרה.",
-                  "For the first few seconds you can still write \"stop\" and nothing will happen.",
-                  "Pendant les premières secondes, vous pouvez encore écrire « stop » et rien ne se passera.",
-                  "خلال الثواني الأولى يمكنكم كتابة \"توقف\" ولن يحدث شيء.",
-                  "В первые секунды ещё можно написать «стоп», и ничего не произойдёт.")
+STOP_HINT = _five("אפשר לעצור בכל שלב: כפתור \"עצור\" בכרטיס, או לכתוב לי \"עצור\".",
+                  "You can stop it at any stage: the \"Stop\" button on the card, or just write \"stop\".",
+                  "Vous pouvez l'arrêter à tout moment : le bouton « Arrêter » sur la carte, ou écrivez « stop ».",
+                  "يمكنكم الإيقاف في أي مرحلة: زر \"إيقاف\" في البطاقة، أو اكتبوا \"توقف\".",
+                  "Остановить можно на любом этапе: кнопка «Стоп» на карточке или просто напишите «стоп».")
 STARTING = _five("מתחיל: {title}.", "Starting: {title}.", "Je lance : {title}.", "أبدأ: {title}.", "Запускаю: {title}.")
 
 
@@ -225,6 +227,11 @@ ASK_WHICH = _five("על איזה מהם? {list}", "Which one do you mean? {list}
 STOPPED = _five("עצרתי ✓ שום דבר לא רץ, ולא השתנה כלום.", "Stopped ✓ Nothing ran and nothing changed.",
                 "Arrêté ✓ Rien n'a été lancé, rien n'a changé.", "أوقفته ✓ لم يُنفَّذ شيء ولم يتغير شيء.",
                 "Остановлено ✓ Ничего не запустилось и ничего не изменилось.")
+JOBS_STOPPED = _five("עצרתי ✓ ההעלאות לטיקטוק שעוד לא הסתיימו נעצרו ({n}). שום דבר מהן לא הגיע לטיוטות, והקבצים נשארים בתיקיית המדיה.",
+                     "Stopped ✓ The TikTok uploads that hadn't finished were stopped ({n}). None of them reached your drafts, and the files stay in your media folder.",
+                     "Arrêté ✓ Les envois TikTok non terminés ont été arrêtés ({n}). Aucun n'est arrivé dans vos brouillons, les fichiers restent dans votre dossier médias.",
+                     "أوقفته ✓ توقفت عمليات الرفع إلى تيك توك التي لم تنتهِ ({n}). لم يصل أيٌّ منها إلى المسودات، وتبقى الملفات في مجلد الوسائط.",
+                     "Остановлено ✓ Незавершённые загрузки в TikTok остановлены ({n}). Ни одна не попала в черновики, файлы остаются в папке с медиа.")
 TOO_LATE = _five("זה כבר התחיל ולא נעצר באמצע: {title} ממשיך עד הסוף, ואכתוב לכם כאן מה יצא. {state}",
                  "It has already started and can't stop halfway: {title} carries on to the end, and I'll write here what came of it. {state}",
                  "C'est déjà lancé et ne s'arrête pas en route : {title} va jusqu'au bout, je vous écris ici le résultat. {state}",
@@ -313,21 +320,48 @@ def cancel(client_id: int, row: dict, lang: str) -> dict:
             "action": _card_out(row["id"], client_id, lang)}
 
 
-def stop(client_id: int, persona: str, lang: str) -> dict:
-    """Inside the stop window: the run is cancelled completely (compare-and-set
-    on the row — the background start re-reads it). After it: it continues and
-    the client reads where it stands."""
+def _loose_jobs(client_id: int) -> list:
+    """TikTok uploads running without a card of their own (a batch, an owner-
+    approved large file) — a typed stop reaches them too."""
+    try:
+        from core import tiktok_uploads
+        return tiktok_uploads.loose_active(client_id)
+    except Exception:
+        return []
+
+
+def stop(client_id: int, persona: str, lang: str, card_id=None) -> dict:
+    """A typed stop, at ANY stage — exactly the card's Stop button
+    (agent_actions.stop_action): one line on what did and did not happen.
+    Several runs and no clear one → ONE question. {} = nothing is running."""
     aa = _aa()
     runs = running(client_id, persona)
     if not runs:
-        return {}
-    row = runs[0]
-    if aa.stop_run(row):
-        return {"reply": pick(STOPPED, lang), "action": _card_out(row["id"], client_id, lang)}
-    spec = aa.ACTIONS.get(row.get("action")) or {}
-    state = aa.progress_text(spec, lang, row.get("params") or {}) if spec.get("slow") else ""
-    return {"reply": pick(TOO_LATE, lang).replace("{title}", _title(row, lang)).replace("{state}", state).strip(),
-            "action": _card_out(row["id"], client_id, lang)}
+        jobs = _loose_jobs(client_id)
+        if not jobs:
+            return {}
+        from core import tiktok_uploads
+        done = tiktok_uploads.stop_client_jobs(client_id, "client")
+        if done.get("stopped"):
+            line = pick(JOBS_STOPPED, lang).replace("{n}", str(done["stopped"]))
+            if done.get("processing"):
+                line += " " + pick(aa.FINISHING_JOB, lang)
+            return {"reply": line}
+        return {"reply": pick(aa.FINISHING_JOB, lang)}
+    row, ask = _target(card_id, runs)
+    if ask:
+        return {"reply": ask_which(runs, lang)}
+    out = aa.stop_action(row, by="client", lang=lang)
+    reply = out.get("message") or pick(NOTHING_RUNNING, lang)
+    return {"reply": reply, "action": _card_out(row["id"], client_id, lang)}
+
+
+def stop_info(row: dict, spec: dict) -> dict:
+    """What the running card's Stop button needs: {"can", "mode", "requested"}."""
+    aa = _aa()
+    requested = row.get("outcome") == "stop_requested"
+    return {"can": row.get("status") == "running" and not requested,
+            "mode": aa.stop_mode(row.get("action") or ""), "requested": requested}
 
 
 def _recent_done(client_id: int, persona: str = None, days: int = 7) -> list:
@@ -395,7 +429,7 @@ def decide_from_chat(client_id: int, persona: str, verdict: str, card_id, backgr
     if verdict not in VERDICTS:
         return {}
     if verdict == "stop":
-        out = stop(client_id, persona, lang)
+        out = stop(client_id, persona, lang, card_id)
         if out:
             return out
         verdict = "cancel"            # "stop" with nothing running = drop the open card
@@ -419,7 +453,7 @@ def fast_turn(client_id: int, persona: str, message: str, background_tasks, lang
     if len(text) > 40:
         return {}
     try:
-        if FAST_STOP.match(text) and running(client_id, persona):
+        if FAST_STOP.match(text) and (running(client_id, persona) or _loose_jobs(client_id)):
             return stop(client_id, persona, lang)
         if FAST_APPROVE.match(text):
             rows = pending(client_id, persona)
@@ -547,7 +581,8 @@ def progress_extra(row: dict, spec: dict) -> dict:
     measured expectation only with enough past runs (core/task_eta), else None
     — the card then shows work running, never a made-up number."""
     job = _job(row)
-    out = {"fraction": real_fraction(row, job), "expected_seconds": None, "stop_until": None}
+    out = {"fraction": real_fraction(row, job), "expected_seconds": None, "stop_until": None,
+           "stop": stop_info(row, spec)}
     note = job_text(row, (job or {}).get("lang") or "he", job) if job else ""
     if note:
         out["text"] = note          # replaces the generic line on the card
@@ -577,7 +612,8 @@ BUTTON. Read the client's message the way a person would understand it, in any l
   set "card_decision" to {"verdict": "approve", "card_id": its card_id}. Asking AGAIN for exactly
   what a pending card does is agreement too. Costly or irreversible actions are no exception.
 - They drop a pending card ("בטל", "לא משנה", "cancel", "forget it"): verdict "cancel".
-- They want a RUNNING action stopped ("עצור", "רגע", "stop", "wait"): verdict "stop".
+- They want a RUNNING action stopped ("עצור", "רגע", "stop", "wait", "תפסיק את זה"), at ANY stage: verdict "stop"
+  with that running card's card_id (0 when several run and it is not clear which).
 - They want a FINISHED action reversed ("אחורה", "תחזיר את זה", "undo"): verdict "undo".
 - Several pending cards and it is not clear which one they mean: card_id 0 — the system asks ONCE.
   One pending card, or a clear reference to one: its card_id.

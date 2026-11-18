@@ -135,3 +135,36 @@ While the send runs:
 - "TikTok didn't answer, retrying" while a retry waits;
 - "fully uploaded, TikTok is processing" with no number;
 - the plain stalled line past twice the usual time.
+
+## Stop, at any stage (2026-11-19)
+
+Every running card in the client chat has a **Stop** button (`stop-run`, `decision: "stop"` on
+`/api/client/actions/{id}/decide`). A typed stop ("עצור", "stop", "wait"…, or the model's
+`card_decision` verdict `stop`) does exactly the same thing, at any stage, not only in the first
+`STOP_WINDOW_SECONDS`. The team can stop a client's run from the Control Room (the same `decide`,
+actor admin).
+
+`agent_actions.stop_action` decides what a stop can still cut. Every slow action is in exactly ONE set,
+and `tests/test_stop_anywhere.py` fails otherwise.
+
+| Mode | Actions | What happens | The one line |
+|---|---|---|---|
+| before start | any slow action inside the window | cancelled, nothing ran | "Stopped ✓ Nothing ran and nothing changed." |
+| `STOP_DISCARD` | drafts, reports, research, upgrade offers, branding mockups | Row → cancelled (`stopped_midway`) at once. The run's thread may keep working, but anything it then posts or proposes is dropped (`_RUNNING_PROPOSAL` + `_run_stopped`), and its result is never shown. | Nothing new is shown, sent or put live. Anything already saved stays a draft only the client sees. |
+| `STOP_JOB` | TikTok upload | Stops BETWEEN chunks (`tiktok_uploads.stop_for_proposal`). The chunk loop re-reads the job and the card before each chunk. | Nothing reached the TikTok drafts; the file stays in the media folder. |
+| `STOP_FINISH` (and any unknown action) | GTM publish/revert, YouTube upload, site updates, voice clone, presenter video/character | `outcome: stop_requested`. The step finishes, and the card says so at once. The result is prefixed with "You asked to stop, but this step couldn't be cut halfway, so it finished:". The undo card is still offered where one exists. | "This step can't be stopped halfway: … will finish, and nothing more runs after it." |
+
+A fully uploaded TikTok video (TikTok processing) is treated as finish. It lands in the drafts,
+where the client can delete it.
+
+TikTok uploads with no card of their own (a batch, an owner-approved file) are stopped by a typed
+stop (`stop_client_jobs`).
+
+**Stuck:** a run that makes no progress ends itself.
+- **Every action:** the existing hard deadline + reaper. The card shows `stuck: true` and the badge
+  "Stuck: stopped automatically".
+- **TikTok:** `NO_PROGRESS_S` (20 min without a new chunk) gives the ending `stuck`, and
+  `MAX_TOTAL_ATTEMPTS` (8) caps failed steps over the job's whole life, restarts included.
+
+**Itzik (operator chat):** this was already the rule. The Stop button / "עצור" stops between steps,
+and a started tool finishes. `stop_line` says what ran and what did not.

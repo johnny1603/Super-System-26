@@ -37,6 +37,14 @@ rejected_account, rejected, processing_slow; at approval invalid_params / error;
 timeout → timed_out. Never "still on it" on an ended card; always ONE admin alert after the upload.
 TikTok's limits (size, length, ...) are never checked here.
 
+Stop and stuck (2026-11-19): `stop_for_proposal` / `stop_client_jobs` stop a
+job BETWEEN chunks (status "stopped": nothing reaches TikTok — a draft exists
+only after the full upload + processing). Once fully uploaded ("processing")
+it can't be cut and the caller says so. The chunk loop re-reads the job and
+the card row before every chunk. A job that makes NO progress for
+NO_PROGRESS_S ends itself as "stuck", and every job has a hard cap of
+MAX_TOTAL_ATTEMPTS failed steps across restarts.
+
 Storage: one app_settings row per client, `tiktok_upload:<id>` = {"jobs": [...]}
 (no migration). The row holds TikTok's upload_url while a session is open —
 never printed or logged; no token is ever stored here. client_deletion clears
@@ -57,6 +65,8 @@ LEASE_S = TICK_BUDGET_S + 120
 URL_REFRESH_S = 50 * 60        # TikTok's upload_url lives 1 h
 MAX_RESTARTS = 3
 MAX_ATTEMPTS = 4
+MAX_TOTAL_ATTEMPTS = 8          # failed steps over the job's whole life, restarts included
+NO_PROGRESS_S = 20 * 60         # an upload with no new chunk for this long ends as "stuck"
 RETRY_AFTER_S = (30, 120, 300, 600)
 PROCESSING_MAX_S = 30 * 60
 CARD_JOB_MAX_S = 55 * 60       # a card's job ends before the card's reaper (agent_actions slow 30 min)
@@ -176,7 +186,7 @@ def _new_job(client_id, file_id, file_name, size, persona, lang, status, proposa
             "file_name": file_name or "", "size": int(size or 0), "status": status,
             "persona": persona or "media", "lang": lang or "he", "proposal_id": proposal_id,
             "needs_owner": status == "awaiting_admin", "created_at": _iso(), "updated_at": _iso(),
-            "next": 0, "chunks": 0, "attempts": 0, "restarts": 0, "posted_pct": 0}
+            "next": 0, "chunks": 0, "attempts": 0, "restarts": 0, "posted_pct": 0, "total_attempts": 0}
 
 
 def create(client_id, file_id, file_name, size, persona="media", lang="he", proposal_id=None,
@@ -373,11 +383,16 @@ def _advance(client_id: int, job: dict, deadline: float):
     limit = CARD_JOB_MAX_S if job.get("proposal_id") else None
     if limit and _age(job.get("approved_at") or job.get("created_at")) > limit:
         return _fail(job, "card job past its time", "no_answer")
+    if _no_progress(job):
+        return _fail(job, f"no progress for {NO_PROGRESS_S // 60} min (chunk {job.get('next')}/{job.get('chunks')})",
+                     "stuck")
     try:
         if job["status"] == "queued":
+            if _halted(client_id, job):
+                return
             up = agent.begin_upload(client_id, job["file_id"])
             job = _update(client_id, job_id, status="uploading", publish_id=up["publish_id"],
-                          upload_url=up["upload_url"], init_at=_iso(), size=up["size"],
+                          upload_url=up["upload_url"], init_at=_iso(), progress_at=_iso(), size=up["size"],
                           chunk_size=up["chunk_size"], chunks=up["chunks"], next=0, mime=up["mime"],
                           video=up["video"], warnings=up["warnings"], attempts=0)
         if job["status"] == "uploading":
@@ -428,10 +443,15 @@ def _send_chunks(client_id: int, job: dict, deadline: float) -> dict:
 
         index = int(current.get("next") or 0)
         while index < len(plan) and time.monotonic() < deadline - CHUNK_MARGIN_S:
+            if _halted(client_id, current):
+                return {**current, "status": "stopped"}      # stopped between chunks: nothing more is sent
             tiktok.upload_chunk(current["upload_url"], read, current["size"], index, plan,
                                 current.get("mime") or "video/mp4")
             index += 1
-            current = _update(client_id, current["id"], next=index, attempts=0) or {**current, "next": index}
+            current = _update(client_id, current["id"], next=index, attempts=0,
+                              progress_at=_iso()) or {**current, "next": index}
+            if current.get("status") != "uploading":
+                return current
             _maybe_progress(current)
         return current
 
@@ -460,6 +480,14 @@ def _restart(job: dict, why: str):
 
 def _retry_later(job: dict, error: Exception):
     attempts = int(job.get("attempts") or 0) + 1
+    total = int(job.get("total_attempts") or 0) + 1
+    _update(job["client_id"], job["id"], total_attempts=total)
+    if total >= MAX_TOTAL_ATTEMPTS:
+        # The hard cap over the job's whole life (restarts included): it ends,
+        # with its plain reason — never an endless retry
+        _update(job["client_id"], job["id"], **error_record(job, error))
+        return _fail(job, f"{total} failed steps in all: {type(error).__name__}: {str(error)[:200]}",
+                     error_code(error))
     _log(f"client {job['client_id']}: TikTok job {job['id']} step failed "
          f"({type(error).__name__}: {str(error)[:200]}) — attempt {attempts}", severity="WARNING")
     code = error_code(error)
@@ -473,6 +501,78 @@ def _retry_later(job: dict, error: Exception):
     wait = RETRY_AFTER_S[min(attempts - 1, len(RETRY_AFTER_S) - 1)]
     _update(job["client_id"], job["id"], attempts=attempts, retry_at=_iso(_now() + timedelta(seconds=wait)),
             last_error=f"{type(error).__name__}"[:80], last_code=code, **error_record(job, error))
+
+
+# ─── Stop and stuck ─────────────────────────────────────────────────────────
+
+STOPPABLE = ("awaiting_admin", "queued", "uploading")
+
+
+def _no_progress(job: dict) -> bool:
+    """An upload whose last chunk (or start) is older than NO_PROGRESS_S."""
+    if job.get("status") != "uploading":
+        return False
+    return _age(job.get("progress_at") or job.get("updated_at")) > NO_PROGRESS_S
+
+
+def _card_stopped(job: dict) -> bool:
+    pid = job.get("proposal_id")
+    if not pid:
+        return False
+    try:
+        from core import agent_actions
+        return (agent_actions._get(pid) or {}).get("status") == "cancelled"
+    except Exception:
+        return False
+
+
+def _halted(client_id: int, job: dict) -> bool:
+    """Before each step: the job was stopped (its own status, or its card's).
+    A card stopped while this worker held a stale copy is caught here too."""
+    fresh = get(client_id, job["id"]) or job
+    if fresh.get("status") == "stopped":
+        return True
+    if _card_stopped(fresh):
+        _update(client_id, job["id"], status="stopped", outcome="stopped", finished_at=_iso(), upload_url=None)
+        return True
+    return False
+
+
+def stop_job(client_id: int, job_id: str, by: str = "client") -> dict:
+    """{"stopped": True, "pct"} when it stopped before TikTok had the whole
+    file; {"processing": True} when TikTok already has it; {} when it had ended."""
+    job = get(client_id, job_id)
+    if not job:
+        return {}
+    if job.get("status") == "processing":
+        return {"processing": True}
+    if job.get("status") not in STOPPABLE:
+        return {}
+    pct = int(100 * int(job.get("next") or 0) / int(job["chunks"])) if job.get("chunks") else 0
+    _update(client_id, job_id, status="stopped", outcome="stopped", finished_at=_iso(), upload_url=None,
+            stopped_by=str(by)[:40])
+    _log(f"client {client_id}: TikTok job {job_id} stopped by {by} at {pct}%")
+    return {"stopped": True, "pct": pct}
+
+
+def stop_for_proposal(client_id: int, proposal_id, by: str = "client") -> dict:
+    job = next((j for j in load(client_id) if j.get("proposal_id") == proposal_id), None)
+    return stop_job(client_id, job["id"], by) if job else {}
+
+
+def loose_active(client_id: int) -> list:
+    """Running jobs with no card of their own (a batch, an owner-approved file)."""
+    return [j for j in load(client_id) if not j.get("proposal_id") and j.get("status") in OPEN]
+
+
+def stop_client_jobs(client_id: int, by: str = "client") -> dict:
+    """A typed stop with no running card: every loose job that can still be cut."""
+    stopped, processing = 0, 0
+    for job in loose_active(client_id):
+        out = stop_job(client_id, job["id"], by)
+        stopped += 1 if out.get("stopped") else 0
+        processing += 1 if out.get("processing") else 0
+    return {"stopped": stopped, "processing": processing}
 
 
 # ─── Why it failed, in the card's words (agent_actions refusals) ────────────

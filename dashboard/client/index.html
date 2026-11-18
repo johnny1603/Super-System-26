@@ -665,6 +665,10 @@ body {
 .chat-action .pbar.indet > i { width: 35%; animation: pbar-run 1.6s ease-in-out infinite; }
 .chat-action .progress.stalled .pbar > i { background: #FFB020; animation: none; }
 .chat-action .pbar-left { font-size: 11.5px; color: var(--gray); margin-top: 3px; }
+.chat-action .stop-run { margin-top: 8px; min-height: 36px; padding: 6px 14px; border-radius: 100px; font: inherit; font-size: 13px;
+  background: transparent; color: var(--red, #FF3B3B); border: 1px solid currentColor; cursor: pointer; }
+.chat-action .stop-run:disabled { opacity: .6; cursor: default; }
+.chat-action.stuck .note::before { content: attr(data-stuck); display: block; font-size: 11.5px; font-weight: 700; color: var(--yellow, #FFB020); margin-bottom: 3px; }
 @keyframes pbar-run { 0% { inset-inline-start: -35%; } 100% { inset-inline-start: 100%; } }
 @media (prefers-reduced-motion: reduce) {
   .chat-action .pbar > i { transition: none; }
@@ -3056,7 +3060,10 @@ const DASH_I18N = {
   action_left_min: { he:'נשארו בערך {n} דק׳', en:'About {n} min left', fr:'Environ {n} min restantes', ar:'تبقّى نحو {n} دقيقة', ru:'Осталось около {n} мин' },
   action_left_sec: { he:'עוד רגע קט', en:'Almost there', fr:'Presque terminé', ar:'أوشك على الانتهاء', ru:'Почти готово' },
   action_running_now: { he:'עובד על זה עכשיו', en:'Working on it now', fr:'En cours', ar:'جارٍ العمل عليه الآن', ru:'Сейчас в работе' },
-  action_stop_hint: { he:'אפשר עוד לכתוב "עצור" בצ׳אט, ושום דבר לא יקרה', en:'You can still write "stop" in the chat and nothing will happen', fr:'Vous pouvez encore écrire « stop » dans le chat, rien ne se passera', ar:'ما زال بإمكانكم كتابة "توقف" في الدردشة ولن يحدث شيء', ru:'Ещё можно написать «стоп» в чате, и ничего не произойдёт' },
+  action_stop: { he:'⏹ עצור', en:'⏹ Stop', fr:'⏹ Arrêter', ar:'⏹ إيقاف', ru:'⏹ Стоп' },
+  action_stopping: { he:'עוצר…', en:'Stopping…', fr:'Arrêt…', ar:'جارٍ الإيقاف…', ru:'Останавливаю…' },
+  action_stuck_badge: { he:'נתקע ונעצר אוטומטית', en:'Stuck: stopped automatically', fr:'Bloqué : arrêté automatiquement', ar:'تعطّل وتوقّف تلقائيًا', ru:'Завис: остановлено автоматически' },
+  action_stop_hint: { he:'עוד לא התחיל: עצירה עכשיו = שום דבר לא קורה', en:'Not started yet: stopping now means nothing happens', fr:'Pas encore lancé : arrêter maintenant = rien ne se passe', ar:'لم يبدأ بعد: الإيقاف الآن يعني أنه لن يحدث شيء', ru:'Ещё не началось: если остановить сейчас, ничего не произойдёт' },
   tool_test_btn: { he:'בדיקת חיבור', en:'Test connection', fr:'Tester la connexion', ar:'فحص الاتصال', ru:'Проверить подключение' },
   tool_testing: { he:'בודקים…', en:'Testing…', fr:'Test…', ar:'جارٍ الفحص…', ru:'Проверяем…' },
   tool_replace_key: { he:'החלפת מפתח', en:'Replace key', fr:'Remplacer la clé', ar:'استبدال المفتاح', ru:'Заменить ключ' },
@@ -6955,6 +6962,18 @@ function paintActionProgress(el, progress) {
   const left = document.createElement('div');
   left.className = 'pbar-left';
   box.append(bar, left);
+  // Stop, at ANY stage (core/agent_actions.stop_action): the server decides
+  // what a stop can still cut and the card shows its one line
+  const stopInfo = progress.stop || {};
+  const runId = (el._action || {}).id;
+  if (stopInfo.can && !ADMIN_VIEW && runId != null) {
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'stop-run';
+    stopBtn.textContent = uallakI18n.t('action_stop');
+    stopBtn.onclick = () => stopActionRun(el, runId, stopBtn);
+    box.appendChild(stopBtn);
+  }
   el._progress = { ...progress, seenAt: Date.now() };
   paintActionBar(el);
   if (!el._barTimer) {
@@ -7007,13 +7026,47 @@ function paintActionBar(el) {
   left.textContent = st.stopHint ? t('action_stop_hint') : tail;
 }
 
+async function stopActionRun(el, id, btn) {
+  btn.disabled = true;
+  btn.textContent = uallakI18n.t('action_stopping');
+  let r;
+  try {
+    const res = await fetch(`/api/client/actions/${Number(id)}/decide`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'stop' }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error('stop refused');
+    r = body.data || {};
+  } catch (e) {
+    console.error('stop failed', e);
+    btn.disabled = false;
+    btn.textContent = uallakI18n.t('action_stop');
+    el.querySelector('.note').textContent = uallakI18n.t('action_not_sent');
+    return;
+  }
+  const c = r.card || {};
+  if (c.status && c.status !== 'running') {
+    finishActionCard(el, { ...c, result: c.result || r.message || '' });
+    return;
+  }
+  // Can't be cut halfway: the card says so and keeps polling to its result
+  btn.remove();
+  if (c.progress) paintActionProgress(el, c.progress);
+  else if (r.message) el.querySelector('.note').textContent = r.message;
+}
+
 function finishActionCard(el, c) {
   const box = el.querySelector('.progress');
   if (box) box.remove();   // the bar never stays behind on an ended card
   el.classList.remove('awaiting');
   el.classList.toggle('failed', c.status === 'failed' || c.status === 'expired');
+  el.classList.toggle('stuck', !!c.stuck);
+  el.classList.toggle('stopped', c.status === 'cancelled');
   // linkify() escapes first — the result may carry a link (the Drive file)
   el.querySelector('.note').innerHTML = linkify(c.result || '');
+  if (c.stuck) el.querySelector('.note').setAttribute('data-stuck', uallakI18n.t('action_stuck_badge'));
   if (c.status === 'done') celebrateTask(el, c.id);
 }
 

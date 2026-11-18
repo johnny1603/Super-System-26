@@ -88,13 +88,50 @@ def _alert(issue: str):
     agent_alert(SERVICE_NAME, [issue])
 
 
+import contextvars as _contextvars
+
+# The proposal whose run this thread is executing (set in _execute; the worker
+# thread gets a copy of the context). A run the client STOPPED may keep
+# working in its thread for a while (Python can't kill it): whatever it then
+# tries to say or propose is dropped here, so the chat matches the stop line.
+_RUNNING_PROPOSAL = _contextvars.ContextVar("agent_action_run", default=None)
+
+
+def stop_requested(proposal_id=None) -> bool:
+    """True when this run (or `proposal_id`) was stopped by the client or the
+    team. Runners with several steps may call it BETWEEN steps and end early."""
+    pid = proposal_id or _RUNNING_PROPOSAL.get()
+    if not pid:
+        return False
+    try:
+        row = _get(pid) or {}
+    except Exception:
+        return False
+    return row.get("status") == "cancelled"
+
+
+def _run_stopped() -> bool:
+    pid = _RUNNING_PROPOSAL.get()
+    if not pid:
+        return False
+    try:
+        return (_get(pid) or {}).get("status") == "cancelled"
+    except Exception:
+        return False
+
+
 def _post_client_message(client_id: int, persona: str, text: str):
+    if _run_stopped():
+        _log(f"client {client_id}: a line from a stopped run was not posted", client_id=client_id)
+        return
     from agents.client_agent import log_communication
     from agents.support_agent import persona_channel
     log_communication(client_id, "outbound", persona_channel(persona), text)
 
 
 def _post_admin_message(client_id: int, persona: str, text: str):
+    if _run_stopped():
+        return
     from core import control_room
     control_room._store(client_id, persona, "agent", text)
 
@@ -4100,6 +4137,12 @@ ACTIONS = {
                 "TikTok a refusé la vidéo après l'envoi, sans raison que l'on puisse corriger d'ici. Rien n'a été publié. L'équipe est prévenue et va vérifier. Vous pouvez essayer une autre vidéo en attendant.",
                 "رفض تيك توك الفيديو بعد رفعه دون سبب يمكن إصلاحه من هنا. لم يُنشر شيء. تم تنبيه الفريق وسيتحقق. يمكنكم تجربة فيديو آخر في الأثناء.",
                 "TikTok отклонил видео после загрузки без причины, которую можно исправить отсюда. Ничего не опубликовано. Команда уведомлена и проверит. Пока можно попробовать другое видео."),
+            "stuck": _txt(
+                "ההעלאה לטיקטוק נתקעה ולא התקדמה זמן רב, אז עצרתי אותה. שום דבר לא הגיע לטיוטות, והקובץ נשאר בתיקיית המדיה. כתבו לי \"שלח שוב\" ואכין כרטיס חדש.",
+                "The TikTok upload got stuck and made no progress for a long time, so I stopped it. Nothing reached your drafts, and the file stays in your media folder. Write \"send it again\" and I'll make a new card.",
+                "L'envoi vers TikTok était bloqué sans progrès depuis longtemps, je l'ai donc arrêté. Rien n'est arrivé dans vos brouillons, le fichier reste dans votre dossier médias. Écrivez « renvoie-la » et je prépare une nouvelle carte.",
+                "توقّف الرفع إلى تيك توك عن التقدم لفترة طويلة، فأوقفته. لم يصل شيء إلى المسودات ويبقى الملف في مجلد الوسائط. اكتبوا \"أرسل مجددًا\" وسأجهّز بطاقة جديدة.",
+                "Загрузка в TikTok зависла и долго не продвигалась, поэтому я её остановил. В черновики ничего не попало, файл остался в папке с медиа. Напишите «отправь снова» — сделаю новую карточку."),
             "processing_slow": _txt(
                 "הסרטון הגיע לטיקטוק, אבל העיבוד שם לוקח יותר מחצי שעה. ייתכן שהוא עוד יופיע בתיבת הנכנסים באפליקציה. אם הוא לא שם בעוד שעה, כתבו לי \"שלח שוב\".",
                 "The video reached TikTok, but its processing there is taking over half an hour. It may still show up in your inbox in the app. If it isn't there within an hour, write \"send it again\".",
@@ -5092,7 +5135,10 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
     if row.get("status") == "done":
         if row.get("outcome") == "handled_by_system":
             return _pick(HANDLED_BY_SYSTEM, lang)
-        return _fill(spec, row, _pick(spec.get("done") or {"he": ""}, lang))
+        done = _fill(spec, row, _pick(spec.get("done") or {"he": ""}, lang))
+        if row.get("outcome") == "done_after_stop":
+            return f"{_pick(FINISHED_AFTER_STOP, lang)} {done}".strip()
+        return done
     if row.get("status") == "failed":
         if row.get("outcome") == "timeout":
             return timed_out_text(spec, row, lang)
@@ -5102,6 +5148,8 @@ def _result_text(spec: dict, row: dict, lang: str) -> str:
         if row.get("outcome") == "stopped":
             from core import chat_approval
             return _pick(chat_approval.STOPPED, lang)
+        if row.get("outcome") in ("stopped_midway", "stopped_job"):
+            return _stop_line(row, lang)
         return _pick(spec.get("cancelled") or _CANCELLED, lang)
     return ""
 
@@ -5147,6 +5195,10 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
             extra.pop("text", None)        # stalled says so plainly, whatever the job's line
         progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang, params),
                     "started_at": row.get("decided_at"), "stalled": stalled, **extra}
+        if row.get("outcome") == "stop_requested":
+            # Asked to stop, but this step can't be cut: it finishes, and says so
+            progress["text"] = _stop_line(row, lang, finishing=True)
+            extra.pop("text", None)
     choices = []
     if row.get("status") in OPEN_STATUSES:
         # Several ways to approve (a vague landing change: small edit or new
@@ -5177,6 +5229,8 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             # A slow action: the running card's text, then its plain result
             "progress": progress, "result": _result_text(spec, row, lang),
+            # Ended by the system for making no progress (deadline / reaper): marked stuck
+            "stuck": row.get("status") == "failed" and row.get("outcome") in ("timeout", "stuck"),
             # A non-blocking warning about the file (TikTok: a codec it accepts but does not recommend)
             "warning": _card_warning(spec, row, lang),
             # Heavy / paid / irreversible: whether it can be undone, said BEFORE it runs
@@ -5297,6 +5351,8 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     "language"} from the chat turn."""
     if not isinstance(raw, dict):
         return {"error": "malformed"}
+    if by_code and _run_stopped():
+        return {"error": "stopped"}        # a stopped run offers no new card
     name = str(raw.get("name") or "").strip()
     if not name:
         return {}
@@ -5438,7 +5494,7 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
     clicked; an approve without one takes the first (the recommended) option."""
     if actor not in ("client", "admin"):
         return _refuse("bad_actor", 403)
-    if decision not in ("approve", "cancel"):
+    if decision not in ("approve", "cancel", "stop"):
         return _refuse("bad_decision")
     try:
         row = _get(proposal_id)
@@ -5451,6 +5507,18 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
     spec = ACTIONS.get(row.get("action"))
     if not spec:
         return _refuse("unknown_action")
+    if decision == "stop":
+        # Any running card, at any stage: the client stops their own; the team
+        # (admin) may stop any run of this client
+        if actor == "client" and row.get("approver") != "client":
+            return _refuse("not_your_decision", 403)
+        if staff and not staff_may_decide(spec):
+            return _refuse("client_only", 403)
+        lang = _lang(int(row["client_id"])) if actor == "client" else "he"
+        out = stop_action(row, by="staff" if staff else actor, lang=lang)
+        fresh = _get(proposal_id) or row
+        return {"success": True, "status": fresh.get("status"), "stop": out.get("result"),
+                "message": out.get("message", ""), "card": card(fresh, actor, lang)}
     if row.get("approver") != actor:
         return _refuse("not_your_decision", 403)
     if staff and (actor != "client" or not staff_may_decide(spec)):
@@ -5596,6 +5664,141 @@ def stop_run(row: dict) -> bool:
          client_id=row.get("client_id"), proposal=row.get("id"))
     _forget_state(int(row.get("client_id") or 0))
     return True
+
+
+# ─── Stop at ANY stage (2026-11-19, docs/CHAT-APPROVALS.md §Stop) ───────────
+# Every running card has a Stop button, and a typed "stop" works at any stage
+# (not only inside the stop window). What a stop does depends on the action —
+# every slow action is listed in exactly ONE set (tests/test_stop_anywhere.py):
+# - STOP_DISCARD: the work makes a draft / a report / research that only
+#   counts once it is shown. The row ends as cancelled at once; whatever the
+#   run still produces is never shown, posted or proposed (_run_stopped).
+# - STOP_JOB: a durable job (TikTok upload) stops BETWEEN chunks; nothing
+#   reaches TikTok. Once fully uploaded (TikTok processing) it can't be cut.
+# - STOP_FINISH: one step that can't be cut safely (a publish, a site update
+#   with its restore, a paid render at the client's vendor): it finishes, the
+#   card says so at once, and nothing more runs after it.
+STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_report", "competitor_digest",
+                "create_brand_mockups", "create_landing_page", "edit_landing_page", "upgrade_to_branding",
+                "upgrade_to_organic"}
+STOP_JOB = {"send_tiktok_to_inbox"}
+STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
+               "update_site_items_without_backup", "clone_voice", "make_presenter_video",
+               "create_presenter_from_photos"}
+
+STOPPED_MIDWAY = _txt(
+    "עצרתי ✓ \"{title}\" לא ימשיך: שום דבר חדש לא יוצג, לא יישלח ולא יעלה לאוויר. אם חלק מהעבודה כבר נשמר, הוא נשאר טיוטה שרק אתם רואים.",
+    "Stopped ✓ \"{title}\" won't continue: nothing new will be shown, sent or put live. If part of the work was already saved, it stays a draft only you can see.",
+    "Arrêté ✓ « {title} » ne continuera pas : rien de nouveau ne sera affiché, envoyé ni mis en ligne. Si une partie était déjà enregistrée, elle reste un brouillon visible par vous seuls.",
+    "أوقفته ✓ \"{title}\" لن يستمر: لن يُعرض أو يُرسل أو يُنشر شيء جديد. إن كان جزء من العمل قد حُفظ، فيبقى مسودة لا يراها غيركم.",
+    "Остановлено ✓ «{title}» не продолжится: ничего нового не будет показано, отправлено или опубликовано. Если часть работы уже сохранилась, она остаётся черновиком, который видите только вы.")
+STOPPED_JOB = _txt(
+    "עצרתי ✓ ההעלאה נעצרה באמצע: שום דבר לא הגיע לטיוטות שלכם בטיקטוק, והקובץ נשאר בתיקיית המדיה.",
+    "Stopped ✓ The upload stopped midway: nothing reached your TikTok drafts, and the file stays in your media folder.",
+    "Arrêté ✓ L'envoi s'est arrêté en cours de route : rien n'est arrivé dans vos brouillons TikTok, le fichier reste dans votre dossier médias.",
+    "أوقفته ✓ توقف الرفع في منتصفه: لم يصل شيء إلى مسوداتكم في تيك توك، ويبقى الملف في مجلد الوسائط.",
+    "Остановлено ✓ Загрузка прервана: в ваши черновики TikTok ничего не попало, файл остался в папке с медиа.")
+FINISHING = _txt(
+    "את השלב הזה אי אפשר לעצור באמצע: \"{title}\" יסתיים, ואחריו לא ירוץ שום דבר נוסף. אכתוב כאן מה יצא.",
+    "This step can't be stopped halfway: \"{title}\" will finish, and nothing more runs after it. I'll write here what came of it.",
+    "Cette étape ne peut pas s'arrêter en cours : « {title} » va se terminer, et rien d'autre ne suivra. J'écrirai ici le résultat.",
+    "لا يمكن إيقاف هذه الخطوة في منتصفها: سينتهي \"{title}\" ولن يعمل بعده شيء آخر. سأكتب هنا ما نتج.",
+    "Этот шаг нельзя прервать на середине: «{title}» завершится, и после него больше ничего не запустится. Я напишу здесь, что получилось.")
+FINISHING_JOB = _txt(
+    "הסרטון כבר הועלה במלואו וטיקטוק מעבדת אותו, ואת זה אי אפשר לעצור. הוא יגיע לטיוטות שלכם, ושם אפשר פשוט למחוק אותו.",
+    "The video is already fully uploaded and TikTok is processing it, which can't be stopped. It will land in your drafts, where you can simply delete it.",
+    "La vidéo est déjà entièrement envoyée et TikTok la traite : cela ne peut pas être arrêté. Elle arrivera dans vos brouillons, où vous pourrez simplement la supprimer.",
+    "تم رفع الفيديو بالكامل ويعالجه تيك توك، ولا يمكن إيقاف ذلك. سيصل إلى مسوداتكم، ويمكنكم حذفه هناك ببساطة.",
+    "Видео уже полностью загружено, и TikTok его обрабатывает — это нельзя остановить. Оно появится в черновиках, где его можно просто удалить.")
+FINISHED_AFTER_STOP = _txt("ביקשתם לעצור, אבל השלב הזה לא נעצר באמצע ולכן הסתיים:",
+                           "You asked to stop, but this step couldn't be cut halfway, so it finished:",
+                           "Vous avez demandé l'arrêt, mais cette étape ne pouvait pas être coupée, elle s'est donc terminée :",
+                           "طلبتم الإيقاف، لكن هذه الخطوة لا تتوقف في منتصفها لذلك اكتملت:",
+                           "Вы просили остановить, но этот шаг нельзя прервать на середине, поэтому он завершился:")
+
+
+def stop_mode(action: str) -> str:
+    if action in STOP_JOB:
+        return "job"
+    if action in STOP_DISCARD:
+        return "discard"
+    return "finish"                     # unknown = the honest default: never claim a cut we can't make
+
+
+def _asked_to_stop(proposal_id) -> bool:
+    try:
+        return (_get(proposal_id) or {}).get("outcome") == "stop_requested"
+    except Exception:
+        return False
+
+
+def _done_text(spec: dict, asked_to_stop: bool):
+    base = (spec["done_message"] if spec.get("done_message")
+            else (lambda _result, language: _pick(spec["done"], language)))
+    if not asked_to_stop:
+        return base
+    return lambda result, language: f"{_pick(FINISHED_AFTER_STOP, language)} {base(result, language)}".strip()
+
+
+def _stop_line(row: dict, lang: str, finishing: bool = False) -> str:
+    spec = ACTIONS.get(row.get("action")) or {}
+    title = _pick(spec.get("title") or {"he": row.get("action", "")}, lang)
+    if finishing:
+        table = FINISHING_JOB if stop_mode(row.get("action")) == "job" else FINISHING
+    else:
+        table = STOPPED_JOB if row.get("outcome") == "stopped_job" else STOPPED_MIDWAY
+    return _pick(table, lang).replace("{title}", title)
+
+
+def stop_action(row: dict, by: str = "client", lang: str = None) -> dict:
+    """Stops ONE running row at whatever stage it is. Returns
+    {"result": "stopped_before_start" | "stopped" | "finishing" | "not_running",
+     "message": the one line on what did and did not happen}. Never raises."""
+    lang = lang or _lang(int(row.get("client_id") or 0))
+    proposal_id = row.get("id")
+    client_id = int(row.get("client_id") or 0)
+    if row.get("status") != "running":
+        return {"result": "not_running", "message": ""}
+    if stop_run(row):
+        from core import chat_approval
+        return {"result": "stopped_before_start", "message": _pick(chat_approval.STOPPED, lang)}
+    mode = stop_mode(row.get("action"))
+    stamp = _now().isoformat()
+    if mode == "job":
+        try:
+            from core import tiktok_uploads
+            job = tiktok_uploads.stop_for_proposal(client_id, proposal_id, by)
+        except Exception as e:
+            _log(f"client {client_id}: TikTok job stop failed ({type(e).__name__})", severity="WARNING",
+                 client_id=client_id, proposal=proposal_id)
+            job = {}
+        if job.get("stopped") or not job.get("processing"):
+            # Stopped between chunks (or no job left to stop): nothing reached TikTok
+            if _claim(proposal_id, ("running",), {"status": "cancelled", "finished_at": stamp,
+                                                  "outcome": "stopped_job"}):
+                _after_stop(row, by)
+                return {"result": "stopped", "message": _stop_line({**row, "outcome": "stopped_job"}, lang)}
+            return {"result": "not_running", "message": ""}
+        mode = "finish"                  # fully uploaded: TikTok processes it — can't be cut
+    if mode == "discard":
+        if _claim(proposal_id, ("running",), {"status": "cancelled", "finished_at": stamp,
+                                              "outcome": "stopped_midway"}):
+            _after_stop(row, by)
+            return {"result": "stopped", "message": _stop_line({**row, "outcome": "stopped_midway"}, lang)}
+        return {"result": "not_running", "message": ""}
+    # finish: the step runs to its end; the card says so now, the result later
+    _claim(proposal_id, ("running",), {"outcome": "stop_requested"})
+    _log(f"client {client_id}: stop asked for {row.get('action')} by {by} — an uninterruptible step finishes",
+         client_id=client_id, proposal=proposal_id)
+    return {"result": "finishing", "message": _stop_line(row, lang, finishing=True)}
+
+
+def _after_stop(row: dict, by: str):
+    client_id = int(row.get("client_id") or 0)
+    _log(f"client {client_id}: {row.get('action')} stopped mid-run by {by}", client_id=client_id,
+         proposal=row.get("id"))
+    close_alerts(row.get("id"))
+    _forget_state(client_id)
 
 
 def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, client: dict, lang: str):
@@ -5933,6 +6136,14 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
     records + posts its outcome — the row ALWAYS ends (done / failed)."""
     proposal_id = row.get("id")
     client_id = int(row["client_id"])
+    run_token = _RUNNING_PROPOSAL.set(proposal_id)
+    try:
+        return _execute_run(row, spec, params, actor, client, lang, background_tasks, proposal_id, client_id)
+    finally:
+        _RUNNING_PROPOSAL.reset(run_token)
+
+
+def _execute_run(row, spec, params, actor, client, lang, background_tasks, proposal_id, client_id) -> dict:
     try:
         if spec.get("needs_row"):
             row_in = {**row, "language": row.get("language") or lang}
@@ -5990,21 +6201,22 @@ def _execute(row: dict, spec: dict, params: dict, actor: str, client: dict, lang
         _log(f"client {client_id}: {row['action']} handed to a durable job ({result.get('job_id')})",
              client_id=client_id, proposal=proposal_id)
         text = progress_text(spec, lang if actor == "client" else "he")
+        from core import chat_approval
         return {"success": True, "status": "running", "message": text,
                 "progress": {"text": text, "started_at": row.get("decided_at") or _now().isoformat(),
-                             "stalled": False}}
+                             "stalled": False, "stop": chat_approval.stop_info(row, spec)}}
 
+    asked_to_stop = _asked_to_stop(proposal_id)
     if not _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
-                                              "outcome": "done"}):
-        # Already ended (the reaper got there first): the client was told
-        # that; a second, contradicting line is never posted
+                                              "outcome": "done_after_stop" if asked_to_stop else "done"}):
+        # Already ended (the reaper got there first, or the client stopped
+        # it): the client was told that; a second, contradicting line is never posted
         _log(f"client {client_id}: {row['action']} finished after it was ended — result not posted",
              severity="WARNING", client_id=client_id, proposal=proposal_id)
         return {"success": True, "status": (_get(proposal_id) or {}).get("status", "failed"),
                 "message": ""}
     _forget_state(client_id)
-    done_text =(spec["done_message"] if spec.get("done_message")
-                 else (lambda _result, language: _pick(spec["done"], language)))
+    done_text = _done_text(spec, asked_to_stop)
     message = done_text(result, lang if actor == "client" else "he")
     if row.get("origin") == "client_chat":
         _post(row, done_text(result, lang), to_client=True)
@@ -6038,12 +6250,12 @@ def finish_deferred(proposal_id: int, status: str, result: dict = None, code: st
     lang = _lang(client_id)
     to_client = row.get("origin") == "client_chat"
     if status == "done":
+        asked_to_stop = _asked_to_stop(proposal_id)
         if not _claim(proposal_id, ("running",), {"status": "done", "finished_at": _now().isoformat(),
-                                                  "outcome": "done"}):
+                                                  "outcome": "done_after_stop" if asked_to_stop else "done"}):
             return False
         _forget_state(client_id)
-        done_text = (spec["done_message"] if spec.get("done_message")
-                     else (lambda _result, language: _pick(spec["done"], language)))
+        done_text = _done_text(spec, asked_to_stop)
         _post(row, done_text(result or {}, lang), to_client=to_client)
         return True
     if not _claim(proposal_id, ("running",), {"status": "failed", "finished_at": _now().isoformat(),

@@ -921,3 +921,28 @@ refund for a paid period. The owner decided that the guarantee is real, so the t
   - a real browser in RTL/LTR.
 - **Migration:** none.
 - **Deploy:** needed.
+
+## 2026-11-19 — Part 3: stop at any stage
+
+- **Client chat:**
+  - Every running card has a Stop button.
+  - A typed stop works at any stage (the model's verdict `stop`, or the fast path). Several runs → one
+    question.
+  - The team can stop a client's run from the Control Room.
+- **What a stop does** (`agent_actions.stop_action`): each slow action is in exactly one stop mode.
+  - Drafts and research end at once, and nothing the run still produces is shown, posted or proposed.
+  - A TikTok upload stops between chunks.
+  - Publishing, site updates and paid renders finish, and the card says so before and after.
+  - One line always says what did and did not happen.
+- **Stuck:**
+  - TikTok jobs end as `stuck` after 20 min without progress.
+  - Failed steps are capped at 8 over the job's life.
+  - Every other action already had the deadline + reaper, and its card is now marked stuck.
+- **Itzik:** already stops between steps with a done/not-done line; verified, not changed.
+- **Tests:** `tests/test_stop_anywhere.py`.
+- **Not tested:**
+  - a real browser click on Stop;
+  - a real TikTok upload stopped mid-chunk;
+  - a real long run (landing page) stopped while its model call is in flight.
+- **Migration:** none.
+- **Deploy:** needed.
