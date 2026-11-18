@@ -15,9 +15,18 @@
   measured on exactly these).
 - TRACK: `track()` turns it into a simple path — goal, where it stands now,
   the next step — from data that already exists. Every "now" says whether it
-  was MEASURED or is not measured yet; nothing is estimated silently and
-  nothing is promised.
+  was MEASURED or is not measured yet; nothing is estimated silently.
+- NUMERIC TARGETS (2026-11-19, terms §6): every goal the refund commitment is
+  measured on is a NUMBER (`targets`: enquiries in 30 days, positions gained on
+  the agreed phrases, items a week). A yes/no goal ("page one") is refused at
+  the card; it is expressed as positions to gain. `goal_met` is THE rule:
+  a target counts as met at MET_RATIO (90%) of it or more. The client sees the
+  approved target, the 90% threshold, the dated baseline and the current
+  figure (home + the monthly report) — so a refund claim is settled from this
+  record. The internal aim and its BUFFER (15%) are stored apart
+  (`internal`) and never reach the client or an agent.
 """
+import math
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -26,6 +35,62 @@ PREFIX = "quarter_goals:"
 LANGS = ("he", "en", "fr", "ar", "ru")
 MAX_KEYWORDS = 8
 CYCLE_DAYS = 90
+
+# Terms §6.3: 90% or more of an approved numeric target counts as met.
+MET_RATIO = 0.9
+# INTERNAL ONLY: the committed target is the internal aim less this margin.
+# Never in client text, an agent's data or the terms.
+BUFFER = 0.15
+# metric -> where its "now" comes from. All "more is better".
+METRICS = ("leads_30d", "positions_gained", "posts_per_week")
+# Result metrics carry the buffer; posts_per_week is our own output (the
+# agreed number IS the target).
+BUFFERED = ("leads_30d", "positions_gained")
+
+
+def committed_target(metric: str, aim) -> float:
+    """The target the client approves, from the internal aim."""
+    aim = float(aim)
+    if aim <= 0:
+        raise ValueError("a target must be above zero")
+    if metric not in BUFFERED:
+        return round(aim, 1) if aim != int(aim) else int(aim)
+    value = aim / (1 + BUFFER)
+    return max(1, math.floor(value)) if metric == "leads_30d" else max(1.0, round(value, 1))
+
+
+def threshold(target) -> float:
+    """The figure that counts as meeting `target` (terms §6.3)."""
+    return round(float(target) * MET_RATIO, 2)
+
+
+def goal_met(current, target):
+    """THE rule: met when current >= 90% of the target. None = not measured."""
+    if current is None or target in (None, "", 0):
+        return None
+    return float(current) + 1e-9 >= float(target) * MET_RATIO
+
+
+def num(value) -> str:
+    if value is None:
+        return ""
+    value = float(value)
+    return str(int(value)) if value == int(value) else f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+# THE wording of the money commitment for every prompt that may speak of it
+# (sales chat, client chats). It says exactly terms §6, never more.
+COMMITMENT_RULE = (
+    "OUR ONLY RESULTS COMMITMENT (terms section 6, /terms/#s6): after the client approves numeric 3-month "
+    "targets (dated baseline recorded that day), if at the end of the 3 months they were not met, the "
+    "MANAGEMENT FEES charged in those 3 months are refunded. 90% or more of a numeric target counts as met. "
+    "Only the approved targets, phrases and metrics count. Never refunded: the setup fee, ad budgets paid to "
+    "the platforms, production costs, third-party purchases, other one-time payments. It does not apply if "
+    "proposed work needed for the goals was not approved, accounts/permissions were not connected or were "
+    "disconnected, the site or campaigns were changed outside us, campaigns were paused or their budget "
+    "cut, or requested materials were not supplied in reasonable time. The service can be stopped any time; "
+    "no charge for later months. Never promise more than this (no 'no fee at all', no refund of other "
+    "payments, no guaranteed ranking or sales), and never deny it. Never mention any internal margin.")
 
 
 def _five(he, en, fr, ar, ru):
@@ -66,13 +131,22 @@ def clean_keywords(value) -> list:
     return out[:MAX_KEYWORDS]
 
 
-def save(client_id: int, keywords: list, posts_per_week: int, improve: str = "", plan: dict = None) -> dict:
+def save(client_id: int, keywords: list, posts_per_week: int, improve: str = "", plan: dict = None,
+         aims: dict = None) -> dict:
+    """`aims` = {metric: internal aim}; the stored `targets` are the COMMITTED
+    numbers (what the client approved), the aims stay in `internal`."""
     words = clean_keywords(keywords)
+    posts = max(1, min(7, int(posts_per_week)))
+    baseline = capture_baseline(client_id, words)
     value = {"agreed_at": _now().isoformat(), "keywords": words,
-             "posts_per_week": max(1, min(7, int(posts_per_week))), "improve": str(improve or "")[:300],
-             "baseline": capture_baseline(client_id, words), "reported_months": []}
+             "posts_per_week": posts, "improve": str(improve or "")[:300],
+             "baseline": baseline, "reported_months": []}
+    value["targets"] = build_targets(words, posts, aims or {}, baseline)
+    value["internal"] = {m: float(a) for m, a in (aims or {}).items() if m in BUFFERED and a}
     if plan:
-        value["plan"] = plan
+        value["plan"] = {k: v for k, v in plan.items() if k != "internal_months"}
+        if plan.get("internal_months"):
+            value["internal"]["months"] = plan["internal_months"]
     _db().table("app_settings").upsert({"key": f"{PREFIX}{int(client_id)}", "value": value,
                                         "updated_at": _now().isoformat()}, on_conflict="key").execute()
     return value
@@ -142,6 +216,65 @@ def _visitors_30(client_id: int):
     return (view.get("windows") or {}).get("last_30_days", {}).get("visitors")
 
 
+def build_targets(words: list, posts: int, aims: dict, baseline: dict = None) -> list:
+    """The numeric targets the client approves: [{metric, target, baseline}]."""
+    baseline = baseline or {}
+    out = [{"metric": "posts_per_week", "target": committed_target("posts_per_week", posts),
+            "baseline": baseline.get("posts_week")}]
+    if aims.get("leads_30d"):
+        out.append({"metric": "leads_30d", "target": committed_target("leads_30d", aims["leads_30d"]),
+                    "baseline": baseline.get("leads_30d")})
+    if words and aims.get("positions_gained"):
+        out.append({"metric": "positions_gained", "target": committed_target("positions_gained", aims["positions_gained"]),
+                    "baseline": 0})
+    return out
+
+
+def _posts_week(client_id: int):
+    n = _count_activity(client_id, ("media_image_created", "media_video_created"), 28)
+    return round(n / 4, 1)
+
+
+def _positions_gained(client_id: int, value: dict):
+    """Average positions gained on the agreed phrases since the baseline, on
+    the phrases measured BOTH times (None = none of them was)."""
+    words = value.get("keywords") or []
+    before = (value.get("baseline") or {}).get("positions") or {}
+    now = _positions(client_id, words) if words else {}
+    pairs = [(before[k], now[k]) for k in words if before.get(k) is not None and now.get(k) is not None]
+    if not pairs:
+        return None
+    return round(sum(b - n for b, n in pairs) / len(pairs), 1)
+
+
+def current_value(client_id: int, value: dict, metric: str):
+    """The measured "now" of one metric, or None (= not measured, said so)."""
+    try:
+        if metric == "leads_30d":
+            return _count_leads(client_id, 30, 0)
+        if metric == "posts_per_week":
+            return _posts_week(client_id)
+        if metric == "positions_gained":
+            return _positions_gained(client_id, value)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: {metric} not measured ({type(e).__name__})")
+    return None
+
+
+def evaluate(client_id: int, value: dict) -> list:
+    """Per approved target: target, 90% threshold, baseline + its date, now,
+    measured, met (goal_met). The record a refund claim is settled from."""
+    base = value.get("baseline") or {}
+    date = str(base.get("captured_at") or value.get("agreed_at") or "")[:10]
+    rows = []
+    for item in value.get("targets") or []:
+        now = current_value(client_id, value, item["metric"])
+        rows.append({"metric": item["metric"], "target": item["target"], "threshold": threshold(item["target"]),
+                     "baseline": item.get("baseline"), "baseline_date": date, "current": now,
+                     "measured": now is not None, "met": goal_met(now, item["target"])})
+    return rows
+
+
 def capture_baseline(client_id: int, keywords: list) -> dict:
     """The dated starting point. Each figure is a measurement or None (= not
     measured, said so) — never a guess and never a zero for "unknown"."""
@@ -149,6 +282,7 @@ def capture_baseline(client_id: int, keywords: list) -> dict:
     for name, read in (("leads_30d", lambda: _count_leads(client_id, 30, 0)),
                        ("sales_30d", lambda: _sales_30(client_id)),
                        ("visitors_30d", lambda: _visitors_30(client_id)),
+                       ("posts_week", lambda: _posts_week(client_id)),
                        ("positions", lambda: _positions(client_id, keywords) if keywords else {})):
         try:
             out[name] = read()
@@ -164,11 +298,11 @@ T = {
     "title": _five("היעדים שלנו ל-3 החודשים הקרובים", "Our goals for the next 3 months", "Nos objectifs pour les 3 prochains mois",
                    "أهدافنا للأشهر الثلاثة القادمة", "Наши цели на ближайшие 3 месяца"),
     "month": _five("חודש {m} מתוך 3", "Month {m} of 3", "Mois {m} sur 3", "الشهر {m} من 3", "Месяц {m} из 3"),
-    "honest": _five("אלה יעדים משותפים, לא הבטחה לתוצאה. כל ״איפה זה עומד״ מסומן אם נמדד או עוד לא.",
-                    "These are shared goals, not a promise of results. Every \"where it stands\" says whether it was measured or not yet.",
-                    "Ce sont des objectifs communs, pas une promesse de résultat. Chaque « où on en est » indique s'il est mesuré ou pas encore.",
-                    "هذه أهداف مشتركة وليست وعدًا بنتائج. كل \"أين نقف\" يوضح إن كان مقاسًا أم ليس بعد.",
-                    "Это общие цели, а не обещание результата. Каждое «где мы сейчас» отмечено: измерено или пока нет."),
+    "honest": _five("כל ״איפה זה עומד״ מסומן אם נמדד או עוד לא. ההתחייבות שלנו נמדדת רק על היעדים המספריים שאישרת, לפי סעיף 6 בתקנון.",
+                    "Every \"where it stands\" says whether it was measured or not yet. Our commitment is measured only on the numeric targets you approved, under section 6 of the Terms.",
+                    "Chaque « où on en est » indique s'il est mesuré ou pas encore. Notre engagement est mesuré uniquement sur les objectifs chiffrés que vous avez approuvés, selon l'article 6 des Conditions.",
+                    "كل \"أين نقف\" يوضح إن كان مقاسًا أم ليس بعد. التزامنا يُقاس فقط على الأهداف الرقمية التي وافقتم عليها، وفق البند 6 من الشروط.",
+                    "Каждое «где мы сейчас» отмечено: измерено или пока нет. Наше обязательство измеряется только по утверждённым вами числовым целям, согласно разделу 6 Условий."),
     "social_goal": _five("נוכחות קבועה ברשתות: {n} פריטים בשבוע, בניהול מאיה",
                          "A steady social presence: {n} items a week, run by Maya",
                          "Une présence régulière sur les réseaux : {n} contenus par semaine, gérés par Maya",
@@ -235,11 +369,35 @@ T = {
     "base_positions": _five("ביטויים עם מיקום בגוגל: {n} מתוך {t}", "phrases with a Google position: {n} of {t}",
                             "expressions positionnées sur Google : {n} sur {t}", "عبارات لها موقع في Google: {n} من {t}",
                             "фраз с позицией в Google: {n} из {t}"),
-    "estimate": _five("הערכה: יעד פנימי כ-{i} חודשים, היעד מולכם {c} חודשים. הערכה, לא הבטחה.",
-                      "Estimate: an internal target of about {i} months; the target with you: {c} months. An estimate, not a promise.",
-                      "Estimation : objectif interne d'environ {i} mois ; l'objectif avec vous : {c} mois. Une estimation, pas une promesse.",
-                      "تقدير: هدف داخلي نحو {i} أشهر؛ الهدف معكم {c} أشهر. تقدير وليس وعدًا.",
-                      "Оценка: внутренняя цель — около {i} мес.; цель перед вами — {c} мес. Это оценка, а не обещание."),
+    # Only the committed figure; the internal one never reaches the client.
+    "estimate": _five("הערכה לקידום האורגני: תזוזה ברורה בביטויים תוך כ-{c} חודשים.",
+                      "Organic estimate: clear movement on the phrases in about {c} months.",
+                      "Estimation organique : un mouvement net sur les expressions en environ {c} mois.",
+                      "تقدير عضوي: تحرّك واضح في العبارات خلال نحو {c} أشهر.",
+                      "Органическая оценка: заметное движение по фразам примерно за {c} мес."),
+    "m_leads_30d": _five("פניות ב-30 יום", "Enquiries in 30 days", "Demandes sur 30 jours", "الاستفسارات خلال 30 يومًا",
+                         "Обращений за 30 дней"),
+    "m_positions_gained": _five("שיפור ממוצע בדירוג בביטויים שסיכמנו (מקומות)",
+                                "Average ranking gain on the agreed phrases (positions)",
+                                "Gain moyen de classement sur les expressions convenues (places)",
+                                "متوسط التحسن في الترتيب على العبارات المتفق عليها (مراتب)",
+                                "Средний рост позиций по согласованным фразам (мест)"),
+    "m_posts_per_week": _five("פריטי תוכן בשבוע", "Content items a week", "Contenus par semaine", "عناصر محتوى أسبوعيًا",
+                              "Материалов в неделю"),
+    "targets_title": _five("היעדים המספריים שאישרת", "The numeric targets you approved", "Les objectifs chiffrés que vous avez approuvés",
+                           "الأهداف الرقمية التي وافقتم عليها", "Числовые цели, которые вы утвердили"),
+    "target_row": _five("{m}: יעד {t} · נחשב עמידה מ-{h} (90%) · נקודת בסיס {b} ({d}) · עכשיו {c}",
+                        "{m}: target {t} · counts as met from {h} (90%) · baseline {b} ({d}) · now {c}",
+                        "{m} : objectif {t} · atteint à partir de {h} (90 %) · référence {b} ({d}) · maintenant {c}",
+                        "{m}: الهدف {t} · يُعدّ محققًا من {h} (90%) · نقطة الأساس {b} ({d}) · الآن {c}",
+                        "{m}: цель {t} · засчитывается от {h} (90%) · база {b} ({d}) · сейчас {c}"),
+    "met_yes": _five("בטווח היעד", "at the target", "objectif atteint", "ضمن الهدف", "цель достигнута"),
+    "met_no": _five("עוד לא ביעד", "not at the target yet", "pas encore atteint", "لم يُحقَّق بعد", "пока не достигнута"),
+    "terms_line": _five("איך זה נמדד ומה קורה אם לא עמדנו ביעדים: סעיף 6 בתקנון (/terms/#s6).",
+                        "How this is measured, and what happens if we miss the targets: section 6 of the Terms (/terms/#s6).",
+                        "Comment c'est mesuré et ce qui se passe si nous manquons les objectifs : article 6 des Conditions (/terms/#s6).",
+                        "كيف يُقاس ذلك وما يحدث إن لم نحقق الأهداف: البند 6 من الشروط (/terms/#s6).",
+                        "Как это измеряется и что будет, если мы не достигнем целей: раздел 6 Условий (/terms/#s6)."),
     "monthly_title": _five("📊 דוח חודש {m} מול נקודת ההתחלה ({d})", "📊 Month {m} report against the starting point ({d})",
                            "📊 Rapport du mois {m} par rapport au point de départ ({d})", "📊 تقرير الشهر {m} مقارنة بنقطة البداية ({d})",
                            "📊 Отчёт за месяц {m} относительно точки отсчёта ({d})"),
@@ -334,6 +492,17 @@ def _baseline_line(value: dict, lang: str) -> str:
     return _t("baseline", lang, d=str(base.get("captured_at", ""))[:10]) + ": " + " · ".join(parts)
 
 
+def target_line(row: dict, lang: str) -> str:
+    """One approved target: the target, the 90% threshold, the dated baseline, now."""
+    nm = pick(T["not_measured"], lang)
+    line = _t("target_row", lang, m=pick(T["m_" + row["metric"]], lang), t=num(row["target"]), h=num(row["threshold"]),
+              b=num(row["baseline"]) if row.get("baseline") is not None else nm, d=row.get("baseline_date") or "—",
+              c=num(row["current"]) if row.get("current") is not None else nm)
+    if row.get("met") is not None:
+        line += " · " + pick(T["met_yes" if row["met"] else "met_no"], lang)
+    return line
+
+
 def month_of(value: dict) -> int:
     try:
         days = (_now() - datetime.fromisoformat(str(value["agreed_at"]).replace("Z", "+00:00"))).days
@@ -359,7 +528,12 @@ def monthly_report(client_id: int, value: dict, lang: str = "he") -> str:
     before = base.get("positions") or {}
     for word in words:
         lines.append("• " + _t("monthly_kw", lang, k=word, a=_fmt(now_pos.get(word), lang), b=_fmt(before.get(word), lang)))
+    rows = evaluate(client_id, value)
+    if rows:
+        lines.append(pick(T["targets_title"], lang) + ":")
+        lines.extend("• " + target_line(r, lang) for r in rows)
     lines.append(pick(T["monthly_scope"], lang))
+    lines.append(pick(T["terms_line"], lang))
     return "\n".join(lines)
 
 
@@ -399,10 +573,13 @@ def track(client_id: int, lang: str = "he") -> dict:
         days = 0
     month = max(1, min(3, days // 30 + 1))
     plan = value.get("plan") or {}
-    estimate = (_t("estimate", lang, i=plan["internal_months"], c=plan["committed_months"])
-                if plan.get("committed_months") else "")
+    estimate = _t("estimate", lang, c=num(plan["committed_months"])) if plan.get("committed_months") else ""
+    rows = evaluate(client_id, value)
     return {"agreed": True, "title": pick(T["title"], lang), "month": _t("month", lang, m=month),
             "honest": pick(T["honest"], lang), "baseline": _baseline_line(value, lang), "estimate": estimate,
+            "targets_title": pick(T["targets_title"], lang) if rows else "",
+            "targets": [dict(r, text=target_line(r, lang)) for r in rows],
+            "terms_url": "/terms/#s6",
             "steps": [_social(client_id, value, lang), _organic(client_id, value, lang), _improve(client_id, value, lang)]}
 
 
@@ -418,9 +595,12 @@ def prompt_block(client_id: int) -> dict:
         return hit[1]
     try:
         value = agreed(client_id)
+        # the committed targets only: `internal` (the aims + the buffer) never reaches an agent
         out = ({"agreed_on": value["agreed_at"][:10], "keywords": value.get("keywords") or [],
                 "posts_per_week": value.get("posts_per_week"), "improve": value.get("improve", ""),
-                "baseline": value.get("baseline") or {}, "plan_estimate": value.get("plan") or {},
+                "baseline": value.get("baseline") or {},
+                "plan_estimate": {k: v for k, v in (value.get("plan") or {}).items() if k != "internal_months"},
+                "targets": value.get("targets") or [], "met_rule": "90% of a numeric target counts as met (terms §6)",
                 "measure_only_these": True}
                if value else {"agreed": False,
                               # the client's OWN phrases are an INPUT to the keyword research

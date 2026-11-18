@@ -406,11 +406,13 @@ TEXT = {
                    "Le plan organique est prêt. Nous pouvons convenir des objectifs à 3 mois.",
                    "الخطة العضوية جاهزة. يمكننا الاتفاق على أهداف الأشهر الثلاثة.",
                    "Органический план готов. Можно согласовать цели на 3 месяца."),
-    "estimate_line": _five("הערכה, לא הבטחה: יעד פנימי כ-{i} חודשים; היעד שאנחנו מתחייבים אליו מולכם: {c} חודשים.",
-                           "An estimate, not a promise: an internal target of about {i} months; the target we commit to with you: {c} months.",
-                           "Une estimation, pas une promesse : objectif interne d'environ {i} mois ; l'objectif sur lequel nous nous engageons : {c} mois.",
-                           "تقدير وليس وعدًا: هدف داخلي نحو {i} أشهر؛ الهدف الذي نلتزم به أمامكم: {c} أشهر.",
-                           "Оценка, а не обещание: внутренняя цель — около {i} мес.; цель, которую мы берём на себя перед вами, — {c} мес."),
+    # Only the COMMITTED estimate reaches the client; the internal one (and the
+    # 15% buffer between them) never does (2026-11-19).
+    "estimate_line": _five("הערכה: תזוזה ברורה בביטויים האלה תוך כ-{c} חודשים.",
+                           "An estimate: clear movement on these phrases in about {c} months.",
+                           "Une estimation : un mouvement net sur ces expressions en environ {c} mois.",
+                           "تقدير: تحرّك واضح في هذه العبارات خلال نحو {c} أشهر.",
+                           "Оценка: заметное движение по этим фразам примерно за {c} мес."),
     "basis_judgment": _five("נפח ותחרות הם הערכה מקצועית (לא נתון נמדד).", "Volume and competition are a professional estimate (not measured data).",
                             "Volume et concurrence sont une estimation professionnelle (pas une donnée mesurée).",
                             "الحجم والمنافسة تقدير مهني (ليست بيانات مقاسة).", "Объём и конкуренция — профессиональная оценка (не измеренные данные)."),
@@ -469,7 +471,7 @@ def prompt_block(client_id: int) -> dict:
                              for c in value["research"]["candidates"]]
     if value.get("strategy"):
         s = value["strategy"]
-        out["strategy"] = {"steps": s["steps"], "internal_months": s["internal_months"],
-                           "committed_months": s["committed_months"], "is_estimate": True}
+        # the internal estimate stays out of every agent's data: an agent could repeat it
+        out["strategy"] = {"steps": s["steps"], "committed_months": s["committed_months"], "is_estimate": True}
     _block_cache[int(client_id)] = (time.time(), out)
     return out

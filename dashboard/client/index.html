@@ -1228,6 +1228,14 @@ body.onboarding-focus #journeyPanel, body.onboarding-focus #feedPace { display: 
   border: 1px solid var(--border); opacity: .9; }
 .gt-tag.measured { border-color: rgba(34,197,94,.6); }
 .gt-honest { font-size: 12.5px; opacity: .8; }
+.gt-targets { border-top: 1px solid var(--border); padding-top: 10px; margin: 4px 0 8px; display: grid; gap: 6px;
+  font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.gt-targets[hidden] { display: none; }
+.gt-targets .gt-th { font-weight: 700; }
+.gt-targets .gt-met { border-inline-start: 3px solid rgba(34,197,94,.6); padding-inline-start: 8px; }
+.gt-targets .gt-miss { border-inline-start: 3px solid #FFB020; padding-inline-start: 8px; }
+.gt-targets .gt-unk { border-inline-start: 3px solid var(--border); padding-inline-start: 8px; }
+.gt-targets a { color: inherit; text-decoration: underline; }
 /* Agent invitation cards (home, core/home_focus): the same look as the branding
    banner — the agent's face + one persuasive line + a chevron. At most three. */
 .agent-invites { display: grid; gap: 10px; margin: -8px 0 24px; }
@@ -1619,6 +1627,8 @@ a.media-item:hover { border-color: var(--accent); }
     <div class="gt-head"><span class="gt-title" id="gtTitle"></span><span class="gt-month" id="gtMonth"></span></div>
     <div class="gt-honest" id="gtBaseline" hidden></div>
     <div class="gt-steps" id="gtSteps"></div>
+    <!-- The approved numeric targets (terms §6): target, 90% threshold, dated baseline, now -->
+    <div class="gt-targets" id="gtTargets" hidden></div>
     <div class="gt-honest" id="gtEstimate" hidden></div>
     <div class="gt-honest" id="gtHonest"></div>
   </section>
@@ -3348,6 +3358,7 @@ const DASH_I18N = {
   gt_next: { he:"הצעד הבא:", en:"Next step:", fr:"Prochaine étape :", ar:"الخطوة التالية:", ru:"Следующий шаг:" },
   gt_measured: { he:"נמדד", en:"measured", fr:"mesuré", ar:"مقاس", ru:"измерено" },
   gt_not_measured: { he:"עוד לא נמדד", en:"not measured yet", fr:"pas encore mesuré", ar:"لم يُقس بعد", ru:"пока не измерено" },
+  gt_terms_link: { he:"איך זה נמדד ומה מוחזר: סעיף 6 בתקנון", en:"How it is measured and what is refunded: section 6 of the Terms", fr:"Mesure et remboursement : article 6 des Conditions", ar:"كيف يُقاس وما يُسترد: البند 6 من الشروط", ru:"Как измеряется и что возвращается: раздел 6 Условий" },
   invite_failed: { he:"לא הצלחתי לפתוח את השיחה כרגע. נסו שוב בעוד רגע.", en:"I couldn't open the conversation right now. Please try again in a moment.", fr:"Je n'ai pas pu ouvrir la conversation pour l'instant. Réessayez dans un instant.", ar:"لم أتمكن من فتح المحادثة الآن. حاولوا مجددًا بعد لحظة.", ru:"Не удалось открыть разговор. Попробуйте ещё раз через минуту." },
   feed_pace: { he:"אנחנו מציגים כמה דברים בכל פעם, כדי שלא יצטבר. עוד {n} מחכים ויפתחו כשתטפלו באלה.", en:"We show a few things at a time so nothing piles up. {n} more are waiting and open as you handle these.", fr:"Nous montrons quelques éléments à la fois pour que rien ne s'accumule. {n} autres attendent et s'ouvriront au fur et à mesure.", ar:"نعرض بضعة أمور في كل مرة حتى لا تتراكم. {n} أخرى بالانتظار وستُفتح عندما تنتهون من هذه.", ru:"Мы показываем по несколько пунктов, чтобы ничего не копилось. Ещё {n} ждут и откроются, когда вы разберётесь с этими." },
   prereq_connect: { he:"לחבר: {what}", en:"Connect: {what}", fr:"Connecter : {what}", ar:"ربط: {what}", ru:"Подключить: {what}" },
@@ -10119,6 +10130,22 @@ function renderGoalTrack(g) {
     row.append(face, body);
     steps.appendChild(row);
   });
+  // The approved numeric targets: each row is the server's text (target, the
+  // 90% threshold, the dated baseline, now); the link is the terms' section 6.
+  const tg = document.getElementById('gtTargets');
+  if (tg) {
+    tg.textContent = '';
+    const rows = Array.isArray(g.targets) ? g.targets : [];
+    if (rows.length) {
+      tg.appendChild(bsEl('div', 'gt-th', g.targets_title || ''));
+      rows.forEach(r => tg.appendChild(bsEl('div', r.met === true ? 'gt-met' : r.met === false ? 'gt-miss' : 'gt-unk', r.text || '')));
+      const a = document.createElement('a');
+      a.href = g.terms_url || '/terms/#s6'; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = t('gt_terms_link');
+      tg.appendChild(a);
+    }
+    tg.hidden = !rows.length;
+  }
   box.hidden = false;
 }
 

@@ -856,3 +856,37 @@ about $40; I stop and ask before passing it.
 - **Tests:** `tests/test_tiktok_chunking.py`, plus `tests/test_tiktok_video_checks.py`.
 - **Migration:** none. **Deploy:** needed.
 - **Not tested** against the real TikTok API.
+
+### Results commitment = terms section 6 (2026-11-19)
+
+The landing page promised "no management fee if we don't hit the goal", while the terms' section 6 said there is no
+refund for a paid period. The owner decided that the guarantee is real, so the terms changed.
+
+- **Terms** (`dashboard/terms/`): section 6 is now the owner's exact Hebrew text (6.1–6.6), with id `s6`.
+  - It has en/fr/ar/ru translations, plus a line in each translation that the Hebrew prevails.
+  - Updated date: November 2026.
+  - The old paragraph about uallak's right to suspend a client for breach, non-payment or misuse was part of the
+    old section 6. It is gone with it, because the replacement text was given verbatim. **The owner should decide
+    whether to restore it elsewhere.**
+- **Landing** (`dashboard/landing/`):
+  - the headline and FAQ say exactly what section 6 says: approved numeric goals, 90%, the dated baseline, and the
+    management fees of the 3 months only;
+  - both link to `/terms/#s6`.
+- **Code** (`core/quarter_goals`):
+  - the goals are numeric `targets`: enquiries in 30 days, average positions gained on the agreed phrases, and
+    items a week;
+  - `goal_met` is the 90% rule; `evaluate()` gives target, threshold, dated baseline, now and met.
+- **What the client sees.** Home (`#gtTargets`) and the monthly report show those rows and link to section 6.
+- **The card** (`agree_quarter_goals`):
+  - it refuses a yes/no goal ("page one", "top 3"…, in 5 languages) and takes `leads_aim` / `positions_aim`;
+  - it shows the COMMITTED numbers and the 90% line.
+- **The 15% buffer** (`quarter_goals.BUFFER`) stays internal. The aims are stored in `internal`. The
+  internal-months estimate was removed from the client texts (organic estimate line, home estimate) and from
+  every agent's data (`organic_plan.prompt_block`, `quarter_goals.prompt_block`).
+- **Prompts:**
+  - `quarter_goals.COMMITMENT_RULE` is the one wording, used in the sales chat's objection prompt;
+  - the client chat's organic rule says the same.
+- **Sweep:** no other surface promised more. Emails, onboarding, upgrade cards and the profile only name the fee.
+- **Tests:** `tests/test_goal_commitment.py`.
+- **Migration:** none. Older goal rows have no `targets` and show none.
+- **Deploy:** needed.
