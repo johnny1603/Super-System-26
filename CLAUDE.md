@@ -372,6 +372,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   the card EXACTLY like the button (same `decide()`): the chat model sets `card_decision` {verdict approve|cancel|stop|undo,
   card_id} from `pending_cards`/`running_cards` in its payload; `FAST_APPROVE`/`FAST_STOP` are only a fast path (one card).
   Several cards → one question. Slow runs wait `STOP_WINDOW_SECONDS` (`_execute_after_window`); `stop_run` cancels inside it.
+  **Stop at ANY stage (2026-11-19):** every running card has a Stop button (`decision: "stop"`) and a typed stop works the
+  whole time — `agent_actions.stop_action` by the action's ONE stop mode (`STOP_DISCARD` / `STOP_JOB` / `STOP_FINISH`; a new
+  slow action must be added to one, `tests/test_stop_anywhere.py`); a stopped run can't post or propose (`_run_stopped`).
   `UNDO` map → one undo card when done. `claim_guard` (no "card below" without a card) + `loop_guard` (3rd repeat → the
   exact blocker) run in `_client_chat_answer`. The dashboard re-appends a known card at the BOTTOM (never `return` on a
   duplicate) and draws the bar from `progress.fraction` / `expected_seconds` (task_eta, >=5 runs) / none.
@@ -962,7 +965,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`claude-haiku-5-5`) only for steps no client reads (question_filter). The specialists'
   written characters live in `support_agent.PERSONAS[...]["voice"]`, the managers' ONE shared
   voice in `manager_identity.MANAGER_VOICE` — `tests/test_chat_voices.py`.
-- Client-facing text in Hebrew; code, logs, prompts in English.
+- Client-facing text in the CLIENT's language (he/en/fr/ar/ru, `core/client_language`, docs/LANGUAGES.md): server lines
+  live in 5-language tables, every chat model call gets `reply_language`; `tests/test_language_separation.py` fails on
+  Hebrew outside a table in a client-facing module (`core/i18n_gaps`, owner report `/admin/i18n/`). Code, logs, prompts in English.
 - Secrets only via env vars, registered in `agents/keys_agent.py` `KEYS` so startup warns
   when one is missing. Never hardcode credentials (a Gmail app password leaked into git
   history once and had to be rotated).
