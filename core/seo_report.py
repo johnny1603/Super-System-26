@@ -448,9 +448,11 @@ def _sources(client_id: int, focus: str) -> dict:
             "focus": re.sub(r"\s+", " ", str(focus or "")).strip()[:300]}
 
 
-def build(client_id: int, focus: str = "", lang: str = "he") -> dict:
+def build(client_id: int, focus: str = "", lang: str = None) -> dict:
     """Builds, cleans and stores the report. Raises ReportError("not_covered")
     for a client whose package does not cover organic — BEFORE any research."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import claude_json, dataforseo_connector, open_pagerank
     from core.cost_tracker import cost_action
     from core.model_routing import TIER_MODELS

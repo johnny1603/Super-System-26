@@ -173,7 +173,7 @@ class RulesKept(unittest.TestCase):
         src = _src("agents", "support_agent.py")
         self.assertIn("YOU EXECUTE NOTHING YOURSELF — THIS IS A FACT, NOT A POLICY.", src)
         self.assertIn("+ HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE", src)
-        self.assertIn("+ ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE", src)
+        self.assertIn("+ ACCOUNT_STATE_RULE + LANGUAGE_RULE + REPLY_LANGUAGE_RULE + _AUTOMATION_RULE", src)
         self.assertIn("proposed_action", src)
 
 

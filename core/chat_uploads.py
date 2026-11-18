@@ -76,21 +76,121 @@ ALERT_DAYS = 1
 
 # Real type → the client's first-level media subfolder
 FOLDERS = {"video": "videos", "image": "images", "audio": "voice", "document": "documents"}
-FOLDER_HE = {"video": "סרטונים", "image": "תמונות", "audio": "הקלטות קול", "document": "מסמכים"}
+def _five(he, en, fr, ar, ru):
+    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
+
+
+# Every line the client reads, in their language (2026-11-19, core/client_language)
+FOLDER_TEXT = {
+    "video": _five("סרטונים", "Videos", "Vidéos", "فيديوهات", "Видео"),
+    "image": _five("תמונות", "Images", "Images", "صور", "Изображения"),
+    "audio": _five("הקלטות קול", "Voice recordings", "Enregistrements vocaux", "تسجيلات صوتية", "Голосовые записи"),
+    "document": _five("מסמכים", "Documents", "Documents", "مستندات", "Документы"),
+}
+FOLDER_HE = {k: v["he"] for k, v in FOLDER_TEXT.items()}
 GENERIC_NAME = {"video": "video", "image": "image", "audio": "recording", "document": "document"}
 
-PLAIN_HE = {
-    "empty": "הקובץ ריק — אין מה להעלות.",
-    "unsupported": "את סוג הקובץ הזה אי אפשר להעלות כאן. אפשר להעלות סרטונים, תמונות, הקלטות קול, PDF ומסמכי Office.",
-    "archive": "קובצי ZIP / RAR לא נפתחים כאן — מעלים את הקבצים עצמם (סרטון, תמונה או מסמך).",
-    "unsafe": "הקובץ נחסם כי הוא יכול להריץ קוד (תוכנה, סקריפט או מסמך עם מאקרו). אפשר לשמור אותו בלי מאקרו ולהעלות שוב.",
-    "too_big": "הקובץ גדול יותר ממה ש-Google Drive עצמו מאפשר לקובץ אחד (5TB), ולכן אי אפשר לשמור אותו.",
-    "expired": "ההעלאה נקטעה לזמן ארוך מדי — צריך להתחיל אותה מחדש.",
-    "bad_chunk": "משהו השתבש באמצע ההעלאה. צריך להתחיל אותה מחדש.",
-    "not_configured": "תיקיית המדיה שלך עוד לא מוכנה, ולכן אי אפשר להעלות כרגע. הצוות קיבל התראה.",
-    "storage": "לא הצלחנו לשמור את הקובץ כרגע. הצוות קיבל התראה, ואפשר לנסות שוב בעוד רגע.",
-    "video_only": "כאן מעלים רק סרטון. תמונות והקלטות קול מעלים בצ'אט או בכרטיס הקלטות הקול.",
+PLAIN = {
+    "empty": _five("הקובץ ריק — אין מה להעלות.", "The file is empty — there is nothing to upload.",
+                   "Le fichier est vide — rien à envoyer.", "الملف فارغ — لا يوجد ما يُرفع.", "Файл пустой — загружать нечего."),
+    "unsupported": _five("את סוג הקובץ הזה אי אפשר להעלות כאן. אפשר להעלות סרטונים, תמונות, הקלטות קול, PDF ומסמכי Office.",
+                         "This type of file can't be uploaded here. You can upload videos, images, voice recordings, PDFs and Office documents.",
+                         "Ce type de fichier ne peut pas être envoyé ici. Vous pouvez envoyer des vidéos, des images, des enregistrements vocaux, des PDF et des documents Office.",
+                         "لا يمكن رفع هذا النوع من الملفات هنا. يمكن رفع فيديوهات وصور وتسجيلات صوتية وملفات PDF ومستندات Office.",
+                         "Такой тип файла здесь загрузить нельзя. Можно загружать видео, изображения, голосовые записи, PDF и документы Office."),
+    "archive": _five("קובצי ZIP / RAR לא נפתחים כאן — מעלים את הקבצים עצמם (סרטון, תמונה או מסמך).",
+                     "ZIP / RAR files are not opened here — upload the files themselves (a video, an image or a document).",
+                     "Les fichiers ZIP / RAR ne sont pas ouverts ici — envoyez les fichiers eux-mêmes (vidéo, image ou document).",
+                     "ملفات ZIP / RAR لا تُفتح هنا — ارفعوا الملفات نفسها (فيديو أو صورة أو مستند).",
+                     "Архивы ZIP / RAR здесь не открываются — загрузите сами файлы (видео, изображение или документ)."),
+    "unsafe": _five("הקובץ נחסם כי הוא יכול להריץ קוד (תוכנה, סקריפט או מסמך עם מאקרו). אפשר לשמור אותו בלי מאקרו ולהעלות שוב.",
+                    "The file was blocked because it can run code (a program, a script or a document with macros). Save it without macros and upload it again.",
+                    "Le fichier a été bloqué car il peut exécuter du code (programme, script ou document avec macros). Enregistrez-le sans macros et renvoyez-le.",
+                    "تم حظر الملف لأنه قد يشغّل برمجيات (برنامج أو سكربت أو مستند فيه ماكرو). احفظوه دون ماكرو وارفعوه من جديد.",
+                    "Файл заблокирован: он может запускать код (программа, скрипт или документ с макросами). Сохраните его без макросов и загрузите снова."),
+    "too_big": _five("הקובץ גדול יותר ממה ש-Google Drive עצמו מאפשר לקובץ אחד (5TB), ולכן אי אפשר לשמור אותו.",
+                     "The file is bigger than the storage allows for a single file (5TB), so it can't be saved.",
+                     "Le fichier dépasse ce que le stockage permet pour un seul fichier (5 To), il ne peut donc pas être enregistré.",
+                     "الملف أكبر مما يسمح به التخزين لملف واحد (5TB)، لذلك لا يمكن حفظه.",
+                     "Файл больше, чем хранилище допускает для одного файла (5 ТБ), поэтому сохранить его нельзя."),
+    "expired": _five("ההעלאה נקטעה לזמן ארוך מדי — צריך להתחיל אותה מחדש.", "The upload was interrupted for too long — it needs to start again.",
+                     "L'envoi a été interrompu trop longtemps — il faut le recommencer.", "انقطع الرفع لفترة طويلة — يجب البدء من جديد.",
+                     "Загрузка прерывалась слишком долго — её нужно начать заново."),
+    "bad_chunk": _five("משהו השתבש באמצע ההעלאה. צריך להתחיל אותה מחדש.", "Something went wrong in the middle of the upload. It needs to start again.",
+                       "Un problème est survenu pendant l'envoi. Il faut le recommencer.", "حدث خلل أثناء الرفع. يجب البدء من جديد.",
+                       "Во время загрузки что-то пошло не так. Её нужно начать заново."),
+    "not_configured": _five("תיקיית המדיה שלך עוד לא מוכנה, ולכן אי אפשר להעלות כרגע. הצוות קיבל התראה.",
+                            "Your media folder isn't ready yet, so uploading isn't possible right now. The team has been notified.",
+                            "Votre dossier médias n'est pas encore prêt, l'envoi n'est donc pas possible pour l'instant. L'équipe a été prévenue.",
+                            "مجلد الوسائط لديكم غير جاهز بعد، لذلك لا يمكن الرفع الآن. تم إبلاغ الفريق.",
+                            "Ваша папка с медиа ещё не готова, поэтому загрузить сейчас нельзя. Команда уведомлена."),
+    "storage": _five("לא הצלחנו לשמור את הקובץ כרגע. הצוות קיבל התראה, ואפשר לנסות שוב בעוד רגע.",
+                     "We couldn't save the file right now. The team has been notified, and you can try again in a moment.",
+                     "Nous n'avons pas pu enregistrer le fichier pour l'instant. L'équipe a été prévenue, vous pouvez réessayer dans un instant.",
+                     "لم نتمكن من حفظ الملف الآن. تم إبلاغ الفريق، ويمكنكم المحاولة بعد لحظة.",
+                     "Сейчас не удалось сохранить файл. Команда уведомлена, попробуйте снова через минуту."),
+    "video_only": _five("כאן מעלים רק סרטון. תמונות והקלטות קול מעלים בצ'אט או בכרטיס הקלטות הקול.",
+                        "Only a video can be uploaded here. Images and voice recordings go in the chat or on the voice recordings card.",
+                        "Ici, on envoie uniquement une vidéo. Les images et enregistrements vocaux s'envoient dans le chat ou sur la carte des enregistrements.",
+                        "هنا يُرفع فيديو فقط. الصور والتسجيلات الصوتية تُرفع في الدردشة أو في بطاقة التسجيلات الصوتية.",
+                        "Здесь загружается только видео. Изображения и голосовые записи — в чате или в карточке голосовых записей."),
 }
+PLAIN_HE = {k: v["he"] for k, v in PLAIN.items()}
+
+LINES = {
+    "youtube_too_big": _five("ליוטיוב הוא גדול מדי ({size}; אנחנו מעלים ליוטיוב סרטונים עד {max}MB). הוא שמור, ואפשר להעלות גרסה דחוסה יותר.",
+                             "It is too big for the video channel ({size}; we upload videos up to {max}MB there). It is saved, and a more compressed version can go.",
+                             "Elle est trop lourde pour la chaîne vidéo ({size} ; nous y envoyons des vidéos jusqu'à {max} Mo). Elle est enregistrée, une version plus compressée passera.",
+                             "إنه كبير جدًا لقناة الفيديو ({size}؛ نرفع إليها فيديوهات حتى {max}MB). هو محفوظ، ويمكن رفع نسخة مضغوطة أكثر.",
+                             "Для видеоканала оно слишком большое ({size}; туда мы загружаем видео до {max} МБ). Оно сохранено, можно загрузить более сжатую версию."),
+    "not_in_package": _five("יוטיוב וטיקטוק לא כלולים בחבילה הנוכחית שלך, אז כרגע אין לי לאן לשלוח אותו. אם תרצו להוסיף אחד מהם — כתבו לי כאן ואכין הצעה מסודרת.",
+                            "Neither video channel is in your current package, so there is nowhere for me to send it right now. If you'd like to add one, write to me here and I'll prepare a proper offer.",
+                            "Aucune des deux chaînes vidéo n'est dans votre formule actuelle, je n'ai donc nulle part où l'envoyer pour l'instant. Pour en ajouter une, écrivez-moi ici et je prépare une offre.",
+                            "قناتا الفيديو غير مشمولتين في باقتك الحالية، لذلك لا يوجد مكان أرسله إليه الآن. إن أردتم إضافة إحداهما، اكتبوا لي هنا وسأجهّز عرضًا مرتّبًا.",
+                            "Ни один видеоканал не входит в ваш текущий пакет, поэтому отправить его сейчас некуда. Если хотите добавить один из них — напишите мне здесь, и я подготовлю предложение."),
+    "not_connected": _five("כרגע אין לי לאן לשלוח אותו: יוטיוב וטיקטוק עוד לא מחוברים אצלך. ברגע שיתחברו, אציע להעלות אותו משם.",
+                           "There is nowhere to send it yet: your video channels aren't connected. As soon as they are, I'll offer to upload it.",
+                           "Je ne peux pas encore l'envoyer : vos chaînes vidéo ne sont pas connectées. Dès qu'elles le seront, je proposerai de l'envoyer.",
+                           "لا يوجد مكان أرسله إليه بعد: قنوات الفيديو لديكم غير مربوطة. حالما تُربط، سأقترح رفعه.",
+                           "Пока отправить его некуда: ваши видеоканалы не подключены. Как только подключатся, я предложу загрузить его."),
+    "voice_listed": _five("ההקלטה מופיעה גם ברשימת הקלטות הקול שלך.", "The recording also appears in your list of voice recordings.",
+                          "L'enregistrement apparaît aussi dans votre liste d'enregistrements vocaux.", "يظهر التسجيل أيضًا في قائمة تسجيلاتك الصوتية.",
+                          "Запись также появилась в списке ваших голосовых записей."),
+    "voice_too_big": _five("היא גדולה מ-{max}MB, ולכן כלי הקול לא יכולים להשתמש בה (שיבוט קול או פסקול לסרטון). הקלטה קצרה יותר, או שמירה כ-mp3, תעבור.",
+                           "It is larger than {max}MB, so the voice tools can't use it (voice cloning or a video soundtrack). A shorter recording, or saving it as mp3, will work.",
+                           "Il dépasse {max} Mo, les outils vocaux ne peuvent donc pas l'utiliser (clonage de voix ou bande-son). Un enregistrement plus court, ou en mp3, passera.",
+                           "حجمه أكبر من {max}MB، لذلك لا تستطيع أدوات الصوت استخدامه (استنساخ الصوت أو مسار صوتي للفيديو). تسجيل أقصر أو حفظه بصيغة mp3 سيعمل.",
+                           "Она больше {max} МБ, поэтому голосовые инструменты не смогут её использовать (клонирование голоса или звук для видео). Подойдёт запись короче или в mp3."),
+    "voice_nothing": _five("כרגע אין לי פעולה נוספת זמינה עבורה.", "There is no further action I can take with it right now.",
+                           "Je n'ai pas d'autre action disponible pour lui pour l'instant.", "لا يوجد لديّ إجراء إضافي متاح له الآن.",
+                           "Других действий с ней сейчас нет."),
+    "image_saved": _five("היא שמורה — אפשר לכתוב לי מה תרצו לעשות איתה.", "It is saved — tell me what you'd like to do with it.",
+                         "Elle est enregistrée — dites-moi ce que vous voulez en faire.", "إنها محفوظة — اكتبوا لي ماذا تريدون أن تفعلوا بها.",
+                         "Оно сохранено — напишите, что вы хотите с ним сделать."),
+    "document_saved": _five("המסמך שמור. עדיין אין לי פעולה אוטומטית למסמכים שעולים מהצ'אט — אפשר לכתוב לי מה תרצו לעשות איתו.",
+                            "The document is saved. I don't have an automatic action for documents uploaded in the chat yet — tell me what you'd like to do with it.",
+                            "Le document est enregistré. Je n'ai pas encore d'action automatique pour les documents envoyés dans le chat — dites-moi ce que vous voulez en faire.",
+                            "تم حفظ المستند. لا يوجد لديّ بعد إجراء تلقائي للمستندات المرفوعة من الدردشة — اكتبوا لي ماذا تريدون أن تفعلوا به.",
+                            "Документ сохранён. Автоматического действия для документов из чата пока нет — напишите, что с ним сделать."),
+    "saved_head": _five("\"{name}\" נשמר בתיקיית המדיה שלך, בתיקייה {folder} ✓ הוא מופיע גם בלשונית המדיה.",
+                        "\"{name}\" is saved in your media folder, under {folder} ✓ It also appears in the Media tab.",
+                        "« {name} » est enregistré dans votre dossier médias, dans {folder} ✓ Il apparaît aussi dans l'onglet Médias.",
+                        "تم حفظ \"{name}\" في مجلد الوسائط لديكم، ضمن {folder} ✓ ويظهر أيضًا في تبويب الوسائط.",
+                        "«{name}» сохранён в вашей папке с медиа, в разделе «{folder}» ✓ Он также есть на вкладке «Медиа»."),
+}
+
+
+def plain(code: str, lang: str = "he") -> str:
+    """The refusal line in the client's language."""
+    table = PLAIN.get(code) or PLAIN["storage"]
+    return table.get(lang) or table["he"]
+
+
+def line(key: str, lang: str, **values) -> str:
+    text = LINES[key].get(lang) or LINES[key]["he"]
+    for k, v in values.items():
+        text = text.replace("{" + k + "}", str(v))
+    return text
 
 
 class UploadRefused(Exception):
@@ -504,8 +604,7 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
                 _offer(client_id, persona, "publish_youtube_from_media", {"drive_file_id": file_id},
                        here, client, lang, cards, lines)
             else:
-                lines.append(f"ליוטיוב הוא גדול מדי ({_mb(size)}; אנחנו מעלים ליוטיוב סרטונים עד "
-                             f"{VIDEO_UPLOAD_MAX_MB}MB). הוא שמור, ואפשר להעלות גרסה דחוסה יותר.")
+                lines.append(line("youtube_too_big", lang, size=_mb(size), max=VIDEO_UPLOAD_MAX_MB))
         if tiktok_ok and tiktok_sendable(size):
             # No size line for TikTok: any size goes (above the owner's
             # threshold the card's prepare asks HIM, not the client)
@@ -513,28 +612,22 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
                    here, client, lang, cards, lines)
         if not youtube_ok and not tiktok_ok:
             cards_by = agent_actions._cards(state)
-            outside = [label for channel, label in (("youtube", "יוטיוב"), ("tiktok", "טיקטוק"))
+            outside = [channel for channel in ("youtube", "tiktok")
                        if (cards_by.get(channel) or {}).get("status") == "not_in_plan"]
-            if len(outside) == 2:
-                lines.append("יוטיוב וטיקטוק לא כלולים בחבילה הנוכחית שלך, אז כרגע אין לי לאן לשלוח אותו. "
-                             "אם תרצו להוסיף אחד מהם — כתבו לי כאן ואכין הצעה מסודרת.")
-            else:
-                lines.append("כרגע אין לי לאן לשלוח אותו: יוטיוב וטיקטוק עוד לא מחוברים אצלך. "
-                             "ברגע שיתחברו, אציע להעלות אותו משם.")
+            lines.append(line("not_in_package" if len(outside) == 2 else "not_connected", lang))
     elif kind == "audio":
         from core import voice_recordings as vr
-        lines.append("ההקלטה מופיעה גם ברשימת הקלטות הקול שלך.")
+        lines.append(line("voice_listed", lang))
         voice = state.get("voice") or {}
         here = {**state, "voice": {**voice, "count": max(int(voice.get("count") or 0), 1)}}
         clone_ok = (agent_actions._is_internal(client)
                     and agent_actions._voice_clone_possible(here, client))
         if size > vr.MAX_MB * 1024 * 1024:
-            lines.append(f"היא גדולה מ-{vr.MAX_MB}MB, ולכן כלי הקול לא יכולים להשתמש בה (שיבוט קול או "
-                         f"פסקול לסרטון). הקלטה קצרה יותר, או שמירה כ-mp3, תעבור.")
+            lines.append(line("voice_too_big", lang, max=vr.MAX_MB))
         elif clone_ok:
             _offer(client_id, persona, "clone_voice", {}, here, client, lang, cards, lines)
         if not cards and size <= vr.MAX_MB * 1024 * 1024:
-            lines.append("כרגע אין לי פעולה נוספת זמינה עבורה.")
+            lines.append(line("voice_nothing", lang))
     elif kind == "image":
         # A photo can become the client's presenter (avatar_agent's photo
         # path). In the package → the card, or the ONE card fixing what is
@@ -556,10 +649,9 @@ def proposals(client_id: int, persona: str, kind: str, file_id: str, size: int) 
         if persona == "media" and _branding_open(client_id):
             lines.append(BRANDING_INSPIRATION.get(lang) or BRANDING_INSPIRATION["he"])
         if not cards and in_package is not False:
-            lines.append("היא שמורה — אפשר לכתוב לי מה תרצו לעשות איתה.")
+            lines.append(line("image_saved", lang))
     else:
-        lines.append("המסמך שמור. עדיין אין לי פעולה אוטומטית למסמכים שעולים מהצ'אט — "
-                     "אפשר לכתוב לי מה תרצו לעשות איתו.")
+        lines.append(line("document_saved", lang))
     return lines, cards
 
 
@@ -608,7 +700,9 @@ def finish(client_id: int, payload: dict, drive_file: dict) -> dict:
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: proposals failed: {type(e).__name__}")
         lines, cards = [], []
-    head = f"\"{name}\" נשמר בתיקיית המדיה שלך, בתיקייה {FOLDER_HE[kind]} ✓ הוא מופיע גם בלשונית המדיה."
+    from core import agent_actions
+    lang = agent_actions._lang(client_id)
+    head = line("saved_head", lang, name=name, folder=FOLDER_TEXT[kind].get(lang) or FOLDER_HE[kind])
     message = "\n".join([head] + lines)
     try:
         from agents.client_agent import log_communication

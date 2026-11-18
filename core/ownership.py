@@ -385,9 +385,11 @@ def _status(client_id: int, group: str, rows: list) -> str:
     return "connected"
 
 
-def accounts_view(client_id: int, groups: dict, lang: str = "he", accounts: list = None) -> list:
+def accounts_view(client_id: int, groups: dict, lang: str = None, accounts: list = None) -> list:
     """One entry per connected group — identity, access, since when, status.
     No secret, no last-4, no has_secret: only what identifies the account."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     lang = lang if lang in LANGS else "he"
     accounts = _accounts(client_id) if accounts is None else accounts
     out = []
@@ -434,10 +436,12 @@ def _count_leads(client_id: int) -> int:
     return len(client_leads.list_leads(client_id, limit=1000) or [])
 
 
-def assets_view(client_id: int, lang: str = "he", accounts: list = None) -> list:
+def assets_view(client_id: int, lang: str = None, accounts: list = None) -> list:
     """The business's assets that are not a connection: the site, its hosting,
     landing pages + domain, the Drive media folder, the leads. A read that
     fails leaves its asset out (never a guess)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     lang = lang if lang in LANGS else "he"
     accounts = _accounts(client_id) if accounts is None else accounts
     found = []

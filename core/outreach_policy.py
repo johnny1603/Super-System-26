@@ -225,9 +225,11 @@ def already_contacted(client_id: int, place_id: str, email: str) -> bool:
                for r in rows)
 
 
-def check_before_send(client_id: int, params: dict, language: str = "he"):
+def check_before_send(client_id: int, params: dict, language: str = None):
     """Every rule, in order; raises SendRefused(code). The suppression check
     is FIRST and runs whatever else is wrong."""
+    from core import client_language as _cl
+    language = _cl.resolve(client_id, language)   # the CLIENT's language, never a fixed "he"
     from core import gmail_agent_plan as plan
     email, place_id = params.get("to_email", ""), params.get("place_id", "")
     if is_suppressed(email=email, place_id=place_id):

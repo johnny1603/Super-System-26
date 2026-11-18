@@ -560,7 +560,7 @@ class TikTokDraftsHistory(ActionTestCase):
         self.assertEqual(len(view["sent_to_inbox"]), 1)
         self.assertEqual(view["not_sent"][0]["reason"], "pending_limit")
         self.assertEqual((view["sending_now"], view["waiting_for_approval"]), (1, 1))
-        self.assertIn("פרסם", view["client_must_do"])              # they publish it themselves
+        self.assertIn("Post", view["client_must_do"])              # they publish it themselves (model data, written in reply_language)
 
     def test_nothing_sent_means_nothing_to_do(self):
         self.assertEqual(aa.tiktok_drafts_sent(40)["client_must_do"], "")

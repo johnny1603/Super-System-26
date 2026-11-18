@@ -5319,10 +5319,12 @@ _CHAT_UPLOAD_STATUS = {"empty": 400, "bad_chunk": 400, "unsupported": 415, "arch
                        "video_only": 415,
                        "too_big": 413, "expired": 410, "not_configured": 503, "storage": 503}
 
-def _chat_upload_refused(e) -> HTTPException:
+def _chat_upload_refused(e, client_id=None) -> HTTPException:
     from core import chat_uploads as cu
+    from core import client_language
     return HTTPException(status_code=_CHAT_UPLOAD_STATUS.get(e.code, 400),
-                         detail={"code": e.code, "message_he": cu.PLAIN_HE.get(e.code, cu.PLAIN_HE["storage"])})
+                         detail={"code": e.code, "message_he": cu.PLAIN_HE.get(e.code, cu.PLAIN_HE["storage"]),
+                                 "message": cu.plain(e.code, client_language.of(client_id))})
 
 @app.post("/api/client/chat-upload")
 async def client_chat_upload(request: Request):
@@ -5338,14 +5340,14 @@ async def client_chat_upload(request: Request):
         total = int(request.headers.get("x-file-size") or 0)
         declared = int(request.headers.get("content-length") or 0)
     except ValueError:
-        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"), client_id)
     if declared > limit:
-        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+        raise _chat_upload_refused(cu.UploadRefused("bad_chunk"), client_id)
     body = bytearray()
     async for piece in request.stream():
         body += piece
         if len(body) > limit:
-            raise _chat_upload_refused(cu.UploadRefused("bad_chunk"))
+            raise _chat_upload_refused(cu.UploadRefused("bad_chunk"), client_id)
     data = bytes(body)
     token = request.headers.get("x-upload-token") or ""
     try:
@@ -5364,7 +5366,7 @@ async def client_chat_upload(request: Request):
             token = cu.seal(payload, client_id)
         answer = await run_in_threadpool(cu.send, client_id, payload, offset, data)
     except cu.UploadRefused as e:
-        raise _chat_upload_refused(e)
+        raise _chat_upload_refused(e, client_id)
     out = {"token": token, "kind": payload["k"], "name": payload["n"], "done": answer["done"],
            "next_offset": answer.get("next_offset")}
     if answer["done"]:
@@ -5383,7 +5385,7 @@ async def client_chat_upload_status(request: Request):
             raise cu.UploadRefused("expired")
         answer = await run_in_threadpool(cu.status, client_id, payload)
     except cu.UploadRefused as e:
-        raise _chat_upload_refused(e)
+        raise _chat_upload_refused(e, client_id)
     out = {"done": answer["done"], "next_offset": answer.get("next_offset"), "kind": payload["k"],
            "name": payload["n"]}
     if answer["done"]:
@@ -7212,6 +7214,14 @@ def admin_view_as_exit(request: Request, response: Response):
 
 # ─── Model costs: routing + caching per chat turn (core/model_routing) ───────
 # Admin session only. Read-only.
+
+# ─── Translation gaps (core/i18n_gaps, /admin/i18n/) ─────────────────────────
+
+@app.get("/api/admin/i18n/gaps")
+def admin_i18n_gaps(request: Request):
+    _require_admin(request)
+    from core import i18n_gaps
+    return {"success": True, "data": i18n_gaps.report()}
 
 # ─── Landing pages: admin (core/landing_admin, /admin/landing/) ──────────────
 

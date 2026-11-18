@@ -113,7 +113,7 @@ class Base(unittest.TestCase):
         mb._whatsapp_configured = lambda: self.wa_configured
         mb._send_email = lambda client, text: self.emails.append(text) or True
         mb._alert = lambda issues: self.alerts.append(issues)
-        mb._action_title = lambda name: {"publish_landing_page": "פרסום דף הנחיתה"}.get(name, "")
+        mb._action_title = lambda name, lang="he": {"publish_landing_page": "פרסום דף הנחיתה"}.get(name, "")
 
     def tearDown(self):
         for name, fn in self.saved.items():

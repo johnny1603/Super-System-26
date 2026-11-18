@@ -252,12 +252,14 @@ def _store_flow(client_id: int, step: str) -> dict:
     raise ValueError("bad_step")
 
 
-def flow(client_id: int, key: str, step: str, lang: str = "he") -> dict:
+def flow(client_id: int, key: str, step: str, lang: str = None) -> dict:
     """One turn of the connect conversation. Pure decision from the table row
     (+ the connection status on "done"); the caller posts `messages` into the
     persona's thread. Returns {"show": False} for included / unknown keys —
     except the store, whose steps are on the client's own site (_store_flow).
     `lang` "en": the OAuth steps (start / has / done) in English (EN)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     en = lang == "en"
     if key == "store":
         return _store_flow(client_id, step)

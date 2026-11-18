@@ -99,6 +99,28 @@ _folder_cache = {}  # (client_id) -> {"root": id, "paths": {tuple: id}}
 _db_instance = None
 
 
+# Chat lines in the CLIENT's language (2026-11-19, core/client_language)
+_FILMING_KIT = {
+    "he": 'הכנו לך ערכת צילום מלאה ("{title}") — תסריט, רשימת שוטים וטיפים לצילום עצמי בטלפון 🎬 מחכה לך בתיקיית המדיה שלך:',
+    "en": 'We\'ve prepared a full filming kit for you ("{title}") — a script, a shot list and tips for filming yourself on your phone 🎬 It\'s waiting in your media folder:',
+    "fr": "Nous vous avons préparé un kit de tournage complet (« {title} ») — script, liste de plans et conseils pour filmer au téléphone 🎬 Il vous attend dans votre dossier médias :",
+    "ar": 'جهّزنا لك عدة تصوير كاملة ("{title}") — نص، وقائمة لقطات، ونصائح للتصوير الذاتي بالهاتف 🎬 بانتظارك في مجلد الوسائط:',
+    "ru": "Мы подготовили для вас полный набор для съёмки («{title}») — сценарий, список кадров и советы по съёмке на телефон 🎬 Он ждёт в вашей папке с медиа:",
+}
+_WEEK_PLAN = {
+    "he": ("שבוע טוב! 🌙 הנה תוכנית התוכן הוויזואלי שהכנו לשבוע הקרוב:",
+           'אשרו מה שמתאים באזור "ממתין לאישור שלך" — ומיד נתחיל להכין. רוצים משהו אחר? כתבו לי כאן.'),
+    "en": ("Have a good week 🌙 Here is the visual content plan we've prepared for the coming week:",
+           'Approve what fits under "Waiting for your approval" — and we\'ll start right away. Want something else? Write to me here.'),
+    "fr": ("Bonne semaine 🌙 Voici le plan de contenu visuel préparé pour la semaine :",
+           "Validez ce qui vous convient dans « En attente de votre validation » — nous commençons aussitôt. Autre chose ? Écrivez-moi ici."),
+    "ar": ("أسبوعًا طيبًا 🌙 هذه خطة المحتوى المرئي التي جهّزناها للأسبوع القادم:",
+           'وافقوا على ما يناسب في قسم "بانتظار موافقتك" — وسنبدأ فورًا. تريدون شيئًا آخر؟ اكتبوا لي هنا.'),
+    "ru": ("Хорошей недели 🌙 Вот план визуального контента на ближайшую неделю:",
+           "Одобрите подходящее в разделе «Ждёт вашего подтверждения» — и мы сразу начнём. Хотите другое? Напишите мне здесь."),
+}
+
+
 def _db():
     global _db_instance
     if _db_instance is None:
@@ -657,10 +679,10 @@ def create_filming_kit(client_id: int, topic: str) -> dict:
     from agents.client_agent import log_communication
     _log_activity(client_id, "media_filming_kit_created", {"topic": topic[:200]},
                   {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
+    from core import client_language
     log_communication(client_id, "outbound", "dashboard_chat",
-                      f'הכנו לך ערכת צילום מלאה ("{kit.get("title", topic)}") — תסריט, רשימת שוטים '
-                      f'וטיפים לצילום עצמי בטלפון 🎬 מחכה לך בתיקיית ה-Drive שלך: '
-                      f'{uploaded.get("webViewLink", "")}')
+                      _FILMING_KIT[client_language.of(client_id)].replace("{title}", str(kit.get("title", topic)))
+                      + " " + uploaded.get("webViewLink", ""))
     return {"success": True, "file_id": uploaded.get("id"),
             "link": uploaded.get("webViewLink", ""), "kit": kit}
 
@@ -976,10 +998,9 @@ def _checkin_for_client(client: dict, events: list) -> int:
         log_activity(client_id, AGENT_NAME, "media_plan_proposed",
                      {"count": len(stored), "titles": stored}, {})
         bullets = "\n".join(f"• {t}" for t in stored)
-        log_communication(client_id, "outbound", "dashboard_chat",
-                          f"שבוע טוב! 🌙 הנה תוכנית התוכן הוויזואלי שהכנו לשבוע הקרוב:\n{bullets}\n"
-                          'אשרו מה שמתאים באזור "ממתין לאישור שלך" — ומיד נתחיל להכין. '
-                          "רוצים משהו אחר? כתבו לי כאן.")
+        from core import client_language
+        head, tail = _WEEK_PLAN[client_language.of(client_id)]
+        log_communication(client_id, "outbound", "dashboard_chat", f"{head}\n{bullets}\n{tail}")
         # Same beat, the other half of the promise: the plan says what we'll
         # make, the examples show what is already working in their niche.
         # Fully swallowed: the sacred run must never fail because of it.

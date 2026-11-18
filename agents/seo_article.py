@@ -479,11 +479,13 @@ Return JSON only:
 {{"needs_clarification": "", "unsupported": "", "title": "", "content_html": "", "summary": ""}}"""
 
 
-def revise_draft(client_id: int, post_id: int, instruction: str, client_language: str = "he") -> dict:
+def revise_draft(client_id: int, post_id: int, instruction: str, client_language: str = None) -> dict:
     """Apply one small client-requested change to one chat draft. Returns
     {"success": True, summary, title, post_id, broken_links} or {"success":
     False, "reason": not_draft|clarify|unsupported|too_big|failed, ...}.
     NEVER changes status: the update writes status='draft' explicitly."""
+    from core import client_language as _cl
+    client_language = _cl.resolve(client_id, client_language)   # the CLIENT's language, never a fixed "he"
     import difflib
     from agents.website_agent import _creds, _get_connection, content_quality_issues
     connection = _get_connection(client_id)

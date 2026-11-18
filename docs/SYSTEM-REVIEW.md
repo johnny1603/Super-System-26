@@ -890,3 +890,34 @@ refund for a paid period. The owner decided that the guarantee is real, so the t
 - **Tests:** `tests/test_goal_commitment.py`.
 - **Migration:** none. Older goal rows have no `targets` and show none.
 - **Deploy:** needed.
+
+## 2026-11-19 — Part 2: full language separation (partial)
+
+- **One source:** `core/client_language`.
+  - It holds the setting, the resolve step, the reply-language detection, `reply_language` on every chat model call
+    + `REPLY_LANGUAGE_RULE`, RTL, and number/money/date formats.
+  - 33 server functions no longer default to Hebrew.
+- **Swept into 5-language tables:**
+  - chat uploads (the API returns `message` in the client's language);
+  - store errors, statuses and order details;
+  - the upgrade proposal;
+  - the purchase note;
+  - the weekly ideas and media plan lines;
+  - the payment-failure notice;
+  - the filming kit line;
+  - the first-login fallback;
+  - the morning briefing.
+- **Guard:** `tests/test_language_separation.py` fails on Hebrew outside a table in `i18n_gaps.CLIENT_FACING`
+  (allow-list ≤ 60).
+- **Ratchet:** `KNOWN_DEBT` freezes the count in every other module; it can only go down.
+- **PARTIAL:**
+  - Client lines in `ownership`, `connection_catalog`, `landing_pages`, `avatar_video`, `drive_pull`, `vendor_tools`,
+    `outreach_tracker`, parts of `api_server`, `website_agent` and `landing_page_agent` are still Hebrew-only. They
+    are listed on `/admin/i18n/`.
+  - The handover document stays Hebrew, with one explanatory line in the client's language.
+- **Admin:** `/admin/i18n/` shows the gaps per language.
+- **Not tested:**
+  - a real model answering in fr/ar/ru from a Hebrew history;
+  - a real browser in RTL/LTR.
+- **Migration:** none.
+- **Deploy:** needed.

@@ -288,10 +288,12 @@ def _generate_for_client(client: dict, events: list) -> int:
         except Exception as e:
             print(f"[{AGENT_NAME}] client {client_id}: onboarding state unknown ({type(e).__name__})")
         from core import vendor_names
-        bullets = vendor_names.scrub("\n".join(f"• {t}" for t in stored), "he")
+        from core import client_language
+        lang = client_language.of(client_id)
+        bullets = vendor_names.scrub("\n".join(f"• {t}" for t in stored), lang)
+        head, tail = _WEEKLY_IDEAS[lang]
         log_communication(client_id, "outbound", "dashboard_chat",
-                          f"הכנו לך {len(stored)} הצעות חדשות לשבוע הקרוב 🎯\n{bullets}\n"
-                          'אפשר לאשר או לדחות כל אחת באזור "ממתין לאישור שלך" בדשבורד.')
+                          f"{head.replace('{n}', str(len(stored)))}\n{bullets}\n{tail}")
     return len(stored)
 
 
@@ -540,7 +542,7 @@ Return JSON only:
 {{"message": "the message", "asked_for_feedback": false}}"""
 
 
-def run_login_moment(client_id: int, language: str = "he") -> dict:
+def run_login_moment(client_id: int, language: str = None) -> dict:
     """Called when a client opens their dashboard. Returns
     {"message": str, "sent": bool} — empty message means nothing was worth
     saying, which is a normal and frequent outcome.
@@ -548,6 +550,8 @@ def run_login_moment(client_id: int, language: str = "he") -> dict:
     Deduped to ONCE PER DAY per client: a client who reloads the dashboard six
     times gets greeted once. That dedup is also what caps the LLM spend.
     """
+    from core import client_language as _cl
+    language = _cl.resolve(client_id, language)   # the CLIENT's language, never a fixed "he"
     if _acted_within(client_id, LOGIN_MOMENT_ACTION, 1):
         return {"success": True, "message": "", "sent": False, "reason": "already_greeted_today"}
 
@@ -656,7 +660,7 @@ No bullet lists. At most one emoji.
 Return JSON only: {{"message": "the message"}}"""
 
 
-def run_feature_announcement(client_id: int, language: str = "he") -> dict:
+def run_feature_announcement(client_id: int, language: str = None) -> dict:
     """Deliver at most ONE pending feature announcement to this client.
 
     Returns {"message", "sent", "persona"} — an empty message is the normal,
@@ -664,6 +668,8 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
     Never raises: an announcement is a nicety and must not break a dashboard
     load, exactly like the login moment.
     """
+    from core import client_language as _cl
+    language = _cl.resolve(client_id, language)   # the CLIENT's language, never a fixed "he"
     from core import feature_announcements
     from core.feature_catalog import ACCESS_NOTE_HE, feature
 
@@ -700,7 +706,7 @@ def run_feature_announcement(client_id: int, language: str = "he") -> dict:
         "title": announcement.get("title", ""),
     }
     system = cached_system(FEATURE_ANNOUNCEMENT_SYSTEM.format(
-        persona_name=persona.get("name", "צוות uallak"),
+        persona_name=persona.get("name", "uallak"),
         persona_voice=persona.get("voice", "Warm, direct, practical."),
         language_rule=LANGUAGE_RULE,
     ))
@@ -782,11 +788,28 @@ def mark_feedback_reviewed(feedback_id: int) -> dict:
     return {"success": bool(result.data)}
 
 
-PAYMENT_FAILURE_MESSAGE_HE = (
-    "⚠️ עדכון חשוב מ-uallak: ניסיון החיוב האחרון לא עבר (כרטיס או חשבון PayPal). "
-    "כדי שהשירות ימשיך לרוץ בלי הפרעה, כדאי לבדוק את אמצעי התשלום - "
-    "ואם צריך עזרה, אנחנו זמינים בצ'אט בדשבורד."
-)
+PAYMENT_FAILURE_MESSAGE = {
+    "he": "⚠️ עדכון חשוב מ-uallak: ניסיון החיוב האחרון לא עבר (כרטיס או חשבון PayPal). כדי שהשירות ימשיך לרוץ בלי "
+          "הפרעה, כדאי לבדוק את אמצעי התשלום - ואם צריך עזרה, אנחנו זמינים בצ'אט בדשבורד.",
+    "en": "⚠️ Important update from uallak: the last charge did not go through (card or PayPal account). To keep the "
+          "service running without interruption, please check your payment method - and if you need help, we're in the "
+          "chat on your dashboard.",
+    "fr": "⚠️ Information importante de uallak : le dernier prélèvement n'est pas passé (carte ou compte PayPal). Pour que "
+          "le service continue sans interruption, vérifiez votre moyen de paiement - besoin d'aide ? Nous sommes dans le "
+          "chat de votre tableau de bord.",
+    "ar": "⚠️ تحديث مهم من uallak: لم تنجح محاولة الدفع الأخيرة (بطاقة أو حساب PayPal). لكي تستمر الخدمة دون انقطاع، "
+          "يُرجى التحقق من وسيلة الدفع - وإن احتجتم مساعدة، نحن متاحون في الدردشة في لوحة التحكم.",
+    "ru": "⚠️ Важное сообщение от uallak: последнее списание не прошло (карта или аккаунт PayPal). Чтобы сервис работал "
+          "без перерывов, проверьте способ оплаты - если нужна помощь, мы в чате в вашем кабинете.",
+}
+PAYMENT_FAILURE_MESSAGE_HE = PAYMENT_FAILURE_MESSAGE["he"]
+_WEEKLY_IDEAS = {
+    "he": ("הכנו לך {n} הצעות חדשות לשבוע הקרוב 🎯", 'אפשר לאשר או לדחות כל אחת באזור "ממתין לאישור שלך" בדשבורד.'),
+    "en": ("We've prepared {n} new ideas for the coming week 🎯", 'You can approve or decline each one under "Waiting for your approval" on your dashboard.'),
+    "fr": ("Nous avons préparé {n} nouvelles idées pour la semaine 🎯", "Vous pouvez valider ou refuser chacune dans « En attente de votre validation » sur votre tableau de bord."),
+    "ar": ("جهّزنا لك {n} اقتراحات جديدة للأسبوع القادم 🎯", 'يمكنك الموافقة على كل منها أو رفضه في قسم "بانتظار موافقتك" في لوحة التحكم.'),
+    "ru": ("Мы подготовили {n} новых идей на неделю 🎯", "Каждую можно одобрить или отклонить в разделе «Ждёт вашего подтверждения» в кабинете."),
+}
 
 
 def notify_payment_failure(client_id: int, event_type: str) -> dict:
@@ -812,7 +835,8 @@ def notify_payment_failure(client_id: int, event_type: str) -> dict:
     # The team hears about it too — a failing charge often ends in churn
     agent_alert(AGENT_NAME, [f"client {client_id}: PayPal payment failure "
                              f"({event_type}) — lost-sale moment, follow up"])
-    result = notify_client_urgent(client_id, PAYMENT_FAILURE_MESSAGE_HE)
+    from core import client_language
+    result = notify_client_urgent(client_id, PAYMENT_FAILURE_MESSAGE[client_language.of(client_id)])
     log_activity(client_id, AGENT_NAME, "payment_failure_notified",
                  {"date": today, "event_type": event_type}, {})
     return result

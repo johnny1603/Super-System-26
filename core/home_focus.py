@@ -309,10 +309,12 @@ def gaps_for(client_id: int, service: str, connected: set) -> list:
     return missing(service, connected)
 
 
-def prerequisites(client_id: int, service: str, lang: str = "he", connected: set = None) -> dict:
+def prerequisites(client_id: int, service: str, lang: str = None, connected: set = None) -> dict:
     """What THIS service's agent needs connected, and what is still missing.
     `ready` False → the agent says FOCUS_LINE and lists `items` (one connect
     button each) instead of starting."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     if service not in SERVICES:
         raise ValueError("unknown_service")
     lang = lang if lang in LANGS else "he"
@@ -363,9 +365,11 @@ def _offered(client_id: int, service: str, package: dict) -> bool:
     return False
 
 
-def invites(client_id: int, lang: str = "he") -> list:
+def invites(client_id: int, lang: str = None) -> list:
     """The cards to show, most relevant first, at most MAX_INVITES. A package
     that cannot be read = no cards (never a guess)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     lang = lang if lang in LANGS else "he"
     try:
         package = _package(client_id)
@@ -397,10 +401,12 @@ def invites(client_id: int, lang: str = "he") -> list:
 
 # ─── A click: start, or focus first and remember the request ─────────────────
 
-def start(client_id: int, service: str, lang: str = "he") -> dict:
+def start(client_id: int, service: str, lang: str = None) -> dict:
     """The card's click. Ready → the client's opening line for that agent's
     chat. Not ready → the focus message (posted into that agent's thread, in
     its voice) + one connect item per gap, and the request remembered."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     if service not in INVITE_TEXT:
         raise ValueError("unknown_service")
     lang = lang if lang in LANGS else "he"
@@ -461,9 +467,11 @@ def resume(client_id: int, connected: set = None) -> dict:
 _block_cache = {}
 
 
-def prompt_block(client_id: int, lang: str = "he") -> dict:
+def prompt_block(client_id: int, lang: str = None) -> dict:
     """`prerequisites` in every agent's payload: per service, the items still
     missing ({} when nothing is missing or the read failed). Cached 60 s."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     hit = _block_cache.get(int(client_id))
     if hit and hit[0] > time.time() - BLOCK_CACHE_SECONDS:
         return hit[1]

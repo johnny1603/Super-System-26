@@ -246,10 +246,12 @@ _block_cache = {}   # client_id -> (at, summary) — a chat turn must not wait o
 BLOCK_CACHE_SECONDS = 60
 
 
-def prompt_block(client_id: int, lang: str = "he") -> dict:
+def prompt_block(client_id: int, lang: str = None) -> dict:
     """`branding` in every agent's payload: where the client stands, and the
     two FIXED lines the agent must say word for word before the first
     attempt. {} when unreadable (the agent then simply has no branding data)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     import time
     hit = _block_cache.get(int(client_id))
     if hit and hit[0] > time.time() - BLOCK_CACHE_SECONDS:
@@ -413,11 +415,13 @@ def confirms(message: str) -> bool:
     return bool(text) and len(text) <= 160 and not _NO.search(text) and bool(_YES.search(text))
 
 
-def create_attempt(client_id: int, direction: str, lang: str = "he", brief: dict = None) -> dict:
+def create_attempt(client_id: int, direction: str, lang: str = None, brief: dict = None) -> dict:
     """ONE attempt: refuse when none is allowed, design the concept with one
     capped model call, store it. Returns {"n", "concept", "left"}. A failed
     call stores nothing and uses no attempt. `brief` = what the owner confirmed
     (clean_brief); its business name is the one printed on the mockups."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     import json
     from core import claude_json
     from core.cost_tracker import cost_action
@@ -477,15 +481,19 @@ def view_path(n: int) -> str:
     return f"/api/client/branding/view/{int(n)}"
 
 
-def page(client_id: int, n: int, lang: str = "he") -> str:
+def page(client_id: int, n: int, lang: str = None) -> str:
     """The mockup page of one stored attempt ("" when there is none)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     item = attempt(client_id, n)
     return brand_mockups.page_html(item["concept"], lang, int(n)) if item else ""
 
 
-def logo_svg(client_id: int, n: int, lang: str = "he") -> str:
+def logo_svg(client_id: int, n: int, lang: str = None) -> str:
     """One attempt's logo as a standalone SVG (the studio gallery's thumbnail,
     shown as an <img>, so it can never run anything). "" when there is none."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     item = attempt(client_id, n)
     if not item:
         return ""
@@ -508,10 +516,12 @@ def reject(client_id: int, n: int) -> dict:
     return {"rejected": value["rejected"]}
 
 
-def gallery(client_id: int, lang: str = "he") -> dict:
+def gallery(client_id: int, lang: str = None) -> dict:
     """Everything the studio shows: every attempt the client saw (newest
     first) with its colours, fonts and style, the kit when approved, and the
     fixed lines. Never raises: {"available": False} on a failed read."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     data = summary(client_id)
     if not data.get("available"):
         return data

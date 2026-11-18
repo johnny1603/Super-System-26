@@ -199,8 +199,10 @@ def _positions(client_id: int, keywords: list) -> dict:
         return {}
 
 
-def build_state(client_id: int, lang: str = "he") -> dict:
+def build_state(client_id: int, lang: str = None) -> dict:
     """Step 1. Reuses the free organic report (built if missing or stale)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import seo_report
     report = seo_report.latest(client_id)
     if not report or not seo_report.fresh_enough(report):
@@ -239,8 +241,10 @@ Never promise a ranking. Never name an SEO tool.
 Return JSON only: {{"candidates": [{{"keyword": "", "source": "", "intent": "", "volume": "", "competition": "", "why": ""}}]}}"""
 
 
-def research_keywords(client_id: int, lang: str = "he") -> dict:
+def research_keywords(client_id: int, lang: str = None) -> dict:
     """Step 2. One web search + one structuring call (+ real volumes when on)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import claude_json, dataforseo_connector
     from core.cost_tracker import cost_action
     value = current(client_id)
@@ -316,8 +320,10 @@ a position or a date. Never name an SEO tool.
 Return JSON only: {"steps": [{"what": "", "why": ""}], "internal_months": 4, "reason": ""}"""
 
 
-def build_strategy(client_id: int, lang: str = "he") -> dict:
+def build_strategy(client_id: int, lang: str = None) -> dict:
     """Step 5. One call; the committed target is computed in code."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import claude_json
     from core.cost_tracker import cost_action
     from core.model_routing import TIER_MODELS
@@ -345,8 +351,10 @@ def build_strategy(client_id: int, lang: str = "he") -> dict:
     return _store(client_id, value)
 
 
-def advance(client_id: int, lang: str = "he") -> dict:
+def advance(client_id: int, lang: str = None) -> dict:
     """Run the next AUTOMATIC step (everything except the client's approval)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     value = current(client_id)
     step = stage(value)
     runner = {"state": build_state, "keywords": research_keywords, "backlinks": lambda c, l: check_backlinks(c),
@@ -434,7 +442,9 @@ CANDIDATE_LINE = _five("{k}: כוונה {i}, נפח {v}, תחרות {c}", "{k}: 
                        "{k}: намерение {i}, объём {v}, конкуренция {c}")
 
 
-def next_line(client_id: int, lang: str = "he") -> str:
+def next_line(client_id: int, lang: str = None) -> str:
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     value = current(client_id)
     step = stage(value)
     return pick(TEXT["ready" if step == "ready" else f"next_{step}"], lang)

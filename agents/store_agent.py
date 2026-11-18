@@ -63,21 +63,95 @@ STATUS_HE = {"pending": "ממתינה לתשלום", "processing": "בטיפול
              "completed": "הושלמה", "cancelled": "בוטלה", "refunded": "הוחזרה",
              "failed": "נכשלה", "checkout-draft": "טיוטה", "trash": "בפח"}
 
-# Plain Hebrew, no vendor words: the client never handles a key (the admin
-# fallback sees the same lines plus the code)
-ERRORS_HE = {
-    "store_auth": "החנות לא אישרה את החיבור — אפשר לנסות שוב בלחיצה אחת.",
-    "store_not_woocommerce": "לא מצאנו חנות פעילה בכתובת של האתר.",
-    "store_needs_https": "האתר צריך חיבור מאובטח (https) כדי שנוכל להתחבר לחנות.",
-    "store_bad_address": "הכתובת לא נראית כמו כתובת של אתר. כתבו אותה כמו שהיא מופיעה בדפדפן, למשל shop.co.il.",
-    "store_busy": "החנות ביקשה מאיתנו להאט רגע — ננסה שוב בעוד דקה.",
-    "store_not_found": "לא מצאנו הזמנה כזו בחנות.",
-    "store_error": "לא הצלחנו לקרוא את החנות כרגע — ננסה שוב בעוד רגע.",
-    "bad_key": "פרטי החיבור לא נראים שלמים.",
-    "not_read_only": "החיבור חייב להיות לקריאה בלבד.",
-    "no_site": "חסרה כתובת החנות.",
-    "no_website": "כדי להשתמש בחיבור האתר הקיים, האתר צריך להיות מחובר קודם.",
+def _five(he, en, fr, ar, ru):
+    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
+
+
+# Plain words, no vendor words, in the CLIENT's language (2026-11-19): the
+# client never handles a key (the admin fallback sees the same lines plus the code)
+ERRORS = {
+    "store_auth": _five("החנות לא אישרה את החיבור — אפשר לנסות שוב בלחיצה אחת.",
+                        "The store did not approve the connection — you can try again with one click.",
+                        "La boutique n'a pas approuvé la connexion — vous pouvez réessayer en un clic.",
+                        "لم يوافق المتجر على الاتصال — يمكن المحاولة مجددًا بنقرة واحدة.",
+                        "Магазин не подтвердил подключение — можно попробовать ещё раз одним нажатием."),
+    "store_not_woocommerce": _five("לא מצאנו חנות פעילה בכתובת של האתר.", "We didn't find an active store at the website's address.",
+                                   "Nous n'avons pas trouvé de boutique active à l'adresse du site.", "لم نجد متجرًا نشطًا على عنوان الموقع.",
+                                   "По адресу сайта активный магазин не найден."),
+    "store_needs_https": _five("האתר צריך חיבור מאובטח (https) כדי שנוכל להתחבר לחנות.",
+                               "The website needs a secure connection (https) for us to connect to the store.",
+                               "Le site doit avoir une connexion sécurisée (https) pour que nous puissions nous connecter à la boutique.",
+                               "يحتاج الموقع إلى اتصال آمن (https) لنتمكن من الاتصال بالمتجر.",
+                               "Сайту нужно защищённое соединение (https), чтобы мы могли подключиться к магазину."),
+    "store_bad_address": _five("הכתובת לא נראית כמו כתובת של אתר. כתבו אותה כמו שהיא מופיעה בדפדפן, למשל shop.co.il.",
+                               "That doesn't look like a website address. Write it as it appears in the browser, for example shop.co.il.",
+                               "Cela ne ressemble pas à une adresse de site. Écrivez-la comme dans le navigateur, par exemple shop.co.il.",
+                               "لا يبدو هذا عنوان موقع. اكتبوه كما يظهر في المتصفح، مثلًا shop.co.il.",
+                               "Это не похоже на адрес сайта. Напишите его так, как он выглядит в браузере, например shop.co.il."),
+    "store_busy": _five("החנות ביקשה מאיתנו להאט רגע — ננסה שוב בעוד דקה.", "The store asked us to slow down — we'll try again in a minute.",
+                        "La boutique nous a demandé de ralentir — nous réessaierons dans une minute.",
+                        "طلب المتجر منا التمهّل — سنحاول مجددًا بعد دقيقة.", "Магазин попросил нас притормозить — попробуем снова через минуту."),
+    "store_not_found": _five("לא מצאנו הזמנה כזו בחנות.", "We didn't find that order in the store.", "Nous n'avons pas trouvé cette commande dans la boutique.",
+                             "لم نجد هذا الطلب في المتجر.", "Такой заказ в магазине не найден."),
+    "store_error": _five("לא הצלחנו לקרוא את החנות כרגע — ננסה שוב בעוד רגע.", "We couldn't read the store right now — we'll try again in a moment.",
+                         "Nous n'avons pas pu lire la boutique pour l'instant — nous réessaierons dans un instant.",
+                         "لم نتمكن من قراءة المتجر الآن — سنحاول مجددًا بعد لحظة.", "Сейчас не удалось прочитать магазин — попробуем ещё раз через минуту."),
+    "bad_key": _five("פרטי החיבור לא נראים שלמים.", "The connection details don't look complete.", "Les informations de connexion semblent incomplètes.",
+                     "بيانات الاتصال لا تبدو كاملة.", "Данные подключения выглядят неполными."),
+    "not_read_only": _five("החיבור חייב להיות לקריאה בלבד.", "The connection must be read only.", "La connexion doit être en lecture seule.",
+                           "يجب أن يكون الاتصال للقراءة فقط.", "Подключение должно быть только для чтения."),
+    "no_site": _five("חסרה כתובת החנות.", "The store address is missing.", "L'adresse de la boutique manque.", "عنوان المتجر ناقص.",
+                     "Не указан адрес магазина."),
+    "no_website": _five("כדי להשתמש בחיבור האתר הקיים, האתר צריך להיות מחובר קודם.",
+                        "To use the existing website connection, the website needs to be connected first.",
+                        "Pour utiliser la connexion du site existante, le site doit d'abord être connecté.",
+                        "لاستخدام اتصال الموقع الحالي، يجب ربط الموقع أولًا.",
+                        "Чтобы использовать подключение сайта, сайт сначала нужно подключить."),
 }
+ERRORS_HE = {k: v["he"] for k, v in ERRORS.items()}
+STATUS_TEXT = {
+    "pending": _five("ממתינה לתשלום", "awaiting payment", "en attente de paiement", "بانتظار الدفع", "ожидает оплаты"),
+    "processing": _five("בטיפול", "processing", "en cours", "قيد المعالجة", "в обработке"),
+    "on-hold": _five("בהמתנה", "on hold", "en attente", "معلّق", "на удержании"),
+    "completed": _five("הושלמה", "completed", "terminée", "مكتمل", "выполнен"),
+    "cancelled": _five("בוטלה", "cancelled", "annulée", "ملغى", "отменён"),
+    "refunded": _five("הוחזרה", "refunded", "remboursée", "مسترد", "возвращён"),
+    "failed": _five("נכשלה", "failed", "échouée", "فشل", "не прошёл"),
+    "checkout-draft": _five("טיוטה", "draft", "brouillon", "مسودة", "черновик"),
+    "trash": _five("בפח", "in the bin", "à la corbeille", "في سلة المحذوفات", "в корзине"),
+}
+ORDER_LINES = {
+    "not_found": _five("לא מצאתי בחנות הזמנה מספר {n}. כדאי לבדוק את המספר ולשלוח שוב.",
+                       "I didn't find order number {n} in the store. Please check the number and send it again.",
+                       "Je n'ai pas trouvé la commande n° {n} dans la boutique. Vérifiez le numéro et renvoyez-le.",
+                       "لم أجد الطلب رقم {n} في المتجر. تحقّقوا من الرقم وأرسلوه مجددًا.",
+                       "Заказ № {n} в магазине не найден. Проверьте номер и отправьте ещё раз."),
+    "order": _five("הזמנה", "Order", "Commande", "الطلب", "Заказ"),
+    "shipping": _five("משלוח", "shipping", "livraison", "الشحن", "доставка"),
+    "no_details": _five("אין בהזמנה הזו פרטי לקוח.", "This order has no customer details.", "Cette commande n'a pas de coordonnées client.",
+                        "لا توجد بيانات عميل في هذا الطلب.", "В этом заказе нет данных покупателя."),
+    "name": _five("שם", "Name", "Nom", "الاسم", "Имя"),
+    "address": _five("כתובת למשלוח", "Shipping address", "Adresse de livraison", "عنوان الشحن", "Адрес доставки"),
+    "phone": _five("טלפון", "Phone", "Téléphone", "الهاتف", "Телефон"),
+    "email": _five("מייל", "Email", "E-mail", "البريد الإلكتروني", "Эл. почта"),
+    "note": _five("הערת הלקוח", "Customer note", "Note du client", "ملاحظة العميل", "Комментарий покупателя"),
+    "shown_once": _five("(פרטי הלקוח הוצגו לכם פעם אחת ולא נשמרו אצלנו. אפשר לבקש אותם שוב בכל רגע.)",
+                        "(The customer's details were shown to you once and were not kept by us. You can ask for them again any time.)",
+                        "(Les coordonnées du client vous ont été montrées une fois et ne sont pas conservées chez nous. Vous pouvez les redemander à tout moment.)",
+                        "(عُرضت عليكم بيانات العميل مرة واحدة ولم نحتفظ بها. يمكنكم طلبها مجددًا في أي وقت.)",
+                        "(Данные покупателя были показаны вам один раз и у нас не сохранены. Их можно запросить снова в любой момент.)"),
+}
+
+
+def error_text(code: str, lang: str = "he") -> str:
+    table = ERRORS.get(code) or ERRORS["store_error"]
+    return table.get(lang) or table["he"]
+
+
+def _o(key: str, lang: str) -> str:
+    return ORDER_LINES[key].get(lang) or ORDER_LINES[key]["he"]
+
+
 APP_NAME = "uallak"           # what the store's approval screen and key list show
 
 _KEY = re.compile(r"^ck_[A-Za-z0-9]{20,64}$")
@@ -147,7 +221,8 @@ def status(client_id: int) -> dict:
 
 
 def _error(code: str) -> dict:
-    return {"success": False, "code": code, "error": ERRORS_HE.get(code, ERRORS_HE["store_error"])}
+    return {"success": False, "code": code, "error": ERRORS_HE.get(code, ERRORS_HE["store_error"]),
+            "errors": ERRORS.get(code) or ERRORS["store_error"]}
 
 
 def _forget(client_id: int):
@@ -728,28 +803,31 @@ def personal_answer(client_id: int, message: str) -> dict:
     number = order_number_in(message)
     if not is_connected(client_id):
         return {}
+    from core import client_language
+    lang = client_language.for_message(client_id, message)
     try:
         order = order_detail(client_id, number, personal=True)["order"]
     except wc.StoreNotFound:
-        line = f"לא מצאתי בחנות הזמנה מספר {number}. כדאי לבדוק את המספר ולשלוח שוב."
+        line = _o("not_found", lang).replace("{n}", str(number))
         return {"reply": line, "stored_reply": line}
     except wc.StoreError as e:
-        line = ERRORS_HE.get(e.code, ERRORS_HE["store_error"])
+        line = error_text(e.code, lang)
         return {"reply": line, "stored_reply": line}
     customer = order.get("customer") or {}
-    parts = [("שם", customer.get("name")), ("כתובת למשלוח", customer.get("address")),
-             ("טלפון", customer.get("phone")), ("מייל", customer.get("email")),
-             ("הערת הלקוח", customer.get("note"))]
+    parts = [(_o("name", lang), customer.get("name")), (_o("address", lang), customer.get("address")),
+             (_o("phone", lang), customer.get("phone")), (_o("email", lang), customer.get("email")),
+             (_o("note", lang), customer.get("note"))]
     shown = [(label, value) for label, value in parts if value]
-    head = f"הזמנה {order['number']} ({order.get('status_he') or order['status']}, {order['total']} {order['currency']})"
+    status = (STATUS_TEXT.get(order["status"]) or {}).get(lang) or order.get("status_he") or order["status"]
+    head = f"{_o('order', lang)} {order['number']} ({status}, {order['total']} {order['currency']})"
     if order.get("shipping_method"):
-        head += f" · משלוח: {order['shipping_method']}"
+        head += f" · {_o('shipping', lang)}: {order['shipping_method']}"
     if not shown:
-        line = head + "\nאין בהזמנה הזו פרטי לקוח."
+        line = head + "\n" + _o("no_details", lang)
         return {"reply": line, "stored_reply": line}
     reply = head + "\n" + "\n".join(f"{label}: {value}" for label, value in shown)
     stored = (head + "\n" + "\n".join(f"{label}: {PII_MASK}" for label, _ in shown)
-              + "\n(פרטי הלקוח הוצגו לכם פעם אחת ולא נשמרו אצלנו. אפשר לבקש אותם שוב בכל רגע.)")
+              + "\n" + _o("shown_once", lang))
     log_step(AGENT_NAME, "personal_answer", f"client {client_id}: customer details shown for one order")
     return {"reply": reply, "stored_reply": stored}
 

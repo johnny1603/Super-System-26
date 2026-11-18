@@ -219,8 +219,10 @@ def current(client_id: int) -> dict:
     return value if value.get("status") in ("proposed", "approved") and _age_days(value) < limit else {}
 
 
-def store(client_id: int, items: list, lang: str = "he", source: str = "weekly") -> dict:
+def store(client_id: int, items: list, lang: str = None, source: str = "weekly") -> dict:
     # The planner is a model: no tool or vendor name reaches the plan the client reads
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import vendor_names
     if isinstance(items, list):
         vendor_names.scrub_tree(items, lang if lang in LANGS else "he")
@@ -257,9 +259,11 @@ def plan_persona(client_id: int) -> str:
     return "meta" if any(token in services for token in ("meta", "facebook", "instagram", "social")) else "media"
 
 
-def propose(client_id: int, items: list, lang: str = "he", source: str = "weekly", persona: str = "") -> dict:
+def propose(client_id: int, items: list, lang: str = None, source: str = "weekly", persona: str = "") -> dict:
     """Stores the plan and opens its ONE approval card. {"plan", "card"} —
     card None when the card could not be opened (the caller falls back)."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import agent_actions
     value = store(client_id, items, lang, source)
     if not value:
@@ -356,8 +360,10 @@ def _today_index() -> int:
     return (now.weekday() + 1) % 7
 
 
-def view(client_id: int, lang: str = "he") -> dict:
+def view(client_id: int, lang: str = None) -> dict:
     """The plan for the Media tab; never raises."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     lang = lang if lang in LANGS else "en"
     try:
         value = current(client_id)

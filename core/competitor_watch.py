@@ -251,8 +251,10 @@ Never name a tool or vendor. Each text ≤ 30 words.
 Return JSON only: {{"works": [], "doesnt": [], "better": []}}"""
 
 
-def build_digest(client_id: int, lang: str = "he") -> dict:
+def build_digest(client_id: int, lang: str = None) -> dict:
     """ONE model call over what was read. Stored; a fresh one (< FRESH_DAYS) is reused."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     from core import claude_json
     from core.cost_tracker import cost_action
     from core.model_routing import TIER_MODELS

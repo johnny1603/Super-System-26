@@ -167,7 +167,7 @@ class MediaReads(unittest.TestCase):
                                      "finished_at": "2026-10-30T09:00:00+00:00"}]
         drafts = sa._media_reads(40)["tiktok_inbox_drafts"]
         self.assertEqual(drafts["sent_to_inbox"], [{"file": "", "sent_at": "2026-10-30"}])
-        self.assertIn("פרסם", drafts["client_must_do"])
+        self.assertIn("Post", drafts["client_must_do"])
 
     def test_unreadable_history_is_left_out_not_shown_as_an_error(self):
         self.db.fail = True

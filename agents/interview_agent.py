@@ -90,6 +90,16 @@ NUDGE_ACTION = "connection_nudge_sent"
 _db_instance = None
 
 
+# A first-login dead end is worse than an imperfect reply — in the client's language
+_FIRST_LOGIN_FALLBACK = {
+    "he": "שמחים שאתם כאן! 🙂 אני כאן לכל שאלה — ובינתיים, אם יש לכם שמות של מתחרים שכדאי שנכיר, כתבו לי אותם כאן.",
+    "en": "Glad you're here 🙂 I'm here for any question — and meanwhile, if there are competitors we should know about, write their names to me here.",
+    "fr": "Ravis de vous voir ici 🙂 Je suis là pour toute question — et en attendant, s'il y a des concurrents que nous devrions connaître, écrivez-moi leurs noms ici.",
+    "ar": "سعداء بوجودكم 🙂 أنا هنا لأي سؤال — وفي الأثناء، إن كان هناك منافسون يجدر بنا معرفتهم، اكتبوا لي أسماءهم هنا.",
+    "ru": "Рады, что вы здесь 🙂 Я отвечу на любой вопрос — а пока, если есть конкуренты, о которых нам стоит знать, напишите мне их названия здесь.",
+}
+
+
 def _db():
     global _db_instance
     if _db_instance is None:
@@ -276,13 +286,15 @@ HARD LIMITS: max 4 sentences. At most one emoji. No bullet lists.
 Return JSON only: {{"message": "..."}}"""
 
 
-def connection_nudge(client_id: int, language: str = "he") -> dict:
+def connection_nudge(client_id: int, language: str = None) -> dict:
     """The first-login urgency message (handoff Part 4, point 4). Written by
     the LLM against the client's REAL next step, so it names the actual thing
     rather than reading like a form letter.
 
     Deduped to once per day — a client reloading the dashboard is not asked
     again, and a client who genuinely stalls for a day gets one fresh nudge."""
+    from core import client_language as _cl
+    language = _cl.resolve(client_id, language)   # the CLIENT's language, never a fixed "he"
     from agents.client_agent import get_client, log_communication
     from agents.onboarding_agent import LANGUAGE_RULE
     from core import client_journey
@@ -336,13 +348,15 @@ def _acted_within(client_id: int, action_type: str, days: int) -> bool:
     return bool(rows)
 
 
-def start_or_continue(client_id: int, message: str = "", language: str = "he") -> dict:
+def start_or_continue(client_id: int, message: str = "", language: str = None) -> dict:
     """One interview turn. `message` empty = the opening turn (nothing said yet).
 
     Returns {"reply", "speaking_as", "complete", "captured_count"}. Never
     raises for an LLM failure: a broken first minute must not be a dead end —
     the client gets a warm fallback and can talk to the normal chat instead.
     """
+    from core import client_language as _cl
+    language = _cl.resolve(client_id, language)   # the CLIENT's language, never a fixed "he"
     from agents.client_agent import get_client, log_communication
     from agents.onboarding_agent import LANGUAGE_RULE
     from core import client_journey
@@ -410,8 +424,8 @@ def start_or_continue(client_id: int, message: str = "", language: str = "he") -
             client_id=client_id, persona="general",
             issue_key=f"technical:interview:{chat_fallback.question_key(message or 'opening')}")
         # A first-login dead end is worse than an imperfect reply.
-        fallback = ("שמחים שאתם כאן! 🙂 אני כאן לכל שאלה — ובינתיים, "
-                    "אם יש לכם שמות של מתחרים שכדאי שנכיר, כתבו לי אותם כאן.")
+        from core import client_language
+        fallback = _FIRST_LOGIN_FALLBACK[client_language.resolve(client_id, language)]
         log_communication(client_id, "outbound", "dashboard_chat", fallback)
         return {"success": True, "reply": fallback, "speaking_as": "general",
                 "complete": False, "captured_count": 0, "degraded": True}

@@ -511,8 +511,10 @@ def month_of(value: dict) -> int:
     return days // 30
 
 
-def monthly_report(client_id: int, value: dict, lang: str = "he") -> str:
+def monthly_report(client_id: int, value: dict, lang: str = None) -> str:
     """The month's report against the dated baseline, on the agreed keywords and metric only."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     base = value.get("baseline") or {}
     lines = [_t("monthly_title", lang, m=max(1, month_of(value)), d=str(base.get("captured_at", value.get("agreed_at", "")))[:10])]
     try:
@@ -545,9 +547,11 @@ def due_month(value: dict) -> int:
     return 0
 
 
-def post_monthly_if_due(client_id: int, lang: str = "he") -> bool:
+def post_monthly_if_due(client_id: int, lang: str = None) -> bool:
     """Posts the due monthly report ONCE into the manager's chat. The month is
     marked BEFORE posting, so a retry never posts it twice."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     value = agreed(client_id)
     month = due_month(value) if value else 0
     if not month:
@@ -560,9 +564,11 @@ def post_monthly_if_due(client_id: int, lang: str = "he") -> bool:
     return True
 
 
-def track(client_id: int, lang: str = "he") -> dict:
+def track(client_id: int, lang: str = None) -> dict:
     """{} until goals are agreed. Otherwise the title, the month, the honesty
     line and three steps {key, persona, goal, now, measured, next}."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     lang = lang if lang in LANGS else "he"
     value = agreed(client_id)
     if not value:

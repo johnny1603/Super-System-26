@@ -340,8 +340,10 @@ def _recent_done(client_id: int, persona: str = None, days: int = 7) -> list:
     return here or rows
 
 
-def undo_card(client_id: int, row: dict, lang: str = "he") -> dict:
+def undo_card(client_id: int, row: dict, lang: str = None) -> dict:
     """The ONE undo card a finished action offers, or {} when it has none."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     build = UNDO.get(row.get("action") or "")
     if not build:
         return {}

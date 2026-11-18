@@ -600,10 +600,27 @@ def _run_set_conversion_types(client_id: int, params: dict):
         raise ActionFailed("refused_by_action", str(e))
 
 
-_PURCHASE_NOTE_HE = (" ברכישות: כשקונה מגיע לדף 'ההזמנה התקבלה' נרשם אירוע אחד עם מספר ההזמנה, "
-                     "הסכום והמטבע (כשהם מופיעים בדף), ורענון של הדף לא נספר שוב. המקור של כל הזמנה "
-                     "נרשם בחשבון המדידה שלכם — מכאן אנחנו עוד לא קוראים אותו. שום דבר לא מותקן "
-                     "באתר עצמו, והמכירות עצמן ממשיכות להיספר ישירות מהחנות.")
+_PURCHASE_NOTE = {
+    "he": " ברכישות: כשקונה מגיע לדף 'ההזמנה התקבלה' נרשם אירוע אחד עם מספר ההזמנה, הסכום והמטבע (כשהם מופיעים בדף), "
+          "ורענון של הדף לא נספר שוב. המקור של כל הזמנה נרשם בחשבון המדידה שלכם — מכאן אנחנו עוד לא קוראים אותו. "
+          "שום דבר לא מותקן באתר עצמו, והמכירות עצמן ממשיכות להיספר ישירות מהחנות.",
+    "en": " For purchases: when a buyer reaches the order-received page, one event is recorded with the order number, the "
+          "amount and the currency (when the page shows them), and a page refresh is not counted again. The source of each "
+          "order is recorded in your measurement account — we don't read it from there yet. Nothing is installed on the site "
+          "itself, and sales are still counted directly from the store.",
+    "fr": " Pour les achats : quand un acheteur arrive sur la page de confirmation, un événement est enregistré avec le numéro "
+          "de commande, le montant et la devise (quand la page les affiche), et un rafraîchissement n'est pas recompté. La "
+          "source de chaque commande est enregistrée dans votre compte de mesure — nous ne la lisons pas encore. Rien n'est "
+          "installé sur le site, et les ventes restent comptées directement depuis la boutique.",
+    "ar": " للمشتريات: عندما يصل المشتري إلى صفحة تأكيد الطلب يُسجَّل حدث واحد برقم الطلب والمبلغ والعملة (عندما تظهر في الصفحة)، "
+          "ولا يُحتسب تحديث الصفحة مرة أخرى. يُسجَّل مصدر كل طلب في حساب القياس لديكم — لا نقرؤه من هناك بعد. لا يُثبَّت شيء "
+          "على الموقع نفسه، وتستمر المبيعات في الاحتساب مباشرة من المتجر.",
+    "ru": " Для покупок: когда покупатель попадает на страницу подтверждения заказа, записывается одно событие с номером "
+          "заказа, суммой и валютой (если страница их показывает), повторная загрузка страницы не считается. Источник каждого "
+          "заказа записывается в вашем аккаунте измерений — оттуда мы его пока не читаем. На сайт ничего не устанавливается, "
+          "а продажи по-прежнему считаются напрямую из магазина.",
+}
+_PURCHASE_NOTE_HE = _PURCHASE_NOTE["he"]
 
 
 def _client_measures(client_id: int, params: dict) -> dict:
@@ -613,7 +630,7 @@ def _client_measures(client_id: int, params: dict) -> dict:
     from core import conversion_types
     types = conversion_types.gtm_types_for(client_id)
     return {"measures": ", ".join(conversion_types.gtm_labels(types)) or "—",
-            "purchase_note": _PURCHASE_NOTE_HE if "store_sales" in types else ""}
+            "purchase_note": _pick(_PURCHASE_NOTE, _lang(client_id)) if "store_sales" in types else ""}
 
 
 _PURCHASE_DONE = _txt(
@@ -4950,8 +4967,9 @@ def _open_rows(client_id: int, statuses=OPEN_STATUSES) -> list:
         return []
 
 
-TIKTOK_INBOX_NEXT_STEP_HE = ("הסרטון מחכה כטיוטה בתיבת הנכנסים באפליקציית טיקטוק: פותחים את האפליקציה, "
-                             "נכנסים להתראה על הסרטון, מוסיפים כיתוב ולוחצים 'פרסם'. אנחנו לא מפרסמים בשמכם.")
+# Model data (written to the client in reply_language), so plain English here
+TIKTOK_INBOX_NEXT_STEP = ("The video waits as a draft in the inbox of their TikTok app: they open the app, tap the "
+                          "notification about the video, add a caption and press Post. We never post for them.")
 
 
 def tiktok_sent_files(client_id: int, limit: int = 50) -> dict:
@@ -4995,7 +5013,7 @@ def tiktok_drafts_sent(client_id: int, limit: int = 10) -> dict:
             "sending_now": sum(1 for r in rows if r.get("status") == "running"),
             "waiting_for_approval": sum(1 for r in rows if r.get("status") in OPEN_STATUSES
                                         and not _expired(r)),
-            "client_must_do": TIKTOK_INBOX_NEXT_STEP_HE if sent else ""}
+            "client_must_do": TIKTOK_INBOX_NEXT_STEP if sent else ""}
 
 
 def _expired(row: dict) -> bool:

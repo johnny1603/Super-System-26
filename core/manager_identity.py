@@ -107,9 +107,11 @@ def for_client(client: dict, lang: str = "he") -> dict:
     return out
 
 
-def for_client_id(client_id: int, lang: str = "he") -> dict:
+def for_client_id(client_id: int, lang: str = None) -> dict:
     """Never raises: an unknown client or a failed read is the default
     manager, never a missing name in a sent message."""
+    from core import client_language as _cl
+    lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
     try:
         from agents.client_agent import get_client
         return for_client(get_client(client_id) or {}, lang)

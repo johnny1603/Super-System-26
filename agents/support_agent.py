@@ -69,6 +69,7 @@ from supabase import create_client as _supabase_client
 
 from agents.client_agent import get_client, get_activity, get_communications, log_activity
 from agents.onboarding_agent import LANGUAGE_RULE
+from core.client_language import REPLY_LANGUAGE_RULE
 from core import chat_approval, chat_automation
 from core import manager_identity
 from core import model_routing
@@ -829,7 +830,7 @@ Return JSON only:
  "handoff_topic": "", "capability_gap": "", "data_topic": "", "web_search_query": "",
  "upgrade_request": "", "proposed_action": {"name": "", "params": {}, "summary": ""},
  "card_decision": {"verdict": "none", "card_id": 0}}""" + HANDOFF_RULE + KNOWLEDGE_RULE \
-    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + _AUTOMATION_RULE + STUDIO_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE \
+    + ACCOUNT_STATE_RULE + LANGUAGE_RULE + REPLY_LANGUAGE_RULE + _AUTOMATION_RULE + STUDIO_RULE + NO_SECRETS_RULE + CONNECTION_HELP_RULE \
     + chat_approval.SUPPORT_RULE
 
 SEARCH_SYSTEM = """You are uallak's professional support assistant, chatting with an existing,
@@ -859,11 +860,10 @@ Rules:
 # client as a bare 500.
 
 def _client_language(client_id: int, message: str) -> str:
-    try:
-        stored = (get_client(client_id) or {}).get("language") or "he"
-    except Exception:
-        stored = "he"
-    return chat_fallback.detect_language(message, stored)
+    """The reply language (core/client_language): the language the client
+    writes in, else their language setting."""
+    from core import client_language
+    return client_language.for_message(client_id, message)
 
 
 def _technical_failure(client_id: int, persona_id: str, message: str, stage: str,
@@ -1256,22 +1256,40 @@ def _current_monthly_fee(client_id: int) -> int:
     return 0
 
 
-def _format_proposal_reply(proposal: dict) -> str:
-    """Deterministic, compact Hebrew presentation of a proposal for the chat -
-    no extra LLM round-trip on top of the (already slow) build."""
-    lines = ["הכנו לך הצעה מסודרת 👇"]
+_PROPOSAL_WORDS = {
+    "head": {"he": "הכנו לך הצעה מסודרת 👇", "en": "We've prepared a proper offer for you 👇",
+             "fr": "Nous vous avons préparé une offre détaillée 👇", "ar": "جهّزنا لك عرضًا مرتّبًا 👇",
+             "ru": "Мы подготовили для вас предложение 👇"},
+    "month": {"he": "/חודש", "en": "/month", "fr": "/mois", "ar": "/شهريًا", "ru": "/мес."},
+    "setup": {"he": "הקמה חד-פעמית", "en": "one-time setup", "fr": "mise en place unique", "ar": "تأسيس لمرة واحدة",
+              "ru": "разовая настройка"},
+    "next": {"he": "רוצים להתקדם עם אחת מהאפשרויות? כתבו לי כאן, והצוות יסגור איתכם את הפרטים והעדכון ייכנס לתוקף בחיוב הבא.",
+             "en": "Want to go ahead with one of the options? Write to me here, and the team will finalise the details with you; the change takes effect from the next charge.",
+             "fr": "Vous voulez avancer avec l'une des options ? Écrivez-moi ici, l'équipe finalisera les détails avec vous ; le changement s'applique à partir du prochain prélèvement.",
+             "ar": "تريدون المضي بأحد الخيارات؟ اكتبوا لي هنا، وسيُنهي الفريق التفاصيل معكم ويسري التغيير من الدفعة القادمة.",
+             "ru": "Хотите выбрать один из вариантов? Напишите мне здесь — команда согласует с вами детали, изменение вступит в силу со следующего платежа."},
+}
+
+
+def _format_proposal_reply(proposal: dict, lang: str = "he") -> str:
+    """Deterministic, compact presentation of a proposal for the chat, in the
+    client's language - no extra LLM round-trip on top of the (already slow) build."""
+    from core import client_language
+    lang = lang if lang in client_language.LANGS else "he"
+    w = {k: v.get(lang) or v["he"] for k, v in _PROPOSAL_WORDS.items()}
+    lines = [w["head"]]
     for pkg in (proposal.get("packages") or [])[:2]:
         monthly = int(pkg.get("monthly_management_total", 0) or 0)
         setup = int(pkg.get("setup_fee_total", 0) or 0)
-        line = f"• {pkg.get('name', '')} — ₪{monthly:,}/חודש"
+        line = f"• {pkg.get('name', '')} — {client_language.fmt_money(monthly, lang)}{w['month']}"
         if setup:
-            line += f" + ₪{setup:,} הקמה חד-פעמית"
+            line += f" + {client_language.fmt_money(setup, lang)} {w['setup']}"
         lines.append(line)
         if pkg.get("description"):
             lines.append(f"   {pkg['description']}")
     if proposal.get("honest_note"):
         lines.append(proposal["honest_note"])
-    lines.append("רוצים להתקדם עם אחת מהאפשרויות? כתבו לי כאן, והצוות יסגור איתכם את הפרטים והעדכון ייכנס לתוקף בחיוב הבא.")
+    lines.append(w["next"])
     return "\n".join(lines)
 
 
@@ -1321,7 +1339,8 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
                                 "setup": p.get("setup_fee_total")} for p in packages]})
     agent_alert(AGENT_NAME, [f"client {client_id} got an in-chat UPGRADE proposal "
                              f"({upgrade_request}) — follow up to close and adjust billing"])
-    return _format_proposal_reply(proposal)
+    from core import client_language
+    return _format_proposal_reply(proposal, client_language.of(client_id))
 
 
 # ─── One turn's context: decided first, then read AT ONCE (2026-11-11) ───────
@@ -1510,7 +1529,10 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     # else; "עזרה" on a connection is always a full turn
     decision = _decide_turn(client_id, message, history, force_work=bool(help_connection))
     light = decision["kind"] == "simple"
+    from core import client_language
     payload = {
+        # FIRST in the data: every client-facing word of this turn is in it
+        "reply_language": client_language.payload(_client_language(client_id, message)),
         "client": {
             "name": client.get("name"),
             "package": client.get("package"),
@@ -2580,7 +2602,7 @@ Return JSON only:
  "out_of_scope": true/false, "handoff_topic": "", "capability_gap": "", "data_topic": "",
  "upgrade_request": "", "proposed_action": {{"name": "", "params": {{}}, "summary": ""}},
  "card_decision": {{"verdict": "none", "card_id": 0}}{extra_fields}}}""" \
-    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + STUDIO_RULE + NO_SECRETS_RULE \
+    + HANDOFF_RULE + KNOWLEDGE_RULE + ACCOUNT_STATE_RULE + LANGUAGE_RULE + REPLY_LANGUAGE_RULE + STUDIO_RULE + NO_SECRETS_RULE \
     + _AUTOMATION_RULE.replace("{", "{{").replace("}", "}}") \
     + chat_approval.SUPPORT_RULE.replace("{", "{{").replace("}", "}}")   # personas can set upgrade_request too
 
@@ -2621,7 +2643,10 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     # Rules first (core/chat_route): a simple turn reads nothing else
     decision = _decide_turn(client_id, message, history)
     light = decision["kind"] == "simple"
+    from core import client_language
     payload = {
+        # FIRST in the data: every client-facing word of this turn is in it
+        "reply_language": client_language.payload(_client_language(client_id, message)),
         "client": {"name": client.get("name"), "package": client.get("package"),
                     "status": client.get("status")},
     }
