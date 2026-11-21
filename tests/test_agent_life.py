@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,9 +81,12 @@ class Static(unittest.TestCase):
         self.assertIn("'visibilitychange'", code)
         self.assertIn("if (window.uallakLife) return;", code)
         self.assertIn("canvas.parentNode.removeChild(canvas)", code)
-        # nothing existing is ever re-parented: the only insertBefore places the NEW rig
+        # nothing existing is ever re-parented: the only insertBefore places a NEW node
+        # (the rig or the pose stage), and only nodes this script made are ever removed
         self.assertEqual(code.count("insertBefore("), 1)
-        self.assertIn("pic.holder.parentNode.insertBefore(rig, pic.holder);", code)
+        self.assertIn("function addBefore(node, pic) { pic.holder.parentNode.insertBefore(node, pic.holder); }", code)
+        self.assertEqual(code.count("addBefore("), 3)                              # the helper + rig + stage
+        self.assertEqual(code.count("removeChild("), 2)                            # drop() + the canvas
 
     def test_never_during_a_conversation_or_while_the_agent_works(self):
         fn = self.js[self.js.index("function conversationActive()"):self.js.index("function working(")]
@@ -149,34 +153,130 @@ class Static(unittest.TestCase):
                                                             f"{name}-figure.{ext}")), name)
 
 
+def _png_header(path):
+    """(width, height, colour type) from a PNG's IHDR."""
+    with open(path, "rb") as f:
+        head = f.read(26)
+    assert head[:8] == b"\x89PNG\r\n\x1a\n", path
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"), head[25]
+
+
+URI_FRAMES = ("arms-folded", "watch", "thinking", "wave", "glance-left-neutral", "glance-left-smile",
+              "glance-right-neutral", "glance-right-smile")
+
+
+class PoseFramesStatic(unittest.TestCase):
+    """אורי's drawn pose frames (docs/AGENT-LIFE.md §Pose frames)."""
+
+    def setUp(self):
+        self.dir = os.path.join(ROOT, "dashboard", "assets", "agents", "uri")
+        self.js = _src("dashboard", "assets", "agent-life.js")
+        self.css = _src("dashboard", "assets", "agent-life.css")
+
+    def test_eight_frames_on_one_canvas_the_resting_pictures_shape(self):
+        files = sorted(os.listdir(self.dir))
+        self.assertEqual(files, sorted(f"uri-{n}.png" for n in URI_FRAMES))
+        rw, rh, _t = _png_header(os.path.join(ROOT, "dashboard", "assets", "agents", "uri-figure.png"))
+        sizes = {_png_header(os.path.join(self.dir, f))[:2] for f in files}
+        self.assertEqual(len(sizes), 1)                                      # ONE common canvas
+        w, h = sizes.pop()
+        self.assertAlmostEqual(w / h, rw / rh, delta=0.5 / h)                # the resting picture's shape
+        self.assertGreaterEqual(h, 2 * 168)                                  # sharp on a 2x screen
+
+    def test_light(self):
+        total = sum(os.path.getsize(os.path.join(self.dir, f)) for f in os.listdir(self.dir))
+        self.assertLess(total, 160 * 1024)
+        for f in os.listdir(self.dir):
+            self.assertEqual(_png_header(os.path.join(self.dir, f))[2], 3, f)  # palette PNG (pack_pose_frames.js)
+
+    def test_cross_fade_is_short_and_only_with_motion(self):
+        frames = self.css[self.css.index("@media (prefers-reduced-motion: no-preference)"):
+                          self.css.index("@media (prefers-reduced-motion: reduce)")]
+        self.assertEqual(self.css.count("transition:") - self.css.count(".cw-figure-body { transition"),
+                         frames.count("transition:"))                        # every pose transition is inside
+        self.assertIn(".al-pose.al-on { transition: opacity 0.28s", frames)
+        self.assertIn("var FADE_MS = 280;", self.js)
+        self.assertIn(".al-poses + .agent-figure { visibility: hidden; }", self.css)
+        for prop in ("opacity", "transform"):
+            self.assertIn(prop, frames[frames.index(".al-pose.al-on {"):][:200])
+        self.assertNotIn("width", frames[frames.index(".al-pose.al-on {"):][:200])   # no layout
+
+    def test_preloaded_only_when_motion_runs_and_the_sequence_waits_for_it(self):
+        fn = self.js[self.js.index("function posePlay("):self.js.index("function poseSolo(")]
+        self.assertIn("if (!loaded(stage._f[steps[i][0]])) return 0;", fn)
+        idle = self.js[self.js.index("function idleOnce()"):self.js.index("function schedule()")]
+        self.assertIn("stageOf(free[i], true);", idle)
+        self.assertLess(idle.index("conversationActive()"), idle.index("stageOf(free[i], true)"))
+        self.assertIn("poseRest(nodes[i], true);", self.js[self.js.index("function stop()"):])
+
+    def test_wave_is_for_arrival_never_a_random_idle(self):
+        self.assertIn("greet: [['wave',", self.js)
+        idle_block = self.js[self.js.index("idle: [['folded-glance'"):self.js.index("greet: [['wave',")]
+        self.assertNotIn("wave", idle_block)
+        self.assertIn("var GREET_GAP_MS = 10 * 60 * 1000;", self.js)
+
+    def test_the_setting(self):
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        from core import admin_service            # os + datetime only at import; no database
+        self.assertIs(admin_service.DEFAULT_SETTINGS["uri_pose_frames_enabled"], True)    # default ON
+        for value, on in ((True, True), (False, False), ("false", False), ("true", True), ("0", False),
+                          ("off", False), (None, False)):
+            self.assertEqual(admin_service.setting_on(value), on, value)
+        api = _src("core", "api_server.py")
+        self.assertEqual(api.count('"pose_frames": _pose_frames()'), 2)        # the dashboard + the day-one view
+        fn = api[api.index("def _pose_frames()"):][:500]
+        self.assertIn('get_setting("uri_pose_frames_enabled", True)', fn)
+        self.assertIn('return {"uri": True}', fn)                             # a failed read keeps the default
+        admin = _src("dashboard", "admin", "index.html")
+        self.assertIn('id="set-uri-poses"', admin)
+        self.assertIn("uri_pose_frames_enabled: document.getElementById('set-uri-poses').checked", admin)
+        page = _src("dashboard", "client", "index.html")
+        self.assertIn("window.uallakPoseFrames = d.pose_frames || null;", page)
+
+
 HARNESS = r"""
 const fs = require('fs'), vm = require('vm');
-let log = [], clock = 1e6, timers = [], rigsBuilt = 0, frame = null, perf = 0, shown = 0;
+let log = [], clock = 1e6, timers = [], rigsBuilt = 0, stagesBuilt = 0, frame = null, perf = 0, shown = 0;
+let poseLog = [], frameMode = 'ok';
 function node(tag) {
   const cls = new Set();
   const n = { tag, children: [], props: {}, style: { setProperty: (k, v) => { n.props[k] = v; } }, textContent: '',
-    classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) },
+    classList: { add: c => { cls.add(c); if (c === 'al-on' && /^al-pose /.test(n.className || ''))
+                               poseLog.push(n.className.split(' ')[1].replace('al-pose-', '')); },
+                 remove: c => cls.delete(c), contains: c => cls.has(c) },
     setAttribute() {}, appendChild(c) { n.children.push(c); c.parentNode = n; return c; },
     querySelector(sel) { for (const c of n.children) { if ('.' + c.className === sel) return c;
                          const d = c.querySelector && c.querySelector(sel); if (d) return d; } return null; } };
+  if (tag === 'img') {               // a pose frame: loaded, still loading, or failing (frameMode)
+    let src = '';
+    n.complete = frameMode !== 'slow'; n.naturalWidth = frameMode === 'ok' ? 188 : 0;
+    Object.defineProperty(n, 'src', { get: () => src, set: v => { src = v;
+      if (frameMode === 'broken' && /\/agents\/uri\//.test(v)) timers.push(() => n.onerror && n.onerror()); } });
+  }
   return n;
 }
 function figure(name, left, opts) {
   const classes = new Set(['cw-figure-body']);
   const img = { complete: true, naturalWidth: 500, currentSrc: 'https://x.test/assets/agents/' + name + '-figure.webp' };
-  const el = { name, offsetParent: {}, isConnected: true, style: { setProperty() {} }, offsetWidth: 1, _rig: null, working: false };
-  const holder = { classList: { contains: () => false }, querySelector: () => img,
-                   parentNode: { insertBefore: rig => { el._rig = rig; rigsBuilt++; } } };
+  const el = { name, offsetParent: {}, isConnected: true, style: { setProperty() {} }, offsetWidth: 1, _added: {}, working: false };
+  const parent = { insertBefore: n => { el._added[n.className] = n; n.parentNode = parent;
+                                        if (n.className === 'al-rig') rigsBuilt++; else stagesBuilt++; },
+                   removeChild: n => { delete el._added[n.className]; n.parentNode = null; } };
+  const holder = { classList: { contains: () => false }, querySelector: () => img, parentNode: parent };
   el.classList = { add: c => { classes.add(c); log.push([name, c]); }, remove: c => classes.delete(c),
                    contains: c => classes.has(c) };
-  el.querySelector = sel => sel === '.al-rig' ? el._rig : sel === '.agent-figure' ? holder
+  Object.defineProperty(el, '_rig', { get: () => el._added['al-rig'] || null });
+  Object.defineProperty(el, '_stage', { get: () => el._added['al-poses'] || null });
+  el.querySelector = sel => sel === '.al-rig' ? el._rig : sel === '.al-poses' ? el._stage : sel === '.agent-figure' ? holder
                           : (el._rig ? el._rig.querySelector(sel) : null);
   el.closest = () => ({ querySelector: () => (el.working ? {} : null) });
   el.getBoundingClientRect = () => ({ left, top: 500, width: 80, height: 160 });
   return el;
 }
 function page(opts) {
-  log = []; timers = []; rigsBuilt = 0; frame = null; perf = 0; shown = 0;
+  log = []; timers = []; rigsBuilt = 0; stagesBuilt = 0; frame = null; perf = 0; shown = 0;
+  poseLog = []; frameMode = opts.frames || 'ok';
   const figures = (opts.figures || []).map((n, i) => figure(n, 100 + i * (opts.spacing || 120), opts));
   const canvases = [];
   const store = () => { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); },
@@ -196,7 +296,8 @@ function page(opts) {
     matchMedia: () => ({ matches: !!opts.reduced, addEventListener() {} }),
     performance: { now: () => perf }, requestAnimationFrame: f => { frame = f; return 1; }, cancelAnimationFrame() {},
     setTimeout: (f, ms) => { timers.push(f); return timers.length; }, clearTimeout() {},
-    Math, Date: { now: () => clock }, JSON, console, WeakMap };
+    Math, Date: { now: () => clock }, JSON, console, WeakMap,
+    location: { search: opts.search || '' }, uallakPoseFrames: opts.poseCfg };
   win.window = win;
   if (opts.off) win.localStorage.setItem('uallak_life', 'off');
   vm.runInNewContext(fs.readFileSync(process.argv[1], 'utf8'), win);
@@ -217,8 +318,9 @@ const out = { cast: {}, moves: null, solo: {}, rigs: {} };
 { const p = page({ figures: ['maya'] }); out.moves = p.life._moves; out.rig = p.life._rig; out.whole = Object.keys(p.life._whole);
   out.scenes = p.life._scenes;
   for (const k in p.life._cast) out.cast[k] = p.life._cast[k].map(c => ({ move: c[0], weight: c[1], bubble: c[2] || '' })); }
+// today's layered behaviours — for אורי that is the pose frames switched OFF (the fallback)
 for (const name of ['johnny', 'nissim', 'elinor', 'yoav', 'uri', 'maya', 'lior', 'stranger']) {
-  const r = idle({ figures: [name] }, 150);
+  const r = idle({ figures: [name], poseCfg: { uri: false } }, 150);
   out.solo[name] = r.log.map(e => e[1]);
   out.rigs[name] = { built: rigsBuilt, props: r.p.figures[0]._rig ? r.p.figures[0]._rig.props : null,
                      layers: r.p.figures[0]._rig ? r.p.figures[0]._rig.children.map(c => c.className) : [] };
@@ -277,6 +379,48 @@ out.normalTimers = page({ figures: ['maya'] }).timersAtLoad;
   const card = { getBoundingClientRect: () => ({ left: 10, top: 10, width: 200, height: 80 }),
                  closest: () => ({ classList: { contains: () => true }, querySelector: () => p.figures[0] }) };
   out.fromFigure = p.life.celebrateFor(card, 'action:11'); out.figureHopped = log.some(e => e[0] === 'maya' && e[1] === 'al-hop'); }
+
+// ── pose frames (אורי) ──
+out.poses = {};
+{ const p = page({ figures: ['maya'] }); out.poses.sets = Object.keys(p.life._poses);
+  out.poses.def = JSON.parse(JSON.stringify(p.life._poses.uri)); }
+{ // default ON: sequences of drawn frames, a wave first, back to rest every time, no layered moves
+  const r = idle({ figures: ['uri'], answers: true }, 150);
+  out.poses.on = { shown: poseLog.slice(), layered: r.log.filter(e => e[0] === 'uri').map(e => e[1]),
+                   rigs: rigsBuilt, stages: stagesBuilt }; }
+{ // with others around: they keep today's layered behaviours, אורי keeps his frames
+  const r = idle({ figures: ['maya', 'uri', 'lior'], answers: true }, 200);
+  out.poses.mixed = { uriLayered: r.log.filter(e => e[0] === 'uri').map(e => e[1]),
+                      others: r.log.filter(e => e[0] !== 'uri').map(e => e[1]), shown: poseLog.length, rigs: rigsBuilt }; }
+{ const r = idle({ figures: ['uri'], answers: true, poseCfg: { uri: false } }, 60);
+  out.poses.off = { shown: poseLog.length, layered: r.log.length, stages: stagesBuilt, rigs: rigsBuilt }; }
+{ const r = idle({ figures: ['uri'], answers: true, search: '?poses=off' }, 40);
+  out.poses.urlOff = { shown: poseLog.length, layered: r.log.length }; }
+{ idle({ figures: ['uri'], answers: true, search: '?poses=on', poseCfg: { uri: false } }, 40);
+  out.poses.urlOn = poseLog.length; }
+{ // a frame that fails to load: today's figure for the rest of the page
+  const r = idle({ figures: ['uri'], answers: true, frames: 'broken' }, 60);
+  out.poses.broken = { shown: poseLog.length, layered: r.log.length, stageLeft: !!r.p.figures[0]._stage }; }
+{ // still loading: nothing at all yet, and the wave is still due afterwards
+  const r = idle({ figures: ['uri'], answers: true, frames: 'slow' }, 20);
+  out.poses.slow = { shown: poseLog.length, layered: r.log.length, stages: stagesBuilt }; }
+for (const k of ['openChat', 'pending']) {
+  const o = { figures: ['uri'], answers: true }; o[k] = true;
+  idle(o, 40); out.poses[k] = { shown: poseLog.length, stages: stagesBuilt }; }
+{ idle({ figures: ['uri'], answers: true }, 40, p => { p.figures[0].working = true; });
+  out.poses.working = poseLog.length; }
+{ // a chat opens half-way through: the sequence stops, back to rest, nothing more of it
+  const opts = { figures: ['uri'] }; const p = page(opts); const base = timers.length;
+  clock += 20000; p.life._idleOnce(); opts.openChat = true; flush(base); flush(base);
+  out.poses.interrupted = poseLog.slice(); }
+{ // arrival: the wave again only after GREET_GAP_MS
+  const opts = { figures: ['uri'] }; const p = page(opts); const base = timers.length, f = p.figures[0];
+  const tick = () => { clock += 20000; p.life._idleOnce(); flush(base); flush(base); };
+  tick(); const first = poseLog.filter(x => x === 'wave').length;
+  f.offsetParent = null; tick(); f.offsetParent = {}; tick(); tick();
+  const soon = poseLog.filter(x => x === 'wave').length;
+  f.offsetParent = null; tick(); clock += 11 * 60 * 1000; f.offsetParent = {}; tick();
+  out.poses.arrival = { first, soon, later: poseLog.filter(x => x === 'wave').length }; }
 console.log(JSON.stringify(out));
 """
 
@@ -436,6 +580,83 @@ class Behaviour(unittest.TestCase):
     def test_it_rises_from_the_waiting_agent(self):
         self.assertTrue(self.out["fromFigure"])
         self.assertTrue(self.out["figureHopped"])
+
+    # ── pose frames (אורי only) ──
+    def _patterns(self):
+        d = self.out["poses"]["def"]
+        return {tuple(s[0] for s in seq[2]): seq[0] for seq in d["idle"]}
+
+    def test_only_uri_has_pose_frames_and_every_frame_is_used(self):
+        self.assertEqual(self.out["poses"]["sets"], ["uri"])
+        d = self.out["poses"]["def"]
+        self.assertEqual(set(d["frames"]), set(URI_FRAMES))
+        used = {s[0].replace("<dir>", side) for seq in d["idle"] for s in seq[2] for side in ("left", "right")}
+        used |= {s[0] for s in d["greet"]}
+        self.assertEqual(used, set(URI_FRAMES))
+        self.assertEqual([s[0] for s in d["greet"]], ["wave"])
+
+    def test_sequences_of_drawn_frames_always_back_to_rest(self):
+        on = self.out["poses"]["on"]
+        self.assertEqual(on["layered"], [])                   # no cut-picture behaviours for him
+        self.assertEqual((on["rigs"], on["stages"]), (0, 1))  # built once
+        shown = on["shown"]
+        self.assertEqual(shown[:2], ["wave", "rest"])          # arrival: a wave, then the resting pose
+        self.assertEqual(shown.count("wave"), 1)               # never a random idle
+        self.assertEqual(shown[-1], "rest")
+        chunks, cur = [], []
+        for name in shown[2:]:
+            if name == "rest":
+                chunks.append(tuple(cur)); cur = []
+            else:
+                cur.append(name)
+        patterns = self._patterns()
+        self.assertGreaterEqual(len(chunks), 100)
+        labels = []
+        for chunk in chunks:
+            self.assertTrue(chunk)                             # rest between sequences, never rest-to-rest
+            sides = {n.split("-")[1] for n in chunk if n.startswith("glance-")}
+            self.assertLessEqual(len(sides), 1, chunk)         # one direction within a sequence
+            norm = tuple(n.replace("-left-", "-<dir>-").replace("-right-", "-<dir>-") for n in chunk)
+            self.assertIn(norm, patterns, chunk)
+            labels.append(patterns[norm])
+        self.assertGreaterEqual(len(set(labels)), 5)           # varied
+        self.assertFalse(any(a == b for a, b in zip(labels, labels[1:])))     # never the same twice in a row
+        both = {n.split("-")[1] for c in chunks for n in c if n.startswith("glance-")}
+        self.assertEqual(both, {"left", "right"})
+
+    def test_other_agents_unchanged_beside_him(self):
+        m = self.out["poses"]["mixed"]
+        self.assertEqual(m["uriLayered"], [])
+        self.assertTrue(m["others"])
+        self.assertGreater(m["shown"], 0)
+        self.assertEqual(m["rigs"], 2)                         # maya + lior still cut into layers
+
+    def test_switched_off_is_todays_layered_animation(self):
+        off = self.out["poses"]["off"]
+        self.assertEqual((off["shown"], off["stages"]), (0, 0))    # not even downloaded
+        self.assertGreater(off["layered"], 0)
+        self.assertEqual(off["rigs"], 1)
+        self.assertEqual(self.out["poses"]["urlOff"]["shown"], 0)
+        self.assertGreater(self.out["poses"]["urlOff"]["layered"], 0)
+        self.assertGreater(self.out["poses"]["urlOn"], 0)           # ?poses=on beats the setting, to compare
+
+    def test_a_frame_that_fails_falls_back(self):
+        b = self.out["poses"]["broken"]
+        self.assertEqual(b["shown"], 0)
+        self.assertGreater(b["layered"], 0)
+        self.assertFalse(b["stageLeft"])
+
+    def test_waits_for_the_frames(self):
+        self.assertEqual(self.out["poses"]["slow"], {"shown": 0, "layered": 0, "stages": 1})
+
+    def test_pose_frames_keep_the_quiet_rules(self):
+        for k in ("openChat", "pending"):
+            self.assertEqual(self.out["poses"][k], {"shown": 0, "stages": 0}, k)
+        self.assertEqual(self.out["poses"]["working"], 0)
+        self.assertEqual(self.out["poses"]["interrupted"], [])     # a chat opened: nothing more of it
+
+    def test_wave_on_arrival_at_most_every_ten_minutes(self):
+        self.assertEqual(self.out["poses"]["arrival"], {"first": 1, "soon": 1, "later": 2})
 
 
 if __name__ == "__main__":

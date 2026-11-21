@@ -817,6 +817,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `decideAction`; the key is remembered before drawing). Nothing under `prefers-reduced-motion`,
   on a hidden tab, or when switched off ("אזור אישי", localStorage `uallak_life`). No library, no
   loop between motions, no DOM move. `tests/test_agent_life.py` (runs the script in Node).
+  **Pose frames (2026-11-22, אורי ONLY, a test):** drawn poses (`dashboard/assets/agents/uri/`,
+  124 KB, loaded only when his figure stands visible) cross-faded in sequences back to today's
+  picture (`POSES` in the script); wave = arrival only. Admin setting `uri_pose_frames_enabled`
+  (default ON; off / `?poses=off` / a failed frame = the layered rig). New sets:
+  `scripts/normalize_pose_frames.ps1` → `scripts/pack_pose_frames.js` (docs/AGENT-LIFE.md §Pose frames).
 - **Onboarding hub (2026-11-15, `docs/ONBOARDING-UI.md`)**: the connections guide on the client
   dashboard is a compact hub — progress ring, one chip per REQUIRED step, ONE next action — and
   the connection cards are GROUPED (next / after that / connected ✓ / more), the last two folded

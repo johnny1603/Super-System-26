@@ -48,12 +48,34 @@
   display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1;
   border-radius: 50%; background: #1b1b1b; border: 1px solid rgba(255,255,255,0.18);
   box-shadow: 0 3px 8px rgba(0,0,0,0.4); opacity: 0; }
+/* POSE FRAMES (a character in the script's POSES — אורי, a test): real drawn
+   poses on the same canvas as the standing picture, one <img> each, stacked;
+   exactly one is .al-on. The resting pose is today's picture itself.
+     .al-poses                  the stack (hides the original picture after it)
+       .al-pose.al-on           the frame showing
+       .al-pose.al-off          the frame leaving: solid a moment, then fades
+       .al-pose                 waiting: invisible, at its small arrival nudge (--al-from)
+   The transitions are below, inside no-preference. */
+.al-poses { position: absolute; inset: 0; display: block; pointer-events: none; }
+.al-poses + .agent-figure { visibility: hidden; }
+.al-pose { position: absolute; top: 0; left: 0; display: block; height: 100%; width: auto; max-width: none;
+  user-select: none; pointer-events: none; opacity: 0; transform: var(--al-from, none); }
+.al-pose.al-on { opacity: 1; transform: none; }
+.al-pose.al-off { opacity: 0; transform: none; }
+
 @media (max-width: 640px) {
   .cw-figure-body { --al-u: 0.45px; }
   .al-emote { width: 15px; height: 15px; margin-left: -7.5px; font-size: 8px; top: -12%; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* ── pose frames: one cross-fade = 0.28 s (FADE_MS in the script). The new
+     frame fades in and settles from its nudge; the old one stays solid for
+     0.1 s and then fades, so the body never goes see-through half-way. ── */
+  .al-pose.al-on { transition: opacity 0.28s ease-out, transform 0.52s cubic-bezier(.2,.7,.3,1); }
+  .al-pose.al-off { transition: opacity 0.18s ease-in 0.1s; }
+  .al-pose.al-still { transition: none; }
+
   .al-emote.al-emote-on { animation: alEmote 3s ease-out 1; }
   @keyframes alEmote {
     0% { opacity: 0; transform: translate(calc(var(--al-dir, 1) * 14px), 8px) scale(0.3); }

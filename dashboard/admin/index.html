@@ -1257,6 +1257,10 @@ async function loadSettings() {
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input id="set-home-v2" type="checkbox" ${s.homepage_v2_enabled === true || s.homepage_v2_enabled === 'true' ? 'checked' : ''}> פעיל</label>
     </div>
     <div class="settings-row">
+      <span class="drawer-stat-label">אורי בדשבורד הלקוח — תנועה מתמונות תנוחה מצוירות (ידיים שלובות, שעון, מחשבה, מבטים, נפנוף). כבוי = התנועה הקודמת (חיתוך התמונה לשכבות). לשאר הסוכנים אין השפעה. להשוואה מהירה בלי לשמור: ‎?poses=off / ‎?poses=on בכתובת הדשבורד</span>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input id="set-uri-poses" type="checkbox" ${s.uri_pose_frames_enabled === false || s.uri_pose_frames_enabled === 'false' ? '' : 'checked'}> פעיל</label>
+    </div>
+    <div class="settings-row">
       <span class="drawer-stat-label">תזמון דוח שבועי / סריקות</span>
       <span style="color:var(--gray);font-size:12.5px;">נקבע ב-Cloud Scheduler (לא נערך מכאן)</span>
     </div>
@@ -1424,6 +1428,7 @@ async function saveSettings() {
       warmup_interval_seconds: Math.min(3600, Math.max(60, Number(document.getElementById('set-warmup').value) || 240)),
       operator_task_budget_usd: Math.min(50, Math.max(0.05, Number(document.getElementById('set-operator-budget').value) || 1.5)),
       homepage_v2_enabled: document.getElementById('set-home-v2').checked,
+      uri_pose_frames_enabled: document.getElementById('set-uri-poses').checked,
     }),
   });
   document.getElementById('settingsSaved').textContent = 'נשמר ✓';

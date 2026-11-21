@@ -63,7 +63,18 @@ DEFAULT_SETTINGS = {
     # core/dataforseo_connector: real keyword volumes + backlink data (a PAID
     # service). OFF; on also needs the owner's DATAFORSEO_LOGIN/PASSWORD.
     "dataforseo_enabled": False,
+    # dashboard/assets/agent-life.js POSES (docs/AGENT-LIFE.md §Pose frames): אורי's
+    # idle animation from drawn pose frames (a test before the other six get sets).
+    # false = today's layered animation for him too. Every other agent ignores it.
+    "uri_pose_frames_enabled": True,
 }
+
+
+def setting_on(value) -> bool:
+    """A yes/no setting as stored (a JSON bool, or text from an older save)."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "off", "no")
+    return bool(value)
 
 _setting_cache = {}   # key -> (monotonic time, value)
 

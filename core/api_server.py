@@ -1261,6 +1261,9 @@ async def dashboard_data(request: Request):
         # Google verification round 2 cards: hidden unless their flag is on
         # (core/round2_flags; Gmail also needs the Gmail agent package)
         "features": _round2_features(client_id),
+        # Which agents' idle animation runs on drawn pose frames
+        # (dashboard/assets/agent-life.js POSES; admin setting, cached 60 s)
+        "pose_frames": _pose_frames(),
         # Admin "enter as client": the page shows the banner + Exit and turns
         # approve buttons into explicit staff buttons (core/admin_view)
         "admin_view": _admin_view_client(request) is not None,
@@ -1280,7 +1283,7 @@ def _new_client_dashboard(request: Request, client: dict, accounts: list, activi
             "manager": manager_identity.for_client(client, client.get("language") or "he"),
             "manager_options": manager_identity.options(client.get("language") or "he"),
             "monthly_fee": None, "next_billing_date": None, "billing_exempt": bool(client.get("billing_exempt")),
-            "features": _round2_features(client.get("id")), "admin_view": True}
+            "features": _round2_features(client.get("id")), "pose_frames": _pose_frames(), "admin_view": True}
     return {"success": True, "data": new_client_view.dashboard(data)}
 
 _TZ_NAME = re.compile(r"^(UTC|[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){1,2})$")
@@ -2967,6 +2970,14 @@ def _round2_features(client_id: int) -> dict:
         gmail = gmail_agent_plan.entitled(client_id)
     return {"gmail_send": gmail, "search_console": search_console_enabled(),
             "analytics": analytics_enabled(), "drive_file": drive_file_enabled()}
+
+def _pose_frames() -> dict:
+    """{"uri": bool} — admin setting uri_pose_frames_enabled (default ON). A
+    failed read keeps the default (get_setting falls back), never an error."""
+    try:
+        return {"uri": admin_service.setting_on(admin_service.get_setting("uri_pose_frames_enabled", True))}
+    except Exception:
+        return {"uri": True}
 
 def _google_ads_account_name(client_id: int, accounts: list) -> str:
     """The connected account's name for the Connections card ("" if unknown).

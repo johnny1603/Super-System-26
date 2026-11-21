@@ -3963,6 +3963,8 @@ async function loadDashboard() {
     if (!body.success) return;
     dashboardData = body.data;
     const d = dashboardData;
+    // which agents move from drawn pose frames (agent-life.js reads it each time)
+    window.uallakPoseFrames = d.pose_frames || null;
     if (d.admin_view) enterAdminViewMode((d.client && d.client.name) || '');
     if (d.simulated_new_client) document.getElementById('adminViewNew').hidden = false;
 

@@ -20,6 +20,17 @@
       being awaited, typing in the last few seconds) and never for an agent
       that is working (a running task or a pending reply in its own window).
 
+   1b. POSE FRAMES (2026-11-22, a test on אורי only — docs/AGENT-LIFE.md
+      §Pose frames). A character in POSES has real drawn poses (arms folded,
+      a watch, thinking, glances, a wave): its idle behaviour is a short
+      SEQUENCE of those frames, cross-faded, always ending on today's standing
+      picture (the resting pose). Replaces the layered rig for that character
+      only; off (admin setting uri_pose_frames_enabled, or ?poses=off) or a
+      frame that fails to load = today's layered behaviours. The wave is only
+      for arrival (the figure appears), at most once per GREET_GAP_MS — never
+      a random idle. Same rules as every behaviour: the same scheduler,
+      quiet(), working(), the switch, reduced motion, a hidden tab.
+
    2. ONE CELEBRATION per finished task, anywhere on the dashboard — confetti
       and a balloon. Once per task, merged when several finish together,
       queued (never stacked) when one finishes during another's burst.
@@ -94,8 +105,32 @@
     { a: ['turn', '❓'], b: ['turn'], gap: 900, then: ['b', 'shake', 2600] }                // a question, "no"
   ];
 
+  // Pose frames: real drawn poses on the SAME canvas as the standing picture
+  // (scripts/normalize_pose_frames.ps1 + pack_pose_frames.js). frames = the
+  // small nudge each one arrives with [x, y in --al-u, degrees]; idle =
+  // [name, weight, steps], a step = [frame, hold ms], '<dir>' = left | right
+  // (screen side); greet = the arrival. The sequence always ends on 'rest'.
+  var POSES = {
+    uri: { dir: '/assets/agents/uri/uri-',
+           frames: { 'arms-folded': [0, 1, 0], 'watch': [0, 0, 0.8], 'thinking': [0, -1, -0.8],
+                     'glance-left-neutral': [-1.5, 0, -0.8], 'glance-left-smile': [-0.5, 0, -0.3],
+                     'glance-right-neutral': [1.5, 0, 0.8], 'glance-right-smile': [0.5, 0, 0.3],
+                     'wave': [0, -1.5, 0] },
+           idle: [['folded-glance', 18, [['arms-folded', 2000], ['glance-<dir>-neutral', 1300], ['glance-<dir>-smile', 1500]]],
+                  ['glance', 18, [['glance-<dir>-neutral', 1500], ['glance-<dir>-smile', 1700]]],
+                  ['think', 16, [['thinking', 3000]]],
+                  ['watch', 14, [['watch', 2200]]],
+                  ['folded', 12, [['arms-folded', 3200]]],
+                  ['look', 10, [['glance-<dir>-neutral', 1800]]]],
+           greet: [['wave', 1900]] }
+  };
+  var FADE_MS = 280;                                   // one cross-fade (agent-life.css .al-pose)
+  var REST_NUDGE = [0, 0.6, 0];                        // the resting pose settles back in
+  var GREET_GAP_MS = 10 * 60 * 1000;                   // a wave at most this often per figure
+
   var timer = null, lastFigure = null, lastTyped = 0, burstRunning = false, later = [];
   var busy = new WeakMap(), lastMove = new WeakMap(), plays = new WeakMap();
+  var shown = new WeakMap(), greetDue = new WeakMap(), lastGreet = new WeakMap(), poseBroken = {};
 
   function store(kind) { try { return window[kind]; } catch (e) { return null; } }
   function now() { return Date.now(); }
@@ -135,11 +170,16 @@
     span.appendChild(img);
     return span;
   }
+  // The ONE place a node is placed in the page: a NEW node (the rig or the
+  // pose stage) right before the figure's picture. Nothing existing moves.
+  function addBefore(node, pic) { pic.holder.parentNode.insertBefore(node, pic.holder); }
+  function drop(node) { if (node && node.parentNode) node.parentNode.removeChild(node); }
   function rigOf(el) {
     if (!el || !el.querySelector) return null;
     var rig = el.querySelector('.al-rig');
     if (rig) return rig;
     var pic = picture(el), spec = RIG[who(el)];
+    if (posesOn(who(el))) return null;                 // drawn poses instead of the cut picture
     if (!pic || !spec || !pic.img.complete || !pic.img.naturalWidth || !canMask()) return null;
     rig = document.createElement('span');
     rig.className = 'al-rig';
@@ -158,8 +198,138 @@
     // A NEW node placed before the picture (CSS hides the picture while a rig
     // precedes it). When the page redraws the figure (another manager chosen)
     // both go together and the rig is rebuilt on the next behaviour.
-    pic.holder.parentNode.insertBefore(rig, pic.holder);
+    addBefore(rig, pic);
     return rig;
+  }
+
+  // ─── Pose frames ──────────────────────────────────────────────────────────
+  // On unless: the owner's setting says false (the page puts it in
+  // window.uallakPoseFrames from /api/dashboard), ?poses=off for a side-by-side
+  // look, or a frame of the set failed to load on this page.
+  function urlPoses() {
+    try { var m = /[?&]poses=(on|off)(?:&|$)/.exec(window.location.search || ''); return m ? m[1] : ''; } catch (e) { return ''; }
+  }
+  function posesOn(name) {
+    if (!POSES[name] || poseBroken[name]) return false;
+    var forced = urlPoses();
+    if (forced) return forced === 'on';
+    var cfg = window.uallakPoseFrames;
+    return !(cfg && cfg[name] === false);
+  }
+  function nudge(n) {
+    return 'translate(calc(var(--al-u, 1px) * ' + n[0] + '), calc(var(--al-u, 1px) * ' + n[1] + ')) rotate(' + n[2] + 'deg)';
+  }
+  function poseImg(stage, owner, name, src, n, on) {
+    var img = document.createElement('img');
+    img.className = 'al-pose al-pose-' + name + (on ? ' al-on al-still' : '');
+    img.alt = ''; img.draggable = false; img.decoding = 'async';
+    // where it comes in from: set once, so its next entrance starts there
+    img.style.setProperty('--al-from', nudge(n));
+    img.onerror = function () { poseBroken[owner] = true; };
+    img.src = src;
+    if (!on && img.decode) { try { img.decode().catch(function () {}); } catch (e) { /* decoded on first show */ } }
+    stage._f[name] = img;
+    stage.appendChild(img);
+  }
+  // Built (= the frames start downloading) the first time the figure stands
+  // visible while motion is allowed — never at page load, never under reduced
+  // motion or with the switch off. The resting pose is today's picture itself
+  // (already cached), so at rest the figure looks exactly as it does today.
+  function stageOf(el, build) {
+    var stage = el && el.querySelector ? el.querySelector('.al-poses') : null;
+    if (stage || !build) return stage;
+    var name = who(el), set = POSES[name], pic = picture(el);
+    if (!set || !pic || !pic.img.complete || !pic.img.naturalWidth) return null;
+    drop(el.querySelector('.al-rig'));                 // switched on after the rig was built
+    stage = document.createElement('span');
+    stage.className = 'al-poses';
+    stage.setAttribute('aria-hidden', 'true');
+    stage._f = {};
+    poseImg(stage, name, 'rest', pic.src, REST_NUDGE, true);
+    for (var f in set.frames) poseImg(stage, name, f, set.dir + f + '.png', set.frames[f], false);
+    stage._cur = stage._f.rest;
+    addBefore(stage, pic);
+    return stage;
+  }
+  function loaded(img) { return !!(img && img.complete && img.naturalWidth); }
+  // One cross-fade: the new frame fades in (and settles from its small nudge)
+  // over the old one, which stays solid a moment and then fades — the body
+  // never turns see-through half-way.
+  function showPose(stage, name) {
+    var next = stage._f[name], cur = stage._cur;
+    if (!next || next === cur) return;
+    next.classList.remove('al-off');
+    next.classList.add('al-on');
+    if (cur) {
+      cur.classList.remove('al-on');
+      cur.classList.remove('al-still');
+      cur.classList.add('al-off');
+      wait(function () { if (stage._cur !== cur) cur.classList.remove('al-off'); }, FADE_MS * 2);
+    }
+    stage._cur = next;
+  }
+  // Back to the resting pose: cross-faded, or at once (a hidden tab, stop)
+  function poseRest(el, atOnce) {
+    var stage = stageOf(el, false);
+    if (!stage) return;
+    if (!atOnce) { showPose(stage, 'rest'); return; }
+    for (var f in stage._f) {
+      stage._f[f].classList.remove('al-on');
+      stage._f[f].classList.remove('al-off');
+    }
+    stage._f.rest.classList.add('al-still');
+    stage._f.rest.classList.add('al-on');
+    stage._cur = stage._f.rest;
+  }
+  // A sequence of frames, then the resting pose. 0 = nothing played (the
+  // frames are still loading: the next free turn tries again).
+  function posePlay(el, steps, label) {
+    var stage = stageOf(el, true);
+    if (!stage) return 0;
+    for (var i = 0; i < steps.length; i++) if (!loaded(stage._f[steps[i][0]])) return 0;
+    var turn = (plays.get(el) || 0) + 1, at = 0;
+    plays.set(el, turn);
+    steps.forEach(function (step) {
+      wait(function () {
+        if (plays.get(el) !== turn) return;
+        // the client opened a chat, or the agent started working: back to rest, the rest is cancelled
+        if (!quiet() || working(el)) { plays.set(el, turn + 0.5); poseRest(el); return; }
+        showPose(stage, step[0]);
+      }, at);
+      at += FADE_MS + Math.round(step[1] * between(0.8, 1.25));
+    });
+    wait(function () { if (plays.get(el) === turn) poseRest(el); }, at);
+    busy.set(el, now() + at + FADE_MS + between(MIN_REST, MAX_REST));
+    lastMove.set(el, label);
+    return at;
+  }
+  function poseSolo(el, name) {
+    var set = POSES[name], last = lastMove.get(el);
+    var options = set.idle.filter(function (s) { return s[0] !== last; });
+    var choice = pick(options), side = Math.random() < 0.5 ? 'left' : 'right';
+    var steps = choice[2].map(function (s) { return [s[0].replace('<dir>', side), s[1]]; });
+    return posePlay(el, steps, choice[0]);
+  }
+  // Arrival: the figure stands visible now and did not on the previous look
+  // (the page opened, or the client minimised the window) — a wave is due,
+  // at most once per GREET_GAP_MS.
+  function noteArrivals(figures) {
+    var t = now(), seen = new WeakMap();
+    for (var i = 0; i < figures.length; i++) {
+      var el = figures[i];
+      seen.set(el, true);
+      if (!shown.get(el) && POSES[who(el)] && t - (lastGreet.get(el) || -Infinity) >= GREET_GAP_MS) greetDue.set(el, true);
+      shown.set(el, true);
+    }
+    var all = document.querySelectorAll('.cw-figure-body');
+    for (var j = 0; j < all.length; j++) if (!seen.get(all[j])) shown.delete(all[j]);
+  }
+  function greet(el) {
+    var name = who(el);
+    if (!greetDue.get(el) || !posesOn(name)) return 0;
+    var ms = posePlay(el, POSES[name].greet, 'greet');
+    if (ms) { greetDue.delete(el); lastGreet.set(el, now()); }
+    return ms;
   }
 
   // ─── Idle behaviours ──────────────────────────────────────────────────────
@@ -215,7 +385,13 @@
   }
   function oneOf(text) { var all = String(text || '').split(' '); return all[Math.floor(Math.random() * all.length)]; }
   function solo(el) {
-    var cast = CAST[who(el)] || CAST.any, rigged = !!rigOf(el), last = lastMove.get(el);
+    var name = who(el);
+    if (POSES[name]) {
+      if (posesOn(name)) return poseSolo(el, name);
+      var stage = stageOf(el, false);                  // switched off (or a frame failed): today's figure
+      if (stage) { plays.set(el, (plays.get(el) || 0) + 1); drop(stage); }
+    }
+    var cast = CAST[name] || CAST.any, rigged = !!rigOf(el), last = lastMove.get(el);
     var options = cast.filter(function (c) { return c[0] !== last && (rigged || WHOLE[c[0]]); });
     if (!options.length) options = CAST.any.filter(function (c) { return WHOLE[c[0]]; });
     var choice = pick(options);
@@ -246,10 +422,19 @@
     return true;
   }
   function idleOnce() {
+    var figures = standing();
+    noteArrivals(figures);                             // even mid-conversation: an open window is not "standing"
     if (conversationActive()) return 0;
-    var t = now(), figures = standing();
-    var free = figures.filter(function (f) { return (busy.get(f) || 0) <= t && !working(f); });
+    var t = now(), free = figures.filter(function (f) { return (busy.get(f) || 0) <= t && !working(f); });
     if (!free.length) return 0;
+    // a figure with drawn poses: its frames start loading now (preload), and
+    // one that just arrived waves first
+    for (var i = 0; i < free.length; i++) {
+      if (!posesOn(who(free[i]))) continue;
+      stageOf(free[i], true);
+      var waved = greet(free[i]);
+      if (waved) { lastFigure = free[i]; return waved; }
+    }
     var pool = free.length > 1 ? free.filter(function (f) { return f !== lastFigure; }) : free;
     var el = pool[Math.floor(Math.random() * pool.length)];
     lastFigure = el;
@@ -271,7 +456,11 @@
     clearTimeout(timer); timer = null;
     while (later.length) clearTimeout(later.pop());
     var nodes = document.querySelectorAll('.cw-figure-body');
-    for (var i = 0; i < nodes.length; i++) still(nodes[i]);
+    for (var i = 0; i < nodes.length; i++) {
+      still(nodes[i]);
+      plays.set(nodes[i], (plays.get(nodes[i]) || 0) + 1);
+      poseRest(nodes[i], true);                        // a sequence in progress ends on the resting pose
+    }
   }
 
   // ─── Celebrations: one burst per finished task, anywhere ─────────────────
@@ -454,7 +643,8 @@
   }
 
   window.uallakLife = { celebrate: celebrate, celebrateFor: celebrateFor, setEnabled: setEnabled, enabled: enabled,
-                        reduced: reduced, _idleOnce: idleOnce, _pick: pick, _play: play, _who: who,
-                        _cast: CAST, _moves: MOVES, _scenes: SCENES, _rig: RIG, _whole: WHOLE };
+                        reduced: reduced, posesOn: posesOn, _idleOnce: idleOnce, _pick: pick, _play: play, _who: who,
+                        _cast: CAST, _moves: MOVES, _scenes: SCENES, _rig: RIG, _whole: WHOLE, _poses: POSES,
+                        _fadeMs: FADE_MS };
   schedule();
 })();
