@@ -1264,6 +1264,8 @@ async def dashboard_data(request: Request):
         # Which agents' idle animation runs on drawn pose frames
         # (dashboard/assets/agent-life.js POSES; admin setting, cached 60 s)
         "pose_frames": _pose_frames(),
+        # The Social tab's badge: items waiting for the owner (core/social_queue)
+        "social_waiting": _social_waiting(client_id),
         # Admin "enter as client": the page shows the banner + Exit and turns
         # approve buttons into explicit staff buttons (core/admin_view)
         "admin_view": _admin_view_client(request) is not None,
@@ -2971,6 +2973,13 @@ def _round2_features(client_id: int) -> dict:
     return {"gmail_send": gmail, "search_console": search_console_enabled(),
             "analytics": analytics_enabled(), "drive_file": drive_file_enabled()}
 
+def _social_waiting(client_id: int) -> int:
+    try:
+        from core import social_queue
+        return social_queue.waiting_count(client_id)
+    except Exception:
+        return 0
+
 def _pose_frames() -> dict:
     """{"uri": bool} — admin setting uri_pose_frames_enabled (default ON). A
     failed read keeps the default (get_setting falls back), never an error."""
@@ -4104,6 +4113,7 @@ class MetaPublishRequest(BaseModel):
     message: str = ""      # post text / caption
     media_url: str = ""    # PUBLIC http(s) URL - Meta fetches it server-side
     link: str = ""         # for facebook 'link' kind
+    queue_item: str = ""   # the Social-tab item the owner APPROVED (core/social_queue) — required
 
 @app.post("/api/meta-content/publish", dependencies=_admin_only)
 def meta_content_publish(req: MetaPublishRequest):
@@ -6431,6 +6441,111 @@ def client_content_plan(request: Request):
     from core import content_team
     lang = request.query_params.get("lang") or "he"
     return {"success": True, "data": content_team.view(client_id, lang)}
+
+# ─── The Social tab (core/social_queue): the ONE approval gate for social ─────
+# Everything heading to a social channel waits here for the owner's final yes.
+# Files stay in the client's Drive (the rows hold the Drive file id; preview and
+# download use the existing media-drive routes). Admin "view as client" is
+# read-only, like every other client write.
+
+def _social_read_only(request: Request):
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+
+def _social_error(e) -> HTTPException:
+    return HTTPException(status_code=404 if e.code == "not_found" else 400, detail={"code": f"ERR_SOCIAL_{e.code.upper()}"})
+
+@app.get("/api/client/social")
+def client_social(request: Request, offset: int = 0, limit: int = 6, status: str = ""):
+    client_id = _require_session(request)
+    from core import social_queue
+    lang = request.query_params.get("lang") or None
+    status = status if status in social_queue.STATUSES else ""
+    return {"success": True, "data": social_queue.view(client_id, lang, offset=offset, limit=limit, status=status)}
+
+class SocialApproveRequest(BaseModel):
+    ids: list
+
+@app.post("/api/client/social/approve")
+def client_social_approve(req: SocialApproveRequest, request: Request):
+    # The tab's approval card: one item, or several selected together
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import social_queue
+    try:
+        done = social_queue.approve(client_id, req.ids, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"approved": [i["id"] for i in done],
+                                      "waiting": social_queue.waiting_count(client_id)}}
+
+class SocialEditRequest(BaseModel):
+    caption: str = None
+    channels: list = None
+    planned_date: str = None
+
+@app.post("/api/client/social/{item_id}/edit")
+def client_social_edit(item_id: str, req: SocialEditRequest, request: Request):
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import social_queue
+    try:
+        item = social_queue.edit(client_id, item_id, caption=req.caption, channels=req.channels,
+                                 planned_date=req.planned_date, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"id": item["id"], "status": item["status"]}}
+
+class SocialRejectRequest(BaseModel):
+    reason: str
+
+@app.post("/api/client/social/{item_id}/reject")
+def client_social_reject(item_id: str, req: SocialRejectRequest, request: Request):
+    # Back to the producing agent: a line in their chat + the fix as a card
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import agent_actions, social_queue
+    try:
+        item = social_queue.reject(client_id, item_id, req.reason, by="client", lang=agent_actions._lang(client_id))
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"id": item["id"], "producer": item.get("producer"),
+                                      "fix_card": bool((item.get("sent_back") or {}).get("card"))}}
+
+@app.post("/api/client/social/{item_id}/published")
+def client_social_published(item_id: str, request: Request):
+    # "I published it" — the one-tap channels, where the owner publishes himself
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import social_queue
+    try:
+        social_queue.mark_published(client_id, item_id, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"id": item_id}}
+
+@app.get("/api/admin/control-room/{client_id}/social")
+def admin_control_room_social(client_id: int, request: Request, offset: int = 0, limit: int = 20):
+    # Read-only mirror of the client's Social tab
+    _require_admin(request)
+    from core import social_queue
+    return {"success": True, "data": social_queue.view(client_id, "he", offset=offset, limit=limit)}
+
+@app.get("/api/admin/social-queue")
+def admin_social_queue(request: Request):
+    # Every client's open queue in one place (Control Room list), read-only
+    _require_admin(request)
+    from core import social_queue
+    rows = social_queue.all_pending()
+    names = {}
+    try:
+        ids = [r["client_id"] for r in rows]
+        if ids:
+            names = {c["id"]: c.get("name") for c in (db.table("clients").select("id,name").in_("id", ids)
+                                                         .execute().data or [])}
+    except Exception:
+        names = {}
+    return {"success": True, "data": [{**r, "name": names.get(r["client_id"]) or f"#{r['client_id']}"} for r in rows]}
 
 
 # ─── The organic SEO report (core/seo_report) — free, part of the organic service ───

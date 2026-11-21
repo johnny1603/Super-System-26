@@ -404,6 +404,7 @@ details.report-item .report-body { padding: 0 20px 16px; font-size:13px; color:v
         <div class="page-title">חדר בקרה</div>
         <div class="page-sub" id="crSub">טוען…</div>
         <div class="table-wrap" id="crTable"></div>
+        <div id="crSocial"></div>
         <div id="crPhp"></div>
         <div id="crLegacyLogins"></div>
         <div class="panel-pad" style="margin-top:18px;">
@@ -3135,6 +3136,7 @@ async function loadControlRoom() {
   crLoadLegacyLogins(names);
   crLoadCostsMonthly(names);
   crLoadPhp();
+  crLoadSocialAll();
 }
 
 // ─── PHP2Shell exposure (core/php_exposure) ──────────────────────────────────
@@ -3376,6 +3378,10 @@ async function openControlRoom(clientId) {
           <div id="crManager"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">📣 סושיאל — תור האישורים של הלקוח (קריאה בלבד)</div>
+          <div id="crSocialClient"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">🎨 מיתוג — ניסיונות הדמיה</div>
           <div id="crBranding"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3417,6 +3423,44 @@ async function openControlRoom(clientId) {
   crLoadSettings(clientId);
   crLoadCosts(clientId);
   crLoadBranding(clientId);
+  crLoadSocialClient(clientId);
+}
+
+// ─── Social queue (core/social_queue) — READ-ONLY mirror of the client's tab ──
+// Only the owner approves there; staff see what waits, where and since when.
+const CR_SOC_STATUS = { waiting: 'מחכה לאישור', approved: 'אושר', published: 'פורסם', rejected: 'הוחזר לתיקון' };
+const CR_SOC_PRODUCER = { media: 'ליאור', meta: 'מאיה' };
+async function crLoadSocialClient(clientId) {
+  const box = document.getElementById('crSocialClient');
+  if (!box) return;
+  let d;
+  try { d = (await api(`/api/admin/control-room/${clientId}/social`)).data || {}; }
+  catch (e) { box.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">התור לא נטען</div>'; return; }
+  if (!d.available) { box.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">התור לא נטען</div>'; return; }
+  const k = d.counts || {};
+  const head = `<div class="drawer-stat-row"><span>מחכים: <b>${Number(k.waiting || 0)}</b> · מחכים ללחיצת הלקוח: <b>${Number(k.needs_tap || 0)}</b> · אושרו: ${Number(k.approved || 0)} · פורסמו: ${Number(k.published || 0)} · הוחזרו: ${Number(k.rejected || 0)}</span></div>`;
+  const rows = (d.items || []).map(i => `<div class="drawer-stat-row">
+      <span class="drawer-stat-label">${esc(CR_SOC_STATUS[i.status] || i.status)}${i.needs_tap ? ' · <b>מחכה ללחיצה</b>' : ''} · ${esc(i.title || '—')} · ${esc((i.channels || []).join(', '))} · ${esc(CR_SOC_PRODUCER[i.producer] || i.producer)}${i.reject_reason ? ' · "' + esc(i.reject_reason) + '"' : ''}
+        · <a href="/api/admin/control-room/${Number(clientId)}/media-drive/thumb/${encodeURIComponent(i.file_id)}" target="_blank" rel="noopener" style="color:var(--accent);">תצוגה</a></span>
+      <span style="color:var(--gray);font-size:11.5px;white-space:nowrap;">${esc(i.planned_date || '')}${i.overdue ? ' ⚠' : ''}</span></div>`).join('')
+    || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">התור ריק</div>';
+  box.innerHTML = head + rows + (d.has_more ? `<div class="drawer-stat-row" style="border:none;color:var(--gray);">מוצגים ${(d.items || []).length} מתוך ${Number(d.total || 0)}</div>` : '');
+}
+
+// All clients' open queues in one place (Control Room list)
+async function crLoadSocialAll() {
+  const box = document.getElementById('crSocial');
+  if (!box) return;
+  let rows;
+  try { rows = (await api('/api/admin/social-queue')).data || []; }
+  catch (e) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="panel-pad" style="margin-top:18px;">
+      <div class="drawer-label">📣 סושיאל — מה מחכה אצל כל הלקוחות (קריאה בלבד; רק הלקוח מאשר)</div>
+      ${rows.length ? rows.map(r => `<div class="drawer-stat-row" style="cursor:pointer;" onclick="openControlRoom(${Number(r.client_id)})">
+          <span>${esc(r.name)} · מחכים לאישור: <b>${Number(r.waiting)}</b> · מאושרים: ${Number(r.approved)} · מחכים ללחיצת הלקוח: <b>${Number(r.needs_tap)}</b></span>
+          <span style="color:var(--gray);font-size:11.5px;white-space:nowrap;">${esc(r.next_date || '')}</span></div>`).join('')
+        : '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין כרגע פריטים פתוחים אצל אף לקוח</div>'}
+    </div>`;
 }
 
 // ─── branding attempts (core/branding) ───────────────────────────────────────

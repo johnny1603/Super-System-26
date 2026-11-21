@@ -727,7 +727,12 @@ def _v_short_text(value, limit: int):
 
 def _prepare_publish(client_id: int, params: dict, context: dict, rows: list) -> dict:
     """The metadata step before the card (agents/youtube_metadata): the title,
-    description, hashtags, tags, category and language the client approves."""
+    description, hashtags, tags, category and language the client approves.
+    First the Social-tab gate: a video not approved there for YouTube is queued
+    for the owner's approval instead of getting the card."""
+    gate = _social_gate(client_id, "youtube", [params["drive_file_id"]], context)
+    if gate:
+        return gate
     from agents import youtube_metadata
     return youtube_metadata.prepare_publish(
         client_id, params, {**(context or {}), "file_name": _media_name(client_id, params["drive_file_id"])},
@@ -770,10 +775,41 @@ def _run_publish_youtube_from_media(client_id: int, params: dict, background_tas
                                  "category_id": params.get("category_id", ""),
                                  "default_language": params.get("default_language", "")})
     if not result.get("success"):
+        if result.get("not_approved"):
+            raise ActionFailed("not_approved", "; ".join(map(str, result.get("errors") or [])))
         raise ActionFailed("refused_by_action", "; ".join(map(str, result.get("errors") or ["unknown"])))
     video_id = result.get("video_id", "")
     return {"video_id": video_id, "title": title, "privacy_status": "private", "source_file": name,
             "studio_url": f"https://studio.youtube.com/video/{video_id}/edit" if video_id else ""}
+
+
+def _social_gate(client_id: int, channel: str, file_ids: list, context: dict) -> dict:
+    """THE Social-tab gate before any send card (core/social_queue): a file
+    not APPROVED there for this channel gets no send card — it is queued for
+    the owner's approval (once) and the reply says where it waits. {} = every
+    file is approved, the card may follow."""
+    from core import social_queue
+    lang = (context or {}).get("language") or "he"
+    waiting = []
+    for fid in file_ids:
+        try:
+            social_queue.check(client_id, channel, file_id=fid)
+        except social_queue.GateClosed as e:
+            if e.code == "already_published":
+                return {"refuse": _pick(_SOCIAL_ALREADY, lang).replace("{file}", _media_name(client_id, fid) or "—")}
+            social_queue.add_safely(client_id, fid, "video", [channel], producer="media", source="media_library",
+                                    title=_media_name(client_id, fid) or "")
+            waiting.append(_media_name(client_id, fid) or "—")
+    if not waiting:
+        return {}
+    return {"refuse": social_queue.pick(social_queue.TEXT["queued"], lang).replace("{file}", ", ".join(waiting))}
+
+
+_SOCIAL_ALREADY = _txt("\"{file}\" כבר פורסם בערוץ הזה, לפי לשונית \"סושיאל\" — לא שולחים אותו שוב.",
+                       "\"{file}\" is already published on this channel, per the Social tab — it isn't sent again.",
+                       "« {file} » est déjà publié sur ce canal, selon l'onglet Social — il n'est pas renvoyé.",
+                       "\"{file}\" منشور بالفعل في هذه القناة حسب تبويب \"سوشيال\" — لا يُرسل مجددًا.",
+                       "«{file}» уже опубликован в этом канале, по данным вкладки «Соцсети», — повторно не отправляется.")
 
 
 def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> dict:
@@ -787,6 +823,9 @@ def _prepare_tiktok(client_id: int, params: dict, context: dict, rows: list) -> 
             return {"existing": row}
     lang = (context or {}).get("language") or "he"
     file_id = params["drive_file_id"]
+    gate = _social_gate(client_id, "tiktok", [file_id], context)
+    if gate:
+        return gate
     # Only a container TikTok can't take (from Drive's MIME type) is refused
     # here; resolution / length / fps are TikTok's own rules and are never
     # checked in a blocking way (owner's policy — TikTok decides at runtime).
@@ -1427,6 +1466,9 @@ def _prepare_tiktok_batch(client_id: int, params: dict, context: dict, rows: lis
     for row in rows:
         if sorted((row.get("params") or {}).get("drive_file_ids") or []) == sorted(ids):
             return {"existing": row}
+    gate = _social_gate(client_id, "tiktok", ids, context)
+    if gate:
+        return gate
     from agents.tiktok_content_agent import check_grant
     grant = check_grant(client_id)
     if grant in ("not_connected", "missing_upload", "dead"):
@@ -2642,8 +2684,28 @@ def _v_pieces(value, client_id: int):
             raise ValueError("brief must be 10-600 characters")
         folder = _PRODUCE_PLATFORMS[kind]
         platform = str(piece.get("platform") or "instagram").strip().lower()
-        out.append({"kind": kind, "brief": brief, "platform": platform if platform in folder else "instagram"})
+        clean = {"kind": kind, "brief": brief, "platform": platform if platform in folder else "instagram"}
+        # Optional, for the Social queue (core/social_queue): the caption, the
+        # channels and date it is meant for, and the rejected item it replaces
+        caption = str(piece.get("caption") or "").strip()
+        if caption:
+            clean["caption"] = caption[:2200]
+        channels = [c for c in (piece.get("channels") or []) if c in ("instagram", "facebook", "tiktok", "youtube")]
+        if channels:
+            clean["channels"] = channels[:4]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(piece.get("date") or "")):
+            clean["date"] = str(piece["date"])
+        if re.fullmatch(r"[a-z0-9]{6,40}", str(piece.get("replaces") or "")):
+            clean["replaces"] = str(piece["replaces"])
+        out.append(clean)
     return out
+
+
+def _social_channels(piece: dict) -> list:
+    """Where a produced piece is meant to go — only channels that take its kind."""
+    from core.social_queue import CHANNEL_KINDS
+    wanted = piece.get("channels") or ([piece["platform"]] if piece["platform"] != "website" else [])
+    return [c for c in wanted if piece["kind"] in CHANNEL_KINDS.get(c, ())]
 
 
 def _produce_possible(state: dict, client: dict) -> bool:
@@ -2710,6 +2772,14 @@ def _run_produce(client_id: int, params: dict, background_tasks):
         result = run(client_id, piece["brief"], piece["platform"])
         if result.get("success"):
             made.append({"kind": piece["kind"], "link": result.get("link", "")})
+            channels = _social_channels(piece)
+            if channels and result.get("file_id"):
+                # Heading to social → the owner's approval queue (the Social tab)
+                from core import social_queue
+                social_queue.add_safely(client_id, result["file_id"], piece["kind"], channels,
+                                        caption=piece.get("caption", ""), planned_date=piece.get("date", ""),
+                                        producer="media", source="chat", title=piece["brief"][:120],
+                                        replaces=piece.get("replaces", ""))
             continue
         failed += 1
         if media_agent._NO_ACCOUNT_ERROR in (result.get("errors") or []):
@@ -2734,6 +2804,59 @@ def _produce_done_message(result: dict, lang: str) -> str:
         text += " " + _pick(_PRODUCE_PARTIAL, lang).replace("{failed}", str(result["failed"]))
     links = result.get("links") or []
     return text + ("\n" + "\n".join(links) if links else "")
+
+
+# ─── The Social tab's approval, as a chat card (core/social_queue) ───────────
+
+def _v_social_items(value, client_id: int) -> list:
+    from core import social_queue
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    ids = []
+    for v in raw:
+        v = str(v or "").strip()
+        if v and v not in ids:
+            ids.append(v)
+    if not 1 <= len(ids) <= social_queue.BATCH_MAX:
+        raise ValueError(f"1-{social_queue.BATCH_MAX} item ids")
+    waiting = {i["id"] for i in social_queue.items(client_id) if i["status"] == "waiting"}
+    missing = [v for v in ids if v not in waiting]
+    if missing:
+        raise ValueError(f"not waiting in the Social tab: {', '.join(missing)[:120]}")
+    return ids
+
+
+def _social_waiting(state: dict, client: dict) -> bool:
+    try:
+        from core import social_queue
+        return social_queue.waiting_count((client or {}).get("id")) > 0
+    except Exception:
+        return False
+
+
+def _social_display(client_id: int, params: dict) -> dict:
+    from core import social_queue
+    lang = _lang(client_id)
+    by_id = {i["id"]: i for i in social_queue.items(client_id)}
+    lines = []
+    for n, iid in enumerate(params.get("item_ids") or [], 1):
+        item = by_id.get(iid) or {}
+        channels = ", ".join(social_queue.pick(_SOCIAL_CHANNEL.get(c, {"en": c}), lang) for c in item.get("channels") or [])
+        lines.append(f"{n}. {item.get('title') or '—'} · {channels} · {item.get('planned_date', '')}")
+    return {"count": str(len(params.get("item_ids") or [])), "items": "\n".join(lines)}
+
+
+_SOCIAL_CHANNEL = {"instagram": _txt("אינסטגרם", "Instagram", "Instagram", "إنستغرام", "Instagram"),
+                   "facebook": _txt("פייסבוק", "Facebook", "Facebook", "فيسبوك", "Facebook"),
+                   "tiktok": _txt("טיקטוק", "TikTok", "TikTok", "تيك توك", "TikTok"),
+                   "youtube": _txt("יוטיוב", "YouTube", "YouTube", "يوتيوب", "YouTube")}
+
+
+def _run_approve_social(client_id: int, params: dict, background_tasks):
+    from core import social_queue
+    done = social_queue.approve(client_id, params.get("item_ids") or [], by="client")
+    if not done:
+        raise ActionFailed("already_decided", "none of these items is still waiting")
+    return {"approved": len(done)}
 
 
 # ─── Photos → presenter (avatar_agent.create_avatar's photo-avatar path) ─────
@@ -4126,6 +4249,32 @@ ACTIONS = {
                      "Готово ✓ {made} элементов ждут вашей проверки в папке Drive. Ничего не опубликовано."),
         "done_message": lambda result, lang: _produce_done_message(result, lang),
     },
+    "approve_social_items": {
+        # The Social tab's batch approval as a chat card (core/social_queue):
+        # the SAME approve() the tab's approval card calls. Approved ≠ published.
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Approves one or more items WAITING in the client's Social tab (social_queue.waiting_items) — "
+                "the owner's final yes before anything goes to social media. Approved means approved, not "
+                "published now: each item then goes out on its planned date, or (where we can't publish for "
+                "them yet) waits as 'ready to publish in one tap'.",
+        "params": {"item_ids": {"required": True, "validate": _v_social_items,
+                                "hint": "ids copied exactly from social_queue.waiting_items (a list, up to 20)"}},
+        "available": _social_waiting,
+        "run": _run_approve_social,
+        "display": _social_display,
+        "title": _txt("אישור פריטים לסושיאל", "Approve items for social media", "Valider des éléments pour les réseaux",
+                      "الموافقة على عناصر للسوشيال", "Одобрить материалы для соцсетей"),
+        "what": _txt("יאושרו {count} פריטים מלשונית \"סושיאל\":\n{items}\nאישור = מאושר, לא 'לפרסם עכשיו': כל פריט יוצא בתאריך שלו, ובערוצים שבהם עוד אין פרסום אוטומטי הוא יחכה לכם מוכן לפרסום בלחיצה.",
+                     "{count} items from the Social tab will be approved:\n{items}\nApproved means approved, not 'publish now': each item goes out on its date, and on channels without automatic publishing yet it waits for you, ready to publish in one tap.",
+                     "{count} éléments de l'onglet Social seront validés :\n{items}\nValider signifie approuvé, pas « publier maintenant » : chaque élément sort à sa date, et sur les canaux sans publication automatique il vous attend, prêt à publier en un geste.",
+                     "ستتم الموافقة على {count} عناصر من تبويب \"سوشيال\":\n{items}\nالموافقة تعني معتمد، لا 'انشر الآن': كل عنصر يخرج في موعده، وفي القنوات التي لا يوجد فيها نشر تلقائي بعد ينتظركم جاهزًا للنشر بنقرة.",
+                     "Будет одобрено {count} материалов из вкладки «Соцсети»:\n{items}\nОдобрено — не значит «опубликовать сейчас»: каждый выходит в свой день, а где автопубликации пока нет — ждёт вас, готовый к публикации одним нажатием."),
+        "done": _txt("אושר ✓ {count} פריטים מאושרים בלשונית \"סושיאל\".", "Approved ✓ {count} items are approved in the Social tab.",
+                     "Validé ✓ {count} éléments sont validés dans l'onglet Social.", "تمت الموافقة ✓ {count} عناصر معتمدة في تبويب \"سوشيال\".",
+                     "Одобрено ✓ {count} материалов одобрены во вкладке «Соцсети»."),
+        "done_message": lambda result, lang: _pick(ACTIONS["approve_social_items"]["done"], lang)
+            .replace("{count}", str(result.get("approved", 0))),
+    },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "does": "Approves ONE of the client's own pending suggestions (approvals.waiting_for_client) — "
@@ -4881,6 +5030,22 @@ _CREATIVE_REFUSALS = {
 ACTIONS["clone_voice"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["make_presenter_video"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["produce_requested_content"]["refusals"] = {"missing_tool": _CREATIVE_REFUSALS["missing_tool"]}
+# The Social-tab gate refused at the send itself (core/social_queue.check):
+# the item was not approved there, or its approval was taken back meanwhile
+_NOT_APPROVED = _txt(
+    "שום דבר לא נשלח: הפריט הזה לא מאושר בלשונית \"סושיאל\" (או שהאישור בוטל בינתיים). מאשרים אותו שם — ואז שולחים בלחיצה.",
+    "Nothing was sent: this item isn't approved in the Social tab (or the approval was taken back meanwhile). Approve it there, then send it in one tap.",
+    "Rien n'a été envoyé : cet élément n'est pas validé dans l'onglet Social (ou la validation a été retirée). Validez-le là-bas, puis envoyez-le en un geste.",
+    "لم يُرسل شيء: هذا العنصر غير معتمد في تبويب \"سوشيال\" (أو أُلغيت الموافقة). وافقوا عليه هناك ثم أرسلوه بنقرة.",
+    "Ничего не отправлено: этот элемент не одобрен во вкладке «Соцсети» (или одобрение отозвано). Одобрите его там — и отправьте одним нажатием.")
+for _name in ("send_tiktok_to_inbox", "send_tiktok_batch", "publish_youtube_from_media"):
+    ACTIONS[_name].setdefault("refusals", {})["not_approved"] = _NOT_APPROVED
+ACTIONS["approve_social_items"]["refusals"] = {"already_decided": _txt(
+    "הפריטים האלה כבר לא מחכים לאישור (אושרו, הוחזרו או פורסמו בינתיים) — שום דבר לא השתנה. המצב העדכני בלשונית \"סושיאל\".",
+    "These items aren't waiting any more (approved, sent back or published meanwhile) — nothing changed. The current state is in the Social tab.",
+    "Ces éléments ne sont plus en attente (validés, renvoyés ou publiés entre-temps) — rien n'a changé. L'état actuel est dans l'onglet Social.",
+    "هذه العناصر لم تعد بانتظار الموافقة (اعتُمدت أو أُعيدت أو نُشرت) — لم يتغير شيء. الحالة الحالية في تبويب \"سوشيال\".",
+    "Эти материалы больше не ждут одобрения (одобрены, возвращены или опубликованы) — ничего не изменилось. Актуальное состояние во вкладке «Соцсети».")}
 ACTIONS["create_presenter_from_photos"]["refusals"] = {
     "missing_tool": _CREATIVE_REFUSALS["missing_tool"],
     "no_consent": _txt(

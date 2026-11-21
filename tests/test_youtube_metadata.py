@@ -15,6 +15,8 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import social_gate_open  # noqa: E402,F401 — send mechanics only; the gate itself: test_social_queue.py
 
 import test_youtube_upload_action as up            # noqa: E402  (stubs + seams + fixtures)
 from test_youtube_upload_action import DRAFT, OWN_VIDEO, PAGES, SITE, UploadActionCase, ym   # noqa: E402

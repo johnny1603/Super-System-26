@@ -99,6 +99,9 @@ Trivial gaps closed in this change:
 | P3 | `POST /api/client/tools/provider` | choose_video_provider card |
 | P3 | `POST /api/client/tools/{tool}/disconnect` | disconnect_creative_tool card |
 | P3 | `POST /api/client/tools/{tool}/test` | test_creative_tool card |
+| P2 | `POST /api/client/social/{item_id}/edit` | edit_social_item card (caption / channels / date of a waiting item) |
+| P2 | `POST /api/client/social/{item_id}/reject` | reject_social_item card (the reason goes back to the producer) |
+| P3 | `POST /api/client/social/{item_id}/published` | mark_social_published card ("I published it") |
 
 ## Every client-dashboard route
 
@@ -253,6 +256,7 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | `team_request` | staff (Control Room) | execute | opened by code only | A tracked request for the team: legal, tax, contract, billing or a package exception only (a licensed-professional or commercial decision). |
 | `clone_voice` | client click | execute | internal clients only | Clones the client's voice from the recordings in account_state.voice, on THEIR own voice tool account. |
 | `make_presenter_video` | client click | execute | internal clients only | Makes ONE short presenter clip — AT MOST 15 SECONDS of speech (about 35 words) — in which the client's presenter character says a script, in their own voice. |
+| `approve_social_items` | client click | execute | — | Approves items WAITING in the Social tab (one card for several) — the owner's final yes before anything goes to social media; approved, not published now (2026-11-22, docs/SOCIAL-QUEUE.md). |
 | `produce_requested_content` | client click | execute | — | Produces EXACTLY the content pieces the client asked for (e.g. "3 posts, one reason each" = 3 images) on their own image/video tool, each saved to their Drive folder for review; nothing is published. Not the weekly plan, never waits for it (2026-11-22). |
 | `approve_suggestion` | client click | execute | — | Approves ONE of the client's own pending suggestions (approvals.waiting_for_client) — the same as their approve tap in the dashboard; approving is what lets the team start. |
 | `publish_youtube_from_media` | client click | execute | — | Uploads ONE video from the client's Drive media folder (account_state.media_folder.videos, uploadable=true) to their YouTube channel as PRIVATE — never public or unlisted; they publish it themselves in YouTube Studio when they like. |

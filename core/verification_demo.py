@@ -110,6 +110,14 @@ def upload_test_video(client_id: int) -> dict:
     result = publish(client_id, {"drive_file_id": video["id"], "title": title,
                                  "description": "Test upload by uallak for Google OAuth verification."})
     if not result.get("success"):
+        if result.get("not_approved"):
+            # The Social-tab gate (core/social_queue) covers the demo too: the
+            # test video is uploaded only after it is approved there for YouTube
+            from core import social_queue
+            social_queue.add_safely(client_id, video["id"], "video", ["youtube"], producer="media",
+                                    source="media_library", title=video.get("name", ""))
+            raise DemoRefused(409, "הסרטון נכנס לתור האישורים בלשונית 'סושיאל' של הלקוח — "
+                                   "מאשרים אותו שם (בהתחברות לחשבון הפנימי עצמו; 'כניסה כלקוח' היא קריאה בלבד), ואז מריצים שוב את ההעלאה.")
         raise DemoRefused(400, result.get("errors", ["unknown error"]))
     video_id = result.get("video_id", "")
     return {"video_id": video_id, "title": title, "privacy_status": "private",

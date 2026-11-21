@@ -890,6 +890,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `produce_requested_content` (ONE card, `media_agent.generate_image/generate_video` per piece,
   Drive only, nothing published, tool missing → `connect_creative_tool`). `build_content_plan`
   only on an explicit plan/week ask.
+- **Social tab = THE ONLY GATE to social media (2026-11-22, `docs/SOCIAL-QUEUE.md`)**: `core/social_queue`
+  (app_settings `social_queue:<id>`, no migration). Everything heading to a social channel waits there for the owner:
+  produced plan items (`content_team._queue_for_approval`), pieces from `produce_requested_content`, and any media
+  video a send card is asked for. A send card is NOT opened for an unapproved file: `agent_actions._social_gate`
+  queues it and replies where it waits. `social_queue.check()` runs inside `meta_content_agent.publish` (spec
+  `queue_item` required), `tiktok_content_agent.begin_upload` and `youtube_content_agent.publish`, before any
+  platform call. Admin routes and the verification demo included; there is no override. A new publisher must call it.
+  Approve (one or a batch; chat card `approve_social_items`), edit (an edit re-opens approval), reject with a reason
+  (a line + a fix card in the PRODUCER's chat), download. Approved ≠ published: per channel `scheduled` / `one_tap`
+  / `not_connected` / `drafts` / `private` / `done` from `channel_modes`. Today everything is a tap (no date job;
+  AUTO_PUBLISH stays off). Admin read-only mirror in the Control Room. Tests that exercise send MECHANICS import
+  `tests/social_gate_open.py`. `tests/test_social_queue.py`.
 - **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
   `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are
   dropped (the manager, persona "general", still orchestrates); a sentence repeated in one reply

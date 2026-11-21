@@ -22,6 +22,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import social_gate_open  # noqa: E402,F401 — send mechanics only; the gate itself: test_social_queue.py
 
 from test_tiktok_inbox_action import SMALL, HUGE, EMPTY, IMAGE, TikTokActionCase, state   # noqa: E402
 

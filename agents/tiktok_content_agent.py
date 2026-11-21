@@ -246,8 +246,15 @@ def begin_upload(client_id: int, drive_file_id: str) -> dict:
     explained stop; anything else is ours (retried by the job, then alerted).
     No size check of ours exists here."""
     from core import drive_service as drive
-    from core import tiktok_grant
+    from core import social_queue, tiktok_grant
     from core.video_limits import tiktok_chunk_plan, tiktok_init_params
+    # THE Social-tab gate (core/social_queue): before ANY TikTok call — the
+    # chat card's durable job, the owner-approved big file and the admin route
+    # all pass here. Not approved there for TikTok = nothing is sent.
+    try:
+        social_queue.check(client_id, "tiktok", file_id=drive_file_id)
+    except social_queue.GateClosed as e:
+        raise UploadRefused("not_approved", [str(e)])
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
         raise UploadRefused("needs_reconnect", ["no connected TikTok account"])
@@ -378,6 +385,8 @@ def publish(client_id: int, spec: dict) -> dict:
                 {"drive_file_id": drive_file_id, "caption": spec.get("caption", ""),
                  "size_bytes": size, "video": up["video"]},
                 {"publish_id": publish_id, "status": final.get("status")})
+    from core import social_queue
+    social_queue.mark_delivered(client_id, "tiktok", "drafts", file_id=drive_file_id)
 
     if (spec.get("caption") or "").strip():
         client = get_client(client_id)

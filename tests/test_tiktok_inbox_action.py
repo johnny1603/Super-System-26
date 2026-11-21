@@ -25,6 +25,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import social_gate_open  # noqa: E402,F401 — send mechanics only; the gate itself: test_social_queue.py
 
 from test_agent_actions import ActionTestCase   # noqa: E402  (FakeDB + seams)
 from core import agent_actions as aa            # noqa: E402

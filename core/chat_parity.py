@@ -138,6 +138,12 @@ PARITY = {
     # Add by link (2026-11-11): a pasted Drive link in the chat opens the same copy as a card
     "POST /api/client/media/add-link": (CHAT, "add_media_from_drive_link"),
     "GET /api/client/content-plan": (CHAT, "build_content_plan"),
+    # ── The Social tab (core/social_queue): the ONE approval gate for social ──
+    "GET /api/client/social": (CHAT, "approve_social_items"),
+    "POST /api/client/social/approve": (CHAT, "approve_social_items"),
+    "POST /api/client/social/{item_id}/edit": (GAP, "P2: edit_social_item card (caption / channels / date of a waiting item)"),
+    "POST /api/client/social/{item_id}/reject": (GAP, "P2: reject_social_item card (the reason goes back to the producer)"),
+    "POST /api/client/social/{item_id}/published": (GAP, "P3: mark_social_published card (\"I published it\")"),
     "GET /api/client/seo-report": (CHAT, "build_seo_report"),
     "GET /api/client/seo-report/view": (NOT_CHAT, "the stored report as a printable page; asking for the report in "
                                                   "the chat is build_seo_report"),

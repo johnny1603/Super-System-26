@@ -1381,6 +1381,68 @@ body.bs-open { overflow: hidden; }
   .ml-check { width: 40px; height: 40px; }
   .ml-player { padding: 8px; }
 }
+/* The Social tab (core/social_queue): one row per item, wraps to a column on a phone */
+.soc-counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.soc-counts .plan-pill.hot { color: var(--accent); border-color: rgba(255,76,31,.5); background: var(--accent-dim); }
+.soc-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 10px;
+  border: 1px solid rgba(255,76,31,0.35); background: var(--accent-dim); border-radius: 10px; font-size: 13px;
+  position: sticky; top: 8px; z-index: 5; }
+.soc-selbar[hidden] { display: none; }
+.soc-selcount { font-weight: 700; margin-inline-end: auto; }
+.soc-notice { font-size: 13px; min-height: 1em; margin: 0 0 8px; }
+.soc-list { display: grid; gap: 12px; }
+.soc-item { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px; background: var(--panel-2); min-width: 0; }
+.soc-item.waiting { border-color: rgba(255,76,31,.45); }
+.soc-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.soc-item.done { opacity: .78; }
+.soc-prev { position: relative; width: 132px; height: 132px; border-radius: 10px; overflow: hidden; background: rgba(127,127,127,.15);
+  display: flex; align-items: center; justify-content: center; font-size: 34px; }
+.soc-prev img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.soc-prev .soc-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px;
+  background: rgba(0,0,0,.25); color: #fff; border: 0; cursor: pointer; }
+.soc-prev .ml-check { top: 6px; inset-inline-start: 6px; }
+.soc-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.soc-top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; }
+.soc-status { font-weight: 700; border-radius: 99px; padding: 1px 9px; border: 1px solid var(--border); font-size: 12px; }
+.soc-status.waiting { color: var(--accent); border-color: rgba(255,76,31,.5); }
+.soc-status.approved { color: var(--green); border-color: rgba(34,197,94,.45); }
+.soc-status.published { color: var(--green); }
+.soc-status.rejected { color: var(--gray); }
+.soc-by { display: inline-flex; align-items: center; gap: 6px; opacity: .85; }
+.soc-by img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.soc-title { font-weight: 700; overflow-wrap: anywhere; }
+.soc-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+.soc-meta .overdue { color: var(--accent); font-weight: 700; }
+.soc-caption { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(127,127,127,.12);
+  border-radius: 8px; padding: 6px 8px; }
+.soc-caption.empty { opacity: .7; font-style: italic; }
+.soc-edit { display: grid; gap: 8px; }
+.soc-edit textarea, .soc-edit input[type=date], .soc-reject textarea { width: 100%; box-sizing: border-box; background: var(--panel);
+  border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; }
+.soc-edit textarea { min-height: 96px; resize: vertical; }
+.soc-chans { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; }
+.soc-chans label { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; }
+.soc-chans input { accent-color: var(--accent); width: 17px; height: 17px; }
+.soc-delivery { display: grid; gap: 4px; font-size: 12.5px; }
+.soc-delivery div { border-radius: 8px; padding: 5px 8px; border: 1px solid var(--border); }
+.soc-delivery .one_tap, .soc-delivery .not_connected, .soc-delivery .drafts, .soc-delivery .private {
+  border-color: rgba(255,76,31,.5); background: var(--accent-dim); font-weight: 700; }
+.soc-delivery .done, .soc-delivery .scheduled { color: var(--green); }
+.soc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.soc-reject { display: grid; gap: 8px; }
+.soc-more { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--gray); }
+.soc-batch { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,.6); display: flex; align-items: center;
+  justify-content: center; padding: 16px; }
+.soc-batch-box { width: min(520px, 100%); max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px; display: grid; gap: 10px; }
+.soc-batch-box ol { margin: 0; padding-inline-start: 20px; display: grid; gap: 4px; font-size: 13px; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .soc-item { grid-template-columns: 1fr; }
+  .soc-prev { width: 100%; height: 200px; }
+  .soc-actions .sugg-btn, .soc-actions .media-chip { min-height: 44px; flex: 1 1 auto; }
+  .soc-chans label { min-height: 44px; }
+}
 .conn-account { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; min-width: 0; }
 .conn-account img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .conn-account .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1571,6 +1633,10 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="media" onclick="showView('media')">
     <span class="nav-ico">🖼</span><span data-i18n="nav_media">מדיה</span>
     <span class="nav-count" id="navMediaCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="social" onclick="showView('social')">
+    <span class="nav-ico">📣</span><span data-i18n="nav_social">סושיאל</span>
+    <span class="nav-count" id="navSocialCount" style="display:none;">0</span>
   </button>
   <button class="nav-item" data-view="personal" onclick="showView('personal')">
     <span class="nav-ico">👤</span><span data-i18n="nav_personal">אזור אישי</span>
@@ -2483,6 +2549,27 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
 </div><!-- /viewMedia -->
 
+<!-- ---------- SOCIAL: the ONE approval queue for social media (core/social_queue) ----------
+     Everything heading to a social channel waits here for the owner's final yes.
+     Files stay in the client's Drive; previews and downloads use the media-drive routes. -->
+<div class="view" id="viewSocial">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="social_title">סושיאל</div>
+      <div class="section-sub" id="socialGate" data-i18n="social_sub">שום דבר לא עולה לרשתות לפני האישור שלכם כאן.</div>
+    </div>
+  </div>
+  <div class="soc-counts" id="socialCounts"></div>
+  <div class="soc-selbar" id="socialSelBar" hidden>
+    <span class="soc-selcount" id="socialSelCount"></span>
+    <button type="button" class="sugg-btn approve" id="socialSelApprove" onclick="socialOpenBatch()"></button>
+    <button type="button" class="media-chip" onclick="socialClearSelection()" data-i18n="soc_clear">ביטול הבחירה</button>
+  </div>
+  <div class="soc-notice" id="socialNotice" role="status" aria-live="polite"></div>
+  <div class="soc-list" id="socialList"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+  <div class="soc-more" id="socialMore"></div>
+</div><!-- /viewSocial -->
+
 <!-- ---------- PERSONAL AREA ---------- -->
 <div class="view" id="viewPersonal">
   <div class="section-head">
@@ -2666,6 +2753,58 @@ const DASH_I18N = {
   nav_home: { he:'בית', en:'Home', fr:'Accueil', ar:'الرئيسية', ru:'Главная' },
   nav_leads: { he:'לידים', en:'Leads', fr:'Prospects', ar:'العملاء المحتملون', ru:'Лиды' },
   nav_media: { he:'מדיה', en:'Media', fr:'Médias', ar:'الوسائط', ru:'Медиа' },
+  nav_social: { he:'סושיאל', en:'Social', fr:'Réseaux sociaux', ar:'سوشيال', ru:'Соцсети' },
+  social_title: { he:'סושיאל — מה עולה לרשתות', en:'Social — what goes out to social media', fr:'Réseaux sociaux — ce qui part en ligne', ar:'سوشيال — ما يُنشر على الشبكات', ru:'Соцсети — что уходит в публикацию' },
+  social_sub: { he:'שום דבר לא עולה לרשתות לפני האישור שלכם כאן.', en:'Nothing goes to social media before your approval here.', fr:'Rien ne part sur les réseaux avant votre validation ici.', ar:'لا يُنشر شيء قبل موافقتكم هنا.', ru:'Ничего не уходит в соцсети без вашего одобрения здесь.' },
+  soc_count_waiting: { he:'{n} מחכים לאישור', en:'{n} waiting for approval', fr:'{n} en attente', ar:'{n} بانتظار الموافقة', ru:'{n} ждут одобрения' },
+  soc_count_tap: { he:'{n} מחכים ללחיצה שלכם', en:'{n} waiting for your tap', fr:'{n} attendent votre geste', ar:'{n} بانتظار نقرتكم', ru:'{n} ждут вашего нажатия' },
+  soc_count_approved: { he:'{n} אושרו', en:'{n} approved', fr:'{n} validés', ar:'{n} معتمدة', ru:'{n} одобрено' },
+  soc_count_published: { he:'{n} פורסמו', en:'{n} published', fr:'{n} publiés', ar:'{n} منشورة', ru:'{n} опубликовано' },
+  soc_count_rejected: { he:'{n} הוחזרו לתיקון', en:'{n} sent back', fr:'{n} renvoyés', ar:'{n} أُعيدت', ru:'{n} возвращено' },
+  soc_by: { he:'הפיק/ה: {name}', en:'Made by {name}', fr:'Réalisé par {name}', ar:'من إعداد {name}', ru:'Подготовил(а): {name}' },
+  soc_date: { he:'תאריך פרסום', en:'Publish date', fr:'Date de publication', ar:'موعد النشر', ru:'Дата публикации' },
+  soc_overdue: { he:'התאריך עבר', en:'Date has passed', fr:'Date dépassée', ar:'فات الموعد', ru:'Дата прошла' },
+  soc_channels: { he:'ערוצים', en:'Channels', fr:'Canaux', ar:'القنوات', ru:'Каналы' },
+  soc_caption: { he:'כיתוב', en:'Caption', fr:'Légende', ar:'النص', ru:'Подпись' },
+  soc_no_caption: { he:'אין כיתוב עדיין — אפשר לכתוב כאן.', en:'No caption yet — you can write one here.', fr:'Pas encore de légende — vous pouvez l’écrire ici.', ar:'لا يوجد نص بعد — يمكنكم كتابته هنا.', ru:'Подписи пока нет — можно написать здесь.' },
+  soc_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Одобрить' },
+  soc_edit: { he:'עריכה', en:'Edit', fr:'Modifier', ar:'تعديل', ru:'Изменить' },
+  soc_save: { he:'שמירה', en:'Save', fr:'Enregistrer', ar:'حفظ', ru:'Сохранить' },
+  soc_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
+  soc_reject: { he:'להחזיר לתיקון', en:'Send back for a fix', fr:'Renvoyer pour correction', ar:'إعادة للتعديل', ru:'Вернуть на доработку' },
+  soc_reject_reason: { he:'מה לתקן? (ההסבר עובר ל{name})', en:'What should change? (this goes to {name})', fr:'Que faut-il changer ? (transmis à {name})', ar:'ما الذي يجب تغييره؟ (يصل إلى {name})', ru:'Что изменить? (это получит {name})' },
+  soc_reject_send: { he:'להחזיר עם ההסבר', en:'Send back with this reason', fr:'Renvoyer avec cette raison', ar:'إعادة مع هذا السبب', ru:'Вернуть с этим пояснением' },
+  soc_reason_needed: { he:'כתבו במשפט מה לתקן.', en:'Write in a sentence what should change.', fr:'Écrivez en une phrase ce qu’il faut changer.', ar:'اكتبوا بجملة ما الذي يجب تغييره.', ru:'Напишите одной фразой, что изменить.' },
+  soc_rejected_done: { he:'הוחזר ל{name} עם ההסבר. הגרסה המתוקנת תחזור לכאן לאישור.', en:'Sent back to {name} with your reason. The fixed version comes back here for approval.', fr:'Renvoyé à {name} avec votre raison. La version corrigée reviendra ici.', ar:'أُعيد إلى {name} مع السبب. ستعود النسخة المعدّلة إلى هنا للموافقة.', ru:'Возвращено {name} с пояснением. Исправленная версия вернётся сюда.' },
+  soc_download: { he:'הורדה', en:'Download', fr:'Télécharger', ar:'تنزيل', ru:'Скачать' },
+  soc_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
+  soc_copy: { he:'העתקת הכיתוב', en:'Copy caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
+  soc_copied: { he:'הכיתוב הועתק.', en:'Caption copied.', fr:'Légende copiée.', ar:'تم نسخ النص.', ru:'Подпись скопирована.' },
+  soc_published_btn: { he:'פרסמתי ✓', en:'I published it ✓', fr:'Je l’ai publié ✓', ar:'نشرته ✓', ru:'Я опубликовал(а) ✓' },
+  soc_needs_tap: { he:'מחכה ללחיצה שלכם', en:'Waiting for your tap', fr:'Attend votre geste', ar:'بانتظار نقرتكم', ru:'Ждёт вашего нажатия' },
+  soc_select_aria: { he:'בחירת {name}', en:'Select {name}', fr:'Sélectionner {name}', ar:'اختيار {name}', ru:'Выбрать {name}' },
+  soc_selected: { he:'{n} נבחרו', en:'{n} selected', fr:'{n} sélectionnés', ar:'تم اختيار {n}', ru:'Выбрано: {n}' },
+  soc_approve_selected: { he:'לאשר את הנבחרים ({n})', en:'Approve selected ({n})', fr:'Valider la sélection ({n})', ar:'الموافقة على المختارة ({n})', ru:'Одобрить выбранные ({n})' },
+  soc_clear: { he:'ביטול הבחירה', en:'Clear selection', fr:'Effacer la sélection', ar:'إلغاء الاختيار', ru:'Снять выбор' },
+  soc_batch_title: { he:'לאשר {n} פריטים?', en:'Approve {n} items?', fr:'Valider {n} éléments ?', ar:'الموافقة على {n} عناصر؟', ru:'Одобрить {n} материалов?' },
+  soc_batch_note: { he:'אישור = מאושר, לא "לפרסם עכשיו". כל פריט יוצא בתאריך שלו, ובערוצים שבהם עוד אין פרסום אוטומטי הוא יחכה לכם מוכן לפרסום בלחיצה.', en:'Approved means approved, not "publish now". Each item goes out on its date; on channels without automatic publishing yet it waits for you, ready to publish in one tap.', fr:'Valider signifie approuvé, pas « publier maintenant ». Chaque élément sort à sa date ; sur les canaux sans publication automatique, il vous attend, prêt à publier en un geste.', ar:'الموافقة تعني معتمد، لا "انشر الآن". كل عنصر يخرج في موعده، وفي القنوات التي لا يوجد فيها نشر تلقائي بعد ينتظركم جاهزًا للنشر بنقرة.', ru:'Одобрить — не значит «опубликовать сейчас». Каждый материал выходит в свой день; где автопубликации пока нет, он ждёт вас, готовый к публикации одним нажатием.' },
+  soc_batch_confirm: { he:'לאשר את כולם', en:'Approve all of them', fr:'Tout valider', ar:'الموافقة على الكل', ru:'Одобрить все' },
+  soc_approved_done: { he:'אושר ✓ {n} פריטים מאושרים.', en:'Approved ✓ {n} items approved.', fr:'Validé ✓ {n} éléments validés.', ar:'تمت الموافقة ✓ {n} عناصر معتمدة.', ru:'Одобрено ✓ {n} материалов.' },
+  soc_saved: { he:'נשמר.', en:'Saved.', fr:'Enregistré.', ar:'تم الحفظ.', ru:'Сохранено.' },
+  soc_saved_reapprove: { he:'נשמר. השינוי מחזיר את הפריט לאישור שלכם.', en:'Saved. The change puts the item back for your approval.', fr:'Enregistré. La modification remet l’élément en attente de validation.', ar:'تم الحفظ. التغيير يعيد العنصر لموافقتكم.', ru:'Сохранено. После изменения материал снова ждёт одобрения.' },
+  soc_failed: { he:'זה לא נשמר כרגע. נסו שוב בעוד רגע.', en:'That didn’t save just now. Try again in a moment.', fr:'Cela n’a pas été enregistré. Réessayez dans un instant.', ar:'لم يُحفظ الآن. حاولوا مجددًا بعد لحظة.', ru:'Сейчас не сохранилось. Попробуйте ещё раз чуть позже.' },
+  soc_bad_channel: { he:'הערוץ הזה לא מקבל קובץ מהסוג הזה (למשל תמונה לטיקטוק). בחרו ערוץ אחר.', en:'That channel doesn’t take this kind of file (for example an image on TikTok). Pick another channel.', fr:'Ce canal n’accepte pas ce type de fichier (par ex. une image sur TikTok). Choisissez-en un autre.', ar:'هذه القناة لا تقبل هذا النوع من الملفات (مثل صورة على تيك توك). اختاروا قناة أخرى.', ru:'Этот канал не принимает такой файл (например, картинку в TikTok). Выберите другой канал.' },
+  soc_bad_date: { he:'בחרו תאריך מהיום ועד שנה קדימה.', en:'Pick a date from today up to a year ahead.', fr:'Choisissez une date entre aujourd’hui et dans un an.', ar:'اختاروا تاريخًا من اليوم حتى سنة قادمة.', ru:'Выберите дату от сегодня и до года вперёд.' },
+  soc_more: { he:'להציג עוד', en:'Show more', fr:'Afficher plus', ar:'عرض المزيد', ru:'Показать ещё' },
+  soc_shown: { he:'מוצגים {shown} מתוך {total}', en:'Showing {shown} of {total}', fr:'{shown} sur {total} affichés', ar:'يُعرض {shown} من {total}', ru:'Показано {shown} из {total}' },
+  soc_was_rejected: { he:'הוחזר: "{reason}"', en:'Sent back: "{reason}"', fr:'Renvoyé : « {reason} »', ar:'أُعيد: "{reason}"', ru:'Возвращено: «{reason}»' },
+  soc_fix_on_way: { he:'הגרסה המתוקנת כבר כאן למטה.', en:'The fixed version is already in the list.', fr:'La version corrigée est déjà dans la liste.', ar:'النسخة المعدّلة موجودة في القائمة.', ru:'Исправленная версия уже в списке.' },
+  soc_is_fix: { he:'גרסה מתוקנת', en:'Fixed version', fr:'Version corrigée', ar:'نسخة معدّلة', ru:'Исправленная версия' },
+  soc_ch_instagram: { he:'אינסטגרם', en:'Instagram', fr:'Instagram', ar:'إنستغرام', ru:'Instagram' },
+  soc_ch_facebook: { he:'פייסבוק', en:'Facebook', fr:'Facebook', ar:'فيسبوك', ru:'Facebook' },
+  soc_ch_tiktok: { he:'טיקטוק', en:'TikTok', fr:'TikTok', ar:'تيك توك', ru:'TikTok' },
+  soc_ch_youtube: { he:'יוטיוב', en:'YouTube', fr:'YouTube', ar:'يوتيوب', ru:'YouTube' },
+  soc_unavailable: { he:'הלשונית לא נטענה כרגע. ננסה שוב כשתחזרו אליה.', en:'This tab didn’t load just now. It will try again when you come back to it.', fr:'Cet onglet ne s’est pas chargé. Il réessaiera à votre retour.', ar:'لم يُحمّل التبويب الآن. سيحاول مجددًا عند عودتكم.', ru:'Вкладка сейчас не загрузилась. Она попробует снова, когда вы вернётесь.' },
   nav_personal: { he:'אזור אישי', en:'My account', fr:'Mon compte', ar:'المنطقة الشخصية', ru:'Личный кабинет' },
   nav_support: { he:'תמיכה', en:'Support', fr:'Assistance', ar:'الدعم', ru:'Поддержка' },
 
@@ -3965,6 +4104,7 @@ async function loadDashboard() {
     const d = dashboardData;
     // which agents move from drawn pose frames (agent-life.js reads it each time)
     window.uallakPoseFrames = d.pose_frames || null;
+    setSocialBadge(d.social_waiting);
     if (d.admin_view) enterAdminViewMode((d.client && d.client.name) || '');
     if (d.simulated_new_client) document.getElementById('adminViewNew').hidden = false;
 
@@ -8069,7 +8209,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'personal', 'ownership', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -8090,9 +8230,301 @@ function showView(name) {
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
   if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
+  if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOCIAL — the ONE approval queue for social media (core/social_queue,
+// docs/SOCIAL-QUEUE.md). Every row: preview, caption, channels, planned date,
+// who made it, status. Approve (one, or several in ONE approval card), edit
+// the caption / channels / date, send back with a reason, download. Approved
+// is NOT "publish now": a channel we can't publish to for them shows
+// "ready to publish in one tap" with the file and the caption at hand.
+// Gradual: SOCIAL_PAGE rows, the rest behind "show more". Staff view: read-only.
+// ═══════════════════════════════════════════════════════════════════════════
+const SOCIAL_PAGE = 6;
+const SOCIAL_FACES = { media: 'lior', meta: 'maya' };
+const social = { items: [], data: null, selected: new Set(), editing: '', rejecting: '', loading: false };
+
+function setSocialBadge(n) {
+  const badge = document.getElementById('navSocialCount');
+  if (!badge) return;
+  n = Number(n) || 0;
+  badge.textContent = String(n);
+  badge.style.display = n > 0 ? '' : 'none';
+}
+
+function socialNote(msg) { const el = document.getElementById('socialNotice'); if (el) el.textContent = msg || ''; }
+
+async function loadSocial(opts) {
+  const t = uallakI18n.t;
+  const append = Boolean(opts && opts.append);
+  if (social.loading) return;
+  social.loading = true;
+  const offset = append ? social.items.length : 0;
+  const limit = append ? SOCIAL_PAGE : Math.max(SOCIAL_PAGE, social.items.length || 0);
+  try {
+    const res = await fetch('/api/client/social?offset=' + offset + '&limit=' + limit
+                            + '&lang=' + encodeURIComponent(uallakI18n.current()), { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const d = ((await res.json()) || {}).data || {};
+    if (!d.available) throw new Error('unavailable');
+    social.data = d;
+    social.items = append ? social.items.concat(d.items || []) : (d.items || []);
+    const live = new Set(social.items.filter(i => i.status === 'waiting').map(i => i.id));
+    social.selected.forEach(id => { if (!live.has(id)) social.selected.delete(id); });
+    setSocialBadge((d.counts || {}).waiting);
+    renderSocial();
+  } catch (e) {
+    document.getElementById('socialList').innerHTML = `<div class="empty-row">${esc(t('soc_unavailable'))}</div>`;
+  } finally {
+    social.loading = false;
+  }
+}
+
+function socialChannelName(c) { return uallakI18n.t('soc_ch_' + c); }
+function socialProducer(p) { return uallakI18n.t('persona_name_' + (SOCIAL_FACES[p] ? p : 'media')); }
+
+function socialRow(item) {
+  const t = uallakI18n.t;
+  const waiting = item.status === 'waiting';
+  const editable = !ADMIN_VIEW && (waiting || item.status === 'approved');
+  const name = item.title || socialChannelName(item.channels[0] || 'instagram');
+  const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(item.file_id);
+  const face = SOCIAL_FACES[item.producer] || 'lior';
+  const preview = `<div class="soc-prev">
+      ${item.kind === 'video' ? '🎬' : '🖼'}
+      <img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">
+      ${item.kind === 'video' ? `<button type="button" class="soc-play" data-soc-play="${esc(item.id)}" aria-label="${esc(t('soc_play'))}">▶</button>` : ''}
+      ${waiting && !ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name }))}"></label>` : ''}
+    </div>`;
+  const top = `<div class="soc-top">
+      <span class="soc-status ${esc(item.status)}">${esc(item.status_text)}</span>
+      ${item.needs_tap ? `<span class="soc-status waiting">${esc(t('soc_needs_tap'))}</span>` : ''}
+      ${item.replaces ? `<span class="plan-pill">${esc(t('soc_is_fix'))}</span>` : ''}
+      <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
+    </div>`;
+  const chans = item.channels.map(c => `<span class="plan-pill">${esc(socialChannelName(c))}</span>`).join('');
+  const meta = `<div class="soc-meta"><b>${esc(t('soc_channels'))}:</b> ${chans}
+      <b>${esc(t('soc_date'))}:</b> <span${item.overdue ? ' class="overdue"' : ''}>${esc(fmtDate(item.planned_date + 'T12:00:00'))}${item.overdue ? ' · ' + esc(t('soc_overdue')) : ''}</span></div>`;
+  let body;
+  if (social.editing === item.id) {
+    const kinds = ((social.data || {}).channel_kinds) || {};
+    const boxes = ((social.data || {}).channels || []).filter(c => (kinds[c] || []).indexOf(item.kind) !== -1)
+      .map(c => `<label><input type="checkbox" data-soc-ch="${esc(c)}"${item.channels.indexOf(c) !== -1 ? ' checked' : ''}> ${esc(socialChannelName(c))}</label>`).join('');
+    body = `<div class="soc-edit">
+        <label class="soc-meta"><b>${esc(t('soc_caption'))}</b></label>
+        <textarea data-soc-caption maxlength="2200" dir="auto">${esc(item.caption)}</textarea>
+        <div class="soc-meta"><b>${esc(t('soc_channels'))}</b></div>
+        <div class="soc-chans">${boxes}</div>
+        <label class="soc-meta"><b>${esc(t('soc_date'))}</b></label>
+        <input type="date" data-soc-date value="${esc(item.planned_date)}">
+        <div class="soc-actions">
+          <button type="button" class="sugg-btn approve" data-soc-save="${esc(item.id)}">${esc(t('soc_save'))}</button>
+          <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
+        </div></div>`;
+  } else if (social.rejecting === item.id) {
+    body = `<div class="soc-reject">
+        <label class="soc-meta"><b>${esc(t('soc_reject_reason', { name: socialProducer(item.producer) }))}</b></label>
+        <textarea data-soc-reason maxlength="400" dir="auto"></textarea>
+        <div class="soc-actions">
+          <button type="button" class="sugg-btn reject" data-soc-reject-send="${esc(item.id)}">${esc(t('soc_reject_send'))}</button>
+          <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
+        </div></div>`;
+  } else {
+    body = `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
+  }
+  const deliveries = Object.keys(item.delivery || {}).map(c =>
+    `<div class="${esc(item.delivery[c].state)}"><b>${esc(socialChannelName(c))}:</b> ${esc(item.delivery[c].text)}</div>`).join('');
+  const rejected = item.status === 'rejected'
+    ? `<div class="soc-meta">${esc(t('soc_was_rejected', { reason: item.reject_reason }))}${item.fixed_by ? ' · ' + esc(t('soc_fix_on_way')) : ''}</div>` : '';
+  const acts = [];
+  if (social.editing !== item.id && social.rejecting !== item.id) {
+    if (waiting && !ADMIN_VIEW) acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_approve'))}</button>`);
+    if (editable) acts.push(`<button type="button" class="media-chip" data-soc-edit="${esc(item.id)}">${esc(t('soc_edit'))}</button>`);
+    if (editable) acts.push(`<button type="button" class="sugg-btn reject" data-soc-reject="${esc(item.id)}">${esc(t('soc_reject'))}</button>`);
+    if (item.needs_tap && item.caption) acts.push(`<button type="button" class="media-chip" data-soc-copy="${esc(item.id)}">${esc(t('soc_copy'))}</button>`);
+    acts.push(`<button type="button" class="media-chip" data-soc-dl="${esc(item.id)}">${esc(t('soc_download'))}</button>`);
+    if (item.needs_tap && !ADMIN_VIEW) acts.push(`<button type="button" class="sugg-btn approve" data-soc-published="${esc(item.id)}">${esc(t('soc_published_btn'))}</button>`);
+  }
+  const cls = 'soc-item ' + item.status + (social.selected.has(item.id) ? ' selected' : '')
+    + (item.status === 'published' || item.status === 'rejected' ? ' done' : '');
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${preview}
+    <div class="soc-body">${top}
+      ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
+      ${meta}${body}${rejected}
+      ${deliveries ? `<div class="soc-delivery">${deliveries}</div>` : ''}
+      ${acts.length ? `<div class="soc-actions">${acts.join('')}</div>` : ''}
+    </div></div>`;
+}
+
+function renderSocial() {
+  const t = uallakI18n.t;
+  const d = social.data || {};
+  const counts = d.counts || {};
+  const list = document.getElementById('socialList');
+  const more = document.getElementById('socialMore');
+  if (d.gate) document.getElementById('socialGate').textContent = d.gate;
+  const pills = [];
+  [['waiting', 'soc_count_waiting'], ['needs_tap', 'soc_count_tap'], ['approved', 'soc_count_approved'],
+   ['published', 'soc_count_published'], ['rejected', 'soc_count_rejected']].forEach(([k, key]) => {
+    if (counts[k]) pills.push(`<span class="plan-pill${k === 'waiting' || k === 'needs_tap' ? ' hot' : ''}">${esc(t(key, { n: counts[k] }))}</span>`);
+  });
+  document.getElementById('socialCounts').innerHTML = pills.join('');
+  if (!social.items.length) {
+    list.innerHTML = `<div class="empty-row">${esc(d.empty || '')}</div>`;
+    more.innerHTML = '';
+    renderSocialSelBar();
+    return;
+  }
+  list.innerHTML = social.items.map(socialRow).join('');
+  const lines = [];
+  if (social.items.length < (d.total || 0)) {
+    lines.push(`<span>${esc(t('soc_shown', { shown: social.items.length, total: d.total }))}</span>`);
+    lines.push(`<button type="button" class="media-chip" onclick="loadSocial({ append: true })">${esc(t('soc_more'))}</button>`);
+  }
+  more.innerHTML = lines.join('');
+  wireSocial(list);
+  renderSocialSelBar();
+}
+
+function socialItem(id) { return social.items.find(i => i.id === id) || null; }
+
+function wireSocial(list) {
+  const t = uallakI18n.t;
+  const on = (attr, fn) => list.querySelectorAll('[' + attr + ']').forEach(el => { el.onclick = () => fn(el.getAttribute(attr), el); });
+  list.querySelectorAll('[data-soc-sel]').forEach(box => {
+    box.onchange = () => {
+      const id = box.getAttribute('data-soc-sel');
+      if (box.checked) social.selected.add(id); else social.selected.delete(id);
+      box.closest('.soc-item').classList.toggle('selected', box.checked);
+      renderSocialSelBar();
+    };
+  });
+  on('data-soc-play', id => { const i = socialItem(id); if (i) playVideo({ id: i.file_id, name: i.title || '' }); });
+  on('data-soc-approve', id => socialOpenBatch([id]));
+  on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
+  on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
+  on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
+  on('data-soc-save', (id, btn) => socialSave(id, btn.closest('.soc-item')));
+  on('data-soc-reject-send', (id, btn) => socialReject(id, btn.closest('.soc-item')));
+  on('data-soc-published', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/published', {}, 'soc_saved'));
+  on('data-soc-copy', id => {
+    const i = socialItem(id);
+    if (!i) return;
+    try { navigator.clipboard.writeText(i.caption).then(() => socialNote(t('soc_copied')), () => {}); } catch (e) { /* no clipboard */ }
+  });
+  on('data-soc-dl', id => {
+    const i = socialItem(id);
+    if (!i) return;
+    if (i.kind === 'video') {
+      // Videos are never downloaded through us: Drive serves the file (docs/MEDIA-TAB.md)
+      window.open('https://drive.google.com/file/d/' + encodeURIComponent(i.file_id) + '/view', '_blank', 'noopener');
+      return;
+    }
+    const opts = mediaViewerOpts('socialNotice');
+    uallakMediaViewer.download({ id: i.file_id, name: i.title || '', kind: i.kind, download: 'file' }, opts, '', opts.notify);
+  });
+}
+
+function renderSocialSelBar() {
+  const t = uallakI18n.t;
+  const bar = document.getElementById('socialSelBar');
+  const n = social.selected.size;
+  bar.hidden = n === 0 || ADMIN_VIEW;
+  document.getElementById('socialSelCount').textContent = t('soc_selected', { n });
+  document.getElementById('socialSelApprove').textContent = t('soc_approve_selected', { n });
+}
+
+function socialClearSelection() { social.selected.clear(); renderSocial(); }
+
+// ONE approval card for one item or several selected together
+function socialOpenBatch(ids) {
+  const t = uallakI18n.t;
+  ids = ids || Array.from(social.selected);
+  if (!ids.length || ADMIN_VIEW) return;
+  const items = ids.map(socialItem).filter(Boolean);
+  const wrap = document.createElement('div');
+  wrap.className = 'soc-batch';
+  wrap.id = 'socialBatch';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.innerHTML = `<div class="soc-batch-box">
+      <div class="section-title">${esc(t('soc_batch_title', { n: items.length }))}</div>
+      <ol>${items.map(i => `<li><bdi dir="auto">${esc(i.title || '—')}</bdi> · ${esc(i.channels.map(socialChannelName).join(', '))} · ${esc(fmtDate(i.planned_date + 'T12:00:00'))}</li>`).join('')}</ol>
+      <div class="plan-note">${esc(t('soc_batch_note'))}</div>
+      <div class="soc-actions">
+        <button type="button" class="sugg-btn approve" data-go>${esc(t(items.length > 1 ? 'soc_batch_confirm' : 'soc_approve'))}</button>
+        <button type="button" class="media-chip" data-close>${esc(t('soc_cancel'))}</button>
+      </div></div>`;
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', key); };
+  const key = e => { if (e.key === 'Escape') close(); };
+  wrap.querySelector('[data-close]').onclick = close;
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  wrap.querySelector('[data-go]').onclick = async btn => {
+    const go = wrap.querySelector('[data-go]');
+    go.disabled = true;
+    const ok = await socialPost('/api/client/social/approve', { ids: items.map(i => i.id) }, null, data => {
+      const n = (data.approved || []).length;
+      items.forEach(i => social.selected.delete(i.id));
+      showNotice(t('soc_approved_done', { n }), 'success', { key: 'social-approve:' + items.map(i => i.id).join(','), group: 'social' });
+      socialNote(t('soc_approved_done', { n }));
+    });
+    if (ok) close(); else go.disabled = false;
+  };
+  document.addEventListener('keydown', key);
+  document.body.appendChild(wrap);
+  wrap.querySelector('[data-go]').focus();
+}
+
+async function socialPost(url, body, okKey, onOk) {
+  const t = uallakI18n.t;
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
+                                   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (res.status === 401) { window.location.href = '/login/'; return false; }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.success) {
+      const code = ((j && j.detail) || {}).code || '';
+      socialNote(t(/CHANNEL|NO_CHANNEL/.test(code) ? 'soc_bad_channel' : /DATE/.test(code) ? 'soc_bad_date'
+                   : /REASON/.test(code) ? 'soc_reason_needed' : 'soc_failed'));
+      return false;
+    }
+    if (okKey) socialNote(t(okKey));
+    if (onOk) onOk(j.data || {});
+    social.editing = ''; social.rejecting = '';
+    await loadSocial();
+    return true;
+  } catch (e) {
+    socialNote(t('soc_failed'));
+    return false;
+  }
+}
+
+function socialSave(id, row) {
+  const item = socialItem(id);
+  if (!item || !row) return;
+  const channels = Array.from(row.querySelectorAll('[data-soc-ch]')).filter(b => b.checked).map(b => b.getAttribute('data-soc-ch'));
+  const body = { caption: row.querySelector('[data-soc-caption]').value,
+                 channels, planned_date: row.querySelector('[data-soc-date]').value };
+  const wasApproved = item.status === 'approved';
+  socialPost('/api/client/social/' + encodeURIComponent(id) + '/edit', body, null, data => {
+    socialNote(uallakI18n.t(wasApproved && data.status === 'waiting' ? 'soc_saved_reapprove' : 'soc_saved'));
+  });
+}
+
+function socialReject(id, row) {
+  const t = uallakI18n.t;
+  const item = socialItem(id);
+  const reason = ((row && row.querySelector('[data-soc-reason]').value) || '').trim();
+  if (reason.length < 2) { socialNote(t('soc_reason_needed')); return; }
+  socialPost('/api/client/social/' + encodeURIComponent(id) + '/reject', { reason }, null, () => {
+    socialNote(t('soc_rejected_done', { name: socialProducer(item && item.producer) }));
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -635,6 +635,8 @@ def _done(job: dict, detail: str):
                      {"publish_id": job.get("publish_id"), "status": detail})
     except Exception:
         pass
+    from core import social_queue
+    social_queue.mark_delivered(job["client_id"], "tiktok", "drafts", file_id=job["file_id"])
     from core import agent_actions
     result = {"publish_id": job.get("publish_id", ""), "status": detail, "source_file": job.get("file_name", "")}
     if job.get("proposal_id"):

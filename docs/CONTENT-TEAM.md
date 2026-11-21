@@ -26,6 +26,10 @@ rewritten, unless the client asked for a change.
 
 ## Publishing, as it really is today
 
+**Since 2026-11-22 every produced item for a social channel first waits in the Social tab for the owner's
+final yes** (`core/social_queue`, docs/SOCIAL-QUEUE.md). Approving the plan starts production; approving the
+finished file in the Social tab is what lets it go out. Nothing reaches a channel without that, on any path.
+
 `content_team.AUTO_PUBLISH` is False for every channel: Meta's verification is not finished
 and TikTok has not approved the app. So:
 

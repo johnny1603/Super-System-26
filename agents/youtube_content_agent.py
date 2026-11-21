@@ -296,6 +296,14 @@ def publish(client_id: int, spec: dict) -> dict:
         return {"success": False, "errors": ["drive_file_id is required"]}
     if not title:
         return {"success": False, "errors": ["title is required"]}
+    # THE Social-tab gate (core/social_queue): the chat card, the admin route
+    # and the verification demo all pass here. Not approved there for YouTube
+    # = nothing is uploaded.
+    from core import social_queue
+    try:
+        social_queue.check(client_id, "youtube", file_id=drive_file_id)
+    except social_queue.GateClosed as e:
+        return {"success": False, "not_approved": True, "errors": [str(e)]}
 
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):
@@ -329,6 +337,7 @@ def publish(client_id: int, spec: dict) -> dict:
     log_activity(client_id, AGENT_NAME, "content_published",
                 {"drive_file_id": drive_file_id, "title": title},
                 {"video_id": video_id, "privacy_status": "private"})
+    social_queue.mark_delivered(client_id, "youtube", "private", file_id=drive_file_id)
     return {"success": True, "video_id": video_id,
             "note": "uploaded as PRIVATE - review and publish it in YouTube Studio"}
 

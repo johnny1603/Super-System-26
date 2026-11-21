@@ -21,6 +21,8 @@ from urllib.parse import parse_qs, urlparse
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import social_gate_open  # noqa: E402,F401 — send mechanics only; the gate itself: test_social_queue.py
 # publish() now checks the file's format before init (core/video_probe), so
 # the stubbed Drive download must be a real (tiny) H.264 MP4
 from test_tiktok_video_checks import GOOD_MP4 as _GOOD_MP4   # noqa: E402

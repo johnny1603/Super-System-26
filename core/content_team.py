@@ -106,7 +106,9 @@ STATUS_TEXT = {
     "proposed": _five("מחכה לאישור שלכם", "Waiting for your approval", "En attente de votre validation",
                       "بانتظار موافقتكم", "Ждёт вашего одобрения"),
     "in_production": _five("בהפקה", "In production", "En production", "قيد الإنتاج", "В работе"),
-    "ready": _five("מוכן לפרסום", "Ready to publish", "Prêt à publier", "جاهز للنشر", "Готово к публикации"),
+    "ready": _five("מוכן — מחכה לאישור שלכם בלשונית \"סושיאל\"", "Ready — waiting for your approval in the Social tab",
+                   "Prêt — en attente de votre validation dans l'onglet Social",
+                   "جاهز — بانتظار موافقتكم في تبويب \"سوشيال\"", "Готово — ждёт вашего одобрения во вкладке «Соцсети»"),
     "kit_sent": _five("ערכת הצילום נשלחה", "Filming kit sent", "Kit de tournage envoyé", "أُرسلت عدّة التصوير",
                       "Съёмочный набор отправлен"),
     "needs_attention": _five("מתעכב, הצוות מטפל", "Delayed, the team is on it", "Retardé, l'équipe s'en occupe",
@@ -316,6 +318,25 @@ def _produce_item(client_id: int, item: dict) -> dict:
     return media_agent.generate_image(client_id, brief, platform=item["platform"] if item["platform"] == "website" else platform)
 
 
+def _queue_for_approval(client_id: int, plan_id: str, index: int, item: dict):
+    """A produced plan item for a social channel → the owner's Social tab
+    (core/social_queue): approving the PLAN started production; the owner's
+    final yes on the finished file is given there. The plan's day becomes its
+    planned date; the caption is the plan's."""
+    from core import social_queue
+    kind = "video" if item["format"] == "video" else "image"
+    if item["format"] == "self_filmed" or not item.get("file_id") or item["platform"] not in social_queue.CHANNELS \
+            or kind not in social_queue.CHANNEL_KINDS[item["platform"]]:
+        return
+    try:
+        planned = social_queue.next_weekday(int(item.get("day")))
+    except (TypeError, ValueError):
+        planned = ""                          # the queue's default: tomorrow
+    social_queue.add_safely(client_id, item["file_id"], kind, [item["platform"]], caption=item.get("caption", ""),
+                            planned_date=planned, producer="media", source="plan",
+                            title=item["title"], plan_ref={"plan": str(plan_id), "index": index})
+
+
 def produce(client_id: int, plan_id: str):
     """Runs in the BACKGROUND after the approval: every item, one by one, each
     saved as it finishes. One failed item never stops the others; the team is
@@ -339,6 +360,7 @@ def produce(client_id: int, plan_id: str):
         if ok:
             target["status"] = "kit_sent" if item["format"] == "self_filmed" else "ready"
             target["file_id"] = result.get("file_id") or ""
+            _queue_for_approval(client_id, plan_id, index, target)
         else:
             target["status"] = "needs_attention"
             failed.append(item["title"])
@@ -406,6 +428,11 @@ def prompt_block(client_id: int) -> dict:
     out = {"has_plan": bool(data.get("has_plan")),
            "publishing_by_channel": {c: m for c, m in modes.items() if c != "website"},
            "auto_publishing_available_anywhere": any(m == "auto" for m in modes.values())}
+    try:
+        from core import social_queue
+        out["social_queue"] = social_queue.prompt_block(client_id)
+    except Exception:
+        pass
     if data.get("has_plan"):
         out["status"] = data["status"]
         out["items"] = [{k: i[k] for k in ("title", "day", "is_today", "channel", "format", "mode", "status", "caption")}

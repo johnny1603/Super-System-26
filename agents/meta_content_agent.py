@@ -347,15 +347,27 @@ def publish(client_id: int, spec: dict) -> dict:
 
     spec: {target: facebook|instagram, kind: see VALID_KINDS,
            message?: post text / caption, media_url?: PUBLIC http(s) URL,
-           link?: for facebook 'link' kind}
+           link?: for facebook 'link' kind, queue_item: the Social-tab item id}
+
+    THE Social-tab gate (core/social_queue): `queue_item` must be an item the
+    owner APPROVED there for this target. No item, or not approved = nothing
+    is posted (the admin route included — there is no override).
     """
     from agents.client_agent import log_activity
+    from core import social_queue
 
     errors = _validate_publish_spec(spec)
     if errors:
         return {"success": False, "errors": errors}
 
     target = spec["target"]
+    item_id = str(spec.get("queue_item") or "").strip()
+    try:
+        if not item_id:
+            raise social_queue.GateClosed("not_approved", "queue_item is required (the approved Social-tab item)")
+        social_queue.check(client_id, target, item_id=item_id)
+    except social_queue.GateClosed as e:
+        return {"success": False, "not_approved": True, "errors": [str(e)]}
     conn = _get_connection(client_id,
                            PAGE_PLATFORM if target == "facebook" else INSTAGRAM_PLATFORM)
     if not (conn.get("access_token") and conn.get("account_id")):
@@ -374,6 +386,7 @@ def publish(client_id: int, spec: dict) -> dict:
 
     log_activity(client_id, AGENT_NAME, "content_published",
                  {"target": target, "kind": spec["kind"]}, result)
+    social_queue.mark_delivered(client_id, target, "done", item_id=item_id)
     return {"success": True, "target": target, **result}
 
 

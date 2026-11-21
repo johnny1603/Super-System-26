@@ -193,7 +193,10 @@ class Publishing(Base):
         self.assertEqual((view["persona"], view["card_id"]), ("meta", 77))
 
     def test_prompt_block(self):
-        self.assertEqual(ct.prompt_block(27), {"has_plan": False, "auto_publishing_available_anywhere": False,
+        block = ct.prompt_block(27)
+        # the Social tab's counts ride along (core/social_queue, tests/test_social_queue.py)
+        self.assertEqual(block.pop("social_queue")["waiting"], 0)
+        self.assertEqual(block, {"has_plan": False, "auto_publishing_available_anywhere": False,
                                                "publishing_by_channel": {"instagram": "client_publishes",
                                                                          "tiktok": "client_publishes",
                                                                          "facebook": "not_connected",
