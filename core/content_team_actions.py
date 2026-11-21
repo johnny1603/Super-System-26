@@ -155,8 +155,10 @@ def build(aa) -> dict:
             "needs_row": True,
             "does": "CONTENT TEAM: prepares the client's weekly content plan (2-3 visual items, each with its day, "
                     "channel and caption) and shows it as ONE approval card — the system writes the plan and opens "
-                    "that card itself. Propose it when the client asks for a content plan, for posts for the week, or "
-                    "asks to change the plan that is waiting (then replace=true and their change in request). "
+                    "that card itself. Propose it ONLY when the client explicitly asks for a content plan / the "
+                    "week's posts / a calendar, or asks to change the plan that is waiting (then replace=true and "
+                    "their change in request). A request for specific posts, images or videos (\"3 posts, one reason "
+                    "each\") is NOT a plan request: that is produce_requested_content. "
                     "Whoever you are — the planner and the producer are one team.",
             "params": {"request": {"required": False, "validate": v_request,
                                    "hint": "optional, the client's language: what they asked the plan to focus on or "

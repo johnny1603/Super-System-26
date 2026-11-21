@@ -755,7 +755,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   human support. "סיימתי" verifies; not yet → ONE reminder (`GET /api/connections/reminders`,
   daily). Included tier shows nothing. Owner edits links at `/admin/connections/`. Needs
   `migrations/2026-11-01-connection-catalog.sql`. Don't add buttons next to a card's "חבר".
-  `tests/test_connection_catalog.py`.
+  `tests/test_connection_catalog.py`. **No connect loop (2026-11-22, client 27)**: `live_state`
+  runs first: connected → "already connected", never the question; connected-but-blocked
+  (TikTok without upload, dead grant, refused key) → the one blocker + the connect; already
+  answered "יש לי" → never asked again, the blocker (`stuck_*`) + an alert; asked within
+  `PROMPT_CAP_DAYS` and unanswered → the chips only. History is read from the chat thread
+  itself (no new storage). All lines in 5 languages (`T`). `tests/test_specialist_scope.py`.
 - `core/operating_costs.py` — uallak's OWN company-wide spend ("what am I actually
   spending"), admin-only. Distinct from `client_costs` (per-client AI usage, which this
   READS and never writes) and from `budget_agent` (ONE client's picture). **No provider we
@@ -881,6 +886,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   (`client_publishes` / `not_connected` / `library`). Chat entry: `build_content_plan` (any
   agent). Rules in `support_agent.STUDIO_RULE` (ONE TEAM: never send the client to another
   agent; inspiration is research only). `tests/test_content_team.py`.
+  **A specific request is NOT the plan (2026-11-22)**: "3 posts, one reason each" →
+  `produce_requested_content` (ONE card, `media_agent.generate_image/generate_video` per piece,
+  Drive only, nothing published, tool missing → `connect_creative_tool`). `build_content_plan`
+  only on an explicit plan/week ask.
+- **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
+  `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are
+  dropped (the manager, persona "general", still orchestrates); a sentence repeated in one reply
+  is said once; an offer to connect a channel whose live state is connected is dropped. Sentences
+  are removed, never written. Prompt side: the specialist scope rule in
+  `PERSONA_SYSTEM_TEMPLATE`, no fixed openers in `PERSONAS[*].voice`, and "I can't" only when true,
+  with what CAN be done and what unblocks it (HANDOFF_RULE). `tests/test_specialist_scope.py`.
 - **Voice messages (2026-11-15, `docs/VOICE-INPUT.md`)**: `dashboard/assets/voice-input.js` — a
   microphone in each client chat window; the BROWSER's speech recognition turns speech into text
   in the input box, the client reviews/edits and sends ordinary text. **No audio reaches or is

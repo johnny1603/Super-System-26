@@ -68,3 +68,23 @@ migration.
 - Editing one item inside a waiting plan: a change request writes a new plan.
 - A decline of the card does not mark the plan declined; it simply expires after 5 days or is
   replaced by a new one.
+
+## A specific request is not the plan (2026-11-22)
+
+Client 27 asked ליאור for "a post of 3 reasons why custom design is a special
+gift — 3 posts, one reason each" and got the weekly content plan, plus "I
+can't make and show you the images separately from the plan". That was
+WIRING, not a limitation: `media_agent.generate_image` / `generate_video` run
+on their own (the client's own creative tool, saved to Drive `images/<platform>`
+/ `videos/<platform>`, nothing published); only the plan's approval ever called
+them. Now:
+
+- `produce_requested_content` (core/agent_actions): ONE card with exactly the
+  pieces asked (1-6, image or short video, each with its brief), slow + STOP_FINISH,
+  files to Drive for review, published nowhere. Tool not connected → the card
+  switches to `connect_creative_tool` and says that is what unblocks it. Media not
+  in the package → a plain line + what can be done now (the texts).
+- `build_content_plan` is proposed ONLY on an explicit plan / week / calendar ask.
+- `core/reply_guards`: a specialist's reply that pitches the plan for a message
+  that did not ask for one loses those sentences, and the plan card is dropped.
+  The manager still orchestrates.

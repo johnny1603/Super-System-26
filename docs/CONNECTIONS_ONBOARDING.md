@@ -84,3 +84,26 @@ Seeded empty + disabled (fill in on `/admin/connections/`):
 - **Higgsfield sign-up**: no public sign-up URL (sign-up is a dialog).
 - **Uppbeat sign-up**: `/sign-up` is a 404; sign-up is a dialog.
 - **Meta**: not in the seed list; no link verified.
+
+## No connect loop (2026-11-22)
+
+Client 27 got "נחבר את TikTok. יש לכם כבר חשבון שם?" on 09/11 (4x), 10/11,
+17/11 (3x) and 18/11, and the same for YouTube on 11/11 and 13/11, while both
+were connected. Now `flow()` reads the LIVE state before any step
+(`live_state`):
+
+| live state | what the client gets |
+|---|---|
+| connected | "{name} is already connected" — no question, no chips |
+| connected, but blocked (TikTok without the upload permission, a dead grant, a refused key) | ONE line naming that blocker, and the connect opens directly |
+| not connected, already answered "יש לי חשבון" | never the question again: what blocks it (the approval never came back / the key or address was never saved) + the connect, and the team is alerted (`stuck:<key>`, once a week) |
+| not connected, asked in the last `PROMPT_CAP_DAYS` (7) and not answered | the two chips again, the question is NOT posted a second time |
+| otherwise | the question |
+
+The history is read from the chat thread itself (`client_communications`, this
+connection's own question and chip texts in all 5 languages) — no new storage,
+no migration. The chat replies also drop any sentence offering to connect a
+connected channel (`core/reply_guards.drop_connected_offers`). The question,
+the chips and the connect/verify lines are in all 5 languages (`T`, `CHIPS`);
+the sign-up steps keep the owner's Hebrew notes from the table. Replay test:
+`tests/test_specialist_scope.py` (`ConnectLoop`).

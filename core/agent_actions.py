@@ -2603,6 +2603,139 @@ def _run_make_presenter_video(client_id: int, params: dict, background_tasks):
     raise ActionFailed(mapped, f"{code}: {result.get('message_he') or '; '.join(map(str, result.get('errors') or []))}")
 
 
+# ─── A specific content request, produced on its own (2026-11-22) ────────────
+# Client 27 asked ליאור for "3 posts, one reason each" and heard "I can't make
+# and show you the images separately from the plan". That was WIRING, not a
+# limit: media_agent.generate_image / generate_video already run standalone on
+# the client's own creative tool and save to their Drive, publishing nothing —
+# only the weekly plan's approval ever called them. This is the direct path:
+# ONE card for exactly the pieces asked, files to Drive for review.
+PRODUCE_MAX_PIECES = 6
+PRODUCE_KINDS = ("image", "video")
+# = media_agent.PLATFORM_FOLDERS (kept import-free for validation)
+_PRODUCE_PLATFORMS = {"image": ("instagram", "facebook", "tiktok", "website"),
+                      "video": ("instagram", "facebook", "tiktok")}
+
+
+def _v_pieces(value, client_id: int):
+    """1-6 pieces: [{"kind": image|video, "brief": what it shows/says (in any
+    language), "platform": instagram|facebook|tiktok|website (optional)}]."""
+    import json as _json
+    if isinstance(value, str):
+        try:
+            value = _json.loads(value)
+        except ValueError:
+            raise ValueError("pieces must be a JSON list")
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list) or not 1 <= len(value) <= PRODUCE_MAX_PIECES:
+        raise ValueError(f"pieces must be a list of 1-{PRODUCE_MAX_PIECES}")
+    out = []
+    for piece in value:
+        if not isinstance(piece, dict):
+            raise ValueError("each piece is an object")
+        kind = str(piece.get("kind") or "image").strip().lower()
+        if kind not in PRODUCE_KINDS:
+            raise ValueError("kind must be image or video")
+        brief = " ".join(str(piece.get("brief") or "").split())
+        if not 10 <= len(brief) <= 600:
+            raise ValueError("brief must be 10-600 characters")
+        folder = _PRODUCE_PLATFORMS[kind]
+        platform = str(piece.get("platform") or "instagram").strip().lower()
+        out.append({"kind": kind, "brief": brief, "platform": platform if platform in folder else "instagram"})
+    return out
+
+
+def _produce_possible(state: dict, client: dict) -> bool:
+    """Offered while media is in the package (None = unreadable: offered, the
+    run re-checks). Deliberately NOT gated on the tool: asking must reach
+    _prepare_produce, which answers with the tool's card instead of silence."""
+    return _in_package(state, "media") is not False
+
+
+_PRODUCE_TOOL_FIRST = _txt(
+    "אפשר להפיק את זה בנפרד, בלי קשר לתוכנית — חסר רק דבר אחד: חיבור \"{tool}\", הכלי שמייצר את התמונות והסרטונים בחשבון שלכם. לחצו על הכפתור — ייפתח רק הכרטיס שלו — ואז אכין את הכרטיס להפקה.",
+    "This can be produced on its own, separate from the plan — only one thing is missing: connecting \"{tool}\", the tool that makes the images and videos on your own account. Tap the button — only its card opens — and then I'll set up the production card.",
+    "On peut le produire à part, sans le plan — il ne manque qu'une chose : connecter « {tool} », l'outil qui crée les images et vidéos sur votre propre compte. Touchez le bouton — seule sa carte s'ouvre — puis je prépare la carte de production.",
+    "يمكن إنتاج ذلك بشكل منفصل عن الخطة — ينقص شيء واحد فقط: ربط \"{tool}\"، الأداة التي تصنع الصور والفيديوهات في حسابكم. اضغطوا على الزر — تفتح بطاقته فقط — ثم أجهّز بطاقة الإنتاج.",
+    "Это можно сделать отдельно от плана — не хватает одного: подключить «{tool}», инструмент, который создаёт изображения и видео в вашем аккаунте. Нажмите кнопку — откроется только его карточка, — и я подготовлю карточку производства.")
+PRODUCE_NOT_IN_PACKAGE = _txt(
+    "הפקת תמונות וסרטונים היא חלק משירות התוכן והמדיה, שלא כלול בחבילה הנוכחית שלכם — שום דבר לא נוצר. אני יכול לנסח לכם כאן את הטקסטים של הפוסטים כבר עכשיו, ואם תרצו — להכין הצעה מסודרת לשירות.",
+    "Producing images and videos is part of the content and media service, which your current package doesn't include — nothing was made. I can write the posts' texts for you here right now and, if you like, prepare a proper offer for the service.",
+    "La production d'images et de vidéos fait partie du service contenu et médias, non inclus dans votre formule — rien n'a été créé. Je peux rédiger les textes des publications ici tout de suite et, si vous voulez, préparer une offre.",
+    "إنتاج الصور والفيديوهات جزء من خدمة المحتوى والوسائط، غير المشمولة في باقتكم الحالية — لم يُنشأ شيء. يمكنني كتابة نصوص المنشورات هنا الآن، وإن شئتم أجهّز عرضًا للخدمة.",
+    "Создание изображений и видео входит в услугу контента и медиа, которой нет в вашем пакете — ничего не создано. Могу прямо сейчас написать здесь тексты постов и, если хотите, подготовить предложение.")
+
+
+def _media_tool_status(client_id: int) -> str:
+    return _presenter_tool_status(client_id)   # the same creative tool (core/vendor_tools "higgsfield")
+
+
+def _prepare_produce(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """In order: the package (a plain line + what CAN be done now), the tool
+    (its ONE card, saying that is what unblocks it), then the card. The same
+    pieces already waiting = that card, not a second one."""
+    from core import client_state
+    lang = (context or {}).get("language") or "he"
+    if _in_package({"package": client_state.cached_package(client_id)}, "media") is False:
+        return {"refuse": _pick(PRODUCE_NOT_IN_PACKAGE, lang)}
+    if _media_tool_status(client_id) not in ("connected", "connected_unverified"):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
+                "notice": _pick(_PRODUCE_TOOL_FIRST, lang).replace("{tool}", _creative_label("higgsfield", lang))}
+    for row in rows:
+        if row.get("status") == "proposed" and (row.get("params") or {}) == params:
+            return {"existing": row}
+    return {"params": params}
+
+
+_PIECE_WORD = {"image": _txt("תמונה", "image", "image", "صورة", "изображение"),
+               "video": _txt("סרטון קצר", "short video", "courte vidéo", "فيديو قصير", "короткое видео")}
+
+
+def _produce_display(client_id: int, params: dict) -> dict:
+    lang = _lang(client_id)
+    pieces = params.get("pieces") or []
+    lines = [f"{i}. {_pick(_PIECE_WORD[p['kind']], lang)}: {p['brief']}" for i, p in enumerate(pieces, 1)]
+    return {"count": str(len(pieces)), "pieces": "\n".join(lines)}
+
+
+def _run_produce(client_id: int, params: dict, background_tasks):
+    """Each piece through media_agent (the client's own tool → their Drive
+    images/<platform> or videos/<platform>). Nothing is published. Partial
+    success is reported as such; nothing made = a refusal or _FAILED."""
+    from agents import media_agent
+    made, failed, missing_tool = [], 0, False
+    for piece in params.get("pieces") or []:
+        run = media_agent.generate_image if piece["kind"] == "image" else media_agent.generate_video
+        result = run(client_id, piece["brief"], piece["platform"])
+        if result.get("success"):
+            made.append({"kind": piece["kind"], "link": result.get("link", "")})
+            continue
+        failed += 1
+        if media_agent._NO_ACCOUNT_ERROR in (result.get("errors") or []):
+            missing_tool = True
+            break   # no key: the next pieces would fail the same way
+    if not made:
+        raise ActionFailed("missing_tool" if missing_tool else "provider_error",
+                           f"produce_requested_content: nothing made ({failed} failed)")
+    return {"made": len(made), "failed": failed, "links": [m["link"] for m in made if m["link"]]}
+
+
+_PRODUCE_PARTIAL = _txt("({failed} מהם לא הצליחו הפעם — אפשר לבקש אותם שוב כאן.)",
+                        "({failed} of them didn't work this time — you can ask for them again here.)",
+                        "({failed} n'ont pas abouti cette fois — vous pouvez les redemander ici.)",
+                        "({failed} منها لم تنجح هذه المرة — يمكن طلبها مجددًا هنا.)",
+                        "({failed} не получились в этот раз — можно попросить их снова здесь.)")
+
+
+def _produce_done_message(result: dict, lang: str) -> str:
+    text = _pick(ACTIONS["produce_requested_content"]["done"], lang).replace("{made}", str(result.get("made", 0)))
+    if result.get("failed"):
+        text += " " + _pick(_PRODUCE_PARTIAL, lang).replace("{failed}", str(result["failed"]))
+    links = result.get("links") or []
+    return text + ("\n" + "\n".join(links) if links else "")
+
+
 # ─── Photos → presenter (avatar_agent.create_avatar's photo-avatar path) ─────
 
 def _in_package(state: dict, step: str):
@@ -3954,6 +4087,45 @@ ACTIONS = {
             _pick(ACTIONS["make_presenter_video"]["done"], lang)
             + (f"\n{result['link']}" if result.get("link") else "")),
     },
+    "produce_requested_content": {
+        # A specific request, on its own — never via the weekly plan (2026-11-22)
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Produces EXACTLY the content pieces the client asked for in this conversation — e.g. \"3 posts, "
+                "one reason each\" = 3 image pieces — on their own image/video tool, each saved to their Drive "
+                "folder for review; nothing is published anywhere. Use it for ANY specific image/post/short video "
+                "request; it is NOT the weekly content plan and never waits for it. If the tool isn't connected, "
+                "proposing this shows the tool's card instead.",
+        "params": {"pieces": {"required": True, "validate": _v_pieces,
+                              "hint": "a list of 1-6 objects {\"kind\": \"image\" | \"video\", \"brief\": what the "
+                                      "piece shows and says, in the client's words + your professional direction "
+                                      "(10-600 characters), \"platform\": \"instagram\" | \"facebook\" | \"tiktok\" | "
+                                      "\"website\"} — one per piece they asked for, no extra pieces"}},
+        "available": _produce_possible,
+        "prepare": _prepare_produce,
+        "validate_stored": lambda client_id, params: validate_params(
+            ACTIONS["produce_requested_content"], params, client_id),
+        "run": _run_produce,
+        "display": _produce_display,
+        "slow": {"minutes": 20, "eta": _txt(
+            "תמונה לוקחת בדרך כלל דקה-שתיים, וסרטון קצר כמה דקות.",
+            "An image usually takes a minute or two, and a short video a few minutes.",
+            "Une image prend généralement une à deux minutes, une courte vidéo quelques minutes.",
+            "تستغرق الصورة عادة دقيقة أو دقيقتين، والفيديو القصير بضع دقائق.",
+            "Изображение обычно занимает минуту-две, короткое видео — несколько минут.")},
+        "title": _txt("הפקת התוכן שביקשתם", "Producing the content you asked for", "Produire le contenu demandé",
+                      "إنتاج المحتوى الذي طلبتموه", "Создание запрошенного контента"),
+        "what": _txt("יופקו {count} פריטים, בדיוק לפי הבקשה:\n{pieces}\nהקבצים יישמרו בתיקיית ה-Drive שלכם לבדיקה — שום דבר לא מתפרסם, ואין קשר לתוכנית השבועית.",
+                     "{count} pieces will be made, exactly as asked:\n{pieces}\nThe files are saved to your Drive folder for review — nothing is published, and it's separate from the weekly plan.",
+                     "{count} éléments seront créés, exactement comme demandé :\n{pieces}\nLes fichiers sont enregistrés dans votre Drive pour vérification — rien n'est publié, et c'est indépendant du plan hebdomadaire.",
+                     "سيتم إنتاج {count} عناصر، كما طُلب بالضبط:\n{pieces}\nتُحفظ الملفات في مجلد Drive للمراجعة — لا يُنشر شيء، ولا علاقة لذلك بالخطة الأسبوعية.",
+                     "Будет создано {count} элементов, ровно как вы просили:\n{pieces}\nФайлы сохранятся в вашей папке Drive для проверки — ничего не публикуется, и это отдельно от недельного плана."),
+        "done": _txt("מוכן ✓ {made} פריטים מחכים לבדיקה שלכם בתיקיית ה-Drive. שום דבר לא פורסם.",
+                     "Ready ✓ {made} pieces are waiting for your review in your Drive folder. Nothing was published.",
+                     "Prêt ✓ {made} éléments vous attendent dans votre dossier Drive. Rien n'a été publié.",
+                     "جاهز ✓ {made} عناصر بانتظار مراجعتكم في مجلد Drive. لم يُنشر شيء.",
+                     "Готово ✓ {made} элементов ждут вашей проверки в папке Drive. Ничего не опубликовано."),
+        "done_message": lambda result, lang: _produce_done_message(result, lang),
+    },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "does": "Approves ONE of the client's own pending suggestions (approvals.waiting_for_client) — "
@@ -4708,6 +4880,7 @@ _CREATIVE_REFUSALS = {
 }
 ACTIONS["clone_voice"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["make_presenter_video"]["refusals"] = _CREATIVE_REFUSALS
+ACTIONS["produce_requested_content"]["refusals"] = {"missing_tool": _CREATIVE_REFUSALS["missing_tool"]}
 ACTIONS["create_presenter_from_photos"]["refusals"] = {
     "missing_tool": _CREATIVE_REFUSALS["missing_tool"],
     "no_consent": _txt(
@@ -5684,7 +5857,7 @@ STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_r
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",
-               "create_presenter_from_photos"}
+               "create_presenter_from_photos", "produce_requested_content"}
 
 STOPPED_MIDWAY = _txt(
     "עצרתי ✓ \"{title}\" לא ימשיך: שום דבר חדש לא יוצג, לא יישלח ולא יעלה לאוויר. אם חלק מהעבודה כבר נשמר, הוא נשאר טיוטה שרק אתם רואים.",

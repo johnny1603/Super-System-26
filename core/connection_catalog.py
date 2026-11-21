@@ -23,6 +23,20 @@ staff alert) — never to a guessed link.
 Keys pasted during the flow go through the card's existing key field
 (core/vendor_tools.connect → encrypted client_accounts row): this module never
 receives, echoes or logs a key.
+
+NO CONNECT LOOP (2026-11-22, client 27: "נחבר את TikTok. יש לכם כבר חשבון שם?"
+nine times in ten days while TikTok and YouTube were connected). Before any
+step, the LIVE state (`live_state`):
+  connected      → "already connected ✓", never the question
+  reconnect      → connected but not working (TikTok without the upload
+                   permission, a dead grant, a refused key): ONE plain line
+                   naming exactly that, and the connect opens directly
+  not_connected  → read this connection's own past turns from the chat
+                   thread (`_asked`, client_communications — no new storage):
+                   already answered "יש לי חשבון" → never asked again: what
+                   blocks it + the connect, directly; asked in the last
+                   PROMPT_CAP_DAYS and not answered → the chips again, the
+                   question is NOT posted again; otherwise the question.
 """
 import time
 from datetime import datetime, timedelta, timezone
@@ -80,23 +94,93 @@ NAMES = {
 CHIP_HAS = "יש לי חשבון"
 CHIP_NONE = "אין לי עדיין"
 CHIP_DONE = "סיימתי"
-# English for the steps a client with an OAuth connection goes through
-# (start → has → done) — what an English-language client (and the TikTok
-# app-review demo) sees. Every other language and step keeps the Hebrew text.
-CHIPS_EN = {"has": "I have an account", "none": "Not yet", "done": "Done"}
-EN = {
-    "start": "Let's connect {name}. Do you already have an account there?",
-    "has_oauth": "Great. Opening the {name} connection for you — approve it on the screen that opens, and that's it.",
-    "connected": "{name} is connected ✓ — we'll take it from here.",
-    "not_yet": ("I don't see {name} connected yet. Once the account is open, approve the connection on the "
-                "screen that opens — and I'll check again."),
+LANGS = ("he", "en", "fr", "ar", "ru")
+# The question, the chips and the connect/verify lines in the client's
+# language. The Hebrew and English texts are unchanged (earlier threads are
+# matched by them in _asked). The sign-up steps ("none") stay Hebrew: they
+# carry the owner's Hebrew help notes from the table.
+CHIPS = {
+    "has": {"he": CHIP_HAS, "en": "I have an account", "fr": "J'ai un compte", "ar": "لدي حساب",
+            "ru": "У меня есть аккаунт"},
+    "none": {"he": CHIP_NONE, "en": "Not yet", "fr": "Pas encore", "ar": "ليس بعد", "ru": "Пока нет"},
+    "done": {"he": CHIP_DONE, "en": "Done", "fr": "C'est fait", "ar": "انتهيت", "ru": "Готово"},
 }
+CHIPS_EN = {k: v["en"] for k, v in CHIPS.items()}
+T = {
+    "start": {"he": "נחבר את {name}. יש לכם כבר חשבון שם?",
+              "en": "Let's connect {name}. Do you already have an account there?",
+              "fr": "Connectons {name}. Avez-vous déjà un compte ?",
+              "ar": "لنربط {name}. هل لديكم حساب هناك بالفعل؟",
+              "ru": "Подключим {name}. У вас уже есть там аккаунт?"},
+    "has_oauth": {"he": "מעולה. פותח לכם את החיבור של {name} — מאשרים במסך שייפתח, וזהו.",
+                  "en": "Great. Opening the {name} connection for you — approve it on the screen that opens, and that's it.",
+                  "fr": "Parfait. J'ouvre la connexion {name} — validez sur l'écran qui s'ouvre, c'est tout.",
+                  "ar": "ممتاز. أفتح لكم ربط {name} — وافقوا في الشاشة التي ستفتح، وهذا كل شيء.",
+                  "ru": "Отлично. Открываю подключение {name} — подтвердите в открывшемся окне, и всё."},
+    "has_key": {"he": "מעולה. מדביקים את המפתח בשדה שנפתח בכרטיס של {name} (לא בצ׳אט) ולוחצים \"חיבור\".",
+                "en": "Great. Paste the key into the field that opens on the {name} card (not in the chat) and press \"Connect\".",
+                "fr": "Parfait. Collez la clé dans le champ qui s'ouvre sur la carte {name} (pas dans le chat) et appuyez sur « Connecter ».",
+                "ar": "ممتاز. الصقوا المفتاح في الحقل الذي يفتح في بطاقة {name} (ليس في المحادثة) واضغطوا \"ربط\".",
+                "ru": "Отлично. Вставьте ключ в поле на карточке {name} (не в чат) и нажмите «Подключить»."},
+    "connected": {"he": "{name} מחובר ✓ — מכאן אנחנו ממשיכים.", "en": "{name} is connected ✓ — we'll take it from here.",
+                  "fr": "{name} est connecté ✓ — on prend la suite.", "ar": "{name} مربوط ✓ — نكمل من هنا.",
+                  "ru": "{name} подключён ✓ — дальше мы сами."},
+    "not_yet": {"he": "עוד לא רואה את {name} מחובר. אחרי שהחשבון פתוח, מאשרים את החיבור במסך שנפתח — ואני אבדוק שוב.",
+                "en": ("I don't see {name} connected yet. Once the account is open, approve the connection on the "
+                       "screen that opens — and I'll check again."),
+                "fr": "Je ne vois pas encore {name} connecté. Une fois le compte ouvert, validez la connexion sur l'écran qui s'ouvre — et je vérifie à nouveau.",
+                "ar": "لا أرى {name} مربوطًا بعد. بعد فتح الحساب، وافقوا على الربط في الشاشة التي تفتح — وسأتحقق مجددًا.",
+                "ru": "Пока не вижу подключения {name}. Когда аккаунт будет открыт, подтвердите подключение в открывшемся окне — и я проверю снова."},
+    # ── no connect loop (2026-11-22) ──
+    "already": {"he": "{name} כבר מחובר ✓ — אין צורך לחבר שוב, הכול עובד מכאן.",
+                "en": "{name} is already connected ✓ — no need to connect it again, everything works from here.",
+                "fr": "{name} est déjà connecté ✓ — inutile de le reconnecter, tout fonctionne d'ici.",
+                "ar": "{name} مربوط بالفعل ✓ — لا حاجة لربطه مجددًا، كل شيء يعمل من هنا.",
+                "ru": "{name} уже подключён ✓ — подключать заново не нужно, всё работает."},
+    "reconnect_dead": {"he": "{name} מחובר, אבל הגישה שלנו אליו הפסיקה לעבוד — לכן צריך לאשר אותה מחדש. פותח לכם את מסך האישור: מאשרים פעם אחת, וזהו.",
+                       "en": "{name} is connected, but our access to it stopped working — so it needs approving again. Opening the approval screen: approve once, and that's it.",
+                       "fr": "{name} est connecté, mais notre accès ne fonctionne plus — il faut donc le valider à nouveau. J'ouvre l'écran d'autorisation : une validation, et c'est tout.",
+                       "ar": "{name} مربوط، لكن وصولنا إليه توقف عن العمل — لذلك يجب الموافقة عليه من جديد. أفتح شاشة الموافقة: توافقون مرة واحدة، وهذا كل شيء.",
+                       "ru": "{name} подключён, но наш доступ перестал работать — его нужно подтвердить заново. Открываю окно подтверждения: один раз, и всё."},
+    "reconnect_upload": {"he": "{name} מחובר, אבל בלי ההרשאה לשלוח סרטונים לטיוטות שלכם — וזה מה שחוסם. במסך של {name} שנפתח עכשיו, השאירו מסומנת את ההרשאה להעלאת סרטונים ואשרו.",
+                         "en": "{name} is connected, but without the permission to send videos to your drafts — that is what's blocking it. On the {name} screen that opens now, keep the video upload permission ticked and approve.",
+                         "fr": "{name} est connecté, mais sans l'autorisation d'envoyer des vidéos dans vos brouillons — c'est ce qui bloque. Sur l'écran {name} qui s'ouvre, laissez cochée l'autorisation d'envoi de vidéos et validez.",
+                         "ar": "{name} مربوط، لكن بدون إذن إرسال الفيديوهات إلى مسوداتكم — وهذا ما يعيق. في شاشة {name} التي تفتح الآن، أبقوا إذن رفع الفيديوهات محددًا ووافقوا.",
+                         "ru": "{name} подключён, но без разрешения отправлять видео в ваши черновики — вот что мешает. В открывшемся окне {name} оставьте отмеченным разрешение на загрузку видео и подтвердите."},
+    "reconnect_key": {"he": "{name} מחובר, אבל המפתח שלו נדחה — וזה מה שחוסם. מדביקים מפתח חדש בשדה שנפתח בכרטיס של {name} (לא בצ׳אט) ולוחצים \"חיבור\".",
+                      "en": "{name} is connected, but its key was refused — that is what's blocking it. Paste a new key into the field that opens on the {name} card (not in the chat) and press \"Connect\".",
+                      "fr": "{name} est connecté, mais sa clé a été refusée — c'est ce qui bloque. Collez une nouvelle clé dans le champ de la carte {name} (pas dans le chat) et appuyez sur « Connecter ».",
+                      "ar": "{name} مربوط، لكن مفتاحه رُفض — وهذا ما يعيق. الصقوا مفتاحًا جديدًا في الحقل الذي يفتح في بطاقة {name} (ليس في المحادثة) واضغطوا \"ربط\".",
+                      "ru": "{name} подключён, но его ключ отклонён — вот что мешает. Вставьте новый ключ в поле на карточке {name} (не в чат) и нажмите «Подключить»."},
+    "stuck_oauth": {"he": "כבר אמרתם לי שיש לכם חשבון ב-{name}, אבל החיבור לא הושלם: מסך האישור של {name} לא החזיר אלינו אישור. מה שצריך: במסך שנפתח עכשיו להיות מחוברים לחשבון שאותו רוצים לחבר, ולאשר עד הסוף. אם זה נעצר שוב, כתבו לי מה רואים במסך ונפתור את זה יחד.",
+                    "en": "You already told me you have a {name} account, but the connection didn't complete: {name}'s approval screen never sent us the approval. What's needed: on the screen that opens now, be signed in to the account you want to connect and approve all the way through. If it stops again, tell me what you see on the screen and we'll sort it out together.",
+                    "fr": "Vous m'avez déjà dit avoir un compte {name}, mais la connexion n'a pas abouti : l'écran d'autorisation de {name} ne nous a jamais renvoyé l'accord. Ce qu'il faut : sur l'écran qui s'ouvre, être connecté au compte à relier et valider jusqu'au bout. Si ça bloque encore, dites-moi ce que vous voyez et on règle ça ensemble.",
+                    "ar": "أخبرتموني بالفعل أن لديكم حسابًا في {name}، لكن الربط لم يكتمل: شاشة الموافقة في {name} لم تُرسل لنا الموافقة. المطلوب: في الشاشة التي تفتح الآن، كونوا مسجّلين في الحساب الذي تريدون ربطه ووافقوا حتى النهاية. إن توقف مجددًا، أخبروني بما ترونه على الشاشة ونحلّه معًا.",
+                    "ru": "Вы уже говорили, что у вас есть аккаунт {name}, но подключение не завершилось: окно подтверждения {name} так и не прислало нам согласие. Что нужно: в открывшемся окне войти в тот аккаунт, который хотите подключить, и подтвердить до конца. Если снова остановится — напишите, что видите на экране, разберёмся вместе."},
+    "stuck_key": {"he": "כבר אמרתם לי שיש לכם חשבון ב-{name}, אבל המפתח עוד לא נשמר אצלנו — וזה מה שחסר. מדביקים אותו בשדה שנפתח בכרטיס של {name} (לא בצ׳אט) ולוחצים \"חיבור\".",
+                  "en": "You already told me you have a {name} account, but the key hasn't been saved with us yet — that's what's missing. Paste it into the field that opens on the {name} card (not in the chat) and press \"Connect\".",
+                  "fr": "Vous m'avez déjà dit avoir un compte {name}, mais la clé n'est pas encore enregistrée chez nous — c'est ce qui manque. Collez-la dans le champ de la carte {name} (pas dans le chat) et appuyez sur « Connecter ».",
+                  "ar": "أخبرتموني بالفعل أن لديكم حسابًا في {name}، لكن المفتاح لم يُحفظ لدينا بعد — وهذا ما ينقص. الصقوه في الحقل الذي يفتح في بطاقة {name} (ليس في المحادثة) واضغطوا \"ربط\".",
+                  "ru": "Вы уже говорили, что у вас есть аккаунт {name}, но ключ у нас ещё не сохранён — вот чего не хватает. Вставьте его в поле на карточке {name} (не в чат) и нажмите «Подключить»."},
+    "stuck_site": {"he": "כבר אמרתם לי שיש לכם אתר, אבל הכתובת שלו עוד לא נשמרה אצלנו — וזה מה שחסר. כתבו אותה בכרטיס שנפתח ונמשיך מכאן.",
+                   "en": "You already told me you have a website, but its address hasn't been saved with us yet — that's what's missing. Type it in the card that opens and we'll continue from there.",
+                   "fr": "Vous m'avez déjà dit avoir un site, mais son adresse n'est pas encore enregistrée — c'est ce qui manque. Saisissez-la dans la carte qui s'ouvre et on continue.",
+                   "ar": "أخبرتموني بالفعل أن لديكم موقعًا، لكن عنوانه لم يُحفظ لدينا بعد — وهذا ما ينقص. اكتبوه في البطاقة التي تفتح ونكمل من هناك.",
+                   "ru": "Вы уже говорили, что у вас есть сайт, но его адрес у нас ещё не сохранён — вот чего не хватает. Впишите его в открывшейся карточке, и продолжим."},
+}
+# A question asked and not answered is not posted again for this long (the chips come back alone)
+PROMPT_CAP_DAYS = 7
+HISTORY_DAYS = 120
+
+
+def _t(key: str, lang: str, **values) -> str:
+    table = T[key]
+    return (table.get(lang) or table["he"]).format(**values)
 
 
 def chip_label(step: str, lang: str = "he") -> str:
-    if lang == "en" and step in CHIPS_EN:
-        return CHIPS_EN[step]
-    return {"has": CHIP_HAS, "none": CHIP_NONE, "done": CHIP_DONE}.get(step, "")
+    labels = CHIPS.get(step) or {}
+    return labels.get(lang) or labels.get("he", "")
 
 _cache = {"at": 0.0, "rows": None}
 
@@ -197,6 +281,92 @@ def is_connected(client_id: int, key: str) -> bool:
                for a in (get_accounts(client_id) or []))
 
 
+def _health(client_id: int, key: str) -> str:
+    """For an ACTIVE connection: "" = works as far as we know, or why it does
+    not: "upload_permission" (TikTok without video.upload), "dead" (the grant /
+    access was refused), "key_rejected" (a creative tool's key). Stored records
+    only — no vendor call. Unreadable = "" (the real call will tell)."""
+    try:
+        if key == "tiktok":
+            from core import tiktok_grant
+            state = tiktok_grant.state(client_id)
+            return {"missing_upload": "upload_permission", "dead": "dead"}.get(state, "")
+        if key == "google_ads":
+            from agents.google_ads_agent import grant_needs_reconnect
+            return "dead" if grant_needs_reconnect(client_id) else ""
+        if key == "tag_manager":
+            from agents.website_agent import gtm_missing_scopes
+            return "dead" if gtm_missing_scopes(client_id) else ""
+        if key in VENDOR_TOOLS:
+            from core import vendor_tools
+            return "key_rejected" if vendor_tools.status(client_id, key) == "key_rejected" else ""
+    except Exception:
+        return ""
+    return ""
+
+
+def live_state(client_id: int, key: str) -> dict:
+    """{"state": "connected" | "reconnect" | "not_connected", "why": <_health>}.
+    Unreadable = not_connected: the flow then simply asks, as it did before."""
+    try:
+        connected = is_connected(client_id, key)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] live state unreadable for client {client_id} / {key}: {type(e).__name__}")
+        return {"state": "not_connected", "why": ""}
+    if not connected:
+        if key in VENDOR_TOOLS and _health(client_id, key) == "key_rejected":
+            return {"state": "reconnect", "why": "key_rejected"}
+        return {"state": "not_connected", "why": ""}
+    why = _health(client_id, key)
+    return {"state": "reconnect" if why else "connected", "why": why}
+
+
+def _thread(client_id: int, key: str, texts: list) -> list:
+    """This connection's own past turns in its agent's chat thread: rows whose
+    content is one of `texts`, oldest first, last HISTORY_DAYS. [] when
+    unreadable (then the question is simply asked)."""
+    persona = PERSONA.get(key, "general")
+    channel = "dashboard_chat" if persona == "general" else f"dashboard_chat:{persona}"   # = support_agent.persona_channel
+    try:
+        since = (_now() - timedelta(days=HISTORY_DAYS)).isoformat()
+        rows = (_db().table("client_communications").select("direction, content, created_at")
+                .eq("client_id", client_id).eq("channel", channel)
+                .in_("content", texts).gte("created_at", since)
+                .order("created_at").limit(200).execute().data or [])
+        return rows
+    except Exception:
+        return []
+
+
+def _asked(client_id: int, key: str) -> dict:
+    """What this connection's start question already got:
+    {"asked_at": iso of the last time it was asked, "answer": "has" | "none" |
+    "" — the chip clicked right after the question FOR THIS KEY}."""
+    name = _name(key)
+    starts = {T["start"][lang].format(name=name) for lang in LANGS}
+    answers = {CHIPS[step][lang]: step for step in ("has", "none") for lang in LANGS}
+    asked_at, answer, open_question = "", "", False
+    for row in _thread(client_id, key, sorted(starts | set(answers))):
+        content = row.get("content") or ""
+        if row.get("direction") == "outbound" and content in starts:
+            asked_at, open_question = row.get("created_at") or "", True
+        elif row.get("direction") == "inbound" and open_question and content in answers:
+            answer, open_question = answers[content], False   # a chip right after THIS key's question
+        elif row.get("direction") == "inbound":
+            open_question = False                              # a chip that answered another key
+    return {"asked_at": asked_at, "answer": answer}
+
+
+def _recent(iso: str, days: int) -> bool:
+    try:
+        when = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return _now() - when < timedelta(days=days)
+
+
 # ─── The flow ────────────────────────────────────────────────────────────────
 
 def _name(key: str) -> str:
@@ -257,10 +427,12 @@ def flow(client_id: int, key: str, step: str, lang: str = None) -> dict:
     (+ the connection status on "done"); the caller posts `messages` into the
     persona's thread. Returns {"show": False} for included / unknown keys —
     except the store, whose steps are on the client's own site (_store_flow).
-    `lang` "en": the OAuth steps (start / has / done) in English (EN)."""
+    `lang`: the question, chips and connect/verify lines in the client's
+    language (T); the sign-up steps keep the owner's Hebrew notes.
+    Live state first: a connected key never gets the question (see the
+    module docstring, NO CONNECT LOOP)."""
     from core import client_language as _cl
     lang = _cl.resolve(client_id, lang)   # the CLIENT's language, never a fixed "he"
-    en = lang == "en"
     if key == "store":
         return _store_flow(client_id, step)
     if key in TEAM_CONNECT:
@@ -276,21 +448,45 @@ def flow(client_id: int, key: str, step: str, lang: str = None) -> dict:
     base = {"show": True, "key": key, "persona": persona, "connect": "", "support": False}
     name = _name(key)
 
+    # LIVE STATE FIRST (no connect loop): never "do you have an account?" for
+    # a connection that exists — it is either working, or one named thing
+    # blocks it and the connect opens directly
+    if step in ("start", "has", "none"):
+        live = live_state(client_id, key)
+        if live["state"] == "connected":
+            return {**base, "chips": [], "connected": True, "messages": [_t("already", lang, name=name)]}
+        if live["state"] == "reconnect":
+            line = {"upload_permission": "reconnect_upload", "key_rejected": "reconnect_key"}.get(live["why"],
+                                                                                                "reconnect_dead")
+            return {**base, "connect": key, "chips": [], "messages": [_t(line, lang, name=name)]}
+
     if step == "start":
-        return {**base, "messages": [EN["start"].format(name=name) if en else f"נחבר את {name}. יש לכם כבר חשבון שם?"],
-                "chips": [{"label": chip_label("has", lang), "step": "has"},
-                          {"label": chip_label("none", lang), "step": "none"}]}
+        past = _asked(client_id, key)
+        if past["answer"] == "has":
+            # They already said they have one and it still isn't connected:
+            # never the same question again — what blocks it, and the connect
+            line = "stuck_site" if key == "website" else "stuck_key" if key in VENDOR_TOOLS else "stuck_oauth"
+            try:
+                from core import chat_fallback
+                chat_fallback.alert_once("connection_onboarding", client_id, f"stuck:{key}",
+                                         f"client {client_id} said they have a '{key}' account, but it is still not "
+                                         f"connected and they pressed connect again — check what blocks it", days=7)
+            except Exception:
+                pass
+            return {**base, "connect": key, "chips": [], "stuck": True, "messages": [_t(line, lang, name=name)]}
+        chips = [{"label": chip_label("has", lang), "step": "has"},
+                 {"label": chip_label("none", lang), "step": "none"}]
+        if past["asked_at"] and not past["answer"] and _recent(past["asked_at"], PROMPT_CAP_DAYS):
+            # Asked recently and not answered: the two chips again, the question is not posted twice
+            return {**base, "messages": [], "chips": chips, "repeat": True}
+        return {**base, "messages": [_t("start", lang, name=name)], "chips": chips}
 
     if step == "has":
         if key == "website":
             return {**base, "connect": key, "chips": [],
                     "messages": ["מעולה. כתבו את כתובת האתר בכרטיס שנפתח — נבדוק בעצמנו במה הוא בנוי ונמשיך מכאן."]}
-        if en and key not in VENDOR_TOOLS:
-            return {**base, "connect": key, "chips": [], "messages": [EN["has_oauth"].format(name=name)]}
         return {**base, "connect": key, "chips": [],
-                "messages": [f"מעולה. פותח לכם את החיבור של {name} — מאשרים במסך שייפתח, וזהו."
-                             if key not in VENDOR_TOOLS else
-                             f"מעולה. מדביקים את המפתח בשדה שנפתח בכרטיס של {name} (לא בצ׳אט) ולוחצים \"חיבור\"."]}
+                "messages": [_t("has_key" if key in VENDOR_TOOLS else "has_oauth", lang, name=name)]}
 
     if step == "none":
         if key in BUILD_INSTEAD and row and row["enabled"]:
@@ -326,12 +522,10 @@ def flow(client_id: int, key: str, step: str, lang: str = None) -> dict:
                     "messages": [f"תודה! הצוות שלנו יבדוק את {name} וימשיך איתכם מכאן."]}
         if is_connected(client_id, key):
             _clear_reminder(client_id, key)
-            return {**base, "chips": [], "connected": True,
-                    "messages": [EN["connected"].format(name=name) if en else f"{name} מחובר ✓ — מכאן אנחנו ממשיכים."]}
+            return {**base, "chips": [], "connected": True, "messages": [_t("connected", lang, name=name)]}
         _schedule_reminder(client_id, key)
         return {**base, "connect": key, "chips": [], "connected": False,
-                "messages": [EN["not_yet"].format(name=name) if en else
-                             f"עוד לא רואה את {name} מחובר. אחרי שהחשבון פתוח, מאשרים את החיבור במסך שנפתח — ואני אבדוק שוב."]}
+                "messages": [_t("not_yet", lang, name=name)]}
 
     raise ValueError("bad_step")
 
