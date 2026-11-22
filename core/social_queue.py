@@ -275,7 +275,7 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         item["post_ref"] = post_ref        # {"post_id", "set_id", "asset_id", "n", "of"}
     if real_asset:
         # A REAL file from the client's connected Drive folder (core/drive_assets):
-        # the card shows its folder + role; the gate re-checks usage rights live
+        # the card shows its folder + role
         item["real_asset"] = {k: str(real_asset.get(k) or "")[:300] for k in REAL_ASSET_KEYS}
     queue.append(item)
     _save(client_id, queue)
@@ -305,15 +305,10 @@ FLAG_TEXT = {
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
                               "يلزم هنا صورة حقيقية لعملكم — لا تُولَّد",
                               "Здесь нужно настоящее фото вашей работы — оно не генерируется"),
-    "rights_needed": _five("נמצאה תמונת לקוח שמתאימה, אבל זכויות השימוש בה לא אושרו — אפשר לאשר באזור האישי ← תיקיות דרייב מחוברות. עד אז היא לא תתפרסם.",
-                           "A matching customer photo was found, but its usage rights aren't confirmed — confirm them in My account → connected Drive folders. Until then it won't be published.",
-                           "Une photo client correspondante existe, mais ses droits d'usage ne sont pas confirmés — confirmez-les dans Mon compte → dossiers Drive connectés. D'ici là, elle ne sera pas publiée.",
-                           "وُجدت صورة عميل مناسبة، لكن حقوق استخدامها غير مؤكدة — أكدوها في المنطقة الشخصية ← مجلدات Drive المتصلة. حتى ذلك لن تُنشر.",
-                           "Найдено подходящее фото клиента, но права на использование не подтверждены — подтвердите их в «Личный кабинет → подключённые папки Drive». До тех пор оно не публикуется."),
 }
 
 # A real file from the client's connected Drive folder (core/drive_assets)
-REAL_ASSET_KEYS = ("source_file_id", "name", "folder", "folder_path", "role", "role_text", "usage_rights",
+REAL_ASSET_KEYS = ("source_file_id", "name", "folder", "folder_path", "role", "role_text",
                    "connection_id", "media_type")
 SOURCE_TEXT = _five("מקור: תמונה אמיתית מהתיקייה \"{folder}\" ({role}) ב-Drive שלכם",
                     "Source: a real file from your Drive folder \"{folder}\" ({role})",
@@ -329,13 +324,6 @@ def source_text(real_asset: dict, lang: str) -> str:
     role = real_asset.get("role_text") if lang == "he" else str(real_asset.get("role") or "").replace("_", " ")
     return pick(SOURCE_TEXT, lang).replace("{folder}", str(real_asset["folder"])).replace("{role}", role or "")
 
-
-def _rights_ok(client_id: int, real_asset: dict) -> bool:
-    try:
-        from core import drive_assets
-        return drive_assets.rights_ok(client_id, real_asset)
-    except Exception:
-        return real_asset.get("role") != "customer_photos"
 
 WARNING_TEXT = {
     "late": _five("שימו לב: עם זמן הייצור ({days} ימי עבודה), הזמנה שתגיע עד {occasion} צריכה להיעשות עד {order_by} — ותאריך הפרסום ({publish}) כבר אחרי זה.",
@@ -726,10 +714,6 @@ def check(client_id: int, channel: str, file_id: str = "", item_id: str = "") ->
         item = approved[0]
         if (item.get("delivered") or {}).get(channel, {}).get("how") == "done":
             raise GateClosed("already_published", f"item {item['id']} is already published on {channel}")
-        if item.get("real_asset") and not _rights_ok(client_id, item["real_asset"]):
-            # A customer photo whose usage rights are not confirmed NEVER goes out
-            raise GateClosed("rights_unconfirmed", f"item {item['id']} is a customer photo without confirmed "
-                                                    f"usage rights (settings → connected Drive folders)")
         return item
     states = sorted({i["status"] for i in match}) or ["none"]
     raise GateClosed("not_approved", f"no item approved for {channel} in the Social tab ({', '.join(states)})")

@@ -9,13 +9,9 @@ is added anywhere.
 One connection per folder the client added (a ROOT), plus one record per
 SUBFOLDER discovered under it (parent_connection_id = the root). A subfolder
 inherits its parent's role until the client overrides it; the client may also
-exclude it. The role decides:
-  access        social_output / archive = read_write, every other role is
-                READ ONLY — nothing is ever written into those folders (the
-                drive_service write calls refuse a protected folder id too);
-  usage_rights  customer_photos = "unconfirmed" until the client confirms
-                (photos customers sent are not cleared for advertising by
-                default); everything else = "not_applicable".
+exclude it. The role ranks and filters assets (core/drive_assets.find_assets)
+and decides which folders the agents draw from; it does not restrict access:
+every connected folder is read_write.
 
 The role is INFERRED from the folder's own name (Hebrew and English), or —
 when the name says nothing — from ONE vision call on up to 8 sample files.
@@ -35,8 +31,6 @@ SERVICE_NAME = "drive_folders"
 PREFIX = "drive_folders:"
 SHARE_WITH = "drive-archiver@super-system-500410.iam.gserviceaccount.com"
 ROLES = ("product_catalog", "customer_photos", "brand_assets", "raw_materials", "social_output", "archive")
-READ_WRITE_ROLES = ("social_output", "archive")
-RIGHTS = ("confirmed", "unconfirmed", "not_applicable")
 MAX_ROOTS = 20
 MAX_SUBFOLDERS = 400
 MAX_DEPTH = 6                       # the walk goes at least 5 levels below a connected folder
@@ -47,8 +41,7 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,128}$")
 _SHARED_DRIVE_ROOT_RE = re.compile(r"^0A[A-Za-z0-9_-]{17}$")     # a Shared Drive's own id
 
 # Name → role, Hebrew and English, substring match. Checked in THIS order:
-# customer photos first — a customers' folder read as a product catalogue
-# would publish people's photos without their consent.
+# customer photos first ("מוצרים - ביקורות" holds reviews, not the catalogue).
 NAME_RULES = (
     ("customer_photos", ("ביקורות", "לקוחות", "המלצות", "reviews", "testimonials", "ugc")),
     ("archive", ("ארכיון", "ישן", "archive", "old")),
@@ -86,10 +79,6 @@ STATUS_TEXT = {
     "pending": "ממתין לאינדוקס",
 }
 
-RIGHTS_NOTE = ("תמונות שלקוחות שלחו לכם לא מאושרות אוטומטית לשימוש בפרסום. סמנו \"מאושר\" רק אם יש לכם "
-               "את הסכמת הלקוחות שבתמונות. עד אז הסוכנים לא ישתמשו בהן בשום פוסט שמתפרסם.")
-
-
 class FolderError(ValueError):
     """A connection the client can't make, with a Hebrew line saying exactly
     what to do (never a generic "no access")."""
@@ -97,10 +86,6 @@ class FolderError(ValueError):
     def __init__(self, code: str, text: str = "", **extra):
         self.code, self.text, self.extra = code, text or code, extra
         super().__init__(code)
-
-
-class ReadOnlyFolder(PermissionError):
-    """A write aimed at a connected folder whose role is READ ONLY."""
 
 
 def _db():
@@ -146,20 +131,9 @@ def _save(client_id: int, data: dict):
 
 def load(client_id: int) -> list:
     """Every connection record (roots and subfolders), with the derived
-    fields (role, access, usage_rights) resolved. Also refreshes the
-    process-wide read-only guard in drive_service."""
+    fields (role, access) resolved."""
     rows = _load(client_id)["connections"]
-    resolved = _resolve(rows)
-    _protect(resolved, client_id)
-    return resolved
-
-
-def _protect(rows: list, client_id=None):
-    try:
-        from core import drive_service
-        drive_service.protect_read_only([r["folder_id"] for r in rows if r.get("access") == "read_only"], client_id)
-    except Exception:
-        pass
+    return _resolve(rows)
 
 
 def _all_rows() -> list:
@@ -182,14 +156,11 @@ def client_ids() -> list:
     return [cid for cid, rows in _all_rows() if any(not r.get("parent_connection_id") for r in rows)]
 
 
-# ─── Role, access, rights ────────────────────────────────────────────────────
+# ─── Role, access ────────────────────────────────────────────────────
 
 def access_for(role: str) -> str:
-    return "read_write" if role in READ_WRITE_ROLES else "read_only"
-
-
-def default_rights(role: str) -> str:
-    return "unconfirmed" if role == "customer_photos" else "not_applicable"
+    """Every connected folder is read_write, whatever its role."""
+    return "read_write"
 
 
 def _keyword_in(keyword: str, lowered: str) -> bool:
@@ -216,7 +187,7 @@ def is_system_folder(name: str) -> bool:
 
 def _resolve(rows: list) -> list:
     """Each record with its EFFECTIVE role (override > the parent folder's
-    effective role > the root's confirmed role), access and usage_rights."""
+    effective role > the root's confirmed role) and access."""
     by_folder = {r.get("folder_id"): r for r in rows}
     cache = {}
 
@@ -226,29 +197,21 @@ def _resolve(rows: list) -> list:
             return cache[key]
         if not record.get("parent_connection_id"):
             role = record.get("role") or ""
-            rights = record.get("rights_set") or default_rights(role)
             excluded = bool(record.get("excluded"))
         else:
             parent = by_folder.get(record.get("parent_folder_id")) or \
                 next((r for r in rows if r.get("id") == record.get("parent_connection_id")), {})
-            p_role, p_rights, p_excluded = effective(parent, depth + 1) if parent and depth < 50 else ("", "", False)
+            p_role, p_excluded = effective(parent, depth + 1) if parent and depth < 50 else ("", False)
             role = record.get("role_override") or p_role
-            if record.get("rights_set") and role == "customer_photos":
-                rights = record["rights_set"]
-            elif role == "customer_photos":
-                rights = p_rights if p_role == "customer_photos" and p_rights else "unconfirmed"
-            else:
-                rights = "not_applicable"
             excluded = bool(record.get("excluded")) or p_excluded
-        cache[key] = (role, rights, excluded)
+        cache[key] = (role, excluded)
         return cache[key]
 
     out = []
     for r in rows:
-        role, rights, excluded = effective(r)
+        role, excluded = effective(r)
         record = dict(r)
-        record.update(role=role, access=access_for(role), usage_rights=rights,
-                      excluded_effective=excluded,
+        record.update(role=role, access=access_for(role), excluded_effective=excluded,
                       role_source=("confirmed" if not r.get("parent_connection_id")
                                    else "override" if r.get("role_override") else "inherited"))
         out.append(record)
@@ -261,20 +224,6 @@ def by_id(client_id: int, connection_id: str) -> dict:
 
 def for_folder(client_id: int, folder_id: str) -> dict:
     return next((r for r in load(client_id) if r.get("folder_id") == str(folder_id)), {})
-
-
-def can_write(client_id: int, folder_id: str) -> bool:
-    record = for_folder(client_id, folder_id)
-    return bool(record) and record.get("access") == "read_write"
-
-
-def assert_writable(client_id: int, folder_id: str):
-    """Raises ReadOnlyFolder unless `folder_id` is a connected folder whose
-    role is social_output or archive. Every other connected folder is read
-    only: we never write into a client's existing folders."""
-    if not can_write(client_id, folder_id):
-        raise ReadOnlyFolder(f"folder {folder_id} is read only (role "
-                             f"{for_folder(client_id, folder_id).get('role') or 'not connected'})")
 
 
 # ─── Reading a pasted link (as the service account) ─────────────────────────
@@ -498,14 +447,13 @@ def preview(client_id: int, link: str) -> dict:
             "display_name": folder["name"], "drive_kind": folder["drive_kind"],
             "inferred_role": role, "role_source": source,
             "explanation": _explanation(source, role, guess.get("keyword", ""), reason, folder["name"]),
-            "access": access_for(role) if role else "", "usage_rights": default_rights(role) if role else "",
-            "rights_note": RIGHTS_NOTE if role == "customer_photos" else "",
+            "access": access_for(role) if role else "",
             "subfolders_first_level": len(subfolders), "media_first_level": len(media),
             "already_connected": bool(existing and not existing.get("parent_connection_id")),
             "roles": [{"role": r, "text": ROLE_TEXT[r], "access": access_for(r)} for r in ROLES]}
 
 
-def confirm(client_id: int, link: str, role: str, usage_rights: str = "", by: str = "client") -> dict:
+def confirm(client_id: int, link: str, role: str, by: str = "client") -> dict:
     """Step 2: the client CONFIRMED (or changed) the role. Access is verified
     again right now — an unreadable folder is never saved. Returns the root
     record; the index job is queued by the caller (core/drive_assets)."""
@@ -527,10 +475,9 @@ def confirm(client_id: int, link: str, role: str, usage_rights: str = "", by: st
     if existing:
         # A subfolder of a connected folder added on its own: it becomes a root
         rows.remove(existing)
-    rights = usage_rights if (role == "customer_photos" and usage_rights in ("confirmed", "unconfirmed")) else ""
     record = {"id": "dc" + secrets.token_hex(5), "client_id": int(client_id), "folder_id": folder["folder_id"],
               "folder_url": folder_url(folder["folder_id"]), "display_name": folder["name"], "role": role,
-              "rights_set": rights, "drive_kind": folder["drive_kind"], "drive_id": folder["drive_id"],
+              "drive_kind": folder["drive_kind"], "drive_id": folder["drive_id"],
               "last_indexed_at": "", "last_auto_scan_at": "", "status": "pending", "item_count": 0,
               "indexed_count": 0, "parent_connection_id": "", "parent_folder_id": "", "depth": 0,
               "path": folder["name"], "excluded": False, "added_at": _now(), "added_by": str(by)[:40],
@@ -587,25 +534,6 @@ def set_excluded(client_id: int, connection_id: str, excluded: bool) -> dict:
     return next(r for r in _resolve(data["connections"]) if r["id"] == record["id"])
 
 
-def set_usage_rights(client_id: int, connection_id: str, rights: str, by: str = "client") -> dict:
-    """customer_photos only: "confirmed" (the client has their customers'
-    consent) or "unconfirmed"."""
-    if rights not in ("confirmed", "unconfirmed"):
-        raise FolderError("bad_rights", "ערך לא מוכר.")
-    data = _load(client_id)
-    record = next((r for r in data["connections"] if r.get("id") == str(connection_id)), None)
-    if not record:
-        raise FolderError("not_found", "התיקייה הזו לא מחוברת.")
-    resolved = next(r for r in _resolve(data["connections"]) if r["id"] == record["id"])
-    if resolved["role"] != "customer_photos":
-        raise FolderError("not_customer_photos", "זכויות שימוש רלוונטיות רק לתיקיית תמונות לקוחות.")
-    record["rights_set"] = rights
-    record["rights_changed_at"], record["rights_changed_by"] = _now(), str(by)[:40]
-    _save(client_id, data)
-    _log(f"client {client_id}: usage rights of {record['folder_id']} set to {rights} by {by}")
-    return next(r for r in _resolve(data["connections"]) if r["id"] == record["id"])
-
-
 # ─── Subfolders (written by the index walk, core/drive_assets) ──────────────
 
 def upsert_subfolder(data: dict, root: dict, folder_id: str, name: str, parent_folder_id: str,
@@ -622,7 +550,7 @@ def upsert_subfolder(data: dict, root: dict, folder_id: str, name: str, parent_f
         if sum(1 for r in rows if r.get("parent_connection_id")) >= MAX_SUBFOLDERS:
             return {}
         record = {"id": "ds" + secrets.token_hex(5), "client_id": root.get("client_id"), "folder_id": folder_id,
-                  "folder_url": folder_url(folder_id), "role_override": "", "rights_set": "",
+                  "folder_url": folder_url(folder_id), "role_override": "",
                   "last_indexed_at": "", "last_auto_scan_at": "", "status": "ok", "item_count": 0,
                   "indexed_count": 0, "parent_connection_id": root["id"], "excluded": False,
                   "discovered_at": _now()}
@@ -650,7 +578,7 @@ def tree(client_id: int, rows: list = None) -> list:
         return {"id": r["id"], "folder_id": r["folder_id"], "folder_url": r.get("folder_url", ""),
                 "display_name": r.get("display_name", ""), "role": own_role,
                 "role_text": ROLE_TEXT.get(own_role, ""), "role_source": r.get("role_source", ""),
-                "access": r.get("access", ""), "usage_rights": r.get("usage_rights", ""),
+                "access": r.get("access", ""),
                 "excluded": bool(r.get("excluded")), "excluded_effective": bool(r.get("excluded_effective")),
                 "suggested_role": suggestion if suggestion and suggestion != own_role else "",
                 "suggested_role_text": ROLE_TEXT.get(suggestion, "") if suggestion and suggestion != own_role else "",

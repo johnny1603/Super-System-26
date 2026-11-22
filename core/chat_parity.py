@@ -151,7 +151,6 @@ PARITY = {
     "POST /api/client/drive-folders/connect": (GAP, "P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)"),
     "POST /api/client/drive-folders/{connection_id}/role": (GAP, "P3: set_drive_folder_role card"),
     "POST /api/client/drive-folders/{connection_id}/exclude": (GAP, "P3: exclude_drive_subfolder card"),
-    "POST /api/client/drive-folders/{connection_id}/rights": (NOT_CHAT, "confirming customers' consent to use their photos is a rights statement made on the settings screen next to its explanation, never inferred from a chat message"),
     "POST /api/client/drive-folders/{connection_id}/disconnect": (GAP, "P3: disconnect_drive_folder card"),
     "POST /api/client/drive-folders/reindex": (GAP, "P3: reindex_drive_folders card"),
     "POST /api/client/drive-folders/step": (NOT_CHAT, "the settings section's own poll that moves an index run forward; the chat has no screen to poll"),

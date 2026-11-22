@@ -6362,7 +6362,6 @@ class DriveFolderLinkRequest(BaseModel):
 class DriveFolderConnectRequest(BaseModel):
     link: str = ""
     role: str = ""
-    usage_rights: str = ""
 
 class DriveFolderRoleRequest(BaseModel):
     role: str = ""
@@ -6370,13 +6369,10 @@ class DriveFolderRoleRequest(BaseModel):
 class DriveFolderExcludeRequest(BaseModel):
     excluded: bool = True
 
-class DriveFolderRightsRequest(BaseModel):
-    usage_rights: str = ""
-
 def _drive_folders_view(client_id: int) -> dict:
     from core import drive_assets, drive_folders
     return {"folders": drive_folders.tree(client_id), "index": drive_assets.view_state(client_id),
-            "share_with": drive_folders.share_with(), "rights_note": drive_folders.RIGHTS_NOTE,
+            "share_with": drive_folders.share_with(),
             "roles": [{"role": r, "text": drive_folders.ROLE_TEXT[r], "access": drive_folders.access_for(r)}
                       for r in drive_folders.ROLES]}
 
@@ -6416,7 +6412,7 @@ def client_drive_folders_connect(req: DriveFolderConnectRequest, request: Reques
     from core import drive_assets, drive_folders
 
     def connect():
-        record = drive_folders.confirm(client_id, req.link[:2000], req.role, req.usage_rights, by="client")
+        record = drive_folders.confirm(client_id, req.link[:2000], req.role, by="client")
         drive_assets.request(client_id, "add", [record["id"]])
         return _drive_folders_view(client_id)
     return _drive_folder_call(connect)
@@ -6433,14 +6429,6 @@ def client_drive_folders_exclude(connection_id: str, req: DriveFolderExcludeRequ
     client_id = _drive_folders_write(request, _require_session(request))
     from core import drive_folders
     return _drive_folder_call(lambda: (drive_folders.set_excluded(client_id, connection_id, req.excluded),
-                                       _drive_folders_view(client_id))[1])
-
-@app.post("/api/client/drive-folders/{connection_id}/rights")
-def client_drive_folders_rights(connection_id: str, req: DriveFolderRightsRequest, request: Request):
-    client_id = _drive_folders_write(request, _require_session(request))
-    from core import drive_folders
-    return _drive_folder_call(lambda: (drive_folders.set_usage_rights(client_id, connection_id, req.usage_rights,
-                                                                      by="client"),
                                        _drive_folders_view(client_id))[1])
 
 @app.post("/api/client/drive-folders/{connection_id}/disconnect")

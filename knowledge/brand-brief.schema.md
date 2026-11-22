@@ -78,8 +78,7 @@ assets
                            Drive folders by ROLE (product_catalog, customer_photos, brand_assets,
                            raw_materials, social_output, archive; docs/DRIVE-FOLDERS.md), e.g.
                            "product_catalog: the folder תמונות מוצר". The media agent searches
-                           them with drive_assets.find_assets before anything is generated;
-                           customer_photos are usable only once usage rights are confirmed.
+                           them with drive_assets.find_assets before anything is generated.
   gaps[]                   what we do not have and would need to shoot
 
 constraints

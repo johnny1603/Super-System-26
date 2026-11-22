@@ -1030,18 +1030,10 @@ def _match_score(item: dict, folder_name: str, qwords: list) -> float:
     return round(total / len(qwords), 4)
 
 
-def publishable(item: dict, conn: dict) -> bool:
-    """A customer photo whose usage rights are not confirmed NEVER goes into
-    a published asset (it may be surfaced to the manager to confirm)."""
-    if not conn or conn.get("excluded_effective"):
-        return False
-    return not (conn.get("role") == "customer_photos" and conn.get("usage_rights") != "confirmed")
-
-
 def find_assets(client_id: int, roles: list = None, query: str = "", media_type: str = "", limit: int = 10,
-                publishable_only: bool = False, include_pending: bool = True, on_demand: bool = False) -> list:
+                include_pending: bool = True, on_demand: bool = False) -> list:
     """Ranked real assets from the client's connected folders:
-    [{file_id, description, tags, role, usage_rights, media_type, publishable,
+    [{file_id, description, tags, role, media_type,
       folder, folder_path, root_folder, name, state, score, width, height,
       duration_s, connection_id}]. `roles` filters AND orders (the caller's
     priority); `media_type` "image" / "video"; excluded subfolders never
@@ -1071,9 +1063,6 @@ def find_assets(client_id: int, roles: list = None, query: str = "", media_type:
             role = conn.get("role") or ""
             if roles and role not in roles:
                 continue
-            ok = publishable(item, conn)
-            if publishable_only and not ok:
-                continue
             score = _match_score(item, conn.get("display_name", ""), qwords)
             if qwords and score <= 0:
                 continue
@@ -1081,8 +1070,8 @@ def find_assets(client_id: int, roles: list = None, query: str = "", media_type:
                         "description": item.get("description", ""), "tags": list(item.get("tags") or []),
                         "angle_note": item.get("angle_note", ""), "role": role,
                         "role_text": drive_folders.ROLE_TEXT.get(role, role),
-                        "usage_rights": conn.get("usage_rights", ""), "media_type": item.get("media_type", ""),
-                        "publishable": ok, "folder": conn.get("display_name", ""), "folder_path": item.get("path", ""),
+                        "media_type": item.get("media_type", ""),
+                        "folder": conn.get("display_name", ""), "folder_path": item.get("path", ""),
                         "root_folder": (roots.get(item.get("root_id")) or {}).get("display_name", ""),
                         "connection_id": conn["id"], "state": item.get("state", ""), "score": score,
                         "width": item.get("width"), "height": item.get("height"),
@@ -1108,19 +1097,3 @@ def has_pool(client_id: int) -> bool:
         return any(i.get("state") in ("indexed", "pending") for i in state["items"].values())
     except Exception:
         return False
-
-
-def rights_ok(client_id: int, real_asset: dict) -> bool:
-    """The publish gate's LIVE check of a real asset's usage rights: the
-    folder as it is now (a role changed to customer_photos since, or rights
-    withdrawn, close the gate too). Unreadable = closed for customer photos."""
-    real_asset = real_asset or {}
-    try:
-        conn = drive_folders.by_id(client_id, real_asset.get("connection_id", ""))
-    except Exception:
-        return real_asset.get("role") != "customer_photos"
-    if not conn:
-        return real_asset.get("role") != "customer_photos"
-    if conn.get("role") == "customer_photos":
-        return conn.get("usage_rights") == "confirmed"
-    return True

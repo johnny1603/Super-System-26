@@ -9,9 +9,8 @@ What must stay true:
   overridden or excluded one by one, and carry their own counts;
 - a Shared Drive folder that needs membership, a folder not shared with us
   and a malformed link are THREE different Hebrew lines (never "no access");
-- every role but social_output / archive is read only — the write calls
-  refuse those folders;
-- customer photos with unconfirmed usage rights never reach a published asset;
+- every connected folder is read_write whatever its role (the role only ranks
+  and filters), and customer photos are used like any other real asset;
 - dedupe (one description per near-identical group), video = ONE first
   usable frame, a descriptive name = no vision call;
 - the free cap stops, spends nothing, quotes from the MEASURED cost and opens
@@ -189,11 +188,10 @@ class Base(unittest.TestCase):
         patch(agent_actions, "open_team_request",
               lambda cid, persona, topic, text, origin="": self.team.append((cid, persona, topic, text, origin))
               or {"card": {"id": "tr1"}})
-        self.addCleanup(drive_service._protected_read_only.clear)
 
     # helpers
-    def connect(self, link, role, rights=""):
-        record = dfo.confirm(CID, link, role, rights)
+    def connect(self, link, role):
+        record = dfo.confirm(CID, link, role)
         da.request(CID, "add", [record["id"]])
         return record
 
@@ -256,8 +254,7 @@ class Classification(Base):
             self.assertEqual(e.exception.code, "role_required")
         self.assertEqual(self.mem.folders, {})
         record = dfo.confirm(CID, "FOLDER_PRODUCTS_01", "product_catalog")
-        self.assertEqual((record["role"], record["access"], record["usage_rights"]),
-                         ("product_catalog", "read_only", "not_applicable"))
+        self.assertEqual((record["role"], record["access"]), ("product_catalog", "read_write"))
 
     def test_api_connect_route_goes_through_confirm(self):
         src = _read("core", "api_server.py")
@@ -309,8 +306,7 @@ class Subfolders(Base):
         self.run_all()
         sub = dfo.for_folder(CID, "REVIEWS_FOLDER_01")
         out = dfo.set_role(CID, sub["id"], "customer_photos")
-        self.assertEqual((out["role"], out["role_source"], out["usage_rights"], out["access"]),
-                         ("customer_photos", "override", "unconfirmed", "read_only"))
+        self.assertEqual((out["role"], out["role_source"], out["access"]), ("customer_photos", "override", "read_write"))
         # its children inherit the override; siblings keep the root's role
         self.assertEqual(dfo.for_folder(CID, "LEVEL_1_FOLDER_X")["role"], "product_catalog")
         back = dfo.set_role(CID, sub["id"], "")
@@ -390,84 +386,12 @@ class Errors(Base):
         self.assertEqual(e.exception.code, "own_storage")
 
 
-# ─── 4. Read-only enforcement ───────────────────────────────────────────────
+# ─── 4. Access: every connected folder is read_write ───────────────────────────────────────────────
 
-class ReadOnly(Base):
-    def test_roles_access(self):
+class Access(Base):
+    def test_every_role_is_read_write(self):
         for role in dfo.ROLES:
-            expected = "read_write" if role in ("social_output", "archive") else "read_only"
-            self.assertEqual(dfo.access_for(role), expected)
-
-    def test_write_calls_refuse_a_read_only_connected_folder(self):
-        self.drive.add("PRODUCTS_RO_FOLD", "מוצרים")
-        self.drive.add("SOCIAL_RW_FOLDER", "פוסטים")
-        dfo.confirm(CID, "PRODUCTS_RO_FOLD", "product_catalog")
-        dfo.confirm(CID, "SOCIAL_RW_FOLDER", "social_output")
-        dfo.load(CID)
-        with self.assertRaises(dfo.ReadOnlyFolder):
-            dfo.assert_writable(CID, "PRODUCTS_RO_FOLD")
-        dfo.assert_writable(CID, "SOCIAL_RW_FOLDER")
-        for call in (lambda: drive_service.ensure_folder("x", "PRODUCTS_RO_FOLD"),
-                     lambda: drive_service.upload_bytes("PRODUCTS_RO_FOLD", "a.png", b"x", "image/png"),
-                     lambda: drive_service.copy_file("F", "PRODUCTS_RO_FOLD")):
-            with self.assertRaises(drive_service.ReadOnlyTarget):
-                call()
-
-    def test_no_write_call_in_the_index_or_folder_modules(self):
-        for module in ("drive_folders.py", "drive_assets.py"):
-            src = _read("core", module)
-            for write in ("upload_bytes", "ensure_folder", "copy_file", "start_resumable", "update_file",
-                          "trash", "delete_file", "rename"):
-                self.assertNotIn(f"drive.{write}(", src, f"{module} calls {write}")
-                self.assertNotIn(f"drive_service.{write}(", src, f"{module} calls {write}")
-
-
-# ─── 5. Usage rights ────────────────────────────────────────────────────────
-
-class UsageRights(Base):
-    def setUp(self):
-        super().setUp()
-        self.drive.add("CUSTOMER_PHOTOS_1", "ביקורות")
-        media(self.drive, "CUST_SHOE_abcdef", "IMG_1.jpg", "CUSTOMER_PHOTOS_1")
-        self.root = self.connect("CUSTOMER_PHOTOS_1", "customer_photos")
-        self.run_all()
-
-    def test_defaults_unconfirmed_and_blocks_publishing(self):
-        self.assertEqual(dfo.by_id(CID, self.root["id"])["usage_rights"], "unconfirmed")
-        found = da.find_assets(CID, ["customer_photos"], "shoe")
-        self.assertEqual((len(found), found[0]["publishable"]), (1, False))
-        self.assertEqual(da.find_assets(CID, ["customer_photos"], "shoe", publishable_only=True), [])
-        self.assertFalse(da.rights_ok(CID, {"role": "customer_photos", "connection_id": self.root["id"]}))
-
-    def test_confirmed_unblocks_and_withdrawal_closes_the_gate_live(self):
-        dfo.set_usage_rights(CID, self.root["id"], "confirmed")
-        self.assertTrue(da.find_assets(CID, ["customer_photos"], "shoe", publishable_only=True))
-        self.assertTrue(da.rights_ok(CID, {"role": "customer_photos", "connection_id": self.root["id"]}))
-        dfo.set_usage_rights(CID, self.root["id"], "unconfirmed")
-        self.assertFalse(da.rights_ok(CID, {"role": "customer_photos", "connection_id": self.root["id"]}))
-
-    def test_social_gate_refuses_an_unconfirmed_customer_photo(self):
-        from core import social_queue as sq
-        items = []
-        saved = (sq._load, sq._save)
-        sq._load = lambda cid: [dict(i) for i in items]
-        sq._save = lambda cid, new: (items.clear(), items.extend(dict(i) for i in new))
-        self.addCleanup(lambda: (setattr(sq, "_load", saved[0]), setattr(sq, "_save", saved[1])))
-        added = sq.add(CID, "FILE_COPY_0123456789", "image", ["instagram"], "caption", producer="media",
-                       real_asset={"source_file_id": "CUST_SHOE_abcdef", "folder": "ביקורות",
-                                   "role": "customer_photos", "connection_id": self.root["id"]})
-        sq.approve(CID, [added["id"]])
-        with self.assertRaises(sq.GateClosed) as e:
-            sq.check(CID, "instagram", item_id=added["id"])
-        self.assertEqual(e.exception.code, "rights_unconfirmed")
-        dfo.set_usage_rights(CID, self.root["id"], "confirmed")
-        self.assertEqual(sq.check(CID, "instagram", item_id=added["id"])["id"], added["id"])
-
-    def test_only_customer_photos_take_rights(self):
-        self.drive.add("PRODUCTS_FOLDER_2", "מוצרים")
-        other = dfo.confirm(CID, "PRODUCTS_FOLDER_2", "product_catalog")
-        with self.assertRaises(dfo.FolderError):
-            dfo.set_usage_rights(CID, other["id"], "confirmed")
+            self.assertEqual(dfo.access_for(role), "read_write")
 
 
 # ─── 6. Indexing: tier 0, dedupe, video, batching ───────────────────────────
@@ -733,10 +657,9 @@ class Find(Base):
         found = da.find_assets(CID, ["product_catalog", "raw_materials"], "red leather sneaker", "image")
         self.assertEqual([f["file_id"] for f in found][:2], ["RED_SHOE_abcdef0", "RAW_SHOE_abcdef0"])
         top = found[0]
-        for key in ("file_id", "description", "tags", "role", "usage_rights", "media_type"):
+        for key in ("file_id", "description", "tags", "role", "media_type"):
             self.assertIn(key, top)
-        self.assertEqual((top["role"], top["usage_rights"], top["media_type"], top["folder"]),
-                         ("product_catalog", "not_applicable", "image", "מוצרים"))
+        self.assertEqual((top["role"], top["media_type"], top["folder"]), ("product_catalog", "image", "מוצרים"))
         self.assertNotIn("BLUE_BAG_abcdef0", [f["file_id"] for f in found])
 
     def test_media_type_filter_and_role_filter(self):
@@ -781,17 +704,19 @@ class MediaAgent(Base):
             with self.subTest(fmt=fmt):
                 self.assertTrue(media_agent.review_brief(self.brief(role="point", post_format=fmt))["objection"])
 
-    def test_unconfirmed_customer_photo_is_surfaced_not_used(self):
+    def test_customer_photo_is_used_like_any_real_asset(self):
         from agents import media_agent
         self.drive.add("CUSTOMERS_MA_0001", "ביקורות")
         media(self.drive, "CUST_RED_abcdef0", "red leather sneaker on customer.jpg", "CUSTOMERS_MA_0001")
         self.connect("CUSTOMERS_MA_0001", "customer_photos")
         self.run_all()
-        out = media_agent.review_brief(self.brief())
-        self.assertIn("usage rights", out["objection"])
-        self.assertIn("rights_needed", out["flags"])
-        self.assertEqual(out["rights_candidate"]["source_file_id"], "CUST_RED_abcdef0")
-        self.assertEqual(out["real_asset"], {})
+        saved = media_agent.safe_claude_json_call
+        media_agent.safe_claude_json_call = lambda system, user, **k: {"file_id": "CUST_RED_abcdef0", "reason": "x"}
+        try:
+            out = media_agent.review_brief(self.brief())
+        finally:
+            media_agent.safe_claude_json_call = saved
+        self.assertEqual((out["objection"], out["real_asset"]["source_file_id"]), ("", "CUST_RED_abcdef0"))
 
     def test_agent_chooses_a_real_asset_itself(self):
         from agents import media_agent
@@ -875,7 +800,6 @@ class Production(Base):
         self.assertIn("item.source_text", html)
         for lang in ("he", "en", "fr", "ar", "ru"):
             self.assertTrue(sq.pick(sq.SOURCE_TEXT, lang))
-            self.assertTrue(sq.pick(sq.FLAG_TEXT["rights_needed"], lang))
 
 
 # ─── 12. Wiring ─────────────────────────────────────────────────────────────
@@ -908,7 +832,6 @@ class Wiring(unittest.TestCase):
         self.assertIn("תיקיות דרייב מחוברות", html)
         self.assertIn('id="driveCopyBtn"', html)
         self.assertIn("data-drive-exclude", html)
-        self.assertIn("data-drive-rights", html)
         self.assertIn("/api/client/drive-folders/preview", html)
         self.assertIn("/api/client/drive-folders/connect", html)
 

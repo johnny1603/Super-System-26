@@ -194,7 +194,6 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | connected Drive folders connect | `POST /api/client/drive-folders/connect` | **none yet** | **P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)** |
 | connected Drive folder role | `POST /api/client/drive-folders/{connection_id}/role` | **none yet** | **P3: set_drive_folder_role card** |
 | connected Drive subfolder exclude | `POST /api/client/drive-folders/{connection_id}/exclude` | **none yet** | **P3: exclude_drive_subfolder card** |
-| connected Drive folder usage rights | `POST /api/client/drive-folders/{connection_id}/rights` | — (allowlisted) | confirming customers' consent to use their photos is a rights statement made on the settings screen next to its explanation, never inferred from a chat message |
 | connected Drive folder disconnect | `POST /api/client/drive-folders/{connection_id}/disconnect` | **none yet** | **P3: disconnect_drive_folder card** |
 | connected Drive folders re-index | `POST /api/client/drive-folders/reindex` | **none yet** | **P3: reindex_drive_folders card** |
 | connected Drive folders step | `POST /api/client/drive-folders/step` | — (allowlisted) | the settings section's own poll that moves an index run forward; the chat has no screen to poll |

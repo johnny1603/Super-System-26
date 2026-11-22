@@ -610,18 +610,12 @@ def review_brief(brief) -> dict:
     if brief.asset_type != "real_photo" or out["objection"]:
         return out
     found = _find_real(brief, on_demand=False)
-    chosen = choose_real_asset(brief.client_id, brief, [f for f in found if f["publishable"]])
+    chosen = choose_real_asset(brief.client_id, brief, found)
     if chosen:
         out["real_asset"] = _real_summary(chosen)
         return out
-    rights = [f for f in found if not f["publishable"] and f.get("usage_rights") == "unconfirmed"]
     must_be_real = brief.role == "proof" or brief.post_format in post_brief.REAL_FORMATS
-    if rights:
-        out["flags"].append("rights_needed")
-        out["rights_candidate"] = _real_summary(rights[0])
-        if must_be_real:
-            out["objection"] = NO_REAL_ASSET["rights"].format(folder=rights[0]["folder"])
-    elif must_be_real:
+    if must_be_real:
         # A proof slide / a real-only format with nothing real: an objection
         # to the social agent — never a generated stand-in for the product
         from core import drive_assets
@@ -639,9 +633,6 @@ NO_REAL_ASSET = {
     "none": "No real asset in the client's connected folders fits this slide (searched: {roles}). Change this asset "
             "(for example a text_slide), or ask the owner to add a real photo of it to their folder. Never "
             "generate a stand-in for the real product.",
-    "rights": "The only real photos that fit are customer photos whose usage rights are NOT confirmed (folder "
-              "\"{folder}\"). They can't be published until the manager confirms usage rights in settings → "
-              "connected Drive folders — or use another asset.",
 }
 REAL_ROLE_ORDER = {
     "customer_story": ("customer_photos", "product_catalog", "social_output"),
@@ -670,7 +661,7 @@ def _asset_media_type(brief) -> str:
     return "video" if brief.asset_type == "generated_video" else "image"
 
 
-def _find_real(brief, on_demand: bool, publishable_only: bool = False) -> list:
+def _find_real(brief, on_demand: bool) -> list:
     """Candidates from the client's connected folders: the brief's VISUAL
     words first; when none match, the newest described files of the right
     roles (the chooser still decides). Never raises."""
@@ -681,10 +672,10 @@ def _find_real(brief, on_demand: bool, publishable_only: bool = False) -> list:
         query = " ".join([brief.visual_direction or ""] + list(brief.must_include or []))
         roles = real_roles(brief)
         found = drive_assets.find_assets(brief.client_id, roles, query, _asset_media_type(brief), limit=8,
-                                         publishable_only=publishable_only, on_demand=on_demand)
-        if not [f for f in found if f["publishable"]]:
+                                         on_demand=on_demand)
+        if not found:
             found += drive_assets.find_assets(brief.client_id, roles, "", _asset_media_type(brief), limit=12,
-                                              publishable_only=publishable_only, include_pending=False)
+                                              include_pending=False)
         seen, out = set(), []
         for f in found:
             if f["file_id"] not in seen:
@@ -697,9 +688,8 @@ def _find_real(brief, on_demand: bool, publishable_only: bool = False) -> list:
 
 
 def choose_real_asset(client_id: int, brief, candidates: list) -> dict:
-    """The agent's own choice among real candidates ({} = none fits). Only
-    PUBLISHABLE candidates are ever passed in."""
-    candidates = [c for c in candidates or [] if c.get("publishable")][:12]
+    """The agent's own choice among real candidates ({} = none fits)."""
+    candidates = list(candidates or [])[:12]
     if not candidates:
         return {}
     payload = {"slide": {"role": brief.role, "post_format": brief.post_format,
@@ -728,18 +718,15 @@ def _real_summary(c: dict) -> dict:
     """What a card shows about a real asset: its folder and role."""
     return {"source_file_id": c.get("file_id", ""), "name": c.get("name", ""), "folder": c.get("folder", ""),
             "folder_path": c.get("folder_path", ""), "role": c.get("role", ""), "role_text": c.get("role_text", ""),
-            "usage_rights": c.get("usage_rights", ""), "connection_id": c.get("connection_id", ""),
+            "connection_id": c.get("connection_id", ""),
             "media_type": c.get("media_type", ""), "description": c.get("description", "")[:300]}
 
 
 @drive_storage.scoped
 def _use_real_asset(client_id: int, brief, chosen: dict, platform: str) -> dict:
     """The chosen real file, COPIED inside Drive into the client's media
-    folder (files.copy — no byte through our server; the client's folder is
-    only read). A re-run reuses the earlier copy."""
-    from core import drive_assets
-    if not drive_assets.publishable({}, {"role": chosen.get("role"), "usage_rights": chosen.get("usage_rights")}):
-        return {"success": False, "status": "rights_unconfirmed", "errors": ["customer photo without confirmed rights"]}
+    folder (files.copy — no byte through our server). A re-run reuses the
+    earlier copy."""
     kind = "video" if chosen.get("media_type") == "video" else "image"
     folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
     platform = platform if platform in folders else "instagram"
@@ -805,7 +792,7 @@ def generate_from_brief(client_id: int, brief, palette: dict = None, platform: s
     # Real assets FIRST (craft §10): the client's own connected folders,
     # searched and chosen by the agent before anything is generated — no
     # image model, no credits, no media-tool connection needed
-    chosen = choose_real_asset(client_id, brief, _find_real(brief, on_demand=True, publishable_only=True))
+    chosen = choose_real_asset(client_id, brief, _find_real(brief, on_demand=True))
     if chosen:
         used = _use_real_asset(client_id, brief, chosen, platform)
         if used.get("success"):

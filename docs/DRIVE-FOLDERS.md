@@ -11,7 +11,7 @@ cap, `find_assets`), `agents/media_agent.py` (`review_brief`, `generate_from_bri
 ## Access model — no OAuth
 
 The client shares the folder with our existing service account
-`drive-archiver@super-system-500410.iam.gserviceaccount.com` (Viewer is enough) and pastes the
+`drive-archiver@super-system-500410.iam.gserviceaccount.com` (Viewer lets us read; writing into the folder needs Editor) and pastes the
 folder link. Every Drive call runs `drive_storage.as_service_account()` with
 `supportsAllDrives` / `includeItemsFromAllDrives`. **No Drive scope was added to the OAuth
 app** (it is under Google verification review).
@@ -25,19 +25,12 @@ member of the Shared Drive. The errors are distinct Hebrew lines (`drive_folders
 
 ## Roles
 
-| role | access | usage_rights |
-|---|---|---|
-| product_catalog | read only | not_applicable |
-| customer_photos | read only | **unconfirmed** until the client confirms |
-| brand_assets | read only | not_applicable |
-| raw_materials | read only | not_applicable |
-| social_output | read/write | not_applicable |
-| archive | read/write | not_applicable |
+product_catalog, customer_photos, brand_assets, raw_materials, social_output, archive.
 
-Read only is enforced twice: nothing in `drive_folders` / `drive_assets` writes, and
-`drive_service.ensure_folder / upload_bytes / copy_file / start_resumable` refuse any read-only
-connected folder as a target (`ReadOnlyTarget`). Nothing in the client's Drive is renamed,
-moved or restructured. Real assets are COPIED (files.copy, inside Drive) into OUR media folder.
+The role ranks and filters assets in `find_assets` and decides which folders the agents draw
+from. It does NOT restrict access: every connected folder is read_write (2026-11-23, the
+manager's decision), and nothing in the code refuses a write into one. Real assets the agents
+use are COPIED (files.copy, inside Drive) into our media folder.
 
 ## Adding a folder (settings → "תיקיות דרייב מחוברות")
 
@@ -51,7 +44,6 @@ moved or restructured. Real assets are COPIED (files.copy, inside Drive) into OU
 3. Subfolders (walked to depth 6, system/trash folders skipped) inherit their parent's role. Each
    can be overridden (`…/{id}/role`, empty = inherit again) or excluded (`…/{id}/exclude`). A
    subfolder whose name suggests another role is flagged, never changed silently.
-4. customer_photos: a usage-rights checkbox with the explanation (`RIGHTS_NOTE`).
 
 ## Indexing (cheapest first)
 
@@ -96,7 +88,7 @@ re-describes a described file. Lease `drive_assets_lock:<id>`.
 ## The agents
 
 `drive_assets.find_assets(client_id, roles, query, media_type, limit)` → ranked
-`file_id, description, tags, role, usage_rights, media_type, publishable, folder, …`
+`file_id, description, tags, role, media_type, folder, …`
 (tags ×3, description ×2, name/path ×1; excluded subfolders never appear).
 
 - `media_agent.generate_from_brief` searches FIRST for every non-text asset; the agent
@@ -104,9 +96,8 @@ re-describes a described file. Lease `drive_assets_lock:<id>`.
   the media folder (idempotent via `appProperties.uallak_real_asset_from`), credits 0, no
   image tool needed.
 - `review_brief`: a proof slide, or a product_carousel / before_after / customer_story asset,
-  with no real match = an objection to the social agent (never a generated stand-in). A
-  customer photo without confirmed rights is surfaced (`rights_needed`), never used.
-- The publish gate (`social_queue.check`) re-checks usage rights LIVE (`rights_ok`).
+  with no real match = an objection to the social agent (never a generated stand-in).
+- Customer photos are used like any other real asset; nothing blocks their publication.
 - Cards show "Source: folder X (role)"; generated frames keep the `concept` flag.
 - `produce_post` asks for the image tool only when an asset must be GENERATED.
 
