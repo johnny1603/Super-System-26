@@ -13,9 +13,12 @@ core/post_brief, knowledge/social-craft.md §2, docs/POST-BRIEF.md).
   3. produce()  — per asset, in the sourcing priority: text_slides → ONE design
                   item (core/slide_design: drawn with real fonts from one
                   template + one palette variant, never an image model; the
-                  manager approves or critiques it); real_photo → a
-                  real asset is needed (flagged, never generated); generated →
-                  media_agent.generate_from_brief (prompt from visual_direction
+                  manager approves or critiques it); every other asset →
+                  media_agent.generate_from_brief: the client's connected Drive
+                  folders FIRST (core/drive_assets — the agent chooses a real
+                  file itself, copied into the media folder, its folder + role
+                  on the card); real_photo with nothing real → not made, never
+                  generated; otherwise generated (prompt from visual_direction
                   only, assert_copy_free). Each file joins the queue as its own
                   item, linked to the post, for the publish approval as before.
 
@@ -155,14 +158,16 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
     from agents import media_agent
     drafts = _load_drafts(client_id)
     draft = drafts.setdefault(post["set_id"], {"objections": []})
-    revise, escalations, flags = [], {}, {}
+    revise, escalations, flags, sources = [], {}, {}, {}
     for entry in post["assets"]:
         brief = post_brief.asset(entry)
         review = media_agent.review_brief(brief)
         flags[brief.asset_id] = list(review["flags"])
+        if review.get("real_asset"):
+            sources[brief.asset_id] = review["real_asset"]      # the card shows its folder + role
         if brief.asset_type == "text_slide":
             flags[brief.asset_id].append("text_slide_pending")
-        elif brief.asset_type == "real_photo":
+        elif brief.asset_type == "real_photo" and not review.get("real_asset"):
             flags[brief.asset_id].append("needs_real_asset")
         if not review["objection"]:
             continue
@@ -186,7 +191,7 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
                                            post.get("publish_date", ""))
     warnings = [{**warning, "occasion_date": post["occasion_date"]}] if warning else []
     item = social_queue.add_post(client_id, post, palette=palette, warnings=warnings,
-                                 escalations=escalations, flags=flags,
+                                 escalations=escalations, flags=flags, sources=sources,
                                  producer=persona if persona in social_queue.PRODUCERS else "media")
     line = pick(TEXT["queued"], lang).replace("{n}", str(len(post["assets"])))
     if escalations:
@@ -277,7 +282,8 @@ def produce(client_id: int, item_id: str) -> dict:
                     break               # the next assets would fail the same way
             continue
         spent += float(out.get("credits") or 0)
-        flags = ["concept"] if "concept" in (slide.get("flags") or []) else []
+        # A real asset from the client's folder is not a concept image
+        flags = ["concept"] if "concept" in (slide.get("flags") or []) and not out.get("real_asset") else []
         added = social_queue.add_safely(
             client_id, out["file_id"], out.get("kind") or "image",
             [c for c in item["channels"] if (out.get("kind") or "image") in social_queue.CHANNEL_KINDS.get(c, ())]
@@ -285,9 +291,10 @@ def produce(client_id: int, item_id: str) -> dict:
             caption=item.get("caption", ""), planned_date=item.get("planned_date", ""), producer="media",
             source="post", title=f"{item.get('title') or body['set_id']} · {n}/{len(slides)}", flags=flags,
             post_ref={"post_id": item["id"], "set_id": body["set_id"], "asset_id": brief.asset_id,
-                      "n": n, "of": len(slides)})
+                      "n": n, "of": len(slides)},
+            real_asset=out.get("real_asset") or None)
         results.append({"asset_id": brief.asset_id, "status": "made", "queue_id": added.get("id", ""),
-                        "link": out.get("link", "")})
+                        "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated"})
         made += 1
     design = {}
     if text_slides:

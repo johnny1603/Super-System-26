@@ -52,6 +52,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Image libraries for the Pillow tests
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfribidi0
+          pip install "$(grep -i '^pillow==' requirements.txt)"
+
       - name: Tests
         run: python -I -B scripts/run_tests.py
 

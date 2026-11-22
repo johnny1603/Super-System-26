@@ -100,7 +100,10 @@ class Models(unittest.TestCase):
                 if name.endswith(".py") and name != "claude_json.py" \
                         and "model=CLASSIFY_MODEL" in _src(folder, name):
                     users.append(name)
-        self.assertEqual(users, ["question_filter.py"])
+        # + steps no client reads either (2026-11-23): describing / classifying the
+        # client's own Drive files for the index, and the media agent choosing one
+        self.assertEqual(sorted(users), sorted(["question_filter.py", "drive_assets.py", "drive_folders.py",
+                                                "media_agent.py"]))
         self.assertIn("model=CLASSIFY_MODEL", _src("agents", "question_filter.py"))
         # and the haiku id is never hard-coded at a call site
         for folder in ("agents",):

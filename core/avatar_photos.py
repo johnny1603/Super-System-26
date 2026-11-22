@@ -156,7 +156,13 @@ def _quality(thumb: bytes) -> dict:
         image = Image.open(io.BytesIO(thumb)).convert("L")
         image.thumbnail((256, 256))
         stat = ImageStat.Stat(image)
-        edges = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES))
+        # Pillow's 3x3 kernel filters leave the 1-pixel frame UNFILTERED (the
+        # source pixels are copied), so on a flat photo the frame alone made
+        # the edge variance look sharp (~330 for flat grey). Measure inside it.
+        edge_image = image.filter(ImageFilter.FIND_EDGES)
+        if edge_image.width > 2 and edge_image.height > 2:
+            edge_image = edge_image.crop((1, 1, edge_image.width - 1, edge_image.height - 1))
+        edges = ImageStat.Stat(edge_image)
         small = image.resize((8, 8))
         pixels = list(small.getdata())
         mean = sum(pixels) / len(pixels)

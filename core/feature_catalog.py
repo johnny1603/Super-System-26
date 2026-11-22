@@ -385,6 +385,17 @@ FEATURES = [
         "persona": "media",
         "relevance": {"services": ["avatar", "אווטאר"], "connections": ["higgsfield", "elevenlabs"]},
     },
+    {
+        "key": "connected_drive_folders",
+        "name_he": "תיקיות דרייב מחוברות",
+        "what_he": ("משתפים איתנו תיקיות קיימות מה-Google Drive שלכם (תמונות מוצר, ביקורות, לוגו) ומדביקים קישור. "
+                    "אנחנו מזהים לבד מה יש בכל תיקייה, לא משנים בה כלום, והסוכנים בוחרים מהן תמונות אמיתיות לפוסטים "
+                    "לפני שמייצרים משהו במחשב. תמונות של לקוחות משמשות רק אחרי שאישרתם שיש הסכמה."),
+        "where_he": "האזור האישי, ׳תיקיות דרייב מחוברות׳",
+        "access": "self_serve",
+        "persona": "media",
+        "relevance": {"services": ["media", "social", "סושיאל", "מדיה"], "connections": []},
+    },
 ]
 
 _BY_KEY = {f["key"]: f for f in FEATURES}

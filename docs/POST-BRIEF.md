@@ -46,10 +46,11 @@
    - Approving it starts production (`post_pipeline.start`). A post item is never publishable: the gate refuses it.
 8. **Production**, per asset, within its `budget_credits`:
    - `text_slide`: DRAWN with real fonts (since 2026-11-23, docs/SLIDE-RENDERER.md). A post's text slides become ONE design item in the Social tab (one template, one palette variant); the manager approves or critiques it. It is never sent to an image model.
-   - `real_photo`: flagged as needing a real photo. It is never generated.
+   - Before ANY asset is generated, the media agent searches the client's connected Drive folders (`drive_assets.find_assets`, docs/DRIVE-FOLDERS.md) and chooses a real file itself; it is copied inside Drive into the media folder and its card shows the source folder + role (no image tool needed).
+   - `real_photo` with nothing real: flagged as needing a real photo, never generated. On a proof slide or in product_carousel / before_after / customer_story that is an objection to the social agent; a matching customer photo whose usage rights are not confirmed is surfaced (`rights_needed`), never used.
    - `generated_*`: `generate_from_brief`. The prompt comes from `visual_direction`, must_include / must_avoid and the palette only. `assert_copy_free` fails the call before the model if the prompt carries any of the copy (the whole text, or 4 of its words in a row) or any Hebrew.
    - Each file joins the queue as its own item (`post_ref`, `flags`) for the publish approval, as before.
 
 ## Not built yet
 
-- Picking a real photo from the client's library automatically.
+- Picking a real photo automatically: built 2026-11-23 for the client's CONNECTED Drive folders (docs/DRIVE-FOLDERS.md). Files in our own media folder are not searched this way yet.

@@ -2889,16 +2889,27 @@ def _v_post(value, client_id: int):
         return {"_needs_format": True, **raw}
 
 
+def _post_needs_generation(post: dict) -> bool:
+    """Does any asset of this post need an image / video MODEL? Only
+    generated_* assets do (an unknown type counts as needing it)."""
+    assets = (post or {}).get("assets") or []
+    return any(str((a or {}).get("asset_type") or "").strip().lower() not in ("text_slide", "real_photo")
+               for a in assets)
+
+
 def _prepare_produce_post(client_id: int, params: dict, context: dict, rows: list) -> dict:
     from core import client_state, post_pipeline
     lang = (context or {}).get("language") or "he"
     if _in_package({"package": client_state.cached_package(client_id)}, "media") is False:
         return {"refuse": _pick(PRODUCE_NOT_IN_PACKAGE, lang)}
-    if _media_tool_status(client_id) not in ("connected", "connected_unverified"):
-        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
-                "notice": _pick(_PRODUCE_TOOL_FIRST, lang).replace("{tool}", _creative_label("higgsfield", lang))}
     raw = dict(params.get("post") or {})
     raw.pop("_needs_format", None)
+    # The image tool is needed only when the post asks for an asset to be
+    # GENERATED. Text slides are drawn (core/slide_renderer) and real assets
+    # come from the client's own Drive folders — neither touches the tool.
+    if _post_needs_generation(raw) and _media_tool_status(client_id) not in ("connected", "connected_unverified"):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
+                "notice": _pick(_PRODUCE_TOOL_FIRST, lang).replace("{tool}", _creative_label("higgsfield", lang))}
     persona = (context or {}).get("persona") or "media"
     out = post_pipeline.submit(client_id, raw, (context or {}).get("message", ""), lang,
                                persona=persona if persona in ("media", "meta") else "media")

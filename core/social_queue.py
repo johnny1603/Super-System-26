@@ -245,7 +245,7 @@ def next_weekday(day_index: int, after: date = None) -> str:
 
 def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", planned_date: str = "",
         producer: str = "media", source: str = "chat", title: str = "", replaces: str = "",
-        plan_ref: dict = None, flags: list = None, post_ref: dict = None) -> dict:
+        plan_ref: dict = None, flags: list = None, post_ref: dict = None, real_asset: dict = None) -> dict:
     """One item waiting for the owner. The same Drive file already waiting or
     approved is NOT queued twice (that item is returned)."""
     file_id = str(file_id or "").strip()
@@ -273,6 +273,10 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         item["flags"] = [f for f in flags if f in FLAG_TEXT][:6]
     if post_ref:
         item["post_ref"] = post_ref        # {"post_id", "set_id", "asset_id", "n", "of"}
+    if real_asset:
+        # A REAL file from the client's connected Drive folder (core/drive_assets):
+        # the card shows its folder + role; the gate re-checks usage rights live
+        item["real_asset"] = {k: str(real_asset.get(k) or "")[:300] for k in REAL_ASSET_KEYS}
     queue.append(item)
     _save(client_id, queue)
     return item
@@ -301,7 +305,37 @@ FLAG_TEXT = {
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
                               "يلزم هنا صورة حقيقية لعملكم — لا تُولَّد",
                               "Здесь нужно настоящее фото вашей работы — оно не генерируется"),
+    "rights_needed": _five("נמצאה תמונת לקוח שמתאימה, אבל זכויות השימוש בה לא אושרו — אפשר לאשר באזור האישי ← תיקיות דרייב מחוברות. עד אז היא לא תתפרסם.",
+                           "A matching customer photo was found, but its usage rights aren't confirmed — confirm them in My account → connected Drive folders. Until then it won't be published.",
+                           "Une photo client correspondante existe, mais ses droits d'usage ne sont pas confirmés — confirmez-les dans Mon compte → dossiers Drive connectés. D'ici là, elle ne sera pas publiée.",
+                           "وُجدت صورة عميل مناسبة، لكن حقوق استخدامها غير مؤكدة — أكدوها في المنطقة الشخصية ← مجلدات Drive المتصلة. حتى ذلك لن تُنشر.",
+                           "Найдено подходящее фото клиента, но права на использование не подтверждены — подтвердите их в «Личный кабинет → подключённые папки Drive». До тех пор оно не публикуется."),
 }
+
+# A real file from the client's connected Drive folder (core/drive_assets)
+REAL_ASSET_KEYS = ("source_file_id", "name", "folder", "folder_path", "role", "role_text", "usage_rights",
+                   "connection_id", "media_type")
+SOURCE_TEXT = _five("מקור: תמונה אמיתית מהתיקייה \"{folder}\" ({role}) ב-Drive שלכם",
+                    "Source: a real file from your Drive folder \"{folder}\" ({role})",
+                    "Source : un vrai fichier de votre dossier Drive « {folder} » ({role})",
+                    "المصدر: ملف حقيقي من مجلد Drive لديكم \"{folder}\" ({role})",
+                    "Источник: настоящий файл из вашей папки Drive «{folder}» ({role})")
+
+
+def source_text(real_asset: dict, lang: str) -> str:
+    """"Source: folder X (role)" for a real asset, "" otherwise."""
+    if not real_asset or not real_asset.get("folder"):
+        return ""
+    role = real_asset.get("role_text") if lang == "he" else str(real_asset.get("role") or "").replace("_", " ")
+    return pick(SOURCE_TEXT, lang).replace("{folder}", str(real_asset["folder"])).replace("{role}", role or "")
+
+
+def _rights_ok(client_id: int, real_asset: dict) -> bool:
+    try:
+        from core import drive_assets
+        return drive_assets.rights_ok(client_id, real_asset)
+    except Exception:
+        return real_asset.get("role") != "customer_photos"
 
 WARNING_TEXT = {
     "late": _five("שימו לב: עם זמן הייצור ({days} ימי עבודה), הזמנה שתגיע עד {occasion} צריכה להיעשות עד {order_by} — ותאריך הפרסום ({publish}) כבר אחרי זה.",
@@ -344,7 +378,7 @@ def _post_channels(post: dict) -> list:
 
 
 def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = None,
-             escalations: dict = None, flags: dict = None, producer: str = "media") -> dict:
+             escalations: dict = None, flags: dict = None, producer: str = "media", sources: dict = None) -> dict:
     """The copy of ONE contract post, waiting for the owner. The same set_id
     still waiting = the SAME item, revised (never a second card)."""
     queue = _load(client_id)
@@ -354,7 +388,9 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
                                           "visual_direction", "must_include", "must_avoid", "aspect_ratio",
                                           "budget_credits")}
                       | {"flags": list((flags or {}).get(a["asset_id"]) or []),
-                         "escalation": (escalations or {}).get(a["asset_id"]) or {}})
+                         "escalation": (escalations or {}).get(a["asset_id"]) or {},
+                         "real_asset": {k: str(((sources or {}).get(a["asset_id"]) or {}).get(k) or "")[:300]
+                                        for k in REAL_ASSET_KEYS} if (sources or {}).get(a["asset_id"]) else {}})
     body = {"post_format": post["post_format"], "format_reason": post["format_reason"],
             "objective": post["objective"], "audience": post["audience"], "set_id": post["set_id"],
             "occasion": post.get("occasion", ""), "occasion_date": post.get("occasion_date", ""),
@@ -496,7 +532,8 @@ def _post_view(item: dict, lang: str) -> dict:
                        "asset_type": s["asset_type"],
                        "asset_type_text": pick(COPY_TEXT["asset_type"].get(s["asset_type"], {"en": s["asset_type"]}), lang),
                        "flags": [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in s.get("flags") or [] if f in FLAG_TEXT],
-                       "escalation": s.get("escalation") or {}})
+                       "escalation": s.get("escalation") or {},
+                       "source_text": source_text(s.get("real_asset"), lang)})
     return {"post_format": post.get("post_format", ""), "format_reason": post.get("format_reason", ""),
             "objective": post.get("objective", ""), "audience": post.get("audience", ""),
             "palette": (post.get("palette") or {}).get("label", ""), "slides": slides,
@@ -689,6 +726,10 @@ def check(client_id: int, channel: str, file_id: str = "", item_id: str = "") ->
         item = approved[0]
         if (item.get("delivered") or {}).get(channel, {}).get("how") == "done":
             raise GateClosed("already_published", f"item {item['id']} is already published on {channel}")
+        if item.get("real_asset") and not _rights_ok(client_id, item["real_asset"]):
+            # A customer photo whose usage rights are not confirmed NEVER goes out
+            raise GateClosed("rights_unconfirmed", f"item {item['id']} is a customer photo without confirmed "
+                                                    f"usage rights (settings → connected Drive folders)")
         return item
     states = sorted({i["status"] for i in match}) or ["none"]
     raise GateClosed("not_approved", f"no item approved for {channel} in the Social tab ({', '.join(states)})")
@@ -782,6 +823,9 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
             extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in item["flags"] if f in FLAG_TEXT]
         if item.get("post_ref"):
             extra["post_ref"] = item["post_ref"]
+        if item.get("real_asset"):
+            extra["real_asset"] = item["real_asset"]
+            extra["source_text"] = source_text(item["real_asset"], lang)
         out.append({**extra, "id": item["id"], "file_id": item["file_id"], "kind": item["kind"], "title": item.get("title", ""),
                     "caption": item.get("caption", ""), "channels": item["channels"],
                     "planned_date": item.get("planned_date", ""), "overdue": item["status"] in ("waiting", "approved")

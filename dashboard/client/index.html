@@ -1432,6 +1432,33 @@ body.bs-open { overflow: hidden; }
 .soc-slide input[type=text], .soc-slide textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: inherit; }
 .soc-flag { font-size: 12px; color: var(--gray); }
+.soc-flag.source { color: #7CD992; }
+/* Connected Drive folders (personal area) */
+.drive-folders { display: flex; flex-direction: column; gap: 12px; text-align: right; }
+.drive-how { font-size: 13px; color: var(--gray); line-height: 1.6; }
+.drive-share { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.drive-share code { direction: ltr; font-size: 12px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 8px; word-break: break-all; color: var(--white); }
+.drive-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.drive-add input { flex: 1 1 240px; min-width: 0; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--white); border-radius: 10px; padding: 9px 12px; font: inherit; }
+.drive-msg:empty, .drive-index:empty { display: none; }
+.drive-msg { font-size: 13px; line-height: 1.6; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+.drive-msg.err { border: 1px solid #FFB020; }
+.drive-index { font-size: 13px; line-height: 1.6; padding: 10px 12px; border-radius: 10px; background: var(--accent-dim); }
+.drive-confirm { border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.drive-confirm select, .drive-row select { background: var(--panel-2); border: 1px solid var(--border); color: var(--white);
+  border-radius: 8px; padding: 5px 8px; font: inherit; }
+.drive-note { font-size: 12px; color: var(--gray); line-height: 1.5; }
+.drive-row { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.drive-row.sub { border: none; border-inline-start: 2px solid var(--border); border-radius: 0; padding: 4px 10px; margin-inline-start: 10px; }
+.drive-row .drive-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drive-row .drive-name { font-weight: 700; }
+.drive-meta { font-size: 12px; color: var(--gray); }
+.drive-err { font-size: 12px; color: #FFB020; line-height: 1.5; }
+.drive-sugg { font-size: 12px; color: #FFB020; }
+.drive-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.drive-actions label { font-size: 12px; color: var(--gray); display: inline-flex; gap: 4px; align-items: center; }
 .soc-flag.warn { color: #FFB020; font-weight: 700; }
 .soc-design-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; direction: rtl; }
 .soc-design-strip img { width: 160px; flex: 0 0 auto; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
@@ -2628,6 +2655,29 @@ a.media-item:hover { border-color: var(--accent); }
 
   <div class="section-head"><div><div class="section-title" style="font-size:15px;" data-i18n="personal_package">החבילה שלי</div></div></div>
   <div class="detail-grid" id="packageDetails"></div>
+
+  <!-- Connected Drive folders (core/drive_folders + core/drive_assets,
+       docs/DRIVE-FOLDERS.md): the client's own pool of real photos/videos the
+       agents choose from. Hebrew RTL; the server's lines are shown as given. -->
+  <div class="section-head"><div>
+    <div class="section-title" style="font-size:15px;" data-i18n-skip>תיקיות דרייב מחוברות</div>
+    <div class="section-sub" data-i18n-skip>תמונות וסרטונים אמיתיים שלכם — הסוכנים בוחרים מהם לבד לפוסטים, לפני שמייצרים משהו במחשב.</div>
+  </div></div>
+  <div class="billing-card drive-folders" id="driveFolders" dir="rtl" data-i18n-skip>
+    <div class="drive-how">
+      <div><b>איך מחברים:</b> ב-Drive, לחיצה ימנית על התיקייה ← שיתוף ← הוסיפו את הכתובת הזו עם הרשאת "צופה", ואז הדביקו כאן את הקישור לתיקייה. לא צריך לסדר או לשנות שמות — אנחנו מזהים לבד מה יש בכל תיקייה, ולא נוגעים בשום דבר אצלכם.</div>
+      <div class="drive-share"><code id="driveShareWith">drive-archiver@super-system-500410.iam.gserviceaccount.com</code>
+        <button type="button" class="export-btn" id="driveCopyBtn" data-i18n-skip>העתקה</button></div>
+    </div>
+    <div class="drive-add">
+      <input type="url" id="driveLink" autocomplete="off" dir="ltr">
+      <button type="button" class="export-btn" id="drivePreviewBtn" data-i18n-skip>בדיקה</button>
+    </div>
+    <div class="drive-msg" id="driveAddMsg" role="status" aria-live="polite"></div>
+    <div class="drive-confirm" id="driveConfirm" hidden></div>
+    <div class="drive-index" id="driveIndex" role="status" aria-live="polite"></div>
+    <div class="drive-list" id="driveList"><div class="empty-row" data-i18n-skip>טוען…</div></div>
+  </div>
 
   <div class="section-head">
     <div>
@@ -8364,9 +8414,254 @@ function showView(name) {
   if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
+  if (name === 'personal') loadDriveFolders();   // every open: the index moves (counts, state)
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONNECTED DRIVE FOLDERS — the client's own pool of real photos and videos
+// (core/drive_folders + core/drive_assets, docs/DRIVE-FOLDERS.md). Paste a
+// link → we read it and infer what it holds (pre-selected, one line why) →
+// the client confirms. Subfolders inherit their parent's type, can be
+// overridden or excluded one by one. Every server line is Hebrew, shown as is.
+// A run in progress is moved by this section's poll (≤ 20 s per call).
+// ═══════════════════════════════════════════════════════════════════════════
+const driveUI = { data: null, preview: null, link: '', timer: null, armed: '' };
+
+// Hebrew only, as specified for this section (RTL); the server's lines are Hebrew too
+const DRIVE_T = {
+  noEdit: 'צפייה בלבד — אי אפשר לשנות כאן.', // i18n-ok
+  offline: 'אין חיבור כרגע. נסו שוב בעוד רגע.', // i18n-ok
+  loadFail: 'לא הצלחנו לטעון את התיקיות כרגע. נסו שוב בעוד רגע.', // i18n-ok
+  pickRole: 'בחרו מה יש בתיקייה…', // i18n-ok
+  roleAria: 'סוג התיקייה', // i18n-ok
+  files: 'קבצים', // i18n-ok
+  indexed: 'מאונדקסים', // i18n-ok
+  rw: 'קריאה וכתיבה', // i18n-ok
+  ro: 'קריאה בלבד', // i18n-ok
+  sharedDrive: 'אחסון משותף', // i18n-ok
+  lastIndexed: 'אינדוקס אחרון: ', // i18n-ok
+  lastScan: 'סריקה אוטומטית: ', // i18n-ok
+  inheritLabel: 'כמו התיקייה שמעליה', // i18n-ok
+  inherited: ' (בירושה)', // i18n-ok
+  overridden: ' (נבחר ידנית)', // i18n-ok
+  rightsOk: 'זכויות שימוש מאושרות', // i18n-ok
+  exclude: 'לא לכלול', // i18n-ok
+  disconnect: 'ניתוק', // i18n-ok
+  disconnectAgain: 'לחצו שוב לניתוק', // i18n-ok
+  suggest: 'השם נראה כמו {role} — אם כך, שנו את הסוג של התיקייה הזו.', // i18n-ok
+  excludedNow: 'לא נכלל באינדוקס', // i18n-ok
+  reindex: 'אינדוקס עכשיו', // i18n-ok
+  none: 'עוד לא חיברתם תיקיות.', // i18n-ok
+  holds: 'מה יש בתיקייה:', // i18n-ok
+  connect: 'חיבור התיקייה', // i18n-ok
+  cancel: 'ביטול', // i18n-ok
+  already: 'התיקייה הזו כבר מחוברת.', // i18n-ok
+  consent: 'יש לנו הסכמה של הלקוחות שבתמונות — אפשר להשתמש בהן בפרסום', // i18n-ok
+  copied: 'הועתק ✓', // i18n-ok
+  copyManual: 'סמנו והעתיקו', // i18n-ok
+  pasteFirst: 'הדביקו קודם את הקישור לתיקייה.', // i18n-ok
+  checking: 'בודקים את התיקייה…', // i18n-ok
+  readFail: 'לא הצלחנו לקרוא את התיקייה.', // i18n-ok
+  chooseFirst: 'בחרו מה יש בתיקייה לפני החיבור.', // i18n-ok
+  connecting: 'מחברים ובודקים גישה…', // i18n-ok
+  connectFail: 'החיבור לא הצליח.', // i18n-ok
+  connected: 'התיקייה חוברה ✓ האינדוקס מתחיל — החדשים קודם.', // i18n-ok
+  notSaved: 'השינוי לא נשמר.', // i18n-ok
+  placeholder: 'הדביקו קישור לתיקייה ב-Google Drive', // i18n-ok
+};
+
+function driveEl(id) { return document.getElementById(id); }
+
+function driveDate(iso) {
+  try { return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return ''; }
+}
+
+async function drivePost(url, body) {
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
+                                   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (res.status === 401) { window.location.href = '/login/'; return null; }
+    if (res.status === 403) return { success: false, data: { text: DRIVE_T.noEdit } };
+    return (await res.json()) || {};
+  } catch (e) {
+    return { success: false, data: { text: DRIVE_T.offline } };
+  }
+}
+
+async function loadDriveFolders() {
+  driveEl('driveLink').placeholder = DRIVE_T.placeholder;
+  try {
+    const res = await fetch('/api/client/drive-folders', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    renderDriveFolders(((await res.json()) || {}).data || {});
+  } catch (e) {
+    driveEl('driveList').innerHTML = `<div class="empty-row">${esc(DRIVE_T.loadFail)}</div>`;
+  }
+}
+
+function driveMsg(text, isError) {
+  const el = driveEl('driveAddMsg');
+  el.textContent = text || '';
+  el.classList.toggle('err', Boolean(isError && text));
+}
+
+function driveRoleSelect(id, roles, selected, inheritLabel) {
+  const first = inheritLabel != null ? `<option value=""${selected ? '' : ' selected'}>${esc(inheritLabel)}</option>`
+                                     : (selected ? '' : `<option value="" selected disabled>${esc(DRIVE_T.pickRole)}</option>`);
+  return `<select data-drive-role="${esc(id)}" aria-label="${esc(DRIVE_T.roleAria)}">${first}${roles.map(r =>
+    `<option value="${esc(r.role)}"${r.role === selected ? ' selected' : ''}>${esc(r.text)}</option>`).join('')}</select>`;
+}
+
+function driveRow(f, roles, depth, rightsNote) {
+  const T = DRIVE_T;
+  const root = depth === 0;
+  const meta = [];
+  if (root && f.status_text) meta.push(f.status_text);
+  meta.push(`${f.item_count} ${T.files}`, `${f.indexed_count} ${T.indexed}`);
+  meta.push(f.access === 'read_write' ? T.rw : T.ro);
+  if (root && f.drive_kind === 'shared_drive') meta.push(T.sharedDrive);
+  if (root && f.last_indexed_at) meta.push(T.lastIndexed + driveDate(f.last_indexed_at));
+  if (root && f.last_auto_scan_at) meta.push(T.lastScan + driveDate(f.last_auto_scan_at));
+  const inherited = !root && f.role_source !== 'override';
+  const select = root ? driveRoleSelect(f.id, roles, f.role, null)
+                      : driveRoleSelect(f.id, roles, inherited ? '' : f.role, T.inheritLabel);
+  const roleNow = !root ? `<span class="drive-meta">${esc(f.role_text || '')}${inherited ? T.inherited : T.overridden}</span>` : '';
+  const rights = f.role === 'customer_photos' && !f.excluded_effective
+    ? `<label><input type="checkbox" data-drive-rights="${esc(f.id)}"${f.usage_rights === 'confirmed' ? ' checked' : ''}> ${esc(T.rightsOk)}</label>` : '';
+  const exclude = !root ? `<label><input type="checkbox" data-drive-exclude="${esc(f.id)}"${f.excluded ? ' checked' : ''}> ${esc(T.exclude)}</label>` : '';
+  const disconnect = root ? `<button type="button" class="export-btn" data-drive-disconnect="${esc(f.id)}">${esc(driveUI.armed === f.id ? T.disconnectAgain : T.disconnect)}</button>` : '';
+  const sugg = f.suggested_role_text && !f.excluded
+    ? `<div class="drive-sugg">${esc(T.suggest.replace('{role}', f.suggested_role_text))}</div>` : '';
+  const note = f.role === 'customer_photos' && f.usage_rights !== 'confirmed' && !f.excluded_effective && (root || f.role_source === 'override')
+    ? `<div class="drive-note">${esc(rightsNote || '')}</div>` : '';
+  const kids = f.excluded ? '' : (f.children || []).map(c => driveRow(c, roles, depth + 1, rightsNote)).join('');
+  return `<div class="drive-row${root ? '' : ' sub'}">
+    <div class="drive-head"><span class="drive-name">${root ? '📁' : '↳'} ${esc(f.display_name)}</span>${roleNow}</div>
+    <div class="drive-meta">${esc(f.excluded ? T.excludedNow : meta.join(' · '))}</div>
+    ${f.error_text ? `<div class="drive-err">${esc(f.error_text)}</div>` : ''}${sugg}
+    <div class="drive-actions">${f.excluded ? '' : select}${rights}${exclude}${disconnect}</div>${note}${kids}</div>`;
+}
+
+function renderDriveFolders(d) {
+  driveUI.data = d;
+  if (d.share_with) driveEl('driveShareWith').textContent = d.share_with;
+  const idx = d.index || {};
+  driveEl('driveIndex').textContent = idx.message || '';
+  const list = d.folders || [];
+  const reindex = list.length && !ADMIN_VIEW && !(idx.state === 'queued' || idx.state === 'running')
+    ? `<div class="drive-actions"><button type="button" class="export-btn" id="driveReindex">${esc(DRIVE_T.reindex)}</button></div>` : '';
+  driveEl('driveList').innerHTML = list.length
+    ? reindex + list.map(f => driveRow(f, d.roles || [], 0, d.rights_note)).join('')
+    : `<div class="empty-row">${esc(DRIVE_T.none)}</div>`;
+  if (ADMIN_VIEW) driveEl('driveFolders').querySelectorAll('input,select,button:not(#driveCopyBtn)').forEach(el => { el.disabled = true; });
+  const running = idx.state === 'queued' || idx.state === 'running';
+  clearTimeout(driveUI.timer);
+  if (running && !ADMIN_VIEW) driveUI.timer = setTimeout(driveStep, 2500);
+}
+
+async function driveStep() {
+  const view = document.getElementById('viewPersonal');
+  if (!view || !view.classList.contains('active')) return;          // resumes on the next open
+  const out = await drivePost('/api/client/drive-folders/step', {});
+  if (out && out.data) renderDriveFolders(out.data);
+}
+
+function driveShowConfirm(p) {
+  const T = DRIVE_T;
+  const box = driveEl('driveConfirm');
+  const roles = (driveUI.data && driveUI.data.roles) || p.roles || [];
+  box.innerHTML = `<div><b>📁 ${esc(p.display_name)}</b>${p.drive_kind === 'shared_drive' ? ' · ' + esc(T.sharedDrive) : ''}</div>
+    <div class="drive-note">${esc(p.explanation || '')}</div>
+    <div class="drive-actions"><span>${esc(T.holds)}</span>${driveRoleSelect('new', roles, p.inferred_role || '', null)}</div>
+    <div id="driveNewRights"></div>
+    <div class="drive-actions"><button type="button" class="export-btn" id="driveConnectBtn">${esc(T.connect)}</button>
+      <button type="button" class="export-btn" id="driveCancelBtn">${esc(T.cancel)}</button></div>
+    ${p.already_connected ? `<div class="drive-note">${esc(T.already)}</div>` : ''}`;
+  box.hidden = false;
+  driveNewRights(p.inferred_role || '');
+}
+
+function driveNewRights(role) {
+  const el = driveEl('driveNewRights');
+  if (!el) return;
+  const note = (driveUI.data && driveUI.data.rights_note) || '';
+  el.innerHTML = role === 'customer_photos'
+    ? `<div class="drive-note">${esc(note)}</div><label class="drive-meta"><input type="checkbox" id="driveNewRightsBox"> ${esc(DRIVE_T.consent)}</label>` : '';
+}
+
+document.addEventListener('click', async (ev) => {
+  const box = ev.target.closest && ev.target.closest('#driveFolders');
+  if (!box) return;
+  const T = DRIVE_T;
+  const t = ev.target;
+  if (t.id === 'driveCopyBtn') {
+    try { await navigator.clipboard.writeText(driveEl('driveShareWith').textContent); t.textContent = T.copied; }
+    catch (e) { t.textContent = T.copyManual; }
+    return;
+  }
+  if (ADMIN_VIEW) return;
+  if (t.id === 'drivePreviewBtn') {
+    const link = driveEl('driveLink').value.trim();
+    if (!link) { driveMsg(T.pasteFirst, true); return; }
+    t.disabled = true; driveMsg(T.checking); driveEl('driveConfirm').hidden = true;
+    const out = await drivePost('/api/client/drive-folders/preview', { link });
+    t.disabled = false;
+    if (!out) return;
+    if (!out.success) { driveMsg((out.data || {}).text || T.readFail, true); return; }
+    driveMsg(''); driveUI.preview = out.data; driveUI.link = link; driveShowConfirm(out.data);
+    return;
+  }
+  if (t.id === 'driveCancelBtn') { driveEl('driveConfirm').hidden = true; driveUI.preview = null; return; }
+  if (t.id === 'driveConnectBtn') {
+    const sel = driveEl('driveConfirm').querySelector('select[data-drive-role="new"]');
+    const role = sel ? sel.value : '';
+    if (!role) { driveMsg(T.chooseFirst, true); return; }
+    const rightsBox = driveEl('driveNewRightsBox');
+    t.disabled = true; driveMsg(T.connecting);
+    const out = await drivePost('/api/client/drive-folders/connect',
+      { link: driveUI.link, role, usage_rights: role === 'customer_photos' ? (rightsBox && rightsBox.checked ? 'confirmed' : 'unconfirmed') : '' });
+    t.disabled = false;
+    if (!out) return;
+    if (!out.success) { driveMsg((out.data || {}).text || T.connectFail, true); return; }
+    driveMsg(T.connected);
+    driveEl('driveConfirm').hidden = true; driveEl('driveLink').value = '';
+    renderDriveFolders(out.data || {});
+    return;
+  }
+  if (t.id === 'driveReindex') {
+    t.disabled = true;
+    const out = await drivePost('/api/client/drive-folders/reindex', {});
+    if (out && out.data && out.success) renderDriveFolders(out.data); else { t.disabled = false; driveMsg(((out || {}).data || {}).text || '', true); }
+    return;
+  }
+  const disc = t.getAttribute && t.getAttribute('data-drive-disconnect');
+  if (disc) {
+    if (driveUI.armed !== disc) { driveUI.armed = disc; t.textContent = T.disconnectAgain; return; }
+    driveUI.armed = '';
+    const out = await drivePost(`/api/client/drive-folders/${encodeURIComponent(disc)}/disconnect`, {});
+    if (out && out.success) renderDriveFolders(out.data || {}); else driveMsg(((out || {}).data || {}).text || '', true);
+  }
+});
+
+document.addEventListener('change', async (ev) => {
+  const t = ev.target;
+  if (!(t.closest && t.closest('#driveFolders')) || ADMIN_VIEW) return;
+  const roleId = t.getAttribute('data-drive-role');
+  if (roleId === 'new') { driveNewRights(t.value); return; }
+  let url = '', body = {};
+  if (roleId) { url = `/api/client/drive-folders/${encodeURIComponent(roleId)}/role`; body = { role: t.value }; }
+  const ex = t.getAttribute('data-drive-exclude');
+  if (ex) { url = `/api/client/drive-folders/${encodeURIComponent(ex)}/exclude`; body = { excluded: t.checked }; }
+  const rights = t.getAttribute('data-drive-rights');
+  if (rights) { url = `/api/client/drive-folders/${encodeURIComponent(rights)}/rights`; body = { usage_rights: t.checked ? 'confirmed' : 'unconfirmed' }; }
+  if (!url) return;
+  t.disabled = true;
+  const out = await drivePost(url, body);
+  if (out && out.success) { driveMsg(''); renderDriveFolders(out.data || {}); }
+  else { t.disabled = false; driveMsg(((out || {}).data || {}).text || DRIVE_T.notSaved, true); }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SOCIAL — the ONE approval queue for social media (core/social_queue,
@@ -8428,7 +8723,8 @@ function socialPostBody(item) {
   const p = item.post || {};
   const editing = social.editing === item.id;
   const slides = (p.slides || []).map(s => {
-    const flags = (s.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
+    const flags = (s.source_text ? `<div class="soc-flag source">${esc(s.source_text)}</div>` : '')
+      + (s.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
     const esc2 = s.escalation && (s.escalation.media || s.escalation.counterpart)
       ? `<div class="soc-flag">${esc(t('soc_post_positions', { media: s.escalation.media || '', other: s.escalation.counterpart || '' }))}</div>` : '';
     const copy = editing
@@ -8508,6 +8804,7 @@ function socialRow(item) {
   } else {
     body = `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
   }
+  if (item.source_text) body += `<div class="soc-flag source">${esc(item.source_text)}</div>`;
   if (item.flags && item.flags.length) body += item.flags.map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
   const deliveries = Object.keys(item.delivery || {}).map(c =>
     `<div class="${esc(item.delivery[c].state)}"><b>${esc(socialChannelName(c))}:</b> ${esc(item.delivery[c].text)}</div>`).join('');

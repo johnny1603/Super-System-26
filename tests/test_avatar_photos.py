@@ -65,7 +65,9 @@ class OnePhoto(unittest.TestCase):
         out = ap.assess({"id": "a", "mimeType": "image/png"})
         self.assertEqual(out["issues"], [])
 
-    @unittest.skipUnless(HAVE_PIL, "Pillow not installed here (prod has it)")
+    # Skipped only on a dev box without Pillow; in CI (CI=true) it always runs
+    # — Pillow is installed by both workflows, and a missing one fails loudly.
+    @unittest.skipUnless(HAVE_PIL or os.environ.get("CI"), "Pillow not installed here (CI and prod have it)")
     def test_light_and_sharpness_from_the_thumbnail(self):
         from PIL import Image, ImageDraw
 
@@ -84,6 +86,10 @@ class OnePhoto(unittest.TestCase):
         good = ap.assess(meta("a"), png(110, pattern=True))
         self.assertNotIn("blurry", good["issues"])
         self.assertEqual(len(good["fingerprint"]), 64)
+        # The cause of the old failure: Pillow leaves a filtered image's 1-pixel
+        # frame unfiltered, which gave a flat grey photo a sharpness of ~330
+        self.assertEqual(ap._quality(png(130))["sharpness"], 0)
+        self.assertGreater(ap._quality(png(110, pattern=True))["sharpness"], ap.BLURRY)
 
 
 class TheSet(unittest.TestCase):

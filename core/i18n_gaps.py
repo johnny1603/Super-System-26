@@ -80,7 +80,7 @@ KNOWN_DEBT = {
     "core/chat_route.py": 3,
     "core/client_auth.py": 2,
     "core/client_journey.py": 1,
-    "core/client_settings.py": 10,
+    "core/client_settings.py": 12,          # admin-only labels (label_he); +2 drive-folders cap settings 2026-11-23
     "core/connection_catalog.py": 34,
     "core/connection_help.py": 2,
     "core/control_room.py": 17,
@@ -91,7 +91,7 @@ KNOWN_DEBT = {
     "core/drive_pull.py": 29,
     "core/elevenlabs_service.py": 4,
     "core/export_service.py": 7,
-    "core/feature_catalog.py": 111,
+    "core/feature_catalog.py": 116,         # +5: the connected_drive_folders entry (2026-11-23), Hebrew like every entry
     "core/frustration.py": 13,
     "core/gmail_outreach.py": 1,
     "core/israel_calendar.py": 36,

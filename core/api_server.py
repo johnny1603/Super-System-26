@@ -3620,6 +3620,47 @@ def actions_reap():
     except Exception as e:
         raise HTTPException(status_code=500, detail=type(e).__name__)
 
+@app.get("/api/drive/assets/scan", dependencies=_admin_only)
+def drive_assets_scan():
+    # Daily Cloud Scheduler job drive-assets-scan (X-Admin-Key): every
+    # connected client folder — NEW or CHANGED files only, inside the free cap,
+    # never re-describing a described file (core/drive_assets.daily_scan). What
+    # doesn't fit now continues on the every-minute tick.
+    from core import drive_assets
+    try:
+        return {"success": True, "data": drive_assets.daily_scan(200.0)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=type(e).__name__)
+
+class DriveAssetCreditsRequest(BaseModel):
+    items: int = 0
+    usd: float = None
+    note: str = ""
+
+@app.get("/api/admin/drive-assets/{client_id}")
+def admin_drive_assets(client_id: int, request: Request):
+    # The team's view of a client's index: meter (measured cost per item),
+    # cap + quote, credits history
+    _require_admin(request)
+    from core import drive_assets, drive_folders
+    state = drive_assets._load(client_id)
+    return {"success": True, "data": {**drive_assets.view_state(client_id, state),
+                                      "meter": state.get("meter") or {}, "credits": state.get("credits") or {},
+                                      "cap_record": state.get("cap") or {}, "settings": drive_assets.settings(client_id),
+                                      "folders": drive_folders.tree(client_id)}}
+
+@app.post("/api/admin/drive-assets/{client_id}/credits")
+def admin_drive_assets_credits(client_id: int, req: DriveAssetCreditsRequest, request: Request):
+    # After the representative billed the client: load credits (items) —
+    # indexing resumes exactly where it stopped
+    _require_admin(request)
+    from core import drive_assets
+    try:
+        return {"success": True, "data": drive_assets.load_credits(client_id, req.items, req.usd, by="admin",
+                                                                    note=req.note)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/drive/usage-scan", dependencies=_admin_only)
 def drive_usage_scan():
     # Daily Cloud Scheduler job (X-Admin-Key), same pattern as
@@ -6310,6 +6351,127 @@ def client_media_add_link_step(request: Request):
     from core import drive_pull
     return _client_link_answer(client_id, lambda: drive_pull.step(client_id, 15))
 
+# ─── Connected Drive folders: the client's own pool of real assets ──────────
+# core/drive_folders + core/drive_assets, docs/DRIVE-FOLDERS.md. The client
+# shares a folder with our service account and pastes its link — no OAuth, no
+# new scope. Every failure is ONE Hebrew line saying exactly what to do.
+
+class DriveFolderLinkRequest(BaseModel):
+    link: str = ""
+
+class DriveFolderConnectRequest(BaseModel):
+    link: str = ""
+    role: str = ""
+    usage_rights: str = ""
+
+class DriveFolderRoleRequest(BaseModel):
+    role: str = ""
+
+class DriveFolderExcludeRequest(BaseModel):
+    excluded: bool = True
+
+class DriveFolderRightsRequest(BaseModel):
+    usage_rights: str = ""
+
+def _drive_folders_view(client_id: int) -> dict:
+    from core import drive_assets, drive_folders
+    return {"folders": drive_folders.tree(client_id), "index": drive_assets.view_state(client_id),
+            "share_with": drive_folders.share_with(), "rights_note": drive_folders.RIGHTS_NOTE,
+            "roles": [{"role": r, "text": drive_folders.ROLE_TEXT[r], "access": drive_folders.access_for(r)}
+                      for r in drive_folders.ROLES]}
+
+def _drive_folder_call(fn):
+    from core import drive_folders
+    try:
+        return {"success": True, "data": fn()}
+    except drive_folders.FolderError as e:
+        return {"success": False, "data": {"code": e.code, "text": e.text, **(e.extra or {}),
+                                           "share_with": drive_folders.share_with()}}
+
+def _drive_folders_write(request: Request, client_id: int) -> int:
+    # Writes are refused in the staff (read-only) view
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    return client_id
+
+@app.get("/api/client/drive-folders")
+def client_drive_folders(request: Request):
+    # The settings section: every connected folder with its subfolder tree,
+    # counts, roles and the index state (a plain Hebrew line, never a stall)
+    client_id = _require_session(request)
+    return {"success": True, "data": _drive_folders_view(client_id)}
+
+@app.post("/api/client/drive-folders/preview")
+def client_drive_folders_preview(req: DriveFolderLinkRequest, request: Request):
+    # Step 1: read the pasted folder, infer its role — NOTHING is saved
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_folders
+    return _drive_folder_call(lambda: drive_folders.preview(client_id, req.link[:2000]))
+
+@app.post("/api/client/drive-folders/connect")
+def client_drive_folders_connect(req: DriveFolderConnectRequest, request: Request):
+    # Step 2: the client confirmed the role; access verified again, then saved
+    # and its first index run queued (the page's poll moves it)
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_assets, drive_folders
+
+    def connect():
+        record = drive_folders.confirm(client_id, req.link[:2000], req.role, req.usage_rights, by="client")
+        drive_assets.request(client_id, "add", [record["id"]])
+        return _drive_folders_view(client_id)
+    return _drive_folder_call(connect)
+
+@app.post("/api/client/drive-folders/{connection_id}/role")
+def client_drive_folders_role(connection_id: str, req: DriveFolderRoleRequest, request: Request):
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_folders
+    return _drive_folder_call(lambda: (drive_folders.set_role(client_id, connection_id, req.role),
+                                       _drive_folders_view(client_id))[1])
+
+@app.post("/api/client/drive-folders/{connection_id}/exclude")
+def client_drive_folders_exclude(connection_id: str, req: DriveFolderExcludeRequest, request: Request):
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_folders
+    return _drive_folder_call(lambda: (drive_folders.set_excluded(client_id, connection_id, req.excluded),
+                                       _drive_folders_view(client_id))[1])
+
+@app.post("/api/client/drive-folders/{connection_id}/rights")
+def client_drive_folders_rights(connection_id: str, req: DriveFolderRightsRequest, request: Request):
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_folders
+    return _drive_folder_call(lambda: (drive_folders.set_usage_rights(client_id, connection_id, req.usage_rights,
+                                                                      by="client"),
+                                       _drive_folders_view(client_id))[1])
+
+@app.post("/api/client/drive-folders/{connection_id}/disconnect")
+def client_drive_folders_disconnect(connection_id: str, request: Request):
+    # Nothing in the client's Drive is touched: the link and its index go
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_assets, drive_folders
+
+    def disconnect():
+        drive_folders.disconnect(client_id, connection_id)
+        drive_assets.forget_root(client_id, connection_id)
+        return _drive_folders_view(client_id)
+    return _drive_folder_call(disconnect)
+
+@app.post("/api/client/drive-folders/reindex")
+def client_drive_folders_reindex(request: Request):
+    # "Re-index now": new / changed files, then the next older ones (newest
+    # first), inside the free allowance
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_assets
+    return _drive_folder_call(lambda: (drive_assets.request(client_id, "manual"), _drive_folders_view(client_id))[1])
+
+@app.post("/api/client/drive-folders/step")
+def client_drive_folders_step(request: Request):
+    # The section's poll while a run is queued/running: moves it ≤ 20 s.
+    # Plain `def`: Drive and model calls.
+    client_id = _drive_folders_write(request, _require_session(request))
+    from core import drive_assets
+    drive_assets.step(client_id, 20)
+    return {"success": True, "data": _drive_folders_view(client_id)}
+
 # ─── Home: agent invitations + prerequisites + onboarding focus (core/home_focus) ─
 def _home_lang(client_id: int, lang: str) -> str:
     from core import agent_actions, home_focus
@@ -7967,6 +8129,14 @@ def tiktok_uploads_run():
         data["drive_pull"] = drive_pull.run_due(left) if left > 15 else {"skipped": "no budget left"}
     except Exception as e:
         data["drive_pull"] = {"error": type(e).__name__}
+    # Connected-folder indexing (core/drive_assets) rides the same minute too:
+    # whatever budget is still left, at most 60 s (the daily scan's remainder)
+    left = min(60.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))
+    try:
+        from core import drive_assets
+        data["drive_assets"] = drive_assets.run_due(left) if left > 25 else {"skipped": "no budget left"}
+    except Exception as e:
+        data["drive_assets"] = {"error": type(e).__name__}
     return {"success": True, "data": data}
 
 @app.get("/api/admin/tiktok-uploads")

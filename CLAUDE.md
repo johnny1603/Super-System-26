@@ -681,6 +681,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   - **A link to a file already in the client's folder** is answered "already there (folder)"
     (`drive_pull.AlreadyInFolder`), copies nothing, and drops the cached listings. It is never
     refused as `own_storage`.
+- **Connected Drive folders (2026-11-23, `docs/DRIVE-FOLDERS.md`)**: the client shares existing folders
+  with the service account and pastes the link (NO OAuth scope — the OAuth app is in review). `core/drive_folders`:
+  role inferred from the name (else ONE vision call on ≤8 samples), saved ONLY after the client confirms; subfolders
+  inherit / override / exclude; distinct Hebrew errors (not shared / Shared Drive membership / bad link). Every role
+  but social_output/archive is READ ONLY (`drive_service._refuse_protected`); never rename/move/write there.
+  `core/drive_assets`: tier-0 metadata, descriptive names skip vision, dHash dedupe, 512 px, CLASSIFY_MODEL batches,
+  video = ONE first non-black frame (ffmpeg in the Dockerfile — not the youtube_metadata path), newest first.
+  Free cap `client_settings.drive_assets_free_items` (150): metered cost, quote, ONE billing request, credits resume
+  (`/api/admin/drive-assets/{id}/credits`). Daily job `drive-assets-scan`. `find_assets` is searched FIRST by
+  `media_agent.generate_from_brief` (the agent chooses; copied into the media folder); a proof slide / real-only
+  format with nothing real = objection; unconfirmed customer photos never publish (gate re-checks live).
+  `tests/test_drive_folders.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive

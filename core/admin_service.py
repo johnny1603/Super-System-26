@@ -439,7 +439,7 @@ def get_settings() -> dict:
                                        # Media tab's "new since your last visit" mark
                                        "drive_pull:", "drive_pull_lock:", "media_seen:",
                                        # branding attempts + brand kit (core/branding)
-                                       "branding:", "brand_kit:", "seo_report:", "content_plan:", "social_queue:", "post_drafts:", "slide_templates:",
+                                       "branding:", "brand_kit:", "seo_report:", "content_plan:", "social_queue:", "post_drafts:", "slide_templates:", "drive_folders:", "drive_assets:", "drive_assets_lock:",
                                        "avatar_photos:", "invite_resume:", "quarter_goals:",
                                        "organic_plan:", "competitor_watch:")):
             continue

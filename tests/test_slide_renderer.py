@@ -14,8 +14,8 @@ What must stay true:
   and keep the manager's critiques;
 - a text slide never reaches an image model.
 
-Render tests run where Pillow + raqm are installed (prod, and this dev box);
-CI is stdlib-only and skips them with a reason. Regenerate the golden images
+Render tests run where Pillow + raqm are installed: prod, CI (both workflows
+install the pinned Pillow + libfribidi0), and a dev box that has them. Regenerate the golden images
 only after LOOKING at them: SLIDE_GOLDENS_UPDATE=1 python tests/test_slide_renderer.py
 """
 import copy
@@ -42,7 +42,9 @@ for _name, _attrs in (("anthropic", {"Anthropic": lambda *a, **k: None}),
 from core import post_brief, slide_design, slide_renderer as sr, slide_spec, slide_templates, social_queue as sq  # noqa: E402
 
 RAQM = sr.raqm_status()["available"]
-NEEDS_RAQM = unittest.skipUnless(RAQM, "Pillow + raqm not installed here (prod has them; CI is stdlib-only)")
+# Skipped only on a dev box without Pillow + raqm; CI (CI=true) installs both
+# and always runs these — a missing library there fails loudly.
+NEEDS_RAQM = unittest.skipUnless(RAQM or os.environ.get("CI"), "Pillow + raqm not installed here (CI and prod have them)")
 GOLDEN_DIR = os.path.join(ROOT, "tests", "golden")
 UPDATE = os.environ.get("SLIDE_GOLDENS_UPDATE") == "1"
 

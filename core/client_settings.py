@@ -65,6 +65,15 @@ FIELDS = {
     "prospecting_radius_km": {
         "type": "int", "paying": 10, "exempt": 10, "min": 1, "max": 50,
         "label_he": "רדיוס ניתוח אזור (ק״מ)"},
+    # Connected Drive folders (core/drive_assets, docs/DRIVE-FOLDERS.md): the
+    # free indexing allowance (beyond it: a quote + a billing request) and how
+    # many files one run describes, newest first (older ones on demand).
+    "drive_assets_free_items": {
+        "type": "int", "paying": 150, "exempt": 150, "min": 0, "max": 100000,
+        "label_he": "תיקיות דרייב — פריטים שמאונדקסים בחינם"},
+    "drive_assets_batch_items": {
+        "type": "int", "paying": 60, "exempt": 60, "min": 5, "max": 5000,
+        "label_he": "תיקיות דרייב — פריטים לאינדוקס בכל ריצה (החדשים קודם)"},
 }
 
 

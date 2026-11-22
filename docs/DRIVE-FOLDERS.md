@@ -1,0 +1,116 @@
+# Connected Drive folders — the client's own real assets (2026-11-23)
+
+The business owner connects folders that already exist in their Google Drive. The system
+classifies them, indexes the photos and videos cheaply, and the media agent picks real files
+from them on its own. The owner is never asked to pick a file.
+
+Code: `core/drive_folders.py` (connections, roles, errors), `core/drive_assets.py` (index,
+cap, `find_assets`), `agents/media_agent.py` (`review_brief`, `generate_from_brief`,
+`choose_real_asset`, `_use_real_asset`). Tests: `tests/test_drive_folders.py`.
+
+## Access model — no OAuth
+
+The client shares the folder with our existing service account
+`drive-archiver@super-system-500410.iam.gserviceaccount.com` (Viewer is enough) and pastes the
+folder link. Every Drive call runs `drive_storage.as_service_account()` with
+`supportsAllDrives` / `includeItemsFromAllDrives`. **No Drive scope was added to the OAuth
+app** (it is under Google verification review).
+
+Supported: My Drive folders, folders shared with them, and folders inside a Shared Drive. In a
+Shared Drive, sharing the folder alone is sometimes not enough: the service account must be a
+member of the Shared Drive. The errors are distinct Hebrew lines (`drive_folders._texts`):
+`not_shared` (with the address and a copy button), `shared_drive_member`, `bad_link`,
+`not_found`, `not_folder`, `trashed`, `own_storage`, `connected_elsewhere`, `drive_busy`,
+`our_side`. Never a generic "no access".
+
+## Roles
+
+| role | access | usage_rights |
+|---|---|---|
+| product_catalog | read only | not_applicable |
+| customer_photos | read only | **unconfirmed** until the client confirms |
+| brand_assets | read only | not_applicable |
+| raw_materials | read only | not_applicable |
+| social_output | read/write | not_applicable |
+| archive | read/write | not_applicable |
+
+Read only is enforced twice: nothing in `drive_folders` / `drive_assets` writes, and
+`drive_service.ensure_folder / upload_bytes / copy_file / start_resumable` refuse any read-only
+connected folder as a target (`ReadOnlyTarget`). Nothing in the client's Drive is renamed,
+moved or restructured. Real assets are COPIED (files.copy, inside Drive) into OUR media folder.
+
+## Adding a folder (settings → "תיקיות דרייב מחוברות")
+
+1. Paste the link → `POST /api/client/drive-folders/preview`: the folder is read (listing
+   verified), the role inferred from its NAME (Hebrew + English keywords,
+   `drive_folders.NAME_RULES`, customer photos checked first), else ONE vision call on up to 8
+   thumbnails (`CLASSIFY_MODEL`). Nothing is saved.
+2. The inferred role is pre-selected with a one-line Hebrew explanation; the client confirms or
+   changes it → `POST /api/client/drive-folders/connect` reads the folder again (an unreadable
+   folder is never saved), stores it and queues the first index run.
+3. Subfolders (walked to depth 6, system/trash folders skipped) inherit their parent's role. Each
+   can be overridden (`…/{id}/role`, empty = inherit again) or excluded (`…/{id}/exclude`). A
+   subfolder whose name suggests another role is flagged, never changed silently.
+4. customer_photos: a usage-rights checkbox with the explanation (`RIGHTS_NOTE`).
+
+## Indexing (cheapest first)
+
+1. Tier 0, free: name, path, role, dates, size, dimensions, EXIF summary (camera, taken time,
+   whether a location exists — never the coordinates). A descriptive file NAME
+   (`descriptive_name`) is the description — no vision call.
+2. Dedupe: dHash (64-bit) of the 512 px preview; within one folder, ≤ 10 bits apart = the same
+   item from another angle. One is described; the others copy it with an angle note (cost 0).
+3. Previews are Drive thumbnails at `=s512`, then downscaled with Pillow (≤ 512 px).
+4. `CLASSIFY_MODEL`, one sentence + ≤ 5 tags, up to 8 images per call.
+5. Newest first; `drive_assets_batch_items` per run (default 60). Older files are described on
+   demand: the "אינדוקס עכשיו" button, a credit load, or an agent search that hits them
+   (`find_assets(on_demand=True)`).
+
+**Video:** the FIRST usable frame — ffmpeg (added to the Dockerfile) reads one frame at
+0 / 0.5 / 1 / 2 / 4 / 8 s with Range requests and the first non-black one wins; fallback
+Drive's own thumbnail if not black. One frame = the cost of one image. Duration, size and
+format come from Drive's metadata; `media_type: "video"`. (This is NOT the YouTube metadata
+path, which still never looks at video content.)
+
+## Free cap → quote → billing
+
+`client_settings.drive_assets_free_items` (default 150, editable per client in the Control
+Room). The ACTUAL cost is metered from the model calls' usage (`claude_json.collect_usage`) and
+the running average per item is stored (`meter.avg_usd`; `meter.first_run` keeps the first
+run's numbers). At the cap the run stops — nothing more is spent — the quote for the
+remaining items = remaining × measured average, and ONE `billing` team request opens (client,
+folders, remaining, cost per item, total). The client sees a plain Hebrew line. The team bills
+and loads credits: `POST /api/admin/drive-assets/{client_id}/credits {"items": N, "usd": x,
+"note": ""}` (admin session) — indexing resumes from where it stopped. Team view:
+`GET /api/admin/drive-assets/{client_id}`.
+
+## Runs
+
+Cloud Run throttles CPU after a response, so the work moves in steps: the settings section's
+poll (`POST /api/client/drive-folders/step`, ≤ 20 s), the every-minute tick
+(`/api/tiktok/uploads/run` leftover budget) and the daily job **`drive-assets-scan`** 04:15
+(`GET /api/drive/assets/scan`, `scripts/schedule_jobs.sh`). The daily run indexes only NEW or
+CHANGED files (md5 changed = new content; a rename or move only updates metadata) and never
+re-describes a described file. Lease `drive_assets_lock:<id>`.
+
+## The agents
+
+`drive_assets.find_assets(client_id, roles, query, media_type, limit)` → ranked
+`file_id, description, tags, role, usage_rights, media_type, publishable, folder, …`
+(tags ×3, description ×2, name/path ×1; excluded subfolders never appear).
+
+- `media_agent.generate_from_brief` searches FIRST for every non-text asset; the agent
+  (`choose_real_asset`, a cheap text call) chooses one or none; a chosen file is copied into
+  the media folder (idempotent via `appProperties.uallak_real_asset_from`), credits 0, no
+  image tool needed.
+- `review_brief`: a proof slide, or a product_carousel / before_after / customer_story asset,
+  with no real match = an objection to the social agent (never a generated stand-in). A
+  customer photo without confirmed rights is surfaced (`rights_needed`), never used.
+- The publish gate (`social_queue.check`) re-checks usage rights LIVE (`rights_ok`).
+- Cards show "Source: folder X (role)"; generated frames keep the `concept` flag.
+- `produce_post` asks for the image tool only when an asset must be GENERATED.
+
+## Storage
+
+app_settings `drive_folders:<id>`, `drive_assets:<id>`, `drive_assets_lock:<id>` — cleared with
+the client (admin_service, client_deletion, deletion_guard). No migration.

@@ -189,6 +189,15 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | media drive file | `GET /api/client/media-drive/file/{file_id}` | — (allowlisted) | streams a file to the browser; not a capability |
 | media drive thumb | `GET /api/client/media-drive/thumb/{file_id}` | — (allowlisted) | streams a thumbnail to the browser; not a capability |
 | media assets | `GET /api/client/media-assets` | reads `media` | — |
+| connected Drive folders | `GET /api/client/drive-folders` | **none yet** | **P2: a connected_folders section in account_state (folders, roles, index state)** |
+| connected Drive folders preview | `POST /api/client/drive-folders/preview` | **none yet** | **P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)** |
+| connected Drive folders connect | `POST /api/client/drive-folders/connect` | **none yet** | **P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)** |
+| connected Drive folder role | `POST /api/client/drive-folders/{connection_id}/role` | **none yet** | **P3: set_drive_folder_role card** |
+| connected Drive subfolder exclude | `POST /api/client/drive-folders/{connection_id}/exclude` | **none yet** | **P3: exclude_drive_subfolder card** |
+| connected Drive folder usage rights | `POST /api/client/drive-folders/{connection_id}/rights` | — (allowlisted) | confirming customers' consent to use their photos is a rights statement made on the settings screen next to its explanation, never inferred from a chat message |
+| connected Drive folder disconnect | `POST /api/client/drive-folders/{connection_id}/disconnect` | **none yet** | **P3: disconnect_drive_folder card** |
+| connected Drive folders re-index | `POST /api/client/drive-folders/reindex` | **none yet** | **P3: reindex_drive_folders card** |
+| connected Drive folders step | `POST /api/client/drive-folders/step` | — (allowlisted) | the settings section's own poll that moves an index run forward; the chat has no screen to poll |
 | leads | `GET /api/client/leads` | reads `leads` | — |
 | leads status | `POST /api/client/leads/{lead_id}/status` | **none yet** | **P1: update_lead_status card (needs lead ids in account_state.leads)** |
 | leads note | `POST /api/client/leads/{lead_id}/note` | **none yet** | **P2: add_lead_note card** |

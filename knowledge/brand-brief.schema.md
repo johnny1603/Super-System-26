@@ -74,7 +74,12 @@ visual_identity
   production_constraints[]
 
 assets
-  real_asset_sources[]     where genuine product and work images live
+  real_asset_sources[]     where genuine product and work images live — name the client's CONNECTED
+                           Drive folders by ROLE (product_catalog, customer_photos, brand_assets,
+                           raw_materials, social_output, archive; docs/DRIVE-FOLDERS.md), e.g.
+                           "product_catalog: the folder תמונות מוצר". The media agent searches
+                           them with drive_assets.find_assets before anything is generated;
+                           customer_photos are usable only once usage rights are confirmed.
   gaps[]                   what we do not have and would need to shoot
 
 constraints

@@ -223,9 +223,32 @@ def _check(response: httpx.Response):
             request=response.request, response=response)
 
 
+# ─── Connected client folders are READ ONLY (core/drive_folders) ─────────────
+# The ids of every connected client folder whose role is read only, as last
+# loaded in this process. A write whose TARGET is one of them is refused
+# before any HTTP call — we never write into a client's existing folders.
+_protected_read_only = {}           # client_id → the read-only connected folder ids (core/drive_folders)
+
+
+class ReadOnlyTarget(PermissionError):
+    """A write aimed at a connected client folder that is read only."""
+
+
+def protect_read_only(folder_ids, client_id=None):
+    """The client's READ-ONLY connected folders (refreshed on every read of
+    its connections): no write call below may target one of them."""
+    _protected_read_only[str(client_id)] = {str(f) for f in folder_ids or [] if f}
+
+
+def _refuse_protected(folder_id: str):
+    if folder_id and any(str(folder_id) in ids for ids in list(_protected_read_only.values())):
+        raise ReadOnlyTarget(f"folder {folder_id} is a connected client folder (read only) — nothing is written there")
+
+
 def ensure_folder(name: str, parent_id: str) -> str:
     """Find-or-create a subfolder by exact name under parent_id, returning its
     id - so a client who somehow offboards twice reuses one folder."""
+    _refuse_protected(parent_id)
     escaped = name.replace("\\", "\\\\").replace("'", "\\'")
     query = (f"name = '{escaped}' and '{parent_id}' in parents "
              "and mimeType = 'application/vnd.google-apps.folder' and trashed = false")
@@ -263,6 +286,7 @@ def upload_bytes(folder_id: str, filename: str, content: bytes, mime_type: str,
     Drive's {id, size, name, webViewLink}. `app_properties`: small string
     facts kept ON the file (e.g. a voice recording's duration), so Drive
     stays the one record."""
+    _refuse_protected(folder_id)
     meta = {"name": filename, "parents": [folder_id]}
     if app_properties:
         meta["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}
@@ -494,6 +518,7 @@ def copy_file(file_id: str, parent_id: str, name: str = "", app_properties: dict
     `app_properties`: small facts kept on the copy (where it was pulled from),
     so a re-run finds it and never copies twice. Returns {id, name, mimeType,
     size, parents, webViewLink}."""
+    _refuse_protected(parent_id)
     body = {"parents": [parent_id]}
     if name:
         body["name"] = name
@@ -718,6 +743,7 @@ def start_resumable(folder_id: str, filename: str, mime_type: str, total_bytes: 
     never sent to a browser in the clear). `upload_mime`: the format of the
     bytes when it differs from the file's type — Drive then CONVERTS (a .docx
     sent into a Google Doc, as the Drive migration does)."""
+    _refuse_protected(folder_id)
     meta = {"name": filename, "parents": [folder_id], "mimeType": mime_type}
     if app_properties:
         meta["appProperties"] = {str(k): str(v) for k, v in app_properties.items()}

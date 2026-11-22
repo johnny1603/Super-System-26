@@ -4,7 +4,7 @@ WORKDIR /app
 
 # FriBidi for Pillow's raqm text shaping (Hebrew text slides, core/slide_renderer).
 # Pillow's wheel bundles raqm + HarfBuzz and loads libfribidi at runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends libfribidi0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libfribidi0 ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
