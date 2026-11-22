@@ -1,4 +1,4 @@
-# Social & Design Craft Library — v0.1
+# Social & Design Craft Library — v0.2
 Discipline: social content + visual design
 Shared by the social agent and the media agent. Both load this file in full.
 Last updated: 2026-11-23
