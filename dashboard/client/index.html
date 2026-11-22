@@ -1433,6 +1433,14 @@ body.bs-open { overflow: hidden; }
   border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: inherit; }
 .soc-flag { font-size: 12px; color: var(--gray); }
 .soc-flag.warn { color: #FFB020; font-weight: 700; }
+.soc-design-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; direction: rtl; }
+.soc-design-strip img { width: 160px; flex: 0 0 auto; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
+.soc-design-spec { font-size: 12.5px; color: var(--gray); }
+.soc-design-spec ul { margin: 4px 0; padding-inline-start: 18px; display: grid; gap: 2px; }
+.soc-design-spec pre { max-height: 220px; overflow: auto; direction: ltr; text-align: left; font-size: 11px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; white-space: pre-wrap; }
+.soc-design-crit textarea { width: 100%; box-sizing: border-box; min-height: 70px; resize: vertical; background: var(--panel);
+  border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; }
 .soc-edit { display: grid; gap: 8px; }
 .soc-edit textarea, .soc-edit input[type=date], .soc-reject textarea { width: 100%; box-sizing: border-box; background: var(--panel);
   border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; }
@@ -2806,6 +2814,17 @@ const DASH_I18N = {
   soc_post_prod_done: { he:'הופק: {made} קבצים מחכים לאישור הפרסום כאן למטה. {not_made} חלקים לא נוצרו במחשב.', en:'Produced: {made} files wait for the publish approval below. {not_made} parts were not generated.', fr:'Produit : {made} fichiers attendent la validation de publication ci-dessous. {not_made} parties non générées.', ar:'تم الإنتاج: {made} ملفات بانتظار موافقة النشر أدناه. {not_made} أجزاء لم تُولَّد.', ru:'Готово: {made} файлов ждут одобрения публикации ниже. {not_made} частей не сгенерировано.' },
   soc_post_prod_partial: { he:'הופק חלקית: {made} קבצים מוכנים, וחלק לא הצליח — הצוות קיבל התראה.', en:'Partly produced: {made} files are ready and some failed — the team was alerted.', fr:'Production partielle : {made} fichiers prêts, d\'autres ont échoué — l\'équipe est prévenue.', ar:'إنتاج جزئي: {made} ملفات جاهزة وبعضها فشل — تم تنبيه الفريق.', ru:'Частично: {made} файлов готово, часть не удалась — команда уведомлена.' },
   soc_post_prod_failed: { he:'ההפקה לא הצליחה — הצוות קיבל התראה. שום קרדיט לא בוזבז על קובץ שלא נוצר.', en:'Production didn\'t work — the team was alerted. No credit went on a file that wasn\'t made.', fr:'La production a échoué — l\'équipe est prévenue. Aucun crédit pour un fichier non créé.', ar:'فشل الإنتاج — تم تنبيه الفريق. لم يُصرف رصيد على ملف لم يُنشأ.', ru:'Производство не удалось — команда уведомлена. Кредиты на несозданные файлы не тратились.' },
+  soc_design_waiting: { he:'עיצוב לאישור', en:'Design to approve', fr:'Design à valider', ar:'تصميم للموافقة', ru:'Дизайн на одобрение' },
+  soc_design_approve: { he:'אישור העיצוב ושמירה כתבנית', en:'Approve the design and save it as a template', fr:'Valider le design et l’enregistrer comme modèle', ar:'الموافقة على التصميم وحفظه كقالب', ru:'Одобрить дизайн и сохранить как шаблон' },
+  soc_design_template: { he:'תבנית "{name}" · גרסת עיצוב {rev}', en:'Template "{name}" · design version {rev}', fr:'Modèle « {name} » · version {rev}', ar:'القالب "{name}" · نسخة التصميم {rev}', ru:'Шаблон «{name}» · версия дизайна {rev}' },
+  soc_design_spec: { he:'המפרט של העיצוב', en:'The design spec', fr:'La spécification du design', ar:'مواصفات التصميم', ru:'Спецификация дизайна' },
+  soc_design_json: { he:'המפרט המלא (JSON)', en:'Full spec (JSON)', fr:'Spécification complète (JSON)', ar:'المواصفات الكاملة (JSON)', ru:'Полная спецификация (JSON)' },
+  soc_design_crit_label: { he:'מה לשנות בעיצוב? כתבו במילים שלכם — ליאור מעצב מחדש, בלי קרדיטים.', en:'What should change in the design? Say it in your own words — Lior redesigns, no credits.', fr:'Que changer dans le design ? Dites-le avec vos mots — Lior le refait, sans crédits.', ar:'ما الذي يجب تغييره في التصميم؟ اكتبوه بكلماتكم — ليئور يعيد التصميم بلا رصيد.', ru:'Что изменить в дизайне? Своими словами — Лиор переделает, без кредитов.' },
+  soc_design_crit_send: { he:'שלחו לעיצוב מחדש', en:'Send for a redesign', fr:'Envoyer en refonte', ar:'أرسلوا لإعادة التصميم', ru:'Отправить на переделку' },
+  soc_design_crit_sent: { he:'ההערה נשלחה. הגרסה החדשה תופיע כאן בעוד רגע.', en:'Note sent. The new version appears here in a moment.', fr:'Remarque envoyée. La nouvelle version arrive ici dans un instant.', ar:'أُرسلت الملاحظة. ستظهر النسخة الجديدة هنا بعد لحظة.', ru:'Замечание отправлено. Новая версия появится здесь через минуту.' },
+  soc_design_notes: { he:'הערות קודמות', en:'Earlier notes', fr:'Remarques précédentes', ar:'ملاحظات سابقة', ru:'Прежние замечания' },
+  soc_design_saved: { he:'נשמר כתבנית "{name}" (גרסה {version}).', en:'Saved as the template "{name}" (version {version}).', fr:'Enregistré comme modèle « {name} » (version {version}).', ar:'حُفظ كقالب "{name}" (النسخة {version}).', ru:'Сохранено как шаблон «{name}» (версия {version}).' },
+  soc_design_failed_last: { he:'ההערה האחרונה לא יושמה: {why}. אפשר לנסח אחרת.', en:'The last note wasn\'t applied: {why}. Try wording it differently.', fr:'La dernière remarque n\'a pas été appliquée : {why}. Reformulez-la.', ar:'لم تُطبَّق الملاحظة الأخيرة: {why}. جرّبوا صياغة أخرى.', ru:'Последнее замечание не применено: {why}. Сформулируйте иначе.' },
   soc_edit: { he:'עריכה', en:'Edit', fr:'Modifier', ar:'تعديل', ru:'Изменить' },
   soc_save: { he:'שמירה', en:'Save', fr:'Enregistrer', ar:'حفظ', ru:'Сохранить' },
   soc_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
@@ -8441,6 +8460,7 @@ function socialRow(item) {
   const t = uallakI18n.t;
   const waiting = item.status === 'waiting';
   if (item.kind === 'post') return socialPostRow(item);
+  if (item.kind === 'design') return socialDesignRow(item);
   const editable = !ADMIN_VIEW && (waiting || item.status === 'approved');
   const name = item.title || socialChannelName(item.channels[0] || 'instagram');
   const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(item.file_id);
@@ -8550,6 +8570,67 @@ function socialPostRow(item) {
     </div></div>`;
 }
 
+// A text-slide design (core/slide_design): the slides DRAWN from the spec (each
+// <img> is rendered on request), the spec in words + JSON, the notes so far.
+// Approve saves it as the business's template; a note sends it for a redesign.
+function socialDesignRow(item) {
+  const t = uallakI18n.t;
+  const d = item.design || {};
+  const waiting = item.status === 'waiting';
+  const face = SOCIAL_FACES[item.producer] || 'lior';
+  const revising = d.state === 'revising';
+  const imgs = (d.previews || []).map((src, i) => `<img src="${esc(src)}" alt="${esc(String(i + 1))}" loading="lazy" onerror="this.remove()">`).join('');
+  const specLines = (d.spec_lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('');
+  const notes = (d.critiques || []).map(c => `<li><bdi dir="auto">${esc(c.text)}</bdi></li>`).join('');
+  const acts = [];
+  if (waiting && !ADMIN_VIEW && !revising) {
+    acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_design_approve'))}</button>`);
+  }
+  const crit = waiting && !ADMIN_VIEW && !revising ? `<div class="soc-design-crit">
+      <label class="soc-meta"><b>${esc(t('soc_design_crit_label'))}</b></label>
+      <textarea data-soc-critique="${esc(item.id)}" maxlength="600" dir="auto"></textarea>
+      <div class="soc-actions"><button type="button" class="sugg-btn reject" data-soc-critique-send="${esc(item.id)}">${esc(t('soc_design_crit_send'))}</button></div>
+    </div>` : '';
+  const saved = d.saved && d.saved.name ? `<div class="soc-meta">${esc(t('soc_design_saved', { name: d.saved.name, version: d.saved.version }))}</div>` : '';
+  const cls = 'soc-item design ' + item.status + (item.status === 'rejected' ? ' done' : '');
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">
+    <div class="soc-body"><div class="soc-top">
+        <span class="soc-status ${esc(item.status)}">${esc(waiting ? t('soc_design_waiting') : item.status_text)}</span>
+        <span class="soc-status">${esc(d.state_text || '')}</span>
+        <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
+      </div>
+      ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
+      <div class="plan-note">${esc(d.stage_text || '')}</div>
+      <div class="soc-meta">${esc(t('soc_design_template', { name: d.template_name || '', rev: d.rev || 1 }))}${d.palette ? ' · ' + esc(t('soc_post_palette', { name: d.palette })) : ''}</div>
+      <div class="soc-design-strip">${imgs}</div>
+      ${d.rationale ? `<div class="soc-meta"><bdi dir="auto">${esc(d.rationale)}</bdi></div>` : ''}
+      ${d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : ''}
+      ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
+      <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>
+        <details><summary>${esc(t('soc_design_json'))}</summary><pre>${esc(JSON.stringify(d.spec || {}, null, 2))}</pre></details></details>
+      ${notes ? `<details class="soc-design-spec"><summary>${esc(t('soc_design_notes'))}</summary><ul>${notes}</ul></details>` : ''}
+      ${saved}${crit}
+      ${acts.length ? `<div class="soc-actions">${acts.join('')}</div>` : ''}
+    </div></div>`;
+}
+
+function socialCritique(id, row) {
+  const t = uallakI18n.t;
+  const box = row ? row.querySelector('[data-soc-critique]') : null;
+  const text = box ? box.value.trim() : '';
+  if (text.length < 2) { socialNote(t('soc_reason_needed')); return; }
+  socialPost('/api/client/social/' + encodeURIComponent(id) + '/design', { text }, 'soc_design_crit_sent');
+}
+
+let socialDesignPoll = 0;
+function socialWatchDesigns() {
+  // A redesign runs in the background: refresh until no design is "revising"
+  clearTimeout(socialDesignPoll);
+  if (social.items.some(i => i.kind === 'design' && (i.design || {}).state === 'revising')) {
+    socialDesignPoll = setTimeout(() => loadSocial(), 4000);
+  }
+}
+
 function socialCopySave(id, row) {
   const item = socialItem(id);
   if (!item || !row) return;
@@ -8581,6 +8662,7 @@ function renderSocial() {
     return;
   }
   list.innerHTML = social.items.map(socialRow).join('');
+  socialWatchDesigns();
   const lines = [];
   if (social.items.length < (d.total || 0)) {
     lines.push(`<span>${esc(t('soc_shown', { shown: social.items.length, total: d.total }))}</span>`);
@@ -8611,6 +8693,7 @@ function wireSocial(list) {
   on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
   on('data-soc-save', (id, btn) => socialSave(id, btn.closest('.soc-item')));
   on('data-soc-copysave', (id, btn) => socialCopySave(id, btn.closest('.soc-item')));
+  on('data-soc-critique-send', (id, btn) => socialCritique(id, btn.closest('.soc-item')));
   on('data-soc-reject-send', (id, btn) => socialReject(id, btn.closest('.soc-item')));
   on('data-soc-published', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/published', {}, 'soc_saved'));
   on('data-soc-copy', id => {

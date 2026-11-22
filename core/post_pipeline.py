@@ -10,8 +10,10 @@ core/post_brief, knowledge/social-craft.md §2, docs/POST-BRIEF.md).
                   Then the COPY waits in the Social tab (social_queue.add_post)
                   — nothing has been generated, no credit spent.
   2. start()    — the owner approved the copy there: production runs (background).
-  3. produce()  — per asset, in the sourcing priority: text_slide → not rendered
-                  (renderer not built, never an image model); real_photo → a
+  3. produce()  — per asset, in the sourcing priority: text_slides → ONE design
+                  item (core/slide_design: drawn with real fonts from one
+                  template + one palette variant, never an image model; the
+                  manager approves or critiques it); real_photo → a
                   real asset is needed (flagged, never generated); generated →
                   media_agent.generate_from_brief (prompt from visual_direction
                   only, assert_copy_free). Each file joins the queue as its own
@@ -71,11 +73,23 @@ TEXT = {
         "تمت الموافقة على النص وانتهى إنتاج المنشور \"{title}\": {made} ملفات بانتظار موافقة النشر في تبويب السوشيال.{extra}",
         "Текст одобрен, пост «{title}» готов: {made} файлов ждут одобрения публикации во вкладке «Соцсети».{extra}"),
     "not_made": _five(
-        " {n} חלקים לא נוצרו במחשב: שקופיות טקסט מחכות לתבנית המותג, ותמונות של העבודה עצמה צריכות להיות אמיתיות.",
-        " {n} parts were not generated: text slides wait for the brand template, and photos of the work itself must be real.",
-        " {n} parties n'ont pas été générées : les diapositives texte attendent le modèle de marque, et les photos du travail doivent être réelles.",
-        " {n} أجزاء لم تُولَّد: الشرائح النصية بانتظار قالب العلامة، وصور العمل نفسه يجب أن تكون حقيقية.",
-        " {n} частей не сгенерировано: текстовые слайды ждут шаблона бренда, а фото самой работы должны быть настоящими."),
+        " {n} חלקים לא נוצרו במחשב: תמונות של העבודה עצמה צריכות להיות אמיתיות.",
+        " {n} parts were not generated: photos of the work itself must be real.",
+        " {n} parties n'ont pas été générées : les photos du travail doivent être réelles.",
+        " {n} أجزاء لم تُولَّد: صور العمل نفسه يجب أن تكون حقيقية.",
+        " {n} частей не сгенерировано: фото самой работы должны быть настоящими."),
+    "design": _five(
+        " {n} שקופיות הטקסט מחכות לכם כעיצוב לאישור בלשונית סושיאל (אפשר לכתוב הערה ואני מעצב מחדש).",
+        " The {n} text slides wait for you as a design to approve in the Social tab (write a note and I'll redesign).",
+        " Les {n} diapositives texte vous attendent comme design à valider dans l'onglet Social (une remarque, et je le refais).",
+        " الشرائح النصية ({n}) بانتظاركم كتصميم للموافقة في تبويب السوشيال (اكتبوا ملاحظة وأعيد التصميم).",
+        " {n} текстовых слайдов ждут вас как дизайн на одобрение во вкладке «Соцсети» (напишите замечание — переделаю)."),
+    "design_failed": _five(
+        " את שקופיות הטקסט לא הצלחתי לעצב בלי לשבור את כללי הקריאוּת — כדאי לקצר את הטקסט שלהן.",
+        " I couldn't design the text slides without breaking the legibility rules — their copy should be shorter.",
+        " Je n'ai pas pu concevoir les diapositives texte sans enfreindre les règles de lisibilité — leur texte doit être plus court.",
+        " لم أتمكن من تصميم الشرائح النصية دون كسر قواعد الوضوح — يجب اختصار نصها.",
+        " Не удалось оформить текстовые слайды, не нарушив правила читаемости, — их текст нужно сократить."),
 }
 
 
@@ -195,6 +209,15 @@ def start(client_id: int, items: list, background_tasks=None) -> int:
     (in the background when possible). Returns how many were started."""
     started = 0
     for item in items or []:
+        if item.get("kind") == social_queue.DESIGN_KIND:
+            # An approved DESIGN: saved as a template; a post's slides rendered
+            from core import slide_design
+            if background_tasks is not None:
+                background_tasks.add_task(slide_design.approved, client_id, item["id"])
+            else:
+                slide_design.approved(client_id, item["id"])
+            started += 1
+            continue
         if item.get("kind") != social_queue.POST_KIND:
             continue
         social_queue.set_production(client_id, item["id"], {"state": "running", "started_at": _now()})
@@ -217,8 +240,14 @@ def produce(client_id: int, item_id: str) -> dict:
     palette = body.get("palette") or {}
     budget = sum(int(s.get("budget_credits") or 0) for s in slides)
     spent, made, not_made, failed, results = 0.0, 0, 0, 0, []
+    text_slides = []
     from agents import media_agent
     for n, slide in enumerate(slides, 1):
+        if slide["asset_type"] == "text_slide":
+            # Drawn by the slide renderer as ONE set (one template, one palette
+            # variant) — never an image model. The design waits for approval.
+            text_slides.append({**slide, "n": n, "total": len(slides)})
+            continue
         brief = post_brief.AssetBrief(
             asset_id=slide["asset_id"], post_format=body["post_format"], objective=body["objective"],
             client_id=int(client_id), role=slide["role"],
@@ -260,14 +289,33 @@ def produce(client_id: int, item_id: str) -> dict:
         results.append({"asset_id": brief.asset_id, "status": "made", "queue_id": added.get("id", ""),
                         "link": out.get("link", "")})
         made += 1
-    state = "done" if made and not failed else "partial" if made else "failed" if failed else "done"
+    design = {}
+    if text_slides:
+        from core import slide_design
+        opened = slide_design.open_for_post(client_id, item, text_slides, _lang(client_id))
+        design = {"item_id": (opened.get("item") or {}).get("id", ""), "slides": len(text_slides),
+                  "ok": bool(opened.get("item")) and not opened.get("problems")}
+        results += [{"asset_id": s["asset_id"], "status": "design_waiting" if design["item_id"] else "failed"}
+                    for s in text_slides]
+        if not design["item_id"]:
+            failed += len(text_slides)
+    state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
+             else "failed" if failed else "done")
     production = {"state": state, "made": made, "not_made": not_made, "failed": failed,
-                  "credits": round(spent, 2), "assets": results, "finished_at": _now()}
+                  "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design}
     social_queue.set_production(client_id, item_id, production)
     _tell(client_id, item, production)
     if failed:
         _alert([f"client {client_id}: post {body.get('set_id')} — {failed} asset(s) failed in production"])
     return production
+
+
+def _lang(client_id: int) -> str:
+    try:
+        from core import agent_actions
+        return agent_actions._lang(client_id)
+    except Exception:
+        return "he"
 
 
 def _tell(client_id: int, item: dict, production: dict):
@@ -277,6 +325,9 @@ def _tell(client_id: int, item: dict, production: dict):
         from agents.client_agent import log_communication
         lang = agent_actions._lang(client_id)
         extra = pick(TEXT["not_made"], lang).replace("{n}", str(production["not_made"])) if production["not_made"] else ""
+        design = production.get("design") or {}
+        if design.get("item_id"):
+            extra += pick(TEXT["design" if design.get("ok") else "design_failed"], lang).replace("{n}", str(design["slides"]))
         line = (pick(TEXT["produced"], lang).replace("{title}", item.get("title") or "")
                 .replace("{made}", str(production["made"])).replace("{extra}", extra))
         log_communication(client_id, "outbound", f"dashboard_chat:{item.get('producer') or 'media'}", line)

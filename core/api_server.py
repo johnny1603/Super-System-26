@@ -88,6 +88,15 @@ except Exception as _e:
 
 app = FastAPI()
 
+# The text-slide renderer needs raqm (FriBidi + HarfBuzz) to shape Hebrew:
+# checked once at startup — missing = a loud log line + an admin alert, and
+# every render refuses (core/slide_renderer.startup_check never raises)
+try:
+    from core import slide_renderer as _slide_renderer
+    _slide_renderer.startup_check()
+except Exception as _e:
+    print(f"[slide_renderer] STARTUP CHECK FAILED: {type(_e).__name__}: {_e}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -6524,6 +6533,45 @@ def client_social_copy(item_id: str, req: SocialCopyRequest, request: Request):
     except social_queue.QueueError as e:
         raise _social_error(e)
     return {"success": True, "data": {"id": item["id"], "status": item["status"]}}
+
+class SocialCritiqueRequest(BaseModel):
+    text: str
+
+@app.post("/api/client/social/{item_id}/design")
+def client_social_design_critique(item_id: str, req: SocialCritiqueRequest, request: Request,
+                                  background_tasks: BackgroundTasks):
+    # A text-slide design (core/slide_design): the manager's critique in their
+    # own words → kept against the template → the agent revises the SPEC and
+    # re-renders in the background. No credits at any point.
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import slide_design, social_queue
+    try:
+        item = slide_design.critique(client_id, item_id, req.text, by="client", background_tasks=background_tasks)
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    except Exception as e:
+        from core import slide_templates
+        if isinstance(e, slide_templates.TemplateError):
+            raise HTTPException(status_code=400, detail={"code": f"ERR_SOCIAL_{e.code.upper()}"})
+        raise
+    return {"success": True, "data": {"id": item.get("id", item_id), "state": (item.get("design") or {}).get("state")}}
+
+@app.get("/api/client/social/{item_id}/slide/{n}")
+def client_social_slide_preview(item_id: str, n: int, request: Request):
+    # One slide of a design under review, DRAWN now from its spec (milliseconds,
+    # nothing stored). The card's <img>; read-only for admin view.
+    client_id = _require_session(request)
+    from core import slide_design, slide_renderer, slide_spec, social_queue
+    try:
+        png = slide_design.preview_png(client_id, item_id, n)
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    except slide_renderer.RendererUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "ERR_RENDERER_UNAVAILABLE"})
+    except (slide_renderer.RenderError, slide_spec.SpecInvalid, slide_spec.PaletteMissing):
+        raise HTTPException(status_code=409, detail={"code": "ERR_SLIDE_RENDER"})
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
 
 class SocialEditRequest(BaseModel):
     caption: str = None

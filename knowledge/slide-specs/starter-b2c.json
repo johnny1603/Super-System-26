@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "plain starter",
+  "canvas": {"width": 1080, "height": 1350},
+  "palette_variant": "",
+  "margins": 96,
+  "background": {"type": "solid", "color_role": "bg"},
+  "text_blocks": [
+    {"role": "headline", "text": "{headline}", "anchor": "bottom", "align": "right", "x_pct": 0, "y_pct": 48,
+     "max_width_pct": 82, "max_height_pct": 36, "font_family": "Rubik", "size": 76, "weight": 700,
+     "line_spacing": 1.15, "color_role": "fg"},
+    {"role": "body", "text": "{body}", "anchor": "top", "align": "right", "x_pct": 0, "y_pct": 53,
+     "max_width_pct": 82, "max_height_pct": 32, "font_family": "Assistant", "size": 40, "weight": 400,
+     "line_spacing": 1.35, "color_role": "fg"}
+  ],
+  "accent": {"type": "none"},
+  "logo": {"show": false},
+  "counter": {"show": true, "style": "fraction", "position": "bottom_left", "color_role": "muted"}
+}

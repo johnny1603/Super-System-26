@@ -221,13 +221,19 @@ class CopyNeverReachesThePrompt(unittest.TestCase):
         slide = pb.AssetBrief(asset_id="s1", post_format="text_carousel", objective="consideration", client_id=27,
                               role="hook", copy_headline=HEAD, copy_body="", asset_type="text_slide",
                               visual_direction="", set_id="gift-why-1")
-        saved = media_agent._craft_brief_prompt
+        # Since 2026-11-23 a text slide is DRAWN (core/slide_design → slide_renderer)
+        from core import slide_design
+        saved = (media_agent._craft_brief_prompt, media_agent.gen.generate_image, slide_design.render_asset)
         media_agent._craft_brief_prompt = lambda *a, **k: self.fail("text_slide reached the prompt step")
+        media_agent.gen.generate_image = lambda *a, **k: self.fail("text_slide reached an image model")
+        drawn = []
+        slide_design.render_asset = lambda cid, brief, palette: drawn.append(brief.asset_id) or {
+            "success": True, "kind": "image", "file_id": "F" * 12, "credits": 0}
         try:
             out = media_agent.generate_from_brief(27, slide, {})
         finally:
-            media_agent._craft_brief_prompt = saved
-        self.assertEqual(out["status"], pb.RENDERER_NOT_IMPLEMENTED)
+            media_agent._craft_brief_prompt, media_agent.gen.generate_image, slide_design.render_asset = saved
+        self.assertEqual((out["success"], out["credits"], drawn), (True, 0, ["s1"]))
 
     def test_old_path_refuses_hebrew_in_the_prompt(self):
         with self.assertRaises(pb.CopyLeak):
@@ -413,21 +419,26 @@ class Pipeline(unittest.TestCase):
 
         def fake(client_id, brief, palette, platform="instagram"):
             made.append((brief.asset_id, palette.get("label")))
-            if brief.asset_type == "text_slide":
-                return {"success": False, "status": pb.RENDERER_NOT_IMPLEMENTED}
+            self.assertNotEqual(brief.asset_type, "text_slide")       # text slides go to the design, as a set
             return {"success": True, "kind": "image", "file_id": "FILE_" + brief.asset_id + "_0123456789",
                     "link": "", "credits": 2}
 
-        saved = media_agent.generate_from_brief
+        from core import slide_design
+        designed = []
+        saved = (media_agent.generate_from_brief, slide_design.open_for_post)
         media_agent.generate_from_brief = fake
+        slide_design.open_for_post = lambda cid, post_item, slides, lang="he": designed.append(
+            [(s["asset_id"], s["n"], s["total"]) for s in slides]) or {"item": {"id": "design0001"}, "problems": []}
         try:
             done = sq.approve(27, [item["id"]])
             self.assertEqual(pp.start(27, done), 1)
         finally:
-            media_agent.generate_from_brief = saved
-        self.assertEqual(made, [("s1", "black + red"), ("s2", "black + red"), ("s3", "black + red")])
+            media_agent.generate_from_brief, slide_design.open_for_post = saved
+        self.assertEqual(made, [("s2", "black + red")])
+        self.assertEqual(designed, [[("s1", 1, 3), ("s3", 3, 3)]])               # ONE design for the set
         post_item = next(i for i in self.store.items if i["id"] == item["id"])
-        self.assertEqual((post_item["production"]["made"], post_item["production"]["not_made"]), (1, 2))
+        self.assertEqual((post_item["production"]["made"], post_item["production"]["not_made"]), (1, 0))
+        self.assertEqual(post_item["production"]["design"]["item_id"], "design0001")
         asset_item = next(i for i in self.store.items if i.get("post_ref"))
         self.assertEqual((asset_item["status"], asset_item["flags"]), ("waiting", ["concept"]))
         self.assertEqual(asset_item["post_ref"]["asset_id"], "s2")

@@ -1,0 +1,8 @@
+{
+  "status": "provisional",
+  "note": "Role colours per palette variant of knowledge/brands/27.md. PROVISIONAL: the brief has no documented hex values yet (open question 2 there) - these are neutral readings of black / red / gold for the pipeline to run, to be replaced by the manager's values. Labels must match the brief's palette_variants exactly.",
+  "variants": {
+    "black + red": {"bg": "#0B0B0B", "fg": "#FFFFFF", "accent": "#E3262F", "muted": "#A6A6A6"},
+    "black + gold": {"bg": "#0B0B0B", "fg": "#FFFFFF", "accent": "#C9A227", "muted": "#A6A6A6"}
+  }
+}

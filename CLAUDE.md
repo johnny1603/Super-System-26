@@ -173,8 +173,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   FULL by both agents (missing = `post_brief.ContextMissing`, a loud refusal — also on the old generation path),
   explicit `post_format` + reason, one `AssetBrief` per asset. `copy_headline`/`copy_body` are CONTEXT ONLY:
   `post_brief.assert_copy_free` fails the call if the prompt carries them or any Hebrew; text_slide is never sent
-  to a model (`renderer_not_implemented`). The COPY waits in the Social tab (`social_queue` kind "post", never
+  to a model. The COPY waits in the Social tab (`social_queue` kind "post", never
   publishable); its approval starts production. Objections: 2 rounds then the manager. `tests/test_post_brief.py`.
+  **Text slides are DRAWN (2026-11-23, docs/SLIDE-RENDERER.md):** Pillow + raqm (libfribidi0 in the Dockerfile),
+  bundled Rubik/Assistant (`assets/fonts`), RTL anchored right. The agent DESIGNS by writing a JSON spec
+  (`knowledge/slide-spec.schema.json`, colours = roles from `knowledge/brands/<id>.palette.json`) — never code;
+  `core/slide_renderer` fails (never clips) on overflow / overlap / headline words / contrast. A post's text slides =
+  ONE `design` item in the Social tab (never publishable): critique → `media_agent.design_spec` revises the spec
+  (≤3 checked attempts, no credits) → approve → `core/slide_templates` (versioned, critiques kept) + the slides to
+  Drive as approved items. Chat: `design_slides`. Never an image model on this path. `tests/test_slide_renderer.py`.
   **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
   `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the

@@ -2714,6 +2714,11 @@ brief per slide whose visual_direction says what should be SEEN — never the sl
 is approved in the Social tab before anything is generated. If the format is genuinely ambiguous,
 ask ONE short question. If `content_context_missing` is in the data, do not propose produce_post or
 produce_requested_content: say the knowledge files are missing and the team was alerted.
+TEXT SLIDES are DRAWN in a real font from a design spec (never an image model, no credits). A request
+to design or change how the slides LOOK goes through "design_slides": a new design (sample copy +
+audience + the look asked for), or a critique of the design waiting in the Social tab (its item_id
+from social_queue waiting_items with stage "design" + the client's words). Never promise a look you
+did not send through design_slides.
 
 === CRAFT LIBRARY (knowledge/social-craft.md) ===
 """

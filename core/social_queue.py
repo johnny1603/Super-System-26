@@ -47,6 +47,8 @@ STATUSES = ("waiting", "approved", "published", "rejected")
 CHANNELS = ("instagram", "facebook", "tiktok", "youtube")
 KINDS = ("image", "video")
 POST_KIND = "post"                     # the copy stage of a contract post (no file)
+DESIGN_KIND = "design"                 # a text-slide design under review (core/slide_design; no file)
+NO_FILE_KINDS = (POST_KIND, DESIGN_KIND)   # never publishable: the gate refuses them
 PRODUCERS = ("media", "meta")          # ליאור, מאיה (dashboard persona ids)
 PAGE_SIZE = 6                          # gradual release: the rest behind "show more"
 MAX_ITEMS = 300
@@ -289,11 +291,11 @@ FLAG_TEXT = {
                        "Les agents ne sont pas d'accord sur cette partie — à vous de décider",
                        "اختلف الوكلاء على هذا الجزء — القرار لكم",
                        "Агенты не сошлись в этой части — решать вам"),
-    "text_slide_pending": _five("שקופית טקסט: תעוצב מתבנית המותג (עדיין לא זמין) — לא נשלחת למודל תמונות",
-                                "Text slide: rendered from the brand template (not available yet) — never sent to an image model",
-                                "Diapositive texte : rendue depuis le modèle de marque (pas encore disponible) — jamais envoyée à un modèle d'image",
-                                "شريحة نصية: تُصمَّم من قالب العلامة (غير متاح بعد) — لا تُرسل إلى نموذج صور",
-                                "Текстовый слайд: делается из шаблона бренда (пока недоступно) — не отправляется в модель изображений"),
+    "text_slide_pending": _five("שקופית טקסט: נכתבת בגופן אמיתי לפי עיצוב המותג (העיצוב יגיע לאישורכם) — לא נשלחת למודל תמונות",
+                                "Text slide: drawn in a real font from the brand design (the design comes to you for approval) — never sent to an image model",
+                                "Diapositive texte : dessinée avec une vraie police selon le design de marque (soumis à votre accord) — jamais envoyée à un modèle d'image",
+                                "شريحة نصية: تُكتب بخط حقيقي حسب تصميم العلامة (يصلكم التصميم للموافقة) — لا تُرسل إلى نموذج صور",
+                                "Текстовый слайд: набирается настоящим шрифтом по дизайну бренда (дизайн придёт на одобрение) — не отправляется в модель изображений"),
     "needs_real_asset": _five("צריך כאן תמונה אמיתית של עבודה שלכם — היא לא נוצרת במחשב",
                               "This needs a real photo of your work — it is not generated",
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
@@ -425,6 +427,52 @@ def set_production(client_id: int, item_id: str, production: dict):
         print(f"[{SERVICE_NAME}] client {client_id}: production not recorded ({type(e).__name__})")
 
 
+# ─── A text-slide design under review (core/slide_design) ────────────────────
+
+def add_design(client_id: int, design: dict, title: str = "", channels=None, caption: str = "",
+               planned_date: str = "", producer: str = "media") -> dict:
+    """ONE design waiting for the manager. The same post's design (or the same
+    standalone template) still waiting = the SAME item, replaced."""
+    queue = _load(client_id)
+    try:
+        chans = _clean_channels(channels or ["instagram"], "image")
+    except QueueError:
+        chans = ["instagram"]
+    key = (design.get("post_id") or "", design.get("template_name") if not design.get("post_id") else "")
+    existing = next((i for i in queue if i.get("kind") == DESIGN_KIND and i["status"] == "waiting"
+                     and ((i.get("design") or {}).get("post_id") or "",
+                          (i.get("design") or {}).get("template_name") if not (i.get("design") or {}).get("post_id") else "")
+                     == key), None)
+    if existing:
+        existing.update({"design": design, "caption": _clean_caption(caption), "channels": chans,
+                         "title": re.sub(r"\s+", " ", str(title or design.get("template_name") or "")).strip()[:120]})
+        _log(existing, "redesigned", producer)
+        _save(client_id, queue)
+        return existing
+    item = {"id": secrets.token_hex(6), "file_id": "", "kind": DESIGN_KIND, "channels": chans,
+            "caption": _clean_caption(caption), "planned_date": _clean_date(planned_date),
+            "producer": producer if producer in PRODUCERS else "media", "source": "design",
+            "title": re.sub(r"\s+", " ", str(title or design.get("template_name") or "")).strip()[:120],
+            "status": "waiting", "created_at": _now().isoformat(), "delivered": {}, "design": design,
+            "history": [{"at": _now().isoformat(), "do": "added"}]}
+    queue.append(item)
+    _save(client_id, queue)
+    return item
+
+
+def update_design(client_id: int, item_id: str, changes: dict) -> dict:
+    """Merges `changes` into a design item's design. {} when it is gone."""
+    queue = _load(client_id)
+    item = next((i for i in queue if i["id"] == str(item_id) and i.get("kind") == DESIGN_KIND), None)
+    if not item:
+        return {}
+    item["design"].update(changes)
+    if "rev" in changes:
+        _log(item, "revised", "media", rev=changes["rev"])
+    _save(client_id, queue)
+    return item
+
+
 def warning_lines(warnings: list, lang: str) -> list:
     out = []
     for w in warnings or []:
@@ -505,6 +553,8 @@ def edit(client_id: int, item_id: str, caption=None, channels=None, planned_date
         raise QueueError("not_found")
     if item["status"] not in ("waiting", "approved"):
         raise QueueError("not_editable")
+    if item.get("kind") == DESIGN_KIND:
+        raise QueueError("not_editable")          # a design changes through a critique (core/slide_design)
     changed = []
     if caption is not None:
         new = _clean_caption(caption)
@@ -545,6 +595,8 @@ def reject(client_id: int, item_id: str, reason: str, by: str = "client", lang: 
         raise QueueError("not_found")
     if item["status"] not in ("waiting", "approved"):
         raise QueueError("not_rejectable")
+    if item.get("kind") == DESIGN_KIND:
+        raise QueueError("use_critique")          # a design goes back to the agent as a critique
     item["status"], item["reject_reason"], item["rejected_at"] = "rejected", reason, _now().isoformat()
     _log(item, "rejected", by, reason=reason)
     _save(client_id, queue)
@@ -607,8 +659,8 @@ def mark_published(client_id: int, item_id: str, by: str = "client") -> dict:
     item = next((i for i in queue if i["id"] == str(item_id)), None)
     if not item:
         raise QueueError("not_found")
-    if item.get("kind") == POST_KIND:
-        raise QueueError("not_publishable")       # a copy approval publishes nothing
+    if item.get("kind") in NO_FILE_KINDS:
+        raise QueueError("not_publishable")       # a copy / design approval publishes nothing
     if item["status"] != "approved":
         raise QueueError("not_approved")
     item["status"], item["published_at"] = "published", _now().isoformat()
@@ -630,7 +682,7 @@ def check(client_id: int, channel: str, file_id: str = "", item_id: str = "") ->
         queue = _load(client_id)
     except Exception as e:
         raise GateClosed("not_approved", f"queue unreadable ({type(e).__name__}) — nothing is sent")
-    match = [i for i in queue if i.get("kind") != POST_KIND and (
+    match = [i for i in queue if i.get("kind") not in NO_FILE_KINDS and (
              (item_id and i["id"] == str(item_id)) or (file_id and not item_id and i["file_id"] == str(file_id)))]
     approved = [i for i in match if i["status"] == "approved" and channel in i["channels"]]
     if approved:
@@ -718,10 +770,14 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
     out = []
     for item in rows:
         is_post = item.get("kind") == POST_KIND
-        dl = delivery(item, modes) if item["status"] in ("approved", "published") and not is_post else {}
+        no_file = item.get("kind") in NO_FILE_KINDS
+        dl = delivery(item, modes) if item["status"] in ("approved", "published") and not no_file else {}
         needs_tap = item["status"] == "approved" and any(v in ("one_tap", "not_connected", "drafts", "private")
                                                          for v in dl.values())
         extra = {"post": _post_view(item, lang)} if is_post else {}
+        if item.get("kind") == DESIGN_KIND:
+            from core import slide_design
+            extra["design"] = slide_design.view(item, lang)
         if item.get("flags"):
             extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in item["flags"] if f in FLAG_TEXT]
         if item.get("post_ref"):
@@ -758,7 +814,7 @@ def all_pending() -> list:
         queue = [i for i in ((row.get("value") or {}).get("items") or []) if isinstance(i, dict)]
         waiting = [i for i in queue if i.get("status") == "waiting"]
         # An approved post COPY is in production, not waiting for a publish tap
-        approved = [i for i in queue if i.get("status") == "approved" and i.get("kind") != POST_KIND]
+        approved = [i for i in queue if i.get("status") == "approved" and i.get("kind") not in NO_FILE_KINDS]
         if not waiting and not approved:
             continue
         if client_id not in modes_cache:
@@ -778,4 +834,6 @@ def prompt_block(client_id: int) -> dict:
             "waiting_items": [{"id": i["id"], "title": i.get("title", ""), "channels": i["channels"],
                                "planned_date": i.get("planned_date", ""),
                                **({"stage": "copy", "set_id": (i.get("post") or {}).get("set_id", "")}
-                                  if i.get("kind") == POST_KIND else {})} for i in waiting[:10]]}
+                                  if i.get("kind") == POST_KIND else {}),
+                               **({"stage": "design", "template": (i.get("design") or {}).get("template_name", "")}
+                                  if i.get("kind") == DESIGN_KIND else {})} for i in waiting[:10]]}

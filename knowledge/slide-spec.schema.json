@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uallak.com/schemas/slide-spec/v1",
+  "title": "uallak slide design spec v1",
+  "description": "The media agent's design surface for text slides. The agent writes THIS JSON; core/slide_renderer draws it with real fonts (Pillow + raqm). The agent never writes rendering code. Coordinates are RTL-native: x_pct is measured from the RIGHT margin inward. Colours are ROLES resolved against the client's palette variant, never hex. Text may use the placeholders {headline}, {body}, {n} and {total}; a block whose text resolves to empty is not drawn. A headline/body block with no text gets {headline}/{body}. The renderer FAILS (never clips or shrinks) when a block overflows its box, blocks overlap, a headline has too many words, or text contrast against what is under it is below the legibility threshold (WCAG ratio 4.5, or 3.0 for large text: size >= 40, or size >= 32 at weight >= 700).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "canvas", "background", "text_blocks"],
+  "properties": {
+    "version": {"const": 1},
+    "name": {"type": "string", "maxLength": 60, "description": "A short label for this design."},
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "description": "1080x1350 (4:5, default), 1080x1080 (1:1) or 1080x1920 (9:16).",
+      "properties": {
+        "width": {"const": 1080},
+        "height": {"enum": [1080, 1350, 1920]}
+      }
+    },
+    "palette_variant": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Set by the SYSTEM from the brand brief and the post's audience. Never chosen or changed by the agent; a set never mixes variants."
+    },
+    "margins": {
+      "description": "Safe area in px: one number for all sides, or per side.",
+      "oneOf": [
+        {"type": "integer", "minimum": 0, "maximum": 240},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["top", "right", "bottom", "left"],
+          "properties": {
+            "top": {"type": "integer", "minimum": 0, "maximum": 400},
+            "right": {"type": "integer", "minimum": 0, "maximum": 240},
+            "bottom": {"type": "integer", "minimum": 0, "maximum": 400},
+            "left": {"type": "integer", "minimum": 0, "maximum": 240}
+          }
+        }
+      ]
+    },
+    "background": {"$ref": "#/$defs/background"},
+    "text_blocks": {"$ref": "#/$defs/text_blocks"},
+    "accent": {"$ref": "#/$defs/accent"},
+    "logo": {"$ref": "#/$defs/logo"},
+    "counter": {"$ref": "#/$defs/counter"},
+    "guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headline_max_words": {"type": "integer", "minimum": 2, "maximum": 14, "description": "Default 10."}
+      }
+    },
+    "role_overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per slide role (from the post's brief), replaces these top-level keys for slides of that role, e.g. a different hook slide.",
+      "properties": {
+        "hook": {"$ref": "#/$defs/override"},
+        "point": {"$ref": "#/$defs/override"},
+        "proof": {"$ref": "#/$defs/override"},
+        "cta": {"$ref": "#/$defs/override"}
+      }
+    }
+  },
+  "$defs": {
+    "color_role": {"enum": ["bg", "fg", "accent", "muted"]},
+    "corner": {"enum": ["top_right", "top_left", "bottom_right", "bottom_left"]},
+    "background": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["solid", "image", "split", "gradient"]},
+        "color_role": {"$ref": "#/$defs/color_role", "description": "solid; the first part of split/gradient. Default bg."},
+        "second_color_role": {"$ref": "#/$defs/color_role", "description": "split: the second part; gradient: where it ends."},
+        "image_asset_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{10,200}$", "description": "image: a Drive file id of the CLIENT'S OWN photo (account_state.media_folder.images). Never a generated image of text."},
+        "scrim_opacity": {"type": "number", "minimum": 0, "maximum": 0.95, "description": "image: a colour wash over the photo for legibility."},
+        "scrim_color_role": {"$ref": "#/$defs/color_role", "description": "image: the wash colour. Default bg."},
+        "split_ratio": {"type": "number", "minimum": 0.1, "maximum": 0.9, "description": "split: share of the first part."},
+        "split_direction": {"enum": ["horizontal", "vertical"], "description": "horizontal = top/bottom parts; vertical = right/left parts (the first part on the right)."},
+        "gradient_direction": {"enum": ["top_to_bottom", "bottom_to_top", "right_to_left", "left_to_right"]}
+      }
+    },
+    "text_blocks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "anchor", "y_pct", "max_width_pct", "font_family", "size", "weight", "color_role"],
+        "properties": {
+          "role": {"enum": ["kicker", "headline", "body", "cta"]},
+          "text": {"type": "string", "maxLength": 400},
+          "anchor": {"enum": ["top", "center", "bottom"], "description": "Which edge of the box sits at y_pct."},
+          "align": {"enum": ["right", "center", "left"], "description": "Default right. Hebrew is never left-aligned."},
+          "x_pct": {"type": "number", "minimum": 0, "maximum": 90, "description": "Box's right edge, % of canvas width, measured from the right margin inward. Default 0."},
+          "y_pct": {"type": "number", "minimum": 0, "maximum": 100, "description": "% of canvas height."},
+          "max_width_pct": {"type": "number", "minimum": 10, "maximum": 100, "description": "Box width, % of canvas width."},
+          "max_height_pct": {"type": "number", "minimum": 3, "maximum": 100, "description": "Box height, % of canvas height. Default: whatever fits inside the margins."},
+          "font_family": {"enum": ["Rubik", "Assistant"], "description": "Rubik for headlines, Assistant for body (bundled; per-client families later)."},
+          "size": {"type": "integer", "minimum": 16, "maximum": 200, "description": "px."},
+          "weight": {"type": "integer", "minimum": 300, "maximum": 900, "description": "Rubik 300-900, Assistant 200-800."},
+          "line_spacing": {"type": "number", "minimum": 0.9, "maximum": 2.0, "description": "Multiple of size. Default 1.2."},
+          "color_role": {"$ref": "#/$defs/color_role"}
+        }
+      }
+    },
+    "accent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["none", "bar", "underline", "number_badge", "corner_mark"]},
+        "position": {"enum": ["top", "bottom", "right", "left", "top_right", "top_left", "bottom_right", "bottom_left", "under_headline"], "description": "bar: an edge; number_badge / corner_mark: a corner; underline: under_headline."},
+        "size": {"type": "integer", "minimum": 2, "maximum": 240, "description": "px: bar/underline thickness, badge diameter, corner arm length."},
+        "color_role": {"$ref": "#/$defs/color_role"}
+      }
+    },
+    "logo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["show"],
+      "properties": {
+        "show": {"type": "boolean"},
+        "asset_ref": {"type": "string", "pattern": "^[A-Za-z0-9_-]{10,200}$", "description": "A Drive file id of the client's logo (PNG with transparency) in their media folder."},
+        "position": {"$ref": "#/$defs/corner"},
+        "size_pct": {"type": "number", "minimum": 5, "maximum": 30, "description": "Logo width, % of canvas width."}
+      }
+    },
+    "counter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["show"],
+      "properties": {
+        "show": {"type": "boolean"},
+        "style": {"enum": ["fraction", "dots"]},
+        "position": {"$ref": "#/$defs/corner"},
+        "color_role": {"$ref": "#/$defs/color_role"}
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": {"$ref": "#/$defs/background"},
+        "text_blocks": {"$ref": "#/$defs/text_blocks"},
+        "accent": {"$ref": "#/$defs/accent"},
+        "logo": {"$ref": "#/$defs/logo"},
+        "counter": {"$ref": "#/$defs/counter"}
+      }
+    }
+  }
+}

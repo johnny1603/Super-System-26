@@ -2915,6 +2915,71 @@ def _run_produce_post(client_id: int, params: dict, background_tasks):
     raise ActionFailed("not_a_card", "produce_post is decided in the Social tab")
 
 
+# ─── Text-slide design (core/slide_design, docs/SLIDE-RENDERER.md) ───────────
+# The media agent designs slides as a JSON spec the renderer draws (free, no
+# credits, never an image model). Like produce_post this "card" never shows a
+# chat card: a new design goes to the Social tab; a critique of the design
+# waiting there is applied in the background.
+
+def _v_design_slides(value, client_id: int):
+    rows = value if isinstance(value, list) else []
+    out = []
+    for s in rows[:6]:
+        s = s if isinstance(s, dict) else {}
+        role = s.get("role") if s.get("role") in ("hook", "point", "proof", "cta") else "point"
+        head = re.sub(r"\s+", " ", str(s.get("copy_headline") or "")).strip()[:400]
+        body = re.sub(r"[ \t]+", " ", str(s.get("copy_body") or "")).strip()[:400]
+        if head or body:
+            out.append({"asset_id": f"s{len(out) + 1}", "role": role, "copy_headline": head, "copy_body": body})
+    if not out:
+        raise ValueError("1-6 slides of {role, copy_headline, copy_body}")
+    return out
+
+
+def _prepare_design_slides(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import slide_design, social_queue
+    lang = (context or {}).get("language") or "he"
+    critique = re.sub(r"\s+", " ", str(params.get("critique") or "")).strip()
+    item_id = str(params.get("item_id") or "").strip()
+    if critique and item_id:
+        try:
+            slide_design.critique(client_id, item_id, critique, by="client")
+        except social_queue.QueueError:
+            return {"refuse": _pick(_DESIGN_NOT_WAITING, lang)}
+        return {"refuse": _pick(_DESIGN_REVISING, lang)}
+    if not params.get("slides"):
+        return {"clarify": _pick(_DESIGN_NEED_COPY, lang)}
+    out = slide_design.request(client_id, params.get("slides") or [], str(params.get("audience") or ""),
+                               direction=str(params.get("direction") or "")[:600],
+                               template_name=str(params.get("template_name") or "")[:40],
+                               aspect=params.get("aspect_ratio") if params.get("aspect_ratio") in ("4:5", "1:1", "9:16") else "4:5",
+                               lang=lang, title=str(params.get("template_name") or "")[:120])
+    if out.get("clarify"):
+        return {"clarify": out["clarify"]}
+    return {"refuse": out.get("refuse") or out["line"]}
+
+
+def _run_design_slides(client_id: int, params: dict, background_tasks):
+    raise ActionFailed("not_a_card", "design_slides is decided in the Social tab")
+
+
+_DESIGN_REVISING = _txt("קיבלתי — אני מעצב מחדש לפי ההערה, והגרסה החדשה תופיע בלשונית סושיאל בעוד רגע.",
+                        "Got it — I'm redesigning per your note; the new version appears in the Social tab in a moment.",
+                        "Compris — je refais le design selon votre remarque ; la nouvelle version arrive dans l'onglet Social.",
+                        "وصلت — أعيد التصميم حسب ملاحظتكم، وستظهر النسخة الجديدة في تبويب السوشيال بعد لحظة.",
+                        "Понял — переделываю по замечанию; новая версия появится во вкладке «Соцсети» через минуту.")
+_DESIGN_NEED_COPY = _txt("על איזה טקסט לעצב? כתבו לי כותרת (ואם יש, גם שורת הסבר) לשקופית אחת או כמה.",
+                         "What text should I design with? Give me a headline (and a line of body if you have one) for one or more slides.",
+                         "Avec quel texte dois-je concevoir ? Donnez-moi un titre (et une ligne de texte si vous l'avez) pour une ou plusieurs diapositives.",
+                         "على أي نص أصمم؟ اكتبوا لي عنوانًا (وسطرًا توضيحيًا إن وُجد) لشريحة أو أكثر.",
+                         "С каким текстом делать дизайн? Дайте заголовок (и строку текста, если есть) для одного или нескольких слайдов.")
+_DESIGN_NOT_WAITING = _txt("העיצוב הזה כבר לא מחכה לאישור, אז אין מה לתקן בו — אפשר לבקש עיצוב חדש.",
+                           "That design is no longer waiting for approval, so there's nothing to revise — ask for a new design.",
+                           "Ce design n'attend plus de validation, il n'y a rien à reprendre — demandez un nouveau design.",
+                           "هذا التصميم لم يعد بانتظار الموافقة، فلا شيء لتعديله — اطلبوا تصميمًا جديدًا.",
+                           "Этот дизайн уже не ждёт одобрения, исправлять нечего — попросите новый дизайн.")
+
+
 # ─── Photos → presenter (avatar_agent.create_avatar's photo-avatar path) ─────
 
 def _in_package(state: dict, step: str):
@@ -4304,6 +4369,50 @@ ACTIONS = {
         "done": _txt("הטקסט מחכה לאישור בלשונית סושיאל.", "The copy waits for approval in the Social tab.",
                      "Le texte attend votre accord dans l'onglet Social.", "النص بانتظار الموافقة في تبويب السوشيال.",
                      "Текст ждёт одобрения во вкладке «Соцсети»."),
+    },
+    "design_slides": {
+        # Text-slide DESIGN (2026-11-23, core/slide_design): the media agent
+        # designs a JSON spec the renderer draws — free, never an image model
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Designs (or redesigns) the client's TEXT SLIDES — the look of carousel slides drawn in a real "
+                "font: layout, sizes, colours by role, accents. Two uses: (1) a new design/template: slides = "
+                "sample copy (1-6), audience (decides the brand palette), direction = the look asked for; the "
+                "design waits in the Social tab, where approving it saves it as the client's template; (2) a "
+                "CRITIQUE of a design waiting in the Social tab (account_state social_queue waiting_items with "
+                "stage \"design\"): item_id + critique in the client's own words — you redesign and it updates "
+                "there. No credits, nothing is published. A post's text slides get their design automatically "
+                "after its copy is approved (produce_post).",
+        "params": {
+            "slides": {"required": False, "validate": _v_design_slides,
+                       "hint": "[1-6 of {\"role\": hook|point|proof|cta, \"copy_headline\", \"copy_body\"}]"},
+            "audience": {"required": False, "validate": lambda v, c: re.sub(r"\s+", " ", str(v)).strip()[:200],
+                         "hint": "who it is for (private customers / businesses ...)"},
+            "direction": {"required": False, "validate": lambda v, c: re.sub(r"\s+", " ", str(v)).strip()[:600],
+                          "hint": "the look the client asked for, in their words"},
+            "template_name": {"required": False, "validate": lambda v, c: re.sub(r"\s+", " ", str(v)).strip()[:40],
+                              "hint": "a short name for the template"},
+            "aspect_ratio": {"required": False,
+                             "validate": lambda v, c: v if v in ("4:5", "1:1", "9:16") else "4:5",
+                             "hint": "4:5|1:1|9:16"},
+            "item_id": {"required": False,
+                        "validate": lambda v, c: str(v) if re.match(r"^[a-z0-9]{6,40}$", str(v)) else "",
+                        "hint": "the waiting design's id (critique only)"},
+            "critique": {"required": False, "validate": lambda v, c: re.sub(r"\s+", " ", str(v)).strip()[:600],
+                         "hint": "the client's critique of that design, in their words"},
+        },
+        "available": _produce_possible,
+        "prepare": _prepare_design_slides,
+        "validate_stored": lambda client_id, params: validate_params(ACTIONS["design_slides"], params, client_id),
+        "run": _run_design_slides,
+        "title": _txt("עיצוב שקופיות טקסט", "Designing text slides", "Design des diapositives texte",
+                      "تصميم الشرائح النصية", "Дизайн текстовых слайдов"),
+        "what": _txt("העיצוב מופיע בלשונית סושיאל לאישור או להערה. בלי קרדיטים.",
+                     "The design appears in the Social tab to approve or critique. No credits.",
+                     "Le design apparaît dans l'onglet Social pour validation ou remarque. Aucun crédit.",
+                     "يظهر التصميم في تبويب السوشيال للموافقة أو الملاحظة. بلا رصيد.",
+                     "Дизайн появится во вкладке «Соцсети» для одобрения или замечаний. Без кредитов."),
+        "done": _txt("העיצוב בלשונית סושיאל.", "The design is in the Social tab.", "Le design est dans l'onglet Social.",
+                     "التصميم في تبويب السوشيال.", "Дизайн во вкладке «Соцсети»."),
     },
     "produce_requested_content": {
         # A specific request, on its own — never via the weekly plan (2026-11-22)

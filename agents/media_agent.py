@@ -619,13 +619,21 @@ def _craft_brief_prompt(client_id: int, brief, palette: dict, context: dict) -> 
 
 def generate_from_brief(client_id: int, brief, palette: dict = None, platform: str = "instagram") -> dict:
     """ONE asset of a post (core/post_brief.AssetBrief) → the client's Drive.
-    text_slide: not rendered (its renderer isn't built — never an image model).
+    text_slide: DRAWN by core/slide_renderer with real fonts from the client's
+    template (core/slide_design) — never an image model, no credits. (A whole
+    post's text slides go through slide_design.open_for_post as one set.)
     real_photo: a real asset is chosen, never generated. generated_*: prompt
     from visual_direction only, `assert_copy_free` before the model call."""
     from core import post_brief
     if brief.asset_type == "text_slide":
-        return {"success": False, "status": post_brief.RENDERER_NOT_IMPLEMENTED,
-                "errors": ["text_slide renderer not implemented — nothing was sent to an image model"]}
+        from core import slide_design, slide_renderer, slide_spec
+        try:
+            return slide_design.render_asset(client_id, brief, palette or {})
+        except slide_renderer.RendererUnavailable as e:
+            agent_alert(AGENT_NAME, [f"client {client_id}: {e}"])
+            return {"success": False, "status": "renderer_unavailable", "errors": [str(e)]}
+        except (slide_renderer.RenderError, slide_spec.SpecInvalid, slide_spec.PaletteMissing) as e:
+            return {"success": False, "status": "render_failed", "errors": [str(e)]}
     if brief.asset_type == "real_photo":
         return {"success": False, "status": "needs_real_asset",
                 "errors": ["a real photo of the client's work is chosen for this asset, never generated"]}
@@ -674,6 +682,87 @@ def _generate_brief_asset(client_id: int, brief, palette: dict, platform: str, k
                   {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
     return {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
             "credits": generated.get("credits"), "prompt": prompt}
+
+
+# ─── Text-slide DESIGN (core/slide_design, knowledge/slide-spec.schema.json) ──
+
+DESIGN_SPEC_SYSTEM = """You are the media agent (ליאור) of uallak, an Israeli marketing agency, acting as a
+senior social designer. You DESIGN the client's text slides by writing a declarative JSON design spec.
+You never write code: the renderer draws your spec with real fonts and checks it.
+
+You get: the spec JSON SCHEMA (your whole design space — use only what it defines), the craft library
+and the client's brand brief (in full), the palette variant's role colours (you use ROLES, never hex),
+every slide's copy (role, headline, body, word counts), the CURRENT spec, the renderer's PROBLEMS with
+it (if any), the manager's CRITIQUE now (if any), the manager's EARLIER critiques of this client's
+designs (their taste — respect it), and a design DIRECTION (if any).
+
+RULES:
+- Return a COMPLETE spec that validates against the schema. Keep "version": 1, the given "canvas" and
+  "palette_variant" exactly (the system sets them).
+- Fix EVERY listed problem. Never solve an overflow by asking for less text: change the layout,
+  size, width, line spacing or box. Contrast: choose roles that read on what is under them.
+- The text is the copy; do not put new words in blocks except a short kicker or CTA when the
+  critique or direction asks for one. Hebrew is right-aligned or centred, never left.
+- Apply the critique precisely and keep everything the manager did not criticise.
+- One set = one look: use role_overrides only for slides whose role needs a different layout
+  (typically the hook and the cta).
+
+Return JSON only:
+{"spec": {...the full spec...}, "rationale": "ONE sentence, in reply_language, saying what you changed and why"}"""
+
+
+def design_spec(client_id: int, spec: dict, palette: dict, roles: dict, slides: list, problems: list = None,
+                critique: str = "", direction: str = "", lang: str = "he", taste: list = None,
+                check=None, attempts: int = 3) -> dict:
+    """The agent rewrites the SPEC until the renderer's guards pass (`check`
+    returns the problem list; rendering is free), at most `attempts` model
+    calls. {"spec", "rationale", "attempts", "problems"} — problems != [] =
+    no attempt passed and `spec` is the input. Hebrew copy goes to Claude as
+    design context only; nothing here reaches an image model."""
+    from core import post_brief, slide_spec
+    context = post_brief.load_context(client_id)
+    problems = list(problems or [])
+    current = spec
+    last_problems = problems
+    for attempt in range(1, attempts + 1):
+        payload = {
+            "reply_language": lang,
+            "schema": slide_spec.schema(),
+            "craft_library": context["craft"],
+            "brand_brief": context["brand"],
+            "palette_variant": spec.get("palette_variant", ""),
+            "role_colours": roles,
+            "slides": [{"n": s.get("n") or i, "role": s.get("role", ""), "headline": s.get("copy_headline", ""),
+                        "body": s.get("copy_body", ""),
+                        "headline_words": len(str(s.get("copy_headline", "")).split()),
+                        "body_words": len(str(s.get("copy_body", "")).split())} for i, s in enumerate(slides, 1)],
+            "current_spec": current,
+            "problems": [p.get("detail", "") for p in last_problems][:20],
+            "critique": critique,
+            "earlier_critiques": [c.get("text", "") for c in (taste or [])][:15],
+            "direction": direction,
+        }
+        try:
+            out = timed_step(AGENT_NAME, "design_spec", lambda: safe_claude_json_call(
+                DESIGN_SPEC_SYSTEM, json.dumps(payload, ensure_ascii=False), max_tokens=3000,
+                client_id=client_id, cost_category="claude_media"))
+        except ClaudeJSONError as e:
+            last_problems = [{"code": "other", "detail": f"design call failed: {e}"}]
+            continue
+        candidate = (out or {}).get("spec")
+        if not isinstance(candidate, dict):
+            last_problems = [{"code": "bad_spec", "detail": "the answer had no spec object"}]
+            continue
+        candidate["version"] = 1
+        candidate["canvas"] = dict(spec["canvas"])
+        candidate["palette_variant"] = spec.get("palette_variant", "")
+        found = check(candidate) if check else []
+        if not found:
+            log_step(AGENT_NAME, "design_spec", f"client {client_id}: passed on attempt {attempt}")
+            return {"spec": slide_spec.validate(candidate), "rationale": str(out.get("rationale") or "")[:400],
+                    "attempts": attempt, "problems": []}
+        current, last_problems = candidate, found
+    return {"spec": spec, "rationale": "", "attempts": attempts, "problems": last_problems or problems}
 
 
 @drive_storage.scoped

@@ -45,12 +45,11 @@
    - The owner edits it (`POST /api/client/social/{id}/copy`) or approves it.
    - Approving it starts production (`post_pipeline.start`). A post item is never publishable: the gate refuses it.
 8. **Production**, per asset, within its `budget_credits`:
-   - `text_slide`: not rendered (`renderer_not_implemented`). It is never sent to an image model.
+   - `text_slide`: DRAWN with real fonts (since 2026-11-23, docs/SLIDE-RENDERER.md). A post's text slides become ONE design item in the Social tab (one template, one palette variant); the manager approves or critiques it. It is never sent to an image model.
    - `real_photo`: flagged as needing a real photo. It is never generated.
    - `generated_*`: `generate_from_brief`. The prompt comes from `visual_direction`, must_include / must_avoid and the palette only. `assert_copy_free` fails the call before the model if the prompt carries any of the copy (the whole text, or 4 of its words in a row) or any Hebrew.
    - Each file joins the queue as its own item (`post_ref`, `flags`) for the publish approval, as before.
 
 ## Not built yet
 
-- The text_slide renderer (brand template → image). Until it exists, text slides are listed on the card and not made.
 - Picking a real photo from the client's library automatically.
