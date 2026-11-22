@@ -4190,6 +4190,23 @@ def tiktok_content_engagement(client_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/admin/higgsfield/check", dependencies=_admin_only)
+def higgsfield_check(client_id: int):
+    # READ-ONLY (X-Admin-Key): is this client's stored Higgsfield key accepted?
+    # Reads the SAME record media_agent reads (newest active client_accounts
+    # row, platform higgsfield, via secrets_vault.use_vendor_key), reports its
+    # SHAPE only (lengths, id:secret form — never any character of it) and one
+    # free authenticated read (no credits). scripts/higgsfield_check.sh calls it.
+    from core import media_gen_service as gen, vendor_tools
+    from core.secrets_vault import use_vendor_key
+    raw = use_vendor_key(client_id, "higgsfield", job="admin:higgsfield_check")
+    if not raw:
+        return {"success": True, "data": {"stored": False, "tile_status": vendor_tools.status(client_id, "higgsfield")}}
+    probe = vendor_tools._check_higgsfield(raw)
+    return {"success": True, "data": {"stored": True, "shape": gen.key_shape(raw), "probe": probe,
+                                      "auth_scheme": "Key", "api_base": gen.API_BASE,
+                                      "tile_status": vendor_tools.status(client_id, "higgsfield")}}
+
 @app.get("/api/admin/tiktok/diagnose", dependencies=_admin_only)
 def tiktok_diagnose(client_id: int, limit: int = 2, probe: bool = True):
     # READ-ONLY (X-Admin-Key): the last send_tiktok_to_inbox attempts — the

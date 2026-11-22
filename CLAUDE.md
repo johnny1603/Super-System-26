@@ -153,6 +153,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   folder `voice` is the one record (duration in appProperties), `client_state.voice` for agents.
   Nothing here has run against a live vendor; live test path for client 27 in
   `docs/CREATIVE-TOOLS.md` + `scripts/creative_tools_live_test.sh`.
+  **Higgsfield auth (fixed 2026-11-22, client 27's 401 "Invalid credentials"):** `core/media_gen_service` sends
+  `Authorization: Key KEY_ID:KEY_SECRET` to `https://api.higgsfield.ai` (their docs; "Bearer" is refused), the model
+  in the URL (`higgsfield-ai/soul/standard`, `minimax/hailuo-2.3/standard/text-to-video`), polling the returned
+  `status_url` (our base only). The header comes ONLY from the one value the client pasted: `normalize_key` cleans
+  it on save AND read (quotes, prefix, id+secret on two lines → `id:secret`). No key of ours, no second field. The
+  tile's check is a free status read (`_check_higgsfield`: 401 = rejected); a job's 401 → `key_rejected`, a job
+  that ran → `connected`. Diagnosis without the key: `bash scripts/higgsfield_check.sh 27`. Old env names
+  `MEDIA_API_BASE/MEDIA_IMAGE_MODEL/MEDIA_VIDEO_MODEL` are no longer read. `tests/test_higgsfield_auth.py`.
   **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
   `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the

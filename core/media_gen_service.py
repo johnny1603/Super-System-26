@@ -11,43 +11,62 @@ tools, and WordPress Application Passwords):
 - Each client signs up at higgsfield.ai with THEIR OWN payment method and
   picks a plan sized to their volume (Starter $15 / Plus $39 / Ultra $99 per
   month, Stripe-billed to their card - we never see it).
-- They create an API key at cloud.higgsfield.ai/api-keys and hand it to us;
-  we store it per client (client_accounts, platform='higgsfield') and every
-  generation runs on THEIR key, drawing THEIR plan credits. Verified from the
-  docs: API auth is a Bearer key per account, and plan credits are what API
-  generations consume - so per-client keys ARE the supported multi-tenant
-  path. (The Team plan is the opposite: one shared org wallet = us absorbing
-  costs - deliberately not used.)
+- They create an API key in Higgsfield's console and paste it in ONE field
+  (the tile); we store it per client (client_accounts, platform='higgsfield')
+  and every generation runs on THEIR key, drawing THEIR plan credits.
+
+AUTH (fixed 2026-11-22 from docs.higgsfield.ai/docs/authentication — the
+earlier "Bearer" guess was answered 401 "Invalid credentials" on every call):
+  Authorization: Key KEY_ID:KEY_SECRET        (base https://api.higgsfield.ai)
+"Do not use a Bearer token" (their FAQ). A Higgsfield credential is a key ID
+plus a secret; the ONE value the client pasted is turned into that header by
+`auth_value()` — pasted as "id:secret" it is sent as is; pasted as the two
+values separated by a space / tab / new line (copying both from the console)
+they are joined with ":"; stray quotes, a pasted "Key "/"Bearer " prefix or an
+"Authorization:" label are dropped. Nothing else is ever asked of the client,
+and there is NO fallback to a key of ours.
+
+API shape (docs/concepts/requests): POST {base}/{model path} with the inputs →
+{request_id, status_url}; GET status_url (= {base}/requests/{id}/status) →
+queued / in_progress / completed / failed / nsfw / canceled; a completed image
+is images[0].url, a video video.url.
 - Because the cost is the CLIENT'S, nothing here writes to client_costs
   (that table is OUR internal costs; recording client-paid generation there
   would corrupt the margin numbers). Credits usage is logged in activity
   rows instead.
 
-Job model: create generation → poll job status → download result. Endpoint
-paths and model slugs are env-overridable (MEDIA_API_BASE, MEDIA_IMAGE_MODEL,
-MEDIA_VIDEO_MODEL) because the platform is young and renames happen — a
-rename is a Cloud Run env fix, not a deploy.
+Model paths are env-overridable (HIGGSFIELD_API_BASE, HIGGSFIELD_IMAGE_PATH,
+HIGGSFIELD_VIDEO_PATH) — a rename is a Cloud Run env fix, not a deploy. The
+OLD names (MEDIA_API_BASE / MEDIA_IMAGE_MODEL / MEDIA_VIDEO_MODEL) meant the
+guessed API and are deliberately no longer read, so a stale value left on the
+service can't keep pointing at it.
 
 Daily caps (api_call_counters) now protect the CLIENT's credit balance from
 a runaway loop on our side — arguably more important than when we paid.
 
 Business logic lives in agents/media_agent.py; this module only talks HTTP.
 
-VERIFICATION STATUS: written against the public docs/SDK, never run with a
-live key — the first generation against a real client key is a required
-test, and the job-status/result response shapes are the likeliest one-round
-fix.
+VERIFICATION STATUS: auth, base, image/video paths and the request/status
+shapes follow the docs as read 2026-11-22; the first live generation on a
+client key is still the real proof. The presenter path below is NOT in the
+docs read and stays an env setting.
 """
 import os
+import re
 import time
+import uuid
 
 import httpx
 
 from core.api_call_counters import increment_call_counter
 
-API_BASE = os.environ.get("MEDIA_API_BASE", "https://platform.higgsfield.ai/v1")
-IMAGE_MODEL = os.environ.get("MEDIA_IMAGE_MODEL", "soul")
-VIDEO_MODEL = os.environ.get("MEDIA_VIDEO_MODEL", "veo-3-fast")
+API_BASE = os.environ.get("HIGGSFIELD_API_BASE", "https://api.higgsfield.ai").rstrip("/")
+IMAGE_PATH = os.environ.get("HIGGSFIELD_IMAGE_PATH", "higgsfield-ai/soul/standard")
+VIDEO_PATH = os.environ.get("HIGGSFIELD_VIDEO_PATH", "minimax/hailuo-2.3/standard/text-to-video")
+IMAGE_MODEL = IMAGE_PATH          # what the activity rows record as "model"
+VIDEO_MODEL = VIDEO_PATH
+IMAGE_RESOLUTION = os.environ.get("HIGGSFIELD_IMAGE_RESOLUTION", "720p")
+VIDEO_SECONDS = 6                 # the documented default (6 or 10)
 TIMEOUT = 120
 POLL_SECONDS = 8
 POLL_MAX_TRIES = 75  # up to ~10 minutes
@@ -65,49 +84,104 @@ def _count(kind: str, limit: int):
         raise RuntimeError(f"daily {kind} generation cap reached ({limit}) - refusing call")
 
 
+_PREFIX_RE = re.compile(r"^(authorization\s*:\s*)?((key|bearer)\s+)?", re.IGNORECASE)
+_QUOTES = "\"'`“”‘’«»"
+
+
+def normalize_key(raw: str) -> str:
+    """The ONE pasted value, cleaned — on save AND on every read: surrounding
+    whitespace / quotes, an "Authorization:" label and a "Key "/"Bearer "
+    prefix are dropped; a key ID and secret pasted as two values (space, tab
+    or new line between them) become "id:secret". Anything else is kept as
+    the client pasted it."""
+    text = str(raw or "").replace("​", "").replace("﻿", "").strip().strip(_QUOTES).strip()
+    text = _PREFIX_RE.sub("", text, count=1).strip().strip(_QUOTES).strip()
+    parts = [p.strip(_QUOTES + ",;") for p in re.split(r"\s+", text) if p.strip(_QUOTES + ",;")]
+    if len(parts) == 2 and ":" not in text:
+        return f"{parts[0]}:{parts[1]}"
+    if len(parts) > 1:
+        joined = "".join(parts)                 # "id : secret" / a wrapped line
+        return joined if joined.count(":") == 1 else text
+    return parts[0] if parts else ""
+
+
+def key_shape(raw: str) -> dict:
+    """For diagnosis ONLY — what the stored value looks like, never any part
+    of it: lengths, whether it has the "id:secret" form, and whether cleaning
+    changed it."""
+    clean = normalize_key(raw)
+    pieces = clean.split(":") if ":" in clean else [clean]
+    return {"length": len(str(raw or "")), "clean_length": len(clean), "changed_by_cleaning": clean != str(raw or ""),
+            "has_id_and_secret": len(pieces) == 2 and all(pieces),
+            "part_lengths": [len(p) for p in pieces]}
+
+
+def auth_value(api_key: str) -> str:
+    return f"Key {normalize_key(api_key)}"
+
+
 def _headers(api_key: str) -> dict:
-    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    return {"Authorization": auth_value(api_key), "Content-Type": "application/json",
+            "Accept": "application/json"}
 
 
-def _create_job(api_key: str, path: str, payload: dict) -> str:
-    response = httpx.post(f"{API_BASE}/{path.lstrip('/')}", headers=_headers(api_key),
-                          json=payload, timeout=TIMEOUT)
+class CredentialsRejected(RuntimeError):
+    """Higgsfield answered 401/403: the stored key is not accepted. Callers
+    mark the tool key_rejected (vendor_tools.mark_key_rejected)."""
+
+
+def _raise_for(response, what: str):
+    if response.status_code in (401, 403):
+        raise CredentialsRejected(f"higgsfield {what}: {response.status_code} credentials not accepted")
+    raise RuntimeError(f"higgsfield {what} failed: {response.status_code} {response.text[:300]}")
+
+
+def _create_job(api_key: str, path: str, payload: dict) -> dict:
+    """POST {base}/{model path} → {"request_id", "status_url"}."""
+    headers = {**_headers(api_key), "Idempotency-Key": str(uuid.uuid4())}
+    response = httpx.post(f"{API_BASE}/{path.strip('/')}", headers=headers, json=payload, timeout=TIMEOUT)
     if response.status_code not in (200, 201, 202):
-        raise RuntimeError(f"higgsfield {path} failed: {response.status_code} {response.text[:300]}")
-    data = response.json()
-    job_id = data.get("id") or data.get("job_id") or (data.get("job") or {}).get("id")
-    if not job_id:
-        raise RuntimeError(f"higgsfield {path} returned no job id: {str(data)[:300]}")
-    return job_id
+        _raise_for(response, path)
+    data = response.json() or {}
+    request_id = data.get("request_id") or data.get("id") or data.get("job_id")
+    if not request_id:
+        raise RuntimeError(f"higgsfield {path} returned no request id: {str(data)[:300]}")
+    status_url = data.get("status_url") or f"{API_BASE}/requests/{request_id}/status"
+    if not str(status_url).startswith(API_BASE + "/"):
+        status_url = f"{API_BASE}/requests/{request_id}/status"   # our key only ever goes to our base
+    return {"request_id": request_id, "status_url": status_url}
 
 
-def _wait_for_result(api_key: str, job_id: str) -> dict:
-    """Poll the job until completion; returns the job payload. Tolerates the
-    two status vocabularies seen in the docs/SDK (completed/failed and
-    succeeded/error)."""
+def _wait_for_result(api_key: str, job: dict) -> dict:
+    """Poll status_url until a terminal state; returns the completed payload."""
+    request_id = job["request_id"]
     for _ in range(POLL_MAX_TRIES):
         time.sleep(POLL_SECONDS)
-        response = httpx.get(f"{API_BASE}/jobs/{job_id}", headers=_headers(api_key),
-                             timeout=TIMEOUT)
+        response = httpx.get(job["status_url"], headers=_headers(api_key), timeout=TIMEOUT)
         if response.status_code != 200:
-            raise RuntimeError(f"higgsfield job poll failed: {response.status_code} {response.text[:200]}")
-        data = response.json()
+            _raise_for(response, "status poll")
+        data = response.json() or {}
         status = (data.get("status") or "").lower()
         if status in ("completed", "succeeded", "success", "done"):
             return data
+        if status == "nsfw":
+            raise RuntimeError(f"higgsfield request {request_id} was blocked by moderation (nsfw)")
         if status in ("failed", "error", "canceled", "cancelled"):
-            raise RuntimeError(f"higgsfield job {job_id} failed: {str(data)[:300]}")
-    raise RuntimeError(f"higgsfield job {job_id} timed out (~10 minutes)")
+            raise RuntimeError(f"higgsfield request {request_id} {status}: {str(data.get('error') or '')[:300]}")
+    raise RuntimeError(f"higgsfield request {request_id} timed out (~10 minutes)")
 
 
 def _result_url(data: dict) -> str:
-    """The generated asset's URL, across the response shapes in the docs:
-    results/outputs lists or a single result object, each with url/raw url."""
-    candidates = (data.get("results") or data.get("outputs") or data.get("assets") or [])
-    if isinstance(candidates, dict):
-        candidates = [candidates]
-    if not candidates and data.get("result"):
-        candidates = [data["result"]]
+    """The generated asset's URL: images[0].url / video.url (the documented
+    shapes), then the older list/object shapes."""
+    candidates = []
+    for key in ("images", "videos", "results", "outputs", "assets"):
+        value = data.get(key)
+        if value:
+            candidates += value if isinstance(value, list) else [value]
+    for key in ("video", "image", "result"):
+        if isinstance(data.get(key), dict):
+            candidates.append(data[key])
     for item in candidates:
         if not isinstance(item, dict):
             continue
@@ -135,12 +209,13 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
     if aspect_ratio not in VALID_ASPECT_RATIOS:
         aspect_ratio = "1:1"
     _count("image", DAILY_IMAGE_LIMIT)
-    job_id = _create_job(api_key, "text2image", {
-        "model": IMAGE_MODEL,
+    job = _create_job(api_key, IMAGE_PATH, {
         "prompt": prompt,
         "aspect_ratio": aspect_ratio,
+        "resolution": IMAGE_RESOLUTION,
+        "batch_size": 1,
     })
-    data = _wait_for_result(api_key, job_id)
+    data = _wait_for_result(api_key, job)
     return {"content": _download(_result_url(data)), "mime": "image/png",
             "credits": _credits_used(data), "model": IMAGE_MODEL}
 
@@ -181,7 +256,7 @@ def generate_talking_character(api_key: str, image_url: str, audio_url: str,
     if aspect_ratio not in VALID_ASPECT_RATIOS:
         aspect_ratio = "9:16"
     _count("video", DAILY_VIDEO_LIMIT)
-    job_id = _create_job(api_key, PRESENTER_PATH, {
+    job = _create_job(api_key, PRESENTER_PATH, {
         "model": PRESENTER_MODEL,
         "prompt": "The person in the image speaks directly to the camera, in sync with the audio. "
                   "Natural, subtle head and hand movement; same face, clothes and background.",
@@ -191,22 +266,20 @@ def generate_talking_character(api_key: str, image_url: str, audio_url: str,
         "medias": [{"role": "start_image", "url": image_url},
                    {"role": "audio_references", "url": audio_url}],
     })
-    data = _wait_for_result(api_key, job_id)
-    return {"url": _result_url(data), "job_id": job_id, "credits": _credits_used(data),
+    data = _wait_for_result(api_key, job)
+    return {"url": _result_url(data), "job_id": job["request_id"], "credits": _credits_used(data),
             "duration": data.get("duration") or seconds, "model": PRESENTER_MODEL}
 
 
 def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dict:
-    """One short clip (model-default length, typically ~5-8s with native
-    audio on the Veo-class models) on the CLIENT'S key/credits."""
-    if aspect_ratio not in VALID_ASPECT_RATIOS:
-        aspect_ratio = "9:16"
+    """One short clip (VIDEO_SECONDS) on the CLIENT'S key/credits. The
+    documented text-to-video model takes prompt + duration only (no aspect
+    ratio field); `aspect_ratio` stays in the signature for the callers."""
     _count("video", DAILY_VIDEO_LIMIT)
-    job_id = _create_job(api_key, "text2video", {
-        "model": VIDEO_MODEL,
+    job = _create_job(api_key, VIDEO_PATH, {
         "prompt": prompt,
-        "aspect_ratio": aspect_ratio,
+        "duration": VIDEO_SECONDS,
     })
-    data = _wait_for_result(api_key, job_id)
+    data = _wait_for_result(api_key, job)
     return {"content": _download(_result_url(data)), "mime": "video/mp4",
             "credits": _credits_used(data), "model": VIDEO_MODEL}

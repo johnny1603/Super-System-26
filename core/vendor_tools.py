@@ -152,6 +152,12 @@ def mark_rejected(client_id: int, tool: str):
         _set_health(client_id, tool, "key_rejected")
 
 
+def mark_working(client_id: int, tool: str):
+    """A real job ran on the key: the card says connected ✓ (once per change)."""
+    if tool in TOOLS and (( _record(client_id).get("health") or {}).get(tool) or {}).get("state") != "ok":
+        _set_health(client_id, tool, "ok")
+
+
 # ─── Key checks (one cheap, read-only call per vendor) ───────────────────────
 
 def _probe(url: str, headers: dict, rejected_ok_statuses=()) -> str:
@@ -179,9 +185,32 @@ def _check_elevenlabs(key: str) -> str:
                   rejected_ok_statuses=("missing_permissions",))
 
 
-# Higgsfield publishes no key-check endpoint we could verify: a stored key is
-# "connected_unverified" until a real generation succeeds or is refused.
-CHECKS = {"elevenlabs": _check_elevenlabs}
+def _check_higgsfield(key: str) -> str:
+    """No dedicated key-check endpoint exists; the status read of a request id
+    that cannot exist is free and authenticated: 401/403 = the credentials are
+    refused (their docs: "Missing, malformed, or invalid credentials return 401"),
+    404/400/422 = accepted (no such request). Spends no credits."""
+    from core import media_gen_service as gen
+    try:
+        response = httpx.get(f"{gen.API_BASE}/requests/00000000-0000-0000-0000-000000000000/status",
+                             headers=gen._headers(key), timeout=PROBE_TIMEOUT)
+    except Exception:
+        return "unknown"
+    if response.status_code in (401, 403):
+        return "rejected"
+    if response.status_code in (200, 400, 404, 422):
+        return "ok"
+    return "unknown"
+
+
+CHECKS = {"elevenlabs": _check_elevenlabs, "higgsfield": _check_higgsfield}
+# What the client pasted is cleaned the same way on save and on every read
+def _normalize_higgsfield(raw: str) -> str:
+    from core.media_gen_service import normalize_key
+    return normalize_key(raw)
+
+
+NORMALIZE = {"higgsfield": _normalize_higgsfield}
 
 
 # ─── Status ──────────────────────────────────────────────────────────────────
@@ -291,7 +320,7 @@ def connect(client_id: int, tool: str, api_key: str, consent: bool = False) -> d
     if tool not in TOOLS:
         raise ToolError("unknown_tool")
     spec = TOOLS[tool]
-    key = (api_key or "").strip()
+    key = NORMALIZE[tool](api_key) if tool in NORMALIZE else (api_key or "").strip()
     if not key or len(key) > 400 or any(c.isspace() for c in key):
         raise ToolError("empty_key")
     if spec["consent_required"] and not consent and not _consent(client_id, spec["consent"]):

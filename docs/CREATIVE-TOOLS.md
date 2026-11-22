@@ -175,3 +175,24 @@ Slow today: `configure_conversion`, `publish_youtube_from_media`, `send_tiktok_t
 - **AI images we generated** skip the set.
 - **Multi-reference identity** (a character trained from all photos) is NOT built. It needs a live
   check of what the vendor offers first.
+
+## 10. Higgsfield 401 "Invalid credentials" — fixed 2026-11-22
+
+Client 27: every image (proposals 62, 63) failed with `401 {"detail":"Invalid credentials"}`.
+
+- **Cause.** The generator was written against a guessed API that never ran live:
+  - it sent `Authorization: Bearer <key>` to `platform.higgsfield.ai/v1/text2image` and polled `/jobs/{id}`;
+  - Higgsfield's docs (docs.higgsfield.ai/docs/authentication) require `Authorization: Key KEY_ID:KEY_SECRET` on `https://api.higgsfield.ai` ("Do not use a Bearer token");
+  - the model goes in the URL path, and the status is read from the returned `status_url` (`/requests/{id}/status`).
+- **Same record.** The tile (`vendor_tools.connect`) and the generator (`media_agent._generation_key` → `secrets_vault.use_vendor_key`) both use the client's newest active `client_accounts` row with platform `higgsfield`, encrypted and bound to client + platform. There is no global key and no second record.
+- **Fix, on our side only.**
+  - `media_gen_service` uses the documented base, header, paths, `status_url` polling and result shapes.
+  - `normalize_key` cleans the ONE pasted value on save and on every read:
+    - whitespace, quotes, and a pasted `Key `/`Bearer `/`Authorization:` prefix are dropped;
+    - an ID and secret copied on two lines become `id:secret`.
+  - The client is asked for nothing new. Nothing falls back to a key of ours.
+- **The tile tells the truth.**
+  - Connect and Test run a free authenticated status read (401 = rejected; spends no credits).
+  - A job's 401 marks the tile `key_rejected`; a job that ran marks it `connected`.
+- **Check client 27 without seeing the key:** `bash scripts/higgsfield_check.sh 27`. It prints the key's shape (lengths, whether it has the id:secret form) and Higgsfield's answer.
+- **Still not run live:** the first real generation after deploy. The presenter path (`MEDIA_PRESENTER_PATH`) is not in the docs that were read.

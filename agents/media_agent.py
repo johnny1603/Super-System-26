@@ -414,10 +414,11 @@ def connect_generation_account(client_id: int, api_key: str) -> dict:
     at cloud.higgsfield.ai/api-keys, and pastes it in themselves. Validated
     by the first real generation, not here (a validation call would burn the
     client's credits)."""
-    if not (api_key or "").strip():
+    key = gen.normalize_key(api_key)
+    if not key:
         return {"success": False, "errors": ["api_key is required"]}
     from agents.client_agent import upsert_account
-    upsert_account(client_id, HIGGSFIELD_PLATFORM, "higgsfield", api_key.strip(), "active")
+    upsert_account(client_id, HIGGSFIELD_PLATFORM, "higgsfield", key, "active")
     _log_activity(client_id, "media_account_connected", {})
     log_step(AGENT_NAME, "connect_generation_account", f"client {client_id}")
     return {"success": True}
@@ -428,7 +429,22 @@ def _generation_key(client_id: int) -> str:
     (abort) when it can't be proven to be this client's alone; an owner key
     is reachable only from internal accounts (core/secrets_vault.use_vendor_key)."""
     from core.secrets_vault import use_vendor_key
-    return use_vendor_key(client_id, HIGGSFIELD_PLATFORM, job="media_agent:generation")
+    # Cleaned on read too: a key stored before cleaning existed (stray quotes,
+    # a pasted prefix, id and secret on two lines) works as the client meant it
+    return gen.normalize_key(use_vendor_key(client_id, HIGGSFIELD_PLATFORM, job="media_agent:generation"))
+
+
+def _key_outcome(client_id: int, error: Exception = None):
+    """The tile tells the truth after a real job: refused → "key rejected",
+    ran → "connected ✓". Never raises."""
+    try:
+        from core import vendor_tools
+        if error is None:
+            vendor_tools.mark_working(client_id, "higgsfield")
+        elif isinstance(error, gen.CredentialsRejected):
+            vendor_tools.mark_rejected(client_id, "higgsfield")
+    except Exception:
+        pass
 
 
 _NO_ACCOUNT_ERROR = ("client's Higgsfield account is not connected - the client connects it "
@@ -560,8 +576,10 @@ def generate_image(client_id: int, brief: str, platform: str = "instagram",
         uploaded = drive.upload_bytes(folder, f"{platform}-{stamp}.png",
                                       generated["content"], generated["mime"])
     except Exception as e:  # includes ClaudeJSONError
+        _key_outcome(client_id, e)
         agent_alert(AGENT_NAME, [f"client {client_id}: image generation failed ({brief[:60]}): {e}"])
         return {"success": False, "errors": [str(e)]}
+    _key_outcome(client_id)
 
     # credits = the CLIENT'S spend on their own Higgsfield plan (never ours -
     # deliberately not written to client_costs)
@@ -600,8 +618,10 @@ def generate_video(client_id: int, brief: str, platform: str = "instagram",
         uploaded = drive.upload_bytes(folder, f"{platform}-{stamp}.mp4",
                                       generated["content"], generated["mime"])
     except Exception as e:  # includes ClaudeJSONError
+        _key_outcome(client_id, e)
         agent_alert(AGENT_NAME, [f"client {client_id}: video generation failed ({brief[:60]}): {e}"])
         return {"success": False, "errors": [str(e)]}
+    _key_outcome(client_id)
 
     _log_activity(client_id, "media_video_created",
                   {"platform": platform, "brief": brief[:200],

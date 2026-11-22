@@ -240,9 +240,12 @@ class SeparateConnections(ToolCase):
         self.assertEqual(vt.connect(27, "elevenlabs", KEY_E)["status"], "connected_unverified")
         self.assertEqual(vt.status(27, "elevenlabs"), "connected_unverified")
 
-    def test_higgsfield_has_no_key_check(self):
-        self.assertEqual(vt.connect(27, "higgsfield", KEY_HF)["status"], "connected_unverified")
-        self.assertEqual(HTTPX.calls, [])
+    def test_higgsfield_key_check_is_one_free_read(self):
+        # 2026-11-22: a status read of a request that can't exist (no credits,
+        # tests/test_higgsfield_auth.py) — the key is checked before storing
+        self.assertEqual(vt.connect(27, "higgsfield", KEY_HF)["status"], "connected")
+        self.assertEqual(len(HTTPX.calls), 1)
+        self.assertIn("/requests/", str(HTTPX.calls[0]))
 
     def test_empty_whitespace_and_unknown(self):
         for bad in ("", "   ", "two words"):
@@ -533,7 +536,7 @@ class ClientStateSections(ToolCase):
         from core import client_state as cs
         vt.connect(27, "higgsfield", KEY_HF)
         section = cs._creative_tools(27)
-        self.assertEqual(section["tools"]["higgsfield"]["status"], "connected_unverified")
+        self.assertEqual(section["tools"]["higgsfield"]["status"], "connected")
         self.assertNotIn("last4", section["tools"]["higgsfield"])
         self.assertNotIn("CCCC", repr(section))
         self.assertNotIn("heygen", section["tools"])
