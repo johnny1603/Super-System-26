@@ -2403,7 +2403,7 @@ def _channel_needs_connect(channel: str):
 def _creative_tool_missing(state: dict, client: dict) -> bool:
     """Some creative tool (core/vendor_tools) is not usable right now."""
     tools = ((state or {}).get("creative_tools") or {}).get("tools") or {}
-    return any(t.get("status") in ("not_connected", "key_rejected") for t in tools.values())
+    return any(t.get("status") in ("not_connected", "key_rejected", "needs_reconnect") for t in tools.values())
 
 
 def _creative_tools_spec() -> dict:

@@ -132,7 +132,7 @@ class ServerLabels(unittest.TestCase):
                 self.assertTrue(label, (tool, lang))
                 self.assertIsNone(VENDOR.search(label), (tool, lang))
         self.assertEqual(vt.client_label("elevenlabs"), "הקול שלך")
-        self.assertEqual(vt.client_label("higgsfield"), "הדמות שבסרטונים ותמונות AI")
+        self.assertEqual(vt.client_label("higgsfield"), "יצירת חומרי מדיה ו-AI")
         self.assertIsNone(VENDOR.search(vt.client_label("heygen")))     # retired, still labelled
         # Internal names stay (code, logs, admin, cost rows)
         self.assertEqual(vt.RETIRED_TOOLS["heygen"]["label"], "HeyGen")
@@ -307,7 +307,8 @@ class GuidedHelp(unittest.TestCase):
                           f'data-i18n="conn_connect"', html)
             self.assertIn(f'id="toolGuide-{tool}"', html)
             # The raw key field is still there, behind "I already have a key"
-            self.assertIn(f'id="toolKey-{tool}"', html)
+            # (Higgsfield: two boxes, Key ID + Key Secret, since 2026-11-22)
+            self.assertIn(f'id="toolKeyId-{tool}"' if tool == "higgsfield" else f'id="toolKey-{tool}"', html)
         guide_js = html[html.index("async function openToolGuide"):html.index("async function connectTool")]
         self.assertIn("t('tool_have_key')", guide_js)
         self.assertIn("t('tool_stuck_btn')", guide_js)

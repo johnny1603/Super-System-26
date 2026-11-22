@@ -152,7 +152,8 @@ class Case(unittest.TestCase):
         os.environ.pop(av.OPEN_TO_ALL_ENV, None)
         mg.generate_talking_character = _fake_generate
         self.saved_vt = (vt._record, vt._save, vt._log)
-        self.records = {}
+        # Verified two-part connections (core/vendor_tools: only the verified save writes id_hint)
+        self.records = {c: {"health": {"higgsfield": {"state": "ok", "id_hint": "hf-k"}}} for c in (27, 40)}
         vt._record = lambda cid: dict(self.records.get(cid, {}))
         vt._save = lambda cid, rec: self.records.__setitem__(cid, dict(rec))
         vt._log = lambda *a, **k: None

@@ -161,6 +161,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   tile's check is a free status read (`_check_higgsfield`: 401 = rejected); a job's 401 → `key_rejected`, a job
   that ran → `connected`. Diagnosis without the key: `bash scripts/higgsfield_check.sh 27`. Old env names
   `MEDIA_API_BASE/MEDIA_IMAGE_MODEL/MEDIA_VIDEO_MODEL` are no longer read. `tests/test_higgsfield_auth.py`.
+  **Two boxes since 2026-11-22 (card "יצירת חומרי מדיה ו-AI"):** Key ID + Key Secret (`key_id`/`key_secret` on
+  `/api/client/tools/higgsfield/connect`), both required (`missing_key_id`/`missing_key_secret`), each cleaned by
+  `media_gen_service.clean_part`, a combined paste split (`split_credential`); stored as ONE encrypted `id:secret`.
+  Verified on save (`vendor_tools.TWO_PART`): ok → stored + health `id_hint` (first 4 of the ID, the only part
+  the browser sees); rejected/unreachable → nothing stored. No `connected_unverified` for it: a row without
+  `id_hint` (an old single value, client 27) is `needs_reconnect`, and `_generation_key` returns "" for a
+  single-part key (no call). See docs/CREATIVE-TOOLS.md §11.
   **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
   `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the

@@ -414,11 +414,13 @@ def connect_generation_account(client_id: int, api_key: str) -> dict:
     at cloud.higgsfield.ai/api-keys, and pastes it in themselves. Validated
     by the first real generation, not here (a validation call would burn the
     client's credits)."""
-    key = gen.normalize_key(api_key)
-    if not key:
-        return {"success": False, "errors": ["api_key is required"]}
-    from agents.client_agent import upsert_account
-    upsert_account(client_id, HIGGSFIELD_PLATFORM, "higgsfield", key, "active")
+    # Since 2026-11-22 the SAME path as the card (core/vendor_tools.connect):
+    # both parts required, verified with Higgsfield before anything is stored
+    from core import vendor_tools
+    try:
+        vendor_tools.connect(client_id, "higgsfield", api_key)
+    except vendor_tools.ToolError as e:
+        return {"success": False, "errors": [e.code]}
     _log_activity(client_id, "media_account_connected", {})
     log_step(AGENT_NAME, "connect_generation_account", f"client {client_id}")
     return {"success": True}
@@ -431,7 +433,10 @@ def _generation_key(client_id: int) -> str:
     from core.secrets_vault import use_vendor_key
     # Cleaned on read too: a key stored before cleaning existed (stray quotes,
     # a pasted prefix, id and secret on two lines) works as the client meant it
-    return gen.normalize_key(use_vendor_key(client_id, HIGGSFIELD_PLATFORM, job="media_agent:generation"))
+    key = gen.normalize_key(use_vendor_key(client_id, HIGGSFIELD_PLATFORM, job="media_agent:generation"))
+    # An old single-value key can't authenticate (Key ID + Secret are both
+    # needed): no call is made on it — the card asks to connect again
+    return key if gen.has_both_parts(key) else ""
 
 
 def _key_outcome(client_id: int, error: Exception = None):

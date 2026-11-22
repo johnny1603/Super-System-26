@@ -299,7 +299,8 @@ def _health(client_id: int, key: str) -> str:
             return "dead" if gtm_missing_scopes(client_id) else ""
         if key in VENDOR_TOOLS:
             from core import vendor_tools
-            return "key_rejected" if vendor_tools.status(client_id, key) == "key_rejected" else ""
+            # needs_reconnect (an old single-value key) is answered like a refused key
+            return "key_rejected" if vendor_tools.status(client_id, key) in ("key_rejected", "needs_reconnect") else ""
     except Exception:
         return ""
     return ""

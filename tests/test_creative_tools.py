@@ -144,7 +144,10 @@ from core import elevenlabs_service as el      # noqa: E402
 from core import vendor_tools as vt            # noqa: E402
 from core import voice_recordings as vr        # noqa: E402
 
-KEY_H, KEY_E, KEY_HF = "hg-key-0000-AAAA", "el-key-1111-BBBB", "hf-key-2222-CCCC"
+# Higgsfield is Key ID + Key Secret ("id:secret", the card's two boxes, 2026-11-22)
+KEY_H, KEY_E, KEY_HF = "hg-key-0000-AAAA", "el-key-1111-BBBB", "hf-key-2222:CCCC"
+# A verified two-part connection (only the verified save writes id_hint)
+HF_VERIFIED = {"state": "ok", "id_hint": "hf-k"}
 RENDERS = []          # (key, image_url, audio_url, seconds) sent to the presenter model
 av.mg.generate_talking_character = lambda key, image_url, audio_url, seconds=0, aspect_ratio="9:16": (
     RENDERS.append((key, image_url, audio_url, seconds))
@@ -162,7 +165,7 @@ class ToolCase(unittest.TestCase):
         PUBLIC.clear()
         HTTPX.calls.clear()
         HTTPX.next.clear()
-        self.records, self.logs = {}, []
+        self.records, self.logs = {27: {"health": {"higgsfield": dict(HF_VERIFIED)}}}, []
         self.saved = (vt._record, vt._save, vt._log)
         vt._record = lambda cid: dict(self.records.get(cid, {}))
         vt._save = lambda cid, rec: self.records.__setitem__(cid, dict(rec))
@@ -257,12 +260,16 @@ class SeparateConnections(ToolCase):
         self.assertEqual(e.exception.code, "unknown_tool")
 
     def test_legacy_rows_keep_working_without_reentry(self):
-        # Connected before this module: a row, no health record
+        # Connected before this module: a row, no health record. ElevenLabs
+        # keeps working; Higgsfield (two values since 2026-11-22, verified on
+        # save) asks for the Key ID + Key Secret again
+        self.records.clear()
         ACCOUNTS[(27, "higgsfield")] = KEY_HF
         ACCOUNTS[(27, "elevenlabs")] = KEY_E
-        self.assertEqual(vt.status(27, "higgsfield"), "connected_unverified")
-        self.assertTrue(vt.is_connected(27, "higgsfield"))
-        self.assertEqual(vt.missing(27, ["higgsfield", "elevenlabs"]), [])
+        self.assertEqual(vt.status(27, "elevenlabs"), "connected_unverified")
+        self.assertEqual(vt.status(27, "higgsfield"), "needs_reconnect")
+        self.assertFalse(vt.is_connected(27, "higgsfield"))
+        self.assertEqual(vt.missing(27, ["higgsfield", "elevenlabs"]), ["higgsfield"])
 
     def test_key_rejected_during_a_job_shows_on_the_card(self):
         vt.connect(27, "elevenlabs", KEY_E)
@@ -596,7 +603,8 @@ class DashboardCards(unittest.TestCase):
     def test_one_card_per_tool_with_its_own_controls(self):
         self.assertNotIn('toolCard-heygen', self.html)
         for tool in ("elevenlabs", "higgsfield"):
-            for element in ("toolCard-", "toolStatus-", "toolKey-", "toolConnectBtn-", "toolDisc-", "toolForm-"):
+            key_box = "toolKeyId-" if tool == "higgsfield" else "toolKey-"     # two boxes there
+            for element in ("toolCard-", "toolStatus-", key_box, "toolConnectBtn-", "toolDisc-", "toolForm-"):
                 self.assertIn(f'id="{element}{tool}"', self.html, element + tool)
             # One "חבר" per card (2026-11-01): it opens the agent's chat
             self.assertIn(f'id="toolOpenBtn-{tool}" onclick="connectViaChat(\'{tool}\')"', self.html)

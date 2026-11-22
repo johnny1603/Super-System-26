@@ -63,19 +63,21 @@ if not d.get("stored"):
 s = d.get("shape") or {}
 print(f"stored key: length {s.get('length')}, after cleaning {s.get('clean_length')}"
       f"{' (cleaning changed it)' if s.get('changed_by_cleaning') else ''}")
-print(f"  id:secret form: {s.get('has_id_and_secret')}   part lengths: {s.get('part_lengths')}")
-print(f"sent as: Authorization: {d.get('auth_scheme')} <key>   to {d.get('api_base')}")
+both = d.get("both_parts", s.get("has_id_and_secret"))
+lengths = s.get("part_lengths") or []
+print(f"  Key ID present: {bool(lengths and lengths[0])}   Key Secret present: {bool(both)}"
+      f"   part lengths: {lengths}")
+print(f"sent as: Authorization: {d.get('auth_scheme')} <id:secret>   to {d.get('api_base')}")
 p = d.get("probe")
 print(f"Higgsfield says: {p}")
 if p == "ok":
-    print("  -> the key is accepted. Generation should work now.")
+    print("  -> accepted. Generation should work now.")
+elif p == "not_sent_single_part":
+    print("  -> an OLD single-part value (no Key ID + Key Secret pair). Nothing was sent to Higgsfield.")
+    print("     The card shows 'needs reconnect': the client enters the two values in the two boxes.")
 elif p == "rejected":
-    if not s.get("has_id_and_secret"):
-        print("  -> refused, and the stored value is ONE part only (no ':'). A Higgsfield credential is a")
-        print("     key ID + a secret; the tile must receive both (as 'id:secret' or the two on separate lines).")
-    else:
-        print("  -> refused although it has the id:secret form: the key was revoked/deleted in Higgsfield,")
-        print("     or belongs to an account without API access.")
+    print("  -> refused although both parts are stored: the key was revoked/deleted in Higgsfield,")
+    print("     or belongs to an account without API access. The client enters a new pair in the card.")
 else:
     print("  -> Higgsfield did not answer clearly (network/5xx). Run again in a minute.")
 PY

@@ -24,6 +24,15 @@ key-check we can call, or it could not be reached — the first real job is
 the check) | key_rejected (the vendor said the key is invalid — at Connect,
 at Test, or during a real job) | not_connected.
 
+HIGGSFIELD (2026-11-22): its credential is TWO values — Key ID + Key Secret,
+two boxes on the card, stored together as "id:secret" in the one encrypted
+secret. Connect verifies on save (one free authenticated read): accepted →
+connected (stored), refused → key_rejected (nothing stored), unreachable →
+nothing stored, try again. There is no connected_unverified for it: a stored
+row whose health isn't a verified "ok" or "key_rejected" — e.g. an old
+single-value key (client 27) — is `needs_reconnect` (both boxes again). The
+card shows the first 4 characters of the Key ID (`id_hint`), never the secret.
+
 Key health and the client's default video provider live in ONE app_settings
 row per client, `creative_tools:<id>` (cleared by client_deletion, guarded by
 deletion_guard). Never a key in it: only status, time, and the last 4
@@ -60,12 +69,12 @@ TOOLS = {
                    "what_he": "שיבוט הקול שלך והקראה בקול שלך",
                    "consent": "voice", "consent_required": False},
     "higgsfield": {"label": "Higgsfield", "platform": "higgsfield", "help_id": "higgsfield",
-                   "client_label": _t("הדמות שבסרטונים ותמונות AI",
-                                      "Your video presenter and AI images",
-                                      "Votre présentateur vidéo et images IA",
-                                      "الشخصية في الفيديوهات وصور الذكاء الاصطناعي",
-                                      "Ведущий ваших видео и ИИ-изображения"),
-                   "what_he": "הדמות שמדברת בסרטונים שלך (מתמונה שלך או דמות AI), ותמונות וסרטונים שנוצרים במחשב",
+                   "client_label": _t("יצירת חומרי מדיה ו-AI",
+                                      "Media and AI creation",
+                                      "Création de médias et IA",
+                                      "إنشاء مواد إعلامية وذكاء اصطناعي",
+                                      "Создание медиа и ИИ"),
+                   "what_he": "יצירת תמונות, קליפים קצרים ודמויות AI שמציגות בסרטונים — בחשבון שלך בכלי",
                    "consent": "likeness", "consent_required": False},
 }
 
@@ -103,6 +112,8 @@ def scrub_vendor_names(text: str, lang: str = "he") -> str:
     return vendor_names.scrub(_VENDOR_RE.sub(swap, text or ""), lang)
 CONNECTED = ("connected", "connected_unverified")
 PROBE_TIMEOUT = 15
+TWO_PART = ("higgsfield",)        # Key ID + Key Secret, two boxes, verified on save
+ID_HINT_CHARS = 4
 
 
 def _now() -> str:
@@ -135,11 +146,13 @@ def _save(client_id: int, record: dict):
         print(f"[vendor_tools] record not stored for client {client_id}: {type(e).__name__}")
 
 
-def _set_health(client_id: int, tool: str, state: str):
+def _set_health(client_id: int, tool: str, state: str, id_hint: str = None):
+    """`id_hint`: None keeps the one already recorded (the same key, re-checked)."""
     record = _record(client_id)
     health = dict(record.get("health") or {})
     if state:
-        health[tool] = {"state": state, "checked_at": _now()}
+        hint = ((health.get(tool) or {}).get("id_hint") or "") if id_hint is None else id_hint
+        health[tool] = {"state": state, "checked_at": _now(), **({"id_hint": hint} if hint else {})}
     else:
         health.pop(tool, None)
     record["health"] = health
@@ -154,7 +167,7 @@ def mark_rejected(client_id: int, tool: str):
 
 def mark_working(client_id: int, tool: str):
     """A real job ran on the key: the card says connected ✓ (once per change)."""
-    if tool in TOOLS and (( _record(client_id).get("health") or {}).get(tool) or {}).get("state") != "ok":
+    if tool in TOOLS and ((_record(client_id).get("health") or {}).get(tool) or {}).get("state") != "ok":
         _set_health(client_id, tool, "ok")
 
 
@@ -238,6 +251,11 @@ def status(client_id: int, tool: str, accounts: dict = None, record: dict = None
     if not row or not row.get("has_secret"):
         return "not_connected"
     health = ((record if record is not None else _record(client_id)).get("health") or {}).get(tool) or {}
+    if tool in TWO_PART and not health.get("id_hint"):
+        # Saved before the two boxes (an old single value — client 27) or never
+        # verified as Key ID + Key Secret: whatever its old health said, the
+        # card asks for both values again. Only the verified save writes id_hint
+        return "needs_reconnect"
     if health.get("state") == "key_rejected":
         return "key_rejected"
     if health.get("state") == "ok":
@@ -252,10 +270,14 @@ def statuses(client_id: int) -> dict:
     for tool, spec in TOOLS.items():
         row = accounts.get(spec["platform"]) or {}
         health = (record.get("health") or {}).get(tool) or {}
+        st = status(client_id, tool, accounts, record)
         out[tool] = {"tool": tool, "label": spec["label"], "client_label": client_label(tool),
                      "what_he": spec["what_he"],
-                     # No part of the key, not even its last 4 (core/ownership)
-                     "status": status(client_id, tool, accounts, record),
+                     # No part of the SECRET, ever (core/ownership). For a two-part
+                     # credential: the first 4 characters of the Key ID only
+                     "status": st,
+                     "id_hint": (health.get("id_hint") or "") if tool in TWO_PART and st in ("connected", "key_rejected") else "",
+                     "two_part": tool in TWO_PART,
                      "checked_at": health.get("checked_at"),
                      "can_test": tool in CHECKS,
                      "consent_scope": spec["consent"], "consent_required": spec["consent_required"],
@@ -314,13 +336,38 @@ def _log(client_id: int, action: str, tool: str, extra: dict = None):
         print(f"[vendor_tools] activity not logged for client {client_id}: {type(e).__name__}")
 
 
-def connect(client_id: int, tool: str, api_key: str, consent: bool = False) -> dict:
+def _two_part_key(api_key: str, key_id, key_secret) -> tuple:
+    """(stored "id:secret", id) from the card's two boxes; an older caller's
+    single combined value is accepted only if it holds both parts."""
+    from core import media_gen_service as gen
+    if key_id is None and key_secret is None:
+        # One value (an older caller): must be the combined form; id + secret
+        # on two lines is joined to "id:secret" first
+        key_id, key_secret = gen.normalize_key(api_key), ""
+    try:
+        kid, secret = gen.split_credential(key_id, key_secret)
+    except gen.MissingPart as e:
+        raise ToolError(f"missing_{e.part}")
+    key = f"{kid}:{secret}"
+    if len(key) > 400:
+        raise ToolError("empty_key")
+    return key, kid
+
+
+def connect(client_id: int, tool: str, api_key: str = "", consent: bool = False,
+            key_id: str = None, key_secret: str = None) -> dict:
     """Check the key with the vendor FIRST (a key the vendor rejects is never
-    stored), then store it on this tool's own row. Raises ToolError."""
+    stored), then store it on this tool's own row. Raises ToolError.
+    A two-part tool (Higgsfield) takes `key_id` + `key_secret`, both required,
+    and is stored ONLY when the vendor accepted them (verify on save)."""
     if tool not in TOOLS:
         raise ToolError("unknown_tool")
     spec = TOOLS[tool]
-    key = NORMALIZE[tool](api_key) if tool in NORMALIZE else (api_key or "").strip()
+    kid = ""
+    if tool in TWO_PART:
+        key, kid = _two_part_key(api_key, key_id, key_secret)
+    else:
+        key = NORMALIZE[tool](api_key) if tool in NORMALIZE else (api_key or "").strip()
     if not key or len(key) > 400 or any(c.isspace() for c in key):
         raise ToolError("empty_key")
     if spec["consent_required"] and not consent and not _consent(client_id, spec["consent"]):
@@ -328,6 +375,17 @@ def connect(client_id: int, tool: str, api_key: str, consent: bool = False) -> d
     checked = CHECKS[tool](key) if tool in CHECKS else "unknown"
     if checked == "rejected":
         raise ToolError("key_rejected")
+    if tool in TWO_PART and checked != "ok":
+        raise ToolError("check_unreachable")     # nothing stored: verified or not saved at all
+    if tool in TWO_PART:
+        from agents.client_agent import upsert_account
+        upsert_account(client_id, spec["platform"], spec["platform"], key, "active")
+        if consent and spec["consent"]:
+            from agents.avatar_agent import record_consent
+            record_consent(client_id, spec["consent"])
+        _set_health(client_id, tool, "ok", id_hint=kid[:ID_HINT_CHARS])
+        _log(client_id, "creative_tool_connected", tool, {"verified": True})
+        return {"tool": tool, "status": "connected", "id_hint": kid[:ID_HINT_CHARS]}
     from agents.client_agent import upsert_account
     upsert_account(client_id, spec["platform"], spec["platform"], key, "active")
     if consent and spec["consent"]:
@@ -348,10 +406,16 @@ def test(client_id: int, tool: str) -> dict:
         raise ToolError("not_connected")
     if tool not in CHECKS:
         return {"tool": tool, "status": "connected_unverified", "checkable": False}
+    hint = None
+    if tool in TWO_PART:
+        from core import media_gen_service as gen
+        if not gen.has_both_parts(key):
+            return {"tool": tool, "status": "needs_reconnect"}    # an old single value: no call
+        hint = gen.normalize_key(key).partition(":")[0][:ID_HINT_CHARS]
     checked = CHECKS[tool](key)
     if checked == "unknown":
         return {"tool": tool, "status": status(client_id, tool), "reachable": False}
-    _set_health(client_id, tool, "ok" if checked == "ok" else "key_rejected")
+    _set_health(client_id, tool, "ok" if checked == "ok" else "key_rejected", id_hint=hint)
     return {"tool": tool, "status": "connected" if checked == "ok" else "key_rejected"}
 
 

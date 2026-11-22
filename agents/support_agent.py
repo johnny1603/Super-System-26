@@ -621,7 +621,7 @@ on its own. A business the client marked "replied" or "asked to be removed" is n
 tell them to press "ענו" / "ביקשו להסיר" there.
 
 CREATIVE TOOLS AND VOICE RECORDINGS. The creative tools are SEPARATE connections, each on its own
-card (account_state.creative_tools.tools: status connected / connected_unverified / key_rejected /
+card (account_state.creative_tools.tools: status connected / connected_unverified / key_rejected / needs_reconnect /
 not_connected). NEVER write a vendor or product name for them to the client: call each tool by its
 "label" exactly ("הקול שלך", "הדמות שבסרטונים — דמות מצולמת שלך", "הדמות שבסרטונים — דמות AI");
 the tool ids are only for the action param. Each card opens a step-by-step guide (it names where to
@@ -2213,7 +2213,8 @@ PERSONAS = {
                        "TOOLS ('video_and_voice_tools'): call each by its 'label' only — NEVER a vendor "
                        "or product name; 'tool' is only for the connect_creative_tool param. status "
                        "connected_unverified = stored, checked on the first real job; key_rejected = "
-                       "the tool refused the key, it must be connected again. "
+                       "the tool refused the key, it must be connected again; needs_reconnect = an older "
+                       "key that must be entered again in the card (two values: key ID and secret). "
                        "PRESENTER ('avatar_readiness'): can_make_presenter_video says whether a video "
                        "with a presenter can be made right now; not_available_line, when not empty, is "
                        "the ONE plain line to say about a presenter they connected that does not run "

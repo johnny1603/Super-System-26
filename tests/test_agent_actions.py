@@ -490,7 +490,7 @@ class ConnectionHelpCard(ActionTestCase):
 
     def test_card_names_the_capability_never_the_vendor(self):
         card = self.propose(40, "client_chat", "request_connection_help", {"connection": "higgsfield"})["card"]
-        self.assertIn("הדמות שבסרטונים", card["what"])
+        self.assertIn("יצירת חומרי מדיה", card["what"])
         self.assertNotIn("Higgsfield", card["what"])
         # HeyGen is retired (2026-10-31): no help entry, so no help card either
         self.assertIn("error", self.propose(40, "client_chat", "request_connection_help", {"connection": "heygen"}))

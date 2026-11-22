@@ -196,3 +196,26 @@ Client 27: every image (proposals 62, 63) failed with `401 {"detail":"Invalid cr
   - A job's 401 marks the tile `key_rejected`; a job that ran marks it `connected`.
 - **Check client 27 without seeing the key:** `bash scripts/higgsfield_check.sh 27`. It prints the key's shape (lengths, whether it has the id:secret form) and Higgsfield's answer.
 - **Still not run live:** the first real generation after deploy. The presenter path (`MEDIA_PRESENTER_PATH`) is not in the docs that were read.
+## 11. The card asks for Key ID + Key Secret — 2026-11-22
+
+The card is now "יצירת חומרי מדיה ו-AI" (images, short clips, AI presenters on the client's own Higgsfield account).
+
+- **Two boxes:** "מזהה מפתח (Key ID)" and "סוד המפתח (Key Secret)". The secret is masked, with a show/hide toggle.
+  - The API takes `key_id` + `key_secret`, and both are required. A missing one returns `missing_key_id` or `missing_key_secret`, a Hebrew line naming the box, and nothing is stored.
+  - Each box is cleaned on save and on read (`clean_part`): whitespace, quotes, `Key `/`Bearer `/`Authorization:`.
+  - A combined `id:secret` pasted into either box is split, both in the page and on the server (`split_credential`).
+  - Storage is unchanged: one encrypted `client_accounts` secret holding `id:secret`.
+- **Verified on save:** one free authenticated read.
+  - Accepted: the key is stored and the card says "מחובר ומאומת".
+  - Refused: nothing is stored and the card says "נדחה: בדוק את שני הערכים".
+  - Higgsfield unreachable: nothing is stored (`check_unreachable`), try again.
+  - The "connected, checked on the first job" state no longer exists for this tool.
+- **Masked display:** the card shows the first 4 characters of the Key ID (health `id_hint`). The secret never reaches the browser.
+- **Old single values (client 27):** a stored row without `id_hint` is `needs_reconnect`, whatever its old health said.
+  - The card says "נדרש חיבור מחדש" with both boxes open.
+  - The generator makes no call on a single-part key.
+  - A 401 in real work still marks a verified connection `key_rejected`. There is no retry loop.
+- **Check without seeing the key:** `bash scripts/higgsfield_check.sh 27` prints:
+  - the lengths;
+  - whether the Key ID and the Key Secret are present;
+  - Higgsfield's verdict. A single-part value is not sent at all (`not_sent_single_part`).

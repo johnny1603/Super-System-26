@@ -374,7 +374,7 @@ def _status(client_id: int, group: str, rows: list) -> str:
     try:
         if group in ("heygen", "elevenlabs", "higgsfield"):
             from core import vendor_tools
-            if vendor_tools.status(client_id, group) == "key_rejected":
+            if vendor_tools.status(client_id, group) in ("key_rejected", "needs_reconnect"):
                 return "needs_attention"
         elif group == "google_ads":
             from agents.google_ads_agent import grant_needs_reconnect

@@ -105,6 +105,49 @@ def normalize_key(raw: str) -> str:
     return parts[0] if parts else ""
 
 
+def clean_part(raw: str) -> str:
+    """ONE field of the card (Key ID or Key Secret): whitespace, quotes, an
+    "Authorization:" label and a "Key "/"Bearer " prefix dropped; inner
+    whitespace too (a value never contains any)."""
+    text = str(raw or "").replace("​", "").replace("﻿", "").strip().strip(_QUOTES).strip()
+    text = _PREFIX_RE.sub("", text, count=1).strip().strip(_QUOTES).strip()
+    if text.lower() in ("key", "bearer", "authorization", "authorization:"):
+        return ""                                # only a prefix was pasted: the box is empty
+    return re.sub(r"\s+", "", text)
+
+
+class MissingPart(ValueError):
+    """`part` is "key_id" or "key_secret": the card names that field."""
+    def __init__(self, part: str):
+        super().__init__(part)
+        self.part = part
+
+
+def split_credential(key_id: str, key_secret: str) -> tuple:
+    """The card's two boxes → (id, secret), both required. A combined
+    "id:secret" pasted into either box is split instead of refused (the
+    other box may then be empty, or hold the same value again)."""
+    boxes = [clean_part(key_id), clean_part(key_secret)]
+    for i, value in enumerate(boxes):
+        if ":" not in value:
+            continue
+        left, _, right = (clean_part(p) for p in value.partition(":"))
+        if left and right:
+            return left, right                   # the combined form: it IS both values
+        boxes[i] = left or right                 # "id:" / ":secret" — that box's own value
+    kid, secret = boxes
+    if not kid:
+        raise MissingPart("key_id")
+    if not secret:
+        raise MissingPart("key_secret")
+    return kid, secret
+
+
+def has_both_parts(stored: str) -> bool:
+    left, sep, right = normalize_key(stored).partition(":")
+    return bool(sep and left and right)
+
+
 def key_shape(raw: str) -> dict:
     """For diagnosis ONLY — what the stored value looks like, never any part
     of it: lengths, whether it has the "id:secret" form, and whether cleaning

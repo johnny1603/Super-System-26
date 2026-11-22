@@ -4202,8 +4202,11 @@ def higgsfield_check(client_id: int):
     raw = use_vendor_key(client_id, "higgsfield", job="admin:higgsfield_check")
     if not raw:
         return {"success": True, "data": {"stored": False, "tile_status": vendor_tools.status(client_id, "higgsfield")}}
-    probe = vendor_tools._check_higgsfield(raw)
+    # Since 2026-11-22 the card stores Key ID + Key Secret together ("id:secret").
+    # An old single-part value is not sent at all: it can't authenticate
+    probe = vendor_tools._check_higgsfield(raw) if gen.has_both_parts(raw) else "not_sent_single_part"
     return {"success": True, "data": {"stored": True, "shape": gen.key_shape(raw), "probe": probe,
+                                      "both_parts": gen.has_both_parts(raw),
                                       "auth_scheme": "Key", "api_base": gen.API_BASE,
                                       "tile_status": vendor_tools.status(client_id, "higgsfield")}}
 
@@ -5031,6 +5034,9 @@ _TOOL_ERRORS_HE = {
     "empty_key": "צריך להדביק את המפתח לפני החיבור.",
     "consent_required": "כדי להמשיך צריך לסמן את האישור לשימוש בדמות שלך.",
     "key_rejected": "הכלי דחה את המפתח. כדאי להעתיק אותו שוב מהחשבון שלך ולנסות שוב.",
+    "missing_key_id": "חסר מזהה המפתח (Key ID). מדביקים אותו בתיבה הראשונה — שום דבר לא נשמר.",
+    "missing_key_secret": "חסר סוד המפתח (Key Secret). מדביקים אותו בתיבה השנייה — שום דבר לא נשמר.",
+    "check_unreachable": "לא הצלחנו לבדוק את המפתח כרגע, ולכן שום דבר לא נשמר. נסו שוב בעוד רגע.",
     "not_connected": "הכלי הזה עוד לא מחובר.",
     "unknown_provider": "ספק הווידאו הזה לא מוכר.",
 }
@@ -5047,8 +5053,11 @@ def _creative_state_changed(client_id: int):
     client_state.forget(client_id)
 
 class ToolConnectRequest(BaseModel):
-    api_key: str
+    api_key: str = ""
     consent: bool = False
+    # Two-part credentials (Higgsfield): the card's two boxes
+    key_id: str = None
+    key_secret: str = None
 
 class ToolProviderRequest(BaseModel):
     provider: str
@@ -5077,7 +5086,8 @@ def client_tool_connect(tool: str, req: ToolConnectRequest, request: Request):
     client_id = _require_session(request)
     from core import vendor_tools
     try:
-        result = vendor_tools.connect(client_id, tool, req.api_key, req.consent)
+        result = vendor_tools.connect(client_id, tool, req.api_key, req.consent,
+                                      key_id=req.key_id, key_secret=req.key_secret)
     except vendor_tools.ToolError as e:
         raise _tool_error(e)
     _creative_state_changed(client_id)

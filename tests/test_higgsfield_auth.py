@@ -187,10 +187,14 @@ class Tile(Base):
             self.assertEqual(http.calls[0][2]["Authorization"], f"Key {KEY}")
 
     def test_connect_stores_the_cleaned_single_value(self):
+        # An older caller's ONE value still works when it holds both parts
         self.use(FakeHttp(poll_status=404, status={}))
         out = vt.connect(27, "higgsfield", "a1b2c3d4-0000-4000-8000-0123456789ab\ns3cr3tS3cr3tS3cr3t\n")
         self.assertEqual(out["status"], "connected")
         self.assertEqual(self.stored[(27, "higgsfield")], KEY)
+        with self.assertRaises(vt.ToolError) as e:
+            vt.connect(27, "higgsfield", "onlyonepart")
+        self.assertEqual(e.exception.code, "missing_key_secret")
 
     def test_a_refused_key_is_not_stored(self):
         self.use(FakeHttp(poll_status=401, status={"detail": "Invalid credentials"}))
@@ -204,6 +208,155 @@ class Tile(Base):
         self.assertEqual(self.records[27]["health"]["higgsfield"]["state"], "key_rejected")
         vt.mark_working(27, "higgsfield")
         self.assertEqual(self.records[27]["health"]["higgsfield"]["state"], "ok")
+
+
+KID, SECRET = KEY.split(":")
+
+
+class TwoBoxes(unittest.TestCase):
+    """The card's Key ID + Key Secret boxes (2026-11-22)."""
+
+    def test_separate_fields(self):
+        self.assertEqual(mg.split_credential(KID, SECRET), (KID, SECRET))
+
+    def test_combined_paste_is_split(self):
+        for kid, sec in ((KEY, ""), ("", KEY), (KEY, KEY), (f"Key {KEY}", ""), (KEY, SECRET)):
+            with self.subTest(kid=kid, sec=sec):
+                self.assertEqual(mg.split_credential(kid, sec), (KID, SECRET))
+        self.assertEqual(mg.split_credential(f"{KID}:", SECRET), (KID, SECRET))
+
+    def test_missing_field_is_named(self):
+        for kid, sec, part in ((KID, "", "key_secret"), ("", SECRET, "key_id"), ("  ", " \n", "key_id"),
+                               ('""', SECRET, "key_id"), (KID, "Bearer ", "key_secret")):
+            with self.subTest(kid=kid, sec=sec):
+                with self.assertRaises(mg.MissingPart) as e:
+                    mg.split_credential(kid, sec)
+                self.assertEqual(e.exception.part, part)
+
+    def test_trimming_each_box(self):
+        self.assertEqual(mg.split_credential(f'  "{KID}"\n', f"Key {SECRET} "), (KID, SECRET))
+        self.assertEqual(mg.split_credential(f"Bearer {KID}", f"'{SECRET}'"), (KID, SECRET))
+        self.assertEqual(mg.split_credential(f"​{KID}", f"{SECRET}﻿"), (KID, SECRET))
+
+    def test_has_both_parts(self):
+        self.assertTrue(mg.has_both_parts(KEY))
+        for v in ("onlyonepart", f"{KID}:", f":{SECRET}", ""):
+            self.assertFalse(mg.has_both_parts(v), v)
+
+
+class VerifyOnSave(Tile):
+    def accounts(self, has_secret=True):
+        vt_accounts = {"higgsfield": {"has_secret": has_secret}}
+        self.saved_acc = vt._accounts
+        vt._accounts = lambda cid: vt_accounts
+        self.addCleanup(lambda: setattr(vt, "_accounts", self.saved_acc))
+
+    def test_verified_status_and_masked_hint(self):
+        http = self.use(FakeHttp(poll_status=404, status={}))
+        out = vt.connect(27, "higgsfield", key_id=f" {KID} ", key_secret=f'"{SECRET}"')
+        self.assertEqual(out["status"], "connected")
+        self.assertEqual(out["id_hint"], KID[:4])
+        self.assertEqual(self.stored[(27, "higgsfield")], KEY)
+        self.assertEqual(http.calls[0][2]["Authorization"], f"Key {KEY}")     # one cheap authenticated call
+        self.assertEqual(len(http.calls), 1)
+        self.accounts()
+        self.assertEqual(vt.status(27, "higgsfield"), "connected")
+        health = self.records[27]["health"]["higgsfield"]
+        self.assertEqual(health["id_hint"], KID[:4])
+        self.assertNotIn(SECRET, str(self.records))                          # never the secret in health
+
+    def test_rejected_status_nothing_stored(self):
+        self.use(FakeHttp(poll_status=401, status={"detail": "Invalid credentials"}))
+        with self.assertRaises(vt.ToolError) as e:
+            vt.connect(27, "higgsfield", key_id=KID, key_secret=SECRET)
+        self.assertEqual(e.exception.code, "key_rejected")
+        self.assertEqual(self.stored, {})
+
+    def test_unreachable_check_stores_nothing(self):
+        self.use(FakeHttp(poll_status=503, status={}))
+        with self.assertRaises(vt.ToolError) as e:
+            vt.connect(27, "higgsfield", key_id=KID, key_secret=SECRET)
+        self.assertEqual(e.exception.code, "check_unreachable")
+        self.assertEqual(self.stored, {})
+
+    def test_missing_field_makes_no_call_and_stores_nothing(self):
+        http = self.use(FakeHttp(poll_status=404, status={}))
+        for kid, sec, code in ((KID, "", "missing_key_secret"), ("", SECRET, "missing_key_id")):
+            with self.assertRaises(vt.ToolError) as e:
+                vt.connect(27, "higgsfield", key_id=kid, key_secret=sec)
+            self.assertEqual(e.exception.code, code)
+        self.assertEqual(http.calls, [])
+        self.assertEqual(self.stored, {})
+
+    def test_combined_paste_in_one_box(self):
+        self.use(FakeHttp(poll_status=404, status={}))
+        vt.connect(27, "higgsfield", key_id=KEY, key_secret="")
+        self.assertEqual(self.stored[(27, "higgsfield")], KEY)
+
+    def test_old_single_part_value_needs_reconnect(self):
+        # Client 27: a value saved before the two boxes; whatever health it had
+        self.accounts()
+        for health in ({}, {"state": "unverified"}, {"state": "key_rejected"}, {"state": "ok"}):
+            with self.subTest(health=health):
+                self.records[27] = {"health": {"higgsfield": health}} if health else {}
+                self.assertEqual(vt.status(27, "higgsfield"), "needs_reconnect")
+                self.assertFalse(vt.is_connected(27, "higgsfield"))
+        # A 401 in real work afterwards does not make it look connected either
+        vt.mark_rejected(27, "higgsfield")
+        self.assertEqual(vt.status(27, "higgsfield"), "needs_reconnect")
+
+    def test_a_401_after_verified_save_marks_rejected(self):
+        self.use(FakeHttp(poll_status=404, status={}))
+        vt.connect(27, "higgsfield", key_id=KID, key_secret=SECRET)
+        self.accounts()
+        vt.mark_rejected(27, "higgsfield")
+        self.assertEqual(vt.status(27, "higgsfield"), "key_rejected")
+        self.assertEqual(self.records[27]["health"]["higgsfield"]["id_hint"], KID[:4])
+
+    def test_generation_refuses_an_old_single_part_key(self):
+        import core.secrets_vault as sv
+        saved = sv.use_vendor_key
+        sv.use_vendor_key = lambda *a, **k: "onlyonepart"
+        try:
+            from agents import media_agent
+            self.assertEqual(media_agent._generation_key(27), "")
+            sv.use_vendor_key = lambda *a, **k: f" {KEY}\n"
+            self.assertEqual(media_agent._generation_key(27), KEY)
+        finally:
+            sv.use_vendor_key = saved
+
+
+class CardAndScript(unittest.TestCase):
+    def setUp(self):
+        self.html = open(os.path.join(ROOT, "dashboard", "client", "index.html"), encoding="utf-8").read()
+
+    def test_two_inputs_secret_masked_with_toggle(self):
+        self.assertIn('id="toolKeyId-higgsfield"', self.html)
+        self.assertRegex(self.html, r'id="toolKeySecret-higgsfield"[^>]*type="password"')
+        self.assertIn('onclick="toggleHfSecret()"', self.html)
+        self.assertNotIn('id="toolKey-higgsfield"', self.html)
+        self.assertIn("מזהה מפתח (Key ID)", self.html)
+        self.assertIn("סוד המפתח (Key Secret)", self.html)
+
+    def test_title_and_statuses(self):
+        self.assertIn("יצירת חומרי מדיה ו-AI", self.html)
+        self.assertNotIn("הדמות שבסרטונים ותמונות AI", self.html)
+        for text in ("מחובר ומאומת", "נדחה: בדוק את שני הערכים", "נדרש חיבור מחדש"):
+            self.assertIn(text, self.html)
+        self.assertEqual(vt.client_label("higgsfield"), "יצירת חומרי מדיה ו-AI")
+
+    def test_api_takes_two_fields(self):
+        src = open(os.path.join(ROOT, "core", "api_server.py"), encoding="utf-8").read()
+        self.assertIn("key_id=req.key_id, key_secret=req.key_secret", src)
+        for code in ("missing_key_id", "missing_key_secret", "check_unreachable"):
+            self.assertIn(f'"{code}":', src)
+            self.assertIn(f"tool_err_{code}:", self.html)
+
+    def test_check_script_prints_shape_only(self):
+        sh = open(os.path.join(ROOT, "scripts", "higgsfield_check.sh"), encoding="utf-8").read()
+        self.assertIn("not_sent_single_part", sh)
+        self.assertIn("Key Secret present", sh)
+        self.assertNotRegex(sh, r"print\([^)]*\braw\b")
 
 
 if __name__ == "__main__":

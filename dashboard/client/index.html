@@ -116,6 +116,12 @@ body {
 .tool-row .conn-btn { width: auto; flex: 1 1 120px; }
 .conn-status.rejected { color: #D9534F; }
 .conn-status.unverified { color: #FFB020; }
+/* Higgsfield's two boxes (Key ID + Key Secret) */
+.hf-label { display: block; font-size: 12px; font-weight: 600; margin: 6px 0 4px; }
+.hf-secret-row { display: flex; gap: 6px; align-items: flex-start; }
+.hf-secret-row .site-input { flex: 1; min-width: 0; }
+.hf-secret-row .hf-toggle { flex: 0 0 auto; width: auto; margin: 0; min-height: 38px; padding: 0 12px; }
+.hf-saved { font-size: 12px; color: var(--gray); margin-top: 8px; text-align: right; }
 .voice-progress { height: 6px; border-radius: 6px; background: var(--panel-2); margin-top: 10px; overflow: hidden; }
 .voice-progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
 .voice-list { margin-top: 10px; }
@@ -2043,22 +2049,31 @@ a.media-item:hover { border-color: var(--accent); }
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z"/><path d="M19 14l.8 2.4L22 17.2l-2.2.8L19 20.4l-.8-2.4L16 17.2l2.2-.8z"/></svg>
         </div>
         <div>
-          <div class="conn-name" data-i18n="higgsfield_card">הדמות שבסרטונים ותמונות AI</div>
+          <div class="conn-name" data-i18n="higgsfield_card">יצירת חומרי מדיה ו-AI</div>
           <div class="conn-status" id="toolStatus-higgsfield" data-i18n="not_connected">לא מחובר</div>
         </div>
       </div>
       <button class="conn-btn primary" id="toolOpenBtn-higgsfield" onclick="connectViaChat('higgsfield')" data-i18n="conn_connect">חבר</button>
       <div class="tool-guide" id="toolGuide-higgsfield" style="display:none;"></div>
+      <!-- TWO values (core/vendor_tools TWO_PART): Key ID + Key Secret, verified on save -->
       <div id="toolForm-higgsfield" style="display:none; margin-top:10px;">
         <div class="lock-note" data-i18n="higgsfield_signup_note">מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.</div>
-        <input class="site-input" id="toolKey-higgsfield" dir="ltr" type="password" autocomplete="off" data-i18n-placeholder="higgsfield_key_ph" placeholder="מדביקים כאן את המפתח">
+        <label class="hf-label" for="toolKeyId-higgsfield" data-i18n="hf_key_id_label">מזהה מפתח (Key ID)</label>
+        <input class="site-input" id="toolKeyId-higgsfield" dir="ltr" type="text" autocomplete="off" spellcheck="false" autocapitalize="off">
+        <label class="hf-label" for="toolKeySecret-higgsfield" data-i18n="hf_key_secret_label">סוד המפתח (Key Secret)</label>
+        <div class="hf-secret-row">
+          <input class="site-input" id="toolKeySecret-higgsfield" dir="ltr" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off">
+          <button type="button" class="conn-btn secondary hf-toggle" id="toolSecretToggle-higgsfield" onclick="toggleHfSecret()" aria-pressed="false" data-i18n="hf_show">הצגה</button>
+        </div>
+        <div class="conn-note" data-i18n="hf_keys_help">שני הערכים מופיעים במסך יצירת מפתח ה-API בחשבון שלכם בכלי. את הסוד בדרך כלל רואים רק פעם אחת, ברגע היצירה.</div>
         <button class="conn-btn primary" id="toolConnectBtn-higgsfield" onclick="connectTool('higgsfield')" data-i18n="site_connect">חיבור</button>
       </div>
+      <div class="hf-saved" id="toolSaved-higgsfield" style="display:none;"></div>
       <div class="tool-row" id="toolManage-higgsfield" style="display:none;">
         <button class="conn-btn secondary" onclick="openToolForm('higgsfield', true)" data-i18n="tool_replace_key">החלפת מפתח</button>
       </div>
-      <!-- The presenter (core/avatar_video): short clips only, said up front -->
-      <div class="conn-note" id="presenterNote" data-i18n="presenter_note">אותו כלי מייצר גם את הדמות שמדברת בסרטונים שלכם — מתמונה ברורה שלכם (שולחים בצ'אט עם ה-+) או מדמות AI. כל סרטון כזה הוא קליפ קצר, עד 15 שניות.</div>
+      <!-- What this connection does (images, clips, AI presenters); presenter clips are short -->
+      <div class="conn-note" id="presenterNote" data-i18n="presenter_note">החיבור הזה מאפשר למערכת ליצור חומרי מדיה לעסק — תמונות, קליפים קצרים ודמויות AI שמציגות בסרטונים — בחשבון שלכם בכלי. סרטון עם דמות מדברת הוא קליפ קצר, עד 15 שניות.</div>
       <div class="conn-status" id="presenterStatus" style="margin-top:6px;"></div>
       <!-- Likeness consent sits on THIS card and is optional here: it is required
            only before a presenter is made from the client's OWN photos -->
@@ -3165,7 +3180,7 @@ const DASH_I18N = {
   err_website_not_in_package: { he:'הקמת אתר חדש אינה כלולה בחבילה הנוכחית שלכם — דברו איתנו בצ\'אט כדי להוסיף את השירות', en:'Building a new site isn\'t included in your current package — talk to us in the chat to add it', fr:'La création d\'un nouveau site n\'est pas incluse dans votre formule actuelle — contactez-nous via le chat pour l\'ajouter', ar:'إنشاء موقع جديد غير مشمول في باقتكم الحالية — تحدثوا معنا في الدردشة لإضافة الخدمة', ru:'Создание нового сайта не входит в ваш текущий пакет — напишите нам в чат, чтобы добавить услугу' },
   err_website_already_connected: { he:'כבר יש לכם אתר מחובר — נתקו אותו קודם אם אתם רוצים אתר חדש', en:'You already have a connected website — disconnect it first if you want a new one', fr:'Vous avez déjà un site connecté — déconnectez-le d\'abord si vous en voulez un nouveau', ar:'لديكم بالفعل موقع مرتبط — افصلوه أولاً إذا أردتم موقعًا جديدًا', ru:'У вас уже есть подключённый сайт — сначала отключите его, если хотите новый' },
   err_website_provision_in_progress: { he:'כבר מקימים לכם אתר — אין צורך ללחוץ שוב', en:'We\'re already building your site — no need to click again', fr:'Nous créons déjà votre site — pas besoin de cliquer à nouveau', ar:'نحن بالفعل نُنشئ موقعكم — لا داعٍ للنقر مرة أخرى', ru:'Мы уже создаём ваш сайт — не нужно нажимать снова' },
-  higgsfield_card: { he:'הדמות שבסרטונים ותמונות AI', en:'Your video presenter and AI images', fr:'Votre présentateur vidéo et images IA', ar:'الشخصية في الفيديوهات وصور الذكاء الاصطناعي', ru:'Ведущий ваших видео и ИИ-изображения' },
+  higgsfield_card: { he:'יצירת חומרי מדיה ו-AI', en:'Media and AI creation', fr:'Création de médias et IA', ar:'إنشاء مواد إعلامية وذكاء اصطناعي', ru:'Создание медиа и ИИ' },
   higgsfield_signup_note: { he:'מדביקים כאן את המפתח שהעתקתם לפי ההדרכה. התשלום על היצירה עובר ישירות מכם לכלי — אנחנו רק מפעילים אותו בשבילכם.', en:'Paste the key you copied following the guide. Creation is paid directly by you to the tool — we only operate it for you.', fr:'Collez ici la clé copiée en suivant le guide. La création est payée directement par vous à l\'outil — nous l\'utilisons seulement pour vous.', ar:'الصقوا هنا المفتاح الذي نسختموه حسب الإرشاد. الدفع مقابل الإنشاء يتم مباشرة منكم للأداة — نحن فقط نشغّلها لكم.', ru:'Вставьте ключ, скопированный по инструкции. Создание оплачивается вами напрямую инструменту — мы только управляем им за вас.' },
   higgsfield_key_ph: { he:'מדביקים כאן את המפתח', en:'Paste the key here', fr:'Collez la clé ici', ar:'الصقوا المفتاح هنا', ru:'Вставьте ключ сюда' },
   higgsfield_fill_key: { he:'נא להזין את מפתח ה-API', en:'Please enter the API key', fr:'Veuillez saisir la clé API', ar:'يرجى إدخال مفتاح API', ru:'Пожалуйста, введите API-ключ' },
@@ -3179,11 +3194,26 @@ const DASH_I18N = {
   tool_voice_consent_btn: { he:'אישור הסכמת שיבוט קול', en:'Confirm voice-cloning consent', fr:'Confirmer le consentement de clonage', ar:'تأكيد موافقة استنساخ الصوت', ru:'Подтвердить согласие на клонирование' },
   tool_voice_consent_on: { he:'הסכמת שיבוט הקול נרשמה ✓', en:'Voice-cloning consent recorded ✓', fr:'Consentement de clonage enregistré ✓', ar:'سُجلت موافقة استنساخ الصوت ✓', ru:'Согласие на клонирование голоса зафиксировано ✓' },
   tool_voice_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת ההסכמה', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
-  presenter_note: { he:'אותו כלי מייצר גם את הדמות שמדברת בסרטונים שלכם — מתמונה ברורה שלכם (שולחים בצ\'אט עם ה-+) או מדמות AI. כל סרטון כזה הוא קליפ קצר, עד 15 שניות.', en:'The same tool also makes the presenter who speaks in your videos — from a clear photo of you (send it in the chat with +) or an AI character. Each such video is a short clip, up to 15 seconds.', fr:'Le même outil crée aussi le présentateur qui parle dans vos vidéos — à partir d\'une photo nette de vous (envoyez-la dans le chat avec +) ou d\'un personnage IA. Chaque vidéo est un clip court, 15 secondes au plus.', ar:'الأداة نفسها تصنع أيضًا الشخصية التي تتكلم في فيديوهاتكم — من صورة واضحة لكم (أرسلوها في الدردشة بزر +) أو من شخصية ذكاء اصطناعي. كل فيديو مقطع قصير حتى 15 ثانية.', ru:'Этот же инструмент делает и ведущего, который говорит в ваших видео, — по чёткому фото (отправьте его в чат кнопкой +) или из ИИ-персонажа. Каждое такое видео — короткий клип до 15 секунд.' },
+  presenter_note: { he:'החיבור הזה מאפשר למערכת ליצור חומרי מדיה לעסק — תמונות, קליפים קצרים ודמויות AI שמציגות בסרטונים — בחשבון שלכם בכלי. סרטון עם דמות מדברת הוא קליפ קצר, עד 15 שניות.', en:'This connection lets the system create media for your business — images, short clips and AI presenters — on your own account with the tool. A video with a speaking presenter is a short clip, up to 15 seconds.', fr:'Cette connexion permet au système de créer des médias pour votre entreprise — images, clips courts et présentateurs IA — avec votre propre compte de l\'outil. Une vidéo avec un présentateur qui parle est un clip court, 15 secondes au plus.', ar:'يتيح هذا الربط للنظام إنشاء مواد إعلامية لعملكم — صور ومقاطع قصيرة وشخصيات ذكاء اصطناعي تقدّم — بحسابكم الخاص في الأداة. الفيديو بشخصية تتكلم مقطع قصير حتى 15 ثانية.', ru:'Это подключение позволяет системе создавать медиа для вашего бизнеса — изображения, короткие клипы и ИИ-ведущих — в вашем собственном аккаунте инструмента. Видео с говорящим ведущим — короткий клип до 15 секунд.' },
+  hf_key_id_label: { he:'מזהה מפתח (Key ID)', en:'Key ID', fr:'Identifiant de clé (Key ID)', ar:'معرّف المفتاح (Key ID)', ru:'Идентификатор ключа (Key ID)' },
+  hf_key_secret_label: { he:'סוד המפתח (Key Secret)', en:'Key Secret', fr:'Secret de la clé (Key Secret)', ar:'سرّ المفتاح (Key Secret)', ru:'Секрет ключа (Key Secret)' },
+  hf_show: { he:'הצגה', en:'Show', fr:'Afficher', ar:'إظهار', ru:'Показать' },
+  hf_hide: { he:'הסתרה', en:'Hide', fr:'Masquer', ar:'إخفاء', ru:'Скрыть' },
+  hf_keys_help: { he:'שני הערכים מופיעים במסך יצירת מפתח ה-API בחשבון שלכם בכלי. את הסוד בדרך כלל רואים רק פעם אחת, ברגע היצירה.', en:'Both values are shown on the screen where you create the API key in your account with the tool. The secret is usually shown only once, when the key is created.', fr:'Les deux valeurs s\'affichent à l\'écran de création de la clé API dans votre compte de l\'outil. Le secret n\'est généralement visible qu\'une fois, à la création.', ar:'تظهر القيمتان في شاشة إنشاء مفتاح API في حسابكم بالأداة. السرّ يظهر عادةً مرة واحدة فقط عند الإنشاء.', ru:'Оба значения показываются на экране создания API-ключа в вашем аккаунте инструмента. Секрет обычно виден только один раз — при создании.' },
+  hf_fill_key_id: { he:'חסר מזהה המפתח (Key ID). מדביקים אותו בתיבה הראשונה.', en:'The Key ID is missing. Paste it into the first box.', fr:'L\'identifiant de clé (Key ID) manque. Collez-le dans la première case.', ar:'معرّف المفتاح (Key ID) ناقص. الصقوه في الخانة الأولى.', ru:'Не хватает идентификатора ключа (Key ID). Вставьте его в первое поле.' },
+  hf_fill_key_secret: { he:'חסר סוד המפתח (Key Secret). מדביקים אותו בתיבה השנייה.', en:'The Key Secret is missing. Paste it into the second box.', fr:'Le secret de la clé (Key Secret) manque. Collez-le dans la deuxième case.', ar:'سرّ المفتاح (Key Secret) ناقص. الصقوه في الخانة الثانية.', ru:'Не хватает секрета ключа (Key Secret). Вставьте его во второе поле.' },
+  hf_saved: { he:'נשמר: מזהה {hint}•••• · סוד ••••••••', en:'Saved: ID {hint}•••• · secret ••••••••', fr:'Enregistré : identifiant {hint}•••• · secret ••••••••', ar:'محفوظ: المعرّف {hint}•••• · السرّ ••••••••', ru:'Сохранено: ID {hint}•••• · секрет ••••••••' },
+  tool_st_verified: { he:'מחובר ומאומת ✓', en:'Connected and verified ✓', fr:'Connecté et vérifié ✓', ar:'متصل وتم التحقق ✓', ru:'Подключено и проверено ✓' },
+  tool_st_rejected_two: { he:'נדחה: בדוק את שני הערכים', en:'Rejected: check both values', fr:'Refusé : vérifiez les deux valeurs', ar:'مرفوض: تحقّقوا من القيمتين', ru:'Отклонено: проверьте оба значения' },
+  tool_st_needs_reconnect: { he:'נדרש חיבור מחדש', en:'Reconnection needed', fr:'Reconnexion nécessaire', ar:'يلزم الربط من جديد', ru:'Нужно подключить заново' },
+  tool_err_missing_key_id: { he:'חסר מזהה המפתח (Key ID). מדביקים אותו בתיבה הראשונה — שום דבר לא נשמר.', en:'The Key ID is missing. Paste it into the first box — nothing was saved.', fr:'L\'identifiant de clé (Key ID) manque. Collez-le dans la première case — rien n\'a été enregistré.', ar:'معرّف المفتاح (Key ID) ناقص. الصقوه في الخانة الأولى — لم يُحفظ شيء.', ru:'Не хватает идентификатора ключа (Key ID). Вставьте его в первое поле — ничего не сохранено.' },
+  tool_err_missing_key_secret: { he:'חסר סוד המפתח (Key Secret). מדביקים אותו בתיבה השנייה — שום דבר לא נשמר.', en:'The Key Secret is missing. Paste it into the second box — nothing was saved.', fr:'Le secret de la clé (Key Secret) manque. Collez-le dans la deuxième case — rien n\'a été enregistré.', ar:'سرّ المفتاح (Key Secret) ناقص. الصقوه في الخانة الثانية — لم يُحفظ شيء.', ru:'Не хватает секрета ключа (Key Secret). Вставьте его во второе поле — ничего не сохранено.' },
+  tool_err_check_unreachable: { he:'לא הצלחנו לבדוק את המפתח כרגע, ולכן שום דבר לא נשמר. נסו שוב בעוד רגע.', en:'We couldn\'t check the key right now, so nothing was saved. Try again in a moment.', fr:'Impossible de vérifier la clé pour le moment, rien n\'a donc été enregistré. Réessayez dans un instant.', ar:'تعذّر فحص المفتاح الآن، لذلك لم يُحفظ شيء. حاولوا مجددًا بعد لحظة.', ru:'Сейчас не удалось проверить ключ, поэтому ничего не сохранено. Попробуйте чуть позже.' },
+  tool_err_key_rejected_two: { he:'הכלי דחה את הפרטים — בדקו שמזהה המפתח והסוד הועתקו נכון, כל אחד לתיבה שלו. שום דבר לא נשמר.', en:'The tool rejected these details — check the Key ID and the secret were copied correctly, each into its own box. Nothing was saved.', fr:'L\'outil a refusé ces informations — vérifiez que l\'identifiant et le secret ont été copiés correctement, chacun dans sa case. Rien n\'a été enregistré.', ar:'رفضت الأداة هذه البيانات — تحقّقوا من نسخ المعرّف والسرّ بشكل صحيح، كلٌّ في خانته. لم يُحفظ شيء.', ru:'Инструмент отклонил данные — проверьте, что ID и секрет скопированы верно, каждый в своё поле. Ничего не сохранено.' },
   tool_likeness_consent_btn: { he:'אישור השימוש בדמות שלי', en:'Confirm the likeness consent', fr:'Confirmer le consentement d\'image', ar:'تأكيد الموافقة على استخدام صورتي', ru:'Подтвердить согласие на образ' },
   tool_likeness_consent_on: { he:'האישור לשימוש בדמות שלך נרשם ✓', en:'Your likeness consent is recorded ✓', fr:'Votre consentement d\'image est enregistré ✓', ar:'سُجلت موافقتك على استخدام صورتك ✓', ru:'Согласие на использование образа зафиксировано ✓' },
   tool_likeness_consent_tick: { he:'כדי לאשר צריך לסמן את תיבת האישור', en:'Tick the consent box to confirm', fr:'Cochez la case de consentement pour confirmer', ar:'حدّد خانة الموافقة للتأكيد', ru:'Отметьте согласие, чтобы подтвердить' },
-  tool_name_higgsfield: { he:'הדמות שבסרטונים ותמונות AI', en:'your presenter and AI images', fr:'votre présentateur et images IA', ar:'الشخصية وصور الذكاء الاصطناعي', ru:'ваш ведущий и ИИ-изображения' },
+  tool_name_higgsfield: { he:'יצירת חומרי מדיה ו-AI', en:'media and AI creation', fr:'création de médias et IA', ar:'إنشاء المواد الإعلامية والذكاء الاصطناعي', ru:'создание медиа и ИИ' },
   tool_name_elevenlabs: { he:'הקול שלך', en:'your voice', fr:'votre voix', ar:'صوتك', ru:'ваш голос' },
   tool_start_guide: { he:'חיבור עם הדרכה צעד אחר צעד', en:'Connect with a step-by-step guide', fr:'Connecter avec un guide pas à pas', ar:'الربط مع إرشاد خطوة بخطوة', ru:'Подключить с пошаговой инструкцией' },
   tool_have_key: { he:'יש לי כבר מפתח', en:'I already have a key', fr:'J\'ai déjà une clé', ar:'لديّ مفتاح بالفعل', ru:'У меня уже есть ключ' },
@@ -5199,11 +5229,20 @@ async function loadCreativeTools() {
 function paintTool(tool) {
   const t = (toolState.tools || {})[tool] || { status: 'not_connected' };
   const stored = t.status !== 'not_connected';
+  const two = !!t.two_part;     // Key ID + Key Secret, verified on save
   const st = document.getElementById('toolStatus-' + tool);
   st.removeAttribute('data-i18n');
-  st.textContent = uallakI18n.t(TOOL_STATUS_KEYS[t.status] || 'not_connected');
+  const stKey = two ? ({ connected: 'tool_st_verified', key_rejected: 'tool_st_rejected_two',
+                         needs_reconnect: 'tool_st_needs_reconnect' }[t.status]) : '';
+  st.textContent = uallakI18n.t(stKey || TOOL_STATUS_KEYS[t.status] || 'not_connected');
   st.className = 'conn-status' + ({ connected: ' connected', connected_unverified: ' unverified',
-                                     key_rejected: ' rejected' }[t.status] || '');
+                                     key_rejected: ' rejected', needs_reconnect: ' rejected' }[t.status] || '');
+  const saved = document.getElementById('toolSaved-' + tool);
+  if (saved) {
+    // Masked: the first 4 characters of the Key ID; the secret never reaches the browser
+    saved.textContent = t.id_hint ? uallakI18n.t('hf_saved', { hint: t.id_hint }) : '';
+    saved.style.display = t.id_hint ? 'block' : 'none';
+  }
   document.getElementById('toolOpenBtn-' + tool).style.display = stored ? 'none' : '';
   if (stored) document.getElementById('toolGuide-' + tool).style.display = 'none';
   document.getElementById('toolManage-' + tool).style.display = stored ? 'flex' : 'none';
@@ -5212,7 +5251,7 @@ function paintTool(tool) {
   if (testBtn) testBtn.style.display = t.can_test ? '' : 'none';
   // A rejected key: the form is open so a fresh key can be pasted right away
   const form = document.getElementById('toolForm-' + tool);
-  if (t.status === 'key_rejected') form.style.display = 'block';
+  if (t.status === 'key_rejected' || t.status === 'needs_reconnect') form.style.display = 'block';
   else if (stored) form.style.display = 'none';
   if (tool === 'higgsfield') {
     document.getElementById('toolLikenessConsentBox').style.display = t.consent ? 'none' : '';
@@ -5293,7 +5332,33 @@ function openToolForm(tool) {
   const form = document.getElementById('toolForm-' + tool);
   if (form.style.display !== 'none') { form.style.display = 'none'; return; }
   form.style.display = 'block';
-  document.getElementById('toolKey-' + tool).focus();
+  document.getElementById(tool === 'higgsfield' ? 'toolKeyId-higgsfield' : 'toolKey-' + tool).focus();
+}
+
+// Key Secret box: masked by default; the toggle lets the client check what landed where
+function toggleHfSecret(forceHide) {
+  const input = document.getElementById('toolKeySecret-higgsfield');
+  const btn = document.getElementById('toolSecretToggle-higgsfield');
+  const show = forceHide ? false : input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+  btn.textContent = uallakI18n.t(show ? 'hf_hide' : 'hf_show');
+}
+
+// A combined "id:secret" pasted into either box is split into the two boxes
+// (the server does the same — this only shows the client where each part went)
+function splitHfPaste() {
+  const idBox = document.getElementById('toolKeyId-higgsfield');
+  const secBox = document.getElementById('toolKeySecret-higgsfield');
+  for (const box of [idBox, secBox]) {
+    const v = box.value.trim().replace(/^(authorization\s*:\s*)?(key|bearer)\s+/i, '');
+    const i = v.indexOf(':');
+    if (i > 0 && i < v.length - 1) {
+      idBox.value = v.slice(0, i).trim();
+      secBox.value = v.slice(i + 1).trim();
+      return;
+    }
+  }
 }
 
 // The PRIMARY connect path: the guide from core/connection_help — numbered
@@ -5400,9 +5465,24 @@ async function requestToolAssist(tool, btn) {
 }
 
 async function connectTool(tool) {
-  const input = document.getElementById('toolKey-' + tool);
-  const api_key = input.value.trim();
-  if (!api_key) { showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn'); return; }
+  const two = tool === 'higgsfield';
+  let payload, clear;
+  if (two) {
+    splitHfPaste();
+    const idBox = document.getElementById('toolKeyId-higgsfield');
+    const secBox = document.getElementById('toolKeySecret-higgsfield');
+    const key_id = idBox.value.trim(), key_secret = secBox.value.trim();
+    if (!key_id) { showNotice(uallakI18n.t('hf_fill_key_id'), 'warn'); idBox.focus(); return; }
+    if (!key_secret) { showNotice(uallakI18n.t('hf_fill_key_secret'), 'warn'); secBox.focus(); return; }
+    payload = { key_id, key_secret };
+    clear = () => { idBox.value = ''; secBox.value = ''; toggleHfSecret(true); };
+  } else {
+    const input = document.getElementById('toolKey-' + tool);
+    const api_key = input.value.trim();
+    if (!api_key) { showNotice(uallakI18n.t('higgsfield_fill_key'), 'warn'); return; }
+    payload = { api_key };
+    clear = () => { input.value = ''; };
+  }
   const box = document.getElementById('toolConsent-' + tool);
   const consent = !!(box && box.checked);
   const btn = document.getElementById('toolConnectBtn-' + tool);
@@ -5412,16 +5492,26 @@ async function connectTool(tool) {
     const res = await fetch('/api/client/tools/' + tool + '/connect', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key, consent }),
+      body: JSON.stringify(Object.assign(payload, { consent })),
     });
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.success) {
-      input.value = '';
+      clear();
       showNotice(uallakI18n.t(body.data && body.data.status === 'connected_unverified'
         ? 'tool_connected_unverified_notice' : 'tool_connected_notice', { name: toolName(tool) }), 'success');
       await loadCreativeTools();
     } else {
-      showNotice(codeText('tool_err_', body, 'higgsfield_connect_failed'), 'warn');
+      const code = body && body.detail && body.detail.code;
+      if (two && code === 'key_rejected') {
+        // Verify on save said no: red status on the card, nothing stored
+        const st = document.getElementById('toolStatus-' + tool);
+        st.removeAttribute('data-i18n');
+        st.textContent = uallakI18n.t('tool_st_rejected_two');
+        st.className = 'conn-status rejected';
+        showNotice(uallakI18n.t('tool_err_key_rejected_two'), 'warn');
+      } else {
+        showNotice(codeText('tool_err_', body, 'higgsfield_connect_failed'), 'warn');
+      }
     }
   } catch (e) {
     console.error('tool connect failed', e);
