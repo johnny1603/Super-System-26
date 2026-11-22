@@ -168,6 +168,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   the browser sees); rejected/unreachable → nothing stored. No `connected_unverified` for it: a row without
   `id_hint` (an old single value, client 27) is `needs_reconnect`, and `_generation_key` returns "" for a
   single-part key (no call). See docs/CREATIVE-TOOLS.md §11.
+  **The post contract (2026-11-23, docs/POST-BRIEF.md):** a social POST goes through `produce_post` →
+  `core/post_pipeline.submit` (never a chat card): knowledge/social-craft.md + knowledge/brands/<id>.md loaded IN
+  FULL by both agents (missing = `post_brief.ContextMissing`, a loud refusal — also on the old generation path),
+  explicit `post_format` + reason, one `AssetBrief` per asset. `copy_headline`/`copy_body` are CONTEXT ONLY:
+  `post_brief.assert_copy_free` fails the call if the prompt carries them or any Hebrew; text_slide is never sent
+  to a model (`renderer_not_implemented`). The COPY waits in the Social tab (`social_queue` kind "post", never
+  publishable); its approval starts production. Objections: 2 rounds then the manager. `tests/test_post_brief.py`.
   **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
   `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the

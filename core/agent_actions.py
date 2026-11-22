@@ -2744,6 +2744,14 @@ def _prepare_produce(client_id: int, params: dict, context: dict, rows: list) ->
     if _media_tool_status(client_id) not in ("connected", "connected_unverified"):
         return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
                 "notice": _pick(_PRODUCE_TOOL_FIRST, lang).replace("{tool}", _creative_label("higgsfield", lang))}
+    # The craft library + brand brief, or a loud refusal (core/post_brief, 2026-11-23)
+    from core import post_brief, post_pipeline
+    missing = post_brief.try_context(client_id).get("missing")
+    if missing:
+        post_pipeline._alert([f"client {client_id}: content context missing ({', '.join(missing)}) — "
+                              f"produce_requested_content refused"])
+        return {"refuse": post_pipeline.pick(post_pipeline.TEXT["context_missing"], lang)
+                .replace("{files}", ", ".join(missing))}
     for row in rows:
         if row.get("status") == "proposed" and (row.get("params") or {}) == params:
             return {"existing": row}
@@ -2852,11 +2860,59 @@ _SOCIAL_CHANNEL = {"instagram": _txt("אינסטגרם", "Instagram", "Instagram
 
 
 def _run_approve_social(client_id: int, params: dict, background_tasks):
-    from core import social_queue
+    from core import post_pipeline, social_queue
     done = social_queue.approve(client_id, params.get("item_ids") or [], by="client")
     if not done:
         raise ActionFailed("already_decided", "none of these items is still waiting")
+    # An approved post COPY is what starts its production (copy before pixels)
+    post_pipeline.start(client_id, done, background_tasks)
     return {"approved": len(done)}
+
+
+# ─── A post through the contract (core/post_brief, core/post_pipeline) ──────
+# The social agent writes the post — format + reason, audience, caption, every
+# slide's copy, one brief per asset — and proposes it here. Nothing is
+# generated: the COPY goes to the Social tab, where the owner edits and
+# approves it; that approval starts production. So this "card" never shows a
+# chat card: prepare always answers with a line (the question, the media
+# agent's objection, the context error, or "the copy is waiting in Social").
+
+def _v_post(value, client_id: int):
+    from core import post_brief
+    try:
+        # Structural check only; the format question is asked in prepare
+        return post_brief.validate_post(value, client_id, "")
+    except post_brief.FormatQuestion:
+        import json as _json
+        raw = _json.loads(value) if isinstance(value, str) else dict(value or {})
+        raw["post_format"], raw["format_reason"] = "", ""
+        return {"_needs_format": True, **raw}
+
+
+def _prepare_produce_post(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import client_state, post_pipeline
+    lang = (context or {}).get("language") or "he"
+    if _in_package({"package": client_state.cached_package(client_id)}, "media") is False:
+        return {"refuse": _pick(PRODUCE_NOT_IN_PACKAGE, lang)}
+    if _media_tool_status(client_id) not in ("connected", "connected_unverified"):
+        return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
+                "notice": _pick(_PRODUCE_TOOL_FIRST, lang).replace("{tool}", _creative_label("higgsfield", lang))}
+    raw = dict(params.get("post") or {})
+    raw.pop("_needs_format", None)
+    persona = (context or {}).get("persona") or "media"
+    out = post_pipeline.submit(client_id, raw, (context or {}).get("message", ""), lang,
+                               persona=persona if persona in ("media", "meta") else "media")
+    if out.get("clarify"):
+        return {"clarify": out["clarify"]}
+    if out.get("refuse"):
+        return {"refuse": out["refuse"]}
+    # Queued in the Social tab: the line in place of a chat card
+    return {"refuse": out["line"]}
+
+
+def _run_produce_post(client_id: int, params: dict, background_tasks):
+    # Never reached: prepare queues the copy (or answers) and no card is stored
+    raise ActionFailed("not_a_card", "produce_post is decided in the Social tab")
 
 
 # ─── Photos → presenter (avatar_agent.create_avatar's photo-avatar path) ─────
@@ -4209,6 +4265,45 @@ ACTIONS = {
         "done_message": lambda result, lang: (
             _pick(ACTIONS["make_presenter_video"]["done"], lang)
             + (f"\n{result['link']}" if result.get("link") else "")),
+    },
+    "produce_post": {
+        # A social POST through the contract (2026-11-23, core/post_brief): the
+        # copy first, approved in the Social tab, THEN the assets
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Prepares ONE social post (carousel, single image, reel, before/after, ...) through the "
+                "post contract: you write the copy of every slide and the caption FIRST, choose post_format "
+                "with a one-line reason, decide the audience, and write one asset brief per slide. Nothing "
+                "is generated: the copy waits in the Social tab for the owner's approval, and only that "
+                "approval starts producing the images. Use this for every social POST request; "
+                "produce_requested_content is only for a single picture/clip with no text on it.",
+        "params": {"post": {"required": True, "validate": _v_post,
+                            "hint": "{\"post_format\": text_carousel|product_carousel|before_after|process|"
+                                    "customer_story|educational|comparison|single_image|reel, \"format_reason\": "
+                                    "one line, \"objective\": awareness|consideration|conversion|retention, "
+                                    "\"audience\": who it is for (decides the brand palette), \"set_id\": a-z0-9-, "
+                                    "\"title\", \"caption\", \"channels\": [instagram|facebook|tiktok|youtube], "
+                                    "\"publish_date\"?: YYYY-MM-DD, \"occasion\"?, \"occasion_date\"?: YYYY-MM-DD, "
+                                    "\"assets\": [1-10 of {\"asset_id\", \"role\": hook|point|proof|cta, "
+                                    "\"copy_headline\", \"copy_body\" (CONTEXT ONLY — never an image prompt), "
+                                    "\"asset_type\": text_slide|real_photo|generated_image|generated_video, "
+                                    "\"visual_direction\": what should be SEEN (intent, not a model prompt), "
+                                    "\"must_include\": [], \"must_avoid\": [], \"aspect_ratio\": 1:1|4:5|3:4|9:16|16:9, "
+                                    "\"budget_credits\": 0-500, \"response\"?: your one-line answer to an "
+                                    "objection}]}. A carousel about why/reasons/tips = text_carousel."}},
+        "available": _produce_possible,
+        "prepare": _prepare_produce_post,
+        "validate_stored": lambda client_id, params: validate_params(ACTIONS["produce_post"], params, client_id),
+        "run": _run_produce_post,
+        "title": _txt("הכנת פוסט — הטקסט קודם", "Preparing a post — copy first", "Préparer un post — le texte d'abord",
+                      "تجهيز منشور — النص أولًا", "Подготовка поста — сначала текст"),
+        "what": _txt("הטקסט של הפוסט נשלח לאישור בלשונית סושיאל. שום דבר לא נוצר לפני האישור.",
+                     "The post's copy goes to the Social tab for approval. Nothing is generated before that.",
+                     "Le texte du post part dans l'onglet Social pour validation. Rien n'est généré avant.",
+                     "يُرسل نص المنشور إلى تبويب السوشيال للموافقة. لا يُولَّد شيء قبل ذلك.",
+                     "Текст поста уходит на одобрение во вкладку «Соцсети». До этого ничего не создаётся."),
+        "done": _txt("הטקסט מחכה לאישור בלשונית סושיאל.", "The copy waits for approval in the Social tab.",
+                     "Le texte attend votre accord dans l'onglet Social.", "النص بانتظار الموافقة في تبويب السوشيال.",
+                     "Текст ждёт одобрения во вкладке «Соцсети»."),
     },
     "produce_requested_content": {
         # A specific request, on its own — never via the weekly plan (2026-11-22)

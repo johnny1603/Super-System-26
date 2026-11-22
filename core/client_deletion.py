@@ -971,7 +971,7 @@ def _settings_keys(ids: list) -> list:
                                      # the stored organic SEO report (core/seo_report)
                                      f"seo_report:{int(i)}",
                                      # the weekly content plan (core/content_team)
-                                     f"content_plan:{int(i)}", f"social_queue:{int(i)}",
+                                     f"content_plan:{int(i)}", f"social_queue:{int(i)}", f"post_drafts:{int(i)}",
                                      f"avatar_photos:{int(i)}", f"invite_resume:{int(i)}",
                                      f"quarter_goals:{int(i)}", f"organic_plan:{int(i)}",
                                      f"competitor_watch:{int(i)}")]

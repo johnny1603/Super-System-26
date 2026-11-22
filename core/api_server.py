@@ -6494,17 +6494,36 @@ class SocialApproveRequest(BaseModel):
     ids: list
 
 @app.post("/api/client/social/approve")
-def client_social_approve(req: SocialApproveRequest, request: Request):
-    # The tab's approval card: one item, or several selected together
+def client_social_approve(req: SocialApproveRequest, request: Request, background_tasks: BackgroundTasks):
+    # The tab's approval card: one item, or several selected together. An
+    # approved post COPY starts that post's production (core/post_pipeline)
     client_id = _require_session(request)
     _social_read_only(request)
-    from core import social_queue
+    from core import post_pipeline, social_queue
     try:
         done = social_queue.approve(client_id, req.ids, by="client")
     except social_queue.QueueError as e:
         raise _social_error(e)
-    return {"success": True, "data": {"approved": [i["id"] for i in done],
+    started = post_pipeline.start(client_id, done, background_tasks)
+    return {"success": True, "data": {"approved": [i["id"] for i in done], "production_started": started,
                                       "waiting": social_queue.waiting_count(client_id)}}
+
+class SocialCopyRequest(BaseModel):
+    slides: list = None
+    caption: str = None
+
+@app.post("/api/client/social/{item_id}/copy")
+def client_social_copy(item_id: str, req: SocialCopyRequest, request: Request):
+    # The copy stage of a post: the owner edits a slide's headline / body or the
+    # caption before approving — nothing has been generated yet
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import social_queue
+    try:
+        item = social_queue.edit_copy(client_id, item_id, slides=req.slides, caption=req.caption, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"id": item["id"], "status": item["status"]}}
 
 class SocialEditRequest(BaseModel):
     caption: str = None

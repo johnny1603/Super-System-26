@@ -28,6 +28,13 @@ There is no override parameter.
 Files stay in the client's Drive folder exactly as before: an item holds the
 Drive file id, nothing is copied. Storage: app_settings `social_queue:<id>`
 (a small list per client). No migration.
+
+COPY BEFORE PIXELS (2026-11-23, core/post_brief, core/post_pipeline): a post
+made through the contract first lands here as ONE item of kind "post" — no
+file, just the copy slide by slide, the caption, the format and its reason,
+the audience palette, flags and warnings. The owner edits the copy
+(`edit_copy`) and approves it; approving it is what starts production. A
+"post" item is never publishable: the gate refuses it, whatever its status.
 """
 import re
 import secrets
@@ -39,6 +46,7 @@ LANGS = ("he", "en", "fr", "ar", "ru")
 STATUSES = ("waiting", "approved", "published", "rejected")
 CHANNELS = ("instagram", "facebook", "tiktok", "youtube")
 KINDS = ("image", "video")
+POST_KIND = "post"                     # the copy stage of a contract post (no file)
 PRODUCERS = ("media", "meta")          # ליאור, מאיה (dashboard persona ids)
 PAGE_SIZE = 6                          # gradual release: the rest behind "show more"
 MAX_ITEMS = 300
@@ -235,7 +243,7 @@ def next_weekday(day_index: int, after: date = None) -> str:
 
 def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", planned_date: str = "",
         producer: str = "media", source: str = "chat", title: str = "", replaces: str = "",
-        plan_ref: dict = None) -> dict:
+        plan_ref: dict = None, flags: list = None, post_ref: dict = None) -> dict:
     """One item waiting for the owner. The same Drive file already waiting or
     approved is NOT queued twice (that item is returned)."""
     file_id = str(file_id or "").strip()
@@ -259,9 +267,193 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
                 old["fixed_by"] = item["id"]
     if plan_ref:
         item["plan_ref"] = plan_ref
+    if flags:
+        item["flags"] = [f for f in flags if f in FLAG_TEXT][:6]
+    if post_ref:
+        item["post_ref"] = post_ref        # {"post_id", "set_id", "asset_id", "n", "of"}
     queue.append(item)
     _save(client_id, queue)
     return item
+
+
+# ─── The copy stage of a contract post (core/post_pipeline) ──────────────────
+
+FLAG_TEXT = {
+    "concept": _five("תמונה רעיונית שנוצרה במחשב — לא מוצר אמיתי שאפשר להזמין",
+                     "A generated concept image — not a real product that can be ordered",
+                     "Image conceptuelle générée — pas un vrai produit commandable",
+                     "صورة مفاهيمية مُولَّدة — ليست منتجًا حقيقيًا يمكن طلبه",
+                     "Сгенерированное концептуальное изображение — не настоящий товар для заказа"),
+    "escalated": _five("הסוכנים לא הסכימו על החלק הזה — ההחלטה שלכם",
+                       "The agents disagreed on this part — it's your call",
+                       "Les agents ne sont pas d'accord sur cette partie — à vous de décider",
+                       "اختلف الوكلاء على هذا الجزء — القرار لكم",
+                       "Агенты не сошлись в этой части — решать вам"),
+    "text_slide_pending": _five("שקופית טקסט: תעוצב מתבנית המותג (עדיין לא זמין) — לא נשלחת למודל תמונות",
+                                "Text slide: rendered from the brand template (not available yet) — never sent to an image model",
+                                "Diapositive texte : rendue depuis le modèle de marque (pas encore disponible) — jamais envoyée à un modèle d'image",
+                                "شريحة نصية: تُصمَّم من قالب العلامة (غير متاح بعد) — لا تُرسل إلى نموذج صور",
+                                "Текстовый слайд: делается из шаблона бренда (пока недоступно) — не отправляется в модель изображений"),
+    "needs_real_asset": _five("צריך כאן תמונה אמיתית של עבודה שלכם — היא לא נוצרת במחשב",
+                              "This needs a real photo of your work — it is not generated",
+                              "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
+                              "يلزم هنا صورة حقيقية لعملكم — لا تُولَّد",
+                              "Здесь нужно настоящее фото вашей работы — оно не генерируется"),
+}
+
+WARNING_TEXT = {
+    "late": _five("שימו לב: עם זמן הייצור ({days} ימי עבודה), הזמנה שתגיע עד {occasion} צריכה להיעשות עד {order_by} — ותאריך הפרסום ({publish}) כבר אחרי זה.",
+                  "Note: with the production time ({days} business days), an order that arrives by {occasion} must be placed by {order_by} — and the publish date ({publish}) is already after that.",
+                  "Attention : avec le délai de fabrication ({days} jours ouvrés), une commande livrée avant le {occasion} doit être passée avant le {order_by} — et la date de publication ({publish}) est déjà après.",
+                  "انتبهوا: مع مدة الإنتاج ({days} أيام عمل)، الطلب الذي يصل حتى {occasion} يجب أن يتم حتى {order_by} — وتاريخ النشر ({publish}) بعد ذلك.",
+                  "Внимание: со сроком изготовления ({days} рабочих дней) заказ к {occasion} нужно сделать до {order_by} — а дата публикации ({publish}) уже позже."),
+    "tight": _five("שימו לב: עם זמן הייצור ({days} ימי עבודה), אפשר להזמין עד {occasion} רק עד {order_by}. הפרסום ב-{publish} משאיר פחות משבוע להזמנה — כדאי לפרסם מוקדם יותר ולכתוב את התאריך בפוסט.",
+                   "Note: with the production time ({days} business days), orders for {occasion} close on {order_by}. Publishing on {publish} leaves less than a week to order — publish earlier and state the date in the post.",
+                   "Attention : avec le délai ({days} jours ouvrés), les commandes pour le {occasion} ferment le {order_by}. Publier le {publish} laisse moins d'une semaine — publiez plus tôt et indiquez la date.",
+                   "انتبهوا: مع مدة الإنتاج ({days} أيام عمل)، طلبات {occasion} تُغلق في {order_by}. النشر في {publish} يترك أقل من أسبوع — انشروا أبكر واذكروا التاريخ.",
+                   "Внимание: со сроком ({days} рабочих дней) заказы к {occasion} принимаются до {order_by}. Публикация {publish} оставляет меньше недели — опубликуйте раньше и укажите дату."),
+}
+
+COPY_TEXT = {
+    "role": {"hook": _five("פתיחה", "Hook", "Accroche", "افتتاحية", "Крючок"),
+             "point": _five("נקודה", "Point", "Point", "نقطة", "Тезис"),
+             "proof": _five("הוכחה", "Proof", "Preuve", "إثبات", "Доказательство"),
+             "cta": _five("קריאה לפעולה", "Call to action", "Appel à l'action", "دعوة لاتخاذ إجراء", "Призыв")},
+    "asset_type": {"text_slide": _five("שקופית טקסט", "Text slide", "Diapositive texte", "شريحة نصية", "Текстовый слайд"),
+                   "real_photo": _five("תמונה אמיתית", "Real photo", "Vraie photo", "صورة حقيقية", "Настоящее фото"),
+                   "generated_image": _five("תמונה שתיווצר", "Generated image", "Image générée", "صورة مُولَّدة", "Сгенерированное изображение"),
+                   "generated_video": _five("סרטון שייווצר", "Generated video", "Vidéo générée", "فيديو مُولَّد", "Сгенерированное видео")},
+    "stage": _five("שלב הטקסט: שום דבר לא נוצר לפני שתאשרו את הטקסט",
+                   "Copy stage: nothing is generated before you approve the copy",
+                   "Étape du texte : rien n'est généré avant votre accord sur le texte",
+                   "مرحلة النص: لا يُولَّد شيء قبل موافقتكم على النص",
+                   "Этап текста: ничего не создаётся, пока вы не одобрите текст"),
+}
+
+PRODUCTION_STATES = ("waiting_copy", "running", "done", "partial", "failed")
+
+
+def _post_channels(post: dict) -> list:
+    media_kind = "video" if post.get("post_format") == "reel" else "image"
+    try:
+        return _clean_channels(post.get("channels") or ["instagram"], media_kind)
+    except QueueError:
+        return [c for c in CHANNELS if media_kind in CHANNEL_KINDS[c]][:1]
+
+
+def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = None,
+             escalations: dict = None, flags: dict = None, producer: str = "media") -> dict:
+    """The copy of ONE contract post, waiting for the owner. The same set_id
+    still waiting = the SAME item, revised (never a second card)."""
+    queue = _load(client_id)
+    slides = []
+    for a in post["assets"]:
+        slides.append({k: a[k] for k in ("asset_id", "role", "copy_headline", "copy_body", "asset_type",
+                                          "visual_direction", "must_include", "must_avoid", "aspect_ratio",
+                                          "budget_credits")}
+                      | {"flags": list((flags or {}).get(a["asset_id"]) or []),
+                         "escalation": (escalations or {}).get(a["asset_id"]) or {}})
+    body = {"post_format": post["post_format"], "format_reason": post["format_reason"],
+            "objective": post["objective"], "audience": post["audience"], "set_id": post["set_id"],
+            "occasion": post.get("occasion", ""), "occasion_date": post.get("occasion_date", ""),
+            "palette": palette or {}, "warnings": list(warnings or []), "slides": slides}
+    existing = next((i for i in queue if i.get("kind") == POST_KIND and i["status"] == "waiting"
+                     and (i.get("post") or {}).get("set_id") == post["set_id"]), None)
+    if existing:
+        existing.update({"post": body, "caption": _clean_caption(post["caption"]),
+                         "channels": _post_channels(post), "title": post.get("title") or post["set_id"],
+                         "planned_date": _clean_date(post.get("publish_date") or existing.get("planned_date"))})
+        _log(existing, "revised", producer)
+        _save(client_id, queue)
+        return existing
+    item = {"id": secrets.token_hex(6), "file_id": "", "kind": POST_KIND, "channels": _post_channels(post),
+            "caption": _clean_caption(post["caption"]), "planned_date": _clean_date(post.get("publish_date")),
+            "producer": producer if producer in PRODUCERS else "media", "source": "post",
+            "title": re.sub(r"\s+", " ", str(post.get("title") or post["set_id"])).strip()[:120],
+            "status": "waiting", "created_at": _now().isoformat(), "delivered": {}, "post": body,
+            "production": {"state": "waiting_copy"}, "history": [{"at": _now().isoformat(), "do": "added"}]}
+    queue.append(item)
+    _save(client_id, queue)
+    return item
+
+
+def edit_copy(client_id: int, item_id: str, slides: list = None, caption=None, by: str = "client") -> dict:
+    """The owner edits the copy (headline / body per slide, the caption) of a
+    post still waiting — production hasn't spent anything yet."""
+    queue = _load(client_id)
+    item = next((i for i in queue if i["id"] == str(item_id)), None)
+    if not item:
+        raise QueueError("not_found")
+    if item.get("kind") != POST_KIND:
+        raise QueueError("not_a_post")
+    if item["status"] != "waiting":
+        raise QueueError("not_editable")
+    changed = []
+    by_id = {s["asset_id"]: s for s in item["post"]["slides"]}
+    for s in slides or []:
+        slide = by_id.get(str((s or {}).get("asset_id") or ""))
+        if not slide:
+            raise QueueError("bad_slide")
+        for key in ("copy_headline", "copy_body"):
+            if key in s and s[key] is not None:
+                text = re.sub(r"[ \t]+", " ", str(s[key]).replace("\r\n", "\n")).strip()
+                if len(text) > 400:
+                    raise QueueError("copy_too_long")
+                if text != slide[key]:
+                    slide[key] = text
+                    changed.append(f"{slide['asset_id']}.{key}")
+    if caption is not None:
+        new = _clean_caption(caption)
+        if new != item["caption"]:
+            item["caption"] = new
+            changed.append("caption")
+    if changed:
+        _log(item, "copy_edited", by, fields=changed[:20])
+        _save(client_id, queue)
+    return item
+
+
+def set_production(client_id: int, item_id: str, production: dict):
+    """The post item's production record (core/post_pipeline). Never raises."""
+    try:
+        queue = _load(client_id)
+        item = next((i for i in queue if i["id"] == str(item_id)), None)
+        if item:
+            item["production"] = production
+            _save(client_id, queue)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: production not recorded ({type(e).__name__})")
+
+
+def warning_lines(warnings: list, lang: str) -> list:
+    out = []
+    for w in warnings or []:
+        table = WARNING_TEXT.get(w.get("level"))
+        if not table:
+            continue
+        days = w.get("lead_time_days") or ["", ""]
+        out.append(pick(table, lang).replace("{days}", f"{days[0]}–{days[1]}" if days[0] != days[1] else str(days[0]))
+                   .replace("{occasion}", w.get("occasion_date", "")).replace("{order_by}", w.get("order_by", ""))
+                   .replace("{publish}", w.get("publish_date", "")))
+    return out
+
+
+def _post_view(item: dict, lang: str) -> dict:
+    post = item.get("post") or {}
+    slides = []
+    for n, s in enumerate(post.get("slides") or [], 1):
+        slides.append({"asset_id": s["asset_id"], "n": n, "role": s["role"],
+                       "role_text": pick(COPY_TEXT["role"].get(s["role"], {"en": s["role"]}), lang),
+                       "copy_headline": s.get("copy_headline", ""), "copy_body": s.get("copy_body", ""),
+                       "asset_type": s["asset_type"],
+                       "asset_type_text": pick(COPY_TEXT["asset_type"].get(s["asset_type"], {"en": s["asset_type"]}), lang),
+                       "flags": [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in s.get("flags") or [] if f in FLAG_TEXT],
+                       "escalation": s.get("escalation") or {}})
+    return {"post_format": post.get("post_format", ""), "format_reason": post.get("format_reason", ""),
+            "objective": post.get("objective", ""), "audience": post.get("audience", ""),
+            "palette": (post.get("palette") or {}).get("label", ""), "slides": slides,
+            "warnings": warning_lines(post.get("warnings"), lang), "stage_text": pick(COPY_TEXT["stage"], lang),
+            "production": item.get("production") or {}}
 
 
 def add_safely(client_id: int, *args, **kwargs) -> dict:
@@ -318,8 +510,12 @@ def edit(client_id: int, item_id: str, caption=None, channels=None, planned_date
         new = _clean_caption(caption)
         if new != item["caption"]:
             item["caption"], changed = new, changed + ["caption"]
+    if item.get("kind") == POST_KIND and item["status"] != "waiting":
+        raise QueueError("not_editable")          # its copy is approved and production started
     if channels is not None:
-        new = _clean_channels(channels, item["kind"])
+        media_kind = item["kind"] if item["kind"] in KINDS else (
+            "video" if (item.get("post") or {}).get("post_format") == "reel" else "image")
+        new = _clean_channels(channels, media_kind)
         if new != item["channels"]:
             item["channels"], changed = new, changed + ["channels"]
     if planned_date is not None:
@@ -372,6 +568,11 @@ def send_back(client_id: int, item: dict, lang: str = "he") -> dict:
         out["posted"] = True
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: send-back line failed ({type(e).__name__})")
+    if item.get("kind") == POST_KIND or item.get("post_ref"):
+        # A contract post (or one of its assets): the social agent rewrites the
+        # POST from the reason in its chat — never the old free-text brief path,
+        # which would put copy and visuals back into one image prompt
+        return out
     platform = next((c for c in item["channels"] if c in ("instagram", "facebook", "tiktok")), "instagram")
     brief = (f"{item.get('title') or 'The same piece'} — a new version. The owner sent it back: "
              f"{item.get('reject_reason', '')}")[:600]
@@ -406,6 +607,8 @@ def mark_published(client_id: int, item_id: str, by: str = "client") -> dict:
     item = next((i for i in queue if i["id"] == str(item_id)), None)
     if not item:
         raise QueueError("not_found")
+    if item.get("kind") == POST_KIND:
+        raise QueueError("not_publishable")       # a copy approval publishes nothing
     if item["status"] != "approved":
         raise QueueError("not_approved")
     item["status"], item["published_at"] = "published", _now().isoformat()
@@ -427,8 +630,8 @@ def check(client_id: int, channel: str, file_id: str = "", item_id: str = "") ->
         queue = _load(client_id)
     except Exception as e:
         raise GateClosed("not_approved", f"queue unreadable ({type(e).__name__}) — nothing is sent")
-    match = [i for i in queue
-             if (item_id and i["id"] == str(item_id)) or (file_id and not item_id and i["file_id"] == str(file_id))]
+    match = [i for i in queue if i.get("kind") != POST_KIND and (
+             (item_id and i["id"] == str(item_id)) or (file_id and not item_id and i["file_id"] == str(file_id)))]
     approved = [i for i in match if i["status"] == "approved" and channel in i["channels"]]
     if approved:
         item = approved[0]
@@ -514,10 +717,16 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
     today = _today().isoformat()
     out = []
     for item in rows:
-        dl = delivery(item, modes) if item["status"] in ("approved", "published") else {}
+        is_post = item.get("kind") == POST_KIND
+        dl = delivery(item, modes) if item["status"] in ("approved", "published") and not is_post else {}
         needs_tap = item["status"] == "approved" and any(v in ("one_tap", "not_connected", "drafts", "private")
                                                          for v in dl.values())
-        out.append({"id": item["id"], "file_id": item["file_id"], "kind": item["kind"], "title": item.get("title", ""),
+        extra = {"post": _post_view(item, lang)} if is_post else {}
+        if item.get("flags"):
+            extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in item["flags"] if f in FLAG_TEXT]
+        if item.get("post_ref"):
+            extra["post_ref"] = item["post_ref"]
+        out.append({**extra, "id": item["id"], "file_id": item["file_id"], "kind": item["kind"], "title": item.get("title", ""),
                     "caption": item.get("caption", ""), "channels": item["channels"],
                     "planned_date": item.get("planned_date", ""), "overdue": item["status"] in ("waiting", "approved")
                     and (item.get("planned_date") or today) < today,
@@ -548,7 +757,8 @@ def all_pending() -> list:
             continue
         queue = [i for i in ((row.get("value") or {}).get("items") or []) if isinstance(i, dict)]
         waiting = [i for i in queue if i.get("status") == "waiting"]
-        approved = [i for i in queue if i.get("status") == "approved"]
+        # An approved post COPY is in production, not waiting for a publish tap
+        approved = [i for i in queue if i.get("status") == "approved" and i.get("kind") != POST_KIND]
         if not waiting and not approved:
             continue
         if client_id not in modes_cache:
@@ -566,4 +776,6 @@ def prompt_block(client_id: int) -> dict:
     waiting = [i for i in queue if i["status"] == "waiting"]
     return {"waiting": len(waiting), "approved": sum(1 for i in queue if i["status"] == "approved"),
             "waiting_items": [{"id": i["id"], "title": i.get("title", ""), "channels": i["channels"],
-                               "planned_date": i.get("planned_date", "")} for i in waiting[:10]]}
+                               "planned_date": i.get("planned_date", ""),
+                               **({"stage": "copy", "set_id": (i.get("post") or {}).get("set_id", "")}
+                                  if i.get("kind") == POST_KIND else {})} for i in waiting[:10]]}

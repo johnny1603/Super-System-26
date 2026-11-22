@@ -1423,6 +1423,16 @@ body.bs-open { overflow: hidden; }
 .soc-caption { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(127,127,127,.12);
   border-radius: 8px; padding: 6px 8px; }
 .soc-caption.empty { opacity: .7; font-style: italic; }
+/* The copy stage of a contract post (core/post_pipeline): the copy as text, slide by slide */
+.soc-post { display: grid; gap: 6px; }
+.soc-slides { margin: 0; padding-inline-start: 0; list-style: none; display: grid; gap: 8px; }
+.soc-slide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
+.soc-slide-head { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.soc-slide-body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.soc-slide input[type=text], .soc-slide textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: inherit; }
+.soc-flag { font-size: 12px; color: var(--gray); }
+.soc-flag.warn { color: #FFB020; font-weight: 700; }
 .soc-edit { display: grid; gap: 8px; }
 .soc-edit textarea, .soc-edit input[type=date], .soc-reject textarea { width: 100%; box-sizing: border-box; background: var(--panel);
   border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; }
@@ -2783,6 +2793,19 @@ const DASH_I18N = {
   soc_caption: { he:'כיתוב', en:'Caption', fr:'Légende', ar:'النص', ru:'Подпись' },
   soc_no_caption: { he:'אין כיתוב עדיין — אפשר לכתוב כאן.', en:'No caption yet — you can write one here.', fr:'Pas encore de légende — vous pouvez l’écrire ici.', ar:'لا يوجد نص بعد — يمكنكم كتابته هنا.', ru:'Подписи пока нет — можно написать здесь.' },
   soc_approve: { he:'אישור', en:'Approve', fr:'Valider', ar:'موافقة', ru:'Одобрить' },
+  soc_post_copy_waiting: { he:'הטקסט מחכה לאישור', en:'Copy waiting for approval', fr:'Texte en attente de validation', ar:'النص بانتظار الموافقة', ru:'Текст ждёт одобрения' },
+  soc_post_approve: { he:'אישור הטקסט והתחלת ההפקה', en:'Approve the copy and start production', fr:'Valider le texte et lancer la production', ar:'الموافقة على النص وبدء الإنتاج', ru:'Одобрить текст и начать производство' },
+  soc_post_edit: { he:'עריכת הטקסט', en:'Edit the copy', fr:'Modifier le texte', ar:'تعديل النص', ru:'Изменить текст' },
+  soc_post_format: { he:'סוג הפוסט', en:'Post format', fr:'Format du post', ar:'نوع المنشور', ru:'Формат поста' },
+  soc_post_audience: { he:'קהל', en:'Audience', fr:'Public', ar:'الجمهور', ru:'Аудитория' },
+  soc_post_palette: { he:'צבעים: {name}', en:'Colours: {name}', fr:'Couleurs : {name}', ar:'الألوان: {name}', ru:'Цвета: {name}' },
+  soc_post_headline: { he:'כותרת השקופית', en:'Slide headline', fr:'Titre de la diapositive', ar:'عنوان الشريحة', ru:'Заголовок слайда' },
+  soc_post_body: { he:'טקסט השקופית', en:'Slide text', fr:'Texte de la diapositive', ar:'نص الشريحة', ru:'Текст слайда' },
+  soc_post_positions: { he:'המדיה: {media} · התוכן: {other}', en:'Media: {media} · Content: {other}', fr:'Médias : {media} · Contenu : {other}', ar:'الوسائط: {media} · المحتوى: {other}', ru:'Медиа: {media} · Контент: {other}' },
+  soc_post_prod_running: { he:'הטקסט אושר — ההפקה רצה עכשיו.', en:'Copy approved — production is running.', fr:'Texte validé — production en cours.', ar:'تمت الموافقة على النص — الإنتاج جارٍ.', ru:'Текст одобрен — идёт производство.' },
+  soc_post_prod_done: { he:'הופק: {made} קבצים מחכים לאישור הפרסום כאן למטה. {not_made} חלקים לא נוצרו במחשב.', en:'Produced: {made} files wait for the publish approval below. {not_made} parts were not generated.', fr:'Produit : {made} fichiers attendent la validation de publication ci-dessous. {not_made} parties non générées.', ar:'تم الإنتاج: {made} ملفات بانتظار موافقة النشر أدناه. {not_made} أجزاء لم تُولَّد.', ru:'Готово: {made} файлов ждут одобрения публикации ниже. {not_made} частей не сгенерировано.' },
+  soc_post_prod_partial: { he:'הופק חלקית: {made} קבצים מוכנים, וחלק לא הצליח — הצוות קיבל התראה.', en:'Partly produced: {made} files are ready and some failed — the team was alerted.', fr:'Production partielle : {made} fichiers prêts, d\'autres ont échoué — l\'équipe est prévenue.', ar:'إنتاج جزئي: {made} ملفات جاهزة وبعضها فشل — تم تنبيه الفريق.', ru:'Частично: {made} файлов готово, часть не удалась — команда уведомлена.' },
+  soc_post_prod_failed: { he:'ההפקה לא הצליחה — הצוות קיבל התראה. שום קרדיט לא בוזבז על קובץ שלא נוצר.', en:'Production didn\'t work — the team was alerted. No credit went on a file that wasn\'t made.', fr:'La production a échoué — l\'équipe est prévenue. Aucun crédit pour un fichier non créé.', ar:'فشل الإنتاج — تم تنبيه الفريق. لم يُصرف رصيد على ملف لم يُنشأ.', ru:'Производство не удалось — команда уведомлена. Кредиты на несозданные файлы не тратились.' },
   soc_edit: { he:'עריכה', en:'Edit', fr:'Modifier', ar:'تعديل', ru:'Изменить' },
   soc_save: { he:'שמירה', en:'Save', fr:'Enregistrer', ar:'حفظ', ru:'Сохранить' },
   soc_cancel: { he:'ביטול', en:'Cancel', fr:'Annuler', ar:'إلغاء', ru:'Отмена' },
@@ -8378,9 +8401,46 @@ async function loadSocial(opts) {
 function socialChannelName(c) { return uallakI18n.t('soc_ch_' + c); }
 function socialProducer(p) { return uallakI18n.t('persona_name_' + (SOCIAL_FACES[p] ? p : 'media')); }
 
+// The copy stage of a contract post (core/post_pipeline): no file yet — the
+// copy slide by slide as TEXT, the format and its reason, warnings and flags.
+// Edit changes the copy; approving it is what starts production.
+function socialPostBody(item) {
+  const t = uallakI18n.t;
+  const p = item.post || {};
+  const editing = social.editing === item.id;
+  const slides = (p.slides || []).map(s => {
+    const flags = (s.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
+    const esc2 = s.escalation && (s.escalation.media || s.escalation.counterpart)
+      ? `<div class="soc-flag">${esc(t('soc_post_positions', { media: s.escalation.media || '', other: s.escalation.counterpart || '' }))}</div>` : '';
+    const copy = editing
+      ? `<input type="text" data-soc-head="${esc(s.asset_id)}" maxlength="400" dir="auto" value="${esc(s.copy_headline)}" aria-label="${esc(t('soc_post_headline'))}">
+         <textarea data-soc-bodytext="${esc(s.asset_id)}" maxlength="400" dir="auto" aria-label="${esc(t('soc_post_body'))}">${esc(s.copy_body)}</textarea>`
+      : `${s.copy_headline ? `<div class="soc-slide-head" dir="auto">${esc(s.copy_headline)}</div>` : ''}
+         ${s.copy_body ? `<div class="soc-slide-body" dir="auto">${esc(s.copy_body)}</div>` : ''}`;
+    return `<li class="soc-slide"><div class="soc-meta"><b>${esc(String(s.n))}. ${esc(s.role_text)}</b> · ${esc(s.asset_type_text)}</div>${copy}${flags}${esc2}</li>`;
+  }).join('');
+  const caption = editing
+    ? `<label class="soc-meta"><b>${esc(t('soc_caption'))}</b></label><textarea data-soc-caption maxlength="2200" dir="auto">${esc(item.caption)}</textarea>`
+    : `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
+  const prod = p.production || {};
+  const prodLine = prod.state && prod.state !== 'waiting_copy'
+    ? `<div class="soc-meta">${esc(t('soc_post_prod_' + prod.state, { made: prod.made || 0, not_made: prod.not_made || 0 }))}</div>` : '';
+  return `<div class="soc-post">
+      <div class="plan-note">${esc(p.stage_text || '')}</div>
+      <div class="soc-meta"><b>${esc(t('soc_post_format'))}:</b> ${esc(p.post_format || '')} — <bdi dir="auto">${esc(p.format_reason || '')}</bdi></div>
+      <div class="soc-meta"><b>${esc(t('soc_post_audience'))}:</b> <bdi dir="auto">${esc(p.audience || '')}</bdi>${p.palette ? ' · ' + esc(t('soc_post_palette', { name: p.palette })) : ''}</div>
+      ${(p.warnings || []).map(w => `<div class="soc-flag warn">${esc(w)}</div>`).join('')}
+      <ol class="soc-slides">${slides}</ol>${caption}${prodLine}
+      ${editing ? `<div class="soc-actions">
+          <button type="button" class="sugg-btn approve" data-soc-copysave="${esc(item.id)}">${esc(t('soc_save'))}</button>
+          <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button></div>` : ''}
+    </div>`;
+}
+
 function socialRow(item) {
   const t = uallakI18n.t;
   const waiting = item.status === 'waiting';
+  if (item.kind === 'post') return socialPostRow(item);
   const editable = !ADMIN_VIEW && (waiting || item.status === 'approved');
   const name = item.title || socialChannelName(item.channels[0] || 'instagram');
   const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(item.file_id);
@@ -8428,6 +8488,7 @@ function socialRow(item) {
   } else {
     body = `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
   }
+  if (item.flags && item.flags.length) body += item.flags.map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
   const deliveries = Object.keys(item.delivery || {}).map(c =>
     `<div class="${esc(item.delivery[c].state)}"><b>${esc(socialChannelName(c))}:</b> ${esc(item.delivery[c].text)}</div>`).join('');
   const rejected = item.status === 'rejected'
@@ -8450,6 +8511,54 @@ function socialRow(item) {
       ${deliveries ? `<div class="soc-delivery">${deliveries}</div>` : ''}
       ${acts.length ? `<div class="soc-actions">${acts.join('')}</div>` : ''}
     </div></div>`;
+}
+
+function socialPostRow(item) {
+  const t = uallakI18n.t;
+  const waiting = item.status === 'waiting';
+  const face = SOCIAL_FACES[item.producer] || 'lior';
+  const preview = `<div class="soc-prev">📝
+      ${waiting && !ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name: item.title || '' }))}"></label>` : ''}
+    </div>`;
+  const chans = item.channels.map(c => `<span class="plan-pill">${esc(socialChannelName(c))}</span>`).join('');
+  const rejected = item.status === 'rejected' ? `<div class="soc-meta">${esc(t('soc_was_rejected', { reason: item.reject_reason }))}</div>` : '';
+  const acts = [];
+  if (social.editing !== item.id && social.rejecting !== item.id && waiting && !ADMIN_VIEW) {
+    acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_post_approve'))}</button>`);
+    acts.push(`<button type="button" class="media-chip" data-soc-edit="${esc(item.id)}">${esc(t('soc_post_edit'))}</button>`);
+    acts.push(`<button type="button" class="sugg-btn reject" data-soc-reject="${esc(item.id)}">${esc(t('soc_reject'))}</button>`);
+  }
+  const reject = social.rejecting === item.id ? `<div class="soc-reject">
+      <label class="soc-meta"><b>${esc(t('soc_reject_reason', { name: socialProducer(item.producer) }))}</b></label>
+      <textarea data-soc-reason maxlength="400" dir="auto"></textarea>
+      <div class="soc-actions">
+        <button type="button" class="sugg-btn reject" data-soc-reject-send="${esc(item.id)}">${esc(t('soc_reject_send'))}</button>
+        <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
+      </div></div>` : '';
+  const cls = 'soc-item post ' + item.status + (social.selected.has(item.id) ? ' selected' : '')
+    + (item.status === 'rejected' ? ' done' : '');
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${preview}
+    <div class="soc-body"><div class="soc-top">
+        <span class="soc-status ${esc(item.status)}">${esc(item.status === 'waiting' ? t('soc_post_copy_waiting') : item.status_text)}</span>
+        <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
+      </div>
+      ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
+      <div class="soc-meta"><b>${esc(t('soc_channels'))}:</b> ${chans} <b>${esc(t('soc_date'))}:</b> ${esc(fmtDate(item.planned_date + 'T12:00:00'))}</div>
+      ${socialPostBody(item)}${reject}${rejected}
+      ${acts.length ? `<div class="soc-actions">${acts.join('')}</div>` : ''}
+    </div></div>`;
+}
+
+function socialCopySave(id, row) {
+  const item = socialItem(id);
+  if (!item || !row) return;
+  const slides = ((item.post || {}).slides || []).map(s => ({
+    asset_id: s.asset_id,
+    copy_headline: (row.querySelector('[data-soc-head="' + CSS.escape(s.asset_id) + '"]') || {}).value,
+    copy_body: (row.querySelector('[data-soc-bodytext="' + CSS.escape(s.asset_id) + '"]') || {}).value }));
+  const cap = row.querySelector('[data-soc-caption]');
+  socialPost('/api/client/social/' + encodeURIComponent(id) + '/copy', { slides, caption: cap ? cap.value : null }, 'soc_saved');
 }
 
 function renderSocial() {
@@ -8501,6 +8610,7 @@ function wireSocial(list) {
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
   on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
   on('data-soc-save', (id, btn) => socialSave(id, btn.closest('.soc-item')));
+  on('data-soc-copysave', (id, btn) => socialCopySave(id, btn.closest('.soc-item')));
   on('data-soc-reject-send', (id, btn) => socialReject(id, btn.closest('.soc-item')));
   on('data-soc-published', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/published', {}, 'soc_saved'));
   on('data-soc-copy', id => {

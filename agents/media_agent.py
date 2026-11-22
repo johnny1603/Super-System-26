@@ -532,9 +532,21 @@ def _business_brief(client_id: int) -> dict:
     return context
 
 
+def _context(client_id: int) -> dict:
+    """The craft library + this client's brand brief, IN FULL (core/post_brief).
+    Missing = ContextMissing, which fails the generation loudly: nothing is
+    made without them (2026-11-23)."""
+    from core import post_brief
+    return post_brief.load_context(client_id)
+
+
 def _craft_prompt(client_id: int, brief: str, platform: str, kind: str,
                   avatar_context: dict = None) -> dict:
+    from core import post_brief
+    context = _context(client_id)
     payload = {
+        "craft_library": context["craft"],
+        "brand_brief": context["brand"],
         "business": _business_brief(client_id),
         "brief": brief,
         "platform": platform,
@@ -552,9 +564,116 @@ def _craft_prompt(client_id: int, brief: str, platform: str, kind: str,
     # TIER-2 extension point: a future avatar agent enriches prompts here
     if avatar_context:
         payload["avatar_context"] = avatar_context
-    return safe_claude_json_call(PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False),
-                                 max_tokens=500, client_id=client_id,
-                                 cost_category="claude_media")
+    crafted = safe_claude_json_call(PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False),
+                                    max_tokens=500, client_id=client_id,
+                                    cost_category="claude_media")
+    # Every path: Hebrew is never sent to a model to be drawn
+    post_brief.assert_no_hebrew(crafted.get("generation_prompt", ""))
+    return crafted
+
+
+# ─── The post contract (core/post_brief, knowledge/social-craft.md §2) ───────
+
+BRIEF_PROMPT_SYSTEM = """You are the media agent of uallak, an Israeli marketing agency. You own the
+EXECUTION of one visual asset for a social post. The social agent owns the message; you receive its
+brief. You have the craft library and the client's brand brief in full — follow them.
+
+Turn the asset's visual_direction into ONE excellent English generation prompt.
+
+IRON RULES:
+- Build the prompt ONLY from visual_direction, must_include, must_avoid, the palette and the brand's
+  visual identity. You are NOT given the slide's copy, and you must not invent words for the image.
+- ABSOLUTELY NO text, letters, words, numbers, signs with writing, logos or captions in the scene.
+  Hebrew is never drawn by a model; any text is added later from the brand template.
+- Use ONLY the palette given (one audience variant). Never mix in the other variant's colours.
+- Never depict a specific product as if it were a real item the customer can order. Atmosphere,
+  studio and workspace scenes, hands at work, blank / undecorated items, textures, backgrounds and
+  conceptual frames are fine.
+- No celebrity likenesses, no trademarked or licensed characters, no brand logos.
+- Professional photography / cinematography language; one clear scene; max 120 words.
+
+Return JSON only:
+{"generation_prompt": "English prompt", "rationale": "1 English sentence"}"""
+
+
+def review_brief(brief) -> dict:
+    """The media agent's check of an incoming asset brief (craft §2.3 step 1):
+    {"source", "priority", "objection", "flags"} — sourcing per craft §10."""
+    from core import post_brief
+    return post_brief.sourcing(brief)
+
+
+def _craft_brief_prompt(client_id: int, brief, palette: dict, context: dict) -> dict:
+    """The prompt from the brief's VISUAL fields only — the copy never enters
+    the payload, and the result is checked again before any model call."""
+    payload = {
+        "craft_library": context["craft"],
+        "brand_brief": context["brand"],
+        "asset": brief.prompt_material(),
+        "post_format": brief.post_format,
+        "palette": {"variant": palette.get("label", ""), "colors": palette.get("colors", [])} if palette else {},
+    }
+    return safe_claude_json_call(BRIEF_PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False),
+                                 max_tokens=500, client_id=client_id, cost_category="claude_media")
+
+
+def generate_from_brief(client_id: int, brief, palette: dict = None, platform: str = "instagram") -> dict:
+    """ONE asset of a post (core/post_brief.AssetBrief) → the client's Drive.
+    text_slide: not rendered (its renderer isn't built — never an image model).
+    real_photo: a real asset is chosen, never generated. generated_*: prompt
+    from visual_direction only, `assert_copy_free` before the model call."""
+    from core import post_brief
+    if brief.asset_type == "text_slide":
+        return {"success": False, "status": post_brief.RENDERER_NOT_IMPLEMENTED,
+                "errors": ["text_slide renderer not implemented — nothing was sent to an image model"]}
+    if brief.asset_type == "real_photo":
+        return {"success": False, "status": "needs_real_asset",
+                "errors": ["a real photo of the client's work is chosen for this asset, never generated"]}
+    kind = "video" if brief.asset_type == "generated_video" else "image"
+    folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
+    platform = platform if platform in folders else "instagram"
+    try:
+        context = _context(client_id)
+    except post_brief.ContextMissing as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {e} — nothing was generated"])
+        return {"success": False, "status": "context_missing", "errors": [str(e)]}
+    api_key = _generation_key(client_id)
+    if not api_key:
+        return {"success": False, "status": "no_account", "errors": [_NO_ACCOUNT_ERROR]}
+    log_step(AGENT_NAME, "generate_from_brief", f"client {client_id} [{brief.set_id}/{brief.asset_id}] {kind}")
+    return _generate_brief_asset(client_id, brief, palette or {}, platform, kind, api_key, context)
+
+
+@drive_storage.scoped
+def _generate_brief_asset(client_id: int, brief, palette: dict, platform: str, kind: str,
+                          api_key: str, context: dict) -> dict:
+    from core import post_brief
+    try:
+        crafted = timed_step(AGENT_NAME, "craft_brief_prompt",
+                             lambda: _craft_brief_prompt(client_id, brief, palette, context))
+        prompt = crafted.get("generation_prompt", "")
+        post_brief.assert_copy_free(prompt, brief)            # THE root-cause guard
+        run = gen.generate_video if kind == "video" else gen.generate_image
+        generated = timed_step(AGENT_NAME, f"higgsfield_{kind}",
+                               lambda: run(api_key, prompt, brief.aspect_ratio))
+        folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+        uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
+                                      generated["content"], generated["mime"])
+    except post_brief.CopyLeak as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} refused before the model: {e}"])
+        return {"success": False, "status": "copy_leak", "errors": [str(e)]}
+    except Exception as e:  # includes ClaudeJSONError
+        _key_outcome(client_id, e)
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} generation failed: {e}"])
+        return {"success": False, "status": "failed", "errors": [str(e)]}
+    _key_outcome(client_id)
+    _log_activity(client_id, f"media_{kind}_created",
+                  {"platform": platform, "set_id": brief.set_id, "asset_id": brief.asset_id,
+                   "prompt": prompt, "model": generated.get("model"), "credits": generated.get("credits")},
+                  {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
+    return {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
+            "credits": generated.get("credits"), "prompt": prompt}
 
 
 @drive_storage.scoped

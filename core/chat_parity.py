@@ -142,6 +142,7 @@ PARITY = {
     "GET /api/client/social": (CHAT, "approve_social_items"),
     "POST /api/client/social/approve": (CHAT, "approve_social_items"),
     "POST /api/client/social/{item_id}/edit": (GAP, "P2: edit_social_item card (caption / channels / date of a waiting item)"),
+    "POST /api/client/social/{item_id}/copy": (CHAT, "produce_post"),
     "POST /api/client/social/{item_id}/reject": (GAP, "P2: reject_social_item card (the reason goes back to the producer)"),
     "POST /api/client/social/{item_id}/published": (GAP, "P3: mark_social_published card (\"I published it\")"),
     "GET /api/client/seo-report": (CHAT, "build_seo_report"),

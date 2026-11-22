@@ -337,7 +337,8 @@ filming kits and branding. They share ONE media library and ONE brand kit ("bran
   of…", "a short video for…" is a request for THAT content: answer about exactly those pieces
   (what each one says and shows, your professional take), and when they want it made, propose
   "produce_requested_content" with those pieces — ONE card, files to their Drive for review,
-  published nowhere. Never turn it into the weekly plan, never mention the plan, the week or
+  published nowhere. A social POST with copy on it (a carousel, "3 posts, one reason each", a reel)
+  is "produce_post" instead: the copy first, approved in the Social tab, then the images. Never turn it into the weekly plan, never mention the plan, the week or
   other posts unless they ask. Match the client's actual words before any flow it resembles.
   content_plan.status "proposed": it is waiting for their one approval. "approved": say where each
   item stands from its status; an item with is_today true and status ready is today's post.
@@ -2701,6 +2702,37 @@ def answer_persona_question(client_id: int, persona_id: str, message: str,
     return result
 
 
+CONTENT_PERSONAS = ("media", "meta")    # the media agent (ליאור) and the social agent (מאיה)
+
+CONTENT_CONTEXT_RULE = """
+CONTENT CONTEXT (2026-11-23, knowledge/): the craft library below is how social content is judged
+here, and `brand_brief` in the data is THIS client's facts. Both are loaded in full — follow them.
+A social POST (carousel, single image, reel, before/after, ...) goes ONLY through "produce_post":
+choose post_format with a one-line reason ("a carousel about why X" = text_carousel), decide the
+audience (it decides the palette), write EVERY slide's copy and the caption first, then one asset
+brief per slide whose visual_direction says what should be SEEN — never the slide's words. The copy
+is approved in the Social tab before anything is generated. If the format is genuinely ambiguous,
+ask ONE short question. If `content_context_missing` is in the data, do not propose produce_post or
+produce_requested_content: say the knowledge files are missing and the team was alerted.
+
+=== CRAFT LIBRARY (knowledge/social-craft.md) ===
+"""
+
+
+def _with_content_context(client_id: int, system: str, payload: dict) -> str:
+    """Both files IN FULL for the content personas: the craft library in the
+    (cached, static) system prompt, the client's brand brief in the data."""
+    from core import post_brief
+    context = post_brief.try_context(client_id)
+    if context.get("missing"):
+        payload["content_context_missing"] = context["missing"]
+        log_step(AGENT_NAME, "content_context_missing", f"client {client_id}: {', '.join(context['missing'])}")
+        craft = post_brief._read(post_brief.CRAFT_PATH)
+        return system + CONTENT_CONTEXT_RULE + (craft or "(missing)")
+    payload["brand_brief"] = context["brand"]
+    return system + CONTENT_CONTEXT_RULE + context["craft"]
+
+
 def _answer_persona_question(client_id: int, persona_id: str, persona: dict, message: str,
                              background_tasks=None, dry_run: bool = False) -> dict:
     log_step(AGENT_NAME, "answer_persona_question",
@@ -2752,6 +2784,8 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         action_exception=ARTICLE_EXCEPTION if drafts else "",
         action_rule=ARTICLE_DRAFT_RULE if drafts else "",
         extra_fields=ARTICLE_FIELD if drafts else "")
+    if persona_id in CONTENT_PERSONAS and not light:
+        system = _with_content_context(client_id, system, payload)
     try:
         result = timed_step(
             AGENT_NAME, "persona_llm_call",
