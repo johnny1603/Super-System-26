@@ -74,6 +74,7 @@ class FakeDrive:
         self.files = {}          # id → meta
         self.shared = set()      # ids we can read
         self.calls = []
+        self.feed, self.expired = [], set()
 
     def add(self, fid, name, mime=FOLDER, parent="", shared=True, **meta):
         self.files[fid] = {"id": fid, "name": name, "mimeType": mime, "parents": [parent] if parent else [],
@@ -96,6 +97,26 @@ class FakeDrive:
             raise DriveError("no_access", "File not found: " + fid)
         kids = [dict(f) for f in self.files.values() if fid in f["parents"]]
         return {"files": kids, "next_page_token": ""}
+
+    # the changes feed (core/drive_assets change detection): a token = a position in `feed`
+    feed = None
+    expired = None
+
+    def changes_start_token(self, drive_id=""):
+        self.calls.append(("start_token", drive_id))
+        return str(len(self.feed))
+
+    def list_changes(self, token, drive_id="", fields="", page_size=500):
+        self.calls.append(("list_changes", token))
+        if token in self.expired:
+            err = DriveError("expired", "Invalid page token")
+            err.response = types.SimpleNamespace(status_code=410)
+            raise err
+        return {"changes": [dict(c) for c in self.feed[int(token):]], "next_page_token": "",
+                "new_start_page_token": str(len(self.feed))}
+
+    def change(self, fid, removed=False):
+        self.feed.append({"fileId": fid, "removed": removed, "file": {} if removed else dict(self.files[fid])})
 
 
 class Memory:
@@ -131,6 +152,8 @@ class Base(unittest.TestCase):
 
         patch(drive_service, "get_meta", self.drive.get_meta)
         patch(drive_service, "list_children", self.drive.list_children)
+        patch(drive_service, "changes_start_token", self.drive.changes_start_token)
+        patch(drive_service, "list_changes", self.drive.list_changes)
         patch(drive_service, "classify_error", lambda e, target="folder": getattr(e, "kind", "other"))
         patch(drive_service, "service_account_email", lambda: dfo.SHARE_WITH)
         patch(drive_pull, "_our_drive_id", lambda: "OUR_SHARED_DRIVE")
@@ -178,8 +201,14 @@ class Base(unittest.TestCase):
                 sink_holder["sink"].append({"ils": self.usd_per_image * len(images) * 3.40})
             if system == dfo.VISION_SYSTEM:
                 return {"role": self.vision_role, "reason_he": "נראות תמונות מוצר על רקע לבן."}
+            self.describe_systems.append(system)
+            if self.vision_rows:
+                return {"items": [dict(self.vision_rows(n), n=n) for n in range(1, len(images) + 1)]}
             return {"items": [{"n": n, "description": f"described {n}", "tags": ["shoe", "red"]}
                               for n in range(1, len(images) + 1)]}
+
+        self.vision_rows = None      # n -> a full structured answer (tests of the description spec)
+        self.describe_systems = []
 
         self.vision_role = "product_catalog"
         patch(claude_json, "collect_usage", collect_usage)
@@ -623,6 +652,7 @@ class DailyScan(Base):
         self.connect("DAILY_FOLDER_002", "product_catalog")
         self.run_all()
         media(self.drive, "DCAP_NEW_abcdef0", "IMG_0200.jpg", "DAILY_FOLDER_002")
+        self.drive.change("DCAP_NEW_abcdef0")           # Drive reports it in the changes feed
         self.vision_calls.clear()
         da.daily_scan(60)
         self.run_all()

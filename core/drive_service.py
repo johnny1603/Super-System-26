@@ -520,6 +520,40 @@ def find_by_app_property(parent_id: str, key: str, value: str) -> list:
     return _json(response, "app property lookup").get("files", [])
 
 
+DRIVE_CHANGES_URL = "https://www.googleapis.com/drive/v3/changes"
+
+
+def changes_start_token(drive_id: str = "") -> str:
+    """The Drive changes feed's current position (core/drive_assets change
+    detection): for a Shared Drive folder its drive's feed (`drive_id`),
+    otherwise the service account's own corpus (files shared with it)."""
+    params = {"supportsAllDrives": "true"}
+    if drive_id:
+        params["driveId"] = drive_id
+    response = httpx.get(f"{DRIVE_CHANGES_URL}/startPageToken", headers=_headers(), params=params, timeout=TIMEOUT)
+    _check(response)
+    return str(_json(response, "changes start token").get("startPageToken") or "")
+
+
+def list_changes(page_token: str, drive_id: str = "", fields: str = "", page_size: int = 500) -> dict:
+    """One page of what changed since `page_token`: {"changes": [...],
+    "next_page_token", "new_start_page_token"}. Metadata only, never content.
+    Raises httpx.HTTPStatusError (400/404/410 = the token is no longer valid)."""
+    params = {"pageToken": page_token, "pageSize": str(page_size), "supportsAllDrives": "true",
+              "includeRemoved": "true", "spaces": "drive",
+              "fields": fields or "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,"
+                                  "parents,trashed,modifiedTime,md5Checksum))"}
+    if drive_id:
+        params.update(driveId=drive_id, includeItemsFromAllDrives="true")
+    else:
+        params["includeItemsFromAllDrives"] = "false"    # our own Shared Drive's traffic stays out
+    response = httpx.get(DRIVE_CHANGES_URL, headers=_headers(), params=params, timeout=TIMEOUT)
+    _check(response)
+    body = _json(response, "changes")
+    return {"changes": body.get("changes") or [], "next_page_token": body.get("nextPageToken") or "",
+            "new_start_page_token": body.get("newStartPageToken") or ""}
+
+
 def list_children(folder_id: str, page_token: str = "", page_size: int = 40, fields: str = "") -> dict:
     """One page of a folder's direct children (files AND subfolders), folders
     first then newest. {"files": [...], "next_page_token": str}. `fields`:

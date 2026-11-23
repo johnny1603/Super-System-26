@@ -61,6 +61,48 @@ A **social_output** folder (a root, or a subfolder given that role) is never ind
 (`drive_assets.NOT_INDEXED_ROLE`): the walk skips it and drops anything indexed there before, so
 the snapshots are not counted again as client assets. The root shows status `ok`.
 
+## Change detection, not daily walks (2026-11-23)
+
+The scheduled job `drive-assets-scan` still runs every day: retention and the stuck-working-copy cleanup
+first, then `drive_assets.daily_scan` → `check_changes` per client. It no longer walks folders:
+
+- Each root connection stores a Drive **changes page token** (`changes_token`, `changes_drive_id` — its
+  Shared Drive, or the service account's own corpus), taken when the folder is walked, before the listing.
+- The check asks `changes.list` what changed since the token. **Nothing changed → nothing else runs** (no
+  listing, no enumeration). Changed files → only those are upserted and new / changed ones described.
+  Removed / trashed / moved out → out of the index.
+- A missing token, a token Drive refuses (400/404/410), a new or moved-in subfolder or a trashed subfolder →
+  that root is walked ONCE (`job.walk_only`), which stores a fresh token. Other errors: try next time.
+- **Chat trigger** (`core/drive_index_chat`, hooked in both chat paths of `support_agent`): "העליתי את
+  התמונות" / "I uploaded the photos" (an upload verb + a files/folder word, never "not yet") → the folder is
+  walked now (`index_now`, mode `chat`, first step in the background). Several folders and none named → ONE
+  short question ("לאיזו תיקייה העליתם — X או Y?"), answered within 30 min by naming one or "all".
+- **First use** (`ensure_indexed`): an agent selecting from a connection that was never indexed indexes it
+  right then (`find_assets`, `has_pool`, `media_agent._find_real`).
+- **Use time** (`verify_usable`): before a real asset goes into a post, the file must exist, not be trashed and
+  still sit in a connected folder; otherwise it is marked `state: missing` (out of selection, the library and
+  the counts until a walk / change sees it again) and the agent chooses again without it
+  (`media_agent.REAL_ASSET_TRIES`). A post never fails because one indexed file disappeared.
+
+## Descriptions (2026-11-23, `core/asset_describe`)
+
+Every vision-described asset stores `description` (1–2 sentences), `tags` and `attributes`: subject; colours
+(dominant / accent); framing + angle; background; person (present, what is visible); lighting; mood; visible
+text; branding; sharp / well exposed; where text could be overlaid (`text_space`). The prompt is
+category-aware (the brand brief's `category:` → fashion_footwear / food / beauty / home / jewelry /
+services_people, else default). Tags come from a controlled vocabulary (shared base + category + what this
+client's index grew, `state.vocab`); code maps near-duplicates onto the existing tag. Each asset stores
+`prompt_version` (`asset_describe.PROMPT_VERSION`); `outdated()` lists older ones and
+`POST /api/admin/drive-assets/{id}/redescribe` re-describes only those (group copies follow; each counts
+against the allowance). The chooser sees the attributes; search matches them.
+
+## Thumbnails
+
+Drive's `thumbnailLink` for a file that isn't public only answers a credentialed request, so the media
+library never points the browser at it: `<img>` → `/api/client/media-inventory/thumb/{id}` → fetched
+server-side with the service account (`media_inventory.thumbnail`), cached in memory per content version
+(24 h, 600 entries) and in the browser (`max-age=86400`). No file is ever made public for it.
+
 **In the chat:** `client_state.connected_folders` — per connected folder: name, role, status,
 item counts (all / described / images / videos), subfolders with their own role, excluded
 subfolders; plus totals, whether an index run is going and the free items left. A summary only —

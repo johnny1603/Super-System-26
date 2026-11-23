@@ -3622,10 +3622,13 @@ def actions_reap():
 
 @app.get("/api/drive/assets/scan", dependencies=_admin_only)
 def drive_assets_scan():
-    # Daily Cloud Scheduler job drive-assets-scan (X-Admin-Key): every
-    # connected client folder — NEW or CHANGED files only, inside the free cap,
-    # never re-describing a described file (core/drive_assets.daily_scan). What
-    # doesn't fit now continues on the every-minute tick.
+    # Cloud Scheduler job drive-assets-scan (X-Admin-Key). Retention and the
+    # stuck-working-copy cleanup run first, every time. Then the CHANGE CHECK
+    # (core/drive_assets.daily_scan → check_changes): each connected folder's
+    # Drive change token is asked what changed — nothing changed = no listing;
+    # a folder is walked only when its token is missing/expired or a subfolder
+    # appeared. Only new / changed files are described, inside the free cap.
+    # What doesn't fit now continues on the every-minute tick.
     from core import drive_assets, media_inventory
     try:
         # the media library's retention rule (only clients whose manager switched it on)
@@ -3668,6 +3671,15 @@ def admin_drive_assets_credits(client_id: int, req: DriveAssetCreditsRequest, re
                                                                     note=req.note)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/admin/drive-assets/{client_id}/redescribe")
+def admin_drive_assets_redescribe(client_id: int, request: Request, limit: int = 200):
+    # The description prompt improved (core/asset_describe.PROMPT_VERSION):
+    # re-describe ONLY the assets an older version described (their group
+    # copies follow). Each counts against the allowance like any description.
+    _require_admin(request)
+    from core import drive_assets
+    return {"success": True, "data": drive_assets.queue_redescribe(client_id, limit)}
 
 @app.get("/api/drive/usage-scan", dependencies=_admin_only)
 def drive_usage_scan():
@@ -6496,7 +6508,8 @@ def client_media_inventory_thumb(file_id: str, request: Request):
     except Exception as e:
         print(f"[media_inventory] thumbnail {file_id} for client {client_id} failed: {type(e).__name__}")
         raise HTTPException(status_code=404, detail={"code": "ERR_NO_THUMBNAIL"})
-    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"})
+    # fetched server-side (service account) and cached; the browser keeps it a day
+    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=86400"})
 
 @app.post("/api/client/media-inventory/preview")
 def client_media_inventory_preview(req: MediaInventorySelection, request: Request):

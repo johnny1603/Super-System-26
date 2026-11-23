@@ -694,7 +694,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `media_agent.generate_from_brief` (the agent chooses; REFERENCED by its own file_id, never copied — `core/asset_refs`:
   a working copy only where an operation needs one (Meta's public link), deleted when it returns; the one standing copy is
   the publish snapshot into the client's social_output folder, setting `drive_snapshot_on_publish`, default ON); a proof slide / real-only
-  format with nothing real = objection. A social_output folder is never indexed (snapshots). The agents see a SUMMARY
+  format with nothing real = objection. A social_output folder is never indexed (snapshots). NO blind daily walk
+  (2026-11-23): `check_changes` asks Drive's changes feed per stored token (nothing changed = nothing listed; a bad
+  token = one walk); "I uploaded the photos" in chat (`core/drive_index_chat`) and an agent's first look
+  (`ensure_indexed`) index at once; `verify_usable` at use time marks a vanished file `missing` and picks the next.
+  Descriptions: `core/asset_describe` (fields, category-aware, controlled tags, `prompt_version` → re-describe
+  only outdated). The agents see a SUMMARY
   in `client_state.connected_folders` (folders, role, counts by image/video — never the file list).
   `tests/test_drive_folders.py`, `tests/test_connected_summary.py`.
 - **Media library (2026-11-23, `docs/MEDIA-LIBRARY.md`)**: `core/media_inventory` — every media item (generated,

@@ -33,6 +33,7 @@ app_settings `media_library:<id>`.
 
 import re
 import threading
+from collections import OrderedDict
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -246,7 +247,7 @@ def inventory(client_id: int, refresh: bool = False) -> list:
         _log(f"client {client_id}: connected folders unreadable ({type(e).__name__})")
         state, conns = {"items": {}}, {}
     for item in (state.get("items") or {}).values():
-        if item.get("state") == "removed":
+        if item.get("state") in drive_assets.OUT_STATES:     # removed, or gone when an agent went to use it
             continue
         conn = conns.get(item.get("connection_id")) or {}
         root = conns.get(item.get("root_id")) or {}
@@ -579,18 +580,41 @@ def run_retention() -> list:
 
 # ─── Thumbnails ──────────────────────────────────────────────────────────────
 
+# Drive's thumbnailLink is short-lived and, for a file that isn't public, only
+# answers a CREDENTIALED request — the manager's browser can't load it. The
+# library's <img> points at OUR endpoint, which fetches the thumbnail here as
+# the service account. Cached so each thumbnail is fetched from Drive once (per
+# instance, per content version); the browser caches it too. No file is made public.
+THUMB_CACHE_ENTRIES = 600
+THUMB_CACHE_S = 24 * 3600
+_thumbs = OrderedDict()          # (client_id, file_id, version) -> (at, bytes, content_type)
+_thumbs_lock = threading.Lock()
+
+
 def thumbnail(client_id: int, file_id: str) -> tuple:
     """(bytes, content_type): media-folder files through drive_mirror (parents
-    walk); connected-folder files only when they are in this client's index."""
+    walk, its own cache); connected-folder files only when they are in this
+    client's index — fetched server-side with the service account, cached."""
     from core import drive_assets, drive_mirror, drive_service, drive_storage
     state = drive_assets._load(client_id)
     item = (state.get("items") or {}).get(file_id)
     if not item:
         return drive_mirror.thumbnail(client_id, file_id)
+    key = (int(client_id), str(file_id), str(item.get("md5") or item.get("modified") or ""))
+    with _thumbs_lock:
+        hit = _thumbs.get(key)
+        if hit and time.time() - hit[0] < THUMB_CACHE_S:
+            _thumbs.move_to_end(key)
+            return hit[1], hit[2]
     link = drive_assets._fresh_thumb_link(item)
     if not link:
         raise FileNotFoundError("no thumbnail")
     if "=s" in link.rsplit("/", 1)[-1]:
         link = link.rsplit("=s", 1)[0] + "=s320"
     with drive_storage.as_service_account():
-        return drive_service.fetch_thumbnail(link, drive_mirror.THUMB_MAX_BYTES)
+        content, content_type = drive_service.fetch_thumbnail(link, drive_mirror.THUMB_MAX_BYTES)
+    with _thumbs_lock:
+        _thumbs[key] = (time.time(), content, content_type)
+        while len(_thumbs) > THUMB_CACHE_ENTRIES:
+            _thumbs.popitem(last=False)
+    return content, content_type

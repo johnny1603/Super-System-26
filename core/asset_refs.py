@@ -66,7 +66,7 @@ def is_connected(client_id: int, file_id: str) -> bool:
     try:
         from core import drive_assets, drive_folders
         item = (drive_assets._load(client_id).get("items") or {}).get(str(file_id))
-        if not item or item.get("state") == "removed":
+        if not item or item.get("state") in drive_assets.OUT_STATES:
             return False
         conn = next((c for c in drive_folders.load(client_id) if c.get("id") == item.get("connection_id")), None)
         return bool(conn) and not conn.get("excluded_effective")

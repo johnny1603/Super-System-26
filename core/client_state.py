@@ -359,7 +359,7 @@ def _connected_folders(client_id: int) -> dict:
     if not conns:
         return {"connected": False, "folders": []}
     state = drive_assets._load(client_id)
-    live = [i for i in (state.get("items") or {}).values() if i.get("state") != "removed"]
+    live = [i for i in (state.get("items") or {}).values() if i.get("state") not in drive_assets.OUT_STATES]
     by_id = {c["id"]: c for c in conns}
 
     def counts(items: list) -> dict:

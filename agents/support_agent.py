@@ -1217,6 +1217,20 @@ def _drive_link_turn(message: str, result: dict) -> bool:
     return True
 
 
+def _uploaded_files_turn(client_id: int, message: str, reply: str, background_tasks=None) -> tuple:
+    """"I uploaded the photos" (2026-11-23, core/drive_index_chat): the
+    connected folder is indexed NOW. (reply, None) — the reply gains one line
+    — or (reply, the ONE folder question as the whole answer) when several
+    folders could be meant."""
+    from core import drive_index_chat
+    out = drive_index_chat.turn(client_id, message, _client_language(client_id, message), background_tasks)
+    if out.get("ask"):
+        return reply, {"reply": out["ask"], "needs_human_followup": False}
+    if out.get("line"):
+        return (f"{reply.rstrip()}\n\n{out['line']}" if reply.strip() else out["line"]), None
+    return reply, None
+
+
 def _route_proposal(client_id: int, persona_id: str, message: str, result: dict, reply: str,
                     state: dict, client: dict) -> dict:
     """The model's proposed_action through core/agent_actions (which checks
@@ -1667,6 +1681,10 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
     reply = _reply_guards(client_id, "general", message, reply, result)
     if not help_entry and _drive_link_turn(message, result):
         return _route_proposal(client_id, "general", message, result, reply, state, client)
+    if not help_entry:
+        reply, asked = _uploaded_files_turn(client_id, message, reply, background_tasks)
+        if asked:
+            return asked
     if help_entry:
         # A help turn hands out ONLY this connection's configured links, and
         # never starts a purchase or a search
@@ -2822,6 +2840,9 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
     reply = _reply_guards(client_id, persona_id, message, reply, result)
     if _drive_link_turn(message, result):
         return _route_proposal(client_id, persona_id, message, result, reply, state, client)
+    reply, asked = _uploaded_files_turn(client_id, message, reply, background_tasks)
+    if asked:
+        return asked
     out_of_scope = bool(result.get("out_of_scope", False))
     if not out_of_scope:
         unavailable = _data_unavailable(client_id, persona_id, message, result, failed)

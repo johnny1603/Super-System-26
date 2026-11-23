@@ -72,7 +72,7 @@ class Base(unittest.TestCase):
         patch(drive_service, "make_file_public", lambda fid: self.public.append(fid) or f"https://pub/{fid}")
         patch(drive_service, "find_by_app_property", lambda parent, key, value: [])
         patch(drive_service, "get_meta", lambda fid, fields="": {"id": fid, "trashed": False, "webViewLink": "v/" + fid,
-                                                                  "parents": ["SOMEWHERE"]})
+                                                                  "parents": ["PRODFOLDER"]})
         patch(drive_storage, "scope", lambda cid: contextlib.nullcontext())
         patch(drive_storage, "as_service_account", lambda: contextlib.nullcontext())
         patch(drive_assets, "_load", lambda cid: self.index)
