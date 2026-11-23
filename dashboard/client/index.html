@@ -1475,6 +1475,7 @@ body.bs-open { overflow: hidden; }
 .soc-post { display: grid; gap: 6px; }
 .soc-slides { margin: 0; padding-inline-start: 0; list-style: none; display: grid; gap: 8px; }
 .soc-slide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
+.soc-prev img[data-soc-view], .soc-design-strip img[data-soc-slide] { cursor: zoom-in; }
 .soc-slide-head { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
 .soc-slide-body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .soc-slide input[type=text], .soc-slide textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px;
@@ -9379,7 +9380,8 @@ function socialRow(item) {
   const face = SOCIAL_FACES[item.producer] || 'lior';
   const preview = `<div class="soc-prev">
       ${item.kind === 'video' ? '🎬' : '🖼'}
-      <img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">
+      <img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()"${item.kind === 'image'
+        ? ` data-soc-view="${esc(item.id)}" role="button" tabindex="0" aria-label="${esc(t('mv_view'))}"` : ''}>
       ${item.kind === 'video' ? `<button type="button" class="soc-play" data-soc-play="${esc(item.id)}" aria-label="${esc(t('soc_play'))}">▶</button>` : ''}
       ${waiting && !ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
           ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name }))}"></label>` : ''}
@@ -9492,7 +9494,8 @@ function socialDesignRow(item) {
   const waiting = item.status === 'waiting';
   const face = SOCIAL_FACES[item.producer] || 'lior';
   const revising = d.state === 'revising';
-  const imgs = (d.previews || []).map((src, i) => `<img src="${esc(src)}" alt="${esc(String(i + 1))}" loading="lazy" onerror="this.remove()">`).join('');
+  const imgs = (d.previews || []).map((src, i) => `<img src="${esc(src)}" alt="${esc(String(i + 1))}" loading="lazy" onerror="this.remove()"
+      data-soc-slide="${esc(item.id)}" data-n="${i}" role="button" tabindex="0">`).join('');
   const specLines = (d.spec_lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('');
   const notes = (d.critiques || []).map(c => `<li><bdi dir="auto">${esc(c.text)}</bdi></li>`).join('');
   const acts = [];
@@ -9600,6 +9603,12 @@ function wireSocial(list) {
     };
   });
   on('data-soc-play', id => { const i = socialItem(id); if (i) playVideo({ id: i.file_id, name: i.title || '' }); });
+  // The enlarged view (click, or Enter / Space on the focused image)
+  on('data-soc-view', id => socialOpenViewer(id));
+  on('data-soc-slide', (id, img) => socialOpenDesign(id, img.getAttribute('data-n')));
+  list.querySelectorAll('[data-soc-view], [data-soc-slide]').forEach(img => {
+    img.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); img.click(); } };
+  });
   on('data-soc-approve', id => socialOpenBatch([id]));
   on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
@@ -9625,6 +9634,39 @@ function wireSocial(list) {
     const opts = mediaViewerOpts('socialNotice');
     uallakMediaViewer.download({ id: i.file_id, name: i.title || '', kind: i.kind, download: 'file' }, opts, '', opts.notify);
   });
+}
+
+// ─── Enlarged view (lightbox, /assets/media-viewer.js) ───────────────────────
+// The card keeps its thumbnail; the full-size image loads only when the
+// overlay shows it (and the viewer preloads just the next and previous one).
+// The set browsed: the slides of that carousel — queue items sharing
+// post_ref.set_id, in slide order — or the slides of that design.
+function socialViewItem(i) {
+  const id = encodeURIComponent(i.file_id);
+  return { id: i.file_id, name: i.title || socialChannelName((i.channels || [])[0] || 'instagram'), kind: 'image',
+           previewable: true, download: 'none', src: '/api/client/media-drive/file/' + id + '?inline=1',
+           fallback: '/api/client/media-drive/thumb/' + id };
+}
+function socialViewSet(item) {
+  const sid = (item.post_ref || {}).set_id;
+  const set = sid
+    ? social.items.filter(i => i.kind === 'image' && i.file_id && (i.post_ref || {}).set_id === sid)
+        .sort((a, b) => (Number(a.post_ref.n) || 0) - (Number(b.post_ref.n) || 0))
+    : [item];
+  return { list: set.map(socialViewItem), index: Math.max(0, set.indexOf(item)) };
+}
+function socialOpenViewer(id) {
+  const item = socialItem(id);
+  if (!item || item.kind !== 'image') return;
+  const { list, index } = socialViewSet(item);
+  uallakMediaViewer.open(list, index, mediaViewerOpts('socialNotice'));
+}
+function socialOpenDesign(id, n) {
+  const item = socialItem(id);
+  const previews = ((item && item.design) || {}).previews || [];
+  const list = previews.map((src, i) => ({ id: item.id + '-' + (i + 1), name: (item.title || '') + ' · ' + (i + 1),
+                                           kind: 'image', previewable: true, download: 'none', src }));
+  if (list.length) uallakMediaViewer.open(list, Math.max(0, Math.min(Number(n) || 0, list.length - 1)), mediaViewerOpts('socialNotice'));
 }
 
 function renderSocialSelBar() {

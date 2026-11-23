@@ -101,3 +101,13 @@ app_settings `social_queue:<client_id>` = `{"items": [...]}`. It is capped at 30
 
 - Automatic publishing on the planned date (see above).
 - No real browser, model, client or platform delivery was used in the tests.
+
+## Enlarged view (2026-11-24)
+
+Clicking a picture in the tab (a queue item's image, or a design's slide) opens the shared lightbox
+(`/assets/media-viewer.js`, items with `src`). It browses the same context: the slides of that carousel
+(loaded queue items sharing `post_ref.set_id`, in `post_ref.n` order; videos are not in it) or the slides
+of that design. Arrows, keyboard (RTL visual order: ← next), swipe, "3 / 5"; ✕, the dark area and Esc
+close. The card keeps its thumbnail (`/api/client/media-drive/thumb/<id>`); the full image
+(`/api/client/media-drive/file/<id>?inline=1`) loads only in the overlay, plus the next and previous one;
+the thumbnail is the fallback. Tests: `tests/test_social_lightbox.py`.

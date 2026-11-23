@@ -3,6 +3,8 @@
  * core/drive_download.py).
  *
  *   uallakMediaViewer.open(items, index, opts)   lightbox over a folder's files
+ *     (an item with `src` is shown from that URL — full size, loaded only when
+ *     the overlay shows it; `fallback` once if it fails. The Social tab.)
  *   uallakMediaViewer.download(item, opts, fmt)  check, then download one file
  *
  * opts = { fileUrl(id) -> endpoint path, t(key, vars) -> string,
@@ -174,7 +176,18 @@
 
     el.stage.textContent = '';
     var multi = state.items.length > 1;
-    if (item.previewable) {
+    if (item.src) {
+      // An explicit full-size image (the Social tab): loaded only now, in the
+      // overlay; one fallback (its thumbnail) if it fails
+      var full = node('img');
+      full.alt = item.name || '';
+      full.onerror = function () {
+        if (item.fallback && !full.dataset.fallback) { full.dataset.fallback = '1'; full.src = item.fallback; return; }
+        showDoc(item, t('mv_preview_failed', { mb: opts.maxMb }));
+      };
+      full.src = item.src;
+      el.stage.appendChild(full);
+    } else if (item.previewable) {
       var img = node('img');
       img.alt = item.name || '';
       img.referrerPolicy = 'no-referrer';
@@ -229,7 +242,9 @@
   function preloadNeighbours() {
     [1, -1].forEach(function (d) {
       var it = state.items[(state.index + d + state.items.length) % state.items.length];
-      if (it && it.previewable && it.thumbnail_link) {
+      if (it && it.src) {
+        var p = new Image(); p.src = it.src;
+      } else if (it && it.previewable && it.thumbnail_link) {
         var i = new Image(); i.referrerPolicy = 'no-referrer'; i.src = bigThumb(it.thumbnail_link);
       }
     });
