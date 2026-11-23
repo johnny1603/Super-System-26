@@ -181,3 +181,14 @@ re-describes a described file. Lease `drive_assets_lock:<id>`.
 
 app_settings `drive_folders:<id>`, `drive_assets:<id>`, `drive_assets_lock:<id>` — cleared with
 the client (admin_service, client_deletion, deletion_guard). No migration.
+
+## Credits screen (2026-11-24)
+
+Control Room → client → "💳 קרדיטים לאינדוקס תיקיות דרייב" (`GET/POST /api/admin/drive-assets/{id}/credits`,
+admin session only; `drive_assets.credits_view`). Shows the balance (free + loaded − used), the open quote
+when the cap stopped indexing (folders, items left, measured cost per item, total), the measured cost per
+item of the LAST run (`meter.last_run`, written when a run finishes) and the all-runs average, the job
+(resumed / queued, items left) and every credit load (amount, when, who, note). Loading: amount + optional
+note + "loaded by" (the admin session has no identity, so the name is typed and remembered in the browser;
+stored as `admin:<name>`), ONE confirmation, then `load_credits` — indexing resumes where it stopped.
+Tests: `tests/test_credits_admin.py`.

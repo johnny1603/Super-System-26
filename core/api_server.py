@@ -3647,6 +3647,7 @@ class DriveAssetCreditsRequest(BaseModel):
     items: int = 0
     usd: float = None
     note: str = ""
+    by_name: str = ""     # who loaded them (admin sessions carry no identity of their own)
 
 @app.get("/api/admin/drive-assets/{client_id}")
 def admin_drive_assets(client_id: int, request: Request):
@@ -3666,11 +3667,20 @@ def admin_drive_assets_credits(client_id: int, req: DriveAssetCreditsRequest, re
     # indexing resumes exactly where it stopped
     _require_admin(request)
     from core import drive_assets
+    name = re.sub(r"\s+", " ", str(req.by_name or "")).strip()[:30]
     try:
-        return {"success": True, "data": drive_assets.load_credits(client_id, req.items, req.usd, by="admin",
-                                                                    note=req.note)}
+        view = drive_assets.load_credits(client_id, req.items, req.usd, by=f"admin:{name}" if name else "admin",
+                                         note=req.note)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": {**view, "credits_view": drive_assets.credits_view(client_id)}}
+
+@app.get("/api/admin/drive-assets/{client_id}/credits")
+def admin_drive_assets_credits_view(client_id: int, request: Request):
+    # The Control Room's credits section (staff only)
+    _require_admin(request)
+    from core import drive_assets
+    return {"success": True, "data": drive_assets.credits_view(client_id)}
 
 @app.post("/api/admin/drive-assets/{client_id}/redescribe")
 def admin_drive_assets_redescribe(client_id: int, request: Request, limit: int = 200):

@@ -3386,6 +3386,10 @@ async function openControlRoom(clientId) {
           <div id="crMediaLib"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">💳 קרדיטים לאינדוקס תיקיות דרייב</div>
+          <div id="crCredits"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">🎨 מיתוג — ניסיונות הדמיה</div>
           <div id="crBranding"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3429,6 +3433,92 @@ async function openControlRoom(clientId) {
   crLoadBranding(clientId);
   crLoadSocialClient(clientId);
   crLoadMediaLib(clientId);
+  crLoadCredits(clientId);
+}
+
+// ─── Index credits (core/drive_assets.credits_view / load_credits) ──────────
+// When the free cap stops indexing, a billing task opens with the quote. After
+// billing, credits are loaded HERE: amount (items) + optional note, ONE
+// confirmation; indexing resumes where it stopped.
+const CR_CR_JOB = { idle: 'לא רץ', queued: 'ממתין להתחלה', running: 'רץ עכשיו' };
+function crCrNum(n) { return Number(n || 0).toLocaleString('he-IL'); }
+function crCrIls(n, d) { return '₪' + Number(n || 0).toLocaleString('he-IL', { maximumFractionDigits: d == null ? 2 : d }); }
+function crCrBy(by) { by = String(by || ''); return by.startsWith('admin:') ? by.slice(6) : by === 'admin' ? 'מנהל' : by; }
+async function crLoadCredits(clientId, notice) {
+  const el = document.getElementById('crCredits');
+  if (!el) return;
+  let d;
+  try { d = (await api(`/api/admin/drive-assets/${Number(clientId)}/credits`)).data || {}; }
+  catch (e) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">לא נטען</div>'; return; }
+  if (crState.clientId !== clientId || !el.isConnected) return;
+  crRenderCredits(el, clientId, d, notice);
+}
+function crRenderCredits(el, clientId, d, notice) {
+  const b = d.balance || {}, q = d.quote || {}, last = d.last_run || {}, avg = d.average || {}, job = d.job || {};
+  const row = (label, value) => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(label)}</span><span class="drawer-stat-value" data-cr-cr="${esc(label)}">${value}</span></div>`;
+  const quote = q.remaining != null && Object.keys(q).length ? `<div class="cr-cr-quote" style="margin:8px 0;padding:10px;border-radius:10px;background:rgba(255,170,0,.12);">
+      <div style="font-weight:700;margin-bottom:6px;">⏸ האינדוקס נעצר במכסה — הצעת מחיר פתוחה</div>
+      ${row('תיקיות', esc((q.folders || []).join(' · ') || '—'))}
+      ${row('פריטים שנשארו', `<b data-cr-q="remaining">${crCrNum(q.remaining)}</b>`)}
+      ${row('עלות נמדדת לפריט', `<span data-cr-q="per">${crCrIls(q.per_item_ils, 4)}</span> ($${Number(q.per_item_usd || 0).toFixed(5)})`)}
+      ${row('סה״כ הצעה', `<b data-cr-q="total">${crCrIls(q.quote_ils)}</b> ($${Number(q.quote_usd || 0).toFixed(2)})`)}
+    </div>` : '';
+  const running = job.state === 'queued' || job.state === 'running';
+  const jobLine = running
+    ? `<div class="cr-cr-job" style="margin:8px 0;color:var(--green);font-weight:700;">▶ האינדוקס חודש (${esc(CR_CR_JOB[job.state] || job.state)}) — נשארו ${crCrNum(d.pending)} פריטים${job.limit ? `, עד ${crCrNum(job.limit)} בסבב הזה` : ''}</div>`
+    : (d.pending ? `<div class="cr-cr-job" style="margin:8px 0;color:var(--gray);">${crCrNum(d.pending)} פריטים ממתינים לאינדוקס</div>` : '');
+  const lastLine = last.items
+    ? `${crCrIls(last.per_item_ils, 4)} לפריט ($${Number(last.per_item_usd || 0).toFixed(5)}) · ${crCrNum(last.items)} פריטים · ${esc(new Date(last.at).toLocaleString('he-IL'))}`
+    : 'עוד לא הסתיים סבב שתואר בו משהו';
+  const hist = (d.history || []).map(h => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(new Date(h.at).toLocaleString('he-IL'))} · ${esc(crCrBy(h.by))}${h.note ? ' · <bdi dir="auto">' + esc(h.note) + '</bdi>' : ''}</span>
+      <span class="drawer-stat-value">+${crCrNum(h.items)} פריטים${h.usd != null ? ' · $' + Number(h.usd).toFixed(2) : ''}</span></div>`).join('')
+    || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">עוד לא נטענו קרדיטים</div>';
+  let who = '';
+  try { who = localStorage.getItem('crCreditsBy') || ''; } catch (e) { /* private mode */ }
+  el.innerHTML = `<div dir="rtl">
+    ${row('יתרה', `<b data-cr-b="remaining">${crCrNum(b.remaining)}</b> פריטים`)}
+    ${row('מכסה', `${crCrNum(b.free_items)} חינם + ${crCrNum(b.extra_items)} קרדיטים = ${crCrNum(b.allowance)} · נוצלו ${crCrNum(b.used)}`)}
+    ${row('עלות נמדדת לפריט — הסבב האחרון', lastLine)}
+    ${row('ממוצע מכל הסבבים', `${crCrIls(avg.per_item_ils, 4)} לפריט · ${crCrNum(avg.items)} פריטים`)}
+    ${quote}${jobLine}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;" id="crCrForm">
+      <label>כמות (פריטים) <input type="number" min="1" max="100000" id="crCrItems" style="width:90px;" value="${q.remaining ? Number(q.remaining) : ''}"></label>
+      <input type="text" id="crCrNote" maxlength="200" placeholder="הערה (לא חובה), למשל: חשבונית 1042" style="flex:1;min-width:180px;" dir="auto">
+      <input type="text" id="crCrBy" maxlength="30" placeholder="נטען ע״י" style="width:120px;" value="${esc(who)}" dir="auto">
+      <button type="button" class="manage-btn" onclick="crCreditsAsk(${Number(clientId)})">טעינת קרדיטים</button>
+    </div>
+    <div id="crCrConfirm"></div>
+    <div id="crCrMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</div>
+    <div class="drawer-label" style="margin-top:10px;">היסטוריית טעינות</div>${hist}</div>`;
+}
+function crCreditsAsk(clientId) {
+  const items = Math.floor(Number(document.getElementById('crCrItems').value));
+  const msg = document.getElementById('crCrMsg');
+  if (!(items >= 1 && items <= 100000)) { msg.textContent = 'כתבו כמות בין 1 ל-100,000 פריטים'; return; }
+  const note = document.getElementById('crCrNote').value.trim();
+  document.getElementById('crCrConfirm').innerHTML = `<div style="padding:10px;border-radius:10px;background:rgba(127,127,127,.1);margin-bottom:8px;">
+      לטעון <b>${crCrNum(items)}</b> פריטים ללקוח ${Number(clientId)}${note ? ' · <bdi dir="auto">' + esc(note) + '</bdi>' : ''}? האינדוקס ימשיך מאיפה שנעצר.
+      <button type="button" class="manage-btn" id="crCrGo" onclick="crCreditsLoad(${Number(clientId)}, ${items})">אישור</button>
+      <button type="button" class="manage-btn" onclick="document.getElementById('crCrConfirm').innerHTML=''">ביטול</button></div>`;
+}
+async function crCreditsLoad(clientId, items) {
+  const go = document.getElementById('crCrGo');
+  if (go) go.disabled = true;
+  const note = document.getElementById('crCrNote').value.trim();
+  const by = document.getElementById('crCrBy').value.trim();
+  try { localStorage.setItem('crCreditsBy', by); } catch (e) { /* private mode */ }
+  let res;
+  try {
+    res = await api(`/api/admin/drive-assets/${Number(clientId)}/credits`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items, note, by_name: by }) });
+  } catch (e) { res = null; }
+  if (!res || !res.success) {
+    if (go) go.disabled = false;
+    document.getElementById('crCrMsg').textContent = 'לא נטען — נסו שוב';
+    return;
+  }
+  const el = document.getElementById('crCredits');
+  if (el) crRenderCredits(el, clientId, (res.data || {}).credits_view || {}, `נטענו ${crCrNum(items)} פריטים ✓`);
 }
 
 // ─── Media library (core/media_inventory) — retention rule + deletion log ───

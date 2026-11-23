@@ -566,7 +566,7 @@ def _cap_reached(client_id: int, state: dict, conns: list, hidden: set):
     text = (f"Drive asset index — the free allowance is used ({limit} items). Client {client_id}. "
             f"Folders: {'; '.join(folders)[:180]}. Remaining items: {q['remaining']}. Measured cost per item: "
             f"${q['per_item_usd']:.5f} (ILS {q['per_item_ils']:.4f}). Quote: ${q['quote_usd']:.2f} "
-            f"(ILS {q['quote_ils']:.2f}). After billing, load credits on /admin/drive/ — indexing resumes "
+            f"(ILS {q['quote_ils']:.2f}). After billing, load credits in the Control Room (client → credits) — indexing resumes "
             f"where it stopped.")
     try:
         from core import agent_actions
@@ -599,6 +599,41 @@ def load_credits(client_id: int, items: int, usd: float = None, by: str = "admin
     _save(client_id, state)
     _log(f"client {client_id}: {items} index credits loaded by {by}")
     return view_state(client_id, state)
+
+
+def credits_view(client_id: int) -> dict:
+    """The Control Room's credits section: the balance (free allowance +
+    loaded credits − used), the open quote if indexing stopped at the cap
+    (folders, items left, measured cost per item, total), the measured cost
+    per item of the last run, the job (did it resume, how many are left) and
+    every credit load (amount, when, who, note)."""
+    from core.cost_tracker import USD_TO_ILS
+    state = _load(client_id)
+    conns = drive_folders.load(client_id)
+    hidden = _hidden_connections(conns)
+    free = int(settings(client_id)["free_items"])
+    credits = state.get("credits") or {}
+    extra = int(credits.get("extra_items") or 0)
+    meter = state.get("meter") or {}
+    used = int(meter.get("items") or 0)
+    cap = state.get("cap") or {}
+    job = state.get("job") or {}
+    last = dict(meter.get("last_run") or {})
+    if last:
+        last["per_item_ils"] = round(float(last.get("per_item_usd") or 0) * USD_TO_ILS, 4)
+    q = quote(client_id, state, hidden)
+    return {"balance": {"free_items": free, "extra_items": extra, "allowance": free + extra, "used": used,
+                        "remaining": max(0, free + extra - used)},
+            "quote": ({k: cap.get(k) for k in ("reached_at", "folders", "remaining", "per_item_usd", "per_item_ils",
+                                                "quote_usd", "quote_ils", "allowance", "request_id")}
+                      if cap.get("active") else {}),
+            "pending": q["remaining"],
+            "average": {"per_item_usd": q["per_item_usd"], "per_item_ils": q["per_item_ils"],
+                        "items": q["measured_items"], "usd": q["measured_usd"]},
+            "last_run": last,
+            "job": {"state": job.get("state", "idle"), "mode": job.get("mode", ""),
+                    "described": int(job.get("described") or 0), "limit": job.get("limit") or 0},
+            "history": list(reversed(credits.get("history") or []))}
 
 
 # ─── Jobs: walk, then describe ───────────────────────────────────────────────
@@ -922,6 +957,9 @@ def step(client_id: int, budget_s: float = 20.0) -> dict:
             return view_state(client_id, state)
         job["state"] = "running"
         job.setdefault("started_at", _iso())
+        # what this run spends, for the "measured cost per item of the last run" line
+        job.setdefault("meter_at_start", {"items": int(state["meter"].get("items") or 0),
+                                          "usd": float(state["meter"].get("usd") or 0)})
         if not job.get("walk_done"):
             _walk(client_id, state, deadline - STEP_MARGIN_S)
             _save(client_id, state)
@@ -962,6 +1000,12 @@ def step(client_id: int, budget_s: float = 20.0) -> dict:
             if not meter.get("first_run") and meter.get("vision_items"):
                 meter["first_run"] = {"at": stamp, "items": meter["items"], "usd": meter["usd"],
                                       "per_item_usd": meter["avg_usd"], "vision_items": meter["vision_items"]}
+            start = job.get("meter_at_start") or {}
+            run_items = int(meter.get("items") or 0) - int(start.get("items") or 0)
+            if start and run_items > 0:
+                run_usd = round(float(meter.get("usd") or 0) - float(start.get("usd") or 0), 6)
+                meter["last_run"] = {"at": stamp, "mode": job.get("mode", ""), "items": run_items, "usd": run_usd,
+                                     "per_item_usd": round(run_usd / run_items, 6)}
         else:
             _counts_data = _counts(client_id, state)
             drive_folders._save(client_id, _counts_data)
