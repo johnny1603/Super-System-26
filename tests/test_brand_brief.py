@@ -66,7 +66,7 @@ class FromTheDatabase(WithDB):
         self.put(500, {"versions": [{"v": 1, "at": "x", "by": "intake_agent", "kind": "drafted", "status": "draft",
                                      "text": text, "palette": None}]})
         ctx = pb.load_context(500)
-        self.assertEqual(ctx["brand"], text.strip())
+        self.assertTrue(ctx["brand"].startswith(text.strip() + "\n\n"))
         self.assertEqual(ctx["brand_status"], "draft")
         self.assertEqual(bb.admin_view(500)["source"], "database")
 
@@ -90,7 +90,8 @@ class Migration27(WithDB):
 
     def test_behaviour_unchanged_for_27(self):
         ctx = pb.load_context(CID)
-        self.assertEqual(ctx["brand"], FILE_27.strip())                   # what the file path gave
+        # the brief exactly as the file had it, then the system's confidence rule (unmarked = inferred)
+        self.assertTrue(ctx["brand"].startswith(FILE_27.strip() + "\n\n## How to read the confidence marks"))
         self.assertEqual(ctx["brand_facts"], pb.parse_brand(FILE_27.strip()))
         self.assertEqual(ctx["brand_facts"]["lead_time_days"], (15, 25))
         self.assertEqual([v["label"] for v in ctx["brand_facts"]["palette_variants"]], ["black + red", "black + gold"])
@@ -100,7 +101,7 @@ class Migration27(WithDB):
         # database down → the same, read-only from the file
         bb._db = lambda: (_ for _ in ()).throw(RuntimeError("down"))
         bb._cache.clear()
-        self.assertEqual(pb.load_context(CID)["brand"], FILE_27.strip())
+        self.assertTrue(pb.load_context(CID)["brand"].startswith(FILE_27.strip()))
 
 
 SITE = """<html><head><title>Bloom Bakery — עוגות בהזמנה</title>
@@ -166,7 +167,7 @@ class Onboarding(WithDB):
         bb.run_due(200)
         text = bb.text(601)
         self.assertIn(bb.DRAFT_STATUS_LINE, text)
-        fields = [f for s in bb.sections(text) for f in s["fields"] if f["key"] not in ("client_id",)]
+        fields = [f for s in bb.sections(text)[1:] for f in s["fields"]]          # the header carries no facts
         self.assertTrue(fields)
         self.assertTrue(all(f["mark"] in ("stated", "observed", "inferred") for f in fields), fields)
         self.assertIn("- founded: unknown [inferred]", text)              # an unmarked line gets [inferred]
@@ -257,6 +258,109 @@ class NoPaletteAndMissing(WithDB):
         self.assertEqual(pb.try_context(800).get("missing"), None)         # no refusal
         self.assertEqual(slide_spec.palette_roles(800, "default"), bb.NEUTRAL)
         self.assertEqual(bb.admin_view(800)["status"], "missing")
+
+
+def _field(secs, title, key):
+    s = next(s for s in secs if s["title"] == title)
+    return next(f for f in s["fields"] if f["key"] == key)
+
+
+class Parser27(unittest.TestCase):
+    """The Control Room's fields for 27 (2026-11-24 fix): full values, lists
+    as lists, no markdown, every mark found, unmarked = inferred."""
+
+    def setUp(self):
+        self.secs = bb.sections(FILE_27)
+
+    def test_full_multi_line_values(self):
+        f = _field(self.secs, "positioning", "one_line")
+        self.assertEqual(f["value"], "a studio, not a shop — it makes one-of-one wearable pieces that carry "
+                                     "something personal to the person receiving them.")
+        self.assertEqual((f["mark"], f["mark_note"]), ("inferred", "from site + stated facts — confirm wording"))
+        self.assertEqual(_field(self.secs, "offering", "not_offered")["value"],
+                         "off-the-shelf immediate delivery; mass-produced identical items")
+        self.assertTrue(_field(self.secs, "seasonality", "peaks")["value"].endswith("steady driver for the gift segment"))
+        self.assertTrue(_field(self.secs, "visual_identity", "mascot")["value"].endswith("with several character variants"))
+        self.assertTrue(_field(self.secs, "audience", "Consequence for content")["value"].endswith(
+            "not the specs of the shoe."))
+
+    def test_lists_stay_lists(self):
+        self.assertEqual(len(_field(self.secs, "positioning", "differentiators")["items"]), 3)
+        self.assertEqual(len(_field(self.secs, "visual_identity", "production_constraints")["items"]), 2)
+        gaps = _field(self.secs, "assets", "gaps")["items"]
+        self.assertEqual([g["text"] for g in gaps][-1],
+                         "customer-reaction footage (the gift moment) — the single highest-value missing asset for "
+                         "the priority segment")
+        self.assertEqual(len(gaps), 4)
+        self.assertEqual(len(_field(self.secs, "offering", "product_lines")["items"]), 4)
+        self.assertEqual(len(_field(self.secs, "offering", "proof_points")["items"]), 4)
+        self.assertEqual(len(_field(self.secs, "audience", "segments")["items"]), 3)
+
+    def test_no_markdown_left(self):
+        for s in self.secs:
+            for f in s["fields"]:
+                for text in [f["key"], f["value"]] + [i["text"] for i in f["items"]]:
+                    self.assertNotIn("**", text)
+        self.assertEqual(_field(self.secs, "audience", "highest_value_segment")["value"], "gift buyers")
+        ip = _field(self.secs, "constraints", "IP caution")
+        self.assertTrue(ip["value"].startswith("designs reference anime"))
+        self.assertTrue(_field(self.secs, "seasonality", "order_by logic")["value"].startswith("with a 15–25"))
+
+    def test_marks_wherever_they_are(self):
+        items = _field(self.secs, "positioning", "differentiators")["items"]
+        self.assertEqual([i["mark"] for i in items], ["observed", "inferred", "observed"])
+        first = _field(self.secs, "offering", "product_lines")["items"][0]
+        self.assertEqual(first["marks"], ["stated", "observed"])            # both marks on that item kept
+        self.assertNotIn("[", first["text"])
+
+    def test_nothing_dropped(self):
+        parsed = " ".join(" ".join([f["key"], f["value"]] + [i["text"] for i in f["items"]])
+                          for s in self.secs for f in s["fields"])
+        for line in FILE_27.splitlines():
+            line = line.strip()
+            if not line or line == "---" or line.startswith("## "):
+                continue
+            words = [w for w in bb.MARK_RE.sub("", bb.strip_md(line)).split() if len(w) > 3 and "[" not in w
+                     and "]" not in w][:3]
+            for w in words:
+                self.assertIn(w.strip(".,;:"), parsed, line)
+
+    def test_unmarked_is_inferred_for_the_agents(self):
+        lang = _field(self.secs, "voice", "language")
+        self.assertEqual((lang["mark"], lang["unmarked"], lang["effective"]), ("", True, "inferred"))
+        footer = bb.confidence_footer(FILE_27)
+        self.assertIn("EVERY field, line or list item WITHOUT a mark, are inferred", footer)
+        self.assertIn("  - voice.language\n", footer)
+        self.assertIn("  - assets.gaps\n", footer)
+        self.assertNotIn("identity.business_name", footer)                 # marked fields are not listed
+
+
+class Remigration(WithDB):
+    def test_old_migration_is_re_run_once_with_full_fields(self):
+        self.put(CID, {"versions": [{"v": 1, "at": "x", "by": "migration", "kind": "migrated", "status": "draft",
+                                     "text": FILE_27, "palette": PALETTE_27, "gaps": []}]})    # stored by the first version
+        rec = bb.record(CID)
+        self.assertEqual([v["kind"] for v in rec["versions"]], ["migrated", "migrated"])
+        cur = rec["versions"][-1]
+        self.assertEqual((cur["text"], cur["palette"]), (FILE_27, PALETTE_27))
+        self.assertEqual(cur["fields"]["parser"], bb.PARSER_VERSION)
+        stored = next(s for s in cur["fields"]["sections"] if s["title"] == "assets")
+        self.assertEqual(len(next(f for f in stored["fields"] if f["key"] == "gaps")["items"]), 4)
+        bb._cache.clear()
+        self.assertEqual(len(bb.record(CID)["versions"]), 2)                # once
+        self.assertTrue(bb.admin_view(CID)["repo_file"]["matches"])
+
+    def test_not_after_manager_edits_and_manual_remigrate(self):
+        bb.record(CID)
+        bb.save_edit(CID, FILE_27 + "\nextra line\n", by="manager")
+        self.put_kinds = [v["kind"] for v in bb.record(CID, fresh=True)["versions"]]
+        self.assertEqual(self.put_kinds[-1], "edited")                       # edits are never overwritten automatically
+        self.assertFalse(bb.admin_view(CID)["repo_file"]["matches"])
+        bb.remigrate(CID, by="manager:דנה")
+        view = bb.admin_view(CID)
+        self.assertTrue(view["repo_file"]["matches"])
+        self.assertEqual(view["kind"], "migrated")
+        self.assertTrue(os.path.exists(os.path.join(ROOT, "knowledge", "brands", "27.md")))   # the file stays
 
 
 class Wiring(unittest.TestCase):

@@ -132,7 +132,7 @@ def load_context(client_id: int) -> dict:
         raise ContextMissing([os.path.relpath(CRAFT_PATH, ROOT).replace(os.sep, "/")])
     got = brand_brief.for_agents(client_id)
     brand = got["text"].strip() if got["status"] != "missing" else got["text"]
-    facts = parse_brand(brand) if got["status"] != "missing" else parse_brand("")
+    facts = parse_brand(got.get("source_text", "").strip()) if got["status"] != "missing" else parse_brand("")
     return {"craft": craft, "brand": brand, "brand_facts": facts, "brand_status": got["status"],
             "brand_lacks": got["lacks"]}
 

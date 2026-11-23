@@ -3725,6 +3725,17 @@ def admin_brand_brief_approve(client_id: int, req: BrandBriefApproveRequest, req
         raise HTTPException(status_code=400, detail=str(e))
     return {"success": True, "data": brand_brief.admin_view(client_id)}
 
+@app.post("/api/admin/brand-brief/{client_id}/remigrate")
+def admin_brand_brief_remigrate(client_id: int, req: BrandBriefApproveRequest, request: Request):
+    # Re-run the migration from knowledge/brands/<id>.md (a new version; the file stays)
+    _require_admin(request)
+    from core import brand_brief
+    try:
+        brand_brief.remigrate(client_id, by=_brief_by(req.by_name))
+    except brand_brief.BriefError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": brand_brief.admin_view(client_id)}
+
 @app.post("/api/admin/brand-brief/{client_id}/draft")
 def admin_brand_brief_draft(client_id: int, request: Request):
     # No brief yet: the intake agent drafts it now, inside this request

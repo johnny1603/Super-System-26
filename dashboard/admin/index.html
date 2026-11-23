@@ -3446,7 +3446,7 @@ async function openControlRoom(clientId) {
 // The manager sees every field with its confidence mark, edits any section or
 // the palette, and approves. Edits are stored as versions.
 const CR_BR_MARK = { stated: ['נאמר ע״י הלקוח', '#1f9d55'], observed: ['נצפה באתר / ברשתות', '#2563eb'],
-                     inferred: ['הסקה — לאשר', '#b7791f'], '': ['ללא סימון', '#888'] };
+                     inferred: ['הסקה — לאשר', '#b7791f'], unmarked: ['ללא סימון — נחשב הסקה', '#8a5a00'], '': ['ללא סימון — נחשב הסקה', '#8a5a00'] };
 const CR_BR_STATUS = { draft: '⏳ טיוטה — ממתינה לאישור', approved: '✅ מאושר', missing: 'אין עדיין תדריך' };
 const CR_BR_SRC = { database: 'מסד הנתונים', repo_file: 'קובץ בריפו (מסד הנתונים לא זמין כרגע)', none: '—' };
 const crBr = { data: null, editing: -1, palEdit: false };
@@ -3489,7 +3489,15 @@ function crRenderBrief(el, clientId, notice) {
       <textarea id="crBrText" dir="auto" style="width:100%;min-height:${Math.min(420, 60 + 18 * s.text.split('\n').length)}px;font-family:inherit;">${esc(s.text)}</textarea>
       <button type="button" class="manage-btn" onclick="crBriefSaveSection(${Number(clientId)}, ${i})">שמירה</button>
       <button type="button" class="manage-btn" onclick="crBr.editing=-1;crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">ביטול</button></div>`;
-    const rows = s.fields.map(f => `<div class="drawer-stat-row"><span class="drawer-stat-label" dir="ltr" style="unicode-bidi:plaintext;">${esc(f.key)}</span><span class="drawer-stat-value" style="text-align:start;" dir="auto">${esc(f.value)} ${crBrMark(f.mark)}</span></div>`).join('');
+    // Full values; a list stays a list, each item with its own mark; no mark
+    // anywhere = treated as inferred (core/brand_brief.parse_fields)
+    const fmark = f => f.mark ? crBrMark(f.mark) + (f.mark_note ? ` <span style="font-size:11px;color:var(--gray);">${esc(f.mark_note)}</span>` : '')
+      : (f.unmarked ? crBrMark('unmarked') : '');
+    const rows = s.fields.map(f => `<div class="drawer-stat-row cr-br-field" style="display:block;">
+        ${f.key ? `<div class="drawer-stat-label" dir="ltr" style="unicode-bidi:plaintext;font-weight:700;">${esc(f.key)}</div>` : ''}
+        ${f.value ? `<div dir="auto" style="white-space:pre-wrap;">${esc(f.value)} ${fmark(f)}</div>` : (f.items.length ? `<div>${fmark(f)}</div>` : `<div>${fmark(f)}</div>`)}
+        ${f.items.length ? `<ul style="margin:4px 0;padding-inline-start:18px;">${f.items.map(i => `<li dir="auto">${esc(i.text)} ${i.mark ? crBrMark(i.mark) + (i.mark_note ? ` <span style="font-size:11px;color:var(--gray);">${esc(i.mark_note)}</span>` : '') : (f.mark ? `<span style="font-size:11px;color:var(--gray);">(לפי סימון השדה)</span>` : crBrMark('unmarked'))}</li>`).join('')}</ul>` : ''}
+      </div>`).join('');
     const rest = s.fields.length ? '' : `<div style="font-size:12px;white-space:pre-wrap;color:var(--gray);" dir="auto">${esc(s.text.split('\n').slice(s.title ? 1 : 0).join('\n').trim().slice(0, 600))}</div>`;
     return `<details class="cr-br-sec" style="margin:6px 0;"${i === 0 ? '' : ''}><summary style="cursor:pointer;font-weight:700;" dir="auto">${esc(s.title || 'כותרת וסטטוס')} <span style="font-weight:400;color:var(--gray);font-size:12px;">${s.fields.length} שדות</span></summary>
       ${rows}${rest}<button type="button" class="manage-btn" style="margin-top:4px;" onclick="crBr.editing=${i};crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">עריכת הסעיף</button></details>`;
@@ -3499,8 +3507,12 @@ function crRenderBrief(el, clientId, notice) {
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
       <b class="cr-br-status" data-status="${esc(d.status)}" style="padding:3px 10px;border-radius:999px;background:${d.status === 'approved' ? 'rgba(31,157,85,.15)' : 'rgba(255,170,0,.18)'};">${esc(CR_BR_STATUS[d.status] || d.status)}</b>
       <span style="font-size:12px;color:var(--gray);">גרסה ${Number(d.version)} · ${esc(CR_BR_SRC[d.source] || d.source)}</span>
-      <span style="font-size:12px;">${crBrMark('stated')} ${Number(m.stated || 0)} ${crBrMark('observed')} ${Number(m.observed || 0)} ${crBrMark('inferred')} ${Number(m.inferred || 0)}${m[''] ? ' ' + crBrMark('') + ' ' + Number(m['']) : ''}</span>
+      <span style="font-size:12px;">${crBrMark('stated')} ${Number(m.stated || 0)} ${crBrMark('observed')} ${Number(m.observed || 0)} ${crBrMark('inferred')} ${Number(m.inferred || 0)}${m.unmarked ? ' ' + crBrMark('unmarked') + ' ' + Number(m.unmarked) : ''}</span>
     </div>
+    ${(d.repo_file || {}).exists ? `<div class="cr-br-repo" style="font-size:12px;margin-bottom:6px;">${d.repo_file.matches
+        ? `✓ הטקסט השמור זהה בדיוק לקובץ ${esc(d.repo_file.path)} (${Number(d.repo_file.stored_chars).toLocaleString('he-IL')} תווים)`
+        : `⚠️ הטקסט השמור שונה מהקובץ ${esc(d.repo_file.path)} (${Number(d.repo_file.stored_chars).toLocaleString('he-IL')} מול ${Number(d.repo_file.file_chars).toLocaleString('he-IL')} תווים — עריכות או קובץ שהשתנה)`}
+      <button type="button" class="manage-btn" style="margin-inline-start:8px;" onclick="crBriefPost(${Number(clientId)}, 'remigrate', {}, 'הועבר מחדש מהקובץ ✓ (גרסה חדשה)')">העברה מחדש מהקובץ</button></div>` : ''}
     ${d.status !== 'approved' ? `<div style="font-size:12px;color:var(--gray);margin-bottom:6px;">הסוכנים כבר עובדים מהטיוטה. שדות "הסקה" משמשים רק לכיוון ולא לטענות עובדתיות בתוכן שמתפרסם.</div>` : ''}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;">
       ${d.status !== 'approved' ? `<button type="button" class="manage-btn" id="crBrApprove" onclick="crBriefApprove(${Number(clientId)})">אישור התדריך</button>` : ''}

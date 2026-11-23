@@ -47,3 +47,18 @@ session only): status (draft awaiting approval / approved / none), version and s
 mark, the palette with swatches (missing roles shown with their neutral colour) and its edit, the gaps, every
 section's fields with their marks, a section editor (the whole text is saved as a new version), approve (rewrites
 the Status line; edits are kept), version history. Tests: `tests/test_brand_brief.py`.
+
+## Fields and confidence (fix, 2026-11-24)
+
+The stored `text` was always the file byte-for-byte; the Control Room's first parser read only the FIRST line
+of each `- key: value`, dropped nested lists, kept `**`, and looked for a mark only on that first line (most of
+27's marks sit on a continuation line). `parse_fields` (PARSER_VERSION 2) now: joins continuation lines, keeps
+lists (nested bullets, numbered lines, key-less bullets under an empty `key:`) as lists, keeps key-less bullets as
+their own field (no line dropped), strips markdown, finds every mark anywhere in a field or item (also across a
+line break). Each version stores `fields` (the parsed structure) next to `text`.
+
+Unmarked = inferred: a field / item with no mark is `effective: inferred`. The agents get the brief as written
+plus `CONFIDENCE_RULE` and the list of every unmarked field / item (`confidence_footer`) — direction only, never a
+factual claim. A migrated version without the new fields is re-migrated ONCE from the repo file automatically,
+only while it is still the newest version (never over edits); "העברה מחדש מהקובץ" does it by hand. The screen
+shows whether the stored text equals the file.
