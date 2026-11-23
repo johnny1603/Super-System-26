@@ -144,20 +144,17 @@ def palette_path(client_id: int) -> str:
 
 
 def palette_roles(client_id: int, variant_label: str) -> dict:
-    """{"bg", "fg", "accent", "muted"} hex for ONE variant, or PaletteMissing."""
-    try:
-        with open(palette_path(client_id), encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError) as e:
-        raise PaletteMissing(f"knowledge/brands/{int(client_id)}.palette.json unreadable ({type(e).__name__})")
-    roles = ((data or {}).get("variants") or {}).get(str(variant_label or ""))
-    if not isinstance(roles, dict):
-        raise PaletteMissing(f"no role colours for palette variant {variant_label!r} "
-                             f"in knowledge/brands/{int(client_id)}.palette.json")
-    bad = [r for r in COLOR_ROLES if not HEX_RE.match(str(roles.get(r) or ""))]
-    if bad:
-        raise PaletteMissing(f"palette variant {variant_label!r} lacks valid colours for {bad}")
-    return {r: roles[r].upper() for r in COLOR_ROLES}
+    """{"bg", "fg", "accent", "muted"} hex for ONE variant (core/brand_brief,
+    the database). A client with NO palette, or a role that could not be
+    determined, gets the NEUTRAL colour for it (the gap shows in the Control
+    Room). A palette that exists but has no such variant is a real mismatch
+    with the brief: PaletteMissing."""
+    from core import brand_brief
+    got = brand_brief.roles_for(client_id, variant_label)
+    if got["known"] and not got["variant_found"]:
+        raise PaletteMissing(f"no role colours for palette variant {variant_label!r} in client "
+                             f"{int(client_id)}'s brand brief palette")
+    return dict(got["roles"])
 
 
 def variant_for(palette: dict) -> str:

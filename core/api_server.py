@@ -351,6 +351,11 @@ async def checkout(req: CheckoutRequest):
                                 req.language)
         client_id = client["id"]
         update_client_status(client_id, "pending_payment")
+        try:                     # the intake agent drafts the brand brief (core/brand_brief, scheduler minute)
+            from core import brand_brief
+            brand_brief.request_draft(client_id, "onboarding")
+        except Exception as brief_err:
+            print(f"[checkout] brand brief draft not queued (non-fatal): {type(brief_err).__name__}")
 
         # Link the lead to the client it became. lead_id makes this exact — it is
         # the chat session's own key, so concurrent chats can no longer be
@@ -781,6 +786,11 @@ class LogCommunicationRequest(BaseModel):
 async def api_create_client(req: CreateClientRequest):
     try:
         client = create_client(req.name, req.email, req.phone, req.package)
+        try:                     # the intake agent drafts the brand brief (core/brand_brief)
+            from core import brand_brief
+            brand_brief.request_draft(client["id"], "onboarding")
+        except Exception as brief_err:
+            print(f"[clients] brand brief draft not queued (non-fatal): {type(brief_err).__name__}")
         return {"success": True, "data": public_client(client)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -3674,6 +3684,54 @@ def admin_drive_assets_credits(client_id: int, req: DriveAssetCreditsRequest, re
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"success": True, "data": {**view, "credits_view": drive_assets.credits_view(client_id)}}
+
+# ─── Brand brief (core/brand_brief): review, edit, approve — staff only ─────
+
+class BrandBriefEditRequest(BaseModel):
+    text: str = None          # the whole brief (a section edit is sent as the recombined text)
+    palette: dict = None      # {"variants": {label: {bg, fg, accent, muted}}, ...}
+    by_name: str = ""
+
+class BrandBriefApproveRequest(BaseModel):
+    by_name: str = ""
+
+def _brief_by(name: str) -> str:
+    name = re.sub(r"\s+", " ", str(name or "")).strip()[:30]
+    return f"manager:{name}" if name else "manager"
+
+@app.get("/api/admin/brand-brief/{client_id}")
+def admin_brand_brief(client_id: int, request: Request):
+    _require_admin(request)
+    from core import brand_brief
+    return {"success": True, "data": brand_brief.admin_view(client_id)}
+
+@app.post("/api/admin/brand-brief/{client_id}/edit")
+def admin_brand_brief_edit(client_id: int, req: BrandBriefEditRequest, request: Request):
+    _require_admin(request)
+    from core import brand_brief
+    try:
+        brand_brief.save_edit(client_id, req.text, req.palette, by=_brief_by(req.by_name))
+    except brand_brief.BriefError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": brand_brief.admin_view(client_id)}
+
+@app.post("/api/admin/brand-brief/{client_id}/approve")
+def admin_brand_brief_approve(client_id: int, req: BrandBriefApproveRequest, request: Request):
+    _require_admin(request)
+    from core import brand_brief
+    try:
+        brand_brief.approve(client_id, by=_brief_by(req.by_name))
+    except brand_brief.BriefError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": brand_brief.admin_view(client_id)}
+
+@app.post("/api/admin/brand-brief/{client_id}/draft")
+def admin_brand_brief_draft(client_id: int, request: Request):
+    # No brief yet: the intake agent drafts it now, inside this request
+    _require_admin(request)
+    from core import brand_brief
+    out = brand_brief.draft_now(client_id)
+    return {"success": bool(out.get("ok")), "data": {**brand_brief.admin_view(client_id), "result": out}}
 
 @app.get("/api/admin/drive-assets/{client_id}/credits")
 def admin_drive_assets_credits_view(client_id: int, request: Request):
@@ -8230,6 +8288,13 @@ def tiktok_uploads_run():
         data["drive_assets"] = drive_assets.run_due(left) if left > 25 else {"skipped": "no budget left"}
     except Exception as e:
         data["drive_assets"] = {"error": type(e).__name__}
+    # Brand-brief drafts queued at onboarding (core/brand_brief): what is left
+    left = tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started)
+    try:
+        from core import brand_brief
+        data["brand_brief"] = brand_brief.run_due(left) if left > 75 else {"skipped": "no budget left"}
+    except Exception as e:
+        data["brand_brief"] = {"error": type(e).__name__}
     return {"success": True, "data": data}
 
 @app.get("/api/admin/tiktok-uploads")

@@ -10,7 +10,7 @@
 
 **Knowledge, loaded in full:**
 - `knowledge/social-craft.md`
-- `knowledge/brands/<client_id>.md`
+- the client's brand brief, from the database (core/brand_brief, docs/BRAND-BRIEF.md; a missing brief degrades, it no longer refuses)
 - schema: `knowledge/brand-brief.schema.md`
 
 ## Flow

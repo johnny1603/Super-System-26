@@ -3386,6 +3386,10 @@ async function openControlRoom(clientId) {
           <div id="crMediaLib"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">🧾 תדריך מותג — סקירה, עריכה ואישור</div>
+          <div id="crBrief"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">💳 קרדיטים לאינדוקס תיקיות דרייב</div>
           <div id="crCredits"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3434,6 +3438,120 @@ async function openControlRoom(clientId) {
   crLoadSocialClient(clientId);
   crLoadMediaLib(clientId);
   crLoadCredits(clientId);
+  crLoadBrief(clientId);
+}
+
+// ─── Brand brief (core/brand_brief) — per client, in the database, versioned ─
+// Drafted automatically at onboarding; agents work from the draft at once.
+// The manager sees every field with its confidence mark, edits any section or
+// the palette, and approves. Edits are stored as versions.
+const CR_BR_MARK = { stated: ['נאמר ע״י הלקוח', '#1f9d55'], observed: ['נצפה באתר / ברשתות', '#2563eb'],
+                     inferred: ['הסקה — לאשר', '#b7791f'], '': ['ללא סימון', '#888'] };
+const CR_BR_STATUS = { draft: '⏳ טיוטה — ממתינה לאישור', approved: '✅ מאושר', missing: 'אין עדיין תדריך' };
+const CR_BR_SRC = { database: 'מסד הנתונים', repo_file: 'קובץ בריפו (מסד הנתונים לא זמין כרגע)', none: '—' };
+const crBr = { data: null, editing: -1, palEdit: false };
+function crBrWho() { try { return localStorage.getItem('crBriefBy') || ''; } catch (e) { return ''; } }
+async function crLoadBrief(clientId, notice) {
+  const el = document.getElementById('crBrief');
+  if (!el) return;
+  let d;
+  try { d = (await api(`/api/admin/brand-brief/${Number(clientId)}`)).data || {}; }
+  catch (e) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">לא נטען</div>'; return; }
+  if (crState.clientId !== clientId || !el.isConnected) return;
+  crBr.data = d; crBr.editing = -1; crBr.palEdit = false;
+  crRenderBrief(el, clientId, notice);
+}
+function crBrMark(m) { const x = CR_BR_MARK[m] || CR_BR_MARK['']; return `<span class="cr-br-mark" data-mark="${esc(m)}" style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:${x[1]};">${esc(x[0])}</span>`; }
+function crRenderBrief(el, clientId, notice) {
+  const d = crBr.data || {};
+  if (!d.exists) {
+    const job = d.draft_job || {};
+    el.innerHTML = `<div dir="rtl"><div class="drawer-stat-row" style="border:none;">${esc(CR_BR_STATUS.missing)}${job.state ? ' · טיוטה אוטומטית: ' + esc({ queued: 'בתור', running: 'נכתבת עכשיו', failed: 'נכשלה', done: 'נכתבה' }[job.state] || job.state) : ''}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">עד שיהיה תדריך, הסוכנים עובדים מהבקשה ומספריית העבודה, ואומרים מה חסר להם.</div>
+      <button type="button" class="manage-btn" id="crBrDraft" onclick="crBriefDraft(${Number(clientId)})">לכתוב טיוטה עכשיו</button>
+      <span id="crBrMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span></div>`;
+    return;
+  }
+  const m = d.marks || {};
+  const pal = d.palette || {};
+  const variants = Object.entries(pal.variants || {});
+  const swatch = hex => `<span style="display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid rgba(127,127,127,.4);background:${esc(hex)};vertical-align:middle;"></span> <bdi dir="ltr">${esc(hex)}</bdi>`;
+  const palHtml = crBr.palEdit
+    ? (variants.length ? variants : [['default', {}]]).map(([label, roles], vi) => `<div style="margin:4px 0;" data-br-var="${esc(label)}"><b dir="auto">${esc(label)}</b>
+        ${['bg', 'fg', 'accent', 'muted'].map(r => `<label style="margin-inline-start:8px;">${r} <input type="text" data-br-role="${r}" maxlength="7" style="width:80px;" dir="ltr" value="${esc(roles[r] || '')}" placeholder="${esc((d.neutral || {})[r] || '')}"></label>`).join('')}</div>`).join('')
+      + `<button type="button" class="manage-btn" onclick="crBriefSavePalette(${Number(clientId)})">שמירת הפלטה</button> <button type="button" class="manage-btn" onclick="crBr.palEdit=false;crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">ביטול</button>`
+    : (variants.length ? variants.map(([label, roles]) => `<div style="margin:3px 0;"><b dir="auto">${esc(label)}</b> · ${['bg', 'fg', 'accent', 'muted'].map(r => `${r} ${roles[r] ? swatch(roles[r]) : `<span style="color:var(--yellow);">חסר — ניטרלי ${swatch((d.neutral || {})[r] || '')}</span>`}`).join(' · ')}</div>`).join('')
+        : '<div style="color:var(--yellow);">אין פלטה מוגדרת — הסוכנים משתמשים בצבעים ניטרליים</div>')
+      + `<button type="button" class="manage-btn" style="margin-top:4px;" onclick="crBr.palEdit=true;crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">עריכת הפלטה</button>`;
+  const gaps = (d.gaps || []).length ? `<div class="drawer-label" style="margin-top:10px;">פערים — מה לא הצלחנו לקבוע</div>${d.gaps.map(g => `<div class="drawer-stat-row" style="color:var(--yellow);" dir="auto">• ${esc(g)}</div>`).join('')}` : '';
+  const secs = (d.sections || []).map((s, i) => {
+    if (crBr.editing === i) return `<div class="cr-br-sec" style="margin:8px 0;"><div style="font-weight:700;" dir="auto">${esc(s.title || 'כותרת')}</div>
+      <textarea id="crBrText" dir="auto" style="width:100%;min-height:${Math.min(420, 60 + 18 * s.text.split('\n').length)}px;font-family:inherit;">${esc(s.text)}</textarea>
+      <button type="button" class="manage-btn" onclick="crBriefSaveSection(${Number(clientId)}, ${i})">שמירה</button>
+      <button type="button" class="manage-btn" onclick="crBr.editing=-1;crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">ביטול</button></div>`;
+    const rows = s.fields.map(f => `<div class="drawer-stat-row"><span class="drawer-stat-label" dir="ltr" style="unicode-bidi:plaintext;">${esc(f.key)}</span><span class="drawer-stat-value" style="text-align:start;" dir="auto">${esc(f.value)} ${crBrMark(f.mark)}</span></div>`).join('');
+    const rest = s.fields.length ? '' : `<div style="font-size:12px;white-space:pre-wrap;color:var(--gray);" dir="auto">${esc(s.text.split('\n').slice(s.title ? 1 : 0).join('\n').trim().slice(0, 600))}</div>`;
+    return `<details class="cr-br-sec" style="margin:6px 0;"${i === 0 ? '' : ''}><summary style="cursor:pointer;font-weight:700;" dir="auto">${esc(s.title || 'כותרת וסטטוס')} <span style="font-weight:400;color:var(--gray);font-size:12px;">${s.fields.length} שדות</span></summary>
+      ${rows}${rest}<button type="button" class="manage-btn" style="margin-top:4px;" onclick="crBr.editing=${i};crRenderBrief(document.getElementById('crBrief'),${Number(clientId)})">עריכת הסעיף</button></details>`;
+  }).join('');
+  const hist = (d.history || []).map(h => `<div class="drawer-stat-row"><span class="drawer-stat-label">v${Number(h.v)} · ${esc(new Date(h.at).toLocaleString('he-IL'))} · ${esc(String(h.by || '').replace(/^manager:/, ''))}</span><span class="drawer-stat-value">${esc({ migrated: 'הועבר מהריפו', drafted: 'טיוטה אוטומטית', edited: 'עריכה', approved: 'אישור' }[h.kind] || h.kind)}</span></div>`).join('');
+  el.innerHTML = `<div dir="rtl">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+      <b class="cr-br-status" data-status="${esc(d.status)}" style="padding:3px 10px;border-radius:999px;background:${d.status === 'approved' ? 'rgba(31,157,85,.15)' : 'rgba(255,170,0,.18)'};">${esc(CR_BR_STATUS[d.status] || d.status)}</b>
+      <span style="font-size:12px;color:var(--gray);">גרסה ${Number(d.version)} · ${esc(CR_BR_SRC[d.source] || d.source)}</span>
+      <span style="font-size:12px;">${crBrMark('stated')} ${Number(m.stated || 0)} ${crBrMark('observed')} ${Number(m.observed || 0)} ${crBrMark('inferred')} ${Number(m.inferred || 0)}${m[''] ? ' ' + crBrMark('') + ' ' + Number(m['']) : ''}</span>
+    </div>
+    ${d.status !== 'approved' ? `<div style="font-size:12px;color:var(--gray);margin-bottom:6px;">הסוכנים כבר עובדים מהטיוטה. שדות "הסקה" משמשים רק לכיוון ולא לטענות עובדתיות בתוכן שמתפרסם.</div>` : ''}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;">
+      ${d.status !== 'approved' ? `<button type="button" class="manage-btn" id="crBrApprove" onclick="crBriefApprove(${Number(clientId)})">אישור התדריך</button>` : ''}
+      <input type="text" id="crBrBy" maxlength="30" placeholder="שם המאשר/ת" style="width:130px;" value="${esc(crBrWho())}" dir="auto">
+      <span id="crBrMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span>
+    </div>
+    <div class="drawer-label">פלטה</div>${palHtml}${gaps}
+    <div class="drawer-label" style="margin-top:10px;">שדות התדריך</div>${secs}
+    <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;">היסטוריית גרסאות</summary>${hist}</details></div>`;
+}
+async function crBriefPost(clientId, path, body, okNote) {
+  const by = (document.getElementById('crBrBy') || {}).value || crBrWho();
+  try { localStorage.setItem('crBriefBy', by.trim()); } catch (e) { /* private mode */ }
+  let res;
+  try {
+    res = await api(`/api/admin/brand-brief/${Number(clientId)}/${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, by_name: by.trim() }) });
+  } catch (e) { res = null; }
+  const el = document.getElementById('crBrief');
+  if (!res || !res.success) { const msg = document.getElementById('crBrMsg'); if (msg) msg.textContent = 'לא נשמר — נסו שוב'; return; }
+  crBr.data = res.data || {}; crBr.editing = -1; crBr.palEdit = false;
+  if (el) crRenderBrief(el, clientId, okNote);
+}
+function crBriefSaveSection(clientId, i) {
+  const secs = (crBr.data || {}).sections || [];
+  const edited = document.getElementById('crBrText').value.replace(/\s+$/, '');
+  const text = secs.map((s, j) => j === i ? edited : s.text).join('\n');
+  crBriefPost(clientId, 'edit', { text }, 'נשמר ✓ (גרסה חדשה)');
+}
+function crBriefSavePalette(clientId) {
+  const variants = {};
+  document.querySelectorAll('#crBrief [data-br-var]').forEach(row => {
+    const roles = {};
+    row.querySelectorAll('[data-br-role]').forEach(inp => { const v = inp.value.trim(); if (v) roles[inp.getAttribute('data-br-role')] = v; });
+    variants[row.getAttribute('data-br-var')] = roles;
+  });
+  const pal = Object.assign({}, (crBr.data || {}).palette || {}, { variants, status: 'manager' });
+  crBriefPost(clientId, 'edit', { palette: pal }, 'הפלטה נשמרה ✓');
+}
+function crBriefApprove(clientId) { crBriefPost(clientId, 'approve', {}, 'התדריך אושר ✓'); }
+async function crBriefDraft(clientId) {
+  const btn = document.getElementById('crBrDraft');
+  if (btn) btn.disabled = true;
+  const msg = document.getElementById('crBrMsg');
+  if (msg) msg.textContent = 'סוכן הקליטה כותב טיוטה מהאתר, מהרשתות ומתשובות האיפיון… (עד דקה או שתיים)';
+  let res;
+  try { res = await api(`/api/admin/brand-brief/${Number(clientId)}/draft`, { method: 'POST' }); } catch (e) { res = null; }
+  const el = document.getElementById('crBrief');
+  if (!res || !res.success) { if (btn) btn.disabled = false; if (msg) msg.textContent = 'הטיוטה לא נכתבה — נסו שוב בעוד רגע'; return; }
+  crBr.data = res.data || {};
+  if (el) crRenderBrief(el, clientId, 'הטיוטה נכתבה ✓');
 }
 
 // ─── Index credits (core/drive_assets.credits_view / load_credits) ──────────

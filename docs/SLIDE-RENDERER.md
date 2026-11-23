@@ -20,7 +20,7 @@
 | The agent that writes and revises specs | `agents/media_agent.design_spec` (`DESIGN_SPEC_SYSTEM`) |
 | Fonts, bundled (OFL, from google/fonts) | `assets/fonts/Rubik[wght].ttf`, `assets/fonts/Assistant[wght].ttf` |
 | Plain starting specs, one per palette variant | `knowledge/slide-specs/starter-b2c.json`, `starter-b2b.json` |
-| Role colours per palette variant | `knowledge/brands/<id>.palette.json` (27: **provisional** hex values) |
+| Role colours per palette variant | the brief's palette in the database (core/brand_brief; 27 migrated from its repo file, **provisional** hex values) |
 | Tests and golden images | `tests/test_slide_renderer.py`, `tests/golden/slide_*.png` |
 
 ## The spec, in short
@@ -99,6 +99,6 @@ A design item is never publishable: the gate, `mark_published` and edit all refu
 
 ## Not done / decisions
 
-- **Palette hex values for client 27 are PROVISIONAL**: the brief has none yet (its open question 2). Replace them in `knowledge/brands/27.palette.json`.
-- **Other clients:** each one needs `knowledge/brands/<id>.palette.json` as well as the brief. Until then, their text slides fail with "palette missing", which is never guessed.
+- **Palette hex values for client 27 are PROVISIONAL**: the brief has none yet (its open question 2). Replace them in the Control Room (client → brand brief → palette).
+- **Other clients (2026-11-24):** the intake agent derives the palette from colours seen on their site; a role it cannot determine is a gap and uses a neutral colour, never a guessed one (visible in the Control Room). A palette that exists but lacks the requested variant still fails with "palette missing".
 - **Logo:** the spec supports one from the media folder, but no client has a logo file referenced yet.

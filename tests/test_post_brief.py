@@ -70,10 +70,13 @@ class Context(unittest.TestCase):
         with open(pb.CRAFT_PATH, encoding="utf-8") as f:
             self.assertEqual(ctx["craft"], f.read().strip())           # in full, not a summary
 
-    def test_missing_brand_brief_fails_loudly(self):
-        with self.assertRaises(pb.ContextMissing) as e:
-            pb.load_context(999999)
-        self.assertEqual(e.exception.missing, ["knowledge/brands/999999.md"])
+    def test_missing_brand_brief_degrades_and_says_what_it_lacks(self):
+        # 2026-11-24 (core/brand_brief): no brief = the agents still work and say what they lack
+        from core import brand_brief
+        ctx = pb.load_context(999999)
+        self.assertEqual((ctx["brand"], ctx["brand_status"]), (brand_brief.MISSING_NOTE, "missing"))
+        self.assertEqual(ctx["brand_lacks"], ["brand_brief"])
+        self.assertEqual(ctx["brand_facts"], {"lead_time_days": None, "palette_variants": []})
 
     def test_missing_craft_library_fails_loudly(self):
         saved = pb.CRAFT_PATH
@@ -85,16 +88,23 @@ class Context(unittest.TestCase):
         finally:
             pb.CRAFT_PATH = saved
 
+    def _no_craft(self):
+        saved = pb.CRAFT_PATH
+        pb.CRAFT_PATH = os.path.join(ROOT, "knowledge", "nope.md")
+        self.addCleanup(setattr, pb, "CRAFT_PATH", saved)
+
     def test_media_agent_refuses_to_generate_without_context(self):
         from agents import media_agent
+        self._no_craft()
         brief = pb.asset(pb.validate_post(_post(), 999999)["assets"][1])
         out = media_agent.generate_from_brief(999999, brief, {})
         self.assertEqual(out["status"], "context_missing")
 
     def test_submit_without_context_refuses_and_queues_nothing(self):
+        self._no_craft()
         out = pp.submit(999999, _post(), "", "he")
         self.assertEqual(out["code"], "context_missing")
-        self.assertIn("knowledge/brands/999999.md", out["refuse"])
+        self.assertIn("knowledge/nope.md", out["refuse"])
 
 
 class Format(unittest.TestCase):

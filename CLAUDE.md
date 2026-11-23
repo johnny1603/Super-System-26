@@ -169,7 +169,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `id_hint` (an old single value, client 27) is `needs_reconnect`, and `_generation_key` returns "" for a
   single-part key (no call). See docs/CREATIVE-TOOLS.md §11.
   **The post contract (2026-11-23, docs/POST-BRIEF.md):** a social POST goes through `produce_post` →
-  `core/post_pipeline.submit` (never a chat card): knowledge/social-craft.md + knowledge/brands/<id>.md loaded IN
+  `core/post_pipeline.submit` (never a chat card): knowledge/social-craft.md + the client's brand brief (core/brand_brief, database; docs/BRAND-BRIEF.md) loaded IN
   FULL by both agents (missing = `post_brief.ContextMissing`, a loud refusal — also on the old generation path),
   explicit `post_format` + reason, one `AssetBrief` per asset. `copy_headline`/`copy_body` are CONTEXT ONLY:
   `post_brief.assert_copy_free` fails the call if the prompt carries them or any Hebrew; text_slide is never sent
@@ -177,7 +177,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   publishable); its approval starts production. Objections: 2 rounds then the manager. `tests/test_post_brief.py`.
   **Text slides are DRAWN (2026-11-23, docs/SLIDE-RENDERER.md):** Pillow + raqm (libfribidi0 in the Dockerfile),
   bundled Rubik/Assistant (`assets/fonts`), RTL anchored right. The agent DESIGNS by writing a JSON spec
-  (`knowledge/slide-spec.schema.json`, colours = roles from `knowledge/brands/<id>.palette.json`) — never code;
+  (`knowledge/slide-spec.schema.json`, colours = roles from the brief's palette, core/brand_brief; neutral where none) — never code;
   `core/slide_renderer` fails (never clips) on overflow / overlap / headline words / contrast. A post's text slides =
   ONE `design` item in the Social tab (never publishable): critique → `media_agent.design_spec` revises the spec
   (≤3 checked attempts, no credits) → approve → `core/slide_templates` (versioned, critiques kept) + the slides to

@@ -115,22 +115,31 @@ def _read(path: str) -> str:
 
 
 def brand_path(client_id: int) -> str:
+    """The LEGACY repo file (the one-time migration seed, core/brand_brief)."""
     return os.path.join(BRANDS_DIR, f"{int(client_id)}.md")
 
 
 def load_context(client_id: int) -> dict:
-    """{"craft", "brand", "brand_facts"} — both files IN FULL, or
-    ContextMissing naming each missing file. Never a silent empty context."""
-    craft, brand = _read(CRAFT_PATH).strip(), _read(brand_path(client_id)).strip()
-    missing = [p for p, text in ((os.path.relpath(CRAFT_PATH, ROOT), craft),
-                                 (os.path.relpath(brand_path(client_id), ROOT), brand)) if not text]
-    if missing:
-        raise ContextMissing([m.replace(os.sep, "/") for m in missing])
-    return {"craft": craft, "brand": brand, "brand_facts": parse_brand(brand)}
+    """{"craft", "brand", "brand_facts", "brand_status", "brand_lacks"}.
+    The craft library IN FULL (missing = ContextMissing: a broken deploy).
+    The brand brief from the database (core/brand_brief, 2026-11-24): a
+    DRAFT is used as it is (its Status line says so); NO brief = the
+    MISSING note — the agents still work and say what they lack, and a draft
+    is queued. Never a silent empty context."""
+    from core import brand_brief
+    craft = _read(CRAFT_PATH).strip()
+    if not craft:
+        raise ContextMissing([os.path.relpath(CRAFT_PATH, ROOT).replace(os.sep, "/")])
+    got = brand_brief.for_agents(client_id)
+    brand = got["text"].strip() if got["status"] != "missing" else got["text"]
+    facts = parse_brand(brand) if got["status"] != "missing" else parse_brand("")
+    return {"craft": craft, "brand": brand, "brand_facts": facts, "brand_status": got["status"],
+            "brand_lacks": got["lacks"]}
 
 
 def try_context(client_id: int) -> dict:
-    """load_context for a prompt: {"missing": [...]} instead of raising."""
+    """load_context for a prompt: {"missing": [...]} instead of raising
+    (only the craft library can be missing now)."""
     try:
         return load_context(client_id)
     except ContextMissing as e:

@@ -201,9 +201,10 @@ class Palette(unittest.TestCase):
 
     def test_never_guessed(self):
         with self.assertRaises(slide_spec.PaletteMissing):
-            slide_spec.palette_roles(27, "pink + green")
-        with self.assertRaises(slide_spec.PaletteMissing):
-            slide_spec.palette_roles(999999, RED)
+            slide_spec.palette_roles(27, "pink + green")        # a palette exists: a wrong variant is a mismatch
+        # no palette at all (2026-11-24, core/brand_brief): neutral colours, never invented ones
+        from core import brand_brief
+        self.assertEqual(slide_spec.palette_roles(999999, RED), brand_brief.NEUTRAL)
 
     def test_a_set_never_mixes_variants(self):
         problems = slide_design.check(27, starter(GOLD), {"label": RED, "segment": "b2c"},

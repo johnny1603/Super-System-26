@@ -137,12 +137,8 @@ CACHE_S = 600
 
 def _brief_text(client_id: int) -> str:
     try:
-        from core import post_brief
-        path = post_brief.brand_path(client_id)
-        if not os.path.exists(path):
-            return ""
-        with open(path, encoding="utf-8-sig") as f:
-            return f.read()
+        from core import brand_brief          # the database (2026-11-24); a legacy file seeds it
+        return brand_brief.text(client_id)
     except Exception:
         return ""
 
