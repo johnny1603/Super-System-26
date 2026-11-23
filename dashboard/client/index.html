@@ -1196,6 +1196,16 @@ body {
 .lib-prev-warn { margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(255,170,0,.15); }
 .lib-prev-acts { display: flex; gap: 8px; margin-top: 10px; }
 .lib-empty, .lib-result { color: var(--gray); font-size: 12.5px; }
+.lib-summary { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; margin: 2px 0 14px; }
+.lib-summary:empty { display: none; }
+.lib-chip { padding: 2px 8px; border-radius: 999px; background: rgba(127,127,127,.12); color: var(--gray); }
+#mediaLib { margin-bottom: 22px; }
+.lib-filters label { display: inline-flex; gap: 6px; align-items: center; }
+.lib-seltools { gap: 8px; }
+.lib-selcount { font-size: 13px; }
+.lib-result:not(:empty) { padding: 8px 10px; border-radius: 8px; background: rgba(127,127,127,.08); color: inherit; }
+.lib-res-fail { margin-top: 6px; color: var(--red, #c0392b); }
+.lib-res-list { margin: 4px 0 0; padding-inline-start: 18px; }
 .drive-mirror { margin-bottom: 8px; }
 .drive-mirror-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .drive-mirror-title { font-size: 14px; font-weight: 700; }
@@ -1709,9 +1719,6 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="media" onclick="showView('media')">
     <span class="nav-ico">🖼</span><span data-i18n="nav_media">מדיה</span>
     <span class="nav-count" id="navMediaCount" style="display:none;">0</span>
-  </button>
-  <button class="nav-item" data-view="library" onclick="showView('library')">
-    <span class="nav-ico">🗂</span><span data-i18n-skip>מאגר המדיה</span>
   </button>
   <button class="nav-item" data-view="social" onclick="showView('social')">
     <span class="nav-ico">📣</span><span data-i18n="nav_social">סושיאל</span>
@@ -2543,8 +2550,9 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="section-title" data-i18n="media_title">המדיה שלי</div>
       <div class="section-sub" data-i18n="media_sub">כל מה שנוצר עבורך אי פעם — לא רק מה שממתין לאישור</div>
     </div>
-    <button type="button" class="conn-btn secondary" onclick="showView('library')" data-i18n-skip>🗂 מאגר המדיה — מה תופס מקום ומחיקה</button>
   </div>
+  <!-- Storage summary (core/media_inventory): total items + size, by source — compact, at the top -->
+  <div class="lib-summary" id="libSummary" dir="rtl" data-i18n-skip></div>
 
   <!-- Branding (core/branding): the button opens ליאור's chat; the terms line
        comes from the server (a fixed promise, in the client's language) -->
@@ -2575,6 +2583,62 @@ a.media-item:hover { border-color: var(--accent); }
     </div>
     <div class="plan-items" id="planItems"></div>
     <div class="plan-note" id="planNote" dir="auto"></div>
+  </div>
+
+  <!-- The media library IN the Media tab (core/media_inventory, docs/MEDIA-LIBRARY.md): every media item
+       the system knows (generated, copies of real assets, uploads, connected folders) — filter, select one
+       or many, and delete. "הסרה מהמאגר" = out of the index, the file stays; "מחיקת הקובץ" = the file too.
+       ONE confirmation (count, size, posts that use them), then the result per file, inline. -->
+  <div class="drive-mirror lib" id="mediaLib" dir="rtl" data-i18n-skip>
+    <div class="drive-mirror-head" data-i18n-skip>
+      <div class="drive-mirror-title" data-i18n-skip>כל המדיה — סינון, בחירה ומחיקה</div>
+    </div>
+    <div class="lib-row lib-filters" data-i18n-skip>
+      <label data-i18n-skip>מקור <select id="libSource" class="lib-filter ml-select" data-i18n-skip>
+        <option value="" data-i18n-skip>הכול</option>
+        <option value="generated_image,generated_video,slide" data-i18n-skip>מדיה שנוצרה</option>
+        <option value="generated_image" data-i18n-skip>תמונה שנוצרה</option>
+        <option value="generated_video" data-i18n-skip>סרטון שנוצר</option>
+        <option value="slide" data-i18n-skip>שקופית טקסט</option>
+        <option value="real_copy" data-i18n-skip>עותק של תמונה אמיתית</option>
+        <option value="uploaded" data-i18n-skip>הועלה לתיקייה שלנו</option>
+        <option value="client_asset" data-i18n-skip>מתיקייה מחוברת שלכם</option>
+      </select></label>
+      <label data-i18n-skip>שימוש <select id="libUsage" class="lib-filter ml-select" data-i18n-skip>
+        <option value="" data-i18n-skip>הכול</option>
+        <option value="used" data-i18n-skip>בשימוש</option>
+        <option value="unused" data-i18n-skip>לא בשימוש</option>
+        <option value="rejected" data-i18n-skip>נדחה</option>
+      </select></label>
+      <label data-i18n-skip>תיקייה <select id="libFolder" class="lib-filter ml-select" data-i18n-skip></select></label>
+      <label data-i18n-skip>מתאריך <input type="date" id="libFrom" class="lib-filter" data-i18n-skip></label>
+      <label data-i18n-skip>עד <input type="date" id="libTo" class="lib-filter" data-i18n-skip></label>
+      <label data-i18n-skip>גודל (MB) <input type="number" min="0" step="0.1" id="libMin" class="lib-filter lib-num" data-i18n-skip> – <input type="number" min="0" step="0.1" id="libMax" class="lib-filter lib-num" data-i18n-skip></label>
+      <label data-i18n-skip>מיון <select id="libSort" class="lib-filter ml-select" data-i18n-skip>
+        <option value="newest" data-i18n-skip>החדשים קודם</option>
+        <option value="oldest" data-i18n-skip>הישנים קודם</option>
+        <option value="largest" data-i18n-skip>הגדולים קודם</option>
+        <option value="smallest" data-i18n-skip>הקטנים קודם</option>
+      </select></label>
+    </div>
+    <div class="lib-row" data-i18n-skip>
+      <input type="search" id="libQ" class="lib-q ml-search" dir="auto" data-i18n-skip>
+      <button type="button" class="media-chip" id="libSearchBtn" data-i18n-skip>חיפוש</button>
+      <button type="button" class="media-chip" data-lib-preset="rejected" data-i18n-skip>כל היצירות שנדחו</button>
+      <span class="lib-inline" data-i18n-skip>שנוצרו ולא בשימוש, ישנים מ־<input type="number" min="0" id="libDays" class="lib-num" data-i18n-skip> ימים
+        <button type="button" class="media-chip" data-lib-preset="unused_old" data-i18n-skip>הצגה</button></span>
+      <button type="button" class="media-chip" data-lib-preset="clear" data-i18n-skip>ניקוי הסינון</button>
+    </div>
+    <div class="lib-row lib-seltools" data-i18n-skip>
+      <button type="button" class="media-chip" data-lib-all="1" id="libSelectAll" data-i18n-skip>בחירת הכול</button>
+      <button type="button" class="media-chip" data-lib-clear="1" data-i18n-skip>ניקוי הבחירה</button>
+      <span class="lib-matching" id="libMatching" data-i18n-skip></span>
+    </div>
+    <div class="lib-selbar" id="libSelBar" hidden data-i18n-skip></div>
+    <div class="billing-card lib-preview" id="libPreview" hidden data-i18n-skip></div>
+    <div class="lib-result" id="libResult" role="status" aria-live="polite" data-i18n-skip></div>
+    <div class="lib-grid" id="libGrid" data-i18n-skip><div class="lib-empty" data-i18n-skip>טוען…</div></div>
+    <button type="button" class="media-chip" id="libMore" hidden data-i18n-skip>להציג עוד</button>
   </div>
 
   <!-- The client's WHOLE Drive media tree, searchable (core/media_library.py,
@@ -2641,70 +2705,6 @@ a.media-item:hover { border-color: var(--accent); }
 <!-- ---------- SOCIAL: the ONE approval queue for social media (core/social_queue) ----------
      Everything heading to a social channel waits here for the owner's final yes.
      Files stay in the client's Drive; previews and downloads use the media-drive routes. -->
-<div class="view" id="viewLibrary">
-  <div class="section-head">
-    <div>
-      <div class="section-title" data-i18n-skip>מאגר המדיה</div>
-      <div class="section-sub" data-i18n-skip>כל המדיה שהמערכת מכירה: תמונות וסרטונים שנוצרו, שקופיות טקסט וקבצים מהתיקיות המחוברות שלכם. כאן רואים מה תופס מקום ומוחקים.</div>
-    </div>
-  </div>
-  <div class="lib" dir="rtl" data-i18n-skip>
-    <div class="billing-card lib-summary" id="libSummary" data-i18n-skip></div>
-
-    <div class="billing-card lib-presets" data-i18n-skip>
-      <div class="lib-label" data-i18n-skip>סינון מהיר</div>
-      <div class="lib-row" data-i18n-skip>
-        <button type="button" class="conn-btn secondary" data-lib-preset="rejected" data-i18n-skip>כל היצירות שנדחו</button>
-        <span class="lib-inline" data-i18n-skip>מדיה שנוצרה ולא בשימוש, ישנה מ־<input type="number" min="0" id="libDays" class="lib-num" data-i18n-skip> ימים
-          <button type="button" class="conn-btn secondary" data-lib-preset="unused_old" data-i18n-skip>הצגה</button></span>
-        <span class="lib-inline" data-i18n-skip>הכול מתיקייה: <select id="libPresetFolder" data-i18n-skip></select></span>
-        <button type="button" class="conn-btn secondary" data-lib-preset="clear" data-i18n-skip>ניקוי הסינון</button>
-      </div>
-    </div>
-
-    <div class="billing-card lib-filters" data-i18n-skip>
-      <div class="lib-row" data-i18n-skip>
-        <label data-i18n-skip>סוג <select id="libSource" class="lib-filter" data-i18n-skip>
-          <option value="" data-i18n-skip>הכול</option>
-          <option value="generated_image" data-i18n-skip>תמונה שנוצרה</option>
-          <option value="generated_video" data-i18n-skip>סרטון שנוצר</option>
-          <option value="slide" data-i18n-skip>שקופית טקסט</option>
-          <option value="real_copy" data-i18n-skip>עותק של תמונה אמיתית</option>
-          <option value="uploaded" data-i18n-skip>הועלה לתיקייה שלנו</option>
-          <option value="client_asset" data-i18n-skip>מתיקייה מחוברת שלכם</option>
-        </select></label>
-        <label data-i18n-skip>תיקייה <select id="libFolder" class="lib-filter" data-i18n-skip></select></label>
-        <label data-i18n-skip>שימוש <select id="libUsage" class="lib-filter" data-i18n-skip>
-          <option value="" data-i18n-skip>הכול</option>
-          <option value="used" data-i18n-skip>בשימוש</option>
-          <option value="unused" data-i18n-skip>לא בשימוש</option>
-          <option value="rejected" data-i18n-skip>נדחה</option>
-        </select></label>
-        <label data-i18n-skip>מתאריך <input type="date" id="libFrom" class="lib-filter" data-i18n-skip></label>
-        <label data-i18n-skip>עד תאריך <input type="date" id="libTo" class="lib-filter" data-i18n-skip></label>
-        <label data-i18n-skip>גודל <input type="number" min="0" step="0.1" id="libMin" class="lib-filter lib-num" data-i18n-skip> – <input type="number" min="0" step="0.1" id="libMax" class="lib-filter lib-num" data-i18n-skip></label>
-        <label data-i18n-skip>מיון <select id="libSort" class="lib-filter" data-i18n-skip>
-          <option value="newest" data-i18n-skip>החדשים קודם</option>
-          <option value="oldest" data-i18n-skip>הישנים קודם</option>
-          <option value="largest" data-i18n-skip>הגדולים קודם</option>
-          <option value="smallest" data-i18n-skip>הקטנים קודם</option>
-        </select></label>
-      </div>
-      <div class="lib-row" data-i18n-skip>
-        <input type="search" id="libQ" class="lib-q" data-i18n-skip>
-        <button type="button" class="conn-btn secondary" id="libSearchBtn" data-i18n-skip>חיפוש</button>
-        <span class="lib-matching" id="libMatching" data-i18n-skip></span>
-      </div>
-    </div>
-
-    <div class="lib-selbar" id="libSelBar" hidden data-i18n-skip></div>
-    <div class="billing-card lib-preview" id="libPreview" hidden data-i18n-skip></div>
-    <div class="lib-result" id="libResult" data-i18n-skip></div>
-    <div class="lib-grid" id="libGrid" data-i18n-skip></div>
-    <button type="button" class="conn-btn secondary" id="libMore" hidden data-i18n-skip>להציג עוד</button>
-  </div>
-</div>
-
 <div class="view" id="viewSocial">
   <div class="section-head">
     <div>
@@ -8484,7 +8484,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support', 'library'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -8505,7 +8505,7 @@ function showView(name) {
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
   if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
-  if (name === 'library') { libReadFilter(); loadLibrary(true); }
+  if (name === 'media') { libReadFilter(); invLoad(true); }   // the library section: every open
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'personal') loadDriveFolders();   // every open: the index moves (counts, state)
@@ -8520,7 +8520,7 @@ function showView(name) {
 // (Drive + index). One step before it happens: what goes, how much, which
 // folders, which waiting/scheduled posts use it — then it runs.
 // ═══════════════════════════════════════════════════════════════════════════
-const libUI = { data: null, items: [], offset: 0, sort: 'newest', filter: {}, selected: new Set(),
+const libUI = { data: null, items: [], offset: 0, sort: 'newest', filter: {}, selected: new Map(),   // id -> size (bytes)
                 allMatching: false, pending: null };
 
 // Hebrew only, as specified for this screen (RTL)
@@ -8588,6 +8588,9 @@ const LIB_T = {
   reason_drive_unavailable: 'הדרייב לא היה זמין כרגע. אפשר לנסות שוב בעוד כמה דקות.', // i18n-ok
   reason_unknown: 'הדרייב סירב למחוק את הקובץ.', // i18n-ok
   noneChosen: 'לא נבחר אף פריט.', // i18n-ok
+  selectAllN: 'בחירת הכול ({n})', // i18n-ok
+  failedHead: 'לא נמחקו:', // i18n-ok
+  outOfLib: 'הוסר מהמאגר, הקובץ נשאר בדרייב', // i18n-ok
   daysNeeded: 'כתבו מספר ימים.', // i18n-ok
   noSize: 'גודל לא ידוע', // i18n-ok
 };
@@ -8615,7 +8618,7 @@ function libReadFilter() {
   libUI.sort = v('libSort') || 'newest';
 }
 
-async function loadLibrary(reset) {
+async function invLoad(reset) {
   ['libQ', 'libMin', 'libMax'].forEach(id => {
     const el = libEl(id);
     if (el) el.placeholder = id === 'libQ' ? LIB_T.search : id === 'libMin' ? LIB_T.mbMin : LIB_T.mbMax;
@@ -8631,32 +8634,31 @@ async function loadLibrary(reset) {
     if (!d) throw new Error('empty');
     libUI.data = d;
     libUI.items = libUI.offset ? libUI.items.concat(d.items || []) : (d.items || []);
-    renderLibrary();
+    invRender();
   } catch (e) {
     libEl('libGrid').innerHTML = `<div class="lib-empty">${esc(LIB_T.loadFail)}</div>`;
   }
 }
 
-function renderLibrary() {
+function invRender() {
   const d = libUI.data || {};
   const s = d.summary || { by_source: {} };
   const total = Number(s.size) || 0;
-  libEl('libSummary').innerHTML = `<div class="lib-total">${esc(LIB_T.total)}: <b>${Number(s.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(total))}</b></div>
-    <div class="lib-bars">${Object.entries(s.by_source || {}).filter(([, r]) => r.count).sort((a, b) => b[1].size - a[1].size).map(([src, r]) => `
-      <div class="lib-bar-row"><span class="lib-bar-label">${esc(LIB_T['src_' + src] || src)}</span>
-        <span class="lib-bar"><span style="width:${total ? Math.max(2, Math.round(r.size * 100 / total)) : 0}%"></span></span>
-        <span class="lib-bar-val">${Number(r.count).toLocaleString('he-IL')} · ${esc(libSize(r.size))}</span></div>`).join('')}</div>`;
+  // compact: one line at the top of the Media tab
+  libEl('libSummary').innerHTML = `<span class="lib-total">${esc(LIB_T.total)}: <b>${Number(s.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(total))}</b></span>
+    ${Object.entries(s.by_source || {}).filter(([, r]) => r.count).sort((a, b) => b[1].size - a[1].size).map(([src, r]) =>
+      `<span class="lib-chip">${esc(LIB_T['src_' + src] || src)}: ${Number(r.count).toLocaleString('he-IL')} · ${esc(libSize(r.size))}</span>`).join('')}`;
 
   const folderOpts = (d.folders || []).map(f => `<option value="${esc(f.key)}">${esc(libFolderLabel(f))} (${Number(f.count)})</option>`).join('');
   const keep = libEl('libFolder').value;
   libEl('libFolder').innerHTML = `<option value="">${esc(LIB_T.allFolders)}</option>` + folderOpts;
   libEl('libFolder').value = libUI.filter.folder || keep || '';
-  libEl('libPresetFolder').innerHTML = `<option value="">${esc(LIB_T.pickFolder)}</option>` + folderOpts;
   const days = libEl('libDays');
   if (days && !days.dataset.touched) days.value = (d.settings || {}).unused_days ?? '';
 
   const m = d.matching || {};
   libEl('libMatching').textContent = `${LIB_T.matching} ${Number(m.count || 0).toLocaleString('he-IL')} · ${libSize(m.size)}`;
+  libEl('libSelectAll').textContent = LIB_T.selectAllN.replace('{n}', Number(m.count || 0).toLocaleString('he-IL'));
   libEl('libGrid').innerHTML = libUI.items.length ? libUI.items.map(libCard).join('') : `<div class="lib-empty">${esc(LIB_T.empty)}</div>`;
   libEl('libGrid').querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove(), { once: true }));
   libEl('libMore').hidden = !d.has_more;
@@ -8668,7 +8670,7 @@ function libCard(i) {
   const useLine = i.usage === 'unused' ? LIB_T.use_unused : (i.usage === 'rejected' ? LIB_T.use_rejected + ' · ' : LIB_T.use_used + ' · ') + uses.join(' · ');
   const checked = libUI.allMatching || libUI.selected.has(i.id) ? ' checked' : '';
   return `<div class="lib-card${checked ? ' sel' : ''}">
-    <label class="lib-check"><input type="checkbox" data-lib-sel="${esc(i.id)}"${checked}${libUI.allMatching ? ' disabled' : ''}></label>
+    <label class="lib-check"><input type="checkbox" data-lib-sel="${esc(i.id)}" data-size="${Number(i.size) || 0}" aria-label="${esc(i.name)}"${checked}${libUI.allMatching ? ' disabled' : ''}></label>
     <div class="lib-thumb"><span class="lib-ico">${i.kind === 'video' ? '🎬' : i.kind === 'image' ? '🖼' : '📄'}</span>
       <img loading="lazy" alt="" src="/api/client/media-inventory/thumb/${encodeURIComponent(i.id)}"></div>
     <div class="lib-name" dir="auto">${esc(i.name)}</div>
@@ -8683,15 +8685,17 @@ function libCard(i) {
 function libRenderSelBar() {
   const m = (libUI.data || {}).matching || {};
   const n = libUI.allMatching ? Number(m.count || 0) : libUI.selected.size;
+  const size = libUI.allMatching ? Number(m.size || 0) : Array.from(libUI.selected.values()).reduce((a, b) => a + (Number(b) || 0), 0);
   const bar = libEl('libSelBar');
   bar.hidden = !n;
-  if (!n) return;
-  bar.innerHTML = `<span>${libUI.allMatching ? esc(LIB_T.allChosen.replace('{n}', n.toLocaleString('he-IL'))) : esc(LIB_T.selected) + ': <b>' + n + '</b>'}</span>
-    ${!libUI.allMatching && Number(m.count || 0) > n ? `<button type="button" class="conn-btn secondary" data-lib-all="1">${esc(LIB_T.selectAll.replace('{n}', Number(m.count).toLocaleString('he-IL')))}</button>` : ''}
+  if (!n) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="lib-selcount">${libUI.allMatching ? esc(LIB_T.allChosen.replace('{n}', n.toLocaleString('he-IL'))) : esc(LIB_T.selected) + ': <b>' + n.toLocaleString('he-IL') + '</b>'} · <b>${esc(libSize(size))}</b></span>
     <button type="button" class="conn-btn secondary" data-lib-clear="1">${esc(LIB_T.clearSel)}</button>
     <button type="button" class="conn-btn secondary" data-lib-bulk="index">${esc(LIB_T.btnIndex)}</button>
     <button type="button" class="conn-btn lib-danger" data-lib-bulk="file">${esc(LIB_T.btnFile)}</button>`;
 }
+
+function libResult(html) { libEl('libResult').innerHTML = html || ''; }
 
 function libHidePreview() { const p = libEl('libPreview'); if (p) { p.hidden = true; p.innerHTML = ''; } libUI.pending = null; }
 
@@ -8707,9 +8711,10 @@ async function libPost(url, body) {
 
 // The one step before it happens: what goes, how much, where, which posts
 async function libAsk(mode, selection) {
-  if (!selection.filter && !(selection.ids || []).length) { showNotice(LIB_T.noneChosen, 'warn'); return; }
+  if (!selection.filter && !(selection.ids || []).length) { libResult(esc(LIB_T.noneChosen)); return; }
   const r = await libPost('/api/client/media-inventory/preview', Object.assign({ mode }, selection));
-  if (!r || !r.success) { showNotice((r && r.text) || LIB_T.loadFail, 'warn'); return; }
+  if (!r || !r.success) { libResult(esc((r && r.text) || LIB_T.loadFail)); return; }
+  libResult('');
   const p = r.data || {};
   libUI.pending = { mode, selection };
   const box = libEl('libPreview');
@@ -8729,14 +8734,23 @@ async function libRun(btn) {
   if (!job) return;
   btn.disabled = true; btn.textContent = LIB_T.working;
   const r = await libPost('/api/client/media-inventory/delete', Object.assign({ mode: job.mode }, job.selection));
-  if (!r || !r.success) { btn.disabled = false; showNotice((r && r.text) || LIB_T.loadFail, 'warn'); return; }
-  const d = r.data || {};
-  let line = (job.mode === 'file' ? LIB_T.doneFile : LIB_T.doneIndex).replace('{n}', d.done).replace('{size}', libSize(d.size));
-  if (d.trashed) line += ' ' + LIB_T.trashed.replace('{n}', d.trashed);
-  if ((d.failed || []).length) line += ' ' + LIB_T.failed.replace('{n}', d.failed.length) + ' ' + d.failed.map(f => f.name + ' — ' + (LIB_T['reason_' + f.reason] || LIB_T.reason_unknown)).join(' · ');
-  showNotice(line, (d.failed || []).length ? 'warn' : 'success');
-  libEl('libResult').textContent = line;
-  loadLibrary(true);
+  if (!r || !r.success) { btn.disabled = false; libResult(esc((r && r.text) || LIB_T.loadFail)); return; }
+  libResult(libResultHtml(job.mode, r.data || {}));
+  invLoad(true);
+  if (typeof loadLibrary === 'function') loadLibrary({ refresh: true, silent: true });   // the Drive list below
+}
+
+// The result, inline: how many went, then every file that failed with its plain reason
+function libResultHtml(mode, d) {
+  const failed = d.failed || [];
+  const done = Number(d.done || 0);
+  let html = `<div class="lib-res-line">${esc((mode === 'file' ? LIB_T.doneFile : LIB_T.doneIndex).replace('{n}', done).replace('{size}', libSize(d.size)))}</div>`;
+  if (d.trashed) html += `<div class="lib-res-line">${esc(LIB_T.trashed.replace('{n}', d.trashed))}</div>`;
+  if (failed.length) {
+    html += `<div class="lib-res-line lib-res-fail">${esc(LIB_T.failed.replace('{n}', failed.length))}</div>
+      <ul class="lib-res-list">${failed.map(f => `<li><bdi dir="auto">${esc(f.name || '—')}</bdi> — ${esc(LIB_T['reason_' + f.reason] || LIB_T.reason_unknown)}</li>`).join('')}</ul>`;
+  }
+  return html;
 }
 
 function libPreset(kind) {
@@ -8746,48 +8760,47 @@ function libPreset(kind) {
     libUI.filter = { source: 'generated_image,generated_video,slide', usage: 'rejected' };
   } else if (kind === 'unused_old') {
     const n = (libEl('libDays').value || '').trim();
-    if (n === '' || isNaN(Number(n))) { showNotice(LIB_T.daysNeeded, 'warn'); return; }
+    if (n === '' || isNaN(Number(n))) { libResult(esc(LIB_T.daysNeeded)); return; }
     libUI.filter = { source: 'generated_image,generated_video,slide', usage: 'unused', older_than_days: n };
-  } else if (kind === 'folder') {
-    libUI.filter = { folder: libEl('libPresetFolder').value };
-    libEl('libFolder').value = libUI.filter.folder;
   }
-  if (kind === 'rejected' || kind === 'unused_old') libEl('libUsage').value = libUI.filter.usage;
+  if (kind === 'rejected' || kind === 'unused_old') {
+    libEl('libUsage').value = libUI.filter.usage;
+    libEl('libSource').value = libUI.filter.source;
+  }
   libUI.sort = libEl('libSort').value || 'newest';
-  loadLibrary(true);
+  invLoad(true);
 }
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
-  if (!t.closest || !t.closest('#viewLibrary')) return;
+  if (!t.closest || !t.closest('#mediaLib')) return;
   if (t.matches('[data-lib-sel]')) {
-    t.checked ? libUI.selected.add(t.getAttribute('data-lib-sel')) : libUI.selected.delete(t.getAttribute('data-lib-sel'));
+    t.checked ? libUI.selected.set(t.getAttribute('data-lib-sel'), Number(t.getAttribute('data-size')) || 0)
+              : libUI.selected.delete(t.getAttribute('data-lib-sel'));
     t.closest('.lib-card').classList.toggle('sel', t.checked);
     libRenderSelBar();
   } else if (t.id === 'libDays') {
     t.dataset.touched = '1';
-  } else if (t.id === 'libPresetFolder') {
-    if (t.value) libPreset('folder');
   } else if (t.matches('.lib-filter')) {
-    libReadFilter(); libUI.filter.older_than_days = ''; loadLibrary(true);
+    libReadFilter(); libUI.filter.older_than_days = ''; invLoad(true);
   }
 });
 document.addEventListener('click', (ev) => {
-  const t = ev.target.closest && ev.target.closest('#viewLibrary button');
+  const t = ev.target.closest && ev.target.closest('#mediaLib button');
   if (!t) return;
-  const sel = () => libUI.allMatching ? { filter: libUI.filter } : { ids: Array.from(libUI.selected) };
+  const sel = () => libUI.allMatching ? { filter: libUI.filter } : { ids: Array.from(libUI.selected.keys()) };
   if (t.hasAttribute('data-lib-one')) libAsk(t.getAttribute('data-lib-one'), { ids: [t.getAttribute('data-id')] });
   else if (t.hasAttribute('data-lib-bulk')) libAsk(t.getAttribute('data-lib-bulk'), sel());
   else if (t.hasAttribute('data-lib-run')) libRun(t);
   else if (t.hasAttribute('data-lib-cancel')) libHidePreview();
-  else if (t.hasAttribute('data-lib-all')) { libUI.allMatching = true; renderLibrary(); }
-  else if (t.hasAttribute('data-lib-clear')) { libUI.allMatching = false; libUI.selected.clear(); renderLibrary(); }
+  else if (t.hasAttribute('data-lib-all')) { libUI.allMatching = true; invRender(); }
+  else if (t.hasAttribute('data-lib-clear')) { libUI.allMatching = false; libUI.selected.clear(); invRender(); }
   else if (t.hasAttribute('data-lib-preset')) libPreset(t.getAttribute('data-lib-preset'));
-  else if (t.id === 'libMore') { libUI.offset = libUI.items.length; loadLibrary(false); }
-  else if (t.id === 'libSearchBtn') { libReadFilter(); loadLibrary(true); }
+  else if (t.id === 'libMore') { libUI.offset = libUI.items.length; invLoad(false); }
+  else if (t.id === 'libSearchBtn') { libReadFilter(); invLoad(true); }
 });
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter' && ev.target && ev.target.id === 'libQ') { libReadFilter(); loadLibrary(true); }
+  if (ev.key === 'Enter' && ev.target && ev.target.id === 'libQ') { libReadFilter(); invLoad(true); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

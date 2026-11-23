@@ -331,8 +331,7 @@ class Wiring(unittest.TestCase):
                       "media_inventory.run_retention()"):
             self.assertIn(route, api)
         html = _read("dashboard", "client", "index.html")
-        for text in ("הסרה מהמאגר — הקובץ נשאר בדרייב", "מחיקת הקובץ — נמחק מהדרייב ומהמאגר", 'id="viewLibrary"',
-                     "'library'"):
+        for text in ("הסרה מהמאגר — הקובץ נשאר בדרייב", "מחיקת הקובץ — נמחק מהדרייב ומהמאגר", 'id="mediaLib"'):
             self.assertIn(text, html)
         admin = _read("dashboard", "admin", "index.html")
         self.assertIn("/api/admin/media-inventory/", admin)

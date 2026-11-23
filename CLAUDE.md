@@ -710,7 +710,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   reason code shown in plain Hebrew, detail only in the log), in ANY folder, no role restriction. ONE
   preview (count, size, folders, affected waiting/approved posts — shown, never blocking). Log `media_deletions:<id>`
   in the Control Room. Retention OFF by default (manager: on + N days; runs in `drive-assets-scan`). Do not add guards
-  or confirmations to it. `tests/test_media_inventory.py`.
+  or confirmations to it. The UI lives IN the Media tab (`#mediaLib` + `#libSummary`; no separate screen / nav item —
+  `libUI`, `invLoad`, `invRender`; `loadLibrary` is the Drive list's). `tests/test_media_inventory.py`,
+  `tests/test_media_tab_library.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive

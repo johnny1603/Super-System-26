@@ -1,7 +1,11 @@
 # Media library ("מאגר המדיה") — 2026-11-23
 
-`core/media_inventory.py`. Client dashboard: side nav "🗂 מאגר המדיה" (also a button in the Media
-tab header). Control Room → client → "🗂 מאגר המדיה — כלל שמירה ויומן מחיקות".
+`core/media_inventory.py`. Client dashboard: INSIDE the Media tab (2026-11-23 — the separate screen
+and its side-nav item are gone): the storage summary is the line right under the tab title, and the
+section "כל המדיה — סינון, בחירה ומחיקה" (`#mediaLib`, above the Drive folder list) holds the filters,
+"בחירת הכול" / "ניקוי הבחירה", the selection bar (count + total size + both delete actions), the one
+confirmation, the inline result and the grid (a checkbox and both delete buttons on every item).
+Control Room → client → "🗂 מאגר המדיה — כלל שמירה ויומן מחיקות" (unchanged).
 
 ## What it lists
 
@@ -48,7 +52,9 @@ Single item or bulk (checked items, or "all N matching the filter"). Two actions
   deletion log entry (`failures[].detail`).
 
 Before it runs, ONE preview (`/preview`): mode in plain words, item count, total size, folders, and
-the waiting/approved posts that use the items. Shown, never blocking. Then it runs (`/delete`).
+the waiting/approved posts that use the items. Shown, never blocking. Then it runs (`/delete`). The
+result stays inline under the selection bar: how many went (and how much), then every file that was
+not deleted with its plain Hebrew reason, one line per file.
 
 ## Log
 
