@@ -258,6 +258,7 @@ def inventory(client_id: int, refresh: bool = False) -> list:
                     "folder": path, "folder_key": "conn:" + str(item.get("connection_id", "")),
                     "folder_keys": ["conn:" + str(item.get("connection_id", "")), "conn:" + str(item.get("root_id", ""))],
                     "root_folder": root.get("display_name", ""), "connection_id": item.get("connection_id", ""),
+                    "root_id": item.get("root_id", ""), "indexed": item.get("state") == "indexed",
                     "created": item.get("created") or item.get("modified", ""), "size": int(item.get("size") or 0),
                     "description": item.get("description", ""), "tags": list(item.get("tags") or [])})
     for row in out:
@@ -364,21 +365,86 @@ def view(client_id: int, raw_filter: dict = None, sort: str = "newest", offset: 
     f = clean_filter(raw_filter)
     hit = _sorted([i for i in items if matches(i, f)], sort if sort in SORTS else "newest")
     offset, limit = max(0, int(offset or 0)), max(1, int(limit or PAGE))
+    from core import drive_download
+    play_max = drive_download.play_max_bytes()
+    try:
+        from core import media_library
+        sent = media_library.sent_map(client_id)
+    except Exception as e:
+        _log(f"client {client_id}: sent map unreadable ({type(e).__name__})")
+        sent = {}
     return {"summary": summary(items), "folders": folders(items), "settings": settings(client_id),
             "matching": {"count": len(hit), "size": sum(i["size"] for i in hit)},
-            "items": [_public(i) for i in hit[offset:offset + limit]], "offset": offset,
-            "has_more": offset + limit < len(hit), "filter": f}
+            "items": [_public(i, play_max, sent) for i in hit[offset:offset + limit]], "offset": offset,
+            "has_more": offset + limit < len(hit), "filter": f,
+            "folder_list": folder_list(client_id, items),
+            "download_max_mb": drive_download.max_bytes() // (1024 * 1024),
+            "play_max_mb": play_max // (1024 * 1024)}
 
 
-def _public(item: dict) -> dict:
-    return {k: v for k, v in item.items() if k != "folder_keys"}
+def _public(item: dict, play_max: int = 0, sent: dict = None) -> dict:
+    """The grid's card: the item + which actions apply to it (UI hints only —
+    every route re-checks: drive_download for view / download / play, which
+    serve our folder AND the connected folders; agent_actions for TikTok /
+    YouTube, which take a video from our own folder only)."""
+    from core import drive_download
+    out = {k: v for k, v in item.items() if k != "folder_keys"}
+    mime, kind = item.get("mime") or "", item.get("kind") or ""
+    out["mime_type"] = mime
+    out["download"] = drive_download.download_kind(mime) if mime else "file"
+    out["previewable"] = kind == "image" and drive_download.is_previewable(mime or "image/jpeg")
+    out["playable"] = bool(kind == "video" and drive_download.playable_mime(mime) and item.get("size")
+                           and item["size"] <= play_max)
+    out["sendable"] = kind == "video" and item.get("origin") == "media"
+    out["web_view_link"] = item.get("web_view_link") or (
+        f"https://drive.google.com/file/d/{item['id']}/view" if item.get("id") else "")
+    out["sent"] = list((sent or {}).get(item.get("id"), []))
+    return out
+
+
+def folder_list(client_id: int, items: list) -> list:
+    """The Media tab's folder list: every ROOT connection (the folders the
+    client shared) with its own Drive name, role, whether we reach it, the
+    plain-Hebrew reason + what to do when we don't, and what the index holds
+    from it (indexed, images, videos). The system's own media folder is the
+    tab's to add (its link comes with /api/client/media-assets) — its counts
+    are here under "system"."""
+    from core import drive_folders
+    try:
+        roots = drive_folders.tree(client_id)
+    except Exception as e:
+        _log(f"client {client_id}: connected folders unreadable ({type(e).__name__})")
+        roots = []
+    counts = {}
+    for i in items:
+        key = "system" if i["origin"] == "media" else i.get("root_id") or ""
+        rec = counts.setdefault(key, {"indexed": 0, "images": 0, "videos": 0})
+        if i["origin"] == "media" or i.get("indexed"):
+            rec["indexed"] += 1
+            rec["images"] += i["kind"] == "image"
+            rec["videos"] += i["kind"] == "video"
+    rows = [{"system": True, "id": "system", **counts.get("system", {"indexed": 0, "images": 0, "videos": 0})}]
+    email = drive_folders.share_with()
+    for r in roots:
+        reachable = r.get("status") not in ("no_access", "error")
+        reason = ""
+        if not reachable:
+            reason = r.get("error_text") or drive_folders._texts("not_shared", email)
+        rows.append({"system": False, "id": r["id"], "name": r.get("display_name", ""),
+                     "role": r.get("role", ""), "role_text": r.get("role_text", ""),
+                     "excluded": bool(r.get("excluded")), "reachable": reachable, "reason": reason,
+                     "url": r.get("folder_url") or drive_folders.folder_url(r.get("folder_id", "")),
+                     **counts.get(r["id"], {"indexed": 0, "images": 0, "videos": 0})})
+    return rows
 
 
 # ─── Preview + delete ────────────────────────────────────────────────────────
 
-def select(client_id: int, ids: list = None, raw_filter: dict = None, items: list = None) -> tuple:
+def select(client_id: int, ids: list = None, raw_filter: dict = None, items: list = None,
+           exclude: list = None) -> tuple:
     """(chosen items, ids not found). Explicit ids win; else every item the
-    filter matches (the screen's "select all matching")."""
+    filter matches (the screen's "select all matching") minus `exclude` (the
+    items unchecked after it)."""
     items = items if items is not None else inventory(client_id, refresh=True)
     if ids:
         wanted = [str(i) for i in ids]
@@ -387,7 +453,8 @@ def select(client_id: int, ids: list = None, raw_filter: dict = None, items: lis
     if raw_filter is None:
         return [], []
     f = clean_filter(raw_filter)
-    return [i for i in items if matches(i, f)], []
+    skip = {str(i) for i in (exclude or [])}
+    return [i for i in items if matches(i, f) and i["id"] not in skip], []
 
 
 def describe(chosen: list) -> dict:
@@ -408,8 +475,9 @@ def describe(chosen: list) -> dict:
             "affected_posts": list(affected.values())}
 
 
-def preview(client_id: int, ids: list = None, raw_filter: dict = None, mode: str = "index") -> dict:
-    chosen, missing = select(client_id, ids, raw_filter)
+def preview(client_id: int, ids: list = None, raw_filter: dict = None, mode: str = "index",
+            exclude: list = None) -> dict:
+    chosen, missing = select(client_id, ids, raw_filter, exclude=exclude)
     return {**describe(chosen), "mode": mode if mode in MODES else "index", "missing": len(missing)}
 
 
@@ -458,12 +526,12 @@ def _failure_reason(client_id: int, item: dict, e: Exception) -> str:
 
 
 def delete(client_id: int, ids: list = None, raw_filter: dict = None, mode: str = "index", by: str = "client",
-           items: list = None) -> dict:
+           items: list = None, exclude: list = None) -> dict:
     """Removes the chosen items (mode "index") or deletes their files too
     (mode "file"). Per-item outcome; one log entry for the whole action."""
     if mode not in MODES:
         raise ValueError("bad_mode")
-    chosen, missing = select(client_id, ids, raw_filter, items=items)
+    chosen, missing = select(client_id, ids, raw_filter, items=items, exclude=exclude)
     plan = describe(chosen)
     done, failed = [], []
     from core import drive_assets

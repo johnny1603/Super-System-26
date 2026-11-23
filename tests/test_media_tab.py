@@ -381,10 +381,10 @@ class Wiring(unittest.TestCase):
         self.assertIn("media_video_play_max_mb", _read("dashboard", "admin", "index.html"))
 
     def test_names_are_bidi_safe_and_documents_get_an_icon(self):
-        self.assertIn('<div class="media-item-title"><bdi dir="auto">${esc(label)}</bdi></div>', self.page)
+        # the one grid (2026-11-24: the Drive list merged into it)
+        self.assertIn('<div class="lib-name" dir="auto"><bdi dir="auto">${esc(i.name)}</bdi></div>', self.page)
         self.assertIn('<div class="media-item-title"><bdi dir="auto">${esc(asset.title)}</bdi></div>', self.page)
-        self.assertIn("doc-thumb", self.page)
-        self.assertIn("(shown === 'image' || shown === 'video') && f.thumbnail_link", self.page)
+        self.assertIn("i.kind === 'image' ? '🖼' : '📄'", self.page)
 
     def test_no_nothing_yet_under_a_full_list(self):
         fn = self.page[self.page.index("function renderMediaGrid()"):]
@@ -394,8 +394,9 @@ class Wiring(unittest.TestCase):
 
     def test_tab_open_syncs_silently_and_keeps_the_button(self):
         self.assertIn("if (name === 'media') openMediaLibrary();", self.page)
-        self.assertIn("loadLibrary({ refresh: true, silent: true })", self.page)
-        self.assertIn('id="driveMirrorRefresh" onclick="loadLibrary({ refresh: true })"', self.page)
+        self.assertIn("invLoad({ refresh: true, silent: true });", self.page)
+        self.assertIn('id="libRefresh" data-i18n="ml_refresh"', self.page)
+        self.assertIn("else if (t.id === 'libRefresh') invLoad({ refresh: true, silent: true });", self.page)
         self.assertIn('data-i18n="ml_where_hint"', self.page)
 
     def test_player_and_multiselect_use_the_existing_paths(self):
@@ -407,7 +408,7 @@ class Wiring(unittest.TestCase):
         self.assertEqual(agent_actions.TIKTOK_BATCH_MAX, 10)
 
     def test_no_dom_move_in_the_media_code(self):
-        block = self.page[self.page.index("// ─── Media library: the client's WHOLE Drive tree"):
+        block = self.page[self.page.index("// ─── The Media tab's one grid is the media library"):
                           self.page.index("function renderMediaGrid()")]
         for bad in ("insertBefore(", ".prepend(", "appendChild(document.getElementById"):
             self.assertNotIn(bad, block)

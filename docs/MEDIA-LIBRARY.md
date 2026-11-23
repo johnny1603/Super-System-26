@@ -7,6 +7,30 @@ section "כל המדיה — סינון, בחירה ומחיקה" (`#mediaLib`, 
 confirmation, the inline result and the grid (a checkbox and both delete buttons on every item).
 Control Room → client → "🗂 מאגר המדיה — כלל שמירה ויומן מחיקות" (unchanged).
 
+## One grid (2026-11-24)
+
+The Media tab has ONE grid of files (`#libGrid`, `libCard`): the old "מה יש בתיקייה שלך ב-Drive" list
+(`/api/client/media-library`, `renderDriveMirror`) is gone from the tab, and "כל מה שהמערכת יצרה עבורך"
+lists only items with no Drive file. Its hint, "רענון מ-Drive" (`#libRefresh`) and add-by-link moved into
+the section head. Every card carries its own actions, shown only where they apply (`libCan`): view
+(images), play (videos the player takes), download (non-video, under the cap; Google files as PDF),
+open in Drive, send to TikTok / YouTube (videos in OUR folder: `sendable` — agent_actions only takes
+those), and both delete modes. The selection bar offers download, TikTok, YouTube (exactly one video)
+and both deletes for whatever is selected.
+
+Selection: explicit ids, or "בחירת הכול" = everything matching the filter MINUS what was unchecked
+after it (`excluded` → `exclude` on /preview and /delete). Every item stays toggleable; the bar's count
+and size update live. Shift-click on a checkbox selects the range from the previous one. Drag selection
+(mouse only; never on a touch-only device; never from a checkbox / button / link / image / field): a
+rectangle, every card it touches is selected on release, Ctrl / Cmd adds instead of replacing, the
+window scrolls near its top / bottom edge.
+
+Folder list (`#mediaFolders`, `media_inventory.folder_list` + the system folder link from
+/api/client/media-assets): the system folder first, then every connected ROOT folder — its own Drive
+name, role, connected / not reachable (with the stored plain-Hebrew reason and what to do), what the
+index holds from it (indexed items, images, videos — pending ones not counted) and an open-in-Drive
+link. Tests: `tests/test_media_tab_library.py`.
+
 ## What it lists
 
 Every media item the system knows about, read live (nothing copied):

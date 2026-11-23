@@ -247,10 +247,11 @@ class SendButton(TikTokActionCase):
         self.assertEqual(caught.exception.status_code, 403)
 
     def test_the_tile_button_and_english_texts(self):
-        render = DASH[DASH.index("function renderDriveMirror"):]
+        render = DASH[DASH.index("function libCard("):]          # the Media tab's one grid
         render = render[:render.index("\n}\n")]
-        self.assertIn("data-tiktok=", render)
-        self.assertIn("TIKTOK_CONNECTED", render)
+        self.assertIn('data-lib-act="tiktok"', render)
+        can = DASH[DASH.index("function libCan("):]
+        self.assertIn("TIKTOK_CONNECTED", can[:can.index("\n}\n")])
         self.assertNotIn("tt_too_large", DASH)                   # no size note on any tile
         self.assertNotIn("TIKTOK_INBOX_MAX_MB", DASH)
         send = DASH[DASH.index("async function sendVideoToTiktok"):]

@@ -6487,6 +6487,7 @@ class MediaInventorySelection(BaseModel):
     ids: list = []
     filter: dict = None
     mode: str = "index"
+    exclude: list = []     # with `filter`: the items unchecked after "select all"
 
 def _media_inventory_filter(request: Request) -> dict:
     keys = ("source", "folder", "usage", "date_from", "date_to", "size_min_mb", "size_max_mb", "older_than_days", "q")
@@ -6516,7 +6517,7 @@ def client_media_inventory_preview(req: MediaInventorySelection, request: Reques
     # What a deletion will do (count, size, folders, affected posts) — nothing changes
     client_id = _require_session(request)
     from core import media_inventory
-    return {"success": True, "data": media_inventory.preview(client_id, req.ids, req.filter, req.mode)}
+    return {"success": True, "data": media_inventory.preview(client_id, req.ids, req.filter, req.mode, req.exclude)}
 
 @app.post("/api/client/media-inventory/delete")
 def client_media_inventory_delete(req: MediaInventorySelection, request: Request):
@@ -6524,7 +6525,7 @@ def client_media_inventory_delete(req: MediaInventorySelection, request: Request
     client_id = _require_session(request)
     from core import media_inventory
     try:
-        return {"success": True, "data": media_inventory.delete(client_id, req.ids, req.filter, req.mode, by="client")}
+        return {"success": True, "data": media_inventory.delete(client_id, req.ids, req.filter, req.mode, by="client", exclude=req.exclude)}
     except ValueError as e:
         return {"success": False, "data": {"code": str(e)}}
 

@@ -711,7 +711,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   preview (count, size, folders, affected waiting/approved posts — shown, never blocking). Log `media_deletions:<id>`
   in the Control Room. Retention OFF by default (manager: on + N days; runs in `drive-assets-scan`). Do not add guards
   or confirmations to it. The UI lives IN the Media tab (`#mediaLib` + `#libSummary`; no separate screen / nav item —
-  `libUI`, `invLoad`, `invRender`; `loadLibrary` is the Drive list's). `tests/test_media_inventory.py`,
+  `libUI`, `invLoad`, `invRender`). ONE grid since 2026-11-24 (the Drive list is gone; every action on the card,
+  hidden where it does not apply — `libCan`; select-all minus `exclude`; Shift ranges; mouse drag selection; folder
+  list `folder_list`). `tests/test_media_inventory.py`,
   `tests/test_media_tab_library.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE

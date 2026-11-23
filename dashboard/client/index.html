@@ -1206,6 +1206,20 @@ body {
 .lib-result:not(:empty) { padding: 8px 10px; border-radius: 8px; background: rgba(127,127,127,.08); color: inherit; }
 .lib-res-fail { margin-top: 6px; color: var(--red, #c0392b); }
 .lib-res-list { margin: 4px 0 0; padding-inline-start: 18px; }
+.lib-grid.dragging, .lib-grid.dragging * { user-select: none; -webkit-user-select: none; cursor: crosshair; }
+.lib-card.marq { outline: 2px dashed var(--accent, #FF4C1F); }
+.lib-marquee { position: absolute; z-index: 60; pointer-events: none; border: 1px solid var(--accent, #FF4C1F);
+               background: rgba(255, 76, 31, .12); border-radius: 2px; }
+.lib-thumb .drive-play { position: absolute; z-index: 1; }
+.lib-folders { margin-top: 22px; }
+.lib-frow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 0; font-size: 12.5px;
+            border-bottom: 1px solid rgba(127,127,127,.18); }
+.lib-fname { font-weight: 700; min-width: 0; word-break: break-word; }
+.lib-frole { font-weight: 400; color: var(--gray); margin-inline-start: 6px; }
+.lib-fstate.ok { color: var(--green, #1e8e3e); }
+.lib-fstate.bad { color: var(--red, #c0392b); font-weight: 700; }
+.lib-fcount { color: var(--gray); }
+.lib-freason { flex-basis: 100%; padding: 8px; border-radius: 8px; background: rgba(192,57,43,.08); }
 .drive-mirror { margin-bottom: 8px; }
 .drive-mirror-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .drive-mirror-title { font-size: 14px; font-weight: 700; }
@@ -1217,7 +1231,6 @@ body {
 .drive-src { font-size: 11px; margin-top: 4px; }
 .drive-src.system { color: var(--green); }
 .drive-src.drive { color: var(--gray); }
-#driveMirrorMore { margin-top: 10px; }
 /* Preview + direct download (core/drive_download.py, /assets/media-viewer.js) */
 button.drive-thumb { width: calc(100% + 4px); border: none; padding: 0; cursor: zoom-in; font: inherit; color: inherit; }
 a.drive-thumb { text-decoration: none; color: inherit; }
@@ -2592,7 +2605,19 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="drive-mirror lib" id="mediaLib" dir="rtl" data-i18n-skip>
     <div class="drive-mirror-head" data-i18n-skip>
       <div class="drive-mirror-title" data-i18n-skip>כל המדיה — סינון, בחירה ומחיקה</div>
+      <button type="button" class="media-chip" id="libRefresh" data-i18n="ml_refresh">רענון מ-Drive</button>
     </div>
+    <div class="ml-hint" data-i18n="ml_where_hint">כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.</div>
+    <!-- Add by link (core/drive_pull.add_by_link): a Drive file / folder link
+         is COPIED inside Drive into this client's folder; nothing uploads -->
+    <div class="ml-toolbar">
+      <input type="url" id="mlLink" class="ml-search" dir="ltr" autocomplete="off"
+             data-i18n-placeholder="ml_link_ph" placeholder="הדביקו קישור לקובץ או לתיקייה ב-Google Drive"
+             data-i18n-aria-label="ml_link_aria" aria-label="קישור ל-Google Drive">
+      <button type="button" class="media-chip" id="mlLinkBtn" onclick="mlAddLink()" data-i18n="ml_link_add">הוספה מקישור</button>
+    </div>
+    <div class="drive-notice" id="mlLinkNotice" role="status" aria-live="polite"></div>
+    <div id="mlLinkFiles"></div>
     <div class="lib-row lib-filters" data-i18n-skip>
       <label data-i18n-skip>מקור <select id="libSource" class="lib-filter ml-select" data-i18n-skip>
         <option value="" data-i18n-skip>הכול</option>
@@ -2641,43 +2666,6 @@ a.media-item:hover { border-color: var(--accent); }
     <button type="button" class="media-chip" id="libMore" hidden data-i18n-skip>להציג עוד</button>
   </div>
 
-  <!-- The client's WHOLE Drive media tree, searchable (core/media_library.py,
-       the same matcher as the agents' find_media_file: core/media_search.py) -->
-  <div class="drive-mirror" id="driveMirror">
-    <div class="drive-mirror-head">
-      <div class="drive-mirror-title" data-i18n="drive_mirror_title">מה יש בתיקייה שלך ב-Drive</div>
-      <button type="button" class="media-chip" id="driveMirrorRefresh" onclick="loadLibrary({ refresh: true })"
-              data-i18n="ml_refresh">רענון מ-Drive</button>
-    </div>
-    <div class="ml-hint" data-i18n="ml_where_hint">כדי שקובץ יופיע כאן: שלחו אותו בכפתור + בצ׳אט, או שימו אותו בתיקייה שלכם ב-Drive (גם בתת-תיקייה). הרשימה מתעדכנת לבד כשנכנסים ללשונית.</div>
-    <!-- Add by link (core/drive_pull.add_by_link): a Drive file / folder link
-         is COPIED inside Drive into this client's folder; nothing uploads -->
-    <div class="ml-toolbar">
-      <input type="url" id="mlLink" class="ml-search" dir="ltr" autocomplete="off"
-             data-i18n-placeholder="ml_link_ph" placeholder="הדביקו קישור לקובץ או לתיקייה ב-Google Drive"
-             data-i18n-aria-label="ml_link_aria" aria-label="קישור ל-Google Drive">
-      <button type="button" class="media-chip" id="mlLinkBtn" onclick="mlAddLink()" data-i18n="ml_link_add">הוספה מקישור</button>
-    </div>
-    <div class="drive-notice" id="mlLinkNotice" role="status" aria-live="polite"></div>
-    <div id="mlLinkFiles"></div>
-    <div class="ml-toolbar">
-      <input type="search" id="mlSearch" class="ml-search" dir="auto" autocomplete="off"
-             data-i18n-placeholder="ml_search_ph" placeholder="חיפוש לפי שם…"
-             data-i18n-aria-label="ml_search_aria" aria-label="חיפוש קבצים">
-      <select id="mlFolder" class="ml-select" data-i18n-aria-label="ml_folder_aria" aria-label="תיקייה"></select>
-      <select id="mlSort" class="ml-select" data-i18n-aria-label="ml_sort_aria" aria-label="מיון">
-        <option value="newest" data-i18n="ml_sort_newest">החדשים קודם</option>
-        <option value="oldest" data-i18n="ml_sort_oldest">הישנים קודם</option>
-        <option value="name" data-i18n="ml_sort_name">לפי שם</option>
-      </select>
-    </div>
-    <div class="media-filters" id="driveMirrorFolders"></div>
-    <div class="ml-selbar" id="mlSelBar" hidden></div>
-    <div class="drive-notice" id="driveMirrorNotice" role="status" aria-live="polite"></div>
-    <div id="driveMirrorGrid"><div class="empty-row" data-i18n="loading">טוען…</div></div>
-    <div id="driveMirrorMore"></div>
-  </div>
-
   <!-- Hidden when everything the system made is already in the list above
        (no "Nothing created yet" under a full list) -->
   <div id="mediaIndexSection">
@@ -2691,14 +2679,13 @@ a.media-item:hover { border-color: var(--accent); }
   </div>
   </div>
 
-  <div class="info-panel" style="margin-top:22px;">
-    <div class="info-panel-title" data-i18n="media_drive_title">התיקייה שלך ב-Google Drive</div>
-    <div class="info-panel-text" data-i18n="media_drive_text">כל הקבצים שמורים בתיקייה פרטית ב-Drive שמשותפת איתך. אפשר לפתוח אותה ולהוריד כל קובץ בגודל המלא.</div>
-    <div style="margin-top:12px;">
-      <a class="export-btn" id="mediaFolderLink" href="#" target="_blank" rel="noopener"
-         data-i18n="media_drive_btn">📁 פתיחת התיקייה ב-Drive</a>
-    </div>
-    <div class="info-panel-text" id="mediaFolderNote" style="display:none;margin-top:8px;"></div>
+  <!-- Every folder the system reaches (core/media_inventory.folder_list + the system folder's link from
+       /api/client/media-assets): name, role, connected or not (with the reason and what to do), what the
+       index holds from it, and a link that opens it in Drive -->
+  <div class="drive-mirror lib-folders" id="mediaFolders" dir="rtl" data-i18n-skip>
+    <div class="drive-mirror-title" data-i18n-skip>התיקיות שהמערכת מחוברת אליהן</div>
+    <div class="ml-hint" data-i18n-skip>כל תיקייה ששיתפתם איתנו, ותיקיית המערכת. כך רואים במבט אחד שהמערכת באמת מחוברת לכל אחת.</div>
+    <div id="mediaFolderRows" data-i18n-skip><div class="lib-empty" data-i18n-skip>טוען…</div></div>
   </div>
 </div><!-- /viewMedia -->
 
@@ -4693,7 +4680,7 @@ async function loadTiktokProfile() {
 // No size cap for TikTok (core/video_limits): every video gets the button.
 async function sendVideoToTiktok(fileId, btn) {
   const t = uallakI18n.t;
-  const note = msg => { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; };
+  const note = msg => { const el = document.getElementById('libResult'); if (el) el.textContent = msg || ''; };
   if (btn) btn.disabled = true;
   note(t('tt_send_opening'));
   try {
@@ -4932,7 +4919,7 @@ function markTiktokConnected() {
   if (!TIKTOK_CONNECTED) {
     TIKTOK_CONNECTED = true;
     loadTiktokProfile();
-    if (driveMirror.data) renderDriveMirror();   // the tiles' "Send to TikTok"
+    if (libUI.data) invRender();   // the tiles' "Send to TikTok"
   }
 }
 function markYoutubeConnected() { markPlatformConnected('youtubeStatus', 'youtubeBtn', 'youtube'); }
@@ -6794,7 +6781,7 @@ async function uploadOneFile(id, file) {
   (finished.cards || []).forEach(c => appendActionCard(id, c));
   // The Media tab, if it was opened: re-list fresh (refresh bypasses every
   // instance's listing cache), so the file shows like any Drive upload
-  if (driveMirror.data) loadDriveMirror(driveMirror.folder, true);
+  if (libUI.data) invRender();
 }
 
 // ─── chat input: Enter sends, Shift+Enter is a new line ──────────────────────
@@ -8504,8 +8491,7 @@ function showView(name) {
   if (name === 'outreach' && !viewLoaded.outreach) { viewLoaded.outreach = true; loadOutreach(); }
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
-  if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
-  if (name === 'media') { libReadFilter(); invLoad(true); }   // the library section: every open
+  if (name === 'media') openMediaLibrary();   // every open: the one grid + a silent check of Drive
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'personal') loadDriveFolders();   // every open: the index moves (counts, state)
@@ -8520,10 +8506,11 @@ function showView(name) {
 // (Drive + index). One step before it happens: what goes, how much, which
 // folders, which waiting/scheduled posts use it — then it runs.
 // ═══════════════════════════════════════════════════════════════════════════
-const libUI = { data: null, items: [], offset: 0, sort: 'newest', filter: {}, selected: new Map(),   // id -> size (bytes)
-                allMatching: false, pending: null };
+const libUI = { data: null, items: [], sort: 'newest', filter: {}, selected: new Map(), allMatching: false,
+                excluded: new Map(), pending: null, anchor: null, seq: 0, since: '', opened: false };
+let mediaFolderInfo = null;   // the system folder's link + status (/api/client/media-assets)
 
-// Hebrew only, as specified for this screen (RTL)
+// Hebrew only, as specified for this section (RTL)
 const LIB_T = {
   src_generated_image: 'תמונה שנוצרה', // i18n-ok
   src_generated_video: 'סרטון שנוצר', // i18n-ok
@@ -8588,6 +8575,22 @@ const LIB_T = {
   reason_drive_unavailable: 'הדרייב לא היה זמין כרגע. אפשר לנסות שוב בעוד כמה דקות.', // i18n-ok
   reason_unknown: 'הדרייב סירב למחוק את הקובץ.', // i18n-ok
   noneChosen: 'לא נבחר אף פריט.', // i18n-ok
+  actView: 'צפייה', // i18n-ok
+  actPlay: 'ניגון', // i18n-ok
+  actDownload: 'הורדה', // i18n-ok
+  actDownloadPdf: 'הורדה כ-PDF', // i18n-ok
+  actDrive: 'פתיחה ב-Drive', // i18n-ok
+  actTiktok: 'שליחה לטיקטוק', // i18n-ok
+  actYoutube: 'שליחה ליוטיוב', // i18n-ok
+  bulkDownload: 'הורדה ({n})', // i18n-ok
+  bulkTiktok: 'שליחה לטיקטוק ({n})', // i18n-ok
+  fConnected: '● מחובר', // i18n-ok
+  fUnreachable: '● לא נגיש', // i18n-ok
+  fCounts: '{n} פריטים באינדקס · {img} תמונות · {vid} סרטונים', // i18n-ok
+  fOpen: 'פתיחה ב-Drive', // i18n-ok
+  fSystemName: 'תיקיית המערכת (uallak)', // i18n-ok
+  fSystemRole: 'תיקיית המערכת — כל מה שנוצר והועלה', // i18n-ok
+  fExcluded: 'לא נכלל באינדקס', // i18n-ok
   selectAllN: 'בחירת הכול ({n})', // i18n-ok
   failedHead: 'לא נמחקו:', // i18n-ok
   outOfLib: 'הוסר מהמאגר, הקובץ נשאר בדרייב', // i18n-ok
@@ -8609,6 +8612,7 @@ function libEl(id) { return document.getElementById(id); }
 function libFolderLabel(f) {
   return (f.origin === 'media' ? LIB_T.ourFolder : LIB_T.connFolder) + ' · ' + (f.label || LIB_T.root);
 }
+function libNum(n) { return Number(n || 0).toLocaleString('he-IL'); }
 
 function libReadFilter() {
   const v = id => (libEl(id) && libEl(id).value || '').trim();
@@ -8618,25 +8622,40 @@ function libReadFilter() {
   libUI.sort = v('libSort') || 'newest';
 }
 
-async function invLoad(reset) {
+// What the grid shows, so a silent check re-renders only on a real change
+function libSignature(d) {
+  return d ? (d.matching || {}).count + '|' + (d.items || []).map(i => i.id + ':' + i.size + ':' + (i.sent || []).join('+')).join(',') : '';
+}
+
+// opts: true / { reset, refresh, silent, more }. A silent refresh keeps the selection.
+async function invLoad(opts) {
+  if (opts === true || opts === false) opts = { reset: opts };
+  opts = opts || {};
   ['libQ', 'libMin', 'libMax'].forEach(id => {
     const el = libEl(id);
     if (el) el.placeholder = id === 'libQ' ? LIB_T.search : id === 'libMin' ? LIB_T.mbMin : LIB_T.mbMax;
   });
-  if (reset) { libUI.offset = 0; libUI.items = []; libUI.selected.clear(); libUI.allMatching = false; libHidePreview(); }
+  if (opts.reset && !opts.silent) libClearSelection(false);
+  if (opts.reset && !opts.silent) libHidePreview();
+  const seq = ++libUI.seq;
   const q = new URLSearchParams();
   Object.entries(libUI.filter).forEach(([k, val]) => { if (val !== '' && val != null) q.set(k, val); });
-  q.set('sort', libUI.sort); q.set('offset', String(libUI.offset)); q.set('limit', '60');
+  const offset = opts.more ? libUI.items.length : 0;
+  q.set('sort', libUI.sort); q.set('offset', String(offset));
+  q.set('limit', String(opts.silent ? Math.min(200, Math.max(60, libUI.items.length)) : 60));
+  if (opts.refresh) q.set('refresh', '1');
   try {
     const res = await fetch('/api/client/media-inventory?' + q.toString(), { credentials: 'same-origin' });
     if (res.status === 401) { window.location.href = '/login/'; return; }
     const d = ((await res.json()) || {}).data;
     if (!d) throw new Error('empty');
+    if (seq !== libUI.seq) return;                     // a newer load replaced this one
+    if (opts.silent && libSignature(d) === libSignature(libUI.data)) return;
     libUI.data = d;
-    libUI.items = libUI.offset ? libUI.items.concat(d.items || []) : (d.items || []);
+    libUI.items = opts.more ? libUI.items.concat(d.items || []) : (d.items || []);
     invRender();
   } catch (e) {
-    libEl('libGrid').innerHTML = `<div class="lib-empty">${esc(LIB_T.loadFail)}</div>`;
+    if (!opts.silent) libEl('libGrid').innerHTML = `<div class="lib-empty">${esc(LIB_T.loadFail)}</div>`;
   }
 }
 
@@ -8645,9 +8664,9 @@ function invRender() {
   const s = d.summary || { by_source: {} };
   const total = Number(s.size) || 0;
   // compact: one line at the top of the Media tab
-  libEl('libSummary').innerHTML = `<span class="lib-total">${esc(LIB_T.total)}: <b>${Number(s.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(total))}</b></span>
+  libEl('libSummary').innerHTML = `<span class="lib-total">${esc(LIB_T.total)}: <b>${libNum(s.count)}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(total))}</b></span>
     ${Object.entries(s.by_source || {}).filter(([, r]) => r.count).sort((a, b) => b[1].size - a[1].size).map(([src, r]) =>
-      `<span class="lib-chip">${esc(LIB_T['src_' + src] || src)}: ${Number(r.count).toLocaleString('he-IL')} · ${esc(libSize(r.size))}</span>`).join('')}`;
+      `<span class="lib-chip">${esc(LIB_T['src_' + src] || src)}: ${libNum(r.count)} · ${esc(libSize(r.size))}</span>`).join('')}`;
 
   const folderOpts = (d.folders || []).map(f => `<option value="${esc(f.key)}">${esc(libFolderLabel(f))} (${Number(f.count)})</option>`).join('');
   const keep = libEl('libFolder').value;
@@ -8657,42 +8676,252 @@ function invRender() {
   if (days && !days.dataset.touched) days.value = (d.settings || {}).unused_days ?? '';
 
   const m = d.matching || {};
-  libEl('libMatching').textContent = `${LIB_T.matching} ${Number(m.count || 0).toLocaleString('he-IL')} · ${libSize(m.size)}`;
-  libEl('libSelectAll').textContent = LIB_T.selectAllN.replace('{n}', Number(m.count || 0).toLocaleString('he-IL'));
+  libEl('libMatching').textContent = `${LIB_T.matching} ${libNum(m.count)} · ${libSize(m.size)}`;
+  libEl('libSelectAll').textContent = LIB_T.selectAllN.replace('{n}', libNum(m.count));
   libEl('libGrid').innerHTML = libUI.items.length ? libUI.items.map(libCard).join('') : `<div class="lib-empty">${esc(LIB_T.empty)}</div>`;
   libEl('libGrid').querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove(), { once: true }));
   libEl('libMore').hidden = !d.has_more;
   libRenderSelBar();
+  libRenderFolders();
+  if (typeof renderMediaGrid === 'function' && typeof mediaAssetsCache !== 'undefined') renderMediaGrid();
 }
+
+// ─── Which actions apply to an item (hidden when they don't) ─────────────────
+// The routes re-check everything: drive_download (view / download / play — our
+// folder and the connected folders), agent_actions (TikTok / YouTube — a video
+// in our own folder).
+function libOverCap(i) {
+  const max = ((libUI.data || {}).download_max_mb || 0) * 1024 * 1024;
+  return Boolean(i.download === 'file' && i.size && max && i.size > max);
+}
+function libCan(i) {
+  const tiktok = typeof TIKTOK_CONNECTED !== 'undefined' && TIKTOK_CONNECTED;
+  return {
+    view: Boolean(i.previewable && i.kind === 'image' && !libOverCap(i)),
+    play: Boolean(i.kind === 'video' && i.playable),
+    download: Boolean(i.kind !== 'video' && (i.download === 'file' || i.download === 'export') && !libOverCap(i)),
+    drive: Boolean(i.web_view_link),
+    tiktok: Boolean(i.sendable && tiktok),
+    youtube: Boolean(i.sendable),
+  };
+}
+function libViewable() { return libUI.items.filter(i => libCan(i).view); }
 
 function libCard(i) {
   const uses = (i.used_in || []).map(r => `${r.kind === 'proposal' ? LIB_T.proposal : LIB_T.post}: ${r.title || '—'} (${r.kind === 'proposal' ? '' : (LIB_T['st_' + r.status] || r.status)})`);
   const useLine = i.usage === 'unused' ? LIB_T.use_unused : (i.usage === 'rejected' ? LIB_T.use_rejected + ' · ' : LIB_T.use_used + ' · ') + uses.join(' · ');
-  const checked = libUI.allMatching || libUI.selected.has(i.id) ? ' checked' : '';
-  return `<div class="lib-card${checked ? ' sel' : ''}">
-    <label class="lib-check"><input type="checkbox" data-lib-sel="${esc(i.id)}" data-size="${Number(i.size) || 0}" aria-label="${esc(i.name)}"${checked}${libUI.allMatching ? ' disabled' : ''}></label>
+  const on = libIsSel(i.id);
+  const can = libCan(i);
+  const t = (typeof uallakI18n !== 'undefined') ? uallakI18n.t : (k => k);
+  const id = esc(i.id);
+  const badges = [];
+  if (libUI.since && i.created && i.created > libUI.since) badges.push(`<span class="ml-badge new">${esc(t('ml_new'))}</span>`);
+  (i.sent || []).forEach(s => badges.push(`<span class="ml-badge sent">✓ ${esc(t('ml_sent_' + s))}</span>`));
+  const acts = [
+    can.view ? `<button type="button" class="drive-act" data-lib-act="view" data-id="${id}">${esc(LIB_T.actView)}</button>` : '',
+    can.play ? `<button type="button" class="drive-act" data-lib-act="play" data-id="${id}">${esc(LIB_T.actPlay)}</button>` : '',
+    can.download ? `<button type="button" class="drive-act" data-lib-act="dl" data-id="${id}">${esc(i.download === 'export' ? LIB_T.actDownloadPdf : LIB_T.actDownload)}</button>` : '',
+    can.drive ? `<a class="drive-act" href="${esc(i.web_view_link)}" target="_blank" rel="noopener">${esc(LIB_T.actDrive)}</a>` : '',
+    can.tiktok ? `<button type="button" class="drive-act tiktok" data-lib-act="tiktok" data-id="${id}">${esc(LIB_T.actTiktok)}</button>` : '',
+    can.youtube ? `<button type="button" class="drive-act" data-lib-act="youtube" data-id="${id}">${esc(LIB_T.actYoutube)}</button>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="lib-card${on ? ' sel' : ''}" data-id="${id}" data-kind="${esc(i.kind)}">
+    <label class="lib-check"><input type="checkbox" data-lib-sel="${id}" data-size="${Number(i.size) || 0}" aria-label="${esc(i.name)}"${on ? ' checked' : ''}></label>
     <div class="lib-thumb"><span class="lib-ico">${i.kind === 'video' ? '🎬' : i.kind === 'image' ? '🖼' : '📄'}</span>
-      <img loading="lazy" alt="" src="/api/client/media-inventory/thumb/${encodeURIComponent(i.id)}"></div>
-    <div class="lib-name" dir="auto">${esc(i.name)}</div>
+      <img loading="lazy" alt="" src="/api/client/media-inventory/thumb/${encodeURIComponent(i.id)}">${i.kind === 'video' ? '<span class="drive-play">▶</span>' : ''}</div>
+    <div class="lib-name" dir="auto"><bdi dir="auto">${esc(i.name)}</bdi></div>
+    ${badges.length ? `<div class="ml-badges">${badges.join('')}</div>` : ''}
     <div class="lib-meta">${esc(LIB_T['src_' + i.source] || i.source)} · ${esc((i.format || '').toUpperCase())} · ${esc(i.size ? libSize(i.size) : LIB_T.noSize)}</div>
     <div class="lib-meta" dir="auto">${esc(i.origin === 'media' ? LIB_T.ourFolder : LIB_T.connFolder)} · ${esc(i.folder || LIB_T.root)} · ${esc(libDate(i.created))}</div>
     <div class="lib-use use-${esc(i.usage)}" dir="auto">${esc(useLine)}</div>
-    <div class="lib-acts"><button type="button" class="conn-btn secondary" data-lib-one="index" data-id="${esc(i.id)}">${esc(LIB_T.oneIndex)}</button>
-      <button type="button" class="conn-btn secondary lib-danger" data-lib-one="file" data-id="${esc(i.id)}">${esc(LIB_T.oneFile)}</button></div>
+    ${acts ? `<div class="lib-acts">${acts}</div>` : ''}
+    <div class="lib-acts"><button type="button" class="conn-btn secondary" data-lib-one="index" data-id="${id}">${esc(LIB_T.oneIndex)}</button>
+      <button type="button" class="conn-btn secondary lib-danger" data-lib-one="file" data-id="${id}">${esc(LIB_T.oneFile)}</button></div>
   </div>`;
 }
 
-function libRenderSelBar() {
+// ─── Selection ───────────────────────────────────────────────────────────────
+// Explicit ids, or "everything matching the filter" minus the items unchecked
+// after it (excluded). Every item stays toggleable; the bar updates live.
+function libItem(id) { return libUI.items.find(i => i.id === id) || null; }
+function libIsSel(id) { return libUI.allMatching ? !libUI.excluded.has(id) : libUI.selected.has(id); }
+function libSetSel(id, on) {
+  const item = libItem(id) || { id, size: 0 };
+  if (libUI.allMatching) { if (on) libUI.excluded.delete(id); else libUI.excluded.set(id, item); }
+  else if (on) libUI.selected.set(id, item); else libUI.selected.delete(id);
+}
+function libCount() {
   const m = (libUI.data || {}).matching || {};
-  const n = libUI.allMatching ? Number(m.count || 0) : libUI.selected.size;
-  const size = libUI.allMatching ? Number(m.size || 0) : Array.from(libUI.selected.values()).reduce((a, b) => a + (Number(b) || 0), 0);
+  if (!libUI.allMatching) return { n: libUI.selected.size, size: Array.from(libUI.selected.values()).reduce((a, i) => a + (Number(i.size) || 0), 0) };
+  const ex = Array.from(libUI.excluded.values()).reduce((a, i) => a + (Number(i.size) || 0), 0);
+  return { n: Math.max(0, Number(m.count || 0) - libUI.excluded.size), size: Math.max(0, Number(m.size || 0) - ex) };
+}
+function libSelection() {
+  return libUI.allMatching ? { filter: libUI.filter, exclude: Array.from(libUI.excluded.keys()) }
+                           : { ids: Array.from(libUI.selected.keys()) };
+}
+// The loaded items that are selected (download / send work on what is on screen)
+function libSelectedItems() {
+  return libUI.allMatching ? libUI.items.filter(i => !libUI.excluded.has(i.id)) : Array.from(libUI.selected.values());
+}
+function libClearSelection(render) {
+  libUI.allMatching = false; libUI.selected.clear(); libUI.excluded.clear(); libUI.anchor = null;
+  if (render !== false) libPaintSelection();
+}
+// Repaint the checkboxes + the bar without rebuilding the grid
+function libPaintSelection() {
+  const grid = libEl('libGrid');
+  libUI.items.forEach(i => {
+    const card = grid.querySelector ? grid.querySelector(`.lib-card[data-id="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(i.id) : i.id}"]`) : null;
+    if (!card) return;
+    const on = libIsSel(i.id);
+    card.classList.toggle('sel', on);
+    const box = card.querySelector('[data-lib-sel]');
+    if (box) box.checked = on;
+  });
+  if (libUI.allMatching && libCount().n === 0) { libUI.allMatching = false; libUI.excluded.clear(); }
+  libRenderSelBar();
+}
+function libToggle(id, on, shift) {
+  const ids = libUI.items.map(i => i.id);
+  if (shift && libUI.anchor && ids.includes(libUI.anchor) && ids.includes(id)) {
+    const [a, b] = [ids.indexOf(libUI.anchor), ids.indexOf(id)].sort((x, y) => x - y);
+    ids.slice(a, b + 1).forEach(x => libSetSel(x, on));
+  } else {
+    libSetSel(id, on);
+  }
+  libUI.anchor = id;
+  libPaintSelection();
+}
+function libSelectAll() { libUI.selected.clear(); libUI.excluded.clear(); libUI.allMatching = true; libPaintSelection(); }
+
+function libRenderSelBar() {
+  const { n, size } = libCount();
   const bar = libEl('libSelBar');
   bar.hidden = !n;
   if (!n) { bar.innerHTML = ''; return; }
-  bar.innerHTML = `<span class="lib-selcount">${libUI.allMatching ? esc(LIB_T.allChosen.replace('{n}', n.toLocaleString('he-IL'))) : esc(LIB_T.selected) + ': <b>' + n.toLocaleString('he-IL') + '</b>'} · <b>${esc(libSize(size))}</b></span>
-    <button type="button" class="conn-btn secondary" data-lib-clear="1">${esc(LIB_T.clearSel)}</button>
+  const files = libSelectedItems();
+  const tiktok = typeof TIKTOK_CONNECTED !== 'undefined' && TIKTOK_CONNECTED;
+  const sendable = files.filter(i => i.sendable).length;
+  const downloadable = files.filter(i => libCan(i).download).length;
+  bar.innerHTML = `<span class="lib-selcount">${libUI.allMatching ? esc(LIB_T.allChosen.replace('{n}', libNum(n))) : esc(LIB_T.selected) + ': <b>' + libNum(n) + '</b>'} · <b>${esc(libSize(size))}</b></span>
+    ${downloadable ? `<button type="button" class="conn-btn secondary" data-lib-bulk-act="dl">${esc(LIB_T.bulkDownload.replace('{n}', downloadable))}</button>` : ''}
+    ${sendable && tiktok ? `<button type="button" class="conn-btn secondary" data-lib-bulk-act="tiktok">${esc(LIB_T.bulkTiktok.replace('{n}', sendable))}</button>` : ''}
+    ${sendable === 1 ? `<button type="button" class="conn-btn secondary" data-lib-bulk-act="youtube">${esc(LIB_T.actYoutube)}</button>` : ''}
     <button type="button" class="conn-btn secondary" data-lib-bulk="index">${esc(LIB_T.btnIndex)}</button>
-    <button type="button" class="conn-btn lib-danger" data-lib-bulk="file">${esc(LIB_T.btnFile)}</button>`;
+    <button type="button" class="conn-btn lib-danger" data-lib-bulk="file">${esc(LIB_T.btnFile)}</button>
+    <button type="button" class="conn-btn secondary" data-lib-clear="1">${esc(LIB_T.clearSel)}</button>`;
+}
+
+// ─── Drag selection (mouse only — never on touch, where it would fight scrolling)
+// Press on empty space in the grid and drag: every card the rectangle touches
+// is selected on release; Ctrl / Cmd adds to the selection instead of
+// replacing it. Never starts on a checkbox, button, link or image. Near the
+// top / bottom edge of the window it scrolls so the drag can go on.
+const LIB_DRAG_MIN = 5;          // px before a press becomes a drag
+const LIB_EDGE = 48;             // px from the window edge that scrolls
+const libDrag = { on: false, active: false, x0: 0, y0: 0, cx: 0, cy: 0, add: false, box: null, timer: null, hits: [] };
+
+function libTouchOnly() {
+  try { return window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (e) { return false; }
+}
+function libDragStart(ev) {
+  if (ev.button !== 0 || libTouchOnly()) return;
+  if (ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) return;
+  const t = ev.target;
+  if (!t || !t.closest || !t.closest('#libGrid')) return;
+  if (t.closest('input, button, a, img, label, select, textarea, video')) return;
+  Object.assign(libDrag, { on: true, active: false, x0: ev.clientX + window.scrollX, y0: ev.clientY + window.scrollY,
+                           cx: ev.clientX, cy: ev.clientY, add: Boolean(ev.ctrlKey || ev.metaKey), hits: [] });
+}
+function libDragRect() {
+  const x1 = libDrag.cx + window.scrollX, y1 = libDrag.cy + window.scrollY;
+  return { left: Math.min(libDrag.x0, x1), top: Math.min(libDrag.y0, y1),
+           right: Math.max(libDrag.x0, x1), bottom: Math.max(libDrag.y0, y1) };
+}
+// Cards the rectangle (document coordinates) touches
+function libHits(rect) {
+  const out = [];
+  libEl('libGrid').querySelectorAll('.lib-card').forEach(card => {
+    const r = card.getBoundingClientRect();
+    const c = { left: r.left + window.scrollX, top: r.top + window.scrollY, right: r.right + window.scrollX, bottom: r.bottom + window.scrollY };
+    if (c.left <= rect.right && c.right >= rect.left && c.top <= rect.bottom && c.bottom >= rect.top) out.push(card);
+  });
+  return out;
+}
+function libDragPaint() {
+  const rect = libDragRect();
+  if (!libDrag.box) {
+    libDrag.box = document.createElement('div');
+    libDrag.box.className = 'lib-marquee';
+    document.body.appendChild(libDrag.box);
+  }
+  Object.assign(libDrag.box.style, { left: rect.left + 'px', top: rect.top + 'px',
+                                     width: (rect.right - rect.left) + 'px', height: (rect.bottom - rect.top) + 'px' });
+  const hits = libHits(rect);
+  libEl('libGrid').querySelectorAll('.lib-card').forEach(card => card.classList.toggle('marq', hits.includes(card)));
+  libDrag.hits = hits.map(card => card.getAttribute('data-id'));
+}
+function libDragMove(ev) {
+  if (!libDrag.on) return;
+  libDrag.cx = ev.clientX; libDrag.cy = ev.clientY;
+  if (!libDrag.active) {
+    const dx = ev.clientX + window.scrollX - libDrag.x0, dy = ev.clientY + window.scrollY - libDrag.y0;
+    if (Math.hypot(dx, dy) < LIB_DRAG_MIN) return;
+    libDrag.active = true;
+    libEl('libGrid').classList.add('dragging');
+    libDrag.timer = setInterval(libDragScroll, 30);
+  }
+  if (ev.preventDefault) ev.preventDefault();    // no text selection while dragging
+  libDragPaint();
+}
+function libDragScroll() {
+  if (!libDrag.active) return;
+  const h = window.innerHeight;
+  const step = libDrag.cy < LIB_EDGE ? -Math.ceil((LIB_EDGE - libDrag.cy) / 3)
+             : libDrag.cy > h - LIB_EDGE ? Math.ceil((libDrag.cy - (h - LIB_EDGE)) / 3) : 0;
+  if (!step) return;
+  window.scrollBy(0, step);
+  libDragPaint();
+}
+function libDragEnd(ev) {
+  if (!libDrag.on) return;
+  const was = libDrag.active;
+  if (was) libDragPaint();
+  clearInterval(libDrag.timer);
+  if (libDrag.box) { libDrag.box.remove(); libDrag.box = null; }
+  libEl('libGrid').classList.remove('dragging');
+  libEl('libGrid').querySelectorAll('.lib-card').forEach(card => card.classList.remove('marq'));
+  const add = libDrag.add || Boolean(ev && (ev.ctrlKey || ev.metaKey));
+  const hits = libDrag.hits.slice();
+  Object.assign(libDrag, { on: false, active: false, timer: null, hits: [] });
+  if (!was) return;
+
+  if (!add) libClearSelection(false);
+  hits.forEach(id => libSetSel(id, true));
+  if (hits.length) libUI.anchor = hits[hits.length - 1];
+  libPaintSelection();
+}
+document.addEventListener('mousedown', libDragStart);
+document.addEventListener('mousemove', libDragMove);
+document.addEventListener('mouseup', libDragEnd);
+
+// ─── Actions ─────────────────────────────────────────────────────────────────
+function libViewerOpts() { return mediaViewerOpts('libResult'); }
+function libAct(kind, id, btn) {
+  const item = libItem(id);
+  if (!item) return;
+  const opts = libViewerOpts();
+  if (kind === 'view') { const list = libViewable(); uallakMediaViewer.open(list, Math.max(0, list.indexOf(item)), opts); }
+  else if (kind === 'play') playVideo(item);
+  else if (kind === 'dl') uallakMediaViewer.download(item, opts, '', opts.notify);
+  else if (kind === 'tiktok') sendVideoToTiktok(item.id, btn);
+  else if (kind === 'youtube') mlSendFiles('youtube', [item], btn);
+}
+function libBulkAct(kind, btn) {
+  const files = libSelectedItems();
+  if (kind === 'dl') mlDownloadFiles(files.filter(i => libCan(i).download));
+  else mlSendFiles(kind, files.filter(i => i.sendable), btn);
 }
 
 function libResult(html) { libEl('libResult').innerHTML = html || ''; }
@@ -8720,13 +8949,13 @@ async function libAsk(mode, selection) {
   const box = libEl('libPreview');
   box.hidden = false;
   box.innerHTML = `<div class="lib-prev-mode">${esc(mode === 'file' ? LIB_T.explainFile : LIB_T.explainIndex)}</div>
-    <div class="lib-prev-line"><b>${Number(p.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(p.size))}</b></div>
+    <div class="lib-prev-line"><b>${libNum(p.count)}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(p.size))}</b></div>
     <div class="lib-prev-line">${esc(LIB_T.folders)} ${(p.folders || []).map(f => esc(libFolderLabel(f)) + ' (' + Number(f.count) + ', ' + esc(libSize(f.size)) + ')').join(' · ')}</div>
     ${(p.affected_posts || []).length ? `<div class="lib-prev-warn">${esc(LIB_T.affected.replace('{n}', p.affected_posts.length))}
       <ul>${p.affected_posts.map(a => `<li dir="auto">${esc(a.title || '—')} — ${esc(LIB_T['st_' + a.status] || a.status)}${a.planned_date ? ' · ' + esc(a.planned_date) : ''}</li>`).join('')}</ul></div>` : ''}
     <div class="lib-prev-acts"><button type="button" class="conn-btn${mode === 'file' ? ' lib-danger' : ''}" data-lib-run="1">${esc(mode === 'file' ? LIB_T.runFile : LIB_T.runIndex)}</button>
       <button type="button" class="conn-btn secondary" data-lib-cancel="1">${esc(LIB_T.cancel)}</button></div>`;
-  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function libRun(btn) {
@@ -8737,7 +8966,6 @@ async function libRun(btn) {
   if (!r || !r.success) { btn.disabled = false; libResult(esc((r && r.text) || LIB_T.loadFail)); return; }
   libResult(libResultHtml(job.mode, r.data || {}));
   invLoad(true);
-  if (typeof loadLibrary === 'function') loadLibrary({ refresh: true, silent: true });   // the Drive list below
 }
 
 // The result, inline: how many went, then every file that failed with its plain reason
@@ -8771,33 +8999,56 @@ function libPreset(kind) {
   invLoad(true);
 }
 
+// ─── The folder list: every folder the system reaches, the system's own first
+function libRenderFolders() {
+  const box = libEl('mediaFolderRows');
+  if (!box) return;
+  const rows = ((libUI.data || {}).folder_list || []);
+  const sys = rows.find(r => r.system) || { indexed: 0, images: 0, videos: 0 };
+  const t = (typeof uallakI18n !== 'undefined') ? uallakI18n.t : (k => k);
+  const sysReach = Boolean(mediaFolderInfo && mediaFolderInfo.link);
+  const sysReason = mediaFolderInfo && !mediaFolderInfo.link
+    ? t(mediaFolderInfo.status === 'not_configured' ? 'media_drive_not_ready' : 'media_drive_trouble') : '';
+  const row = (r) => `<div class="lib-frow${r.reachable ? '' : ' bad'}" data-folder="${esc(r.id)}">
+      <div class="lib-fname"><bdi dir="auto">${esc(r.name)}</bdi> <span class="lib-frole">${esc(r.role)}</span></div>
+      <span class="lib-fstate ${r.reachable ? 'ok' : 'bad'}">${esc(r.reachable ? LIB_T.fConnected : LIB_T.fUnreachable)}</span>
+      <span class="lib-fcount">${esc(LIB_T.fCounts.replace('{n}', libNum(r.indexed)).replace('{img}', libNum(r.images)).replace('{vid}', libNum(r.videos)))}</span>
+      ${r.url ? `<a class="media-chip" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(LIB_T.fOpen)}</a>` : ''}
+      ${r.reason ? `<div class="lib-freason" dir="auto">${esc(r.reason)}</div>` : ''}
+    </div>`;
+  const all = [{ id: 'system', name: LIB_T.fSystemName, role: LIB_T.fSystemRole, reachable: mediaFolderInfo ? sysReach : true,
+                 reason: sysReason, url: sysReach ? mediaFolderInfo.link : '', indexed: sys.indexed, images: sys.images, videos: sys.videos }]
+    .concat(rows.filter(r => !r.system).map(r => ({ ...r, role: (r.role_text || r.role) + (r.excluded ? ' · ' + LIB_T.fExcluded : '') })));
+  box.innerHTML = all.map(row).join('');
+}
+
 document.addEventListener('change', (ev) => {
   const t = ev.target;
   if (!t.closest || !t.closest('#mediaLib')) return;
-  if (t.matches('[data-lib-sel]')) {
-    t.checked ? libUI.selected.set(t.getAttribute('data-lib-sel'), Number(t.getAttribute('data-size')) || 0)
-              : libUI.selected.delete(t.getAttribute('data-lib-sel'));
-    t.closest('.lib-card').classList.toggle('sel', t.checked);
-    libRenderSelBar();
-  } else if (t.id === 'libDays') {
+  if (t.matches('[data-lib-sel]')) return;            // handled on click (it knows Shift)
+  if (t.id === 'libDays') {
     t.dataset.touched = '1';
   } else if (t.matches('.lib-filter')) {
     libReadFilter(); libUI.filter.older_than_days = ''; invLoad(true);
   }
 });
 document.addEventListener('click', (ev) => {
+  const box = ev.target.closest && ev.target.closest('#mediaLib [data-lib-sel]');
+  if (box) { libToggle(box.getAttribute('data-lib-sel'), box.checked, Boolean(ev.shiftKey)); return; }
   const t = ev.target.closest && ev.target.closest('#mediaLib button');
   if (!t) return;
-  const sel = () => libUI.allMatching ? { filter: libUI.filter } : { ids: Array.from(libUI.selected.keys()) };
   if (t.hasAttribute('data-lib-one')) libAsk(t.getAttribute('data-lib-one'), { ids: [t.getAttribute('data-id')] });
-  else if (t.hasAttribute('data-lib-bulk')) libAsk(t.getAttribute('data-lib-bulk'), sel());
+  else if (t.hasAttribute('data-lib-act')) libAct(t.getAttribute('data-lib-act'), t.getAttribute('data-id'), t);
+  else if (t.hasAttribute('data-lib-bulk')) libAsk(t.getAttribute('data-lib-bulk'), libSelection());
+  else if (t.hasAttribute('data-lib-bulk-act')) libBulkAct(t.getAttribute('data-lib-bulk-act'), t);
   else if (t.hasAttribute('data-lib-run')) libRun(t);
   else if (t.hasAttribute('data-lib-cancel')) libHidePreview();
-  else if (t.hasAttribute('data-lib-all')) { libUI.allMatching = true; invRender(); }
-  else if (t.hasAttribute('data-lib-clear')) { libUI.allMatching = false; libUI.selected.clear(); invRender(); }
+  else if (t.hasAttribute('data-lib-all')) libSelectAll();
+  else if (t.hasAttribute('data-lib-clear')) libClearSelection();
   else if (t.hasAttribute('data-lib-preset')) libPreset(t.getAttribute('data-lib-preset'));
-  else if (t.id === 'libMore') { libUI.offset = libUI.items.length; invLoad(false); }
+  else if (t.id === 'libMore') invLoad({ more: true });
   else if (t.id === 'libSearchBtn') { libReadFilter(); invLoad(true); }
+  else if (t.id === 'libRefresh') invLoad({ refresh: true, silent: true });
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && ev.target && ev.target.id === 'libQ') { libReadFilter(); invLoad(true); }
@@ -10439,35 +10690,14 @@ async function loadMediaAssets() {
     mediaAssetsCache = body.data.assets || [];
     renderMediaFilters(body.data.counts || {});
     renderMediaGrid();
-    if (driveMirror.data) renderDriveMirror();   // re-label "created by the system" items
 
     const badge = document.getElementById('navMediaCount');
     badge.textContent = mediaAssetsCache.length;
     badge.style.display = mediaAssetsCache.length ? '' : 'none';
 
-    const folderLink = document.getElementById('mediaFolderLink');
-    const folderNote = document.getElementById('mediaFolderNote');
-    if (body.data.folder_link) {
-      folderLink.href = body.data.folder_link;
-      folderLink.removeAttribute('disabled');
-      folderLink.removeAttribute('aria-disabled');
-      folderLink.style.pointerEvents = '';
-      folderLink.style.opacity = '';
-      folderNote.style.display = 'none';
-    } else {
-      // No usable folder. `disabled` alone does nothing on an <a> (it still
-      // opened '#' in a new tab), so block it for real - and SAY why, instead
-      // of a silent grey button. The server has already alerted the team with
-      // the concrete fix (media_agent.media_folder_status).
-      folderLink.href = '#';
-      folderLink.setAttribute('disabled', 'disabled');
-      folderLink.setAttribute('aria-disabled', 'true');
-      folderLink.style.pointerEvents = 'none';
-      folderLink.style.opacity = '0.45';
-      folderNote.textContent = t(body.data.folder_status === 'not_configured'
-        ? 'media_drive_not_ready' : 'media_drive_trouble');
-      folderNote.style.display = 'block';
-    }
+    // The system folder's row in the folder list (no link = it says why)
+    mediaFolderInfo = { link: body.data.folder_link || '', status: body.data.folder_status || '' };
+    libRenderFolders();
   } catch (e) {
     console.error('media assets load failed', e);
     grid.innerHTML = `<div class="empty-row">${esc(t('media_empty'))}</div>`;
@@ -10492,79 +10722,32 @@ function filterMedia(kind) {
   renderMediaGrid();
 }
 
-// ─── Media library: the client's WHOLE Drive tree, searchable ───────────────
-// Server: GET /api/client/media-library (core/media_library.py — metadata only;
-// the name matching is core/media_search, the SAME matcher the agents'
-// find_media_file uses, so the search box and the chat find the same files).
-// Opening the tab: stamp the visit (POST …/seen → the previous visit decides
-// the "New" badges), show the cached list, then check Drive silently and
-// re-render only if something changed. "Refresh from Drive" stays as the
-// backup. This only touches #driveMirror — never the chat windows.
-const driveMirror = { data: null, files: [], seenIds: new Set(), selected: new Map(), q: '', kind: '',
-                      folder: '*', sort: 'newest', since: '', seq: 0, opened: false, loading: false };
+// ─── The Media tab's one grid is the media library (#mediaLib, libUI above:
+// core/media_inventory). Here: the visit stamp ("new" badges), add-by-link,
+// the viewer options, the built-in player, and send / download for the grid.
 const ML_TIKTOK_MAX = 10;     // agent_actions.TIKTOK_BATCH_MAX
-const ML_KIND_ICONS = { video: '🎬', image: '🖼', document: '📄', shortcut: '🔗' };
 
-function mlNote(msg) { const el = document.getElementById('driveMirrorNotice'); if (el) el.textContent = msg || ''; }
+function mlNote(msg) { const el = document.getElementById('libResult'); if (el) el.textContent = msg || ''; }
 
-async function fetchLibrary(refresh, offset) {
-  const qs = new URLSearchParams({ q: driveMirror.q, kind: driveMirror.kind, folder: driveMirror.folder,
-    sort: driveMirror.sort, offset: String(offset || 0), limit: '60', refresh: refresh ? 'true' : 'false',
-    since: driveMirror.since || '' });
-  const res = await fetch('/api/client/media-library?' + qs, { credentials: 'same-origin' });
-  if (res.status === 401) { window.location.href = '/login/'; return null; }
-  const body = await res.json();
-  return body.success ? body.data : { exists: true, error: 'other' };
-}
-
-// What the list shows, so a silent check re-renders only on a real change
-function mlSignature(d) {
-  if (!d || d.error) return '';
-  return d.total + '|' + (d.items || []).map(i => i.id + ':' + i.modified_time + ':' + (i.sent || []).join('+')).join(',');
-}
-
-// opts: { refresh, append, silent }
-async function loadLibrary(opts) {
-  opts = opts || {};
-  const t = uallakI18n.t;
-  const seq = ++driveMirror.seq;          // a newer search replaces an older answer
-  const grid = document.getElementById('driveMirrorGrid');
-  if (!opts.append && !opts.silent) loadBranding();   // the branding box above the list (its own small read)
-  if (!opts.append && !opts.silent) loadContentPlan();   // the weekly plan box (its own small read)
-  if (!opts.silent && !opts.append) {
-    mlNote(opts.refresh ? t('ml_checking') : '');
-    if (!driveMirror.files.length) {
-      grid.className = '';
-      grid.innerHTML = `<div class="empty-row">${esc(t('loading'))}</div>`;
-    }
+// Opening the tab: stamp the visit once (POST …/seen → the previous visit
+// decides the "New" badges), show the list, then check Drive silently
+// (re-rendered only on a real change, the selection kept).
+async function openMediaLibrary() {
+  loadBranding();      // the branding box above the grid (its own small read)
+  loadContentPlan();   // the weekly plan box (its own small read)
+  libReadFilter();
+  if (!libUI.opened) {
+    libUI.opened = true;
+    try {
+      // Refused in the admin read-only view (not a READ endpoint): staff
+      // looking never moves the client's "new since last visit"
+      const r = await fetch('/api/client/media-library/seen', { method: 'POST', credentials: 'same-origin' });
+      if (r.ok) libUI.since = ((await r.json()).data || {}).previous || '';
+    } catch (e) { /* no badges is fine */ }
   }
-  driveMirror.loading = true;
-  let data;
-  try {
-    data = await fetchLibrary(opts.refresh, opts.append ? driveMirror.files.length : 0);
-  } catch (e) {
-    console.error('media library load failed', e);
-    data = { exists: true, error: 'other' };
-  } finally {
-    if (seq === driveMirror.seq) driveMirror.loading = false;
-  }
-  if (!data || seq !== driveMirror.seq) return;
-  if (opts.silent && (data.error || mlSignature(data) === mlSignature(driveMirror.data))) return;
-  if (opts.append && !data.error) {
-    driveMirror.files.push(...(data.items || []));
-    driveMirror.data = { ...data, items: driveMirror.files };
-  } else {
-    driveMirror.data = data;
-    driveMirror.files = (data.items || []).slice();
-  }
-  driveMirror.files.forEach(f => driveMirror.seenIds.add(f.id));
-  renderDriveMirror();
-  renderMediaGrid();
-  if (opts.refresh && !opts.silent) mlNote(data.error ? '' : t('ml_updated'));
+  await invLoad(true);
+  invLoad({ refresh: true, silent: true });
 }
-
-// Older callers (TikTok connect, language change) keep working
-function loadDriveMirror(_folder, refresh) { return loadLibrary({ refresh: Boolean(refresh) }); }
 
 // ─── Add by link: a Drive file / folder link → copied into this client's
 // folder inside Drive (POST /api/client/media/add-link, core/drive_pull).
@@ -10633,7 +10816,7 @@ async function mlLinkTick() {
   if (!body) { mlLinkPoll = setTimeout(mlLinkTick, 8000); return; }
   if (!body.success) { mlLinkRefused(body.data || {}); return; }
   if (mlLinkRender((body.data || {}).job)) mlLinkPoll = setTimeout(mlLinkTick, 3000);
-  else loadLibrary({ refresh: true, silent: true });
+  else invLoad({ refresh: true, silent: true });
 }
 
 async function mlAddLink() {
@@ -10656,43 +10839,15 @@ async function mlAddLink() {
       // Already in their folder: nothing to copy — say where, and show it now
       document.getElementById('mlLinkFiles').innerHTML = '';
       mlLinkNote(esc(t('ml_link_already_in', { name: d.name || '', folder: d.folder || t('ml_link_main_folder') })));
-      loadLibrary({ refresh: true, silent: true });
+      invLoad({ refresh: true, silent: true });
       return;
     }
     if (mlLinkRender((body.data || {}).job)) mlLinkPoll = setTimeout(mlLinkTick, 3000);
-    else loadLibrary({ refresh: true, silent: true });
+    else invLoad({ refresh: true, silent: true });
   } catch (e) {
     mlLinkNote(esc(t('ml_link_trouble')));
   } finally { btn.disabled = false; }
 }
-
-async function openMediaLibrary() {
-  if (!driveMirror.opened) {
-    driveMirror.opened = true;
-    mlWireToolbar();
-    try {
-      // Refused in the admin read-only view (not a READ endpoint): staff
-      // looking never moves the client's "new since last visit"
-      const r = await fetch('/api/client/media-library/seen', { method: 'POST', credentials: 'same-origin' });
-      if (r.ok) driveMirror.since = ((await r.json()).data || {}).previous || '';
-    } catch (e) { /* no badges is fine */ }
-    await loadLibrary({});
-  }
-  loadLibrary({ refresh: true, silent: true });
-}
-
-function mlWireToolbar() {
-  let timer = null;
-  const search = document.getElementById('mlSearch');
-  search.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => { driveMirror.q = search.value.trim(); loadLibrary({}); }, 250);
-  });
-  document.getElementById('mlFolder').addEventListener('change', e => { driveMirror.folder = e.target.value; loadLibrary({}); });
-  document.getElementById('mlSort').addEventListener('change', e => { driveMirror.sort = e.target.value; loadLibrary({}); });
-}
-
-function mlFilterKind(kind) { driveMirror.kind = kind; loadLibrary({}); }
 
 // Lightbox + download (/assets/media-viewer.js → core/drive_download.py).
 // Messages land in a status line inside the Media tab — never in a chat.
@@ -10700,18 +10855,10 @@ function mediaViewerOpts(noticeId) {
   return {
     fileUrl: id => '/api/client/media-drive/file/' + encodeURIComponent(id),
     t: (key, vars) => uallakI18n.t(key, vars),
-    maxMb: (driveMirror.data && driveMirror.data.download_max_mb) || 0,
+    maxMb: (libUI.data && libUI.data.download_max_mb) || 0,
     notify: msg => { const el = document.getElementById(noticeId); if (el) el.textContent = msg || ''; },
     onUnauthorized: () => { window.location.href = '/login/'; },
   };
-}
-
-// Google's own thumbnail URL first; if the browser can't load it (private
-// file, no Google session), fall back once to our size-capped proxy.
-function driveThumbError(img) {
-  if (img.dataset.fallback) { img.closest('.drive-thumb').classList.add('no-thumb'); img.remove(); return; }
-  img.dataset.fallback = '1';
-  img.src = '/api/client/media-drive/thumb/' + encodeURIComponent(img.dataset.fileId);
 }
 
 // ─── Built-in player (GET /api/client/media-drive/play/<id>: Range-streamed,
@@ -10755,33 +10902,13 @@ function playVideo(f) {
   wrap.querySelector('[data-close]').focus();
 }
 
-// ─── Multi-select: one approval card per batch (POST /api/client/media/send) ─
-function mlIsVideo(f) { return f.kind === 'video'; }
-
-function renderSelectionBar() {
+// ─── Send / download from the grid: one approval card per batch (POST /api/client/media/send)
+async function mlSendFiles(target, files, btn) {
   const t = uallakI18n.t;
-  const bar = document.getElementById('mlSelBar');
-  const files = [...driveMirror.selected.values()];
-  if (!files.length) { bar.hidden = true; bar.innerHTML = ''; return; }
-  const videos = files.filter(mlIsVideo).length;
-  bar.hidden = false;
-  bar.innerHTML = `<span class="ml-count">${esc(t('ml_selected', { n: files.length }))}</span>
-    ${videos && TIKTOK_CONNECTED ? `<button type="button" class="drive-act tiktok" data-ml-send="tiktok">${esc(t('tt_send'))}</button>` : ''}
-    ${videos === 1 ? `<button type="button" class="drive-act" data-ml-send="youtube">${esc(t('ml_send_youtube'))}</button>` : ''}
-    <button type="button" class="drive-act" data-ml-dl>${esc(t('ml_download'))}</button>
-    <button type="button" class="drive-act" data-ml-clear>${esc(t('ml_clear'))}</button>`;
-  bar.querySelectorAll('[data-ml-send]').forEach(b => { b.onclick = () => mlSend(b.dataset.mlSend, b); });
-  bar.querySelector('[data-ml-dl]').onclick = mlDownloadSelected;
-  bar.querySelector('[data-ml-clear]').onclick = () => { driveMirror.selected.clear(); renderDriveMirror(); };
-}
-
-async function mlSend(target, btn) {
-  const t = uallakI18n.t;
-  const files = [...driveMirror.selected.values()];
-  const videos = files.filter(mlIsVideo);
-  const skipped = files.length - videos.length;
+  const videos = (files || []).filter(f => f.sendable);
   if (target === 'youtube' && videos.length !== 1) { mlNote(t('ml_youtube_one')); return; }
   if (target === 'tiktok' && videos.length > ML_TIKTOK_MAX) { mlNote(t('ml_tiktok_max', { n: ML_TIKTOK_MAX })); return; }
+  if (!videos.length) return;
   if (btn) btn.disabled = true;
   mlNote(t('tt_send_opening'));
   try {
@@ -10798,9 +10925,7 @@ async function mlSend(target, btn) {
       if (w && w.historyLoaded) await w.historyLoaded;
       if (d.notice && wasOpen) appendMsg(w.msgsEl, d.notice, 'bot');
       appendActionCard(persona, d.card);
-      driveMirror.selected.clear();
-      renderDriveMirror();
-      mlNote(skipped ? t('ml_videos_only', { n: skipped }) : '');
+      mlNote('');
     } else {
       mlNote(d.notice || t(d.error === 'not_available' ? 'tt_not_in_plan' : 'tt_send_failed'));
     }
@@ -10811,163 +10936,21 @@ async function mlSend(target, btn) {
   }
 }
 
-async function mlDownloadSelected() {
-  const t = uallakI18n.t;
-  const files = [...driveMirror.selected.values()];
-  const videos = files.filter(f => mlIsVideo(f) || f.download === 'drive');
-  const rest = files.filter(f => !videos.includes(f) && f.download !== 'none');
-  const opts = mediaViewerOpts('driveMirrorNotice');
-  // One at a time: the server checks each file (own folder, size) itself
-  for (const f of rest) {
+async function mlDownloadFiles(files) {
+  const opts = mediaViewerOpts('libResult');
+  // One at a time: the server checks each file (its folder, size) itself
+  for (const f of files || []) {
     try { await uallakMediaViewer.download(f, opts, '', opts.notify); } catch (e) { console.error('download failed', e); }
   }
-  if (videos.length) mlNote(t('ml_dl_videos_drive', { n: videos.length }));
-}
-
-// ─── Render ──────────────────────────────────────────────────────────────────
-function renderLibraryToolbar(d) {
-  const t = uallakI18n.t;
-  const folderSel = document.getElementById('mlFolder');
-  const paths = (d.folders || []).filter(p => p);
-  const opts = [['*', t('ml_folder_all')], ['', t('ml_folder_main')], ...paths.map(p => [p, '📁 ' + p])];
-  if (driveMirror.folder !== '*' && driveMirror.folder !== '' && !paths.includes(driveMirror.folder)) driveMirror.folder = '*';
-  folderSel.innerHTML = opts.map(([v, label]) =>
-    `<option value="${esc(v)}"${v === driveMirror.folder ? ' selected' : ''}>${esc(label)}</option>`).join('');
-  document.getElementById('mlSort').value = driveMirror.sort;
-  const counts = d.counts || {};
-  const chip = (kind, label, n) => `<button type="button" class="media-chip${driveMirror.kind === kind ? ' active' : ''}"
-      aria-pressed="${driveMirror.kind === kind}" onclick="mlFilterKind('${kind}')">${label} (${Number(n || 0)})</button>`;
-  document.getElementById('driveMirrorFolders').innerHTML = chip('', esc(t('ml_kind_all')), d.all)
-    + ['video', 'image', 'document'].map(k => chip(k, ML_KIND_ICONS[k] + ' ' + esc(t('ml_kind_' + k)), counts[k])).join('');
-}
-
-function renderDriveMirror() {
-  const t = uallakI18n.t;
-  const d = driveMirror.data;
-  const grid = document.getElementById('driveMirrorGrid');
-  const more = document.getElementById('driveMirrorMore');
-  if (!d) return;
-  more.innerHTML = '';
-  if (d.exists === false) {
-    document.getElementById('driveMirrorFolders').innerHTML = '';
-    grid.className = '';
-    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_none'))}</div>`;
-    renderSelectionBar();
-    return;
-  }
-  if (d.error) {
-    grid.className = '';
-    grid.innerHTML = `<div class="empty-row">${esc(t('drive_mirror_unavailable'))}</div>`;
-    renderSelectionBar();
-    return;
-  }
-  renderLibraryToolbar(d);
-  if (!driveMirror.files.length) {
-    grid.className = '';
-    grid.innerHTML = `<div class="empty-row">${esc(t(driveMirror.q || driveMirror.kind || driveMirror.folder !== '*'
-      ? 'ml_no_match' : 'drive_mirror_empty'))}</div>`;
-    renderSelectionBar();
-    return;
-  }
-  const byFileId = {};
-  mediaAssetsCache.forEach(a => { if (a.file_id) byFileId[a.file_id] = a; });
-  grid.className = 'media-grid';
-  const maxBytes = (d.download_max_mb || 0) * 1024 * 1024;
-  // Same rules as core/drive_download (which enforces them): images and
-  // documents through us up to the cap; videos play here up to the player
-  // cap, everything bigger opens in Drive
-  const overCap = f => (f.download === 'file' && f.size && maxBytes && f.size > maxBytes);
-  const viewable = driveMirror.files.filter(f => f.previewable && f.kind === 'image' && !overCap(f));
-  grid.innerHTML = driveMirror.files.map((f, i) => {
-    const fromSystem = byFileId[f.id];
-    const label = (fromSystem && fromSystem.title) || f.name;
-    const shown = f.kind === 'shortcut' ? (f.target_kind || 'document') : f.kind;
-    // Only images and videos have a real picture; a document's Drive
-    // thumbnail is often a blank white page → a neutral icon instead
-    const pictured = f.kind !== 'shortcut' && (shown === 'image' || shown === 'video') && f.thumbnail_link;
-    const thumb = pictured
-      ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(f.thumbnail_link)}"
-             data-file-id="${esc(f.id)}" onerror="driveThumbError(this)">`
-      : '';
-    const thumbInner = `${thumb}<span class="drive-thumb-ico">${f.kind === 'shortcut' ? ML_KIND_ICONS.shortcut
-        : (ML_KIND_ICONS[shown] || MEDIA_ICONS[shown] || '📎')}</span>
-        ${shown === 'video' ? '<span class="drive-play">▶</span>' : ''}`;
-    const thumbCls = `drive-thumb${thumb ? '' : ' no-thumb'}${pictured ? '' : ' doc-thumb'}`;
-    const viewIdx = viewable.indexOf(f);
-    const thumbEl = f.playable
-      ? `<button type="button" class="${thumbCls}" data-play="${i}" aria-label="${esc(t('ml_play_aria', { name: label }))}">${thumbInner}</button>`
-      : viewIdx !== -1
-      ? `<button type="button" class="${thumbCls}" data-view="${viewIdx}" aria-label="${esc(t('mv_view') + ': ' + label)}">${thumbInner}</button>`
-      : `<a class="${thumbCls}" href="${esc(f.web_view_link || '#')}" target="_blank" rel="noopener" aria-label="${esc(t('mv_open_drive') + ': ' + label)}">${thumbInner}</a>`;
-    const isVideo = f.kind === 'video';
-    const badges = [];
-    if (f.new) badges.push(`<span class="ml-badge new">${esc(t('ml_new'))}</span>`);
-    (f.sent || []).forEach(s => badges.push(`<span class="ml-badge sent">✓ ${esc(t('ml_sent_' + s))}</span>`));
-    if (f.kind === 'shortcut') badges.push(`<span class="ml-badge">${esc(t('ml_shortcut'))}</span>`);
-    const where = (f.folder ? t('ml_in_folder', { folder: f.folder }) : t('ml_folder_main'))
-      + ' · ' + fmtDate(f.created_time || f.modified_time);
-    const tiktokAct = (isVideo && TIKTOK_CONNECTED)
-      ? `<button type="button" class="drive-act tiktok" data-tiktok="${i}">${esc(t('tt_send'))}</button>` : '';
-    const act = f.playable ? `<button type="button" class="drive-act" data-play="${i}">${esc(t('ml_play'))}</button>`
-      : isVideo ? `<div class="drive-big-note">${esc(t('ml_too_big_play'))}</div>`
-      : (f.download === 'none' || f.download === 'drive') ? ''
-      : overCap(f) ? `<div class="drive-big-note">${esc(t('dl_too_large_short'))}</div>`
-      : `<button type="button" class="drive-act" data-dl="${i}">${esc(t(f.download === 'export' ? 'mv_download_pdf' : 'mv_download'))}</button>`;
-    const selectable = f.kind !== 'shortcut';
-    const checked = driveMirror.selected.has(f.id);
-    return `<div class="media-item drive-item${checked ? ' selected' : ''}" data-kind="${esc(f.kind)}">
-      ${selectable ? `<label class="ml-check"><input type="checkbox" data-sel="${i}"${checked ? ' checked' : ''}
-          aria-label="${esc(t('ml_select_aria', { name: label }))}"></label>` : ''}
-      ${thumbEl}
-      <div class="media-item-title"><bdi dir="auto">${esc(label)}</bdi></div>
-      ${badges.length ? `<div class="ml-badges">${badges.join('')}</div>` : ''}
-      <div class="ml-where${f.duplicate ? ' dup' : ''}"${f.duplicate ? ` title="${esc(t('ml_dup_hint'))}"` : ''}><bdi dir="auto">${esc(where)}</bdi></div>
-      <div class="drive-src ${fromSystem ? 'system' : 'drive'}">${esc(t(fromSystem ? 'drive_src_system' : 'drive_src_drive'))}</div>
-      <div class="drive-actions">
-        ${f.web_view_link ? `<a class="drive-act" href="${esc(f.web_view_link)}" target="_blank" rel="noopener">${esc(t('mv_open_drive'))}</a>` : ''}
-        ${act}
-        ${tiktokAct}
-      </div>
-    </div>`;
-  }).join('');
-  grid.querySelectorAll('[data-sel]').forEach(box => {
-    box.onchange = () => {
-      const f = driveMirror.files[Number(box.dataset.sel)];
-      if (box.checked) driveMirror.selected.set(f.id, f); else driveMirror.selected.delete(f.id);
-      box.closest('.drive-item').classList.toggle('selected', box.checked);
-      renderSelectionBar();
-    };
-  });
-  grid.querySelectorAll('[data-play]').forEach(b => { b.onclick = () => playVideo(driveMirror.files[Number(b.dataset.play)]); });
-  grid.querySelectorAll('[data-tiktok]').forEach(b => {
-    b.onclick = () => sendVideoToTiktok(driveMirror.files[Number(b.dataset.tiktok)].id, b);
-  });
-  grid.querySelectorAll('[data-view]').forEach(b => {
-    b.onclick = () => uallakMediaViewer.open(viewable, Number(b.dataset.view), mediaViewerOpts('driveMirrorNotice'));
-  });
-  grid.querySelectorAll('[data-dl]').forEach(b => {
-    b.onclick = () => {
-      const opts = mediaViewerOpts('driveMirrorNotice');
-      uallakMediaViewer.download(driveMirror.files[Number(b.dataset.dl)], opts, '', opts.notify);
-    };
-  });
-  const lines = [];
-  if (d.new_count) lines.push(`<div class="ml-hint">${esc(t('ml_new_count', { n: d.new_count }))}</div>`);
-  if (driveMirror.files.length < (d.total || 0)) {
-    lines.push(`<div class="ml-hint">${esc(t('ml_shown', { shown: driveMirror.files.length, total: d.total }))}</div>`);
-    lines.push(`<button type="button" class="media-chip" onclick="loadLibrary({ append: true })">${esc(t('drive_mirror_more'))}</button>`);
-  }
-  if (d.truncated) lines.push(`<div class="empty-row">${esc(t('drive_mirror_capped'))}</div>`);
-  more.innerHTML = lines.join('');
-  renderSelectionBar();
 }
 
 function renderMediaGrid() {
   const t = uallakI18n.t;
   const grid = document.getElementById('mediaGrid');
   const section = document.getElementById('mediaIndexSection');
-  // Items already shown in the Drive list above aren't listed twice
-  const visible = mediaAssetsCache.filter(a => !(a.file_id && driveMirror.seenIds.has(a.file_id)));
+  // A Drive file is in the one grid above (or was removed from the library):
+  // never listed a second time here
+  const visible = mediaAssetsCache.filter(a => !a.file_id);
   const items = mediaKindFilter
     ? visible.filter(a => a.kind === mediaKindFilter)
     : visible;
@@ -10976,7 +10959,7 @@ function renderMediaGrid() {
     // "Nothing created yet" only when there is really nothing: never under a
     // list that already shows the files (or with the system's own items
     // all in that list)
-    const listHasFiles = (driveMirror.data && !driveMirror.data.error && (driveMirror.data.all || driveMirror.files.length));
+    const listHasFiles = Boolean(libUI.data && ((libUI.data.summary || {}).count || libUI.items.length));
     const hide = Boolean(listHasFiles || (mediaAssetsCache.length && !mediaKindFilter));
     if (section) section.hidden = hide;
     if (hide && mediaKindFilter) { mediaKindFilter = ''; renderMediaFilters({}); }
@@ -12196,7 +12179,7 @@ async function loadSupport() {
     renderExportBars();
     if (viewLoaded.performance) renderPerformance();
     if (viewLoaded.leads) { loadLeads(); loadLeadCapture(); }
-    if (viewLoaded.media) { loadMediaAssets(); renderDriveMirror(); }
+    if (viewLoaded.media) { loadMediaAssets(); if (libUI.data) invRender(); }
     if (viewLoaded.personal) loadAccount();
     if (viewLoaded.support) loadSupport();
     renderLauncher();
