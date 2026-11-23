@@ -607,10 +607,16 @@ def edit(client_id: int, item_id: str, caption=None, channels=None, planned_date
     return item
 
 
-def reject(client_id: int, item_id: str, reason: str, by: str = "client", lang: str = "he") -> dict:
+def reject(client_id: int, item_id: str, reason: str, by: str = "client", lang: str = "he",
+           asset_rejected: bool = False, asset_reason: str = "") -> dict:
     """Back to the producing agent with the reason: a line in THEIR chat, and
-    the fixed version proposed there as ONE card (it comes back here)."""
-    reason = re.sub(r"\s+", " ", str(reason or "")).strip()
+    the fixed version proposed there as ONE card (it comes back here).
+    `asset_rejected`: the owner marked the PICTURE the agent chose as the
+    problem (optional short `asset_reason`) — recorded against that real
+    asset (core/asset_feedback) so it ranks lower and the reason reaches the
+    agent's next choice. With no own text, the picture reason is the reason."""
+    asset_reason = re.sub(r"\s+", " ", str(asset_reason or "")).strip()
+    reason = re.sub(r"\s+", " ", str(reason or "")).strip() or (asset_reason if asset_rejected else "")
     if len(reason) < 2:
         raise QueueError("reason_required")
     reason = reason[:REASON_MAX]
@@ -625,6 +631,18 @@ def reject(client_id: int, item_id: str, reason: str, by: str = "client", lang: 
     item["status"], item["reject_reason"], item["rejected_at"] = "rejected", reason, _now().isoformat()
     _log(item, "rejected", by, reason=reason)
     _save(client_id, queue)
+    source = (item.get("real_asset") or {}).get("source_file_id")
+    if asset_rejected and source:
+        from core import asset_feedback
+        shows = ""
+        try:                                   # what the picture shows, from the index (for the agent)
+            from core import drive_assets
+            shows = ((drive_assets._load(client_id).get("items") or {}).get(source) or {}).get("description", "")
+        except Exception:
+            pass
+        asset_feedback.record_rejection(client_id, source, asset_reason, item_id=item["id"],
+                                        asset=shows or (item.get("real_asset") or {}).get("name", ""))
+        item["asset_rejection_recorded"] = True
     item["sent_back"] = send_back(client_id, item, lang)
     return item
 

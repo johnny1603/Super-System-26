@@ -1476,6 +1476,8 @@ body.bs-open { overflow: hidden; }
 .soc-slides { margin: 0; padding-inline-start: 0; list-style: none; display: grid; gap: 8px; }
 .soc-slide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
 .soc-prev img[data-soc-view], .soc-design-strip img[data-soc-slide] { cursor: zoom-in; }
+.soc-asset-rej { display: grid; gap: 6px; margin-top: 8px; }
+.soc-asset-rej [aria-pressed="true"] { border-color: var(--accent, #6c5ce7); background: rgba(108,92,231,.14); font-weight: 700; }
 .soc-slide-head { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
 .soc-slide-body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .soc-slide input[type=text], .soc-slide textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px;
@@ -2962,6 +2964,12 @@ const DASH_I18N = {
   soc_reject: { he:'להחזיר לתיקון', en:'Send back for a fix', fr:'Renvoyer pour correction', ar:'إعادة للتعديل', ru:'Вернуть на доработку' },
   soc_reject_reason: { he:'מה לתקן? (ההסבר עובר ל{name})', en:'What should change? (this goes to {name})', fr:'Que faut-il changer ? (transmis à {name})', ar:'ما الذي يجب تغييره؟ (يصل إلى {name})', ru:'Что изменить? (это получит {name})' },
   soc_reject_send: { he:'להחזיר עם ההסבר', en:'Send back with this reason', fr:'Renvoyer avec cette raison', ar:'إعادة مع هذا السبب', ru:'Вернуть с этим пояснением' },
+  soc_asset_q: { he:'הבעיה היא בתמונה שנבחרה? (לא חובה)', en:'Is the chosen picture the problem? (optional)', fr:'Le problème vient de l’image choisie ? (facultatif)', ar:'هل المشكلة في الصورة المختارة؟ (اختياري)', ru:'Дело в выбранной картинке? (необязательно)' },
+  soc_asset_r1: { he:'התמונה לא מתאימה לנושא', en:'The picture doesn’t fit the topic', fr:'L’image ne correspond pas au sujet', ar:'الصورة لا تناسب الموضوع', ru:'Картинка не подходит к теме' },
+  soc_asset_r2: { he:'כבר השתמשנו בתמונה הזו', en:'We already used this picture', fr:'Nous avons déjà utilisé cette image', ar:'استخدمنا هذه الصورة من قبل', ru:'Эту картинку уже использовали' },
+  soc_asset_r3: { he:'איכות התמונה נמוכה', en:'The picture quality is low', fr:'La qualité de l’image est faible', ar:'جودة الصورة منخفضة', ru:'Низкое качество картинки' },
+  soc_asset_r4: { he:'לא מייצג את העסק', en:'It doesn’t represent the business', fr:'Ne représente pas l’entreprise', ar:'لا تمثل النشاط التجاري', ru:'Не отражает бизнес' },
+  soc_asset_other: { he:'או במשפט קצר: מה לא טוב בתמונה', en:'Or in a short line: what’s wrong with the picture', fr:'Ou en une phrase : ce qui ne va pas avec l’image', ar:'أو بجملة قصيرة: ما المشكلة في الصورة', ru:'Или коротко: что не так с картинкой' },
   soc_reason_needed: { he:'כתבו במשפט מה לתקן.', en:'Write in a sentence what should change.', fr:'Écrivez en une phrase ce qu’il faut changer.', ar:'اكتبوا بجملة ما الذي يجب تغييره.', ru:'Напишите одной фразой, что изменить.' },
   soc_rejected_done: { he:'הוחזר ל{name} עם ההסבר. הגרסה המתוקנת תחזור לכאן לאישור.', en:'Sent back to {name} with your reason. The fixed version comes back here for approval.', fr:'Renvoyé à {name} avec votre raison. La version corrigée reviendra ici.', ar:'أُعيد إلى {name} مع السبب. ستعود النسخة المعدّلة إلى هنا للموافقة.', ru:'Возвращено {name} с пояснением. Исправленная версия вернётся сюда.' },
   soc_download: { he:'הורדה', en:'Download', fr:'Télécharger', ar:'تنزيل', ru:'Скачать' },
@@ -9412,9 +9420,19 @@ function socialRow(item) {
           <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
         </div></div>`;
   } else if (social.rejecting === item.id) {
+    // A real picture the agent chose: "the picture is the problem" in one
+    // click (a ready reason) or one line — recorded against that asset
+    // (core/asset_feedback) so it ranks lower and the agent learns why
+    const assetRej = (item.real_asset || {}).source_file_id ? `<div class="soc-asset-rej" data-soc-asset-rej>
+        <div class="soc-meta"><b>${esc(t('soc_asset_q'))}</b></div>
+        <div class="soc-chans">${['soc_asset_r1', 'soc_asset_r2', 'soc_asset_r3', 'soc_asset_r4'].map(k =>
+          `<button type="button" class="media-chip" data-soc-asset-chip="${esc(item.id)}" aria-pressed="false">${esc(t(k))}</button>`).join('')}</div>
+        <input type="text" data-soc-asset-reason maxlength="160" dir="auto" placeholder="${esc(t('soc_asset_other'))}">
+      </div>` : '';
     body = `<div class="soc-reject">
         <label class="soc-meta"><b>${esc(t('soc_reject_reason', { name: socialProducer(item.producer) }))}</b></label>
         <textarea data-soc-reason maxlength="400" dir="auto"></textarea>
+        ${assetRej}
         <div class="soc-actions">
           <button type="button" class="sugg-btn reject" data-soc-reject-send="${esc(item.id)}">${esc(t('soc_reject_send'))}</button>
           <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
@@ -9617,6 +9635,13 @@ function wireSocial(list) {
   on('data-soc-copysave', (id, btn) => socialCopySave(id, btn.closest('.soc-item')));
   on('data-soc-critique-send', (id, btn) => socialCritique(id, btn.closest('.soc-item')));
   on('data-soc-reject-send', (id, btn) => socialReject(id, btn.closest('.soc-item')));
+  on('data-soc-asset-chip', (id, btn) => {
+    const box = btn.closest('[data-soc-asset-rej]');
+    const was = btn.getAttribute('aria-pressed') === 'true';
+    box.querySelectorAll('[data-soc-asset-chip]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', was ? 'false' : 'true');
+    box.querySelector('[data-soc-asset-reason]').value = was ? '' : btn.textContent.trim();
+  });
   on('data-soc-published', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/published', {}, 'soc_saved'));
   on('data-soc-copy', id => {
     const i = socialItem(id);
@@ -9759,8 +9784,12 @@ function socialReject(id, row) {
   const t = uallakI18n.t;
   const item = socialItem(id);
   const reason = ((row && row.querySelector('[data-soc-reason]').value) || '').trim();
-  if (reason.length < 2) { socialNote(t('soc_reason_needed')); return; }
-  socialPost('/api/client/social/' + encodeURIComponent(id) + '/reject', { reason }, null, () => {
+  const box = row && row.querySelector('[data-soc-asset-rej]');
+  const assetReason = box ? (box.querySelector('[data-soc-asset-reason]').value || '').trim() : '';
+  const assetRejected = Boolean(box && (assetReason || box.querySelector('[data-soc-asset-chip][aria-pressed="true"]')));
+  if (reason.length < 2 && !(assetRejected && assetReason.length >= 2)) { socialNote(t('soc_reason_needed')); return; }
+  const body = assetRejected ? { reason, asset_rejected: true, asset_reason: assetReason } : { reason };
+  socialPost('/api/client/social/' + encodeURIComponent(id) + '/reject', body, null, () => {
     socialNote(t('soc_rejected_done', { name: socialProducer(item && item.producer) }));
   });
 }

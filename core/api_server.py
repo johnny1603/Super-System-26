@@ -6843,7 +6843,9 @@ def client_social_edit(item_id: str, req: SocialEditRequest, request: Request):
     return {"success": True, "data": {"id": item["id"], "status": item["status"]}}
 
 class SocialRejectRequest(BaseModel):
-    reason: str
+    reason: str = ""
+    asset_rejected: bool = False    # the owner marked the chosen picture as the problem
+    asset_reason: str = ""          # one click or one line (core/asset_feedback)
 
 @app.post("/api/client/social/{item_id}/reject")
 def client_social_reject(item_id: str, req: SocialRejectRequest, request: Request):
@@ -6852,7 +6854,8 @@ def client_social_reject(item_id: str, req: SocialRejectRequest, request: Reques
     _social_read_only(request)
     from core import agent_actions, social_queue
     try:
-        item = social_queue.reject(client_id, item_id, req.reason, by="client", lang=agent_actions._lang(client_id))
+        item = social_queue.reject(client_id, item_id, req.reason, by="client", lang=agent_actions._lang(client_id),
+                                   asset_rejected=req.asset_rejected, asset_reason=req.asset_reason)
     except social_queue.QueueError as e:
         raise _social_error(e)
     return {"success": True, "data": {"id": item["id"], "producer": item.get("producer"),

@@ -1435,6 +1435,11 @@ def find_assets(client_id: int, roles: list = None, query: str = "", media_type:
     by_conn = {c["id"]: c for c in conns}
     roots = {c["id"]: c for c in conns if not c.get("parent_connection_id")}
     qwords = _query_words(query)
+    # Usage + the owner's rejections (core/asset_feedback): a bounded penalty
+    # on the rank — recently / often used and rejected assets come later,
+    # never excluded. No history = ranked exactly as before.
+    from core import asset_feedback
+    feedback = asset_feedback.load(client_id)
 
     def rank():
         out = []
@@ -1462,9 +1467,11 @@ def find_assets(client_id: int, roles: list = None, query: str = "", media_type:
                         "root_folder": (roots.get(item.get("root_id")) or {}).get("display_name", ""),
                         "connection_id": conn["id"], "state": item.get("state", ""), "score": score,
                         "width": item.get("width"), "height": item.get("height"),
-                        "duration_s": item.get("duration_s"), "modified": item.get("modified", "")})
+                        "duration_s": item.get("duration_s"), "modified": item.get("modified", ""),
+                        "penalty": asset_feedback.penalty(feedback, item["file_id"]),
+                        **asset_feedback.annotate(feedback, item["file_id"])})
         out.sort(key=lambda r: r["modified"], reverse=True)
-        out.sort(key=lambda r: (-r["score"], roles.index(r["role"]) if r["role"] in roles else 99,
+        out.sort(key=lambda r: (-(r["score"] - r["penalty"]), roles.index(r["role"]) if r["role"] in roles else 99,
                                 0 if r["state"] == "indexed" else 1))
         return out
 

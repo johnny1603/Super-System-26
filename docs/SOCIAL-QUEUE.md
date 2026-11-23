@@ -111,3 +111,16 @@ of that design. Arrows, keyboard (RTL visual order: ← next), swipe, "3 / 5"; �
 close. The card keeps its thumbnail (`/api/client/media-drive/thumb/<id>`); the full image
 (`/api/client/media-drive/file/<id>?inline=1`) loads only in the overlay, plus the next and previous one;
 the thumbnail is the fallback. Tests: `tests/test_social_lightbox.py`.
+
+## Asset usage and rejections (2026-11-24)
+
+`core/asset_feedback` (app_settings `asset_feedback:<id>`). Each real asset the media agent uses gets a
+count + last used; find_assets subtracts a bounded penalty (recent / frequent use up to 1.2, each owner
+rejection 0.75 up to 1.5) from the match score: lower, never excluded; no history = ranked as before. The
+rejection form of a card whose picture the agent chose (`real_asset.source_file_id`) adds "הבעיה היא
+בתמונה שנבחרה?" with four one-click reasons and one free line; marked → `reject(..., asset_rejected,
+asset_reason)` records it against the source asset with what the picture shows (from the index). The
+choice step (`media_agent.choose_real_asset`) gets each candidate's times_used / last_used_at /
+times_rejected / rejection_reasons and `owner_rejections` (the newest 12 reasons). The tab has no
+separate "replace the picture" action: sending it back with the picture marked is that path.
+Tests: `tests/test_asset_feedback.py`.
