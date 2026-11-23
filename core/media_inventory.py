@@ -421,9 +421,39 @@ def _delete_drive_file(client_id: int, item: dict) -> str:
         return drive_service.delete_file(item["id"])
 
 
-def _gone(e: Exception) -> bool:
-    status = getattr(getattr(e, "response", None), "status_code", None)
-    return status == 404
+# Why a file delete failed — a CODE; the screen shows it in plain words
+# (LIB_T.reason_* in the client dashboard). The technical detail goes to the
+# log and the deletion log entry only, never to the screen.
+REASONS = ("owner_only", "no_permission", "not_found", "drive_unavailable", "unknown")
+
+
+def _status(e: Exception):
+    return getattr(getattr(e, "response", None), "status_code", None)
+
+
+def _failure_reason(client_id: int, item: dict, e: Exception) -> str:
+    status = _status(e)
+    if status == 404:
+        return "not_found"
+    if status in (401, 403):
+        # In a regular (non-shared) Drive only the OWNER may delete or trash a
+        # file, whatever the sharing — say that when it is the case
+        from core import drive_service, drive_storage
+        try:
+            ctx = drive_storage.as_service_account() if item.get("origin") == "connected" \
+                else drive_storage.scope(client_id)
+            with ctx:
+                meta = drive_service.get_meta(item["id"], "id,ownedByMe,driveId")
+            if not meta.get("driveId") and not meta.get("ownedByMe"):
+                return "owner_only"
+        except Exception:
+            pass
+        return "no_permission"
+    if status in (429, 500, 502, 503, 504) or (status is None and type(e).__name__ in (
+            "TimeoutException", "ConnectTimeout", "ReadTimeout", "ConnectError", "RequestError",
+            "RemoteProtocolError", "NetworkError", "PoolTimeout")):
+        return "drive_unavailable"
+    return "unknown"
 
 
 def delete(client_id: int, ids: list = None, raw_filter: dict = None, mode: str = "index", by: str = "client",
@@ -442,20 +472,22 @@ def delete(client_id: int, ids: list = None, raw_filter: dict = None, mode: str 
             try:
                 how = _delete_drive_file(client_id, item)
             except Exception as e:
-                if not _gone(e):
-                    failed.append({"id": item["id"], "name": item["name"], "reason": type(e).__name__})
-                    _log(f"client {client_id}: delete {item['id']} failed ({type(e).__name__}: {str(e)[:200]})")
-                    continue
-                how = "already_gone"
+                reason = _failure_reason(client_id, item, e)
+                detail = f"{type(e).__name__}: {str(e)[:300]}"
+                failed.append({**item, "how": "not_deleted", "reason": reason, "detail": detail})
+                _log(f"client {client_id}: delete {item['id']} failed ({reason}; {detail})")
+                continue
         done.append({**item, "how": how})
     with _lock:
-        if done:
+        if done or failed:
             s = _state(client_id)
             changed_state = False
             assets = None
-            for item in done:
+            # A file whose delete FAILED still leaves the library (the agents
+            # stop using it) — only the file itself stays in Drive
+            for item in done + failed:
                 if item["origin"] == "media":
-                    if mode == "index":
+                    if mode == "index" or item.get("how") == "not_deleted":
                         s["removed"][item["id"]] = {"at": _iso(), "by": by}
                         changed_state = True
                     else:
@@ -465,7 +497,7 @@ def delete(client_id: int, ids: list = None, raw_filter: dict = None, mode: str 
                     rec = assets["items"].get(item["id"])
                     if rec is None:
                         continue
-                    if mode == "index":
+                    if mode == "index" or item.get("how") == "not_deleted":
                         rec.update(state="removed", removed_at=_iso(), removed_by=by)
                     else:
                         assets["items"].pop(item["id"], None)
@@ -480,13 +512,19 @@ def delete(client_id: int, ids: list = None, raw_filter: dict = None, mode: str 
                  "affected_posts": [{"id": p["id"], "title": p["title"], "status": p["status"]}
                                     for p in describe(done)["affected_posts"]],
                  "items": [{"id": i["id"], "name": i["name"], "size": i["size"], "source": i["source"],
-                            "folder": i["folder"], "how": i["how"]} for i in done]}
+                            "folder": i["folder"], "how": i["how"]} for i in done],
+                 # technical detail lives HERE (and in the server log), never on the screen
+                 "failures": [{"id": i["id"], "name": i["name"], "folder": i["folder"], "reason": i["reason"],
+                               "detail": i["detail"], "removed_from_library": True} for i in failed]}
         if done or failed:
             log = _read(f"{LOG_PREFIX}{int(client_id)}")
             log.setdefault("entries", []).append(entry)
             _write(f"{LOG_PREFIX}{int(client_id)}", log)
     _forget_caches(client_id)
-    return {"done": len(done), "size": entry["size"], "failed": failed,
+    return {"done": len(done), "size": entry["size"],
+            # file NOT deleted, item removed from the library; reason = a REASONS code
+            "failed": [{"id": i["id"], "name": i["name"], "reason": i["reason"], "file_deleted": False,
+                        "removed_from_library": True} for i in failed],
             "trashed": sum(1 for i in done if i["how"] == "trashed"), "missing": len(missing),
             "affected_posts": plan["affected_posts"], "mode": mode}
 

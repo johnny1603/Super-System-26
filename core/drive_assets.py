@@ -71,6 +71,9 @@ THUMB_FRESH_S = 3 * 3600
 FRAME_OFFSETS_S = (0.0, 0.5, 1.0, 2.0, 4.0, 8.0)
 FFMPEG_TIMEOUT_S = 30
 MODES = ("add", "manual", "daily", "resume", "on_demand")
+# Never indexed: the client's social_output folder holds the publish snapshots
+# (core/asset_refs) — indexing them would add every published asset twice
+NOT_INDEXED_ROLE = "social_output"
 LIST_FIELDS = ("nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size,md5Checksum,thumbnailLink,"
                "trashed,shortcutDetails(targetId,targetMimeType),"
                "imageMediaMetadata(width,height,time,cameraMake,cameraModel,location),"
@@ -627,6 +630,9 @@ def _walk(client_id: int, state: dict, deadline: float):
             root = roots.get(rid)
             if not root:
                 continue
+            if root.get("role") == NOT_INDEXED_ROLE:
+                root.update(status="ok", error_code="", error_text="")
+                continue                     # publish snapshots live there (core/asset_refs)
             try:
                 with drive_storage.as_service_account():
                     meta = drive.get_meta(root["folder_id"], "id,name,trashed,driveId")
@@ -641,7 +647,7 @@ def _walk(client_id: int, state: dict, deadline: float):
                 root.update(status="no_access", error_code=err.code, error_text=err.text)
                 continue
             job["frontier"].append({"folder_id": root["folder_id"], "root_id": rid, "conn_id": rid, "depth": 0,
-                                    "path": root.get("display_name", "")})
+                                    "path": root.get("display_name", ""), "role": root.get("role", "")})
             job["walked_roots"].append(rid)
         job["walk_started"] = True
     while job["frontier"] and time.monotonic() < deadline:
@@ -678,9 +684,12 @@ def _walk(client_id: int, state: dict, deadline: float):
                                                         node["depth"] + 1, path)
                 if not record or record.get("excluded") or not record.get("parent_connection_id"):
                     continue                 # excluded by the client, or connected on its own
+                role = record.get("role_override") or node.get("role", "")
+                if role == NOT_INDEXED_ROLE:
+                    continue                 # a social_output subfolder: publish snapshots, not client assets
                 if node["depth"] + 1 <= drive_folders.MAX_DEPTH:
                     job["frontier"].append({"folder_id": f["id"], "root_id": root["id"], "conn_id": record["id"],
-                                            "depth": node["depth"] + 1, "path": path})
+                                            "depth": node["depth"] + 1, "path": path, "role": role})
                 continue
             if mime.startswith(("image/", "video/")):
                 _upsert_item(state, f, node, job["run_id"])
@@ -690,6 +699,9 @@ def _walk(client_id: int, state: dict, deadline: float):
         for fid in [k for k, i in state["items"].items()
                     if i.get("root_id") in walked and i.get("seen_run") != job["run_id"]]:
             state["items"].pop(fid, None)       # gone from Drive (or now in an excluded subfolder)
+        roles = {c["id"]: c.get("role") for c in drive_folders._resolve(data["connections"])}
+        for fid in [k for k, i in state["items"].items() if roles.get(i.get("connection_id")) == NOT_INDEXED_ROLE]:
+            state["items"].pop(fid, None)       # indexed before its folder became social_output
         job["walk_done"] = True
 
 

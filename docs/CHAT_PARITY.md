@@ -189,7 +189,7 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | media drive file | `GET /api/client/media-drive/file/{file_id}` | — (allowlisted) | streams a file to the browser; not a capability |
 | media drive thumb | `GET /api/client/media-drive/thumb/{file_id}` | — (allowlisted) | streams a thumbnail to the browser; not a capability |
 | media assets | `GET /api/client/media-assets` | reads `media` | — |
-| connected Drive folders | `GET /api/client/drive-folders` | **none yet** | **P2: a connected_folders section in account_state (folders, roles, index state)** |
+| connected Drive folders | `GET /api/client/drive-folders` | reads `connected_folders` | — |
 | connected Drive folders preview | `POST /api/client/drive-folders/preview` | **none yet** | **P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)** |
 | connected Drive folders connect | `POST /api/client/drive-folders/connect` | **none yet** | **P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)** |
 | connected Drive folder role | `POST /api/client/drive-folders/{connection_id}/role` | **none yet** | **P3: set_drive_folder_role card** |

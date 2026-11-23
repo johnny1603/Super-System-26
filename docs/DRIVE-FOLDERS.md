@@ -55,7 +55,16 @@ Copies happen in exactly two places:
    **social_output** folder (`appProperties.uallak_snapshot_of`, idempotent) and recorded on the item
    as `snapshot`. No social_output folder connected → `snapshot.skipped = no_social_output_folder`.
 
-Nothing else is ever copied. Older posts produced before this change still point at their earlier
+Nothing else is ever copied.
+
+A **social_output** folder (a root, or a subfolder given that role) is never indexed
+(`drive_assets.NOT_INDEXED_ROLE`): the walk skips it and drops anything indexed there before, so
+the snapshots are not counted again as client assets. The root shows status `ok`.
+
+**In the chat:** `client_state.connected_folders` — per connected folder: name, role, status,
+item counts (all / described / images / videos), subfolders with their own role, excluded
+subfolders; plus totals, whether an index run is going and the free items left. A summary only —
+the files themselves are searched by `find_assets` when something is produced. Older posts produced before this change still point at their earlier
 copy in our media folder (source `real_copy` in the media library).
 
 ## Adding a folder (settings → "תיקיות דרייב מחוברות")

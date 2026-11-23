@@ -694,13 +694,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `media_agent.generate_from_brief` (the agent chooses; REFERENCED by its own file_id, never copied — `core/asset_refs`:
   a working copy only where an operation needs one (Meta's public link), deleted when it returns; the one standing copy is
   the publish snapshot into the client's social_output folder, setting `drive_snapshot_on_publish`, default ON); a proof slide / real-only
-  format with nothing real = objection.
-  `tests/test_drive_folders.py`.
+  format with nothing real = objection. A social_output folder is never indexed (snapshots). The agents see a SUMMARY
+  in `client_state.connected_folders` (folders, role, counts by image/video — never the file list).
+  `tests/test_drive_folders.py`, `tests/test_connected_summary.py`.
 - **Media library (2026-11-23, `docs/MEDIA-LIBRARY.md`)**: `core/media_inventory` — every media item (generated,
   slides, copies, uploads in our folder + the connected-folder index) with source, folder, size, usage (Social queue +
   content plan), filters, summary. Delete single/bulk in TWO modes: `index` (out of the index — `drive_mirror.catalog`
   filters `media_library:<id>.removed`, drive_assets `state: removed` — the file stays) and `file`
-  (`drive_service.delete_file`: delete, else trash; then out of the index), in ANY folder, no role restriction. ONE
+  (`drive_service.delete_file`: delete, else trash; then out of the index — a FAILED delete leaves the index too, with a
+  reason code shown in plain Hebrew, detail only in the log), in ANY folder, no role restriction. ONE
   preview (count, size, folders, affected waiting/approved posts — shown, never blocking). Log `media_deletions:<id>`
   in the Control Room. Retention OFF by default (manager: on + N days; runs in `drive-assets-scan`). Do not add guards
   or confirmations to it. `tests/test_media_inventory.py`.

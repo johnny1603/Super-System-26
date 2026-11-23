@@ -8581,7 +8581,12 @@ const LIB_T = {
   doneIndex: 'הוסרו מהמאגר {n} פריטים ({size}). הקבצים נשארו בדרייב.', // i18n-ok
   doneFile: 'נמחקו {n} קבצים ({size}).', // i18n-ok
   trashed: '{n} מהם הועברו לאשפה של הדרייב (הדרייב מרוקן אותה לבד אחרי 30 יום).', // i18n-ok
-  failed: '{n} לא נמחקו: {names}', // i18n-ok
+  failed: '{n} קבצים לא נמחקו מהדרייב. הם הוסרו מהמאגר, והסוכנים לא ישתמשו בהם יותר. הקובץ עצמו נשאר בדרייב:', // i18n-ok
+  reason_owner_only: 'הקובץ שייך ללקוח, ורק הבעלים של קובץ יכול למחוק אותו. אפשר למחוק אותו ידנית בדרייב.', // i18n-ok
+  reason_no_permission: 'אין לנו הרשאה למחוק את הקובץ. צריך לשתף את התיקייה בהרשאת "עורך" (או "מנהל תוכן" באחסון משותף).', // i18n-ok
+  reason_not_found: 'הקובץ לא נמצא בדרייב. ייתכן שהוא כבר נמחק או הועבר.', // i18n-ok
+  reason_drive_unavailable: 'הדרייב לא היה זמין כרגע. אפשר לנסות שוב בעוד כמה דקות.', // i18n-ok
+  reason_unknown: 'הדרייב סירב למחוק את הקובץ.', // i18n-ok
   noneChosen: 'לא נבחר אף פריט.', // i18n-ok
   daysNeeded: 'כתבו מספר ימים.', // i18n-ok
   noSize: 'גודל לא ידוע', // i18n-ok
@@ -8728,7 +8733,7 @@ async function libRun(btn) {
   const d = r.data || {};
   let line = (job.mode === 'file' ? LIB_T.doneFile : LIB_T.doneIndex).replace('{n}', d.done).replace('{size}', libSize(d.size));
   if (d.trashed) line += ' ' + LIB_T.trashed.replace('{n}', d.trashed);
-  if ((d.failed || []).length) line += ' ' + LIB_T.failed.replace('{n}', d.failed.length).replace('{names}', d.failed.map(f => f.name).join(', '));
+  if ((d.failed || []).length) line += ' ' + LIB_T.failed.replace('{n}', d.failed.length) + ' ' + d.failed.map(f => f.name + ' — ' + (LIB_T['reason_' + f.reason] || LIB_T.reason_unknown)).join(' · ');
   showNotice(line, (d.failed || []).length ? 'warn' : 'success');
   libEl('libResult').textContent = line;
   loadLibrary(true);

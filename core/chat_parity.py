@@ -146,7 +146,7 @@ PARITY = {
     "POST /api/client/social/{item_id}/design": (CHAT, "design_slides"),
     "GET /api/client/social/{item_id}/slide/{n}": (NOT_CHAT, "the design card's own picture of one slide, drawn on request; the chat describes the same design from account_state"),
     # ── Connected Drive folders (core/drive_folders, core/drive_assets) ──────
-    "GET /api/client/drive-folders": (GAP, "P2: a connected_folders section in account_state (folders, roles, index state)"),
+    "GET /api/client/drive-folders": (READ, "connected_folders"),
     "POST /api/client/drive-folders/preview": (GAP, "P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)"),
     "POST /api/client/drive-folders/connect": (GAP, "P2: connect_drive_folder card (a pasted folder link → the inferred role to confirm)"),
     "POST /api/client/drive-folders/{connection_id}/role": (GAP, "P3: set_drive_folder_role card"),

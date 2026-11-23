@@ -39,8 +39,13 @@ Single item or bulk (checked items, or "all N matching the filter"). Two actions
 - **מחיקת הקובץ** (`mode: file`): `drive_service.delete_file` — a permanent delete, or the Drive trash
   when Drive refuses a permanent delete (a Shared Drive Content manager may only trash; the trash
   empties itself after 30 days) — then out of the index. Works in every connected folder; there is no
-  role restriction. A file Drive no longer has (404) just leaves the index. Other failures are listed
-  per item and not counted.
+  role restriction. **A failed delete still takes the item out of the library** (same as `index`:
+  the agents stop using it) and is listed per item with `file_deleted: false` and a reason CODE
+  (`media_inventory.REASONS`): `owner_only` (a regular Drive where the client owns the file — only the
+  owner may delete or trash it; checked with `ownedByMe` / `driveId` after a 401/403), `no_permission`,
+  `not_found` (404), `drive_unavailable` (429/5xx/network), `unknown`. The screen shows the plain Hebrew
+  line for the code (`LIB_T.reason_*`); the technical detail is only in the server log and the
+  deletion log entry (`failures[].detail`).
 
 Before it runs, ONE preview (`/preview`): mode in plain words, item count, total size, folders, and
 the waiting/approved posts that use the items. Shown, never blocking. Then it runs (`/delete`).

@@ -355,7 +355,7 @@ class Parallel(unittest.TestCase):
 class Snapshot(unittest.TestCase):
     def test_sections_run_together_with_the_same_keys_and_failures(self):
         names = ["_channels", "_connections", "_tracking", "_google_campaigns", "_meta_campaigns", "_budget",
-                 "_leads", "_approvals", "_website", "_landing_pages", "_media", "_media_folder", "_package",
+                 "_leads", "_approvals", "_website", "_landing_pages", "_media", "_media_folder", "_connected_folders", "_package",
                  "_site_security", "_site_updates", "_outreach", "_creative_tools", "_voice", "_team_requests",
                  "_store"]
         saved = {n: getattr(cs, n) for n in names}

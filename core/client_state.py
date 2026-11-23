@@ -63,6 +63,7 @@ DEFAULT_TTL = 120
 SECTION_TOPIC = {
     "channels": "account", "connections": "account", "budget": "account",
     "approvals": "account", "media": "account", "media_folder": "account", "package": "account",
+    "connected_folders": "account",
     "tracking": "tracking", "leads": "leads",
     "google_campaigns": "google_ads", "meta_campaigns": "meta_ads",
     "website": "website", "landing_pages": "website", "site_security": "website",
@@ -346,6 +347,50 @@ def _media(client_id: int) -> dict:
     return get_monthly_usage(client_id)
 
 
+def _connected_folders(client_id: int) -> dict:
+    """The client's connected Drive folders (core/drive_folders) and what the
+    real-asset index holds in them (core/drive_assets) — a SUMMARY, never
+    the file list: each connected folder with its role, status, item counts
+    and counts by media type, plus subfolders the client gave another role
+    or excluded. The agents search the files themselves (find_assets) when
+    they produce; this is what they answer "what do you have of mine?" from."""
+    from core import drive_assets, drive_folders
+    conns = drive_folders.load(client_id)
+    if not conns:
+        return {"connected": False, "folders": []}
+    state = drive_assets._load(client_id)
+    live = [i for i in (state.get("items") or {}).values() if i.get("state") != "removed"]
+    by_id = {c["id"]: c for c in conns}
+
+    def counts(items: list) -> dict:
+        out = {"items": len(items), "indexed": 0, "images": 0, "videos": 0}
+        for i in items:
+            out["indexed"] += i.get("state") == "indexed"
+            out["videos" if i.get("media_type") == "video" else "images"] += 1
+        return out
+
+    usable = [i for i in live if not (by_id.get(i.get("connection_id")) or {}).get("excluded_effective")]
+    folders = []
+    for root in (c for c in conns if not c.get("parent_connection_id")):
+        subs = [c for c in conns if c.get("parent_connection_id") == root["id"]]
+        folders.append({
+            "name": root.get("display_name", ""), "role": root.get("role", ""), "status": root.get("status", ""),
+            "indexed_for_agents": root.get("role") != "social_output",
+            **counts([i for i in usable if i.get("root_id") == root["id"]]),
+            "subfolders": len(subs),
+            "subfolders_with_another_role": [
+                {"name": s.get("display_name", ""), "role": s.get("role", ""),
+                 **counts([i for i in usable if i.get("connection_id") == s["id"]])}
+                for s in subs if s.get("role_source") == "override" and not s.get("excluded_effective")][:20],
+            "excluded_subfolders": sum(1 for s in subs if s.get("excluded"))})
+    total = counts(usable)
+    job = state.get("job") or {}
+    return {"connected": True, "folders": folders, "total": total,
+            "index_running": job.get("state") in ("queued", "running"),
+            "free_items_left": max(0, drive_assets.allowance(client_id, state) - int(state["meter"].get("items") or 0))
+            if "meter" in state else None}
+
+
 MEDIA_SUBFOLDERS_READ = 8
 MEDIA_VIDEOS_LISTED = 10
 MEDIA_IMAGES_LISTED = 10
@@ -500,7 +545,7 @@ def media_turn(message) -> bool:
 
 # Every section of the snapshot, in the order the model reads them
 SECTIONS = ("channels", "connections", "tracking", "google_campaigns", "meta_campaigns", "budget",
-            "leads", "approvals", "website", "landing_pages", "media", "media_folder", "package",
+            "leads", "approvals", "website", "landing_pages", "media", "media_folder", "connected_folders", "package",
             "site_security", "site_updates", "outreach", "creative_tools", "voice", "team_requests",
             "store", "website_traffic")
 
@@ -530,6 +575,7 @@ def snapshot(client_id: int, refresh: bool = False, fresh_media: bool = False) -
         "landing_pages": lambda: _landing_pages(client_id),
         "media": lambda: _media(client_id),
         "media_folder": lambda: _media_folder(client_id, fresh=fresh_media),
+        "connected_folders": lambda: _connected_folders(client_id),
         "package": lambda: _package(client_id),
         "site_security": lambda: _site_security(client_id),
         "site_updates": lambda: _site_updates(client_id),

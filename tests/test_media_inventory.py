@@ -186,19 +186,57 @@ class FileDeletion(Base):
         self.assertNotIn("C1", self.assets["items"])
         self.assertEqual(self.ids(), set())
 
-    def test_a_drive_failure_is_reported_not_counted(self):
-        self.media("G1", "gen.png")
-        self.media("G2", "gen2.png")
+    def _refuse(self, status, refused=("G2",)):
+        class Refused(Exception):
+            pass
 
         def refuse(fid):
-            if fid == "G2":
-                raise RuntimeError("403")
+            if fid in refused:
+                e = Refused(f"Drive DELETE {status}: secret-ish detail")
+                e.response = types.SimpleNamespace(status_code=status)
+                raise e
             self.drive.pop(fid)
             return "trashed"
         drive_service.delete_file = refuse
-        out = mi.delete(CID, ["G1", "G2"], mode="file")
-        self.assertEqual((out["done"], out["trashed"], [f["id"] for f in out["failed"]]), (1, 1, ["G2"]))
-        self.assertIn("G2", self.ids())
+
+    def test_a_failed_delete_still_leaves_the_library_and_says_the_file_stayed(self):
+        self.media("G1", "gen.png")
+        self.media("G2", "gen2.png")
+        self.asset("C1", "review.jpg")
+        self._refuse(503, refused=("G2", "C1"))
+        out = mi.delete(CID, ["G1", "G2", "C1"], mode="file")
+        self.assertEqual((out["done"], out["trashed"]), (1, 1))
+        self.assertEqual({f["id"]: (f["file_deleted"], f["removed_from_library"]) for f in out["failed"]},
+                         {"G2": (False, True), "C1": (False, True)})
+        self.assertIn("G2", self.drive)                       # the file itself stays
+        self.assertEqual(self.ids(), set())                   # ... but the library no longer lists it
+        self.assertEqual(self.assets["items"]["C1"]["state"], "removed")
+        self.assertEqual(drive_assets.find_assets(CID, query="shoe"), [])   # agents stop using it
+
+    def test_reasons_are_codes_and_the_detail_stays_in_the_log(self):
+        self.asset("C1", "review.jpg")
+        self.asset("C2", "other.jpg")
+        self.media("G1", "gen.png")
+        self.media("G2", "gen2.png")
+        self.media("G3", "gen3.png")
+        owner = {"C1": {"ownedByMe": False}, "C2": {"ownedByMe": False, "driveId": "SHARED"}}
+        old_meta = drive_service.get_meta
+        drive_service.get_meta = lambda fid, fields="": owner[fid]
+        self.addCleanup(setattr, drive_service, "get_meta", old_meta)
+        reasons, outs = {}, []
+        for ids, status in ((["C1", "C2"], 403), (["G1"], 404), (["G2"], 502), (["G3"], 400)):
+            self._refuse(status, refused=tuple(ids))
+            outs.append(mi.delete(CID, ids, mode="file"))
+            reasons.update({f["id"]: f["reason"] for f in outs[-1]["failed"]})
+        self.assertEqual(reasons, {"C1": "owner_only", "C2": "no_permission", "G1": "not_found",
+                                   "G2": "drive_unavailable", "G3": "unknown"})
+        self.assertTrue(set(reasons.values()) <= set(mi.REASONS))
+        self.assertNotIn("Drive DELETE", str(outs))           # nothing technical reaches the screen
+        failures = [f for e in self.log() for f in e.get("failures", [])]
+        self.assertTrue(all("Drive DELETE" in f["detail"] for f in failures))
+        html = _read("dashboard", "client", "index.html")
+        for code in mi.REASONS:
+            self.assertIn(f"reason_{code}:", html)
 
 
 class Bulk(Base):
