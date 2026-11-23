@@ -596,6 +596,19 @@ def open_download_stream(file_id: str, export_mime: str = "", byte_range: tuple 
     return client, response
 
 
+def delete_file(file_id: str) -> str:
+    """Delete one file for the media library (core/media_inventory, mode
+    "file"): a permanent delete first; when Drive refuses it (a Shared Drive
+    Content manager may only trash — see trash_file) the file goes to the
+    trash. Returns "deleted" or "trashed". Raises when both fail."""
+    response = httpx.delete(f"{DRIVE_FILES_URL}/{file_id}", headers=_headers(),
+                            params={"supportsAllDrives": "true"}, timeout=TIMEOUT)
+    if response.status_code in (200, 204):
+        return "deleted"
+    trash_file(file_id)
+    return "trashed"
+
+
 def trash_file(file_id: str) -> None:
     """Move one file we created to the trash (the Drive self-test's probe
     file). Raises on failure.

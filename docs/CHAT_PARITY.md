@@ -196,6 +196,10 @@ Generated from `core/chat_parity.PARITY`. "Answers from account_state" means the
 | connected Drive subfolder exclude | `POST /api/client/drive-folders/{connection_id}/exclude` | **none yet** | **P3: exclude_drive_subfolder card** |
 | connected Drive folder disconnect | `POST /api/client/drive-folders/{connection_id}/disconnect` | **none yet** | **P3: disconnect_drive_folder card** |
 | connected Drive folders re-index | `POST /api/client/drive-folders/reindex` | **none yet** | **P3: reindex_drive_folders card** |
+| media library | `GET /api/client/media-inventory` | **none yet** | **P3: a media_inventory section in account_state (items, sizes, usage)** |
+| media library thumbnail | `GET /api/client/media-inventory/thumb/{file_id}` | — (allowlisted) | streams a thumbnail to the browser; not a capability |
+| media library delete preview | `POST /api/client/media-inventory/preview` | **none yet** | **P3: delete_media card (what goes, then the deletion)** |
+| media library delete | `POST /api/client/media-inventory/delete` | **none yet** | **P3: delete_media card (what goes, then the deletion)** |
 | connected Drive folders step | `POST /api/client/drive-folders/step` | — (allowlisted) | the settings section's own poll that moves an index run forward; the chat has no screen to poll |
 | leads | `GET /api/client/leads` | reads `leads` | — |
 | leads status | `POST /api/client/leads/{lead_id}/status` | **none yet** | **P1: update_lead_status card (needs lead ids in account_state.leads)** |

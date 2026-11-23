@@ -694,6 +694,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `media_agent.generate_from_brief` (the agent chooses; copied into the media folder); a proof slide / real-only
   format with nothing real = objection.
   `tests/test_drive_folders.py`.
+- **Media library (2026-11-23, `docs/MEDIA-LIBRARY.md`)**: `core/media_inventory` — every media item (generated,
+  slides, copies, uploads in our folder + the connected-folder index) with source, folder, size, usage (Social queue +
+  content plan), filters, summary. Delete single/bulk in TWO modes: `index` (out of the index — `drive_mirror.catalog`
+  filters `media_library:<id>.removed`, drive_assets `state: removed` — the file stays) and `file`
+  (`drive_service.delete_file`: delete, else trash; then out of the index), in ANY folder, no role restriction. ONE
+  preview (count, size, folders, affected waiting/approved posts — shown, never blocking). Log `media_deletions:<id>`
+  in the Control Room. Retention OFF by default (manager: on + N days; runs in `drive-assets-scan`). Do not add guards
+  or confirmations to it. `tests/test_media_inventory.py`.
 - **Pull from Drive + find by name (2026-11-11, `docs/DRIVE-PULL.md`)**:
   - **Pull page.** `/admin/drive/` (`core/drive_pull`, admin only): the owner shares ONE
     folder with the service account and pastes its link. Files are COPIED INSIDE Drive

@@ -463,7 +463,7 @@ def catalog(client_id: int, refresh: bool = False) -> dict:
         return {"exists": False, "items": [], "folders": []}
     hit = _catalog_cache.get(client_id)
     if hit and not refresh and hit[1] == root and hit[0] > time.time() - CATALOG_SECONDS:
-        return {**hit[2], "cached": True}
+        return _without_removed(client_id, {**hit[2], "cached": True})
     raw = []
     folders = _walk_folders(client_id, root, files=raw, max_files=CATALOG_MAX_ITEMS + 1)
     _folders_cache[client_id] = (time.time(), root, folders)
@@ -473,7 +473,20 @@ def catalog(client_id: int, refresh: bool = False) -> dict:
     result = {"exists": True, "items": items, "folders": sorted(f["path"] for f in folders if f["path"]),
               "truncated": len(raw) > CATALOG_MAX_ITEMS, "listed_at": int(time.time())}
     _catalog_cache[client_id] = (time.time(), root, result)
-    return {**result, "cached": False}
+    return _without_removed(client_id, {**result, "cached": False})
+
+
+def _without_removed(client_id: int, result: dict) -> dict:
+    """Files the media library removed from the index (mode "index") stay in
+    Drive but leave every listing the tab and the agents read."""
+    try:
+        from core import media_inventory
+        gone = media_inventory.removed_ids(client_id)
+    except Exception:
+        gone = set()
+    if not gone:
+        return result
+    return {**result, "items": [i for i in result["items"] if i.get("id") not in gone]}
 
 
 @drive_storage.scoped

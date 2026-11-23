@@ -49,6 +49,7 @@ READ_ENDPOINTS = frozenset({
     "client_search_console_sites", "client_leads_list", "client_lead_capture_setup",
     "client_landing_pages", "client_landing_versions", "client_landing_preview", "client_crm_status", "client_support", "client_media_drive",
     "client_media_drive_thumb", "client_media_drive_file", "client_media_assets",
+    "client_media_inventory", "client_media_inventory_thumb",
     "client_suggestions", "client_open_actions", "client_outreach", "client_ownership",
     "client_tiktok_profile",
     # the Media tab's library view + built-in player (core/media_library, 2026-11-11);

@@ -3382,6 +3382,10 @@ async function openControlRoom(clientId) {
           <div id="crSocialClient"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">🗂 מאגר המדיה — כלל שמירה ויומן מחיקות</div>
+          <div id="crMediaLib"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">🎨 מיתוג — ניסיונות הדמיה</div>
           <div id="crBranding"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3424,6 +3428,48 @@ async function openControlRoom(clientId) {
   crLoadCosts(clientId);
   crLoadBranding(clientId);
   crLoadSocialClient(clientId);
+  crLoadMediaLib(clientId);
+}
+
+// ─── Media library (core/media_inventory) — retention rule + deletion log ───
+// Retention is OFF until switched on here with a day count; the "unused older
+// than N days" quick filter on the client's screen starts from the day count set here.
+const CR_ML_MODE = { index: 'הסרה מהמאגר (הקובץ נשאר)', file: 'מחיקת הקובץ מהדרייב' };
+const CR_ML_BY = { client: 'הלקוח', admin: 'מנהל', retention: 'כלל שמירה אוטומטי' };
+function crMlSize(b) { b = Number(b) || 0; return b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(1) + ' MB'; }
+async function crLoadMediaLib(clientId, notice) {
+  const el = document.getElementById('crMediaLib');
+  if (!el) return;
+  let d;
+  try { d = (await api(`/api/admin/media-inventory/${Number(clientId)}`)).data || {}; }
+  catch (e) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">לא נטען</div>'; return; }
+  if (crState.clientId !== clientId || !el.isConnected) return;
+  const s = d.settings || {};
+  const log = (d.log || []).map(x => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(new Date(x.at).toLocaleString('he-IL'))} · ${esc(CR_ML_BY[x.by] || x.by)} · ${esc(CR_ML_MODE[x.mode] || x.mode)}
+      · ${Number(x.count)} פריטים · ${crMlSize(x.size)}${x.failed ? ' · ' + Number(x.failed) + ' נכשלו' : ''}
+      · ${esc((x.folders || []).map(f => f.label || 'ראשית').join(', '))}${(x.affected_posts || []).length ? ' · פוסטים שהושפעו: ' + esc(x.affected_posts.map(p => p.title).join(', ')) : ''}</span>
+      <details><summary style="cursor:pointer;font-size:11.5px;">מה נמחק</summary>${(x.items || []).map(i => `<div style="font-size:11.5px;" dir="auto">${esc(i.name)} · ${crMlSize(i.size)} · ${esc(i.folder || '')}</div>`).join('')}</details></div>`).join('')
+    || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">עוד לא נמחק כלום</div>';
+  el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <label><input type="checkbox" id="crMlOn"${s.retention_enabled ? ' checked' : ''}> למחוק אוטומטית יצירות שנדחו, ישנות מ־</label>
+      <input type="number" min="0" id="crMlDays" style="width:70px;" value="${s.retention_days ?? ''}"> ימים
+      <span style="margin-inline-start:12px;">סינון "לא בשימוש וישן מ־" אצל הלקוח: <input type="number" min="0" id="crMlUnused" style="width:70px;" value="${s.unused_days ?? ''}"> ימים</span>
+      <button type="button" class="manage-btn" onclick="crSaveMediaLib(${Number(clientId)})">שמירה</button>
+      <span id="crMlMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span></div>
+    <div class="drawer-label" style="margin-top:6px;">יומן מחיקות</div>${log}`;
+}
+async function crSaveMediaLib(clientId) {
+  const body = { retention_enabled: document.getElementById('crMlOn').checked,
+                 retention_days: document.getElementById('crMlDays').value.trim(),
+                 unused_days: document.getElementById('crMlUnused').value.trim() };
+  const res = await api(`/api/admin/media-inventory/${Number(clientId)}/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.success) {
+    const msg = document.getElementById('crMlMsg');
+    if (msg) msg.textContent = (res.data || {}).code === 'retention_days_required' ? 'כדי להפעיל צריך מספר ימים' : 'לא נשמר — מספר ימים לא תקין';
+    return;
+  }
+  crLoadMediaLib(clientId, 'נשמר ✓');
 }
 
 // ─── Social queue (core/social_queue) — READ-ONLY mirror of the client's tab ──

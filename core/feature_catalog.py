@@ -396,6 +396,16 @@ FEATURES = [
         "persona": "media",
         "relevance": {"services": ["media", "social", "סושיאל", "מדיה"], "connections": []},
     },
+    {
+        "key": "media_library",
+        "name_he": "מאגר המדיה",
+        "what_he": ("כל המדיה שהמערכת מכירה במקום אחד: מה נוצר, מאיפה, כמה מקום זה תופס ואיפה זה בשימוש. "
+                    "אפשר להסיר מהמאגר (הקובץ נשאר) או למחוק את הקובץ עצמו, אחד אחד או הרבה ביחד."),
+        "where_he": "תפריט הצד, ׳מאגר המדיה׳",
+        "access": "self_serve",
+        "persona": "media",
+        "relevance": {"services": ["media", "social", "סושיאל", "מדיה"], "connections": []},
+    },
 ]
 
 _BY_KEY = {f["key"]: f for f in FEATURES}

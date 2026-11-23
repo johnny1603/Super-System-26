@@ -91,7 +91,7 @@ KNOWN_DEBT = {
     "core/drive_pull.py": 29,
     "core/elevenlabs_service.py": 4,
     "core/export_service.py": 7,
-    "core/feature_catalog.py": 116,         # +5: the connected_drive_folders entry (2026-11-23), Hebrew like every entry
+    "core/feature_catalog.py": 121,         # +5: connected_drive_folders, +5: media_library (2026-11-23), Hebrew like every entry
     "core/frustration.py": 13,
     "core/gmail_outreach.py": 1,
     "core/israel_calendar.py": 36,

@@ -1171,6 +1171,31 @@ body {
 .media-chip.active { background: var(--accent-dim); border-color: rgba(255,76,31,0.35); color: var(--accent); }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 /* Drive mirror (live listing of the client's folder) */
+.lib { display: flex; flex-direction: column; gap: 12px; }
+.lib-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12.5px; }
+.lib-label { font-weight: 700; margin-bottom: 8px; }
+.lib-num { width: 70px; }
+.lib-q { flex: 1; min-width: 200px; }
+.lib-bar-row { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-top: 6px; }
+.lib-bar-label { width: 150px; }
+.lib-bar { flex: 1; height: 8px; background: rgba(127,127,127,.18); border-radius: 4px; overflow: hidden; }
+.lib-bar span { display: block; height: 100%; background: var(--accent, #FF4C1F); }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.lib-card { position: relative; border: 1px solid rgba(127,127,127,.25); border-radius: 10px; padding: 10px; font-size: 12px; }
+.lib-card.sel { outline: 2px solid var(--accent, #FF4C1F); }
+.lib-check { position: absolute; top: 14px; inset-inline-start: 14px; z-index: 2; }
+.lib-thumb { position: relative; height: 130px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(127,127,127,.12); margin-bottom: 8px; }
+.lib-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.lib-ico { font-size: 26px; opacity: .4; }
+.lib-name { font-weight: 700; word-break: break-word; }
+.lib-meta, .lib-use { color: var(--gray); margin-top: 3px; }
+.lib-use.use-rejected { color: var(--red, #c0392b); }
+.lib-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lib-danger { color: var(--red, #c0392b); }
+.lib-selbar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: 10px; background: var(--card, #fff); box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+.lib-prev-warn { margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(255,170,0,.15); }
+.lib-prev-acts { display: flex; gap: 8px; margin-top: 10px; }
+.lib-empty, .lib-result { color: var(--gray); font-size: 12.5px; }
 .drive-mirror { margin-bottom: 8px; }
 .drive-mirror-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .drive-mirror-title { font-size: 14px; font-weight: 700; }
@@ -1684,6 +1709,9 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="media" onclick="showView('media')">
     <span class="nav-ico">🖼</span><span data-i18n="nav_media">מדיה</span>
     <span class="nav-count" id="navMediaCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="library" onclick="showView('library')">
+    <span class="nav-ico">🗂</span><span data-i18n-skip>מאגר המדיה</span>
   </button>
   <button class="nav-item" data-view="social" onclick="showView('social')">
     <span class="nav-ico">📣</span><span data-i18n="nav_social">סושיאל</span>
@@ -2515,6 +2543,7 @@ a.media-item:hover { border-color: var(--accent); }
       <div class="section-title" data-i18n="media_title">המדיה שלי</div>
       <div class="section-sub" data-i18n="media_sub">כל מה שנוצר עבורך אי פעם — לא רק מה שממתין לאישור</div>
     </div>
+    <button type="button" class="conn-btn secondary" onclick="showView('library')" data-i18n-skip>🗂 מאגר המדיה — מה תופס מקום ומחיקה</button>
   </div>
 
   <!-- Branding (core/branding): the button opens ליאור's chat; the terms line
@@ -2612,6 +2641,70 @@ a.media-item:hover { border-color: var(--accent); }
 <!-- ---------- SOCIAL: the ONE approval queue for social media (core/social_queue) ----------
      Everything heading to a social channel waits here for the owner's final yes.
      Files stay in the client's Drive; previews and downloads use the media-drive routes. -->
+<div class="view" id="viewLibrary">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n-skip>מאגר המדיה</div>
+      <div class="section-sub" data-i18n-skip>כל המדיה שהמערכת מכירה: תמונות וסרטונים שנוצרו, שקופיות טקסט וקבצים מהתיקיות המחוברות שלכם. כאן רואים מה תופס מקום ומוחקים.</div>
+    </div>
+  </div>
+  <div class="lib" dir="rtl" data-i18n-skip>
+    <div class="billing-card lib-summary" id="libSummary" data-i18n-skip></div>
+
+    <div class="billing-card lib-presets" data-i18n-skip>
+      <div class="lib-label" data-i18n-skip>סינון מהיר</div>
+      <div class="lib-row" data-i18n-skip>
+        <button type="button" class="conn-btn secondary" data-lib-preset="rejected" data-i18n-skip>כל היצירות שנדחו</button>
+        <span class="lib-inline" data-i18n-skip>מדיה שנוצרה ולא בשימוש, ישנה מ־<input type="number" min="0" id="libDays" class="lib-num" data-i18n-skip> ימים
+          <button type="button" class="conn-btn secondary" data-lib-preset="unused_old" data-i18n-skip>הצגה</button></span>
+        <span class="lib-inline" data-i18n-skip>הכול מתיקייה: <select id="libPresetFolder" data-i18n-skip></select></span>
+        <button type="button" class="conn-btn secondary" data-lib-preset="clear" data-i18n-skip>ניקוי הסינון</button>
+      </div>
+    </div>
+
+    <div class="billing-card lib-filters" data-i18n-skip>
+      <div class="lib-row" data-i18n-skip>
+        <label data-i18n-skip>סוג <select id="libSource" class="lib-filter" data-i18n-skip>
+          <option value="" data-i18n-skip>הכול</option>
+          <option value="generated_image" data-i18n-skip>תמונה שנוצרה</option>
+          <option value="generated_video" data-i18n-skip>סרטון שנוצר</option>
+          <option value="slide" data-i18n-skip>שקופית טקסט</option>
+          <option value="real_copy" data-i18n-skip>עותק של תמונה אמיתית</option>
+          <option value="uploaded" data-i18n-skip>הועלה לתיקייה שלנו</option>
+          <option value="client_asset" data-i18n-skip>מתיקייה מחוברת שלכם</option>
+        </select></label>
+        <label data-i18n-skip>תיקייה <select id="libFolder" class="lib-filter" data-i18n-skip></select></label>
+        <label data-i18n-skip>שימוש <select id="libUsage" class="lib-filter" data-i18n-skip>
+          <option value="" data-i18n-skip>הכול</option>
+          <option value="used" data-i18n-skip>בשימוש</option>
+          <option value="unused" data-i18n-skip>לא בשימוש</option>
+          <option value="rejected" data-i18n-skip>נדחה</option>
+        </select></label>
+        <label data-i18n-skip>מתאריך <input type="date" id="libFrom" class="lib-filter" data-i18n-skip></label>
+        <label data-i18n-skip>עד תאריך <input type="date" id="libTo" class="lib-filter" data-i18n-skip></label>
+        <label data-i18n-skip>גודל <input type="number" min="0" step="0.1" id="libMin" class="lib-filter lib-num" data-i18n-skip> – <input type="number" min="0" step="0.1" id="libMax" class="lib-filter lib-num" data-i18n-skip></label>
+        <label data-i18n-skip>מיון <select id="libSort" class="lib-filter" data-i18n-skip>
+          <option value="newest" data-i18n-skip>החדשים קודם</option>
+          <option value="oldest" data-i18n-skip>הישנים קודם</option>
+          <option value="largest" data-i18n-skip>הגדולים קודם</option>
+          <option value="smallest" data-i18n-skip>הקטנים קודם</option>
+        </select></label>
+      </div>
+      <div class="lib-row" data-i18n-skip>
+        <input type="search" id="libQ" class="lib-q" data-i18n-skip>
+        <button type="button" class="conn-btn secondary" id="libSearchBtn" data-i18n-skip>חיפוש</button>
+        <span class="lib-matching" id="libMatching" data-i18n-skip></span>
+      </div>
+    </div>
+
+    <div class="lib-selbar" id="libSelBar" hidden data-i18n-skip></div>
+    <div class="billing-card lib-preview" id="libPreview" hidden data-i18n-skip></div>
+    <div class="lib-result" id="libResult" data-i18n-skip></div>
+    <div class="lib-grid" id="libGrid" data-i18n-skip></div>
+    <button type="button" class="conn-btn secondary" id="libMore" hidden data-i18n-skip>להציג עוד</button>
+  </div>
+</div>
+
 <div class="view" id="viewSocial">
   <div class="section-head">
     <div>
@@ -8391,7 +8484,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support', 'library'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -8412,12 +8505,285 @@ function showView(name) {
   if (name === 'landing' && !viewLoaded.landing) { viewLoaded.landing = true; loadLanding(); }
   if (name === 'media' && !viewLoaded.media) { viewLoaded.media = true; loadMediaAssets(); }
   if (name === 'media') openMediaLibrary();   // every open: a silent check of Drive
+  if (name === 'library') { libReadFilter(); loadLibrary(true); }
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'personal') loadDriveFolders();   // every open: the index moves (counts, state)
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIA LIBRARY — every media item the system knows about, with full delete
+// (core/media_inventory, docs/MEDIA-LIBRARY.md). Two actions, both always
+// available: "הסרה מהמאגר" (index only, the file stays) and "מחיקת הקובץ"
+// (Drive + index). One step before it happens: what goes, how much, which
+// folders, which waiting/scheduled posts use it — then it runs.
+// ═══════════════════════════════════════════════════════════════════════════
+const libUI = { data: null, items: [], offset: 0, sort: 'newest', filter: {}, selected: new Set(),
+                allMatching: false, pending: null };
+
+// Hebrew only, as specified for this screen (RTL)
+const LIB_T = {
+  src_generated_image: 'תמונה שנוצרה', // i18n-ok
+  src_generated_video: 'סרטון שנוצר', // i18n-ok
+  src_slide: 'שקופית טקסט', // i18n-ok
+  src_real_copy: 'עותק של תמונה אמיתית', // i18n-ok
+  src_uploaded: 'הועלה לתיקייה שלנו', // i18n-ok
+  src_client_asset: 'מתיקייה מחוברת שלכם', // i18n-ok
+  use_used: 'בשימוש', // i18n-ok
+  use_unused: 'לא בשימוש', // i18n-ok
+  use_rejected: 'נדחה', // i18n-ok
+  st_waiting: 'מחכה לאישור', // i18n-ok
+  st_approved: 'אושר / מתוזמן', // i18n-ok
+  st_published: 'פורסם', // i18n-ok
+  st_rejected: 'נדחה', // i18n-ok
+  proposal: 'בתוכנית התוכן', // i18n-ok
+  post: 'פוסט', // i18n-ok
+  all: 'הכול', // i18n-ok
+  allFolders: 'כל התיקיות', // i18n-ok
+  ourFolder: 'התיקייה שלנו', // i18n-ok
+  connFolder: 'תיקייה מחוברת', // i18n-ok
+  root: 'ראשית', // i18n-ok
+  pickFolder: 'בחרו תיקייה…', // i18n-ok
+  search: 'חיפוש לפי שם, תיאור או תגיות', // i18n-ok
+  mbMin: 'מ־MB', // i18n-ok
+  mbMax: 'עד MB', // i18n-ok
+  days: 'ימים', // i18n-ok
+  sort_newest: 'החדשים קודם', // i18n-ok
+  sort_oldest: 'הישנים קודם', // i18n-ok
+  sort_largest: 'הגדולים קודם', // i18n-ok
+  sort_smallest: 'הקטנים קודם', // i18n-ok
+  total: 'סה״כ', // i18n-ok
+  items: 'פריטים', // i18n-ok
+  matching: 'מתאימים לסינון:', // i18n-ok
+  empty: 'אין פריטים שמתאימים לסינון.', // i18n-ok
+  loadFail: 'לא הצלחנו לטעון את המאגר כרגע. נסו שוב בעוד רגע.', // i18n-ok
+  offline: 'אין חיבור כרגע. נסו שוב בעוד רגע.', // i18n-ok
+  noEdit: 'צפייה בלבד — אי אפשר למחוק כאן.', // i18n-ok
+  more: 'להציג עוד', // i18n-ok
+  selected: 'נבחרו', // i18n-ok
+  selectAll: 'לבחור את כל {n} שמתאימים לסינון', // i18n-ok
+  allChosen: 'נבחרו כל {n} הפריטים שמתאימים לסינון', // i18n-ok
+  clearSel: 'ניקוי הבחירה', // i18n-ok
+  btnIndex: 'הסרה מהמאגר — הקובץ נשאר בדרייב', // i18n-ok
+  btnFile: 'מחיקת הקובץ — נמחק מהדרייב ומהמאגר', // i18n-ok
+  oneIndex: 'הסרה מהמאגר (הקובץ נשאר)', // i18n-ok
+  oneFile: 'מחיקת הקובץ מהדרייב', // i18n-ok
+  explainIndex: 'הסרה מהמאגר: הפריטים יוצאו מהמאגר והסוכנים יפסיקו להשתמש בהם. הקבצים עצמם נשארים בדרייב, במקום שבו הם נמצאים.', // i18n-ok
+  explainFile: 'מחיקת הקובץ: הקבצים יימחקו מהדרייב ויוצאו מהמאגר.', // i18n-ok
+  folders: 'תיקיות:', // i18n-ok
+  affected: 'שימו לב: {n} פוסטים שמחכים לאישור או מתוזמנים משתמשים בפריטים האלה. אפשר לבצע בכל זאת — הפוסטים יישארו בלי הקובץ.', // i18n-ok
+  runIndex: 'לבצע — הסרה מהמאגר', // i18n-ok
+  runFile: 'לבצע — מחיקת הקבצים', // i18n-ok
+  cancel: 'ביטול', // i18n-ok
+  working: 'מבצעים…', // i18n-ok
+  doneIndex: 'הוסרו מהמאגר {n} פריטים ({size}). הקבצים נשארו בדרייב.', // i18n-ok
+  doneFile: 'נמחקו {n} קבצים ({size}).', // i18n-ok
+  trashed: '{n} מהם הועברו לאשפה של הדרייב (הדרייב מרוקן אותה לבד אחרי 30 יום).', // i18n-ok
+  failed: '{n} לא נמחקו: {names}', // i18n-ok
+  noneChosen: 'לא נבחר אף פריט.', // i18n-ok
+  daysNeeded: 'כתבו מספר ימים.', // i18n-ok
+  noSize: 'גודל לא ידוע', // i18n-ok
+};
+
+function libSize(bytes) {
+  const b = Number(bytes) || 0;
+  if (b >= 1024 ** 3) return (b / 1024 ** 3).toLocaleString('he-IL', { maximumFractionDigits: 2 }) + ' GB';
+  if (b >= 1024 ** 2) return (b / 1024 ** 2).toLocaleString('he-IL', { maximumFractionDigits: 1 }) + ' MB';
+  if (b >= 1024) return Math.round(b / 1024).toLocaleString('he-IL') + ' KB';
+  return b ? b + ' B' : '0';
+}
+function libDate(iso) {
+  try { return iso ? new Date(iso).toLocaleDateString('he-IL') : ''; } catch (e) { return ''; }
+}
+function libEl(id) { return document.getElementById(id); }
+function libFolderLabel(f) {
+  return (f.origin === 'media' ? LIB_T.ourFolder : LIB_T.connFolder) + ' · ' + (f.label || LIB_T.root);
+}
+
+function libReadFilter() {
+  const v = id => (libEl(id) && libEl(id).value || '').trim();
+  libUI.filter = { source: v('libSource'), folder: v('libFolder'), usage: v('libUsage'), date_from: v('libFrom'),
+                   date_to: v('libTo'), size_min_mb: v('libMin'), size_max_mb: v('libMax'), q: v('libQ'),
+                   older_than_days: libUI.filter.older_than_days || '' };
+  libUI.sort = v('libSort') || 'newest';
+}
+
+async function loadLibrary(reset) {
+  ['libQ', 'libMin', 'libMax'].forEach(id => {
+    const el = libEl(id);
+    if (el) el.placeholder = id === 'libQ' ? LIB_T.search : id === 'libMin' ? LIB_T.mbMin : LIB_T.mbMax;
+  });
+  if (reset) { libUI.offset = 0; libUI.items = []; libUI.selected.clear(); libUI.allMatching = false; libHidePreview(); }
+  const q = new URLSearchParams();
+  Object.entries(libUI.filter).forEach(([k, val]) => { if (val !== '' && val != null) q.set(k, val); });
+  q.set('sort', libUI.sort); q.set('offset', String(libUI.offset)); q.set('limit', '60');
+  try {
+    const res = await fetch('/api/client/media-inventory?' + q.toString(), { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const d = ((await res.json()) || {}).data;
+    if (!d) throw new Error('empty');
+    libUI.data = d;
+    libUI.items = libUI.offset ? libUI.items.concat(d.items || []) : (d.items || []);
+    renderLibrary();
+  } catch (e) {
+    libEl('libGrid').innerHTML = `<div class="lib-empty">${esc(LIB_T.loadFail)}</div>`;
+  }
+}
+
+function renderLibrary() {
+  const d = libUI.data || {};
+  const s = d.summary || { by_source: {} };
+  const total = Number(s.size) || 0;
+  libEl('libSummary').innerHTML = `<div class="lib-total">${esc(LIB_T.total)}: <b>${Number(s.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(total))}</b></div>
+    <div class="lib-bars">${Object.entries(s.by_source || {}).filter(([, r]) => r.count).sort((a, b) => b[1].size - a[1].size).map(([src, r]) => `
+      <div class="lib-bar-row"><span class="lib-bar-label">${esc(LIB_T['src_' + src] || src)}</span>
+        <span class="lib-bar"><span style="width:${total ? Math.max(2, Math.round(r.size * 100 / total)) : 0}%"></span></span>
+        <span class="lib-bar-val">${Number(r.count).toLocaleString('he-IL')} · ${esc(libSize(r.size))}</span></div>`).join('')}</div>`;
+
+  const folderOpts = (d.folders || []).map(f => `<option value="${esc(f.key)}">${esc(libFolderLabel(f))} (${Number(f.count)})</option>`).join('');
+  const keep = libEl('libFolder').value;
+  libEl('libFolder').innerHTML = `<option value="">${esc(LIB_T.allFolders)}</option>` + folderOpts;
+  libEl('libFolder').value = libUI.filter.folder || keep || '';
+  libEl('libPresetFolder').innerHTML = `<option value="">${esc(LIB_T.pickFolder)}</option>` + folderOpts;
+  const days = libEl('libDays');
+  if (days && !days.dataset.touched) days.value = (d.settings || {}).unused_days ?? '';
+
+  const m = d.matching || {};
+  libEl('libMatching').textContent = `${LIB_T.matching} ${Number(m.count || 0).toLocaleString('he-IL')} · ${libSize(m.size)}`;
+  libEl('libGrid').innerHTML = libUI.items.length ? libUI.items.map(libCard).join('') : `<div class="lib-empty">${esc(LIB_T.empty)}</div>`;
+  libEl('libGrid').querySelectorAll('img').forEach(img => img.addEventListener('error', () => img.remove(), { once: true }));
+  libEl('libMore').hidden = !d.has_more;
+  libRenderSelBar();
+}
+
+function libCard(i) {
+  const uses = (i.used_in || []).map(r => `${r.kind === 'proposal' ? LIB_T.proposal : LIB_T.post}: ${r.title || '—'} (${r.kind === 'proposal' ? '' : (LIB_T['st_' + r.status] || r.status)})`);
+  const useLine = i.usage === 'unused' ? LIB_T.use_unused : (i.usage === 'rejected' ? LIB_T.use_rejected + ' · ' : LIB_T.use_used + ' · ') + uses.join(' · ');
+  const checked = libUI.allMatching || libUI.selected.has(i.id) ? ' checked' : '';
+  return `<div class="lib-card${checked ? ' sel' : ''}">
+    <label class="lib-check"><input type="checkbox" data-lib-sel="${esc(i.id)}"${checked}${libUI.allMatching ? ' disabled' : ''}></label>
+    <div class="lib-thumb"><span class="lib-ico">${i.kind === 'video' ? '🎬' : i.kind === 'image' ? '🖼' : '📄'}</span>
+      <img loading="lazy" alt="" src="/api/client/media-inventory/thumb/${encodeURIComponent(i.id)}"></div>
+    <div class="lib-name" dir="auto">${esc(i.name)}</div>
+    <div class="lib-meta">${esc(LIB_T['src_' + i.source] || i.source)} · ${esc((i.format || '').toUpperCase())} · ${esc(i.size ? libSize(i.size) : LIB_T.noSize)}</div>
+    <div class="lib-meta" dir="auto">${esc(i.origin === 'media' ? LIB_T.ourFolder : LIB_T.connFolder)} · ${esc(i.folder || LIB_T.root)} · ${esc(libDate(i.created))}</div>
+    <div class="lib-use use-${esc(i.usage)}" dir="auto">${esc(useLine)}</div>
+    <div class="lib-acts"><button type="button" class="conn-btn secondary" data-lib-one="index" data-id="${esc(i.id)}">${esc(LIB_T.oneIndex)}</button>
+      <button type="button" class="conn-btn secondary lib-danger" data-lib-one="file" data-id="${esc(i.id)}">${esc(LIB_T.oneFile)}</button></div>
+  </div>`;
+}
+
+function libRenderSelBar() {
+  const m = (libUI.data || {}).matching || {};
+  const n = libUI.allMatching ? Number(m.count || 0) : libUI.selected.size;
+  const bar = libEl('libSelBar');
+  bar.hidden = !n;
+  if (!n) return;
+  bar.innerHTML = `<span>${libUI.allMatching ? esc(LIB_T.allChosen.replace('{n}', n.toLocaleString('he-IL'))) : esc(LIB_T.selected) + ': <b>' + n + '</b>'}</span>
+    ${!libUI.allMatching && Number(m.count || 0) > n ? `<button type="button" class="conn-btn secondary" data-lib-all="1">${esc(LIB_T.selectAll.replace('{n}', Number(m.count).toLocaleString('he-IL')))}</button>` : ''}
+    <button type="button" class="conn-btn secondary" data-lib-clear="1">${esc(LIB_T.clearSel)}</button>
+    <button type="button" class="conn-btn secondary" data-lib-bulk="index">${esc(LIB_T.btnIndex)}</button>
+    <button type="button" class="conn-btn lib-danger" data-lib-bulk="file">${esc(LIB_T.btnFile)}</button>`;
+}
+
+function libHidePreview() { const p = libEl('libPreview'); if (p) { p.hidden = true; p.innerHTML = ''; } libUI.pending = null; }
+
+async function libPost(url, body) {
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
+                                   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.status === 401) { window.location.href = '/login/'; return null; }
+    if (res.status === 403) return { success: false, text: LIB_T.noEdit };
+    return (await res.json()) || {};
+  } catch (e) { return { success: false, text: LIB_T.offline }; }
+}
+
+// The one step before it happens: what goes, how much, where, which posts
+async function libAsk(mode, selection) {
+  if (!selection.filter && !(selection.ids || []).length) { showNotice(LIB_T.noneChosen, 'warn'); return; }
+  const r = await libPost('/api/client/media-inventory/preview', Object.assign({ mode }, selection));
+  if (!r || !r.success) { showNotice((r && r.text) || LIB_T.loadFail, 'warn'); return; }
+  const p = r.data || {};
+  libUI.pending = { mode, selection };
+  const box = libEl('libPreview');
+  box.hidden = false;
+  box.innerHTML = `<div class="lib-prev-mode">${esc(mode === 'file' ? LIB_T.explainFile : LIB_T.explainIndex)}</div>
+    <div class="lib-prev-line"><b>${Number(p.count || 0).toLocaleString('he-IL')}</b> ${esc(LIB_T.items)} · <b>${esc(libSize(p.size))}</b></div>
+    <div class="lib-prev-line">${esc(LIB_T.folders)} ${(p.folders || []).map(f => esc(libFolderLabel(f)) + ' (' + Number(f.count) + ', ' + esc(libSize(f.size)) + ')').join(' · ')}</div>
+    ${(p.affected_posts || []).length ? `<div class="lib-prev-warn">${esc(LIB_T.affected.replace('{n}', p.affected_posts.length))}
+      <ul>${p.affected_posts.map(a => `<li dir="auto">${esc(a.title || '—')} — ${esc(LIB_T['st_' + a.status] || a.status)}${a.planned_date ? ' · ' + esc(a.planned_date) : ''}</li>`).join('')}</ul></div>` : ''}
+    <div class="lib-prev-acts"><button type="button" class="conn-btn${mode === 'file' ? ' lib-danger' : ''}" data-lib-run="1">${esc(mode === 'file' ? LIB_T.runFile : LIB_T.runIndex)}</button>
+      <button type="button" class="conn-btn secondary" data-lib-cancel="1">${esc(LIB_T.cancel)}</button></div>`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function libRun(btn) {
+  const job = libUI.pending;
+  if (!job) return;
+  btn.disabled = true; btn.textContent = LIB_T.working;
+  const r = await libPost('/api/client/media-inventory/delete', Object.assign({ mode: job.mode }, job.selection));
+  if (!r || !r.success) { btn.disabled = false; showNotice((r && r.text) || LIB_T.loadFail, 'warn'); return; }
+  const d = r.data || {};
+  let line = (job.mode === 'file' ? LIB_T.doneFile : LIB_T.doneIndex).replace('{n}', d.done).replace('{size}', libSize(d.size));
+  if (d.trashed) line += ' ' + LIB_T.trashed.replace('{n}', d.trashed);
+  if ((d.failed || []).length) line += ' ' + LIB_T.failed.replace('{n}', d.failed.length).replace('{names}', d.failed.map(f => f.name).join(', '));
+  showNotice(line, (d.failed || []).length ? 'warn' : 'success');
+  libEl('libResult').textContent = line;
+  loadLibrary(true);
+}
+
+function libPreset(kind) {
+  ['libSource', 'libFolder', 'libUsage', 'libFrom', 'libTo', 'libMin', 'libMax', 'libQ'].forEach(id => { if (libEl(id)) libEl(id).value = ''; });
+  libUI.filter = {};
+  if (kind === 'rejected') {
+    libUI.filter = { source: 'generated_image,generated_video,slide', usage: 'rejected' };
+  } else if (kind === 'unused_old') {
+    const n = (libEl('libDays').value || '').trim();
+    if (n === '' || isNaN(Number(n))) { showNotice(LIB_T.daysNeeded, 'warn'); return; }
+    libUI.filter = { source: 'generated_image,generated_video,slide', usage: 'unused', older_than_days: n };
+  } else if (kind === 'folder') {
+    libUI.filter = { folder: libEl('libPresetFolder').value };
+    libEl('libFolder').value = libUI.filter.folder;
+  }
+  if (kind === 'rejected' || kind === 'unused_old') libEl('libUsage').value = libUI.filter.usage;
+  libUI.sort = libEl('libSort').value || 'newest';
+  loadLibrary(true);
+}
+
+document.addEventListener('change', (ev) => {
+  const t = ev.target;
+  if (!t.closest || !t.closest('#viewLibrary')) return;
+  if (t.matches('[data-lib-sel]')) {
+    t.checked ? libUI.selected.add(t.getAttribute('data-lib-sel')) : libUI.selected.delete(t.getAttribute('data-lib-sel'));
+    t.closest('.lib-card').classList.toggle('sel', t.checked);
+    libRenderSelBar();
+  } else if (t.id === 'libDays') {
+    t.dataset.touched = '1';
+  } else if (t.id === 'libPresetFolder') {
+    if (t.value) libPreset('folder');
+  } else if (t.matches('.lib-filter')) {
+    libReadFilter(); libUI.filter.older_than_days = ''; loadLibrary(true);
+  }
+});
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('#viewLibrary button');
+  if (!t) return;
+  const sel = () => libUI.allMatching ? { filter: libUI.filter } : { ids: Array.from(libUI.selected) };
+  if (t.hasAttribute('data-lib-one')) libAsk(t.getAttribute('data-lib-one'), { ids: [t.getAttribute('data-id')] });
+  else if (t.hasAttribute('data-lib-bulk')) libAsk(t.getAttribute('data-lib-bulk'), sel());
+  else if (t.hasAttribute('data-lib-run')) libRun(t);
+  else if (t.hasAttribute('data-lib-cancel')) libHidePreview();
+  else if (t.hasAttribute('data-lib-all')) { libUI.allMatching = true; renderLibrary(); }
+  else if (t.hasAttribute('data-lib-clear')) { libUI.allMatching = false; libUI.selected.clear(); renderLibrary(); }
+  else if (t.hasAttribute('data-lib-preset')) libPreset(t.getAttribute('data-lib-preset'));
+  else if (t.id === 'libMore') { libUI.offset = libUI.items.length; loadLibrary(false); }
+  else if (t.id === 'libSearchBtn') { libReadFilter(); loadLibrary(true); }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && ev.target && ev.target.id === 'libQ') { libReadFilter(); loadLibrary(true); }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONNECTED DRIVE FOLDERS — the client's own pool of real photos and videos

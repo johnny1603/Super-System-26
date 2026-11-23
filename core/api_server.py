@@ -3626,9 +3626,15 @@ def drive_assets_scan():
     # connected client folder — NEW or CHANGED files only, inside the free cap,
     # never re-describing a described file (core/drive_assets.daily_scan). What
     # doesn't fit now continues on the every-minute tick.
-    from core import drive_assets
+    from core import drive_assets, media_inventory
     try:
-        return {"success": True, "data": drive_assets.daily_scan(200.0)}
+        # the media library's retention rule (only clients whose manager switched it on)
+        retention = media_inventory.run_retention()
+    except Exception as e:
+        print(f"[media_inventory] retention pass failed: {type(e).__name__}")
+        retention = []
+    try:
+        return {"success": True, "data": {**drive_assets.daily_scan(200.0), "retention": retention}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=type(e).__name__)
 
@@ -6459,6 +6465,76 @@ def client_drive_folders_step(request: Request):
     from core import drive_assets
     drive_assets.step(client_id, 20)
     return {"success": True, "data": _drive_folders_view(client_id)}
+
+# ─── Media library (core/media_inventory, docs/MEDIA-LIBRARY.md) ────────────
+# Every media item the system knows about, with full delete: "index" removes
+# it from the index (the file stays), "file" deletes the file from Drive too.
+class MediaInventorySelection(BaseModel):
+    ids: list = []
+    filter: dict = None
+    mode: str = "index"
+
+def _media_inventory_filter(request: Request) -> dict:
+    keys = ("source", "folder", "usage", "date_from", "date_to", "size_min_mb", "size_max_mb", "older_than_days", "q")
+    return {k: request.query_params.get(k, "") for k in keys}
+
+@app.get("/api/client/media-inventory")
+def client_media_inventory(request: Request, sort: str = "newest", offset: int = 0, limit: int = 60, refresh: int = 0):
+    client_id = _require_session(request)
+    from core import media_inventory
+    return {"success": True, "data": media_inventory.view(client_id, _media_inventory_filter(request), sort,
+                                                           offset, min(max(limit, 1), 200), bool(refresh))}
+
+@app.get("/api/client/media-inventory/thumb/{file_id}")
+def client_media_inventory_thumb(file_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import media_inventory
+    try:
+        content, content_type = media_inventory.thumbnail(client_id, file_id)
+    except Exception as e:
+        print(f"[media_inventory] thumbnail {file_id} for client {client_id} failed: {type(e).__name__}")
+        raise HTTPException(status_code=404, detail={"code": "ERR_NO_THUMBNAIL"})
+    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"})
+
+@app.post("/api/client/media-inventory/preview")
+def client_media_inventory_preview(req: MediaInventorySelection, request: Request):
+    # What a deletion will do (count, size, folders, affected posts) — nothing changes
+    client_id = _require_session(request)
+    from core import media_inventory
+    return {"success": True, "data": media_inventory.preview(client_id, req.ids, req.filter, req.mode)}
+
+@app.post("/api/client/media-inventory/delete")
+def client_media_inventory_delete(req: MediaInventorySelection, request: Request):
+    # Plain `def`: Drive calls. Used items are deleted too (the preview listed them).
+    client_id = _require_session(request)
+    from core import media_inventory
+    try:
+        return {"success": True, "data": media_inventory.delete(client_id, req.ids, req.filter, req.mode, by="client")}
+    except ValueError as e:
+        return {"success": False, "data": {"code": str(e)}}
+
+class MediaInventorySettingsRequest(BaseModel):
+    retention_enabled: bool = None
+    retention_days: str = "keep"
+    unused_days: str = "keep"
+
+@app.get("/api/admin/media-inventory/{client_id}")
+def admin_media_inventory(client_id: int, request: Request):
+    # Control Room: the deletion log + the retention rule and preset day count
+    _require_admin(request)
+    from core import media_inventory
+    return {"success": True, "data": {"settings": media_inventory.settings(client_id),
+                                      "log": media_inventory.deletion_log(client_id)}}
+
+@app.post("/api/admin/media-inventory/{client_id}/settings")
+def admin_media_inventory_settings(client_id: int, req: MediaInventorySettingsRequest, request: Request):
+    _require_admin(request)
+    from core import media_inventory
+    try:
+        saved = media_inventory.save_settings(client_id, req.retention_enabled, req.retention_days, req.unused_days)
+    except ValueError as e:
+        return {"success": False, "data": {"code": str(e)}}
+    return {"success": True, "data": {"settings": saved, "log": media_inventory.deletion_log(client_id)}}
 
 # ─── Home: agent invitations + prerequisites + onboarding focus (core/home_focus) ─
 def _home_lang(client_id: int, lang: str) -> str:

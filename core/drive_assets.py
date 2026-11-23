@@ -697,6 +697,9 @@ def _upsert_item(state: dict, raw: dict, node: dict, run_id: str):
     items = state["items"]
     fresh = tier0(raw, node)
     old = items.get(fresh["file_id"])
+    if old and old.get("state") == "removed":
+        old["seen_run"] = run_id          # removed from the index by the media library: stays out
+        return
     if old:
         same = ((old.get("md5") and fresh["md5"] and old["md5"] == fresh["md5"])
                 or (not fresh["md5"] and old.get("modified") == fresh["modified"]))
@@ -825,12 +828,13 @@ def _counts(client_id: int, state: dict):
     """item_count / indexed_count per folder record (roots count their whole tree)."""
     data = drive_folders._load(client_id)
     per = {}
-    for item in state["items"].values():
+    kept = [i for i in state["items"].values() if i.get("state") != "removed"]   # media library removals
+    for item in kept:
         rec = per.setdefault(item.get("connection_id"), [0, 0])
         rec[0] += 1
         rec[1] += 1 if item.get("state") == "indexed" else 0
     totals = {}
-    for item in state["items"].values():
+    for item in kept:
         rec = totals.setdefault(item.get("root_id"), [0, 0])
         rec[0] += 1
         rec[1] += 1 if item.get("state") == "indexed" else 0
