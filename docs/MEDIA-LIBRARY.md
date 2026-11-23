@@ -11,7 +11,7 @@ Every media item the system knows about, read live (nothing copied):
 |---|---|
 | generated_image / generated_video | our media folder; file ids from media_agent's `media_*_created` activity rows |
 | slide | our media folder; a Social-queue item with source `slide`, or the renderer's `…-vN.png` name |
-| real_copy | our media folder; `media_*_real_asset` rows (a real asset the agents copied in) |
+| real_copy | our media folder; `media_*_real_asset` rows — copies made before 2026-11-23 (real assets are referenced now, core/asset_refs) |
 | uploaded | anything else in our media folder |
 | client_asset | the client's connected Drive folders (`drive_assets` index) |
 

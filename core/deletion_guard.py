@@ -42,7 +42,7 @@ PROGRESS_PREFIX = "client_deletion:"
 # the same rows client_deletion._settings_keys clears
 CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tiktok_grant:",
                            "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:",
-                           "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:", "social_queue:", "post_drafts:", "slide_templates:", "drive_folders:", "drive_assets:", "drive_assets_lock:", "media_library:", "media_deletions:",
+                           "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:", "social_queue:", "post_drafts:", "slide_templates:", "drive_folders:", "drive_assets:", "drive_assets_lock:", "media_library:", "media_deletions:", "working_copies:",
                            "avatar_photos:", "invite_resume:", "quarter_goals:",
                            "organic_plan:", "competitor_watch:")
 

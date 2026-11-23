@@ -11,7 +11,7 @@ cap, `find_assets`), `agents/media_agent.py` (`review_brief`, `generate_from_bri
 ## Access model — no OAuth
 
 The client shares the folder with our existing service account
-`drive-archiver@super-system-500410.iam.gserviceaccount.com` (Viewer lets us read; writing into the folder needs Editor) and pastes the
+`drive-archiver@super-system-500410.iam.gserviceaccount.com` (as Editor; in a Shared Drive, as a member with Content manager — Contributor cannot trash) and pastes the
 folder link. Every Drive call runs `drive_storage.as_service_account()` with
 `supportsAllDrives` / `includeItemsFromAllDrives`. **No Drive scope was added to the OAuth
 app** (it is under Google verification review).
@@ -29,8 +29,34 @@ product_catalog, customer_photos, brand_assets, raw_materials, social_output, ar
 
 The role ranks and filters assets in `find_assets` and decides which folders the agents draw
 from. It does NOT restrict access: every connected folder is read_write (2026-11-23, the
-manager's decision), and nothing in the code refuses a write into one. Real assets the agents
-use are COPIED (files.copy, inside Drive) into our media folder.
+manager's decision), and nothing in the code refuses a write into one.
+
+## Referenced, not copied (2026-11-23, `core/asset_refs`)
+
+A real asset the agents choose stays where it is: the Social-queue item carries the file's OWN
+Drive id. Selection, ranking, the preview/thumbnail, the approval card, download, the player and
+the TikTok / YouTube sends (they stream byte ranges straight from Drive) all work from that id
+plus Drive's own thumbnail link. Ownership checks (`drive_mirror._assert_in_client_tree`,
+`drive_mirror.thumbnail`, `drive_download._verify_in_client_tree`) accept an id that is in the
+client's connected-folder index (`asset_refs.is_connected`: not removed, folder not excluded).
+
+Copies happen in exactly two places:
+
+1. **Working copy, only when an operation needs one.** Today: Meta publishing needs a PUBLIC link,
+   and making the client's original public would change their sharing — so
+   `media_agent.prepare_for_publishing` copies it into our media folder `working/`, makes the copy
+   public, and `meta_content_agent.publish` deletes it when the call returns (success or failure).
+   An unreleased copy is deleted by the daily `drive-assets-scan` run after 24 h
+   (`sweep_working_copies`). `asset_refs.working_copy()` is the context manager for any future step
+   that must hold bytes (compositing a photo into a slide — the slide renderer does not do that today).
+2. **Publish snapshot**, client setting `drive_snapshot_on_publish` (default ON; Control Room →
+   client settings to switch off): when a post is published (`social_queue.mark_published`, or every
+   channel delivered `done`), a referenced asset is copied into the client's connected
+   **social_output** folder (`appProperties.uallak_snapshot_of`, idempotent) and recorded on the item
+   as `snapshot`. No social_output folder connected → `snapshot.skipped = no_social_output_folder`.
+
+Nothing else is ever copied. Older posts produced before this change still point at their earlier
+copy in our media folder (source `real_copy` in the media library).
 
 ## Adding a folder (settings → "תיקיות דרייב מחוברות")
 
@@ -92,9 +118,8 @@ re-describes a described file. Lease `drive_assets_lock:<id>`.
 (tags ×3, description ×2, name/path ×1; excluded subfolders never appear).
 
 - `media_agent.generate_from_brief` searches FIRST for every non-text asset; the agent
-  (`choose_real_asset`, a cheap text call) chooses one or none; a chosen file is copied into
-  the media folder (idempotent via `appProperties.uallak_real_asset_from`), credits 0, no
-  image tool needed.
+  (`choose_real_asset`, a cheap text call) chooses one or none; a chosen file is REFERENCED by
+  its own id (never copied — §Referenced, not copied), credits 0, no image tool needed.
 - `review_brief`: a proof slide, or a product_carousel / before_after / customer_story asset,
   with no real match = an objection to the social agent (never a generated stand-in).
 - Customer photos are used like any other real asset; nothing blocks their publication.

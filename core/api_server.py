@@ -3630,6 +3630,8 @@ def drive_assets_scan():
     try:
         # the media library's retention rule (only clients whose manager switched it on)
         retention = media_inventory.run_retention()
+        from core import asset_refs
+        asset_refs.sweep_working_copies()        # a working copy whose operation never finished
     except Exception as e:
         print(f"[media_inventory] retention pass failed: {type(e).__name__}")
         retention = []

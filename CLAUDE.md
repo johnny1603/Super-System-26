@@ -691,7 +691,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   video = ONE first non-black frame (ffmpeg in the Dockerfile — not the youtube_metadata path), newest first.
   Free cap `client_settings.drive_assets_free_items` (150): metered cost, quote, ONE billing request, credits resume
   (`/api/admin/drive-assets/{id}/credits`). Daily job `drive-assets-scan`. `find_assets` is searched FIRST by
-  `media_agent.generate_from_brief` (the agent chooses; copied into the media folder); a proof slide / real-only
+  `media_agent.generate_from_brief` (the agent chooses; REFERENCED by its own file_id, never copied — `core/asset_refs`:
+  a working copy only where an operation needs one (Meta's public link), deleted when it returns; the one standing copy is
+  the publish snapshot into the client's social_output folder, setting `drive_snapshot_on_publish`, default ON); a proof slide / real-only
   format with nothing real = objection.
   `tests/test_drive_folders.py`.
 - **Media library (2026-11-23, `docs/MEDIA-LIBRARY.md`)**: `core/media_inventory` — every media item (generated,

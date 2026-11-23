@@ -692,8 +692,22 @@ def mark_published(client_id: int, item_id: str, by: str = "client") -> dict:
     for c in item["channels"]:
         item["delivered"][c] = {"how": "done", "at": _now().isoformat()}
     _log(item, "published", by)
+    _snapshot(client_id, item)
     _save(client_id, queue)
     return item
+
+
+def _snapshot(client_id: int, item: dict):
+    """Published: a real asset referenced from the client's connected folder
+    is snapshotted into their social_output folder (core/asset_refs; setting
+    drive_snapshot_on_publish, default ON). Never raises."""
+    try:
+        from core import asset_refs
+        snap = asset_refs.snapshot_published(client_id, item)
+    except Exception as e:
+        snap = {"failed": type(e).__name__}
+    if snap:
+        item["snapshot"] = snap
 
 
 # ─── THE GATE ────────────────────────────────────────────────────────────────
@@ -731,6 +745,7 @@ def mark_delivered(client_id: int, channel: str, how: str, file_id: str = "", it
         item["delivered"][channel] = {"how": how, "at": _now().isoformat()}
         if all((item["delivered"].get(c) or {}).get("how") == "done" for c in item["channels"]):
             item["status"], item["published_at"] = "published", _now().isoformat()
+            _snapshot(client_id, item)
         _log(item, f"delivered:{channel}:{how}", "system")
         _save(client_id, queue)
     except Exception as e:

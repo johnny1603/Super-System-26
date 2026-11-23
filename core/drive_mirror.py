@@ -29,6 +29,7 @@ Rules this module holds:
 - `diagnose()` (admin only) shows what Drive itself returns for a client next
   to what the Media tab and the agents see.
 """
+import contextlib
 import re
 import time
 from collections import OrderedDict
@@ -170,9 +171,14 @@ def _tree(client_id: int, root: str) -> dict:
 
 
 def _assert_in_client_tree(client_id: int, root: str, item_id: str):
-    """Raise NotInClientFolder unless item_id IS the root or sits under it."""
+    """Raise NotInClientFolder unless item_id IS the root or sits under it,
+    or is a real asset in the client's connected folders (referenced by its
+    own id, never copied — core/asset_refs)."""
     tree = _tree(client_id, root)
     if item_id in tree["folders"]:
+        return
+    from core import asset_refs
+    if asset_refs.is_connected(client_id, item_id):
         return
     # The boundary above the client's root: our Shared Drive media root, or
     # the client's My Drive (the uallak folder's recorded parent)
@@ -318,12 +324,16 @@ def thumbnail(client_id: int, file_id: str) -> tuple:
     if hit and hit[0] > time.time() - THUMB_CACHE_SECONDS:
         _thumb_cache.move_to_end(key)
         return hit[1], hit[2]
+    from core import asset_refs
+    connected = asset_refs.is_connected(client_id, file_id)   # a referenced real asset (never copied)
     root = client_root_id(client_id)
-    if not root:
+    if not root and not connected:
         raise NotInClientFolder(file_id)
-    meta = drive.get_meta(file_id, "id,parents,thumbnailLink,mimeType")
+    with (drive_storage.as_service_account() if connected else contextlib.nullcontext()):
+        meta = drive.get_meta(file_id, "id,parents,thumbnailLink,mimeType")
     parent = (meta.get("parents") or [""])[0]
-    _assert_in_client_tree(client_id, root, parent)
+    if not connected:
+        _assert_in_client_tree(client_id, root, parent)
     link = meta.get("thumbnailLink") or ""
     if not link:
         raise FileNotFoundError("no thumbnail")

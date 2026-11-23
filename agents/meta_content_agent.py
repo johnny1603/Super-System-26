@@ -341,6 +341,16 @@ def _publish_instagram(ig: dict, spec: dict) -> dict:
     return {"post_id": result.get("id", "")}
 
 
+def _release_working_copy(client_id: int, spec: dict):
+    """A working copy made for this publish's public link is deleted once the
+    publish call returned (core/asset_refs). Never raises."""
+    try:
+        from core import asset_refs
+        asset_refs.release_for_url(client_id, spec.get("media_url", ""))
+    except Exception as e:
+        print(f"[{AGENT_NAME}] client {client_id}: working copy not released ({type(e).__name__})")
+
+
 def publish(client_id: int, spec: dict) -> dict:
     """Publish one piece of already-generated content to the client's connected
     Facebook Page or Instagram account.
@@ -380,12 +390,14 @@ def publish(client_id: int, spec: dict) -> dict:
             lambda: (_publish_facebook if target == "facebook" else _publish_instagram)(conn, spec),
         )
     except Exception as e:
+        _release_working_copy(client_id, spec)
         agent_alert(AGENT_NAME, [f"publish failed for client {client_id} "
                                  f"({target}/{spec['kind']}): {e}"])
         return {"success": False, "errors": [str(e)]}
 
     log_activity(client_id, AGENT_NAME, "content_published",
                  {"target": target, "kind": spec["kind"]}, result)
+    _release_working_copy(client_id, spec)
     social_queue.mark_delivered(client_id, target, "done", item_id=item_id)
     return {"success": True, "target": target, **result}
 

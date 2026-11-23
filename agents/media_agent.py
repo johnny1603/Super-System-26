@@ -399,8 +399,18 @@ def sync_website_media_folders(client_id: int) -> list:
 def prepare_for_publishing(client_id: int, file_id: str) -> dict:
     """Meta publishing needs a PUBLIC media URL (their server fetches it).
     Flips exactly ONE file public and returns the direct link — the client
-    folder itself stays restricted. This is meta_content_agent's pull point."""
+    folder itself stays restricted. This is meta_content_agent's pull point.
+    A file from the client's connected folders is never made public itself:
+    a WORKING COPY in our media folder is (core/asset_refs), and the publish
+    deletes it when it returns."""
+    from core import asset_refs
+    copy_id = ""
+    if asset_refs.is_connected(client_id, file_id):
+        copy_id = asset_refs.make_working_copy(client_id, file_id, "meta_publish")["id"]
+        file_id = copy_id
     url = drive.make_file_public(file_id)
+    if copy_id:
+        asset_refs.note_url(client_id, copy_id, url)
     _log_activity(client_id, "media_prepared_for_publishing", {"file_id": file_id})
     return {"success": True, "media_url": url}
 
@@ -722,29 +732,22 @@ def _real_summary(c: dict) -> dict:
             "media_type": c.get("media_type", ""), "description": c.get("description", "")[:300]}
 
 
-@drive_storage.scoped
 def _use_real_asset(client_id: int, brief, chosen: dict, platform: str) -> dict:
-    """The chosen real file, COPIED inside Drive into the client's media
-    folder (files.copy — no byte through our server). A re-run reuses the
-    earlier copy."""
+    """The chosen real file, REFERENCED by its own Drive file_id — never
+    copied (core/asset_refs). Preview, approval, download and the sends all
+    work from that id; a working copy is made only where an operation needs
+    one, and the publish snapshot is the one standing copy."""
     kind = "video" if chosen.get("media_type") == "video" else "image"
     folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
     platform = platform if platform in folders else "instagram"
     try:
-        folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
-        earlier = drive.find_by_app_property(folder, "uallak_real_asset_from", chosen["file_id"])
-        if earlier:
-            copy = {"id": earlier[0]["id"], "webViewLink": drive.get_link(earlier[0]["id"])}
-        else:
-            if drive_storage.location(client_id).get("kind") != drive_storage.SHARED:
-                return {"success": False, "status": "needs_real_asset",
-                        "errors": ["a real asset is copied into the shared media folder only"]}
-            name = f"{brief.set_id}-{brief.asset_id}-{chosen.get('name') or chosen['file_id']}"[:200]
-            with drive_storage.as_service_account():
-                copy = drive.copy_file(chosen["file_id"], folder, name=name,
-                                       app_properties={"uallak_real_asset_from": chosen["file_id"]})
+        with drive_storage.as_service_account():
+            meta = drive.get_meta(chosen["file_id"], "id,trashed,webViewLink")
+        if meta.get("trashed"):
+            return {"success": False, "status": "needs_real_asset", "errors": ["the chosen file is in the trash"]}
+        copy = {"id": chosen["file_id"], "webViewLink": meta.get("webViewLink", "")}
     except Exception as e:
-        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} real asset copy failed: {e}"])
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} real asset unreadable: {e}"])
         return {"success": False, "status": "failed", "errors": [str(e)]}
     _log_activity(client_id, f"media_{kind}_real_asset",
                   {"platform": platform, "set_id": brief.set_id, "asset_id": brief.asset_id,

@@ -755,12 +755,12 @@ class MediaAgent(Base):
         self.assertEqual((out["success"], out["credits"], used), (True, 0, ["MA_SHOE2_abcdef0"]))
         self.assertEqual(out["real_asset"]["folder"], "מוצרים")
 
-    def test_copy_into_media_folder_is_a_drive_copy_idempotent(self):
+    def test_real_asset_is_referenced_never_copied(self):
+        # core/asset_refs: the chosen file keeps its own id; tests/test_asset_refs.py covers the rest
         src = _read("agents", "media_agent.py")
         body = src[src.index("def _use_real_asset"):src.index("def generate_from_brief")]
-        self.assertIn("drive.copy_file(", body)
-        self.assertIn("uallak_real_asset_from", body)
-        self.assertIn("find_by_app_property", body)
+        self.assertNotIn("copy_file(", body)
+        self.assertIn('copy = {"id": chosen["file_id"]', body)
 
 
 # ─── 11. Text-only post with the image tool disconnected; the card ─────────

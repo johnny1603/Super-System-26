@@ -179,6 +179,9 @@ def _verify_in_client_tree(client_id: int, root: str, file_id: str, parent: str)
     hit = _verified.get((client_id, file_id))
     if hit and hit[1] == root and hit[0] > time.time() - VERIFY_SECONDS:
         return
+    from core import asset_refs
+    if asset_refs.is_connected(client_id, file_id):
+        return     # a real asset in the client's connected folders, referenced by its own id
     # The boundary above the client's root: our Shared Drive media root, or
     # the client's own My Drive (core/drive_storage)
     media_root = drive_storage.location(client_id).get("parent") or ""
