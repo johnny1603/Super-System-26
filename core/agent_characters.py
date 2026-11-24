@@ -35,12 +35,18 @@ Rebuilding identity from generated output compounds drift until the faces
 change.
 
 Storage (app_settings, global — not per client):
-- `agent_references`: {"agents": {agent: {media_id, url, url_at, notes,
-  file_id, mime, width, height, updated_at, by}}, "history": [...],
-  "reports": [...]}. `file_id` = a durable copy in our Shared Drive
+- `agent_references`: {"agents": {agent: {"images": [{ref_id, media_id, url,
+  url_at, file_id, mime, width, height, added_at, by, source}], "notes",
+  "updated_at"}}, "history": [...], "reports": [...]} — a reference SET per
+  agent (up to MAX_REF_IMAGES); the whole set is sent, within the model's
+  max (shared between the characters of one image, reference_plan); an older
+  single-image record reads as a set of one. `file_id` = a durable copy in our Shared Drive
   (uallak-agents/<agent>/): Higgsfield tags uploads retention=temporary and
   keeps outputs ~7 days, so a URL older than REF_FRESH_HOURS is re-uploaded
   from that copy (the documented upload) before it is sent.
+- `agent_pose_candidates`: {"agents": {agent: [test result]}, "jobs": {agent:
+  {state, made, credits, errors}}} — the workspace's test poses waiting for
+  the manager's decision (save / discard / promote), never used by posts.
 - `agent_poses`: {"poses": [record], "last": {agent: pose_id}} — the pose
   library. Accumulates, never gates: a generated pose is stored at once
   (approved False, usable by the post that made it); when the manager approves
@@ -181,7 +187,38 @@ def configured() -> bool:
     return bool(key) and gen.has_both_parts(key)
 
 
-# ─── The reference images: agent → {media_id, url, notes} ────────────────────
+# ─── The reference SET per agent: {images: [...], notes} ─────────────────────
+
+MAX_REF_IMAGES = 14                # the most any model takes; each model's own max applies when sending
+REF_ID_RE = re.compile(r"^r[a-f0-9]{10}$")
+IMAGE_FIELDS = ("media_id", "url", "url_at", "file_id", "mime", "width", "height")
+
+
+def _ref_id(seed: str = "") -> str:
+    if seed:
+        import hashlib
+        return "r" + hashlib.sha1(seed.encode()).hexdigest()[:10]
+    return "r" + secrets.token_hex(5)
+
+
+def _normal(entry) -> dict:
+    """One agent's record as {"images": [...], "notes", "updated_at"}. A
+    single-image record from before the set (url at the top level) becomes a
+    set of one."""
+    if not isinstance(entry, dict):
+        return {"images": [], "notes": "", "updated_at": ""}
+    if "images" not in entry:
+        images = []
+        if URL_RE.match(str(entry.get("url") or "")):
+            images.append({**{k: entry.get(k) for k in IMAGE_FIELDS}, "ref_id": _ref_id(str(entry["url"])),
+                           "added_at": entry.get("updated_at", ""), "by": entry.get("by", ADMIN),
+                           "source": entry.get("source", "url")})
+        entry = {"images": images, "notes": entry.get("notes", ""), "updated_at": entry.get("updated_at", "")}
+    entry["images"] = [i for i in entry.get("images") or [] if isinstance(i, dict) and URL_RE.match(str(i.get("url") or ""))]
+    entry.setdefault("notes", "")
+    entry.setdefault("updated_at", "")
+    return entry
+
 
 def references() -> dict:
     """The stored records (never raises; unreadable = empty)."""
@@ -190,7 +227,7 @@ def references() -> dict:
     except Exception as e:
         print(f"[{SERVICE_NAME}] references unreadable ({type(e).__name__})")
         data = {}
-    data.setdefault("agents", {})
+    data["agents"] = {a: _normal(e) for a, e in (data.get("agents") or {}).items() if a in AGENTS}
     data.setdefault("history", [])
     data.setdefault("reports", [])
     return data
@@ -247,19 +284,31 @@ def _kept_bytes(file_id: str) -> bytes:
         return drive.download_file(file_id)
 
 
-def set_reference(agent: str, url: str = "", media_id: str = "", notes: str = "", by: str = ADMIN,
-                  content: bytes = None, _fetch_fn=None, _publish_fn=None, _keep_fn=None) -> dict:
-    """The admin sets ONE agent's reference image: a pasted https URL, or the
-    uploaded bytes (`content`, sent through the documented upload). The image
-    is read and checked, a durable copy is kept in our Drive. Replaces the
-    previous one. Only the admin — an agent never sets or rebuilds one."""
+def _admin_only(agent, by: str):
+    """THE guardrail on every write here: the manager's screen only."""
     if by != ADMIN:
         create_element(agent, by=by)
+
+
+def _history(data: dict, agent: str, action: str, by: str, **extra):
+    data["history"] = (data["history"] + [{"at": _now().isoformat(), "agent": agent, "action": action,
+                                           "by": by, **extra}])[-80:]
+
+
+def add_reference(agent: str, url: str = "", media_id: str = "", by: str = ADMIN, content: bytes = None,
+                  source: str = "", _fetch_fn=None, _publish_fn=None, _keep_fn=None) -> dict:
+    """ONE more image into the agent's reference set: a pasted https URL, or
+    uploaded bytes (`content`, through the documented upload). The image is
+    read and checked; a durable copy is kept in our Drive. The manager only."""
+    _admin_only(agent, by)
     agent = clean_agent(agent)
     media_id = str(media_id or "").strip()
     if media_id and not MEDIA_ID_RE.match(media_id):
         raise ValueError("the media id has letters, digits, - _ : . only")
-    notes = re.sub(r"\s+", " ", str(notes or "")).strip()[:300]
+    data = references()
+    entry = data["agents"].setdefault(agent, _normal({}))
+    if len(entry["images"]) >= MAX_REF_IMAGES:
+        raise ValueError(f"at most {MAX_REF_IMAGES} reference images per agent — remove one first")
     uploaded = content is not None
     if uploaded:
         info = image_info(content)
@@ -268,6 +317,8 @@ def set_reference(agent: str, url: str = "", media_id: str = "", notes: str = ""
         url = str(url or "").strip()
         if not URL_RE.match(url):
             raise ValueError("paste an https:// URL of the image")
+        if any(i["url"] == url for i in entry["images"]):
+            raise ValueError("this image is already in the set")
         try:
             content = (_fetch_fn or _fetch)(url)
         except ValueError as e:
@@ -281,38 +332,77 @@ def set_reference(agent: str, url: str = "", media_id: str = "", notes: str = ""
     except Exception as e:
         file_id, warning = "", f"no durable copy kept ({type(e).__name__}) — the URL is used as is"
         _alert([f"reference for {agent}: {warning}"])
-    data = references()
-    data["agents"][agent] = {"media_id": media_id, "url": url, "url_at": _now().isoformat(), "notes": notes,
-                             "file_id": file_id, **info, "updated_at": _now().isoformat(), "by": by,
-                             "source": "upload" if uploaded else "url"}
-    data["history"] = (data["history"] + [{"at": _now().isoformat(), "agent": agent, "action": "set",
-                                           "media_id": media_id, "by": by}])[-50:]
+    image = {"ref_id": _ref_id(), "media_id": media_id, "url": url, "url_at": _now().isoformat(),
+             "file_id": file_id, **info, "added_at": _now().isoformat(), "by": by,
+             "source": source if source in ("promoted",) else ("upload" if uploaded else "url")}
+    entry["images"].append(image)
+    entry["updated_at"] = _now().isoformat()
+    _history(data, agent, "add", by, ref_id=image["ref_id"], source=image["source"])
     _write(REFS_KEY, data)
     out = view(data)
     out["warning"] = warning
+    out["added"] = image["ref_id"]
     return out
 
 
-def clear_reference(agent: str, by: str = ADMIN) -> dict:
-    """The admin removes an agent's reference (its character generations then
-    fail with the explicit message until a new one is set)."""
-    if by != ADMIN:
-        create_element(agent, by=by)
+def set_reference(agent: str, url: str = "", media_id: str = "", notes: str = "", by: str = ADMIN,
+                  content: bytes = None, **kw) -> dict:
+    """Kept for callers of the single-image version: adds the image (and the
+    notes, when given) to the set."""
+    out = add_reference(agent, url=url, media_id=media_id, by=by, content=content, **kw)
+    if notes:
+        out = {**set_notes(agent, notes, by=by), "warning": out.get("warning", ""), "added": out.get("added")}
+    return out
+
+
+def remove_reference(agent: str, ref_id: str, by: str = ADMIN) -> dict:
+    """One image out of the set (the Drive copy stays, for the record)."""
+    _admin_only(agent, by)
     agent = clean_agent(agent)
     data = references()
-    data["agents"].pop(agent, None)
-    data["history"] = (data["history"] + [{"at": _now().isoformat(), "agent": agent, "action": "clear",
-                                           "by": by}])[-50:]
+    entry = data["agents"].get(agent) or _normal({})
+    before = len(entry["images"])
+    entry["images"] = [i for i in entry["images"] if i.get("ref_id") != ref_id]
+    if len(entry["images"]) == before:
+        raise ValueError("no such reference image")
+    data["agents"][agent] = entry
+    _history(data, agent, "remove", by, ref_id=ref_id)
+    _write(REFS_KEY, data)
+    return view(data)
+
+
+def set_notes(agent: str, notes: str, by: str = ADMIN) -> dict:
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    data = references()
+    entry = data["agents"].setdefault(agent, _normal({}))
+    entry["notes"] = re.sub(r"\s+", " ", str(notes or "")).strip()[:300]
+    entry["updated_at"] = _now().isoformat()
+    _history(data, agent, "notes", by)
+    _write(REFS_KEY, data)
+    return view(data)
+
+
+def clear_reference(agent: str, by: str = ADMIN) -> dict:
+    """The whole set out (the agent's character generations then fail with
+    the explicit message until an image is added)."""
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    data = references()
+    entry = data["agents"].get(agent) or _normal({})
+    entry["images"] = []
+    data["agents"][agent] = entry
+    _history(data, agent, "clear", by)
     _write(REFS_KEY, data)
     return view(data)
 
 
 def reference_for(agent: str, data: dict = None) -> dict:
-    """The stored reference of `agent`, or MissingReference."""
+    """The agent's record with at least one image, or MissingReference."""
     agent = clean_agent(agent)
     data = data if data is not None else references()
-    entry = (data.get("agents") or {}).get(agent) or {}
-    if not URL_RE.match(str(entry.get("url") or "")):
+    entry = _normal((data.get("agents") or {}).get(agent))
+    if not entry["images"]:
         raise MissingReference(agent)
     return entry
 
@@ -326,30 +416,48 @@ def require_references(agents: list, data: dict = None) -> dict:
     return data
 
 
-def _stale(entry: dict) -> bool:
+def _model_max() -> int:
+    from core import media_gen_service as gen
+    return gen.max_references() or MAX_REF_IMAGES
+
+
+def reference_plan(agents: list, data: dict = None, max_total: int = None) -> list:
+    """The images sent per agent, in order: [[image, …], …]. The model's max
+    is shared between the characters (at least one each); within a set the
+    first images go first."""
+    data = data if data is not None else references()
+    agents = list(agents or [])
+    if not agents:
+        return []
+    total = max_total or _model_max()
+    per = max(1, total // len(agents))
+    return [reference_for(a, data)["images"][:per] for a in agents]
+
+
+def _stale(image: dict) -> bool:
     try:
-        then = datetime.fromisoformat(str(entry.get("url_at") or "").replace("Z", "+00:00"))
+        then = datetime.fromisoformat(str(image.get("url_at") or "").replace("Z", "+00:00"))
     except ValueError:
         return True
     return _now() - then >= timedelta(hours=REF_FRESH_HOURS)
 
 
-def reference_urls(agents: list, data: dict = None, _refresh=None) -> list:
-    """The URL to send for each agent, in order. A URL older than
+def reference_urls(agents: list, data: dict = None, _refresh=None, max_total: int = None) -> list:
+    """The URLs to send, flat, in the plan's order. A URL older than
     REF_FRESH_HOURS is re-uploaded from our durable copy first (Higgsfield's
     uploads are temporary); if that fails the stored URL is sent as is."""
     data = data if data is not None else references()
     urls, changed = [], False
-    for a in agents or []:
-        entry = reference_for(a, data)
-        if entry.get("file_id") and _stale(entry):
-            try:
-                fresh = (_refresh or (lambda e: _publish(_kept_bytes(e["file_id"]), e.get("mime") or "image/png")))(entry)
-                entry.update(url=fresh, url_at=_now().isoformat())
-                changed = True
-            except Exception as e:
-                print(f"[{SERVICE_NAME}] {a}: reference not refreshed ({type(e).__name__}) — the stored URL is sent")
-        urls.append(entry["url"])
+    for group in reference_plan(agents, data, max_total):
+        for image in group:
+            if image.get("file_id") and _stale(image):
+                try:
+                    fresh = (_refresh or (lambda i: _publish(_kept_bytes(i["file_id"]), i.get("mime") or "image/png")))(image)
+                    image.update(url=fresh, url_at=_now().isoformat())
+                    changed = True
+                except Exception as e:
+                    print(f"[{SERVICE_NAME}] reference not refreshed ({type(e).__name__}) — the stored URL is sent")
+            urls.append(image["url"])
     if changed:
         try:
             _write(REFS_KEY, data)
@@ -359,20 +467,39 @@ def reference_urls(agents: list, data: dict = None, _refresh=None) -> list:
 
 
 def view(data: dict = None) -> dict:
-    """The admin table: one row per agent."""
+    """The workspace: per agent its reference set, the test candidates, the
+    running test, and its pose library."""
     from core import media_gen_service as gen
     data = data if data is not None else references()
+    cands = _candidates()
+    lib = _library()
+    sent = gen.max_references()
     rows = []
     for agent in AGENTS:
-        e = (data.get("agents") or {}).get(agent) or {}
-        rows.append({"agent": agent, "name": AGENT_NAMES[agent], "set": bool(e.get("url")),
-                     "media_id": e.get("media_id", ""), "url": e.get("url", ""), "notes": e.get("notes", ""),
-                     "durable": bool(e.get("file_id")), "width": e.get("width", 0), "height": e.get("height", 0),
-                     "updated_at": e.get("updated_at", ""), "by": e.get("by", "")})
+        e = _normal((data.get("agents") or {}).get(agent))
+        images = [{**{k: i.get(k, "") for k in ("ref_id", "url", "media_id", "source", "added_at", "width", "height")},
+                   "durable": bool(i.get("file_id"))} for i in e["images"]]
+        poses = [p for p in lib["poses"] if p.get("agent") == agent]
+        rows.append({"agent": agent, "name": AGENT_NAMES[agent], "set": bool(images), "images": images,
+                     "notes": e["notes"], "updated_at": e["updated_at"], "sent": min(len(images), sent or len(images)),
+                     "candidates": (cands["agents"].get(agent) or [])[-MAX_CANDIDATES:],
+                     "job": cands["jobs"].get(agent) or {},
+                     "poses": [_pose_row(p) for p in sorted(poses, key=lambda p: p.get("created_at", ""), reverse=True)[:60]],
+                     "pose_counts": {"approved": sum(1 for p in poses if p.get("approved")),
+                                     "pending": sum(1 for p in poses if not p.get("approved")),
+                                     "transparent": sum(1 for p in poses if p.get("transparent")),
+                                     "total": len(poses)}})
     return {"agents": rows, "configured": configured(), "model": gen.CHARACTER_IMAGE_PATH,
             "model_verified": gen.CHARACTER_IMAGE_PATH.strip("/") in gen.CHARACTER_MODELS,
-            "max_references": gen.max_references(), "reports": (data.get("reports") or [])[-20:],
-            "poses": pose_counts()}
+            "max_references": sent, "max_images": MAX_REF_IMAGES, "default_poses": list(DEFAULT_TEST_POSES),
+            "reports": (data.get("reports") or [])[-20:], "poses": pose_counts()}
+
+
+def _pose_row(p: dict) -> dict:
+    return {"pose_id": p.get("pose_id"), "approved": bool(p.get("approved")), "transparent": bool(p.get("transparent")),
+            "client_id": p.get("client_id", 0), "description": p.get("description", ""), "outfit": p.get("outfit", ""),
+            "framing": p.get("framing", ""), "setting": p.get("setting", ""), "source": p.get("source", ""),
+            "uses": (p.get("uses") or {}).get("count", 0), "created_at": p.get("created_at", "")}
 
 
 # ─── THE guardrail ───────────────────────────────────────────────────────────
@@ -413,16 +540,31 @@ def _strip_placeholders(text: str) -> str:
     return re.sub(r"\s{2,}", " ", PLACEHOLDER_RE.sub("", str(text or ""))).strip()
 
 
+def _who_counts(counts: list) -> list:
+    """How each character is named, by the reference images sent for it (in
+    order): one character → "the character shown in the reference image(s)";
+    several → "the character from reference image 2" / "… images 3-5"."""
+    if len(counts) == 1:
+        return ["the character shown in the reference images" if counts[0] > 1
+                else "the character shown in the reference image"]
+    out, start = [], 1
+    for k in counts:
+        k = max(1, k)
+        out.append(f"the character from reference image {start}" if k == 1
+                   else f"the character from reference images {start}-{start + k - 1}")
+        start += k
+    return out
+
+
 def _who(n: int) -> list:
-    if n == 1:
-        return ["the character shown in the reference image"]
-    return [f"the character from reference image {i + 1}" for i in range(n)]
+    return _who_counts([1] * n)
 
 
 def in_scene_prompt(scene: str, agents: list, data: dict = None, crop_margin: bool = False) -> str:
-    """The scene prompt naming each character by its reference image (sent in
-    the same order) and the style clause, always. `crop_margin` = the result
-    will be cropped to the requested ratio: ask for room at the top and bottom."""
+    """The scene prompt naming each character by its reference images (sent
+    in the same order, reference_plan) and the style clause, always.
+    `crop_margin` = the result will be cropped to the requested ratio: ask for
+    room at the top and bottom."""
     agents = [clean_agent(a) for a in agents or []]
     if not agents:
         raise ValueError("in_scene needs at least one character")
@@ -431,7 +573,7 @@ def in_scene_prompt(scene: str, agents: list, data: dict = None, crop_margin: bo
     if len(agents) > MAX_CHARACTERS:
         raise ValueError(f"at most {MAX_CHARACTERS} characters in one image")
     data = require_references(agents, data)
-    who = _who(len(agents))
+    who = _who_counts([len(g) for g in reference_plan(agents, data)])
     scene = _strip_placeholders(scene).rstrip(". ")
     prompt = f"{scene}. Featuring {' and '.join(who)}, {STYLE_CLAUSE}."
     notes = [f"{who[i]}: {_strip_placeholders(reference_for(a, data).get('notes'))}"
@@ -454,8 +596,10 @@ def with_style(prompt: str) -> str:
 def pose_prompt(agent: str, pose: str, outfit: str = "", framing: str = "full body", data: dict = None) -> str:
     """A composite pose: the character alone on a plain background (the
     background is removed afterwards)."""
+    data = data if data is not None else references()
     ref = reference_for(agent, data)
-    bits = [_who(1)[0], _strip_placeholders(pose) or "standing, relaxed, friendly"]
+    bits = [_who_counts([len(reference_plan([agent], data)[0])])[0],
+            _strip_placeholders(pose) or "standing, relaxed, friendly"]
     if outfit:
         bits.append(f"wearing {_strip_placeholders(outfit)}")
     elif ref.get("notes"):
@@ -795,3 +939,204 @@ def approval_flags(client_id: int, has_characters: bool, _brief_text=None) -> li
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: brand brief unreadable for the AI-person check ({type(e).__name__})")
     return flags
+
+
+# ─── The workspace: test poses from the reference set (the manager's only) ───
+#
+# The manager presses "generate" on /admin/characters/: a few poses are made
+# with the SAME path as a real post's composite pose (pose_prompt — the
+# reference set, the style clause, the plain background — on the configured
+# model, at POSE_ASPECT). Each result waits as a CANDIDATE; nothing enters the
+# library or the reference set by itself:
+# - save    → the background removed + verified transparent (as make_pose)
+#             → the pose library, APPROVED and tagged (pose, outfit, framing),
+#             reused by posts like any library pose;
+# - discard → gone;
+# - promote → into the reference set, ONLY with an explicit confirm (identity
+#             built from generated output drifts) — and only by the manager.
+
+CANDS_KEY = "agent_pose_candidates"
+MAX_CANDIDATES = 24
+POSE_ASPECT = "3:4"
+CAND_ID_RE = re.compile(r"^c[a-f0-9]{10}$")
+DEFAULT_TEST_POSES = ("standing, waving hello with a big welcoming smile, turned slightly toward the viewer",
+                      "pointing with one hand to the side, explaining, friendly and confident",
+                      "giving a thumbs up, proud and relaxed")
+JOB_STALE_MIN = 20                 # a "running" test older than this is treated as dead
+
+
+def _candidates() -> dict:
+    try:
+        data = _read(CANDS_KEY)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] candidates unreadable ({type(e).__name__})")
+        data = {}
+    data.setdefault("agents", {})
+    data.setdefault("jobs", {})
+    return data
+
+
+def _running(job: dict) -> bool:
+    if (job or {}).get("state") != "running":
+        return False
+    try:
+        then = datetime.fromisoformat(str(job.get("started_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return _now() - then < timedelta(minutes=JOB_STALE_MIN)
+
+
+def start_test(agent: str, instruction: str = "", count: int = 3, by: str = ADMIN) -> dict:
+    """Checks and records a test run; returns {"poses"} for run_test (the
+    route runs it in the background). Refuses plainly: no reference, no key,
+    a test already running."""
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    reference_for(agent)                                          # MissingReference: the explicit line
+    if not configured():
+        raise CharacterUnavailable(agent, "not_configured", f"{KEY_ENV} is not set")
+    from core import media_gen_service as gen
+    gen.character_model()                                         # an unverified model path is refused
+    instruction = _strip_placeholders(re.sub(r"\s+", " ", str(instruction or ""))).strip()[:200]
+    count = min(max(int(count or 3), 1), 3)
+    poses = [instruction] * count if instruction else list(DEFAULT_TEST_POSES[:count])
+    data = _candidates()
+    if _running(data["jobs"].get(agent)):
+        raise ValueError("a test for this agent is already running")
+    data["jobs"][agent] = {"state": "running", "started_at": _now().isoformat(), "poses": poses, "made": 0,
+                           "credits": 0, "errors": [], "by": by}
+    _write(CANDS_KEY, data)
+    return {"poses": poses}
+
+
+def run_test(agent: str, poses: list, _gen=None) -> dict:
+    """The test itself (background): one generation per pose, each result a
+    candidate. Never raises; the job record says what happened."""
+    from core import media_gen_service as gen
+    made, credits, errors = 0, 0.0, []
+    for pose in poses:
+        try:
+            prompt = pose_prompt(agent, pose, framing="full body")
+            refs = reference_urls([agent])
+            out = (_gen or gen.generate_with_references)(agents_key(), prompt, refs, POSE_ASPECT)
+            cand = {"cand_id": "c" + secrets.token_hex(5), "url": out["url"], "pose": _short(pose, 200),
+                    "outfit": "", "framing": "full body", "prompt": _short(prompt, 600),
+                    "credits": out.get("credits") or 0, "aspect_sent": out.get("aspect_ratio") or POSE_ASPECT,
+                    "model": out.get("model", ""), "refs": len(refs), "request_id": str(out.get("request_id") or ""),
+                    "created_at": _now().isoformat(), "promoted": False}
+            data = _candidates()
+            data["agents"][agent] = ((data["agents"].get(agent) or []) + [cand])[-MAX_CANDIDATES:]
+            made += 1
+            credits += float(cand["credits"] or 0)
+            job = data["jobs"].get(agent) or {}
+            job.update(made=made, credits=round(credits, 2))
+            data["jobs"][agent] = job
+            _write(CANDS_KEY, data)
+        except Exception as e:
+            errors.append(getattr(e, "message", "") or f"{type(e).__name__}: {str(e)[:200]}")
+    data = _candidates()
+    job = data["jobs"].get(agent) or {}
+    job.update(state="done" if made else "failed", finished_at=_now().isoformat(), made=made,
+               credits=round(credits, 2), errors=errors[:5])
+    data["jobs"][agent] = job
+    _write(CANDS_KEY, data)
+    if errors:
+        _alert([f"character test for {agent}: {len(errors)} of {len(poses)} failed — {errors[0]}"])
+    return job
+
+
+def _candidate(agent: str, cand_id: str, data: dict) -> dict:
+    if not CAND_ID_RE.match(str(cand_id or "")):
+        raise ValueError("bad candidate id")
+    cand = next((c for c in data["agents"].get(agent) or [] if c.get("cand_id") == cand_id), None)
+    if not cand:
+        raise ValueError("no such result (already saved or discarded?)")
+    return cand
+
+
+def _drop_candidate(agent: str, cand_id: str):
+    data = _candidates()
+    data["agents"][agent] = [c for c in data["agents"].get(agent) or [] if c.get("cand_id") != cand_id]
+    _write(CANDS_KEY, data)
+
+
+def save_candidate(agent: str, cand_id: str, pose: str = "", outfit: str = "", framing: str = "",
+                   by: str = ADMIN, _remove=None, _upload=None) -> dict:
+    """"שמירה למאגר": the result's background removed and VERIFIED
+    transparent, cropped like make_pose, into the pose library APPROVED and
+    tagged. A failed background removal keeps the result and says so."""
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    from core import media_gen_service as gen
+    cand = _candidate(agent, cand_id, _candidates())
+    cut = (_remove or gen.remove_background)(agents_key(), cand["url"])
+    png = ensure_transparent(cut["content"])
+    fitted = fit_aspect(png, POSE_ASPECT, cand.get("aspect_sent") or POSE_ASPECT)
+    uploaded = (_upload or upload_pose_png)(agent, fitted["content"])
+    pose = _short(pose or cand.get("pose"), 200)
+    record = add_pose(agent, uploaded.get("id", ""), True, 0, outfit=outfit, setting="plain cut-out",
+                      framing=framing or cand.get("framing", ""), description=pose,
+                      tags=[w for w in re.findall(r"[a-z]{4,}", pose.lower())][:8], source="manual",
+                      prompt=cand.get("prompt", ""))
+    approve_poses([record["pose_id"]])
+    _drop_candidate(agent, cand_id)
+    out = view()
+    out["saved"] = record["pose_id"]
+    out["warning"] = fitted["warning"]
+    return out
+
+
+def discard_candidate(agent: str, cand_id: str, by: str = ADMIN) -> dict:
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    _candidate(agent, cand_id, _candidates())
+    _drop_candidate(agent, cand_id)
+    return view()
+
+
+def promote_candidate(agent: str, cand_id: str, confirm: bool = False, by: str = ADMIN, **kw) -> dict:
+    """A generated result INTO the reference set — deliberate only: `confirm`
+    must be True (the screen shows the drift warning first). Never automatic,
+    never by an agent."""
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    if confirm is not True:
+        raise ValueError("promoting a generated image needs an explicit confirmation")
+    data = _candidates()
+    cand = _candidate(agent, cand_id, data)
+    rid = str(cand.get("request_id") or "")[:120]
+    out = add_reference(agent, url=cand["url"], media_id=rid if MEDIA_ID_RE.match(rid) else "", by=by,
+                        source="promoted", **kw)
+    data = _candidates()
+    for c in data["agents"].get(agent) or []:
+        if c.get("cand_id") == cand_id:
+            c["promoted"] = True
+    _write(CANDS_KEY, data)
+    _alert([f"a GENERATED image was promoted into {agent}'s reference set by {by} (deliberate, confirmed)"])
+    return {**view(), "warning": out.get("warning", ""), "added": out.get("added")}
+
+
+def remove_pose(pose_id: str, by: str = ADMIN) -> dict:
+    """A pose out of the library (the manager's choice). Its file is trashed
+    in our Drive, best effort; a client's in-scene image is only unlisted."""
+    pose_id = str(pose_id or "")
+    if not POSE_ID_RE.match(pose_id):
+        raise ValueError("bad pose id")
+    data = _library()
+    pose = get_pose(pose_id, data)
+    if not pose:
+        raise ValueError("no such pose")
+    _admin_only(pose.get("agent"), by)
+    data["poses"] = [p for p in data["poses"] if p.get("pose_id") != pose_id]
+    if data["last"].get(pose.get("agent")) == pose_id:
+        data["last"].pop(pose["agent"], None)
+    _write(POSES_KEY, data)
+    if pose.get("transparent") and not pose.get("client_id") and pose.get("file_id"):
+        try:
+            from core import drive_service as drive, drive_storage
+            with drive_storage.as_service_account():
+                drive.trash_file(pose["file_id"])
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] pose file not trashed ({type(e).__name__})")
+    return view()
+

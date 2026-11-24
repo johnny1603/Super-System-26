@@ -101,38 +101,89 @@ class Store(unittest.TestCase):
         return ac.references()
 
 
-# ─── 1. The reference images (the admin table) ───────────────────────────────
+# ─── 1. The reference SET (the admin workspace) ──────────────────────────────
+
+def _row(view, agent):
+    return next(r for r in view["agents"] if r["agent"] == agent)
+
 
 class References(Store):
-    def test_admin_saves_and_clears_a_reference_image(self):
-        view = self.set_ref("lior", media_id="3f1c9a2e-job", notes="denim apron, half body")
-        row = next(r for r in view["agents"] if r["agent"] == "lior")
-        self.assertEqual((row["set"], row["url"], row["media_id"], row["notes"], row["durable"]),
-                         (True, REF["lior"], "3f1c9a2e-job", "denim apron, half body", True))
-        stored = self.db.tables["app_settings"][0]
-        self.assertEqual(stored["key"], "agent_references")            # in the DB, not in code
-        self.assertEqual(ac.reference_for("lior")["url"], REF["lior"])
-        # replace
-        self.set_ref("lior", url="https://cdn.higgsfield.ai/refs/lior-v2.png", media_id="job-2")
-        self.assertEqual((ac.reference_for("lior")["url"], ac.reference_for("lior")["media_id"]),
-                         ("https://cdn.higgsfield.ai/refs/lior-v2.png", "job-2"))
-        # clear
+    def test_several_images_added_shown_removed_one_by_one(self):
+        self.set_ref("lior", media_id="3f1c9a2e-job")
+        self.set_ref("lior", url="https://cdn.higgsfield.ai/refs/lior-side.png", media_id="job-2")
+        view = self.set_ref("lior", url="https://cdn.higgsfield.ai/refs/lior-back.png")
+        row = _row(view, "lior")
+        self.assertEqual([i["url"] for i in row["images"]],
+                         [REF["lior"], "https://cdn.higgsfield.ai/refs/lior-side.png",
+                          "https://cdn.higgsfield.ai/refs/lior-back.png"])
+        self.assertEqual((row["set"], row["sent"], row["images"][0]["media_id"], row["images"][0]["durable"]),
+                         (True, 3, "3f1c9a2e-job", True))
+        self.assertEqual(self.db.tables["app_settings"][0]["key"], "agent_references")
+        with self.assertRaises(ValueError):
+            self.set_ref("lior")                                          # the same image twice
+        # remove ONE
+        view = ac.remove_reference("lior", row["images"][1]["ref_id"])
+        self.assertEqual([i["url"] for i in _row(view, "lior")["images"]],
+                         [REF["lior"], "https://cdn.higgsfield.ai/refs/lior-back.png"])
+        with self.assertRaises(ValueError):
+            ac.remove_reference("lior", "r0000000000")
+        # clear the whole set
         view = ac.clear_reference("lior")
-        self.assertFalse(next(r for r in view["agents"] if r["agent"] == "lior")["set"])
+        self.assertFalse(_row(view, "lior")["set"])
         with self.assertRaises(ac.MissingReference):
             ac.reference_for("lior")
-        self.assertEqual([h["action"] for h in ac.references()["history"]], ["set", "set", "clear"])
+        self.assertEqual([h["action"] for h in ac.references()["history"]], ["add", "add", "add", "remove", "clear"])
+
+    def test_at_most_fourteen_per_agent(self):
+        for n in range(ac.MAX_REF_IMAGES):
+            self.set_ref("maya", url=f"https://cdn.higgsfield.ai/refs/maya-{n}.png")
+        with self.assertRaises(ValueError):
+            self.set_ref("maya", url="https://cdn.higgsfield.ai/refs/maya-extra.png")
+
+    def test_the_whole_set_is_sent_within_each_models_max(self):
+        for n in range(12):
+            self.set_ref("maya", url=f"https://cdn.higgsfield.ai/refs/maya-{n}.png")
+        self.set_ref("lior")
+        self.set_ref("uri")
+        grok = ac.reference_urls(["maya"], max_total=10)
+        self.assertEqual(grok, [f"https://cdn.higgsfield.ai/refs/maya-{n}.png" for n in range(10)])
+        self.assertEqual(len(ac.reference_urls(["maya"], max_total=3)), 3)                  # Qwen
+        self.assertEqual(len(ac.reference_urls(["maya"], max_total=14)), 12)                # all of them
+        # several characters share the max, in order, at least one each
+        shared = ac.reference_plan(["maya", "lior", "uri"], max_total=10)
+        self.assertEqual([len(g) for g in shared], [3, 1, 1])
+        self.assertEqual([len(g) for g in ac.reference_plan(["maya", "lior", "uri"], max_total=3)], [1, 1, 1])
+        # the default max is the configured model's (Grok: 10)
+        self.assertEqual(len(ac.reference_urls(["maya"])), gen.max_references())
+        # the prompt names who is who by those images
+        saved = gen.max_references
+        gen.max_references = lambda path="": 10
+        try:
+            p = ac.in_scene_prompt("a market stall", ["maya", "lior", "uri"])
+        finally:
+            gen.max_references = saved
+        self.assertIn("the character from reference images 1-3", p)
+        self.assertIn("the character from reference image 4", p)
+        self.assertIn("the character from reference image 5", p)
+        self.assertIn("the character shown in the reference images", ac.pose_prompt("maya", "waving"))
+
+    def test_an_old_single_image_record_reads_as_a_set_of_one(self):
+        ac._write(ac.REFS_KEY, {"agents": {"yoav": {"media_id": "job-y", "url": REF["yoav"], "notes": "grey hoodie",
+                                                    "file_id": "KEEP_y", "url_at": "2026-11-24T10:00:00+00:00"}}})
+        entry = ac.reference_for("yoav")
+        self.assertEqual(([i["url"] for i in entry["images"]], entry["notes"]), ([REF["yoav"]], "grey hoodie"))
+        self.assertTrue(ac.REF_ID_RE.match(entry["images"][0]["ref_id"]))
+        self.assertEqual(ac.reference_for("yoav")["images"][0]["ref_id"], entry["images"][0]["ref_id"])   # stable
 
     def test_upload_goes_through_the_documented_upload(self):
         published = []
-        view = ac.set_reference("maya", content=_png(), media_id="", by="admin",
+        view = ac.add_reference("maya", content=_png(), by="admin",
                                 _publish_fn=lambda c, m: published.append(m) or "https://cdn.higgsfield.ai/up/maya.png",
                                 _keep_fn=lambda a, c, m: "KEEP_maya_0123456789")
         self.assertEqual(published, ["image/png"])
-        self.assertEqual(ac.reference_for("maya")["url"], "https://cdn.higgsfield.ai/up/maya.png")
-        self.assertEqual(ac.reference_for("maya")["source"], "upload")
-        self.assertTrue(next(r for r in view["agents"] if r["agent"] == "maya")["set"])
-        # the upload itself: POST /files/generate-upload-url → PUT with upload_headers, never our key
+        img = ac.reference_for("maya")["images"][0]
+        self.assertEqual((img["url"], img["source"]), ("https://cdn.higgsfield.ai/up/maya.png", "upload"))
+        self.assertTrue(_row(view, "maya")["set"])
         calls = []
 
         class Resp:
@@ -161,7 +212,7 @@ class References(Store):
     def test_refusals(self):
         for bad in ("http://cdn.example/x.png", "not a url", "", "javascript:alert(1)"):
             with self.assertRaises(ValueError, msg=bad):
-                ac.set_reference("maya", url=bad, _fetch_fn=lambda u: _png(), _keep_fn=lambda *a: "K")
+                ac.add_reference("maya", url=bad, _fetch_fn=lambda u: _png(), _keep_fn=lambda *a: "K")
         with self.assertRaises(ValueError):
             self.set_ref("bob", url=REF["maya"])
         with self.assertRaises(ValueError):
@@ -179,39 +230,178 @@ class References(Store):
             raise RuntimeError("Missing key: DRIVE_MEDIA_FOLDER_ID")
         view = self.set_ref("yoav", _keep_fn=no_drive)
         self.assertIn("no durable copy", view["warning"])
-        self.assertFalse(next(r for r in view["agents"] if r["agent"] == "yoav")["durable"])
-        self.assertEqual(ac.reference_for("yoav")["url"], REF["yoav"])
+        self.assertFalse(_row(view, "yoav")["images"][0]["durable"])
+        self.assertEqual(ac.reference_for("yoav")["images"][0]["url"], REF["yoav"])
+
+    def test_notes(self):
+        self.set_ref("elinor")
+        view = ac.set_notes("elinor", "  green   blazer, half body ")
+        self.assertEqual(_row(view, "elinor")["notes"], "green blazer, half body")
 
     def test_an_old_url_is_re_uploaded_from_our_copy(self):
         self.set_ref("uri")
         data = ac.references()
-        data["agents"]["uri"]["url_at"] = "2026-01-01T00:00:00+00:00"
+        data["agents"]["uri"]["images"][0]["url_at"] = "2026-01-01T00:00:00+00:00"
         ac._write(ac.REFS_KEY, data)
         refreshed = []
-        urls = ac.reference_urls(["uri"], _refresh=lambda e: refreshed.append(e["file_id"]) or "https://cdn.higgsfield.ai/up/uri-2.png")
+        urls = ac.reference_urls(["uri"], _refresh=lambda i: refreshed.append(i["file_id"]) or "https://cdn.higgsfield.ai/up/uri-2.png")
         self.assertEqual((urls, refreshed), (["https://cdn.higgsfield.ai/up/uri-2.png"], ["KEEP_uri_0123456789"]))
-        self.assertEqual(ac.reference_for("uri")["url"], "https://cdn.higgsfield.ai/up/uri-2.png")
-        # fresh: sent as is
-        self.assertEqual(ac.reference_urls(["uri"], _refresh=lambda e: self.fail("refreshed a fresh URL")),
+        self.assertEqual(ac.reference_for("uri")["images"][0]["url"], "https://cdn.higgsfield.ai/up/uri-2.png")
+        self.assertEqual(ac.reference_urls(["uri"], _refresh=lambda i: self.fail("refreshed a fresh URL")),
                          ["https://cdn.higgsfield.ai/up/uri-2.png"])
 
     def test_admin_routes_and_screen(self):
         api = tsq._src("core", "api_server.py")
-        for route in ('@app.get("/api/admin/characters")', '@app.post("/api/admin/characters/reference")',
-                      '@app.post("/api/admin/characters/upload")', '@app.post("/api/admin/characters/clear")'):
+        routes = ('@app.get("/api/admin/characters")', '@app.post("/api/admin/characters/reference")',
+                  '@app.post("/api/admin/characters/upload")', '@app.post("/api/admin/characters/reference/remove")',
+                  '@app.post("/api/admin/characters/notes")', '@app.post("/api/admin/characters/clear")',
+                  '@app.post("/api/admin/characters/generate")', '@app.post("/api/admin/characters/candidate/save")',
+                  '@app.post("/api/admin/characters/candidate/discard")',
+                  '@app.post("/api/admin/characters/candidate/promote")',
+                  '@app.post("/api/admin/characters/pose/remove")', '@app.get("/api/admin/characters/pose/{pose_id}")')
+        for route in routes:
             self.assertIn(route, api)
         body = api[api.index('@app.get("/api/admin/characters")'):api.index('@app.get("/api/admin/drive-pull/info")')]
-        self.assertEqual(body.count("_require_admin(request)"), 4)
-        self.assertNotIn("/api/admin/characters/sync", api)
-        self.assertNotIn("/api/admin/characters/override", api)
+        self.assertEqual(body.count("_require_admin(request)"), len(routes))   # every route: the admin session
+        self.assertEqual(body.count('by="admin"'), 10)
+        for gone in ("/api/admin/characters/sync", "/api/admin/characters/override"):
+            self.assertNotIn(gone, api)
         html = tsq._src("dashboard", "admin", "characters", "index.html")
-        for needle in ("/api/admin/characters/reference", "/api/admin/characters/upload", "/api/admin/characters/clear",
-                       'class="thumb"', 'data-f="url"', 'data-f="media_id"', 'data-f="notes"', "itzik-chat.js"):
+        for needle in ("/api/admin/characters/reference", "/api/admin/characters/upload",
+                       "/api/admin/characters/reference/remove", "/api/admin/characters/generate",
+                       "/api/admin/characters/candidate/save", "/api/admin/characters/candidate/discard",
+                       "/api/admin/characters/candidate/promote", "/api/admin/characters/pose/remove",
+                       "/api/admin/characters/pose/", "שמירה למאגר", "הפיכה לתמונת ייחוס", "class=\"promote-warn\"",
+                       "בניית הזהות מתוצר שנוצר", "תמונות ייחוס", "בדיקת תנוחות", "מאגר התנוחות", "multiple",
+                       "itzik-chat.js"):
             self.assertIn(needle, html)
-        for gone in ("/sync", "/override", "unmatched", "candidates", "התנגשות"):
-            self.assertNotIn(gone, html)
+        # the order on each agent's card: what defines it, the test, what posts reuse
+        self.assertIn("${refsHtml(a, d)}${testHtml(a, d)}${libraryHtml(a)}", html)
+        # promote sends confirm only from the warning's own button
+        self.assertEqual(html.count("confirm: true"), 1)
         self.assertIn('href="/admin/characters/"', tsq._src("dashboard", "admin", "index.html"))
 
+
+# ─── The workspace: test poses → save / discard / promote; remove a pose ─────
+
+class Workspace(Store):
+    def setUp(self):
+        super().setUp()
+        self.set_ref("maya")
+        self.old_key = os.environ.get(ac.KEY_ENV)
+        os.environ[ac.KEY_ENV] = "kid:ksecret"
+
+    def tearDown(self):
+        if self.old_key is None:
+            os.environ.pop(ac.KEY_ENV, None)
+        else:
+            os.environ[ac.KEY_ENV] = self.old_key
+        super().tearDown()
+
+    def run_test_poses(self, instruction="", count=3):
+        sent = []
+
+        def fake_gen(key, prompt, refs, aspect):
+            sent.append((prompt, refs, aspect))
+            return {"url": f"https://cdn.example/test-{len(sent)}.png", "credits": 2.5, "model": "xai/grok-imagine-image-2.0",
+                    "aspect_ratio": aspect, "request_id": f"req-{len(sent)}"}
+        poses = ac.start_test("maya", instruction, count)["poses"]
+        job = ac.run_test("maya", poses, _gen=fake_gen)
+        return poses, job, sent
+
+    def test_three_varied_default_poses_on_the_real_post_path(self):
+        poses, job, sent = self.run_test_poses()
+        self.assertEqual(poses, list(ac.DEFAULT_TEST_POSES))
+        self.assertEqual((job["state"], job["made"], job["credits"]), ("done", 3, 7.5))
+        for (prompt, refs, aspect), pose in zip(sent, poses):
+            self.assertEqual(prompt, ac.pose_prompt("maya", pose, framing="full body"))   # the composite path
+            self.assertIn(ac.STYLE_CLAUSE, prompt)
+            self.assertEqual(refs, ac.reference_urls(["maya"]))
+            self.assertEqual(aspect, ac.POSE_ASPECT)
+        row = _row(ac.view(), "maya")
+        self.assertEqual(len(row["candidates"]), 3)
+        self.assertEqual(row["job"]["credits"], 7.5)
+        self.assertEqual(row["pose_counts"]["total"], 0)                 # nothing saved by itself
+        self.assertEqual(ac.references()["agents"]["maya"]["images"][0]["url"], REF["maya"])   # nor promoted
+
+    def test_an_instruction_and_a_count(self):
+        poses, job, sent = self.run_test_poses("sitting at a desk, typing", 2)
+        self.assertEqual(poses, ["sitting at a desk, typing"] * 2)
+        self.assertIn("sitting at a desk, typing", sent[0][0])
+
+    def test_refusals(self):
+        with self.assertRaises(ac.MissingReference):
+            ac.start_test("lior")
+        os.environ.pop(ac.KEY_ENV, None)
+        with self.assertRaises(ac.CharacterUnavailable):
+            ac.start_test("maya")
+        os.environ[ac.KEY_ENV] = "kid:ksecret"
+        ac.start_test("maya")
+        with self.assertRaises(ValueError):
+            ac.start_test("maya")                                         # one test at a time
+
+    def test_save_to_library_tagged_and_reused_like_any_pose(self):
+        self.run_test_poses()
+        cand = _row(ac.view(), "maya")["candidates"][0]
+        removed = []
+        view = ac.save_candidate("maya", cand["cand_id"], pose="waving hello", outfit="denim apron",
+                                 framing="half body",
+                                 _remove=lambda key, url: removed.append(url) or {"content": _figure()},
+                                 _upload=lambda agent, png: {"id": "POSEFILE_0123456789"})
+        self.assertEqual(removed, [cand["url"]])                         # background removed at save
+        pose = ac.get_pose(view["saved"])
+        self.assertEqual((pose["approved"], pose["transparent"], pose["outfit"], pose["framing"], pose["description"]),
+                         (True, True, "denim apron", "half body", "waving hello"))
+        self.assertEqual(len(_row(view, "maya")["candidates"]), 2)
+        found = ac.find_poses("maya", "waving hello", transparent=True)
+        self.assertEqual(found[0]["pose_id"], pose["pose_id"])           # offered to posts like any library pose
+        # a background that was not removed: refused, the result stays
+        with self.assertRaises(ac.BackgroundNotRemoved):
+            ac.save_candidate("maya", _row(ac.view(), "maya")["candidates"][0]["cand_id"],
+                              _remove=lambda key, url: {"content": _figure(alpha=False)},
+                              _upload=lambda agent, png: self.fail("uploaded an opaque pose"))
+        self.assertEqual(len(_row(ac.view(), "maya")["candidates"]), 2)
+
+    def test_discard(self):
+        self.run_test_poses(count=1)
+        cand = _row(ac.view(), "maya")["candidates"][0]
+        view = ac.discard_candidate("maya", cand["cand_id"])
+        self.assertEqual(_row(view, "maya")["candidates"], [])
+        self.assertEqual(_row(view, "maya")["pose_counts"]["total"], 0)
+        with self.assertRaises(ValueError):
+            ac.discard_candidate("maya", cand["cand_id"])
+
+    def test_promote_only_deliberately(self):
+        self.run_test_poses(count=1)
+        cand = _row(ac.view(), "maya")["candidates"][0]
+        with self.assertRaises(ValueError):
+            ac.promote_candidate("maya", cand["cand_id"])                 # no confirm, no promotion
+        self.assertEqual(len(ac.reference_for("maya")["images"]), 1)
+        view = ac.promote_candidate("maya", cand["cand_id"], confirm=True,
+                                    _fetch_fn=lambda u: _png(), _keep_fn=lambda *a: "KEEP_promoted_01")
+        images = ac.reference_for("maya")["images"]
+        self.assertEqual((len(images), images[-1]["url"], images[-1]["source"]), (2, cand["url"], "promoted"))
+        self.assertTrue(_row(view, "maya")["candidates"][0]["promoted"])
+        self.assertTrue(any("GENERATED image was promoted" in a for a in self.alerts))
+
+    def test_remove_a_pose_from_the_library(self):
+        p = ac.add_pose("maya", "FILE_0123456789", True)
+        ac.approve_poses([p["pose_id"]])
+        ac.record_pose_use(p["pose_id"])
+        view = ac.remove_pose(p["pose_id"])
+        self.assertEqual(_row(view, "maya")["poses"], [])
+        self.assertEqual(ac.get_pose(p["pose_id"]), {})
+        self.assertNotIn("maya", ac._library()["last"])
+        with self.assertRaises(ValueError):
+            ac.remove_pose(p["pose_id"])
+
+    def test_the_screen_shows_both(self):
+        p = ac.add_pose("maya", "FILE_0123456789", True, description="waving", outfit="apron", framing="full body")
+        ac.approve_poses([p["pose_id"]])
+        row = _row(ac.view(), "maya")
+        self.assertEqual(len(row["images"]), 1)
+        self.assertEqual(row["pose_counts"], {"approved": 1, "pending": 0, "transparent": 1, "total": 1})
+        self.assertEqual((row["poses"][0]["description"], row["poses"][0]["outfit"]), ("waving", "apron"))
 
 # ─── No undocumented element endpoint, anywhere ──────────────────────────────
 
@@ -393,7 +583,7 @@ class InScene(Store):
         self.assertIn("at a desk", p)
 
     def test_notes_carried(self):
-        self.set_ref("elinor", notes="green blazer, half body")
+        ac.set_notes("elinor", "green blazer, half body")
         self.assertIn("green blazer, half body", ac.in_scene_prompt("a scene", ["elinor"]))
         self.assertIn("green blazer, half body", ac.pose_prompt("elinor", "waving"))
         self.assertNotIn("green blazer", ac.pose_prompt("elinor", "waving", outfit="red apron"))
@@ -849,6 +1039,22 @@ class Guardrail(Store):
         with self.assertRaises(ac.ElementCreationRefused):
             ac.clear_reference("maya", by="lior")
         self.assertEqual(ac.references()["agents"], {})
+        # nor adds, removes, promotes, tests or removes poses — every write on the screen is the manager's
+        self.set_ref("maya")
+        ref_id = ac.reference_for("maya")["images"][0]["ref_id"]
+        p = ac.add_pose("maya", "FILE_0123456789", True)
+        for call in (lambda: ac.add_reference("maya", url=REF["lior"], by="media"),
+                     lambda: ac.remove_reference("maya", ref_id, by="media"),
+                     lambda: ac.set_notes("maya", "x", by="media"),
+                     lambda: ac.start_test("maya", by="maya"),
+                     lambda: ac.save_candidate("maya", "c0123456789", by="media"),
+                     lambda: ac.discard_candidate("maya", "c0123456789", by="media"),
+                     lambda: ac.promote_candidate("maya", "c0123456789", confirm=True, by="media"),
+                     lambda: ac.remove_pose(p["pose_id"], by="lior")):
+            with self.assertRaises(ac.ElementCreationRefused):
+                call()
+        self.assertEqual(len(ac.reference_for("maya")["images"]), 1)
+        self.assertTrue(ac.get_pose(p["pose_id"]))
 
     def test_no_create_path_exists(self):
         src = tsq._src("core", "media_gen_service.py")
@@ -864,10 +1070,10 @@ class Guardrail(Store):
 
     def test_weak_character_is_reported_not_acted_on(self):
         self.set_ref("maya")
-        before = ac.reference_for("maya")["url"]
+        before = ac.reference_for("maya")["images"]
         entry = ac.report_element_weak("maya", "the face drifts in profile shots", by="media")
         self.assertEqual(entry["agent"], "maya")
-        self.assertEqual(ac.reference_for("maya")["url"], before)        # nothing changed
+        self.assertEqual(ac.reference_for("maya")["images"], before)     # nothing changed
         self.assertEqual(ac.view()["reports"][-1]["reason"], "the face drifts in profile shots")
         self.assertTrue(any("reported weak" in a for a in self.alerts))
 

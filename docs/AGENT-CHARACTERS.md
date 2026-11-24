@@ -32,19 +32,39 @@ Refused with a clear line:
 The fields travel through the post item's slides, into production, and onto
 the queue items.
 
-## The reference image per agent (`/admin/characters/`)
+## The character workspace (`/admin/characters/`) — the manager's only
 
-Stored in app_settings `agent_references`, one record per agent:
+One card per agent, three parts, top to bottom:
 
-| field | what |
-|---|---|
-| `url` | the https URL sent to the model |
-| `media_id` | the Higgsfield media / job id (for the manager's own reference; optional) |
-| `notes` | optional: outfit, framing. Added to the prompt (a pose's own outfit wins) |
-| `file_id` | a durable copy in our Shared Drive, `uallak-agents/<agent>/` |
+1. **Reference set** — what defines the character. Several images (up to
+   14): add by link (+ optional media id) or upload several files at once;
+   each shows as a thumbnail with ✕ to remove it; "ניקוי כל הסט" empties it;
+   optional notes (outfit, framing). The WHOLE set is sent at generation,
+   in order, within the model's max (Grok 10, Qwen 3); several characters in
+   one image share the max, at least one image each (`reference_plan`), and
+   the prompt names them by their images ("reference images 1-3"). Each tile
+   says whether it is sent or beyond the max. More references = better face
+   consistency: this is the main quality lever.
+2. **Test poses** ("בדיקת תנוחות") — a short pose instruction (or the three
+   fixed varied poses by default) and a count (1–3) → "יצירת תנוחות". Runs in
+   the background on the SAME path as a real post's composite pose
+   (`pose_prompt`: the set, the style clause, the plain background, the
+   configured model, 3:4); the page polls; credits per result and per run.
+   Each result waits for the manager: **"שמירה למאגר"** (background removed,
+   verified transparent, into the library APPROVED and tagged with the pose /
+   outfit / framing typed on the card — reused by posts like any library
+   pose), **"מחיקה"**, or **"הפיכה לתמונת ייחוס…"** — opens a warning
+   (references should come from approved source images; identity built from
+   generated output drifts) and only its own button promotes. Nothing is
+   saved or promoted automatically.
+3. **Pose library** — counts (approved / pending / transparent / total) and
+   the newest 60 poses with ✕ to remove one (its file trashed in our Drive;
+   a client's in-scene image is only unlisted).
 
-The admin page is one row per agent: the URL, media id and notes fields, a
-preview thumbnail, and **save / replace**, **upload image** and **clear**.
+Every write takes `by="admin"`; anything else is refused and alerted.
+
+Stored in app_settings `agent_references` (the sets) and
+`agent_pose_candidates` (test results + the running test).
 
 - **Paste:** the URL is fetched and checked to be a real image (PNG, JPEG,
   WEBP or GIF, up to 10 MB) before it is saved.
@@ -59,10 +79,12 @@ preview thumbnail, and **save / replace**, **upload image** and **clear**.
   is.
 
 Routes, all behind the admin session:
-- `GET /api/admin/characters`
-- `POST /api/admin/characters/reference` `{agent, url, media_id, notes}`
-- `POST /api/admin/characters/upload` `{agent, content_b64, media_id, notes}`
-- `POST /api/admin/characters/clear` `{agent}`
+- `GET /api/admin/characters` (the workspace)
+- `POST /api/admin/characters/reference` `{agent, url, media_id}` · `/upload` `{agent, content_b64, media_id}`
+- `POST /api/admin/characters/reference/remove` `{agent, ref_id}` · `/notes` `{agent, notes}` · `/clear` `{agent}`
+- `POST /api/admin/characters/generate` `{agent, instruction, count}`
+- `POST /api/admin/characters/candidate/save` `{agent, cand_id, pose, outfit, framing}` · `/candidate/discard` · `/candidate/promote` `{…, confirm: true}`
+- `POST /api/admin/characters/pose/remove` `{pose_id}` · `GET /api/admin/characters/pose/{pose_id}` (the thumbnail)
 
 **No reference = a loud failure.** `MissingReference` carries
 "לא מוגדרת תמונת ייחוס עבור <agent>" (e.g. "… עבור ליאור (lior)"). In scene,

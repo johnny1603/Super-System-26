@@ -3790,18 +3790,45 @@ class CharacterReferenceRequest(BaseModel):
     agent: str
     url: str = ""
     media_id: str = ""
-    notes: str = ""
 
 
 class CharacterUploadRequest(BaseModel):
     agent: str
     content_b64: str
     media_id: str = ""
-    notes: str = ""
 
 
 class CharacterClearRequest(BaseModel):
     agent: str
+
+
+class CharacterRefRemoveRequest(BaseModel):
+    agent: str
+    ref_id: str
+
+
+class CharacterNotesRequest(BaseModel):
+    agent: str
+    notes: str = ""
+
+
+class CharacterTestRequest(BaseModel):
+    agent: str
+    instruction: str = ""
+    count: int = 3
+
+
+class CharacterCandidateRequest(BaseModel):
+    agent: str
+    cand_id: str
+    pose: str = ""
+    outfit: str = ""
+    framing: str = ""
+    confirm: bool = False
+
+
+class CharacterPoseRemoveRequest(BaseModel):
+    pose_id: str
 
 
 def _character_call(fn):
@@ -3818,8 +3845,8 @@ def _character_call(fn):
 
 @app.get("/api/admin/characters")
 def admin_characters(request: Request):
-    # One row per agent: its stored reference image (url, media id, notes),
-    # the model used, the pose library counts. No Higgsfield call.
+    # The workspace, per agent: its reference SET, the test results waiting
+    # for a decision, the running test, its pose library. No Higgsfield call.
     _require_admin(request)
     from core import agent_characters
     return {"success": True, "data": agent_characters.view()}
@@ -3827,17 +3854,17 @@ def admin_characters(request: Request):
 
 @app.post("/api/admin/characters/reference")
 def admin_characters_reference(req: CharacterReferenceRequest, request: Request):
-    # Set / replace one agent's reference image from a pasted https URL
+    # One more image into an agent's reference set, from a pasted https URL
     _require_admin(request)
     from core import agent_characters
-    return _character_call(lambda: agent_characters.set_reference(req.agent, url=req.url, media_id=req.media_id,
-                                                                  notes=req.notes, by="admin"))
+    return _character_call(lambda: agent_characters.add_reference(req.agent, url=req.url, media_id=req.media_id,
+                                                                  by="admin"))
 
 
 @app.post("/api/admin/characters/upload")
 def admin_characters_upload(req: CharacterUploadRequest, request: Request):
-    # Set / replace one agent's reference image from an uploaded file: sent
-    # through Higgsfield's documented upload (POST /files/generate-upload-url)
+    # One more image into the set from an uploaded file: sent through
+    # Higgsfield's documented upload (POST /files/generate-upload-url)
     _require_admin(request)
     import base64 as _b64
     from core import agent_characters
@@ -3846,8 +3873,22 @@ def admin_characters_upload(req: CharacterUploadRequest, request: Request):
         content = _b64.b64decode(raw, validate=True)
     except Exception:
         raise HTTPException(status_code=400, detail="the file could not be read")
-    return _character_call(lambda: agent_characters.set_reference(req.agent, media_id=req.media_id, notes=req.notes,
+    return _character_call(lambda: agent_characters.add_reference(req.agent, media_id=req.media_id,
                                                                   content=content, by="admin"))
+
+
+@app.post("/api/admin/characters/reference/remove")
+def admin_characters_reference_remove(req: CharacterRefRemoveRequest, request: Request):
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.remove_reference(req.agent, req.ref_id, by="admin"))
+
+
+@app.post("/api/admin/characters/notes")
+def admin_characters_notes(req: CharacterNotesRequest, request: Request):
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.set_notes(req.agent, req.notes, by="admin"))
 
 
 @app.post("/api/admin/characters/clear")
@@ -3855,6 +3896,64 @@ def admin_characters_clear(req: CharacterClearRequest, request: Request):
     _require_admin(request)
     from core import agent_characters
     return _character_call(lambda: agent_characters.clear_reference(req.agent, by="admin"))
+
+
+@app.post("/api/admin/characters/generate")
+def admin_characters_generate(req: CharacterTestRequest, request: Request, background_tasks: BackgroundTasks):
+    # Test poses from the reference set, on the same path as a real post's
+    # composite pose; runs in the background, the page polls. Credits on
+    # uallak's key.
+    _require_admin(request)
+    from core import agent_characters
+    out = _character_call(lambda: agent_characters.start_test(req.agent, req.instruction, req.count, by="admin"))
+    background_tasks.add_task(agent_characters.run_test, req.agent.strip().lower(), out["data"]["poses"])
+    return {"success": True, "data": agent_characters.view()}
+
+
+@app.post("/api/admin/characters/candidate/save")
+def admin_characters_candidate_save(req: CharacterCandidateRequest, request: Request):
+    # "שמירה למאגר": background removed → the pose library, approved + tagged
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.save_candidate(req.agent, req.cand_id, req.pose, req.outfit,
+                                                                   req.framing, by="admin"))
+
+
+@app.post("/api/admin/characters/candidate/discard")
+def admin_characters_candidate_discard(req: CharacterCandidateRequest, request: Request):
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.discard_candidate(req.agent, req.cand_id, by="admin"))
+
+
+@app.post("/api/admin/characters/candidate/promote")
+def admin_characters_candidate_promote(req: CharacterCandidateRequest, request: Request):
+    # A generated result into the reference set — only with confirm: true
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.promote_candidate(req.agent, req.cand_id, confirm=req.confirm,
+                                                                      by="admin"))
+
+
+@app.post("/api/admin/characters/pose/remove")
+def admin_characters_pose_remove(req: CharacterPoseRemoveRequest, request: Request):
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.remove_pose(req.pose_id, by="admin"))
+
+
+@app.get("/api/admin/characters/pose/{pose_id}")
+def admin_characters_pose_image(pose_id: str, request: Request):
+    # The pose's image for the workspace thumbnails (admin session only)
+    _require_admin(request)
+    from core import agent_characters
+    if not agent_characters.POSE_ID_RE.match(pose_id or ""):
+        raise HTTPException(status_code=400, detail="bad pose id")
+    try:
+        content = agent_characters.pose_bytes(pose_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="pose image not available")
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.get("/api/admin/drive-pull/info")

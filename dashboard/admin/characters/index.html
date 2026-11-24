@@ -9,11 +9,12 @@
 <link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
-/* The agents as their own characters (core/agent_characters,
-   docs/AGENT-CHARACTERS.md). Admin session only. One row per agent: the
-   manager sets its REFERENCE IMAGE by hand (a pasted https URL or an uploaded
-   image), with the Higgsfield media / job id and optional notes. No automatic
-   matching, nothing is listed or re-read from Higgsfield. */
+/* The character workspace (core/agent_characters, docs/AGENT-CHARACTERS.md).
+   Admin session only — the manager's screen, never an agent's. Per agent:
+   1. the REFERENCE SET (what defines the character: add by link / upload,
+      remove any one), 2. TEST POSES generated from it on the real post path
+      (save to the library / discard / promote with a warning), 3. the POSE
+      LIBRARY (what posts reuse; remove any one). No Higgsfield listing. */
 :root {
   --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
   --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
@@ -29,31 +30,44 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white);
 .logo span { color:var(--accent); }
 .topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
 .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
-.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.card h2 { font-size:17px; font-weight:800; }
+.card h3 { font-size:14px; font-weight:700; margin:14px 0 6px; color:var(--white); }
 .muted { color:var(--gray); font-size:13px; }
 .warn { color:var(--yellow); }
 .bad { color:var(--red); }
 .ok { color:var(--green); }
-input[type=text], input[type=url] { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white);
-  border:1px solid var(--border); border-radius:10px; padding:6px 8px; width:100%; min-width:0; }
+input[type=text], input[type=url], select { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white);
+  border:1px solid var(--border); border-radius:10px; padding:6px 8px; min-width:0; }
 input.ltr { direction:ltr; text-align:left; }
+input.grow { flex:1 1 180px; }
 button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
   border-radius:10px; padding:6px 12px; cursor:pointer; white-space:nowrap; }
 button.primary { background:var(--accent); border-color:var(--accent); color:#0D0D0D; font-weight:700; }
+button.danger { border-color:rgba(255,59,59,.5); color:var(--red); }
+button.small { padding:3px 8px; font-size:12px; }
 button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
 code { font-family:ui-monospace,monospace; font-size:12px; direction:ltr; unicode-bidi:embed; word-break:break-all; }
-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
-th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--border); vertical-align:top; }
-td.fields { min-width:260px; }
-td.fields > * + * { margin-top:6px; }
-.thumb { width:72px; height:72px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border);
-  object-fit:cover; display:block; }
-.thumb.empty { display:flex; align-items:center; justify-content:center; color:var(--gray); font-size:11px; }
-.scroll { overflow-x:auto; }
-ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
-.rowmsg { font-size:12px; min-height:16px; }
-label.file { display:inline-block; }
+.head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:8px; margin-top:6px; }
+.tile { position:relative; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.tile img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block;
+  background:repeating-conic-gradient(#262626 0% 25%, #1c1c1c 0% 50%) 50% / 16px 16px; }
+.tile .x { position:absolute; top:4px; left:4px; background:rgba(0,0,0,.65); border:none; border-radius:8px;
+  width:26px; height:26px; padding:0; font-size:14px; line-height:26px; }
+.tile .cap { font-size:11px; color:var(--gray); padding:4px 6px; line-height:1.4; }
+.badge { display:inline-block; font-size:11px; padding:1px 6px; border-radius:100px; border:1px solid var(--border); margin-inline-end:3px; }
+.badge.ok { border-color:rgba(0,201,110,.4); }
+.badge.warn { border-color:rgba(255,176,32,.4); }
+.cands { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; margin-top:8px; }
+.cand { background:var(--panel-2); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.cand img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; }
+.cand .body { padding:8px; display:flex; flex-direction:column; gap:6px; }
+.cand .body input { width:100%; }
+.promote-warn { display:none; border:1px solid rgba(255,176,32,.45); background:rgba(255,176,32,.08); border-radius:10px;
+  padding:8px; font-size:12px; line-height:1.5; }
+.promote-warn.open { display:block; }
+.msg { font-size:12px; min-height:16px; margin-top:6px; }
 label.file input { display:none; }
 #authNote { display:none; }
 </style>
@@ -67,36 +81,21 @@ label.file input { display:none; }
   <div class="card" id="authNote"><span class="warn">צריך להתחבר לניהול קודם.</span> <a href="/admin/" style="color:var(--accent)">לכניסה</a></div>
 
   <div class="card">
-    <h2>מצב</h2>
     <div id="status" class="muted">טוען…</div>
-    <div class="muted" style="margin-top:6px">לכל סוכן תמונת ייחוס אחת שאתה קובע כאן, פעם אחת. כל יצירה עם הדמות שולחת את התמונה הזו למודל.
-      סוכן בלי תמונה: היצירה נכשלת והצ׳אט אומר "לא מוגדרת תמונת ייחוס עבור …". הדף הזה לא יוצר דמויות ב-Higgsfield.</div>
+    <div class="muted" style="margin-top:6px">לכל סוכן: <b>תמונות הייחוס</b> — מה שמגדיר את הדמות, נשלחות למודל בכל יצירה (יותר תמונות = פנים עקביות יותר);
+      <b>בדיקת תנוחות</b> — יצירה באותו מסלול של פוסט אמיתי, כלום לא נשמר בלי שתבחר; <b>מאגר התנוחות</b> — מה שפוסטים משתמשים בו שוב.
+      סוכן בלי תמונות ייחוס: היצירה נכשלת והצ׳אט אומר "לא מוגדרת תמונת ייחוס עבור …". אף סוכן לא משנה את הדף הזה — רק אתה.</div>
   </div>
 
-  <div class="card">
-    <h2>הסוכנים</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>סוכן</th><th>תצוגה</th><th>תמונת ייחוס</th><th></th></tr></thead>
-      <tbody id="agents"></tbody>
-    </table></div>
-  </div>
-
-  <div class="card">
-    <h2>ספריית התנוחות</h2>
-    <div id="poses" class="muted">—</div>
-  </div>
-
-  <div class="card">
-    <h2>דיווחים של סוכנים על דמות חלשה</h2>
-    <div class="muted">סוכן שחושב שהדמות שלו חלשה רק מדווח — החלפת התמונה היא שלך.</div>
-    <div id="reports" class="muted">—</div>
-  </div>
+  <div id="agents"></div>
 </div>
 
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = id => document.getElementById(id);
 const AGENT = {maya: "מאיה", lior: "ליאור", yoav: "יואב", johnny: "ג׳וני", elinor: "אלינור", nissim: "ניסים", uri: "אורי"};
+const SRC = {url: "קישור", upload: "הועלתה", promoted: "נוצרה — קודמה"};
+let DATA = null, pollTimer = null;
 
 async function api(path, body) {
   const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
@@ -112,80 +111,188 @@ function when(iso) {
   try { return new Date(iso).toLocaleString("he-IL"); } catch (e) { return iso; }
 }
 
-function rowHtml(a) {
-  const ag = esc(a.agent);
-  const thumb = a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img class="thumb" src="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy"></a>`
-    : `<div class="thumb empty">אין תמונה</div>`;
-  const state = a.set ? `<span class="ok">מוגדרת</span>${a.durable ? "" : ' · <span class="warn">בלי עותק אצלנו</span>'}${a.updated_at ? ` · ${esc(when(a.updated_at))}` : ""}`
-    : `<span class="bad">לא מוגדרת תמונת ייחוס</span>`;
-  return `<tr data-agent="${ag}">
-    <td><b>${esc(AGENT[a.agent] || a.name)}</b> <code>${ag}</code><div class="muted">${state}</div></td>
-    <td>${thumb}</td>
-    <td class="fields">
-      <input type="url" class="ltr" data-f="url" placeholder="https://… (קישור לתמונה)" value="${esc(a.url)}">
-      <input type="text" class="ltr" data-f="media_id" placeholder="Higgsfield media / job id" value="${esc(a.media_id)}">
-      <input type="text" data-f="notes" placeholder="הערות (לבוש, מסגור) — לא חובה" value="${esc(a.notes)}">
-      <div class="rowmsg muted" data-f="msg"></div>
-    </td>
-    <td><div class="row" style="margin-top:0;flex-direction:column;align-items:stretch">
-      <button class="primary" onclick="saveUrl('${ag}')">${a.set ? "החלפה" : "שמירה"}</button>
-      <label class="file"><button type="button" onclick="this.nextElementSibling.click()">העלאת תמונה</button><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="upload('${ag}', this)"></label>
-      ${a.set ? `<button onclick="clearRef('${ag}')">ניקוי</button>` : ""}
-    </div></td></tr>`;
+function refsHtml(a, d) {
+  const tiles = a.images.map((im, i) => `<div class="tile">
+      <a href="${esc(im.url)}" target="_blank" rel="noopener"><img src="${esc(im.url)}" alt="" loading="lazy"></a>
+      <button class="x" title="הסרה מהסט" onclick="removeRef('${a.agent}','${esc(im.ref_id)}')">✕</button>
+      <div class="cap">${i < a.sent ? '<span class="badge ok">נשלחת</span>' : '<span class="badge">מעבר למקסימום</span>'}
+        ${esc(SRC[im.source] || im.source)}${im.source === "promoted" ? ' <span class="warn">⚠</span>' : ""}${im.durable ? "" : ' · <span class="warn">בלי עותק</span>'}
+        ${im.media_id ? `<br><code>${esc(im.media_id.slice(0, 18))}</code>` : ""}</div></div>`).join("");
+  return `<h3>תמונות ייחוס (${a.images.length}/${esc(d.max_images)})</h3>
+    <div class="muted">${a.set ? `נשלחות למודל עד ${esc(d.max_references)} תמונות (כשכמה דמויות באותה תמונה — המקסימום מתחלק ביניהן), לפי הסדר כאן.`
+      : '<span class="bad">לא מוגדרת תמונת ייחוס — היצירה עם הדמות תיכשל עד שתוסיף.</span>'}</div>
+    ${tiles ? `<div class="grid">${tiles}</div>` : ""}
+    <div class="row">
+      <input type="url" class="ltr grow" data-f="url" placeholder="https://… קישור לתמונה">
+      <input type="text" class="ltr" data-f="media_id" placeholder="media / job id" style="width:170px">
+      <button class="primary" onclick="addUrl('${a.agent}')">הוספה</button>
+      <label class="file"><button type="button" onclick="this.nextElementSibling.click()">העלאת תמונות</button><input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" onchange="upload('${a.agent}', this)"></label>
+      ${a.set ? `<button class="danger" onclick="clearRefs('${a.agent}')">ניקוי כל הסט</button>` : ""}
+    </div>
+    <div class="row">
+      <input type="text" class="grow" data-f="notes" placeholder="הערות לדמות (לבוש, מסגור) — לא חובה" value="${esc(a.notes)}">
+      <button onclick="saveNotes('${a.agent}')">שמירת הערות</button>
+    </div>`;
+}
+
+function testHtml(a, d) {
+  const job = a.job || {};
+  const running = job.state === "running";
+  const jobLine = !job.state ? "" : running ? `<span class="warn">יוצר ${esc((job.poses || []).length)} תנוחות… (${esc(job.made || 0)} מוכנות)</span>`
+    : `${job.state === "done" ? '<span class="ok">הסתיים</span>' : '<span class="bad">נכשל</span>'} · ${esc(job.made || 0)} תוצאות · ${esc(job.credits || 0)} קרדיטים · ${esc(when(job.finished_at))}
+       ${(job.errors || []).length ? `<div class="bad">${(job.errors || []).map(esc).join("<br>")}</div>` : ""}`;
+  const cands = (a.candidates || []).slice().reverse().map(c => `<div class="cand" data-cand="${esc(c.cand_id)}">
+      <a href="${esc(c.url)}" target="_blank" rel="noopener"><img src="${esc(c.url)}" alt="" loading="lazy"></a>
+      <div class="body">
+        <div class="muted">${esc(c.credits || 0)} קרדיטים · ${esc(c.refs)} תמונות ייחוס · <code>${esc(c.model)}</code>${c.promoted ? ' · <span class="warn">קודמה לייחוס</span>' : ""}</div>
+        <input type="text" data-c="pose" value="${esc(c.pose)}" title="תנוחה" placeholder="תנוחה">
+        <input type="text" data-c="outfit" value="${esc(c.outfit)}" title="לבוש" placeholder="לבוש">
+        <input type="text" data-c="framing" value="${esc(c.framing)}" title="מסגור" placeholder="מסגור (full body / half body)">
+        <div class="row" style="margin-top:0">
+          <button class="primary small" onclick="saveCand('${a.agent}','${esc(c.cand_id)}')">שמירה למאגר</button>
+          <button class="small" onclick="discardCand('${a.agent}','${esc(c.cand_id)}')">מחיקה</button>
+          ${c.promoted ? "" : `<button class="small" onclick="togglePromote(this)">הפיכה לתמונת ייחוס…</button>`}
+        </div>
+        <div class="promote-warn"><b class="warn">זהירות:</b> תמונות ייחוס צריכות להגיע מתמונות מקור מאושרות.
+          בניית הזהות מתוצר שנוצר מצטברת לסחיפה — הפנים משתנות לאט מגרסה לגרסה. לעשות את זה רק אם התוצאה מושלמת.
+          <div class="row"><button class="danger small" onclick="promoteCand('${a.agent}','${esc(c.cand_id)}')">כן, להוסיף לתמונות הייחוס</button>
+          <button class="small" onclick="togglePromote(this)">ביטול</button></div></div>
+      </div></div>`).join("");
+  return `<h3>בדיקת תנוחות</h3>
+    <div class="muted">אותו מסלול כמו פוסט אמיתי: סט הייחוס, משפט הסגנון, רקע אחיד, המודל <code>${esc(d.model)}</code>. בלי הוראה — 3 תנוחות קבועות ומגוונות.
+      "שמירה למאגר" מסירה רקע ושומרת כתנוחה מאושרת.</div>
+    <div class="row">
+      <input type="text" class="grow" data-f="instruction" placeholder="הוראת תנוחה קצרה (באנגלית עדיף), למשל: sitting at a desk, typing, smiling">
+      <select data-f="count" title="כמה תנוחות"><option value="3">3</option><option value="2">2</option><option value="1">1</option></select>
+      <button class="primary" ${running || !a.set || !d.configured ? "disabled" : ""} onclick="generate('${a.agent}')">יצירת תנוחות</button>
+    </div>
+    <div class="msg">${jobLine}</div>
+    ${cands ? `<div class="cands">${cands}</div>` : ""}`;
+}
+
+function libraryHtml(a) {
+  const c = a.pose_counts || {};
+  const tiles = (a.poses || []).map(p => `<div class="tile">
+      <img src="/api/admin/characters/pose/${esc(p.pose_id)}" alt="" loading="lazy">
+      <button class="x" title="הסרה מהמאגר" onclick="removePose('${esc(p.pose_id)}')">✕</button>
+      <div class="cap">${p.approved ? '<span class="badge ok">מאושרת</span>' : '<span class="badge warn">ממתינה</span>'}${p.transparent ? '<span class="badge">שקופה</span>' : '<span class="badge">סצנה</span>'}
+        ${p.client_id ? `<span class="badge">לקוח ${esc(p.client_id)}</span>` : ""}<br>
+        <bdi dir="auto">${esc((p.description || "").slice(0, 60))}</bdi>${p.outfit ? ` · ${esc(p.outfit)}` : ""}${p.framing ? ` · ${esc(p.framing)}` : ""}
+        <br>${esc(p.uses)} שימושים</div></div>`).join("");
+  return `<h3>מאגר התנוחות</h3>
+    <div class="muted">${esc(c.approved || 0)} מאושרות · ${esc(c.pending || 0)} ממתינות · ${esc(c.transparent || 0)} שקופות (לשקופיות) · ${esc(c.total || 0)} בסך הכול.
+      פוסטים משתמשים רק במאושרות, ולא באותה תנוחה פעמיים ברצף.</div>
+    ${tiles ? `<div class="grid">${tiles}</div>` : '<div class="muted">עוד אין תנוחות.</div>'}`;
 }
 
 function render(d) {
+  DATA = d;
   $("status").innerHTML = `${d.configured ? '<span class="ok">המפתח של uallak ל-Higgsfield מוגדר</span>'
       : '<span class="bad">המפתח לא מוגדר (HIGGSFIELD_AGENTS_KEY) — להריץ scripts/set_higgsfield_agents_key.sh</span>'}
-    · מודל: <code>${esc(d.model)}</code> (עד ${esc(d.max_references)} תמונות ייחוס בתמונה אחת)`;
-  $("agents").innerHTML = (d.agents || []).map(rowHtml).join("");
-  const poses = d.poses || {};
-  const keys = Object.keys(poses);
-  $("poses").innerHTML = keys.length ? `<ul>${keys.map(k => `<li>${esc(AGENT[k] || k)}: ${esc(poses[k].approved)} מאושרות · ${esc(poses[k].pending)} ממתינות · ${esc(poses[k].transparent)} שקופות</li>`).join("")}</ul>` : "עוד אין תנוחות.";
-  const rep = d.reports || [];
-  $("reports").innerHTML = rep.length ? `<ul>${rep.slice().reverse().map(r => `<li>${esc(when(r.at))} · ${esc(AGENT[r.agent] || r.agent)} · ${esc(r.by)}: <bdi dir="auto">${esc(r.reason)}</bdi></li>`).join("")}</ul>` : "אין.";
+    · מודל: <code>${esc(d.model)}</code>${d.model_verified ? "" : ' <span class="bad">(נתיב לא מאומת — יצירה תיחסם)</span>'} · עד ${esc(d.max_references)} תמונות ייחוס ביצירה`;
+  // keep what the manager is typing across a refresh (the test poll re-renders)
+  const typed = {}, typedCand = {};
+  document.querySelectorAll("[data-agent] input[data-f], [data-agent] select[data-f]").forEach(el => {
+    typed[el.closest("[data-agent]").dataset.agent + ":" + el.dataset.f] = el.value;
+  });
+  document.querySelectorAll("[data-cand] input[data-c]").forEach(el => {
+    typedCand[el.closest("[data-cand]").dataset.cand + ":" + el.dataset.c] = el.value;
+  });
+  $("agents").innerHTML = (d.agents || []).map(a => `<div class="card" data-agent="${esc(a.agent)}">
+      <div class="head"><h2>${esc(AGENT[a.agent] || a.name)} <code>${esc(a.agent)}</code></h2>
+        <span class="muted">${a.images.length} תמונות ייחוס · ${esc((a.pose_counts || {}).approved || 0)} תנוחות מאושרות</span></div>
+      ${refsHtml(a, d)}${testHtml(a, d)}${libraryHtml(a)}
+      <div class="msg muted" data-f="msg"></div></div>`).join("");
+  Object.entries(typed).forEach(([k, v]) => {
+    const [agent, f] = k.split(":");
+    const el = document.querySelector(`[data-agent="${agent}"] [data-f="${f}"]`);
+    if (el) el.value = v;
+  });
+  Object.entries(typedCand).forEach(([k, v]) => {
+    const [cand, f] = k.split(":");
+    const el = document.querySelector(`[data-cand="${cand}"] [data-c="${f}"]`);
+    if (el) el.value = v;
+  });
+  const running = (d.agents || []).some(a => (a.job || {}).state === "running");
+  clearTimeout(pollTimer);
+  if (running) pollTimer = setTimeout(load, 5000);
 }
 
-function field(agent, f) { return document.querySelector(`tr[data-agent="${agent}"] [data-f="${f}"]`); }
+function field(agent, f) { return document.querySelector(`[data-agent="${agent}"] [data-f="${f}"]`); }
 
-function busy(agent, on, msg, cls) {
-  document.querySelectorAll(`tr[data-agent="${agent}"] button`).forEach(b => b.disabled = on);
+function say(agent, msg, cls) {
   const m = field(agent, "msg");
-  if (m) { m.className = "rowmsg " + (cls || "muted"); m.textContent = msg || ""; }
+  if (m) { m.className = "msg " + (cls || "muted"); m.textContent = msg || ""; }
 }
 
 async function send(agent, path, body, doneMsg) {
-  busy(agent, true, "שומר…");
+  const card = document.querySelector(`[data-agent="${agent}"]`);
+  if (card) card.querySelectorAll("button").forEach(b => b.disabled = true);
+  say(agent, "רגע…");
   try {
     const d = (await api(path, body)).data || {};
     render(d);
-    busy(agent, false, d.warning ? "נשמר — " + d.warning : doneMsg, d.warning ? "warn" : "ok");
+    say(agent, d.warning ? doneMsg + " — " + d.warning : doneMsg, d.warning ? "warn" : "ok");
+    return true;
   } catch (e) {
-    if (e.message !== "auth") busy(agent, false, "לא נשמר: " + e.message, "bad");
+    if (card) card.querySelectorAll("button").forEach(b => b.disabled = false);
+    if (e.message !== "auth") say(agent, "לא בוצע: " + e.message, "bad");
+    return false;
   }
 }
 
-function saveUrl(agent) {
+function addUrl(agent) {
   const url = field(agent, "url").value.trim();
-  if (!url) { busy(agent, false, "להדביק קישור https לתמונה, או להעלות תמונה.", "warn"); return; }
-  send(agent, "/api/admin/characters/reference",
-       {agent, url, media_id: field(agent, "media_id").value.trim(), notes: field(agent, "notes").value.trim()}, "נשמר.");
+  if (!url) { say(agent, "להדביק קישור https לתמונה, או להעלות תמונות.", "warn"); return; }
+  send(agent, "/api/admin/characters/reference", {agent, url, media_id: field(agent, "media_id").value.trim()}, "נוספה לסט.")
+    .then(ok => { if (ok) { field(agent, "url").value = ""; field(agent, "media_id").value = ""; } });
 }
 
-function upload(agent, input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  if (file.size > 10 * 1024 * 1024) { busy(agent, false, "התמונה גדולה מ-10MB.", "bad"); return; }
-  const reader = new FileReader();
-  reader.onload = () => send(agent, "/api/admin/characters/upload",
-    {agent, content_b64: String(reader.result), media_id: field(agent, "media_id").value.trim(),
-     notes: field(agent, "notes").value.trim()}, "הועלה ונשמר.");
-  reader.readAsDataURL(file);
+function readFile(file) {
+  return new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = fail; r.readAsDataURL(file); });
+}
+
+async function upload(agent, input) {
+  const files = Array.from(input.files || []);
   input.value = "";
+  let n = 0;
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) { say(agent, `${file.name}: גדולה מ-10MB`, "bad"); continue; }
+    const ok = await send(agent, "/api/admin/characters/upload", {agent, content_b64: await readFile(file)}, `הועלו ${n + 1} מתוך ${files.length}.`);
+    if (ok) n++; else break;
+  }
 }
 
-function clearRef(agent) {
-  send(agent, "/api/admin/characters/clear", {agent}, "נוקה.");
+function removeRef(agent, ref_id) { send(agent, "/api/admin/characters/reference/remove", {agent, ref_id}, "הוסרה מהסט."); }
+function clearRefs(agent) {
+  if (!confirm(`לנקות את כל תמונות הייחוס של ${AGENT[agent] || agent}? היצירה עם הדמות תיכשל עד שתוסיף חדשות.`)) return;
+  send(agent, "/api/admin/characters/clear", {agent}, "הסט נוקה.");
+}
+function saveNotes(agent) { send(agent, "/api/admin/characters/notes", {agent, notes: field(agent, "notes").value.trim()}, "ההערות נשמרו."); }
+
+function generate(agent) {
+  send(agent, "/api/admin/characters/generate",
+       {agent, instruction: field(agent, "instruction").value.trim(), count: Number(field(agent, "count").value) || 3},
+       "היצירה התחילה — התוצאות יופיעו כאן.");
+}
+
+function candField(agent, cand, f) {
+  const el = document.querySelector(`[data-agent="${agent}"] [data-cand="${cand}"] [data-c="${f}"]`);
+  return el ? el.value.trim() : "";
+}
+function saveCand(agent, cand_id) {
+  send(agent, "/api/admin/characters/candidate/save", {agent, cand_id, pose: candField(agent, cand_id, "pose"),
+       outfit: candField(agent, cand_id, "outfit"), framing: candField(agent, cand_id, "framing")}, "נשמרה למאגר כתנוחה מאושרת.");
+}
+function discardCand(agent, cand_id) { send(agent, "/api/admin/characters/candidate/discard", {agent, cand_id}, "נמחקה."); }
+function togglePromote(btn) { btn.closest(".body").querySelector(".promote-warn").classList.toggle("open"); }
+function promoteCand(agent, cand_id) {
+  send(agent, "/api/admin/characters/candidate/promote", {agent, cand_id, confirm: true}, "נוספה לתמונות הייחוס (מתוצר שנוצר).");
+}
+function removePose(pose_id) {
+  const a = (DATA.agents || []).find(x => (x.poses || []).some(p => p.pose_id === pose_id));
+  if (!confirm("להסיר את התנוחה מהמאגר? פוסטים לא ישתמשו בה יותר.")) return;
+  send(a ? a.agent : "", "/api/admin/characters/pose/remove", {pose_id}, "הוסרה מהמאגר.");
 }
 
 async function load() {
