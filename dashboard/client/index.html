@@ -9572,6 +9572,7 @@ function socialDesignRow(item) {
       ${d.rationale ? `<div class="soc-meta"><bdi dir="auto">${esc(d.rationale)}</bdi></div>` : ''}
       ${d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : ''}
       ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
+      ${(item.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('')}
       <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>
         <details><summary>${esc(t('soc_design_json'))}</summary><pre>${esc(JSON.stringify(d.spec || {}, null, 2))}</pre></details></details>
       ${notes ? `<details class="soc-design-spec"><summary>${esc(t('soc_design_notes'))}</summary><ul>${notes}</ul></details>` : ''}

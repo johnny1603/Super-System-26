@@ -301,6 +301,8 @@ class AssetBrief:
     aspect_ratio: str = "4:5"
     set_id: str = ""
     budget_credits: int = 0
+    characters: list = field(default_factory=list)   # agents appearing as themselves (core/agent_characters)
+    character_mode: str = ""      # composite | in_scene ("" = no characters)
 
     @classmethod
     def from_dict(cls, raw: dict, post: dict) -> "AssetBrief":
@@ -333,12 +335,13 @@ class AssetBrief:
             raise ValueError(f"{asset_id}: budget_credits must be a whole number")
         if not 0 <= budget <= 500:
             raise ValueError(f"{asset_id}: budget_credits must be 0-500")
+        characters, mode = character_fields(asset_id, asset_type, raw.get("characters"), raw.get("character_mode"))
         return cls(asset_id=asset_id, post_format=fmt, objective=post["objective"], client_id=int(post["client_id"]),
                    role=role, copy_headline=_clean_text(raw.get("copy_headline"), COPY_MAX),
                    copy_body=_clean_text(raw.get("copy_body"), COPY_MAX), asset_type=asset_type,
                    visual_direction=visual, must_include=_clean_list(raw.get("must_include")),
                    must_avoid=_clean_list(raw.get("must_avoid")), aspect_ratio=aspect, set_id=set_id,
-                   budget_credits=budget)
+                   budget_credits=budget, characters=characters, character_mode=mode)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -414,7 +417,54 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
 
 
 def asset(entry: dict) -> AssetBrief:
-    return AssetBrief(**{k: entry[k] for k in AssetBrief.__dataclass_fields__})
+    optional = {"characters": [], "character_mode": ""}      # entries stored before 2026-11-24
+    return AssetBrief(**{k: entry.get(k, optional[k]) if k in optional else entry[k]
+                         for k in AssetBrief.__dataclass_fields__})
+
+
+# ─── Agents as their own characters (core/agent_characters) ──────────────────
+
+CHARACTER_MODES = ("composite", "in_scene")
+
+
+def default_mode(asset_type: str) -> str:
+    """No character_mode given: a text slide / brand-template background →
+    composite (a cut-out on the template); a photographic or lifestyle
+    scene → in_scene (generated inside it)."""
+    return "composite" if asset_type == "text_slide" else "in_scene"
+
+
+def character_fields(asset_id: str, asset_type: str, characters, mode) -> tuple:
+    """(characters, character_mode) validated. No characters = ([], "")."""
+    from core import agent_characters
+    raw = characters if isinstance(characters, (list, tuple)) else ([characters] if characters else [])
+    names = []
+    for c in raw:
+        name = str((c.get("agent") if isinstance(c, dict) else c) or "").strip().lower()
+        if name not in agent_characters.AGENTS:
+            raise ValueError(f"{asset_id}: characters must be agents ({', '.join(agent_characters.AGENTS)})")
+        if name not in names:
+            names.append(name)
+    mode = str(mode or "").strip().lower()
+    if not names:
+        return [], ""
+    if mode and mode not in CHARACTER_MODES:
+        raise ValueError(f"{asset_id}: character_mode must be composite or in_scene")
+    mode = mode or default_mode(asset_type)
+    if asset_type == "real_photo":
+        raise ValueError(f"{asset_id}: a real photo is never altered with a character — use a text_slide "
+                         f"(composite, the photo as its background) or a generated_image (in_scene)")
+    if mode == "composite" and asset_type != "text_slide":
+        raise ValueError(f"{asset_id}: composite places a cut-out on a brand-template slide (text_slide); "
+                         f"a generated scene takes in_scene")
+    if mode == "in_scene" and asset_type == "text_slide":
+        raise ValueError(f"{asset_id}: a text slide is drawn from the template, never generated — "
+                         f"use composite")
+    if mode == "composite" and len(names) > 1:
+        raise ValueError(f"{asset_id}: composite places ONE character per slide")
+    if len(names) > agent_characters.MAX_CHARACTERS:
+        raise ValueError(f"{asset_id}: at most {agent_characters.MAX_CHARACTERS} characters in one image")
+    return names, mode
 
 
 # ─── THE root-cause guard ────────────────────────────────────────────────────

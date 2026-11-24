@@ -46,6 +46,7 @@
     "accent": {"$ref": "#/$defs/accent"},
     "logo": {"$ref": "#/$defs/logo"},
     "counter": {"$ref": "#/$defs/counter"},
+    "character": {"$ref": "#/$defs/character"},
     "guards": {
       "type": "object",
       "additionalProperties": false,
@@ -142,6 +143,20 @@
         "color_role": {"$ref": "#/$defs/color_role"}
       }
     },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An agent's transparent cut-out (a pose from the library), drawn UNDER the text layers with a soft elliptical shadow. The SYSTEM sets agent and pose_id per slide (from the post's brief); the designer sets only the placement. A figure past the canvas or under a text block is a warning, not a failure.",
+      "properties": {
+        "agent": {"enum": ["maya", "lior", "yoav", "johnny", "elinor", "nissim", "uri"]},
+        "pose_id": {"type": "string", "pattern": "^[a-f0-9]{12}$", "description": "Set by the system. Never invented."},
+        "x_pct": {"type": "number", "minimum": -20, "maximum": 120, "description": "The figure's horizontal centre, % of canvas width measured from the RIGHT edge. Default 75 (the left side, away from right-aligned Hebrew)."},
+        "y_pct": {"type": "number", "minimum": 0, "maximum": 130, "description": "Where the figure's feet stand, % of canvas height. Default 100 (the bottom edge)."},
+        "scale_pct": {"type": "number", "minimum": 10, "maximum": 120, "description": "The figure's height, % of canvas height. Default 55."},
+        "flip": {"type": "boolean", "description": "Mirror the figure (e.g. to face the text)."},
+        "shadow": {"oneOf": [{"type": "boolean"}, {"type": "number", "minimum": 0, "maximum": 1}], "description": "Soft drop shadow: true (0.35), false, or an intensity 0-1."}
+      }
+    },
     "override": {
       "type": "object",
       "additionalProperties": false,
@@ -150,7 +165,8 @@
         "text_blocks": {"$ref": "#/$defs/text_blocks"},
         "accent": {"$ref": "#/$defs/accent"},
         "logo": {"$ref": "#/$defs/logo"},
-        "counter": {"$ref": "#/$defs/counter"}
+        "counter": {"$ref": "#/$defs/counter"},
+        "character": {"$ref": "#/$defs/character"}
       }
     }
   }

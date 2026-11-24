@@ -165,6 +165,10 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
         flags[brief.asset_id] = list(review["flags"])
         if review.get("real_asset"):
             sources[brief.asset_id] = review["real_asset"]      # the card shows its folder + role
+        if brief.characters:
+            # An agent appears as its own character: the AI notices, shown only
+            from core import agent_characters
+            flags[brief.asset_id] += agent_characters.approval_flags(client_id, True)
         if brief.asset_type == "text_slide":
             flags[brief.asset_id].append("text_slide_pending")
         elif brief.asset_type == "real_photo" and not review.get("real_asset"):
@@ -262,7 +266,8 @@ def produce(client_id: int, item_id: str) -> dict:
             asset_type=slide["asset_type"], visual_direction=slide.get("visual_direction", ""),
             must_include=list(slide.get("must_include") or []), must_avoid=list(slide.get("must_avoid") or []),
             aspect_ratio=slide.get("aspect_ratio") or "4:5", set_id=body["set_id"],
-            budget_credits=int(slide.get("budget_credits") or 0))
+            budget_credits=int(slide.get("budget_credits") or 0),
+            characters=list(slide.get("characters") or []), character_mode=slide.get("character_mode") or "")
         if brief.asset_type.startswith("generated") and budget and spent >= budget:
             results.append({"asset_id": brief.asset_id, "status": "over_budget"})
             not_made += 1
@@ -284,6 +289,7 @@ def produce(client_id: int, item_id: str) -> dict:
         spent += float(out.get("credits") or 0)
         # A real asset from the client's folder is not a concept image
         flags = ["concept"] if "concept" in (slide.get("flags") or []) and not out.get("real_asset") else []
+        flags += [f for f in slide.get("flags") or [] if f in ("ai_person_forbidden", "ai_label") and out.get("characters")]
         added = social_queue.add_safely(
             client_id, out["file_id"], out.get("kind") or "image",
             [c for c in item["channels"] if (out.get("kind") or "image") in social_queue.CHANNEL_KINDS.get(c, ())]
@@ -292,7 +298,7 @@ def produce(client_id: int, item_id: str) -> dict:
             source="post", title=f"{item.get('title') or body['set_id']} · {n}/{len(slides)}", flags=flags,
             post_ref={"post_id": item["id"], "set_id": body["set_id"], "asset_id": brief.asset_id,
                       "n": n, "of": len(slides)},
-            real_asset=out.get("real_asset") or None)
+            real_asset=out.get("real_asset") or None, characters=out.get("characters") or None)
         results.append({"asset_id": brief.asset_id, "status": "made", "queue_id": added.get("id", ""),
                         "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated"})
         made += 1

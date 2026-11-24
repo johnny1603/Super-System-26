@@ -96,7 +96,23 @@ must_avoid
 aspect_ratio
 set_id                    assets sharing a set_id must look like one system
 budget_credits
+characters                [] or agents who appear AS THEMSELVES: maya | lior |
+                          yoav | johnny | elinor | nissim | uri
+character_mode            composite | in_scene  (only with characters)
 ```
+
+**Agents as characters.** The social agent sets both fields when an agent
+appears in the post. `composite` = the agent's transparent cut-out drawn on a
+brand-template slide (`text_slide`), under the text, one per slide; a stored
+approved pose is reused before anything is generated. `in_scene` = the agent
+generated inside a `generated_image` / `generated_video` scene (up to 3). Not
+set: `text_slide` → composite, a photographic / lifestyle scene → in_scene.
+Never on `real_photo` (a real photo is never altered). The character's look
+comes from its reference element only: describe what the character DOES and
+where, never its face or body. No agent ever creates or rebuilds a reference
+element — a weak element is reported to the manager, not fixed. Every post
+with a character carries the AI-content note on its approval card, and a
+warning when the brand brief rules out AI people (shown, never blocking).
 
 **Hard rule.** `copy_headline` and `copy_body` are context. They are never
 the source of an image prompt. The only case where copy is rendered is

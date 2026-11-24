@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>uallak — דמויות הסוכנים</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
+/* The agents as their own characters (core/agent_characters,
+   docs/AGENT-CHARACTERS.md). Admin session only. Each agent ↔ its Higgsfield
+   reference element: matched by name "uallak-<agent>", re-read every 6 h,
+   overridable here. Nothing on this page creates or changes an element —
+   elements are built by hand in Higgsfield from approved source images. */
+:root {
+  --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
+  --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
+  --green: #00C96E; --yellow: #FFB020; --red: #FF3B3B;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { overflow-x: hidden; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
+.wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
+.logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
+.logo span { color:var(--accent); }
+.topbar a { color:var(--gray); font-size:13px; text-decoration:none; border:1px solid var(--border); padding:6px 12px; border-radius:100px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; margin-top:14px; }
+.card h2 { font-size:15px; font-weight:700; margin-bottom:8px; }
+.muted { color:var(--gray); font-size:13px; }
+.warn { color:var(--yellow); }
+.bad { color:var(--red); }
+.ok { color:var(--green); }
+select { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white);
+  border:1px solid var(--border); border-radius:10px; padding:5px 8px; max-width:100%; }
+button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:6px 12px; cursor:pointer; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#0D0D0D; font-weight:700; }
+button:disabled { opacity:.5; cursor:default; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+code { font-family:ui-monospace,monospace; font-size:12px; direction:ltr; unicode-bidi:embed; word-break:break-all; }
+table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+th, td { text-align:right; padding:6px; border-bottom:1px solid var(--border); vertical-align:top; }
+.scroll { overflow-x:auto; }
+ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
+#authNote { display:none; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">u<span>allak</span> · דמויות הסוכנים</div>
+  <a href="/admin/">→ לניהול</a>
+</div>
+<div class="wrap">
+  <div class="card" id="authNote"><span class="warn">צריך להתחבר לניהול קודם.</span> <a href="/admin/" style="color:var(--accent)">לכניסה</a></div>
+
+  <div class="card">
+    <h2>מצב</h2>
+    <div id="status" class="muted">טוען…</div>
+    <div class="row">
+      <button class="primary" id="syncBtn" onclick="syncNow()">קרא מחדש עכשיו</button>
+      <span class="muted">נקרא גם אוטומטית כל 6 שעות. הדף הזה לא יוצר ולא משנה אף דמות ב-Higgsfield.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>הסוכנים</h2>
+    <div class="muted">התאמה אוטומטית לפי השם <code>uallak-&lt;agent&gt;</code> (בלי הבדל אותיות). התאמה "רופפת" = שם שמכיל אותו (למשל עם קידומת). שתי דמויות לאותו סוכן = התנגשות: בוחרים ידנית.</div>
+    <div class="scroll"><table>
+      <thead><tr><th>סוכן</th><th>דמות</th><th>מזהה</th><th>מצב</th><th>בחירה ידנית</th></tr></thead>
+      <tbody id="agents"></tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>דמויות uallak שלא הותאמו</h2>
+    <div id="unmatched" class="muted">—</div>
+  </div>
+
+  <div class="card">
+    <h2>ספריית התנוחות</h2>
+    <div id="poses" class="muted">—</div>
+  </div>
+
+  <div class="card">
+    <h2>דיווחים של סוכנים על דמות חלשה</h2>
+    <div class="muted">סוכן שחושב שהדמות שלו חלשה רק מדווח — הבנייה מחדש היא שלך, מתמונות מקור מאושרות.</div>
+    <div id="reports" class="muted">—</div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = id => document.getElementById(id);
+const STATUS = {ready: ["מוכנה", "ok"], not_ready: ["עוד לא מוכנה ב-Higgsfield", "warn"], missing: ["לא נמצאה", "bad"],
+                conflict: ["התנגשות — לבחור ידנית", "bad"], override_unlisted: ["בחירה ידנית (לא ברשימה האחרונה)", "warn"]};
+const AGENT = {maya: "מאיה", lior: "ליאור", yoav: "יואב", johnny: "ג׳וני", elinor: "אלינור", nissim: "ניסים", uri: "אורי"};
+let DATA = null;
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
+    : {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (res.status === 401) { $("authNote").style.display = "block"; throw new Error("auth"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data && data.detail) || "failed");
+  return data;
+}
+
+function when(iso) {
+  if (!iso) return "עוד לא";
+  try { return new Date(iso).toLocaleString("he-IL"); } catch (e) { return iso; }
+}
+
+function render(d) {
+  DATA = d;
+  const err = d.last_error === "not_configured" ? "המפתח של uallak ל-Higgsfield לא מוגדר (HIGGSFIELD_AGENTS_KEY) — להריץ scripts/set_higgsfield_agents_key.sh"
+    : d.last_error ? "הקריאה האחרונה נכשלה: " + d.last_error : "";
+  $("status").innerHTML = `${d.configured ? '<span class="ok">המפתח מוגדר</span>' : '<span class="bad">המפתח לא מוגדר</span>'}
+    · נקרא לאחרונה: ${esc(when(d.last_sync))}${err ? ` · <span class="warn">${esc(err)}</span>` : ""}`;
+  const els = d.elements || [];
+  $("agents").innerHTML = (d.agents || []).map(a => {
+    const st = STATUS[a.status] || [a.status, "muted"];
+    const opts = [`<option value="">אוטומטי</option>`].concat(els.map(e =>
+      `<option value="${esc(e.id)}" ${a.override === e.id ? "selected" : ""}>${esc(e.name || e.id)} (${esc(e.status || "?")})</option>`));
+    if (a.override && !els.some(e => e.id === a.override)) opts.push(`<option value="${esc(a.override)}" selected>${esc(a.override)}</option>`);
+    const cands = (a.candidates || []).length > 1 ? `<div class="muted">מועמדות: ${a.candidates.map(c => esc(c.name) + " <code>" + esc(c.id.slice(0, 8)) + "</code>").join(" · ")}</div>` : "";
+    return `<tr><td>${esc(AGENT[a.agent] || a.agent)} <code>${esc(a.agent)}</code></td>
+      <td>${esc(a.name || "—")}${a.match === "loose" && a.source !== "override" ? ' <span class="warn">(רופפת)</span>' : ""}${cands}</td>
+      <td><code>${esc(a.element_id || "—")}</code></td>
+      <td class="${st[1]}">${esc(st[0])}${a.source === "override" ? " · ידני" : ""}</td>
+      <td><select data-agent="${esc(a.agent)}" onchange="override(this)">${opts.join("")}</select></td></tr>`;
+  }).join("");
+  const un = d.unmatched || [];
+  $("unmatched").innerHTML = un.length ? `<ul>${un.map(e => `<li>${esc(e.name)} <code>${esc(e.id)}</code> · ${esc(e.status || "?")}</li>`).join("")}</ul>`
+    : "אין.";
+  if (d.other_elements) $("unmatched").innerHTML += `<div class="muted">ועוד ${esc(d.other_elements)} דמויות בחשבון שלא קשורות לסוכנים.</div>`;
+  const poses = d.poses || {};
+  const keys = Object.keys(poses);
+  $("poses").innerHTML = keys.length ? `<ul>${keys.map(k => `<li>${esc(AGENT[k] || k)}: ${esc(poses[k].approved)} מאושרות · ${esc(poses[k].pending)} ממתינות · ${esc(poses[k].transparent)} שקופות</li>`).join("")}</ul>` : "עוד אין תנוחות.";
+  const rep = d.reports || [];
+  $("reports").innerHTML = rep.length ? `<ul>${rep.slice().reverse().map(r => `<li>${esc(when(r.at))} · ${esc(AGENT[r.agent] || r.agent)} · ${esc(r.by)}: <bdi dir="auto">${esc(r.reason)}</bdi></li>`).join("")}</ul>` : "אין.";
+}
+
+async function load() {
+  try { render((await api("/api/admin/characters")).data || {}); }
+  catch (e) { if (e.message !== "auth") $("status").textContent = "לא נטען."; }
+}
+
+async function syncNow() {
+  $("syncBtn").disabled = true;
+  try { render((await api("/api/admin/characters/sync", {})).data || {}); }
+  catch (e) { if (e.message !== "auth") $("status").textContent = "הקריאה נכשלה."; }
+  $("syncBtn").disabled = false;
+}
+
+async function override(sel) {
+  sel.disabled = true;
+  try { render((await api("/api/admin/characters/override", {agent: sel.dataset.agent, element_id: sel.value})).data || {}); }
+  catch (e) { if (e.message !== "auth") { $("status").textContent = "הבחירה לא נשמרה: " + e.message; } }
+  sel.disabled = false;
+}
+
+load();
+</script>
+<script src="/assets/itzik-chat.js" defer></script>
+<script src="/assets/credits-widget.js" defer></script>
+<script src="/assets/frustration-widget.js" defer></script>
+<script src="/assets/warmup.js" async></script>
+</body>
+</html>

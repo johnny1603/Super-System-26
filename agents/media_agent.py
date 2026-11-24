@@ -818,6 +818,10 @@ def generate_from_brief(client_id: int, brief, palette: dict = None, platform: s
             return {"success": False, "status": "renderer_unavailable", "errors": [str(e)]}
         except (slide_renderer.RenderError, slide_spec.SpecInvalid, slide_spec.PaletteMissing) as e:
             return {"success": False, "status": "render_failed", "errors": [str(e)]}
+    if brief.characters and brief.character_mode == "in_scene":
+        # An agent appears as its OWN character, generated inside the scene
+        # (core/agent_characters). No real file of the client can show it.
+        return _character_scene(client_id, brief, palette or {}, platform)
     # Real assets FIRST (craft §10): the client's own connected folders,
     # searched and chosen by the agent before anything is generated — no
     # image model, no credits, no media-tool connection needed
@@ -883,6 +887,125 @@ def _generate_brief_asset(client_id: int, brief, palette: dict, platform: str, k
             "credits": generated.get("credits"), "prompt": prompt}
 
 
+# ─── The agents as their own characters, IN SCENE (core/agent_characters) ───
+
+CHARACTER_SCENE_SYSTEM = BRIEF_PROMPT_SYSTEM.split("Return JSON only:")[0] + """CHARACTERS: this scene features
+uallak's own agent character(s), listed in `characters`. The system adds each character's reference itself — so:
+- Write the scene AROUND them: where they stand, what they do, their pose, the setting, light and camera.
+  Refer to each as "the character" (or "the first character" / "the second character").
+- NEVER describe a character's face, hair, skin, age, body or species — the reference figure defines them.
+- NEVER write placeholders, ids, angle brackets or names for the characters.
+- They are stylized 3D characters: keep the scene compatible with that look.
+
+Return JSON only:
+{"generation_prompt": "English prompt", "outfit": "what the character wears, 2-6 words, or empty",
+ "setting": "the place, 2-6 words", "framing": "full body | half body | close-up",
+ "rationale": "1 English sentence"}"""
+
+
+def _craft_character_prompt(client_id: int, brief, palette: dict, context: dict) -> dict:
+    """The scene from the brief's VISUAL fields only (no copy), around the
+    characters; the placeholders and the style clause are added in code."""
+    payload = {
+        "craft_library": context["craft"],
+        "brand_brief": context["brand"],
+        "asset": brief.prompt_material(),
+        "characters": [{"character": i + 1} for i, _ in enumerate(brief.characters)],
+        "post_format": brief.post_format,
+        "palette": {"variant": palette.get("label", ""), "colors": palette.get("colors", [])} if palette else {},
+    }
+    return safe_claude_json_call(CHARACTER_SCENE_SYSTEM, json.dumps(payload, ensure_ascii=False),
+                                 max_tokens=500, client_id=client_id, cost_category="claude_media")
+
+
+def _library_scene(client_id: int, brief) -> dict:
+    """The pose library FIRST: an approved in-scene image of this agent for
+    this client that fits — offered to the agent's own choice (free, no
+    generation). {} = none chosen."""
+    from core import agent_characters
+    if len(brief.characters) != 1 or brief.asset_type != "generated_image":
+        return {}
+    agent = brief.characters[0]
+    found = agent_characters.find_poses(agent, " ".join([brief.visual_direction] + list(brief.must_include)),
+                                        transparent=False, client_id=client_id, limit=8)
+    candidates = [{"file_id": p["file_id"], "description": p.get("description", ""), "tags": p.get("tags", []),
+                   "role": "agent_pose", "folder": "pose library", "media_type": "image",
+                   "name": p.get("setting", ""), "attributes": {k: p.get(k, "") for k in agent_characters.TAG_FIELDS},
+                   "score": p.get("score", 0), "pose_id": p["pose_id"]}
+                  for p in found if not p.get("repeat")]
+    chosen = choose_real_asset(client_id, brief, candidates) if candidates else {}
+    if not chosen:
+        return {}
+    agent_characters.record_pose_use(chosen["pose_id"])
+    return {"success": True, "kind": "image", "file_id": chosen["file_id"], "link": "", "credits": 0,
+            "characters": [{"agent": agent, "pose_id": chosen["pose_id"]}], "reused_pose": True}
+
+
+def _character_scene(client_id: int, brief, palette: dict, platform: str) -> dict:
+    from core import agent_characters, post_brief
+    kind = "video" if brief.asset_type == "generated_video" else "image"
+    folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
+    platform = platform if platform in folders else "instagram"
+    reused = _library_scene(client_id, brief)
+    if reused:
+        return reused
+    if not agent_characters.configured():
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} needs an agent character — "
+                                 f"{agent_characters.KEY_ENV} is not set"])
+        return {"success": False, "status": "characters_not_configured",
+                "errors": ["the agents' characters are not configured yet"]}
+    try:
+        context = _context(client_id)
+    except post_brief.ContextMissing as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {e} — nothing was generated"])
+        return {"success": False, "status": "context_missing", "errors": [str(e)]}
+    log_step(AGENT_NAME, "character_scene", f"client {client_id} [{brief.set_id}/{brief.asset_id}] "
+                                            f"{kind} {','.join(brief.characters)}")
+    return _generate_character_scene(client_id, brief, palette, platform, kind, context)
+
+
+@drive_storage.scoped
+def _generate_character_scene(client_id: int, brief, palette: dict, platform: str, kind: str, context: dict) -> dict:
+    from core import agent_characters, post_brief
+    try:
+        crafted = timed_step(AGENT_NAME, "craft_character_prompt",
+                             lambda: _craft_character_prompt(client_id, brief, palette, context))
+        # One <<<element_id>>> per character + the style clause, always — in code
+        prompt = agent_characters.in_scene_prompt(crafted.get("generation_prompt", ""), brief.characters)
+        post_brief.assert_copy_free(prompt, brief)            # THE root-cause guard, on the final prompt
+        generated = timed_step(AGENT_NAME, f"higgsfield_character_{kind}",
+                               lambda: gen.generate_with_elements(agent_characters.agents_key(), prompt,
+                                                                  brief.aspect_ratio, kind))
+        folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+        uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
+                                      generated["content"], generated["mime"])
+    except agent_characters.CharacterUnavailable as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e}"])
+        return {"success": False, "status": "character_unavailable", "errors": [str(e)]}
+    except post_brief.CopyLeak as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} refused before the model: {e}"])
+        return {"success": False, "status": "copy_leak", "errors": [str(e)]}
+    except Exception as e:  # includes ClaudeJSONError
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} character generation failed: {e}"])
+        return {"success": False, "status": "failed", "errors": [str(e)]}
+    characters = []
+    for agent in brief.characters:
+        pose = agent_characters.add_pose(agent, uploaded.get("id", ""), False, client_id,
+                                         outfit=crafted.get("outfit", ""), setting=crafted.get("setting", ""),
+                                         framing=crafted.get("framing", ""), description=brief.visual_direction,
+                                         source="in_scene", prompt=prompt)
+        agent_characters.record_pose_use(pose["pose_id"])
+        characters.append({"agent": agent, "pose_id": pose["pose_id"]})
+    _log_activity(client_id, f"media_{kind}_created",
+                  {"platform": platform, "set_id": brief.set_id, "asset_id": brief.asset_id, "prompt": prompt,
+                   "model": generated.get("model"), "credits": generated.get("credits"),
+                   "characters": list(brief.characters), "account": "uallak"},
+                  {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
+    return {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
+            "credits": generated.get("credits"), "prompt": prompt, "characters": characters}
+
+
 # ─── Text-slide DESIGN (core/slide_design, knowledge/slide-spec.schema.json) ──
 
 DESIGN_SPEC_SYSTEM = """You are the media agent (ליאור) of uallak, an Israeli marketing agency, acting as a
@@ -905,6 +1028,10 @@ RULES:
 - Apply the critique precisely and keep everything the manager did not criticise.
 - One set = one look: use role_overrides only for slides whose role needs a different layout
   (typically the hook and the cta).
+- A slide whose entry has a "character" shows that agent's cut-out UNDER the text. You may set the
+  spec's "character" PLACEMENT only (x_pct, y_pct, scale_pct, flip, shadow) — never agent or pose_id
+  (the system sets them per slide). Keep the figure inside the canvas and clear of the text blocks:
+  make room in the layout (narrower text boxes on the other side) rather than covering the text.
 
 Return JSON only:
 {"spec": {...the full spec...}, "rationale": "ONE sentence, in reply_language, saying what you changed and why"}"""
@@ -934,7 +1061,9 @@ def design_spec(client_id: int, spec: dict, palette: dict, roles: dict, slides: 
             "slides": [{"n": s.get("n") or i, "role": s.get("role", ""), "headline": s.get("copy_headline", ""),
                         "body": s.get("copy_body", ""),
                         "headline_words": len(str(s.get("copy_headline", "")).split()),
-                        "body_words": len(str(s.get("copy_body", "")).split())} for i, s in enumerate(slides, 1)],
+                        "body_words": len(str(s.get("copy_body", "")).split()),
+                        **({"character": (s.get("character") or {}).get("agent", "")} if s.get("character") else {})}
+                       for i, s in enumerate(slides, 1)],
             "current_spec": current,
             "problems": [p.get("detail", "") for p in last_problems][:20],
             "critique": critique,

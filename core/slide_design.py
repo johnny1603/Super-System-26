@@ -178,7 +178,13 @@ def loader_for(client_id: int):
 
     def load(asset_id: str) -> bytes:
         if asset_id not in cache:
-            cache[asset_id] = _fetch_image(client_id, asset_id)
+            if str(asset_id).startswith("pose:"):
+                # An agent's cut-out from the pose library (our Shared Drive) —
+                # the one file outside the client's folder a slide may use
+                from core import agent_characters
+                cache[asset_id] = agent_characters.pose_bytes(str(asset_id)[5:])
+            else:
+                cache[asset_id] = _fetch_image(client_id, asset_id)
         return cache[asset_id]
     return load
 
@@ -207,15 +213,17 @@ def base_spec(client_id: int, palette: dict, aspect: str = "4:5", template_name:
     return spec, template_name or default_name(palette), {"starter": segment}
 
 
-def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None) -> list:
-    """Every guard on every slide of the set, nothing encoded. [] = renders."""
+def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, warnings: list = None) -> list:
+    """Every guard on every slide of the set, nothing encoded. [] = renders.
+    `warnings` (a list) gets the character warnings (overflow / text)."""
     label = slide_spec.variant_for(palette)
     if spec.get("palette_variant") != label:
         return [{"code": "palette", "detail": f"spec palette_variant {spec.get('palette_variant')!r} is not this "
                                               f"set's variant {label!r} — a set never mixes variants"}]
     try:
         roles = slide_spec.palette_roles(client_id, label)
-        slide_renderer.render_set(spec, roles, slides, loader or loader_for(client_id), encode=False)
+        slide_renderer.render_set(spec, roles, slides, loader or loader_for(client_id), encode=False,
+                                  warnings=warnings)
     except slide_spec.SpecInvalid as e:
         return [{"code": "bad_spec", "detail": d} for d in e.errors]
     except slide_renderer.RenderError as e:
@@ -231,6 +239,7 @@ def design(client_id: int, spec: dict, palette: dict, slides: list, critique: st
     to MAX_DESIGN_ATTEMPTS. problems != [] = it never passed (spec = the last
     one that did, or the input)."""
     loader = loader_for(client_id)
+    spec = placement_only(spec)
     problems = check(client_id, spec, palette, slides, loader)
     if not problems and not critique and not direction:
         return {"spec": spec, "rationale": "", "attempts": 0, "problems": []}
@@ -239,12 +248,76 @@ def design(client_id: int, spec: dict, palette: dict, slides: list, critique: st
         client_id, spec=spec, palette=palette, roles=slide_spec.palette_roles(client_id, slide_spec.variant_for(palette)),
         slides=slides, problems=problems, critique=critique, direction=direction, lang=lang,
         taste=slide_templates.critiques(client_id, limit=15),
-        check=lambda s: check(client_id, s, palette, slides, loader), attempts=MAX_DESIGN_ATTEMPTS)
+        check=lambda s: check(client_id, placement_only(s), palette, slides, loader), attempts=MAX_DESIGN_ATTEMPTS)
+
+
+def placement_only(spec: dict) -> dict:
+    """A spec's `character` keeps the PLACEMENT only: which agent and which
+    pose are the system's, per slide — never the designer's (or a template's
+    from another post)."""
+    if not isinstance(spec, dict):
+        return spec
+    parts = [spec] + [v for v in (spec.get("role_overrides") or {}).values() if isinstance(v, dict)]
+    for part in parts:
+        if isinstance(part.get("character"), dict):
+            for k in ("agent", "pose_id"):
+                part["character"].pop(k, None)
+    return spec
 
 
 def _slides_of(entries: list) -> list:
-    return [{"asset_id": s.get("asset_id", ""), "role": s.get("role", ""), "copy_headline": s.get("copy_headline", ""),
-             "copy_body": s.get("copy_body", ""), "n": s.get("n"), "total": s.get("total")} for s in entries]
+    out = []
+    for s in entries:
+        row = {"asset_id": s.get("asset_id", ""), "role": s.get("role", ""), "copy_headline": s.get("copy_headline", ""),
+               "copy_body": s.get("copy_body", ""), "n": s.get("n"), "total": s.get("total")}
+        if s.get("character"):
+            row["character"] = dict(s["character"])         # {"agent", "pose_id"} — the system's, per slide
+        out.append(row)
+    return out
+
+
+# ─── Agents as their own characters: COMPOSITE (core/agent_characters) ───────
+
+POSE_BY_ROLE = {"hook": "waving hello with a big welcoming smile, turned slightly toward the viewer",
+                "point": "pointing with one hand to the side, explaining, friendly and confident",
+                "proof": "giving a thumbs up, proud and relaxed",
+                "cta": "gesturing invitingly with an open hand, encouraging"}
+
+
+def attach_characters(entries: list) -> tuple:
+    """Each composite slide with a character gets a pose: a stored approved
+    cut-out FIRST (free), else a new one. Returns (entries, failures) — a
+    slide whose pose could not be made renders without it (alerted)."""
+    from core import agent_characters
+    failures = []
+    out = []
+    for s in entries:
+        names = list(s.get("characters") or [])
+        if not names or (s.get("character_mode") or "composite") != "composite":
+            out.append(s)
+            continue
+        agent = names[0]
+        pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
+        try:
+            got = agent_characters.pose_for(agent, pose)
+            out.append({**s, "character": {"agent": agent, "pose_id": got["pose_id"]}})
+        except Exception as e:
+            failures.append({"asset_id": s.get("asset_id", ""), "agent": agent,
+                             "reason": getattr(e, "reason", "") or f"{type(e).__name__}: {str(e)[:150]}"})
+            out.append(s)
+    return out, failures
+
+
+def character_flags(client_id: int, spec: dict, palette: dict, slides: list, loader=None) -> list:
+    """The design card's notices: AI-character labels + the renderer's
+    character warnings (shown, never blocking)."""
+    from core import agent_characters
+    if not any(s.get("character") for s in slides):
+        return []
+    warnings = []
+    check(client_id, spec, palette, slides, loader, warnings=warnings)
+    codes = list(dict.fromkeys(w["code"] for w in warnings))
+    return agent_characters.approval_flags(client_id, True) + codes
 
 
 def _design_record(spec, palette, slides, template_name, based_on, result, set_id="", post_id="") -> dict:
@@ -265,13 +338,19 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
     body = post_item.get("post") or {}
     palette = body.get("palette") or {}
     try:
-        slides = _slides_of(text_slides)
+        entries, missing = attach_characters(text_slides)
+        if missing:
+            _alert([f"client {client_id}: post {post_item.get('id')} — agent character not drawn on "
+                    f"{', '.join(m['asset_id'] + ' (' + m['agent'] + ': ' + m['reason'] + ')' for m in missing)}"])
+        slides = _slides_of(entries)
         spec, name, based = base_spec(client_id, palette, text_slides[0].get("aspect_ratio") or "4:5")
         result = design(client_id, spec, palette, slides, lang=lang, template_name=name)
         record = _design_record(spec, palette, slides, name, based, result, body.get("set_id", ""), post_item["id"])
+        flags = character_flags(client_id, result["spec"], palette, slides) if not result["problems"] else []
+        flags += ["character_unavailable"] if missing else []
         item = social_queue.add_design(client_id, record, title=post_item.get("title") or body.get("set_id", ""),
                                        channels=post_item.get("channels"), caption=post_item.get("caption", ""),
-                                       planned_date=post_item.get("planned_date", ""))
+                                       planned_date=post_item.get("planned_date", ""), flags=flags)
         return {"item": item, "problems": result["problems"]}
     except Exception as e:
         _alert([f"client {client_id}: text-slide design for post {post_item.get('id')} failed "
@@ -396,13 +475,16 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
     for slide, png in zip(d["slides"], pngs):
         name = f"{d.get('set_id') or 'slides'}-{slide['asset_id']}-v{saved['version']}.png"
         uploaded = upload_png(client_id, name, png)
+        ch = slide.get("character") or {}
         added = social_queue.add(
             client_id, uploaded["id"], "image", item.get("channels") or ["instagram"], caption=item.get("caption", ""),
             planned_date=item.get("planned_date", ""), producer="media", source="slide",
             title=f"{item.get('title') or d.get('set_id')} · {slide.get('n') or ''}/{slide.get('total') or ''}",
             post_ref={"post_id": d.get("post_id", ""), "set_id": d.get("set_id", ""), "asset_id": slide["asset_id"],
                       "n": slide.get("n"), "of": slide.get("total"),
-                      "template": saved["name"], "template_version": saved["version"], "palette": label})
+                      "template": saved["name"], "template_version": saved["version"], "palette": label},
+            characters=[ch] if ch.get("pose_id") else None,
+            flags=[f for f in item.get("flags") or [] if f in ("ai_person_forbidden", "ai_label")] or None)
         social_queue.approve(client_id, [added["id"]], by="client:design")
         made.append({"asset_id": slide["asset_id"], "queue_id": added["id"], "file_id": uploaded["id"]})
     return made
@@ -425,11 +507,20 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     the client's template for this palette (else the starter) → PNG → Drive."""
     spec, name, based = base_spec(client_id, palette or {}, brief.aspect_ratio or "4:5")
     roles = slide_spec.palette_roles(client_id, slide_spec.variant_for(palette))
+    entry = {"asset_id": brief.asset_id, "role": brief.role, "visual_direction": brief.visual_direction,
+             "characters": list(brief.characters or []), "character_mode": brief.character_mode}
+    (entry,), missing = attach_characters([entry])
+    warnings = []
     png = slide_renderer.render_slide(spec, roles, brief.copy_headline, brief.copy_body, 1, 1, brief.role,
-                                      loader_for(client_id))
+                                      loader_for(client_id), character=entry.get("character"), warnings=warnings)
     uploaded = upload_png(client_id, f"{brief.set_id}-{brief.asset_id}.png", png)
-    return {"success": True, "kind": "image", "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
-            "credits": 0, "template": based}
+    out = {"success": True, "kind": "image", "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
+           "credits": 0, "template": based}
+    if entry.get("character"):
+        out["characters"] = [entry["character"]]
+    if warnings or missing:
+        out["warnings"] = [w["code"] for w in warnings] + (["character_unavailable"] if missing else [])
+    return out
 
 
 def preview_png(client_id: int, item_id: str, n: int) -> bytes:

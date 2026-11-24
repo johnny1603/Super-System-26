@@ -137,6 +137,16 @@ def validate(spec) -> dict:
     return copy.deepcopy(spec)
 
 
+def validate_character(character) -> dict:
+    """One slide's merged character (placement + agent/pose) against
+    $defs/character, else SpecInvalid."""
+    errors = []
+    _check(character, {"$ref": "#/$defs/character"}, schema(), "character", errors)
+    if errors:
+        raise SpecInvalid(errors)
+    return copy.deepcopy(character)
+
+
 # ─── Palette roles ───────────────────────────────────────────────────────────
 
 def palette_path(client_id: int) -> str:

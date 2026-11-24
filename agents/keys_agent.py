@@ -43,7 +43,11 @@ KEYS = {
     "DRIVE_ARCHIVE_FOLDER_ID": os.environ.get("DRIVE_ARCHIVE_FOLDER_ID", ""),
     "DRIVE_MEDIA_FOLDER_ID": os.environ.get("DRIVE_MEDIA_FOLDER_ID", ""),
     # Media generation runs on PER-CLIENT Higgsfield keys (client_accounts,
-    # platform='higgsfield') - deliberately no global generation key here
+    # platform='higgsfield') - deliberately no global generation key for CLIENT
+    # content. The one exception: uallak's own agents as characters
+    # (core/agent_characters) — their reference elements belong to uallak's
+    # Higgsfield account, so those generations run on uallak's key (id:secret)
+    "HIGGSFIELD_AGENTS_KEY": os.environ.get("HIGGSFIELD_AGENTS_KEY", ""),
     "INSTAWP_API_KEY": os.environ.get("INSTAWP_API_KEY", ""),
     "GREEN_API_INSTANCE_ID": os.environ.get("GREEN_API_INSTANCE_ID", ""),
     "GREEN_API_TOKEN": os.environ.get("GREEN_API_TOKEN", ""),

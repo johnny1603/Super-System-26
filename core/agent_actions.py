@@ -4459,7 +4459,11 @@ ACTIONS = {
                                     "\"asset_type\": text_slide|real_photo|generated_image|generated_video, "
                                     "\"visual_direction\": what should be SEEN (intent, not a model prompt), "
                                     "\"must_include\": [], \"must_avoid\": [], \"aspect_ratio\": 1:1|4:5|3:4|9:16|16:9, "
-                                    "\"budget_credits\": 0-500, \"response\"?: your one-line answer to an "
+                                    "\"budget_credits\": 0-500, \"characters\"?: [agents who appear AS THEMSELVES: maya|lior|"
+                                    "yoav|johnny|elinor|nissim|uri], \"character_mode\"?: composite (a cut-out on a "
+                                    "text_slide, one character) | in_scene (generated inside a generated_image/video "
+                                    "scene, up to 3) — default composite for text_slide, in_scene otherwise; never on "
+                                    "real_photo, \"response\"?: your one-line answer to an "
                                     "objection}]}. A carousel about why/reasons/tips = text_carousel."}},
         "available": _produce_possible,
         "prepare": _prepare_produce_post,

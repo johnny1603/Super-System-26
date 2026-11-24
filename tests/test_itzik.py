@@ -68,7 +68,8 @@ def _pages():
 class AdminOnly(unittest.TestCase):
     def test_only_admin_pages_load_the_chat(self):
         loaders = [rel for rel, html in _pages() if "itzik-chat.js" in html]
-        self.assertEqual(sorted(loaders), ["dashboard/admin/connections/index.html",
+        self.assertEqual(sorted(loaders), ["dashboard/admin/characters/index.html",
+                                           "dashboard/admin/connections/index.html",
                                            "dashboard/admin/drive/index.html",
                                            "dashboard/admin/i18n/index.html",
                                            "dashboard/admin/index.html", "dashboard/admin/landing/index.html",

@@ -2742,6 +2742,15 @@ to design or change how the slides LOOK goes through "design_slides": a new desi
 audience + the look asked for), or a critique of the design waiting in the Social tab (its item_id
 from social_queue waiting_items with stage "design" + the client's words). Never promise a look you
 did not send through design_slides.
+AGENTS AS CHARACTERS (2026-11-24): the team's agents (maya, lior, yoav, johnny, elinor, nissim, uri) can appear
+in a post AS THEMSELVES. When the client asks for that ("put yourself in the post", "Maya presenting the
+tips"), set the asset's "characters" (agent ids) and "character_mode": composite = the agent's cut-out on a
+text slide (one per slide, a stored pose is reused for free); in_scene = the agent generated inside a
+generated_image / generated_video scene (up to 3). Leave the mode out to get the default (text_slide →
+composite, a scene → in_scene). Never on a real_photo. The approval card shows an AI-content note.
+NEVER create, rebuild or "improve" any agent's reference character — not your own, not another's; the
+manager builds them from approved images. If a character looks wrong, say so — you report it, you do not
+act on it.
 
 === CRAFT LIBRARY (knowledge/social-craft.md) ===
 """

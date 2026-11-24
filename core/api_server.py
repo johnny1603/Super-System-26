@@ -3784,6 +3784,41 @@ class DrivePullStartRequest(BaseModel):
     items: list = []
     target: str = "auto"
 
+# ─── The agents as their own characters (core/agent_characters, /admin/characters/) ──
+
+class CharacterOverrideRequest(BaseModel):
+    agent: str
+    element_id: str = ""
+
+
+@app.get("/api/admin/characters")
+def admin_characters(request: Request):
+    # Each agent with its Higgsfield element (name, id, status), the unmatched
+    # elements, conflicts, the pose library counts. Reads the STORED mapping.
+    _require_admin(request)
+    from core import agent_characters
+    return {"success": True, "data": agent_characters.view()}
+
+
+@app.post("/api/admin/characters/sync")
+def admin_characters_sync(request: Request):
+    # Re-read the element list now (a free read on uallak's key)
+    _require_admin(request)
+    from core import agent_characters
+    return {"success": True, "data": agent_characters.sync()}
+
+
+@app.post("/api/admin/characters/override")
+def admin_characters_override(req: CharacterOverrideRequest, request: Request):
+    # The manual pick for one agent ("" = back to the automatic match)
+    _require_admin(request)
+    from core import agent_characters
+    try:
+        return {"success": True, "data": agent_characters.set_override(req.agent, req.element_id, by="admin")}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:200])
+
+
 @app.get("/api/admin/drive-pull/info")
 def admin_drive_pull_info(request: Request):
     _require_admin(request)
@@ -8321,6 +8356,11 @@ def tiktok_uploads_run():
         data["brand_brief"] = brand_brief.run_due(left) if left > 75 else {"skipped": "no budget left"}
     except Exception as e:
         data["brand_brief"] = {"error": type(e).__name__}
+    try:
+        from core import agent_characters
+        data["agent_elements"] = agent_characters.sync_due()      # every SYNC_HOURS; a free read
+    except Exception as e:
+        data["agent_elements"] = {"error": type(e).__name__}
     return {"success": True, "data": data}
 
 @app.get("/api/admin/tiktok-uploads")

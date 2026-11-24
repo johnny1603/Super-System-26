@@ -245,7 +245,8 @@ def next_weekday(day_index: int, after: date = None) -> str:
 
 def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", planned_date: str = "",
         producer: str = "media", source: str = "chat", title: str = "", replaces: str = "",
-        plan_ref: dict = None, flags: list = None, post_ref: dict = None, real_asset: dict = None) -> dict:
+        plan_ref: dict = None, flags: list = None, post_ref: dict = None, real_asset: dict = None,
+        characters: list = None) -> dict:
     """One item waiting for the owner. The same Drive file already waiting or
     approved is NOT queued twice (that item is returned)."""
     file_id = str(file_id or "").strip()
@@ -273,6 +274,11 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         item["flags"] = [f for f in flags if f in FLAG_TEXT][:6]
     if post_ref:
         item["post_ref"] = post_ref        # {"post_id", "set_id", "asset_id", "n", "of"}
+    if characters:
+        # The agents' character images in it (core/agent_characters): on approval
+        # they enter the pose library, tagged
+        item["characters"] = [{"agent": str(c.get("agent") or "")[:20], "pose_id": str(c.get("pose_id") or "")[:20]}
+                              for c in characters if isinstance(c, dict)][:4]
     if real_asset:
         # A REAL file from the client's connected Drive folder (core/drive_assets):
         # the card shows its folder + role
@@ -300,6 +306,31 @@ FLAG_TEXT = {
                                 "Diapositive texte : dessinée avec une vraie police selon le design de marque (soumis à votre accord) — jamais envoyée à un modèle d'image",
                                 "شريحة نصية: تُكتب بخط حقيقي حسب تصميم العلامة (يصلكم التصميم للموافقة) — لا تُرسل إلى نموذج صور",
                                 "Текстовый слайд: набирается настоящим шрифтом по дизайну бренда (дизайн придёт на одобрение) — не отправляется в модель изображений"),
+    "ai_person_forbidden": _five("שימו לב: תקציר המותג שלכם אומר בלי אנשים שנוצרו ב-AI — והפוסט הזה כולל דמות של סוכן שנוצרה ב-AI. ההחלטה שלכם.",
+                                 "Note: your brand brief says no AI-generated people — this post includes an AI-generated agent character. Your call.",
+                                 "Attention : votre brief de marque exclut les personnes générées par IA — ce post contient un personnage d'agent généré par IA. À vous de décider.",
+                                 "انتبهوا: موجز العلامة يقول بلا أشخاص مولَّدين بالذكاء الاصطناعي — وهذا المنشور فيه شخصية وكيل مولَّدة. القرار لكم.",
+                                 "Внимание: в брифе бренда сказано «без людей, созданных ИИ» — в этом посте есть персонаж-агент, созданный ИИ. Решать вам."),
+    "ai_label": _five("כולל דמות שנוצרה ב-AI: ברוב הרשתות צריך לסמן את הפוסט כתוכן AI כשמפרסמים",
+                      "Includes an AI-generated character: most platforms need the post marked as AI content when you publish",
+                      "Contient un personnage généré par IA : la plupart des réseaux demandent de marquer le post comme contenu IA",
+                      "يتضمن شخصية مولَّدة بالذكاء الاصطناعي: معظم المنصات تطلب وسم المنشور كمحتوى AI عند النشر",
+                      "Есть персонаж, созданный ИИ: большинство платформ требуют пометить пост как ИИ-контент при публикации"),
+    "character_overflow": _five("הדמות יוצאת מגבולות השקופית — חלק ממנה ייחתך. אפשר לבקש להזיז או להקטין אותה.",
+                                "The character runs past the slide's edge — part of it is cut off. Ask to move or shrink it.",
+                                "Le personnage dépasse le bord de la diapositive — une partie est coupée. Demandez à le déplacer ou le réduire.",
+                                "الشخصية تتجاوز حدود الشريحة — جزء منها مقصوص. اطلبوا تحريكها أو تصغيرها.",
+                                "Персонаж выходит за край слайда — часть обрезана. Попросите сдвинуть или уменьшить его."),
+    "character_text_overlap": _five("הדמות נוגעת בטקסט — כדאי לבדוק שהכול קריא, או לבקש להזיז אותה.",
+                                    "The character touches the text — check it all reads well, or ask to move it.",
+                                    "Le personnage touche le texte — vérifiez la lisibilité, ou demandez à le déplacer.",
+                                    "الشخصية تلامس النص — تأكدوا أن كل شيء مقروء، أو اطلبوا تحريكها.",
+                                    "Персонаж задевает текст — проверьте читаемость или попросите его сдвинуть."),
+    "character_unavailable": _five("הדמות של הסוכן לא צוירה בחלק מהשקופיות (הדמות לא זמינה כרגע) — הצוות קיבל הודעה",
+                                   "The agent's character was not drawn on some slides (not available right now) — the team was told",
+                                   "Le personnage de l'agent n'a pas été dessiné sur certaines diapositives (indisponible pour l'instant) — l'équipe est prévenue",
+                                   "لم تُرسم شخصية الوكيل في بعض الشرائح (غير متاحة حاليًا) — أُبلغ الفريق",
+                                   "Персонаж агента не нарисован на некоторых слайдах (сейчас недоступен) — команда в курсе"),
     "needs_real_asset": _five("צריך כאן תמונה אמיתית של עבודה שלכם — היא לא נוצרת במחשב",
                               "This needs a real photo of your work — it is not generated",
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
@@ -375,6 +406,7 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
         slides.append({k: a[k] for k in ("asset_id", "role", "copy_headline", "copy_body", "asset_type",
                                           "visual_direction", "must_include", "must_avoid", "aspect_ratio",
                                           "budget_credits")}
+                      | {"characters": list(a.get("characters") or []), "character_mode": a.get("character_mode") or ""}
                       | {"flags": list((flags or {}).get(a["asset_id"]) or []),
                          "escalation": (escalations or {}).get(a["asset_id"]) or {},
                          "real_asset": {k: str(((sources or {}).get(a["asset_id"]) or {}).get(k) or "")[:300]
@@ -454,7 +486,7 @@ def set_production(client_id: int, item_id: str, production: dict):
 # ─── A text-slide design under review (core/slide_design) ────────────────────
 
 def add_design(client_id: int, design: dict, title: str = "", channels=None, caption: str = "",
-               planned_date: str = "", producer: str = "media") -> dict:
+               planned_date: str = "", producer: str = "media", flags: list = None) -> dict:
     """ONE design waiting for the manager. The same post's design (or the same
     standalone template) still waiting = the SAME item, replaced."""
     queue = _load(client_id)
@@ -470,6 +502,7 @@ def add_design(client_id: int, design: dict, title: str = "", channels=None, cap
     if existing:
         existing.update({"design": design, "caption": _clean_caption(caption), "channels": chans,
                          "title": re.sub(r"\s+", " ", str(title or design.get("template_name") or "")).strip()[:120]})
+        existing["flags"] = [f for f in flags or [] if f in FLAG_TEXT][:6]
         _log(existing, "redesigned", producer)
         _save(client_id, queue)
         return existing
@@ -479,6 +512,8 @@ def add_design(client_id: int, design: dict, title: str = "", channels=None, cap
             "title": re.sub(r"\s+", " ", str(title or design.get("template_name") or "")).strip()[:120],
             "status": "waiting", "created_at": _now().isoformat(), "delivered": {}, "design": design,
             "history": [{"at": _now().isoformat(), "do": "added"}]}
+    if flags:
+        item["flags"] = [f for f in flags if f in FLAG_TEXT][:6]
     queue.append(item)
     _save(client_id, queue)
     return item
@@ -566,6 +601,13 @@ def approve(client_id: int, ids, by: str = "client") -> list:
             done.append(item)
     if done:
         _save(client_id, queue)
+        if any(i.get("characters") or i.get("kind") == DESIGN_KIND for i in done):
+            # Every character image an approved item used → the pose library, approved
+            try:
+                from core import agent_characters
+                agent_characters.on_items_approved(client_id, done)
+            except Exception as e:
+                print(f"[{SERVICE_NAME}] client {client_id}: poses not recorded ({type(e).__name__})")
     return done
 
 

@@ -326,3 +326,78 @@ def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dic
     data = _wait_for_result(api_key, job)
     return {"content": _download(_result_url(data)), "mime": "video/mp4",
             "credits": _credits_used(data), "model": VIDEO_MODEL}
+
+
+# ─── Reference elements (the AGENTS' characters, core/agent_characters) ──────
+#
+# Runs on uallak's OWN key (HIGGSFIELD_AGENTS_KEY): elements are scoped to the
+# account that created them. A prompt carries `<<<element_id>>>` per character
+# and the backend injects the reference itself — the id is NEVER put in a
+# medias / input-images list (there is no such field in these payloads).
+#
+# NOT YET RUN LIVE on this REST API: Higgsfield's public API docs describe
+# neither elements nor background removal (read 2026-11-24); what is known
+# comes from their MCP tools (element-capable models nano_banana_pro,
+# gpt_image_2_6, seedream_v4_5 …; remove_background on a generated image).
+# The paths, model and payload keys below are our reading and are env
+# settings, so a mismatch is a Cloud Run env fix, not a deploy. There is NO
+# create / update element call here, on purpose (the guardrail).
+ELEMENTS_LIST_PATH = os.environ.get("HIGGSFIELD_ELEMENTS_LIST_PATH", "reference-elements")
+ELEMENT_IMAGE_PATH = os.environ.get("HIGGSFIELD_ELEMENT_IMAGE_PATH", "generations")
+ELEMENT_IMAGE_MODEL = os.environ.get("HIGGSFIELD_ELEMENT_IMAGE_MODEL", "nano_banana_pro")
+ELEMENT_VIDEO_MODEL = os.environ.get("HIGGSFIELD_ELEMENT_VIDEO_MODEL", "seedance_2_0")
+BG_REMOVE_PATH = os.environ.get("HIGGSFIELD_BG_REMOVE_PATH", "remove-background")
+ELEMENT_ASPECTS = ("1:1", "3:4", "4:3", "4:5", "9:16", "16:9")
+
+
+def list_elements(api_key: str) -> list:
+    """[{id, name, status, category}] — the account's reference elements
+    (a free read). Every page is followed up to 10."""
+    out, cursor = [], ""
+    for _ in range(10):
+        params = {"limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        response = httpx.get(f"{API_BASE}/{ELEMENTS_LIST_PATH.strip('/')}", headers=_headers(api_key),
+                             params=params, timeout=TIMEOUT)
+        if response.status_code != 200:
+            _raise_for(response, "element list")
+        data = response.json() or {}
+        rows = data if isinstance(data, list) else (data.get("elements") or data.get("items")
+                                                    or data.get("data") or data.get("results") or [])
+        for r in rows if isinstance(rows, list) else []:
+            if isinstance(r, dict):
+                out.append({"id": r.get("id") or r.get("element_id") or "", "name": r.get("name") or "",
+                            "status": r.get("status") or "", "category": r.get("category") or ""})
+        cursor = "" if isinstance(data, list) else str(data.get("next_cursor") or data.get("cursor") or "")
+        if not cursor:
+            break
+    return out
+
+
+def generate_with_elements(api_key: str, prompt: str, aspect_ratio: str = "4:5", kind: str = "image") -> dict:
+    """One image (or clip) whose prompt carries element placeholders, on
+    uallak's key. Returns {'url', 'content', 'mime', 'credits', 'model'} —
+    the url is kept for background removal."""
+    if aspect_ratio not in ELEMENT_ASPECTS:
+        aspect_ratio = "4:5" if kind == "image" else "9:16"
+    if "<<<" not in str(prompt):
+        raise ValueError("a character prompt carries its element placeholder")
+    _count("video" if kind == "video" else "image", DAILY_VIDEO_LIMIT if kind == "video" else DAILY_IMAGE_LIMIT)
+    model = ELEMENT_VIDEO_MODEL if kind == "video" else ELEMENT_IMAGE_MODEL
+    payload = {"model": model, "prompt": prompt, "aspect_ratio": aspect_ratio}
+    if kind == "video":
+        payload["duration"] = VIDEO_SECONDS
+    job = _create_job(api_key, ELEMENT_IMAGE_PATH, payload)
+    data = _wait_for_result(api_key, job)
+    url = _result_url(data)
+    return {"url": url, "content": _download(url), "mime": "video/mp4" if kind == "video" else "image/png",
+            "credits": _credits_used(data), "model": model}
+
+
+def remove_background(api_key: str, image_url: str) -> dict:
+    """The image with its background removed → {'content' (PNG bytes),
+    'credits'}. The caller VERIFIES the alpha (agent_characters.ensure_transparent)."""
+    job = _create_job(api_key, BG_REMOVE_PATH, {"image_url": image_url, "media_type": "image"})
+    data = _wait_for_result(api_key, job)
+    return {"content": _download(_result_url(data)), "credits": _credits_used(data)}

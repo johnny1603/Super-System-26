@@ -23,6 +23,18 @@ agent to fix the SPEC); text is never clipped or shrunk:
   hebrew_align    Hebrew aligned left
   weight / asset / bad_spec
 
+CHARACTER (2026-11-24, core/agent_characters): an agent's transparent cut-out
+(a pose from the library, loaded as "pose:<pose_id>") alpha-composited AFTER
+the background and accent and BEFORE the logo and the text — the text is
+always on top. Placement: x_pct = the figure's horizontal centre, % of the
+canvas width measured from the RIGHT edge; y_pct = where its feet stand, % of
+the height; scale_pct = its height, % of the canvas height; flip mirrors it;
+shadow = a soft elliptical drop shadow under it (true = DEFAULT_SHADOW, or an
+intensity 0-1, false = none). A figure past the canvas edge or touching a
+text block is a WARNING (character_overflow / character_text_overlap, in the
+`warnings` list the caller passes) — never a silent crop, never a failure.
+A pose without transparent pixels fails (character_not_transparent).
+
 startup_check() runs when the service starts: no raqm = a loud log line and
 an admin alert, and every render raises RendererUnavailable.
 """
@@ -49,6 +61,8 @@ CONTRAST_PERCENTILE = 0.05
 CONTRAST_SAMPLE = 64            # the measured region is reduced to at most 64 px a side
 FONT_CACHE_MAX = 48
 COUNTER_SIZE = 30
+DEFAULT_SHADOW = 0.35
+CHARACTER_DEFAULTS = {"x_pct": 75, "y_pct": 100, "scale_pct": 55, "flip": False, "shadow": True}
 EDGES = ("top", "bottom", "right", "left")
 CORNERS = ("top_right", "top_left", "bottom_right", "bottom_left")
 
@@ -336,6 +350,87 @@ def _logo(img, logo: dict, size: tuple, m: dict, loader, problems: list):
     return [x, y, x + mark.width, y + mark.height]
 
 
+# ─── The agent character (a transparent cut-out, under the text) ─────────────
+
+def merge_character(spec_character: dict, slide_character: dict) -> dict:
+    """The spec's placement + the slide's own agent/pose (the slide entry
+    wins on every key it has). {} = no character on this slide."""
+    merged = {**CHARACTER_DEFAULTS, **(spec_character or {}), **(slide_character or {})}
+    return merged if merged.get("pose_id") else {}
+
+
+def shadow_intensity(value) -> float:
+    if value is True or value is None:
+        return DEFAULT_SHADOW
+    if value is False:
+        return 0.0
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_SHADOW
+
+
+def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: list) -> dict:
+    """Composites the figure onto img. Returns {"rect", "alpha", "origin"}
+    (its placed box and alpha, for the text-collision check) or {}."""
+    from PIL import ImageFilter, ImageOps
+    pose_id = str(ch.get("pose_id") or "")
+    if loader is None:
+        problems.append({"code": "asset", "detail": f"character pose {pose_id}: no loader"})
+        return {}
+    try:
+        fig = Image.open(io.BytesIO(loader(f"pose:{pose_id}"))).convert("RGBA")
+    except Exception as e:
+        problems.append({"code": "asset", "detail": f"character pose {pose_id} unusable ({type(e).__name__})"})
+        return {}
+    alpha = fig.getchannel("A")
+    box = alpha.getbbox()
+    if alpha.getextrema()[0] > 0 or not box:
+        problems.append({"code": "character_not_transparent",
+                         "detail": f"character pose {pose_id} has no transparent background"})
+        return {}
+    fig = fig.crop(box)                                   # the figure itself, not its empty margin
+    W, H = size
+    h = max(1, round(H * float(ch.get("scale_pct") or CHARACTER_DEFAULTS["scale_pct"]) / 100))
+    w = max(1, round(fig.width * h / fig.height))
+    fig = fig.resize((w, h), Image.LANCZOS)
+    if ch.get("flip"):
+        fig = ImageOps.mirror(fig)
+    cx = W - W * float(ch.get("x_pct", CHARACTER_DEFAULTS["x_pct"])) / 100
+    bottom = H * float(ch.get("y_pct", CHARACTER_DEFAULTS["y_pct"])) / 100
+    x0, y0 = round(cx - w / 2), round(bottom - h)
+    rect = [x0, y0, x0 + w, y0 + h]
+    if x0 < 0 or y0 < 0 or x0 + w > W or y0 + h > H:
+        warnings.append({"code": "character_overflow",
+                         "detail": f"the character ({x0},{y0})-({x0 + w},{y0 + h}) runs past the "
+                                   f"{W}x{H} canvas — move or shrink it (x_pct / y_pct / scale_pct)"})
+    strength = shadow_intensity(ch.get("shadow"))
+    if strength > 0:
+        sw, sh = max(8, round(w * 0.8)), max(6, round(h * 0.06))
+        blur = max(4, round(h * 0.02))
+        pad = blur * 3
+        mask = Image.new("L", (sw + 2 * pad, sh + 2 * pad), 0)
+        ImageDraw.Draw(mask).ellipse([pad, pad, pad + sw, pad + sh], fill=round(255 * strength))
+        mask = mask.filter(ImageFilter.GaussianBlur(blur))
+        sx, sy = round(cx - sw / 2) - pad, round(min(bottom, H) - sh * 0.6) - pad
+        img.paste((0, 0, 0), (sx, sy, sx + mask.width, sy + mask.height), mask)
+    img.paste(fig, (x0, y0), fig)
+    return {"rect": rect, "alpha": fig.getchannel("A"), "origin": (x0, y0)}
+
+
+def _touches(char: dict, rect: list) -> bool:
+    """True when an opaque pixel of the figure lies under a text box."""
+    if not char or not _intersects(char["rect"], rect):
+        return False
+    ox, oy = char["origin"]
+    a = char["alpha"]
+    x0, y0 = max(0, int(rect[0]) - ox), max(0, int(rect[1]) - oy)
+    x1, y1 = min(a.width, int(rect[2]) + 1 - ox), min(a.height, int(rect[3]) + 1 - oy)
+    if x1 <= x0 or y1 <= y0:
+        return False
+    return a.crop((x0, y0, x1, y1)).getextrema()[1] > 24
+
+
 # ─── Text layout ─────────────────────────────────────────────────────────────
 
 def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dict, problems: list) -> dict:
@@ -430,21 +525,30 @@ def _intersects(a: list, b: list) -> bool:
 # ─── The render ──────────────────────────────────────────────────────────────
 
 def render_slide(spec: dict, roles: dict, copy_headline: str = "", copy_body: str = "", n: int = 1,
-                 total: int = 1, role: str = "", image_loader=None, encode: bool = True):
+                 total: int = 1, role: str = "", image_loader=None, encode: bool = True,
+                 character: dict = None, warnings: list = None):
     """PNG bytes of ONE slide (None when encode=False — a guard-only pass),
-    or RenderError with every problem found."""
+    or RenderError with every problem found. `character` = this slide's own
+    agent/pose (merged over the spec's placement); `warnings` (a list) gets
+    the character's overflow / text-collision warnings."""
     require_raqm()
     spec = slide_spec.for_slide(slide_spec.validate(spec), role)
+    ch = merge_character(spec.get("character"), character)
+    if ch:
+        slide_spec.validate_character(ch)
     with _LOCK:
-        return _render(spec, roles, copy_headline, copy_body, n, total, image_loader, encode)
+        return _render(spec, roles, copy_headline, copy_body, n, total, image_loader, encode, ch,
+                       warnings if warnings is not None else [])
 
 
-def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode):
+def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=None, warnings=None):
     problems = []
+    warnings = warnings if warnings is not None else []
     size = (spec["canvas"]["width"], spec["canvas"]["height"])
     m = slide_spec.margins(spec)
     img = _background(spec["background"], size, roles, loader, problems)
     accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems)
+    char = _character(img, ch, size, loader, problems, warnings) if ch else {}
     _logo(img, spec.get("logo") or {}, size, m, loader, problems)
     limit = int((spec.get("guards") or {}).get("headline_max_words") or HEADLINE_MAX_WORDS)
     layouts = []
@@ -476,6 +580,11 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode):
         got = _contrast_at(img, counter["rect"], counter["colour"])
         if got < CONTRAST_MIN:
             problems.append({"code": "contrast", "detail": f"counter: contrast {got:.2f}, needs {CONTRAST_MIN}"})
+    for lay in layouts:
+        if _touches(char, lay["rect"]):
+            warnings.append({"code": "character_text_overlap", "block": lay["index"],
+                             "detail": f"the character is under {lay['where']} — the text stays on top; "
+                                       f"move the character if it hurts legibility"})
     underline = accent.get("underline")
     head = next((lay for lay in layouts if lay["block"]["role"] == "headline"), None)
     if underline and not head:
@@ -540,7 +649,8 @@ def _draw_counter(draw, c: dict):
         draw.ellipse([cx, y0, cx + d, y0 + d], fill=c["colour"] if i + 1 == c["n"] else dim)
 
 
-def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True) -> list:
+def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True,
+               warnings: list = None) -> list:
     """Every slide of ONE set from ONE spec and ONE palette (the caller passes
     one of each — a set is never mixed). slides = [{"copy_headline",
     "copy_body", "role", "n"?, "total"?}] — n / total = the slide's place in
@@ -550,8 +660,12 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
     for i, s in enumerate(slides, 1):
         n, total = int(s.get("n") or i), int(s.get("total") or len(slides))
         try:
+            got = []
             out.append(render_slide(spec, roles, s.get("copy_headline", ""), s.get("copy_body", ""), n, total,
-                                    s.get("role", ""), image_loader, encode))
+                                    s.get("role", ""), image_loader, encode, character=s.get("character"),
+                                    warnings=got))
+            if warnings is not None:
+                warnings += [{**w, "slide": n, "detail": f"slide {n}: {w['detail']}"} for w in got]
         except RenderError as e:
             problems += [{**p, "slide": n, "detail": f"slide {n}: {p['detail']}"} for p in e.problems]
     if problems:

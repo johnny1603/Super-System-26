@@ -965,6 +965,15 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   / `not_connected` / `drafts` / `private` / `done` from `channel_modes`. Today everything is a tap (no date job;
   AUTO_PUBLISH stays off). Admin read-only mirror in the Control Room. Tests that exercise send MECHANICS import
   `tests/social_gate_open.py`. `tests/test_social_queue.py`.
+- **Agents as their own characters (2026-11-24, `docs/AGENT-CHARACTERS.md`)**: `core/agent_characters` —
+  agent ↔ Higgsfield reference element STORED in app_settings `agent_elements` (matched by `uallak-<agent>`,
+  conflicts/unmatched listed, per-agent override, re-read every 6 h from the minute tick, `/admin/characters/`).
+  Brief fields `characters` + `character_mode` (composite = cut-out on a text slide under the text, pose library
+  first; in_scene = one `<<<element_id>>>` per character + the style clause, never in a media list). Runs on
+  uallak's key `HIGGSFIELD_AGENTS_KEY` (`scripts/set_higgsfield_agents_key.sh`). Pose library `agent_poses`:
+  approved on post approval, offered before generating, last pose never repeated. **No agent ever creates or
+  rebuilds an element** (`create_element` refuses; `report_element_weak` only). Element/bg-removal REST paths are
+  env settings, NOT run live. `tests/test_agent_characters.py`.
 - **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
   `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are
   dropped (the manager, persona "general", still orchestrates); a sentence repeated in one reply
