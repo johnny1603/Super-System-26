@@ -246,25 +246,21 @@ def _download(url: str) -> bytes:
     return response.content
 
 
-# Post images (2026-11-25): each path's fields come from ITS model page, read
-# 2026-11-25 — models/soul-standard/generate and models/soul-2/generate.
-# openapi.json describes soul/standard differently (num_images, "2K"/"4K",
-# 4:5 in the enum); the model pages are the detailed, per-model reference and
-# both say batch_size, "720p"/"1080p", and NO 4:5. Which one the live server
-# enforces is settled by scripts/higgsfield_verify_models.sh (a free 422
-# probe), not assumed. A requested ratio the model lacks → its NEAREST one and
-# core/image_fit crops the result: a 4:5 post image comes back 4:5, never 1:1.
-# Both paths are documented; soul/v2/standard is the one the quickstart uses
-# (another default style) — switch with HIGGSFIELD_IMAGE_PATH.
+# Post images — VERIFIED against the live server 2026-11-25
+# (scripts/higgsfield_verify_models.sh, the field validation of
+# higgsfield-ai/soul/standard): batch_size is validated (1 or 4; num_images is
+# ignored — not a field), resolution only "720p" / "1080p" ("2K" rejected),
+# aspect_ratio only the five below — 4:5 is rejected. So a 4:5 post image is
+# made at the nearest one (3:4) and core/image_fit crops it from the centre;
+# nothing outside these lists is ever sent. The model page was right,
+# openapi.json was wrong. soul/v2/standard answered 400 with no field detail
+# to every probe: unverified, so not in this list (an env value naming it is
+# refused, never sent).
 IMAGE_MODELS = {
     "higgsfield-ai/soul/standard": {
-        "aspects": ("9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"),
-        "resolutions": ("720p", "1080p"), "count_field": "batch_size"},
-    "higgsfield-ai/soul/v2/standard": {
-        "aspects": ("9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"),
+        "aspects": ("9:16", "16:9", "4:3", "3:4", "1:1"),
         "resolutions": ("720p", "1080p"), "count_field": "batch_size"},
 }
-
 
 def image_model(path: str = "") -> dict:
     """The documented entry for the post-image path, or UnverifiedModelPath."""
@@ -303,56 +299,56 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
             "aspect_ratio": payload["aspect_ratio"], "cropped": fitted["cropped"]}
 
 
-# Presenter video (the client's character image + an audio track → a
-# lip-synced clip) — THE presenter path since HeyGen was retired (2026-10-31).
+# Presenter video (the client's character image + an audio track → a clip)
+# — THE presenter path since HeyGen was retired (2026-10-31).
 #
-# PRESENTER_MODEL is the ONE place the model is named; callers never see it.
-# "wan2_7" (Wan 2.7, in Higgsfield's catalog as "Synchronized audio,
-# character-consistent video") was picked because it takes exactly our two
-# inputs — a `start_image` (the character) and `audio_references` (the voice)
-# — keeps the face consistent, and syncs to the given audio rather than
-# generating its own; 2-15 s, 720p/1080p, 9:16 among its ratios. Seedance
-# 2.0/2.5 also accept audio references but add generated audio and video
-# references on top, and cost more; Grok Video 1.5 is a preview.
-#
-# NOT YET RUN LIVE: the model id, roles and limits come from Higgsfield's
-# model catalog (read 2026-10-31); the REST path and the shape of the media
-# list below are our reading of it and are env settings, so a mismatch is a
-# Cloud Run env fix, not a deploy. Until a live run, avatar_video keeps the
-# presenter to internal test clients (avatar_video.open_to_all).
-PRESENTER_MODEL = os.environ.get("MEDIA_PRESENTER_MODEL", "wan2_7")
-PRESENTER_PATH = os.environ.get("MEDIA_PRESENTER_PATH", "generations")
+# 2026-11-25: the old `POST /generations {model: "wan2_7", medias: [...]}` was
+# a reading of the MCP catalog and the live server answers 404. Now the
+# DOCUMENTED Wan 2.7 image-to-video route (docs: models/wan-2-7/image-to-video,
+# read 2026-11-25; the path answered the verify script's no-prompt probe as a
+# validation error, i.e. it exists):
+#   image_url (required) · audio_url ("audio_url can supply driving audio") ·
+#   prompt · duration 2-15 (default 5) · resolution 720p | 1080p · seed ·
+#   prompt_extend · negative_prompt · end_image_url.
+# What the docs do NOT say: they never call it lip sync — the audio is
+# "driving audio", nothing more is promised; and there is NO aspect_ratio
+# field — the clip's frame follows the input image, so the caller passes a
+# 9:16 image for a 9:16 clip. reference-to-video does not fit: no audio field,
+# video_urls/image_urls references, 16:9 or 9:16 only.
+# NOT YET RUN LIVE with a real generation: avatar_video keeps the presenter to
+# internal test clients until it has (avatar_video.open_to_all).
+PRESENTER_PATH = os.environ.get("MEDIA_PRESENTER_PATH", "wan/v2.7/image-to-video")
+PRESENTER_MODEL = PRESENTER_PATH            # what the activity rows record as "model"
 PRESENTER_RESOLUTION = os.environ.get("MEDIA_PRESENTER_RESOLUTION", "720p")
+PRESENTER_RESOLUTIONS = ("720p", "1080p")
 PRESENTER_MIN_SECONDS = 2
-PRESENTER_MAX_SECONDS = 15   # the model's ceiling — a longer text is several clips, never cut
+PRESENTER_MAX_SECONDS = 15   # the documented ceiling — a longer text is several clips, never cut
+PRESENTER_PROMPT = ("The person in the image speaks directly to the camera, their mouth moving in sync with the "
+                    "audio. Natural, subtle head and hand movement; same face, clothes and background.")
+
+
+def presenter_payload(image_url: str, audio_url: str, seconds: int) -> dict:
+    """The documented image-to-video body (no aspect_ratio field exists)."""
+    resolution = PRESENTER_RESOLUTION if PRESENTER_RESOLUTION in PRESENTER_RESOLUTIONS else "720p"
+    return {"image_url": image_url, "audio_url": audio_url, "prompt": PRESENTER_PROMPT,
+            "duration": seconds, "resolution": resolution}
 
 
 def generate_talking_character(api_key: str, image_url: str, audio_url: str,
                                seconds: int = 0, aspect_ratio: str = "9:16") -> dict:
-    """One lip-synced presenter clip from the character image and an audio
-    URL, on the CLIENT'S key/credits. `seconds` is the audio's length (the
-    caller refuses anything over PRESENTER_MAX_SECONDS before calling).
+    """One presenter clip from the character image and an audio URL, on the
+    CLIENT'S key/credits. `seconds` is the audio's length (the caller refuses
+    anything over PRESENTER_MAX_SECONDS before calling). `aspect_ratio` is
+    not sent — the route has no such field; the frame follows the image.
     Returns {'url', 'job_id', 'credits', 'duration', 'model'} — the caller
     downloads and stores it."""
     seconds = int(min(max(round(seconds or PRESENTER_MIN_SECONDS), PRESENTER_MIN_SECONDS),
                       PRESENTER_MAX_SECONDS))
-    if aspect_ratio not in VALID_ASPECT_RATIOS:
-        aspect_ratio = "9:16"
     _count("video", DAILY_VIDEO_LIMIT)
-    job = _create_job(api_key, PRESENTER_PATH, {
-        "model": PRESENTER_MODEL,
-        "prompt": "The person in the image speaks directly to the camera, in sync with the audio. "
-                  "Natural, subtle head and hand movement; same face, clothes and background.",
-        "duration": seconds,
-        "resolution": PRESENTER_RESOLUTION,
-        "aspect_ratio": aspect_ratio,
-        "medias": [{"role": "start_image", "url": image_url},
-                   {"role": "audio_references", "url": audio_url}],
-    })
+    job = _create_job(api_key, PRESENTER_PATH, presenter_payload(image_url, audio_url, seconds))
     data = _wait_for_result(api_key, job)
     return {"url": _result_url(data), "job_id": job["request_id"], "credits": _credits_used(data),
             "duration": data.get("duration") or seconds, "model": PRESENTER_MODEL}
-
 
 def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dict:
     """One short clip (VIDEO_SECONDS) on the CLIENT'S key/credits. The
@@ -406,7 +402,6 @@ CHARACTER_MODELS = {
 }
 UPLOAD_PATH = "files/generate-upload-url"
 UPLOAD_TYPES = ("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif")
-BG_REMOVE_PATH = os.environ.get("HIGGSFIELD_BG_REMOVE_PATH", "remove-background")
 
 
 class CharacterVideoUnsupported(ValueError):
@@ -500,14 +495,3 @@ def generate_with_references(api_key: str, prompt: str, reference_urls: list, as
     url = _result_url(data)
     return {"url": url, "content": _download(url), "mime": "image/png", "credits": _credits_used(data),
             "model": model["path"], "request_id": job["request_id"], "aspect_ratio": sent}
-
-
-def remove_background(api_key: str, image_url: str) -> dict:
-    """The image with its background removed → {'content' (PNG bytes),
-    'credits'}. The caller VERIFIES the alpha (agent_characters.ensure_transparent).
-    NOT in the public REST docs read 2026-11-24 (known from Higgsfield's MCP
-    tools); the path is an env setting, and a failure is reported, never
-    hidden — the pose is then not made."""
-    job = _create_job(api_key, BG_REMOVE_PATH, {"image_url": image_url, "media_type": "image"})
-    data = _wait_for_result(api_key, job)
-    return {"content": _download(_result_url(data)), "credits": _credits_used(data)}

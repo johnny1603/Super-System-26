@@ -2,8 +2,8 @@
 
 What the generation path supports today (checked in code, not assumed):
 the presenter video takes ONE still image as its start frame plus the voice
-(media_gen_service.generate_talking_character: `start_image` +
-`audio_references`). There is no multi-photo identity training wired in. So
+(media_gen_service.generate_talking_character: `image_url` +
+`audio_url`, Wan 2.7 image-to-video). There is no multi-photo identity training wired in. So
 several photos do two real jobs here:
 1. we CHOOSE the clearest front-facing, well-lit, sharp photo as the face every
    clip starts from (`best`), instead of whatever was sent first;

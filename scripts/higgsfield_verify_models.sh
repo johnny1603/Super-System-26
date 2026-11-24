@@ -9,7 +9,7 @@
 # written to disk; it is masked in everything shown.
 #
 # FREE part — nothing can generate: no request carries a prompt, so a real
-# path answers 422 and lists what it rejected. Per field the server's own
+# path answers 422 (or 400 "'prompt' is a required property") and lists what it rejected. Per field the server's own
 # message decides:
 #   - soul/standard and soul/v2/standard: is "4:5" an accepted aspect_ratio?
 #     "720p" or "2K"? "batch_size" or "num_images"? (the model pages and
@@ -75,6 +75,12 @@ def probe(path, body):
     return code, text
 
 
+def validated(code, text):
+    """The path EXISTS and validated the body: 422, or — on this API — 400
+    with a schema message such as "'prompt' is a required property"."""
+    return code == 422 or (code == 400 and ("is a required property" in text or "is not one of" in text))
+
+
 def mentions(text, word):
     """Does the 422 reject THIS field? By the error's `loc` when it is
     structured (an echoed `input` body would name every field); else text."""
@@ -89,11 +95,11 @@ def mentions(text, word):
 
 print("== Controls")
 trusted = True
-for path, ok in (("xai/grok-imagine-image-2.0", lambda c: c == 422),
-                 ("uallak-probe/definitely-not-a-model", lambda c: c in (404, 405))):
+for path, ok in (("xai/grok-imagine-image-2.0", lambda c, t: validated(c, t)),
+                 ("uallak-probe/definitely-not-a-model", lambda c, t: c in (404, 405))):
     code, text = probe(path, {"aspect_ratio": "0:0"})
-    trusted &= ok(code)
-    print(f"{code:>4}  {path}  {'OK' if ok(code) else 'UNEXPECTED'}  {clean(text, 200)}")
+    trusted &= ok(code, text)
+    print(f"{code:>4}  {path}  {'OK' if ok(code, text) else 'UNEXPECTED'}  {clean(text, 200)}")
 if not trusted:
     print("!! The controls did not behave — do NOT trust what follows (a 401 = the key itself).")
 
@@ -106,7 +112,7 @@ for path in SOUL:
                           ("batch_size", [1, 0]), ("num_images", [1, 0])):
         for v in values:
             code, text = probe(path, {field: v})
-            verdict = ("REJECTED" if mentions(text, field) else "accepted (only prompt missing)") if code == 422 \
+            verdict = ("REJECTED" if mentions(text, field) else "accepted (only prompt missing)") if validated(code, text) \
                 else f"answered {code}"
             print(f"{code:>4}  {field}={v!r:8} → {verdict}  {clean(text, 220)}")
 print("(An unknown field the server ignores also reads 'accepted' — compare value 0 with 1: only a field it")
@@ -115,14 +121,14 @@ print(" validates rejects 0.)")
 print("\n== Background removal")
 for path in ("remove-background", "v1/remove-background", "higgsfield-ai/remove-background"):
     code, text = probe(path, {})
-    print(f"{code:>4}  {path}  → {'EXISTS' if code == 422 else 'not found' if code in (404, 405) else 'unclear'}  "
+    print(f"{code:>4}  {path}  → {'EXISTS' if validated(code, text) else 'not found' if code in (404, 405) else 'unclear'}  "
           f"{clean(text, 300)}")
 
 print("\n== Presenter (talking clip)")
 for path, body in (("generations", {"model": "wan2_7"}), ("wan/v2.7/image-to-video", {}),
                    ("wan/v2.7/reference-to-video", {})):
     code, text = probe(path, body)
-    print(f"{code:>4}  {path}  → {'EXISTS' if code == 422 else 'not found' if code in (404, 405) else 'unclear'}  "
+    print(f"{code:>4}  {path}  → {'EXISTS' if validated(code, text) else 'not found' if code in (404, 405) else 'unclear'}  "
           f"{clean(text, 400)}")
 
 

@@ -133,7 +133,7 @@ chat (`post_pipeline._tell`), and the post is not "done".
 ## COMPOSITE
 
 1. **Pose.** `pose_for` looks for an APPROVED transparent cut-out first (`find_poses`). Using one costs nothing and generates nothing.
-   - Otherwise `make_pose` runs: the reference image + the pose on a plain background → `remove_background` → `ensure_transparent`.
+   - Otherwise `make_pose` runs: the reference set + the pose on a plain background → background removal IN OUR CONTAINER (`core/background_removal`, u2netp on onnxruntime, free) → `ensure_transparent`.
    - `ensure_transparent` must find real transparent pixels. If not, the remover is reported as failed, never silently accepted.
    - The PNG goes to our Shared Drive under `uallak-agents/<agent>/`, global.
 2. **Slide spec.** `knowledge/slide-spec.schema.json` `character`: `{agent, pose_id, x_pct, y_pct, scale_pct, flip, shadow}`.
@@ -182,7 +182,7 @@ Without the key, the screen says "not configured", an upload is refused, and a c
 
 - uallak's key authenticates and `xai/grok-imagine-image-2.0` exists (the probe's control answered 422).
 - A character generation, an upload and a background removal have NOT run yet.
-- **Background removal is not in the public REST docs** (searched 2026-11-25: none of llms.txt, models, image-generation, openapi.json has a removal or transparent-output route; known only from their MCP tools). `HIGGSFIELD_BG_REMOVE_PATH=remove-background` is our reading. `bash scripts/higgsfield_verify_models.sh` asks the server whether the path exists (free); `--generate` runs one real removal and reports whether the result has an alpha channel. If it fails, a new composite pose / "שמירה למאגר" is refused with a message (never hidden); approved stored poses keep working.
+- **Background removal is local** (2026-11-25): Higgsfield's REST API has none — the verify script's three candidate paths all answered 404 model_not_found. `core/background_removal` runs rembg's u2netp model (SHA-256 pinned, baked into the image by the Dockerfile) on onnxruntime: no credits, no vendor. Measured: about +50 MB resident after the first removal, a peak of about +170-200 MB for under a second per removal; at 512Mi that is not comfortable — see the deploy note. If the model file is missing, a new pose / "שמירה למאגר" fails with a clear message; approved stored poses keep working.
 
 ## How to ask
 

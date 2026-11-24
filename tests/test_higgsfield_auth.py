@@ -159,6 +159,41 @@ class Requests(Base):
         with self.assertRaises(mg.UnverifiedModelPath):
             mg.image_payload("x", "1:1", "higgsfield-ai/soul/made-up")
 
+    def test_only_the_verified_soul_values_are_ever_sent(self):
+        self.assertEqual(list(mg.IMAGE_MODELS), ["higgsfield-ai/soul/standard"])          # v2: unverified
+        soul = mg.IMAGE_MODELS["higgsfield-ai/soul/standard"]
+        self.assertEqual(soul["aspects"], ("9:16", "16:9", "4:3", "3:4", "1:1"))
+        self.assertEqual(soul["resolutions"], ("720p", "1080p"))
+        self.assertEqual(soul["count_field"], "batch_size")
+        for ar in ("4:5", "2:3", "3:2", "21:9", "1:2", "nonsense"):
+            body = mg.image_payload("x", ar)
+            self.assertIn(body["aspect_ratio"], soul["aspects"], ar)
+            self.assertEqual((body["resolution"], body["batch_size"]), ("720p", 1))
+        saved = mg.IMAGE_RESOLUTION
+        mg.IMAGE_RESOLUTION = "2K"
+        try:
+            self.assertEqual(mg.image_payload("x", "1:1")["resolution"], "720p")        # never out of range
+        finally:
+            mg.IMAGE_RESOLUTION = saved
+        with self.assertRaises(mg.UnverifiedModelPath):
+            mg.image_payload("x", "1:1", "higgsfield-ai/soul/v2/standard")
+
+    def test_no_vendor_background_removal_left(self):
+        src = open(os.path.join(ROOT, "core", "media_gen_service.py"), encoding="utf-8").read()
+        for gone in ("def remove_background", "BG_REMOVE_PATH", "HIGGSFIELD_BG_REMOVE_PATH", '"remove-background"'):
+            self.assertNotIn(gone, src)
+        from core import background_removal as br
+        saved = br.BG_MODEL_PATH
+        br.BG_MODEL_PATH = os.path.join(ROOT, "no-such-model.onnx")
+        try:
+            with self.assertRaises(br.BackgroundModelMissing):
+                br.remove_background("unused", "https://cdn.example/x.png", _download=lambda u: b"PNG")
+        finally:
+            br.BG_MODEL_PATH = saved
+        docker = open(os.path.join(ROOT, "Dockerfile"), encoding="utf-8").read()
+        self.assertIn("309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8", docker)
+        self.assertIn("ENV BG_MODEL_PATH=/app/models/u2netp.onnx", docker)
+
     def test_video_flow(self):
         http = self.use(FakeHttp(status={"status": "completed", "video": {"url": "https://cdn.example/v.mp4"}}))
         mg.generate_video(KEY, "waves", "9:16")

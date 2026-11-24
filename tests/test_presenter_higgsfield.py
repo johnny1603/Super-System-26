@@ -4,8 +4,8 @@ ONE presenter path (core/avatar_video + core/media_gen_service).
 1. Guard: no client-facing path reaches core/heygen_service or the retired
    HeyGenProvider again — no import, no provider entry, no connect, no help
    entry, no card, no catalog connection.
-2. One model id, and the payload carries the character as start_image and
-   the voice as audio_references.
+2. The documented Wan 2.7 image-to-video route: the character as image_url,
+   the voice as audio_url, no aspect_ratio field (2026-11-25).
 3. Length honesty: at most MAX_CLIP_SECONDS, refused with an offer to split,
    never cut; an unknown length is refused too; the card states the length.
 4. Privacy + consent: the character and the audio are public only while the
@@ -248,15 +248,16 @@ class HeyGenUnreachable(Case):
 
 class Model(Case):
     def test_model_named_in_one_place(self):
-        self.assertEqual(mg.PRESENTER_MODEL, "wan2_7")
+        self.assertEqual(mg.PRESENTER_PATH, "wan/v2.7/image-to-video")
+        self.assertEqual(mg.PRESENTER_MODEL, mg.PRESENTER_PATH)
         offenders = []
         for folder in ("core", "agents"):
             for name in os.listdir(os.path.join(ROOT, folder)):
-                if name.endswith(".py") and name != "media_gen_service.py" and "wan2_7" in _src(folder, name):
+                if name.endswith(".py") and name != "media_gen_service.py" and "wan/v2.7" in _src(folder, name):
                     offenders.append(name)
         self.assertEqual(offenders, [])
 
-    def test_payload_has_start_image_and_audio_references(self):
+    def test_payload_is_the_documented_image_to_video_body(self):
         saved = (mg._count, mg.time.sleep)
         mg._count = lambda *a: None
         mg.time.sleep = lambda s: None
@@ -266,10 +267,11 @@ class Model(Case):
             mg._count, mg.time.sleep = saved
         method, url, kwargs = HTTPX.calls[0]
         payload = kwargs["json"]
-        self.assertEqual(method, "POST")
-        self.assertEqual(payload["model"], mg.PRESENTER_MODEL)
-        self.assertEqual(payload["medias"], [{"role": "start_image", "url": "https://img"},
-                                             {"role": "audio_references", "url": "https://aud"}])
+        self.assertEqual((method, url), ("POST", "https://api.higgsfield.ai/wan/v2.7/image-to-video"))
+        self.assertEqual((payload["image_url"], payload["audio_url"]), ("https://img", "https://aud"))
+        self.assertEqual(set(payload), {"image_url", "audio_url", "prompt", "duration", "resolution"})
+        self.assertNotIn("aspect_ratio", payload)                       # the route has no such field
+        self.assertIn(payload["resolution"], mg.PRESENTER_RESOLUTIONS)
         self.assertEqual(payload["duration"], mg.PRESENTER_MAX_SECONDS)   # the model's ceiling
         self.assertEqual(out["url"], "https://hf/out.mp4")
         self.assertEqual(av.MAX_CLIP_SECONDS, mg.PRESENTER_MAX_SECONDS)

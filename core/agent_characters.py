@@ -610,6 +610,11 @@ def pose_prompt(agent: str, pose: str, outfit: str = "", framing: str = "full bo
     return with_style(", ".join(bits))
 
 
+def _local_remove():
+    from core import background_removal
+    return background_removal.remove_background
+
+
 # ─── Background removal → a verified transparent PNG ─────────────────────────
 
 def ensure_transparent(png: bytes) -> bytes:
@@ -839,7 +844,7 @@ def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body
     refs = (_refs or reference_urls)([agent])
     key = agents_key()
     made = (_gen or gen.generate_with_references)(key, prompt, refs, aspect_ratio)
-    cut = (_remove or gen.remove_background)(key, made["url"])
+    cut = (_remove or _local_remove())(key, made["url"])
     png = ensure_transparent(cut["content"])
     # The requested ratio exactly; the crop never clips the figure (warns instead)
     fitted = fit_aspect(png, aspect_ratio, made.get("aspect_ratio") or aspect_ratio)
@@ -1022,7 +1027,7 @@ def save_candidate(agent: str, cand_id: str, pose: str = "", outfit: str = "", f
     agent = clean_agent(agent)
     from core import media_gen_service as gen
     cand = _candidate(agent, cand_id, _candidates())
-    cut = (_remove or gen.remove_background)(agents_key(), cand["url"])
+    cut = (_remove or _local_remove())(agents_key(), cand["url"])
     png = ensure_transparent(cut["content"])
     fitted = fit_aspect(png, POSE_ASPECT, cand.get("aspect_sent") or POSE_ASPECT)
     uploaded = (_upload or upload_pose_png)(agent, fitted["content"])
