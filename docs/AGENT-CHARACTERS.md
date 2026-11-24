@@ -178,10 +178,11 @@ These generations, the uploads and the background removal run on uallak's own ke
 
 Without the key, the screen says "not configured", an upload is refused, and a character asset fails with `characters_not_configured`, plus an admin alert. uallak pays for these credits; they still count against the post's `budget_credits`.
 
-## NOT run live
+## What ran live (2026-11-25)
 
-- The generation and upload calls follow the docs as read 2026-11-24 but have not run against the real API.
-- **Background removal is not in the public REST docs** (known only from their MCP tools). `HIGGSFIELD_BG_REMOVE_PATH=remove-background` is our reading; if it fails, a new composite pose is not made (reported, never hidden). Approved stored poses keep working.
+- uallak's key authenticates and `xai/grok-imagine-image-2.0` exists (the probe's control answered 422).
+- A character generation, an upload and a background removal have NOT run yet.
+- **Background removal is not in the public REST docs** (searched 2026-11-25: none of llms.txt, models, image-generation, openapi.json has a removal or transparent-output route; known only from their MCP tools). `HIGGSFIELD_BG_REMOVE_PATH=remove-background` is our reading. `bash scripts/higgsfield_verify_models.sh` asks the server whether the path exists (free); `--generate` runs one real removal and reports whether the result has an alpha channel. If it fails, a new composite pose / "שמירה למאגר" is refused with a message (never hidden); approved stored poses keep working.
 
 ## How to ask
 

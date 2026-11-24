@@ -133,6 +133,32 @@ class Requests(Base):
         self.assertEqual(http.calls[2][1], "https://cdn.example/i.jpg")
         self.assertEqual(out["content"], b"PNGDATA")
 
+    def test_a_4_5_post_image_is_4_5_not_square(self):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (768, 1024), (10, 20, 30)).save(buf, "PNG")      # what a 3:4 job returns
+        http = self.use(FakeHttp())
+        saved = mg._download
+        mg._download = lambda url: buf.getvalue()
+        try:
+            out = mg.generate_image(KEY, "a coffee cup", "4:5")
+        finally:
+            mg._download = saved
+        body = http.calls[0][3]
+        self.assertEqual(body["aspect_ratio"], "3:4")                       # the model's nearest, never 1:1
+        self.assertEqual((out["aspect_ratio"], out["cropped"]), ("3:4", True))
+        self.assertEqual(Image.open(io.BytesIO(out["content"])).size, (768, 960))   # a true 4:5
+
+    def test_fields_come_from_the_models_own_entry(self):
+        for path, model in mg.IMAGE_MODELS.items():
+            body = mg.image_payload("x", "9:16", path)
+            self.assertEqual(set(body), {"prompt", "aspect_ratio", "resolution", model["count_field"]})
+            self.assertIn(body["resolution"], model["resolutions"])
+        self.assertEqual(mg.image_payload("x", "21:9")["aspect_ratio"], "16:9")
+        with self.assertRaises(mg.UnverifiedModelPath):
+            mg.image_payload("x", "1:1", "higgsfield-ai/soul/made-up")
+
     def test_video_flow(self):
         http = self.use(FakeHttp(status={"status": "completed", "video": {"url": "https://cdn.example/v.mp4"}}))
         mg.generate_video(KEY, "waves", "9:16")

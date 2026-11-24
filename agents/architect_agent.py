@@ -6,7 +6,8 @@ from datetime import datetime
 
 from anthropic import Anthropic
 
-from core.claude_json import safe_claude_json_call
+from core.claude_json import _text, safe_claude_json_call
+from core.model_routing import purpose_model
 
 # Created lazily — no network clients at import time (api_server imports this at startup)
 _anthropic = None
@@ -121,13 +122,13 @@ Rules:
 Return only valid Python code. No markdown, no explanation."""
 
     response = _create(
-        model="claude-sonnet-4-6",
+        model=purpose_model("architect"),
         max_tokens=6000,
         system=system,
         messages=[{"role": "user", "content":
             f"Agent purpose: {need_description}\n\nAgent filename: {agent_filename}.py\n\nAgent code:\n{agent_code}"}]
     )
-    return response.content[0].text.replace("```python", "").replace("```", "").strip()
+    return _text(response).replace("```python", "").replace("```", "").strip()
 
 
 def _run_tests(agent_filename: str, agent_code: str, test_code: str) -> list[str]:
@@ -182,7 +183,7 @@ Do not modify the test code — only fix the agent.
 Return only the corrected Python source code. No markdown, no JSON wrapper."""
 
     response = _create(
-        model="claude-sonnet-4-6",
+        model=purpose_model("architect"),
         max_tokens=4000,
         system=system,
         messages=[{"role": "user", "content":
@@ -191,7 +192,7 @@ Return only the corrected Python source code. No markdown, no JSON wrapper."""
             f"Test failures:\n" + "\n".join(failures) + "\n\n"
             f"Test suite (do not change this):\n{test_code}"}]
     )
-    return response.content[0].text.replace("```python", "").replace("```", "").strip()
+    return _text(response).replace("```python", "").replace("```", "").strip()
 
 
 def _generate_summary(need_description: str, agent_filename: str, agent_code: str, rounds: int) -> str:
@@ -200,13 +201,13 @@ Cover: what it does, its main function signature and return value, and any notab
 Do NOT include source code. Write in English."""
 
     response = _create(
-        model="claude-sonnet-4-6",
+        model=purpose_model("architect"),
         max_tokens=400,
         system=system,
         messages=[{"role": "user", "content":
             f"Need: {need_description}\nFile: {agent_filename}.py\nCode:\n{agent_code}"}]
     )
-    return response.content[0].text.strip()
+    return _text(response).strip()
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────

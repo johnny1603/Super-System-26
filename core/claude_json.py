@@ -6,9 +6,9 @@ from contextlib import contextmanager
 
 from anthropic import Anthropic
 
-from core.model_routing import TIER_MODELS
+from core.model_routing import TIER_MODELS, purpose_model
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = purpose_model("deliverable")
 # Chat-turn models come from ONE table (core/model_routing.TIER_MODELS,
 # 2026-11-01). CHAT_TURN_MODEL = the strong tier: the manager, the opening
 # interview, the login greeting, feature announcements and the operator are

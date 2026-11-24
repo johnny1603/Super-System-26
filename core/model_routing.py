@@ -54,6 +54,20 @@ TIER_MODELS = {
     "standard": "claude-sonnet-5-5",
     "heavy": "claude-opus-5-5",
 }
+# Fixed-purpose calls outside the chat (2026-11-25): each takes its model from
+# a tier here — no file names a model id any more. They were all
+# claude-sonnet-4-6; the same family's current model is the standard tier.
+PURPOSE_TIERS = {
+    "deliverable": "standard",   # claude_json.DEFAULT_MODEL: proposals, articles, research, JSON calls
+    "architect": "standard",     # agents/architect_agent: the admin's code-writing tool (3 calls)
+    "sales_reply": "standard",   # agents/onboarding_agent: the one-sentence sales-chat reply
+}
+
+
+def purpose_model(purpose: str) -> str:
+    return TIER_MODELS[PURPOSE_TIERS[purpose]]
+
+
 ROLE_OVERRIDES = {
     # The team manager (concierge) is NO LONGER locked (2026-11-11,
     # docs/CHAT-SPEED.md): a "thanks" paid the strongest model's latency on

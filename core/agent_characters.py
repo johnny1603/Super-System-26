@@ -632,59 +632,12 @@ def ensure_transparent(png: bytes) -> bytes:
 
 # ─── The requested aspect, exactly (crop from the centre) ────────────────────
 
-CROP_TOLERANCE = 0.005
 CROP_MARGIN = ("Keep every character's whole head and feet well inside the frame, with clear space at the top "
                "and bottom.")
 
 
-def _ratio(ar: str) -> float:
-    w, _, h = str(ar or "").partition(":")
-    return float(w) / float(h)
-
-
-def needs_crop(target: str, sent: str) -> bool:
-    try:
-        return bool(target and sent) and abs(_ratio(target) - _ratio(sent)) > CROP_TOLERANCE
-    except (ValueError, ZeroDivisionError):
-        return False
-
-
-def fit_aspect(content: bytes, target: str, sent: str = "") -> dict:
-    """The generated image at the REQUESTED ratio: {"content", "cropped",
-    "warning"}. A model that took the ratio natively (sent == target) is left
-    alone. Otherwise the image is cropped from the centre (4:5 from 3:4 = 6.25%
-    off the height). With transparency (a cut-out) the crop window moves to
-    keep every visible pixel — head and feet are never clipped; when the
-    figure does not fit the window, nothing is cropped and `warning` says so."""
-    out = {"content": content, "cropped": False, "warning": ""}
-    if not target or (sent and not needs_crop(target, sent)):
-        return out
-    from PIL import Image
-    img = Image.open(io.BytesIO(content))
-    w, h = img.size
-    want = _ratio(target)
-    if abs(w / h - want) <= CROP_TOLERANCE:
-        return out
-    if w / h > want:                                   # too wide: cut the sides
-        box_w, box_h = max(1, round(h * want)), h
-    else:                                              # too tall: cut top and bottom
-        box_w, box_h = w, max(1, round(w / want))
-    x0, y0 = (w - box_w) // 2, (h - box_h) // 2
-    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
-    if has_alpha:
-        bbox = img.convert("RGBA").getchannel("A").point(lambda a: 255 if a > 16 else 0).getbbox()
-        if bbox:
-            left, top, right, bottom = bbox
-            if right - left > box_w or bottom - top > box_h:
-                out["warning"] = (f"character_crop_skipped: the figure ({right - left}x{bottom - top}) does not fit "
-                                  f"a {target} crop of {w}x{h} — left uncropped rather than clipped")
-                return out
-            x0 = min(max(x0, right - box_w), left)
-            y0 = min(max(y0, bottom - box_h), top)
-    cropped = img.crop((x0, y0, x0 + box_w, y0 + box_h))
-    buf = io.BytesIO()
-    cropped.save(buf, "PNG")
-    return {"content": buf.getvalue(), "cropped": True, "warning": ""}
+from core.image_fit import CROP_TOLERANCE, fit_aspect, needs_crop  # noqa: E402,F401  (shared with post images)
+from core.image_fit import ratio as _ratio  # noqa: E402,F401
 
 
 # ─── The pose library ────────────────────────────────────────────────────────

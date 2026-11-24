@@ -246,21 +246,61 @@ def _download(url: str) -> bytes:
     return response.content
 
 
+# Post images (2026-11-25): each path's fields come from ITS model page, read
+# 2026-11-25 — models/soul-standard/generate and models/soul-2/generate.
+# openapi.json describes soul/standard differently (num_images, "2K"/"4K",
+# 4:5 in the enum); the model pages are the detailed, per-model reference and
+# both say batch_size, "720p"/"1080p", and NO 4:5. Which one the live server
+# enforces is settled by scripts/higgsfield_verify_models.sh (a free 422
+# probe), not assumed. A requested ratio the model lacks → its NEAREST one and
+# core/image_fit crops the result: a 4:5 post image comes back 4:5, never 1:1.
+# Both paths are documented; soul/v2/standard is the one the quickstart uses
+# (another default style) — switch with HIGGSFIELD_IMAGE_PATH.
+IMAGE_MODELS = {
+    "higgsfield-ai/soul/standard": {
+        "aspects": ("9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"),
+        "resolutions": ("720p", "1080p"), "count_field": "batch_size"},
+    "higgsfield-ai/soul/v2/standard": {
+        "aspects": ("9:16", "16:9", "4:3", "3:4", "1:1", "2:3", "3:2"),
+        "resolutions": ("720p", "1080p"), "count_field": "batch_size"},
+}
+
+
+def image_model(path: str = "") -> dict:
+    """The documented entry for the post-image path, or UnverifiedModelPath."""
+    path = (path or IMAGE_PATH).strip("/")
+    model = IMAGE_MODELS.get(path)
+    if not model:
+        raise UnverifiedModelPath(f"HIGGSFIELD_IMAGE_PATH={path} is not a documented model path "
+                                  f"(one of: {', '.join(IMAGE_MODELS)})")
+    return {"path": path, **model}
+
+
+def image_payload(prompt: str, aspect_ratio: str, path: str = "") -> dict:
+    """The request body in the model's own fields; `aspect_ratio` is the
+    model's nearest to the request."""
+    from core import image_fit
+    model = image_model(path)
+    resolution = IMAGE_RESOLUTION if IMAGE_RESOLUTION in model["resolutions"] else model["resolutions"][0]
+    return {"prompt": prompt, "aspect_ratio": image_fit.nearest(aspect_ratio, model["aspects"]),
+            "resolution": resolution, model["count_field"]: 1}
+
+
 def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict:
-    """One image on the CLIENT'S key/credits. Returns {'content': bytes,
-    'mime': ..., 'credits': ...}. Raises on any failure."""
-    if aspect_ratio not in VALID_ASPECT_RATIOS:
-        aspect_ratio = "1:1"
+    """One image on the CLIENT'S key/credits, at the REQUESTED ratio (the
+    model's nearest, then cropped). Returns {'content': bytes, 'mime',
+    'credits', 'model', 'aspect_ratio' (the one sent), 'cropped'}. Raises on
+    any failure."""
+    from core import image_fit
+    payload = image_payload(prompt, aspect_ratio)          # an undocumented path is refused here
     _count("image", DAILY_IMAGE_LIMIT)
-    job = _create_job(api_key, IMAGE_PATH, {
-        "prompt": prompt,
-        "aspect_ratio": aspect_ratio,
-        "resolution": IMAGE_RESOLUTION,
-        "batch_size": 1,
-    })
+    job = _create_job(api_key, IMAGE_PATH, payload)
     data = _wait_for_result(api_key, job)
-    return {"content": _download(_result_url(data)), "mime": "image/png",
-            "credits": _credits_used(data), "model": IMAGE_MODEL}
+    content = _download(_result_url(data))
+    fitted = image_fit.fit_aspect(content, aspect_ratio, payload["aspect_ratio"]) if aspect_ratio else {
+        "content": content, "cropped": False}
+    return {"content": fitted["content"], "mime": "image/png", "credits": _credits_used(data), "model": IMAGE_MODEL,
+            "aspect_ratio": payload["aspect_ratio"], "cropped": fitted["cropped"]}
 
 
 # Presenter video (the client's character image + an audio track → a
@@ -403,18 +443,17 @@ def _ratio(ar: str) -> float:
 def character_aspect(aspect_ratio: str, path: str = "") -> str:
     """The ratio sent to the model: the requested one when its enum has it,
     else the NEAREST one it has (the result is cropped to the request)."""
+    from core import image_fit
     try:
         allowed = character_model(path)["aspects"]
     except UnverifiedModelPath:
         allowed = VALID_ASPECT_RATIOS
-    if aspect_ratio in allowed:
-        return aspect_ratio
-    try:
-        want = _ratio(aspect_ratio)
-    except (ValueError, ZeroDivisionError):
-        return "3:4" if "3:4" in allowed else allowed[0]
-    import math
-    return min(allowed, key=lambda a: (abs(math.log(_ratio(a) / want)), a))
+    if aspect_ratio not in allowed:
+        try:
+            image_fit.ratio(aspect_ratio)
+        except (ValueError, ZeroDivisionError):
+            return "3:4" if "3:4" in allowed else allowed[0]
+    return image_fit.nearest(aspect_ratio, allowed)
 
 
 def upload_file(api_key: str, content: bytes, content_type: str) -> str:

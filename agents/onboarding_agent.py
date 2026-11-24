@@ -1004,16 +1004,19 @@ Hard rules:
 
     try:
         client = Anthropic(api_key=api_key) if api_key else Anthropic()
+        from core.model_routing import purpose_model
+        model = purpose_model("sales_reply")
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=150,
             system=system,
             messages=[{"role": "user", "content": user_message}],
         )
         # Attributed to the lead by the endpoint's cost_owner (was unrecorded)
         from core.cost_tracker import record_claude_response
-        record_claude_response(response, "claude_sales_chat", None, "claude-sonnet-4-6")
-        return response.content[0].text.strip()
+        record_claude_response(response, "claude_sales_chat", None, model)
+        from core.claude_json import _text
+        return _text(response).strip()
     except Exception as e:
         print(f"[get_reaction] failed ({e}), skipping reaction")
         return ""

@@ -62,8 +62,16 @@ class Models(unittest.TestCase):
         self.assertIn('CHAT_TURN_MODEL = TIER_MODELS["heavy"]', self.cj)
         self.assertIn('CHAT_TURN_EFFORT = "low"', self.cj)
         self.assertIn('CLASSIFY_MODEL = TIER_MODELS["simple"]', self.cj)
-        self.assertIn('DEFAULT_MODEL = "claude-sonnet-4-6"', self.cj)       # deliverables unchanged
+        self.assertIn('DEFAULT_MODEL = purpose_model("deliverable")', self.cj)   # from the table (2026-11-25)
         routing = _src("core", "model_routing.py")
+        self.assertIn('"deliverable": "standard"', routing)
+        # no agent or core file names a model id outside the table (prices aside)
+        import glob
+        for path in glob.glob(os.path.join(ROOT, "agents", "*.py")) + glob.glob(os.path.join(ROOT, "core", "*.py")):
+            if os.path.basename(path) in ("model_routing.py", "cost_tracker.py"):
+                continue
+            with self.subTest(path=path):
+                self.assertNotRegex(open(path, encoding="utf-8").read(), r'model\s*=\s*"claude-')
         self.assertIn('"heavy": "claude-opus-5-5"', routing)
         self.assertIn('"simple": "claude-haiku-5-5"', routing)
 
