@@ -88,9 +88,24 @@ chat (`post_pipeline._tell`), and the post is not "done".
 | `alibaba/qwen-image-3/edit` | `image_urls` (required) | 1–3 |
 
    Both take several images, so several characters go into one image. The
-   payload is `{prompt, image_urls, aspect_ratio}`; 4:5 is not in either
-   enum and is sent as 3:4. Switch model with
-   `HIGGSFIELD_CHARACTER_IMAGE_PATH`.
+   payload is `{prompt, <the model's own reference field>, aspect_ratio}`
+   (`gen.CHARACTER_MODELS`: field, max, aspect enum per path). Switch model
+   with `HIGGSFIELD_CHARACTER_IMAGE_PATH`; a path that is NOT in the list is
+   refused with a clear line, never sent.
+   **A true 4:5.** A model whose enum has the requested ratio gets it and
+   nothing is cropped. Otherwise it gets its NEAREST ratio (Grok 3:4, Qwen
+   7:9) and `fit_aspect` crops the result from the centre (4:5 from 3:4 =
+   6.25% off the height); the prompt then asks for room above the head and
+   below the feet. On a cut-out (composite) the crop window moves to keep
+   every visible pixel; a figure that does not fit is left uncropped with the
+   warning `character_crop_skipped`, never clipped.
+   **Nano Banana Pro / FLUX 3** exist on Higgsfield's MCP platform
+   (`nano_banana_pro`: `image_references` ≤14, has 4:5; `flux_3_image`: ≤10,
+   has 4:5) but are NOT in the REST docs. `bash scripts/higgsfield_probe_paths.sh`
+   (Cloud Shell, uallak's key) asks the server: no prompt + an invalid
+   aspect_ratio, so a real path answers 422 and nothing is generated; controls
+   run first; anything accepted is cancelled. A model is added only on a
+   verified 422.
 7. **Store.** The image goes to the client's folder, and a pose record is added for each character (client-scoped, not transparent).
 
 ## COMPOSITE

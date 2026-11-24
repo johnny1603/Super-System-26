@@ -983,18 +983,25 @@ def _generate_character_scene(client_id: int, brief, palette: dict, platform: st
     try:
         crafted = timed_step(AGENT_NAME, "craft_character_prompt",
                              lambda: _craft_character_prompt(client_id, brief, palette, context))
-        # Each character by its reference image + the style clause, always — in code
-        prompt = agent_characters.in_scene_prompt(crafted.get("generation_prompt", ""), brief.characters)
+        # Each character by its reference image + the style clause, always — in code.
+        # A model without the requested ratio gets its nearest one and the result is
+        # cropped from the centre: the prompt asks for room at the top and bottom.
+        crop = agent_characters.needs_crop(brief.aspect_ratio, gen.character_aspect(brief.aspect_ratio))
+        prompt = agent_characters.in_scene_prompt(crafted.get("generation_prompt", ""), brief.characters,
+                                                  crop_margin=crop)
         post_brief.assert_copy_free(prompt, brief)            # THE root-cause guard, on the final prompt
-        # The stored reference images, in the prompt's order, in the model's own image_urls
+        # The stored reference images, in the prompt's order, in the model's own reference field
         refs = agent_characters.reference_urls(brief.characters)
         generated = timed_step(AGENT_NAME, f"higgsfield_character_{kind}",
                                lambda: gen.generate_with_references(agent_characters.agents_key(), prompt, refs,
                                                                     brief.aspect_ratio, kind))
+        # What reaches the post is the requested ratio exactly (a true 4:5)
+        fitted = agent_characters.fit_aspect(generated["content"], brief.aspect_ratio,
+                                             generated.get("aspect_ratio") or brief.aspect_ratio)
         folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
-                                      generated["content"], generated["mime"])
+                                      fitted["content"], "image/png" if fitted["cropped"] else generated["mime"])
     except agent_characters.MissingReference as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e.message}"])
         return {"success": False, "status": "character_missing_reference", "errors": [e.message],

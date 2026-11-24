@@ -56,6 +56,14 @@ POSE = "abcdef123456"
 REF = {a: f"https://cdn.higgsfield.ai/refs/{a}.png" for a in ac.AGENTS}
 
 
+def _png_size(w, h, colour=(90, 140, 200)) -> bytes:
+    if Image is None:
+        return b"\x89PNG fake"
+    out = io.BytesIO()
+    Image.new("RGB", (w, h), colour).save(out, "PNG")
+    return out.getvalue()
+
+
 def _png(colour=(200, 120, 40)) -> bytes:
     if Image is None:
         return b"\x89PNG fake"
@@ -447,10 +455,13 @@ class InScene(Store):
         media_agent._library_scene = lambda cid, b: {}
         media_agent._context = lambda cid: {"craft": "c", "brand": "b"}
         media_agent.safe_claude_json_call = lambda *a, **k: {"generation_prompt": "the character at a sunny table"}
-        gen.generate_with_references = lambda key, prompt, refs, ar, kind="image": sent.append(refs) or {
-            "url": "https://cdn.example/x.png", "content": b"PNG", "mime": "image/png", "credits": 2, "model": "m"}
+        three_four = _png_size(300, 400)                                 # Grok has no 4:5: it sends 3:4
+        gen.generate_with_references = lambda key, prompt, refs, ar, kind="image": sent.append((refs, prompt)) or {
+            "url": "https://cdn.example/x.png", "content": three_four, "mime": "image/png", "credits": 2,
+            "model": "m", "aspect_ratio": "3:4"}
         media_agent._subfolder = lambda *a: "FOLDER"
-        media_agent.drive.upload_bytes = lambda *a: {"id": "GENFILE_0123456789"}
+        stored = []
+        media_agent.drive.upload_bytes = lambda *a: stored.append(a[2]) or {"id": "GENFILE_0123456789"}
         media_agent._log_activity = lambda *a, **k: None
         os.environ[ac.KEY_ENV] = "kid:ksecret"
         try:
@@ -464,7 +475,10 @@ class InScene(Store):
             else:
                 os.environ[ac.KEY_ENV] = saved[7]
         self.assertTrue(out["success"], out)
-        self.assertEqual(sent, [[REF["maya"]]])
+        self.assertEqual(sent[0][0], [REF["maya"]])
+        self.assertIn(ac.CROP_MARGIN, sent[0][1])                       # it will be cropped: room asked for
+        if Image is not None:
+            self.assertEqual(Image.open(io.BytesIO(stored[0])).size, (300, 375))   # a true 4:5 reached the post
 
     def test_runs_on_uallaks_key_and_refuses_without_it(self):
         from agents import media_agent
@@ -856,6 +870,140 @@ class Guardrail(Store):
         self.assertEqual(ac.reference_for("maya")["url"], before)        # nothing changed
         self.assertEqual(ac.view()["reports"][-1]["reason"], "the face drifts in profile shots")
         self.assertTrue(any("reported weak" in a for a in self.alerts))
+
+# ─── 9. A true 4:5: nearest supported ratio, then a centre crop ──────────────
+
+def _cutout(w, h, top, bottom, left=None, right=None) -> bytes:
+    """Transparent canvas with an opaque figure between rows top..bottom-1."""
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    for x in range(left if left is not None else w // 3, right if right is not None else 2 * w // 3):
+        for y in range(top, bottom):
+            img.putpixel((x, y), (200, 40, 40, 255))
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
+@NEEDS_PIL
+class AspectCrop(unittest.TestCase):
+    def test_three_four_becomes_a_true_four_five(self):
+        got = ac.fit_aspect(_png_size(600, 800), "4:5", "3:4")
+        self.assertTrue(got["cropped"])
+        w, h = Image.open(io.BytesIO(got["content"])).size
+        self.assertEqual((w, h), (600, 750))                              # 6.25% off the height
+        self.assertAlmostEqual(w / h, 0.8)
+
+    def test_native_ratio_is_never_cropped(self):
+        src = _png_size(800, 1000)
+        got = ac.fit_aspect(src, "4:5", "4:5")
+        self.assertEqual((got["content"], got["cropped"]), (src, False))
+        self.assertFalse(ac.needs_crop("4:5", "4:5"))
+        self.assertTrue(ac.needs_crop("4:5", "3:4"))
+        # a model whose enum HAS 4:5 is sent 4:5 (no crop); one without gets its nearest
+        saved = dict(gen.CHARACTER_MODELS)
+        gen.CHARACTER_MODELS["test/native-45"] = {"field": "image_references", "max": 14,
+                                                  "aspects": ("1:1", "4:5", "3:4")}
+        try:
+            self.assertEqual(gen.character_aspect("4:5", "test/native-45"), "4:5")
+        finally:
+            gen.CHARACTER_MODELS.clear()
+            gen.CHARACTER_MODELS.update(saved)
+        self.assertEqual(gen.character_aspect("4:5", "xai/grok-imagine-image-2.0"), "3:4")
+        self.assertEqual(gen.character_aspect("4:5", "alibaba/qwen-image-3/edit"), "7:9")   # nearer than 3:4
+        self.assertEqual(gen.character_aspect("9:16", "xai/grok-imagine-image-2.0"), "9:16")
+
+    def test_wide_images_lose_the_sides(self):
+        got = ac.fit_aspect(_png_size(1000, 1000), "4:5", "1:1")
+        self.assertEqual(Image.open(io.BytesIO(got["content"])).size, (800, 1000))
+
+    def test_a_cutout_is_never_clipped(self):
+        # the figure touches the top: a centre crop would cut its head — the window moves instead
+        got = ac.fit_aspect(_cutout(600, 800, top=0, bottom=700), "4:5", "3:4")
+        self.assertTrue(got["cropped"])
+        img = Image.open(io.BytesIO(got["content"]))
+        self.assertEqual(img.size, (600, 750))
+        opaque = sum(1 for a in img.getchannel("A").getdata() if a > 16)
+        self.assertEqual(opaque, 200 * 700)                               # every visible pixel kept
+        # feet at the very bottom: same
+        got = ac.fit_aspect(_cutout(600, 800, top=120, bottom=800), "4:5", "3:4")
+        img = Image.open(io.BytesIO(got["content"]))
+        self.assertEqual(sum(1 for a in img.getchannel("A").getdata() if a > 16), 200 * 680)
+
+    def test_warn_rather_than_clip(self):
+        src = _cutout(600, 800, top=5, bottom=795)                       # taller than any 4:5 window
+        got = ac.fit_aspect(src, "4:5", "3:4")
+        self.assertEqual((got["content"], got["cropped"]), (src, False))
+        self.assertIn("character_crop_skipped", got["warning"])
+
+    def test_make_pose_crops_without_clipping(self):
+        db = tsq.FakeDB()
+        saved = (ac._db, ac._alert)
+        ac._db = lambda: db
+        alerts = []
+        ac._alert = lambda lines: alerts.extend(lines)
+        try:
+            ac.set_reference("maya", url=REF["maya"], _fetch_fn=lambda u: _png(), _keep_fn=lambda *a: "KEEP_0123456789")
+            gen_fn = lambda key, prompt, refs, aspect: {"url": "https://cdn/x.png", "credits": 1, "aspect_ratio": "3:4"}
+            tall = lambda key, url: {"content": _cutout(600, 800, top=2, bottom=798)}
+            made = ac.make_pose("maya", "waving", aspect_ratio="4:5", _gen=gen_fn, _remove=tall,
+                                _upload=lambda a, png: {"id": "POSEFILE_0123456789"})
+            self.assertFalse(made["cropped"])
+            self.assertIn("character_crop_skipped", made["warning"])
+            self.assertTrue(any("character_crop_skipped" in a for a in alerts))
+            fits = lambda key, url: {"content": _cutout(600, 800, top=100, bottom=700)}
+            made = ac.make_pose("maya", "waving", aspect_ratio="4:5", _gen=gen_fn, _remove=fits,
+                                _upload=lambda a, png: {"id": "POSEFILE_0123456789"})
+            self.assertTrue(made["cropped"])
+            self.assertEqual(Image.open(io.BytesIO(made["png"])).size, (600, 750))
+        finally:
+            ac._db, ac._alert = saved
+
+
+# ─── 10. Only verified model paths, each with its own reference field ────────
+
+class ModelList(unittest.TestCase):
+    def test_only_verified_paths_and_each_models_own_field(self):
+        self.assertEqual(set(gen.CHARACTER_MODELS), {"xai/grok-imagine-image-2.0", "alibaba/qwen-image-3/edit"})
+        self.assertEqual(gen.CHARACTER_IMAGE_PATH, os.environ.get("HIGGSFIELD_CHARACTER_IMAGE_PATH",
+                                                                  "xai/grok-imagine-image-2.0"))
+        for path, m in gen.CHARACTER_MODELS.items():
+            self.assertTrue(m["field"] and m["max"] >= ac.MAX_CHARACTERS and m["aspects"], path)
+        # an unverified path is refused before anything is sent
+        saved = gen.CHARACTER_IMAGE_PATH
+        gen.CHARACTER_IMAGE_PATH = "google/nano-banana-pro"
+        try:
+            with _FakeHiggsfield() as hf:
+                with self.assertRaises(gen.UnverifiedModelPath) as e:
+                    gen.generate_with_references("id:secret", "p", [REF["maya"]], "4:5")
+            self.assertEqual(hf.sent, [])
+            self.assertIn("not a verified model path", str(e.exception))
+            self.assertEqual(gen.max_references(), 0)
+        finally:
+            gen.CHARACTER_IMAGE_PATH = saved
+        # a model's OWN field name and native 4:5 are what is sent
+        saved_models = dict(gen.CHARACTER_MODELS)
+        gen.CHARACTER_MODELS["test/native-45"] = {"field": "image_references", "max": 14, "aspects": ("1:1", "4:5")}
+        gen.CHARACTER_IMAGE_PATH = "test/native-45"
+        try:
+            with _FakeHiggsfield() as hf:
+                out = gen.generate_with_references("id:secret", "p", [REF["maya"], REF["lior"]], "4:5")
+            self.assertEqual(set(hf.sent[0]), {"prompt", "image_references", "aspect_ratio"})
+            self.assertEqual((hf.sent[0]["aspect_ratio"], out["aspect_ratio"]), ("4:5", "4:5"))
+        finally:
+            gen.CHARACTER_IMAGE_PATH = saved
+            gen.CHARACTER_MODELS.clear()
+            gen.CHARACTER_MODELS.update(saved_models)
+
+    def test_the_probe_is_safe(self):
+        sh = tsq._src("scripts", "higgsfield_probe_paths.sh")
+        self.assertIn('SAFE_BODY = {"aspect_ratio": "0:0"}', sh)          # no prompt, invalid enum
+        self.assertNotIn('"prompt"', sh)
+        self.assertIn('("xai/grok-imagine-image-2.0", "422")', sh)          # the controls
+        self.assertIn('"uallak-probe/definitely-not-a-model", "404"', sh)
+        self.assertIn('requests/{rid}/cancel', sh)                        # anything accepted is cancelled
+        self.assertIn('text.replace(KEY, "***")', sh)                    # the key is never printed
+        self.assertIn('KEY = os.environ.pop("HF_KEY")', sh)
+
 
 if __name__ == "__main__":
     unittest.main()

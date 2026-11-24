@@ -370,6 +370,7 @@ def view(data: dict = None) -> dict:
                      "durable": bool(e.get("file_id")), "width": e.get("width", 0), "height": e.get("height", 0),
                      "updated_at": e.get("updated_at", ""), "by": e.get("by", "")})
     return {"agents": rows, "configured": configured(), "model": gen.CHARACTER_IMAGE_PATH,
+            "model_verified": gen.CHARACTER_IMAGE_PATH.strip("/") in gen.CHARACTER_MODELS,
             "max_references": gen.max_references(), "reports": (data.get("reports") or [])[-20:],
             "poses": pose_counts()}
 
@@ -418,9 +419,10 @@ def _who(n: int) -> list:
     return [f"the character from reference image {i + 1}" for i in range(n)]
 
 
-def in_scene_prompt(scene: str, agents: list, data: dict = None) -> str:
+def in_scene_prompt(scene: str, agents: list, data: dict = None, crop_margin: bool = False) -> str:
     """The scene prompt naming each character by its reference image (sent in
-    the same order) and the style clause, always."""
+    the same order) and the style clause, always. `crop_margin` = the result
+    will be cropped to the requested ratio: ask for room at the top and bottom."""
     agents = [clean_agent(a) for a in agents or []]
     if not agents:
         raise ValueError("in_scene needs at least one character")
@@ -436,6 +438,8 @@ def in_scene_prompt(scene: str, agents: list, data: dict = None) -> str:
              for i, a in enumerate(agents) if reference_for(a, data).get("notes")]
     if notes:
         prompt += " " + "; ".join(notes) + "."
+    if crop_margin:
+        prompt += " " + CROP_MARGIN
     return with_style(prompt)
 
 
@@ -480,6 +484,63 @@ def ensure_transparent(png: bytes) -> bytes:
     out = io.BytesIO()
     img.save(out, "PNG")
     return out.getvalue()
+
+
+# ─── The requested aspect, exactly (crop from the centre) ────────────────────
+
+CROP_TOLERANCE = 0.005
+CROP_MARGIN = ("Keep every character's whole head and feet well inside the frame, with clear space at the top "
+               "and bottom.")
+
+
+def _ratio(ar: str) -> float:
+    w, _, h = str(ar or "").partition(":")
+    return float(w) / float(h)
+
+
+def needs_crop(target: str, sent: str) -> bool:
+    try:
+        return bool(target and sent) and abs(_ratio(target) - _ratio(sent)) > CROP_TOLERANCE
+    except (ValueError, ZeroDivisionError):
+        return False
+
+
+def fit_aspect(content: bytes, target: str, sent: str = "") -> dict:
+    """The generated image at the REQUESTED ratio: {"content", "cropped",
+    "warning"}. A model that took the ratio natively (sent == target) is left
+    alone. Otherwise the image is cropped from the centre (4:5 from 3:4 = 6.25%
+    off the height). With transparency (a cut-out) the crop window moves to
+    keep every visible pixel — head and feet are never clipped; when the
+    figure does not fit the window, nothing is cropped and `warning` says so."""
+    out = {"content": content, "cropped": False, "warning": ""}
+    if not target or (sent and not needs_crop(target, sent)):
+        return out
+    from PIL import Image
+    img = Image.open(io.BytesIO(content))
+    w, h = img.size
+    want = _ratio(target)
+    if abs(w / h - want) <= CROP_TOLERANCE:
+        return out
+    if w / h > want:                                   # too wide: cut the sides
+        box_w, box_h = max(1, round(h * want)), h
+    else:                                              # too tall: cut top and bottom
+        box_w, box_h = w, max(1, round(w / want))
+    x0, y0 = (w - box_w) // 2, (h - box_h) // 2
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    if has_alpha:
+        bbox = img.convert("RGBA").getchannel("A").point(lambda a: 255 if a > 16 else 0).getbbox()
+        if bbox:
+            left, top, right, bottom = bbox
+            if right - left > box_w or bottom - top > box_h:
+                out["warning"] = (f"character_crop_skipped: the figure ({right - left}x{bottom - top}) does not fit "
+                                  f"a {target} crop of {w}x{h} — left uncropped rather than clipped")
+                return out
+            x0 = min(max(x0, right - box_w), left)
+            y0 = min(max(y0, bottom - box_h), top)
+    cropped = img.crop((x0, y0, x0 + box_w, y0 + box_h))
+    buf = io.BytesIO()
+    cropped.save(buf, "PNG")
+    return {"content": buf.getvalue(), "cropped": True, "warning": ""}
 
 
 # ─── The pose library ────────────────────────────────────────────────────────
@@ -683,11 +744,17 @@ def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body
     made = (_gen or gen.generate_with_references)(key, prompt, refs, aspect_ratio)
     cut = (_remove or gen.remove_background)(key, made["url"])
     png = ensure_transparent(cut["content"])
+    # The requested ratio exactly; the crop never clips the figure (warns instead)
+    fitted = fit_aspect(png, aspect_ratio, made.get("aspect_ratio") or aspect_ratio)
+    png = fitted["content"]
+    if fitted["warning"]:
+        _alert([f"pose for {agent}: {fitted['warning']}"])
     uploaded = (_upload or upload_pose_png)(agent, png)
     record = add_pose(agent, uploaded.get("id", ""), True, 0, outfit=outfit, setting=setting or "plain cut-out",
                       framing=framing, description=pose, tags=[w for w in re.findall(r"[a-z]{4,}", pose.lower())][:8],
                       source="generated", prompt=prompt)
-    return {**record, "credits": (made.get("credits") or 0), "png": png}
+    return {**record, "credits": (made.get("credits") or 0), "png": png, "cropped": fitted["cropped"],
+            "warning": fitted["warning"]}
 
 
 def pose_for(agent: str, pose: str, outfit: str = "", framing: str = "full body", **kw) -> dict:

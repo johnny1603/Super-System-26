@@ -344,16 +344,26 @@ def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dic
 # durable copy in our Drive and re-uploads it when the URL is old.
 # Runs on uallak's OWN key (HIGGSFIELD_AGENTS_KEY). No video model is wired
 # for characters: none of the video pages read take character references.
+#
+# ONLY VERIFIED PATHS: a model enters CHARACTER_MODELS when its REST path,
+# reference field and aspect enum are confirmed — from the REST docs, or by a
+# 422 from scripts/higgsfield_probe_paths.sh (never by a guess). An env value
+# that is not in the list is REFUSED with a clear line, never sent.
+# Nano Banana Pro and FLUX 3 exist on Higgsfield's MCP / web platform but not
+# in the REST docs (read 2026-11-24): not here until the probe verifies them.
+#
+# Aspect: the model gets the requested ratio when its enum has it; otherwise
+# the NEAREST ratio it has, and agent_characters.fit_aspect crops the result to
+# the requested one from the centre (4:5 from 3:4 = 6.25% off the height).
 CHARACTER_IMAGE_PATH = os.environ.get("HIGGSFIELD_CHARACTER_IMAGE_PATH", "xai/grok-imagine-image-2.0")
-REFERENCE_MODELS = {                       # documented path → max image_urls
-    "xai/grok-imagine-image-2.0": 10,
-    "alibaba/qwen-image-3/edit": 3,
+CHARACTER_MODELS = {
+    "xai/grok-imagine-image-2.0": {          # docs: models/grok-image-2/generate-and-edit
+        "field": "image_urls", "max": 10,
+        "aspects": ("1:1", "1:2", "2:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16")},
+    "alibaba/qwen-image-3/edit": {           # docs: models/qwen-image-3/edit
+        "field": "image_urls", "max": 3,
+        "aspects": ("1:1", "2:3", "3:2", "3:4", "4:3", "7:9", "9:7", "9:16", "16:9", "21:9")},
 }
-CHARACTER_ASPECTS = {                      # documented aspect_ratio enums
-    "xai/grok-imagine-image-2.0": ("1:1", "1:2", "2:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"),
-    "alibaba/qwen-image-3/edit": ("1:1", "2:3", "3:2", "3:4", "4:3", "7:9", "9:7", "9:16", "16:9", "21:9"),
-}
-ASPECT_FALLBACK = {"4:5": "3:4", "5:4": "4:3"}
 UPLOAD_PATH = "files/generate-upload-url"
 UPLOAD_TYPES = ("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif")
 BG_REMOVE_PATH = os.environ.get("HIGGSFIELD_BG_REMOVE_PATH", "remove-background")
@@ -363,14 +373,48 @@ class CharacterVideoUnsupported(ValueError):
     """No documented video model takes character reference images (yet)."""
 
 
+class UnverifiedModelPath(ValueError):
+    """HIGGSFIELD_CHARACTER_IMAGE_PATH names a path that is not verified."""
+
+
+def character_model(path: str = "") -> dict:
+    """The verified entry for `path` (default: the env setting), or
+    UnverifiedModelPath — an unverified path is never sent."""
+    path = (path or CHARACTER_IMAGE_PATH).strip("/")
+    model = CHARACTER_MODELS.get(path)
+    if not model:
+        raise UnverifiedModelPath(f"HIGGSFIELD_CHARACTER_IMAGE_PATH={path} is not a verified model path "
+                                  f"(one of: {', '.join(CHARACTER_MODELS)})")
+    return {"path": path, **model}
+
+
 def max_references(path: str = "") -> int:
-    return REFERENCE_MODELS.get((path or CHARACTER_IMAGE_PATH).strip("/"), 1)
+    try:
+        return character_model(path)["max"]
+    except UnverifiedModelPath:
+        return 0
+
+
+def _ratio(ar: str) -> float:
+    w, _, h = str(ar).partition(":")
+    return float(w) / float(h)
 
 
 def character_aspect(aspect_ratio: str, path: str = "") -> str:
-    allowed = CHARACTER_ASPECTS.get((path or CHARACTER_IMAGE_PATH).strip("/"), VALID_ASPECT_RATIOS)
-    ar = ASPECT_FALLBACK.get(aspect_ratio, aspect_ratio)
-    return ar if ar in allowed else ("3:4" if "3:4" in allowed else allowed[0])
+    """The ratio sent to the model: the requested one when its enum has it,
+    else the NEAREST one it has (the result is cropped to the request)."""
+    try:
+        allowed = character_model(path)["aspects"]
+    except UnverifiedModelPath:
+        allowed = VALID_ASPECT_RATIOS
+    if aspect_ratio in allowed:
+        return aspect_ratio
+    try:
+        want = _ratio(aspect_ratio)
+    except (ValueError, ZeroDivisionError):
+        return "3:4" if "3:4" in allowed else allowed[0]
+    import math
+    return min(allowed, key=lambda a: (abs(math.log(_ratio(a) / want)), a))
 
 
 def upload_file(api_key: str, content: bytes, content_type: str) -> str:
@@ -396,26 +440,27 @@ def upload_file(api_key: str, content: bytes, content_type: str) -> str:
 
 def generate_with_references(api_key: str, prompt: str, reference_urls: list, aspect_ratio: str = "4:5",
                              kind: str = "image") -> dict:
-    """One image with the characters' reference images in the model's
-    documented `image_urls`, on uallak's key. Returns {'url', 'content',
-    'mime', 'credits', 'model', 'request_id'} — the url is kept for background
-    removal."""
+    """One image with the characters' reference images in the model's OWN
+    reference field (CHARACTER_MODELS), on uallak's key. Returns {'url',
+    'content', 'mime', 'credits', 'model', 'request_id', 'aspect_ratio'} —
+    aspect_ratio is what was SENT (the caller crops when it differs from the
+    request); the url is kept for background removal."""
     if kind == "video":
         raise CharacterVideoUnsupported("a video with an agent character is not supported: no documented "
                                         "Higgsfield video model takes character reference images")
+    model = character_model()                                   # an unverified path is refused here
     refs = [str(u) for u in reference_urls or []]
     if not refs or not all(u.startswith("https://") for u in refs):
         raise ValueError("a character generation needs the reference image URL(s)")
-    path = CHARACTER_IMAGE_PATH.strip("/")
-    if len(refs) > max_references(path):
-        raise ValueError(f"{path} takes at most {max_references(path)} reference images")
+    if len(refs) > model["max"]:
+        raise ValueError(f"{model['path']} takes at most {model['max']} reference images")
+    sent = character_aspect(aspect_ratio, model["path"])
     _count("image", DAILY_IMAGE_LIMIT)
-    job = _create_job(api_key, path, {"prompt": prompt, "image_urls": refs,
-                                      "aspect_ratio": character_aspect(aspect_ratio, path)})
+    job = _create_job(api_key, model["path"], {"prompt": prompt, model["field"]: refs, "aspect_ratio": sent})
     data = _wait_for_result(api_key, job)
     url = _result_url(data)
     return {"url": url, "content": _download(url), "mime": "image/png", "credits": _credits_used(data),
-            "model": path, "request_id": job["request_id"]}
+            "model": model["path"], "request_id": job["request_id"], "aspect_ratio": sent}
 
 
 def remove_background(api_key: str, image_url: str) -> dict:
