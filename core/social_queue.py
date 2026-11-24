@@ -415,6 +415,8 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
             "objective": post["objective"], "audience": post["audience"], "set_id": post["set_id"],
             "occasion": post.get("occasion", ""), "occasion_date": post.get("occasion_date", ""),
             "palette": palette or {}, "warnings": list(warnings or []), "slides": slides}
+    if post.get("colors"):
+        body["colors"] = post["colors"]           # the manager's explicit colours (core/post_brief.clean_colors)
     existing = next((i for i in queue if i.get("kind") == POST_KIND and i["status"] == "waiting"
                      and (i.get("post") or {}).get("set_id") == post["set_id"]), None)
     if existing:
@@ -974,4 +976,22 @@ def prompt_block(client_id: int) -> dict:
             "other_items": [{"id": i["id"], "title": i.get("title", ""), "status": i["status"],
                              "planned_date": i.get("planned_date", "")}
                             for i in queue if i["status"] != "waiting"][:20],
-            "counts": {s: sum(1 for i in queue if i["status"] == s) for s in STATUSES}}
+            "counts": {s: sum(1 for i in queue if i["status"] == s) for s in STATUSES},
+            # Approved posts whose production failed / partly failed / is stuck, with
+            # WHAT failed and why (core/post_pipeline) — never only in a log
+            **_production_block(client_id)}
+
+
+PRODUCTION_RULE = ("post_production lists approved posts whose production FAILED or only PARTLY worked, with "
+                   "each problem in plain words. When it is not empty, your reply says so in the same message — "
+                   "what failed and why, in plain words — and offers rerun_post_production for it; never answer "
+                   "that a post is waiting for approval or that everything is fine while it lists a problem.")
+
+
+def _production_block(client_id: int) -> dict:
+    try:
+        from core import post_pipeline
+        rows = post_pipeline.retryable(client_id)
+    except Exception:
+        return {}
+    return {"post_production": rows, "post_production_rule": PRODUCTION_RULE} if rows else {}

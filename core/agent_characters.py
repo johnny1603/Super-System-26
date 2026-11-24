@@ -115,6 +115,40 @@ def missing_text(agent: str, lang: str = "he") -> str:
     return (MISSING_TEXT.get(lang) or MISSING_TEXT["he"]).replace("{name}", name)
 
 
+# Every way a character can fail, said plainly to the manager (2026-11-25):
+# a failed character is never only an alert in a log.
+FAILURE_TEXT = {
+    "lead": {"he": "הדמות של {name} לא נוצרה", "en": "{name}'s character was not made",
+             "fr": "Le personnage de {name} n'a pas été créé", "ar": "لم تُنشأ شخصية {name}",
+             "ru": "Персонаж {name} не создан"},
+    "not_configured": {"he": "חשבון יצירת הדמויות של הצוות לא מחובר", "en": "the team's character account is not connected",
+                       "fr": "le compte de personnages de l'équipe n'est pas connecté",
+                       "ar": "حساب شخصيات الفريق غير متصل", "ru": "аккаунт персонажей команды не подключён"},
+    "background": {"he": "הסרת הרקע מהדמות נכשלה", "en": "removing the character's background failed",
+                   "fr": "la suppression de l'arrière-plan a échoué", "ar": "فشلت إزالة خلفية الشخصية",
+                   "ru": "не удалось убрать фон персонажа"},
+    "model": {"he": "מודל יצירת הדמויות לא מוגדר נכון", "en": "the character model is not set correctly",
+              "fr": "le modèle de personnages est mal configuré", "ar": "نموذج الشخصيات غير مضبوط",
+              "ru": "модель персонажей настроена неверно"},
+    "generation": {"he": "ספק היצירה החזיר שגיאה", "en": "the generation service returned an error",
+                   "fr": "le service de génération a renvoyé une erreur", "ar": "أعادت خدمة التوليد خطأ",
+                   "ru": "сервис генерации вернул ошибку"},
+}
+
+
+def failure_text(agent: str, error: Exception, lang: str = "he") -> str:
+    """One plain line for the manager: why this agent's character is missing."""
+    if isinstance(error, MissingReference):
+        return missing_text(agent, lang)
+    name = type(error).__name__
+    key = ("not_configured" if getattr(error, "reason", "") == "not_configured"
+           else "background" if name in ("BackgroundNotRemoved", "BackgroundModelMissing")
+           else "model" if name == "UnverifiedModelPath" else "generation")
+    pick = lambda t: t.get(lang) or t["he"]                     # noqa: E731
+    who = AGENT_NAMES.get(agent, agent) if lang == "he" else agent
+    return f"{pick(FAILURE_TEXT['lead']).replace('{name}', who)}: {pick(FAILURE_TEXT[key])}"
+
+
 class CharacterUnavailable(RuntimeError):
     """No usable character for that agent (no reference, no key)."""
 

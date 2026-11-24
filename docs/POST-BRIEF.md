@@ -36,6 +36,7 @@
    - Round 2: escalated. The card shows both positions and the manager decides.
    - There is never a third round. Rounds are kept per set_id in app_settings `post_drafts:<client_id>`.
 5. **Palette.** `palette_variants` in the brief, resolved from the audience: once per post, one variant per set_id, never mixed. An unresolved audience gets ONE question.
+   - **The manager's explicit instruction wins (2026-11-25).** The rule stops random palettes; it never overrides the person. "Colourful, not the brand colours" / "a different colour per slide" → the post carries `colors: {requested: their words, slides: [{bg, fg?, accent?, muted?}]}` (one entry for all slides, or one per slide; `post_brief.clean_colors`). Each text slide renders with its own colours (`slide_renderer.slide_roles`: a missing fg is white or near-black, whichever reads; an accent that would vanish becomes the fg). The queued line says the post deviates from the brand palette on request. No `requested` = no override.
 6. **Lead time.** The brief's `lead_time` and the post's `occasion_date` give an order-by date, counted in Israeli business days, Sunday to Thursday.
    - If the publish date is on or after it: a "late" warning.
    - If less than 7 days remain before it: a "tight" warning.
@@ -50,6 +51,10 @@
    - `real_photo` with nothing real: flagged as needing a real photo, never generated. On a proof slide or in product_carousel / before_after / customer_story that is an objection to the social agent.
    - `generated_*`: `generate_from_brief`. The prompt comes from `visual_direction`, must_include / must_avoid and the palette only. `assert_copy_free` fails the call before the model if the prompt carries any of the copy (the whole text, or 4 of its words in a row) or any Hebrew.
    - Each file joins the queue as its own item (`post_ref`, `flags`) for the publish approval, as before.
+9. **Said in the chat, honestly (2026-11-25).** Client 27's carousel came out as black slides without Maya while the agent said "waiting for your approval, nothing wrong". Now:
+   - On the approval the producer posts "התחלתי להפיק…"; the run is the `rerun_post_production` action started by the system (`agent_actions.start_system_run`), so the chat shows its progress card; it ends with `post_pipeline.summary`.
+   - "Done" only when nothing failed. Otherwise the line lists what failed and why, in plain words (`production.problems`: per slide, `post_pipeline.REASONS`; a character drawn without → `agent_characters.failure_text`), what did work, and the offer to run it again. A design drawn without the character asked for is `partial`, never `done`.
+   - The agents' data (`social_queue.prompt_block` → `post_production` + its rule) lists every approved post whose production failed, partly failed or is stuck; the persona must say so in the same reply and offer `rerun_post_production` (runs on the manager's yes).
 
 ## Not built yet
 

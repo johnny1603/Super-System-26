@@ -87,6 +87,38 @@ TEXT = {
         " Les {n} diapositives texte vous attendent comme design à valider dans l'onglet Social (une remarque, et je le refais).",
         " الشرائح النصية ({n}) بانتظاركم كتصميم للموافقة في تبويب السوشيال (اكتبوا ملاحظة وأعيد التصميم).",
         " {n} текстовых слайдов ждут вас как дизайн на одобрение во вкладке «Соцсети» (напишите замечание — переделаю)."),
+    # An explicit colour instruction beats the brand palette (post_brief.clean_colors)
+    "colors": _five(
+        "לבקשתך, הצבעים בפוסט הזה לא מפלטת המותג ({requested}).",
+        "As you asked, this post's colours are not the brand palette ({requested}).",
+        "Comme demandé, les couleurs de ce post ne sont pas celles de la marque ({requested}).",
+        "كما طلبتم، ألوان هذا المنشور ليست من ألوان العلامة ({requested}).",
+        "По вашей просьбе цвета этого поста не из палитры бренда ({requested})."),
+    # Production, said in the chat as it happens (2026-11-25): started, then
+    # finished — or what failed and why. Never "done" when something failed.
+    "started": _five(
+        "התחלתי להפיק את הפוסט \"{title}\" ({n} חלקים). אכתוב כאן כשזה מסתיים — או מה נתקע, אם משהו נתקע.",
+        "I've started producing the post \"{title}\" ({n} parts). I'll write here when it's done — or what got stuck, if anything does.",
+        "J'ai commencé la production du post « {title} » ({n} parties). J'écrirai ici quand ce sera fini — ou ce qui bloque, le cas échéant.",
+        "بدأت إنتاج المنشور \"{title}\" ({n} أجزاء). سأكتب هنا عند الانتهاء — أو ما تعثّر إن تعثّر شيء.",
+        "Я начал производство поста «{title}» ({n} частей). Напишу здесь, когда закончу, — или что застряло, если застрянет."),
+    "partial": _five(
+        "הפקת הפוסט \"{title}\" לא הצליחה במלואה. מה שלא עבד:\n{problems}{ready}\nאפשר להריץ את ההפקה שוב — רק תגידו.",
+        "Producing the post \"{title}\" did not fully work. What failed:\n{problems}{ready}\nI can run the production again — just say so.",
+        "La production du post « {title} » n'a pas entièrement abouti. Ce qui a échoué :\n{problems}{ready}\nJe peux relancer la production — dites-le simplement.",
+        "إنتاج المنشور \"{title}\" لم ينجح بالكامل. ما فشل:\n{problems}{ready}\nيمكنني تشغيل الإنتاج مجددًا — فقط قولوا.",
+        "Производство поста «{title}» удалось не полностью. Что не получилось:\n{problems}{ready}\nМогу запустить производство снова — просто скажите."),
+    "failed": _five(
+        "הפקת הפוסט \"{title}\" נכשלה, ושום דבר ממנה לא מחכה לאישור. מה נכשל:\n{problems}\nאפשר להריץ את ההפקה שוב — רק תגידו.",
+        "Producing the post \"{title}\" failed, and nothing from it is waiting for approval. What failed:\n{problems}\nI can run the production again — just say so.",
+        "La production du post « {title} » a échoué, rien n'attend de validation. Ce qui a échoué :\n{problems}\nJe peux relancer la production — dites-le simplement.",
+        "فشل إنتاج المنشور \"{title}\" ولا شيء منه بانتظار الموافقة. ما فشل:\n{problems}\nيمكنني تشغيل الإنتاج مجددًا — فقط قولوا.",
+        "Производство поста «{title}» не удалось, ничего из него не ждёт одобрения. Что не получилось:\n{problems}\nМогу запустить производство снова — просто скажите."),
+    "ready_part": _five(
+        "\nמה שכן עבד ({what} פריטים) מחכה בלשונית סושיאל.", "\nWhat did work ({what} items) waits in the Social tab.",
+        "\nCe qui a fonctionné ({what} éléments) attend dans l'onglet Social.", "\nما نجح ({what} عناصر) ينتظر في تبويب السوشيال.",
+        "\nТо, что получилось ({what} шт.), ждёт во вкладке «Соцсети»."),
+    "slide": _five("שקופית {n}", "Slide {n}", "Diapositive {n}", "الشريحة {n}", "Слайд {n}"),
     "design_failed": _five(
         " את שקופיות הטקסט לא הצלחתי לעצב בלי לשבור את כללי הקריאוּת — כדאי לקצר את הטקסט שלהן.",
         " I couldn't design the text slides without breaking the legibility rules — their copy should be shorter.",
@@ -94,6 +126,35 @@ TEXT = {
         " لم أتمكن من تصميم الشرائح النصية دون كسر قواعد الوضوح — يجب اختصار نصها.",
         " Не удалось оформить текстовые слайды, не нарушив правила читаемости, — их текст нужно сократить."),
 }
+
+
+# Why one asset was not made — plain words for the manager (status → line)
+REASONS = {
+    "no_account": _five("חשבון יצירת התמונות של העסק לא מחובר", "the business's image-generation account is not connected",
+                        "le compte de génération d'images n'est pas connecté", "حساب توليد الصور غير متصل",
+                        "аккаунт генерации изображений не подключён"),
+    "context_missing": _five("קבצי הידע של המותג חסרים", "the brand's knowledge files are missing",
+                             "les fichiers de connaissance de la marque manquent", "ملفات معرفة العلامة ناقصة",
+                             "нет файлов знаний бренда"),
+    "copy_leak": _five("הבקשה לתמונה נעצרה כי הכילה טקסט מהשקופית", "the image request was stopped: it carried the slide's text",
+                       "la demande d'image a été arrêtée : elle contenait le texte", "أُوقف طلب الصورة لأنه احتوى نص الشريحة",
+                       "запрос изображения остановлен: в нём был текст слайда"),
+    "over_budget": _five("תקציב הקרדיטים של הפוסט נגמר", "the post's credit budget ran out",
+                         "le budget de crédits du post est épuisé", "نفد رصيد المنشور", "бюджет кредитов поста исчерпан"),
+    "render_failed": _five("ציור השקופית נכשל", "drawing the slide failed", "le rendu de la diapositive a échoué",
+                           "فشل رسم الشريحة", "не удалось отрисовать слайд"),
+    "design": _five("עיצוב שקופיות הטקסט נכשל", "designing the text slides failed",
+                    "la conception des diapositives texte a échoué", "فشل تصميم الشرائح النصية",
+                    "не удалось оформить текстовые слайды"),
+    "failed": _five("ספק היצירה החזיר שגיאה", "the generation service returned an error",
+                    "le service de génération a renvoyé une erreur", "أعادت خدمة التوليد خطأ",
+                    "сервис генерации вернул ошибку"),
+}
+REASONS["renderer_unavailable"] = REASONS["render_failed"]
+
+
+def reason_text(status: str, lang: str) -> str:
+    return pick(REASONS.get(status) or REASONS["failed"], lang)
 
 
 def pick(table: dict, lang: str) -> str:
@@ -198,6 +259,9 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
                                  escalations=escalations, flags=flags, sources=sources,
                                  producer=persona if persona in social_queue.PRODUCERS else "media")
     line = pick(TEXT["queued"], lang).replace("{n}", str(len(post["assets"])))
+    if post.get("colors"):
+        # The manager's explicit colours win over the brand palette — said, in one line
+        line += " " + pick(TEXT["colors"], lang).replace("{requested}", post["colors"]["requested"])
     if escalations:
         line += " " + pick(TEXT["escalated"], lang)
     for w in social_queue.warning_lines(warnings, lang):
@@ -215,7 +279,10 @@ def _positions(history: list, asset_id: str) -> dict:
 
 def start(client_id: int, items: list, background_tasks=None) -> int:
     """After social_queue.approve: every approved POST item starts production
-    (in the background when possible). Returns how many were started."""
+    (in the background when possible). Returns how many were started.
+    In the chat (2026-11-25): the producer says it has started, the run shows
+    as its progress card (the rerun_post_production action, started by the
+    system on this approval), and the producer says how it ended."""
     started = 0
     for item in items or []:
         if item.get("kind") == social_queue.DESIGN_KIND:
@@ -231,16 +298,36 @@ def start(client_id: int, items: list, background_tasks=None) -> int:
             continue
         social_queue.set_production(client_id, item["id"], {"state": "running", "started_at": _now()})
         if background_tasks is not None:
-            background_tasks.add_task(produce, client_id, item["id"])
+            background_tasks.add_task(run_in_chat, client_id, item["id"])
         else:
-            produce(client_id, item["id"])
+            run_in_chat(client_id, item["id"])
         started += 1
     return started
 
 
-def produce(client_id: int, item_id: str) -> dict:
+def run_in_chat(client_id: int, item_id: str) -> dict:
+    """The started line, then production as a running card in the producer's
+    chat; without the card (storage down) production still runs and says how
+    it ended. Never raises."""
+    item = social_queue.get(client_id, item_id) or {}
+    lang = _lang(client_id)
+    n = len((item.get("post") or {}).get("slides") or [])
+    _say(client_id, item, pick(TEXT["started"], lang).replace("{title}", item.get("title") or "").replace("{n}", str(n)))
+    try:
+        from core import agent_actions
+        if agent_actions.start_system_run(client_id, "rerun_post_production", {"item_id": item_id},
+                                          persona=item.get("producer") or "media"):
+            return (social_queue.get(client_id, item_id) or {}).get("production") or {}
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: production card not started ({type(e).__name__})")
+    return produce(client_id, item_id)
+
+def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
     """Every asset of an approved post, in order, within its credit budget.
-    Never raises; the result is recorded on the post item."""
+    Never raises; the result is recorded on the post item. `tell` = post the
+    outcome line in the producer's chat (the rerun action posts it itself).
+    Every failure is recorded as a plain line (production["problems"]) — what
+    failed and why — and the line never says "done" when something failed."""
     item = social_queue.get(client_id, item_id)
     if not item or item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
         return {"state": "failed", "reason": "not_an_approved_post"}
@@ -249,13 +336,18 @@ def produce(client_id: int, item_id: str) -> dict:
     palette = body.get("palette") or {}
     budget = sum(int(s.get("budget_credits") or 0) for s in slides)
     spent, made, not_made, failed, results = 0.0, 0, 0, 0, []
-    text_slides, character_errors = [], []
+    text_slides, character_errors, problems = [], [], []
+    lang = _lang(client_id)
+    colors = (body.get("colors") or {}).get("slides") or []
     from agents import media_agent
     for n, slide in enumerate(slides, 1):
         if slide["asset_type"] == "text_slide":
             # Drawn by the slide renderer as ONE set (one template, one palette
             # variant) — never an image model. The design waits for approval.
-            text_slides.append({**slide, "n": n, "total": len(slides)})
+            entry = {**slide, "n": n, "total": len(slides)}
+            if len(colors) >= n:
+                entry["colors"] = colors[n - 1]             # the manager's explicit colours for this slide
+            text_slides.append(entry)
             continue
         brief = post_brief.AssetBrief(
             asset_id=slide["asset_id"], post_format=body["post_format"], objective=body["objective"],
@@ -270,6 +362,7 @@ def produce(client_id: int, item_id: str) -> dict:
             characters=list(slide.get("characters") or []), character_mode=slide.get("character_mode") or "")
         if brief.asset_type.startswith("generated") and budget and spent >= budget:
             results.append({"asset_id": brief.asset_id, "status": "over_budget"})
+            problems.append(_problem(n, reason_text("over_budget", lang), lang))
             not_made += 1
             continue
         try:
@@ -279,12 +372,14 @@ def produce(client_id: int, item_id: str) -> dict:
         if not out.get("success"):
             status = out.get("status") or "failed"
             results.append({"asset_id": brief.asset_id, "status": status})
-            if out.get("message") and status.startswith("character_"):
+            if out.get("message") and status.startswith("character"):
                 character_errors.append(out["message"])       # said to the manager, not only logged
             if status in (post_brief.RENDERER_NOT_IMPLEMENTED, "needs_real_asset"):
                 not_made += 1
             else:
                 failed += 1
+                problems.append(_problem(n, out.get("message") if status.startswith("character") and out.get("message")
+                                         else reason_text(status, lang), lang))
                 if status in ("no_account", "context_missing"):
                     break               # the next assets would fail the same way
             continue
@@ -307,23 +402,32 @@ def produce(client_id: int, item_id: str) -> dict:
     design = {}
     if text_slides:
         from core import slide_design
-        opened = slide_design.open_for_post(client_id, item, text_slides, _lang(client_id))
-        character_errors += opened.get("character_errors") or []
+        opened = slide_design.open_for_post(client_id, item, text_slides, lang)
+        drawn_without = list(dict.fromkeys(opened.get("character_errors") or []))
+        character_errors += drawn_without
+        problems += [f"• {m}" for m in drawn_without]       # e.g. Maya missing from the slides, and why
         design = {"item_id": (opened.get("item") or {}).get("id", ""), "slides": len(text_slides),
                   "ok": bool(opened.get("item")) and not opened.get("problems")}
         results += [{"asset_id": s["asset_id"], "status": "design_waiting" if design["item_id"] else "failed"}
                     for s in text_slides]
         if not design["item_id"]:
             failed += len(text_slides)
+            problems.append(f"• {reason_text('design', lang)}")
+        elif not design["ok"]:
+            problems.append(f"• {reason_text('design', lang)}")
     state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
              else "failed" if failed else "done")
+    if state == "done" and problems:
+        state = "partial"             # e.g. the slides were drawn, but without the character asked for
     production = {"state": state, "made": made, "not_made": not_made, "failed": failed,
                   "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design,
-                  "character_errors": list(dict.fromkeys(character_errors))}
+                  "character_errors": list(dict.fromkeys(character_errors)),
+                  "problems": list(dict.fromkeys(problems))}
     social_queue.set_production(client_id, item_id, production)
-    _tell(client_id, item, production)
-    if failed:
-        _alert([f"client {client_id}: post {body.get('set_id')} — {failed} asset(s) failed in production"])
+    if tell:
+        _tell(client_id, item, production)
+    if failed or problems:
+        _alert([f"client {client_id}: post {body.get('set_id')} — production {state}: " + " | ".join(problems)[:600]])
     return production
 
 
@@ -335,20 +439,95 @@ def _lang(client_id: int) -> str:
         return "he"
 
 
-def _tell(client_id: int, item: dict, production: dict):
+def _problem(n: int, reason: str, lang: str) -> str:
+    return f"• {pick(TEXT['slide'], lang).replace('{n}', str(n))}: {reason}"
+
+
+def summary(item: dict, production: dict, lang: str) -> str:
+    """The ONE line about how production ended: "done" only when nothing
+    failed; otherwise what failed and why, what did work, and the offer to
+    run it again."""
+    title = item.get("title") or ""
+    problems = production.get("problems") or []
+    state = production.get("state")
+    if state in ("partial", "failed") or problems:
+        ready = ""
+        design = production.get("design") or {}
+        if production.get("made") or design.get("item_id"):
+            count = int(production.get("made") or 0) + (int(design.get("slides") or 0) if design.get("item_id") else 0)
+            ready = pick(TEXT["ready_part"], lang).replace("{what}", str(count))
+        table = TEXT["failed"] if state == "failed" and not ready else TEXT["partial"]
+        return (pick(table, lang).replace("{title}", title).replace("{problems}", "\n".join(problems) or "•")
+                .replace("{ready}", ready))
+    extra = pick(TEXT["not_made"], lang).replace("{n}", str(production["not_made"])) if production.get("not_made") else ""
+    design = production.get("design") or {}
+    if design.get("item_id"):
+        extra += pick(TEXT["design" if design.get("ok") else "design_failed"], lang).replace("{n}", str(design["slides"]))
+    return (pick(TEXT["produced"], lang).replace("{title}", title)
+            .replace("{made}", str(production.get("made") or 0)).replace("{extra}", extra))
+
+
+def _say(client_id: int, item: dict, line: str):
     """One line in the producer's chat. Never raises."""
     try:
-        from core import agent_actions
         from agents.client_agent import log_communication
-        lang = agent_actions._lang(client_id)
-        extra = pick(TEXT["not_made"], lang).replace("{n}", str(production["not_made"])) if production["not_made"] else ""
-        design = production.get("design") or {}
-        if design.get("item_id"):
-            extra += pick(TEXT["design" if design.get("ok") else "design_failed"], lang).replace("{n}", str(design["slides"]))
-        for message in production.get("character_errors") or []:
-            extra += f" {message}."                            # e.g. "לא מוגדרת תמונת ייחוס עבור ליאור (lior)"
-        line = (pick(TEXT["produced"], lang).replace("{title}", item.get("title") or "")
-                .replace("{made}", str(production["made"])).replace("{extra}", extra))
         log_communication(client_id, "outbound", f"dashboard_chat:{item.get('producer') or 'media'}", line)
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: production line not posted ({type(e).__name__})")
+
+
+def _tell(client_id: int, item: dict, production: dict):
+    """How production ended, in the producer's chat. Never raises."""
+    try:
+        _say(client_id, item, summary(item, production, _lang(client_id)))
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: production line not posted ({type(e).__name__})")
+
+
+# ─── Run again (the rerun_post_production action) ────────────────────────────
+
+RERUN_STALE_MINUTES = 30
+
+
+def rerun_refusal(client_id: int, item_id: str) -> str:
+    """"" when this post may be produced again, else why not (English, for
+    the agent): an APPROVED post whose production is not running right now."""
+    item = social_queue.get(client_id, item_id)
+    if not item or item.get("kind") != social_queue.POST_KIND:
+        return "not a post in the Social tab"
+    if item.get("status") != "approved":
+        return "its copy is not approved yet — production starts when the manager approves it"
+    prod = item.get("production") or {}
+    if prod.get("state") == "running":
+        try:
+            started = datetime.fromisoformat(str(prod.get("started_at")))
+            if (datetime.now(timezone.utc) - started).total_seconds() < RERUN_STALE_MINUTES * 60:
+                return "its production is running right now"
+        except ValueError:
+            pass
+    return ""
+
+
+def retryable(client_id: int, limit: int = 10) -> list:
+    """Approved posts whose production failed, partly failed or is stuck —
+    what the agents must tell the manager about (and may offer to rerun)."""
+    out = []
+    for item in social_queue.items(client_id):
+        if item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
+            continue
+        prod = item.get("production") or {}
+        if prod.get("state") in ("failed", "partial") or (prod.get("state") == "running"
+                                                           and not rerun_refusal(client_id, item["id"])):
+            out.append({"item_id": item["id"], "title": item.get("title", ""), "state": prod.get("state"),
+                        "problems": prod.get("problems") or [], "finished_at": prod.get("finished_at", "")})
+    return out[-limit:]
+
+
+def rerun(client_id: int, item_id: str) -> dict:
+    """Production again for an approved post (the manager said yes in chat,
+    or the system started it on the approval). Returns the production record
+    + "text": the line the card posts."""
+    item = social_queue.get(client_id, item_id) or {}
+    social_queue.set_production(client_id, item_id, {"state": "running", "started_at": _now()})
+    production = produce(client_id, item_id, tell=False)
+    return {**production, "text": summary(item, production, _lang(client_id))}

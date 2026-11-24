@@ -412,8 +412,58 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
     if not any((a["copy_headline"] or a["copy_body"]) for a in assets):
         raise ValueError("the slides' copy is written first — every post has copy")
     post["assets"] = assets
+    colors = clean_colors(raw.get("colors"), len(assets))
+    if colors:
+        post["colors"] = colors
     post.pop("aspect_ratio")
     return post
+
+
+# ─── An explicit colour instruction beats the brand palette (2026-11-25) ─────
+#
+# The audience palette rule stops RANDOM palettes; it never overrides the
+# manager. When they explicitly ask for other colours ("colourful, not the
+# brand colours", "a different colour per slide"), the post carries
+# `colors`: {"requested": the manager's own words, "slides": [{bg, fg?,
+# accent?, muted?}, …]} — one entry for every slide, or one per slide in
+# order. The text slides render with them (slide_renderer.slide_roles) and
+# the agent says in one line that this post deviates from the brand palette
+# on request (post_pipeline TEXT["colors"]). Without "requested" there is no
+# override: an agent never swaps the palette on its own taste.
+
+COLOR_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+COLOR_KEYS = ("bg", "fg", "accent", "muted")
+
+
+def clean_colors(raw, n_slides: int) -> dict:
+    """{} or {"requested", "slides": [one per slide]}; ValueError when malformed."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("colors must be an object: {requested, slides}")
+    requested = _clean_text(raw.get("requested"), 200)
+    if len(requested) < 3:
+        raise ValueError("colors.requested must quote the manager's explicit colour instruction — "
+                         "without it the brand palette stays")
+    entries = raw.get("slides")
+    if isinstance(entries, dict):
+        entries = [entries]
+    if not isinstance(entries, list) or len(entries) not in (1, n_slides):
+        raise ValueError(f"colors.slides must have 1 entry (all slides) or {n_slides} (one per slide)")
+    slides = []
+    for i, e in enumerate(entries, 1):
+        if not isinstance(e, dict) or not COLOR_HEX_RE.match(str(e.get("bg") or "")):
+            raise ValueError(f"colors.slides[{i}].bg must be a #RRGGBB colour")
+        entry = {}
+        for k in COLOR_KEYS:
+            if e.get(k):
+                if not COLOR_HEX_RE.match(str(e[k])):
+                    raise ValueError(f"colors.slides[{i}].{k} must be a #RRGGBB colour")
+                entry[k] = str(e[k]).upper()
+        slides.append(entry)
+    if len(slides) == 1:
+        slides = slides * n_slides
+    return {"requested": requested, "slides": slides}
 
 
 def asset(entry: dict) -> AssetBrief:

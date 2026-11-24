@@ -2869,6 +2869,66 @@ def _run_approve_social(client_id: int, params: dict, background_tasks):
     return {"approved": len(done)}
 
 
+# Run a post's production again (2026-11-25). The SAME production the copy's
+# approval starts (core/post_pipeline.produce): text slides designed, images
+# made, the agents' characters drawn. Offered when production failed, partly
+# failed or is stuck; runs on the manager's yes. The approval itself starts
+# its first run through this action too (start_system_run), so the chat shows
+# the same progress card either way.
+
+def _v_approved_post(value, client_id: int) -> str:
+    from core import post_pipeline
+    item_id = str(value or "").strip()
+    why = post_pipeline.rerun_refusal(client_id, item_id)
+    if why:
+        raise ValueError(why)
+    return item_id
+
+
+def _rerun_possible(state: dict, client: dict) -> bool:
+    try:
+        from core import post_pipeline
+        return bool(post_pipeline.retryable((client or {}).get("id")))
+    except Exception:
+        return False
+
+
+def _rerun_display(client_id: int, params: dict) -> dict:
+    from core import social_queue
+    item = social_queue.get(client_id, params.get("item_id") or "") or {}
+    return {"post": item.get("title") or "—"}
+
+
+def _run_rerun_production(client_id: int, params: dict, background_tasks):
+    from core import post_pipeline
+    return post_pipeline.rerun(client_id, params["item_id"])
+
+
+def start_system_run(client_id: int, action: str, params: dict, persona: str = "general") -> bool:
+    """A slow action the SYSTEM starts on a yes the manager already gave
+    elsewhere (a post's copy approved in the Social tab → its production):
+    stored as running in the producer's chat — so the chat shows its progress
+    card — and run now, in this (background) call. False when the row could
+    not be stored: the caller then runs the work without a card."""
+    spec = ACTIONS[action]
+    stamp = _now().isoformat()
+    try:
+        rows = _db().table(TABLE).insert({
+            "client_id": int(client_id), "action": action, "params": params, "origin": "client_chat",
+            "persona": persona or "general", "approver": "client", "status": "running",
+            "decided_at": stamp, "decided_by": "system"}).execute().data or []
+    except Exception as e:
+        _log(f"client {client_id}: system run {action} not stored: {type(e).__name__}", severity="WARNING",
+             client_id=client_id)
+        return False
+    if not rows:
+        return False
+    row = rows[0]
+    _log(f"client {client_id}: {action} started by the system", client_id=client_id, proposal=row.get("id"))
+    _execute_in_background(row, spec, params, "client", _client(client_id), _lang(client_id))
+    return True
+
+
 # Delete from the Social queue (2026-11-24) — the SAME social_queue.delete the
 # tab's delete button calls, logged to the same deletion log. The manager only
 # (ג'וני and the other manager faces = persona "general"). Scope is exactly what
@@ -4464,7 +4524,10 @@ ACTIONS = {
                                     "text_slide, one character) | in_scene (generated inside a generated_image/video "
                                     "scene, up to 3) — default composite for text_slide, in_scene otherwise; never on "
                                     "real_photo, \"response\"?: your one-line answer to an "
-                                    "objection}]}. A carousel about why/reasons/tips = text_carousel."}},
+                                    "objection}], \"colors\"?: ONLY when the manager explicitly asked for other "
+                                    "colours than the brand's: {\"requested\": their words, \"slides\": [{\"bg\": "
+                                    "#RRGGBB, \"fg\"?: #RRGGBB, \"accent\"?: #RRGGBB}] — 1 entry for all slides or 1 "
+                                    "per slide in order}. A carousel about why/reasons/tips = text_carousel."}},
         "available": _produce_possible,
         "prepare": _prepare_produce_post,
         "validate_stored": lambda client_id, params: validate_params(ACTIONS["produce_post"], params, client_id),
@@ -4562,6 +4625,35 @@ ACTIONS = {
                      "جاهز ✓ {made} عناصر بانتظار مراجعتكم في مجلد Drive. لم يُنشر شيء.",
                      "Готово ✓ {made} элементов ждут вашей проверки в папке Drive. Ничего не опубликовано."),
         "done_message": lambda result, lang: _produce_done_message(result, lang),
+    },
+    "rerun_post_production": {
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "does": "Runs the asset production AGAIN for a post whose copy the manager ALREADY approved "
+                "(social_queue.post_production lists those whose production failed, partly failed or is stuck, "
+                "with what failed). The same production the approval starts: text slides designed, images "
+                "made, the agents' characters drawn. Whenever production failed or was blocked, say what failed "
+                "and offer this; it runs on the manager's yes. Nothing is published.",
+        "params": {"item_id": {"required": True, "validate": _v_approved_post,
+                               "hint": "the post's item_id from social_queue.post_production"}},
+        "available": _rerun_possible,
+        "run": _run_rerun_production,
+        "display": _rerun_display,
+        "slow": {"minutes": 20, "eta": _txt(
+            "שקופיות טקסט מוכנות תוך דקה-שתיים; תמונות ודמויות לוקחות כמה דקות.",
+            "Text slides take a minute or two; images and characters a few minutes.",
+            "Les diapositives texte prennent une à deux minutes ; images et personnages quelques minutes.",
+            "الشرائح النصية تستغرق دقيقة أو دقيقتين؛ الصور والشخصيات بضع دقائق.",
+            "Текстовые слайды — минута-две; изображения и персонажи — несколько минут.")},
+        "title": _txt("הפקת הפוסט", "Producing the post", "Production du post", "إنتاج المنشور", "Производство поста"),
+        "what": _txt("הפקת הפוסט \"{post}\" — השקופיות, התמונות והדמויות לפי הטקסט שאישרתם. שום דבר לא מתפרסם.",
+                     "Producing the post \"{post}\" — the slides, images and characters, from the copy you approved. Nothing is published.",
+                     "Production du post « {post} » — diapositives, images et personnages, d'après le texte validé. Rien n'est publié.",
+                     "إنتاج المنشور \"{post}\" — الشرائح والصور والشخصيات من النص الذي وافقتم عليه. لا يُنشر شيء.",
+                     "Производство поста «{post}» — слайды, изображения и персонажи по одобренному тексту. Ничего не публикуется."),
+        "done": _txt("ההפקה הסתיימה.", "Production finished.", "Production terminée.", "انتهى الإنتاج.",
+                     "Производство завершено."),
+        # The honest line: done only when nothing failed (post_pipeline.summary)
+        "done_message": lambda result, lang: result.get("text") or _pick(ACTIONS["rerun_post_production"]["done"], lang),
     },
     "approve_social_items": {
         # The Social tab's batch approval as a chat card (core/social_queue):
@@ -6385,7 +6477,7 @@ STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_r
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",
-               "create_presenter_from_photos", "produce_requested_content"}
+               "create_presenter_from_photos", "produce_requested_content", "rerun_post_production"}
 
 STOPPED_MIDWAY = _txt(
     "עצרתי ✓ \"{title}\" לא ימשיך: שום דבר חדש לא יוצג, לא יישלח ולא יעלה לאוויר. אם חלק מהעבודה כבר נשמר, הוא נשאר טיוטה שרק אתם רואים.",

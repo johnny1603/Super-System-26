@@ -272,6 +272,8 @@ def _slides_of(entries: list) -> list:
                "copy_body": s.get("copy_body", ""), "n": s.get("n"), "total": s.get("total")}
         if s.get("character"):
             row["character"] = dict(s["character"])         # {"agent", "pose_id"} — the system's, per slide
+        if s.get("colors"):
+            row["colors"] = dict(s["colors"])               # the manager's explicit colours (post `colors`)
         out.append(row)
     return out
 
@@ -284,10 +286,11 @@ POSE_BY_ROLE = {"hook": "waving hello with a big welcoming smile, turned slightl
                 "cta": "gesturing invitingly with an open hand, encouraging"}
 
 
-def attach_characters(entries: list) -> tuple:
+def attach_characters(entries: list, lang: str = "he") -> tuple:
     """Each composite slide with a character gets a pose: a stored approved
     cut-out FIRST (free), else a new one. Returns (entries, failures) — a
-    slide whose pose could not be made renders without it (alerted)."""
+    slide whose pose could not be made renders without it (alerted), and
+    EVERY failure carries the manager-facing line (agent_characters.failure_text)."""
     from core import agent_characters
     failures = []
     out = []
@@ -304,9 +307,8 @@ def attach_characters(entries: list) -> tuple:
         except Exception as e:
             failures.append({"asset_id": s.get("asset_id", ""), "agent": agent,
                              "reason": getattr(e, "reason", "") or f"{type(e).__name__}: {str(e)[:150]}",
-                             # the manager-facing line (MissingReference: "לא מוגדרת תמונת ייחוס עבור …")
-                             "message": getattr(e, "message", "") if isinstance(e, agent_characters.MissingReference)
-                             else ""})
+                             # the manager-facing line, whatever failed (never only a log line)
+                             "message": agent_characters.failure_text(agent, e, lang)})
             out.append(s)
     return out, failures
 
@@ -341,7 +343,7 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
     body = post_item.get("post") or {}
     palette = body.get("palette") or {}
     try:
-        entries, missing = attach_characters(text_slides)
+        entries, missing = attach_characters(text_slides, lang)
         if missing:
             _alert([f"client {client_id}: post {post_item.get('id')} — agent character not drawn on "
                     f"{', '.join(m['asset_id'] + ' (' + m['agent'] + ': ' + m['reason'] + ')' for m in missing)}"])
@@ -538,7 +540,7 @@ def preview_png(client_id: int, item_id: str, n: int) -> bytes:
     if not 1 <= int(n) <= len(slides):
         raise social_queue.QueueError("not_found")
     s = slides[int(n) - 1]
-    roles = slide_spec.palette_roles(client_id, d["palette"]["label"])
+    roles = slide_renderer.slide_roles(slide_spec.palette_roles(client_id, d["palette"]["label"]), s.get("colors"))
     return slide_renderer.render_slide(d["spec"], roles, s.get("copy_headline", ""), s.get("copy_body", ""),
                                        int(s.get("n") or n), int(s.get("total") or len(slides)), s.get("role", ""),
                                        loader_for(client_id))

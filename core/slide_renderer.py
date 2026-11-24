@@ -649,6 +649,25 @@ def _draw_counter(draw, c: dict):
         draw.ellipse([cx, y0, cx + d, y0 + d], fill=c["colour"] if i + 1 == c["n"] else dim)
 
 
+def slide_roles(roles: dict, colors: dict = None) -> dict:
+    """The set's role colours with ONE slide's explicit colours on top — the
+    manager asked for colours other than the brand palette (post `colors`,
+    core/post_brief.clean_colors). Only `bg` is required there: a missing
+    `fg` becomes white or near-black, whichever reads better on that bg; a
+    missing `muted` follows the fg; an accent that would vanish on the new bg
+    becomes the fg. No colours = the roles unchanged."""
+    if not colors or not colors.get("bg"):
+        return roles
+    out = dict(roles)
+    out["bg"] = colors["bg"]
+    bg = _rgb(out["bg"])
+    out["fg"] = colors.get("fg") or max(("#FFFFFF", "#111111"), key=lambda c: contrast(_rgb(c), bg))
+    out["muted"] = colors.get("muted") or out["fg"]
+    accent = colors.get("accent") or out.get("accent") or out["fg"]
+    out["accent"] = accent if contrast(_rgb(accent), bg) >= 1.6 else out["fg"]
+    return out
+
+
 def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True,
                warnings: list = None) -> list:
     """Every slide of ONE set from ONE spec and ONE palette (the caller passes
@@ -661,7 +680,8 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
         n, total = int(s.get("n") or i), int(s.get("total") or len(slides))
         try:
             got = []
-            out.append(render_slide(spec, roles, s.get("copy_headline", ""), s.get("copy_body", ""), n, total,
+            out.append(render_slide(spec, slide_roles(roles, s.get("colors")), s.get("copy_headline", ""),
+                                    s.get("copy_body", ""), n, total,
                                     s.get("role", ""), image_loader, encode, character=s.get("character"),
                                     warnings=got))
             if warnings is not None:

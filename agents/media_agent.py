@@ -941,6 +941,14 @@ def _library_scene(client_id: int, brief) -> dict:
             "characters": [{"agent": agent, "pose_id": chosen["pose_id"]}], "reused_pose": True}
 
 
+def _lang_of(client_id: int) -> str:
+    try:
+        from core import agent_actions
+        return agent_actions._lang(client_id)
+    except Exception:
+        return "he"
+
+
 def _character_scene(client_id: int, brief, palette: dict, platform: str) -> dict:
     from core import agent_characters, post_brief
     kind = "video" if brief.asset_type == "generated_video" else "image"
@@ -965,8 +973,10 @@ def _character_scene(client_id: int, brief, palette: dict, platform: str) -> dic
     if not agent_characters.configured():
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} needs an agent character — "
                                  f"{agent_characters.KEY_ENV} is not set"])
+        unconfigured = agent_characters.CharacterUnavailable(brief.characters[0], "not_configured")
         return {"success": False, "status": "characters_not_configured",
-                "errors": ["the agents' characters are not configured yet"]}
+                "errors": ["the agents' characters are not configured yet"],
+                "message": agent_characters.failure_text(brief.characters[0], unconfigured, _lang_of(client_id))}
     try:
         context = _context(client_id)
     except post_brief.ContextMissing as e:
@@ -1008,13 +1018,15 @@ def _generate_character_scene(client_id: int, brief, palette: dict, platform: st
                 "message": e.message, "agent": e.agent}
     except agent_characters.CharacterUnavailable as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e}"])
-        return {"success": False, "status": "character_unavailable", "errors": [str(e)]}
+        return {"success": False, "status": "character_unavailable", "errors": [str(e)],
+                "message": agent_characters.failure_text(e.agent, e, _lang_of(client_id))}
     except post_brief.CopyLeak as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} refused before the model: {e}"])
         return {"success": False, "status": "copy_leak", "errors": [str(e)]}
     except Exception as e:  # includes ClaudeJSONError
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} character generation failed: {e}"])
-        return {"success": False, "status": "failed", "errors": [str(e)]}
+        return {"success": False, "status": "failed", "errors": [str(e)],
+                "message": agent_characters.failure_text(brief.characters[0], e, _lang_of(client_id))}
     characters = []
     for agent in brief.characters:
         pose = agent_characters.add_pose(agent, uploaded.get("id", ""), False, client_id,
