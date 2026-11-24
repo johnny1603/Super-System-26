@@ -695,6 +695,44 @@ def send_back(client_id: int, item: dict, lang: str = "he") -> dict:
     return out
 
 
+DELETE_MAX = MAX_ITEMS
+
+
+def delete(client_id: int, ids, by: str = "client") -> dict:
+    """Removes queue items and their approval state (2026-11-24). The media
+    FILES are never touched — they stay in the Media tab. A published item
+    can't be un-published: deleting it only takes it out of the queue view.
+    One entry in the existing deletion log (media_inventory, mode "queue").
+    {"deleted": [{id, title, status, kind}], "published": n, "missing": [ids]}"""
+    ids = [str(i) for i in (ids if isinstance(ids, (list, tuple)) else [ids]) if ID_RE.match(str(i))]
+    ids = list(dict.fromkeys(ids))
+    if not ids or len(ids) > DELETE_MAX:
+        raise QueueError("bad_ids")
+    queue = _load(client_id)
+    gone = [i for i in queue if i["id"] in ids]
+    if gone:
+        _save(client_id, [i for i in queue if i["id"] not in ids])
+        try:                      # the agents' 60 s view of the queue must not show them again
+            from core import content_team
+            content_team._block_cache.pop(int(client_id), None)
+        except Exception:
+            pass
+    deleted = [{"id": i["id"], "title": i.get("title", ""), "status": i["status"], "kind": i.get("kind", ""),
+                "file_id": i.get("file_id", "")} for i in gone]
+    if deleted:
+        try:
+            from core import media_inventory
+            media_inventory.log_entry(client_id, {
+                "by": by, "mode": "queue", "count": len(deleted), "size": 0, "failed": 0, "folders": [],
+                "affected_posts": [], "published": sum(1 for d in deleted if d["status"] == "published"),
+                "items": [{"id": d["id"], "name": d["title"] or d["id"], "size": 0, "source": "social_queue",
+                           "folder": d["status"], "how": "queue", "file_id": d["file_id"]} for d in deleted]})
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] client {client_id}: deletion not logged ({type(e).__name__})")
+    return {"deleted": deleted, "published": sum(1 for d in deleted if d["status"] == "published"),
+            "missing": [i for i in ids if i not in {d["id"] for d in deleted}]}
+
+
 def mark_published(client_id: int, item_id: str, by: str = "client") -> dict:
     """The owner's "I published it" (the one-tap channels), or a channel's
     automatic publish."""
@@ -897,4 +935,9 @@ def prompt_block(client_id: int) -> dict:
                                **({"stage": "copy", "set_id": (i.get("post") or {}).get("set_id", "")}
                                   if i.get("kind") == POST_KIND else {}),
                                **({"stage": "design", "template": (i.get("design") or {}).get("template_name", "")}
-                                  if i.get("kind") == DESIGN_KIND else {})} for i in waiting[:10]]}
+                                  if i.get("kind") == DESIGN_KIND else {})} for i in waiting[:10]],
+            # The rest of the queue, so the manager can name (and delete) them too
+            "other_items": [{"id": i["id"], "title": i.get("title", ""), "status": i["status"],
+                             "planned_date": i.get("planned_date", "")}
+                            for i in queue if i["status"] != "waiting"][:20],
+            "counts": {s: sum(1 for i in queue if i["status"] == s) for s in STATUSES}}

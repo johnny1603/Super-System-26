@@ -6838,6 +6838,21 @@ def client_social_approve(req: SocialApproveRequest, request: Request, backgroun
     return {"success": True, "data": {"approved": [i["id"] for i in done], "production_started": started,
                                       "waiting": social_queue.waiting_count(client_id)}}
 
+@app.post("/api/client/social/delete")
+def client_social_delete(req: SocialApproveRequest, request: Request):
+    # Delete one item or several selected together: the queue item and its
+    # approval state go; the media files stay in the Media tab. A published
+    # item is only taken out of the queue view. Logged in the deletion log.
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import social_queue
+    try:
+        out = social_queue.delete(client_id, req.ids, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    return {"success": True, "data": {"deleted": [d["id"] for d in out["deleted"]], "published": out["published"],
+                                      "waiting": social_queue.waiting_count(client_id)}}
+
 class SocialCopyRequest(BaseModel):
     slides: list = None
     caption: str = None

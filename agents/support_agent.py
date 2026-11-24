@@ -1518,7 +1518,12 @@ def _load_context(client_id: int, client: dict, message: str, persona_id: str, r
 
     def account():
         part = {}
-        return _account_context(client_id, client, part, message), part
+        state = _account_context(client_id, client, part, message)
+        if part.get("available_actions"):
+            # a card for one chat only (delete_social_items: the manager's)
+            from core import agent_actions
+            part["available_actions"] = agent_actions.for_persona(part["available_actions"], persona_id)
+        return state, part
 
     def store_part():
         part = {}

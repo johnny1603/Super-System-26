@@ -2869,6 +2869,101 @@ def _run_approve_social(client_id: int, params: dict, background_tasks):
     return {"approved": len(done)}
 
 
+# Delete from the Social queue (2026-11-24) — the SAME social_queue.delete the
+# tab's delete button calls, logged to the same deletion log. The manager only
+# (ג'וני and the other manager faces = persona "general"). Scope is exactly what
+# was asked: named ids, or EVERY item in one state ("everything waiting for my
+# approval" = status waiting), resolved to ids when the card is made, so the
+# yes deletes exactly the items the card listed. Media files are never touched.
+
+def _v_delete_social_items(value, client_id: int) -> list:
+    from core import social_queue
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    ids = list(dict.fromkeys(str(v or "").strip() for v in raw if str(v or "").strip()))
+    if not 1 <= len(ids) <= social_queue.DELETE_MAX or not all(social_queue.ID_RE.match(v) for v in ids):
+        raise ValueError(f"1-{social_queue.DELETE_MAX} item ids")
+    present = {i["id"] for i in social_queue.items(client_id)}
+    if not any(v in present for v in ids):
+        raise ValueError("none of these items is in the Social queue")
+    return ids
+
+
+def _v_social_status(value, client_id: int) -> str:
+    from core import social_queue
+    value = str(value or "").strip().lower()
+    if value not in social_queue.STATUSES:
+        raise ValueError(f"status: one of {', '.join(social_queue.STATUSES)}")
+    return value
+
+
+def _social_any(state: dict, client: dict) -> bool:
+    try:
+        from core import social_queue
+        return bool(social_queue.items((client or {}).get("id")))
+    except Exception:
+        return False
+
+
+_SOCIAL_NONE_IN_STATE = _txt("אין כרגע פריטים במצב הזה בלשונית \"סושיאל\" — אין מה למחוק.",
+                             "There are no items in that state in the Social tab right now — nothing to delete.",
+                             "Aucun élément dans cet état dans l'onglet Social pour l'instant — rien à supprimer.",
+                             "لا توجد عناصر بهذه الحالة في تبويب \"سوشيال\" حاليًا — لا شيء للحذف.",
+                             "Сейчас во вкладке «Соцсети» нет материалов в этом состоянии — удалять нечего.")
+
+
+def _prepare_delete_social(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    from core import social_queue
+    lang = (context or {}).get("language") or "he"
+    queue = social_queue.items(client_id)
+    if params.get("item_ids"):
+        present = {i["id"] for i in queue}
+        ids = [i for i in params["item_ids"] if i in present]
+    elif params.get("status"):
+        ids = [i["id"] for i in queue if i["status"] == params["status"]]
+    else:
+        raise ValueError("item_ids or status is required")
+    if not ids:
+        return {"refuse": _pick(_SOCIAL_NONE_IN_STATE, lang)}
+    for row in rows:
+        if sorted((row.get("params") or {}).get("item_ids") or []) == sorted(ids):
+            return {"existing": row}
+    return {"params": {"item_ids": ids[:social_queue.DELETE_MAX]}}
+
+
+_SOCIAL_STATUS_WORD = {"waiting": _txt("מחכה לאישור", "waiting for approval", "en attente", "بانتظار الموافقة", "ждёт одобрения"),
+                       "approved": _txt("מאושר", "approved", "validé", "معتمد", "одобрено"),
+                       "published": _txt("פורסם", "published", "publié", "منشور", "опубликовано"),
+                       "rejected": _txt("הוחזר לתיקון", "sent back for a fix", "renvoyé", "أعيد للتصحيح", "возвращено")}
+_SOCIAL_PUBLISHED_NOTE = _txt(
+    "\n{n} מהם כבר פורסמו — אי אפשר לבטל פרסום; המחיקה רק מורידה אותם מהתור.",
+    "\n{n} of them are already published — a post can't be un-published; deleting only removes it from the queue.",
+    "\n{n} sont déjà publiés — impossible de dépublier ; la suppression les retire seulement de la file.",
+    "\n{n} منها منشورة بالفعل — لا يمكن إلغاء النشر؛ الحذف يزيلها من القائمة فقط.",
+    "\n{n} из них уже опубликованы — отменить публикацию нельзя; удаление лишь убирает их из очереди.")
+
+
+def _social_delete_display(client_id: int, params: dict) -> dict:
+    from core import social_queue
+    lang = _lang(client_id)
+    by_id = {i["id"]: i for i in social_queue.items(client_id)}
+    ids = [i for i in params.get("item_ids") or [] if i in by_id]
+    lines = []
+    for n, iid in enumerate(ids, 1):
+        item = by_id[iid]
+        lines.append(f"{n}. {item.get('title') or '—'} · {_pick(_SOCIAL_STATUS_WORD[item['status']], lang)}")
+    published = sum(1 for i in ids if by_id[i]["status"] == "published")
+    return {"count": str(len(ids)), "items": "\n".join(lines[:30]) + ("\n…" if len(lines) > 30 else ""),
+            "published_note": _pick(_SOCIAL_PUBLISHED_NOTE, lang).replace("{n}", str(published)) if published else ""}
+
+
+def _run_delete_social(client_id: int, params: dict, background_tasks):
+    from core import social_queue
+    out = social_queue.delete(client_id, params.get("item_ids") or [], by="manager")
+    if not out["deleted"]:
+        raise ActionFailed("already_decided", "none of these items is still in the queue")
+    return {"deleted": len(out["deleted"]), "published": out["published"]}
+
+
 # ─── A post through the contract (core/post_brief, core/post_pipeline) ──────
 # The social agent writes the post — format + reason, audience, caption, every
 # slide's copy, one brief per asset — and proposes it here. Nothing is
@@ -4490,6 +4585,43 @@ ACTIONS = {
         "done_message": lambda result, lang: _pick(ACTIONS["approve_social_items"]["done"], lang)
             .replace("{count}", str(result.get("approved", 0))),
     },
+    "delete_social_items": {
+        # The Social tab's delete as a chat card — the SAME social_queue.delete,
+        # the same deletion log. The MANAGER only (persona "general").
+        "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
+        "personas": ("general",),
+        "does": "Deletes items from the client's Social tab queue (social_queue.waiting_items / other_items): "
+                "the item and its approval state are removed; the media FILES are NOT deleted — they stay in "
+                "the Media tab. A published item can't be un-published; deleting it only takes it out of the "
+                "queue. Scope = EXACTLY what the client asked: give item_ids for named items, or status for "
+                "'everything in that state' (\"delete everything waiting for my approval\" = status waiting, "
+                "nothing else). Your reply says plainly how many items and which ones, that the media stays "
+                "in the Media tab, and asks for the yes in ONE short line — the card holds the list; the "
+                "client's typed yes runs it. Never say you can't delete queue items from the chat.",
+        "params": {"item_ids": {"required": False, "validate": _v_delete_social_items,
+                                "hint": "ids copied exactly from social_queue.waiting_items / other_items (a list)"},
+                   "status": {"required": False, "validate": _v_social_status,
+                              "hint": "instead of item_ids: waiting | approved | rejected | published = every item in that state"}},
+        "available": _social_any,
+        "prepare": _prepare_delete_social,
+        "validate_stored": lambda client_id, params: {"item_ids": _v_delete_social_items(params.get("item_ids"), client_id)},
+        "run": _run_delete_social,
+        "display": _social_delete_display,
+        "title": _txt("מחיקה מתור הסושיאל", "Delete from the Social queue", "Supprimer de la file Social",
+                      "حذف من قائمة السوشيال", "Удалить из очереди соцсетей"),
+        "what": _txt("יימחקו {count} פריטים מלשונית \"סושיאל\":\n{items}\nהמדיה עצמה לא נמחקת — היא נשארת בלשונית \"מדיה\".{published_note}",
+                     "{count} items will be deleted from the Social tab:\n{items}\nThe media itself is not deleted — it stays in the Media tab.{published_note}",
+                     "{count} éléments seront supprimés de l'onglet Social :\n{items}\nLes médias ne sont pas supprimés — ils restent dans l'onglet Médias.{published_note}",
+                     "سيتم حذف {count} عناصر من تبويب \"سوشيال\":\n{items}\nالوسائط نفسها لا تُحذف — تبقى في تبويب \"الوسائط\".{published_note}",
+                     "Из вкладки «Соцсети» будет удалено материалов: {count}\n{items}\nСами медиафайлы не удаляются — они остаются во вкладке «Медиа».{published_note}"),
+        "done": _txt("נמחק ✓ {count} פריטים ירדו מלשונית \"סושיאל\". המדיה נשארה בלשונית \"מדיה\".",
+                     "Deleted ✓ {count} items are gone from the Social tab. The media stays in the Media tab.",
+                     "Supprimé ✓ {count} éléments ont quitté l'onglet Social. Les médias restent dans l'onglet Médias.",
+                     "تم الحذف ✓ أزيلت {count} عناصر من تبويب \"سوشيال\". الوسائط باقية في تبويب \"الوسائط\".",
+                     "Удалено ✓ {count} материалов убраны из вкладки «Соцсети». Медиа остались во вкладке «Медиа»."),
+        "done_message": lambda result, lang: _pick(ACTIONS["delete_social_items"]["done"], lang)
+            .replace("{count}", str(result.get("deleted", 0))),
+    },
     "approve_suggestion": {
         "approver": "client", "client_requestable": True, "internal_only": False, "kind": "execute",
         "does": "Approves ONE of the client's own pending suggestions (approvals.waiting_for_client) — "
@@ -5492,7 +5624,7 @@ def _is_internal(client: dict) -> bool:
     return (client or {}).get("billing_exempt") is True
 
 
-def available(client_id: int, origin: str, state: dict, client: dict = None) -> list:
+def available(client_id: int, origin: str, state: dict, client: dict = None, persona: str = None) -> list:
     """The actions this chat may propose for this client right now, in the
     shape the model sees. Never raises."""
     actor = _actor_for(origin)
@@ -5502,6 +5634,8 @@ def available(client_id: int, origin: str, state: dict, client: dict = None) -> 
         try:
             if not _may_propose(spec, actor):
                 continue
+            if persona and spec.get("personas") and persona not in spec["personas"]:
+                continue        # e.g. delete_social_items: the manager's card only
             if spec["internal_only"] and not _is_internal(client):
                 continue
             if not spec["available"](state, client):
@@ -5514,6 +5648,14 @@ def available(client_id: int, origin: str, state: dict, client: dict = None) -> 
                     "params": {p: d.get("hint", "") for p, d in spec["params"].items()},
                     "approver": "client" if spec["approver"] == "client" else "staff"})
     return out
+
+
+def for_persona(actions: list, persona: str) -> list:
+    """The actions list without the cards meant for another chat (a spec's
+    "personas", e.g. delete_social_items = the manager only)."""
+    return [a for a in actions or []
+            if not (ACTIONS.get(a.get("name")) or {}).get("personas")
+            or (persona or "general") in ACTIONS[a["name"]]["personas"]]
 
 
 def validate_params(spec: dict, params, client_id: int) -> dict:
@@ -5914,6 +6056,8 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
         return {"error": "unknown_action"}
     actor = _actor_for(origin)
     if not _may_propose(spec, actor, by_code):
+        return {"error": "not_allowed_here"}
+    if actor == "client" and spec.get("personas") and (persona or "general") not in spec["personas"]:
         return {"error": "not_allowed_here"}
     client = client if client is not None else _client(client_id)
     if spec["internal_only"] and not _is_internal(client):

@@ -3654,8 +3654,9 @@ async function crCreditsLoad(clientId, items) {
 // ─── Media library (core/media_inventory) — retention rule + deletion log ───
 // Retention is OFF until switched on here with a day count; the "unused older
 // than N days" quick filter on the client's screen starts from the day count set here.
-const CR_ML_MODE = { index: 'הסרה מהמאגר (הקובץ נשאר)', file: 'מחיקת הקובץ מהדרייב' };
-const CR_ML_BY = { client: 'הלקוח', admin: 'מנהל', retention: 'כלל שמירה אוטומטי' };
+const CR_ML_MODE = { index: 'הסרה מהמאגר (הקובץ נשאר)', file: 'מחיקת הקובץ מהדרייב', queue: 'מחיקה מתור הסושיאל (המדיה נשארת)' };
+const CR_SQ_STATUS = { waiting: 'חיכה לאישור', approved: 'היה מאושר', published: 'כבר פורסם', rejected: 'הוחזר לתיקון' };
+const CR_ML_BY = { client: 'הלקוח', admin: 'מנהל', retention: 'כלל שמירה אוטומטי', manager: 'המנהל בצ׳אט (אישור הלקוח)' };
 function crMlSize(b) { b = Number(b) || 0; return b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(1) + ' MB'; }
 async function crLoadMediaLib(clientId, notice) {
   const el = document.getElementById('crMediaLib');
@@ -3666,9 +3667,9 @@ async function crLoadMediaLib(clientId, notice) {
   if (crState.clientId !== clientId || !el.isConnected) return;
   const s = d.settings || {};
   const log = (d.log || []).map(x => `<div class="drawer-stat-row"><span class="drawer-stat-label">${esc(new Date(x.at).toLocaleString('he-IL'))} · ${esc(CR_ML_BY[x.by] || x.by)} · ${esc(CR_ML_MODE[x.mode] || x.mode)}
-      · ${Number(x.count)} פריטים · ${crMlSize(x.size)}${x.failed ? ' · ' + Number(x.failed) + ' נכשלו' : ''}
+      · ${Number(x.count)} פריטים${x.mode === 'queue' ? (x.published ? ' · ' + Number(x.published) + ' כבר פורסמו (ירדו רק מהתור)' : '') : ' · ' + crMlSize(x.size)}${x.failed ? ' · ' + Number(x.failed) + ' נכשלו' : ''}
       · ${esc((x.folders || []).map(f => f.label || 'ראשית').join(', '))}${(x.affected_posts || []).length ? ' · פוסטים שהושפעו: ' + esc(x.affected_posts.map(p => p.title).join(', ')) : ''}</span>
-      <details><summary style="cursor:pointer;font-size:11.5px;">מה נמחק</summary>${(x.items || []).map(i => `<div style="font-size:11.5px;" dir="auto">${esc(i.name)} · ${crMlSize(i.size)} · ${esc(i.folder || '')}</div>`).join('')}</details></div>`).join('')
+      <details><summary style="cursor:pointer;font-size:11.5px;">מה נמחק</summary>${(x.items || []).map(i => `<div style="font-size:11.5px;" dir="auto">${esc(i.name)} · ${i.how === 'queue' ? esc(CR_SQ_STATUS[i.folder] || i.folder || '') : crMlSize(i.size) + ' · ' + esc(i.folder || '')}</div>`).join('')}</details></div>`).join('')
     || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">עוד לא נמחק כלום</div>';
   el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <label><input type="checkbox" id="crMlOn"${s.retention_enabled ? ' checked' : ''}> למחוק אוטומטית יצירות שנדחו, ישנות מ־</label>

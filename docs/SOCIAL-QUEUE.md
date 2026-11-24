@@ -124,3 +124,16 @@ choice step (`media_agent.choose_real_asset`) gets each candidate's times_used /
 times_rejected / rejection_reasons and `owner_rejections` (the newest 12 reasons). The tab has no
 separate "replace the picture" action: sending it back with the picture marked is that path.
 Tests: `tests/test_asset_feedback.py`.
+
+## Delete / cancel (2026-11-24)
+
+- Every queue item has a delete, and the selection bar has a bulk delete. Any item can be selected; "approve selected" counts only the waiting ones.
+- `social_queue.delete(client_id, ids, by)` removes the item and its approval state, nothing else. The media file is never touched: it stays in the Media tab, which has its own two deletes.
+- A published item can't be un-published; deleting it only removes it from the queue view.
+- There is ONE confirmation. It states the count, that the media stays, and how many were already published.
+- Each delete is one entry in the existing deletion log (`media_deletions:<id>`, mode `queue`), shown in the Control Room.
+- Route: `POST /api/client/social/delete`.
+- Chat: the card `delete_social_items` runs the same delete. It belongs to the MANAGER only (spec `personas`, enforced in `propose` and filtered by `agent_actions.for_persona`).
+  - Its scope is named ids, or `status` = every item in that state, resolved to ids when the card is made.
+  - The client's typed yes runs it.
+- `tests/test_social_delete.py`.

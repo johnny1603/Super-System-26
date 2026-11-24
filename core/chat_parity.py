@@ -141,6 +141,7 @@ PARITY = {
     # ── The Social tab (core/social_queue): the ONE approval gate for social ──
     "GET /api/client/social": (CHAT, "approve_social_items"),
     "POST /api/client/social/approve": (CHAT, "approve_social_items"),
+    "POST /api/client/social/delete": (CHAT, "delete_social_items"),
     "POST /api/client/social/{item_id}/edit": (GAP, "P2: edit_social_item card (caption / channels / date of a waiting item)"),
     "POST /api/client/social/{item_id}/copy": (CHAT, "produce_post"),
     "POST /api/client/social/{item_id}/design": (CHAT, "design_slides"),

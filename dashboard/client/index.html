@@ -1442,6 +1442,8 @@ body.bs-open { overflow: hidden; }
   border: 1px solid rgba(255,76,31,0.35); background: var(--accent-dim); border-radius: 10px; font-size: 13px;
   position: sticky; top: 8px; z-index: 5; }
 .soc-selbar[hidden] { display: none; }
+.soc-sel-inline { display: inline-flex; align-items: center; }
+.soc-sel-inline input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--accent); }
 .soc-selcount { font-weight: 700; margin-inline-end: auto; }
 .soc-notice { font-size: 13px; min-height: 1em; margin: 0 0 8px; }
 .soc-list { display: grid; gap: 12px; }
@@ -2705,7 +2707,8 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="soc-counts" id="socialCounts"></div>
   <div class="soc-selbar" id="socialSelBar" hidden>
     <span class="soc-selcount" id="socialSelCount"></span>
-    <button type="button" class="sugg-btn approve" id="socialSelApprove" onclick="socialOpenBatch()"></button>
+    <button type="button" class="sugg-btn approve" id="socialSelApprove" onclick="socialOpenBatch(socialSelectedWaiting())"></button>
+    <button type="button" class="sugg-btn reject" id="socialSelDelete" onclick="socialOpenDelete()"></button>
     <button type="button" class="media-chip" onclick="socialClearSelection()" data-i18n="soc_clear">ביטול הבחירה</button>
   </div>
   <div class="soc-notice" id="socialNotice" role="status" aria-live="polite"></div>
@@ -2986,6 +2989,13 @@ const DASH_I18N = {
   soc_batch_note: { he:'אישור = מאושר, לא "לפרסם עכשיו". כל פריט יוצא בתאריך שלו, ובערוצים שבהם עוד אין פרסום אוטומטי הוא יחכה לכם מוכן לפרסום בלחיצה.', en:'Approved means approved, not "publish now". Each item goes out on its date; on channels without automatic publishing yet it waits for you, ready to publish in one tap.', fr:'Valider signifie approuvé, pas « publier maintenant ». Chaque élément sort à sa date ; sur les canaux sans publication automatique, il vous attend, prêt à publier en un geste.', ar:'الموافقة تعني معتمد، لا "انشر الآن". كل عنصر يخرج في موعده، وفي القنوات التي لا يوجد فيها نشر تلقائي بعد ينتظركم جاهزًا للنشر بنقرة.', ru:'Одобрить — не значит «опубликовать сейчас». Каждый материал выходит в свой день; где автопубликации пока нет, он ждёт вас, готовый к публикации одним нажатием.' },
   soc_batch_confirm: { he:'לאשר את כולם', en:'Approve all of them', fr:'Tout valider', ar:'الموافقة على الكل', ru:'Одобрить все' },
   soc_approved_done: { he:'אושר ✓ {n} פריטים מאושרים.', en:'Approved ✓ {n} items approved.', fr:'Validé ✓ {n} éléments validés.', ar:'تمت الموافقة ✓ {n} عناصر معتمدة.', ru:'Одобрено ✓ {n} материалов.' },
+  soc_delete: { he:'מחיקה', en:'Delete', fr:'Supprimer', ar:'حذف', ru:'Удалить' },
+  soc_delete_selected: { he:'למחוק את הנבחרים ({n})', en:'Delete selected ({n})', fr:'Supprimer la sélection ({n})', ar:'حذف المختارة ({n})', ru:'Удалить выбранные ({n})' },
+  soc_delete_title: { he:'למחוק {n} פריטים מהתור?', en:'Delete {n} items from the queue?', fr:'Supprimer {n} éléments de la file ?', ar:'حذف {n} عناصر من القائمة؟', ru:'Удалить {n} материалов из очереди?' },
+  soc_delete_note: { he:'הפריט ומצב האישור שלו יימחקו. המדיה עצמה לא נמחקת — היא נשארת בלשונית "מדיה".', en:'The item and its approval state will be deleted. The media itself is not deleted — it stays in the Media tab.', fr:'L’élément et son état de validation seront supprimés. Le média n’est pas supprimé — il reste dans l’onglet Médias.', ar:'سيُحذف العنصر وحالة موافقته. الوسائط نفسها لا تُحذف — تبقى في تبويب "الوسائط".', ru:'Материал и его статус одобрения будут удалены. Само медиа не удаляется — оно остаётся во вкладке «Медиа».' },
+  soc_delete_published: { he:'{n} מהם כבר פורסמו — אי אפשר לבטל פרסום; המחיקה רק מורידה אותם מהתור.', en:'{n} of them are already published — a post can’t be un-published; deleting only removes it from the queue.', fr:'{n} sont déjà publiés — impossible de dépublier ; la suppression les retire seulement de la file.', ar:'{n} منها منشورة بالفعل — لا يمكن إلغاء النشر؛ الحذف يزيلها من القائمة فقط.', ru:'{n} из них уже опубликованы — отменить публикацию нельзя; удаление лишь убирает их из очереди.' },
+  soc_delete_confirm: { he:'למחוק', en:'Delete', fr:'Supprimer', ar:'حذف', ru:'Удалить' },
+  soc_deleted_done: { he:'נמחק ✓ {n} פריטים ירדו מהתור. המדיה נשארה בלשונית "מדיה".', en:'Deleted ✓ {n} items removed from the queue. The media stays in the Media tab.', fr:'Supprimé ✓ {n} éléments retirés de la file. Les médias restent dans l’onglet Médias.', ar:'تم الحذف ✓ أزيلت {n} عناصر من القائمة. الوسائط باقية في تبويب "الوسائط".', ru:'Удалено ✓ {n} материалов убраны из очереди. Медиа остались во вкладке «Медиа».' },
   soc_saved: { he:'נשמר.', en:'Saved.', fr:'Enregistré.', ar:'تم الحفظ.', ru:'Сохранено.' },
   soc_saved_reapprove: { he:'נשמר. השינוי מחזיר את הפריט לאישור שלכם.', en:'Saved. The change puts the item back for your approval.', fr:'Enregistré. La modification remet l’élément en attente de validation.', ar:'تم الحفظ. التغيير يعيد العنصر لموافقتكم.', ru:'Сохранено. После изменения материал снова ждёт одобрения.' },
   soc_failed: { he:'זה לא נשמר כרגע. נסו שוב בעוד רגע.', en:'That didn’t save just now. Try again in a moment.', fr:'Cela n’a pas été enregistré. Réessayez dans un instant.', ar:'لم يُحفظ الآن. حاولوا مجددًا بعد لحظة.', ru:'Сейчас не сохранилось. Попробуйте ещё раз чуть позже.' },
@@ -8834,11 +8844,26 @@ const libDrag = { on: false, active: false, x0: 0, y0: 0, cx: 0, cy: 0, add: fal
 function libTouchOnly() {
   try { return window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (e) { return false; }
 }
+// Where a drag may start. Reproduced in a real Chrome on the deployed page
+// (2026-11-24): the grid's cards fill it — 12 px gaps, thumbnails and buttons
+// are excluded — so the press had almost nowhere to land, and the empty space
+// BESIDE the cards (the page background, outside #libGrid) was refused. A press
+// on the grid itself, or on the empty background of any element that CONTAINS
+// the grid (body, the Media view, the library section) at the grid's height,
+// starts the rectangle.
+function libDragZone(t, y) {
+  const grid = libEl('libGrid');
+  if (!grid || !grid.offsetParent) return false;            // the Media tab isn't showing
+  if (t.closest('#libGrid')) return true;
+  if (t !== document.documentElement && !t.contains(grid)) return false;
+  const r = grid.getBoundingClientRect();
+  return y >= r.top && y <= r.bottom;
+}
 function libDragStart(ev) {
   if (ev.button !== 0 || libTouchOnly()) return;
   if (ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) return;
   const t = ev.target;
-  if (!t || !t.closest || !t.closest('#libGrid')) return;
+  if (!t || !t.closest || !libDragZone(t, ev.clientY)) return;
   if (t.closest('input, button, a, img, label, select, textarea, video')) return;
   Object.assign(libDrag, { on: true, active: false, x0: ev.clientX + window.scrollX, y0: ev.clientY + window.scrollY,
                            cx: ev.clientX, cy: ev.clientY, add: Boolean(ev.ctrlKey || ev.metaKey), hits: [] });
@@ -8912,6 +8937,7 @@ function libDragEnd(ev) {
   libPaintSelection();
 }
 document.addEventListener('mousedown', libDragStart);
+document.addEventListener('selectstart', e => { if (libDrag.on) e.preventDefault(); });   // no text highlight from a background press
 document.addEventListener('mousemove', libDragMove);
 document.addEventListener('mouseup', libDragEnd);
 
@@ -9391,7 +9417,7 @@ function socialRow(item) {
       <img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()"${item.kind === 'image'
         ? ` data-soc-view="${esc(item.id)}" role="button" tabindex="0" aria-label="${esc(t('mv_view'))}"` : ''}>
       ${item.kind === 'video' ? `<button type="button" class="soc-play" data-soc-play="${esc(item.id)}" aria-label="${esc(t('soc_play'))}">▶</button>` : ''}
-      ${waiting && !ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+      ${!ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
           ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name }))}"></label>` : ''}
     </div>`;
   const top = `<div class="soc-top">
@@ -9454,6 +9480,7 @@ function socialRow(item) {
     if (item.needs_tap && item.caption) acts.push(`<button type="button" class="media-chip" data-soc-copy="${esc(item.id)}">${esc(t('soc_copy'))}</button>`);
     acts.push(`<button type="button" class="media-chip" data-soc-dl="${esc(item.id)}">${esc(t('soc_download'))}</button>`);
     if (item.needs_tap && !ADMIN_VIEW) acts.push(`<button type="button" class="sugg-btn approve" data-soc-published="${esc(item.id)}">${esc(t('soc_published_btn'))}</button>`);
+    if (!ADMIN_VIEW) acts.push(socialDeleteBtn(item));
   }
   const cls = 'soc-item ' + item.status + (social.selected.has(item.id) ? ' selected' : '')
     + (item.status === 'published' || item.status === 'rejected' ? ' done' : '');
@@ -9471,7 +9498,7 @@ function socialPostRow(item) {
   const waiting = item.status === 'waiting';
   const face = SOCIAL_FACES[item.producer] || 'lior';
   const preview = `<div class="soc-prev">📝
-      ${waiting && !ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+      ${!ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
           ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name: item.title || '' }))}"></label>` : ''}
     </div>`;
   const chans = item.channels.map(c => `<span class="plan-pill">${esc(socialChannelName(c))}</span>`).join('');
@@ -9482,6 +9509,7 @@ function socialPostRow(item) {
     acts.push(`<button type="button" class="media-chip" data-soc-edit="${esc(item.id)}">${esc(t('soc_post_edit'))}</button>`);
     acts.push(`<button type="button" class="sugg-btn reject" data-soc-reject="${esc(item.id)}">${esc(t('soc_reject'))}</button>`);
   }
+  if (social.editing !== item.id && social.rejecting !== item.id && !ADMIN_VIEW) acts.push(socialDeleteBtn(item));
   const reject = social.rejecting === item.id ? `<div class="soc-reject">
       <label class="soc-meta"><b>${esc(t('soc_reject_reason', { name: socialProducer(item.producer) }))}</b></label>
       <textarea data-soc-reason maxlength="400" dir="auto"></textarea>
@@ -9520,15 +9548,19 @@ function socialDesignRow(item) {
   if (waiting && !ADMIN_VIEW && !revising) {
     acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_design_approve'))}</button>`);
   }
+  if (!ADMIN_VIEW) acts.push(socialDeleteBtn(item));
   const crit = waiting && !ADMIN_VIEW && !revising ? `<div class="soc-design-crit">
       <label class="soc-meta"><b>${esc(t('soc_design_crit_label'))}</b></label>
       <textarea data-soc-critique="${esc(item.id)}" maxlength="600" dir="auto"></textarea>
       <div class="soc-actions"><button type="button" class="sugg-btn reject" data-soc-critique-send="${esc(item.id)}">${esc(t('soc_design_crit_send'))}</button></div>
     </div>` : '';
   const saved = d.saved && d.saved.name ? `<div class="soc-meta">${esc(t('soc_design_saved', { name: d.saved.name, version: d.saved.version }))}</div>` : '';
-  const cls = 'soc-item design ' + item.status + (item.status === 'rejected' ? ' done' : '');
+  const cls = 'soc-item design ' + item.status + (item.status === 'rejected' ? ' done' : '')
+    + (social.selected.has(item.id) ? ' selected' : '');
   return `<div class="${cls}" data-soc-item="${esc(item.id)}">
     <div class="soc-body"><div class="soc-top">
+        ${!ADMIN_VIEW ? `<label class="soc-sel-inline"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name: item.title || '' }))}"></label>` : ''}
         <span class="soc-status ${esc(item.status)}">${esc(waiting ? t('soc_design_waiting') : item.status_text)}</span>
         <span class="soc-status">${esc(d.state_text || '')}</span>
         <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
@@ -9628,6 +9660,7 @@ function wireSocial(list) {
     img.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); img.click(); } };
   });
   on('data-soc-approve', id => socialOpenBatch([id]));
+  on('data-soc-del', id => socialOpenDelete([id]));
   on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
   on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
@@ -9700,7 +9733,64 @@ function renderSocialSelBar() {
   const n = social.selected.size;
   bar.hidden = n === 0 || ADMIN_VIEW;
   document.getElementById('socialSelCount').textContent = t('soc_selected', { n });
-  document.getElementById('socialSelApprove').textContent = t('soc_approve_selected', { n });
+  // Approve counts only the WAITING ones among the selection; delete takes them all
+  const waitingN = socialSelectedWaiting().length;
+  const approve = document.getElementById('socialSelApprove');
+  approve.textContent = t('soc_approve_selected', { n: waitingN });
+  approve.hidden = waitingN === 0;
+  document.getElementById('socialSelDelete').textContent = t('soc_delete_selected', { n });
+}
+
+function socialSelectedWaiting() {
+  return Array.from(social.selected).filter(id => (socialItem(id) || {}).status === 'waiting');
+}
+
+function socialDeleteBtn(item) {
+  return `<button type="button" class="media-chip" data-soc-del="${esc(item.id)}">${esc(uallakI18n.t('soc_delete'))}</button>`;
+}
+
+// ONE confirmation for one item or several selected together: how many, that
+// the media stays in the Media tab, and that a published post can't be
+// un-published (it only leaves the queue). No second step.
+function socialOpenDelete(ids) {
+  const t = uallakI18n.t;
+  ids = ids || Array.from(social.selected);
+  if (!ids.length || ADMIN_VIEW) return;
+  const items = ids.map(socialItem).filter(Boolean);
+  if (!items.length) return;
+  const published = items.filter(i => i.status === 'published').length;
+  const wrap = document.createElement('div');
+  wrap.className = 'soc-batch';
+  wrap.id = 'socialDelete';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.innerHTML = `<div class="soc-batch-box">
+      <div class="section-title">${esc(t('soc_delete_title', { n: items.length }))}</div>
+      <ol>${items.map(i => `<li><bdi dir="auto">${esc(i.title || '—')}</bdi> · ${esc(i.status_text || '')}</li>`).join('')}</ol>
+      <div class="plan-note">${esc(t('soc_delete_note'))}</div>
+      ${published ? `<div class="plan-note">${esc(t('soc_delete_published', { n: published }))}</div>` : ''}
+      <div class="soc-actions">
+        <button type="button" class="sugg-btn reject" data-go>${esc(t('soc_delete_confirm'))}</button>
+        <button type="button" class="media-chip" data-close>${esc(t('soc_cancel'))}</button>
+      </div></div>`;
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', key); };
+  const key = e => { if (e.key === 'Escape') close(); };
+  wrap.querySelector('[data-close]').onclick = close;
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  wrap.querySelector('[data-go]').onclick = async () => {
+    const go = wrap.querySelector('[data-go]');
+    go.disabled = true;
+    const ok = await socialPost('/api/client/social/delete', { ids: items.map(i => i.id) }, null, data => {
+      const n = (data.deleted || []).length;
+      items.forEach(i => social.selected.delete(i.id));
+      showNotice(t('soc_deleted_done', { n }), 'success', { key: 'social-delete:' + items.map(i => i.id).join(','), group: 'social' });
+      socialNote(t('soc_deleted_done', { n }));
+    });
+    if (ok) close(); else go.disabled = false;
+  };
+  document.addEventListener('keydown', key);
+  document.body.appendChild(wrap);
+  wrap.querySelector('[data-close]').focus();
 }
 
 function socialClearSelection() { social.selected.clear(); renderSocial(); }

@@ -95,3 +95,13 @@ than N days, mode `file`, logged by `retention`.
 
 Both keys are cleared with the client (`client_deletion`, `deletion_guard`, admin_service skip list).
 Tests: `tests/test_media_inventory.py`.
+
+## Drag selection: the root cause seen in a real browser (2026-11-24)
+
+Reproduced in Chrome on the deployed dashboard.
+- **A press on the page beside the grid** was refused, because only `#libGrid` was accepted. The grid's cards fill it (12 px gaps), and pictures and buttons are excluded by design, so the empty space next to the cards (the `<body>`) is where people press.
+- **A press on a picture** starts the browser's own image drag. This exclusion is kept, as specified.
+
+Fix: `libDragZone` also accepts a press on the empty background of any element that CONTAINS the grid (body, the view, the section), at the grid's height, while the tab is visible. Text selection is suppressed during a drag.
+
+Verified with real mouse drags in Chrome. Ctrl was checked with dispatched events, because the extension's drag can't hold Ctrl.

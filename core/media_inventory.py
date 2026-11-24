@@ -607,6 +607,15 @@ def _forget_caches(client_id: int):
             pass
 
 
+def log_entry(client_id: int, entry: dict):
+    """One entry in this client's deletion log from another remover (the
+    Social queue's delete, mode "queue")."""
+    with _lock:
+        log = _read(f"{LOG_PREFIX}{int(client_id)}")
+        log.setdefault("entries", []).append({"at": _iso(), **entry})
+        _write(f"{LOG_PREFIX}{int(client_id)}", log)
+
+
 def deletion_log(client_id: int) -> list:
     return list(reversed(_read(f"{LOG_PREFIX}{int(client_id)}").get("entries") or []))
 

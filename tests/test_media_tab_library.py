@@ -177,7 +177,8 @@ function classes() { const s = new Set(); return { set: s, add: c => s.add(c), r
 let CARDS = [];
 function el(id) {
   return els[id] || (els[id] = { id, innerHTML: '', textContent: '', hidden: false, value: '', dataset: {},
-    placeholder: '', disabled: false, classList: classes(), scrollIntoView() {},
+    placeholder: '', disabled: false, classList: classes(), scrollIntoView() {}, offsetParent: {},
+    getBoundingClientRect: () => ({ left: 0, top: 200 - win.scrollY, right: 320, bottom: 410 - win.scrollY }),
     querySelectorAll(sel) { return id === 'libGrid' && sel === '.lib-card' ? CARDS : []; },
     querySelector(sel) { const m = /data-id="([^"]+)"/.exec(sel); return id === 'libGrid' && m ? CARDS.find(c => c.dataset.id === m[1]) || null : null; } });
 }
@@ -198,7 +199,7 @@ const created = [];
 globalThis.window = win;
 globalThis.document = { getElementById: el, addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
   createElement() { const d = { style: {}, className: '', removed: false, remove() { this.removed = true; } }; created.push(d); return d; },
-  body: { appendChild() {} } };
+  body: { appendChild() {} }, documentElement: {} };
 globalThis.esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 globalThis.uallakI18n = { t: k => k };
 globalThis.TIKTOK_CONNECTED = true;
@@ -340,6 +341,26 @@ const barN = () => {
   const before = created.length;
   press(20, 220, { on: true }); move(60, 260); move(250, 380); release();
   check(created.length === before && ids() === 'E', 'no marquee from a control');
+
+  // a press BESIDE the grid — on the page background, an element that CONTAINS
+  // the grid — at the grid's height starts the rectangle (the real-browser bug:
+  // the cards fill the grid, so the empty space next to it is where people press)
+  const bg = { closest: () => null, contains: n => n === el('libGrid') };
+  const pressOn = (target, x, y, ctrl) => fire('mousedown', { button: 0, clientX: x, clientY: y, ctrlKey: Boolean(ctrl), metaKey: false, target });
+  click({ 'data-lib-clear': '1' });
+  pressOn(bg, 400, 250); move(390, 252); move(150, 260); release();
+  check(ids() === 'BC', 'a drag from beside the grid selects what it touches, got ' + ids());
+  pressOn(bg, 400, 150); move(390, 160); move(150, 260); release();
+  check(ids() === 'BC', 'above the grid\'s height it does not start');
+  pressOn({ closest: () => null, contains: () => false }, 400, 250); move(390, 252); move(5, 260); release();
+  check(ids() === 'BC', 'an element that does not contain the grid (a header, a panel) does not start it');
+  el('libGrid').offsetParent = null;
+  pressOn(bg, 400, 250); move(390, 252); move(5, 260); release();
+  check(ids() === 'BC', 'nothing while the Media tab is hidden');
+  el('libGrid').offsetParent = {};
+  pressOn(bg, 400, 250, true); move(390, 252); move(50, 260); release(true);
+  check(ids() === 'ABC', 'Ctrl from beside the grid adds, got ' + ids());
+  click({ 'data-lib-clear': '1' }); tickBox('E', true);
 
   // a short press (a click) is not a drag
   press(5, 190); move(6, 191); release();
