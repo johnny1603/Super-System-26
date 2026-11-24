@@ -1,9 +1,18 @@
 # Agents as their own characters (2026-11-24)
 
 The team's agents (maya, lior, yoav, johnny, elinor, nissim, uri) can appear in
-a client's post **as themselves**, from their Higgsfield **reference
-elements**. No Soul model is trained. Code: `core/agent_characters.py`.
-Tests: `tests/test_agent_characters.py`.
+a client's post **as themselves**. Each agent has one **reference image** that
+the manager sets by hand. No Soul model is trained. Code:
+`core/agent_characters.py`. Tests: `tests/test_agent_characters.py`.
+
+## Why reference images, not "elements" (fixed the same day)
+
+The first version (052b1d6) read Higgsfield reference elements from a list
+endpoint inferred from their MCP tool descriptions. Production answered
+`405 Method Not Allowed`: the public REST API at `https://api.higgsfield.ai`
+has no endpoint that lists elements (docs.higgsfield.ai, read 2026-11-24).
+Elements are a web-UI and MCP feature. Nothing in the system lists, matches or
+re-reads anything now, and the 6-hourly re-read is gone.
 
 ## The brief (knowledge/social-craft.md §2.2)
 
@@ -23,49 +32,71 @@ Refused with a clear line:
 The fields travel through the post item's slides, into production, and onto
 the queue items.
 
-## The mapping: agent ↔ element (stored, never hard-coded)
+## The reference image per agent (`/admin/characters/`)
 
-The mapping lives in app_settings `agent_elements`.
+Stored in app_settings `agent_references`, one record per agent:
 
-**Where it comes from.** The account's element list (`media_gen_service.list_elements`), matched by name:
-- **exact:** `uallak-<agent>`, case-insensitive;
-- **loose:** the name ends in `uallak-<agent>` as its own token, e.g. `char_uallak-lior`.
+| field | what |
+|---|---|
+| `url` | the https URL sent to the model |
+| `media_id` | the Higgsfield media / job id (for the manager's own reference; optional) |
+| `notes` | optional: outfit, framing. Added to the prompt (a pose's own outfit wins) |
+| `file_id` | a durable copy in our Shared Drive, `uallak-agents/<agent>/` |
 
-**How it resolves.**
-- Exact beats loose.
-- Two candidates of the best kind are a **conflict**: there is no automatic pick, and the admin chooses.
-- Only `completed` elements are usable.
-- An override always wins.
+The admin page is one row per agent: the URL, media id and notes fields, a
+preview thumbnail, and **save / replace**, **upload image** and **clear**.
 
-**When it is re-read.** Every 6 hours from the minute tick (`/api/tiktok/uploads/run` → `sync_due`), and on the admin button.
-
-**Admin screen.** `/admin/characters/` shows each agent with its element name, id, status and source (auto or override), plus a manual pick. It also lists the unmatched `uallak…` elements, the pose library counts, and the agents' "weak element" reports.
+- **Paste:** the URL is fetched and checked to be a real image (PNG, JPEG,
+  WEBP or GIF, up to 10 MB) before it is saved.
+- **Upload:** the file goes through Higgsfield's documented upload —
+  `POST /files/generate-upload-url {content_type}` → PUT the bytes to
+  `upload_url` with `upload_headers` (our key never goes there) →
+  `public_url`.
+- **Why a copy in our Drive:** Higgsfield tags uploads
+  `retention=temporary` and keeps generation outputs about 7 days. A stored
+  URL older than 24 h is re-uploaded from our copy before it is sent. If the
+  copy could not be kept (no Drive), the screen says so and the URL is used as
+  is.
 
 Routes, all behind the admin session:
 - `GET /api/admin/characters`
-- `POST /api/admin/characters/sync`
-- `POST /api/admin/characters/override`
+- `POST /api/admin/characters/reference` `{agent, url, media_id, notes}`
+- `POST /api/admin/characters/upload` `{agent, content_b64, media_id, notes}`
+- `POST /api/admin/characters/clear` `{agent}`
 
-**As read on 2026-11-24 through the Higgsfield MCP:**
-- **lior's element** is named `char_uallak-lior`, so it is a loose match.
-- **uri has two elements:** `Uallak-uri` (a74cc3b0…) and `uallak-uri` (67e4d7d4…, the idle-animation pose source). That is a conflict, so pick a74cc3b0 on the screen.
-- **`uallak-agent-1`** matches no agent.
+**No reference = a loud failure.** `MissingReference` carries
+"לא מוגדרת תמונת ייחוס עבור <agent>" (e.g. "… עבור ליאור (lior)"). In scene,
+the asset fails with `character_missing_reference`; on a composite slide, the
+slide renders without the character. Either way the message goes into
+`production.character_errors` and into the production line in the manager's
+chat (`post_pipeline._tell`), and the post is not "done".
 
 ## IN SCENE
 
 `media_agent._character_scene`:
 
 1. **Reuse first.** The library is checked before anything is made: approved in-scene images of this agent for this client go to the agent's own choice step, at no cost.
-2. **Write the scene.** Claude writes the scene around "the character" and never describes its face. Its JSON also returns outfit, setting and framing.
-3. **Add the characters in code.** `in_scene_prompt` adds ONE `<<<element_id>>>` per character and, always, "same stylized 3D character look and same face as the reference figure". Any placeholder the model wrote is removed first.
-4. **Guard the prompt.** `assert_copy_free` runs on the final prompt.
-5. **Generate.** `media_gen_service.generate_with_elements` runs on **uallak's key**. The payload is `{model, prompt, aspect_ratio}`; there is no medias or input-images field, so an element id can never land there.
-6. **Store.** The image goes to the client's folder, and a pose record is added for each character (client-scoped, not transparent).
+2. **References.** Every character must have its reference (else the explicit error above). A video with a character is refused plainly: none of the documented video pages read take character references.
+3. **Write the scene.** Claude writes the scene around "the character" and never describes its face. Its JSON also returns outfit, setting and framing.
+4. **Name the characters in code.** `in_scene_prompt` names each one by its reference image ("the character from reference image 1", …, in the order the images are sent) and, always, "same stylized 3D character look and same face as the reference figure". Any `<<<…>>>` placeholder the model wrote is removed.
+5. **Guard the prompt.** `assert_copy_free` runs on the final prompt.
+6. **Generate.** `media_gen_service.generate_with_references` runs on **uallak's key**, with the stored images in the model's documented field:
+
+| model (path) | field | images |
+|---|---|---|
+| `xai/grok-imagine-image-2.0` (default) | `image_urls` | 0–10 |
+| `alibaba/qwen-image-3/edit` | `image_urls` (required) | 1–3 |
+
+   Both take several images, so several characters go into one image. The
+   payload is `{prompt, image_urls, aspect_ratio}`; 4:5 is not in either
+   enum and is sent as 3:4. Switch model with
+   `HIGGSFIELD_CHARACTER_IMAGE_PATH`.
+7. **Store.** The image goes to the client's folder, and a pose record is added for each character (client-scoped, not transparent).
 
 ## COMPOSITE
 
 1. **Pose.** `pose_for` looks for an APPROVED transparent cut-out first (`find_poses`). Using one costs nothing and generates nothing.
-   - Otherwise `make_pose` runs: the placeholder on a plain background → `remove_background` → `ensure_transparent`.
+   - Otherwise `make_pose` runs: the reference image + the pose on a plain background → `remove_background` → `ensure_transparent`.
    - `ensure_transparent` must find real transparent pixels. If not, the remover is reported as failed, never silently accepted.
    - The PNG goes to our Shared Drive under `uallak-agents/<agent>/`, global.
 2. **Slide spec.** `knowledge/slide-spec.schema.json` `character`: `{agent, pose_id, x_pct, y_pct, scale_pct, flip, shadow}`.
@@ -76,7 +107,7 @@ Routes, all behind the admin session:
    - **Shadow:** a soft blurred ellipse under the feet, from `true` (0.35), `false`, or 0–1.
 4. **Warnings, not crops.** `character_overflow` (past the canvas) and `character_text_overlap` (opaque pixels under a text box) go to the `warnings` list. They become flags on the design card; the render does not fail.
    - A pose without transparency does fail (`character_not_transparent`).
-   - A pose that could not be made: the slide renders without it, plus the flag `character_unavailable` and an admin alert.
+   - A pose that could not be made: the slide renders without it, plus the flag `character_unavailable` and an admin alert (and the explicit message when the reference is missing).
 
 ## The pose library: accumulate, never gate
 
@@ -89,12 +120,12 @@ The library lives in app_settings `agent_poses`.
 
 ## The one guardrail
 
-No agent creates or rebuilds a reference element, its own or another agent's.
+No agent creates or rebuilds a character, its own or another agent's.
 
+- `set_reference` and `clear_reference` accept only `by="admin"`; anything else is refused and alerted.
 - `create_element`, `rebuild_element` and `update_element` always raise `ElementCreationRefused` and alert.
-- `media_gen_service` has no element-write call.
-- There is no agent action for it.
-- An agent that judges an element weak calls `report_element_weak`: an admin alert and a row on the screen, nothing else.
+- `media_gen_service` has no character-write call, and there is no agent action for it.
+- An agent that judges a character weak calls `report_element_weak`: an admin alert and a row on the screen, nothing else.
 - The prompt rule is in `support_agent.CONTENT_CONTEXT_RULE`.
 
 ## Approval-card notices (never blocking)
@@ -106,23 +137,14 @@ Both are in `social_queue.FLAG_TEXT`, in 5 languages.
 
 ## The account and the key
 
-Elements are scoped to the Higgsfield account that created them, so these generations and the background removal run on uallak's own key, `HIGGSFIELD_AGENTS_KEY` (`id:secret`, registered in `keys_agent.KEYS`). Set it once with `bash scripts/set_higgsfield_agents_key.sh`: hidden input → Secret Manager → service.
+These generations, the uploads and the background removal run on uallak's own key, `HIGGSFIELD_AGENTS_KEY` (`id:secret`, registered in `keys_agent.KEYS`). Set it once with `bash scripts/set_higgsfield_agents_key.sh`: hidden input → a check with the documented upload-URL call → Secret Manager → service.
 
-Without the key, the screen says "not configured" and a character asset fails with `characters_not_configured`, plus an admin alert. uallak pays for these credits; they still count against the post's `budget_credits`.
+Without the key, the screen says "not configured", an upload is refused, and a character asset fails with `characters_not_configured`, plus an admin alert. uallak pays for these credits; they still count against the post's `budget_credits`.
 
 ## NOT run live
 
-Higgsfield's public API docs describe neither elements nor background removal. Everything below is our reading of their MCP tool, kept as env settings, so a mismatch is a Cloud Run env fix:
-
-| setting | default |
-|---|---|
-| element list path | `HIGGSFIELD_ELEMENTS_LIST_PATH=reference-elements` |
-| generation path | `HIGGSFIELD_ELEMENT_IMAGE_PATH=generations` |
-| image model | `HIGGSFIELD_ELEMENT_IMAGE_MODEL=nano_banana_pro` |
-| video model | `HIGGSFIELD_ELEMENT_VIDEO_MODEL=seedance_2_0` |
-| background removal path | `HIGGSFIELD_BG_REMOVE_PATH=remove-background` |
-
-The screen's "re-read now" shows exactly what came back.
+- The generation and upload calls follow the docs as read 2026-11-24 but have not run against the real API.
+- **Background removal is not in the public REST docs** (known only from their MCP tools). `HIGGSFIELD_BG_REMOVE_PATH=remove-background` is our reading; if it fails, a new composite pose is not made (reported, never hidden). Approved stored poses keep working.
 
 ## How to ask
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-time: give the service uallak's OWN Higgsfield key, for the agents'
-# characters (core/agent_characters). The agents' reference elements belong to
-# the Higgsfield account that created them, so their generations and the
-# background removal run on THAT account's key — never on a client's.
+# characters (core/agent_characters). The agents' character generations, the
+# reference-image uploads and the background removal run on THAT key — never
+# on a client's.
 #
 #   bash scripts/set_higgsfield_agents_key.sh
 #
@@ -30,13 +30,14 @@ if [ -z "$KEY_ID" ] || [ -z "$KEY_SECRET" ]; then
   echo "Both parts are needed. Nothing changed."; exit 1
 fi
 
-echo "== 1. Check the key with Higgsfield (a free read)"
-CODE=$(printf 'Authorization: Key %s:%s\n' "$KEY_ID" "$KEY_SECRET" | \
-  curl -s -o /dev/null -w '%{http_code}' -H @- "https://api.higgsfield.ai/reference-elements?limit=1" || true)
+echo "== 1. Check the key with Higgsfield (the documented upload-URL call: free, uploads nothing)"
+CODE=$(printf 'Authorization: Key %s:%s\nContent-Type: application/json\n' "$KEY_ID" "$KEY_SECRET" | \
+  curl -s -o /dev/null -w '%{http_code}' -H @- -X POST --data '{"content_type":"image/png"}' \
+  "https://api.higgsfield.ai/files/generate-upload-url" || true)
 case "$CODE" in
   401|403) echo "Higgsfield refused this key ($CODE). Nothing changed."; exit 1 ;;
-  200)     echo "Key accepted." ;;
-  *)       echo "Higgsfield answered $CODE (the element-list path may differ — HIGGSFIELD_ELEMENTS_LIST_PATH). Storing anyway." ;;
+  200|201) echo "Key accepted." ;;
+  *)       echo "Higgsfield answered $CODE. Storing anyway." ;;
 esac
 
 RUNTIME_SA=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" \
@@ -66,4 +67,4 @@ gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT" --
   --update-secrets "$SECRET=$SECRET:$VERSION" >/dev/null
 
 echo "OK: $SERVICE reads $SECRET from Secret Manager ($SECRET:$VERSION)."
-echo "Next: open /admin/characters/ and press 're-read now' to match the agents to their elements."
+echo "Next: open /admin/characters/ and set each agent's reference image."

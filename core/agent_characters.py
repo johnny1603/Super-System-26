@@ -1,36 +1,46 @@
 """The agents as their own characters in posts (2026-11-24,
 docs/AGENT-CHARACTERS.md).
 
-Each uallak agent (maya, lior, yoav, johnny, elinor, nissim, uri) has a
-Higgsfield REFERENCE ELEMENT, built by the manager from approved source
-images. An image prompt that carries `<<<element_id>>>` is generated with that
-character (the backend injects the reference itself — the id never goes into
-a media / input-images list). Soul models are NOT trained for this.
+Each uallak agent (maya, lior, yoav, johnny, elinor, nissim, uri) has ONE
+REFERENCE IMAGE, set by the manager by hand in /admin/characters/ (a pasted
+https URL or an uploaded image) with its Higgsfield media / job id and
+optional notes. A character generation passes that image as an INPUT IMAGE in
+the model's own documented field (media_gen_service.generate_with_references,
+`image_urls`). Soul models are NOT trained for this.
+
+Why not Higgsfield "elements": the first version (052b1d6) listed them on a
+path inferred from MCP tool descriptions; the public REST API has no such
+endpoint (production answered 405). Nothing here lists, matches or re-reads
+anything — the manager sets each agent explicitly, once.
 
 Two modes per asset (core/post_brief `characters` + `character_mode`):
-- IN_SCENE  — the character is generated inside the scene: one placeholder per
-  character + STYLE_CLAUSE, always (in_scene_prompt).
+- IN_SCENE  — the character is generated inside the scene: the reference
+  image(s) + STYLE_CLAUSE, always (in_scene_prompt). Several characters =
+  several reference images in one call.
 - COMPOSITE — a cut-out is drawn onto a brand-template slide by
-  core/slide_renderer, UNDER the text: a pose is generated with the
-  placeholder on a plain background, the background is removed (a transparent
-  PNG, verified in code) and the pose is kept in the library. Reusing a
-  stored pose costs nothing.
+  core/slide_renderer, UNDER the text: a pose is generated from the reference
+  on a plain background, the background is removed (a transparent PNG,
+  verified in code) and the pose is kept in the library. Reusing a stored
+  pose costs nothing.
 
-THE ONLY GUARDRAIL: an agent never creates or rebuilds a reference element —
-not its own, not another agent's. There is no create path anywhere
-(create_element / rebuild_element refuse and alert); an agent that judges its
-element weak REPORTS it (report_element_weak), it does not act. Rebuilding
-identity from generated output compounds drift until the faces change.
+No reference stored for an agent = MissingReference, whose message is
+"לא מוגדרת תמונת ייחוס עבור <agent>" — carried into the production line in
+the manager's chat (core/post_pipeline._tell), never only a log line.
+
+THE ONLY GUARDRAIL: an agent never creates or rebuilds a character — not its
+own, not another agent's. Only the admin sets a reference (set_reference
+refuses any other `by`); create_element / rebuild_element refuse and alert;
+an agent that judges its character weak REPORTS it (report_element_weak).
+Rebuilding identity from generated output compounds drift until the faces
+change.
 
 Storage (app_settings, global — not per client):
-- `agent_elements`: {"agents": {agent: {element_id, name, status, source,
-  candidates}}, "overrides": {agent: element_id}, "elements": [...],
-  "unmatched": [...], "last_sync", "last_error", "reports": [...]}
-  Matched from the element list by name `uallak-<agent>` (case-insensitive;
-  a name that merely CONTAINS it, e.g. "char_uallak-lior", is a loose match,
-  shown as such). Two candidates for one agent = a conflict: no automatic
-  pick, the admin chooses (override). Re-read every SYNC_HOURS from the
-  minute tick and on the admin button.
+- `agent_references`: {"agents": {agent: {media_id, url, url_at, notes,
+  file_id, mime, width, height, updated_at, by}}, "history": [...],
+  "reports": [...]}. `file_id` = a durable copy in our Shared Drive
+  (uallak-agents/<agent>/): Higgsfield tags uploads retention=temporary and
+  keeps outputs ~7 days, so a URL older than REF_FRESH_HOURS is re-uploaded
+  from that copy (the documented upload) before it is sent.
 - `agent_poses`: {"poses": [record], "last": {agent: pose_id}} — the pose
   library. Accumulates, never gates: a generated pose is stored at once
   (approved False, usable by the post that made it); when the manager approves
@@ -39,9 +49,8 @@ Storage (app_settings, global — not per client):
   before anything is generated, ranked by match minus the usage penalty
   (core/asset_feedback.penalty) and never the pose that agent used last.
 
-Generation runs on uallak's OWN Higgsfield key (HIGGSFIELD_AGENTS_KEY): the
-elements are scoped to the account that created them, so a client's key
-cannot use them. Without the key the feature refuses plainly.
+Generation runs on uallak's OWN Higgsfield key (HIGGSFIELD_AGENTS_KEY). Without
+the key the feature refuses plainly.
 """
 import io
 import os
@@ -51,31 +60,72 @@ from datetime import datetime, timezone, timedelta
 
 SERVICE_NAME = "agent_characters"
 AGENTS = ("maya", "lior", "yoav", "johnny", "elinor", "nissim", "uri")
+AGENT_NAMES = {"maya": "מאיה", "lior": "ליאור", "yoav": "יואב", "johnny": "ג׳וני", "elinor": "אלינור",
+               "nissim": "ניסים", "uri": "אורי"}
 MODES = ("composite", "in_scene")
-MAPPING_KEY = "agent_elements"
+REFS_KEY = "agent_references"
 POSES_KEY = "agent_poses"
-SYNC_HOURS = 6
-MAX_CHARACTERS = 3                 # in one in-scene image
+MAX_CHARACTERS = 3                 # in one in-scene image (both documented models take ≥ 3)
 MAX_POSES = 3000
+REF_FRESH_HOURS = 24               # an older reference URL is re-uploaded from our copy
+MAX_REF_BYTES = 10 * 1024 * 1024
 STYLE_CLAUSE = "same stylized 3D character look and same face as the reference figure"
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-PLACEHOLDER_RE = re.compile(r"<<<\s*[^<>]*\s*>>>")
+PLACEHOLDER_RE = re.compile(r"<<<\s*[^<>]*\s*>>>")   # stripped from model-written scenes
+URL_RE = re.compile(r"^https://[^\s<>\"'`]{4,2000}$")
+MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:.]{0,119}$")
 POSE_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 KEY_ENV = "HIGGSFIELD_AGENTS_KEY"
 POSE_FOLDER = "uallak-agents"
 POSE_BACKGROUND = "on a plain flat light-grey seamless studio background, nothing else in the frame"
+IMAGE_MIMES = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp", "GIF": "image/gif"}
+ADMIN = "admin"
+
+MISSING_TEXT = {
+    "he": "לא מוגדרת תמונת ייחוס עבור {name}",
+    "en": "No reference image is set for {name}",
+    "fr": "Aucune image de référence n'est définie pour {name}",
+    "ar": "لا توجد صورة مرجعية محددة لـ {name}",
+    "ru": "Не задано эталонное изображение для {name}",
+}
+
+
+VIDEO_TEXT = {
+    "he": "סרטון עם דמות של סוכן עוד לא נתמך — אפשר תמונה או שקופית",
+    "en": "A video with an agent character is not supported yet — an image or a slide works",
+    "fr": "Une vidéo avec un personnage d'agent n'est pas encore prise en charge — une image ou une diapositive fonctionne",
+    "ar": "فيديو مع شخصية وكيل غير مدعوم بعد — صورة أو شريحة تعمل",
+    "ru": "Видео с персонажем агента пока не поддерживается — подойдёт изображение или слайд",
+}
+
+
+def video_unsupported_text(lang: str = "he") -> str:
+    return VIDEO_TEXT.get(lang) or VIDEO_TEXT["he"]
+
+
+def missing_text(agent: str, lang: str = "he") -> str:
+    """The manager-facing line. Hebrew: "לא מוגדרת תמונת ייחוס עבור <agent>"
+    (the agent's Hebrew name and its code)."""
+    name = f"{AGENT_NAMES.get(agent, agent)} ({agent})" if lang == "he" else agent
+    return (MISSING_TEXT.get(lang) or MISSING_TEXT["he"]).replace("{name}", name)
 
 
 class CharacterUnavailable(RuntimeError):
-    """No usable element for that agent (missing, conflict, not ready, no key)."""
+    """No usable character for that agent (no reference, no key)."""
 
-    def __init__(self, agent: str, reason: str):
-        super().__init__(f"agent {agent}: {reason}")
-        self.agent, self.reason = agent, reason
+    def __init__(self, agent: str, reason: str, message: str = ""):
+        super().__init__(message or f"agent {agent}: {reason}")
+        self.agent, self.reason, self.message = agent, reason, message or f"agent {agent}: {reason}"
+
+
+class MissingReference(CharacterUnavailable):
+    """No reference image stored for that agent — the manager sets one."""
+
+    def __init__(self, agent: str):
+        super().__init__(agent, "no_reference", missing_text(agent))
 
 
 class ElementCreationRefused(PermissionError):
-    """THE guardrail: no agent creates or rebuilds a reference element."""
+    """THE guardrail: no agent creates or rebuilds a character."""
 
 
 class BackgroundNotRemoved(RuntimeError):
@@ -117,7 +167,7 @@ def clean_agent(agent) -> str:
     return a
 
 
-# ─── The key (uallak's own account — the one that owns the elements) ─────────
+# ─── The key (uallak's own account) ──────────────────────────────────────────
 
 def agents_key() -> str:
     from core import media_gen_service as gen
@@ -131,181 +181,208 @@ def configured() -> bool:
     return bool(key) and gen.has_both_parts(key)
 
 
-# ─── Mapping: agent → element ────────────────────────────────────────────────
+# ─── The reference images: agent → {media_id, url, notes} ────────────────────
 
-def _norm_name(name: str) -> str:
-    return re.sub(r"\s+", "", str(name or "")).lower()
-
-
-def match_elements(elements: list, overrides: dict = None) -> dict:
-    """The element list → {"agents", "unmatched"} (pure, no I/O).
-    exact = the whole name is uallak-<agent> (case-insensitive); loose = the
-    name contains it as its own token (e.g. char_uallak-lior). Exact beats
-    loose; two of the best kind = a conflict (no automatic pick). Only a
-    "completed" element is usable. An override always wins."""
-    overrides = overrides or {}
-    els = []
-    for e in elements or []:
-        if not isinstance(e, dict):
-            continue
-        eid = str(e.get("id") or e.get("element_id") or "").strip().lower()
-        if not UUID_RE.match(eid):
-            continue
-        els.append({"id": eid, "name": str(e.get("name") or "")[:120],
-                    "status": str(e.get("status") or "").lower()[:30],
-                    "category": str(e.get("category") or "")[:40]})
-    used, agents = set(), {}
-    for agent in AGENTS:
-        exact, loose = [], []
-        for e in els:
-            n = _norm_name(e["name"])
-            if n == f"uallak-{agent}":
-                exact.append(e)
-            elif re.search(rf"(^|[^a-z0-9])uallak-{agent}$", n):
-                loose.append(e)
-        best = exact or loose
-        candidates = [{"id": e["id"], "name": e["name"], "status": e["status"]} for e in exact + loose]
-        entry = {"element_id": "", "name": "", "status": "missing", "source": "auto",
-                 "match": "exact" if exact else "loose" if loose else "", "candidates": candidates}
-        if len(best) == 1:
-            e = best[0]
-            entry.update(element_id=e["id"], name=e["name"],
-                         status="ready" if e["status"] == "completed" else "not_ready")
-        elif len(best) > 1:
-            entry["status"] = "conflict"
-        override = str(overrides.get(agent) or "").strip().lower()
-        if override:
-            found = next((e for e in els if e["id"] == override), None)
-            entry.update(element_id=override, source="override", name=(found or {}).get("name", ""),
-                         status="ready" if (found or {}).get("status") == "completed"
-                         else "not_ready" if found else "override_unlisted")
-        if entry["element_id"]:
-            used.add(entry["element_id"])
-        used.update(c["id"] for c in candidates)
-        agents[agent] = entry
-    unmatched = [e for e in els if e["id"] not in used and _norm_name(e["name"]).startswith(("uallak", "char_uallak"))]
-    others = sum(1 for e in els if e["id"] not in used) - len(unmatched)
-    return {"agents": agents, "unmatched": unmatched, "other_elements": others}
-
-
-def mapping() -> dict:
-    """The stored mapping (never raises; unreadable = empty)."""
+def references() -> dict:
+    """The stored records (never raises; unreadable = empty)."""
     try:
-        data = _read(MAPPING_KEY)
+        data = _read(REFS_KEY)
     except Exception as e:
-        print(f"[{SERVICE_NAME}] mapping unreadable ({type(e).__name__})")
+        print(f"[{SERVICE_NAME}] references unreadable ({type(e).__name__})")
         data = {}
     data.setdefault("agents", {})
-    data.setdefault("overrides", {})
-    data.setdefault("unmatched", [])
+    data.setdefault("history", [])
     data.setdefault("reports", [])
     return data
 
 
-def sync(force: bool = True, _list=None) -> dict:
-    """Re-reads the element list from Higgsfield and re-matches. The mapping
-    is saved even when the read fails (last_error), keeping the last good
-    match. `_list` is the test seam (returns the element list)."""
-    data = mapping()
-    data["last_sync"] = _now().isoformat()
+def image_info(content: bytes) -> dict:
+    """{"mime", "width", "height"} of a real image, or ValueError."""
+    if not content:
+        raise ValueError("the image is empty")
+    if len(content) > MAX_REF_BYTES:
+        raise ValueError(f"the image is over {MAX_REF_BYTES // (1024 * 1024)} MB")
+    from PIL import Image
     try:
-        if _list is not None:
-            elements = _list()
-        else:
-            if not configured():
-                raise CharacterUnavailable("*", "not_configured")
-            from core import media_gen_service as gen
-            elements = gen.list_elements(agents_key())
-        matched = match_elements(elements, data.get("overrides"))
-        data.update(matched)
-        data["elements"] = [{"id": e.get("id"), "name": str(e.get("name") or "")[:120],
-                             "status": str(e.get("status") or "")[:30]}
-                            for e in elements if isinstance(e, dict)][:300]
-        data["last_error"] = ""
-    except CharacterUnavailable as e:
-        data["last_error"] = e.reason
-    except Exception as e:
-        data["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
-        _alert([f"agent elements: re-read failed ({data['last_error']})"])
-    _write(MAPPING_KEY, data)
-    return view(data)
+        img = Image.open(io.BytesIO(content))
+        img.verify()
+        img = Image.open(io.BytesIO(content))
+    except Exception:
+        raise ValueError("this is not an image (PNG, JPEG, WEBP or GIF)")
+    mime = IMAGE_MIMES.get(str(img.format or "").upper())
+    if not mime:
+        raise ValueError(f"unsupported image format {img.format} (PNG, JPEG, WEBP or GIF)")
+    return {"mime": mime, "width": img.width, "height": img.height}
 
 
-def sync_due(_list=None) -> dict:
-    """The minute tick: re-read when the last read is older than SYNC_HOURS.
-    Never raises."""
-    try:
-        data = mapping()
-        last = data.get("last_sync") or ""
-        if last:
-            then = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
-            if _now() - then < timedelta(hours=SYNC_HOURS):
-                return {"skipped": "fresh"}
-        if not configured() and _list is None:
-            return {"skipped": "not_configured"}
-        out = sync(_list=_list)
-        return {"synced": True, "error": out.get("last_error", "")}
-    except Exception as e:
-        return {"error": type(e).__name__}
+def _fetch(url: str) -> bytes:
+    import httpx
+    response = httpx.get(url, follow_redirects=True, timeout=60)
+    if response.status_code != 200:
+        raise ValueError(f"the URL answered {response.status_code}")
+    return response.content
 
 
-def set_override(agent: str, element_id: str = "", by: str = "admin") -> dict:
-    """The admin's manual pick for one agent ("" clears it). Re-matches from
-    the stored element list at once — no Higgsfield call."""
+def _publish(content: bytes, mime: str) -> str:
+    """Bytes → a Higgsfield public_url (the documented upload, uallak's key)."""
+    from core import media_gen_service as gen
+    if not configured():
+        raise CharacterUnavailable("*", "not_configured", f"{KEY_ENV} is not set")
+    return gen.upload_file(agents_key(), content, mime)
+
+
+def _keep(agent: str, content: bytes, mime: str) -> str:
+    """A durable copy in our Shared Drive (uallak-agents/<agent>/) → file id."""
+    from core import drive_service as drive, drive_storage
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}.get(mime, "png")
+    with drive_storage.as_service_account():
+        folder = _pose_folder(agent)
+        stamp = _now().strftime("%Y%m%d-%H%M%S")
+        return (drive.upload_bytes(folder, f"{agent}-reference-{stamp}.{ext}", content, mime) or {}).get("id", "")
+
+
+def _kept_bytes(file_id: str) -> bytes:
+    from core import drive_service as drive, drive_storage
+    with drive_storage.as_service_account():
+        return drive.download_file(file_id)
+
+
+def set_reference(agent: str, url: str = "", media_id: str = "", notes: str = "", by: str = ADMIN,
+                  content: bytes = None, _fetch_fn=None, _publish_fn=None, _keep_fn=None) -> dict:
+    """The admin sets ONE agent's reference image: a pasted https URL, or the
+    uploaded bytes (`content`, sent through the documented upload). The image
+    is read and checked, a durable copy is kept in our Drive. Replaces the
+    previous one. Only the admin — an agent never sets or rebuilds one."""
+    if by != ADMIN:
+        create_element(agent, by=by)
     agent = clean_agent(agent)
-    element_id = str(element_id or "").strip().lower()
-    if element_id and not UUID_RE.match(element_id):
-        raise ValueError("element_id must be an element UUID")
-    data = mapping()
-    if element_id:
-        data["overrides"][agent] = element_id
+    media_id = str(media_id or "").strip()
+    if media_id and not MEDIA_ID_RE.match(media_id):
+        raise ValueError("the media id has letters, digits, - _ : . only")
+    notes = re.sub(r"\s+", " ", str(notes or "")).strip()[:300]
+    uploaded = content is not None
+    if uploaded:
+        info = image_info(content)
+        url = (_publish_fn or _publish)(content, info["mime"])
     else:
-        data["overrides"].pop(agent, None)
-    data.update(match_elements(data.get("elements") or [], data["overrides"]))
-    data.setdefault("history", []).append({"at": _now().isoformat(), "agent": agent, "element_id": element_id,
-                                           "by": str(by)[:40]})
-    data["history"] = data["history"][-50:]
-    _write(MAPPING_KEY, data)
+        url = str(url or "").strip()
+        if not URL_RE.match(url):
+            raise ValueError("paste an https:// URL of the image")
+        try:
+            content = (_fetch_fn or _fetch)(url)
+        except ValueError as e:
+            raise ValueError(f"the image at this URL could not be read: {e}")
+        except Exception as e:
+            raise ValueError(f"the image at this URL could not be read ({type(e).__name__})")
+        info = image_info(content)
+    warning = ""
+    try:
+        file_id = (_keep_fn or _keep)(agent, content, info["mime"])
+    except Exception as e:
+        file_id, warning = "", f"no durable copy kept ({type(e).__name__}) — the URL is used as is"
+        _alert([f"reference for {agent}: {warning}"])
+    data = references()
+    data["agents"][agent] = {"media_id": media_id, "url": url, "url_at": _now().isoformat(), "notes": notes,
+                             "file_id": file_id, **info, "updated_at": _now().isoformat(), "by": by,
+                             "source": "upload" if uploaded else "url"}
+    data["history"] = (data["history"] + [{"at": _now().isoformat(), "agent": agent, "action": "set",
+                                           "media_id": media_id, "by": by}])[-50:]
+    _write(REFS_KEY, data)
+    out = view(data)
+    out["warning"] = warning
+    return out
+
+
+def clear_reference(agent: str, by: str = ADMIN) -> dict:
+    """The admin removes an agent's reference (its character generations then
+    fail with the explicit message until a new one is set)."""
+    if by != ADMIN:
+        create_element(agent, by=by)
+    agent = clean_agent(agent)
+    data = references()
+    data["agents"].pop(agent, None)
+    data["history"] = (data["history"] + [{"at": _now().isoformat(), "agent": agent, "action": "clear",
+                                           "by": by}])[-50:]
+    _write(REFS_KEY, data)
     return view(data)
 
 
-def element_for(agent: str, data: dict = None) -> str:
-    """The usable element id for `agent`, or CharacterUnavailable."""
+def reference_for(agent: str, data: dict = None) -> dict:
+    """The stored reference of `agent`, or MissingReference."""
     agent = clean_agent(agent)
-    data = data if data is not None else mapping()
+    data = data if data is not None else references()
     entry = (data.get("agents") or {}).get(agent) or {}
-    if entry.get("status") not in ("ready", "override_unlisted") or not entry.get("element_id"):
-        raise CharacterUnavailable(agent, entry.get("status") or "missing")
-    return entry["element_id"]
+    if not URL_RE.match(str(entry.get("url") or "")):
+        raise MissingReference(agent)
+    return entry
+
+
+def require_references(agents: list, data: dict = None) -> dict:
+    """Every agent has a reference, or MissingReference for the first that
+    has none. Returns the data read."""
+    data = data if data is not None else references()
+    for a in agents or []:
+        reference_for(a, data)
+    return data
+
+
+def _stale(entry: dict) -> bool:
+    try:
+        then = datetime.fromisoformat(str(entry.get("url_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return _now() - then >= timedelta(hours=REF_FRESH_HOURS)
+
+
+def reference_urls(agents: list, data: dict = None, _refresh=None) -> list:
+    """The URL to send for each agent, in order. A URL older than
+    REF_FRESH_HOURS is re-uploaded from our durable copy first (Higgsfield's
+    uploads are temporary); if that fails the stored URL is sent as is."""
+    data = data if data is not None else references()
+    urls, changed = [], False
+    for a in agents or []:
+        entry = reference_for(a, data)
+        if entry.get("file_id") and _stale(entry):
+            try:
+                fresh = (_refresh or (lambda e: _publish(_kept_bytes(e["file_id"]), e.get("mime") or "image/png")))(entry)
+                entry.update(url=fresh, url_at=_now().isoformat())
+                changed = True
+            except Exception as e:
+                print(f"[{SERVICE_NAME}] {a}: reference not refreshed ({type(e).__name__}) — the stored URL is sent")
+        urls.append(entry["url"])
+    if changed:
+        try:
+            _write(REFS_KEY, data)
+        except Exception:
+            pass
+    return urls
 
 
 def view(data: dict = None) -> dict:
-    """The admin screen: every agent with its element name, id and status,
-    the unmatched elements, conflicts, the last read."""
-    data = data if data is not None else mapping()
+    """The admin table: one row per agent."""
+    from core import media_gen_service as gen
+    data = data if data is not None else references()
     rows = []
     for agent in AGENTS:
         e = (data.get("agents") or {}).get(agent) or {}
-        rows.append({"agent": agent, "element_id": e.get("element_id", ""), "name": e.get("name", ""),
-                     "status": e.get("status", "missing"), "source": e.get("source", "auto"),
-                     "match": e.get("match", ""), "candidates": e.get("candidates") or [],
-                     "override": (data.get("overrides") or {}).get(agent, "")})
-    return {"agents": rows, "unmatched": data.get("unmatched") or [],
-            "other_elements": data.get("other_elements", 0), "last_sync": data.get("last_sync", ""),
-            "last_error": data.get("last_error", ""), "configured": configured(),
-            "reports": (data.get("reports") or [])[-20:], "poses": pose_counts(),
-            "elements": [e for e in data.get("elements") or [] if isinstance(e, dict)][:300]}
+        rows.append({"agent": agent, "name": AGENT_NAMES[agent], "set": bool(e.get("url")),
+                     "media_id": e.get("media_id", ""), "url": e.get("url", ""), "notes": e.get("notes", ""),
+                     "durable": bool(e.get("file_id")), "width": e.get("width", 0), "height": e.get("height", 0),
+                     "updated_at": e.get("updated_at", ""), "by": e.get("by", "")})
+    return {"agents": rows, "configured": configured(), "model": gen.CHARACTER_IMAGE_PATH,
+            "max_references": gen.max_references(), "reports": (data.get("reports") or [])[-20:],
+            "poses": pose_counts()}
 
 
 # ─── THE guardrail ───────────────────────────────────────────────────────────
 
 def create_element(*args, by: str = "agent", **kwargs):
-    """Refused, always. Elements are built by the manager from approved source
-    images, by hand, in Higgsfield — never by an agent, never from generated
-    output. Alerts so the attempt is seen."""
-    _alert([f"refused: {by} tried to create/rebuild a reference element — agents never do this; "
-            f"if an element is weak, report_element_weak"])
-    raise ElementCreationRefused("agents never create or rebuild a reference element; report it instead")
+    """Refused, always. A character's reference is set by the manager, by
+    hand — never by an agent, never from generated output. Alerts so the
+    attempt is seen."""
+    _alert([f"refused: {by} tried to create/rebuild an agent character — agents never do this; "
+            f"if a character is weak, report_element_weak"])
+    raise ElementCreationRefused("agents never create or rebuild a character; report it instead")
 
 
 rebuild_element = create_element
@@ -313,35 +390,37 @@ update_element = create_element
 
 
 def report_element_weak(agent: str, reason: str, by: str = "media") -> dict:
-    """An agent judges its (or another agent's) element weak: it REPORTS, the
-    manager decides. Nothing else happens."""
+    """An agent judges its (or another agent's) character weak: it REPORTS,
+    the manager decides. Nothing else happens."""
     agent = clean_agent(agent)
     reason = re.sub(r"\s+", " ", str(reason or "")).strip()[:300] or "no reason given"
     entry = {"at": _now().isoformat(), "agent": agent, "reason": reason, "by": str(by)[:40]}
     try:
-        data = mapping()
+        data = references()
         data["reports"] = (data.get("reports") or [])[-49:] + [entry]
-        _write(MAPPING_KEY, data)
+        _write(REFS_KEY, data)
     except Exception:
         pass
-    _alert([f"agent element for {agent} reported weak by {by}: {reason} — the manager rebuilds it from "
-            f"approved source images if needed"])
+    _alert([f"agent character {agent} reported weak by {by}: {reason} — the manager replaces the "
+            f"reference image if needed"])
     return entry
 
 
 # ─── Prompts ─────────────────────────────────────────────────────────────────
 
-def placeholder(element_id: str) -> str:
-    return f"<<<{element_id}>>>"
-
-
 def _strip_placeholders(text: str) -> str:
     return re.sub(r"\s{2,}", " ", PLACEHOLDER_RE.sub("", str(text or ""))).strip()
 
 
+def _who(n: int) -> list:
+    if n == 1:
+        return ["the character shown in the reference image"]
+    return [f"the character from reference image {i + 1}" for i in range(n)]
+
+
 def in_scene_prompt(scene: str, agents: list, data: dict = None) -> str:
-    """The scene prompt with ONE placeholder per character and the style
-    clause, always. Placeholders the model wrote itself are removed first."""
+    """The scene prompt naming each character by its reference image (sent in
+    the same order) and the style clause, always."""
     agents = [clean_agent(a) for a in agents or []]
     if not agents:
         raise ValueError("in_scene needs at least one character")
@@ -349,11 +428,14 @@ def in_scene_prompt(scene: str, agents: list, data: dict = None) -> str:
         raise ValueError("a character appears twice")
     if len(agents) > MAX_CHARACTERS:
         raise ValueError(f"at most {MAX_CHARACTERS} characters in one image")
-    data = data if data is not None else mapping()
-    ids = [element_for(a, data) for a in agents]
-    who = " and ".join(placeholder(i) for i in ids)
+    data = require_references(agents, data)
+    who = _who(len(agents))
     scene = _strip_placeholders(scene).rstrip(". ")
-    prompt = f"{scene}. Featuring {who}, {STYLE_CLAUSE}."
+    prompt = f"{scene}. Featuring {' and '.join(who)}, {STYLE_CLAUSE}."
+    notes = [f"{who[i]}: {_strip_placeholders(reference_for(a, data).get('notes'))}"
+             for i, a in enumerate(agents) if reference_for(a, data).get("notes")]
+    if notes:
+        prompt += " " + "; ".join(notes) + "."
     return with_style(prompt)
 
 
@@ -368,18 +450,16 @@ def with_style(prompt: str) -> str:
 def pose_prompt(agent: str, pose: str, outfit: str = "", framing: str = "full body", data: dict = None) -> str:
     """A composite pose: the character alone on a plain background (the
     background is removed afterwards)."""
-    eid = element_for(agent, data)
-    bits = [placeholder(eid), _strip_placeholders(pose) or "standing, relaxed, friendly"]
+    ref = reference_for(agent, data)
+    bits = [_who(1)[0], _strip_placeholders(pose) or "standing, relaxed, friendly"]
     if outfit:
         bits.append(f"wearing {_strip_placeholders(outfit)}")
+    elif ref.get("notes"):
+        bits.append(_strip_placeholders(ref["notes"]))
     bits.append(f"{framing or 'full body'} framing, the whole figure inside the frame, centred")
     bits.append(POSE_BACKGROUND)
     bits.append("no text, no props, no other people")
     return with_style(", ".join(bits))
-
-
-def placeholders_in(prompt: str) -> list:
-    return [m.strip("<> ").lower() for m in PLACEHOLDER_RE.findall(str(prompt or ""))]
 
 
 # ─── Background removal → a verified transparent PNG ─────────────────────────
@@ -588,18 +668,19 @@ def pose_bytes(pose_id: str) -> bytes:
 
 
 def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body", setting: str = "",
-              aspect_ratio: str = "3:4", _gen=None, _remove=None, _upload=None) -> dict:
-    """COMPOSITE step a: the pose with the placeholder on a plain background →
-    background removal → a VERIFIED transparent PNG → the library. Runs on
-    uallak's key (the account that owns the elements). Raises
+              aspect_ratio: str = "3:4", _gen=None, _remove=None, _upload=None, _refs=None) -> dict:
+    """COMPOSITE step a: the pose from the agent's reference image on a plain
+    background → background removal → a VERIFIED transparent PNG → the
+    library. Runs on uallak's key. Raises MissingReference /
     CharacterUnavailable / BackgroundNotRemoved / the vendor's error."""
     from core import media_gen_service as gen
     agent = clean_agent(agent)
+    prompt = pose_prompt(agent, pose, outfit, framing)            # MissingReference first
     if _gen is None and not configured():
-        raise CharacterUnavailable(agent, "not_configured")
-    prompt = pose_prompt(agent, pose, outfit, framing)
+        raise CharacterUnavailable(agent, "not_configured", f"{KEY_ENV} is not set")
+    refs = (_refs or reference_urls)([agent])
     key = agents_key()
-    made = (_gen or gen.generate_with_elements)(key, prompt, aspect_ratio)
+    made = (_gen or gen.generate_with_references)(key, prompt, refs, aspect_ratio)
     cut = (_remove or gen.remove_background)(key, made["url"])
     png = ensure_transparent(cut["content"])
     uploaded = (_upload or upload_pose_png)(agent, png)

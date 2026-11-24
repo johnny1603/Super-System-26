@@ -949,6 +949,19 @@ def _character_scene(client_id: int, brief, palette: dict, platform: str) -> dic
     reused = _library_scene(client_id, brief)
     if reused:
         return reused
+    try:
+        # Every character needs its stored reference image — the explicit
+        # message reaches the manager's chat (post_pipeline._tell)
+        agent_characters.require_references(brief.characters)
+    except agent_characters.MissingReference as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e.message}"])
+        return {"success": False, "status": "character_missing_reference", "errors": [e.message],
+                "message": e.message, "agent": e.agent}
+    if kind == "video":
+        msg = "a video with an agent character is not supported yet (no documented model takes character references)"
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {msg}"])
+        return {"success": False, "status": "character_video_unsupported", "errors": [msg],
+                "message": agent_characters.video_unsupported_text()}
     if not agent_characters.configured():
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} needs an agent character — "
                                  f"{agent_characters.KEY_ENV} is not set"])
@@ -970,16 +983,22 @@ def _generate_character_scene(client_id: int, brief, palette: dict, platform: st
     try:
         crafted = timed_step(AGENT_NAME, "craft_character_prompt",
                              lambda: _craft_character_prompt(client_id, brief, palette, context))
-        # One <<<element_id>>> per character + the style clause, always — in code
+        # Each character by its reference image + the style clause, always — in code
         prompt = agent_characters.in_scene_prompt(crafted.get("generation_prompt", ""), brief.characters)
         post_brief.assert_copy_free(prompt, brief)            # THE root-cause guard, on the final prompt
+        # The stored reference images, in the prompt's order, in the model's own image_urls
+        refs = agent_characters.reference_urls(brief.characters)
         generated = timed_step(AGENT_NAME, f"higgsfield_character_{kind}",
-                               lambda: gen.generate_with_elements(agent_characters.agents_key(), prompt,
-                                                                  brief.aspect_ratio, kind))
+                               lambda: gen.generate_with_references(agent_characters.agents_key(), prompt, refs,
+                                                                    brief.aspect_ratio, kind))
         folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
                                       generated["content"], generated["mime"])
+    except agent_characters.MissingReference as e:
+        agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e.message}"])
+        return {"success": False, "status": "character_missing_reference", "errors": [e.message],
+                "message": e.message, "agent": e.agent}
     except agent_characters.CharacterUnavailable as e:
         agent_alert(AGENT_NAME, [f"client {client_id}: {brief.set_id}/{brief.asset_id} — {e}"])
         return {"success": False, "status": "character_unavailable", "errors": [str(e)]}

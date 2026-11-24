@@ -328,76 +328,102 @@ def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dic
             "credits": _credits_used(data), "model": VIDEO_MODEL}
 
 
-# ─── Reference elements (the AGENTS' characters, core/agent_characters) ──────
+# ─── Character reference images (the AGENTS' characters, core/agent_characters)
 #
-# Runs on uallak's OWN key (HIGGSFIELD_AGENTS_KEY): elements are scoped to the
-# account that created them. A prompt carries `<<<element_id>>>` per character
-# and the backend injects the reference itself — the id is NEVER put in a
-# medias / input-images list (there is no such field in these payloads).
-#
-# NOT YET RUN LIVE on this REST API: Higgsfield's public API docs describe
-# neither elements nor background removal (read 2026-11-24); what is known
-# comes from their MCP tools (element-capable models nano_banana_pro,
-# gpt_image_2_6, seedream_v4_5 …; remove_background on a generated image).
-# The paths, model and payload keys below are our reading and are env
-# settings, so a mismatch is a Cloud Run env fix, not a deploy. There is NO
-# create / update element call here, on purpose (the guardrail).
-ELEMENTS_LIST_PATH = os.environ.get("HIGGSFIELD_ELEMENTS_LIST_PATH", "reference-elements")
-ELEMENT_IMAGE_PATH = os.environ.get("HIGGSFIELD_ELEMENT_IMAGE_PATH", "generations")
-ELEMENT_IMAGE_MODEL = os.environ.get("HIGGSFIELD_ELEMENT_IMAGE_MODEL", "nano_banana_pro")
-ELEMENT_VIDEO_MODEL = os.environ.get("HIGGSFIELD_ELEMENT_VIDEO_MODEL", "seedance_2_0")
+# Fixed 2026-11-24 after production answered 405 on the element-list call:
+# Higgsfield's public REST API has NO endpoint that lists reference elements
+# (docs.higgsfield.ai, read 2026-11-24 — elements are a web-UI / MCP feature).
+# So the manager stores ONE reference image per agent (/admin/characters/) and
+# a generation passes it as an INPUT IMAGE in the model's own documented field:
+#   xai/grok-imagine-image-2.0   image_urls: 0-10 URIs   (the default here)
+#   alibaba/qwen-image-3/edit    image_urls: 1-3 URIs, required
+# Both take several references, so several characters go in ONE image. The
+# upload is the documented POST /files/generate-upload-url → PUT the bytes to
+# upload_url with upload_headers (never our key) → public_url. Uploads are
+# tagged retention=temporary by Higgsfield, so agent_characters keeps a
+# durable copy in our Drive and re-uploads it when the URL is old.
+# Runs on uallak's OWN key (HIGGSFIELD_AGENTS_KEY). No video model is wired
+# for characters: none of the video pages read take character references.
+CHARACTER_IMAGE_PATH = os.environ.get("HIGGSFIELD_CHARACTER_IMAGE_PATH", "xai/grok-imagine-image-2.0")
+REFERENCE_MODELS = {                       # documented path → max image_urls
+    "xai/grok-imagine-image-2.0": 10,
+    "alibaba/qwen-image-3/edit": 3,
+}
+CHARACTER_ASPECTS = {                      # documented aspect_ratio enums
+    "xai/grok-imagine-image-2.0": ("1:1", "1:2", "2:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"),
+    "alibaba/qwen-image-3/edit": ("1:1", "2:3", "3:2", "3:4", "4:3", "7:9", "9:7", "9:16", "16:9", "21:9"),
+}
+ASPECT_FALLBACK = {"4:5": "3:4", "5:4": "4:3"}
+UPLOAD_PATH = "files/generate-upload-url"
+UPLOAD_TYPES = ("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif")
 BG_REMOVE_PATH = os.environ.get("HIGGSFIELD_BG_REMOVE_PATH", "remove-background")
-ELEMENT_ASPECTS = ("1:1", "3:4", "4:3", "4:5", "9:16", "16:9")
 
 
-def list_elements(api_key: str) -> list:
-    """[{id, name, status, category}] — the account's reference elements
-    (a free read). Every page is followed up to 10."""
-    out, cursor = [], ""
-    for _ in range(10):
-        params = {"limit": 100}
-        if cursor:
-            params["cursor"] = cursor
-        response = httpx.get(f"{API_BASE}/{ELEMENTS_LIST_PATH.strip('/')}", headers=_headers(api_key),
-                             params=params, timeout=TIMEOUT)
-        if response.status_code != 200:
-            _raise_for(response, "element list")
-        data = response.json() or {}
-        rows = data if isinstance(data, list) else (data.get("elements") or data.get("items")
-                                                    or data.get("data") or data.get("results") or [])
-        for r in rows if isinstance(rows, list) else []:
-            if isinstance(r, dict):
-                out.append({"id": r.get("id") or r.get("element_id") or "", "name": r.get("name") or "",
-                            "status": r.get("status") or "", "category": r.get("category") or ""})
-        cursor = "" if isinstance(data, list) else str(data.get("next_cursor") or data.get("cursor") or "")
-        if not cursor:
-            break
-    return out
+class CharacterVideoUnsupported(ValueError):
+    """No documented video model takes character reference images (yet)."""
 
 
-def generate_with_elements(api_key: str, prompt: str, aspect_ratio: str = "4:5", kind: str = "image") -> dict:
-    """One image (or clip) whose prompt carries element placeholders, on
-    uallak's key. Returns {'url', 'content', 'mime', 'credits', 'model'} —
-    the url is kept for background removal."""
-    if aspect_ratio not in ELEMENT_ASPECTS:
-        aspect_ratio = "4:5" if kind == "image" else "9:16"
-    if "<<<" not in str(prompt):
-        raise ValueError("a character prompt carries its element placeholder")
-    _count("video" if kind == "video" else "image", DAILY_VIDEO_LIMIT if kind == "video" else DAILY_IMAGE_LIMIT)
-    model = ELEMENT_VIDEO_MODEL if kind == "video" else ELEMENT_IMAGE_MODEL
-    payload = {"model": model, "prompt": prompt, "aspect_ratio": aspect_ratio}
+def max_references(path: str = "") -> int:
+    return REFERENCE_MODELS.get((path or CHARACTER_IMAGE_PATH).strip("/"), 1)
+
+
+def character_aspect(aspect_ratio: str, path: str = "") -> str:
+    allowed = CHARACTER_ASPECTS.get((path or CHARACTER_IMAGE_PATH).strip("/"), VALID_ASPECT_RATIOS)
+    ar = ASPECT_FALLBACK.get(aspect_ratio, aspect_ratio)
+    return ar if ar in allowed else ("3:4" if "3:4" in allowed else allowed[0])
+
+
+def upload_file(api_key: str, content: bytes, content_type: str) -> str:
+    """The documented upload: a presigned URL, the bytes PUT there with the
+    returned headers (our key never goes to the storage host) → public_url."""
+    content_type = "image/jpeg" if content_type == "image/jpg" else content_type
+    if content_type not in UPLOAD_TYPES:
+        raise ValueError(f"unsupported content type {content_type!r}")
+    response = httpx.post(f"{API_BASE}/{UPLOAD_PATH}", headers=_headers(api_key),
+                          json={"content_type": content_type}, timeout=TIMEOUT)
+    if response.status_code not in (200, 201):
+        _raise_for(response, "upload url")
+    data = response.json() or {}
+    upload_url, public_url = data.get("upload_url"), data.get("public_url")
+    if not upload_url or not str(public_url or "").startswith("https://"):
+        raise RuntimeError(f"higgsfield upload url: unexpected answer {str(list(data))[:200]}")
+    headers = {str(k): str(v) for k, v in (data.get("upload_headers") or {}).items()} or {"Content-Type": content_type}
+    put = httpx.put(upload_url, headers=headers, content=content, timeout=TIMEOUT)
+    if put.status_code not in (200, 201, 204):
+        raise RuntimeError(f"higgsfield upload failed: {put.status_code}")
+    return public_url
+
+
+def generate_with_references(api_key: str, prompt: str, reference_urls: list, aspect_ratio: str = "4:5",
+                             kind: str = "image") -> dict:
+    """One image with the characters' reference images in the model's
+    documented `image_urls`, on uallak's key. Returns {'url', 'content',
+    'mime', 'credits', 'model', 'request_id'} — the url is kept for background
+    removal."""
     if kind == "video":
-        payload["duration"] = VIDEO_SECONDS
-    job = _create_job(api_key, ELEMENT_IMAGE_PATH, payload)
+        raise CharacterVideoUnsupported("a video with an agent character is not supported: no documented "
+                                        "Higgsfield video model takes character reference images")
+    refs = [str(u) for u in reference_urls or []]
+    if not refs or not all(u.startswith("https://") for u in refs):
+        raise ValueError("a character generation needs the reference image URL(s)")
+    path = CHARACTER_IMAGE_PATH.strip("/")
+    if len(refs) > max_references(path):
+        raise ValueError(f"{path} takes at most {max_references(path)} reference images")
+    _count("image", DAILY_IMAGE_LIMIT)
+    job = _create_job(api_key, path, {"prompt": prompt, "image_urls": refs,
+                                      "aspect_ratio": character_aspect(aspect_ratio, path)})
     data = _wait_for_result(api_key, job)
     url = _result_url(data)
-    return {"url": url, "content": _download(url), "mime": "video/mp4" if kind == "video" else "image/png",
-            "credits": _credits_used(data), "model": model}
+    return {"url": url, "content": _download(url), "mime": "image/png", "credits": _credits_used(data),
+            "model": path, "request_id": job["request_id"]}
 
 
 def remove_background(api_key: str, image_url: str) -> dict:
     """The image with its background removed → {'content' (PNG bytes),
-    'credits'}. The caller VERIFIES the alpha (agent_characters.ensure_transparent)."""
+    'credits'}. The caller VERIFIES the alpha (agent_characters.ensure_transparent).
+    NOT in the public REST docs read 2026-11-24 (known from Higgsfield's MCP
+    tools); the path is an env setting, and a failure is reported, never
+    hidden — the pose is then not made."""
     job = _create_job(api_key, BG_REMOVE_PATH, {"image_url": image_url, "media_type": "image"})
     data = _wait_for_result(api_key, job)
     return {"content": _download(_result_url(data)), "credits": _credits_used(data)}

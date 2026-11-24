@@ -2,13 +2,15 @@
 docs/AGENT-CHARACTERS.md).
 
 What must stay true:
-- the agent ↔ element mapping is STORED (app_settings), matched from the
-  element list by "uallak-<agent>" (case-insensitive), overridable per agent,
-  with conflicts and unmatched elements listed — never hard-coded ids;
+- each agent's REFERENCE IMAGE (url + Higgsfield media id + notes) is set,
+  replaced and cleared by the admin, STORED in app_settings — no element
+  list, no matching, and no code path calls an element-list endpoint;
 - the brief carries `characters` + `character_mode` through validation, the
   post item and production; default mode per asset type;
-- in scene: ONE <<<element_id>>> per character, the style clause always, the
-  slide copy never in the prompt, and an element id never in a media list;
+- in scene: the stored images go in the model's documented `image_urls`, in
+  order, one per character; the style clause always; the copy never in the
+  prompt; a missing reference = "לא מוגדרת תמונת ייחוס עבור <agent>" in the
+  manager's chat, never a silent success;
 - composite: background removal must yield a transparent PNG (verified);
   the renderer composites the cut-out UNDER the text with position, scale,
   flip and shadow; overflow and text collision are WARNINGS, never a crop;
@@ -49,28 +51,17 @@ RAQM = sr.raqm_status()["available"]
 NEEDS_PIL = unittest.skipUnless(Image is not None or os.environ.get("CI"), "Pillow not installed here")
 NEEDS_RAQM = unittest.skipUnless(RAQM or os.environ.get("CI"), "Pillow + raqm not installed here")
 
-MAYA, LIOR, YOAV = "fb0e4dba-4f11-4e27-9b5c-517406406d53", "25c32188-073e-4946-9801-2a759632ff3d", \
-    "d61da04f-ff66-4b5b-9045-34a71c40e0be"
-URI_A, URI_B = "a74cc3b0-d681-4231-8901-4239fe149ef0", "67e4d7d4-997f-4266-8012-f9852d81a934"
-JOHNNY, ELINOR, NISSIM = "c4ba7167-8ac3-4ff0-9213-440049a2d6d2", "6f5bb752-84a8-4904-b6c0-385904521c1d", \
-    "623775a6-f4e3-40b1-8293-0888f8dd50ea"
-AGENT1 = "9feee7bb-0000-4000-8000-000000000001"
-
-# The element list as Higgsfield showed it on 2026-11-24 (names verbatim)
-ELEMENTS = [
-    {"id": NISSIM, "name": "uallak-nissim", "status": "completed"},
-    {"id": ELINOR, "name": "uallak-elinor", "status": "completed"},
-    {"id": JOHNNY, "name": "uallak-johnny", "status": "completed"},
-    {"id": YOAV, "name": "uallak-yoav", "status": "completed"},
-    {"id": LIOR, "name": "char_uallak-lior", "status": "completed"},
-    {"id": URI_A, "name": "Uallak-uri", "status": "completed"},
-    {"id": MAYA, "name": "uallak-maya", "status": "completed"},
-    {"id": URI_B, "name": "uallak-uri", "status": "completed"},
-    {"id": AGENT1, "name": "uallak-agent-1", "status": "completed"},
-    {"id": "1e6b6890-0000-4000-8000-000000000002", "name": "johnny-face", "status": "completed"},
-]
 ROLES = {"bg": "#F0F0F0", "fg": "#101010", "accent": "#FF4C1F", "muted": "#666666"}
 POSE = "abcdef123456"
+REF = {a: f"https://cdn.higgsfield.ai/refs/{a}.png" for a in ac.AGENTS}
+
+
+def _png(colour=(200, 120, 40)) -> bytes:
+    if Image is None:
+        return b"\x89PNG fake"
+    out = io.BytesIO()
+    Image.new("RGB", (24, 32), colour).save(out, "PNG")
+    return out.getvalue()
 
 
 class Store(unittest.TestCase):
@@ -78,99 +69,164 @@ class Store(unittest.TestCase):
 
     def setUp(self):
         self.db = tsq.FakeDB()
-        self.saved = [(ac, "_db", ac._db), (ac, "_alert", ac._alert), (sq, "_db", sq._db)]
+        self.saved = [(ac, "_db", ac._db), (ac, "_alert", ac._alert), (sq, "_db", sq._db),
+                      (ac, "image_info", ac.image_info)]
         ac._db = lambda: self.db
         sq._db = lambda: self.db
         self.alerts = []
         ac._alert = lambda lines: self.alerts.extend(lines)
+        if Image is None:                                     # no Pillow here: the image check is stubbed
+            ac.image_info = lambda content: {"mime": "image/png", "width": 24, "height": 32}
 
     def tearDown(self):
         for mod, name, value in self.saved:
             setattr(mod, name, value)
 
-    def synced(self):
-        ac.sync(_list=lambda: copy.deepcopy(ELEMENTS))
-        return ac.mapping()
+    def set_ref(self, agent, url=None, **kw):
+        kw.setdefault("_fetch_fn", lambda u: _png())
+        kw.setdefault("_keep_fn", lambda a, c, m: f"KEEP_{a}_0123456789")
+        return ac.set_reference(agent, url=url or REF[agent], **kw)
+
+    def all_refs(self):
+        for a in ac.AGENTS:
+            self.set_ref(a, media_id=f"job-{a}")
+        return ac.references()
 
 
-# ─── 1. The mapping ──────────────────────────────────────────────────────────
+# ─── 1. The reference images (the admin table) ───────────────────────────────
 
-class Mapping(Store):
-    def test_populated_from_the_element_list(self):
-        view = ac.sync(_list=lambda: copy.deepcopy(ELEMENTS))
-        rows = {r["agent"]: r for r in view["agents"]}
-        for agent, eid in (("maya", MAYA), ("yoav", YOAV), ("johnny", JOHNNY), ("elinor", ELINOR),
-                           ("nissim", NISSIM)):
-            self.assertEqual((rows[agent]["element_id"], rows[agent]["status"], rows[agent]["match"]),
-                             (eid, "ready", "exact"))
-        # "char_uallak-lior": a LOOSE match, shown as such, still usable
-        self.assertEqual((rows["lior"]["element_id"], rows["lior"]["match"]), (LIOR, "loose"))
-        # two uri elements: a conflict — no automatic pick
-        self.assertEqual((rows["uri"]["status"], rows["uri"]["element_id"]), ("conflict", ""))
-        self.assertEqual({c["id"] for c in rows["uri"]["candidates"]}, {URI_A, URI_B})
-        with self.assertRaises(ac.CharacterUnavailable):
-            ac.element_for("uri")
+class References(Store):
+    def test_admin_saves_and_clears_a_reference_image(self):
+        view = self.set_ref("lior", media_id="3f1c9a2e-job", notes="denim apron, half body")
+        row = next(r for r in view["agents"] if r["agent"] == "lior")
+        self.assertEqual((row["set"], row["url"], row["media_id"], row["notes"], row["durable"]),
+                         (True, REF["lior"], "3f1c9a2e-job", "denim apron, half body", True))
         stored = self.db.tables["app_settings"][0]
-        self.assertEqual(stored["key"], "agent_elements")              # in the DB, not in code
-        self.assertTrue(view["last_sync"])
+        self.assertEqual(stored["key"], "agent_references")            # in the DB, not in code
+        self.assertEqual(ac.reference_for("lior")["url"], REF["lior"])
+        # replace
+        self.set_ref("lior", url="https://cdn.higgsfield.ai/refs/lior-v2.png", media_id="job-2")
+        self.assertEqual((ac.reference_for("lior")["url"], ac.reference_for("lior")["media_id"]),
+                         ("https://cdn.higgsfield.ai/refs/lior-v2.png", "job-2"))
+        # clear
+        view = ac.clear_reference("lior")
+        self.assertFalse(next(r for r in view["agents"] if r["agent"] == "lior")["set"])
+        with self.assertRaises(ac.MissingReference):
+            ac.reference_for("lior")
+        self.assertEqual([h["action"] for h in ac.references()["history"]], ["set", "set", "clear"])
 
-    def test_unmatched_elements_are_listed(self):
-        view = ac.sync(_list=lambda: copy.deepcopy(ELEMENTS))
-        self.assertEqual([e["name"] for e in view["unmatched"]], ["uallak-agent-1"])
-        self.assertEqual(view["other_elements"], 1)                    # johnny-face: not a uallak element
-
-    def test_override_wins_and_clears(self):
-        self.synced()
-        view = ac.set_override("uri", URI_A)
-        uri = next(r for r in view["agents"] if r["agent"] == "uri")
-        self.assertEqual((uri["element_id"], uri["status"], uri["source"]), (URI_A, "ready", "override"))
-        self.assertEqual(ac.element_for("uri"), URI_A)
-        # survives the next re-read
-        ac.sync(_list=lambda: copy.deepcopy(ELEMENTS))
-        self.assertEqual(ac.element_for("uri"), URI_A)
-        ac.set_override("uri", "")
-        self.assertEqual(next(r for r in ac.view()["agents"] if r["agent"] == "uri")["status"], "conflict")
-        with self.assertRaises(ValueError):
-            ac.set_override("uri", "not-a-uuid")
-        with self.assertRaises(ValueError):
-            ac.set_override("bob", URI_A)
-
-    def test_only_completed_elements_are_usable(self):
-        els = copy.deepcopy(ELEMENTS)
-        els[6]["status"] = "processing"                                  # maya
-        ac.sync(_list=lambda: els)
-        with self.assertRaises(ac.CharacterUnavailable) as e:
-            ac.element_for("maya")
-        self.assertEqual(e.exception.reason, "not_ready")
-
-    def test_re_read_on_a_schedule_and_on_request(self):
+    def test_upload_goes_through_the_documented_upload(self):
+        published = []
+        view = ac.set_reference("maya", content=_png(), media_id="", by="admin",
+                                _publish_fn=lambda c, m: published.append(m) or "https://cdn.higgsfield.ai/up/maya.png",
+                                _keep_fn=lambda a, c, m: "KEEP_maya_0123456789")
+        self.assertEqual(published, ["image/png"])
+        self.assertEqual(ac.reference_for("maya")["url"], "https://cdn.higgsfield.ai/up/maya.png")
+        self.assertEqual(ac.reference_for("maya")["source"], "upload")
+        self.assertTrue(next(r for r in view["agents"] if r["agent"] == "maya")["set"])
+        # the upload itself: POST /files/generate-upload-url → PUT with upload_headers, never our key
         calls = []
-        lister = lambda: calls.append(1) or copy.deepcopy(ELEMENTS)
-        self.assertEqual(ac.sync_due(_list=lister).get("synced"), True)
-        self.assertEqual(ac.sync_due(_list=lister), {"skipped": "fresh"})   # within SYNC_HOURS
-        self.assertEqual(len(calls), 1)
+
+        class Resp:
+            def __init__(self, code, data=None):
+                self.status_code, self._d, self.text = code, data or {}, ""
+
+            def json(self):
+                return self._d
+        fake = types.SimpleNamespace(
+            post=lambda url, headers=None, json=None, timeout=None: calls.append(("POST", url, headers, json)) or Resp(
+                200, {"upload_url": "https://s3.example/put?sig=1", "public_url": "https://cdn.higgsfield.ai/up/x.png",
+                      "upload_headers": {"Content-Type": "image/png", "x-amz-tagging": "retention=temporary"}}),
+            put=lambda url, headers=None, content=None, timeout=None: calls.append(("PUT", url, headers, None)) or Resp(200))
+        saved = gen.httpx
+        gen.httpx = fake
+        try:
+            self.assertEqual(gen.upload_file("id:secret", b"PNG", "image/png"), "https://cdn.higgsfield.ai/up/x.png")
+        finally:
+            gen.httpx = saved
+        self.assertEqual((calls[0][0], calls[0][1], calls[0][3]),
+                         ("POST", "https://api.higgsfield.ai/files/generate-upload-url", {"content_type": "image/png"}))
+        self.assertEqual((calls[1][0], calls[1][1]), ("PUT", "https://s3.example/put?sig=1"))
+        self.assertNotIn("Authorization", calls[1][2])
+        self.assertEqual(calls[1][2]["x-amz-tagging"], "retention=temporary")
+
+    def test_refusals(self):
+        for bad in ("http://cdn.example/x.png", "not a url", "", "javascript:alert(1)"):
+            with self.assertRaises(ValueError, msg=bad):
+                ac.set_reference("maya", url=bad, _fetch_fn=lambda u: _png(), _keep_fn=lambda *a: "K")
+        with self.assertRaises(ValueError):
+            self.set_ref("bob", url=REF["maya"])
+        with self.assertRaises(ValueError):
+            self.set_ref("maya", media_id="bad id with spaces")
+
+        def unreachable(u):
+            raise ValueError("the URL answered 404")
+        with self.assertRaises(ValueError) as e:
+            self.set_ref("maya", _fetch_fn=unreachable)
+        self.assertIn("could not be read", str(e.exception))
+        self.assertEqual(ac.references()["agents"], {})                # nothing half-saved
+
+    def test_no_durable_copy_still_saves_and_says_so(self):
+        def no_drive(a, c, m):
+            raise RuntimeError("Missing key: DRIVE_MEDIA_FOLDER_ID")
+        view = self.set_ref("yoav", _keep_fn=no_drive)
+        self.assertIn("no durable copy", view["warning"])
+        self.assertFalse(next(r for r in view["agents"] if r["agent"] == "yoav")["durable"])
+        self.assertEqual(ac.reference_for("yoav")["url"], REF["yoav"])
+
+    def test_an_old_url_is_re_uploaded_from_our_copy(self):
+        self.set_ref("uri")
+        data = ac.references()
+        data["agents"]["uri"]["url_at"] = "2026-01-01T00:00:00+00:00"
+        ac._write(ac.REFS_KEY, data)
+        refreshed = []
+        urls = ac.reference_urls(["uri"], _refresh=lambda e: refreshed.append(e["file_id"]) or "https://cdn.higgsfield.ai/up/uri-2.png")
+        self.assertEqual((urls, refreshed), (["https://cdn.higgsfield.ai/up/uri-2.png"], ["KEEP_uri_0123456789"]))
+        self.assertEqual(ac.reference_for("uri")["url"], "https://cdn.higgsfield.ai/up/uri-2.png")
+        # fresh: sent as is
+        self.assertEqual(ac.reference_urls(["uri"], _refresh=lambda e: self.fail("refreshed a fresh URL")),
+                         ["https://cdn.higgsfield.ai/up/uri-2.png"])
+
+    def test_admin_routes_and_screen(self):
         api = tsq._src("core", "api_server.py")
-        self.assertIn('data["agent_elements"] = agent_characters.sync_due()', api)
-        self.assertIn('@app.post("/api/admin/characters/sync")', api)
-        self.assertIn('@app.post("/api/admin/characters/override")', api)
+        for route in ('@app.get("/api/admin/characters")', '@app.post("/api/admin/characters/reference")',
+                      '@app.post("/api/admin/characters/upload")', '@app.post("/api/admin/characters/clear")'):
+            self.assertIn(route, api)
         body = api[api.index('@app.get("/api/admin/characters")'):api.index('@app.get("/api/admin/drive-pull/info")')]
-        self.assertEqual(body.count("_require_admin(request)"), 3)
-
-    def test_a_failed_read_keeps_the_last_match(self):
-        self.synced()
-
-        def broken():
-            raise RuntimeError("503")
-        view = ac.sync(_list=broken)
-        self.assertIn("503", view["last_error"])
-        self.assertEqual(ac.element_for("maya"), MAYA)
-
-    def test_admin_screen(self):
+        self.assertEqual(body.count("_require_admin(request)"), 4)
+        self.assertNotIn("/api/admin/characters/sync", api)
+        self.assertNotIn("/api/admin/characters/override", api)
         html = tsq._src("dashboard", "admin", "characters", "index.html")
-        for needle in ("/api/admin/characters", "/api/admin/characters/sync", "/api/admin/characters/override",
-                       'id="unmatched"', "candidates", "itzik-chat.js"):
+        for needle in ("/api/admin/characters/reference", "/api/admin/characters/upload", "/api/admin/characters/clear",
+                       'class="thumb"', 'data-f="url"', 'data-f="media_id"', 'data-f="notes"', "itzik-chat.js"):
             self.assertIn(needle, html)
+        for gone in ("/sync", "/override", "unmatched", "candidates", "התנגשות"):
+            self.assertNotIn(gone, html)
         self.assertIn('href="/admin/characters/"', tsq._src("dashboard", "admin", "index.html"))
+
+
+# ─── No undocumented element endpoint, anywhere ──────────────────────────────
+
+class NoElementList(unittest.TestCase):
+    def test_no_code_path_calls_an_element_list_endpoint(self):
+        root = os.path.dirname(HERE)
+        hits = []
+        for folder in ("core", "agents", "scripts", "dashboard"):
+            for dirpath, _dirs, files in os.walk(os.path.join(root, folder)):
+                for name in files:
+                    if not name.endswith((".py", ".sh", ".html", ".js")):
+                        continue
+                    with open(os.path.join(dirpath, name), encoding="utf-8", errors="ignore") as f:
+                        text = f.read()
+                    for needle in ("reference-elements", "list_elements", "ELEMENTS_LIST_PATH", "sync_due",
+                                   "generate_with_elements", "/api/admin/characters/sync"):
+                        if needle in text:
+                            hits.append(f"{folder}/{name}: {needle}")
+        self.assertEqual(hits, [])
+        self.assertFalse(hasattr(gen, "list_elements"))
+        self.assertFalse(hasattr(ac, "sync"))
+        api = tsq._src("core", "api_server.py")
+        self.assertNotIn("agent_characters.sync", api)
 
 
 # ─── 2. The brief ────────────────────────────────────────────────────────────
@@ -271,28 +327,68 @@ class _approve_hook_off:
 
 # ─── 3. In scene ─────────────────────────────────────────────────────────────
 
+class _FakeHiggsfield:
+    """httpx stand-in: records every POST payload, answers completed."""
+
+    def __init__(self):
+        self.sent, self.urls = [], []
+
+    def __enter__(self):
+        test = self
+
+        class Resp:
+            status_code = 200
+            text = ""
+
+            def __init__(self, data):
+                self._d = data
+
+            def json(self):
+                return self._d
+        self.fake = types.SimpleNamespace(
+            post=lambda url, headers=None, json=None, timeout=None: test.urls.append(url) or test.sent.append(json)
+            or Resp({"request_id": "req-0001"}),
+            get=lambda url, **kw: Resp({"status": "completed", "images": [{"url": "https://cdn.example/x.png"}]}))
+        self.saved = (gen.httpx, gen._download, gen._count, gen.time.sleep)
+        gen.httpx, gen._download, gen._count, gen.time.sleep = self.fake, lambda url: b"PNG", lambda *a: None, lambda s: None
+        return self
+
+    def __exit__(self, *exc):
+        gen.httpx, gen._download, gen._count, gen.time.sleep = self.saved
+
+
 class InScene(Store):
     def setUp(self):
         super().setUp()
-        self.synced()
-        ac.set_override("uri", URI_A)
+        self.all_refs()
 
-    def test_one_placeholder(self):
+    def test_one_character(self):
         p = ac.in_scene_prompt("The character sketching at a sunny workshop table", ["maya"])
-        self.assertEqual(ac.placeholders_in(p), [MAYA])
-        self.assertEqual(p.count("<<<"), 1)
+        self.assertIn("the character shown in the reference image", p)
+        self.assertNotIn("<<<", p)
         self.assertTrue(p.rstrip(".").endswith(ac.STYLE_CLAUSE))
 
-    def test_multiple_placeholders_one_each(self):
+    def test_several_characters_one_reference_each_in_order(self):
         p = ac.in_scene_prompt("Two characters at a market stall", ["maya", "lior", "uri"])
-        self.assertEqual(ac.placeholders_in(p), [MAYA, LIOR, URI_A])
+        for n in (1, 2, 3):
+            self.assertIn(f"the character from reference image {n}", p)
         self.assertEqual(p.count(ac.STYLE_CLAUSE), 1)
+        self.assertEqual(ac.reference_urls(["maya", "lior", "uri"]), [REF["maya"], REF["lior"], REF["uri"]])
         with self.assertRaises(ValueError):
             ac.in_scene_prompt("x", ["maya", "maya"])
+        self.assertGreaterEqual(gen.max_references("xai/grok-imagine-image-2.0"), ac.MAX_CHARACTERS)
+        self.assertGreaterEqual(gen.max_references("alibaba/qwen-image-3/edit"), ac.MAX_CHARACTERS)
 
     def test_the_models_own_placeholders_are_removed(self):
         p = ac.in_scene_prompt("<<<made-up-id>>> at a desk <<< 1234 >>>", ["yoav"])
-        self.assertEqual(ac.placeholders_in(p), [YOAV])
+        self.assertNotIn("<<<", p)
+        self.assertIn("at a desk", p)
+
+    def test_notes_carried(self):
+        self.set_ref("elinor", notes="green blazer, half body")
+        self.assertIn("green blazer, half body", ac.in_scene_prompt("a scene", ["elinor"]))
+        self.assertIn("green blazer, half body", ac.pose_prompt("elinor", "waving"))
+        self.assertNotIn("green blazer", ac.pose_prompt("elinor", "waving", outfit="red apron"))
 
     def test_style_clause_always(self):
         for agents in (["maya"], ["lior", "johnny"]):
@@ -300,6 +396,7 @@ class InScene(Store):
         self.assertIn(ac.STYLE_CLAUSE, ac.pose_prompt("elinor", "waving"))
         self.assertIn(ac.STYLE_CLAUSE, ac.with_style("anything"))
         self.assertEqual(ac.with_style("x. " + ac.STYLE_CLAUSE + "."), "x. " + ac.STYLE_CLAUSE + ".")
+        self.assertEqual(ac.STYLE_CLAUSE, "same stylized 3D character look and same face as the reference figure")
 
     def test_copy_never_in_a_character_prompt(self):
         brief = pb.asset(pb.validate_post(_character_post(), 27, "", "he")["assets"][0])
@@ -308,7 +405,6 @@ class InScene(Store):
         leaked = ac.in_scene_prompt("the character holding a sign: " + brief.copy_headline, ["maya"])
         with self.assertRaises(pb.CopyLeak):
             pb.assert_copy_free(leaked, brief)
-        # the craft call never sees the copy, and the guard runs on the FINAL prompt
         from agents import media_agent
         seen = []
         old = media_agent.safe_claude_json_call
@@ -322,35 +418,53 @@ class InScene(Store):
         src = tsq._src("agents", "media_agent.py")
         body = src[src.index("def _generate_character_scene("):src.index("# ─── Text-slide DESIGN")]
         self.assertLess(body.index("in_scene_prompt("), body.index("assert_copy_free(prompt, brief)"))
-        self.assertLess(body.index("assert_copy_free(prompt, brief)"), body.index("generate_with_elements("))
+        self.assertLess(body.index("assert_copy_free(prompt, brief)"), body.index("generate_with_references("))
 
-    def test_element_ids_never_in_a_media_list(self):
-        sent = []
-
-        class Resp:
-            status_code = 200
-
-            def __init__(self, data):
-                self._d = data
-
-            def json(self):
-                return self._d
-        fake = types.SimpleNamespace(
-            post=lambda url, headers=None, json=None, timeout=None: sent.append(json) or Resp({"request_id": "r1"}),
-            get=lambda url, **kw: Resp({"status": "completed", "images": [{"url": "https://cdn.example/x.png"}]}))
-        saved = (gen.httpx, gen._download, gen._count, gen.time.sleep)
-        gen.httpx, gen._download, gen._count, gen.time.sleep = fake, lambda url: b"PNG", lambda *a: None, lambda s: None
-        try:
+    def test_generation_sends_the_stored_images_per_the_model_schema(self):
+        with _FakeHiggsfield() as hf:
             prompt = ac.in_scene_prompt("a scene", ["maya", "lior"])
-            out = gen.generate_with_elements("id:secret", prompt, "4:5")
-        finally:
-            gen.httpx, gen._download, gen._count, gen.time.sleep = saved
-        payload = sent[0]
-        self.assertEqual(set(payload), {"model", "prompt", "aspect_ratio"})
-        self.assertIn(f"<<<{MAYA}>>>", payload["prompt"])
-        self.assertEqual(out["url"], "https://cdn.example/x.png")
+            out = gen.generate_with_references("id:secret", prompt, ac.reference_urls(["maya", "lior"]), "4:5")
+        payload = hf.sent[0]
+        self.assertEqual(hf.urls[0], "https://api.higgsfield.ai/xai/grok-imagine-image-2.0")
+        self.assertEqual(set(payload), {"prompt", "image_urls", "aspect_ratio"})   # Grok Image 2.0's documented fields
+        self.assertEqual(payload["image_urls"], [REF["maya"], REF["lior"]])
+        self.assertEqual(payload["aspect_ratio"], "3:4")                 # 4:5 is not in its enum
+        self.assertEqual((out["url"], out["request_id"]), ("https://cdn.example/x.png", "req-0001"))
         with self.assertRaises(ValueError):
-            gen.generate_with_elements("id:secret", "no placeholder here", "4:5")
+            gen.generate_with_references("id:secret", prompt, [], "4:5")
+        with self.assertRaises(ValueError):
+            gen.generate_with_references("id:secret", prompt, ["https://x/y.png"] * 11, "4:5")
+        with self.assertRaises(gen.CharacterVideoUnsupported):
+            gen.generate_with_references("id:secret", prompt, [REF["maya"]], "9:16", kind="video")
+
+    def test_the_media_agent_sends_the_stored_image(self):
+        from agents import media_agent
+        brief = pb.asset(pb.validate_post(_character_post(), 27, "", "he")["assets"][0])
+        sent = []
+        saved = (media_agent._library_scene, media_agent._context, media_agent.safe_claude_json_call,
+                 gen.generate_with_references, media_agent._subfolder, media_agent.drive.upload_bytes,
+                 media_agent._log_activity, os.environ.get(ac.KEY_ENV))
+        media_agent._library_scene = lambda cid, b: {}
+        media_agent._context = lambda cid: {"craft": "c", "brand": "b"}
+        media_agent.safe_claude_json_call = lambda *a, **k: {"generation_prompt": "the character at a sunny table"}
+        gen.generate_with_references = lambda key, prompt, refs, ar, kind="image": sent.append(refs) or {
+            "url": "https://cdn.example/x.png", "content": b"PNG", "mime": "image/png", "credits": 2, "model": "m"}
+        media_agent._subfolder = lambda *a: "FOLDER"
+        media_agent.drive.upload_bytes = lambda *a: {"id": "GENFILE_0123456789"}
+        media_agent._log_activity = lambda *a, **k: None
+        os.environ[ac.KEY_ENV] = "kid:ksecret"
+        try:
+            out = media_agent.generate_from_brief(27, brief, {})
+        finally:
+            (media_agent._library_scene, media_agent._context, media_agent.safe_claude_json_call,
+             gen.generate_with_references, media_agent._subfolder, media_agent.drive.upload_bytes,
+             media_agent._log_activity) = saved[:7]
+            if saved[7] is None:
+                os.environ.pop(ac.KEY_ENV, None)
+            else:
+                os.environ[ac.KEY_ENV] = saved[7]
+        self.assertTrue(out["success"], out)
+        self.assertEqual(sent, [[REF["maya"]]])
 
     def test_runs_on_uallaks_key_and_refuses_without_it(self):
         from agents import media_agent
@@ -367,6 +481,82 @@ class InScene(Store):
         self.assertEqual(out["status"], "characters_not_configured")
         self.assertIn('"HIGGSFIELD_AGENTS_KEY": os.environ.get("HIGGSFIELD_AGENTS_KEY", "")',
                       tsq._src("agents", "keys_agent.py"))
+
+
+# ─── Missing reference → the explicit Hebrew error, to the manager ───────────
+
+class MissingReferenceError(Store):
+    def test_the_message(self):
+        self.assertEqual(ac.missing_text("lior"), "לא מוגדרת תמונת ייחוס עבור ליאור (lior)")
+        with self.assertRaises(ac.MissingReference) as e:
+            ac.in_scene_prompt("a scene", ["lior"])
+        self.assertEqual(e.exception.message, "לא מוגדרת תמונת ייחוס עבור ליאור (lior)")
+        with self.assertRaises(ac.MissingReference):
+            ac.pose_prompt("lior", "waving")
+        with self.assertRaises(ac.MissingReference):
+            ac.make_pose("lior", "waving", _gen=lambda *a: self.fail("generated without a reference"))
+
+    def test_in_scene_failure_reaches_the_reply(self):
+        from agents import media_agent
+        brief = pb.asset(pb.validate_post(_character_post(), 27, "", "he")["assets"][0])
+        old = (media_agent.agent_alert, media_agent._library_scene)
+        media_agent.agent_alert = lambda *a, **k: None
+        media_agent._library_scene = lambda cid, b: {}
+        try:
+            out = media_agent.generate_from_brief(27, brief, {})
+        finally:
+            media_agent.agent_alert, media_agent._library_scene = old
+        self.assertFalse(out["success"])
+        self.assertEqual(out["status"], "character_missing_reference")
+        self.assertEqual(out["message"], "לא מוגדרת תמונת ייחוס עבור מאיה (maya)")
+
+    def test_composite_failure_carries_the_message(self):
+        from core import slide_design
+        entries, failures = slide_design.attach_characters(
+            [{"asset_id": "s1", "role": "hook", "characters": ["nissim"], "character_mode": "composite"}])
+        self.assertEqual(failures[0]["message"], "לא מוגדרת תמונת ייחוס עבור ניסים (nissim)")
+        self.assertNotIn("character", entries[0])
+        src = tsq._src("core", "slide_design.py")
+        self.assertIn('"character_errors": list(dict.fromkeys(m["message"] for m in missing if m.get("message")))', src)
+
+
+REAL_TELL = pp._tell                           # the harness stubs it; this test needs the real line
+
+
+class MissingReferenceInChat(unittest.TestCase):
+    def setUp(self):
+        tpb.Pipeline.setUp(self)
+        pp._tell = REAL_TELL
+
+    def test_production_line_says_it_never_success(self):
+        from agents import media_agent
+        from agents import client_agent
+        from core import slide_design
+        post = tpb._post()
+        post["assets"][1]["characters"] = ["lior"]
+        saved_flags = ac.approval_flags
+        ac.approval_flags = lambda cid, has, _brief_text=None: ["ai_label"] if has else []
+        self.addCleanup(setattr, ac, "approval_flags", saved_flags)
+        item = pp.submit(27, post, "", "he")["queued"]
+        msg = ac.missing_text("lior")
+        lines = []
+        saved = (media_agent.generate_from_brief, slide_design.open_for_post, client_agent.log_communication)
+        media_agent.generate_from_brief = lambda cid, brief, palette, platform="instagram": (
+            {"success": False, "status": "character_missing_reference", "errors": [msg], "message": msg}
+            if brief.characters else {"success": True, "kind": "image", "file_id": "FILE_ok_0123456789", "credits": 0})
+        slide_design.open_for_post = lambda cid, it, slides, lang="he": {
+            "item": {"id": "design0001"}, "problems": [], "character_errors": []}
+        client_agent.log_communication = lambda cid, direction, channel, text: lines.append(text)
+        try:
+            with _approve_hook_off():
+                pp.start(27, sq.approve(27, [item["id"]]))
+        finally:
+            media_agent.generate_from_brief, slide_design.open_for_post, client_agent.log_communication = saved
+        got = sq.get(27, item["id"])["production"]
+        self.assertEqual(got["character_errors"], [msg])
+        self.assertGreaterEqual(got["failed"], 1)
+        self.assertNotEqual(got["state"], "done")
+        self.assertTrue(lines and msg in lines[-1], lines)
 
 
 def _character_post():
@@ -407,14 +597,16 @@ class BackgroundRemoval(Store):
             ac.ensure_transparent(out.getvalue())                        # alpha channel, nothing transparent
 
     def test_make_pose_generates_removes_verifies_stores(self):
-        self.synced()
+        self.set_ref("maya")
         calls = []
-        gen_fn = lambda key, prompt, aspect: calls.append(("gen", prompt)) or {"url": "https://cdn/x.png", "credits": 2}
+        gen_fn = lambda key, prompt, refs, aspect: calls.append(("gen", prompt, refs)) or {
+            "url": "https://cdn/x.png", "credits": 2}
         rem_fn = lambda key, url: calls.append(("remove", url)) or {"content": _figure()}
         up_fn = lambda agent, png: calls.append(("upload", agent)) or {"id": "POSEFILE_0123456789"}
         made = ac.make_pose("maya", "waving hello", _gen=gen_fn, _remove=rem_fn, _upload=up_fn)
         self.assertEqual([c[0] for c in calls], ["gen", "remove", "upload"])
         self.assertIn("plain flat light-grey seamless studio background", calls[0][1])
+        self.assertEqual(calls[0][2], [REF["maya"]])                    # the stored reference image
         self.assertEqual(calls[1][1], "https://cdn/x.png")
         pose = ac.get_pose(made["pose_id"])
         self.assertEqual((pose["agent"], pose["transparent"], pose["approved"], pose["client_id"]),
@@ -632,35 +824,38 @@ class Notices(unittest.TestCase):
 # ─── 8. THE guardrail ────────────────────────────────────────────────────────
 
 class Guardrail(Store):
-    def test_an_agent_creating_an_element_is_refused(self):
+    def test_an_agent_creating_a_character_is_refused(self):
         for fn in (ac.create_element, ac.rebuild_element, ac.update_element):
             with self.assertRaises(ac.ElementCreationRefused):
                 fn("maya", images=["generated.png"], by="media")
         self.assertTrue(any("refused" in a for a in self.alerts))
+        # only the admin sets or clears a reference — never an agent
+        with self.assertRaises(ac.ElementCreationRefused):
+            self.set_ref("maya", by="media")
+        with self.assertRaises(ac.ElementCreationRefused):
+            ac.clear_reference("maya", by="lior")
+        self.assertEqual(ac.references()["agents"], {})
 
     def test_no_create_path_exists(self):
         src = tsq._src("core", "media_gen_service.py")
-        tail = src[src.index("# ─── Reference elements"):]
+        tail = src[src.index("# ─── Character reference images"):]
         for word in ("def create_element", "def update_element", "def train", "soul_id", "custom_reference"):
             self.assertNotIn(word, tail)
-        self.assertEqual([n for n in dir(gen) if "element" in n.lower() and callable(getattr(gen, n))],
-                         ["generate_with_elements", "list_elements"])
         from core import agent_actions as aa
         for name in aa.ACTIONS:
-            self.assertFalse("element" in name or "soul" in name, name)
+            self.assertFalse("element" in name or "soul" in name or "reference" in name, name)
         out = aa.propose(27, "client_chat", "media", {"name": "create_reference_element", "params": {"agent": "maya"}},
                          client={"id": 27}, dry_run=True)
         self.assertIn("error", out)
 
-    def test_weak_element_is_reported_not_acted_on(self):
-        self.synced()
-        before = ac.element_for("maya")
+    def test_weak_character_is_reported_not_acted_on(self):
+        self.set_ref("maya")
+        before = ac.reference_for("maya")["url"]
         entry = ac.report_element_weak("maya", "the face drifts in profile shots", by="media")
         self.assertEqual(entry["agent"], "maya")
-        self.assertEqual(ac.element_for("maya"), before)                 # nothing changed
+        self.assertEqual(ac.reference_for("maya")["url"], before)        # nothing changed
         self.assertEqual(ac.view()["reports"][-1]["reason"], "the face drifts in profile shots")
         self.assertTrue(any("reported weak" in a for a in self.alerts))
-
 
 if __name__ == "__main__":
     unittest.main()

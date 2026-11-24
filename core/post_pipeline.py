@@ -249,7 +249,7 @@ def produce(client_id: int, item_id: str) -> dict:
     palette = body.get("palette") or {}
     budget = sum(int(s.get("budget_credits") or 0) for s in slides)
     spent, made, not_made, failed, results = 0.0, 0, 0, 0, []
-    text_slides = []
+    text_slides, character_errors = [], []
     from agents import media_agent
     for n, slide in enumerate(slides, 1):
         if slide["asset_type"] == "text_slide":
@@ -279,6 +279,8 @@ def produce(client_id: int, item_id: str) -> dict:
         if not out.get("success"):
             status = out.get("status") or "failed"
             results.append({"asset_id": brief.asset_id, "status": status})
+            if out.get("message") and status.startswith("character_"):
+                character_errors.append(out["message"])       # said to the manager, not only logged
             if status in (post_brief.RENDERER_NOT_IMPLEMENTED, "needs_real_asset"):
                 not_made += 1
             else:
@@ -306,6 +308,7 @@ def produce(client_id: int, item_id: str) -> dict:
     if text_slides:
         from core import slide_design
         opened = slide_design.open_for_post(client_id, item, text_slides, _lang(client_id))
+        character_errors += opened.get("character_errors") or []
         design = {"item_id": (opened.get("item") or {}).get("id", ""), "slides": len(text_slides),
                   "ok": bool(opened.get("item")) and not opened.get("problems")}
         results += [{"asset_id": s["asset_id"], "status": "design_waiting" if design["item_id"] else "failed"}
@@ -315,7 +318,8 @@ def produce(client_id: int, item_id: str) -> dict:
     state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
              else "failed" if failed else "done")
     production = {"state": state, "made": made, "not_made": not_made, "failed": failed,
-                  "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design}
+                  "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design,
+                  "character_errors": list(dict.fromkeys(character_errors))}
     social_queue.set_production(client_id, item_id, production)
     _tell(client_id, item, production)
     if failed:
@@ -341,6 +345,8 @@ def _tell(client_id: int, item: dict, production: dict):
         design = production.get("design") or {}
         if design.get("item_id"):
             extra += pick(TEXT["design" if design.get("ok") else "design_failed"], lang).replace("{n}", str(design["slides"]))
+        for message in production.get("character_errors") or []:
+            extra += f" {message}."                            # e.g. "לא מוגדרת תמונת ייחוס עבור ליאור (lior)"
         line = (pick(TEXT["produced"], lang).replace("{title}", item.get("title") or "")
                 .replace("{made}", str(production["made"])).replace("{extra}", extra))
         log_communication(client_id, "outbound", f"dashboard_chat:{item.get('producer') or 'media'}", line)

@@ -3786,37 +3786,75 @@ class DrivePullStartRequest(BaseModel):
 
 # ─── The agents as their own characters (core/agent_characters, /admin/characters/) ──
 
-class CharacterOverrideRequest(BaseModel):
+class CharacterReferenceRequest(BaseModel):
     agent: str
-    element_id: str = ""
+    url: str = ""
+    media_id: str = ""
+    notes: str = ""
+
+
+class CharacterUploadRequest(BaseModel):
+    agent: str
+    content_b64: str
+    media_id: str = ""
+    notes: str = ""
+
+
+class CharacterClearRequest(BaseModel):
+    agent: str
+
+
+def _character_call(fn):
+    from core import agent_characters
+    try:
+        return {"success": True, "data": fn()}
+    except agent_characters.CharacterUnavailable as e:
+        raise HTTPException(status_code=400, detail=e.message[:200])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:200])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {str(e)[:160]}")
 
 
 @app.get("/api/admin/characters")
 def admin_characters(request: Request):
-    # Each agent with its Higgsfield element (name, id, status), the unmatched
-    # elements, conflicts, the pose library counts. Reads the STORED mapping.
+    # One row per agent: its stored reference image (url, media id, notes),
+    # the model used, the pose library counts. No Higgsfield call.
     _require_admin(request)
     from core import agent_characters
     return {"success": True, "data": agent_characters.view()}
 
 
-@app.post("/api/admin/characters/sync")
-def admin_characters_sync(request: Request):
-    # Re-read the element list now (a free read on uallak's key)
+@app.post("/api/admin/characters/reference")
+def admin_characters_reference(req: CharacterReferenceRequest, request: Request):
+    # Set / replace one agent's reference image from a pasted https URL
     _require_admin(request)
     from core import agent_characters
-    return {"success": True, "data": agent_characters.sync()}
+    return _character_call(lambda: agent_characters.set_reference(req.agent, url=req.url, media_id=req.media_id,
+                                                                  notes=req.notes, by="admin"))
 
 
-@app.post("/api/admin/characters/override")
-def admin_characters_override(req: CharacterOverrideRequest, request: Request):
-    # The manual pick for one agent ("" = back to the automatic match)
+@app.post("/api/admin/characters/upload")
+def admin_characters_upload(req: CharacterUploadRequest, request: Request):
+    # Set / replace one agent's reference image from an uploaded file: sent
+    # through Higgsfield's documented upload (POST /files/generate-upload-url)
     _require_admin(request)
+    import base64 as _b64
     from core import agent_characters
+    raw = req.content_b64.split(",", 1)[-1] if req.content_b64.startswith("data:") else req.content_b64
     try:
-        return {"success": True, "data": agent_characters.set_override(req.agent, req.element_id, by="admin")}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)[:200])
+        content = _b64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="the file could not be read")
+    return _character_call(lambda: agent_characters.set_reference(req.agent, media_id=req.media_id, notes=req.notes,
+                                                                  content=content, by="admin"))
+
+
+@app.post("/api/admin/characters/clear")
+def admin_characters_clear(req: CharacterClearRequest, request: Request):
+    _require_admin(request)
+    from core import agent_characters
+    return _character_call(lambda: agent_characters.clear_reference(req.agent, by="admin"))
 
 
 @app.get("/api/admin/drive-pull/info")
@@ -8360,11 +8398,6 @@ def tiktok_uploads_run():
         data["brand_brief"] = brand_brief.run_due(left) if left > 75 else {"skipped": "no budget left"}
     except Exception as e:
         data["brand_brief"] = {"error": type(e).__name__}
-    try:
-        from core import agent_characters
-        data["agent_elements"] = agent_characters.sync_due()      # every SYNC_HOURS; a free read
-    except Exception as e:
-        data["agent_elements"] = {"error": type(e).__name__}
     # The client-side backup (core/drive_backup): approved produced files → the
     # client's own "uallak" folder. What is left of the budget, at most 40 s
     left = min(40.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))

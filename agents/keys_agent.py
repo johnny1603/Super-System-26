@@ -45,8 +45,8 @@ KEYS = {
     # Media generation runs on PER-CLIENT Higgsfield keys (client_accounts,
     # platform='higgsfield') - deliberately no global generation key for CLIENT
     # content. The one exception: uallak's own agents as characters
-    # (core/agent_characters) — their reference elements belong to uallak's
-    # Higgsfield account, so those generations run on uallak's key (id:secret)
+    # (core/agent_characters) — generated from the reference images the
+    # manager set, on uallak's own Higgsfield key (id:secret)
     "HIGGSFIELD_AGENTS_KEY": os.environ.get("HIGGSFIELD_AGENTS_KEY", ""),
     "INSTAWP_API_KEY": os.environ.get("INSTAWP_API_KEY", ""),
     "GREEN_API_INSTANCE_ID": os.environ.get("GREEN_API_INSTANCE_ID", ""),

@@ -303,7 +303,10 @@ def attach_characters(entries: list) -> tuple:
             out.append({**s, "character": {"agent": agent, "pose_id": got["pose_id"]}})
         except Exception as e:
             failures.append({"asset_id": s.get("asset_id", ""), "agent": agent,
-                             "reason": getattr(e, "reason", "") or f"{type(e).__name__}: {str(e)[:150]}"})
+                             "reason": getattr(e, "reason", "") or f"{type(e).__name__}: {str(e)[:150]}",
+                             # the manager-facing line (MissingReference: "לא מוגדרת תמונת ייחוס עבור …")
+                             "message": getattr(e, "message", "") if isinstance(e, agent_characters.MissingReference)
+                             else ""})
             out.append(s)
     return out, failures
 
@@ -351,7 +354,8 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
         item = social_queue.add_design(client_id, record, title=post_item.get("title") or body.get("set_id", ""),
                                        channels=post_item.get("channels"), caption=post_item.get("caption", ""),
                                        planned_date=post_item.get("planned_date", ""), flags=flags)
-        return {"item": item, "problems": result["problems"]}
+        return {"item": item, "problems": result["problems"],
+                "character_errors": list(dict.fromkeys(m["message"] for m in missing if m.get("message")))}
     except Exception as e:
         _alert([f"client {client_id}: text-slide design for post {post_item.get('id')} failed "
                 f"({type(e).__name__}: {str(e)[:200]})"])

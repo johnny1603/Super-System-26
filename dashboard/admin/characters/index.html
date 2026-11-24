@@ -10,10 +10,10 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 /* The agents as their own characters (core/agent_characters,
-   docs/AGENT-CHARACTERS.md). Admin session only. Each agent ↔ its Higgsfield
-   reference element: matched by name "uallak-<agent>", re-read every 6 h,
-   overridable here. Nothing on this page creates or changes an element —
-   elements are built by hand in Higgsfield from approved source images. */
+   docs/AGENT-CHARACTERS.md). Admin session only. One row per agent: the
+   manager sets its REFERENCE IMAGE by hand (a pasted https URL or an uploaded
+   image), with the Higgsfield media / job id and optional notes. No automatic
+   matching, nothing is listed or re-read from Higgsfield. */
 :root {
   --bg: #0D0D0D; --panel: #171717; --panel-2: #1F1F1F; --accent: #FF4C1F;
   --white: #F7F4EF; --gray: #8A8A85; --border: rgba(255,255,255,0.08);
@@ -22,7 +22,7 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { overflow-x: hidden; }
 body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white); min-height:100vh; font-size:15px; }
-.wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+.wrap { max-width:1100px; margin:0 auto; padding:0 16px 60px; }
 .topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
   border-bottom:1px solid var(--border); background:linear-gradient(180deg,#141414,#0D0D0D); }
 .logo { font-size:19px; font-weight:900; letter-spacing:-1px; }
@@ -34,18 +34,27 @@ body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--white);
 .warn { color:var(--yellow); }
 .bad { color:var(--red); }
 .ok { color:var(--green); }
-select { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white);
-  border:1px solid var(--border); border-radius:10px; padding:5px 8px; max-width:100%; }
+input[type=text], input[type=url] { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white);
+  border:1px solid var(--border); border-radius:10px; padding:6px 8px; width:100%; min-width:0; }
+input.ltr { direction:ltr; text-align:left; }
 button { font-family:inherit; font-size:13px; background:var(--panel-2); color:var(--white); border:1px solid var(--border);
-  border-radius:10px; padding:6px 12px; cursor:pointer; }
+  border-radius:10px; padding:6px 12px; cursor:pointer; white-space:nowrap; }
 button.primary { background:var(--accent); border-color:var(--accent); color:#0D0D0D; font-weight:700; }
 button:disabled { opacity:.5; cursor:default; }
-.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
 code { font-family:ui-monospace,monospace; font-size:12px; direction:ltr; unicode-bidi:embed; word-break:break-all; }
 table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
-th, td { text-align:right; padding:6px; border-bottom:1px solid var(--border); vertical-align:top; }
+th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--border); vertical-align:top; }
+td.fields { min-width:260px; }
+td.fields > * + * { margin-top:6px; }
+.thumb { width:72px; height:72px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border);
+  object-fit:cover; display:block; }
+.thumb.empty { display:flex; align-items:center; justify-content:center; color:var(--gray); font-size:11px; }
 .scroll { overflow-x:auto; }
 ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
+.rowmsg { font-size:12px; min-height:16px; }
+label.file { display:inline-block; }
+label.file input { display:none; }
 #authNote { display:none; }
 </style>
 </head>
@@ -60,24 +69,16 @@ ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
   <div class="card">
     <h2>מצב</h2>
     <div id="status" class="muted">טוען…</div>
-    <div class="row">
-      <button class="primary" id="syncBtn" onclick="syncNow()">קרא מחדש עכשיו</button>
-      <span class="muted">נקרא גם אוטומטית כל 6 שעות. הדף הזה לא יוצר ולא משנה אף דמות ב-Higgsfield.</span>
-    </div>
+    <div class="muted" style="margin-top:6px">לכל סוכן תמונת ייחוס אחת שאתה קובע כאן, פעם אחת. כל יצירה עם הדמות שולחת את התמונה הזו למודל.
+      סוכן בלי תמונה: היצירה נכשלת והצ׳אט אומר "לא מוגדרת תמונת ייחוס עבור …". הדף הזה לא יוצר דמויות ב-Higgsfield.</div>
   </div>
 
   <div class="card">
     <h2>הסוכנים</h2>
-    <div class="muted">התאמה אוטומטית לפי השם <code>uallak-&lt;agent&gt;</code> (בלי הבדל אותיות). התאמה "רופפת" = שם שמכיל אותו (למשל עם קידומת). שתי דמויות לאותו סוכן = התנגשות: בוחרים ידנית.</div>
     <div class="scroll"><table>
-      <thead><tr><th>סוכן</th><th>דמות</th><th>מזהה</th><th>מצב</th><th>בחירה ידנית</th></tr></thead>
+      <thead><tr><th>סוכן</th><th>תצוגה</th><th>תמונת ייחוס</th><th></th></tr></thead>
       <tbody id="agents"></tbody>
     </table></div>
-  </div>
-
-  <div class="card">
-    <h2>דמויות uallak שלא הותאמו</h2>
-    <div id="unmatched" class="muted">—</div>
   </div>
 
   <div class="card">
@@ -87,7 +88,7 @@ ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
 
   <div class="card">
     <h2>דיווחים של סוכנים על דמות חלשה</h2>
-    <div class="muted">סוכן שחושב שהדמות שלו חלשה רק מדווח — הבנייה מחדש היא שלך, מתמונות מקור מאושרות.</div>
+    <div class="muted">סוכן שחושב שהדמות שלו חלשה רק מדווח — החלפת התמונה היא שלך.</div>
     <div id="reports" class="muted">—</div>
   </div>
 </div>
@@ -95,10 +96,7 @@ ul { margin:6px 18px 0 0; line-height:1.7; font-size:13px; }
 <script>
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = id => document.getElementById(id);
-const STATUS = {ready: ["מוכנה", "ok"], not_ready: ["עוד לא מוכנה ב-Higgsfield", "warn"], missing: ["לא נמצאה", "bad"],
-                conflict: ["התנגשות — לבחור ידנית", "bad"], override_unlisted: ["בחירה ידנית (לא ברשימה האחרונה)", "warn"]};
 const AGENT = {maya: "מאיה", lior: "ליאור", yoav: "יואב", johnny: "ג׳וני", elinor: "אלינור", nissim: "ניסים", uri: "אורי"};
-let DATA = null;
 
 async function api(path, body) {
   const res = await fetch(path, body === undefined ? {credentials: "same-origin"}
@@ -110,33 +108,37 @@ async function api(path, body) {
 }
 
 function when(iso) {
-  if (!iso) return "עוד לא";
+  if (!iso) return "";
   try { return new Date(iso).toLocaleString("he-IL"); } catch (e) { return iso; }
 }
 
+function rowHtml(a) {
+  const ag = esc(a.agent);
+  const thumb = a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img class="thumb" src="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy"></a>`
+    : `<div class="thumb empty">אין תמונה</div>`;
+  const state = a.set ? `<span class="ok">מוגדרת</span>${a.durable ? "" : ' · <span class="warn">בלי עותק אצלנו</span>'}${a.updated_at ? ` · ${esc(when(a.updated_at))}` : ""}`
+    : `<span class="bad">לא מוגדרת תמונת ייחוס</span>`;
+  return `<tr data-agent="${ag}">
+    <td><b>${esc(AGENT[a.agent] || a.name)}</b> <code>${ag}</code><div class="muted">${state}</div></td>
+    <td>${thumb}</td>
+    <td class="fields">
+      <input type="url" class="ltr" data-f="url" placeholder="https://… (קישור לתמונה)" value="${esc(a.url)}">
+      <input type="text" class="ltr" data-f="media_id" placeholder="Higgsfield media / job id" value="${esc(a.media_id)}">
+      <input type="text" data-f="notes" placeholder="הערות (לבוש, מסגור) — לא חובה" value="${esc(a.notes)}">
+      <div class="rowmsg muted" data-f="msg"></div>
+    </td>
+    <td><div class="row" style="margin-top:0;flex-direction:column;align-items:stretch">
+      <button class="primary" onclick="saveUrl('${ag}')">${a.set ? "החלפה" : "שמירה"}</button>
+      <label class="file"><button type="button" onclick="this.nextElementSibling.click()">העלאת תמונה</button><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="upload('${ag}', this)"></label>
+      ${a.set ? `<button onclick="clearRef('${ag}')">ניקוי</button>` : ""}
+    </div></td></tr>`;
+}
+
 function render(d) {
-  DATA = d;
-  const err = d.last_error === "not_configured" ? "המפתח של uallak ל-Higgsfield לא מוגדר (HIGGSFIELD_AGENTS_KEY) — להריץ scripts/set_higgsfield_agents_key.sh"
-    : d.last_error ? "הקריאה האחרונה נכשלה: " + d.last_error : "";
-  $("status").innerHTML = `${d.configured ? '<span class="ok">המפתח מוגדר</span>' : '<span class="bad">המפתח לא מוגדר</span>'}
-    · נקרא לאחרונה: ${esc(when(d.last_sync))}${err ? ` · <span class="warn">${esc(err)}</span>` : ""}`;
-  const els = d.elements || [];
-  $("agents").innerHTML = (d.agents || []).map(a => {
-    const st = STATUS[a.status] || [a.status, "muted"];
-    const opts = [`<option value="">אוטומטי</option>`].concat(els.map(e =>
-      `<option value="${esc(e.id)}" ${a.override === e.id ? "selected" : ""}>${esc(e.name || e.id)} (${esc(e.status || "?")})</option>`));
-    if (a.override && !els.some(e => e.id === a.override)) opts.push(`<option value="${esc(a.override)}" selected>${esc(a.override)}</option>`);
-    const cands = (a.candidates || []).length > 1 ? `<div class="muted">מועמדות: ${a.candidates.map(c => esc(c.name) + " <code>" + esc(c.id.slice(0, 8)) + "</code>").join(" · ")}</div>` : "";
-    return `<tr><td>${esc(AGENT[a.agent] || a.agent)} <code>${esc(a.agent)}</code></td>
-      <td>${esc(a.name || "—")}${a.match === "loose" && a.source !== "override" ? ' <span class="warn">(רופפת)</span>' : ""}${cands}</td>
-      <td><code>${esc(a.element_id || "—")}</code></td>
-      <td class="${st[1]}">${esc(st[0])}${a.source === "override" ? " · ידני" : ""}</td>
-      <td><select data-agent="${esc(a.agent)}" onchange="override(this)">${opts.join("")}</select></td></tr>`;
-  }).join("");
-  const un = d.unmatched || [];
-  $("unmatched").innerHTML = un.length ? `<ul>${un.map(e => `<li>${esc(e.name)} <code>${esc(e.id)}</code> · ${esc(e.status || "?")}</li>`).join("")}</ul>`
-    : "אין.";
-  if (d.other_elements) $("unmatched").innerHTML += `<div class="muted">ועוד ${esc(d.other_elements)} דמויות בחשבון שלא קשורות לסוכנים.</div>`;
+  $("status").innerHTML = `${d.configured ? '<span class="ok">המפתח של uallak ל-Higgsfield מוגדר</span>'
+      : '<span class="bad">המפתח לא מוגדר (HIGGSFIELD_AGENTS_KEY) — להריץ scripts/set_higgsfield_agents_key.sh</span>'}
+    · מודל: <code>${esc(d.model)}</code> (עד ${esc(d.max_references)} תמונות ייחוס בתמונה אחת)`;
+  $("agents").innerHTML = (d.agents || []).map(rowHtml).join("");
   const poses = d.poses || {};
   const keys = Object.keys(poses);
   $("poses").innerHTML = keys.length ? `<ul>${keys.map(k => `<li>${esc(AGENT[k] || k)}: ${esc(poses[k].approved)} מאושרות · ${esc(poses[k].pending)} ממתינות · ${esc(poses[k].transparent)} שקופות</li>`).join("")}</ul>` : "עוד אין תנוחות.";
@@ -144,23 +146,51 @@ function render(d) {
   $("reports").innerHTML = rep.length ? `<ul>${rep.slice().reverse().map(r => `<li>${esc(when(r.at))} · ${esc(AGENT[r.agent] || r.agent)} · ${esc(r.by)}: <bdi dir="auto">${esc(r.reason)}</bdi></li>`).join("")}</ul>` : "אין.";
 }
 
+function field(agent, f) { return document.querySelector(`tr[data-agent="${agent}"] [data-f="${f}"]`); }
+
+function busy(agent, on, msg, cls) {
+  document.querySelectorAll(`tr[data-agent="${agent}"] button`).forEach(b => b.disabled = on);
+  const m = field(agent, "msg");
+  if (m) { m.className = "rowmsg " + (cls || "muted"); m.textContent = msg || ""; }
+}
+
+async function send(agent, path, body, doneMsg) {
+  busy(agent, true, "שומר…");
+  try {
+    const d = (await api(path, body)).data || {};
+    render(d);
+    busy(agent, false, d.warning ? "נשמר — " + d.warning : doneMsg, d.warning ? "warn" : "ok");
+  } catch (e) {
+    if (e.message !== "auth") busy(agent, false, "לא נשמר: " + e.message, "bad");
+  }
+}
+
+function saveUrl(agent) {
+  const url = field(agent, "url").value.trim();
+  if (!url) { busy(agent, false, "להדביק קישור https לתמונה, או להעלות תמונה.", "warn"); return; }
+  send(agent, "/api/admin/characters/reference",
+       {agent, url, media_id: field(agent, "media_id").value.trim(), notes: field(agent, "notes").value.trim()}, "נשמר.");
+}
+
+function upload(agent, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { busy(agent, false, "התמונה גדולה מ-10MB.", "bad"); return; }
+  const reader = new FileReader();
+  reader.onload = () => send(agent, "/api/admin/characters/upload",
+    {agent, content_b64: String(reader.result), media_id: field(agent, "media_id").value.trim(),
+     notes: field(agent, "notes").value.trim()}, "הועלה ונשמר.");
+  reader.readAsDataURL(file);
+  input.value = "";
+}
+
+function clearRef(agent) {
+  send(agent, "/api/admin/characters/clear", {agent}, "נוקה.");
+}
+
 async function load() {
   try { render((await api("/api/admin/characters")).data || {}); }
   catch (e) { if (e.message !== "auth") $("status").textContent = "לא נטען."; }
-}
-
-async function syncNow() {
-  $("syncBtn").disabled = true;
-  try { render((await api("/api/admin/characters/sync", {})).data || {}); }
-  catch (e) { if (e.message !== "auth") $("status").textContent = "הקריאה נכשלה."; }
-  $("syncBtn").disabled = false;
-}
-
-async function override(sel) {
-  sel.disabled = true;
-  try { render((await api("/api/admin/characters/override", {agent: sel.dataset.agent, element_id: sel.value})).data || {}); }
-  catch (e) { if (e.message !== "auth") { $("status").textContent = "הבחירה לא נשמרה: " + e.message; } }
-  sel.disabled = false;
 }
 
 load();
