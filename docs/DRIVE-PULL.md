@@ -145,10 +145,9 @@ durable job above, with a per-file result.
 
 **Where it works:**
 - **`/admin/drive/`:** the "הוספה ישירה ללקוח" button next to "הצג" (`POST /api/admin/drive-pull/add-link`).
-- **The client Media tab:** the "add from link" field (`POST /api/client/media/add-link`). Its poll
-  is `…/add-link/step`, and the admin "enter as client" view is read-only.
-  - Every line is in the client's 5 languages.
-  - A link we can't open shows the service-account address with a copy button.
+- **The client Media tab: REMOVED 2026-11-24.** It sat next to the grid and a client "reviews" folder
+  was copied through it instead of being connected. Connecting is `drive_folders` on the Media tab
+  (docs/DRIVE-FOLDERS.md). The route `POST /api/client/media/add-link` still exists; no page calls it.
 - **The client chat:** a message holding a Drive link makes code (`support_agent._drive_link_turn`)
   propose ONE card, `add_media_from_drive_link` ("add this to your media?"). This happens whatever
   the model answered.

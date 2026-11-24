@@ -692,9 +692,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   Free cap `client_settings.drive_assets_free_items` (150): metered cost, quote, ONE billing request, credits resume
   (`/api/admin/drive-assets/{id}/credits`). Daily job `drive-assets-scan`. `find_assets` is searched FIRST by
   `media_agent.generate_from_brief` (the agent chooses; REFERENCED by its own file_id, never copied — `core/asset_refs`:
-  a working copy only where an operation needs one (Meta's public link), deleted when it returns; the one standing copy is
-  the publish snapshot into the client's social_output folder, setting `drive_snapshot_on_publish`, default ON); a proof slide / real-only
-  format with nothing real = objection. A social_output folder is never indexed (snapshots). NO blind daily walk
+  a working copy only where an operation needs one (Meta's public link), deleted when it returns; the publish snapshot was
+  removed 2026-11-24 for `core/drive_backup`: what WE produced and the manager approved → "uallak/<posts|slides|images|video>/<YYYY-MM>"
+  inside a writable folder the client shared, exactly once, never a client-owned file; none writable = said in the Media tab);
+  a proof slide / real-only format with nothing real = objection. A social_output folder is never indexed. The connect flow
+  is on the MEDIA tab (2026-11-24; settings links there); the old pull's copy-by-link control is gone from it
+  (`/admin/drive/` only, labelled), and pulled copies whose source is still theirs = the "pulled duplicates" chip. NO blind daily walk
   (2026-11-23): `check_changes` asks Drive's changes feed per stored token (nothing changed = nothing listed; a bad
   token = one walk); "I uploaded the photos" in chat (`core/drive_index_chat`) and an agent's first look
   (`ensure_indexed`) index at once; `verify_usable` at use time marks a vanished file `missing` and picks the next.

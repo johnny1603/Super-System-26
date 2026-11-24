@@ -84,8 +84,9 @@ CHANGE_FIELDS = ("nextPageToken,newStartPageToken,changes(fileId,removed,file(id
                  "createdTime,size,md5Checksum,thumbnailLink,trashed,parents,"
                  "imageMediaMetadata(width,height,time,cameraMake,cameraModel,location),"
                  "videoMediaMetadata(width,height,durationMillis)))")
-# Never indexed: the client's social_output folder holds the publish snapshots
-# (core/asset_refs) — indexing them would add every published asset twice
+# Never indexed: the client's social_output folder holds finished output (older
+# publish snapshots, our posts) — indexing it would count published assets twice.
+# The system's own backup folder (core/drive_backup) is an excluded subfolder.
 NOT_INDEXED_ROLE = "social_output"
 # Index entries that are NOT usable assets: "removed" by the media library,
 # "missing" = the file was gone / moved when an agent went to use it
@@ -1109,7 +1110,10 @@ def _apply_changes(state: dict, root: dict, nodes: dict, changes: list, run_id: 
         parents = [nodes[p] for p in (f.get("parents") or []) if p in nodes and nodes[p]["root_id"] == root["id"]]
         mime = f.get("mimeType") or ""
         if mime == drive_folders.FOLDER_MIME:
-            if parents and fid not in nodes and not drive_folders.is_system_folder(f.get("name")):
+            if parents and fid not in nodes and not drive_folders.is_system_folder(f.get("name")) \
+                    and not any(p["excluded"] or p["role"] == NOT_INDEXED_ROLE for p in parents):
+                # (a new folder inside an excluded one — e.g. the backup's month
+                # folders, core/drive_backup — is never walked, so it needs no walk)
                 walk = True                             # a new / moved-in subfolder: its files never show as changes
             continue
         if not mime.startswith(("image/", "video/")):

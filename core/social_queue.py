@@ -608,6 +608,13 @@ def approve(client_id: int, ids, by: str = "client") -> list:
                 agent_characters.on_items_approved(client_id, done)
             except Exception as e:
                 print(f"[{SERVICE_NAME}] client {client_id}: poses not recorded ({type(e).__name__})")
+        # What the system produced and the manager approved → the client's own
+        # backup folder (core/drive_backup; copied by the minute tick)
+        try:
+            from core import drive_backup
+            drive_backup.enqueue(client_id, done)
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] client {client_id}: backup not queued ({type(e).__name__})")
     return done
 
 
@@ -790,22 +797,8 @@ def mark_published(client_id: int, item_id: str, by: str = "client") -> dict:
     for c in item["channels"]:
         item["delivered"][c] = {"how": "done", "at": _now().isoformat()}
     _log(item, "published", by)
-    _snapshot(client_id, item)
     _save(client_id, queue)
     return item
-
-
-def _snapshot(client_id: int, item: dict):
-    """Published: a real asset referenced from the client's connected folder
-    is snapshotted into their social_output folder (core/asset_refs; setting
-    drive_snapshot_on_publish, default ON). Never raises."""
-    try:
-        from core import asset_refs
-        snap = asset_refs.snapshot_published(client_id, item)
-    except Exception as e:
-        snap = {"failed": type(e).__name__}
-    if snap:
-        item["snapshot"] = snap
 
 
 # ─── THE GATE ────────────────────────────────────────────────────────────────
@@ -843,7 +836,6 @@ def mark_delivered(client_id: int, channel: str, how: str, file_id: str = "", it
         item["delivered"][channel] = {"how": how, "at": _now().isoformat()}
         if all((item["delivered"].get(c) or {}).get("how") == "done" for c in item["channels"]):
             item["status"], item["published_at"] = "published", _now().isoformat()
-            _snapshot(client_id, item)
         _log(item, f"delivered:{channel}:{how}", "system")
         _save(client_id, queue)
     except Exception as e:

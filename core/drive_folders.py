@@ -529,6 +529,8 @@ def set_excluded(client_id: int, connection_id: str, excluded: bool) -> dict:
     record = next((r for r in data["connections"] if r.get("id") == str(connection_id)), None)
     if not record or not record.get("parent_connection_id"):
         raise FolderError("not_found", "אפשר להוציא מהאינדוקס רק תת-תיקייה.")
+    if record.get("backup"):
+        return next(r for r in _resolve(data["connections"]) if r["id"] == record["id"])   # our backup: always out
     record["excluded"] = bool(excluded)
     _save(client_id, data)
     return next(r for r in _resolve(data["connections"]) if r["id"] == record["id"])
@@ -586,7 +588,7 @@ def tree(client_id: int, rows: list = None) -> list:
                 "item_count": int(r.get("item_count") or 0), "indexed_count": int(r.get("indexed_count") or 0),
                 "last_indexed_at": r.get("last_indexed_at", ""), "last_auto_scan_at": r.get("last_auto_scan_at", ""),
                 "error_text": r.get("error_text", ""), "depth": int(r.get("depth") or 0),
-                "drive_kind": r.get("drive_kind", ""),
+                "drive_kind": r.get("drive_kind", ""), "backup": bool(r.get("backup")),
                 "children": [node(k) for k in kids]}
 
     roots = [r for r in rows if not r.get("parent_connection_id")]

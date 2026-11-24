@@ -74,11 +74,8 @@ FIELDS = {
     "drive_assets_batch_items": {
         "type": "int", "paying": 60, "exempt": 60, "min": 5, "max": 5000,
         "label_he": "תיקיות דרייב — פריטים לאינדוקס בכל ריצה (החדשים קודם)"},
-    # A published post's real assets are snapshotted into the client's
-    # social_output folder (core/asset_refs) — default ON, the manager may switch it off
-    "drive_snapshot_on_publish": {
-        "type": "bool", "paying": True, "exempt": True,
-        "label_he": "תיקיות דרייב — עותק של תמונות אמיתיות לתיקיית הפרסומים כשפוסט מתפרסם"},
+    # (drive_snapshot_on_publish was removed 2026-11-24: the client-side backup,
+    # core/drive_backup, is the one mechanism — and it never copies the client's own files)
 }
 
 

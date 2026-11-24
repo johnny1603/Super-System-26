@@ -80,7 +80,7 @@ class OneGrid(unittest.TestCase):
                    'id="libFrom"', 'id="libTo"', 'id="libMin"', 'id="libMax"', 'id="libSort"', 'id="libQ"',
                    'data-lib-preset="rejected"', 'data-lib-preset="unused_old"', 'data-lib-all="1"',
                    'data-lib-clear="1"', 'id="libSelBar"', 'id="libPreview"', 'id="libResult"', 'id="libGrid"',
-                   'id="mlLink"', 'data-i18n="ml_where_hint"', 'id="brandBox"', 'id="planBox"',
+                   'id="driveConnect"', 'data-i18n="ml_where_hint"', 'id="brandBox"', 'id="planBox"',
                    'id="mediaFolders"', 'id="mediaFolderRows"'):
             self.assertIn(el, media)
         self.assertLess(media.index('id="libSummary"'), media.index('id="brandBox"'))

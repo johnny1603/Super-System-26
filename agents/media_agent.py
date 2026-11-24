@@ -752,7 +752,7 @@ def _use_real_asset(client_id: int, brief, chosen: dict, platform: str) -> dict:
     """The chosen real file, REFERENCED by its own Drive file_id — never
     copied (core/asset_refs). Preview, approval, download and the sends all
     work from that id; a working copy is made only where an operation needs
-    one, and the publish snapshot is the one standing copy."""
+    one. It is never backed up either (core/drive_backup copies only what we produced)."""
     kind = "video" if chosen.get("media_type") == "video" else "image"
     folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
     platform = platform if platform in folders else "instagram"

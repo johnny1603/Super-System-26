@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>uallak — משיכה מ-Drive</title>
+<title>uallak — העתקה לתיקייה שלנו (משיכה מ-Drive)</title>
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon.png">
 <style>
@@ -56,11 +56,20 @@ th, td { text-align:right; padding:4px 6px; border-bottom:1px solid var(--border
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">u<span>allak</span> · משיכה מ-Drive</div>
+  <div class="logo">u<span>allak</span> · העתקה לתיקייה שלנו (משיכה מ-Drive)</div>
   <a href="/admin/">→ לניהול</a>
 </div>
 <div class="wrap">
   <div id="authNote" class="card" style="display:none;">לא מחובר לניהול. <a href="/admin/" style="color:var(--accent)">להתחברות</a></div>
+  <!-- 2026-11-24: this page COPIES files into OUR media folder (core/drive_pull). It is NOT how a
+       client's folder is connected — that is the client's Media tab (core/drive_folders: indexed in
+       place, nothing copied). Kept for our own folder: pulls, attach, merge, the diagnostic. -->
+  <div class="card" id="notConnectBanner" style="border-color:#FFB020;">
+    <h2 style="color:#FFB020;">⚠ הדף הזה מעתיק קבצים לתיקייה שלנו — הוא לא מחבר תיקייה של לקוח</h2>
+    <div class="muted">כל מה שמודבק כאן <b>מועתק</b> לתיקיית המדיה של הלקוח באחסון של uallak, והסוכנים לא רואים את התיקייה המקורית כ"תיקייה מחוברת".
+      כדי לחבר תיקייה של לקוח (ביקורות, קטלוג, תמונות לקוחות) כך שתישאר אצלו ותאונדקס במקום, בלי העתקה:
+      בלשונית <b>המדיה</b> של הלקוח ← "חיבור תיקייה מה-Drive שלכם".</div>
+  </div>
 
   <div class="card">
     <h2>1. לשתף תיקייה אחת עם חשבון השירות</h2>

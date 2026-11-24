@@ -212,6 +212,60 @@ def _fmt(name: str, mime: str) -> str:
     return ext[:8] or (mime.split("/")[-1][:12] if mime else "")
 
 
+# ─── Pulled duplicates (2026-11-24) ─────────────────────────────────────────
+# The OLD pull (core/drive_pull) COPIED client files into our media folder; each
+# copy carries appProperties uallak_pulled_from=<source id>. A copy whose source
+# is STILL in the client's own Drive is a duplicate: the Media tab offers them
+# as one filter ("pulled duplicates"). Nothing is deleted automatically.
+# "Still in the client's Drive" = the source is in their connected-folder index
+# (free), else Drive says it exists, is not trashed and is NOT in our own Shared
+# Drive (a merge copies between our own folders — never a client duplicate).
+PULLED_CHECK_MAX = 200          # Drive lookups per listing (the rest: next time)
+PULLED_CACHE_S = 3600
+_pulled_cache = {}              # source id -> (at, still in the client's Drive)
+
+
+def _source_still_in_client_drive(source_id: str, our_drive: str) -> bool:
+    hit = _pulled_cache.get(source_id)
+    if hit and hit[0] > time.time() - PULLED_CACHE_S:
+        return hit[1]
+    from core import drive_service, drive_storage
+    try:
+        with drive_storage.as_service_account():
+            meta = drive_service.get_meta(source_id, "id,trashed,driveId")
+        alive = not meta.get("trashed") and not (our_drive and meta.get("driveId") == our_drive)
+    except Exception as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status not in (403, 404):
+            return False                  # Drive trouble: not cached, asked again next time
+        alive = False                     # gone, or no longer shared with us
+    _pulled_cache[source_id] = (time.time(), alive)
+    return alive
+
+
+def pulled_duplicates(client_id: int, pulled: dict, index_ids: set) -> set:
+    """{our file id} among `pulled` ({our file id: source id}) whose source is
+    still in the client's own Drive."""
+    out, asked = set(), 0
+    our_drive = ""
+    for fid, source in pulled.items():
+        if source in index_ids:
+            out.add(fid)
+            continue
+        if asked >= PULLED_CHECK_MAX and source not in _pulled_cache:
+            continue
+        if not our_drive:
+            try:
+                from core import drive_pull
+                our_drive = drive_pull._our_drive_id() or "-"
+            except Exception:
+                our_drive = "-"
+        asked += source not in _pulled_cache
+        if _source_still_in_client_drive(source, our_drive if our_drive != "-" else ""):
+            out.add(fid)
+    return out
+
+
 def inventory(client_id: int, refresh: bool = False) -> list:
     """Every media item the system knows about for the client, newest first."""
     from core import drive_mirror, drive_assets, drive_folders
@@ -239,13 +293,24 @@ def inventory(client_id: int, refresh: bool = False) -> list:
                     "format": _fmt(f.get("name", ""), f.get("mime_type", "")),
                     "folder": path, "folder_key": "media:" + path, "folder_keys": keys,
                     "created": f.get("created_time", ""), "size": int(f.get("size") or 0),
-                    "description": "", "tags": [], "web_view_link": f.get("web_view_link", "")})
+                    "description": "", "tags": [], "web_view_link": f.get("web_view_link", ""),
+                    "pulled_from": f.get("pulled_from", "")})
     try:
         state = drive_assets._load(client_id)
         conns = {c["id"]: c for c in drive_folders.load(client_id)}
     except Exception as e:
         _log(f"client {client_id}: connected folders unreadable ({type(e).__name__})")
         state, conns = {"items": {}}, {}
+    pulled = {r["id"]: r["pulled_from"] for r in out if r.get("pulled_from")}
+    if pulled:
+        live = {fid for fid, i in (state.get("items") or {}).items() if i.get("state") not in drive_assets.OUT_STATES}
+        try:
+            dups = pulled_duplicates(client_id, pulled, live)
+        except Exception as e:
+            _log(f"client {client_id}: pulled duplicates not checked ({type(e).__name__})")
+            dups = set()
+        for r in out:
+            r["pulled_duplicate"] = r["id"] in dups
     for item in (state.get("items") or {}).values():
         if item.get("state") in drive_assets.OUT_STATES:     # removed, or gone when an agent went to use it
             continue
@@ -291,7 +356,8 @@ def summary(items: list) -> dict:
     for i in items:
         by[i["source"]]["count"] += 1
         by[i["source"]]["size"] += i["size"]
-    return {"count": len(items), "size": sum(i["size"] for i in items), "by_source": by}
+    return {"count": len(items), "size": sum(i["size"] for i in items), "by_source": by,
+            "pulled_duplicates": sum(1 for i in items if i.get("pulled_duplicate"))}
 
 
 # ─── Filters ─────────────────────────────────────────────────────────────────
@@ -311,7 +377,8 @@ def clean_filter(raw: dict) -> dict:
          "date_from": str(raw.get("date_from") or "")[:10], "date_to": str(raw.get("date_to") or "")[:10],
          "size_min_mb": _num(raw.get("size_min_mb")), "size_max_mb": _num(raw.get("size_max_mb")),
          "older_than_days": _num(raw.get("older_than_days")),
-         "q": str(raw.get("q") or "").strip()[:200]}
+         "q": str(raw.get("q") or "").strip()[:200],
+         "pulled_duplicate": str(raw.get("pulled_duplicate") or "").lower() in ("1", "true", "yes")}
     return f
 
 
@@ -322,6 +389,8 @@ def _list(value) -> list:
 
 
 def matches(item: dict, f: dict, now: datetime = None) -> bool:
+    if f.get("pulled_duplicate") and not item.get("pulled_duplicate"):
+        return False
     if f["source"] and item["source"] not in f["source"]:
         return False
     if f["folder"] and f["folder"] not in item["folder_keys"]:

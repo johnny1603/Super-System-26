@@ -40,7 +40,7 @@ plus Drive's own thumbnail link. Ownership checks (`drive_mirror._assert_in_clie
 `drive_mirror.thumbnail`, `drive_download._verify_in_client_tree`) accept an id that is in the
 client's connected-folder index (`asset_refs.is_connected`: not removed, folder not excluded).
 
-Copies happen in exactly two places:
+A copy of the client's own file happens in exactly one place:
 
 1. **Working copy, only when an operation needs one.** Today: Meta publishing needs a PUBLIC link,
    and making the client's original public would change their sharing — so
@@ -49,17 +49,41 @@ Copies happen in exactly two places:
    An unreleased copy is deleted by the daily `drive-assets-scan` run after 24 h
    (`sweep_working_copies`). `asset_refs.working_copy()` is the context manager for any future step
    that must hold bytes (compositing a photo into a slide — the slide renderer does not do that today).
-2. **Publish snapshot**, client setting `drive_snapshot_on_publish` (default ON; Control Room →
-   client settings to switch off): when a post is published (`social_queue.mark_published`, or every
-   channel delivered `done`), a referenced asset is copied into the client's connected
-   **social_output** folder (`appProperties.uallak_snapshot_of`, idempotent) and recorded on the item
-   as `snapshot`. No social_output folder connected → `snapshot.skipped = no_social_output_folder`.
-
-Nothing else is ever copied.
+The publish snapshot into social_output (setting `drive_snapshot_on_publish`) was **removed
+2026-11-24**: the client-side backup (§Backup) is the one mechanism, and it never copies a file the
+client already has. Nothing else of theirs is ever copied.
 
 A **social_output** folder (a root, or a subfolder given that role) is never indexed
 (`drive_assets.NOT_INDEXED_ROLE`): the walk skips it and drops anything indexed there before, so
-the snapshots are not counted again as client assets. The root shows status `ok`.
+finished output is not counted again as client assets. The root shows status `ok`.
+
+## Backup in the client's Drive (2026-11-24, `core/drive_backup`)
+
+The system keeps its own folder **"uallak"** inside a folder the client shared, with subfolders by
+type and month: `uallak/posts|slides|images|video/YYYY-MM/`.
+
+- **When:** on first need. `social_queue.approve` queues every approved item the system produced
+  (sources post / slide / chat / plan, no `real_asset`); the minute tick (`/api/tiktok/uploads/run` →
+  `drive_backup.run_due`) copies them (`files.copy` inside Drive, as the service account).
+- **Where:** a connected ROOT whose Drive capabilities allow adding children, social_output first.
+  Never anything outside a folder the client shared; a disconnected folder is never written again.
+- **Exactly once:** the ledger (`done`) plus `appProperties.uallak_backup_of=<our id>` on the copy. Each
+  post also gets one text file in `posts/` (caption, channels, date, files).
+- **Never backed up:** a file not in OUR Shared Drive, a copy the old pull made
+  (`uallak_pulled_from`), a working copy, a referenced real asset. A client whose files already live in
+  their own Drive (`drive_storage` client_drive) needs none.
+- **Not indexed:** the "uallak" folder is recorded as an excluded subfolder with `backup: true` (no
+  controls in the UI; `set_excluded` can't include it). A new folder inside an excluded one no longer
+  triggers a walk.
+- **Said plainly** in the Media tab's connect section (`backup` in `GET /api/client/drive-folders`):
+  backed up so far + a link, waiting for the first approval, **no writable shared folder** (asks the
+  manager to share one with Editor), **storage_quota** (a My Drive folder: Google refuses files owned
+  by a service account there → share a Shared Drive folder), or "already in your Drive". Nothing fails
+  silently; a folder-less or quota state is retried every 30 min, or at once when a folder is connected.
+
+State: app_settings `drive_backup:<id>`. Tests: `tests/test_drive_backup.py`.
+**Not run against a real Drive:** `canAddChildren` on a My Drive folder shared as Editor, and whether
+`files.copy` into a client's My Drive folder is refused for quota (expected; then `storage_quota`).
 
 ## Change detection, not daily walks (2026-11-23)
 
@@ -109,7 +133,16 @@ subfolders; plus totals, whether an index run is going and the free items left. 
 the files themselves are searched by `find_assets` when something is produced. Older posts produced before this change still point at their earlier
 copy in our media folder (source `real_copy` in the media library).
 
-## Adding a folder (settings → "תיקיות דרייב מחוברות")
+## Adding a folder (Media tab → "חיבור תיקייה מה-Drive שלכם")
+
+Since 2026-11-24 the flow lives on the **Media tab**, under the connected-folders list (the primary
+entry point); client settings keeps a button that opens it there. The old pull's "add from link"
+control, which COPIED a folder into our media folder, is gone from the Media tab (it lives only on
+`/admin/drive/`, labelled as a copy into our folder). Copies it already made whose source is still in
+the client's Drive show under the Media tab's **"כפילויות שנמשכו"** chip: one click filters and selects
+them; deleting is the bar's button with its one confirmation (`media_inventory.pulled_duplicates`:
+the source is in the connected index, else Drive says it exists, isn't trashed and isn't in our own
+Shared Drive).
 
 1. Paste the link → `POST /api/client/drive-folders/preview`: the folder is read (listing
    verified), the role inferred from its NAME (Hebrew + English keywords,

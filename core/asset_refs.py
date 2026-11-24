@@ -8,7 +8,7 @@ selection, ranking, preview, the approval card, download and the TikTok /
 YouTube sends (which stream byte ranges straight from Drive) all work from
 that file_id plus Drive's own thumbnail link.
 
-Copies happen in exactly two places:
+A copy of the client's own file happens in exactly one place:
 
 1. A WORKING COPY, only when an operation genuinely needs one — today that is
    Meta publishing, which needs a PUBLIC link (making the client's own file
@@ -20,14 +20,11 @@ Copies happen in exactly two places:
    step that must hold bytes (e.g. compositing a real photo into a slide —
    the slide renderer does not do that today).
 
-2. A PUBLISH SNAPSHOT: when a post is actually published, the assets it used
-   are copied into the client's connected social_output folder, so the
-   published post survives the client moving or deleting the original.
-   Client setting `drive_snapshot_on_publish`, default ON; the manager can
-   switch it off in the Control Room. No social_output folder connected → no
-   snapshot (recorded on the item as `snapshot.skipped`).
+(The publish snapshot into social_output was removed 2026-11-24: the
+client-side backup, core/drive_backup, is the one mechanism, and it copies
+only what WE produced — never a file that already lives in the client's Drive.)
 
-Nothing else is ever copied. Working-copy bookkeeping: app_settings
+Nothing else of theirs is ever copied. Working-copy bookkeeping: app_settings
 `working_copies:<id>`.
 """
 
@@ -177,49 +174,3 @@ def sweep_working_copies() -> int:
             if at <= cutoff and delete_working_copy(client_id, copy_id):
                 done += 1
     return done
-
-
-# ─── The publish snapshot (setting, default ON) ─────────────────────────────
-
-def snapshot_enabled(client_id: int) -> bool:
-    try:
-        from core import client_settings
-        value = client_settings.get(client_id).get("drive_snapshot_on_publish")
-    except Exception:
-        value = None
-    return True if value is None else bool(value)
-
-
-def _social_output_folder(client_id: int) -> str:
-    from core import drive_folders
-    for c in drive_folders.load(client_id):
-        if c.get("role") == "social_output" and not c.get("excluded_effective") and not c.get("parent_connection_id"):
-            return c.get("folder_id", "")
-    for c in drive_folders.load(client_id):
-        if c.get("role") == "social_output" and not c.get("excluded_effective"):
-            return c.get("folder_id", "")
-    return ""
-
-
-def snapshot_published(client_id: int, item: dict) -> dict:
-    """Copy the connected-folder assets a just-published item used into the
-    client's social_output folder. Returns what to store on the item as
-    `snapshot`. Never raises."""
-    try:
-        if not snapshot_enabled(client_id):
-            return {"skipped": "setting_off"}
-        file_id = item.get("file_id") or ""
-        if not file_id or not is_connected(client_id, file_id):
-            return {}
-        folder = _social_output_folder(client_id)
-        if not folder:
-            return {"skipped": "no_social_output_folder"}
-        from core import drive_service, drive_storage
-        with drive_storage.as_service_account():
-            earlier = drive_service.find_by_app_property(folder, SNAPSHOT_KEY, file_id)
-            copy = earlier[0] if earlier else drive_service.copy_file(
-                file_id, folder, app_properties={SNAPSHOT_KEY: file_id, "uallak_queue_item": str(item.get("id", ""))})
-        return {"file_id": copy.get("id", ""), "of": file_id, "folder_id": folder, "at": _now().isoformat()}
-    except Exception as e:
-        _log(f"client {client_id}: snapshot of {item.get('file_id')} failed ({type(e).__name__})")
-        return {"failed": type(e).__name__}

@@ -250,6 +250,9 @@ def _shape(item: dict) -> dict:
               "size": int(item["size"]) if str(item.get("size") or "").isdigit() else None,
               "thumbnail_link": item.get("thumbnailLink", ""),
               "web_view_link": item.get("webViewLink", "")}
+    pulled = str((item.get("appProperties") or {}).get("uallak_pulled_from") or "")
+    if pulled:
+        shaped["pulled_from"] = pulled      # a copy the old pull made (core/drive_pull)
     if kind == "shortcut":
         # A SHORTCUT is a pointer; the file itself lives outside the client's
         # folder, so nothing can be uploaded or published from it. Drive makes

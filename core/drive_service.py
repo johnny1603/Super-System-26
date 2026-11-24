@@ -341,8 +341,10 @@ def list_files(folder_id: str, fields: str = "id,name,mimeType,size") -> list:
 # Metadata only — these never download a file body. shortcutDetails: a
 # shortcut is NOT the file (its target lives elsewhere), so the mirror must
 # be able to tell (2026-11-11, docs/DRIVE-PULL.md §Why a dropped file hid).
+# appProperties: a file the old pull copied in carries uallak_pulled_from=<source id>
+# (core/drive_pull) — the Media tab's "pulled duplicates" filter reads it
 MIRROR_FILE_FIELDS = ("id,name,mimeType,modifiedTime,createdTime,size,thumbnailLink,webViewLink,parents,"
-                      "shortcutDetails(targetId,targetMimeType)")
+                      "shortcutDetails(targetId,targetMimeType),appProperties")
 FOLDER_MIME = "application/vnd.google-apps.folder"
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
 

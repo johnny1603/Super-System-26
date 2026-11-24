@@ -326,9 +326,7 @@ class PastedLink(Base):
         api = P._read("core", "api_server.py")
         body = api[api.index("def _client_link_answer"):api.index("def _client_job")]
         self.assertIn('"already_in_folder": True', body)
-        page = P._read("dashboard", "client", "index.html")
-        self.assertIn("d.already_in_folder", page)
-        self.assertRegex(page, r"ml_link_already_in: \{ he:'[^']+', en:'[^']+', fr:'[^']+', ar:'[^']+', ru:'[^']+' \}")
+        # (the client Media tab's copy-by-link field was removed 2026-11-24 — the admin page keeps it)
         self.assertIn("r.data.already_in_folder", P._read("dashboard", "admin", "drive", "index.html"))
 
 

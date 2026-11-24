@@ -8,9 +8,8 @@ What must stay true:
 - Meta's public link is made on a WORKING COPY in our folder, never on the
   client's original, and the copy is deleted once the publish returns (or by
   the daily sweep when it never returned); working_copy() deletes on exit;
-- on publish, the asset is snapshotted into the client's social_output
-  folder — setting drive_snapshot_on_publish, default ON, can be switched
-  off; no social_output folder = skipped; a generated file is not snapshotted;
+- publishing copies nothing (the publish snapshot was replaced by
+  core/drive_backup, 2026-11-24 — tests/test_drive_backup.py);
 - the Drive-folders screen asks for Editor (Content manager in a Shared Drive).
 
 Stdlib only. Run from the repo root:  python tests/test_asset_refs.py -v
@@ -166,37 +165,19 @@ class WorkingCopy(Base):
         self.assertEqual(self.deleted, ["OLD"])
 
 
-class Snapshot(Base):
-    def test_published_asset_is_snapshotted_into_social_output(self):
+class NoPublishSnapshot(Base):
+    # 2026-11-24: the publish snapshot is gone — core/drive_backup is the one mechanism
+    def test_publishing_copies_nothing(self):
         self.approved("CLIENT_FILE")
         item = social_queue.mark_published(CID, "q1")
-        self.assertEqual(self.copies[0][:2], ("CLIENT_FILE", "OUTFOLDER"))
-        self.assertEqual(item["snapshot"]["of"], "CLIENT_FILE")
-
-    def test_channel_publish_snapshots_too(self):
-        self.approved("CLIENT_FILE")
         social_queue.mark_delivered(CID, "instagram", "done", item_id="q1")
-        self.assertEqual(self.queue[0]["status"], "published")
-        self.assertEqual(len(self.copies), 1)
+        self.assertEqual((self.copies, "snapshot" in item), ([], False))
 
-    def test_default_on_and_the_manager_can_switch_it_off(self):
-        self.assertTrue(asset_refs.snapshot_enabled(CID))
-        self.assertIs(client_settings.FIELDS["drive_snapshot_on_publish"]["paying"], True)
-        self.cfg["drive_snapshot_on_publish"] = False
-        self.approved("CLIENT_FILE")
-        item = social_queue.mark_published(CID, "q1")
-        self.assertEqual((self.copies, item["snapshot"]), ([], {"skipped": "setting_off"}))
-
-    def test_no_social_output_folder_is_skipped(self):
-        self.conns.pop()
-        self.approved("CLIENT_FILE")
-        self.assertEqual(social_queue.mark_published(CID, "q1")["snapshot"], {"skipped": "no_social_output_folder"})
-        self.assertEqual(self.copies, [])
-
-    def test_a_generated_file_is_not_snapshotted(self):
-        self.approved("GENERATED_IN_OUR_FOLDER")
-        self.assertNotIn("snapshot", social_queue.mark_published(CID, "q1"))
-        self.assertEqual(self.copies, [])
+    def test_setting_and_code_removed(self):
+        self.assertNotIn("drive_snapshot_on_publish", client_settings.FIELDS)
+        for name in ("snapshot_published", "snapshot_enabled", "_social_output_folder"):
+            self.assertFalse(hasattr(asset_refs, name), name)
+        self.assertNotIn("_snapshot(", _read("core", "social_queue.py"))
 
 
 class ShareInstructions(unittest.TestCase):

@@ -500,12 +500,12 @@ class Wiring(unittest.TestCase):
         self.assertIn("for_client=True", body)
         self.assertNotIn("find_anywhere", src[src.index("def client_media_add_link"):src.index("def admin_media_drive(")])
 
-    def test_both_pages_have_the_link_field(self):
+    def test_the_copy_link_field_is_on_the_admin_page_only(self):
+        # 2026-11-24: the client Media tab's add-from-link COPIED a client folder into ours
+        # (the "reviews" trap) — it is gone from the tab; connecting is drive_folders there
         tab = P._read("dashboard", "client", "index.html")
-        self.assertIn('id="mlLink"', tab)
-        self.assertIn("/api/client/media/add-link", tab)
-        for key in ("ml_link_ph", "ml_link_add", "ml_link_not_shared", "ml_link_copy_email"):
-            self.assertRegex(tab, rf"{key}: \{{ he:'[^']+', en:'[^']+', fr:'[^']+', ar:'[^']+', ru:'[^']+' \}}")
+        self.assertNotIn('id="mlLink"', tab)
+        self.assertNotIn("/api/client/media/add-link", tab)
         page = P._read("dashboard", "admin", "drive", "index.html")
         for needle in ("/api/admin/drive-pull/add-link", "/api/admin/drive/find-anywhere", "/api/admin/drive/attach",
                        "/api/admin/drive/merge/", "לא מוחק כלום"):

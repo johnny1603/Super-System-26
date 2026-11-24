@@ -6504,9 +6504,12 @@ class DriveFolderExcludeRequest(BaseModel):
     excluded: bool = True
 
 def _drive_folders_view(client_id: int) -> dict:
-    from core import drive_assets, drive_folders
-    return {"folders": drive_folders.tree(client_id), "index": drive_assets.view_state(client_id),
+    from core import drive_assets, drive_backup, drive_folders
+    rows = drive_folders.load(client_id)
+    return {"folders": drive_folders.tree(client_id, rows), "index": drive_assets.view_state(client_id),
             "share_with": drive_folders.share_with(),
+            # where the system keeps the client's backup — or, plainly, that it has nowhere to
+            "backup": drive_backup.view(client_id, rows),
             "roles": [{"role": r, "text": drive_folders.ROLE_TEXT[r], "access": drive_folders.access_for(r)}
                       for r in drive_folders.ROLES]}
 
@@ -6604,7 +6607,8 @@ class MediaInventorySelection(BaseModel):
     exclude: list = []     # with `filter`: the items unchecked after "select all"
 
 def _media_inventory_filter(request: Request) -> dict:
-    keys = ("source", "folder", "usage", "date_from", "date_to", "size_min_mb", "size_max_mb", "older_than_days", "q")
+    keys = ("source", "folder", "usage", "date_from", "date_to", "size_min_mb", "size_max_mb", "older_than_days", "q",
+            "pulled_duplicate")
     return {k: request.query_params.get(k, "") for k in keys}
 
 @app.get("/api/client/media-inventory")
@@ -8361,6 +8365,14 @@ def tiktok_uploads_run():
         data["agent_elements"] = agent_characters.sync_due()      # every SYNC_HOURS; a free read
     except Exception as e:
         data["agent_elements"] = {"error": type(e).__name__}
+    # The client-side backup (core/drive_backup): approved produced files → the
+    # client's own "uallak" folder. What is left of the budget, at most 40 s
+    left = min(40.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))
+    try:
+        from core import drive_backup
+        data["drive_backup"] = drive_backup.run_due(left) if left > 10 else {"skipped": "no budget left"}
+    except Exception as e:
+        data["drive_backup"] = {"error": type(e).__name__}
     return {"success": True, "data": data}
 
 @app.get("/api/admin/tiktok-uploads")
