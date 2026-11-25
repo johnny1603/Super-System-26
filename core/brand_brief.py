@@ -109,6 +109,22 @@ def _write_row(client_id: int, value: dict):
     _cache.pop(int(client_id), None)
 
 
+def page_state(client_id: int) -> dict:
+    """What the client's branding page remembers on this same row (for
+    example that its one friendly note was dismissed). {} when unreadable."""
+    value = _read_row(client_id)
+    return dict((value or {}).get("page") or {})
+
+
+def set_page_state(client_id: int, **fields) -> bool:
+    value = _read_row(client_id)
+    if value is None:
+        raise BriefError("database_unavailable")
+    value["page"] = {**(value.get("page") or {}), **fields}
+    _write_row(client_id, value)
+    return True
+
+
 def _legacy(client_id: int) -> dict:
     """The repo files of a client briefed before 2026-11-24 (client 27)."""
     path = os.path.join(LEGACY_DIR, f"{int(client_id)}.md")

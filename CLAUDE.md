@@ -1013,7 +1013,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   card, what agents may say (`prompt_block` `drawn`), the production line (`post_pipeline.announce`). Declared in the brief and
   absent from the manifest = the card FAILS by name (design `missing`, production state `failed`, no approve, no files). Stage log
   `[character_trace]`. Tests never write under `data/` (`core/local_data`; the runner fails if they do). `tests/test_render_manifest.py`,
-  `tests/test_local_data.py`. Pose library `agent_poses`: offered before generating,
+  `tests/test_local_data.py`.
+- **Branding page "מיתוג" (2026-11-26, docs/BRAND-BRIEF.md §The client's branding page)**: `core/brand_page` is a VIEW of the brand
+  brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces/tone = fields in its text
+  marked [stated], logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it
+  is; ONE measured friendly note at most, dismissed for good; no branding = the studio leads. `tests/test_brand_page.py`. Pose library `agent_poses`: offered before generating,
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
   live. `tests/test_agent_characters.py`.

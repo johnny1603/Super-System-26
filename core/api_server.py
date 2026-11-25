@@ -9036,6 +9036,122 @@ class PoseDecisionRequest(BaseModel):
     pose_ids: list = []
     verdict: str = ""
 
+# ─── The client's branding page "מיתוג" (core/brand_page — the brand brief, not a new store) ───
+def _brand_fail(e, lang: str):
+    from core import brand_page
+    status = 413 if e.code == "too_big" else 404 if e.code == "not_found" else 503 if e.code == "storage" else 400
+    raise HTTPException(status_code=status, detail={"code": e.code, "message": brand_page.error_text(e.code, lang)})
+
+@app.get("/api/client/brand-identity")
+def client_brand_identity(request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    return {"success": True, "data": brand_page.view(client_id, _client_lang(client_id))}
+
+class BrandColorsRequest(BaseModel):
+    variants: list[dict] = []
+
+@app.post("/api/client/brand-identity/colors")
+def client_brand_identity_colors(req: BrandColorsRequest, request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    lang = _client_lang(client_id)
+    try:
+        brand_page.save_colors(client_id, req.variants)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_colors_set", "The client set the brand colours on the branding page")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+class BrandTypefacesRequest(BaseModel):
+    headline: str = ""
+    body: str = ""
+
+@app.post("/api/client/brand-identity/typefaces")
+def client_brand_identity_typefaces(req: BrandTypefacesRequest, request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    lang = _client_lang(client_id)
+    try:
+        brand_page.save_typefaces(client_id, req.headline, req.body)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_typefaces_set", "The client set the brand typefaces on the branding page")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+class BrandToneRequest(BaseModel):
+    says: list[str] = []
+    not_says: list[str] = []
+
+@app.post("/api/client/brand-identity/tone")
+def client_brand_identity_tone(req: BrandToneRequest, request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    lang = _client_lang(client_id)
+    try:
+        brand_page.save_tone(client_id, req.says, req.not_says)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_tone_set", "The client set the brand's tone words on the branding page")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.post("/api/client/brand-identity/upload")
+async def client_brand_identity_upload(request: Request, version: str = "asset"):
+    # Raw body (no python-multipart in the image); the file's name in a header
+    from urllib.parse import unquote
+    from starlette.concurrency import run_in_threadpool
+    from core import brand_page
+    client_id = _require_session(request)
+    lang = _client_lang(client_id)
+    body = await request.body()
+    name = unquote(request.headers.get("x-file-name") or "")
+    try:
+        row = await run_in_threadpool(brand_page.upload, client_id, version, name, body)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_file_uploaded", f"The client uploaded a branding file ({row['version']})")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.post("/api/client/brand-identity/file/{file_id}/delete")
+def client_brand_identity_file_delete(file_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    lang = _client_lang(client_id)
+    try:
+        brand_page.delete(client_id, file_id)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_file_deleted", "The client deleted a branding file")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.get("/api/client/brand-identity/file/{file_id}")
+def client_brand_identity_file(file_id: str, request: Request):
+    # The client's own logo, shown as an <img>. An SVG goes out under the
+    # mockups' script-less sandbox CSP; a PDF only as a download.
+    client_id = _require_session(request)
+    from core import brand_mockups, brand_page
+    try:
+        content, mime = brand_page.file_bytes(client_id, file_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
+    if mime == "image/svg+xml":
+        headers.update(brand_mockups.page_headers())
+    elif mime == "application/pdf":
+        headers["Content-Disposition"] = "attachment"
+    return Response(content=content, media_type=mime, headers=headers)
+
+@app.post("/api/client/brand-identity/assessment/dismiss")
+def client_brand_identity_assessment_dismiss(request: Request):
+    # The one friendly note (client-governance §7): dismissed once, it never returns
+    client_id = _require_session(request)
+    from core import brand_page
+    try:
+        brand_page.dismiss_assessment(client_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail={"code": "storage"})
+    return {"success": True}
+
 @app.get("/api/client/avatars")
 def client_avatars(request: Request):
     client_id = _require_session(request)

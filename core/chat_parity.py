@@ -55,6 +55,16 @@ PARITY = {
     # The poses card's own image and keep / discard buttons (generate_character_poses)
     "GET /api/client/characters/poses/{request_id}/{cand_id}": (NOT_CHAT, _PLUMBING),
     "POST /api/client/characters/poses/{request_id}/{cand_id}/{verb}": (NOT_CHAT, _PLUMBING),
+    # ── Branding page "מיתוג" (core/brand_page) ──────────────────────────────
+    "GET /api/client/brand-identity": (NOT_CHAT, _PAGE_LOAD),
+    "GET /api/client/brand-identity/file/{file_id}": (NOT_CHAT, _PLUMBING),
+    "POST /api/client/brand-identity/upload": (NOT_CHAT, "a logo file is uploaded on the page that shows it; a file dropped "
+                                               "in a chat goes to the media folder (chat_uploads)"),
+    "POST /api/client/brand-identity/file/{file_id}/delete": (NOT_CHAT, "removing a file is done where it is shown"),
+    "POST /api/client/brand-identity/colors": (GAP, "P3: set the brand colours from the chat (a card with the palette)"),
+    "POST /api/client/brand-identity/typefaces": (GAP, "P3: set the brand typefaces from the chat"),
+    "POST /api/client/brand-identity/tone": (GAP, "P3: set the tone words from the chat"),
+    "POST /api/client/brand-identity/assessment/dismiss": (NOT_CHAT, "closing a note on the page it is shown on"),
     # ── Avatars page (docs/AVATARS.md) ───────────────────────────────────────
     "GET /api/client/avatars": (NOT_CHAT, "a picture gallery: poses are judged by looking at them"),
     "GET /api/client/avatars/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
