@@ -93,13 +93,21 @@ visual_direction          what should be seen. written by the social agent
                           as intent, not as a model prompt
 must_include
 must_avoid
-aspect_ratio
+aspect_ratio              SET BY THE SYSTEM from post_format, never chosen:
+                          a feed post is the feed portrait, a reel or a story
+                          (post-level placement: story) is vertical
 set_id                    assets sharing a set_id must look like one system
 budget_credits
 characters                [] or agents who appear AS THEMSELVES: maya | lior |
                           yoav | johnny | elinor | nissim | uri
 character_mode            composite | in_scene  (only with characters)
 ```
+
+**Format and size.** One table decides every size and ratio; neither agent
+picks one. Every slide of a set has the same ratio. A vertical post (reel,
+story) has a safe zone: the platform's own buttons and caption cover the top,
+the bottom third and the edges, so its text and figure are laid out inside
+the safe box automatically — write the copy for that smaller box.
 
 **Agents as characters.** The social agent sets both fields when an agent
 appears in the post. `composite` = the agent's transparent cut-out drawn on a

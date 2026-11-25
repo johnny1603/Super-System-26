@@ -19,6 +19,10 @@
         "height": {"enum": [1080, 1350, 1920]}
       }
     },
+    "safe_zone": {
+      "enum": ["meta_unified", "tiktok", "cross_platform"],
+      "description": "Set by the SYSTEM on a 1080x1920 canvas only, from the channels the post goes to. Never chosen or changed by the agent. On that canvas every percentage (x_pct, y_pct, max_width_pct, max_height_pct, the character's placement) is measured inside the zone's SAFE BOX — the platform's own interface covers the rest — and the margins are never smaller than the zone's reserve. The background still fills the whole canvas."
+    },
     "palette_variant": {
       "type": "string",
       "maxLength": 60,

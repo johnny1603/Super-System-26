@@ -331,6 +331,16 @@ FLAG_TEXT = {
                                    "Le personnage de l'agent n'a pas été dessiné sur certaines diapositives (indisponible pour l'instant) — l'équipe est prévenue",
                                    "لم تُرسم شخصية الوكيل في بعض الشرائح (غير متاحة حاليًا) — أُبلغ الفريق",
                                    "Персонаж агента не нарисован на некоторых слайдах (сейчас недоступен) — команда в курсе"),
+    "low_resolution": _five("התמונה הזו קטנה מהגודל שהרשתות מפרסמות בו — היא תיראה מטושטשת. הצוות קיבל הודעה.",
+                            "This image is smaller than the size the platforms publish at — it will look soft. The team was told.",
+                            "Cette image est plus petite que la taille de publication des réseaux — elle paraîtra floue. L'équipe est prévenue.",
+                            "هذه الصورة أصغر من الحجم الذي تنشر به المنصات — ستبدو غير واضحة. أُبلغ الفريق.",
+                            "Это изображение меньше размера, в котором публикуют платформы — оно будет нечётким. Команда в курсе."),
+    "character_needs_approval": _five("הדמות לא צוירה: אין עדיין פוזה שאישרתם. מאשרים פוזות בעמוד אווטרים, ואז מפיקים שוב.",
+                                      "The character was not drawn: there is no pose you approved yet. Approve poses on the Avatars page, then produce again.",
+                                      "Le personnage n'a pas été dessiné : aucune pose approuvée pour l'instant. Approuvez des poses dans la page Avatars, puis relancez.",
+                                      "لم تُرسم الشخصية: لا توجد وضعية وافقتم عليها بعد. وافقوا على وضعيات في صفحة الأفاتارات ثم أعيدوا الإنتاج.",
+                                      "Персонаж не нарисован: пока нет одобренной вами позы. Одобрите позы на странице «Аватары» и запустите снова."),
     "needs_real_asset": _five("צריך כאן תמונה אמיתית של עבודה שלכם — היא לא נוצרת במחשב",
                               "This needs a real photo of your work — it is not generated",
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
@@ -407,6 +417,7 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
                                           "visual_direction", "must_include", "must_avoid", "aspect_ratio",
                                           "budget_credits")}
                       | {"characters": list(a.get("characters") or []), "character_mode": a.get("character_mode") or ""}
+                      | {"safe_zone": a.get("safe_zone") or ""}
                       | {"flags": list((flags or {}).get(a["asset_id"]) or []),
                          "escalation": (escalations or {}).get(a["asset_id"]) or {},
                          "real_asset": {k: str(((sources or {}).get(a["asset_id"]) or {}).get(k) or "")[:300]
@@ -415,7 +426,10 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
     body = {"post_format": post["post_format"], "format_reason": post["format_reason"],
             "objective": post["objective"], "audience": post["audience"], "set_id": post["set_id"],
             "occasion": post.get("occasion", ""), "occasion_date": post.get("occasion_date", ""),
-            "palette": palette or {}, "warnings": list(warnings or []), "slides": slides}
+            "palette": palette or {}, "warnings": list(warnings or []), "slides": slides,
+            # derived from post_format by core/social_formats — what the preview frames it as
+            "format": post.get("format", ""), "placement": post.get("placement", ""),
+            "safe_zone": post.get("safe_zone", "")}
     if post.get("colors"):
         body["colors"] = post["colors"]           # the manager's explicit colours (core/post_brief.clean_colors)
     existing = next((i for i in queue if i.get("kind") == POST_KIND and i["status"] == "waiting"

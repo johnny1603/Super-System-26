@@ -44,8 +44,12 @@ POST_FORMATS = ("text_carousel", "product_carousel", "before_after", "process", 
 OBJECTIVES = ("awareness", "consideration", "conversion", "retention")
 ROLES = ("hook", "point", "proof", "cta")
 ASSET_TYPES = ("text_slide", "real_photo", "generated_image", "generated_video")
-ASPECTS = ("1:1", "4:5", "3:4", "9:16", "16:9")
-MAX_ASSETS = 10
+from core import social_formats  # noqa: E402  (pure data; imports nothing of ours)
+
+# A post's ratio is DERIVED from its post_format (social_formats.for_post) —
+# these are simply every ratio the table knows
+ASPECTS = tuple(f.aspect for f in social_formats.FORMATS.values())
+MAX_ASSETS = 10                     # ours; the platforms' carousel ceiling is social_formats.CAROUSEL_MAX_SLIDES
 CAPTION_MAX = 2200
 COPY_MAX = 400
 DIRECTION_MAX = 800
@@ -298,11 +302,12 @@ class AssetBrief:
     visual_direction: str         # what should be SEEN: the only prompt source
     must_include: list = field(default_factory=list)
     must_avoid: list = field(default_factory=list)
-    aspect_ratio: str = "4:5"
+    aspect_ratio: str = social_formats.FEED_ASPECT    # derived from post_format — never the agent's choice
     set_id: str = ""
     budget_credits: int = 0
     characters: list = field(default_factory=list)   # agents appearing as themselves (core/agent_characters)
     character_mode: str = ""      # composite | in_scene ("" = no characters)
+    safe_zone: str = ""           # a vertical asset: the zone its text stays inside (social_formats.zone_for)
 
     @classmethod
     def from_dict(cls, raw: dict, post: dict) -> "AssetBrief":
@@ -322,10 +327,9 @@ class AssetBrief:
         visual = _clean_text(raw.get("visual_direction"), DIRECTION_MAX)
         if asset_type != "text_slide" and len(visual) < 10:
             raise ValueError(f"{asset_id}: visual_direction (what should be seen) is required")
-        aspect = str(raw.get("aspect_ratio") or post.get("aspect_ratio") or
-                     ("9:16" if post["post_format"] == "reel" else "4:5")).strip()
-        if aspect not in ASPECTS:
-            raise ValueError(f"{asset_id}: aspect_ratio must be one of {', '.join(ASPECTS)}")
+        # The ratio comes from the post's format — whatever the agent wrote in
+        # aspect_ratio is not read (every slide of a set has the same one)
+        aspect = social_formats.aspect_for_post(post["post_format"], post.get("placement", ""))
         set_id = str(raw.get("set_id") or post["set_id"]).strip().lower()
         if set_id != post["set_id"]:
             raise ValueError(f"{asset_id}: one post is one set — set_id must be the post's")
@@ -341,7 +345,8 @@ class AssetBrief:
                    copy_body=_clean_text(raw.get("copy_body"), COPY_MAX), asset_type=asset_type,
                    visual_direction=visual, must_include=_clean_list(raw.get("must_include")),
                    must_avoid=_clean_list(raw.get("must_avoid")), aspect_ratio=aspect, set_id=set_id,
-                   budget_credits=budget, characters=characters, character_mode=mode)
+                   budget_credits=budget, characters=characters, character_mode=mode,
+                   safe_zone=post.get("safe_zone", "") if social_formats.is_vertical(aspect) else "")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -381,9 +386,14 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
         raise ValueError("caption is required — the copy is written before any pixel")
     if len(caption) > CAPTION_MAX:
         raise ValueError("caption is too long")
+    placement = str(raw.get("placement") or "").strip().lower()
+    if placement and placement not in social_formats.PLACEMENTS:
+        raise ValueError(f"placement must be one of {', '.join(social_formats.PLACEMENTS)}")
+    shape = social_formats.for_post(fmt["post_format"], placement)
     post = {"client_id": int(client_id), "set_id": set_id, "objective": objective, "audience": audience,
             "caption": caption, "title": _clean_text(raw.get("title"), 120) or set_id, **fmt,
-            "aspect_ratio": str(raw.get("aspect_ratio") or "").strip()}
+            "format": shape.name, "placement": placement or ("feed" if shape.kind == "feed" else "reel"),
+            "safe_zone": ""}
     for key in ("publish_date", "occasion_date"):
         value = str(raw.get(key) or "").strip()[:10]
         if value:
@@ -395,6 +405,8 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
     post["occasion"] = _clean_text(raw.get("occasion"), 120)
     channels = [c for c in (raw.get("channels") or ["instagram"]) if c in ("instagram", "facebook", "tiktok", "youtube")]
     post["channels"] = channels[:4] or ["instagram"]
+    if shape.kind == "vertical":
+        post["safe_zone"] = social_formats.zone_for(post["channels"])
     assets_raw = raw.get("assets")
     if not isinstance(assets_raw, list) or not 1 <= len(assets_raw) <= MAX_ASSETS:
         raise ValueError(f"assets must be a list of 1-{MAX_ASSETS}")
@@ -418,7 +430,6 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
     colors = clean_colors(raw.get("colors"), len(assets))
     if colors:
         post["colors"] = colors
-    post.pop("aspect_ratio")
     return post
 
 
@@ -470,7 +481,7 @@ def clean_colors(raw, n_slides: int) -> dict:
 
 
 def asset(entry: dict) -> AssetBrief:
-    optional = {"characters": [], "character_mode": ""}      # entries stored before 2026-11-24
+    optional = {"characters": [], "character_mode": "", "safe_zone": ""}      # entries stored before these fields
     return AssetBrief(**{k: entry.get(k, optional[k]) if k in optional else entry[k]
                          for k in AssetBrief.__dataclass_fields__})
 

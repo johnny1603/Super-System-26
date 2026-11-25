@@ -180,6 +180,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   draws them in the producer's window at once. Never two runs (`running_card`); "אישרתי" → `chat_approval.already_running`;
   can't start → said with the reason (`start_failed`). The card's bar is DETERMINATE (`core/production_progress`: real
   steps, weights = measured medians, never backwards, step line, elapsed, estimate only when measured, frozen on failure).
+  **Formats (2026-11-25, docs/SOCIAL-FORMATS.md):** `core/social_formats` is THE table of sizes, ratios, safe zones and
+  carousel rules — a literal anywhere else in core/ or agents/ fails `tests/test_social_formats.py`. A post's ratio is
+  derived from post_format (+ `placement: story`), never chosen by an agent; a vertical slide is laid out inside its
+  safe box; generation asks 1080p, the result is measured, under 1080 px wide = alert + `low_resolution` on the card.
   **Text slides are DRAWN (2026-11-23, docs/SLIDE-RENDERER.md):** Pillow + raqm (libfribidi0 in the Dockerfile),
   bundled Rubik/Assistant (`assets/fonts`), RTL anchored right. The agent DESIGNS by writing a JSON spec
   (`knowledge/slide-spec.schema.json`, colours = roles from the brief's palette, core/brand_brief; neutral where none) — never code;

@@ -18,13 +18,13 @@ import json
 import os
 import re
 
-from core import post_brief
+from core import post_brief, social_formats
 
 ROOT = post_brief.ROOT
 SCHEMA_PATH = os.path.join(ROOT, "knowledge", "slide-spec.schema.json")
 STARTERS_DIR = os.path.join(ROOT, "knowledge", "slide-specs")
-CANVASES = {"4:5": (1080, 1350), "1:1": (1080, 1080), "9:16": (1080, 1920)}
-DEFAULT_CANVAS = (1080, 1350)
+CANVASES = social_formats.CANVASES            # the sizes live in core/social_formats only
+DEFAULT_CANVAS = social_formats.DEFAULT_CANVAS
 COLOR_ROLES = ("bg", "fg", "accent", "muted")
 HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 PLACEHOLDERS = ("{headline}", "{body}", "{n}", "{total}")
@@ -175,14 +175,25 @@ def variant_for(palette: dict) -> str:
 
 # ─── Starters (deliberately plain; the manager drives the design) ────────────
 
-def starter(segment: str, variant_label: str, aspect: str = "4:5") -> dict:
+def starter(segment: str, variant_label: str, aspect: str = "", safe_zone: str = "") -> dict:
     segment = segment if segment in SEGMENTS else "b2c"
     with open(os.path.join(STARTERS_DIR, f"starter-{segment}.json"), encoding="utf-8") as f:
         spec = json.load(f)
     spec["palette_variant"] = variant_label
-    width, height = CANVASES.get(aspect, DEFAULT_CANVAS)
+    return validate(on_canvas(spec, aspect, safe_zone))
+
+
+def on_canvas(spec: dict, aspect: str = "", safe_zone: str = "") -> dict:
+    """`spec` (mutated) on the canvas of `aspect` (core/social_formats). A
+    VERTICAL canvas carries its safe zone — the layout then stays inside the
+    safe box (margins); a feed canvas uses the whole frame and carries none."""
+    width, height = social_formats.canvas(aspect)
     spec["canvas"] = {"width": width, "height": height}
-    return validate(spec)
+    if (width, height) == social_formats.FORMATS[social_formats.VERTICAL].size:
+        spec["safe_zone"] = safe_zone if safe_zone in social_formats.SAFE_ZONES else social_formats.zone_for([])
+    else:
+        spec.pop("safe_zone", None)
+    return spec
 
 
 # ─── One slide of a set ──────────────────────────────────────────────────────
@@ -206,10 +217,18 @@ def bind_text(block: dict, copy_headline: str, copy_body: str, n: int, total: in
 
 
 def margins(spec: dict) -> dict:
+    """The spec's margins — and, on a vertical canvas, never less than its
+    safe zone's reserve on each side (the platform's own interface sits there)."""
     m = spec.get("margins", 64)
     if isinstance(m, dict):
-        return {k: int(m[k]) for k in ("top", "right", "bottom", "left")}
-    return {k: int(m) for k in ("top", "right", "bottom", "left")}
+        out = {k: int(m[k]) for k in ("top", "right", "bottom", "left")}
+    else:
+        out = {k: int(m) for k in ("top", "right", "bottom", "left")}
+    canvas = spec.get("canvas") or {}
+    if (canvas.get("width"), canvas.get("height")) == social_formats.FORMATS[social_formats.VERTICAL].size:
+        reserve = social_formats.insets(spec.get("safe_zone") or social_formats.zone_for([]))
+        out = {k: max(out[k], reserve.get(k, 0)) for k in out}
+    return out
 
 
 def assets_used(spec: dict) -> list:

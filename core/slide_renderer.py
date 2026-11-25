@@ -370,7 +370,7 @@ def shadow_intensity(value) -> float:
         return DEFAULT_SHADOW
 
 
-def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: list) -> dict:
+def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: list, frame: dict = None) -> dict:
     """Composites the figure onto img. Returns {"rect", "alpha", "origin"}
     (its placed box and alpha, for the text-collision check) or {}."""
     from PIL import ImageFilter, ImageOps
@@ -391,13 +391,14 @@ def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: lis
         return {}
     fig = fig.crop(box)                                   # the figure itself, not its empty margin
     W, H = size
-    h = max(1, round(H * float(ch.get("scale_pct") or CHARACTER_DEFAULTS["scale_pct"]) / 100))
+    frame = frame or {"x": 0, "y": 0, "w": W, "h": H}      # a vertical canvas: its safe box
+    h = max(1, round(frame["h"] * float(ch.get("scale_pct") or CHARACTER_DEFAULTS["scale_pct"]) / 100))
     w = max(1, round(fig.width * h / fig.height))
     fig = fig.resize((w, h), Image.LANCZOS)
     if ch.get("flip"):
         fig = ImageOps.mirror(fig)
-    cx = W - W * float(ch.get("x_pct", CHARACTER_DEFAULTS["x_pct"])) / 100
-    bottom = H * float(ch.get("y_pct", CHARACTER_DEFAULTS["y_pct"])) / 100
+    cx = frame["x"] + frame["w"] - frame["w"] * float(ch.get("x_pct", CHARACTER_DEFAULTS["x_pct"])) / 100
+    bottom = frame["y"] + frame["h"] * float(ch.get("y_pct", CHARACTER_DEFAULTS["y_pct"])) / 100
     x0, y0 = round(cx - w / 2), round(bottom - h)
     rect = [x0, y0, x0 + w, y0 + h]
     if x0 < 0 or y0 < 0 or x0 + w > W or y0 + h > H:
@@ -433,8 +434,25 @@ def _touches(char: dict, rect: list) -> bool:
 
 # ─── Text layout ─────────────────────────────────────────────────────────────
 
-def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dict, problems: list) -> dict:
+def layout_frame(spec: dict) -> dict:
+    """{"x", "y", "w", "h"}: the box every percentage is measured in. A feed
+    canvas = the whole canvas. A VERTICAL canvas = its safe box
+    (core/social_formats): the platform's own interface covers the rest, so a
+    story's text and figure are laid out inside it; the background still fills
+    the whole canvas."""
+    from core import social_formats
+    W, H = spec["canvas"]["width"], spec["canvas"]["height"]
+    if (W, H) == social_formats.FORMATS[social_formats.VERTICAL].size:
+        box = social_formats.safe_box(spec.get("safe_zone") or social_formats.zone_for([]))
+        return {"x": box["x"], "y": box["y"], "w": box["width"], "h": box["height"]}
+    return {"x": 0, "y": 0, "w": W, "h": H}
+
+
+def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dict, problems: list,
+            frame: dict = None) -> dict:
     W, H = size
+    frame = frame or {"x": 0, "y": 0, "w": W, "h": H}
+    FW, FH = frame["w"], frame["h"]
     where = f"text_blocks[{index}] ({block['role']})"
     direction, language = direction_of(text)
     align = block.get("align") or "right"
@@ -446,8 +464,8 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
     except ValueError as e:
         problems.append({"code": "weight", "block": index, "detail": f"{where}: {e}"})
         return {}
-    box_w = W * float(block["max_width_pct"]) / 100
-    right = W - m["right"] - W * float(block.get("x_pct") or 0) / 100
+    box_w = FW * float(block["max_width_pct"]) / 100
+    right = W - m["right"] - FW * float(block.get("x_pct") or 0) / 100
     left = right - box_w
     if left < m["left"] - 0.5:
         problems.append({"code": "overflow", "block": index,
@@ -462,12 +480,12 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
     ascent, descent = font.getmetrics()
     lh = block["size"] * float(block.get("line_spacing") or 1.2)
     text_h = ascent + descent + (len(lines) - 1) * lh
-    y = H * float(block["y_pct"]) / 100
+    y = frame["y"] + FH * float(block["y_pct"]) / 100
     top = {"top": y, "center": y - text_h / 2, "bottom": y - text_h}[block["anchor"]]
     # Every overflow carries WHICH block and BY HOW MUCH (lines needed / lines
     # that fit, px) — core/copy_budget says it to the manager in plain words
     if block.get("max_height_pct"):
-        max_h = H * float(block["max_height_pct"]) / 100
+        max_h = FH * float(block["max_height_pct"]) / 100
         if text_h > max_h + 0.5:
             fits = max(1, int((max_h - ascent - descent) // lh) + 1)
             problems.append({"code": "overflow", "block": index, "role": block["role"], "kind": "lines",
@@ -553,9 +571,10 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
     warnings = warnings if warnings is not None else []
     size = (spec["canvas"]["width"], spec["canvas"]["height"])
     m = slide_spec.margins(spec)
+    frame = layout_frame(spec)
     img = _background(spec["background"], size, roles, loader, problems)
     accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems)
-    char = _character(img, ch, size, loader, problems, warnings) if ch else {}
+    char = _character(img, ch, size, loader, problems, warnings, frame) if ch else {}
     _logo(img, spec.get("logo") or {}, size, m, loader, problems)
     limit = int((spec.get("guards") or {}).get("headline_max_words") or HEADLINE_MAX_WORDS)
     layouts = []
@@ -567,7 +586,7 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
             problems.append({"code": "headline_words", "block": i, "role": "headline", "kind": "words",
                              "words": len(text.split()), "limit": limit,
                              "detail": f"text_blocks[{i}] (headline): {len(text.split())} words, the limit is {limit}"})
-        lay = _layout(block, text, i, size, m, roles, problems)
+        lay = _layout(block, text, i, size, m, roles, problems, frame)
         if lay:
             layouts.append(lay)
     counter = _counter_layout(spec.get("counter") or {}, size, m, roles, n, total)

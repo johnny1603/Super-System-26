@@ -38,6 +38,12 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from core import drive_storage
+from core import social_formats as _social_formats
+
+
+def _slide_aspect(value) -> str:
+    """A ratio the slide renderer draws, else the feed default (core/social_formats)."""
+    return _social_formats.slide_aspect(value)
 
 SERVICE_NAME = "agent_actions"
 TABLE = "agent_actions"
@@ -3354,7 +3360,7 @@ def _prepare_design_slides(client_id: int, params: dict, context: dict, rows: li
     out = slide_design.request(client_id, params.get("slides") or [], str(params.get("audience") or ""),
                                direction=str(params.get("direction") or "")[:600],
                                template_name=str(params.get("template_name") or "")[:40],
-                               aspect=params.get("aspect_ratio") if params.get("aspect_ratio") in ("4:5", "1:1", "9:16") else "4:5",
+                               aspect=_slide_aspect(params.get("aspect_ratio")),
                                lang=lang, title=str(params.get("template_name") or "")[:120])
     if out.get("clarify"):
         return {"clarify": out["clarify"]}
@@ -4748,13 +4754,15 @@ ACTIONS = {
                                     "customer_story|educational|comparison|single_image|reel, \"format_reason\": "
                                     "one line, \"objective\": awareness|consideration|conversion|retention, "
                                     "\"audience\": who it is for (decides the brand palette), \"set_id\": a-z0-9-, "
-                                    "\"title\", \"caption\", \"channels\": [instagram|facebook|tiktok|youtube], "
+                                    "\"title\", \"caption\", \"channels\": [instagram|facebook|tiktok|youtube], \"placement\"?: story "
+                                    "(ONLY for a story; the size and ratio of every post come from its format — you never "
+                                    "choose a ratio), "
                                     "\"publish_date\"?: YYYY-MM-DD, \"occasion\"?, \"occasion_date\"?: YYYY-MM-DD, "
                                     "\"assets\": [1-10 of {\"asset_id\", \"role\": hook|point|proof|cta, "
                                     "\"copy_headline\", \"copy_body\" (CONTEXT ONLY — never an image prompt), "
                                     "\"asset_type\": text_slide|real_photo|generated_image|generated_video, "
                                     "\"visual_direction\": what should be SEEN (intent, not a model prompt), "
-                                    "\"must_include\": [], \"must_avoid\": [], \"aspect_ratio\": 1:1|4:5|3:4|9:16|16:9, "
+                                    "\"must_include\": [], \"must_avoid\": [], "
                                     "\"budget_credits\": 0-500, \"characters\"?: [agents who appear AS THEMSELVES: maya|lior|"
                                     "yoav|johnny|elinor|nissim|uri], \"character_mode\"?: composite (a cut-out on a "
                                     "text_slide, one character) | in_scene (generated inside a generated_image/video "
@@ -4802,8 +4810,8 @@ ACTIONS = {
             "template_name": {"required": False, "validate": lambda v, c: re.sub(r"\s+", " ", str(v)).strip()[:40],
                               "hint": "a short name for the template"},
             "aspect_ratio": {"required": False,
-                             "validate": lambda v, c: v if v in ("4:5", "1:1", "9:16") else "4:5",
-                             "hint": "4:5|1:1|9:16"},
+                             "validate": lambda v, c: _slide_aspect(v),
+                             "hint": "|".join(_social_formats.SLIDE_ASPECTS)},
             "item_id": {"required": False,
                         "validate": lambda v, c: str(v) if re.match(r"^[a-z0-9]{6,40}$", str(v)) else "",
                         "hint": "the waiting design's id (critique only)"},

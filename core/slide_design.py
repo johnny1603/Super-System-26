@@ -29,7 +29,7 @@ import copy
 import re
 from datetime import datetime, timezone
 
-from core import post_brief, slide_renderer, slide_spec, slide_templates, social_queue
+from core import post_brief, slide_renderer, slide_spec, slide_templates, social_formats, social_queue
 
 SERVICE_NAME = "slide_design"
 MAX_DESIGN_ATTEMPTS = 3
@@ -200,7 +200,7 @@ def default_name(palette: dict) -> str:
     return slide_templates.clean_name(f"carousel {slide_spec.variant_for(palette)}")
 
 
-def base_spec(client_id: int, palette: dict, aspect: str = "4:5", template_name: str = "") -> tuple:
+def base_spec(client_id: int, palette: dict, aspect: str = "", template_name: str = "", safe_zone: str = "") -> tuple:
     """(spec, template_name, based_on): the named template, else the latest
     template in this palette variant, else the plain starter."""
     label = slide_spec.variant_for(palette)
@@ -208,13 +208,12 @@ def base_spec(client_id: int, palette: dict, aspect: str = "4:5", template_name:
     if tpl and tpl["palette_variant"] != label:
         tpl = None                               # never mix variants: that template is for another audience
     tpl = tpl or slide_templates.for_variant(client_id, label)
-    width, height = slide_spec.CANVASES.get(aspect, slide_spec.DEFAULT_CANVAS)
     if tpl:
-        spec = tpl["spec"]
-        spec["canvas"] = {"width": width, "height": height}
+        # the canvas (and, vertical, its safe zone) of THIS post — core/social_formats
+        spec = slide_spec.on_canvas(tpl["spec"], aspect, safe_zone)
         return spec, tpl["name"], {"template": tpl["name"], "version": tpl["version"]}
     segment = (palette or {}).get("segment") or "b2c"
-    spec = slide_spec.starter(segment, label, aspect)
+    spec = slide_spec.starter(segment, label, aspect, safe_zone)
     return spec, template_name or default_name(palette), {"starter": segment}
 
 
@@ -366,7 +365,8 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
             _alert([f"client {client_id}: post {post_item.get('id')} — agent character not drawn on "
                     f"{', '.join(m['asset_id'] + ' (' + m['agent'] + ': ' + m['reason'] + ')' for m in missing)}"])
         slides = _slides_of(entries)
-        spec, name, based = base_spec(client_id, palette, text_slides[0].get("aspect_ratio") or "4:5")
+        spec, name, based = base_spec(client_id, palette, text_slides[0].get("aspect_ratio") or "",
+                                      safe_zone=text_slides[0].get("safe_zone") or "")
         progress.begin("layout")
         result = design(client_id, spec, palette, slides, lang=lang, template_name=name)
         progress.done("layout")         # a slide that can't be drawn fails at its own render step
@@ -395,7 +395,7 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
 
 
 def request(client_id: int, slides: list, audience: str, direction: str = "", template_name: str = "",
-            aspect: str = "4:5", lang: str = "he", title: str = "") -> dict:
+            aspect: str = "", lang: str = "he", title: str = "") -> dict:
     """The chat's design_slides: {"queued", "line"} | {"clarify"} | {"refuse"}."""
     from core import post_pipeline
     try:
@@ -541,7 +541,7 @@ def _upload_scoped(client_id: int, name: str, png: bytes) -> dict:
 def render_asset(client_id: int, brief, palette: dict) -> dict:
     """ONE text_slide asset outside a set (media_agent.generate_from_brief):
     the client's template for this palette (else the starter) → PNG → Drive."""
-    spec, name, based = base_spec(client_id, palette or {}, brief.aspect_ratio or "4:5")
+    spec, name, based = base_spec(client_id, palette or {}, brief.aspect_ratio, safe_zone=getattr(brief, "safe_zone", ""))
     roles = slide_spec.palette_roles(client_id, slide_spec.variant_for(palette))
     entry = {"asset_id": brief.asset_id, "role": brief.role, "visual_direction": brief.visual_direction,
              "characters": list(brief.characters or []), "character_mode": brief.character_mode}

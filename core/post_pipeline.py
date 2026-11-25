@@ -28,7 +28,7 @@ Objection rounds live in app_settings `post_drafts:<client_id>` per set_id
 import time
 from datetime import datetime, timezone
 
-from core import post_brief, production_progress, social_queue
+from core import post_brief, production_progress, social_formats, social_queue
 
 SERVICE_NAME = "post_pipeline"
 DRAFTS_PREFIX = "post_drafts:"
@@ -622,7 +622,9 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
             copy_headline=slide.get("copy_headline", ""), copy_body=slide.get("copy_body", ""),
             asset_type=slide["asset_type"], visual_direction=slide.get("visual_direction", ""),
             must_include=list(slide.get("must_include") or []), must_avoid=list(slide.get("must_avoid") or []),
-            aspect_ratio=slide.get("aspect_ratio") or "4:5", set_id=body["set_id"],
+            aspect_ratio=slide.get("aspect_ratio") or social_formats.aspect_for_post(
+                body["post_format"], body.get("placement", "")),
+            safe_zone=slide.get("safe_zone") or "", set_id=body["set_id"],
             budget_credits=int(slide.get("budget_credits") or 0),
             characters=list(slide.get("characters") or []), character_mode=slide.get("character_mode") or "")
         jobs.append((n, slide, brief))
@@ -663,6 +665,8 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
         # A real asset from the client's folder is not a concept image
         flags = ["concept"] if "concept" in (slide.get("flags") or []) and not out.get("real_asset") else []
         flags += [f for f in slide.get("flags") or [] if f in ("ai_person_forbidden", "ai_label") and out.get("characters")]
+        if out.get("low_resolution"):
+            flags.append("low_resolution")         # shown on the card; the alert was raised where it was measured
         added = social_queue.add_safely(
             client_id, out["file_id"], out.get("kind") or "image",
             [c for c in item["channels"] if (out.get("kind") or "image") in social_queue.CHANNEL_KINDS.get(c, ())]

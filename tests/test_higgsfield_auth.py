@@ -126,7 +126,7 @@ class Requests(Base):
         self.assertEqual((method, url), ("POST", "https://api.higgsfield.ai/higgsfield-ai/soul/standard"))
         self.assertEqual(headers["Authorization"], f"Key {KEY}")
         self.assertIn("Idempotency-Key", headers)
-        self.assertEqual(body, {"prompt": "a coffee cup", "aspect_ratio": "4:3", "resolution": "720p", "batch_size": 1})
+        self.assertEqual(body, {"prompt": "a coffee cup", "aspect_ratio": "4:3", "resolution": "1080p", "batch_size": 1})
         self.assertNotIn("model", body)
         self.assertEqual(http.calls[1][:2], ("GET", "https://api.higgsfield.ai/requests/req-1/status"))
         self.assertEqual(http.calls[1][2]["Authorization"], f"Key {KEY}")
@@ -168,11 +168,11 @@ class Requests(Base):
         for ar in ("4:5", "2:3", "3:2", "21:9", "1:2", "nonsense"):
             body = mg.image_payload("x", ar)
             self.assertIn(body["aspect_ratio"], soul["aspects"], ar)
-            self.assertEqual((body["resolution"], body["batch_size"]), ("720p", 1))
+            self.assertEqual((body["resolution"], body["batch_size"]), ("1080p", 1))   # a feed image: never 720p
         saved = mg.IMAGE_RESOLUTION
         mg.IMAGE_RESOLUTION = "2K"
         try:
-            self.assertEqual(mg.image_payload("x", "1:1")["resolution"], "720p")        # never out of range
+            self.assertEqual(mg.image_payload("x", "1:1")["resolution"], "1080p")       # never out of range
         finally:
             mg.IMAGE_RESOLUTION = saved
         with self.assertRaises(mg.UnverifiedModelPath):
@@ -203,7 +203,7 @@ class Requests(Base):
 
     def test_status_url_on_another_host_is_not_followed(self):
         http = self.use(FakeHttp(create=(200, {"request_id": "r9", "status_url": "https://evil.example/r9"})))
-        mg.generate_image(KEY, "x")
+        mg.generate_image(KEY, "x", "1:1")
         self.assertEqual(http.calls[1][1], "https://api.higgsfield.ai/requests/r9/status")
 
     def test_401_is_credentials_rejected(self):

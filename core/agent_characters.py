@@ -62,6 +62,8 @@ import io
 import os
 import re
 import secrets
+
+from core import social_formats as _social_formats
 from datetime import datetime, timezone, timedelta
 
 SERVICE_NAME = "agent_characters"
@@ -882,7 +884,7 @@ def pose_bytes(pose_id: str) -> bytes:
 
 
 def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body", setting: str = "",
-              aspect_ratio: str = "3:4", _gen=None, _remove=None, _upload=None, _refs=None, _step=None) -> dict:
+              aspect_ratio: str = "", _gen=None, _remove=None, _upload=None, _refs=None, _step=None) -> dict:
     """COMPOSITE step a: the pose from the agent's reference image on a plain
     background → background removal → a VERIFIED transparent PNG → the
     library. Runs on uallak's key. Raises MissingReference /
@@ -890,6 +892,7 @@ def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body
     `_step`: the slide number its progress steps are reported under."""
     from core import media_gen_service as gen, production_progress as progress
     agent = clean_agent(agent)
+    aspect_ratio = aspect_ratio or POSE_ASPECT
     prompt = pose_prompt(agent, pose, outfit, framing)            # MissingReference first
     if _gen is None and not configured():
         raise CharacterUnavailable(agent, "not_configured", f"{KEY_ENV} is not set")
@@ -1043,7 +1046,7 @@ def approval_flags(client_id: int, has_characters: bool, _brief_text=None) -> li
 
 CANDS_KEY = "agent_pose_candidates"
 MAX_CANDIDATES = 24
-POSE_ASPECT = "3:4"
+POSE_ASPECT = _social_formats.POSE_ASPECT     # core/social_formats owns every ratio
 CAND_ID_RE = re.compile(r"^c[a-f0-9]{10}$")
 DEFAULT_TEST_POSES = ("standing, waving hello with a big welcoming smile, turned slightly toward the viewer",
                       "pointing with one hand to the side, explaining, friendly and confident",

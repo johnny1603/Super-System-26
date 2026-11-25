@@ -34,7 +34,7 @@ import hashlib
 import json
 from collections import OrderedDict
 
-from core import slide_spec
+from core import slide_spec, social_formats
 
 SERVICE_NAME = "copy_budget"
 FIELDS = {"headline": "copy_headline", "body": "copy_body"}
@@ -144,17 +144,18 @@ def block_budget(spec: dict, block: dict) -> dict:
     """One text block of a (role-resolved) spec: the lines it holds and about
     how many characters, measured with the block's own font."""
     from core import slide_renderer
-    W, H = spec["canvas"]["width"], spec["canvas"]["height"]
+    H = spec["canvas"]["height"]
     m = slide_spec.margins(spec)
+    frame = slide_renderer.layout_frame(spec)          # a vertical canvas: its safe box, like the renderer
     font = _font(block)
-    box_w = W * float(block["max_width_pct"]) / 100
+    box_w = frame["w"] * float(block["max_width_pct"]) / 100
     ascent, descent = font.getmetrics()
     lh = block["size"] * float(block.get("line_spacing") or 1.2)
-    y = H * float(block["y_pct"]) / 100
+    y = frame["y"] + frame["h"] * float(block["y_pct"]) / 100
     room = {"top": H - m["bottom"] - y, "bottom": y - m["top"],
             "center": 2 * min(y - m["top"], H - m["bottom"] - y)}[block["anchor"]]
     if block.get("max_height_pct"):
-        room = min(room, H * float(block["max_height_pct"]) / 100)
+        room = min(room, frame["h"] * float(block["max_height_pct"]) / 100)
     lines = max(0, int((room - ascent - descent) // lh) + 1) if room >= ascent + descent else 0
     per_char = slide_renderer._measure(font, SAMPLE_HE, "rtl", "he") / len(SAMPLE_HE)
     per_line = max(1, int(box_w // per_char))
@@ -182,13 +183,13 @@ def spec_budget(spec: dict, role: str = "") -> dict:
     return out
 
 
-def budget(client_id: int, palette: dict, aspect: str = "4:5") -> dict:
+def budget(client_id: int, palette: dict, aspect: str = "") -> dict:
     """The active template's budget: {"template", "version", "aspect",
     "variant", "all": {field: …}, "by_role": {hook|point|proof|cta: {field: …}}}
     (by_role only for roles the template draws differently)."""
     from core import slide_design
-    spec, name, based = slide_design.base_spec(client_id, palette, aspect or "4:5")
-    out = {"template": name, "version": (based or {}).get("version") or 0, "aspect": aspect or "4:5",
+    spec, name, based = slide_design.base_spec(client_id, palette, aspect)
+    out = {"template": name, "version": (based or {}).get("version") or 0, "aspect": social_formats.slide_aspect(aspect),
            "variant": slide_spec.variant_for(palette), "all": spec_budget(spec)}
     roles = [r for r in SLIDE_ROLES if r in (spec.get("role_overrides") or {})]
     if roles:
@@ -262,8 +263,8 @@ def fit(client_id: int, palette: dict, slides: list, lang: str = "he") -> dict:
         text = [(n, s) for n, s in enumerate(slides, 1) if s.get("asset_type", "text_slide") == "text_slide"]
         if not text:
             return {"checked": True, "over": [], "slides": {}, "template": ""}
-        aspect = text[0][1].get("aspect_ratio") or "4:5"
-        spec, name, based = slide_design.base_spec(client_id, palette, aspect)
+        spec, name, based = slide_design.base_spec(client_id, palette, text[0][1].get("aspect_ratio") or "",
+                                                   safe_zone=text[0][1].get("safe_zone") or "")
         geo = geometry_spec(slide_spec.validate(spec))
         key = hashlib.sha1(json.dumps([geo, [(n, s.get("role"), s.get("copy_headline"), s.get("copy_body"))
                                               for n, s in text], len(slides), lang],

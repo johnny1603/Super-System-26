@@ -73,6 +73,7 @@ from core import competitor_research
 from core import drive_service as drive
 from core import drive_storage
 from core import media_gen_service as gen
+from core import social_formats
 from core.agent_base import agent_alert, log_step, timed_step
 from core.claude_json import ClaudeJSONError, safe_claude_json_call
 
@@ -88,8 +89,9 @@ PLATFORM_FOLDERS = {
     "videos": ("instagram", "facebook", "tiktok"),
 }
 # Platform default aspect ratios (Instagram feed/story habits vs site banners)
-IMAGE_ASPECTS = {"instagram": "1:1", "facebook": "1:1", "tiktok": "9:16", "website": "16:9"}
-VIDEO_ASPECTS = {"instagram": "9:16", "facebook": "1:1", "tiktok": "9:16"}
+# — from THE table (core/social_formats): a feed image is the feed default, never a square by habit
+IMAGE_ASPECTS = {p: social_formats.FORMATS[f].aspect for p, f in social_formats.PLATFORM_IMAGE_FORMAT.items()}
+VIDEO_ASPECTS = {p: social_formats.FORMATS[f].aspect for p, f in social_formats.PLATFORM_VIDEO_FORMAT.items()}
 
 MEDIA_PLAN_KIND = "media_plan"
 CHECKIN_DEDUP_DAYS = 5  # one Saturday run per week; a rerun must not double-post
@@ -895,6 +897,12 @@ def _generate_brief_asset(client_id: int, brief, palette: dict, platform: str, k
         run = gen.generate_video if kind == "video" else gen.generate_image
         generated = timed_step(AGENT_NAME, f"higgsfield_{kind}",
                                lambda: run(api_key, prompt, brief.aspect_ratio))
+        if kind == "image":
+            # the REAL size, logged; below the publish width = an alert, never a quiet ship
+            sized = social_formats.report(f"client {client_id}: {brief.set_id}/{brief.asset_id} generated image "
+                                          f"(asked {generated.get('resolution', '?')}, returned "
+                                          f"{'x'.join(str(v) for v in generated.get('returned_size') or [])})",
+                                          generated["content"], brief.aspect_ratio, source=AGENT_NAME)
         folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
@@ -911,8 +919,13 @@ def _generate_brief_asset(client_id: int, brief, palette: dict, platform: str, k
                   {"platform": platform, "set_id": brief.set_id, "asset_id": brief.asset_id,
                    "prompt": prompt, "model": generated.get("model"), "credits": generated.get("credits")},
                   {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
-    return {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
-            "credits": generated.get("credits"), "prompt": prompt}
+    out = {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
+           "credits": generated.get("credits"), "prompt": prompt}
+    if kind == "image":
+        out["size"] = [sized["width"], sized["height"]]
+        if not sized["ok"]:
+            out["low_resolution"] = sized["reason"]
+    return out
 
 
 # ─── The agents as their own characters, IN SCENE (core/agent_characters) ───
@@ -1037,6 +1050,8 @@ def _generate_character_scene(client_id: int, brief, palette: dict, platform: st
         # What reaches the post is the requested ratio exactly (a true 4:5)
         fitted = agent_characters.fit_aspect(generated["content"], brief.aspect_ratio,
                                              generated.get("aspect_ratio") or brief.aspect_ratio)
+        sized = social_formats.report(f"client {client_id}: {brief.set_id}/{brief.asset_id} character scene",
+                                      fitted["content"], brief.aspect_ratio, source=AGENT_NAME)
         folder = _subfolder(client_id, "videos" if kind == "video" else "images", platform)
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         uploaded = drive.upload_bytes(folder, f"{brief.set_id}-{brief.asset_id}-{stamp}.{'mp4' if kind == 'video' else 'png'}",
@@ -1070,7 +1085,9 @@ def _generate_character_scene(client_id: int, brief, palette: dict, platform: st
                    "characters": list(brief.characters), "account": "uallak"},
                   {"file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", "")})
     return {"success": True, "kind": kind, "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
-            "credits": generated.get("credits"), "prompt": prompt, "characters": characters}
+            "credits": generated.get("credits"), "prompt": prompt, "characters": characters,
+            "size": [sized["width"], sized["height"]],
+            **({"low_resolution": sized["reason"]} if not sized["ok"] else {})}
 
 
 # ─── Text-slide DESIGN (core/slide_design, knowledge/slide-spec.schema.json) ──
@@ -1179,6 +1196,9 @@ def generate_image(client_id: int, brief: str, platform: str = "instagram",
             AGENT_NAME, "higgsfield_image",
             lambda: gen.generate_image(api_key, crafted["generation_prompt"],
                                        IMAGE_ASPECTS[platform]))
+        if platform in ("instagram", "facebook", "tiktok"):
+            social_formats.report(f"client {client_id}: {platform} image", generated["content"],
+                                  IMAGE_ASPECTS[platform], source=AGENT_NAME)
         folder = _subfolder(client_id, "images", platform)
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         uploaded = drive.upload_bytes(folder, f"{platform}-{stamp}.png",

@@ -7034,7 +7034,12 @@ def client_social(request: Request, offset: int = 0, limit: int = 6, status: str
     from core import social_queue
     lang = request.query_params.get("lang") or None
     status = status if status in social_queue.STATUSES else ""
-    return {"success": True, "data": social_queue.view(client_id, lang, offset=offset, limit=limit, status=status)}
+    data = social_queue.view(client_id, lang, offset=offset, limit=limit, status=status)
+    # The preview frames every post from THE formats table (sizes, ratios,
+    # safe zones) — the page keeps no copy of those numbers
+    from core import social_formats
+    data["formats"] = social_formats.table()
+    return {"success": True, "data": data}
 
 class SocialApproveRequest(BaseModel):
     ids: list

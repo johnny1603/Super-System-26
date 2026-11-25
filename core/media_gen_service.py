@@ -58,6 +58,7 @@ import uuid
 
 import httpx
 
+from core import social_formats
 from core.api_call_counters import increment_call_counter
 
 API_BASE = os.environ.get("HIGGSFIELD_API_BASE", "https://api.higgsfield.ai").rstrip("/")
@@ -65,7 +66,8 @@ IMAGE_PATH = os.environ.get("HIGGSFIELD_IMAGE_PATH", "higgsfield-ai/soul/standar
 VIDEO_PATH = os.environ.get("HIGGSFIELD_VIDEO_PATH", "minimax/hailuo-2.3/standard/text-to-video")
 IMAGE_MODEL = IMAGE_PATH          # what the activity rows record as "model"
 VIDEO_MODEL = VIDEO_PATH
-IMAGE_RESOLUTION = os.environ.get("HIGGSFIELD_IMAGE_RESOLUTION", "720p")
+# 1080p for anything going to a feed (core/social_formats); what comes back is MEASURED, never assumed
+IMAGE_RESOLUTION = os.environ.get("HIGGSFIELD_IMAGE_RESOLUTION", social_formats.GENERATION_RESOLUTION)
 VIDEO_SECONDS = 6                 # the documented default (6 or 10)
 TIMEOUT = 120
 POLL_SECONDS = 8
@@ -293,12 +295,14 @@ def image_payload(prompt: str, aspect_ratio: str, path: str = "") -> dict:
     model's nearest to the request."""
     from core import image_fit
     model = image_model(path)
-    resolution = IMAGE_RESOLUTION if IMAGE_RESOLUTION in model["resolutions"] else model["resolutions"][0]
+    resolution = IMAGE_RESOLUTION if IMAGE_RESOLUTION in model["resolutions"] else (
+        social_formats.GENERATION_RESOLUTION if social_formats.GENERATION_RESOLUTION in model["resolutions"]
+        else model["resolutions"][-1])
     return {"prompt": prompt, "aspect_ratio": image_fit.nearest(aspect_ratio, model["aspects"]),
             "resolution": resolution, model["count_field"]: 1}
 
 
-def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict:
+def generate_image(api_key: str, prompt: str, aspect_ratio: str = social_formats.FEED_ASPECT) -> dict:
     """One image on the CLIENT'S key/credits, at the REQUESTED ratio (the
     model's nearest, then cropped). Returns {'content': bytes, 'mime',
     'credits', 'model', 'aspect_ratio' (the one sent), 'cropped'}. Raises on
@@ -311,8 +315,13 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
     content = _download(_result_url(data))
     fitted = image_fit.fit_aspect(content, aspect_ratio, payload["aspect_ratio"]) if aspect_ratio else {
         "content": content, "cropped": False}
+    # What the model REALLY returned, and what is left after the crop — measured and logged
+    returned, final = social_formats.measure(content), social_formats.measure(fitted["content"])
+    print(f"[media_gen] {IMAGE_PATH} {payload['resolution']} {payload['aspect_ratio']} returned "
+          f"{returned[0]}x{returned[1]}; after the crop to {aspect_ratio or payload['aspect_ratio']}: {final[0]}x{final[1]}")
     return {"content": fitted["content"], "mime": "image/png", "credits": _credits_used(data), "model": IMAGE_MODEL,
-            "aspect_ratio": payload["aspect_ratio"], "cropped": fitted["cropped"]}
+            "aspect_ratio": payload["aspect_ratio"], "cropped": fitted["cropped"],
+            "returned_size": list(returned), "size": list(final), "resolution": payload["resolution"]}
 
 
 # Presenter video (the client's character image + an audio track → a clip)
@@ -335,7 +344,7 @@ def generate_image(api_key: str, prompt: str, aspect_ratio: str = "1:1") -> dict
 # internal test clients until it has (avatar_video.open_to_all).
 PRESENTER_PATH = os.environ.get("MEDIA_PRESENTER_PATH", "wan/v2.7/image-to-video")
 PRESENTER_MODEL = PRESENTER_PATH            # what the activity rows record as "model"
-PRESENTER_RESOLUTION = os.environ.get("MEDIA_PRESENTER_RESOLUTION", "720p")
+PRESENTER_RESOLUTION = os.environ.get("MEDIA_PRESENTER_RESOLUTION", social_formats.GENERATION_RESOLUTION)
 PRESENTER_RESOLUTIONS = ("720p", "1080p")
 PRESENTER_MIN_SECONDS = 2
 PRESENTER_MAX_SECONDS = 15   # the documented ceiling — a longer text is several clips, never cut
@@ -345,13 +354,14 @@ PRESENTER_PROMPT = ("The person in the image speaks directly to the camera, thei
 
 def presenter_payload(image_url: str, audio_url: str, seconds: int) -> dict:
     """The documented image-to-video body (no aspect_ratio field exists)."""
-    resolution = PRESENTER_RESOLUTION if PRESENTER_RESOLUTION in PRESENTER_RESOLUTIONS else "720p"
+    resolution = (PRESENTER_RESOLUTION if PRESENTER_RESOLUTION in PRESENTER_RESOLUTIONS
+                  else social_formats.GENERATION_RESOLUTION)
     return {"image_url": image_url, "audio_url": audio_url, "prompt": PRESENTER_PROMPT,
             "duration": seconds, "resolution": resolution}
 
 
 def generate_talking_character(api_key: str, image_url: str, audio_url: str,
-                               seconds: int = 0, aspect_ratio: str = "9:16") -> dict:
+                               seconds: int = 0, aspect_ratio: str = social_formats.VERTICAL_ASPECT) -> dict:
     """One presenter clip from the character image and an audio URL, on the
     CLIENT'S key/credits. `seconds` is the audio's length (the caller refuses
     anything over PRESENTER_MAX_SECONDS before calling). `aspect_ratio` is
@@ -366,7 +376,7 @@ def generate_talking_character(api_key: str, image_url: str, audio_url: str,
     return {"url": _result_url(data), "job_id": job["request_id"], "credits": _credits_used(data),
             "duration": data.get("duration") or seconds, "model": PRESENTER_MODEL}
 
-def generate_video(api_key: str, prompt: str, aspect_ratio: str = "9:16") -> dict:
+def generate_video(api_key: str, prompt: str, aspect_ratio: str = social_formats.VERTICAL_ASPECT) -> dict:
     """One short clip (VIDEO_SECONDS) on the CLIENT'S key/credits. The
     documented text-to-video model takes prompt + duration only (no aspect
     ratio field); `aspect_ratio` stays in the signature for the callers."""
@@ -463,7 +473,8 @@ def character_aspect(aspect_ratio: str, path: str = "") -> str:
         try:
             image_fit.ratio(aspect_ratio)
         except (ValueError, ZeroDivisionError):
-            return "3:4" if "3:4" in allowed else allowed[0]
+            fallback = social_formats.GENERATION_FALLBACK_ASPECT
+            return fallback if fallback in allowed else allowed[0]
     return image_fit.nearest(aspect_ratio, allowed)
 
 
@@ -488,7 +499,8 @@ def upload_file(api_key: str, content: bytes, content_type: str) -> str:
     return public_url
 
 
-def generate_with_references(api_key: str, prompt: str, reference_urls: list, aspect_ratio: str = "4:5",
+def generate_with_references(api_key: str, prompt: str, reference_urls: list,
+                             aspect_ratio: str = social_formats.FEED_ASPECT,
                              kind: str = "image") -> dict:
     """One image with the characters' reference images in the model's OWN
     reference field (CHARACTER_MODELS), on uallak's key. Returns {'url',
