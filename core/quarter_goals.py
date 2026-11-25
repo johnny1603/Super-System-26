@@ -230,8 +230,18 @@ def build_targets(words: list, posts: int, aims: dict, baseline: dict = None) ->
     return out
 
 
+def _client_lane_pieces(client_id: int, days: int) -> int:
+    from core import governance
+    return governance.client_lane_media_count(client_id, days)
+
+
 def _posts_week(client_id: int):
+    """Our own output a week — the SYSTEM lane only (knowledge/client-governance.md
+    §2): pieces the client asked for beyond the plan are not counted toward the
+    system's target. The lane cannot be read = not measured (None), never a
+    blended number."""
     n = _count_activity(client_id, ("media_image_created", "media_video_created"), 28)
+    n = max(0, n - _client_lane_pieces(client_id, 28))
     return round(n / 4, 1)
 
 

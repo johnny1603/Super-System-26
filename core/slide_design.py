@@ -742,7 +742,7 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
                 + render_manifest.disclosure(drawn)
             added = social_queue.add(
                 client_id, uploaded["id"], "image", item.get("channels") or ["instagram"], caption=item.get("caption", ""),
-                planned_date=item.get("planned_date", ""), producer="media", source="slide",
+                planned_date=item.get("planned_date", ""), producer="media", source="slide", lane=item.get("lane"),
                 title=f"{item.get('title') or d.get('set_id')} · {slide.get('n') or ''}/{slide.get('total') or ''}",
                 post_ref={"post_id": d.get("post_id", ""), "set_id": d.get("set_id", ""), "asset_id": slide["asset_id"],
                           "n": slide.get("n"), "of": slide.get("total"),

@@ -559,6 +559,7 @@ def _craft_prompt(client_id: int, brief: str, platform: str, kind: str,
     context = _context(client_id)
     payload = {
         "craft_library": context["craft"],
+        "client_governance": context.get("governance", ""), "authority": context.get("authority", "ask"),
         "brand_brief": context["brand"],
         "business": _business_brief(client_id),
         "brief": brief,
@@ -791,6 +792,7 @@ def _craft_brief_prompt(client_id: int, brief, palette: dict, context: dict) -> 
     the payload, and the result is checked again before any model call."""
     payload = {
         "craft_library": context["craft"],
+        "client_governance": context.get("governance", ""), "authority": context.get("authority", "ask"),
         "brand_brief": context["brand"],
         "asset": brief.prompt_material(),
         "post_format": brief.post_format,
@@ -949,6 +951,7 @@ def _craft_character_prompt(client_id: int, brief, palette: dict, context: dict)
     characters; the placeholders and the style clause are added in code."""
     payload = {
         "craft_library": context["craft"],
+        "client_governance": context.get("governance", ""), "authority": context.get("authority", "ask"),
         "brand_brief": context["brand"],
         "asset": brief.prompt_material(),
         "characters": [{"character": i + 1} for i, _ in enumerate(brief.characters)],
@@ -1139,6 +1142,7 @@ def design_spec(client_id: int, spec: dict, palette: dict, roles: dict, slides: 
             "reply_language": lang,
             "schema": slide_spec.schema(),
             "craft_library": context["craft"],
+        "client_governance": context.get("governance", ""), "authority": context.get("authority", "ask"),
             "brand_brief": context["brand"],
             "palette_variant": spec.get("palette_variant", ""),
             "role_colours": roles,

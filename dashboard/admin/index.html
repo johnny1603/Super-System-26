@@ -3387,6 +3387,10 @@ async function openControlRoom(clientId) {
           <div id="crMediaLib"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
         <div class="panel-pad">
+          <div class="drawer-label">⚖️ ממשל — מסלולים, סיכום שבועי, המלצות שנדחו</div>
+          <div id="crGov"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
+        </div>
+        <div class="panel-pad">
           <div class="drawer-label">🧾 תדריך מותג — סקירה, עריכה ואישור</div>
           <div id="crBrief"><div class="drawer-stat-row" style="border:none;color:var(--gray);">טוען…</div></div>
         </div>
@@ -3440,6 +3444,7 @@ async function openControlRoom(clientId) {
   crLoadMediaLib(clientId);
   crLoadCredits(clientId);
   crLoadBrief(clientId);
+  crLoadGov(clientId);
 }
 
 // ─── Brand brief (core/brand_brief) — per client, in the database, versioned ─
@@ -3452,6 +3457,41 @@ const CR_BR_STATUS = { draft: '⏳ טיוטה — ממתינה לאישור', ap
 const CR_BR_SRC = { database: 'מסד הנתונים', repo_file: 'קובץ בריפו (מסד הנתונים לא זמין כרגע)', none: '—' };
 const crBr = { data: null, editing: -1, palEdit: false };
 function crBrWho() { try { return localStorage.getItem('crBriefBy') || ''; } catch (e) { return ''; } }
+// ─── Governance (core/governance): lanes on separate lines, the weekly sync, the override log ───
+const CR_GOV_STATE = { waiting: '⏳ מחכה לאישור הלקוח', approved: '✅ אושר', '': 'עוד לא הוצג' };
+async function crLoadGov(clientId, notice) {
+  const el = document.getElementById('crGov');
+  if (!el) return;
+  let d;
+  try { d = (await api(`/api/admin/governance/${Number(clientId)}`)).data || {}; }
+  catch (e) { el.innerHTML = '<div class="drawer-stat-row" style="border:none;color:var(--red);">לא נטען</div>'; return; }
+  const row = (k, v) => `<div class="drawer-stat-row"><span>${k}</span><span>${v}</span></div>`;
+  const lane = l => { const r = (d.lanes || {})[l] || {}; return `${esc(r.created || 0)} פריטים · ${esc(r.approved || 0)} אושרו · ${esc(r.waiting || 0)} מחכים · ${esc(r.rejected || 0)} חזרו`; };
+  const c = d.credits || {}, s = d.sync || {}, a = d.authority || {};
+  const day = { thu: 'חמישי', fri: 'שישי', sat: 'מוצאי שבת' }[d.sync_day] || d.sync_day;
+  const overrides = (d.overrides || []).map(o => `<div class="drawer-stat-row" style="display:block;">
+      <div style="color:var(--gray);font-size:12px;">${esc(String(o.at || '').slice(0, 10))} · ${esc(o.agent || '')} · ${esc(o.topic || '')}</div>
+      <div><b>המלצנו:</b> <bdi dir="auto">${esc(o.recommendation || '')}</bdi></div><div><b>הלקוח החליט:</b> <bdi dir="auto">${esc(o.decision || '')}</bdi></div></div>`).join('');
+  el.innerHTML = (notice ? `<div class="drawer-stat-row" style="border:none;color:var(--green);">${esc(notice)}</div>` : '')
+    + row('סמכות הסוכנים', a.mode === 'decide' ? 'מחליטים ומעדכנים (התדריך מאושר)' : `שואלים לפני החלטה אסטרטגית (תדריך: ${esc(a.brief_status || '—')})`)
+    + row('מסלול המערכת · 30 יום', lane('system')) + row('מסלול הלקוח · 30 יום', lane('client'))
+    + (((d.lanes || {}).unrecorded || {}).created ? row('לפני רישום מסלולים', lane('unrecorded')) : '')
+    + row('קרדיטים החודש — מערכת / לקוח', c.readable === false ? 'לא נקרא' : `${esc(c.system)} / ${esc(c.client)}${c.unrecorded ? ` (+${esc(c.unrecorded)} בלי מסלול)` : ''}`)
+    + row('יתרת חבילה', c.package == null ? 'גודל החבילה לא הוגדר (הגדרות הלקוח)' : `${esc(c.left)} מתוך ${esc(c.package)}${c.days_left != null ? ` · כ-${esc(c.days_left)} ימים` : ''}`)
+    + row('ערב הסיכום השבועי', esc(day) + (d.exempt ? ' · פטור מהסלמה' : ''))
+    + row(`סיכום ${esc(s.week || '')}`, esc(CR_GOV_STATE[s.state || ''] || s.state) + (s.approved_by ? ` · ${esc(s.approved_by)}` : '') + (s.escalated_at ? ' · הוסלם אליך' : ''))
+    + (s.state === 'waiting' ? `<div class="drawer-stat-row" style="border:none;"><button class="btn" onclick="crGovApprove(${Number(clientId)})">לאשר בשם הלקוח</button></div>` : '')
+    + ((d.sync_lines || []).length ? `<details><summary style="cursor:pointer;color:var(--gray);">מה הוצג ללקוח</summary><pre style="white-space:pre-wrap;font:inherit;font-size:13px;">${esc(d.sync_lines.join('\n'))}</pre></details>` : '')
+    + `<div class="drawer-label" style="margin-top:10px;">המלצות שהלקוח בחר לא לקבל (${esc((d.overrides || []).length)})</div>`
+    + (overrides || '<div class="drawer-stat-row" style="border:none;color:var(--gray);">אין רישומים.</div>');
+}
+async function crGovApprove(clientId) {
+  if (!confirm('לאשר את הסיכום השבועי בשם הלקוח? האישור נרשם ומוצג ללקוח כאישור שנעשה בשמו.')) return;
+  let res;
+  try { res = await api(`/api/admin/governance/${Number(clientId)}/approve-sync`, { method: 'POST', body: JSON.stringify({ by: crBrWho() }) }); }
+  catch (e) { res = null; }
+  crLoadGov(clientId, res && res.success ? 'אושר בשם הלקוח.' : 'לא אושר — נסו שוב.');
+}
 async function crLoadBrief(clientId, notice) {
   const el = document.getElementById('crBrief');
   if (!el) return;

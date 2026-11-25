@@ -246,9 +246,11 @@ def next_weekday(day_index: int, after: date = None) -> str:
 def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", planned_date: str = "",
         producer: str = "media", source: str = "chat", title: str = "", replaces: str = "",
         plan_ref: dict = None, flags: list = None, post_ref: dict = None, real_asset: dict = None,
-        characters: list = None, manifest: dict = None) -> dict:
+        characters: list = None, manifest: dict = None, lane: str = None) -> dict:
     """One item waiting for the owner. The same Drive file already waiting or
-    approved is NOT queued twice (that item is returned)."""
+    approved is NOT queued twice (that item is returned). `lane` (core/governance):
+    recorded HERE, at creation — system = the system's own plan, client = asked for."""
+    from core import governance
     file_id = str(file_id or "").strip()
     if not FILE_RE.match(file_id):
         raise QueueError("bad_file")
@@ -262,12 +264,15 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
             "caption": _clean_caption(caption)[:CAPTION_MAX], "planned_date": _clean_date(planned_date),
             "producer": producer if producer in PRODUCERS else "media", "source": source,
             "title": re.sub(r"\s+", " ", str(title or "")).strip()[:120], "status": "waiting",
-            "created_at": _now().isoformat(), "delivered": {}, "history": [{"at": _now().isoformat(), "do": "added"}]}
+            "created_at": _now().isoformat(), "delivered": {}, "history": [{"at": _now().isoformat(), "do": "added"}],
+            "lane": governance.lane_at_creation(lane, source, plan_ref)}
     if replaces and ID_RE.match(str(replaces)):
         item["replaces"] = str(replaces)
         for old in queue:
             if old["id"] == str(replaces):
                 old["fixed_by"] = item["id"]
+                if not governance.clean_lane(lane) and governance.clean_lane(old.get("lane")):
+                    item["lane"] = old["lane"]          # a fix stays in the lane of what it fixes
     if plan_ref:
         item["plan_ref"] = plan_ref
     if flags:
@@ -291,6 +296,11 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
     queue.append(item)
     _save(client_id, queue)
     return item
+
+
+def _lane_now(lane, source: str) -> str:
+    from core import governance
+    return governance.lane_at_creation(lane, source)
 
 
 # ─── The copy stage of a contract post (core/post_pipeline) ──────────────────
@@ -429,7 +439,8 @@ def _post_channels(post: dict) -> list:
 
 
 def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = None,
-             escalations: dict = None, flags: dict = None, producer: str = "media", sources: dict = None) -> dict:
+             escalations: dict = None, flags: dict = None, producer: str = "media", sources: dict = None,
+             lane: str = None) -> dict:
     """The copy of ONE contract post, waiting for the owner. The same set_id
     still waiting = the SAME item, revised (never a second card)."""
     queue = _load(client_id)
@@ -468,6 +479,7 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
             "producer": producer if producer in PRODUCERS else "media", "source": "post",
             "title": re.sub(r"\s+", " ", str(post.get("title") or post["set_id"])).strip()[:120],
             "status": "waiting", "created_at": _now().isoformat(), "delivered": {}, "post": body,
+            "lane": _lane_now(lane, "post"),
             "production": {"state": "waiting_copy"}, "history": [{"at": _now().isoformat(), "do": "added"}]}
     queue.append(item)
     _save(client_id, queue)
@@ -525,7 +537,7 @@ def set_production(client_id: int, item_id: str, production: dict):
 # ─── A text-slide design under review (core/slide_design) ────────────────────
 
 def add_design(client_id: int, design: dict, title: str = "", channels=None, caption: str = "",
-               planned_date: str = "", producer: str = "media", flags: list = None) -> dict:
+               planned_date: str = "", producer: str = "media", flags: list = None, lane: str = None) -> dict:
     """ONE design waiting for the manager. The same post's design (or the same
     standalone template) still waiting = the SAME item, replaced."""
     queue = _load(client_id)
@@ -550,6 +562,7 @@ def add_design(client_id: int, design: dict, title: str = "", channels=None, cap
             "producer": producer if producer in PRODUCERS else "media", "source": "design",
             "title": re.sub(r"\s+", " ", str(title or design.get("template_name") or "")).strip()[:120],
             "status": "waiting", "created_at": _now().isoformat(), "delivered": {}, "design": design,
+            "lane": _lane_now(lane, "design"),
             "history": [{"at": _now().isoformat(), "do": "added"}]}
     if flags:
         item["flags"] = [f for f in flags if f in FLAG_TEXT][:6]

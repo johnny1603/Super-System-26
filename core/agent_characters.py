@@ -1055,7 +1055,9 @@ def client_request_poses(client_id: int, agent: str, poses: list, _make=None, _e
         if _make is None:
             return make_pose(agent, _english(p, client_id), owner=client_id)
         return _make(agent, _english(p, client_id))
-    got = parallel.gather({i: (lambda p=p: one(p)) for i, p in enumerate(wanted)})
+    from core import governance
+    with governance.lane_scope("client"):              # asked for by the client: their lane, their credits
+        got = parallel.gather({i: (lambda p=p: one(p)) for i, p in enumerate(wanted)})
     made = [value["pose_id"] for _i, (ok, value) in sorted(got.items()) if ok]
     claim_poses(made, client_id)
     errors = [value for _i, (ok, value) in sorted(got.items()) if not ok]

@@ -134,11 +134,17 @@ def load_context(client_id: int) -> dict:
     craft = _read(CRAFT_PATH).strip()
     if not craft:
         raise ContextMissing([os.path.relpath(CRAFT_PATH, ROOT).replace(os.sep, "/")])
+    from core import governance
+    doctrine = governance.text()
+    if not doctrine:
+        raise ContextMissing([os.path.relpath(governance.PATH, ROOT).replace(os.sep, "/")])
     got = brand_brief.for_agents(client_id)
     brand = got["text"].strip() if got["status"] != "missing" else got["text"]
     facts = parse_brand(got.get("source_text", "").strip()) if got["status"] != "missing" else parse_brand("")
     return {"craft": craft, "brand": brand, "brand_facts": facts, "brand_status": got["status"],
-            "brand_lacks": got["lacks"]}
+            "brand_lacks": got["lacks"], "governance": doctrine,
+            # §1: no approved brief, no strategic authority
+            "authority": "decide" if got["status"] == "approved" else "ask"}
 
 
 def try_context(client_id: int) -> dict:

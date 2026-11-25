@@ -55,6 +55,10 @@ PARITY = {
     # The poses card's own image and keep / discard buttons (generate_character_poses)
     "GET /api/client/characters/poses/{request_id}/{cand_id}": (NOT_CHAT, _PLUMBING),
     "POST /api/client/characters/poses/{request_id}/{cand_id}/{verb}": (NOT_CHAT, _PLUMBING),
+    # ── Governance block on the main page (core/governance) ─────────────────
+    "GET /api/client/governance": (NOT_CHAT, _PAGE_LOAD),
+    "POST /api/client/governance/sync-day": (GAP, "P3: choose the weekly-sync evening from the chat"),
+    "POST /api/client/governance/approve-week": (GAP, "P2: approve the weekly sync by answering it in the manager's chat"),
     # ── Branding page "מיתוג" (core/brand_page) ──────────────────────────────
     "GET /api/client/brand-identity": (NOT_CHAT, _PAGE_LOAD),
     "GET /api/client/brand-identity/file/{file_id}": (NOT_CHAT, _PLUMBING),

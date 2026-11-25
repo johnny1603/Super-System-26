@@ -1645,6 +1645,24 @@ body.bs-open { overflow: hidden; }
   .soc-chans label { min-height: 44px; }
   .soc-stage-bar .media-chip { min-height: 40px; }
 }
+/* ---------- GOVERNANCE on the main page: credits, lanes (separate lines), weekly sync ---------- */
+.gov { background: var(--card, rgba(255,255,255,.04)); border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 18px; padding: 16px 18px; margin: 14px 0; }
+.gov-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.gov-title { font-size: 17px; font-weight: 800; }
+.gov-note { font-size: 13px; color: var(--gray); }
+.gov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.gov-box { border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 14px; padding: 12px; }
+.gov-box h4 { font-size: 13px; font-weight: 700; color: var(--gray); margin: 0 0 8px; }
+.gov-line { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 5px 0; border-top: 1px dashed var(--line, rgba(255,255,255,.08)); }
+.gov-line:first-of-type { border-top: 0; }
+.gov-line b { font-variant-numeric: tabular-nums; }
+.gov-line.sys b { color: var(--accent); }
+.gov-small { font-size: 12.5px; color: var(--gray); line-height: 1.55; margin-top: 6px; }
+.gov-sync { margin-top: 12px; border: 1px solid var(--accent); border-radius: 14px; padding: 12px; }
+.gov-sync.done { border-color: var(--line, rgba(255,255,255,.12)); }
+.gov-sync pre { white-space: pre-wrap; font: inherit; font-size: 13.5px; line-height: 1.6; margin: 8px 0; max-height: 320px; overflow: auto; }
+.gov-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.gov-row select { min-height: 38px; border-radius: 10px; border: 1px solid var(--line, rgba(255,255,255,.2)); background: rgba(0,0,0,.25); color: inherit; padding: 4px 10px; font: inherit; }
 /* ---------- BRANDING PAGE "מיתוג" (core/brand_page; the brand brief, shown and edited) ---------- */
 .br-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
 .br-card { background: var(--card, rgba(255,255,255,.04)); border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 18px; padding: 18px; }
@@ -2003,6 +2021,11 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="agent-invites" id="agentInvites" hidden></div>
 
   <!-- The agreed 3-month goals as a path (core/quarter_goals): real data where it exists, labelled -->
+  <!-- Governance (core/governance): credits in plain sight, the two lanes on SEPARATE lines, the weekly sync -->
+  <section class="gov" id="govCard" hidden aria-labelledby="govTitle">
+    <div class="gov-head"><span class="gov-title" id="govTitle" data-i18n="gov_title">קרדיטים ומסלולים</span><span class="gov-note" id="govNote" role="status" aria-live="polite"></span></div>
+    <div id="govBody"></div>
+  </section>
   <section class="goal-track" id="goalTrack" hidden aria-labelledby="gtTitle">
     <div class="gt-head"><span class="gt-title" id="gtTitle"></span><span class="gt-month" id="gtMonth"></span></div>
     <div class="gt-honest" id="gtBaseline" hidden></div>
@@ -3233,6 +3256,35 @@ const DASH_I18N = {
   soc_approve_all: { he:'אישור כל {n} השקופיות', en:'Approve all {n} slides', fr:'Valider les {n} diapos', ar:'الموافقة على كل الشرائح ({n})', ru:'Одобрить все слайды ({n})' },
   soc_reject_slide: { he:'ההחזרה היא על שקופית {n} מתוך {total} — זו שמוצגת עכשיו.', en:'This sends back slide {n} of {total} — the one shown now.', fr:'Le renvoi concerne la diapo {n} sur {total} — celle affichée.', ar:'الإرجاع يخص الشريحة {n} من {total} — المعروضة الآن.', ru:'Возврат относится к слайду {n} из {total} — тому, что на экране.' },
   nav_avatars: { he:'אווטרים', en:'Avatars', fr:'Avatars', ar:'الأفاتارات', ru:'Аватары' },
+  gov_title: { he:'קרדיטים ומסלולים', en:'Credits and lanes', fr:'Crédits et voies', ar:'الأرصدة والمسارات', ru:'Кредиты и линии' },
+  gov_credits: { he:'קרדיטים החודש', en:'Credits this month', fr:'Crédits ce mois-ci', ar:'الأرصدة هذا الشهر', ru:'Кредиты за месяц' },
+  gov_system_used: { he:'המערכת צרכה עבורכם', en:'Used by the system for you', fr:'Consommés par le système pour vous', ar:'استهلكها النظام لأجلكم', ru:'Израсходовано системой для вас' },
+  gov_client_used: { he:'הבקשות שלכם צרכו', en:'Used by your own requests', fr:'Consommés par vos demandes', ar:'استهلكتها طلباتكم', ru:'Израсходовано вашими запросами' },
+  gov_unrecorded_used: { he:'לפני שהתחלנו לרשום מסלול', en:'From before lanes were recorded', fr:'Avant l’enregistrement des voies', ar:'قبل بدء تسجيل المسارات', ru:'До начала учёта линий' },
+  gov_left: { he:'נשאר בחבילה', en:'Left in the package', fr:'Reste dans le forfait', ar:'المتبقي في الباقة', ru:'Осталось в пакете' },
+  gov_lasts: { he:'בקצב הנוכחי זה מספיק לעוד כ-{days} ימים.', en:'At the current rate it lasts about {days} more days.', fr:'Au rythme actuel, environ {days} jours restants.', ar:'بالمعدل الحالي يكفي نحو {days} يومًا.', ru:'При текущем темпе хватит примерно на {days} дн.' },
+  gov_no_rate: { he:'אין עדיין מספיק שימוש כדי להעריך לכמה זמן זה מספיק.', en:'There is not enough use yet to estimate how long it lasts.', fr:'Pas encore assez d’usage pour estimer la durée.', ar:'لا يوجد استخدام كافٍ بعد لتقدير المدة.', ru:'Пока недостаточно данных, чтобы оценить срок.' },
+  gov_package_unset: { he:'גודל החבילה עוד לא הוגדר אצלנו, ולכן אין כאן יתרה. הצריכה למעלה מדויקת.', en:'The package size is not set on our side yet, so no balance is shown. The use above is exact.', fr:'La taille du forfait n’est pas encore définie chez nous : pas de solde affiché. La consommation ci-dessus est exacte.', ar:'حجم الباقة غير محدد لدينا بعد، لذا لا يظهر رصيد. الاستهلاك أعلاه دقيق.', ru:'Размер пакета у нас ещё не задан, поэтому остаток не показан. Расход выше точен.' },
+  gov_no_gate: { he:'אין תקרה ואין חסימה — החבילה שלכם, משתמשים בה איך שתרצו.', en:'No ceiling and no block — it is your package, use it as you like.', fr:'Ni plafond ni blocage — c’est votre forfait, utilisez-le comme vous voulez.', ar:'لا سقف ولا حظر — الباقة لكم، استخدموها كما تشاؤون.', ru:'Ни лимита, ни блокировок — это ваш пакет, используйте как хотите.' },
+  gov_unreadable: { he:'לא הצלחנו לקרוא את הנתון הזה כרגע.', en:'We couldn’t read this right now.', fr:'Lecture impossible pour l’instant.', ar:'تعذّرت القراءة الآن.', ru:'Не удалось прочитать.' },
+  gov_lanes: { he:'30 הימים האחרונים, לפי מסלול', en:'The last 30 days, by lane', fr:'Les 30 derniers jours, par voie', ar:'آخر 30 يومًا حسب المسار', ru:'Последние 30 дней по линиям' },
+  gov_lane_system: { he:'מסלול המערכת — מה שאנחנו תכננו', en:'System lane — what we planned', fr:'Voie système — ce que nous avons planifié', ar:'مسار النظام — ما خططنا له', ru:'Линия системы — что запланировали мы' },
+  gov_lane_client: { he:'מסלול הלקוח — מה שביקשתם מעבר לתוכנית', en:'Client lane — what you asked for beyond the plan', fr:'Voie client — vos demandes hors plan', ar:'مسار العميل — ما طلبتموه خارج الخطة', ru:'Линия клиента — ваши запросы сверх плана' },
+  gov_lane_line: { he:'{created} פריטים · {approved} אושרו · {waiting} מחכים · {rejected} חזרו לתיקון', en:'{created} items · {approved} approved · {waiting} waiting · {rejected} sent back', fr:'{created} éléments · {approved} validés · {waiting} en attente · {rejected} renvoyés', ar:'{created} عناصر · {approved} معتمدة · {waiting} بالانتظار · {rejected} أُعيدت', ru:'{created} единиц · {approved} одобрено · {waiting} ждут · {rejected} возвращено' },
+  gov_lane_why: { he:'היעדים שסיכמנו נמדדים רק על מסלול המערכת.', en:'The targets we agreed are measured on the system lane only.', fr:'Les objectifs convenus ne sont mesurés que sur la voie système.', ar:'الأهداف المتفق عليها تُقاس على مسار النظام فقط.', ru:'Согласованные цели измеряются только по линии системы.' },
+  gov_sync_title: { he:'הסיכום השבועי', en:'The weekly summary', fr:'Le bilan hebdomadaire', ar:'الملخص الأسبوعي', ru:'Недельная сводка' },
+  gov_sync_waiting: { he:'מחכה לאישור שלכם', en:'Waiting for your approval', fr:'En attente de votre validation', ar:'بانتظار اعتمادكم', ru:'Ждёт вашего одобрения' },
+  gov_sync_approved: { he:'אושר', en:'Approved', fr:'Validé', ar:'تم الاعتماد', ru:'Одобрено' },
+  gov_sync_by_owner: { he:'אושר בשמכם על ידי מנהל וואלק', en:'Approved on your behalf by the uallak manager', fr:'Validé en votre nom par le responsable uallak', ar:'اعتمده مدير uallak نيابةً عنكم', ru:'Одобрено от вашего имени менеджером uallak' },
+  gov_sync_approve: { he:'מאשרים את השבוע', en:'Approve the week', fr:'Valider la semaine', ar:'اعتماد الأسبوع', ru:'Одобрить неделю' },
+  gov_sync_none: { he:'הסיכום השבועי הראשון יופיע כאן בערב שבחרתם.', en:'The first weekly summary will appear here on the evening you chose.', fr:'Le premier bilan apparaîtra ici le soir choisi.', ar:'سيظهر أول ملخص أسبوعي هنا في المساء الذي اخترتموه.', ru:'Первая недельная сводка появится здесь в выбранный вами вечер.' },
+  gov_sync_day: { he:'הערב של הסיכום השבועי', en:'The weekly summary evening', fr:'Le soir du bilan hebdomadaire', ar:'مساء الملخص الأسبوعي', ru:'Вечер недельной сводки' },
+  gov_day_thu: { he:'יום חמישי', en:'Thursday', fr:'Jeudi', ar:'الخميس', ru:'Четверг' },
+  gov_day_fri: { he:'יום שישי', en:'Friday', fr:'Vendredi', ar:'الجمعة', ru:'Пятница' },
+  gov_day_sat: { he:'מוצאי שבת', en:'Saturday evening', fr:'Samedi soir', ar:'مساء السبت', ru:'Вечер субботы' },
+  gov_saved: { he:'נשמר.', en:'Saved.', fr:'Enregistré.', ar:'تم الحفظ.', ru:'Сохранено.' },
+  gov_failed: { he:'לא נשמר. נסו שוב בעוד רגע.', en:'Not saved. Try again in a moment.', fr:'Non enregistré. Réessayez dans un instant.', ar:'لم يُحفظ. حاولوا بعد قليل.', ru:'Не сохранено. Попробуйте чуть позже.' },
+  gov_overrides: { he:'המלצות שבחרתם לא לקבל', en:'Recommendations you chose not to take', fr:'Recommandations non suivies', ar:'توصيات لم تأخذوا بها', ru:'Рекомендации, которым вы не последовали' },
   av_mine: { he:'ביקשתם', en:'You asked for it', fr:'Votre demande', ar:'بطلبكم', ru:'По вашей просьбе' },
   nav_brand: { he:'מיתוג', en:'Branding', fr:'Identité', ar:'الهوية', ru:'Бренд' },
   brand_title: { he:'מיתוג', en:'Branding', fr:'Identité de marque', ar:'هوية العلامة', ru:'Бренд' },
@@ -13140,6 +13192,7 @@ function paintFocusLock() {
 let HOME_FOCUS = null;
 let INVITE_RESUMED = false;
 async function loadHomeFocus() {
+  loadGovernance();                                   // credits + lanes + the weekly sync: in plain sight on the main page
   let d = null;
   try {
     const res = await fetch('/api/client/home-focus?lang=' + encodeURIComponent(uallakI18n.current()),
@@ -13229,6 +13282,91 @@ function resumeInvite(r) {
   INVITE_RESUMED = true;
   sendOpener(r.persona, r.opener);
 }
+
+// ─── Governance on the main page (GET /api/client/governance, core/governance) ──
+// Credits in plain sight (system / your requests / left / how long it lasts),
+// the two lanes on SEPARATE lines — never one blended number — and the weekly
+// sync the client approves. Nothing here blocks or limits anything.
+const govUI = { data: null, busy: false };
+function govNum(v) { const n = Number(v); return isFinite(n) ? (n === Math.round(n) ? String(n) : n.toFixed(1)) : '—'; }
+function govFill(text, values) { return String(text).replace(/\{(\w+)\}/g, (m, k) => (values[k] == null ? '0' : values[k])); }
+async function loadGovernance() {
+  try {
+    const res = await fetch('/api/client/governance', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const j = await res.json();
+    if (!j.success) return;
+    govUI.data = j.data || {};
+    renderGovernance();
+  } catch (e) { console.error('governance load failed', e); }
+}
+function renderGovernance() {
+  const card = document.getElementById('govCard'), body = document.getElementById('govBody');
+  const d = govUI.data, t = uallakI18n.t;
+  if (!card || !body || !d) return;
+  const c = d.credits || {}, lanes = d.lanes || {}, sync = d.sync || {};
+  const line = (label, value, cls) => `<div class="gov-line ${cls || ''}"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+  let credits;
+  if (c.readable === false) {
+    credits = `<div class="gov-small">${esc(t('gov_unreadable'))}</div>`;
+  } else {
+    credits = line(t('gov_system_used'), govNum(c.system), 'sys') + line(t('gov_client_used'), govNum(c.client))
+      + (Number(c.unrecorded) > 0 ? line(t('gov_unrecorded_used'), govNum(c.unrecorded)) : '')
+      + (c.package == null ? `<div class="gov-small">${esc(t('gov_package_unset'))}</div>`
+        : line(t('gov_left'), govNum(c.left) + ' / ' + govNum(c.package))
+          + `<div class="gov-small">${esc(c.days_left != null ? govFill(t('gov_lasts'), { days: c.days_left }) : t('gov_no_rate'))}</div>`)
+      + `<div class="gov-small">${esc(t('gov_no_gate'))}</div>`;
+  }
+  const laneRow = key => govFill(t('gov_lane_line'), lanes[key] || {});
+  const lanesHtml = lanes.readable === false ? `<div class="gov-small">${esc(t('gov_unreadable'))}</div>`
+    : `<div class="gov-line sys" style="display:block"><span>${esc(t('gov_lane_system'))}</span><div class="gov-small">${esc(laneRow('system'))}</div></div>
+       <div class="gov-line" style="display:block"><span>${esc(t('gov_lane_client'))}</span><div class="gov-small">${esc(laneRow('client'))}</div></div>
+       ${(lanes.unrecorded || {}).created ? `<div class="gov-line" style="display:block"><span>${esc(t('gov_unrecorded_used'))}</span><div class="gov-small">${esc(laneRow('unrecorded'))}</div></div>` : ''}
+       <div class="gov-small">${esc(t('gov_lane_why'))}</div>`;
+  const dayPick = ADMIN_VIEW ? esc(t('gov_day_' + d.sync_day))
+    : `<select id="govDay" aria-label="${esc(t('gov_sync_day'))}">${(d.sync_days || []).map(k => `<option value="${esc(k)}"${k === d.sync_day ? ' selected' : ''}>${esc(t('gov_day_' + k))}</option>`).join('')}</select>`;
+  let syncHtml;
+  if (!sync.week) {
+    syncHtml = `<div class="gov-sync done"><b>${esc(t('gov_sync_title'))}</b><div class="gov-small">${esc(t('gov_sync_none'))}</div>
+      <div class="gov-row"><span class="gov-small">${esc(t('gov_sync_day'))}</span>${dayPick}</div></div>`;
+  } else {
+    const waiting = sync.state === 'waiting';
+    const stateText = waiting ? t('gov_sync_waiting') : sync.by_owner ? t('gov_sync_by_owner') : t('gov_sync_approved');
+    syncHtml = `<div class="gov-sync ${waiting ? '' : 'done'}"><b>${esc(t('gov_sync_title'))} · ${esc(sync.week)}</b> — ${esc(stateText)}
+      <details ${waiting ? 'open' : ''}><summary class="gov-small" style="cursor:pointer">${esc(t('gov_sync_title'))}</summary><pre>${esc((sync.lines || []).join('\n'))}</pre></details>
+      <div class="gov-row">${waiting && !ADMIN_VIEW ? `<button class="sugg-btn approve" id="govApprove">${esc(t('gov_sync_approve'))}</button>` : ''}
+        <span class="gov-small">${esc(t('gov_sync_day'))}</span>${dayPick}</div></div>`;
+  }
+  const over = (d.overrides || []).length ? `<details class="gov-small" style="margin-top:10px"><summary style="cursor:pointer">${esc(t('gov_overrides'))} (${d.overrides.length})</summary>
+    ${d.overrides.map(o => `<div style="margin-top:6px">${esc(String(o.at || '').slice(0, 10))} — ${esc(o.recommendation || '')} → ${esc(o.decision || '')}</div>`).join('')}</details>` : '';
+  body.innerHTML = `<div class="gov-grid"><div class="gov-box"><h4>${esc(t('gov_credits'))}</h4>${credits}</div>
+    <div class="gov-box"><h4>${esc(t('gov_lanes'))}</h4>${lanesHtml}</div></div>${syncHtml}${over}`;
+  card.hidden = false;
+}
+async function govPost(path, body) {
+  const t = uallakI18n.t, note = document.getElementById('govNote');
+  if (govUI.busy || ADMIN_VIEW) return;
+  govUI.busy = true;
+  try {
+    const res = await fetch('/api/client/governance/' + path, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.success) { if (note) note.textContent = t('gov_failed'); return; }
+    govUI.data = j.data || govUI.data;
+    renderGovernance();
+    if (note) note.textContent = t('gov_saved');
+  } catch (e) {
+    console.error('governance save failed', e);
+    if (note) note.textContent = t('gov_failed');
+  } finally { govUI.busy = false; }
+}
+(function wireGovernance() {
+  const body = document.getElementById('govBody');
+  if (!body) return;
+  body.addEventListener('click', ev => { if (ev.target.closest('#govApprove')) govPost('approve-week', {}); });
+  body.addEventListener('change', ev => { if (ev.target.id === 'govDay') govPost('sync-day', { day: ev.target.value }); });
+})();
 
 // ─── Branding page "מיתוג" (GET /api/client/brand-identity, core/brand_page) ──
 // The page shows and edits the BRAND BRIEF the agents read: colours = its

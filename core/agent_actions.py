@@ -2780,10 +2780,12 @@ def _run_produce(client_id: int, params: dict, background_tasks):
     images/<platform> or videos/<platform>). Nothing is published. Partial
     success is reported as such; nothing made = a refusal or _FAILED."""
     from agents import media_agent
+    from core import governance
     made, failed, missing_tool = [], 0, False
     for piece in params.get("pieces") or []:
         run = media_agent.generate_image if piece["kind"] == "image" else media_agent.generate_video
-        result = run(client_id, piece["brief"], piece["platform"])
+        with governance.lane_scope("client"):          # a specific request = the client lane (items and costs)
+            result = run(client_id, piece["brief"], piece["platform"])
         if result.get("success"):
             made.append({"kind": piece["kind"], "link": result.get("link", "")})
             channels = _social_channels(piece)
@@ -2793,7 +2795,7 @@ def _run_produce(client_id: int, params: dict, background_tasks):
                 social_queue.add_safely(client_id, result["file_id"], piece["kind"], channels,
                                         caption=piece.get("caption", ""), planned_date=piece.get("date", ""),
                                         producer="media", source="chat", title=piece["brief"][:120],
-                                        replaces=piece.get("replaces", ""))
+                                        replaces=piece.get("replaces", ""), lane="client")
             continue
         failed += 1
         if media_agent._NO_ACCOUNT_ERROR in (result.get("errors") or []):

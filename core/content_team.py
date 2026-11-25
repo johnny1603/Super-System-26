@@ -341,6 +341,12 @@ def produce(client_id: int, plan_id: str):
     """Runs in the BACKGROUND after the approval: every item, one by one, each
     saved as it finishes. One failed item never stops the others; the team is
     alerted once with what did not come out."""
+    from core import governance
+    with governance.lane_scope("system"):              # the weekly plan IS the system lane (items and costs)
+        return _produce_plan(client_id, plan_id)
+
+
+def _produce_plan(client_id: int, plan_id: str):
     failed = []
     value = latest(client_id)
     if not value or value.get("id") != str(plan_id) or value.get("status") != "approved":

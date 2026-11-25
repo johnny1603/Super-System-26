@@ -334,9 +334,14 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
     warning = post_brief.lead_time_warning(context["brand_facts"], post.get("occasion_date", ""),
                                            post.get("publish_date", ""))
     warnings = [{**warning, "occasion_date": post["occasion_date"]}] if warning else []
+    # The lane is recorded now, on the item (core/governance §2): what the agent declared on
+    # the post ("system" = its own plan), else a post asked for in a chat is the client's
+    from core import governance
+    declared = raw_post.get("lane") if isinstance(raw_post, dict) else None
     item = social_queue.add_post(client_id, post, palette=palette, warnings=warnings,
                                  escalations=escalations, flags=flags, sources=sources,
-                                 producer=persona if persona in social_queue.PRODUCERS else "media")
+                                 producer=persona if persona in social_queue.PRODUCERS else "media",
+                                 lane=governance.lane_at_creation(declared, "chat"))
     line = pick(TEXT["queued"], lang).replace("{n}", str(len(post["assets"])))
     if post.get("colors"):
         # The manager's explicit colours win over the brand palette — said, in one line
@@ -605,7 +610,9 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
     # every card and the Social tab show, from the first second to the end
     tracker = production_progress.start(client_id, item_id, (item.get("post") or {}).get("slides") or [])
     try:
-        production = _produce(client_id, item, tell)
+        from core import governance
+        with governance.lane_scope(item.get("lane")):      # its assets and its costs carry the post's lane
+            production = _produce(client_id, item, tell)
     except Exception as e:
         tracker.finish("failed")
         print(f"[{SERVICE_NAME}] client {client_id}: production broke ({type(e).__name__}: {str(e)[:200]})")

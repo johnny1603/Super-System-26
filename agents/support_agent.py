@@ -1097,6 +1097,9 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             goals_block = quarter_goals.prompt_block(client_id)
             if goals_block:
                 payload["quarter_goals"] = goals_block
+            # Who decides what for THIS client (core/governance): authority, lanes, settled overrides
+            from core import governance
+            payload["governance"] = governance.prompt_block(client_id)
             from core import organic_plan
             organic_block = organic_plan.prompt_block(client_id)
             if organic_block:
@@ -1167,7 +1170,22 @@ def _guard_invented(client_id: int, persona_id: str, message: str, reply: str, s
     return _NO_LANDING_YET.get(_client_language(client_id, message)) or _NO_LANDING_YET["he"]
 
 
+def _note_override(client_id: int, persona_id: str, reply: str, result: dict) -> str:
+    """The agent complied with an override (client-governance §3): step 4,
+    the log — stored by code, with the line the client reads. Never raises."""
+    try:
+        raw = (result or {}).get("override_log")
+        if not raw:
+            return reply
+        from core import client_language, governance
+        return governance.note_override(client_id, raw, reply, persona_id, client_language.of(client_id))
+    except Exception as e:
+        log_step(AGENT_NAME, "override_log_failed", f"client {client_id}: {type(e).__name__}")
+        return reply
+
+
 def _reply_guards(client_id: int, persona_id: str, message: str, reply: str, result: dict) -> str:
+    reply = _note_override(client_id, persona_id, reply, result)
     """core/reply_guards on every chat reply (2026-11-22, client 27):
     a specialist's off-request content-plan pitch (and its card) dropped,
     a sentence said twice said once, an offer to connect a channel that is
@@ -1676,7 +1694,7 @@ def _answer_support_question(client_id: int, message: str, help_connection: str 
             lambda: model_routing.routed_turn(
                 "manager",
                 lambda model, last_try: safe_claude_json_call(
-                    cached_system(SYSTEM + manager_line), user_message, max_tokens=CHAT_TURN_MAX_TOKENS,
+                    cached_system(_with_governance(SYSTEM + manager_line, light)), user_message, max_tokens=CHAT_TURN_MAX_TOKENS,
                     model=model, effort=CHAT_TURN_EFFORT, client_id=client_id,
                     cost_category="claude_support", retry_empty=last_try),
                 message=message, client_id=client_id, decision=decision),
@@ -2805,6 +2823,16 @@ media: asked for poses or images, she says ליאור makes them, in his chat.
 """
 
 
+def _with_governance(system: str, light: bool = False) -> str:
+    """knowledge/client-governance.md in full in EVERY client-facing agent's
+    prompt (static → inside the cached prefix). A light turn (thanks / hi)
+    reads no account data and sets nothing in motion: it stays light."""
+    if light:
+        return system
+    from core import governance
+    return governance.with_rules(system)
+
+
 def _with_content_context(client_id: int, system: str, payload: dict) -> str:
     """Both files IN FULL for the content personas: the craft library in the
     (cached, static) system prompt, the client's brand brief in the data."""
@@ -2878,6 +2906,7 @@ def _answer_persona_question(client_id: int, persona_id: str, persona: dict, mes
         extra_fields=ARTICLE_FIELD if drafts else "")
     if persona_id in CONTENT_PERSONAS and not light:
         system = _with_content_context(client_id, system, payload)
+    system = _with_governance(system, light)
     try:
         result = timed_step(
             AGENT_NAME, "persona_llm_call",

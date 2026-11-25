@@ -1014,6 +1014,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   absent from the manifest = the card FAILS by name (design `missing`, production state `failed`, no approve, no files). Stage log
   `[character_trace]`. Tests never write under `data/` (`core/local_data`; the runner fails if they do). `tests/test_render_manifest.py`,
   `tests/test_local_data.py`.
+- **Client governance (2026-11-26, docs/GOVERNANCE.md, knowledge/client-governance.md = POLICY)**: `core/governance` — the doctrine in
+  every agent's prompt (`with_rules`); authority `decide` only on an APPROVED brief, else `ask`; every queue item stores `lane`
+  (system | client) at creation and costs carry it — lanes are never blended and never inferred (older = "unrecorded"); targets count
+  the system lane only; overrides logged via the chat field `override_log` with the line the client reads; weekly sync (job
+  `governance-weekly-sync`, client's Thu/Fri/Sat evening, silent 24 h → owner alert + email, owner may approve on behalf, client 27
+  exempt); credits by lane on the main page, package size = setting `package_credits`, NO gate. `tests/test_governance.py`.
 - **Branding page "מיתוג" (2026-11-26, docs/BRAND-BRIEF.md §The client's branding page)**: `core/brand_page` is a VIEW of the brand
   brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces/tone = fields in its text
   marked [stated], logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it

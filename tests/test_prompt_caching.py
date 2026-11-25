@@ -143,7 +143,7 @@ class CallSites(unittest.TestCase):
 
     def test_support_concierge_search_persona(self):
         s = " ".join(_src("agents", "support_agent.py").split())
-        self.assertIn("safe_claude_json_call( cached_system(SYSTEM + manager_line), user_message", s)
+        self.assertIn("safe_claude_json_call( cached_system(_with_governance(SYSTEM + manager_line, light)), user_message", s)
         self.assertIn("claude_web_search_call(cached_system(SEARCH_SYSTEM + manager_line), search_payload", s)
         self.assertIn("safe_claude_json_call( cached_system(system), json.dumps(payload", s)
 

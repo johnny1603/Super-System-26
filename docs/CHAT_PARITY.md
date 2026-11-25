@@ -92,6 +92,8 @@ Trivial gaps closed in this change:
 | P3 | `GET /api/client/external-costs` | external tool costs in account_state |
 | P3 | `POST /api/client/avatars/business` | create a business avatar from the chat (a card with name, personality, look) |
 | P3 | `POST /api/client/avatars/business/{avatar_id}/poses` | ask for a business avatar's pose from the chat |
+| P2 | `POST /api/client/governance/approve-week` | approve the weekly sync by answering it in the manager's chat |
+| P3 | `POST /api/client/governance/sync-day` | choose the weekly-sync evening from the chat |
 | P3 | `POST /api/client/brand-identity/colors` | set the brand colours from the chat (a card with the palette) |
 | P3 | `POST /api/client/brand-identity/typefaces` | set the brand typefaces from the chat |
 | P3 | `POST /api/client/brand-identity/tone` | set the tone words from the chat |

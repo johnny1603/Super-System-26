@@ -68,6 +68,12 @@ FIELDS = {
     # Connected Drive folders (core/drive_assets, docs/DRIVE-FOLDERS.md): the
     # free indexing allowance (beyond it: a quote + a billing request) and how
     # many files one run describes, newest first (older ones on demand).
+    "package_credits": {
+        "type": "int_or_none", "paying": None, "exempt": None, "min": 0, "max": 1000000,
+        "label_he": "קרדיטים ליצירה בחבילה לחודש (ריק = לא הוגדר; הלקוח רואה צריכה בלי יתרה)"},
+    "weekly_sync_escalation": {
+        "type": "bool", "paying": True, "exempt": False,
+        "label_he": "סיכום שבועי שלא אושר — התראה ומייל לג׳וני"},
     "drive_assets_free_items": {
         "type": "int", "paying": 150, "exempt": 150, "min": 0, "max": 100000,
         "label_he": "תיקיות דרייב — פריטים שמאונדקסים בחינם"},

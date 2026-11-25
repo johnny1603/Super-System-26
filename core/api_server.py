@@ -8507,6 +8507,80 @@ def admin_credits_thresholds(request: Request, req: CreditsThresholdsRequest):
         raise HTTPException(status_code=503, detail={"code": "ERR_AUDIT_UNAVAILABLE"})
     return {"success": True, "data": anthropic_credits.check()}
 
+# ─── Client governance (core/governance, knowledge/client-governance.md) ─────
+@app.get("/api/client/governance")
+def client_governance(request: Request):
+    # The main page's block: credits in plain sight, the two lanes on SEPARATE
+    # lines, the week waiting for approval, the evening the client picked
+    client_id = _require_session(request)
+    from core import governance
+    return {"success": True, "data": governance.client_view(client_id, _client_lang(client_id))}
+
+class GovernanceDayRequest(BaseModel):
+    day: str
+
+@app.post("/api/client/governance/sync-day")
+def client_governance_sync_day(req: GovernanceDayRequest, request: Request):
+    client_id = _require_session(request)
+    from core import governance
+    try:
+        governance.set_sync_day(client_id, req.day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "bad_day"})
+    except Exception:
+        raise HTTPException(status_code=503, detail={"code": "storage"})
+    log_activity(client_id, "client", "weekly_sync_day_set", f"The client chose {req.day} for the weekly sync")
+    return {"success": True, "data": governance.client_view(client_id, _client_lang(client_id))}
+
+@app.post("/api/client/governance/approve-week")
+def client_governance_approve_week(request: Request):
+    # The client's approval of the week as presented. It publishes NOTHING:
+    # every item still passes its own gate in the Social tab.
+    client_id = _require_session(request)
+    from core import governance
+    try:
+        governance.approve_sync(client_id, "client")
+    except LookupError:
+        raise HTTPException(status_code=404, detail={"code": "nothing_to_approve"})
+    except Exception:
+        raise HTTPException(status_code=503, detail={"code": "storage"})
+    log_activity(client_id, "client", "weekly_sync_approved", "The client approved the weekly sync")
+    return {"success": True, "data": governance.client_view(client_id, _client_lang(client_id))}
+
+@app.get("/api/admin/governance/{client_id}")
+def admin_governance(client_id: int, request: Request):
+    _require_admin(request)
+    from core import governance
+    return {"success": True, "data": governance.admin_view(client_id)}
+
+class GovernanceOnBehalfRequest(BaseModel):
+    by: str = ""
+
+@app.post("/api/admin/governance/{client_id}/approve-sync")
+def admin_governance_approve_sync(client_id: int, req: GovernanceOnBehalfRequest, request: Request):
+    # The owner approves the week ON THE CLIENT'S BEHALF (client-governance §4,
+    # a silent client). Audited; the client's page says it was approved for them.
+    _require_admin(request)
+    from core import governance
+    who = (req.by or "").strip()[:40] or "manager"
+    try:
+        sync = governance.approve_sync(client_id, f"owner:{who}")
+    except LookupError:
+        raise HTTPException(status_code=404, detail={"code": "nothing_to_approve"})
+    except Exception:
+        raise HTTPException(status_code=503, detail={"code": "storage"})
+    alert("governance", [f"client {client_id}: the weekly sync of {sync.get('week')} was approved on the client's behalf by {who}"])
+    log_activity(client_id, "governance", "weekly_sync_approved_on_behalf",
+                 f"The weekly sync of {sync.get('week')} was approved on your behalf by the uallak manager")
+    return {"success": True, "data": governance.admin_view(client_id)}
+
+@app.get("/api/governance/weekly-sync", dependencies=_admin_only)
+def governance_weekly_sync():
+    # Cloud Scheduler (X-Admin-Key, scripts/schedule_jobs.sh), twice a day:
+    # presents what is due on each client's evening, escalates a silent week
+    from core import governance
+    return {"success": True, "data": governance.run_due()}
+
 @app.get("/api/credits/check", dependencies=_admin_only)
 def credits_check():
     # Hourly Cloud Scheduler job (X-Admin-Key, scripts/schedule_jobs.sh): the

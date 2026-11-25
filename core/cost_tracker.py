@@ -193,6 +193,12 @@ def record_cost(category: str, amount_ils: float, client_id, details: dict = Non
         label = _action.get()
         if label:
             enriched.update({"action": label["action"], "action_ref": label["ref"]})
+        try:
+            from core import governance
+            if governance.current_lane():
+                enriched["lane"] = governance.current_lane()     # system | client (knowledge/client-governance.md §2)
+        except Exception:
+            pass
         enriched.update(details or {})
 
         owner = _owner.get() or {}
