@@ -112,9 +112,27 @@ that refusal raised capability_gap alerts 234 and 235.
   `estimate_credits()`, the average credits per pose over past runs, or "not
   measured yet". After the run, each result shows its own credits, and the
   card and the chat line show the total.
+- **In parallel (2026-11-25).** `run_test` (the chat action and the button
+  alike) submits the poses together, `POSE_PARALLEL` (4, the same as a post's
+  `GEN_PARALLEL`) at the vendor at once, and waits for them as a set: three
+  poses take about as long as one. Production's budget rule: before a pose is
+  submitted, what was spent plus what the running poses reserved (budget ÷
+  poses each) must be under the run's budget. The chat card's estimate ×
+  the number of poses is the budget; the button's is the measured average ×
+  the count (`_default_budget`); nothing measured yet = no cap. As in
+  production, the first wave can go over by what it spends beyond its share.
+  Each result lands in its own slot of the request, whatever order they finish in.
+- **Kept (2026-11-25).** The provider's link lasts about seven days. Each pose
+  is copied to our Drive (`uallak-agents/<agent>/<agent>-candidate-<id>-…`,
+  `keep_candidate`) the moment it is made; the candidate and the request
+  result carry its `file_id`. A copy that fails keeps the link and alerts.
+  Keep and promote read the kept copy, so they still work after the link
+  expired.
 - **Results.** The card shows each pose's image through our own path,
   `GET /api/client/characters/poses/{request}/{cand}`. That path checks the
-  session and the account, then redirects to the stored result. The card also
+  session and the account, then serves our kept copy (a redirect to the
+  provider's link only when no copy was kept). The characters page does the same
+  through `GET /api/admin/characters/candidate/{agent}/{cand}/image`. The card also
   shows each pose's credits and state. A chat line lists each pose with its
   credits and a link.
 - **Pending, then decided.** Each result is a candidate, exactly like the

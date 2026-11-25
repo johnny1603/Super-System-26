@@ -143,8 +143,10 @@ class SamePath(Poses):
         self.ask()
         self.run_row()
         self.assertEqual(len(self.sent), 3)
-        for (prompt, refs, aspect), pose in zip(self.sent, POSES):
-            self.assertEqual(prompt, ac.pose_prompt("maya", pose, framing="full body"))
+        # submitted in parallel (2026-11-25): any order, each pose exactly once
+        self.assertEqual(sorted(p for p, _r, _a in self.sent),
+                         sorted(ac.pose_prompt("maya", pose, framing="full body") for pose in POSES))
+        for prompt, refs, aspect in self.sent:
             self.assertIn(ac.STYLE_CLAUSE, prompt)
             self.assertEqual(refs, ac.reference_urls(["maya"]))
             self.assertEqual(aspect, ac.POSE_ASPECT)

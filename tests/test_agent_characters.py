@@ -78,9 +78,20 @@ class Store(unittest.TestCase):
     def setUp(self):
         self.db = tsq.FakeDB()
         self.saved = [(ac, "_db", ac._db), (ac, "_alert", ac._alert), (sq, "_db", sq._db),
-                      (ac, "image_info", ac.image_info)]
+                      (ac, "image_info", ac.image_info), (ac, "_fetch", ac._fetch), (ac, "_keep", ac._keep),
+                      (ac, "_kept_bytes", ac._kept_bytes)]
         ac._db = lambda: self.db
         sq._db = lambda: self.db
+        # No network, no Drive: a generated pose is "fetched" and "kept" in memory
+        self.kept = {}
+        ac._fetch = lambda url: _png()
+
+        def keep(agent, content, mime, kind="reference"):
+            file_id = f"KEEP_{agent}_{len(self.kept):04d}_{kind}"[:60]
+            self.kept[file_id] = content
+            return file_id
+        ac._keep = keep
+        ac._kept_bytes = lambda file_id: self.kept[file_id]
         self.alerts = []
         ac._alert = lambda lines: self.alerts.extend(lines)
         if Image is None:                                     # no Pillow here: the image check is stubbed
@@ -258,7 +269,8 @@ class References(Store):
                   '@app.post("/api/admin/characters/generate")', '@app.post("/api/admin/characters/candidate/save")',
                   '@app.post("/api/admin/characters/candidate/discard")',
                   '@app.post("/api/admin/characters/candidate/promote")',
-                  '@app.post("/api/admin/characters/pose/remove")', '@app.get("/api/admin/characters/pose/{pose_id}")')
+                  '@app.post("/api/admin/characters/pose/remove")', '@app.get("/api/admin/characters/pose/{pose_id}")',
+                  '@app.get("/api/admin/characters/candidate/{agent}/{cand_id}/image")')
         for route in routes:
             self.assertIn(route, api)
         body = api[api.index('@app.get("/api/admin/characters")'):api.index('@app.get("/api/admin/drive-pull/info")')]

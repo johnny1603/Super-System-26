@@ -3970,6 +3970,32 @@ def admin_characters_pose_image(pose_id: str, request: Request):
     return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 
+def _serve_pose_image(src: dict):
+    """A generated pose's image: our kept Drive copy (never expires), else a
+    redirect to the provider's link (only when no copy was kept)."""
+    from core import agent_characters
+    if src.get("file_id"):
+        try:
+            content = agent_characters.kept_image(src["file_id"])
+        except Exception:
+            raise HTTPException(status_code=404, detail={"code": "not_found"})
+        return Response(content=content, media_type=src.get("mime") or "image/png",
+                        headers={"Cache-Control": "private, max-age=86400"})
+    return RedirectResponse(url=src["url"], status_code=302)
+
+
+@app.get("/api/admin/characters/candidate/{agent}/{cand_id}/image")
+def admin_characters_candidate_image(agent: str, cand_id: str, request: Request):
+    # A test candidate's image for the workspace: served from our copy
+    _require_admin(request)
+    from core import agent_characters
+    try:
+        src = agent_characters.candidate_image(agent, cand_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="candidate image not available")
+    return _serve_pose_image(src)
+
+
 @app.get("/api/admin/drive-pull/info")
 def admin_drive_pull_info(request: Request):
     _require_admin(request)
@@ -8948,10 +8974,11 @@ def client_pose_image(request_id: str, cand_id: str, request: Request):
     _pose_request_internal(client_id)
     from core import agent_characters
     try:
-        url = agent_characters.request_image_url(client_id, request_id, cand_id)
+        src = agent_characters.request_image(client_id, request_id, cand_id)
     except ValueError:
         raise HTTPException(status_code=404, detail={"code": "not_found"})
-    return RedirectResponse(url=url, status_code=302)
+    # our kept Drive copy — an old chat message keeps its image after the provider's link expires
+    return _serve_pose_image(src)
 
 @app.post("/api/client/characters/poses/{request_id}/{cand_id}/{verb}")
 def client_pose_decide(request_id: str, cand_id: str, verb: str, request: Request):

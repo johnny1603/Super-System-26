@@ -3102,8 +3102,11 @@ def _run_character_poses(client_id: int, params: dict, background_tasks, row: di
     except ValueError as e:
         raise ActionFailed("busy", str(e))
     proposal_id = (row or {}).get("id")
+    # The card's own estimate is the run's budget (each pose reserves its share
+    # while it runs, like a post's slides); none measured yet = no cap
     job = ac.run_test(params["agent"], params["poses"], request=params["request"],
-                      stopped=lambda: stop_requested(proposal_id))
+                      stopped=lambda: stop_requested(proposal_id),
+                      budget=float(params.get("estimate") or 0) * len(params["poses"]))
     if not job.get("made"):
         raise ActionFailed("not_made", "; ".join(job.get("errors") or [])[:300])
     _close_pose_gap_alerts()

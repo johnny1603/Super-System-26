@@ -141,8 +141,10 @@ function testHtml(a, d) {
   const jobLine = !job.state ? "" : running ? `<span class="warn">יוצר ${esc((job.poses || []).length)} תנוחות… (${esc(job.made || 0)} מוכנות)</span>`
     : `${job.state === "done" ? '<span class="ok">הסתיים</span>' : '<span class="bad">נכשל</span>'} · ${esc(job.made || 0)} תוצאות · ${esc(job.credits || 0)} קרדיטים · ${esc(when(job.finished_at))}
        ${(job.errors || []).length ? `<div class="bad">${(job.errors || []).map(esc).join("<br>")}</div>` : ""}`;
+  // Served from our kept Drive copy (the provider's link expires in ~7 days)
+  const candImg = c => `/api/admin/characters/candidate/${encodeURIComponent(a.agent)}/${encodeURIComponent(c.cand_id)}/image`;
   const cands = (a.candidates || []).slice().reverse().map(c => `<div class="cand" data-cand="${esc(c.cand_id)}">
-      <a href="${esc(c.url)}" target="_blank" rel="noopener"><img src="${esc(c.url)}" alt="" loading="lazy"></a>
+      <a href="${esc(candImg(c))}" target="_blank" rel="noopener"><img src="${esc(candImg(c))}" alt="" loading="lazy"></a>
       <div class="body">
         <div class="muted">${esc(c.credits || 0)} קרדיטים · ${esc(c.refs)} תמונות ייחוס · <code>${esc(c.model)}</code>${c.promoted ? ' · <span class="warn">קודמה לייחוס</span>' : ""}</div>
         <input type="text" data-c="pose" value="${esc(c.pose)}" title="תנוחה" placeholder="תנוחה">

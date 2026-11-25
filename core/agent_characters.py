@@ -302,14 +302,15 @@ def _publish(content: bytes, mime: str) -> str:
     return gen.upload_file(agents_key(), content, mime)
 
 
-def _keep(agent: str, content: bytes, mime: str) -> str:
-    """A durable copy in our Shared Drive (uallak-agents/<agent>/) → file id."""
+def _keep(agent: str, content: bytes, mime: str, kind: str = "reference") -> str:
+    """A durable copy in our Shared Drive (uallak-agents/<agent>/) → file id.
+    `kind`: the file name's part ("reference", "candidate-<id>")."""
     from core import drive_service as drive, drive_storage
     ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}.get(mime, "png")
     with drive_storage.as_service_account():
         folder = _pose_folder(agent)
         stamp = _now().strftime("%Y%m%d-%H%M%S")
-        return (drive.upload_bytes(folder, f"{agent}-reference-{stamp}.{ext}", content, mime) or {}).get("id", "")
+        return (drive.upload_bytes(folder, f"{agent}-{kind}-{stamp}.{ext}", content, mime) or {}).get("id", "")
 
 
 def _kept_bytes(file_id: str) -> bytes:
@@ -1101,57 +1102,165 @@ def start_test(agent: str, instruction: str = "", count: int = 3, by: str = ADMI
     return _begin(agent, poses, by)
 
 
-def run_test(agent: str, poses: list, _gen=None, request: str = "", stopped=None) -> dict:
+_CANDS_LOCK = _threading.Lock()    # the candidates row is read-modify-written by every pose of a run
+
+
+def _default_budget(count: int) -> float:
+    """A run's credit budget when the caller gives none: what `count` poses
+    cost on average so far (estimate_credits), 0 = not measured yet = no cap."""
+    try:
+        each = estimate_credits()["each"]
+    except Exception:
+        each = None
+    return float(each) * count if each else 0.0
+
+
+def run_test(agent: str, poses: list, _gen=None, request: str = "", stopped=None, budget: float = None,
+             _keep_fn=None) -> dict:
     """The test itself (background): one generation per pose, each result a
     candidate. Never raises; the job record says what happened. `request`: a
-    chat request's id — its record gets each result too. `stopped`: checked
-    BEFORE each pose; once True, nothing more is generated."""
-    from core import media_gen_service as gen
-    made, credits, errors, halted = 0, 0.0, [], False
-    for index, pose in enumerate(poses):
-        if stopped is not None and stopped():
-            halted = True
-            break
-        try:
-            prompt = pose_prompt(agent, pose, framing="full body")
-            refs = reference_urls([agent])
-            out = (_gen or gen.generate_with_references)(agents_key(), prompt, refs, POSE_ASPECT)
-            cand = {"cand_id": "c" + secrets.token_hex(5), "url": out["url"], "pose": _short(pose, 200),
-                    "outfit": "", "framing": "full body", "prompt": _short(prompt, 600),
-                    "credits": out.get("credits") or 0, "aspect_sent": out.get("aspect_ratio") or POSE_ASPECT,
-                    "model": out.get("model", ""), "refs": len(refs), "request_id": str(out.get("request_id") or ""),
-                    "created_at": _now().isoformat(), "promoted": False}
-            if request:
-                cand["request"] = request
+    chat request's id — its record gets each result too.
+
+    In parallel (2026-11-25) with production's rules (post_pipeline
+    ._generate_all): POSE_PARALLEL (4) at the vendor at once, waited for as a
+    set — three poses take about as long as one. `stopped` is checked before
+    EACH pose is submitted: once True nothing more is submitted (one already at
+    the vendor finishes, paid). The credit `budget` (default: the measured
+    average × the number of poses; 0 = none): before a pose is submitted, what
+    was spent plus what the poses still running reserved (budget / poses
+    each) must be under it.
+
+    Each image is KEPT: copied to our Drive (uallak-agents/<agent>/) the
+    moment it is made and served from there (`candidate_image`) — the
+    provider's link lasts about seven days. A copy that fails keeps the link
+    and alerts."""
+    from core import media_gen_service as gen, parallel
+    poses = list(poses or [])
+    budget = _default_budget(len(poses)) if budget is None else float(budget or 0)
+    each = budget / len(poses) if budget and poses else 0.0
+    gate, lock = _threading.Semaphore(POSE_PARALLEL), _threading.Lock()
+    ledger = {"spent": 0.0, "reserved": 0.0, "made": 0, "halted": False}
+    errors = []
+
+    def record(index, changes, cand=None):
+        with _CANDS_LOCK:
             data = _candidates()
-            data["agents"][agent] = ((data["agents"].get(agent) or []) + [cand])[-MAX_CANDIDATES:]
-            made += 1
-            credits += float(cand["credits"] or 0)
-            job = data["jobs"].get(agent) or {}
-            job.update(made=made, credits=round(credits, 2))
-            data["jobs"][agent] = job
+            if cand:
+                data["agents"][agent] = ((data["agents"].get(agent) or []) + [cand])[-MAX_CANDIDATES:]
+                job = data["jobs"].get(agent) or {}
+                job.update(made=ledger["made"], credits=round(ledger["spent"], 2))
+                data["jobs"][agent] = job
             if request:
-                _request_result(data, request, index, {"cand_id": cand["cand_id"], "url": cand["url"],
-                                                       "credits": cand["credits"], "state": "pending"})
+                _request_result(data, request, index, changes)
             _write(CANDS_KEY, data)
-        except Exception as e:
-            errors.append(getattr(e, "message", "") or f"{type(e).__name__}: {str(e)[:200]}")
-            if request:
-                data = _candidates()
-                _request_result(data, request, index, {"state": "failed"})
-                _write(CANDS_KEY, data)
-    data = _candidates()
-    job = data["jobs"].get(agent) or {}
-    job.update(state="stopped" if halted else "done" if made else "failed", finished_at=_now().isoformat(),
-               made=made, credits=round(credits, 2), errors=errors[:5])
-    data["jobs"][agent] = job
-    if request and request in data["requests"]:
-        data["requests"][request].update(state=job["state"], made=made, credits=round(credits, 2),
-                                         finished_at=job["finished_at"])
-    _write(CANDS_KEY, data)
+
+    def one(index, pose):
+        with gate:
+            if stopped is not None and stopped():
+                ledger["halted"] = True             # not submitted: nothing paid
+                return
+            with lock:
+                if budget and ledger["spent"] + ledger["reserved"] >= budget:
+                    errors.append("over the run's credit budget — not submitted")
+                    over = True
+                else:
+                    ledger["reserved"] += each
+                    over = False
+            if over:
+                record(index, {"state": "failed"})
+                return
+            ok, credits = False, 0.0
+            try:
+                prompt = pose_prompt(agent, pose, framing="full body")
+                refs = reference_urls([agent])
+                out = (_gen or gen.generate_with_references)(agents_key(), prompt, refs, POSE_ASPECT)
+                ok, credits = True, float(out.get("credits") or 0)
+            except Exception as e:
+                errors.append(getattr(e, "message", "") or f"{type(e).__name__}: {str(e)[:200]}")
+            finally:
+                with lock:
+                    ledger["reserved"] -= each
+                    if ok:
+                        ledger["spent"] += credits
+                        ledger["made"] += 1
+            if not ok:
+                record(index, {"state": "failed"})
+                return
+        cand = {"cand_id": "c" + secrets.token_hex(5), "url": out["url"], "pose": _short(pose, 200),
+                "outfit": "", "framing": "full body", "prompt": _short(prompt, 600),
+                "credits": out.get("credits") or 0, "aspect_sent": out.get("aspect_ratio") or POSE_ASPECT,
+                "model": out.get("model", ""), "refs": len(refs), "request_id": str(out.get("request_id") or ""),
+                "created_at": _now().isoformat(), "promoted": False}
+        if request:
+            cand["request"] = request
+        kept = keep_candidate(agent, cand["cand_id"], cand["url"], _keep_fn)    # outside the gate: not a vendor slot
+        cand.update(kept)
+        record(index, {"cand_id": cand["cand_id"], "url": cand["url"], "credits": cand["credits"],
+                       "state": "pending", **kept}, cand)
+
+    got = parallel.gather({i: (lambda i=i, p=p: one(i, p)) for i, p in enumerate(poses)})
+    for _i, (fine, value) in got.items():
+        if not fine:                                 # a bug in the bookkeeping, never silent
+            errors.append(f"{type(value).__name__}: {str(value)[:200]}")
+    with _CANDS_LOCK:
+        data = _candidates()
+        job = data["jobs"].get(agent) or {}
+        made, credits = ledger["made"], round(ledger["spent"], 2)
+        job.update(state="stopped" if ledger["halted"] else "done" if made else "failed",
+                   finished_at=_now().isoformat(), made=made, credits=credits, errors=errors[:5],
+                   parallel=POSE_PARALLEL, budget=round(budget, 2))
+        data["jobs"][agent] = job
+        if request and request in data["requests"]:
+            data["requests"][request].update(state=job["state"], made=made, credits=credits,
+                                             finished_at=job["finished_at"])
+        _write(CANDS_KEY, data)
     if errors:
         _alert([f"character test for {agent}: {len(errors)} of {len(poses)} failed — {errors[0]}"])
     return job
+
+
+def keep_candidate(agent: str, cand_id: str, url: str, _keep_fn=None) -> dict:
+    """A generated pose copied to our Drive at once → {"file_id", "mime"};
+    {} when the copy failed (the provider's link is used, alerted)."""
+    try:
+        content = _fetch(url)
+        info = image_info(content)
+        file_id = (_keep_fn or _keep)(agent, content, info["mime"], f"candidate-{cand_id}")
+        if not file_id:
+            raise RuntimeError("Drive returned no file id")
+        return {"file_id": file_id, "mime": info["mime"]}
+    except Exception as e:
+        _alert([f"pose {cand_id} of {agent}: no durable copy kept ({type(e).__name__}: {str(e)[:150]}) — "
+                f"its image shows from the provider's link, which expires in about seven days"])
+        return {}
+
+
+def image_source(entry: dict) -> dict:
+    """Where a pose result's image is served from: {"file_id", "mime"} (our
+    Drive copy — never expires) or {"url"} (the provider's link, only when no
+    copy was kept)."""
+    if (entry or {}).get("file_id"):
+        return {"file_id": entry["file_id"], "mime": entry.get("mime") or "image/png"}
+    if URL_RE.match(str((entry or {}).get("url") or "")):
+        return {"url": entry["url"]}
+    raise ValueError("no image")
+
+
+def kept_image(file_id: str) -> bytes:
+    return _kept_bytes(file_id)
+
+
+def candidate_image(agent: str, cand_id: str) -> dict:
+    """The workspace's candidate image source (see image_source)."""
+    agent = clean_agent(agent)
+    return image_source(_candidate(agent, cand_id, _candidates()))
+
+
+def _candidate_bytes(cand: dict) -> bytes:
+    """The candidate's image bytes: our kept copy first, else its link."""
+    if cand.get("file_id"):
+        return _kept_bytes(cand["file_id"])
+    return _fetch(cand["url"])
 
 
 # ─── Poses on request, from the chat (2026-11-25) ────────────────────────────
@@ -1273,6 +1382,15 @@ def request_image_url(client_id: int, request: str, cand_id: str) -> str:
     return result["url"]
 
 
+def request_image(client_id: int, request: str, cand_id: str) -> dict:
+    """Where our own path serves this result's image from, for THIS account
+    only: the kept Drive copy (never expires), else the provider's link."""
+    _entry, result = _request_entry(client_id, request, cand_id)
+    if result.get("state") == "discarded":
+        raise ValueError("no such result")
+    return image_source(result)
+
+
 def request_decide(client_id: int, request: str, cand_id: str, verb: str, **kw) -> dict:
     """Keep / discard one result from the chat — the SAME save_candidate /
     discard_candidate as the workspace's buttons. The route allows it on the
@@ -1330,7 +1448,12 @@ def save_candidate(agent: str, cand_id: str, pose: str = "", outfit: str = "", f
     agent = clean_agent(agent)
     from core import media_gen_service as gen
     cand = _candidate(agent, cand_id, _candidates())
-    cut = (_remove or _local_remove())(agents_key(), cand["url"])
+    if cand.get("file_id") and _remove is None:
+        # the kept copy: still there after the provider's link expired
+        from core import background_removal
+        cut = {"content": background_removal.cut_out(_candidate_bytes(cand))}
+    else:
+        cut = (_remove or _local_remove())(agents_key(), cand["url"])
     png = ensure_transparent(cut["content"])
     fitted = fit_aspect(png, POSE_ASPECT, cand.get("aspect_sent") or POSE_ASPECT)
     uploaded = (_upload or upload_pose_png)(agent, fitted["content"])
@@ -1368,8 +1491,13 @@ def promote_candidate(agent: str, cand_id: str, confirm: bool = False, by: str =
     data = _candidates()
     cand = _candidate(agent, cand_id, data)
     rid = str(cand.get("request_id") or "")[:120]
-    out = add_reference(agent, url=cand["url"], media_id=rid if MEDIA_ID_RE.match(rid) else "", by=by,
-                        source="promoted", **kw)
+    if cand.get("file_id") and "_fetch_fn" not in kw:
+        # from the kept copy (the provider's link may have expired): uploaded afresh
+        out = add_reference(agent, content=_candidate_bytes(cand), media_id=rid if MEDIA_ID_RE.match(rid) else "",
+                            by=by, source="promoted", **kw)
+    else:
+        out = add_reference(agent, url=cand["url"], media_id=rid if MEDIA_ID_RE.match(rid) else "", by=by,
+                            source="promoted", **kw)
     data = _candidates()
     for c in data["agents"].get(agent) or []:
         if c.get("cand_id") == cand_id:
