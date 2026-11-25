@@ -7037,8 +7037,9 @@ def client_social(request: Request, offset: int = 0, limit: int = 6, status: str
     data = social_queue.view(client_id, lang, offset=offset, limit=limit, status=status)
     # The preview frames every post from THE formats table (sizes, ratios,
     # safe zones) — the page keeps no copy of those numbers
-    from core import social_formats
+    from core import social_formats, social_preview
     data["formats"] = social_formats.table()
+    data["profile"] = social_preview.profile(client_id)     # the client's actual account names, for the profile row
     return {"success": True, "data": data}
 
 class SocialApproveRequest(BaseModel):

@@ -1458,19 +1458,98 @@ body.bs-open { overflow: hidden; }
 .soc-sel-inline input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--accent); }
 .soc-selcount { font-weight: 700; margin-inline-end: auto; }
 .soc-notice { font-size: 13px; min-height: 1em; margin: 0 0 8px; }
-.soc-list { display: grid; gap: 12px; }
-.soc-item { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; border: 1px solid var(--border);
-  border-radius: 14px; padding: 12px; background: var(--panel-2); min-width: 0; }
+.soc-list { display: grid; gap: 18px; }
+/* ONE card = the post as the platform shows it (.soc-stage) BESIDE the decision (.soc-body).
+   The columns are NAMED AREAS: the old card was `132px 1fr` by position, so a card without a
+   thumbnail (a design, or any card whose first child was the body) put its WHOLE body in the
+   132 px track — the "narrow strip" with two words a line and the rest of the card empty. */
+.soc-item { display: grid; grid-template-columns: minmax(260px, 372px) minmax(0, 1fr); grid-template-areas: "stage body";
+  gap: 22px; align-items: start; border: 1px solid var(--border); border-radius: 18px; padding: 18px;
+  background: var(--panel-2); min-width: 0; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 30px rgba(0,0,0,.18); }
 .soc-item.waiting { border-color: rgba(255,76,31,.45); }
 .soc-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .soc-item.done { opacity: .78; }
-.soc-prev { position: relative; width: 132px; height: 132px; border-radius: 10px; overflow: hidden; background: rgba(127,127,127,.15);
-  display: flex; align-items: center; justify-content: center; font-size: 34px; }
-.soc-prev img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.soc-prev .soc-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px;
+.soc-stage { grid-area: stage; min-width: 0; display: grid; gap: 10px; justify-items: center; position: sticky; top: 12px; }
+.soc-body { grid-area: body; min-width: 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.55; }
+.soc-body .soc-title { font-size: 18px; line-height: 1.3; }
+.soc-body .soc-meta, .soc-body .soc-top { font-size: 13.5px; }
+.soc-body .soc-caption { font-size: 14px; }
+.soc-body .soc-actions { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+.soc-body .soc-actions .sugg-btn, .soc-body .soc-actions .media-chip { min-height: 42px; padding-inline: 16px; font-size: 14px; }
+.soc-body .soc-actions .sugg-btn.approve { flex: 1 1 220px; font-size: 15px; font-weight: 700; }
+.soc-stage .ml-check { position: static; }
+.soc-stage-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; width: 100%; font-size: 12.5px; }
+.soc-stage-bar .media-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); font-weight: 700; }
+.soc-stage-note { font-size: 12px; color: var(--gray); text-align: center; max-width: 340px; }
+/* The phone. LTR on purpose: the page is RTL, the platform's frame is not — the post's own
+   text takes its own direction (dir="auto"). Every size is the format's own ratio from
+   core/social_formats (the inline aspect-ratio comes from the server's table). */
+.sp-phone { direction: ltr; text-align: left; width: 100%; max-width: 340px; border-radius: 30px; padding: 8px;
+  background: #0b0b0c; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+.sp-screen { border-radius: 23px; overflow: hidden; background: #fff; color: #111; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+.sp-phone.sp-vertical .sp-screen { background: #000; color: #fff; position: relative; }
+.sp-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px; font-size: 13px; }
+.sp-ava { flex: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: #fff; background: linear-gradient(45deg, #f09433, #dc2743 55%, #bc1888); object-fit: cover; }
+.sp-names { min-width: 0; display: grid; line-height: 1.25; }
+.sp-names b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-names small { font-size: 11px; opacity: .65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-head .sp-more { margin-left: auto; opacity: .7; font-size: 18px; line-height: 1; }
+.sp-media { position: relative; width: 100%; background: #111; container-type: inline-size; overflow: hidden; }
+.sp-track { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.sp-track::-webkit-scrollbar { display: none; }
+.sp-slide { position: relative; flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: center; scroll-snap-stop: always;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sp-slide img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+.sp-slide .soc-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px;
   background: rgba(0,0,0,.25); color: #fff; border: 0; cursor: pointer; }
-.soc-prev .ml-check { top: 6px; inset-inline-start: 6px; }
-.soc-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* A slide that is still only copy: the words at the real ratio, plainly marked as a draft */
+.sp-slide.sp-text { flex-direction: column; align-items: stretch; justify-content: center; gap: 4cqw; padding: 9cqw 8cqw;
+  background: linear-gradient(160deg, #1d1d22, #2b2b33); color: #fff; }
+.sp-text .sp-th { font-size: clamp(15px, 7.4cqw, 30px); font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.sp-text .sp-tb { font-size: clamp(11px, 4.3cqw, 17px); line-height: 1.45; opacity: .9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sp-text .sp-tag { position: absolute; top: 3cqw; left: 3cqw; font-size: 10.5px; padding: 2px 8px; border-radius: 99px;
+  background: rgba(255,255,255,.16); color: #fff; direction: rtl; }
+.sp-text .sp-kind { position: absolute; bottom: 3cqw; left: 3cqw; right: 3cqw; font-size: 10.5px; opacity: .7; text-align: center; direction: rtl; }
+.sp-count { position: absolute; top: 10px; right: 10px; z-index: 3; background: rgba(0,0,0,.6); color: #fff; font-size: 11.5px;
+  padding: 2px 9px; border-radius: 99px; }
+.sp-nav { position: absolute; top: 50%; z-index: 3; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; border: 0;
+  background: rgba(255,255,255,.88); color: #111; font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.sp-nav[disabled] { display: none; }
+.sp-nav.prev { left: 8px; } .sp-nav.next { right: 8px; }
+.sp-dots { display: flex; gap: 4px; justify-content: center; padding: 8px 0 2px; min-height: 8px; }
+.sp-dots i { width: 6px; height: 6px; border-radius: 50%; background: #c7c7c7; }
+.sp-dots i.on { background: #0095f6; }
+.sp-icons { display: flex; gap: 14px; padding: 6px 12px 2px; font-size: 20px; line-height: 1; }
+.sp-icons .sp-save { margin-left: auto; }
+.sp-cap { padding: 4px 12px 14px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.sp-cap[dir="rtl"] { text-align: right; }
+.sp-cap .sp-cap-text { white-space: pre-wrap; }
+.sp-cap b { font-weight: 600; }
+.sp-cap .sp-tagl { color: #00376b; }
+.sp-cap .sp-fold { border: 0; background: none; padding: 0; font: inherit; color: #737373; cursor: pointer; }
+.sp-cap.empty { opacity: .6; font-style: italic; }
+.sp-vertical .sp-cap .sp-tagl { color: #e0f1ff; font-weight: 600; }
+.sp-vertical .sp-cap .sp-fold { color: #fff; font-weight: 600; }
+/* Vertical (story / reel): the platform's interface drawn OVER the media, where it really sits */
+.sp-over { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+.sp-over > * { pointer-events: auto; }
+.sp-over .sp-head { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.sp-over .sp-bars { display: flex; gap: 3px; padding: 8px 9px 0; }
+.sp-over .sp-bars i { flex: 1; height: 2px; border-radius: 2px; background: rgba(255,255,255,.4); }
+.sp-over .sp-bars i.on { background: #fff; }
+.sp-over .sp-foot { display: flex; align-items: flex-end; gap: 8px; padding: 0 0 10px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+.sp-over .sp-foot .sp-cap { flex: 1; min-width: 0; padding-bottom: 4px; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.sp-over .sp-rail { display: grid; gap: 14px; padding: 0 10px 4px 0; font-size: 22px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.sp-over .sp-reply { margin: 0 10px 2px; flex: 1; border: 1px solid rgba(255,255,255,.7); border-radius: 99px; padding: 7px 12px; font-size: 12px; opacity: .9; }
+/* The safe-zone bands (core/social_formats): what the platform's own interface covers */
+.sp-zones { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.sp-zones i { position: absolute; background: repeating-linear-gradient(45deg, rgba(255,60,60,.42) 0 8px, rgba(255,60,60,.24) 8px 16px); }
+.sp-zones b { position: absolute; border: 1.5px dashed #37e07a; border-radius: 4px; }
+.sp-zones span { position: absolute; left: 50%; transform: translateX(-50%); font-size: 10.5px; font-weight: 700; color: #fff;
+  background: rgba(0,0,0,.6); padding: 1px 8px; border-radius: 99px; white-space: nowrap; direction: rtl; }
+.soc-body { min-width: 0; }
 .soc-top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; }
 .soc-status { font-weight: 700; border-radius: 99px; padding: 1px 9px; border: 1px solid var(--border); font-size: 12px; }
 .soc-status.waiting { color: var(--accent); border-color: rgba(255,76,31,.5); }
@@ -1491,7 +1570,6 @@ body.bs-open { overflow: hidden; }
 .soc-slide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
 .soc-slide.soc-slide-over { border-color: #FFB020; }       /* copy longer than the current template holds */
 .soc-fit-ok { color: var(--muted, #9a9a9a); font-size: 12px; }
-.soc-prev img[data-soc-view], .soc-design-strip img[data-soc-slide] { cursor: zoom-in; }
 .soc-asset-rej { display: grid; gap: 6px; margin-top: 8px; }
 .soc-asset-rej [aria-pressed="true"] { border-color: var(--accent, #6c5ce7); background: rgba(108,92,231,.14); font-weight: 700; }
 .soc-slide-head { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
@@ -1531,8 +1609,6 @@ body.bs-open { overflow: hidden; }
 .drive-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .drive-actions label { font-size: 12px; color: var(--gray); display: inline-flex; gap: 4px; align-items: center; }
 .soc-flag.warn { color: #FFB020; font-weight: 700; }
-.soc-design-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; direction: rtl; }
-.soc-design-strip img { width: 160px; flex: 0 0 auto; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
 .soc-design-spec { font-size: 12.5px; color: var(--gray); }
 .soc-design-spec ul { margin: 4px 0; padding-inline-start: 18px; display: grid; gap: 2px; }
 .soc-design-spec pre { max-height: 220px; overflow: auto; direction: ltr; text-align: left; font-size: 11px;
@@ -1559,11 +1635,15 @@ body.bs-open { overflow: hidden; }
 .soc-batch-box { width: min(520px, 100%); max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--border);
   border-radius: 14px; padding: 16px; display: grid; gap: 10px; }
 .soc-batch-box ol { margin: 0; padding-inline-start: 20px; display: grid; gap: 4px; font-size: 13px; overflow-wrap: anywhere; }
-@media (max-width: 640px) {
-  .soc-item { grid-template-columns: 1fr; }
-  .soc-prev { width: 100%; height: 200px; }
-  .soc-actions .sugg-btn, .soc-actions .media-chip { min-height: 44px; flex: 1 1 auto; }
+@media (max-width: 820px) {
+  /* a phone: the preview first, full width, then the decision under it */
+  .soc-item { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "body"; gap: 14px; padding: 12px; border-radius: 16px; }
+  .soc-stage { position: static; }
+  .sp-phone { max-width: min(100%, 360px); }
+  .soc-actions .sugg-btn, .soc-actions .media-chip { min-height: 46px; flex: 1 1 auto; }
+  .soc-body .soc-actions .sugg-btn.approve { flex: 1 1 100%; }
   .soc-chans label { min-height: 44px; }
+  .soc-stage-bar .media-chip { min-height: 40px; }
 }
 .conn-account { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; min-width: 0; }
 .conn-account img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
@@ -3000,6 +3080,23 @@ const DASH_I18N = {
   soc_reason_needed: { he:'כתבו במשפט מה לתקן.', en:'Write in a sentence what should change.', fr:'Écrivez en une phrase ce qu’il faut changer.', ar:'اكتبوا بجملة ما الذي يجب تغييره.', ru:'Напишите одной фразой, что изменить.' },
   soc_rejected_done: { he:'הוחזר ל{name} עם ההסבר. הגרסה המתוקנת תחזור לכאן לאישור.', en:'Sent back to {name} with your reason. The fixed version comes back here for approval.', fr:'Renvoyé à {name} avec votre raison. La version corrigée reviendra ici.', ar:'أُعيد إلى {name} مع السبب. ستعود النسخة المعدّلة إلى هنا للموافقة.', ru:'Возвращено {name} с пояснением. Исправленная версия вернётся сюда.' },
   soc_download: { he:'הורדה', en:'Download', fr:'Télécharger', ar:'تنزيل', ru:'Скачать' },
+  soc_prev_draft: { he:'טיוטת טקסט', en:'Copy draft', fr:'Brouillon du texte', ar:'مسودة النص', ru:'Черновик текста' },
+  soc_prev_more: { he:'עוד', en:'more', fr:'plus', ar:'المزيد', ru:'ещё' },
+  soc_prev_your_account: { he:'החשבון שלכם', en:'Your account', fr:'Votre compte', ar:'حسابكم', ru:'Ваш аккаунт' },
+  soc_prev_not_connected: { he:'{channel} · החשבון עוד לא מחובר', en:'{channel} · account not connected yet', fr:'{channel} · compte pas encore connecté', ar:'{channel} · الحساب غير متصل بعد', ru:'{channel} · аккаунт ещё не подключён' },
+  soc_prev_nothing: { he:'אין עדיין מה להציג כאן.', en:'Nothing to show here yet.', fr:'Rien à afficher pour l’instant.', ar:'لا شيء للعرض هنا بعد.', ru:'Пока нечего показать.' },
+  soc_prev_reply: { he:'שליחת הודעה', en:'Send message', fr:'Envoyer un message', ar:'إرسال رسالة', ru:'Отправить сообщение' },
+  soc_prev_zones_on: { he:'הצגת האזורים הבטוחים', en:'Show safe zones', fr:'Afficher les zones sûres', ar:'إظهار المناطق الآمنة', ru:'Показать безопасные зоны' },
+  soc_prev_zones_off: { he:'הסתרת האזורים הבטוחים', en:'Hide safe zones', fr:'Masquer les zones sûres', ar:'إخفاء المناطق الآمنة', ru:'Скрыть безопасные зоны' },
+  soc_prev_zone_covered: { he:'מכוסה על ידי הממשק', en:'Covered by the app', fr:'Couvert par l’interface', ar:'تغطيه الواجهة', ru:'Закрыто интерфейсом' },
+  soc_prev_zone_safe: { he:'האזור הבטוח', en:'Safe area', fr:'Zone sûre', ar:'المنطقة الآمنة', ru:'Безопасная зона' },
+  soc_prev_zone_floor: { he:'בטיקטוק החלק התחתון גדל עם אורך הכיתוב — זה המינימום.', en:'On TikTok the bottom band grows with the caption — this is the minimum.', fr:'Sur TikTok, la bande du bas grandit avec la légende — ceci est le minimum.', ar:'في تيك توك يكبر الشريط السفلي مع طول النص — هذا هو الحد الأدنى.', ru:'В TikTok нижняя полоса растёт вместе с подписью — это минимум.' },
+  soc_prev_place_feed: { he:'פיד', en:'Feed', fr:'Fil', ar:'الخلاصة', ru:'Лента' },
+  soc_prev_place_story: { he:'סטורי', en:'Story', fr:'Story', ar:'ستوري', ru:'История' },
+  soc_prev_place_reel: { he:'רילס / סרטון אנכי', en:'Reel / vertical video', fr:'Reel / vidéo verticale', ar:'ريلز / فيديو عمودي', ru:'Reels / вертикальное видео' },
+  soc_prev_slide: { he:'שקופית {n} מתוך {total}', en:'Slide {n} of {total}', fr:'Diapo {n} sur {total}', ar:'الشريحة {n} من {total}', ru:'Слайд {n} из {total}' },
+  soc_approve_all: { he:'אישור כל {n} השקופיות', en:'Approve all {n} slides', fr:'Valider les {n} diapos', ar:'الموافقة على كل الشرائح ({n})', ru:'Одобрить все слайды ({n})' },
+  soc_reject_slide: { he:'ההחזרה היא על שקופית {n} מתוך {total} — זו שמוצגת עכשיו.', en:'This sends back slide {n} of {total} — the one shown now.', fr:'Le renvoi concerne la diapo {n} sur {total} — celle affichée.', ar:'الإرجاع يخص الشريحة {n} من {total} — المعروضة الآن.', ru:'Возврат относится к слайду {n} из {total} — тому, что на экране.' },
   soc_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
   soc_copy: { he:'העתקת הכיתוב', en:'Copy caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
   soc_copied: { he:'הכיתוב הועתק.', en:'Caption copied.', fr:'Légende copiée.', ar:'تم نسخ النص.', ru:'Подпись скопирована.' },
@@ -9818,24 +9915,236 @@ function socialProdBar(itemId, prod) {
     </div>`;
 }
 
+// ─── The preview: the post AS THE PLATFORM SHOWS IT ─────────────────────────
+// A phone frame at the format's real ratio (the sizes come from the server's
+// table, core/social_formats — this page keeps no number of its own), the
+// profile row with the client's actual account name, a swipeable carousel
+// with its dots, the caption folded where the platform folds it, and — for a
+// vertical post — the safe-zone bands on request. The frame is LTR; the
+// post's own text takes its own direction.
+const socialPrev = {};          // item id → { ch, slide, zones, open } (kept across refreshes)
+function socialPrevState(item) {
+  const st = socialPrev[item.id] || (socialPrev[item.id] = { ch: '', slide: 0, zones: false, open: false });
+  const chans = item.channels || [];
+  if (chans.indexOf(st.ch) === -1) st.ch = chans[0] || 'instagram';
+  return st;
+}
+// The slides of ONE post that are separate queue items (same set, same
+// status), in slide order: shown as one carousel, decided together
+function socialGroup(item) {
+  if (!item) return [];
+  const sid = item.file_id && item.kind !== 'post' && item.kind !== 'design' && (item.post_ref || {}).set_id;
+  if (!sid) return [item];
+  return social.items.filter(i => i.file_id && i.kind !== 'post' && i.kind !== 'design'
+                                  && (i.post_ref || {}).set_id === sid && i.status === item.status)
+    .sort((a, b) => (Number((a.post_ref || {}).n) || 0) - (Number((b.post_ref || {}).n) || 0));
+}
+function socialGroupIds(id, status) {
+  return socialGroup(socialItem(id)).filter(g => !status || g.status === status).map(g => g.id);
+}
+// The item of the slide the preview is showing right now
+function socialCurrent(id) {
+  const item = socialItem(id);
+  if (!item) return null;
+  const group = socialGroup(item);
+  return group[Math.min(socialPrevState(item).slide, group.length - 1)] || item;
+}
+function socialSlides(item) {
+  if (item.kind === 'post') {
+    return ((item.post || {}).slides || []).map(s => ({ type: 'text', head: s.copy_headline, body: s.copy_body, kind: s.asset_type_text }));
+  }
+  if (item.kind === 'design') return ((item.design || {}).previews || []).map((src, i) => ({ type: 'design', src, n: i }));
+  return socialGroup(item).map(g => ({ type: g.kind === 'video' ? 'video' : 'image', item: g }));
+}
+function socialSlideHtml(item, s, i) {
+  const t = uallakI18n.t;
+  if (s.type === 'text') {
+    return `<div class="sp-slide sp-text"><span class="sp-tag">${esc(t('soc_prev_draft'))}</span>
+        ${s.head ? `<div class="sp-th" dir="auto">${esc(s.head)}</div>` : ''}
+        ${s.body ? `<div class="sp-tb" dir="auto">${esc(s.body)}</div>` : ''}
+        <span class="sp-kind">${esc(s.kind || '')}</span></div>`;
+  }
+  if (s.type === 'design') {
+    return `<div class="sp-slide"><img src="${esc(s.src)}" alt="${esc(String(i + 1))}" loading="lazy" onerror="this.remove()"
+        data-soc-slide="${esc(item.id)}" data-n="${i}" role="button" tabindex="0"></div>`;
+  }
+  const g = s.item;
+  const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(g.file_id);
+  if (s.type === 'video') {
+    return `<div class="sp-slide"><img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">
+        <button type="button" class="soc-play" data-soc-play="${esc(g.id)}" aria-label="${esc(t('soc_play'))}">▶</button></div>`;
+  }
+  // the real file (sharp at the phone's size); the small thumbnail if it can't be shown inline
+  const full = '/api/client/media-drive/file/' + encodeURIComponent(g.file_id) + '?inline=1';
+  return `<div class="sp-slide"><img src="${esc(full)}" data-thumb="${esc(thumb)}" alt="" loading="lazy"
+      onerror="if(this.dataset.thumb){this.src=this.dataset.thumb;this.dataset.thumb='';}else{this.remove();}"
+      data-soc-view="${esc(g.id)}" role="button" tabindex="0" aria-label="${esc(t('mv_view'))}"></div>`;
+}
+// The caption the way the platform renders it: line breaks kept, hashtags and
+// mentions as links, folded behind "עוד" where that platform folds it
+function socialCaptionHtml(item, st, handle) {
+  const t = uallakI18n.t;
+  const text = String(item.caption || '');
+  if (!text) return `<div class="sp-cap empty" dir="rtl">${esc(t('soc_no_caption'))}</div>`;
+  const fold = ((((social.data || {}).formats || {}).caption_fold || {})[st.ch]) || {};
+  let cut = text.length;
+  if (fold.chars && text.length > fold.chars) cut = fold.chars;
+  if (fold.lines) {
+    let pos = -1;
+    for (let k = 0; k < fold.lines && pos !== text.length; k++) { const nx = text.indexOf('\n', pos + 1); pos = nx === -1 ? text.length : nx; }
+    if (pos < cut) cut = pos;
+  }
+  const folded = cut < text.length && !st.open;
+  let shown = folded ? text.slice(0, cut) : text;
+  const sp = shown.lastIndexOf(' ');
+  if (folded && sp > cut - 20 && sp > 0) shown = shown.slice(0, sp);
+  const html = esc(shown).replace(/(^|\s)([#@][^\s#@]+)/g, '$1<span class="sp-tagl">$2</span>');
+  const rtl = /^[^A-Za-z\u0590-\u07FF]*[\u0590-\u07FF]/.test(text);
+  return `<div class="sp-cap" dir="${rtl ? 'rtl' : 'ltr'}"><b dir="auto">${esc(handle)}</b> <span class="sp-cap-text" dir="auto">${html}</span>${folded
+    ? `… <button type="button" class="sp-fold" data-sp-more="${esc(item.id)}">${esc(t('soc_prev_more'))}</button>` : ''}</div>`;
+}
+// The bands the platform's own interface covers, from the zone's px on the format's canvas
+function socialZonesHtml(f, fm) {
+  const t = uallakI18n.t;
+  const z = (fm.safe_zones || {})[f.safe_zone];
+  if (!z || !f.width || !f.height) return '';
+  const x = v => (v / f.width * 100).toFixed(3) + '%', y = v => (v / f.height * 100).toFixed(3) + '%';
+  return `<div class="sp-zones" aria-hidden="true">
+      <i style="top:0;left:0;right:0;height:${y(z.top)}"></i><i style="bottom:0;left:0;right:0;height:${y(z.bottom)}"></i>
+      <i style="top:${y(z.top)};bottom:${y(z.bottom)};left:0;width:${x(z.left)}"></i>
+      <i style="top:${y(z.top)};bottom:${y(z.bottom)};right:0;width:${x(z.right)}"></i>
+      <b style="top:${y(z.top)};bottom:${y(z.bottom)};left:${x(z.left)};right:${x(z.right)}"></b>
+      <span style="top:calc(${y(z.top)} / 2 - 8px)">${esc(t('soc_prev_zone_covered'))}</span>
+      <span style="top:calc(${y(z.top)} + 6px)">${esc(t('soc_prev_zone_safe'))}</span>
+      <span style="bottom:calc(${y(z.bottom)} / 2 - 8px)">${esc(t('soc_prev_zone_covered'))}</span></div>`;
+}
+function socialStage(item) {
+  const t = uallakI18n.t;
+  const st = socialPrevState(item);
+  const f = item.frame || {};
+  const fm = (social.data || {}).formats || {};
+  const slides = socialSlides(item);
+  st.slide = Math.max(0, Math.min(st.slide, slides.length - 1));
+  const vertical = Boolean(f.format) && f.format === fm.vertical;
+  const prof = (social.data || {}).profile || {};
+  const acct = (prof.accounts || {})[st.ch];
+  // the client's ACTUAL account name; a channel that isn't connected says so — never an invented handle
+  const handle = acct ? acct.handle : (prof.name || t('soc_prev_your_account'));
+  const sub = acct ? socialChannelName(st.ch) : t('soc_prev_not_connected', { channel: socialChannelName(st.ch) });
+  const head = `<div class="sp-head"><span class="sp-ava" aria-hidden="true">${esc((handle || '?').trim().charAt(0).toUpperCase())}</span>
+      <div class="sp-names"><b dir="auto">${esc(handle)}</b><small dir="auto">${esc(sub)}</small></div><span class="sp-more" aria-hidden="true">⋯</span></div>`;
+  const many = slides.length > 1;
+  const track = slides.map((s, i) => socialSlideHtml(item, s, i)).join('')
+    || `<div class="sp-slide sp-text"><div class="sp-tb" dir="auto">${esc(t('soc_prev_nothing'))}</div></div>`;
+  const cap = socialCaptionHtml(item, st, handle);
+  const nav = many ? `<button type="button" class="sp-nav prev" data-sp-go="-1" aria-label="${esc(t('mv_prev'))}"${st.slide === 0 ? ' disabled' : ''}>‹</button>
+      <button type="button" class="sp-nav next" data-sp-go="1" aria-label="${esc(t('mv_next'))}"${st.slide >= slides.length - 1 ? ' disabled' : ''}>›</button>` : '';
+  const dots = many ? slides.map((s, i) => `<i${i === st.slide ? ' class="on"' : ''}></i>`).join('') : '';
+  let over = '';
+  if (vertical && f.placement === 'story') {
+    over = `<div class="sp-over"><div><div class="sp-bars" data-sp-dots>${(slides.length ? slides : [0]).map((s, i) => `<i${i <= st.slide ? ' class="on"' : ''}></i>`).join('')}</div>${head}</div>
+        <div class="sp-foot"><span class="sp-reply" dir="rtl">${esc(t('soc_prev_reply'))}</span><span class="sp-rail" aria-hidden="true">♡</span></div></div>`;
+  } else if (vertical) {
+    over = `<div class="sp-over"><div></div><div class="sp-foot"><div style="flex:1;min-width:0">${head}${cap}</div>
+        <div class="sp-rail" aria-hidden="true"><span>♡</span><span>💬</span><span>➤</span><span>⋯</span></div></div></div>`;
+  }
+  const media = `<div class="sp-media" style="aspect-ratio:${Number(f.width) || 4} / ${Number(f.height) || 5}">
+      <div class="sp-track" data-sp-track="${esc(item.id)}">${track}</div>
+      ${many && !vertical ? `<span class="sp-count" data-sp-count>${st.slide + 1}/${slides.length}</span>` : ''}
+      ${nav}${over}${vertical && st.zones ? socialZonesHtml(f, fm) : ''}</div>`;
+  const screen = vertical ? media
+    : `${head}${media}<div class="sp-icons" aria-hidden="true"><span>♡</span><span>💬</span><span>➤</span><span class="sp-save">🔖</span></div>
+       <div class="sp-dots" data-sp-dots>${dots}</div>${cap}`;
+  const chans = (item.channels || []).length > 1 ? (item.channels || []).map(c =>
+    `<button type="button" class="media-chip" data-sp-ch="${esc(c)}" aria-pressed="${c === st.ch}">${esc(socialChannelName(c))}</button>`).join('') : '';
+  const zone = (fm.safe_zones || {})[f.safe_zone];
+  const zoneBtn = vertical && zone ? `<button type="button" class="media-chip" data-sp-zones aria-pressed="${st.zones}">${esc(t(st.zones ? 'soc_prev_zones_off' : 'soc_prev_zones_on'))}</button>` : '';
+  return `<div class="sp-phone${vertical ? ' sp-vertical' : ''}" dir="ltr"><div class="sp-screen">${screen}</div></div>
+    ${chans || zoneBtn ? `<div class="soc-stage-bar">${chans}${zoneBtn}</div>` : ''}
+    <div class="soc-stage-note">${esc(t('soc_prev_place_' + (f.placement || 'feed')))} · <bdi dir="ltr">${esc(f.aspect || '')}</bdi> · <bdi dir="ltr">${esc(String(f.width || ''))}×${esc(String(f.height || ''))}</bdi>${many
+      ? ` · <span data-sp-label>${esc(t('soc_prev_slide', { n: st.slide + 1, total: slides.length }))}</span>` : ''}</div>
+    ${vertical && st.zones && zone && zone.bottom_is_floor ? `<div class="soc-stage-note">${esc(t('soc_prev_zone_floor'))}</div>` : ''}`;
+}
+// One card's preview redrawn in place (a channel, the fold or the bands changed) — the rest of the list, and anything being typed, stays
+function socialRestage(id) {
+  const item = socialItem(id);
+  const list = document.getElementById('socialList');
+  const stage = item && list ? list.querySelector('[data-soc-stage="' + CSS.escape(id) + '"]') : null;
+  if (!stage) return;
+  stage.innerHTML = socialStage(item);
+  wireSocial(list);
+}
+function socialSlideShown(track) {
+  const id = track.getAttribute('data-sp-track');
+  const item = socialItem(id);
+  if (!item || !track.clientWidth) return;
+  const total = track.children.length;
+  const n = Math.max(0, Math.min(total - 1, Math.round(Math.abs(track.scrollLeft) / track.clientWidth)));
+  const st = socialPrevState(item);
+  if (st.slide === n) return;
+  st.slide = n;
+  const stage = track.closest('[data-soc-stage]');
+  stage.querySelectorAll('[data-sp-dots] i').forEach((d, i) => d.classList.toggle('on', stage.querySelector('.sp-bars') ? i <= n : i === n));
+  const count = stage.querySelector('[data-sp-count]');
+  if (count) count.textContent = (n + 1) + '/' + total;
+  const label = stage.querySelector('[data-sp-label]');
+  if (label) label.textContent = uallakI18n.t('soc_prev_slide', { n: n + 1, total });
+  const prev = stage.querySelector('.sp-nav.prev'), next = stage.querySelector('.sp-nav.next');
+  if (prev) prev.disabled = n === 0;
+  if (next) next.disabled = n >= total - 1;
+  // what the card says about "this slide" (its notes, its send-back) follows the slide shown
+  const card = track.closest('.soc-item');
+  if (card) card.querySelectorAll('[data-soc-of-slide]').forEach(el => { el.hidden = el.getAttribute('data-soc-of-slide') !== String(n); });
+}
+function wireSocialStage(list) {
+  list.querySelectorAll('[data-sp-track]').forEach(track => {
+    const st = socialPrev[track.getAttribute('data-sp-track')];
+    if (st && st.slide && track.clientWidth) track.scrollLeft = st.slide * track.clientWidth;
+    track.onscroll = () => socialSlideShown(track);
+  });
+  const stageId = el => el.closest('[data-soc-stage]').getAttribute('data-soc-stage');
+  list.querySelectorAll('[data-sp-go]').forEach(btn => { btn.onclick = () => {
+    const track = btn.closest('.sp-media').querySelector('[data-sp-track]');
+    track.scrollBy({ left: Number(btn.getAttribute('data-sp-go')) * track.clientWidth, behavior: 'smooth' });
+  }; });
+  list.querySelectorAll('[data-sp-ch]').forEach(btn => { btn.onclick = () => {
+    const id = stageId(btn);
+    socialPrevState(socialItem(id)).ch = btn.getAttribute('data-sp-ch');
+    socialPrev[id].open = false;
+    socialRestage(id);
+  }; });
+  list.querySelectorAll('[data-sp-zones]').forEach(btn => { btn.onclick = () => {
+    const id = stageId(btn);
+    socialPrev[id].zones = !socialPrev[id].zones;
+    socialRestage(id);
+  }; });
+  list.querySelectorAll('[data-sp-more]').forEach(btn => { btn.onclick = () => {
+    const id = btn.getAttribute('data-sp-more');
+    socialPrev[id].open = true;
+    socialRestage(id);
+  }; });
+}
+function socialStageBox(item) {
+  return `<div class="soc-stage" data-soc-stage="${esc(item.id)}">${socialStage(item)}</div>`;
+}
+function socialSelBox(item, name) {
+  return ADMIN_VIEW ? '' : `<label class="soc-sel-inline"><input type="checkbox" data-soc-sel="${esc(item.id)}"
+      ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(uallakI18n.t('soc_select_aria', { name: name || '' }))}"></label>`;
+}
+
 function socialRow(item) {
   const t = uallakI18n.t;
   const waiting = item.status === 'waiting';
   if (item.kind === 'post') return socialPostRow(item);
   if (item.kind === 'design') return socialDesignRow(item);
   const editable = !ADMIN_VIEW && (waiting || item.status === 'approved');
-  const name = item.title || socialChannelName(item.channels[0] || 'instagram');
-  const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(item.file_id);
+  // every slide of the same post is ONE card: a carousel in the preview, one decision
+  const group = socialGroup(item);
+  const shown = Math.min(socialPrevState(item).slide, group.length - 1);
+  const many = group.length > 1;
+  const name = (many ? String(item.title || '').replace(/\s*·\s*\d+\/\d+\s*$/, '') : item.title) || socialChannelName(item.channels[0] || 'instagram');
   const face = SOCIAL_FACES[item.producer] || 'lior';
-  const preview = `<div class="soc-prev">
-      ${item.kind === 'video' ? '🎬' : '🖼'}
-      <img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()"${item.kind === 'image'
-        ? ` data-soc-view="${esc(item.id)}" role="button" tabindex="0" aria-label="${esc(t('mv_view'))}"` : ''}>
-      ${item.kind === 'video' ? `<button type="button" class="soc-play" data-soc-play="${esc(item.id)}" aria-label="${esc(t('soc_play'))}">▶</button>` : ''}
-      ${!ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
-          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name }))}"></label>` : ''}
-    </div>`;
-  const top = `<div class="soc-top">
+  const top = `<div class="soc-top">${socialSelBox(item, name)}
       <span class="soc-status ${esc(item.status)}">${esc(item.status_text)}</span>
       ${item.needs_tap ? `<span class="soc-status waiting">${esc(t('soc_needs_tap'))}</span>` : ''}
       ${item.replaces ? `<span class="plan-pill">${esc(t('soc_is_fix'))}</span>` : ''}
@@ -9864,13 +10173,15 @@ function socialRow(item) {
     // A real picture the agent chose: "the picture is the problem" in one
     // click (a ready reason) or one line — recorded against that asset
     // (core/asset_feedback) so it ranks lower and the agent learns why
-    const assetRej = (item.real_asset || {}).source_file_id ? `<div class="soc-asset-rej" data-soc-asset-rej>
+    const cur = group[shown] || item;
+    const assetRej = (cur.real_asset || {}).source_file_id ? `<div class="soc-asset-rej" data-soc-asset-rej>
         <div class="soc-meta"><b>${esc(t('soc_asset_q'))}</b></div>
         <div class="soc-chans">${['soc_asset_r1', 'soc_asset_r2', 'soc_asset_r3', 'soc_asset_r4'].map(k =>
           `<button type="button" class="media-chip" data-soc-asset-chip="${esc(item.id)}" aria-pressed="false">${esc(t(k))}</button>`).join('')}</div>
         <input type="text" data-soc-asset-reason maxlength="160" dir="auto" placeholder="${esc(t('soc_asset_other'))}">
       </div>` : '';
     body = `<div class="soc-reject">
+        ${many ? `<div class="plan-note">${esc(t('soc_reject_slide', { n: shown + 1, total: group.length }))}</div>` : ''}
         <label class="soc-meta"><b>${esc(t('soc_reject_reason', { name: socialProducer(item.producer) }))}</b></label>
         <textarea data-soc-reason maxlength="400" dir="auto"></textarea>
         ${assetRej}
@@ -9879,17 +10190,21 @@ function socialRow(item) {
           <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button>
         </div></div>`;
   } else {
-    body = `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
+    body = '';
   }
-  if (item.source_text) body += `<div class="soc-flag source">${esc(item.source_text)}</div>`;
-  if (item.flags && item.flags.length) body += item.flags.map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('');
+  // each slide's own notes (where the picture came from, its flags), shown for the slide in view
+  body += group.map((g, i) => {
+    const lines = (g.source_text ? `<div class="soc-flag source">${esc(g.source_text)}</div>` : '')
+      + (g.flags || []).map(f => `<div class="soc-flag${f.code === 'low_resolution' || f.code === 'character_needs_approval' ? ' warn' : ''}">${esc(f.text)}</div>`).join('');
+    return lines ? `<div data-soc-of-slide="${i}"${i === shown ? '' : ' hidden'}>${lines}</div>` : '';
+  }).join('');
   const deliveries = Object.keys(item.delivery || {}).map(c =>
     `<div class="${esc(item.delivery[c].state)}"><b>${esc(socialChannelName(c))}:</b> ${esc(item.delivery[c].text)}</div>`).join('');
   const rejected = item.status === 'rejected'
     ? `<div class="soc-meta">${esc(t('soc_was_rejected', { reason: item.reject_reason }))}${item.fixed_by ? ' · ' + esc(t('soc_fix_on_way')) : ''}</div>` : '';
   const acts = [];
   if (social.editing !== item.id && social.rejecting !== item.id) {
-    if (waiting && !ADMIN_VIEW) acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_approve'))}</button>`);
+    if (waiting && !ADMIN_VIEW) acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(many ? t('soc_approve_all', { n: group.length }) : t('soc_approve'))}</button>`);
     if (editable) acts.push(`<button type="button" class="media-chip" data-soc-edit="${esc(item.id)}">${esc(t('soc_edit'))}</button>`);
     if (editable) acts.push(`<button type="button" class="sugg-btn reject" data-soc-reject="${esc(item.id)}">${esc(t('soc_reject'))}</button>`);
     if (item.needs_tap && item.caption) acts.push(`<button type="button" class="media-chip" data-soc-copy="${esc(item.id)}">${esc(t('soc_copy'))}</button>`);
@@ -9899,9 +10214,9 @@ function socialRow(item) {
   }
   const cls = 'soc-item ' + item.status + (social.selected.has(item.id) ? ' selected' : '')
     + (item.status === 'published' || item.status === 'rejected' ? ' done' : '');
-  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${preview}
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${socialStageBox(item)}
     <div class="soc-body">${top}
-      ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
+      ${name ? `<div class="soc-title"><bdi dir="auto">${esc(name)}</bdi></div>` : ''}
       ${meta}${body}${rejected}
       ${deliveries ? `<div class="soc-delivery">${deliveries}</div>` : ''}
       ${acts.length ? `<div class="soc-actions">${acts.join('')}</div>` : ''}
@@ -9912,10 +10227,6 @@ function socialPostRow(item) {
   const t = uallakI18n.t;
   const waiting = item.status === 'waiting';
   const face = SOCIAL_FACES[item.producer] || 'lior';
-  const preview = `<div class="soc-prev">📝
-      ${!ADMIN_VIEW ? `<label class="ml-check"><input type="checkbox" data-soc-sel="${esc(item.id)}"
-          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name: item.title || '' }))}"></label>` : ''}
-    </div>`;
   const chans = item.channels.map(c => `<span class="plan-pill">${esc(socialChannelName(c))}</span>`).join('');
   const rejected = item.status === 'rejected' ? `<div class="soc-meta">${esc(t('soc_was_rejected', { reason: item.reject_reason }))}</div>` : '';
   const acts = [];
@@ -9934,8 +10245,8 @@ function socialPostRow(item) {
       </div></div>` : '';
   const cls = 'soc-item post ' + item.status + (social.selected.has(item.id) ? ' selected' : '')
     + (item.status === 'rejected' ? ' done' : '');
-  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${preview}
-    <div class="soc-body"><div class="soc-top">
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${socialStageBox(item)}
+    <div class="soc-body"><div class="soc-top">${socialSelBox(item, item.title)}
         <span class="soc-status ${esc(item.status)}">${esc(item.status === 'waiting' ? t('soc_post_copy_waiting') : item.status_text)}</span>
         <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
       </div>
@@ -9947,16 +10258,15 @@ function socialPostRow(item) {
 }
 
 // A text-slide design (core/slide_design): the slides DRAWN from the spec (each
-// <img> is rendered on request), the spec in words + JSON, the notes so far.
-// Approve saves it as the business's template; a note sends it for a redesign.
+// <img> is rendered on request) as the carousel in the preview, the spec in
+// words + JSON, the notes so far. Approve saves it as the business's template;
+// a note sends it for a redesign.
 function socialDesignRow(item) {
   const t = uallakI18n.t;
   const d = item.design || {};
   const waiting = item.status === 'waiting';
   const face = SOCIAL_FACES[item.producer] || 'lior';
   const revising = d.state === 'revising';
-  const imgs = (d.previews || []).map((src, i) => `<img src="${esc(src)}" alt="${esc(String(i + 1))}" loading="lazy" onerror="this.remove()"
-      data-soc-slide="${esc(item.id)}" data-n="${i}" role="button" tabindex="0">`).join('');
   const specLines = (d.spec_lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('');
   const notes = (d.critiques || []).map(c => `<li><bdi dir="auto">${esc(c.text)}</bdi></li>`).join('');
   const acts = [];
@@ -9972,10 +10282,8 @@ function socialDesignRow(item) {
   const saved = d.saved && d.saved.name ? `<div class="soc-meta">${esc(t('soc_design_saved', { name: d.saved.name, version: d.saved.version }))}</div>` : '';
   const cls = 'soc-item design ' + item.status + (item.status === 'rejected' ? ' done' : '')
     + (social.selected.has(item.id) ? ' selected' : '');
-  return `<div class="${cls}" data-soc-item="${esc(item.id)}">
-    <div class="soc-body"><div class="soc-top">
-        ${!ADMIN_VIEW ? `<label class="soc-sel-inline"><input type="checkbox" data-soc-sel="${esc(item.id)}"
-          ${social.selected.has(item.id) ? 'checked' : ''} aria-label="${esc(t('soc_select_aria', { name: item.title || '' }))}"></label>` : ''}
+  return `<div class="${cls}" data-soc-item="${esc(item.id)}">${socialStageBox(item)}
+    <div class="soc-body"><div class="soc-top">${socialSelBox(item, item.title)}
         <span class="soc-status ${esc(item.status)}">${esc(waiting ? t('soc_design_waiting') : item.status_text)}</span>
         <span class="soc-status">${esc(d.state_text || '')}</span>
         <span class="soc-by"><img src="/assets/agents/${face}-portrait.webp" alt="" onerror="this.remove()">${esc(t('soc_by', { name: socialProducer(item.producer) }))}</span>
@@ -9983,12 +10291,11 @@ function socialDesignRow(item) {
       ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
       <div class="plan-note">${esc(d.stage_text || '')}</div>
       <div class="soc-meta">${esc(t('soc_design_template', { name: d.template_name || '', rev: d.rev || 1 }))}${d.palette ? ' · ' + esc(t('soc_post_palette', { name: d.palette })) : ''}</div>
-      <div class="soc-design-strip">${imgs}</div>
       ${d.rationale ? `<div class="soc-meta"><bdi dir="auto">${esc(d.rationale)}</bdi></div>` : ''}
       ${(d.problem_lines || []).length ? d.problem_lines.map(l => `<div class="soc-flag warn">${esc(l)}</div>`).join('')
         : (d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : '')}
       ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
-      ${(item.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('')}
+      ${(item.flags || []).map(f => `<div class="soc-flag${f.code === 'character_needs_approval' || f.code === 'character_unavailable' ? ' warn' : ''}">${esc(f.text)}</div>`).join('')}
       <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>
         <details><summary>${esc(t('soc_design_json'))}</summary><pre>${esc(JSON.stringify(d.spec || {}, null, 2))}</pre></details></details>
       ${notes ? `<details class="soc-design-spec"><summary>${esc(t('soc_design_notes'))}</summary><ul>${notes}</ul></details>` : ''}
@@ -10047,7 +10354,8 @@ function renderSocial() {
     renderSocialSelBar();
     return;
   }
-  list.innerHTML = social.items.map(socialRow).join('');
+  // every slide of one post is ONE card (socialGroup): its first slide draws it
+  list.innerHTML = social.items.filter(i => socialGroup(i)[0] === i).map(socialRow).join('');
   socialWatchDesigns();
   const lines = [];
   if (social.items.length < (d.total || 0)) {
@@ -10067,7 +10375,8 @@ function wireSocial(list) {
   list.querySelectorAll('[data-soc-sel]').forEach(box => {
     box.onchange = () => {
       const id = box.getAttribute('data-soc-sel');
-      if (box.checked) social.selected.add(id); else social.selected.delete(id);
+      // a carousel's card selects every slide of it
+      socialGroupIds(id).forEach(g => { if (box.checked) social.selected.add(g); else social.selected.delete(g); });
       box.closest('.soc-item').classList.toggle('selected', box.checked);
       renderSocialSelBar();
     };
@@ -10079,15 +10388,17 @@ function wireSocial(list) {
   list.querySelectorAll('[data-soc-view], [data-soc-slide]').forEach(img => {
     img.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); img.click(); } };
   });
-  on('data-soc-approve', id => socialOpenBatch([id]));
-  on('data-soc-del', id => socialOpenDelete([id]));
+  // a carousel is decided as one: approve / delete take every slide of the card
+  on('data-soc-approve', id => socialOpenBatch(socialGroupIds(id, 'waiting').length ? socialGroupIds(id, 'waiting') : [id]));
+  on('data-soc-del', id => socialOpenDelete(socialGroupIds(id).length ? socialGroupIds(id) : [id]));
   on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
   on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
   on('data-soc-save', (id, btn) => socialSave(id, btn.closest('.soc-item')));
   on('data-soc-copysave', (id, btn) => socialCopySave(id, btn.closest('.soc-item')));
   on('data-soc-critique-send', (id, btn) => socialCritique(id, btn.closest('.soc-item')));
-  on('data-soc-reject-send', (id, btn) => socialReject(id, btn.closest('.soc-item')));
+  // a send-back is about the slide in view
+  on('data-soc-reject-send', (id, btn) => socialReject((socialCurrent(id) || {}).id || id, btn.closest('.soc-item')));
   on('data-soc-asset-chip', (id, btn) => {
     const box = btn.closest('[data-soc-asset-rej]');
     const was = btn.getAttribute('aria-pressed') === 'true';
@@ -10095,14 +10406,14 @@ function wireSocial(list) {
     btn.setAttribute('aria-pressed', was ? 'false' : 'true');
     box.querySelector('[data-soc-asset-reason]').value = was ? '' : btn.textContent.trim();
   });
-  on('data-soc-published', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/published', {}, 'soc_saved'));
+  on('data-soc-published', id => socialPostAll(socialGroupIds(id).filter(g => (socialItem(g) || {}).needs_tap), 'published', {}, 'soc_saved'));
   on('data-soc-copy', id => {
     const i = socialItem(id);
     if (!i) return;
     try { navigator.clipboard.writeText(i.caption).then(() => socialNote(t('soc_copied')), () => {}); } catch (e) { /* no clipboard */ }
   });
   on('data-soc-dl', id => {
-    const i = socialItem(id);
+    const i = socialCurrent(id);         // the slide in view
     if (!i) return;
     if (i.kind === 'video') {
       // Videos are never downloaded through us: Drive serves the file (docs/MEDIA-TAB.md)
@@ -10112,6 +10423,7 @@ function wireSocial(list) {
     const opts = mediaViewerOpts('socialNotice');
     uallakMediaViewer.download({ id: i.file_id, name: i.title || '', kind: i.kind, download: 'file' }, opts, '', opts.notify);
   });
+  wireSocialStage(list);
 }
 
 // ─── Enlarged view (lightbox, /assets/media-viewer.js) ───────────────────────
@@ -10257,6 +10569,19 @@ function socialOpenBatch(ids) {
   wrap.querySelector('[data-go]').focus();
 }
 
+// The same change to every slide of one card (a carousel's caption, channels, date): one after the other, the last one redraws
+async function socialPostAll(ids, verb, body, okKey, onOk) {
+  for (const id of ids.slice(0, -1)) {
+    try {
+      const res = await fetch('/api/client/social/' + encodeURIComponent(id) + '/' + verb, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      if (!res.ok) break;                // the last call below reports it and redraws what was really saved
+    } catch (e) { break; }
+  }
+  if (!ids.length) return false;
+  return socialPost('/api/client/social/' + encodeURIComponent(ids[ids.length - 1]) + '/' + verb, body, okKey, onOk);
+}
+
 async function socialPost(url, body, okKey, onOk) {
   const t = uallakI18n.t;
   try {
@@ -10288,7 +10613,7 @@ function socialSave(id, row) {
   const body = { caption: row.querySelector('[data-soc-caption]').value,
                  channels, planned_date: row.querySelector('[data-soc-date]').value };
   const wasApproved = item.status === 'approved';
-  socialPost('/api/client/social/' + encodeURIComponent(id) + '/edit', body, null, data => {
+  socialPostAll(socialGroupIds(id).length ? socialGroupIds(id) : [id], 'edit', body, null, data => {
     socialNote(uallakI18n.t(wasApproved && data.status === 'waiting' ? 'soc_saved_reapprove' : 'soc_saved'));
   });
 }

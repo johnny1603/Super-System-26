@@ -674,7 +674,9 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
             caption=item.get("caption", ""), planned_date=item.get("planned_date", ""), producer="media",
             source="post", title=f"{item.get('title') or body['set_id']} · {n}/{len(slides)}", flags=flags,
             post_ref={"post_id": item["id"], "set_id": body["set_id"], "asset_id": brief.asset_id,
-                      "n": n, "of": len(slides)},
+                      "n": n, "of": len(slides),
+                      "format": social_formats.for_post(body["post_format"], body.get("placement", "")).name,
+                      "placement": body.get("placement", "")},
             real_asset=out.get("real_asset") or None, characters=out.get("characters") or None)
         results.append({"asset_id": brief.asset_id, "status": "made", "queue_id": added.get("id", ""),
                         "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated"})

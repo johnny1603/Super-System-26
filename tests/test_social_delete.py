@@ -110,7 +110,7 @@ class TheTab(unittest.TestCase):
         h = self.html
         self.assertEqual(h.count("acts.push(socialDeleteBtn(item))"), 3)   # media, post copy, design
         self.assertIn('id="socialSelDelete" onclick="socialOpenDelete()"', h)
-        self.assertIn("on('data-soc-del', id => socialOpenDelete([id]));", h)
+        self.assertIn("on('data-soc-del', id => socialOpenDelete(socialGroupIds(id).length ? socialGroupIds(id) : [id]));", h)
         self.assertIn('onclick="socialOpenBatch(socialSelectedWaiting())"', h)   # approve takes the waiting ones
         self.assertNotIn("${waiting && !ADMIN_VIEW ? `<label class=\"ml-check\">", h)   # any item can be selected
 

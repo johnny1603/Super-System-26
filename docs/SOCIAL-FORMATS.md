@@ -61,3 +61,24 @@ crop is under 1080 px the alert fires and names the size — that is the bug
 report this module was asked to raise, not a silent ship. The presenter clip
 also defaults to 1080p now (`MEDIA_PRESENTER_RESOLUTION` still overrides);
 its credit cost at 1080p has not been measured.
+
+## Preview (the Social tab, 2026-11-25)
+
+The Social tab shows each post the way the platform will (`dashboard/client/index.html`, `socialStage`):
+
+- A phone frame at the format's real ratio. The size comes from `frame` on every queue item
+  (`core/social_preview.frame`, read from this table) — the page keeps no number of its own
+  (`tests/test_social_preview.py` fails on a size literal in that script).
+- The profile row carries the client's ACTUAL account name (`social_preview.profile`: Instagram username,
+  Facebook Page name, TikTok display name — read live with the client's own connection, kept in memory for
+  6 hours, never stored). A channel that is not connected shows the business name and says so; a handle is
+  never invented.
+- Every slide of one post is ONE card: a swipeable carousel with dots, in slide order, approved together;
+  a send-back is about the slide in view.
+- The caption is folded behind "עוד" where that platform folds it (`CAPTION_FOLD`), hashtags and mentions
+  are styled as links, line breaks are kept. The frame is LTR inside the RTL page; the post's own text
+  takes its own direction.
+- A vertical post has a toggle that draws the safe-zone bands of its zone over the frame.
+- The old narrow strip: the card was a positional grid `132px 1fr` built for thumbnail + body. A card
+  without a thumbnail (a design, a copy card) put its whole body in the 132 px track. The card is now two
+  NAMED areas (stage / body), stacked on a phone.

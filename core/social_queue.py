@@ -976,6 +976,8 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
         if item.get("real_asset"):
             extra["real_asset"] = item["real_asset"]
             extra["source_text"] = source_text(item["real_asset"], lang)
+        from core import social_preview
+        extra["frame"] = social_preview.frame(item)         # the size the preview draws it at (core/social_formats)
         out.append({**extra, "id": item["id"], "file_id": item["file_id"], "kind": item["kind"], "title": item.get("title", ""),
                     "caption": item.get("caption", ""), "channels": item["channels"],
                     "planned_date": item.get("planned_date", ""), "overdue": item["status"] in ("waiting", "approved")

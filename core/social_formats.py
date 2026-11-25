@@ -87,6 +87,12 @@ POSE_ASPECT = TALL_ASPECT               # a character cut-out (never published b
 CAROUSEL_MAX_SLIDES = 20
 IMAGE_MAX_BYTES = 30 * 1024 * 1024
 
+# ─── Where a platform folds the caption behind "more" (the preview's fold) ───
+# Instagram: about 125 characters / the second line; Facebook: about 477
+# characters; TikTok: two lines. Documented conventions, not an API contract.
+CAPTION_FOLD = {"instagram": {"chars": 125, "lines": 2}, "facebook": {"chars": 477, "lines": 5},
+                "tiktok": {"chars": 100, "lines": 2}, "youtube": {"chars": 100, "lines": 2}}
+
 # ─── Safe zones, px on the vertical canvas ───────────────────────────────────
 
 SAFE_ZONES = {
@@ -234,4 +240,5 @@ def table() -> dict:
             "safe_zones": {z: {**insets(z), "box": safe_box(z), "bottom_is_floor": bool(v.get("bottom_is_floor"))}
                            for z, v in SAFE_ZONES.items()},
             "carousel": {"max_slides": CAROUSEL_MAX_SLIDES, "max_image_bytes": IMAGE_MAX_BYTES},
+            "caption_fold": CAPTION_FOLD,
             "generation": {"resolution": GENERATION_RESOLUTION, "fallback_aspect": GENERATION_FALLBACK_ASPECT}}

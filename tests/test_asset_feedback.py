@@ -158,7 +158,7 @@ class Rejection(WithStore):
 
     def test_form_and_route(self):
         html = _read("dashboard", "client", "index.html")
-        self.assertIn("const assetRej = (item.real_asset || {}).source_file_id ?", html)
+        self.assertIn("const assetRej = (cur.real_asset || {}).source_file_id ?", html)
         self.assertIn("['soc_asset_r1', 'soc_asset_r2', 'soc_asset_r3', 'soc_asset_r4']", html)
         self.assertIn('<input type="text" data-soc-asset-reason maxlength="160"', html)
         self.assertIn("{ reason, asset_rejected: true, asset_reason: assetReason }", html)

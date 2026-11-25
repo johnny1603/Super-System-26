@@ -1032,7 +1032,7 @@ class Notices(unittest.TestCase):
         self.assertIn("flags[brief.asset_id] += agent_characters.approval_flags(client_id, True)", src)
         objections = src[src.index("if not review[\"objection\"]"):src.index("draft[\"updated_at\"] = _now()")]
         self.assertNotIn("ai_", objections)                               # a notice is never an objection
-        self.assertIn("(item.flags || []).map(f => `<div class=\"soc-flag\">${esc(f.text)}</div>`).join('')",
+        self.assertIn("(g.flags || []).map(f => `<div class=\"soc-flag${f.code === 'low_resolution' || f.code === 'character_needs_approval' ? ' warn' : ''}\">${esc(f.text)}</div>`).join('')",
                       tsq._src("dashboard", "client", "index.html"))
         del item
 

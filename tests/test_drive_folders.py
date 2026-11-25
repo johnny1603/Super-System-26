@@ -827,7 +827,7 @@ class Production(Base):
         self.assertIn('flags = ["concept"] if "concept" in (slide.get("flags") or []) and not out.get("real_asset") else []', src)
         html = _read("dashboard", "client", "index.html")
         self.assertIn("s.source_text", html)
-        self.assertIn("item.source_text", html)
+        self.assertIn("g.source_text", html)
         for lang in ("he", "en", "fr", "ar", "ru"):
             self.assertTrue(sq.pick(sq.SOURCE_TEXT, lang))
 

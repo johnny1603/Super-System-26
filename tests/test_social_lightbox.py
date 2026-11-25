@@ -43,11 +43,12 @@ def _fn(name):
 
 class Static(unittest.TestCase):
     def test_images_are_clickable_and_the_grid_keeps_its_thumbnails(self):
-        row = _fn("function socialRow(item)")
-        self.assertIn("const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(item.file_id);", row)
-        self.assertIn('<img src="${esc(thumb)}" alt="" loading="lazy"', row)
-        self.assertIn("${item.kind === 'image'\n        ? ` data-soc-view=\"${esc(item.id)}\"", row)
-        self.assertIn('data-soc-slide="${esc(item.id)}" data-n="${i}"', _fn("function socialDesignRow(item)"))
+        # since the preview rebuild (2026-11-25) the slide images live in the phone frame
+        slide = _fn("function socialSlideHtml(item, s, i)")
+        self.assertIn("const thumb = '/api/client/media-drive/thumb/' + encodeURIComponent(g.file_id);", slide)
+        self.assertIn('data-thumb="${esc(thumb)}" alt="" loading="lazy"', slide)
+        self.assertIn('data-soc-view="${esc(g.id)}"', slide)
+        self.assertIn('data-soc-slide="${esc(item.id)}" data-n="${i}"', slide)
         wire = _fn("function wireSocial(list)")
         self.assertIn("on('data-soc-view', id => socialOpenViewer(id));", wire)
         self.assertIn("on('data-soc-slide', (id, img) => socialOpenDesign(id, img.getAttribute('data-n')));", wire)
@@ -63,7 +64,8 @@ class Static(unittest.TestCase):
                         "data-soc-reject-send", "data-soc-published", "data-soc-copy", "data-soc-dl"):
             self.assertIn(handler, wire)
         row = _fn("function socialRow(item)")
-        for button in ('data-soc-approve="${esc(item.id)}">${esc(t(\'soc_approve\'))}',
+        self.assertIn('data-soc-approve="${esc(item.id)}">${esc(many ? t(\'soc_approve_all\', { n: group.length }) : t(\'soc_approve\'))}', row)
+        for button in (
                        'data-soc-edit="${esc(item.id)}">${esc(t(\'soc_edit\'))}',
                        'data-soc-reject="${esc(item.id)}">${esc(t(\'soc_reject\'))}',
                        'data-soc-dl="${esc(item.id)}">${esc(t(\'soc_download\'))}',
@@ -122,6 +124,7 @@ globalThis.social = { items: [img('c', 'S1', 3), img('a', 'S1', 1), img('e', 'S1
     '/api/client/social/des/slide/2?rev=2', '/api/client/social/des/slide/3?rev=2'] } }] };
 globalThis.socialItem = id => social.items.find(i => i.id === id) || null;
 globalThis.socialChannelName = c => c;
+globalThis.wireSocialStage = () => {};      // the phone preview's own wiring (tests/test_social_preview.py)
 vm.runInThisContext(glueSrc + '\n' + wireSrc);
 
 // the list's clickable images, as wireSocial finds them
