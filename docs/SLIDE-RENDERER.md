@@ -102,3 +102,28 @@ A design item is never publishable: the gate, `mark_published` and edit all refu
 - **Palette hex values for client 27 are PROVISIONAL**: the brief has none yet (its open question 2). Replace them in the Control Room (client → brand brief → palette).
 - **Other clients (2026-11-24):** the intake agent derives the palette from colours seen on their site; a role it cannot determine is a gap and uses a neutral colour, never a guessed one (visible in the Control Room). A palette that exists but lacks the requested variant still fails with "palette missing".
 - **Logo:** the spec supports one from the media folder, but no client has a logo file referenced yet.
+
+## Copy budget (2026-11-25, `core/copy_budget`)
+
+The renderer's guards are unchanged; they used to speak only after the manager approved the copy. The same
+limits now reach the copy stage:
+
+- **Budget** (`budget` / `spec_budget`): per copy field (`copy_headline`, `copy_body`) the lines its block holds,
+  about how many characters (the box width / the bundled font's measured advance on real Hebrew, at the block's
+  size and weight, x `WRAP_FILL`) and the headline's word limit — from the ACTIVE template
+  (`slide_design.base_spec`: the client's template for the palette variant, else the starter), per slide role where
+  `role_overrides` draw it differently. Bigger type = a smaller budget, with no other change.
+- **To the agents**: `slide_copy_budget` in the content personas' data (`support_agent._with_content_context`, every
+  palette variant) + the COPY THAT FITS rule. An idea that needs more room is said, or proposed with the asset's
+  `needs_room` (shown on the card).
+- **Exact check** (`fit`): the renderer's own guard pass (`encode=False`) on the template's GEOMETRY (plain
+  background, no photo / logo / character; contrast is not a length problem). At `post_pipeline.submit`: copy that
+  doesn't fit (no `needs_room`) gets ONE shortening round (`copy_too_long`, per set_id in `post_drafts`), then it is
+  queued flagged. On the approval card (`social_queue.copy_fit`, read time = follows an edit and a template change):
+  per text slide fits / which field / how much, plus one summary line. Never a block — the manager may approve.
+- **Named failures**: overflow / headline_words / overlap problems carry `role`, `kind`, `lines` / `fit_lines`,
+  `need_px` / `have_px`, `text_chars`, `words` / `limit`; `copy_budget.problem_lines` says them per slide and field
+  ("שקופית 3, הטקסט: ארוך בערך ב-50% ממה שנכנס (9 שורות, יש מקום ל-6). צריך לקצר בערך 100 תווים.") on the design
+  card and in the production line, instead of "עיצוב שקופיות הטקסט נכשל".
+
+Tests: `tests/test_copy_budget.py`.

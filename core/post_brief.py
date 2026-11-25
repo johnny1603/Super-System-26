@@ -408,6 +408,9 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
         response = _clean_text((a or {}).get("response"), 300)
         if response:
             entry["response"] = response       # the social agent's answer to an objection
+        needs_room = _clean_text((a or {}).get("needs_room"), 300)
+        if needs_room:
+            entry["needs_room"] = needs_room   # the idea needs more room than the template holds (core/copy_budget)
         assets.append(entry)
     if not any((a["copy_headline"] or a["copy_body"]) for a in assets):
         raise ValueError("the slides' copy is written first — every post has copy")

@@ -456,7 +456,7 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
     try:
         lines = wrap(text, font, box_w, direction, language)
     except _TooWide as e:
-        problems.append({"code": "overflow", "block": index,
+        problems.append({"code": "overflow", "block": index, "role": block["role"], "kind": "word", "word": str(e),
                          "detail": f"{where}: the word {str(e)!r} is wider than the box at {block['size']} px"})
         return {}
     ascent, descent = font.getmetrics()
@@ -464,15 +464,22 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
     text_h = ascent + descent + (len(lines) - 1) * lh
     y = H * float(block["y_pct"]) / 100
     top = {"top": y, "center": y - text_h / 2, "bottom": y - text_h}[block["anchor"]]
+    # Every overflow carries WHICH block and BY HOW MUCH (lines needed / lines
+    # that fit, px) — core/copy_budget says it to the manager in plain words
     if block.get("max_height_pct"):
         max_h = H * float(block["max_height_pct"]) / 100
         if text_h > max_h + 0.5:
             fits = max(1, int((max_h - ascent - descent) // lh) + 1)
-            problems.append({"code": "overflow", "block": index,
+            problems.append({"code": "overflow", "block": index, "role": block["role"], "kind": "lines",
+                             "lines": len(lines), "fit_lines": fits, "need_px": round(text_h), "have_px": round(max_h), "text_chars": len(text),
                              "detail": f"{where}: {len(lines)} lines need {round(text_h)} px, the box holds "
                                        f"{round(max_h)} px (about {fits} lines)"})
     if top < m["top"] - 0.5 or top + text_h > H - m["bottom"] + 0.5:
-        problems.append({"code": "overflow", "block": index,
+        room = {"top": H - m["bottom"] - y, "bottom": y - m["top"],
+                "center": 2 * min(y - m["top"], H - m["bottom"] - y)}[block["anchor"]]
+        fits = max(0, int((room - ascent - descent) // lh) + 1) if room >= ascent + descent else 0
+        problems.append({"code": "overflow", "block": index, "role": block["role"], "kind": "safe_area",
+                         "lines": len(lines), "fit_lines": fits, "need_px": round(text_h), "have_px": max(0, round(room)), "text_chars": len(text),
                          "detail": f"{where}: the text ({round(top)}–{round(top + text_h)} px) leaves the safe area "
                                    f"({m['top']}–{H - m['bottom']} px)"})
     widths = [_measure(font, ln, direction, language) for ln in lines]
@@ -557,17 +564,20 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
         if not text:
             continue
         if block["role"] == "headline" and len(text.split()) > limit:
-            problems.append({"code": "headline_words", "block": i,
+            problems.append({"code": "headline_words", "block": i, "role": "headline", "kind": "words",
+                             "words": len(text.split()), "limit": limit,
                              "detail": f"text_blocks[{i}] (headline): {len(text.split())} words, the limit is {limit}"})
         lay = _layout(block, text, i, size, m, roles, problems)
         if lay:
             layouts.append(lay)
     counter = _counter_layout(spec.get("counter") or {}, size, m, roles, n, total)
-    boxes = [(lay["where"], lay["rect"]) for lay in layouts] + ([("counter", counter["rect"])] if counter else [])
+    boxes = ([(lay["where"], lay["rect"], lay["block"]["role"]) for lay in layouts]
+             + ([("counter", counter["rect"], "counter")] if counter else []))
     for i in range(len(boxes)):
         for j in range(i + 1, len(boxes)):
             if _intersects(boxes[i][1], boxes[j][1]):
-                problems.append({"code": "overlap", "detail": f"{boxes[i][0]} and {boxes[j][0]} overlap"})
+                problems.append({"code": "overlap", "role": boxes[i][2], "other": boxes[j][2], "kind": "overlap",
+                                 "detail": f"{boxes[i][0]} and {boxes[j][0]} overlap"})
     for lay in layouts:
         block = lay["block"]
         need = CONTRAST_MIN_LARGE if is_large(block["size"], block["weight"]) else CONTRAST_MIN

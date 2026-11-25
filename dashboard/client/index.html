@@ -1481,6 +1481,8 @@ body.bs-open { overflow: hidden; }
 .soc-post { display: grid; gap: 6px; }
 .soc-slides { margin: 0; padding-inline-start: 0; list-style: none; display: grid; gap: 8px; }
 .soc-slide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
+.soc-slide.soc-slide-over { border-color: #FFB020; }       /* copy longer than the current template holds */
+.soc-fit-ok { color: var(--muted, #9a9a9a); font-size: 12px; }
 .soc-prev img[data-soc-view], .soc-design-strip img[data-soc-slide] { cursor: zoom-in; }
 .soc-asset-rej { display: grid; gap: 6px; margin-top: 8px; }
 .soc-asset-rej [aria-pressed="true"] { border-color: var(--accent, #6c5ce7); background: rgba(108,92,231,.14); font-weight: 700; }
@@ -9537,7 +9539,14 @@ function socialPostBody(item) {
          <textarea data-soc-bodytext="${esc(s.asset_id)}" maxlength="400" dir="auto" aria-label="${esc(t('soc_post_body'))}">${esc(s.copy_body)}</textarea>`
       : `${s.copy_headline ? `<div class="soc-slide-head" dir="auto">${esc(s.copy_headline)}</div>` : ''}
          ${s.copy_body ? `<div class="soc-slide-body" dir="auto">${esc(s.copy_body)}</div>` : ''}`;
-    return `<li class="soc-slide"><div class="soc-meta"><b>${esc(String(s.n))}. ${esc(s.role_text)}</b> · ${esc(s.asset_type_text)}</div>${copy}${flags}${esc2}</li>`;
+    // Does this slide's copy fit the CURRENT template (core/copy_budget)? Said
+    // before approval — the manager can still approve, never by surprise
+    const fit = s.fit || {};
+    const fitLine = fit.fits === false
+      ? (fit.lines || []).map(l => `<div class="soc-flag warn" data-soc-fit="over">${esc(l)}</div>`).join('')
+      : (fit.fits ? `<div class="soc-meta soc-fit-ok" data-soc-fit="ok">✓ ${esc(fit.text || '')}</div>`
+                    + (fit.lines || []).map(l => `<div class="soc-flag">${esc(l)}</div>`).join('') : '');
+    return `<li class="soc-slide${fit.fits === false ? ' soc-slide-over' : ''}"><div class="soc-meta"><b>${esc(String(s.n))}. ${esc(s.role_text)}</b> · ${esc(s.asset_type_text)}</div>${copy}${fitLine}${flags}${esc2}</li>`;
   }).join('');
   const caption = editing
     ? `<label class="soc-meta"><b>${esc(t('soc_caption'))}</b></label><textarea data-soc-caption maxlength="2200" dir="auto">${esc(item.caption)}</textarea>`
@@ -9550,6 +9559,7 @@ function socialPostBody(item) {
       <div class="soc-meta"><b>${esc(t('soc_post_format'))}:</b> ${esc(p.post_format || '')} — <bdi dir="auto">${esc(p.format_reason || '')}</bdi></div>
       <div class="soc-meta"><b>${esc(t('soc_post_audience'))}:</b> <bdi dir="auto">${esc(p.audience || '')}</bdi>${p.palette ? ' · ' + esc(t('soc_post_palette', { name: p.palette })) : ''}</div>
       ${(p.warnings || []).map(w => `<div class="soc-flag warn">${esc(w)}</div>`).join('')}
+      ${p.fit_summary ? `<div class="soc-flag warn" data-soc-fit="summary">${esc(p.fit_summary)}</div>` : ''}
       <ol class="soc-slides">${slides}</ol>${caption}${prodLine}
       ${editing ? `<div class="soc-actions">
           <button type="button" class="sugg-btn approve" data-soc-copysave="${esc(item.id)}">${esc(t('soc_save'))}</button>
@@ -9724,7 +9734,8 @@ function socialDesignRow(item) {
       <div class="soc-meta">${esc(t('soc_design_template', { name: d.template_name || '', rev: d.rev || 1 }))}${d.palette ? ' · ' + esc(t('soc_post_palette', { name: d.palette })) : ''}</div>
       <div class="soc-design-strip">${imgs}</div>
       ${d.rationale ? `<div class="soc-meta"><bdi dir="auto">${esc(d.rationale)}</bdi></div>` : ''}
-      ${d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : ''}
+      ${(d.problem_lines || []).length ? d.problem_lines.map(l => `<div class="soc-flag warn">${esc(l)}</div>`).join('')
+        : (d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : '')}
       ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
       ${(item.flags || []).map(f => `<div class="soc-flag">${esc(f.text)}</div>`).join('')}
       <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>

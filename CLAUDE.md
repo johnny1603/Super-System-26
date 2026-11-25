@@ -182,6 +182,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   ONE `design` item in the Social tab (never publishable): critique → `media_agent.design_spec` revises the spec
   (≤3 checked attempts, no credits) → approve → `core/slide_templates` (versioned, critiques kept) + the slides to
   Drive as approved items. Chat: `design_slides`. Never an image model on this path. `tests/test_slide_renderer.py`.
+  **Copy budget (2026-11-25, `core/copy_budget`):** the renderer's length limits, measured from the ACTIVE template with
+  the real font, reach the copy stage (`slide_copy_budget` in the content personas' data), submit (one shortening
+  round; `needs_room` = the agent says the idea needs more room), the approval card (per slide, before approval,
+  never a block) and a failed render's line (slide + field + how much). `tests/test_copy_budget.py`.
   **UX pass 1 (§6 there):** vendor names are never client-facing (`client_label`,
   `scrub_vendor_names`; vendor named only inside the help guide), each tool card opens a
   guided flow with a "stuck" staff request, and an agent_actions spec with `slow` answers the

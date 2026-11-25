@@ -148,6 +148,11 @@ def _alert(lines: list):
         pass
 
 
+def _problem_lines(problems: list, lang: str) -> list:
+    from core import copy_budget
+    return copy_budget.problem_lines([p for p in problems or [] if p.get("slide")], lang)
+
+
 def problem_text(problems: list, lang: str) -> str:
     codes = list(dict.fromkeys((p.get("code") if p.get("code") in PROBLEM_TEXT else "other") for p in problems))
     return ", ".join(pick(PROBLEM_TEXT[c], lang) for c in codes[:3]) or pick(PROBLEM_TEXT["other"], lang)
@@ -602,6 +607,8 @@ def view(item: dict, lang: str) -> dict:
             "spec_lines": describe(d.get("spec") or {}, lang), "spec": copy.deepcopy(d.get("spec") or {}),
             "rationale": d.get("rationale", ""), "critiques": (d.get("critiques") or [])[-5:],
             "problems": problem_text(problems, lang) if problems else "",
+            # which slide, which field, by how much (core/copy_budget)
+            "problem_lines": _problem_lines(problems, lang),
             "last_failure": problem_text(d["last_failure"], lang) if d.get("last_failure") else "",
             "based_on": d.get("based_on") or {}, "saved": d.get("saved") or {},
             "production": d.get("production") or {}, "stage_text": pick(TEXT["stage"], lang)}

@@ -410,7 +410,8 @@ def add_post(client_id: int, post: dict, palette: dict = None, warnings: list = 
                       | {"flags": list((flags or {}).get(a["asset_id"]) or []),
                          "escalation": (escalations or {}).get(a["asset_id"]) or {},
                          "real_asset": {k: str(((sources or {}).get(a["asset_id"]) or {}).get(k) or "")[:300]
-                                        for k in REAL_ASSET_KEYS} if (sources or {}).get(a["asset_id"]) else {}})
+                                        for k in REAL_ASSET_KEYS} if (sources or {}).get(a["asset_id"]) else {}}
+                      | ({"needs_room": a["needs_room"]} if a.get("needs_room") else {}))
     body = {"post_format": post["post_format"], "format_reason": post["format_reason"],
             "objective": post["objective"], "audience": post["audience"], "set_id": post["set_id"],
             "occasion": post.get("occasion", ""), "occasion_date": post.get("occasion_date", ""),
@@ -547,8 +548,25 @@ def warning_lines(warnings: list, lang: str) -> list:
     return out
 
 
-def _post_view(item: dict, lang: str) -> dict:
+def copy_fit(client_id: int, item: dict, lang: str) -> dict:
+    """Does a WAITING post's copy fit the CURRENT template (core/copy_budget)?
+    Per text slide, checked when the card is read — so it follows an edit and
+    a template change. {} once approved, or when it can't be checked."""
     post = item.get("post") or {}
+    if item.get("kind") != POST_KIND or item.get("status") != "waiting" or not client_id:
+        return {}
+    try:
+        from core import copy_budget
+        slides = post.get("slides") or []
+        return copy_budget.card(copy_budget.fit(client_id, post.get("palette") or {}, slides, lang), slides, lang)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: copy fit not checked ({type(e).__name__})")
+        return {}
+
+
+def _post_view(item: dict, lang: str, client_id: int = None) -> dict:
+    post = item.get("post") or {}
+    fit = copy_fit(client_id, item, lang)
     slides = []
     for n, s in enumerate(post.get("slides") or [], 1):
         slides.append({"asset_id": s["asset_id"], "n": n, "role": s["role"],
@@ -558,10 +576,13 @@ def _post_view(item: dict, lang: str) -> dict:
                        "asset_type_text": pick(COPY_TEXT["asset_type"].get(s["asset_type"], {"en": s["asset_type"]}), lang),
                        "flags": [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in s.get("flags") or [] if f in FLAG_TEXT],
                        "escalation": s.get("escalation") or {},
-                       "source_text": source_text(s.get("real_asset"), lang)})
+                       "source_text": source_text(s.get("real_asset"), lang),
+                       # Fits the current template? Shown BEFORE approval, never a block
+                       "fit": (fit.get("slides") or {}).get(s["asset_id"]) or {}})
     return {"post_format": post.get("post_format", ""), "format_reason": post.get("format_reason", ""),
             "objective": post.get("objective", ""), "audience": post.get("audience", ""),
             "palette": (post.get("palette") or {}).get("label", ""), "slides": slides,
+            "fit_summary": fit.get("summary", ""), "fit_over": fit.get("over", 0),
             "warnings": warning_lines(post.get("warnings"), lang), "stage_text": pick(COPY_TEXT["stage"], lang),
             "production": item.get("production") or {}}
 
@@ -906,7 +927,7 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
         dl = delivery(item, modes) if item["status"] in ("approved", "published") and not no_file else {}
         needs_tap = item["status"] == "approved" and any(v in ("one_tap", "not_connected", "drafts", "private")
                                                          for v in dl.values())
-        extra = {"post": _post_view(item, lang)} if is_post else {}
+        extra = {"post": _post_view(item, lang, client_id)} if is_post else {}
         if item.get("kind") == DESIGN_KIND:
             from core import slide_design
             extra["design"] = slide_design.view(item, lang)

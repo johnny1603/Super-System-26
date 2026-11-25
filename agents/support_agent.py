@@ -2749,6 +2749,12 @@ not the brand colours", "a different colour per slide", "red background"), apply
 — one entry for all slides, or one per slide in order (a different bright colour per slide = one per slide,
 with a readable fg). Say in ONE line that this post deviates from the brand palette at their request. Without
 an explicit instruction, never add "colors".
+COPY THAT FITS (2026-11-25): slide_copy_budget in the data = how much copy each text_slide holds in the client's
+CURRENT template (lines, max_chars, the headline's max_words — measured with the real font, per palette variant,
+by_role where a slide role is drawn differently). Write every text_slide's copy_headline / copy_body within it.
+If an idea genuinely needs more room, say so to the manager instead of writing copy that can't be drawn; if you
+propose it anyway, set that asset's "needs_room" to one line on why — the card shows it. A "too long for the
+current template" answer lists the slide, the field and how much to cut: shorten exactly that and submit again.
 PRODUCTION FAILED = SAY SO (2026-11-25): when social_queue.post_production is in the data, or a production
 line in this chat says something failed, your reply names what failed and why, in plain words, in the same
 message, and offers rerun_post_production (its item_id) — it re-runs the production of an approved post on
@@ -2784,6 +2790,12 @@ def _with_content_context(client_id: int, system: str, payload: dict) -> str:
         craft = post_brief._read(post_brief.CRAFT_PATH)
         return system + CONTENT_CONTEXT_RULE + (craft or "(missing)")
     payload["brand_brief"] = context["brand"]
+    # How much copy each text slide holds in the CURRENT template, measured with
+    # the real font (core/copy_budget) — the copy is written within it
+    from core import copy_budget
+    budget = copy_budget.for_prompt(client_id)
+    if budget:
+        payload["slide_copy_budget"] = budget
     return system + CONTENT_CONTEXT_RULE + context["craft"]
 
 

@@ -57,6 +57,20 @@ TEXT = {
         "Avant toute création, Lior (médias) demande un changement sur une partie du post :\n{lines}\nJe corrige et je soumets à nouveau.",
         "قبل إنشاء أي شيء، طلب ليئور (الوسائط) تغييرًا في جزء من المنشور:\n{lines}\nأصلح ذلك وأقدّمه من جديد.",
         "Прежде чем что-то создавать, Лиор (медиа) попросил изменить часть поста:\n{lines}\nИсправляю и отправляю снова."),
+    # The copy is longer than the current template holds (core/copy_budget):
+    # one round to shorten it BEFORE the manager sees it
+    "too_long": _five(
+        "לפני שזה מגיע לאישור: חלק מהטקסט ארוך מדי לתבנית העיצוב הנוכחית ולא ייכנס בלי לשבור את כללי הקריאוּת:\n{lines}\nאני מקצר ומגיש שוב.",
+        "Before this goes for approval: some of the copy is too long for the current design template and won't fit without breaking the legibility rules:\n{lines}\nI'm shortening it and submitting again.",
+        "Avant validation : une partie du texte est trop longue pour le modèle actuel et ne tiendra pas sans enfreindre les règles de lisibilité :\n{lines}\nJe raccourcis et je soumets à nouveau.",
+        "قبل الموافقة: جزء من النص أطول من قالب التصميم الحالي ولن يتسع دون كسر قواعد الوضوح:\n{lines}\nأختصره وأقدّمه من جديد.",
+        "Перед одобрением: часть текста длиннее, чем вмещает текущий шаблон, и не поместится без нарушения правил читаемости:\n{lines}\nСокращаю и отправляю снова."),
+    "queued_over": _five(
+        " שימו לב: {k} שקופיות ארוכות מדי לתבנית הנוכחית — זה מסומן בכרטיס.",
+        " Note: {k} slides are too long for the current template — it's marked on the card.",
+        " À noter : {k} diapositives sont trop longues pour le modèle actuel — c'est indiqué sur la carte.",
+        " انتبهوا: {k} شرائح أطول من القالب الحالي — هذا مُعلَّم في البطاقة.",
+        " Обратите внимание: {k} слайдов длиннее текущего шаблона — это отмечено на карточке."),
     "queued": _five(
         "הטקסט של הפוסט ({n} חלקים וכיתוב) מחכה לאישור שלכם בלשונית סושיאל. אפשר לערוך כל שקופית שם. שום דבר לא נוצר ושום קרדיט לא נוצל לפני שתאשרו.",
         "The post's copy ({n} parts and a caption) is waiting for your approval in the Social tab. You can edit every slide there. Nothing is generated and no credit is used before you approve.",
@@ -247,6 +261,22 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
         else:
             flags[brief.asset_id].append("escalated")
             escalations[brief.asset_id] = outcome["positions"]
+    # The copy against the CURRENT template's real limits (core/copy_budget),
+    # before the manager sees it: ONE round to shorten; then — or when the
+    # agent says the idea needs more room (needs_room) — it goes to the card,
+    # flagged per slide. Never a silent queue of copy that can't be drawn.
+    fitted = {}
+    if not revise:
+        from core import copy_budget
+        fitted = copy_budget.fit(client_id, palette, post["assets"], lang)
+        over = [a for a in post["assets"] if a["asset_id"] in (fitted.get("over") or []) and not a.get("needs_room")]
+        if over and not draft.get("length_round"):
+            draft["length_round"] = 1
+            draft["updated_at"] = _now()
+            _save_drafts(client_id, drafts)
+            lines = [line for a in over for line in fitted["slides"][a["asset_id"]]["lines"]]
+            return {"refuse": pick(TEXT["too_long"], lang).replace("{lines}", "\n".join(f"• {l}" for l in lines)),
+                    "code": "copy_too_long"}
     draft["updated_at"] = _now()
     _save_drafts(client_id, drafts)
     if revise:
@@ -264,6 +294,8 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
         line += " " + pick(TEXT["colors"], lang).replace("{requested}", post["colors"]["requested"])
     if escalations:
         line += " " + pick(TEXT["escalated"], lang)
+    if fitted.get("over"):
+        line += pick(TEXT["queued_over"], lang).replace("{k}", str(len(fitted["over"])))
     for w in social_queue.warning_lines(warnings, lang):
         line += "\n" + w
     return {"queued": item, "line": line}
@@ -410,11 +442,15 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
                   "ok": bool(opened.get("item")) and not opened.get("problems")}
         results += [{"asset_id": s["asset_id"], "status": "design_waiting" if design["item_id"] else "failed"}
                     for s in text_slides]
+        # WHICH slide, WHICH field, by HOW MUCH — never only "design failed"
+        from core import copy_budget
+        said = [f"• {l}" for l in copy_budget.problem_lines(
+            [p for p in opened.get("problems") or [] if p.get("slide")], lang)]
         if not design["item_id"]:
             failed += len(text_slides)
-            problems.append(f"• {reason_text('design', lang)}")
+            problems += said or [f"• {reason_text('design', lang)}"]
         elif not design["ok"]:
-            problems.append(f"• {reason_text('design', lang)}")
+            problems += said or [f"• {reason_text('design', lang)}"]
     state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
              else "failed" if failed else "done")
     if state == "done" and problems:
