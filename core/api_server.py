@@ -9005,6 +9005,59 @@ def client_pose_decide(request_id: str, cand_id: str, verb: str, request: Reques
     view.pop("client_id", None)
     return {"success": True, "data": view}
 
+# ─── Avatars (client page "אווטרים", docs/AVATARS.md) ────────────────────────
+# Part A: the uallak agents' pose libraries. The CLIENT approves the poses
+# their posts may use — one, several, all — and one client's decision never
+# touches another's (agent_characters.decide_poses, per client_id).
+
+def _client_lang(client_id: int) -> str:
+    try:
+        from core import agent_actions
+        return agent_actions._lang(client_id)
+    except Exception:
+        return "he"
+
+class PoseDecisionRequest(BaseModel):
+    pose_ids: list = []
+    verdict: str = ""
+
+@app.get("/api/client/avatars")
+def client_avatars(request: Request):
+    client_id = _require_session(request)
+    from core import agent_characters
+    return {"success": True, "data": {"team": agent_characters.client_team(client_id, _client_lang(client_id))}}
+
+@app.get("/api/client/avatars/pose/{pose_id}/thumb")
+def client_avatar_pose_thumb(pose_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import agent_characters
+    if not agent_characters.POSE_ID_RE.match(pose_id):
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    try:
+        content = agent_characters.client_pose_thumb(client_id, pose_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+@app.post("/api/client/avatars/poses/decide")
+def client_avatar_poses_decide(req: PoseDecisionRequest, request: Request):
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:          # the decision is the client's own
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from core import agent_characters, slide_design
+    if req.verdict not in agent_characters.VERDICTS or not req.pose_ids or len(req.pose_ids) > 500:
+        raise HTTPException(status_code=400, detail={"code": "bad_decision"})
+    try:
+        out = agent_characters.decide_poses(client_id, [str(p) for p in req.pose_ids], req.verdict)
+    except Exception as e:
+        print(f"[avatars] client {client_id}: pose decision failed: {type(e).__name__}: {str(e)[:200]}")
+        return {"success": False, "code": "failed"}
+    # a waiting design that asked for a character and got none gets its pose now
+    out["designs_updated"] = len(slide_design.apply_approved_poses(client_id)) if req.verdict == "approved" else 0
+    log_activity(client_id, "agent_characters", "poses_decided",
+                 {"verdict": req.verdict, "count": len(out["changed"])}, {})
+    return {"success": True, "data": {**out, "team": agent_characters.client_team(client_id, _client_lang(client_id))}}
+
 @app.post("/api/client/actions/{proposal_id}/decide")
 def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: Request,
                          background_tasks: BackgroundTasks):

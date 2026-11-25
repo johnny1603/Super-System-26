@@ -536,6 +536,17 @@ def add_design(client_id: int, design: dict, title: str = "", channels=None, cap
     return item
 
 
+def drop_flag(client_id: int, item_id: str, flag: str) -> dict:
+    """A notice that no longer holds leaves the card. {} when the item is gone."""
+    queue = _load(client_id)
+    item = next((i for i in queue if i["id"] == str(item_id)), None)
+    if not item:
+        return {}
+    item["flags"] = [f for f in item.get("flags") or [] if f != flag]
+    _save(client_id, queue)
+    return item
+
+
 def update_design(client_id: int, item_id: str, changes: dict) -> dict:
     """Merges `changes` into a design item's design. {} when it is gone."""
     queue = _load(client_id)

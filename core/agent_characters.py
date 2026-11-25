@@ -132,6 +132,11 @@ FAILURE_TEXT = {
     "model": {"he": "מודל יצירת הדמויות לא מוגדר נכון", "en": "the character model is not set correctly",
               "fr": "le modèle de personnages est mal configuré", "ar": "نموذج الشخصيات غير مضبوط",
               "ru": "модель персонажей настроена неверно"},
+    "needs_approval": {"he": "אין עדיין תנוחה שאישרתם — מאשרים תנוחות בעמוד ״אווטרים״ ומפיקים שוב",
+                       "en": "no pose has been approved yet — approve poses on the Avatars page, then produce again",
+                       "fr": "aucune pose n'est encore validée — validez des poses sur la page Avatars, puis relancez",
+                       "ar": "لا توجد وضعية معتمدة بعد — اعتمدوا الوضعيات في صفحة الأفاتارات ثم أعيدوا الإنتاج",
+                       "ru": "ни одна поза ещё не одобрена — одобрите позы на странице «Аватары» и запустите снова"},
     "generation": {"he": "ספק היצירה החזיר שגיאה", "en": "the generation service returned an error",
                    "fr": "le service de génération a renvoyé une erreur", "ar": "أعادت خدمة التوليد خطأ",
                    "ru": "сервис генерации вернул ошибку"},
@@ -143,7 +148,8 @@ def failure_text(agent: str, error: Exception, lang: str = "he") -> str:
     if isinstance(error, MissingReference):
         return missing_text(agent, lang)
     name = type(error).__name__
-    key = ("not_configured" if getattr(error, "reason", "") == "not_configured"
+    key = ("needs_approval" if isinstance(error, NeedsApproval)
+           else "not_configured" if getattr(error, "reason", "") == "not_configured"
            else "background" if name in ("BackgroundNotRemoved", "BackgroundModelMissing")
            else "model" if name == "UnverifiedModelPath" else "generation")
     pick = lambda t: t.get(lang) or t["he"]                     # noqa: E731
@@ -164,6 +170,16 @@ class MissingReference(CharacterUnavailable):
 
     def __init__(self, agent: str):
         super().__init__(agent, "no_reference", missing_text(agent))
+
+
+class NeedsApproval(CharacterUnavailable):
+    """The client has approved no pose of that agent: the post is NOT given a
+    pose it was never allowed to use, and no new one is generated behind the
+    client's back — the slide is drawn without, and that is said loudly."""
+
+    def __init__(self, agent: str, pending: int = 0):
+        super().__init__(agent, "needs_approval", f"agent {agent}: no pose approved by this client ({pending} waiting)")
+        self.pending = int(pending or 0)
 
 
 class ElementCreationRefused(PermissionError):
@@ -763,8 +779,10 @@ def record_pose_use(pose_id: str) -> dict:
 
 
 def find_poses(agent: str, query: str = "", transparent=None, client_id: int = None, limit: int = 5,
-               data: dict = None) -> list:
-    """APPROVED poses of one agent, best first: match score (the same scorer
+               data: dict = None, approved_for: int = None) -> list:
+    """APPROVED poses of one agent, best first (`approved_for` = a client id:
+    only the poses THAT client approved, pose_status — a post's rule; without
+    it, the library's own flag — the admin workspace): match score (the same scorer
     as core/drive_assets) minus the usage penalty (core/asset_feedback), and
     the pose this agent used last always ranks last — the same pose is not
     repeated in consecutive posts. `transparent` True = cut-outs only;
@@ -776,8 +794,14 @@ def find_poses(agent: str, query: str = "", transparent=None, client_id: int = N
     qwords = drive_assets._query_words(query)
     usage = {"usage": {p["pose_id"]: p.get("uses") or {} for p in data["poses"]}}
     out = []
+    state = approvals(approved_for) if approved_for is not None else None
     for p in data["poses"]:
-        if p.get("agent") != agent or not p.get("approved") or not p.get("file_id"):
+        if p.get("agent") != agent or not p.get("file_id"):
+            continue
+        if state is not None:
+            if p.get("client_id") not in (0, int(approved_for)) or pose_status(p, approved_for, state) != "approved":
+                continue
+        elif not p.get("approved"):
             continue
         if transparent is not None and bool(p.get("transparent")) != bool(transparent):
             continue
@@ -790,6 +814,139 @@ def find_poses(agent: str, query: str = "", transparent=None, client_id: int = N
         out.append({**p, "score": round(score - pen, 4), "repeat": p["pose_id"] == last})
     out.sort(key=lambda p: (p["repeat"], -p["score"], p.get("created_at", "")))
     return out[:max(1, int(limit))]
+
+
+# ─── Approval is the CLIENT's, per client (2026-11-25) ───────────────────────
+#
+# A pose enters the library pending. Each client approves the poses THEY allow
+# in their posts (the Avatars page: one, several, all); one client's decision
+# never touches another's. Stored per client in app_settings
+# `pose_approvals:<client_id>` = {"approved": {pose_id: at}, "rejected": {…}}.
+# A pose a client's own approved post carried (approved_item "<client>:…")
+# counts as approved for THAT client. The admin's Keep seeds the library — it
+# is not any client's approval.
+
+APPROVALS_PREFIX = "pose_approvals:"
+VERDICTS = ("approved", "rejected", "pending")
+
+
+def approvals(client_id: int) -> dict:
+    try:
+        data = _read(f"{APPROVALS_PREFIX}{int(client_id)}")
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: pose approvals unreadable ({type(e).__name__})")
+        data = {}
+    return {"approved": dict(data.get("approved") or {}), "rejected": dict(data.get("rejected") or {})}
+
+
+def pose_status(pose: dict, client_id: int, state: dict = None) -> str:
+    """approved | rejected | pending — for THIS client."""
+    state = state if state is not None else approvals(client_id)
+    pid = pose.get("pose_id")
+    if pid in state["rejected"]:
+        return "rejected"
+    if pid in state["approved"] or str(pose.get("approved_item") or "").startswith(f"{int(client_id)}:"):
+        return "approved"
+    return "pending"
+
+
+def client_library(client_id: int, agent: str = "", data: dict = None, state: dict = None) -> list:
+    """The poses a client may decide on (the shared cut-outs + their own
+    scenes), newest first, each with its status for that client."""
+    data = data if data is not None else _library()
+    state = state if state is not None else approvals(client_id)
+    rows = []
+    for p in data["poses"]:
+        if not p.get("file_id") or p.get("client_id") not in (0, int(client_id)):
+            continue
+        if agent and p.get("agent") != agent:
+            continue
+        rows.append({"pose_id": p["pose_id"], "agent": p.get("agent", ""), "status": pose_status(p, client_id, state),
+                     "transparent": bool(p.get("transparent")), "description": p.get("description", ""),
+                     "created_at": p.get("created_at", ""), "uses": int((p.get("uses") or {}).get("count") or 0)})
+    rows.sort(key=lambda r: r["created_at"], reverse=True)
+    return rows
+
+
+def client_counts(client_id: int, data: dict = None, state: dict = None) -> dict:
+    """{agent: {"approved", "pending", "rejected"}} for one client."""
+    out = {a: {"approved": 0, "pending": 0, "rejected": 0} for a in AGENTS}
+    for r in client_library(client_id, data=data, state=state):
+        if r["agent"] in out:
+            out[r["agent"]][r["status"]] += 1
+    return out
+
+
+@_library_locked
+def decide_poses(client_id: int, pose_ids: list, verdict: str) -> dict:
+    """The client's decision on one pose or many: approved / rejected /
+    pending (undo). Only poses that client can see; touches only that
+    client's row. Returns {"changed": [...], "counts": {...}}."""
+    if verdict not in VERDICTS:
+        raise ValueError(f"verdict must be one of {VERDICTS}")
+    client_id = int(client_id)
+    data = _library()
+    visible = {p["pose_id"]: p for p in data["poses"] if p.get("file_id") and p.get("client_id") in (0, client_id)}
+    ids = [str(i) for i in dict.fromkeys(pose_ids or []) if str(i) in visible]
+    state = approvals(client_id)
+    now = _now().isoformat()
+    for pid in ids:
+        state["approved"].pop(pid, None)
+        state["rejected"].pop(pid, None)
+        if verdict == "approved":
+            state["approved"][pid] = now
+        elif verdict == "rejected" or str(visible[pid].get("approved_item") or "").startswith(f"{client_id}:"):
+            state["rejected"][pid] = now          # (undo of a pose their own approved post carried = not approved)
+    if ids:
+        _write(f"{APPROVALS_PREFIX}{client_id}", {**state, "updated_at": now})
+    return {"changed": ids, "verdict": verdict, "counts": client_counts(client_id, data, state)}
+
+
+def client_pose_image(client_id: int, pose_id: str) -> bytes:
+    """A pose's PNG for that client's page — only a pose they can see."""
+    pose = get_pose(pose_id)
+    if not pose or pose.get("client_id") not in (0, int(client_id)):
+        raise LookupError(f"no pose {pose_id}")
+    return pose_bytes(pose_id)
+
+
+THUMB_PX = 420
+_THUMBS = {}                       # pose_id → PNG bytes (a pose's file never changes)
+_THUMBS_MAX = 400
+
+
+def client_pose_thumb(client_id: int, pose_id: str) -> bytes:
+    """The pose at grid size (transparency kept), cached in memory."""
+    pose = get_pose(pose_id)
+    if not pose or pose.get("client_id") not in (0, int(client_id)):
+        raise LookupError(f"no pose {pose_id}")
+    hit = _THUMBS.get(pose_id)
+    if hit:
+        return hit
+    from PIL import Image
+    with Image.open(io.BytesIO(pose_bytes(pose_id))) as img:
+        img = img.convert("RGBA")
+        img.thumbnail((THUMB_PX, THUMB_PX))
+        buf = io.BytesIO()
+        img.save(buf, "PNG", optimize=True)
+    if len(_THUMBS) >= _THUMBS_MAX:
+        _THUMBS.pop(next(iter(_THUMBS)))
+    _THUMBS[pose_id] = buf.getvalue()
+    return _THUMBS[pose_id]
+
+
+def display_name(agent: str, lang: str = "he") -> str:
+    return AGENT_NAMES.get(agent, agent) if lang == "he" else str(agent).capitalize()
+
+
+def client_team(client_id: int, lang: str = "he") -> list:
+    """The Avatars page, part A: every uallak agent with the poses this
+    client can decide on and their counts."""
+    data, state = _library(), approvals(client_id)
+    rows = client_library(client_id, data=data, state=state)
+    counts = client_counts(client_id, data, state)
+    return [{"agent": a, "name": display_name(a, lang), "counts": counts[a],
+             "poses": [r for r in rows if r["agent"] == a]} for a in AGENTS]
 
 
 def pose_counts() -> dict:
@@ -936,7 +1093,7 @@ def pose_for(agent: str, pose: str, outfit: str = "", framing: str = "full body"
 POSE_PARALLEL = 4        # poses generated at once for one post (each = one vendor job + local cut-out)
 
 
-def poses_for(requests: list, stopped=None, steps: list = None) -> list:
+def poses_for(requests: list, stopped=None, steps: list = None, client_id: int = None) -> list:
     """pose_for for several slides of ONE post at once (2026-11-25): the
     library lookups run IN ORDER (so "the last pose is never repeated" holds
     exactly as before), then every pose that has to be MADE is generated in
@@ -944,7 +1101,11 @@ def poses_for(requests: list, stopped=None, steps: list = None) -> list:
     one. requests = [(agent, pose)]; returns one result per request: the
     pose dict, or the exception it raised. `stopped()` True = a pose not yet
     started is not started (StopRequested). `steps`: per request, the slide
-    number its progress steps (pose:<n>, cutout:<n>) are reported under."""
+    number its progress steps (pose:<n>, cutout:<n>) are reported under.
+
+    `client_id` given (every post): ONLY a pose that client approved is used.
+    None approved → NeedsApproval for that slide: nothing is generated in its
+    place and nothing unapproved is used — the caller says so on the card."""
     from core import parallel, production_progress as progress
     steps = list(steps or [])
 
@@ -966,12 +1127,17 @@ def poses_for(requests: list, stopped=None, steps: list = None) -> list:
     out, to_make = [None] * len(requests), []
     for i, (agent, pose) in enumerate(requests):
         try:
-            found = find_poses(agent, " ".join([pose, "", "full body"]), transparent=True, limit=1)
-            if found and not found[0]["repeat"]:
+            found = find_poses(agent, " ".join([pose, "", "full body"]), transparent=True, limit=1,
+                               approved_for=client_id)
+            # for a client: their approved pose even when it is the last one used (a repeat beats no character)
+            if found and (client_id is not None or not found[0]["repeat"]):
                 record_pose_use(found[0]["pose_id"])
                 out[i] = {**found[0], "reused": True, "credits": 0}
                 settle(i, skipped=True)               # a stored cut-out: nothing to make
                 continue
+            if client_id is not None:
+                pending = sum(1 for r in client_library(client_id, agent) if r["status"] == "pending" and r["transparent"])
+                raise NeedsApproval(agent, pending)
         except Exception as e:
             out[i] = e
             settle(i, False, failure_text(agent, e))

@@ -1645,6 +1645,54 @@ body.bs-open { overflow: hidden; }
   .soc-chans label { min-height: 44px; }
   .soc-stage-bar .media-chip { min-height: 40px; }
 }
+/* ---------- AVATARS: pose libraries the client approves (docs/AVATARS.md) ---------- */
+.av-intro { font-size: 13.5px; color: var(--gray); line-height: 1.6; max-width: 760px; margin-bottom: 14px; }
+.av-h { font-size: 18px; font-weight: 800; margin: 22px 0 4px; }
+.av-notice { font-size: 13.5px; min-height: 20px; margin: 8px 0; color: var(--white); }
+.av-selbar { position: sticky; top: 8px; z-index: 30; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 14px; padding: 10px 12px; margin-bottom: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.av-selbar[hidden] { display: none; }
+.av-agent { background: var(--panel-2); border: 1px solid var(--border); border-radius: 18px; padding: 16px; margin-bottom: 14px; }
+.av-agent-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.av-face { flex: none; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; background: var(--panel); border: 1px solid var(--border); }
+.av-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av-agent-names { display: grid; gap: 2px; min-width: 0; flex: 1 1 180px; }
+.av-agent-names b { font-size: 17px; }
+.av-counts { font-size: 13px; color: var(--gray); }
+.av-counts .ok { color: var(--green); font-weight: 700; }
+.av-counts .hot { color: var(--accent); font-weight: 700; }
+.av-agent-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.av-agent-acts .sugg-btn, .av-agent-acts .media-chip { min-height: 40px; }
+.av-warn { margin-top: 12px; font-size: 13.5px; line-height: 1.55; border-radius: 10px; padding: 9px 12px;
+  border: 1px solid rgba(255,176,32,.5); background: rgba(255,176,32,.1); color: #FFB020; font-weight: 600; }
+.av-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; margin-top: 14px; user-select: none; }
+.av-card { position: relative; border-radius: 14px; overflow: hidden; border: 2px solid transparent; background: #e9e9ec;
+  aspect-ratio: 3 / 4; cursor: pointer; }
+.av-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.av-card img.gone { visibility: hidden; }
+.av-card.approved { border-color: var(--green); }
+.av-card.rejected { opacity: .5; }
+.av-card.sel, .av-card.marq { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.av-check { position: absolute; top: 6px; inset-inline-start: 6px; z-index: 2; width: 30px; height: 30px; display: flex;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.55); border-radius: 8px; cursor: pointer; }
+.av-check input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.av-status { position: absolute; bottom: 6px; inset-inline-start: 6px; font-size: 11.5px; font-weight: 700; padding: 2px 9px;
+  border-radius: 99px; background: rgba(0,0,0,.72); color: #fff; }
+.av-status.approved { background: var(--green); color: #04130b; }
+.av-status.pending { background: var(--accent); color: #fff; }
+.av-card-acts { position: absolute; top: 6px; inset-inline-end: 6px; z-index: 2; display: flex; gap: 5px; }
+.av-mini { width: 32px; height: 32px; border-radius: 50%; border: 0; font-size: 16px; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); color: #fff; }
+.av-mini.ok:hover { background: var(--green); color: #04130b; }
+.av-mini.no:hover { background: #d33; }
+@media (max-width: 640px) {
+  .av-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .av-mini, .av-check { width: 38px; height: 38px; }
+  .av-agent { padding: 12px; }
+  .av-agent-acts .sugg-btn { flex: 1 1 100%; min-height: 46px; }
+  .av-selbar .sugg-btn, .av-selbar .media-chip { min-height: 44px; flex: 1 1 auto; }
+}
 .conn-account { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; min-width: 0; }
 .conn-account img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .conn-account .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1839,6 +1887,9 @@ a.media-item:hover { border-color: var(--accent); }
   <button class="nav-item" data-view="social" onclick="showView('social')">
     <span class="nav-ico">📣</span><span data-i18n="nav_social">סושיאל</span>
     <span class="nav-count" id="navSocialCount" style="display:none;">0</span>
+  </button>
+  <button class="nav-item" data-view="avatars" onclick="showView('avatars')">
+    <span class="nav-ico">🧑‍🎨</span><span data-i18n="nav_avatars">אווטרים</span>
   </button>
   <button class="nav-item" data-view="personal" onclick="showView('personal')">
     <span class="nav-ico">👤</span><span data-i18n="nav_personal">אזור אישי</span>
@@ -2832,6 +2883,24 @@ a.media-item:hover { border-color: var(--accent); }
   <div class="soc-more" id="socialMore"></div>
 </div><!-- /viewSocial -->
 
+<!-- ---------- AVATARS: the characters that appear in the client's posts (docs/AVATARS.md) ----------
+     A: the uallak team's pose libraries — the CLIENT approves what their posts may use (per client).
+     B: the business's own characters. -->
+<div class="view" id="viewAvatars">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="avatars_title">אווטרים</div>
+      <div class="section-sub" data-i18n="avatars_sub">הדמויות שמופיעות בפוסטים שלכם. רק מה שאישרתם כאן נכנס לפוסט.</div>
+    </div>
+  </div>
+  <div class="av-notice" id="avNotice" role="status" aria-live="polite"></div>
+  <div class="av-selbar" id="avSelBar" hidden></div>
+  <div class="av-h" data-i18n="av_team_title">הצוות של וואלק</div>
+  <div class="av-intro" data-i18n="av_team_sub">לכל חבר צוות יש תנוחות מוכנות. מסמנים את אלה שמתאימות לעסק ומאשרים — אחת, כמה, או את כולן. אפשר לגרור עם העכבר כדי לבחור כמה יחד. ההחלטה שלכם חלה רק על העסק שלכם.</div>
+  <div id="avTeam"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+  <div id="avBusiness"></div>
+</div><!-- /viewAvatars -->
+
 <!-- ---------- PERSONAL AREA ---------- -->
 <div class="view" id="viewPersonal">
   <div class="section-head">
@@ -3097,6 +3166,36 @@ const DASH_I18N = {
   soc_prev_slide: { he:'שקופית {n} מתוך {total}', en:'Slide {n} of {total}', fr:'Diapo {n} sur {total}', ar:'الشريحة {n} من {total}', ru:'Слайд {n} из {total}' },
   soc_approve_all: { he:'אישור כל {n} השקופיות', en:'Approve all {n} slides', fr:'Valider les {n} diapos', ar:'الموافقة على كل الشرائح ({n})', ru:'Одобрить все слайды ({n})' },
   soc_reject_slide: { he:'ההחזרה היא על שקופית {n} מתוך {total} — זו שמוצגת עכשיו.', en:'This sends back slide {n} of {total} — the one shown now.', fr:'Le renvoi concerne la diapo {n} sur {total} — celle affichée.', ar:'الإرجاع يخص الشريحة {n} من {total} — المعروضة الآن.', ru:'Возврат относится к слайду {n} из {total} — тому, что на экране.' },
+  nav_avatars: { he:'אווטרים', en:'Avatars', fr:'Avatars', ar:'الأفاتارات', ru:'Аватары' },
+  avatars_title: { he:'אווטרים', en:'Avatars', fr:'Avatars', ar:'الأفاتارات', ru:'Аватары' },
+  avatars_sub: { he:'הדמויות שמופיעות בפוסטים שלכם. רק מה שאישרתם כאן נכנס לפוסט.', en:'The characters that appear in your posts. Only what you approve here goes into a post.', fr:'Les personnages de vos publications. Seul ce que vous validez ici entre dans une publication.', ar:'الشخصيات التي تظهر في منشوراتكم. ما توافقون عليه هنا فقط يدخل المنشور.', ru:'Персонажи ваших публикаций. В пост попадает только то, что вы одобрили здесь.' },
+  av_team_title: { he:'הצוות של וואלק', en:'The uallak team', fr:'L’équipe uallak', ar:'فريق uallak', ru:'Команда uallak' },
+  av_team_sub: { he:'לכל חבר צוות יש תנוחות מוכנות. מסמנים את אלה שמתאימות לעסק ומאשרים — אחת, כמה, או את כולן. אפשר לגרור עם העכבר כדי לבחור כמה יחד. ההחלטה שלכם חלה רק על העסק שלכם.', en:'Each team member has ready poses. Pick the ones that fit your business and approve — one, several or all. Drag with the mouse to pick several at once. Your decision applies to your business only.', fr:'Chaque membre de l’équipe a des poses prêtes. Choisissez celles qui conviennent à votre entreprise et validez — une, plusieurs ou toutes. Faites glisser la souris pour en choisir plusieurs. Votre décision ne concerne que votre entreprise.', ar:'لكل عضو في الفريق وضعيات جاهزة. اختاروا ما يناسب عملكم ووافقوا — واحدة، عدة، أو الكل. اسحبوا بالفأرة لاختيار عدة معًا. قراركم يخص عملكم فقط.', ru:'У каждого участника команды есть готовые позы. Отметьте подходящие вашему бизнесу и одобрите — одну, несколько или все. Перетаскивайте мышью, чтобы выбрать несколько. Ваше решение касается только вашего бизнеса.' },
+  av_load_failed: { he:'לא הצלחנו לטעון את האווטרים כרגע — נסו לרענן.', en:'We couldn’t load the avatars right now — try refreshing.', fr:'Impossible de charger les avatars — essayez d’actualiser.', ar:'تعذر تحميل الأفاتارات الآن — جربوا التحديث.', ru:'Не удалось загрузить аватары — попробуйте обновить.' },
+  av_status_approved: { he:'מאושרת', en:'Approved', fr:'Validée', ar:'معتمدة', ru:'Одобрена' },
+  av_status_pending: { he:'ממתינה', en:'Waiting', fr:'En attente', ar:'بالانتظار', ru:'Ожидает' },
+  av_status_rejected: { he:'נדחתה', en:'Rejected', fr:'Refusée', ar:'مرفوضة', ru:'Отклонена' },
+  av_approve: { he:'אישור התנוחה', en:'Approve this pose', fr:'Valider cette pose', ar:'اعتماد الوضعية', ru:'Одобрить позу' },
+  av_reject: { he:'דחיית התנוחה', en:'Reject this pose', fr:'Refuser cette pose', ar:'رفض الوضعية', ru:'Отклонить позу' },
+  av_select: { he:'בחירת התנוחה', en:'Select this pose', fr:'Sélectionner cette pose', ar:'اختيار الوضعية', ru:'Выбрать позу' },
+  av_count_approved: { he:'{n} מאושרות', en:'{n} approved', fr:'{n} validées', ar:'{n} معتمدة', ru:'Одобрено: {n}' },
+  av_count_pending: { he:'{n} ממתינות', en:'{n} waiting', fr:'{n} en attente', ar:'{n} بالانتظار', ru:'Ожидают: {n}' },
+  av_count_rejected: { he:'{n} נדחו', en:'{n} rejected', fr:'{n} refusées', ar:'{n} مرفوضة', ru:'Отклонено: {n}' },
+  av_no_poses: { he:'אין עדיין תנוחות', en:'No poses yet', fr:'Pas encore de poses', ar:'لا توجد وضعيات بعد', ru:'Поз пока нет' },
+  av_approve_all: { he:'אישור כל הממתינות ({n})', en:'Approve all waiting ({n})', fr:'Valider toutes celles en attente ({n})', ar:'اعتماد كل ما ينتظر ({n})', ru:'Одобрить все ожидающие ({n})' },
+  av_none_approved: { he:'עוד לא אישרתם אף תנוחה של {name} — עד אז פוסט שמבקש את {name} יופק בלי הדמות, ונגיד לכם את זה על הכרטיס.', en:'You haven’t approved any pose of {name} yet — until then a post that asks for {name} is produced without the character, and the card will say so.', fr:'Vous n’avez encore validé aucune pose de {name} — d’ici là, une publication qui demande {name} sera produite sans le personnage, et la carte le dira.', ar:'لم تعتمدوا بعد أي وضعية لـ {name} — حتى ذلك الحين يُنتج المنشور الذي يطلب {name} بدون الشخصية، وسيُذكر ذلك على البطاقة.', ru:'Вы ещё не одобрили ни одной позы {name} — до тех пор пост с {name} будет сделан без персонажа, и карточка об этом скажет.' },
+  av_selected: { he:'נבחרו {n}', en:'{n} selected', fr:'{n} sélectionnées', ar:'تم اختيار {n}', ru:'Выбрано: {n}' },
+  av_approve_n: { he:'אישור ({n})', en:'Approve ({n})', fr:'Valider ({n})', ar:'اعتماد ({n})', ru:'Одобрить ({n})' },
+  av_reject_n: { he:'דחייה ({n})', en:'Reject ({n})', fr:'Refuser ({n})', ar:'رفض ({n})', ru:'Отклонить ({n})' },
+  av_back_pending: { he:'החזרה להמתנה', en:'Back to waiting', fr:'Remettre en attente', ar:'إعادة للانتظار', ru:'Вернуть в ожидание' },
+  av_select_all: { he:'בחירת הכול', en:'Select all', fr:'Tout sélectionner', ar:'اختيار الكل', ru:'Выбрать все' },
+  av_saving: { he:'שומרים…', en:'Saving…', fr:'Enregistrement…', ar:'جارٍ الحفظ…', ru:'Сохраняем…' },
+  av_done_approved: { he:'אושרו {n} תנוחות — מעכשיו הן יכולות להופיע בפוסטים שלכם.', en:'{n} poses approved — they can now appear in your posts.', fr:'{n} poses validées — elles peuvent désormais apparaître dans vos publications.', ar:'تم اعتماد {n} وضعيات — يمكن أن تظهر الآن في منشوراتكم.', ru:'Одобрено поз: {n} — теперь они могут появляться в ваших постах.' },
+  av_done_rejected: { he:'נדחו {n} תנוחות — הן לא יופיעו בפוסטים שלכם.', en:'{n} poses rejected — they won’t appear in your posts.', fr:'{n} poses refusées — elles n’apparaîtront pas dans vos publications.', ar:'تم رفض {n} وضعيات — لن تظهر في منشوراتكم.', ru:'Отклонено поз: {n} — в ваших постах их не будет.' },
+  av_done_pending: { he:'{n} תנוחות חזרו להמתנה.', en:'{n} poses are back to waiting.', fr:'{n} poses remises en attente.', ar:'عادت {n} وضعيات إلى الانتظار.', ru:'Возвращено в ожидание: {n}.' },
+  av_designs_updated: { he:'הדמות נוספה ל-{n} עיצובים שחיכו לה בסושיאל.', en:'The character was added to {n} designs that were waiting for it in Social.', fr:'Le personnage a été ajouté à {n} designs qui l’attendaient dans Réseaux sociaux.', ar:'أُضيفت الشخصية إلى {n} تصاميم كانت بانتظارها في السوشيال.', ru:'Персонаж добавлен в дизайны, которые его ждали в «Соцсетях»: {n}.' },
+  av_failed: { he:'לא הצלחנו לשמור — נסו שוב.', en:'We couldn’t save that — try again.', fr:'Enregistrement impossible — réessayez.', ar:'تعذر الحفظ — حاولوا مجددًا.', ru:'Не удалось сохранить — попробуйте ещё раз.' },
+  soc_go_avatars: { he:'לאישור תנוחות בעמוד האווטרים', en:'Approve poses on the Avatars page', fr:'Valider des poses sur la page Avatars', ar:'اعتماد الوضعيات في صفحة الأفاتارات', ru:'Одобрить позы на странице «Аватары»' },
   soc_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
   soc_copy: { he:'העתקת הכיתוב', en:'Copy caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
   soc_copied: { he:'הכיתוב הועתק.', en:'Caption copied.', fr:'Légende copiée.', ar:'تم نسخ النص.', ru:'Подпись скопирована.' },
@@ -8933,7 +9032,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'personal', 'ownership', 'support'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'avatars', 'personal', 'ownership', 'support'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -8956,6 +9055,7 @@ function showView(name) {
   if (name === 'media') openMediaLibrary();   // every open: the one grid + a silent check of Drive
   if (name === 'media') loadDriveFolders();   // every open: connect a folder + the index moves (counts, state)
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
+  if (name === 'avatars') loadAvatars();      // every open: new poses arrive, counts move
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
@@ -10124,6 +10224,10 @@ function wireSocialStage(list) {
     socialRestage(id);
   }; });
 }
+function socialAvatarsLink(item) {
+  return (item.flags || []).some(f => f.code === 'character_needs_approval')
+    ? `<div><button type="button" class="media-chip" onclick="showView('avatars')">${esc(uallakI18n.t('soc_go_avatars'))}</button></div>` : '';
+}
 function socialStageBox(item) {
   return `<div class="soc-stage" data-soc-stage="${esc(item.id)}">${socialStage(item)}</div>`;
 }
@@ -10195,7 +10299,8 @@ function socialRow(item) {
   // each slide's own notes (where the picture came from, its flags), shown for the slide in view
   body += group.map((g, i) => {
     const lines = (g.source_text ? `<div class="soc-flag source">${esc(g.source_text)}</div>` : '')
-      + (g.flags || []).map(f => `<div class="soc-flag${f.code === 'low_resolution' || f.code === 'character_needs_approval' ? ' warn' : ''}">${esc(f.text)}</div>`).join('');
+      + (g.flags || []).map(f => `<div class="soc-flag${f.code === 'low_resolution' || f.code === 'character_needs_approval' ? ' warn' : ''}">${esc(f.text)}</div>`).join('')
+      + socialAvatarsLink(g);
     return lines ? `<div data-soc-of-slide="${i}"${i === shown ? '' : ' hidden'}>${lines}</div>` : '';
   }).join('');
   const deliveries = Object.keys(item.delivery || {}).map(c =>
@@ -10296,6 +10401,7 @@ function socialDesignRow(item) {
         : (d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : '')}
       ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
       ${(item.flags || []).map(f => `<div class="soc-flag${f.code === 'character_needs_approval' || f.code === 'character_unavailable' ? ' warn' : ''}">${esc(f.text)}</div>`).join('')}
+      ${socialAvatarsLink(item)}
       <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>
         <details><summary>${esc(t('soc_design_json'))}</summary><pre>${esc(JSON.stringify(d.spec || {}, null, 2))}</pre></details></details>
       ${notes ? `<details class="soc-design-spec"><summary>${esc(t('soc_design_notes'))}</summary><ul>${notes}</ul></details>` : ''}
@@ -10631,6 +10737,249 @@ function socialReject(id, row) {
     socialNote(t('soc_rejected_done', { name: socialProducer(item && item.producer) }));
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AVATARS ("אווטרים", docs/AVATARS.md)
+// ═══════════════════════════════════════════════════════════════════════════
+// Part A — the uallak team: each agent's poses, and the CLIENT's decision on
+// them. A post uses only a pose this client approved (per client: nothing
+// here changes what another business sees). Selection behaves like the media
+// library: checkbox, Shift for a range, select all, and a mouse drag over the
+// cards (Ctrl / Cmd adds).
+const avUI = { team: [], selected: new Set(), anchor: null, busy: false, loaded: false };
+function avNote(msg) { const el = document.getElementById('avNotice'); if (el) el.textContent = msg || ''; }
+function avPoses() { return avUI.team.reduce((all, a) => all.concat(a.poses || []), []); }
+function avPose(id) { return avPoses().find(p => p.pose_id === id) || null; }
+
+async function loadAvatars() {
+  const t = uallakI18n.t;
+  try {
+    const res = await fetch('/api/client/avatars', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json();
+    if (!j.success) throw new Error('unavailable');
+    avUI.team = j.data.team || [];
+    avUI.business = j.data.business || null;
+    avUI.loaded = true;
+    const known = new Set(avPoses().map(p => p.pose_id));
+    Array.from(avUI.selected).forEach(id => { if (!known.has(id)) avUI.selected.delete(id); });
+    renderAvatars();
+  } catch (e) {
+    console.error('avatars load failed', e);
+    if (!avUI.loaded) document.getElementById('avTeam').innerHTML = `<div class="empty-row">${esc(t('av_load_failed'))}</div>`;
+  }
+}
+
+function avPoseCard(p) {
+  const t = uallakI18n.t;
+  const on = avUI.selected.has(p.pose_id);
+  const acts = ADMIN_VIEW ? '' : `<div class="av-card-acts">
+      ${p.status !== 'approved' ? `<button type="button" class="av-mini ok" data-av-one="approved" data-id="${esc(p.pose_id)}" title="${esc(t('av_approve'))}" aria-label="${esc(t('av_approve'))}">✓</button>` : ''}
+      ${p.status !== 'rejected' ? `<button type="button" class="av-mini no" data-av-one="rejected" data-id="${esc(p.pose_id)}" title="${esc(t('av_reject'))}" aria-label="${esc(t('av_reject'))}">✕</button>` : ''}
+    </div>`;
+  return `<div class="av-card ${esc(p.status)}${on ? ' sel' : ''}" data-id="${esc(p.pose_id)}">
+      ${ADMIN_VIEW ? '' : `<label class="av-check"><input type="checkbox" data-av-sel="${esc(p.pose_id)}"${on ? ' checked' : ''} aria-label="${esc(t('av_select'))}"></label>`}
+      <img src="/api/client/avatars/pose/${encodeURIComponent(p.pose_id)}/thumb" alt="${esc(p.description || '')}" loading="lazy" draggable="false" onerror="this.classList.add('gone')">
+      <span class="av-status ${esc(p.status)}">${esc(t('av_status_' + p.status))}</span>
+      ${acts}
+    </div>`;
+}
+
+function avAgentBlock(a) {
+  const t = uallakI18n.t;
+  const c = a.counts || {};
+  const pending = (a.poses || []).filter(p => p.status === 'pending').map(p => p.pose_id);
+  const head = `<div class="av-agent-head">
+      <span class="av-face"><img src="/assets/agents/${esc(a.agent)}-portrait.webp" alt="" onerror="this.remove()"></span>
+      <div class="av-agent-names"><b>${esc(a.name)}</b>
+        <span class="av-counts">${(a.poses || []).length
+          ? `<span class="ok">${esc(t('av_count_approved', { n: c.approved || 0 }))}</span> · <span class="${c.pending ? 'hot' : ''}">${esc(t('av_count_pending', { n: c.pending || 0 }))}</span>${c.rejected ? ' · ' + esc(t('av_count_rejected', { n: c.rejected })) : ''}`
+          : esc(t('av_no_poses'))}</span></div>
+      <div class="av-agent-acts">
+        ${pending.length && !ADMIN_VIEW ? `<button type="button" class="sugg-btn approve" data-av-all="${esc(a.agent)}">${esc(t('av_approve_all', { n: pending.length }))}</button>` : ''}
+        ${typeof avRequestBtn === 'function' ? avRequestBtn(a) : ''}
+      </div></div>`;
+  // nothing approved yet: the consequence, said where the decision is made
+  const warn = (a.poses || []).length && !(c.approved || 0)
+    ? `<div class="av-warn">${esc(t('av_none_approved', { name: a.name }))}</div>` : '';
+  const grid = (a.poses || []).length ? `<div class="av-grid" data-av-grid>${a.poses.map(avPoseCard).join('')}</div>` : '';
+  return `<section class="av-agent" data-av-agent="${esc(a.agent)}">${head}${warn}${grid}
+      ${typeof avRequestBox === 'function' ? avRequestBox(a) : ''}</section>`;
+}
+
+function renderAvatars() {
+  const box = document.getElementById('avTeam');
+  // agents with poses first (the ones with something waiting at the top), the rest after
+  const order = avUI.team.slice().sort((x, y) => ((y.counts || {}).pending || 0) - ((x.counts || {}).pending || 0)
+    || (y.poses || []).length - (x.poses || []).length);
+  box.innerHTML = order.map(avAgentBlock).join('');
+  if (typeof renderBusinessAvatars === 'function') renderBusinessAvatars();
+  wireAvatars(box);
+  avPaint();
+}
+
+// Repaint the checkboxes + the bar without rebuilding the grids
+function avPaint() {
+  const t = uallakI18n.t;
+  document.querySelectorAll('#avTeam .av-card').forEach(card => {
+    const on = avUI.selected.has(card.getAttribute('data-id'));
+    card.classList.toggle('sel', on);
+    const box = card.querySelector('[data-av-sel]');
+    if (box) box.checked = on;
+  });
+  const bar = document.getElementById('avSelBar');
+  const n = avUI.selected.size;
+  bar.hidden = !n || ADMIN_VIEW;
+  if (!n) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="soc-selcount">${esc(t('av_selected', { n }))}</span>
+    <button type="button" class="sugg-btn approve" data-av-bulk="approved">${esc(t('av_approve_n', { n }))}</button>
+    <button type="button" class="sugg-btn reject" data-av-bulk="rejected">${esc(t('av_reject_n', { n }))}</button>
+    <button type="button" class="media-chip" data-av-bulk="pending">${esc(t('av_back_pending'))}</button>
+    <button type="button" class="media-chip" data-av-pickall>${esc(t('av_select_all'))}</button>
+    <button type="button" class="media-chip" data-av-clear>${esc(t('soc_clear'))}</button>`;
+  bar.querySelectorAll('[data-av-bulk]').forEach(b => { b.onclick = () => avDecide(Array.from(avUI.selected), b.getAttribute('data-av-bulk')); });
+  bar.querySelector('[data-av-pickall]').onclick = () => { avPoses().forEach(p => avUI.selected.add(p.pose_id)); avPaint(); };
+  bar.querySelector('[data-av-clear]').onclick = () => { avUI.selected.clear(); avUI.anchor = null; avPaint(); };
+}
+
+function avToggle(id, on, shift) {
+  const ids = Array.from(document.querySelectorAll('#avTeam .av-card')).map(c => c.getAttribute('data-id'));
+  if (shift && avUI.anchor && ids.includes(avUI.anchor) && ids.includes(id)) {
+    const [a, b] = [ids.indexOf(avUI.anchor), ids.indexOf(id)].sort((x, y) => x - y);
+    ids.slice(a, b + 1).forEach(x => { if (on) avUI.selected.add(x); else avUI.selected.delete(x); });
+  } else if (on) avUI.selected.add(id); else avUI.selected.delete(id);
+  avUI.anchor = id;
+  avPaint();
+}
+
+function wireAvatars(box) {
+  box.querySelectorAll('[data-av-sel]').forEach(cb => {
+    cb.onclick = ev => avToggle(cb.getAttribute('data-av-sel'), cb.checked, ev.shiftKey);
+  });
+  // a click on the picture selects it too (the whole card is the target on a phone)
+  box.querySelectorAll('.av-card img').forEach(img => {
+    img.onclick = ev => { if (ADMIN_VIEW || avDrag.justDragged) return; const id = img.closest('.av-card').getAttribute('data-id'); avToggle(id, !avUI.selected.has(id), ev.shiftKey); };
+  });
+  box.querySelectorAll('[data-av-one]').forEach(b => { b.onclick = () => avDecide([b.getAttribute('data-id')], b.getAttribute('data-av-one')); });
+  box.querySelectorAll('[data-av-all]').forEach(b => { b.onclick = () => {
+    const a = avUI.team.find(x => x.agent === b.getAttribute('data-av-all'));
+    avDecide((a ? a.poses : []).filter(p => p.status === 'pending').map(p => p.pose_id), 'approved');
+  }; });
+  if (typeof wireAvatarRequests === 'function') wireAvatarRequests(box);
+}
+
+async function avDecide(ids, verdict) {
+  const t = uallakI18n.t;
+  if (!ids.length || avUI.busy || ADMIN_VIEW) return;
+  avUI.busy = true;
+  avNote(t('av_saving'));
+  try {
+    const res = await fetch('/api/client/avatars/poses/decide', { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pose_ids: ids, verdict }) });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.success) throw new Error('refused');
+    avUI.team = j.data.team || avUI.team;
+    ids.forEach(id => avUI.selected.delete(id));
+    const n = (j.data.changed || []).length;
+    avNote(t('av_done_' + verdict, { n }) + (j.data.designs_updated ? ' ' + t('av_designs_updated', { n: j.data.designs_updated }) : ''));
+    renderAvatars();
+  } catch (e) {
+    avNote(t('av_failed'));
+  } finally {
+    avUI.busy = false;
+  }
+}
+
+// ─── Drag selection — the media library's behaviour (mouse only) ─────────────
+// Press and drag over the pose cards: every card the rectangle touches is
+// selected on release; Ctrl / Cmd adds to the selection instead of replacing
+// it. Never starts on a checkbox or a button; near the top / bottom edge of
+// the window it scrolls so the drag can go on. Unlike the library, a drag MAY
+// start on a picture: a pose card is nearly all picture.
+const avDrag = { on: false, active: false, x0: 0, y0: 0, cx: 0, cy: 0, add: false, box: null, timer: null, hits: [], justDragged: false };
+function avDragZone(t, y) {
+  const view = document.getElementById('viewAvatars'), team = document.getElementById('avTeam');
+  if (!view || !team || !team.offsetParent) return false;       // the Avatars page isn't showing
+  if (t.closest('#avTeam')) return true;
+  if (t !== document.documentElement && !t.contains(team)) return false;
+  const r = team.getBoundingClientRect();
+  return y >= r.top && y <= r.bottom;
+}
+function avDragStart(ev) {
+  if (ev.button !== 0 || ADMIN_VIEW || libTouchOnly()) return;
+  if (ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) return;
+  const t = ev.target;
+  if (!t || !t.closest || !avDragZone(t, ev.clientY)) return;
+  if (t.closest('input, button, a, label, select, textarea, video')) return;
+  Object.assign(avDrag, { on: true, active: false, x0: ev.clientX + window.scrollX, y0: ev.clientY + window.scrollY,
+                          cx: ev.clientX, cy: ev.clientY, add: Boolean(ev.ctrlKey || ev.metaKey), hits: [], justDragged: false });
+}
+function avDragRect() {
+  const x1 = avDrag.cx + window.scrollX, y1 = avDrag.cy + window.scrollY;
+  return { left: Math.min(avDrag.x0, x1), top: Math.min(avDrag.y0, y1), right: Math.max(avDrag.x0, x1), bottom: Math.max(avDrag.y0, y1) };
+}
+function avDragPaint() {
+  const rect = avDragRect();
+  if (!avDrag.box) {
+    avDrag.box = document.createElement('div');
+    avDrag.box.className = 'lib-marquee';
+    document.body.appendChild(avDrag.box);
+  }
+  Object.assign(avDrag.box.style, { left: rect.left + 'px', top: rect.top + 'px',
+                                    width: (rect.right - rect.left) + 'px', height: (rect.bottom - rect.top) + 'px' });
+  const hits = [];
+  document.querySelectorAll('#avTeam .av-card').forEach(card => {
+    const r = card.getBoundingClientRect();
+    const c = { left: r.left + window.scrollX, top: r.top + window.scrollY, right: r.right + window.scrollX, bottom: r.bottom + window.scrollY };
+    const hit = c.left <= rect.right && c.right >= rect.left && c.top <= rect.bottom && c.bottom >= rect.top;
+    card.classList.toggle('marq', hit);
+    if (hit) hits.push(card.getAttribute('data-id'));
+  });
+  avDrag.hits = hits;
+}
+function avDragMove(ev) {
+  if (!avDrag.on) return;
+  avDrag.cx = ev.clientX; avDrag.cy = ev.clientY;
+  if (!avDrag.active) {
+    const dx = ev.clientX + window.scrollX - avDrag.x0, dy = ev.clientY + window.scrollY - avDrag.y0;
+    if (Math.hypot(dx, dy) < LIB_DRAG_MIN) return;
+    avDrag.active = true;
+    avDrag.timer = setInterval(avDragScroll, 30);
+  }
+  if (ev.preventDefault) ev.preventDefault();
+  avDragPaint();
+}
+function avDragScroll() {
+  if (!avDrag.active) return;
+  const h = window.innerHeight;
+  const step = avDrag.cy < LIB_EDGE ? -Math.ceil((LIB_EDGE - avDrag.cy) / 3)
+             : avDrag.cy > h - LIB_EDGE ? Math.ceil((avDrag.cy - (h - LIB_EDGE)) / 3) : 0;
+  if (!step) return;
+  window.scrollBy(0, step);
+  avDragPaint();
+}
+function avDragEnd(ev) {
+  if (!avDrag.on) return;
+  const was = avDrag.active;
+  if (was) avDragPaint();
+  clearInterval(avDrag.timer);
+  if (avDrag.box) { avDrag.box.remove(); avDrag.box = null; }
+  document.querySelectorAll('#avTeam .av-card.marq').forEach(card => card.classList.remove('marq'));
+  const add = avDrag.add || Boolean(ev && (ev.ctrlKey || ev.metaKey));
+  const hits = avDrag.hits.slice();
+  Object.assign(avDrag, { on: false, active: false, timer: null, hits: [], justDragged: was });
+  if (!was) return;
+  setTimeout(() => { avDrag.justDragged = false; }, 0);      // the click that ends a drag is not a toggle
+  if (!add) avUI.selected.clear();
+  hits.forEach(id => avUI.selected.add(id));
+  if (hits.length) avUI.anchor = hits[hits.length - 1];
+  avPaint();
+}
+document.addEventListener('mousedown', avDragStart);
+document.addEventListener('selectstart', e => { if (avDrag.on) e.preventDefault(); });
+document.addEventListener('mousemove', avDragMove);
+document.addEventListener('mouseup', avDragEnd);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS (PDF / Excel / Google Docs)

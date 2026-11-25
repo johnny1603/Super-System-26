@@ -55,6 +55,11 @@ PARITY = {
     # The poses card's own image and keep / discard buttons (generate_character_poses)
     "GET /api/client/characters/poses/{request_id}/{cand_id}": (NOT_CHAT, _PLUMBING),
     "POST /api/client/characters/poses/{request_id}/{cand_id}/{verb}": (NOT_CHAT, _PLUMBING),
+    # ── Avatars page (docs/AVATARS.md) ───────────────────────────────────────
+    "GET /api/client/avatars": (NOT_CHAT, "a picture gallery: poses are judged by looking at them"),
+    "GET /api/client/avatars/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
+    "POST /api/client/avatars/poses/decide": (NOT_CHAT, "approving a pose is a decision made on the picture itself, in "
+                                                         "the gallery; the chat points there when a post is waiting on it"),
     # ── Package, upgrade, billing ────────────────────────────────────────────
     "GET /api/client/upgrade-options": (FIELD, "upgrade_request"),
     "POST /api/client/upgrade": (NOT_CHAT, "the purchase itself is confirmed on the billing screen with the payment "

@@ -278,6 +278,8 @@ def _slides_of(entries: list) -> list:
                "copy_body": s.get("copy_body", ""), "n": s.get("n"), "total": s.get("total")}
         if s.get("character"):
             row["character"] = dict(s["character"])         # {"agent", "pose_id"} — the system's, per slide
+        if s.get("wants_character"):
+            row["wants_character"] = dict(s["wants_character"])   # asked for, waiting for the client's pose approval
         if s.get("colors"):
             row["colors"] = dict(s["colors"])               # the manager's explicit colours (post `colors`)
         out.append(row)
@@ -292,10 +294,11 @@ POSE_BY_ROLE = {"hook": "waving hello with a big welcoming smile, turned slightl
                 "cta": "gesturing invitingly with an open hand, encouraging"}
 
 
-def attach_characters(entries: list, lang: str = "he", stopped=None) -> tuple:
-    """Each composite slide with a character gets a pose: a stored approved
-    cut-out FIRST (free), else a new one — every new one of the post made AT
-    ONCE (agent_characters.poses_for), not one after another. Returns
+def attach_characters(entries: list, lang: str = "he", stopped=None, client_id: int = None) -> tuple:
+    """Each composite slide with a character gets a pose the CLIENT approved
+    (agent_characters.poses_for with client_id) — none approved = a failure
+    with reason "needs_approval", never a pose they did not allow and never a
+    silent skip. Returns
     (entries, failures) — a slide whose pose could not be made renders
     without it (alerted), and EVERY failure carries the manager-facing line
     (agent_characters.failure_text)."""
@@ -307,8 +310,10 @@ def attach_characters(entries: list, lang: str = "he", stopped=None) -> tuple:
             pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
             wanted.append((i, names[0], pose))
     results = agent_characters.poses_for([(agent, pose) for _, agent, pose in wanted], stopped=stopped,
-                                         steps=[entries[i].get("n") or i + 1 for i, _a, _p in wanted]) if wanted else []
+                                         steps=[entries[i].get("n") or i + 1 for i, _a, _p in wanted],
+                                         client_id=client_id) if wanted else []
     by_index = {i: (agent, got) for (i, agent, _), got in zip(wanted, results)}
+    pose_of = {i: pose for i, _a, pose in wanted}
     failures, out = [], []
     for i, s in enumerate(entries):
         if i not in by_index:
@@ -323,10 +328,53 @@ def attach_characters(entries: list, lang: str = "he", stopped=None) -> tuple:
                              "reason": getattr(got, "reason", "") or f"{type(got).__name__}: {str(got)[:150]}",
                              # the manager-facing line, whatever failed (never only a log line)
                              "message": agent_characters.failure_text(agent, got, lang)})
-            out.append(s)
+            # waiting for the client's approval: remembered on the slide, drawn in when they approve a pose
+            out.append({**s, "wants_character": {"agent": agent, "pose": pose_of[i]}}
+                       if isinstance(got, agent_characters.NeedsApproval) else s)
         else:
             out.append({**s, "character": {"agent": agent, "pose_id": got["pose_id"]}})
     return out, failures
+
+
+def missing_flags(missing: list) -> list:
+    """The card's visible state for characters that were not drawn: waiting
+    for the client's approval of a pose, or unavailable (a real failure)."""
+    reasons = {m.get("reason") for m in missing or []}
+    return (["character_needs_approval"] if "needs_approval" in reasons else []) + \
+           (["character_unavailable"] if reasons - {"needs_approval"} else [])
+
+
+def apply_approved_poses(client_id: int) -> list:
+    """The client just approved poses: every design still WAITING whose slides
+    asked for a character and got none (wants_character) gets its pose now —
+    the client does not have to produce the post again. Returns the ids of
+    the designs that changed. Never raises."""
+    from core import agent_characters
+    changed = []
+    try:
+        for item in social_queue.items(client_id):
+            d = item.get("design") or {}
+            slides = [dict(s) for s in d.get("slides") or []]
+            asking = [i for i, s in enumerate(slides) if s.get("wants_character")]
+            if item.get("kind") != social_queue.DESIGN_KIND or item.get("status") != "waiting" or not asking:
+                continue
+            got = agent_characters.poses_for([(slides[i]["wants_character"]["agent"], slides[i]["wants_character"]["pose"])
+                                              for i in asking], stopped=lambda: False, client_id=client_id)
+            drawn = 0
+            for i, pose in zip(asking, got):
+                if isinstance(pose, dict) and pose.get("pose_id"):
+                    slides[i]["character"] = {"agent": slides[i]["wants_character"]["agent"], "pose_id": pose["pose_id"]}
+                    slides[i].pop("wants_character", None)
+                    drawn += 1
+            if not drawn:
+                continue
+            social_queue.update_design(client_id, item["id"], {"slides": slides, "rev": int(d.get("rev") or 1) + 1})
+            if not any(s.get("wants_character") for s in slides):
+                social_queue.drop_flag(client_id, item["id"], "character_needs_approval")
+            changed.append(item["id"])
+    except Exception as e:
+        _alert([f"client {client_id}: approved poses not drawn into the waiting designs ({type(e).__name__}: {str(e)[:150]})"])
+    return changed
 
 
 def character_flags(client_id: int, spec: dict, palette: dict, slides: list, loader=None) -> list:
@@ -360,7 +408,7 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
     body = post_item.get("post") or {}
     palette = body.get("palette") or {}
     try:
-        entries, missing = attach_characters(text_slides, lang)
+        entries, missing = attach_characters(text_slides, lang, client_id=client_id)
         if missing:
             _alert([f"client {client_id}: post {post_item.get('id')} — agent character not drawn on "
                     f"{', '.join(m['asset_id'] + ' (' + m['agent'] + ': ' + m['reason'] + ')' for m in missing)}"])
@@ -382,7 +430,7 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
             check(client_id, placement_only(result["spec"]), palette, slides, on_slide=on_slide)
         record = _design_record(spec, palette, slides, name, based, result, body.get("set_id", ""), post_item["id"])
         flags = character_flags(client_id, result["spec"], palette, slides) if not result["problems"] else []
-        flags += ["character_unavailable"] if missing else []
+        flags += missing_flags(missing)
         item = social_queue.add_design(client_id, record, title=post_item.get("title") or body.get("set_id", ""),
                                        channels=post_item.get("channels"), caption=post_item.get("caption", ""),
                                        planned_date=post_item.get("planned_date", ""), flags=flags)
@@ -545,7 +593,10 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     roles = slide_spec.palette_roles(client_id, slide_spec.variant_for(palette))
     entry = {"asset_id": brief.asset_id, "role": brief.role, "visual_direction": brief.visual_direction,
              "characters": list(brief.characters or []), "character_mode": brief.character_mode}
-    (entry,), missing = attach_characters([entry])
+    (entry,), missing = attach_characters([entry], client_id=client_id)
+    if missing:
+        _alert([f"client {client_id}: slide {brief.asset_id} — agent character not drawn "
+                f"({', '.join(m['agent'] + ': ' + m['reason'] for m in missing)})"])
     warnings = []
     png = slide_renderer.render_slide(spec, roles, brief.copy_headline, brief.copy_body, 1, 1, brief.role,
                                       loader_for(client_id), character=entry.get("character"), warnings=warnings)
@@ -555,7 +606,7 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     if entry.get("character"):
         out["characters"] = [entry["character"]]
     if warnings or missing:
-        out["warnings"] = [w["code"] for w in warnings] + (["character_unavailable"] if missing else [])
+        out["warnings"] = [w["code"] for w in warnings] + missing_flags(missing)
     return out
 
 

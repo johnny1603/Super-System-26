@@ -1000,7 +1000,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   paths in `CHARACTER_MODELS`, each with its own field/max/aspects, others refused; a model without the
   requested ratio gets its nearest and `fit_aspect` crops to a true 4:5, never clipping a cut-out; new paths
   only via `scripts/higgsfield_probe_paths.sh` → 422). No character video. No reference → "לא מוגדרת תמונת ייחוס עבור <agent>" in the production chat line. Runs on uallak's key
-  `HIGGSFIELD_AGENTS_KEY`. Pose library `agent_poses`: approved on post approval, offered before generating,
+  `HIGGSFIELD_AGENTS_KEY`. **Pose approval is the CLIENT's, per client (2026-11-25, docs/AVATARS.md):** the client page
+  "אווטרים" approves poses (one / all waiting / a drag selection) into app_settings `pose_approvals:<client_id>`; a post
+  (`poses_for(client_id=)`) uses ONLY a pose that client approved — none = `NeedsApproval`: nothing generated in its place,
+  alert + `character_needs_approval` on the card, and the pose is drawn in when they approve (`apply_approved_poses`). The
+  admin's Keep only seeds. `tests/test_pose_approval.py`. Pose library `agent_poses`: offered before generating,
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
   live. `tests/test_agent_characters.py`.

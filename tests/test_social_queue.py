@@ -388,7 +388,7 @@ class TextsAndPage(unittest.TestCase):
 
     def test_dashboard_tab(self):
         html = _src("dashboard", "client", "index.html")
-        self.assertIn("'media', 'social', 'personal'", html)
+        self.assertIn("'media', 'social', 'avatars', 'personal'", html)
         self.assertIn('data-view="social"', html)
         self.assertIn('id="navSocialCount"', html)
         self.assertIn('id="viewSocial"', html)
