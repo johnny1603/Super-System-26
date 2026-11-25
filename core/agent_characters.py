@@ -683,6 +683,20 @@ from core.image_fit import ratio as _ratio  # noqa: E402,F401
 
 TAG_FIELDS = ("outfit", "setting", "framing")
 
+# The library is ONE app_settings row, read-modify-written: poses made in
+# parallel (poses_for) must not overwrite each other's records
+import functools as _functools          # noqa: E402
+import threading as _threading          # noqa: E402
+_LIBRARY_LOCK = _threading.RLock()
+
+
+def _library_locked(fn):
+    @_functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _LIBRARY_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
 
 def _library() -> dict:
     try:
@@ -699,6 +713,7 @@ def _short(text, n: int = 160) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()[:n]
 
 
+@_library_locked
 def add_pose(agent: str, file_id: str, transparent: bool, client_id: int = 0, outfit: str = "",
              setting: str = "", framing: str = "", description: str = "", tags: list = None,
              source: str = "generated", prompt: str = "") -> dict:
@@ -725,6 +740,7 @@ def get_pose(pose_id: str, data: dict = None) -> dict:
     return next((p for p in data["poses"] if p.get("pose_id") == str(pose_id)), {})
 
 
+@_library_locked
 def record_pose_use(pose_id: str) -> dict:
     """A pose went into a post: counted, and remembered as that agent's last
     one (the next post gets another). Never raises."""
@@ -903,6 +919,58 @@ def pose_for(agent: str, pose: str, outfit: str = "", framing: str = "full body"
     made = make_pose(agent, pose, outfit, framing, **kw)
     record_pose_use(made["pose_id"])
     return {**made, "reused": False}
+
+
+POSE_PARALLEL = 4        # poses generated at once for one post (each = one vendor job + local cut-out)
+
+
+def poses_for(requests: list, stopped=None) -> list:
+    """pose_for for several slides of ONE post at once (2026-11-25): the
+    library lookups run IN ORDER (so "the last pose is never repeated" holds
+    exactly as before), then every pose that has to be MADE is generated in
+    parallel (POSE_PARALLEL at a time) — four poses take about as long as
+    one. requests = [(agent, pose)]; returns one result per request: the
+    pose dict, or the exception it raised. `stopped()` True = a pose not yet
+    started is not started (StopRequested)."""
+    from core import parallel
+    if stopped is None:
+        def stopped():                  # inside a run: its card's stop
+            try:
+                from core import agent_actions
+                return agent_actions.stop_requested()
+            except Exception:
+                return False
+    out, to_make = [None] * len(requests), []
+    for i, (agent, pose) in enumerate(requests):
+        try:
+            found = find_poses(agent, " ".join([pose, "", "full body"]), transparent=True, limit=1)
+            if found and not found[0]["repeat"]:
+                record_pose_use(found[0]["pose_id"])
+                out[i] = {**found[0], "reused": True, "credits": 0}
+                continue
+        except Exception as e:
+            out[i] = e
+            continue
+        to_make.append(i)
+    gate = _threading.Semaphore(POSE_PARALLEL)
+
+    def make(i):
+        with gate:
+            if stopped and stopped():
+                raise StopRequested()
+            agent, pose = requests[i]
+            made = make_pose(agent, pose)
+            record_pose_use(made["pose_id"])
+            return {**made, "reused": False}
+    got = parallel.gather({i: (lambda i=i: make(i)) for i in to_make})
+    for i, (ok, value) in got.items():
+        out[i] = value
+    return out
+
+
+class StopRequested(RuntimeError):
+    """The run was stopped before this step started — nothing was submitted."""
+    reason = "stopped"
 
 
 # ─── Approval-card notices (shown, never blocking) ───────────────────────────

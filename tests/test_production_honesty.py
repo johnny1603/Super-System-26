@@ -103,8 +103,13 @@ class OneCharacterPath(unittest.TestCase):
                 self.assertNotIn(word, src.lower(), f"{parts[-1]} mentions {word}")
         design = _src("core", "slide_design.py")
         attach = design[design.index("def attach_characters"):design.index("def character_flags")]
-        self.assertIn("agent_characters.pose_for(agent, pose)", attach)
-        self.assertEqual(attach.count("pose_for("), 1)
+        # one path: the post's poses at once (2026-11-25) — the library first, then make_pose
+        self.assertIn("agent_characters.poses_for(", attach)
+        self.assertNotIn("pose_for(agent", attach)
+        chars = _src("core", "agent_characters.py")
+        batch = chars[chars.index("def poses_for"):chars.index("class StopRequested")]
+        self.assertIn("find_poses(", batch)
+        self.assertIn("make_pose(", batch)
         # the persona is told an agent in a post is never a presenter / avatar
         from agents import support_agent
         self.assertIn("never the\nclient's presenter / avatar", support_agent.CONTENT_CONTEXT_RULE)
@@ -115,12 +120,13 @@ class OneCharacterPath(unittest.TestCase):
                  (ac.MissingReference("maya"), "לא מוגדרת תמונת ייחוס עבור מאיה (maya)"),
                  (ac.BackgroundNotRemoved("no transparent pixels"), "הסרת הרקע מהדמות נכשלה"),
                  (RuntimeError("higgsfield 500"), "ספק היצירה החזיר שגיאה")]
-        saved = ac.pose_for
+        saved = (ac.make_pose, ac.find_poses)
+        ac.find_poses = lambda *a, **k: []                                 # nothing in the library: make one
         try:
             for error, words in cases:
-                def boom(agent, pose, _e=error):
+                def boom(agent, pose, *a, _e=error, **k):
                     raise _e
-                ac.pose_for = boom
+                ac.make_pose = boom
                 entries, failures = slide_design.attach_characters(
                     [{"asset_id": "s1", "role": "hook", "characters": ["maya"], "character_mode": "composite"}])
                 self.assertNotIn("character", entries[0])                  # drawn without her …
@@ -128,7 +134,7 @@ class OneCharacterPath(unittest.TestCase):
                 if not isinstance(error, ac.MissingReference):
                     self.assertTrue(failures[0]["message"].startswith("הדמות של מאיה לא נוצרה"))
         finally:
-            ac.pose_for = saved
+            ac.make_pose, ac.find_poses = saved
 
 
 # ─── 2. The manager's explicit colours win ───────────────────────────────────
@@ -236,7 +242,7 @@ class Retry(Harness):
         self.assertTrue(spec["client_requestable"])
         self.assertEqual(spec["approver"], "client")
         self.assertTrue(spec["slow"])
-        self.assertIn("rerun_post_production", aa.STOP_FINISH)
+        self.assertIn("rerun_post_production", aa.STOP_DISCARD)       # stops between steps (test_production_speed)
         waiting = self.queue()["queued"]
         with self.assertRaises(ValueError):
             aa._v_approved_post(waiting["id"], 27)                         # copy not approved yet
@@ -303,7 +309,8 @@ class InTheChat(Harness):
     def test_the_system_run_is_a_running_card_with_progress(self):
         rows, ran = _Rows(), []
         self.patch(aa, "_db", lambda: rows)
-        self.patch(aa, "_execute_in_background", lambda row, spec, params, actor, client, lang: ran.append(row))
+        self.patch(aa, "_execute_in_background", lambda row, spec, params, actor, client, lang: self.fail("ran here"))
+        self.patch(aa, "run_in_own_request", lambda row, actor: ran.append(row) or True)   # its own request
         self.patch(aa, "_client", lambda cid: {"id": cid})
         self.patch(aa, "_lang", lambda cid: "he")
         self.patch(aa, "_log", lambda *a, **k: None)
@@ -312,7 +319,7 @@ class InTheChat(Harness):
         row = rows.rows[0]
         self.assertEqual((row["status"], row["decided_by"], row["origin"], row["persona"]),
                          ("running", "system", "client_chat", "meta"))
-        self.assertEqual(ran[0]["id"], row["id"])                           # and it runs now
+        self.assertEqual(ran[0]["id"], row["id"])                           # and it is handed to a request now
         self.patch(sq, "get", lambda cid, iid: {"title": "למה עיצוב אישי"})
         shown = aa.card(row, "client", "he")
         self.assertTrue(shown["progress"] and shown["progress"]["text"])    # the existing progress card

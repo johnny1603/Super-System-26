@@ -70,6 +70,10 @@ VIDEO_SECONDS = 6                 # the documented default (6 or 10)
 TIMEOUT = 120
 POLL_SECONDS = 8
 POLL_MAX_TRIES = 75  # up to ~10 minutes
+# The first checks come sooner (2026-11-25): a job that finishes in 12 s is
+# seen at ~12 s, not at the next multiple of 8 — then every POLL_SECONDS
+POLL_START = (2, 2, 3, 3, 4, 5, 6)
+POLL_TOTAL_SECONDS = POLL_SECONDS * POLL_MAX_TRIES
 
 # Runaway brakes — these now guard the CLIENT'S credits, not our bill
 DAILY_IMAGE_LIMIT = 100
@@ -195,11 +199,23 @@ def _create_job(api_key: str, path: str, payload: dict) -> dict:
     return {"request_id": request_id, "status_url": status_url}
 
 
+def poll_waits() -> list:
+    """The sleeps between status checks: POLL_START, then POLL_SECONDS, for
+    about POLL_TOTAL_SECONDS in all."""
+    waits, total = [], 0
+    for w in list(POLL_START) + [POLL_SECONDS] * POLL_MAX_TRIES:
+        if total + w > POLL_TOTAL_SECONDS:
+            break
+        waits.append(w)
+        total += w
+    return waits
+
+
 def _wait_for_result(api_key: str, job: dict) -> dict:
     """Poll status_url until a terminal state; returns the completed payload."""
     request_id = job["request_id"]
-    for _ in range(POLL_MAX_TRIES):
-        time.sleep(POLL_SECONDS)
+    for wait in poll_waits():
+        time.sleep(wait)
         response = httpx.get(job["status_url"], headers=_headers(api_key), timeout=TIMEOUT)
         if response.status_code != 200:
             _raise_for(response, "status poll")

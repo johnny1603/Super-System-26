@@ -2925,7 +2925,8 @@ def start_system_run(client_id: int, action: str, params: dict, persona: str = "
         return False
     row = rows[0]
     _log(f"client {client_id}: {action} started by the system", client_id=client_id, proposal=row.get("id"))
-    _execute_in_background(row, spec, params, "client", _client(client_id), _lang(client_id))
+    if not run_in_own_request(row, "client"):
+        _execute_in_background(row, spec, params, "client", _client(client_id), _lang(client_id))
     return True
 
 
@@ -6437,6 +6438,8 @@ def _execute_after_window(row: dict, spec: dict, params: dict, actor: str, clien
             _log(f"client {row.get('client_id')}: {row.get('action')} stopped in its window, nothing ran",
                  client_id=row.get("client_id"), proposal=row.get("id"))
             return
+    if run_in_own_request(row, actor):
+        return                       # the whole pass runs inside a request of its own
     _execute_in_background(row, spec, params, actor, client, lang)
 
 
@@ -6472,13 +6475,19 @@ def stop_run(row: dict) -> bool:
 # - STOP_FINISH: one step that can't be cut safely (a publish, a site update
 #   with its restore, a paid render at the client's vendor): it finishes, the
 #   card says so at once, and nothing more runs after it.
+# rerun_post_production (2026-11-25, card 69) is a DISCARD now: it was FINISH,
+# so a stop let the whole production run on — every slide generated, paid
+# and added. Now the card ends at once and the run checks between steps
+# (post_pipeline.produce): nothing new is submitted, the design / poses are
+# not made; a generation ALREADY running at the vendor (paid, can't be cut)
+# is kept as a draft in the Social tab, waiting for approval — never thrown away.
 STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_report", "competitor_digest",
                 "create_brand_mockups", "create_landing_page", "edit_landing_page", "upgrade_to_branding",
-                "upgrade_to_organic"}
+                "upgrade_to_organic", "rerun_post_production"}
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",
-               "create_presenter_from_photos", "produce_requested_content", "rerun_post_production"}
+               "create_presenter_from_photos", "produce_requested_content"}
 
 STOPPED_MIDWAY = _txt(
     "עצרתי ✓ \"{title}\" לא ימשיך: שום דבר חדש לא יוצג, לא יישלח ולא יעלה לאוויר. אם חלק מהעבודה כבר נשמר, הוא נשאר טיוטה שרק אתם רואים.",
@@ -6610,6 +6619,155 @@ def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, clie
         _alert(f"client {row.get('client_id')}: approved action '{row.get('action')}' (proposal {proposal_id}) failed "
                f"in the background: {str(e)[:300]}")
         _post(row, _pick(_FAILED, lang), to_client=True)
+
+
+# ─── A run INSIDE a request of its own (2026-11-25) ──────────────────────────
+# The service has request-based CPU (owner's rule: no --no-cpu-throttling, no
+# min instances): a thread started after a response gets CPU only while SOME
+# request is in flight on the instance — the card's poll (3 s, backing off to
+# 30 s) and the per-minute scheduler tick. A post's production was ONE pass in
+# code, but ran that way, so it only moved while those requests were open.
+# Now a DRIVE_IN_REQUEST action asks its own service to run it:
+# POST /api/actions/{id}/drive (X-Admin-Key). That request runs the WHOLE pass
+# and stays open until it ends, so the CPU is there for all of it.
+# - one driver per row: `action_drive:<id>` (insert-to-acquire), removed when
+#   the pass ends;
+# - `action_drive_wait:<id>` is written when the call is sent: the per-minute
+#   tick (drive_due) picks up a row that has it and was never claimed after
+#   DRIVE_PICKUP_S (the call never arrived) — pickup and recovery, never a step;
+# - no ADMIN_KEY, or the call refused at once: the pass runs right here
+#   (the old way), still claimed once.
+# The bound: one request lasts at most ~290 s (the proxy's read timeout; the
+# deploy sets no --timeout, so Cloud Run's 300 s). A pass longer than that
+# carries on with throttled CPU and its deadline still ends the row.
+DRIVE_IN_REQUEST = {"rerun_post_production"}
+DRIVE_PREFIX = "action_drive:"
+DRIVE_WAIT_PREFIX = "action_drive_wait:"
+DRIVE_PICKUP_S = 45
+DRIVE_PICKUP_MAX_S = 30 * 60
+DRIVE_CALL_TIMEOUT_S = 330
+
+
+def _self_url() -> str:
+    import os
+    return os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com").rstrip("/")
+
+
+def _setting_insert(key: str, value: dict) -> bool:
+    try:
+        _db().table("app_settings").insert({"key": key, "value": value, "updated_at": _now().isoformat()}).execute()
+        return True
+    except Exception:
+        return False
+
+
+def _setting_exists(key: str) -> bool:
+    try:
+        return bool(_db().table("app_settings").select("key").eq("key", key).limit(1).execute().data)
+    except Exception:
+        return True                      # unreadable: never start a second driver on a guess
+
+
+def _setting_delete(key: str):
+    try:
+        _db().table("app_settings").delete().eq("key", key).execute()
+    except Exception:
+        pass
+
+
+def drive(proposal_id: int, by: str, actor: str = "") -> dict:
+    """Runs ONE stored running row of a DRIVE_IN_REQUEST action to its end in
+    THIS call — the request's own CPU. Claimed once (two calls, or a call and
+    the tick, run it once). Never raises."""
+    try:
+        row = _get(int(proposal_id))
+    except Exception:
+        row = None
+    if not row:
+        return {"driven": False, "reason": "not_found"}
+    if row.get("action") not in DRIVE_IN_REQUEST:
+        return {"driven": False, "reason": "not_driven_in_a_request"}
+    if row.get("status") != "running":
+        return {"driven": False, "reason": "not_running"}
+    if not _setting_insert(f"{DRIVE_PREFIX}{int(proposal_id)}", {"by": by, "at": _now().isoformat()}):
+        return {"driven": False, "reason": "already_driven"}
+    client_id = int(row.get("client_id") or 0)
+    actor = actor if actor in ("client", "admin") else ("admin" if row.get("origin") == "admin_chat" else "client")
+    started = time.monotonic()
+    _log(f"client {client_id}: {row.get('action')} runs in its own request ({by})", client_id=client_id,
+         proposal=proposal_id)
+    try:
+        _execute_in_background(row, ACTIONS[row["action"]], row.get("params") or {}, actor, _client(client_id),
+                               _lang(client_id))
+    finally:
+        _setting_delete(f"{DRIVE_PREFIX}{int(proposal_id)}")
+        _setting_delete(f"{DRIVE_WAIT_PREFIX}{int(proposal_id)}")
+    seconds = round(time.monotonic() - started, 1)
+    _log(f"client {client_id}: {row.get('action')} pass ended in {seconds}s ({by})", client_id=client_id,
+         proposal=proposal_id)
+    return {"driven": True, "seconds": seconds}
+
+
+def _drive_call(proposal_id: int, actor: str, key: str):
+    """The call to our own service (a daemon thread). Refused / unreachable at
+    once = the pass runs here instead; a read timeout = it is running there."""
+    import httpx
+    try:
+        response = httpx.post(f"{_self_url()}/api/actions/{int(proposal_id)}/drive", headers={"X-Admin-Key": key},
+                              json={"actor": actor}, timeout=DRIVE_CALL_TIMEOUT_S)
+        if response.status_code == 200:
+            return
+        _log(f"proposal {proposal_id}: drive call answered {response.status_code} — running it here",
+             severity="WARNING", proposal=proposal_id)
+    except Exception as e:
+        if type(e).__name__ in ("ReadTimeout", "RemoteProtocolError"):
+            return                           # it arrived and is running in that request (the claim guards the rest)
+        _log(f"proposal {proposal_id}: drive call failed ({type(e).__name__}) — running it here",
+             severity="WARNING", proposal=proposal_id)
+    drive(proposal_id, "fallback", actor)
+
+
+def run_in_own_request(row: dict, actor: str) -> bool:
+    """Hands a DRIVE_IN_REQUEST row to a request of its own. True = handed
+    (or already running); False = not such an action — the caller runs it."""
+    import os
+    import threading
+    if row.get("action") not in DRIVE_IN_REQUEST:
+        return False
+    proposal_id = int(row["id"])
+    key = os.environ.get("ADMIN_KEY", "")
+    if not key:
+        # No way to call ourselves: the pass runs on a thread here (the old way)
+        threading.Thread(target=drive, args=(proposal_id, "here", actor), name="action-drive-here",
+                         daemon=True).start()
+        return True
+    _setting_insert(f"{DRIVE_WAIT_PREFIX}{proposal_id}", {"actor": actor, "at": _now().isoformat()})
+    threading.Thread(target=_drive_call, args=(proposal_id, actor, key), name="action-drive-call",
+                     daemon=True).start()
+    return True
+
+
+def drive_due() -> dict:
+    """The per-minute tick: a row whose call was sent but never claimed (it
+    never arrived) is handed to a request again. Pickup only — never a step
+    of a run, never a second driver."""
+    picked = []
+    for action in sorted(DRIVE_IN_REQUEST):
+        try:
+            rows = (_db().table(TABLE).select("*").eq("status", "running").eq("action", action)
+                    .order("decided_at", desc=False).limit(20).execute().data or [])
+        except Exception:
+            continue
+        for row in rows:
+            age = _since(row.get("decided_at") or row.get("created_at")).total_seconds()
+            if not DRIVE_PICKUP_S <= age <= DRIVE_PICKUP_MAX_S:
+                continue
+            pid = int(row["id"])
+            if not _setting_exists(f"{DRIVE_WAIT_PREFIX}{pid}") or _setting_exists(f"{DRIVE_PREFIX}{pid}"):
+                continue
+            run_in_own_request(row, "admin" if row.get("origin") == "admin_chat" else "client")
+            picked.append(pid)
+    return {"picked": picked}
 
 
 # ─── Deadlines: no run stays "running" forever (2026-11-06) ──────────────────

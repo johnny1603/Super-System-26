@@ -25,6 +25,7 @@ core/post_brief, knowledge/social-craft.md §2, docs/POST-BRIEF.md).
 Objection rounds live in app_settings `post_drafts:<client_id>` per set_id
 (cleared with the client, guarded by deletion_guard).
 """
+import time
 from datetime import datetime, timezone
 
 from core import post_brief, social_queue
@@ -329,18 +330,19 @@ def start(client_id: int, items: list, background_tasks=None) -> int:
         if item.get("kind") != social_queue.POST_KIND:
             continue
         social_queue.set_production(client_id, item["id"], {"state": "running", "started_at": _now()})
-        if background_tasks is not None:
-            background_tasks.add_task(run_in_chat, client_id, item["id"])
-        else:
-            run_in_chat(client_id, item["id"])
+        # Right here, inside the approval's own request (2026-11-25): the line,
+        # the card and the call that runs the pass in a request of its own take
+        # a moment. Only the no-card fallback runs after the response.
+        run_in_chat(client_id, item["id"], background_tasks)
         started += 1
     return started
 
 
-def run_in_chat(client_id: int, item_id: str) -> dict:
+def run_in_chat(client_id: int, item_id: str, background_tasks=None) -> dict:
     """The started line, then production as a running card in the producer's
-    chat; without the card (storage down) production still runs and says how
-    it ended. Never raises."""
+    chat — its whole pass inside a request of its own (agent_actions
+    .run_in_own_request). Without the card (storage down) production still
+    runs and says how it ended. Never raises."""
     item = social_queue.get(client_id, item_id) or {}
     lang = _lang(client_id)
     n = len((item.get("post") or {}).get("slides") or [])
@@ -352,14 +354,76 @@ def run_in_chat(client_id: int, item_id: str) -> dict:
             return (social_queue.get(client_id, item_id) or {}).get("production") or {}
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: production card not started ({type(e).__name__})")
+    if background_tasks is not None:
+        background_tasks.add_task(produce, client_id, item_id)
+        return {"state": "running"}
     return produce(client_id, item_id)
 
+GEN_PARALLEL = 4        # a post's generations at the vendor at once (each slot: one job, polled to its end)
+
+
+def _stopped() -> bool:
+    """The manager stopped this run (its card) — checked BETWEEN steps."""
+    try:
+        from core import agent_actions
+        return agent_actions.stop_requested()
+    except Exception:
+        return False
+
+
+def _generate_all(client_id: int, jobs: list, palette: dict, platform: str, budget: float) -> tuple:
+    """Every non-text asset of ONE post submitted together (GEN_PARALLEL at a
+    time) and waited for as a set (2026-11-25) — four images take about as
+    long as one. The credit budget is kept: before a paid generation is
+    submitted, what was spent plus what the generations still running
+    reserved (their slide budgets) must be under the post's budget.
+    A stop (the card) means nothing more is submitted; a generation already
+    at the vendor finishes (paid). Returns ({n: result}, spent)."""
+    import threading
+    from agents import media_agent
+    from core import parallel
+    lock, gate = threading.Lock(), threading.Semaphore(GEN_PARALLEL)
+    ledger = {"spent": 0.0, "reserved": 0.0}
+
+    def make(brief):
+        with gate:
+            if _stopped():
+                return {"success": False, "status": "stopped"}
+            paid = brief.asset_type.startswith("generated")
+            own = float(brief.budget_credits or 0)
+            if paid:
+                with lock:
+                    if budget and ledger["spent"] + ledger["reserved"] >= budget:
+                        return {"success": False, "status": "over_budget"}
+                    ledger["reserved"] += own
+            try:
+                out = media_agent.generate_from_brief(client_id, brief, palette, platform=platform)
+            except Exception as e:
+                out = {"success": False, "status": "failed", "errors": [f"{type(e).__name__}: {str(e)[:200]}"]}
+            if paid:
+                with lock:
+                    ledger["reserved"] -= own
+                    if out.get("success"):
+                        ledger["spent"] += float(out.get("credits") or 0)
+            return out
+    with media_agent.one_post_choices():          # the real-file / pose choice: one slide at a time
+        got = parallel.gather({n: (lambda b=brief: make(b)) for n, _slide, brief in jobs})
+    out = {n: (value if ok else {"success": False, "status": "failed",
+                                 "errors": [f"{type(value).__name__}: {str(value)[:200]}"]})
+           for n, (ok, value) in got.items()}
+    return out, ledger["spent"]
+
+
 def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
-    """Every asset of an approved post, in order, within its credit budget.
-    Never raises; the result is recorded on the post item. `tell` = post the
-    outcome line in the producer's chat (the rerun action posts it itself).
-    Every failure is recorded as a plain line (production["problems"]) — what
-    failed and why — and the line never says "done" when something failed."""
+    """Every asset of an approved post, within its credit budget — the
+    generations submitted together and waited for as a set, then the slides
+    designed (their character poses made together too). ONE pass, never
+    paced by a tick. Never raises; the result is recorded on the post item.
+    `tell` = post the outcome line in the producer's chat (the rerun action
+    posts it itself). Every failure is recorded as a plain line
+    (production["problems"]) — what failed and why — and the line never says
+    "done" when something failed. Stopped (the card): nothing new starts;
+    what was already made is kept as a draft and recorded (state "stopped")."""
     item = social_queue.get(client_id, item_id)
     if not item or item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
         return {"state": "failed", "reason": "not_an_approved_post"}
@@ -371,7 +435,9 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
     text_slides, character_errors, problems = [], [], []
     lang = _lang(client_id)
     colors = (body.get("colors") or {}).get("slides") or []
-    from agents import media_agent
+    clock = time.monotonic()
+    timing = {}
+    jobs = []
     for n, slide in enumerate(slides, 1):
         if slide["asset_type"] == "text_slide":
             # Drawn by the slide renderer as ONE set (one template, one palette
@@ -392,17 +458,28 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
             aspect_ratio=slide.get("aspect_ratio") or "4:5", set_id=body["set_id"],
             budget_credits=int(slide.get("budget_credits") or 0),
             characters=list(slide.get("characters") or []), character_mode=slide.get("character_mode") or "")
-        if brief.asset_type.startswith("generated") and budget and spent >= budget:
+        jobs.append((n, slide, brief))
+    generated, _ = _generate_all(client_id, jobs, palette, (item["channels"] or ["instagram"])[0], budget) \
+        if jobs else ({}, 0.0)
+    timing["generate_s"] = round(time.monotonic() - clock, 1)
+    blocked = False                     # no account / no context: said once, like the sequential run did
+    stopped = False
+    for n, slide, brief in jobs:
+        out = generated.get(n) or {"success": False, "status": "failed"}
+        if out.get("status") == "stopped":
+            stopped = True
+            results.append({"asset_id": brief.asset_id, "status": "stopped"})
+            not_made += 1
+            continue
+        if out.get("status") == "over_budget":
             results.append({"asset_id": brief.asset_id, "status": "over_budget"})
             problems.append(_problem(n, reason_text("over_budget", lang), lang))
             not_made += 1
             continue
-        try:
-            out = media_agent.generate_from_brief(client_id, brief, palette, platform=(item["channels"] or ["instagram"])[0])
-        except Exception as e:
-            out = {"success": False, "status": "failed", "errors": [f"{type(e).__name__}: {str(e)[:200]}"]}
         if not out.get("success"):
             status = out.get("status") or "failed"
+            if blocked and status in ("no_account", "context_missing"):
+                continue                # the same cause as the slide above — not a second line
             results.append({"asset_id": brief.asset_id, "status": status})
             if out.get("message") and status.startswith("character"):
                 character_errors.append(out["message"])       # said to the manager, not only logged
@@ -413,7 +490,7 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
                 problems.append(_problem(n, out.get("message") if status.startswith("character") and out.get("message")
                                          else reason_text(status, lang), lang))
                 if status in ("no_account", "context_missing"):
-                    break               # the next assets would fail the same way
+                    blocked = True      # the next assets fail the same way
             continue
         spent += float(out.get("credits") or 0)
         # A real asset from the client's folder is not a concept image
@@ -432,9 +509,17 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
                         "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated"})
         made += 1
     design = {}
+    if text_slides and (stopped or _stopped()):
+        # Stopped before the design: no slides drawn, no poses generated
+        stopped = True
+        results += [{"asset_id": s["asset_id"], "status": "stopped"} for s in text_slides]
+        not_made += len(text_slides)
+        text_slides = []
     if text_slides:
         from core import slide_design
+        design_clock = time.monotonic()
         opened = slide_design.open_for_post(client_id, item, text_slides, lang)
+        timing["design_s"] = round(time.monotonic() - design_clock, 1)    # poses + layout + render
         drawn_without = list(dict.fromkeys(opened.get("character_errors") or []))
         character_errors += drawn_without
         problems += [f"• {m}" for m in drawn_without]       # e.g. Maya missing from the slides, and why
@@ -455,10 +540,14 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
              else "failed" if failed else "done")
     if state == "done" and problems:
         state = "partial"             # e.g. the slides were drawn, but without the character asked for
+    if stopped or _stopped():
+        state = "stopped"             # never left "running"; what was made stays a draft (recorded above)
     production = {"state": state, "made": made, "not_made": not_made, "failed": failed,
                   "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design,
                   "character_errors": list(dict.fromkeys(character_errors)),
-                  "problems": list(dict.fromkeys(problems))}
+                  "problems": list(dict.fromkeys(problems)),
+                  # measured on every run (2026-11-25): where the time went
+                  "timing": {**timing, "total_s": round(time.monotonic() - clock, 1), "parallel": GEN_PARALLEL}}
     social_queue.set_production(client_id, item_id, production)
     if tell:
         _tell(client_id, item, production)
@@ -545,14 +634,14 @@ def rerun_refusal(client_id: int, item_id: str) -> str:
 
 
 def retryable(client_id: int, limit: int = 10) -> list:
-    """Approved posts whose production failed, partly failed or is stuck —
-    what the agents must tell the manager about (and may offer to rerun)."""
+    """Approved posts whose production failed, partly failed, was stopped or
+    is stuck — what the agents must tell the manager about (and may offer to rerun)."""
     out = []
     for item in social_queue.items(client_id):
         if item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
             continue
         prod = item.get("production") or {}
-        if prod.get("state") in ("failed", "partial") or (prod.get("state") == "running"
+        if prod.get("state") in ("failed", "partial", "stopped") or (prod.get("state") == "running"
                                                            and not rerun_refusal(client_id, item["id"])):
             out.append({"item_id": item["id"], "title": item.get("title", ""), "state": prod.get("state"),
                         "problems": prod.get("problems") or [], "finished_at": prod.get("finished_at", "")})

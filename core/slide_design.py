@@ -291,30 +291,39 @@ POSE_BY_ROLE = {"hook": "waving hello with a big welcoming smile, turned slightl
                 "cta": "gesturing invitingly with an open hand, encouraging"}
 
 
-def attach_characters(entries: list, lang: str = "he") -> tuple:
+def attach_characters(entries: list, lang: str = "he", stopped=None) -> tuple:
     """Each composite slide with a character gets a pose: a stored approved
-    cut-out FIRST (free), else a new one. Returns (entries, failures) — a
-    slide whose pose could not be made renders without it (alerted), and
-    EVERY failure carries the manager-facing line (agent_characters.failure_text)."""
+    cut-out FIRST (free), else a new one — every new one of the post made AT
+    ONCE (agent_characters.poses_for), not one after another. Returns
+    (entries, failures) — a slide whose pose could not be made renders
+    without it (alerted), and EVERY failure carries the manager-facing line
+    (agent_characters.failure_text)."""
     from core import agent_characters
-    failures = []
-    out = []
-    for s in entries:
+    wanted = []
+    for i, s in enumerate(entries):
         names = list(s.get("characters") or [])
-        if not names or (s.get("character_mode") or "composite") != "composite":
+        if names and (s.get("character_mode") or "composite") == "composite":
+            pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
+            wanted.append((i, names[0], pose))
+    results = agent_characters.poses_for([(agent, pose) for _, agent, pose in wanted], stopped=stopped) if wanted else []
+    by_index = {i: (agent, got) for (i, agent, _), got in zip(wanted, results)}
+    failures, out = [], []
+    for i, s in enumerate(entries):
+        if i not in by_index:
             out.append(s)
             continue
-        agent = names[0]
-        pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
-        try:
-            got = agent_characters.pose_for(agent, pose)
-            out.append({**s, "character": {"agent": agent, "pose_id": got["pose_id"]}})
-        except Exception as e:
+        agent, got = by_index[i]
+        if isinstance(got, agent_characters.StopRequested):
+            out.append(s)               # the run was stopped: not a failure, nothing was submitted
+            continue
+        if isinstance(got, BaseException):
             failures.append({"asset_id": s.get("asset_id", ""), "agent": agent,
-                             "reason": getattr(e, "reason", "") or f"{type(e).__name__}: {str(e)[:150]}",
+                             "reason": getattr(got, "reason", "") or f"{type(got).__name__}: {str(got)[:150]}",
                              # the manager-facing line, whatever failed (never only a log line)
-                             "message": agent_characters.failure_text(agent, e, lang)})
+                             "message": agent_characters.failure_text(agent, got, lang)})
             out.append(s)
+        else:
+            out.append({**s, "character": {"agent": agent, "pose_id": got["pose_id"]}})
     return out, failures
 
 

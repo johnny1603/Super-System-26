@@ -798,6 +798,33 @@ def _craft_brief_prompt(client_id: int, brief, palette: dict, context: dict) -> 
                                  max_tokens=500, client_id=client_id, cost_category="claude_media")
 
 
+# One post's assets run in parallel (core/post_pipeline._generate_all,
+# 2026-11-25). The CHOICE of a real file or a library pose stays one slide at
+# a time inside a post: a used file "ranks lower next time", and two slides
+# choosing at the same moment would both pick the same photo. Only the
+# choice is serialised — the generation itself (the long wait) is not.
+import contextlib as _contextlib          # noqa: E402
+import contextvars as _contextvars        # noqa: E402
+import threading as _threading            # noqa: E402
+_POST_CHOICE = _contextvars.ContextVar("media_post_choice", default=None)
+
+
+@_contextlib.contextmanager
+def one_post_choices():
+    """Inside it (and in the threads started from it), the choices of one
+    post take turns."""
+    token = _POST_CHOICE.set(_threading.Lock())
+    try:
+        yield
+    finally:
+        _POST_CHOICE.reset(token)
+
+
+def _choosing():
+    lock = _POST_CHOICE.get()
+    return lock if lock is not None else _contextlib.nullcontext()
+
+
 def generate_from_brief(client_id: int, brief, palette: dict = None, platform: str = "instagram") -> dict:
     """ONE asset of a post (core/post_brief.AssetBrief) → the client's Drive.
     text_slide: DRAWN by core/slide_renderer with real fonts from the client's
@@ -825,18 +852,19 @@ def generate_from_brief(client_id: int, brief, palette: dict = None, platform: s
     # Real assets FIRST (craft §10): the client's own connected folders,
     # searched and chosen by the agent before anything is generated — no
     # image model, no credits, no media-tool connection needed
-    candidates = _find_real(brief, on_demand=True)
-    for _attempt in range(REAL_ASSET_TRIES):
-        chosen = choose_real_asset(client_id, brief, candidates)
-        if not chosen:
-            break
-        used = _use_real_asset(client_id, brief, chosen, platform)
-        if used.get("success"):
-            return used
-        if used.get("status") != "missing":
-            break
-        # that file disappeared since it was indexed: never fail the post for it — the next one
-        candidates = [c for c in candidates if c["file_id"] != chosen["file_id"]]
+    with _choosing():
+        candidates = _find_real(brief, on_demand=True)
+        for _attempt in range(REAL_ASSET_TRIES):
+            chosen = choose_real_asset(client_id, brief, candidates)
+            if not chosen:
+                break
+            used = _use_real_asset(client_id, brief, chosen, platform)
+            if used.get("success"):
+                return used
+            if used.get("status") != "missing":
+                break
+            # that file disappeared since it was indexed: never fail the post for it — the next one
+            candidates = [c for c in candidates if c["file_id"] != chosen["file_id"]]
     if brief.asset_type == "real_photo":
         return {"success": False, "status": "needs_real_asset",
                 "errors": ["a real photo of the client's work is chosen for this asset, never generated"]}
@@ -954,7 +982,8 @@ def _character_scene(client_id: int, brief, palette: dict, platform: str) -> dic
     kind = "video" if brief.asset_type == "generated_video" else "image"
     folders = PLATFORM_FOLDERS["videos" if kind == "video" else "images"]
     platform = platform if platform in folders else "instagram"
-    reused = _library_scene(client_id, brief)
+    with _choosing():
+        reused = _library_scene(client_id, brief)
     if reused:
         return reused
     try:

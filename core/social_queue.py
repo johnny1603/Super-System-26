@@ -385,7 +385,7 @@ COPY_TEXT = {
                    "Этап текста: ничего не создаётся, пока вы не одобрите текст"),
 }
 
-PRODUCTION_STATES = ("waiting_copy", "running", "done", "partial", "failed")
+PRODUCTION_STATES = ("waiting_copy", "running", "done", "partial", "failed", "stopped")
 
 
 def _post_channels(post: dict) -> list:

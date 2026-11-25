@@ -3630,6 +3630,18 @@ def actions_reap():
     except Exception as e:
         raise HTTPException(status_code=500, detail=type(e).__name__)
 
+class ActionDriveRequest(BaseModel):
+    actor: str = ""
+
+@app.post("/api/actions/{proposal_id}/drive", dependencies=_admin_only)
+def actions_drive(proposal_id: int, body: ActionDriveRequest = None):
+    # The service calling itself (agent_actions.run_in_own_request, X-Admin-Key):
+    # a post's production runs its WHOLE pass inside THIS request, so the CPU
+    # is allocated for all of it (request-based CPU — no background work).
+    # Claimed once; a second call answers already_driven.
+    from core import agent_actions
+    return {"success": True, "data": agent_actions.drive(proposal_id, "request", (body.actor if body else ""))}
+
 @app.get("/api/drive/assets/scan", dependencies=_admin_only)
 def drive_assets_scan():
     # Cloud Scheduler job drive-assets-scan (X-Admin-Key). Retention and the
@@ -8474,7 +8486,15 @@ def tiktok_uploads_run():
     import time as _time
     from core import drive_pull, tiktok_uploads
     started = _time.monotonic()
+    # A post production whose own request never arrived: handed to one again
+    # (pickup and recovery only — a run is never a step of this tick)
+    try:
+        from core import agent_actions
+        drives = agent_actions.drive_due()
+    except Exception as e:
+        drives = {"error": type(e).__name__}
     data = tiktok_uploads.run_due()
+    data["action_drive"] = drives
     # Pull-from-Drive jobs ride the same minute (no new scheduler job): what
     # is left of the request's budget, at most 60 s (core/drive_pull)
     left = min(60.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))

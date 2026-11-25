@@ -408,6 +408,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   **Stop at ANY stage (2026-11-19):** every running card has a Stop button (`decision: "stop"`) and a typed stop works the
   whole time — `agent_actions.stop_action` by the action's ONE stop mode (`STOP_DISCARD` / `STOP_JOB` / `STOP_FINISH`; a new
   slow action must be added to one, `tests/test_stop_anywhere.py`); a stopped run can't post or propose (`_run_stopped`).
+  **A run in its own request (2026-11-25):** request-based CPU = a thread after the response only moves while a request is
+  in flight. `DRIVE_IN_REQUEST` actions (post production) run their WHOLE pass inside `POST /api/actions/{id}/drive`
+  (the service calls itself, `run_in_own_request`); the minute tick only re-sends a lost call (`drive_due`). Bound ~290 s.
+  A post's generations and poses run in parallel (cap 4), budget reserved per running job (docs/POST-BRIEF.md §10).
   `UNDO` map → one undo card when done. `claim_guard` (no "card below" without a card) + `loop_guard` (3rd repeat → the
   exact blocker) run in `_client_chat_answer`. The dashboard re-appends a known card at the BOTTOM (never `return` on a
   duplicate) and draws the bar from `progress.fraction` / `expected_seconds` (task_eta, >=5 runs) / none.
