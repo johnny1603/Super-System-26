@@ -471,7 +471,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("help_connection=req.help_connection,\n                                                 "
                       "background_tasks=background_tasks)", api)
         self.assertIn("chat_approval.fast_turn(client_id, persona, message, background_tasks", api)
-        self.assertIn('"next_card": result.get("next_card")}', api)
+        self.assertIn('"next_card": result.get("next_card"), "productions": result.get("productions") or []}', api)
 
     def test_every_text_in_five_languages_without_vendor_tools(self):
         for key, table in ca.TEXT.items():

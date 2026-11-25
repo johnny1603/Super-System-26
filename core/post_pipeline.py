@@ -28,7 +28,7 @@ Objection rounds live in app_settings `post_drafts:<client_id>` per set_id
 import time
 from datetime import datetime, timezone
 
-from core import post_brief, social_queue
+from core import post_brief, production_progress, social_queue
 
 SERVICE_NAME = "post_pipeline"
 DRAFTS_PREFIX = "post_drafts:"
@@ -117,6 +117,22 @@ TEXT = {
         "J'ai commencé la production du post « {title} » ({n} parties). J'écrirai ici quand ce sera fini — ou ce qui bloque, le cas échéant.",
         "بدأت إنتاج المنشور \"{title}\" ({n} أجزاء). سأكتب هنا عند الانتهاء — أو ما تعثّر إن تعثّر شيء.",
         "Я начал производство поста «{title}» ({n} частей). Напишу здесь, когда закончу, — или что застряло, если застрянет."),
+    # Approved twice (the Social tab, then "אישרתי" in chat): no second run
+    "already_running": _five(
+        "ההפקה של \"{title}\" כבר רצה — אין צורך לאשר שוב. {step}",
+        "Production of \"{title}\" is already running — no need to approve again. {step}",
+        "La production de « {title} » est déjà en cours — inutile de valider à nouveau. {step}",
+        "إنتاج \"{title}\" جارٍ بالفعل — لا حاجة للموافقة مرة أخرى. {step}",
+        "Производство «{title}» уже идёт — повторно одобрять не нужно. {step}"),
+    "now_at": _five("כרגע: {step} ({pct}%).", "Right now: {step} ({pct}%).", "En ce moment : {step} ({pct} %).",
+                    "الآن: {step} ({pct}%).", "Сейчас: {step} ({pct}%)."),
+    # Never silence: approved, but production could not start — and why
+    "start_failed": _five(
+        "אישרתם את \"{title}\", אבל לא הצלחתי להתחיל את ההפקה: {reason}. הצוות קיבל התראה — אפשר לבקש ממני להריץ אותה שוב.",
+        "You approved \"{title}\", but I couldn't start production: {reason}. The team was alerted — you can ask me to run it again.",
+        "Vous avez validé « {title} », mais je n'ai pas pu lancer la production : {reason}. L'équipe est prévenue — vous pouvez me demander de la relancer.",
+        "وافقتم على \"{title}\"، لكن لم أتمكن من بدء الإنتاج: {reason}. تم تنبيه الفريق — يمكنكم أن تطلبوا مني تشغيله مجددًا.",
+        "Вы одобрили «{title}», но запустить производство не удалось: {reason}. Команда уведомлена — можно попросить меня запустить его снова."),
     "partial": _five(
         "הפקת הפוסט \"{title}\" לא הצליחה במלואה. מה שלא עבד:\n{problems}{ready}\nאפשר להריץ את ההפקה שוב — רק תגידו.",
         "Producing the post \"{title}\" did not fully work. What failed:\n{problems}{ready}\nI can run the production again — just say so.",
@@ -166,6 +182,14 @@ REASONS = {
                     "сервис генерации вернул ошибку"),
 }
 REASONS["renderer_unavailable"] = REASONS["render_failed"]
+# Why production could not START (start_failed)
+REASONS["storage"] = _five("לא הצלחתי לשמור את מצב ההפקה (תקלה זמנית באחסון)",
+                           "I couldn't save the production's state (a temporary storage fault)",
+                           "je n'ai pas pu enregistrer l'état de la production (panne de stockage temporaire)",
+                           "تعذّر حفظ حالة الإنتاج (عطل مؤقت في التخزين)",
+                           "не удалось сохранить состояние производства (временный сбой хранилища)")
+REASONS["not_started"] = _five("משהו נכשל ברגע ההתחלה", "something failed at the moment it was starting",
+                               "quelque chose a échoué au démarrage", "فشل شيء عند البدء", "что-то сломалось при запуске")
 
 
 def reason_text(status: str, lang: str) -> str:
@@ -310,12 +334,18 @@ def _positions(history: list, asset_id: str) -> dict:
 
 # ─── 2-3. The owner approved the copy: production ────────────────────────────
 
-def start(client_id: int, items: list, background_tasks=None) -> int:
+def start(client_id: int, items: list, background_tasks=None, report: list = None) -> int:
     """After social_queue.approve: every approved POST item starts production
     (in the background when possible). Returns how many were started.
     In the chat (2026-11-25): the producer says it has started, the run shows
     as its progress card (the rerun_post_production action, started by the
-    system on this approval), and the producer says how it ended."""
+    system on this approval), and the producer says how it ended.
+    ONE path for every approval (the Social tab, the chat card, a typed yes):
+    `report` (a list) gets one entry per post — {"item_id", "persona",
+    "title", "state": started | already_running | failed_to_start, "line",
+    "card"} — what the dashboard draws in that agent's chat AT ONCE, so the
+    manager never has to tell the agent "אישרתי". A post whose production
+    already runs is never started twice."""
     started = 0
     for item in items or []:
         if item.get("kind") == social_queue.DESIGN_KIND:
@@ -329,35 +359,144 @@ def start(client_id: int, items: list, background_tasks=None) -> int:
             continue
         if item.get("kind") != social_queue.POST_KIND:
             continue
-        social_queue.set_production(client_id, item["id"], {"state": "running", "started_at": _now()})
+        lang = _lang(client_id)
+        running = running_card(client_id, item["id"], lang)
+        if running:
+            # Already producing (two approvals at once): no second run
+            if report is not None:
+                report.append(_entry(item, "already_running", already_line(item, running, lang), running))
+            continue
+        try:
+            social_queue.set_production(client_id, item["id"], {"state": "running", "started_at": _now()})
+        except Exception as e:
+            entry = start_failed(client_id, item, "storage", e, lang)
+            if report is not None:
+                report.append(entry)
+            continue
         # Right here, inside the approval's own request (2026-11-25): the line,
         # the card and the call that runs the pass in a request of its own take
         # a moment. Only the no-card fallback runs after the response.
-        run_in_chat(client_id, item["id"], background_tasks)
-        started += 1
+        entry = run_in_chat(client_id, item["id"], background_tasks)
+        if report is not None:
+            report.append(entry)
+        if entry.get("state") == "started":
+            started += 1
     return started
+
+
+def _entry(item: dict, state: str, line: str, card=None, reason: str = "") -> dict:
+    return {"item_id": item.get("id", ""), "persona": item.get("producer") or "media", "title": item.get("title") or "",
+            "state": state, "line": line, "card": card or None, "reason": reason}
+
+
+def start_failed(client_id: int, item: dict, reason: str, error=None, lang: str = None) -> dict:
+    """Production could not start: said in the producer's chat AT ONCE, with
+    the reason, and the team alerted. Never raises."""
+    lang = lang or _lang(client_id)
+    line = (pick(TEXT["start_failed"], lang).replace("{title}", item.get("title") or "")
+            .replace("{reason}", reason_text(reason, lang)))
+    _say(client_id, item, line)
+    _alert([f"client {client_id}: post {item.get('id')} approved but production did not start ({reason}"
+            + (f": {type(error).__name__}: {str(error)[:150]}" if error else "") + ")"])
+    try:
+        social_queue.set_production(client_id, item["id"], {"state": "failed", "finished_at": _now(),
+                                                            "problems": [f"• {reason_text(reason, lang)}"]})
+    except Exception:
+        pass                    # storage down: the line and the alert still went out
+    return _entry(item, "failed_to_start", line, reason=reason)
+
+
+def running_card(client_id: int, item_id: str, lang: str = "he") -> dict:
+    """The card of this post's production while it runs (the rerun_post_production
+    row, fresh — RERUN_STALE_MINUTES), else {}."""
+    try:
+        from core import agent_actions
+        rows = (agent_actions._db().table(agent_actions.TABLE).select("*").eq("client_id", int(client_id))
+                .eq("action", "rerun_post_production").eq("status", "running")
+                .order("id", desc=True).limit(20).execute().data) or []
+    except Exception:
+        return {}
+    for row in rows:
+        if str((row.get("params") or {}).get("item_id")) != str(item_id):
+            continue
+        try:
+            began = datetime.fromisoformat(str(row.get("decided_at")))
+        except ValueError:
+            continue
+        if (datetime.now(timezone.utc) - began).total_seconds() < RERUN_STALE_MINUTES * 60:
+            from core import agent_actions
+            return agent_actions.card(row, "client", lang)
+    return {}
+
+
+def already_running(client_id: int, item_ids, lang: str = None) -> list:
+    """start()'s report entries for posts among `item_ids` whose production
+    runs right now (approved again: nothing new starts). Never raises."""
+    out = []
+    try:
+        lang = lang or _lang(client_id)
+        for item_id in item_ids or []:
+            item = social_queue.get(client_id, str(item_id)) or {}
+            if item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
+                continue
+            card = running_card(client_id, item["id"], lang)
+            if card:
+                out.append(_entry(item, "already_running", already_line(item, card, lang), card))
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: running productions not read ({type(e).__name__})")
+    return out
+
+
+def running_now(client_id: int, lang: str = None, persona: str = None) -> list:
+    """Every post production running right now (fresh), as report entries —
+    for "אישרתי" typed after the approval in the Social tab."""
+    try:
+        ids = [i["id"] for i in social_queue.items(client_id)
+               if i.get("kind") == social_queue.POST_KIND and i.get("status") == "approved"
+               and (i.get("production") or {}).get("state") == "running"
+               and (persona is None or (i.get("producer") or "media") == persona)]
+    except Exception:
+        return []
+    return already_running(client_id, ids, lang)
+
+
+def already_line(item: dict, card: dict, lang: str) -> str:
+    """"Already running — no need to approve again", with where it is now."""
+    progress = (card or {}).get("progress") or {}
+    step = ""
+    if progress.get("step"):
+        step = (pick(TEXT["now_at"], lang).replace("{step}", progress["step"])
+                .replace("{pct}", str(int(round(100 * float(progress.get("fraction") or 0))))))
+    return pick(TEXT["already_running"], lang).replace("{title}", item.get("title") or "").replace("{step}", step).strip()
 
 
 def run_in_chat(client_id: int, item_id: str, background_tasks=None) -> dict:
     """The started line, then production as a running card in the producer's
     chat — its whole pass inside a request of its own (agent_actions
     .run_in_own_request). Without the card (storage down) production still
-    runs and says how it ended. Never raises."""
-    item = social_queue.get(client_id, item_id) or {}
+    runs and says how it ended. Never raises. Returns start()'s report entry."""
+    item = social_queue.get(client_id, item_id) or {"id": item_id}
     lang = _lang(client_id)
     n = len((item.get("post") or {}).get("slides") or [])
-    _say(client_id, item, pick(TEXT["started"], lang).replace("{title}", item.get("title") or "").replace("{n}", str(n)))
+    line = pick(TEXT["started"], lang).replace("{title}", item.get("title") or "").replace("{n}", str(n))
+    _say(client_id, item, line)
     try:
         from core import agent_actions
-        if agent_actions.start_system_run(client_id, "rerun_post_production", {"item_id": item_id},
-                                          persona=item.get("producer") or "media"):
-            return (social_queue.get(client_id, item_id) or {}).get("production") or {}
+        row = agent_actions.start_system_run(client_id, "rerun_post_production", {"item_id": item_id},
+                                             persona=item.get("producer") or "media")
+        if row:
+            card = agent_actions.card(row, "client", lang) if isinstance(row, dict) else None
+            return _entry(item, "started", line, card)
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: production card not started ({type(e).__name__})")
-    if background_tasks is not None:
-        background_tasks.add_task(produce, client_id, item_id)
-        return {"state": "running"}
-    return produce(client_id, item_id)
+    try:
+        if background_tasks is not None:
+            background_tasks.add_task(produce, client_id, item_id)
+        else:
+            produce(client_id, item_id)
+    except Exception as e:
+        return start_failed(client_id, item, "not_started", e, lang)
+    return _entry(item, "started", line)
 
 GEN_PARALLEL = 4        # a post's generations at the vendor at once (each slot: one job, polled to its end)
 
@@ -385,7 +524,9 @@ def _generate_all(client_id: int, jobs: list, palette: dict, platform: str, budg
     lock, gate = threading.Lock(), threading.Semaphore(GEN_PARALLEL)
     ledger = {"spent": 0.0, "reserved": 0.0}
 
-    def make(brief):
+    lang = _lang(client_id)
+
+    def make(n, brief):
         with gate:
             if _stopped():
                 return {"success": False, "status": "stopped"}
@@ -394,12 +535,21 @@ def _generate_all(client_id: int, jobs: list, palette: dict, platform: str, budg
             if paid:
                 with lock:
                     if budget and ledger["spent"] + ledger["reserved"] >= budget:
+                        production_progress.done(f"generate:{n}", False, reason_text("over_budget", lang))
                         return {"success": False, "status": "over_budget"}
                     ledger["reserved"] += own
+            production_progress.begin(f"generate:{n}")
             try:
                 out = media_agent.generate_from_brief(client_id, brief, palette, platform=platform)
             except Exception as e:
                 out = {"success": False, "status": "failed", "errors": [f"{type(e).__name__}: {str(e)[:200]}"]}
+            if out.get("success"):
+                production_progress.done(f"generate:{n}", skipped=bool(out.get("real_asset")))
+            else:
+                status = out.get("status") or "failed"
+                production_progress.done(f"generate:{n}", False,
+                                         out.get("message") if status.startswith("character") and out.get("message")
+                                         else reason_text(status, lang))
             if paid:
                 with lock:
                     ledger["reserved"] -= own
@@ -407,7 +557,7 @@ def _generate_all(client_id: int, jobs: list, palette: dict, platform: str, budg
                         ledger["spent"] += float(out.get("credits") or 0)
             return out
     with media_agent.one_post_choices():          # the real-file / pose choice: one slide at a time
-        got = parallel.gather({n: (lambda b=brief: make(b)) for n, _slide, brief in jobs})
+        got = parallel.gather({n: (lambda n=n, b=brief: make(n, b)) for n, _slide, brief in jobs})
     out = {n: (value if ok else {"success": False, "status": "failed",
                                  "errors": [f"{type(value).__name__}: {str(value)[:200]}"]})
            for n, (ok, value) in got.items()}
@@ -427,6 +577,23 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
     item = social_queue.get(client_id, item_id)
     if not item or item.get("kind") != social_queue.POST_KIND or item.get("status") != "approved":
         return {"state": "failed", "reason": "not_an_approved_post"}
+    # The real step list, known now (core/production_progress): the bar
+    # every card and the Social tab show, from the first second to the end
+    tracker = production_progress.start(client_id, item_id, (item.get("post") or {}).get("slides") or [])
+    try:
+        production = _produce(client_id, item, tell)
+    except Exception as e:
+        tracker.finish("failed")
+        print(f"[{SERVICE_NAME}] client {client_id}: production broke ({type(e).__name__}: {str(e)[:200]})")
+        raise
+    finally:
+        production_progress.stop_tracking()
+    tracker.finish(production["state"])
+    return production
+
+
+def _produce(client_id: int, item: dict, tell: bool) -> dict:
+    item_id = item["id"]
     body = item.get("post") or {}
     slides = body.get("slides") or []
     palette = body.get("palette") or {}
@@ -536,6 +703,7 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
             problems += said or [f"• {reason_text('design', lang)}"]
         elif not design["ok"]:
             problems += said or [f"• {reason_text('design', lang)}"]
+    production_progress.begin("assemble")
     state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
              else "failed" if failed else "done")
     if state == "done" and problems:
@@ -549,6 +717,7 @@ def produce(client_id: int, item_id: str, tell: bool = True) -> dict:
                   # measured on every run (2026-11-25): where the time went
                   "timing": {**timing, "total_s": round(time.monotonic() - clock, 1), "parallel": GEN_PARALLEL}}
     social_queue.set_production(client_id, item_id, production)
+    production_progress.done("assemble")
     if tell:
         _tell(client_id, item, production)
     if failed or problems:

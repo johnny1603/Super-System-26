@@ -292,7 +292,7 @@ class OwnerDecisions(Base):
         self.assertEqual(spec["approver"], "client")
         a, b = self.add(FILE_A), self.add(FILE_B)
         ids = spec["params"]["item_ids"]["validate"]([a["id"], b["id"]], 5)
-        self.assertEqual(spec["run"](5, {"item_ids": ids}, None), {"approved": 2})
+        self.assertEqual(spec["run"](5, {"item_ids": ids}, None), {"approved": 2, "productions": []})
         with self.assertRaises(ValueError):
             spec["params"]["item_ids"]["validate"]([a["id"]], 5)          # no longer waiting
 

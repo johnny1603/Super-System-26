@@ -218,9 +218,11 @@ def base_spec(client_id: int, palette: dict, aspect: str = "4:5", template_name:
     return spec, template_name or default_name(palette), {"starter": segment}
 
 
-def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, warnings: list = None) -> list:
+def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, warnings: list = None,
+          on_slide=None) -> list:
     """Every guard on every slide of the set, nothing encoded. [] = renders.
-    `warnings` (a list) gets the character warnings (overflow / text)."""
+    `warnings` (a list) gets the character warnings (overflow / text);
+    `on_slide` = slide_renderer.render_set's per-slide hook."""
     label = slide_spec.variant_for(palette)
     if spec.get("palette_variant") != label:
         return [{"code": "palette", "detail": f"spec palette_variant {spec.get('palette_variant')!r} is not this "
@@ -228,7 +230,7 @@ def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, 
     try:
         roles = slide_spec.palette_roles(client_id, label)
         slide_renderer.render_set(spec, roles, slides, loader or loader_for(client_id), encode=False,
-                                  warnings=warnings)
+                                  warnings=warnings, on_slide=on_slide)
     except slide_spec.SpecInvalid as e:
         return [{"code": "bad_spec", "detail": d} for d in e.errors]
     except slide_renderer.RenderError as e:
@@ -305,7 +307,8 @@ def attach_characters(entries: list, lang: str = "he", stopped=None) -> tuple:
         if names and (s.get("character_mode") or "composite") == "composite":
             pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
             wanted.append((i, names[0], pose))
-    results = agent_characters.poses_for([(agent, pose) for _, agent, pose in wanted], stopped=stopped) if wanted else []
+    results = agent_characters.poses_for([(agent, pose) for _, agent, pose in wanted], stopped=stopped,
+                                         steps=[entries[i].get("n") or i + 1 for i, _a, _p in wanted]) if wanted else []
     by_index = {i: (agent, got) for (i, agent, _), got in zip(wanted, results)}
     failures, out = [], []
     for i, s in enumerate(entries):
@@ -354,6 +357,7 @@ def _design_record(spec, palette, slides, template_name, based_on, result, set_i
 
 def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str = "he") -> dict:
     """The approved post's text slides → ONE design item. Never raises."""
+    from core import production_progress as progress
     body = post_item.get("post") or {}
     palette = body.get("palette") or {}
     try:
@@ -363,7 +367,19 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
                     f"{', '.join(m['asset_id'] + ' (' + m['agent'] + ': ' + m['reason'] + ')' for m in missing)}"])
         slides = _slides_of(entries)
         spec, name, based = base_spec(client_id, palette, text_slides[0].get("aspect_ratio") or "4:5")
+        progress.begin("layout")
         result = design(client_id, spec, palette, slides, lang=lang, template_name=name)
+        progress.done("layout")         # a slide that can't be drawn fails at its own render step
+        # The chosen layout rendered slide by slide — the bar's render steps,
+        # each one when it really runs (milliseconds; nothing encoded)
+        if progress.current() is not None:
+            def on_slide(n, problems):
+                if problems is None:
+                    progress.begin(f"render:{n}")
+                else:
+                    progress.done(f"render:{n}", not problems,
+                                  "; ".join(problem_text(problems, lang).splitlines())[:300] if problems else "")
+            check(client_id, placement_only(result["spec"]), palette, slides, on_slide=on_slide)
         record = _design_record(spec, palette, slides, name, based, result, body.get("set_id", ""), post_item["id"])
         flags = character_flags(client_id, result["spec"], palette, slides) if not result["problems"] else []
         flags += ["character_unavailable"] if missing else []

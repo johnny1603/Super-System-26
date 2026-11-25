@@ -44,7 +44,7 @@ CLIENT_SETTING_PREFIXES = ("client_settings:", "gtm_token:", "gads_token:", "tik
                            "php_exposure:", "creative_tools:", "drive_storage:", "drive_usage:",
                            "media_seen:", "branding:", "brand_kit:", "seo_report:", "content_plan:", "social_queue:", "post_drafts:", "slide_templates:", "drive_folders:", "drive_assets:", "drive_assets_lock:", "asset_feedback:", "brand_brief:", "media_library:", "media_deletions:", "working_copies:",
                            "avatar_photos:", "invite_resume:", "quarter_goals:",
-                           "organic_plan:", "competitor_watch:")
+                           "organic_plan:", "competitor_watch:", "production_progress:")
 
 _local = set()
 _cache = {"at": 0.0, "ids": frozenset()}

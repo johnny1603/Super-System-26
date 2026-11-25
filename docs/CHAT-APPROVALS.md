@@ -32,6 +32,9 @@ All three were verified by reading the code.
   - This applies to paid and irreversible actions too, by the owner's decision.
 - **Fast path, used only for the obvious cases.**
   - `FAST_APPROVE` covers explicit "approve" verbs in 5 languages, and only when exactly one card is open.
+    Since 2026-11-25 it also covers the past tense ("אישרתי", "אישרנו", "approved it"). With NO card open
+    and a post's production running (approved in the Social tab), it answers `already_running`: "already
+    running", where it is now, and the live card. Nothing starts twice (docs/POST-BRIEF.md §11).
   - `FAST_STOP` covers "stop", but only while a run is open.
   - Everything else ("יאללה", "סבבה", "ok upload it") is the model's reading.
 - **Which card.**

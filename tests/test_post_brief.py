@@ -460,7 +460,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("produce_post", agent_actions.ACTIONS)
         self.assertEqual(chat_parity.PARITY["POST /api/client/social/{item_id}/copy"][1], "produce_post")
         src = open(os.path.join(ROOT, "core", "api_server.py"), encoding="utf-8").read()
-        self.assertIn("post_pipeline.start(client_id, done, background_tasks)", src)
+        self.assertIn("post_pipeline.start(client_id, done, background_tasks, report=productions)", src)
 
     def test_dashboard_shows_copy_as_text(self):
         html = open(os.path.join(ROOT, "dashboard", "client", "index.html"), encoding="utf-8").read()

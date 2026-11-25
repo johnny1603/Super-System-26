@@ -63,6 +63,20 @@
     - **The bound.** One request lasts at most ~290 s: the proxy's read timeout, and Cloud Run's 300 s default, since the deploy sets no `--timeout`. A longer pass continues with throttled CPU; its 20-minute deadline and the reaper still end the row.
     - **Measured on every run.** `production.timing` = generate_s, design_s, total_s; the log line "pass ended in Ns".
     - **Stop (card 69).** `rerun_post_production` is `STOP_DISCARD` now (it was `STOP_FINISH`, so a stop let every slide be generated, paid and added). The card ends at once. Between steps the run checks the stop: nothing new is submitted, and no design or pose is made. A generation already at the vendor (paid, can't be cut) is kept as a waiting draft in the Social tab and recorded. Production ends `stopped`, never `running`, and its credits count only what was made.
+11. **Approving starts production, and the chat shows it (2026-11-25).** Approved in the Social tab, production DID start, but the chat showed nothing until the window reloaded (the tab's approve never touched the chat; an open window never fetches new lines). The manager typed "אישרתי", which matched nothing and got "no card was made".
+    - ONE path for every approval (the Social tab, the approval card, a typed yes): `post_pipeline.start(..., report=)` returns one entry per post: `{item_id, persona, title, state: started | already_running | failed_to_start, line, card}`. The social approve route, `approve_social_items` (→ the decide response) and the chat answer (`productions`) carry it.
+    - The dashboard's `showProductionInChat` draws it in the producer's window AT ONCE: the start line and the running card. A window not open yet opens quietly (its history draws both); a minimised one comes back up.
+    - Never two runs: a post whose `rerun_post_production` row is running and fresh (`post_pipeline.running_card`) is not started again. "אישרתי" / "approved it" (`chat_approval.FAST_APPROVE`), the model's "approve" with nothing pending, or a re-proposed production while one runs all answer `chat_approval.already_running`: "already running", where it is now, and the live card.
+    - Never silence: production that cannot start (`start_failed`, e.g. its state can't be saved, or no card and the run itself fails) is said in the producer's chat at once with the reason (`REASONS["storage"]`, `["not_started"]`), the post is marked failed, and the team is alerted.
+    - `tests/test_approval_starts_production.py`.
+12. **A real progress bar (2026-11-25, `core/production_progress`).** The indeterminate stripe is gone for a post's production.
+    - The real step list is computed when production starts (`plan_for`): a generation per image/video slide, a pose + a background removal per character slide, the layout, a render per text slide, the assembly.
+    - Each step weighs its expected duration: per kind, the median of its last 20 measured durations (`production_step_seconds`, at least 3, else a default); steps that run together share the wall time. A run keeps the weights it started with.
+    - The steps report where they really run: `_generate_all`, `agent_characters.make_pose` (`_step`), `slide_design.open_for_post` (layout, then each slide through `slide_renderer.render_set(on_slide=)`), the assembly.
+    - Stored per client (`production_progress:<id>` = {item_id: record}, its own row). A running step counts by its time against its expectation, capped at 90%. Never backwards (the max shown so far), never 100% before it ended. The line names the step running now ("מייצר פוזה 2 מתוך 4", "מרנדר שקופית 3").
+    - Elapsed always. The remaining time only when every kind in the plan was measured, and marked "(הערכה)". A failed step lists its reason next to the bar; a run that ends short freezes the bar where it stopped (`card.progress_final`).
+    - The same bar on the chat card (`chat_approval.progress_extra`, polled every ≤ 5 s) and on the Social tab's production card (`social_queue._production_view`, refreshed every 4 s while it runs).
+    - `tests/test_production_progress.py`.
 
 ## Not built yet
 

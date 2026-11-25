@@ -2865,8 +2865,10 @@ def _run_approve_social(client_id: int, params: dict, background_tasks):
     if not done:
         raise ActionFailed("already_decided", "none of these items is still waiting")
     # An approved post COPY is what starts its production (copy before pixels)
-    post_pipeline.start(client_id, done, background_tasks)
-    return {"approved": len(done)}
+    # — the SAME post_pipeline.start the Social tab's approve calls
+    productions = []
+    post_pipeline.start(client_id, done, background_tasks, report=productions)
+    return {"approved": len(done), "productions": productions}
 
 
 # Run a post's production again (2026-11-25). The SAME production the copy's
@@ -3133,11 +3135,12 @@ def _poses_done_message(result: dict, lang: str) -> str:
     return "\n".join([head] + lines)
 
 
-def start_system_run(client_id: int, action: str, params: dict, persona: str = "general") -> bool:
+def start_system_run(client_id: int, action: str, params: dict, persona: str = "general"):
     """A slow action the SYSTEM starts on a yes the manager already gave
     elsewhere (a post's copy approved in the Social tab → its production):
     stored as running in the producer's chat — so the chat shows its progress
-    card — and run now, in this (background) call. False when the row could
+    card — and run now, in this (background) call. Returns the stored row
+    (the caller draws its card in the chat at once); False when the row could
     not be stored: the caller then runs the work without a card."""
     spec = ACTIONS[action]
     stamp = _now().isoformat()
@@ -3156,7 +3159,7 @@ def start_system_run(client_id: int, action: str, params: dict, persona: str = "
     _log(f"client {client_id}: {action} started by the system", client_id=client_id, proposal=row.get("id"))
     if not run_in_own_request(row, "client"):
         _execute_in_background(row, spec, params, "client", _client(client_id), _lang(client_id))
-    return True
+    return row
 
 
 # Delete from the Social queue (2026-11-24) — the SAME social_queue.delete the
@@ -6272,7 +6275,7 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
         stalled = _stalled(row, spec)
         # + the bar: real fraction where the action reports it, else the measured
         # usual time (>= 5 runs), else none (the card shows work running, no number)
-        extra = chat_approval.progress_extra(row, spec)
+        extra = chat_approval.progress_extra(row, spec, lang)
         if stalled:
             extra.pop("text", None)        # stalled says so plainly, whatever the job's line
         progress = {"text": _pick(_STALLED, lang) if stalled else progress_text(spec, lang, params),
@@ -6281,6 +6284,17 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
             # Asked to stop, but this step can't be cut: it finishes, and says so
             progress["text"] = _stop_line(row, lang, finishing=True)
             extra.pop("text", None)
+    final = None
+    if row.get("status") in ("done", "failed") and row.get("action") == "rerun_post_production":
+        # A production that ended short: the bar stays where it stopped, with why
+        try:
+            got = chat_approval.production_progress_of(row, lang)
+            if got.get("state") not in (None, "done", "running"):
+                final = got
+            elif row.get("status") == "failed" and got:
+                final = {**got, "state": "failed"}         # the run itself broke
+        except Exception:
+            final = None
     choices = []
     if row.get("status") in OPEN_STATUSES:
         # Several ways to approve (a vague landing change: small edit or new
@@ -6311,6 +6325,8 @@ def _card(row: dict, actor: str, lang: str = "he") -> dict:
                         and (code := _approve_blocked(spec, row.get("client_id"))) else ""),
             # A slow action: the running card's text, then its plain result
             "progress": progress, "result": _result_text(spec, row, lang),
+            # post production ended partial / failed / stopped: the frozen bar + reasons
+            "progress_final": final,
             # Ended by the system for making no progress (deadline / reaper): marked stuck
             "stuck": row.get("status") == "failed" and row.get("outcome") in ("timeout", "stuck"),
             # A non-blocking warning about the file (TikTok: a codec it accepts but does not recommend)
@@ -6710,7 +6726,7 @@ def decide(proposal_id: int, actor: str, actor_client_id: int, decision: str,
         # response and the same card polls (status_card) into its result
         background_tasks.add_task(_execute_after_window, row, spec, params, actor, client, lang)
         from core import chat_approval
-        extra = chat_approval.progress_extra(row, spec)
+        extra = chat_approval.progress_extra(row, spec, lang if actor == "client" else "he")
         return {"success": True, "status": "running",
                 "message": progress_text(spec, lang if actor == "client" else "he", params),
                 "progress": {"text": progress_text(spec, lang if actor == "client" else "he", params),
@@ -7477,6 +7493,10 @@ def _execute_run(row, spec, params, actor, client, lang, background_tasks, propo
         _post_admin_message(client_id, row.get("persona", "general"), _admin_summary(spec, result))
     out = {"success": True, "status": "done", "message": message,
            "result": result if actor == "admin" else None}
+    if isinstance(result.get("productions"), list):
+        # The productions this approval started (approve_social_items): the
+        # producer's line + running card, drawn in its chat at once
+        out["productions"] = result["productions"]
     if isinstance(result.get("next_card"), dict):
         # The decision this one led to (find_media_file → the card for the file
         # picked), right under it — one decision per card

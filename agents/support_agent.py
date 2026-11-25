@@ -1259,6 +1259,16 @@ def _route_proposal(client_id: int, persona_id: str, message: str, result: dict,
     # A prepared action answered in words instead of a card: ONE clarifying
     # question (what does the video show?) or a plain refusal. That line IS
     # the reply — the model's reply may have promised a card that isn't coming.
+    if _proposed_name(result) in ("rerun_post_production", "approve_social_items"):
+        # Approved already (the Social tab) and producing: no second run, no
+        # "no card was made" — it is running, here is where it is now
+        running = chat_approval.already_running(client_id, persona_id, lang)
+        if running:
+            out = {"reply": running["reply"], "needs_human_followup": False, "no_card": True,
+                   "productions": running["productions"]}
+            if running.get("action"):
+                out["action"] = running["action"]
+            return out
     for answer in ("clarify", "refuse"):
         if proposal.get(answer):
             return {"reply": proposal[answer], "needs_human_followup": False}
@@ -1466,6 +1476,8 @@ def _card_decision(client_id: int, persona_id: str, message: str, result: dict, 
         reply["action"] = out["action"]
     if out.get("next_card"):
         reply["next_card"] = out["next_card"]
+    if out.get("productions"):
+        reply["productions"] = out["productions"]       # started / already running: the producer's chat shows it
     return reply
 
 

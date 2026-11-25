@@ -1642,7 +1642,9 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
             chat_timing.flag("outcome", "card_fast_path")
             log_communication(client_id, "outbound", channel, fast["reply"])
             return {"success": True, "reply": fast["reply"], "needs_human_followup": False, "poll": False,
-                    "action": fast.get("action"), "next_card": fast.get("next_card")}
+                    "action": fast.get("action"), "next_card": fast.get("next_card"),
+                    # the productions this yes started / that already run: drawn in the producer's chat
+                    "productions": fast.get("productions") or []}
     from core.cost_tracker import cost_action
     while True:
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
@@ -1695,7 +1697,7 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
     return {"success": True, "reply": result["reply"],
             "needs_human_followup": result["needs_human_followup"],
             "poll": bool(result.get("poll")), "action": result.get("action"),
-            "next_card": result.get("next_card")}
+            "next_card": result.get("next_card"), "productions": result.get("productions") or []}
 
 @app.post("/api/client-chat/prewarm")
 def client_chat_prewarm(request: Request):
@@ -7022,8 +7024,14 @@ def client_social_approve(req: SocialApproveRequest, request: Request, backgroun
         done = social_queue.approve(client_id, req.ids, by="client")
     except social_queue.QueueError as e:
         raise _social_error(e)
-    started = post_pipeline.start(client_id, done, background_tasks)
+    # The SAME path every approval takes (the chat card, a typed yes): each
+    # post's start line + running card come back, and the dashboard draws them
+    # in the producer's chat AT ONCE — nobody has to tell the agent "אישרתי"
+    productions = []
+    started = post_pipeline.start(client_id, done, background_tasks, report=productions)
+    productions += post_pipeline.already_running(client_id, [i for i in req.ids if i not in {d["id"] for d in done}])
     return {"success": True, "data": {"approved": [i["id"] for i in done], "production_started": started,
+                                      "productions": productions,
                                       "waiting": social_queue.waiting_count(client_id)}}
 
 @app.post("/api/client/social/delete")

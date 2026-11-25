@@ -881,21 +881,29 @@ def pose_bytes(pose_id: str) -> bytes:
 
 
 def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body", setting: str = "",
-              aspect_ratio: str = "3:4", _gen=None, _remove=None, _upload=None, _refs=None) -> dict:
+              aspect_ratio: str = "3:4", _gen=None, _remove=None, _upload=None, _refs=None, _step=None) -> dict:
     """COMPOSITE step a: the pose from the agent's reference image on a plain
     background → background removal → a VERIFIED transparent PNG → the
     library. Runs on uallak's key. Raises MissingReference /
-    CharacterUnavailable / BackgroundNotRemoved / the vendor's error."""
-    from core import media_gen_service as gen
+    CharacterUnavailable / BackgroundNotRemoved / the vendor's error.
+    `_step`: the slide number its progress steps are reported under."""
+    from core import media_gen_service as gen, production_progress as progress
     agent = clean_agent(agent)
     prompt = pose_prompt(agent, pose, outfit, framing)            # MissingReference first
     if _gen is None and not configured():
         raise CharacterUnavailable(agent, "not_configured", f"{KEY_ENV} is not set")
     refs = (_refs or reference_urls)([agent])
     key = agents_key()
+    if _step is not None:
+        progress.begin(f"pose:{_step}")
     made = (_gen or gen.generate_with_references)(key, prompt, refs, aspect_ratio)
+    if _step is not None:
+        progress.done(f"pose:{_step}")
+        progress.begin(f"cutout:{_step}")
     cut = (_remove or _local_remove())(key, made["url"])
     png = ensure_transparent(cut["content"])
+    if _step is not None:
+        progress.done(f"cutout:{_step}")
     # The requested ratio exactly; the crop never clips the figure (warns instead)
     fitted = fit_aspect(png, aspect_ratio, made.get("aspect_ratio") or aspect_ratio)
     png = fitted["content"]
@@ -924,15 +932,26 @@ def pose_for(agent: str, pose: str, outfit: str = "", framing: str = "full body"
 POSE_PARALLEL = 4        # poses generated at once for one post (each = one vendor job + local cut-out)
 
 
-def poses_for(requests: list, stopped=None) -> list:
+def poses_for(requests: list, stopped=None, steps: list = None) -> list:
     """pose_for for several slides of ONE post at once (2026-11-25): the
     library lookups run IN ORDER (so "the last pose is never repeated" holds
     exactly as before), then every pose that has to be MADE is generated in
     parallel (POSE_PARALLEL at a time) — four poses take about as long as
     one. requests = [(agent, pose)]; returns one result per request: the
     pose dict, or the exception it raised. `stopped()` True = a pose not yet
-    started is not started (StopRequested)."""
-    from core import parallel
+    started is not started (StopRequested). `steps`: per request, the slide
+    number its progress steps (pose:<n>, cutout:<n>) are reported under."""
+    from core import parallel, production_progress as progress
+    steps = list(steps or [])
+
+    def step_of(i):
+        return steps[i] if i < len(steps) else None
+
+    def settle(i, ok=True, reason="", skipped=False):
+        n = step_of(i)
+        if n is not None:
+            progress.done(f"pose:{n}", ok, reason, skipped)
+            progress.done(f"cutout:{n}", ok, reason, skipped)
     if stopped is None:
         def stopped():                  # inside a run: its card's stop
             try:
@@ -947,9 +966,11 @@ def poses_for(requests: list, stopped=None) -> list:
             if found and not found[0]["repeat"]:
                 record_pose_use(found[0]["pose_id"])
                 out[i] = {**found[0], "reused": True, "credits": 0}
+                settle(i, skipped=True)               # a stored cut-out: nothing to make
                 continue
         except Exception as e:
             out[i] = e
+            settle(i, False, failure_text(agent, e))
             continue
         to_make.append(i)
     gate = _threading.Semaphore(POSE_PARALLEL)
@@ -959,7 +980,11 @@ def poses_for(requests: list, stopped=None) -> list:
             if stopped and stopped():
                 raise StopRequested()
             agent, pose = requests[i]
-            made = make_pose(agent, pose)
+            try:
+                made = make_pose(agent, pose, _step=step_of(i))
+            except Exception as e:
+                settle(i, False, failure_text(agent, e))
+                raise
             record_pose_use(made["pose_id"])
             return {**made, "reused": False}
     got = parallel.gather({i: (lambda i=i: make(i)) for i in to_make})

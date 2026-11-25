@@ -220,8 +220,9 @@ def for_model(client_id: int, persona: str, lang: str) -> dict:
 
 # ─── Fast path (obvious cases only — never the condition) ────────────────────
 FAST_APPROVE = re.compile(
-    r"^\s*(?:i\s+)?(?:approve[ds]?|approved|אשר|אישור|מאשר|מאשרת|מאושר|j'approuve|approuvé|одобряю|подтверждаю|"
-    r"أوافق|موافق)\s*[.!✓✔️👍]*\s*$", re.IGNORECASE)
+    r"^\s*(?:i\s+)?(?:approve[ds]?|approved(?:\s+it)?|אשר|אישור|מאשר|מאשרת|מאושר|אישרתי|אישרנו|אושר|"
+    r"j'approuve|approuvé|одобряю|подтверждаю|одобрил[аи]?|"
+    r"أوافق|موافق|وافقت)\s*[.!✓✔️👍]*\s*$", re.IGNORECASE)
 FAST_STOP = re.compile(
     r"^\s*(?:stop|wait|עצור|עצרי|תעצור|רגע|חכה|חכי|תפסיק|stop+e?|arrête|attends|стоп|подожди|توقف|انتظر)\s*[.!]*\s*$",
     re.IGNORECASE)
@@ -316,6 +317,26 @@ def approve(client_id: int, row: dict, background_tasks, lang: str) -> dict:
            "action": _card_out(row["id"], client_id, lang)}
     if result.get("next_card"):
         out["next_card"] = result["next_card"]
+    if result.get("productions"):
+        out["productions"] = result["productions"]      # the productions this yes started (post_pipeline.start)
+    return out
+
+
+def already_running(client_id: int, persona: str, lang: str) -> dict:
+    """An approval with nothing left to approve while a post's production runs
+    (approved in the Social tab, then "אישרתי" typed): no second run — the
+    agent says it is already running, where it is now, and shows its live
+    card. {} when no production runs."""
+    try:
+        from core import post_pipeline
+        entries = post_pipeline.running_now(client_id, lang, persona) or post_pipeline.running_now(client_id, lang)
+    except Exception:
+        return {}
+    if not entries:
+        return {}
+    out = {"reply": "\n".join(e["line"] for e in entries if e.get("line")), "productions": entries}
+    if entries[0].get("card"):
+        out["action"] = entries[0]["card"]
     return out
 
 
@@ -443,6 +464,8 @@ def decide_from_chat(client_id: int, persona: str, verdict: str, card_id, backgr
         return undo(client_id, persona, lang)
     rows = pending(client_id, persona)
     if not rows:
+        if verdict == "approve":
+            return already_running(client_id, persona, lang)     # approved already elsewhere: no second run
         return {"reply": pick(NOTHING_RUNNING, lang)} if verdict == "cancel" else {}
     row, ask = _target(card_id, rows)
     if ask:
@@ -465,6 +488,9 @@ def fast_turn(client_id: int, persona: str, message: str, background_tasks, lang
             rows = pending(client_id, persona)
             if len(rows) == 1:
                 return approve(client_id, rows[0], background_tasks, lang)
+            if not rows:
+                # "אישרתי" after approving in the Social tab: production already runs
+                return already_running(client_id, persona, lang)
     except Exception as e:
         print(f"[chat_approval] fast path skipped for client {client_id}: {type(e).__name__}")
     return {}
@@ -582,10 +608,35 @@ def job_text(row: dict, lang: str, job: dict = None) -> str:
     return ""
 
 
-def progress_extra(row: dict, spec: dict) -> dict:
+def production_progress_of(row: dict, lang: str = "he") -> dict:
+    """A post production's REAL progress (core/production_progress) for its
+    rerun_post_production row: the record of THIS run only (one started
+    before the row is an earlier run of the same post — never shown), else
+    "getting ready" at 0. {} for any other action."""
+    if row.get("action") != "rerun_post_production":
+        return {}
+    from core import production_progress
+    item_id = str((row.get("params") or {}).get("item_id") or "")
+    got = production_progress.read(int(row.get("client_id") or 0), item_id, lang, since=_parse(row.get("decided_at")))
+    return got or production_progress.preparing(lang)
+
+
+def progress_extra(row: dict, spec: dict, lang: str = "he") -> dict:
     """{"fraction", "expected_seconds", "stop_until"} for a running card. A
     measured expectation only with enough past runs (core/task_eta), else None
-    — the card then shows work running, never a made-up number."""
+    — the card then shows work running, never a made-up number. A post's
+    production: the determinate bar (core/production_progress) — the fraction
+    of its real, time-weighted steps, the step running now in words, the
+    elapsed time and, once measured, the remaining time as an estimate."""
+    prod = production_progress_of(row, lang)
+    if prod:
+        out = {"fraction": prod["fraction"], "determinate": True, "step": prod["text"],
+               "elapsed_s": prod["elapsed_s"], "remaining_s": prod["remaining_s"], "estimated": prod["estimated"],
+               "problems": prod["problems"], "expected_seconds": None, "stop_until": None,
+               "stop": stop_info(row, spec)}
+        if prod["text"]:
+            out["text"] = prod["text"]          # the step running now replaces the generic line
+        return out
     job = _job(row)
     out = {"fraction": real_fraction(row, job), "expected_seconds": None, "stop_until": None,
            "stop": stop_info(row, spec)}
@@ -624,6 +675,10 @@ BUTTON. Read the client's message the way a person would understand it, in any l
 - Several pending cards and it is not clear which one they mean: card_id 0 — the system asks ONCE.
   One pending card, or a clear reference to one: its card_id.
 - A question about a card ("what title will it get?") or anything else: verdict "none".
+- A post's copy approved in the Social tab (or on any card) STARTS ITS PRODUCTION BY ITSELF — it then
+  shows in "running_cards". Never ask the manager to confirm it in chat; when they say they approved
+  ("אישרתי", "approved it") and its production runs: verdict "approve" with card_id 0 — the system
+  answers that it is already running, with where it is now. Never start it a second time.
 When you set a verdict, the system runs it exactly like the button and writes what the client reads:
 keep "reply" to one short line and propose nothing else in that turn. NEVER write that a card is
 "below" or "here" unless you are proposing one in this very reply — the system shows a card only when

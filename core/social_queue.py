@@ -584,7 +584,31 @@ def _post_view(item: dict, lang: str, client_id: int = None) -> dict:
             "palette": (post.get("palette") or {}).get("label", ""), "slides": slides,
             "fit_summary": fit.get("summary", ""), "fit_over": fit.get("over", 0),
             "warnings": warning_lines(post.get("warnings"), lang), "stage_text": pick(COPY_TEXT["stage"], lang),
-            "production": item.get("production") or {}}
+            "production": _production_view(item, lang, client_id)}
+
+
+def _production_view(item: dict, lang: str, client_id: int = None) -> dict:
+    """The stored production record + "progress": the SAME determinate bar the
+    chat card shows (core/production_progress) — while it runs, and frozen
+    with its reasons when it ended short. Never raises."""
+    production = dict(item.get("production") or {})
+    if not client_id or production.get("state") not in ("running", "failed", "partial", "stopped"):
+        return production
+    try:
+        from core import production_progress
+        since = None
+        try:
+            since = datetime.fromisoformat(str(production.get("started_at")))
+        except ValueError:
+            pass
+        got = production_progress.read(client_id, item["id"], lang, since=since)
+        if not got and production.get("state") == "running":
+            got = production_progress.preparing(lang)
+        if got:
+            production["progress"] = got
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: production progress not read ({type(e).__name__})")
+    return production
 
 
 def add_safely(client_id: int, *args, **kwargs) -> dict:

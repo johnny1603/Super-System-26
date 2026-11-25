@@ -679,15 +679,19 @@ def slide_roles(roles: dict, colors: dict = None) -> dict:
 
 
 def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True,
-               warnings: list = None) -> list:
+               warnings: list = None, on_slide=None) -> list:
     """Every slide of ONE set from ONE spec and ONE palette (the caller passes
     one of each — a set is never mixed). slides = [{"copy_headline",
     "copy_body", "role", "n"?, "total"?}] — n / total = the slide's place in
     the whole post (default: its place in this list). RenderError lists the
-    problems of every slide."""
+    problems of every slide. `on_slide(n, problems_or_None)`: called before
+    each slide (None) and after it ([] = rendered) — the production bar."""
     out, problems = [], []
     for i, s in enumerate(slides, 1):
         n, total = int(s.get("n") or i), int(s.get("total") or len(slides))
+        if on_slide:
+            on_slide(n, None)
+        before = len(problems)
         try:
             got = []
             out.append(render_slide(spec, slide_roles(roles, s.get("colors")), s.get("copy_headline", ""),
@@ -698,6 +702,8 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
                 warnings += [{**w, "slide": n, "detail": f"slide {n}: {w['detail']}"} for w in got]
         except RenderError as e:
             problems += [{**p, "slide": n, "detail": f"slide {n}: {p['detail']}"} for p in e.problems]
+        if on_slide:
+            on_slide(n, problems[before:])
     if problems:
         raise RenderError(problems)
     return out

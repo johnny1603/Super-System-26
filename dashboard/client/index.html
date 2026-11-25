@@ -679,6 +679,14 @@ body {
   background: transparent; color: var(--red, #FF3B3B); border: 1px solid currentColor; cursor: pointer; }
 .chat-action .stop-run:disabled { opacity: .6; cursor: default; }
 .chat-action.stuck .note::before { content: attr(data-stuck); display: block; font-size: 11.5px; font-weight: 700; color: var(--yellow, #FFB020); margin-bottom: 3px; }
+/* A post's production (2026-11-25, core/production_progress): determinate, time-weighted, never backwards;
+   ended short = frozen where it stopped, with the failed steps' reasons beside it. Same bar in the Social tab. */
+.chat-action .pbar-problems, .soc-prod .pbar-problems { margin: 4px 0 0; padding-inline-start: 18px; font-size: 12px; color: var(--text); }
+.chat-action .progress.frozen .pbar > i, .soc-prod.frozen .pbar > i { background: #FFB020; transition: none; }
+.soc-prod { margin-top: 6px; }
+.soc-prod .pbar { position: relative; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 4px; }
+.soc-prod .pbar > i { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--accent); border-radius: 3px; }
+.soc-prod .pbar-left { font-size: 11.5px; color: var(--gray); margin-top: 3px; }
 @keyframes pbar-run { 0% { inset-inline-start: -35%; } 100% { inset-inline-start: 100%; } }
 @media (prefers-reduced-motion: reduce) {
   .chat-action .pbar > i { transition: none; }
@@ -3435,6 +3443,8 @@ const DASH_I18N = {
   action_started_ago: { he:'התחיל לפני {n} דק׳', en:'Started {n} min ago', fr:'Commencé il y a {n} min', ar:'بدأ قبل {n} دقيقة', ru:'Начато {n} мин назад' },
   action_left_min: { he:'נשארו בערך {n} דק׳', en:'About {n} min left', fr:'Environ {n} min restantes', ar:'تبقّى نحو {n} دقيقة', ru:'Осталось около {n} мин' },
   action_left_sec: { he:'עוד רגע קט', en:'Almost there', fr:'Presque terminé', ar:'أوشك على الانتهاء', ru:'Почти готово' },
+  prod_elapsed: { he:'עברו {t}', en:'{t} elapsed', fr:'{t} écoulé', ar:'مضى {t}', ru:'прошло {t}' },
+  prod_left_estimate: { he:'נשארו בערך {t} (הערכה)', en:'about {t} left (estimate)', fr:'environ {t} restant (estimation)', ar:'تبقّى نحو {t} (تقدير)', ru:'осталось около {t} (оценка)' },
   action_running_now: { he:'עובד על זה עכשיו', en:'Working on it now', fr:'En cours', ar:'جارٍ العمل عليه الآن', ru:'Сейчас в работе' },
   action_stop: { he:'⏹ עצור', en:'⏹ Stop', fr:'⏹ Arrêter', ar:'⏹ إيقاف', ru:'⏹ Стоп' },
   action_stopping: { he:'עוצר…', en:'Stopping…', fr:'Arrêt…', ar:'جارٍ الإيقاف…', ru:'Останавливаю…' },
@@ -7443,6 +7453,10 @@ function appendActionCard(personaId, a) {
   el.appendChild(note);
   el._action = a;
   paintActionWhen(el, a);
+  // A production that ended short, drawn again (a reload): its frozen bar + why
+  if (a.status !== 'running' && a.progress_final && a.progress_final.state && a.progress_final.state !== 'done') {
+    paintFrozenBar(el, a.progress_final);
+  }
   w.msgsEl.appendChild(el);
   // A slow action still running (e.g. after a reload): its progress card
   if (a.status === 'running' && a.progress) {
@@ -7452,6 +7466,42 @@ function appendActionCard(personaId, a) {
   keepCardsLast(w.msgsEl);
   w.msgsEl.scrollTop = w.msgsEl.scrollHeight;
   try { el.scrollIntoView({ block: 'nearest' }); } catch (e) { /* scrollTop already did it */ }
+}
+
+// ONE path for every approval (the Social tab, the approval card, a typed yes
+// — 2026-11-25): the server returns what started (core/post_pipeline.start
+// report) and the producing agent's chat shows it AT ONCE — its start line
+// and the running card with the real progress bar — unprompted; nobody has to
+// tell the agent "אישרתי". A window not open yet opens quietly and its
+// history draws both (the line is stored). A post that was already running
+// shows its live card (no second run); one that could not start shows why.
+// `opts.fromWindow`: the window whose reply already said the line.
+async function showProductionInChat(list, opts) {
+  if (!Array.isArray(list) || !list.length || ADMIN_VIEW) return;
+  const from = (opts && opts.fromWindow) || '';
+  for (const p of list) {
+    if (!p || typeof p !== 'object') continue;
+    const persona = allPersonaIds().indexOf(p.persona) !== -1 ? p.persona : 'media';
+    let w = CHAT_WINDOWS[persona];
+    if (!w) {
+      w = openAgentWindow(persona, { quiet: true });
+      // the history load draws the stored line and the running card
+      if (w && w.historyLoaded) { try { await w.historyLoaded; } catch (e) { /* drawn below anyway */ } }
+      if (p.card && w && !w.msgsEl.querySelector(`.chat-action[data-action-id="${Number(p.card.id)}"]`)) appendActionCard(persona, p.card);
+      continue;
+    }
+    if (w.historyLoaded) { try { await w.historyLoaded; } catch (e) { /* shown anyway */ } }
+    const bots = w.msgsEl.querySelectorAll('.support-msg.bot');
+    const last = bots.length ? bots[bots.length - 1].textContent : '';
+    // "already running" typed here: the reply above IS that line — never twice
+    const saidHere = p.state === 'already_running' && persona === from;
+    if (p.line && !saidHere && last !== p.line) appendMsg(w.msgsEl, p.line, 'bot');
+    if (p.card) appendActionCard(persona, p.card);
+    if (w.minimized) {
+      // the agent is speaking: its window comes back up (focus stays where the manager is)
+      w.minimized = false; w.root.classList.remove('minimized'); saveChatRow();
+    }
+  }
 }
 
 // When the card was created, and when + by whom it was decided (UTC from
@@ -7515,6 +7565,8 @@ function paintActionProgress(el, progress) {
   const left = document.createElement('div');
   left.className = 'pbar-left';
   box.append(bar, left);
+  // A step that failed: its reason right next to the bar, as it happens
+  appendBarProblems(box, progress.problems);
   // Stop, at ANY stage (core/agent_actions.stop_action): the server decides
   // what a stop can still cut and the card shows its one line
   const stopInfo = progress.stop || {};
@@ -7527,7 +7579,7 @@ function paintActionProgress(el, progress) {
     stopBtn.onclick = () => stopActionRun(el, runId, stopBtn);
     box.appendChild(stopBtn);
   }
-  el._progress = { ...progress, seenAt: Date.now() };
+  el._progress = { ...progress, seenAt: Date.now(), maxPct: (el._progress || {}).maxPct || 0 };
   paintActionBar(el);
   if (!el._barTimer) {
     el._barTimer = setInterval(() => {
@@ -7544,6 +7596,17 @@ function actionBarState(p, now) {
   const elapsed = isNaN(started) ? 0 : Math.max(0, (now - started) / 1000);
   const stopUntil = Date.parse((p && p.stop_until) || '');
   const stopHint = !isNaN(stopUntil) && now < stopUntil;
+  if (p && p.determinate) {
+    // A post's production (core/production_progress): the server's REAL,
+    // time-weighted fraction — never extrapolated here, never backwards
+    // (maxPct = the highest this card has shown). Elapsed always; remaining
+    // only when the server measured enough runs, and marked an estimate.
+    const since = Number(p.seenAt) > 0 ? Math.max(0, (now - Number(p.seenAt)) / 1000) : 0;
+    const pct = Math.max(Number(p.maxPct) || 0, Math.round(Math.min(1, Math.max(0, Number(p.fraction) || 0)) * 100));
+    const left = p.remaining_s == null ? null : Math.max(0, Number(p.remaining_s) - since);
+    return { pct, leftS: left, stopHint, determinate: true, estimated: left != null,
+             elapsedS: Math.max(0, Number(p.elapsed_s) || 0) + (p.frozen ? 0 : since) };
+  }
   if (p && typeof p.fraction === 'number' && p.fraction >= 0) {
     const f = Math.min(1, p.fraction);
     const leftS = f > 0.05 && elapsed > 0 ? elapsed * (1 - f) / f : null;
@@ -7561,6 +7624,16 @@ function paintActionBar(el) {
   if (!bar || !left) return;
   const t = uallakI18n.t, st = actionBarState(p, Date.now());
   const fill = bar.firstChild;
+  if (st.determinate) {
+    bar.classList.remove('indet');
+    bar.classList.add('det');
+    p.maxPct = st.pct;                        // never backwards on this card
+    fill.style.width = st.pct + '%';
+    bar.setAttribute('aria-valuenow', String(st.pct));
+    left.textContent = prodBarLine(st, p.frozen);
+    if (p.frozen && el._barTimer) { clearInterval(el._barTimer); el._barTimer = null; }
+    return;
+  }
   if (p.stalled) {
     bar.classList.remove('indet');
     left.textContent = '';
@@ -7610,9 +7683,57 @@ async function stopActionRun(el, id, btn) {
   else if (r.message) el.querySelector('.note').textContent = r.message;
 }
 
+// m:ss, 0:00 at the start (never "unknown")
+function fmtClock(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+// "42% · 1:05 elapsed · about 2:10 left (estimate)" — the estimate only when measured
+function prodBarLine(st, frozen) {
+  const t = uallakI18n.t;
+  let line = st.pct + '% · ' + t('prod_elapsed', { t: fmtClock(st.elapsedS) });
+  if (st.leftS != null && !frozen) line += ' · ' + t('prod_left_estimate', { t: fmtClock(st.leftS) });
+  return line;
+}
+
+function appendBarProblems(box, problems) {
+  const list = Array.isArray(problems) ? problems.filter(x => typeof x === 'string' && x) : [];
+  if (!list.length) return;
+  const ul = document.createElement('ul');
+  ul.className = 'pbar-problems';
+  list.slice(0, 6).forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+  box.appendChild(ul);
+}
+
+// A production that ended short (partial / failed / stopped): the bar stays
+// exactly where it stopped, frozen, with each failed step's reason beside it
+function paintFrozenBar(el, final) {
+  const old = el.querySelector('.progress');
+  const maxPct = ((el._progress || {}).maxPct) || 0;
+  if (old) old.remove();
+  const box = document.createElement('div');
+  box.className = 'progress frozen';
+  box.dataset.state = String(final.state || '');
+  if (final.text) { const step = document.createElement('div'); step.textContent = final.text; box.appendChild(step); }
+  const bar = document.createElement('div');
+  bar.className = 'pbar det';
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
+  bar.appendChild(document.createElement('i'));
+  const left = document.createElement('div');
+  left.className = 'pbar-left';
+  box.append(bar, left);
+  appendBarProblems(box, final.problems);
+  el.insertBefore(box, el.querySelector('.note'));
+  el._progress = { ...final, determinate: true, frozen: true, remaining_s: null, seenAt: Date.now(), maxPct };
+  paintActionBar(el);
+}
+
 function finishActionCard(el, c) {
   const box = el.querySelector('.progress');
-  if (box) box.remove();   // the bar never stays behind on an ended card
+  if (c.progress_final && c.progress_final.state && c.progress_final.state !== 'done') paintFrozenBar(el, c.progress_final);
+  else if (box) box.remove();   // finished well: the bar never stays behind
   el.classList.remove('awaiting');
   el.classList.toggle('failed', c.status === 'failed' || c.status === 'expired');
   el.classList.toggle('stuck', !!c.stuck);
@@ -7667,6 +7788,8 @@ function watchActionCard(el, id) {
       console.error('action status failed', e);
     }
     delay = Math.min(delay * 1.5, 30000);
+    // A real progress bar (a post's production) stays current: at most 5 s apart
+    if ((el._progress || {}).determinate) delay = Math.min(delay, 5000);
     setTimeout(tick, delay);
   };
   setTimeout(tick, delay);
@@ -7914,6 +8037,8 @@ async function decideAction(id, decision, el, personaId, staffAction = false, ch
   // linkify() escapes first — the outcome may carry a link (YouTube Studio)
   note.innerHTML = linkify(r.message || '');
   if (r.status === 'done' && decision === 'approve') celebrateTask(el, id);
+  // Approving social items started their production: shown in the producer's chat now
+  if (r.productions) showProductionInChat(r.productions);
   // An explained refusal may come with the card that fixes it (e.g. a TikTok
   // send that needs a reconnect → the reconnect card, right below)
   if (r.next_card && personaId) appendActionCard(personaId, r.next_card);
@@ -8510,6 +8635,9 @@ async function sendInWindow(personaId, extra) {
       appendMsg(w.msgsEl, data.reply, data.needs_human_followup ? 'escalated' : 'bot');
       if (data.action) appendActionCard(personaId, data.action);
       if (data.next_card) appendActionCard(personaId, data.next_card);
+      // A typed yes that started production (or found it already running):
+      // the producer's chat shows the line + running card
+      if (data.productions && data.productions.length) showProductionInChat(data.productions, { fromWindow: personaId });
       if (data.poll) watchForAgentPost(personaId);
       chatTypingToBottom(w);
     } else {
@@ -9652,8 +9780,9 @@ function socialPostBody(item) {
     ? `<label class="soc-meta"><b>${esc(t('soc_caption'))}</b></label><textarea data-soc-caption maxlength="2200" dir="auto">${esc(item.caption)}</textarea>`
     : `<div class="soc-caption${item.caption ? '' : ' empty'}" dir="auto">${esc(item.caption || t('soc_no_caption'))}</div>`;
   const prod = p.production || {};
-  const prodLine = prod.state && prod.state !== 'waiting_copy'
-    ? `<div class="soc-meta">${esc(t('soc_post_prod_' + prod.state, { made: prod.made || 0, not_made: prod.not_made || 0 }))}</div>` : '';
+  const prodLine = (prod.state && prod.state !== 'waiting_copy'
+    ? `<div class="soc-meta">${esc(t('soc_post_prod_' + prod.state, { made: prod.made || 0, not_made: prod.not_made || 0 }))}</div>` : '')
+    + socialProdBar(item.id, prod);
   return `<div class="soc-post">
       <div class="plan-note">${esc(p.stage_text || '')}</div>
       <div class="soc-meta"><b>${esc(t('soc_post_format'))}:</b> ${esc(p.post_format || '')} — <bdi dir="auto">${esc(p.format_reason || '')}</bdi></div>
@@ -9664,6 +9793,28 @@ function socialPostBody(item) {
       ${editing ? `<div class="soc-actions">
           <button type="button" class="sugg-btn approve" data-soc-copysave="${esc(item.id)}">${esc(t('soc_save'))}</button>
           <button type="button" class="media-chip" data-soc-cancel>${esc(t('soc_cancel'))}</button></div>` : ''}
+    </div>`;
+}
+
+// The production card's bar: the SAME determinate bar as the chat card
+// (core/production_progress via social_queue._production_view) — while it
+// runs, and frozen with the reasons when it ended short. Never backwards:
+// the highest shown per post is kept across refreshes.
+const SOCIAL_PROD_MAX = {};
+function socialProdBar(itemId, prod) {
+  const pr = prod && prod.progress;
+  if (!pr || typeof pr !== 'object') return '';
+  const frozen = prod.state !== 'running';
+  const st = actionBarState({ ...pr, determinate: true, frozen, seenAt: Date.now(),
+                              maxPct: SOCIAL_PROD_MAX[itemId] || 0 }, Date.now());
+  if (frozen && prod.state === 'done') return '';
+  SOCIAL_PROD_MAX[itemId] = st.pct;
+  const problems = (pr.problems || []).filter(x => typeof x === 'string' && x).slice(0, 6);
+  return `<div class="soc-prod${frozen ? ' frozen' : ''}" data-soc-prod="${esc(itemId)}">
+      ${pr.text ? `<div class="soc-meta">${esc(pr.text)}</div>` : ''}
+      <div class="pbar det" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${st.pct}"><i style="width:${st.pct}%"></i></div>
+      <div class="pbar-left">${esc(prodBarLine(st, frozen))}</div>
+      ${problems.length ? `<ul class="pbar-problems">${problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     </div>`;
 }
 
@@ -9858,8 +10009,11 @@ let socialDesignPoll = 0;
 function socialWatchDesigns() {
   // A redesign runs in the background: refresh until no design is "revising"
   clearTimeout(socialDesignPoll);
-  if (social.items.some(i => i.kind === 'design' && (i.design || {}).state === 'revising')) {
-    socialDesignPoll = setTimeout(() => loadSocial(), 4000);
+  // … and while a post's production runs: its bar stays current
+  if (social.items.some(i => (i.kind === 'design' && (i.design || {}).state === 'revising')
+                          || (i.kind === 'post' && ((i.post || {}).production || {}).state === 'running'))) {
+    // never while the manager is editing an item: the redraw would drop their typing
+    socialDesignPoll = setTimeout(() => (social.editing ? socialWatchDesigns() : loadSocial()), 4000);
   }
 }
 
@@ -10092,6 +10246,9 @@ function socialOpenBatch(ids) {
       items.forEach(i => social.selected.delete(i.id));
       showNotice(t('soc_approved_done', { n }), 'success', { key: 'social-approve:' + items.map(i => i.id).join(','), group: 'social' });
       socialNote(t('soc_approved_done', { n }));
+      // The approval itself started production: the producer says so in its
+      // chat now, with the running card and its real bar
+      showProductionInChat(data.productions);
     });
     if (ok) close(); else go.disabled = false;
   };

@@ -175,6 +175,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `post_brief.assert_copy_free` fails the call if the prompt carries them or any Hebrew; text_slide is never sent
   to a model. The COPY waits in the Social tab (`social_queue` kind "post", never
   publishable); its approval starts production. Objections: 2 rounds then the manager. `tests/test_post_brief.py`.
+  **Approval → production in the chat (2026-11-25, docs/POST-BRIEF.md §11-12):** every approval route goes through
+  `post_pipeline.start(report=)` and returns `productions` (line + running card); the dashboard's `showProductionInChat`
+  draws them in the producer's window at once. Never two runs (`running_card`); "אישרתי" → `chat_approval.already_running`;
+  can't start → said with the reason (`start_failed`). The card's bar is DETERMINATE (`core/production_progress`: real
+  steps, weights = measured medians, never backwards, step line, elapsed, estimate only when measured, frozen on failure).
   **Text slides are DRAWN (2026-11-23, docs/SLIDE-RENDERER.md):** Pillow + raqm (libfribidi0 in the Dockerfile),
   bundled Rubik/Assistant (`assets/fonts`), RTL anchored right. The agent DESIGNS by writing a JSON spec
   (`knowledge/slide-spec.schema.json`, colours = roles from the brief's palette, core/brand_brief; neutral where none) — never code;
