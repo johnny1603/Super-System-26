@@ -85,8 +85,14 @@ class Harness(unittest.TestCase):
             lambda cid, brief, palette, platform="instagram": {"success": True, "kind": "image",
                                                                "file_id": "FILE_ok_0123456789", "credits": 1}))
         self.designed = []
-        self.patch(slide_design, "open_for_post", lambda cid, it, slides, lang="he": self.designed.append(slides) or (
-            design if design is not None else {"item": {"id": "design0001"}, "problems": [], "character_errors": []}))
+        def opened(cid, it, slides, lang="he"):
+            self.designed.append(slides)
+            out = dict(design if design is not None else {"item": {"id": "design0001"}, "problems": [], "character_errors": []})
+            if out.get("item") and not out.get("problems"):
+                # the real open_for_post returns what each slide's render drew (core/render_manifest)
+                out.setdefault("manifests", [{"asset_id": s["asset_id"], "layers": []} for s in slides])
+            return out
+        self.patch(slide_design, "open_for_post", opened)
         pp.start(27, sq.approve(27, [item_id]))
         return sq.get(27, item_id)["production"]
 
@@ -185,18 +191,25 @@ class ExplicitColours(Harness):
 # ─── 3. A failed production is said, never "done" ────────────────────────────
 
 class FailureIsSaid(Harness):
-    def test_maya_not_drawn_is_partial_and_named_in_the_line(self):
+    def test_maya_not_drawn_FAILS_by_name(self):
+        # 2026-11-26 (knowledge/client-governance.md §8): declared in the brief and
+        # absent from the render = FAILED — never a "partial" that reads like completion
         msg = ac.failure_text("maya", ac.CharacterUnavailable("maya", "not_configured"))
+        line = f"שקופית 1: הדמות של מאיה הוגדרה לפוסט ולא צוירה. {msg}"
         item = self.queue()["queued"]
-        production = self.approve(item["id"], design={"item": {"id": "design0001"}, "problems": [],
-                                                      "character_errors": [msg, msg]})
-        self.assertEqual(production["state"], "partial")                     # the slides exist, Maya doesn't
-        self.assertEqual(production["problems"], [f"• {msg}"])
+        production = self.approve(item["id"], design={
+            "item": {"id": "design0001"}, "problems": [], "character_errors": [msg, msg],
+            "missing": [{"type": "character", "id": "maya", "slide": 1, "asset_id": "s1", "reason": "not_configured",
+                         "line": line}]})
+        self.assertEqual(production["state"], "failed")
+        self.assertEqual(production["problems"], [f"• {line}"])
+        self.assertEqual([m["id"] for m in production["missing"]], ["maya"])
+        self.assertFalse(production["design"]["ok"])
         last = self.lines[-1][1]
         self.assertIn(msg, last)
-        self.assertIn("לא הצליחה במלואה", last)
-        self.assertIn("אפשר להריץ את ההפקה שוב", last)
-        self.assertNotIn("הסתיימה:", last)                                   # never the "produced" line
+        self.assertIn("אי אפשר לאשר אותו כמו שהוא", last)
+        self.assertNotIn("הסתיימה", last)                                    # never the "produced" line
+        self.assertNotIn("לא הצליחה במלואה", last)                           # … nor the "partly worked" one
 
     def test_everything_failed_says_what_and_why(self):
         item = self.queue()["queued"]

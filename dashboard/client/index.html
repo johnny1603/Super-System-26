@@ -3241,6 +3241,9 @@ const DASH_I18N = {
   av_biz_deleted: { he:'הדמות נמחקה.', en:'The character was deleted.', fr:'Le personnage a été supprimé.', ar:'تم حذف الشخصية.', ru:'Персонаж удалён.' },
   av_biz_full: { he:'יש לעסק {n} דמויות — זה המספר המרבי. אפשר למחוק אחת כדי ליצור חדשה.', en:'Your business has {n} characters — the maximum. Delete one to create another.', fr:'Votre entreprise a {n} personnages — le maximum. Supprimez-en un pour en créer un autre.', ar:'لدى عملكم {n} شخصيات — الحد الأقصى. احذفوا واحدة لإنشاء أخرى.', ru:'У вашего бизнеса {n} персонажей — это максимум. Удалите одного, чтобы создать нового.' },
   av_biz_connect: { he:'לחיבור החשבון ליצירת מדיה', en:'Connect the media creation account', fr:'Connecter le compte de création média', ar:'ربط حساب إنشاء الوسائط', ru:'Подключить аккаунт создания медиа' },
+  soc_design_no_character: { he:'להמשיך בלי הדמות', en:'Continue without the character', fr:'Continuer sans le personnage', ar:'المتابعة بلا الشخصية', ru:'Продолжить без персонажа' },
+  soc_design_no_character_done: { he:'העיצוב ממשיך בלי הדמות — עכשיו אפשר לאשר אותו.', en:'The design continues without the character — you can approve it now.', fr:'Le design continue sans le personnage — vous pouvez le valider.', ar:'يتابع التصميم بلا الشخصية — يمكنكم اعتماده الآن.', ru:'Дизайн продолжается без персонажа — теперь его можно одобрить.' },
+  soc_element_missing: { he:'אי אפשר לאשר: משהו שהוגדר לפוסט לא צויר. הפרטים על הכרטיס.', en:'Cannot approve: something the post asked for was not drawn. See the card.', fr:'Validation impossible : un élément prévu n’a pas été dessiné. Voir la carte.', ar:'لا يمكن الاعتماد: عنصر مطلوب للمنشور لم يُرسم. التفاصيل على البطاقة.', ru:'Одобрить нельзя: заявленный элемент не нарисован. Подробности на карточке.' },
   soc_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
   soc_copy: { he:'העתקת הכיתוב', en:'Copy caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
   soc_copied: { he:'הכיתוב הועתק.', en:'Caption copied.', fr:'Légende copiée.', ar:'تم نسخ النص.', ru:'Подпись скопирована.' },
@@ -10420,8 +10423,13 @@ function socialDesignRow(item) {
   const specLines = (d.spec_lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('');
   const notes = (d.critiques || []).map(c => `<li><bdi dir="auto">${esc(c.text)}</bdi></li>`).join('');
   const acts = [];
-  if (waiting && !ADMIN_VIEW && !revising) {
+  // A design whose render lacks something the post declared is FAILED: it has
+  // no approve button — only the ways out (approve a pose, or go on without)
+  if (waiting && !ADMIN_VIEW && !revising && !d.blocked) {
     acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_design_approve'))}</button>`);
+  }
+  if (waiting && !ADMIN_VIEW && !revising && d.blocked && d.can_drop_character) {
+    acts.push(`<button type="button" class="media-chip" data-soc-nochar="${esc(item.id)}">${esc(t('soc_design_no_character'))}</button>`);
   }
   if (!ADMIN_VIEW) acts.push(socialDeleteBtn(item));
   const crit = waiting && !ADMIN_VIEW && !revising ? `<div class="soc-design-crit">
@@ -10445,6 +10453,8 @@ function socialDesignRow(item) {
       ${(d.problem_lines || []).length ? d.problem_lines.map(l => `<div class="soc-flag warn">${esc(l)}</div>`).join('')
         : (d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : '')}
       ${d.last_failure ? `<div class="soc-flag warn">${esc(t('soc_design_failed_last', { why: d.last_failure }))}</div>` : ''}
+      ${d.blocked ? `<div class="soc-flag warn"><b>${esc(d.blocked_text || '')}</b></div>` : ''}
+      ${(d.missing_lines || []).map(l => `<div class="soc-flag warn"><bdi dir="auto">${esc(l)}</bdi></div>`).join('')}
       ${(item.flags || []).map(f => `<div class="soc-flag${f.code === 'character_needs_approval' || f.code === 'character_unavailable' ? ' warn' : ''}">${esc(f.text)}</div>`).join('')}
       ${socialAvatarsLink(item)}
       <details class="soc-design-spec"><summary>${esc(t('soc_design_spec'))}</summary><ul>${specLines}</ul>
@@ -10542,6 +10552,7 @@ function wireSocial(list) {
   // a carousel is decided as one: approve / delete take every slide of the card
   on('data-soc-approve', id => socialOpenBatch(socialGroupIds(id, 'waiting').length ? socialGroupIds(id, 'waiting') : [id]));
   on('data-soc-del', id => socialOpenDelete(socialGroupIds(id).length ? socialGroupIds(id) : [id]));
+  on('data-soc-nochar', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/design/without-character', {}, 'soc_design_no_character_done'));
   on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
   on('data-soc-cancel', () => { social.editing = ''; social.rejecting = ''; renderSocial(); });
@@ -10743,7 +10754,7 @@ async function socialPost(url, body, okKey, onOk) {
     if (!res.ok || !j.success) {
       const code = ((j && j.detail) || {}).code || '';
       socialNote(t(/CHANNEL|NO_CHANNEL/.test(code) ? 'soc_bad_channel' : /DATE/.test(code) ? 'soc_bad_date'
-                   : /REASON/.test(code) ? 'soc_reason_needed' : 'soc_failed'));
+                   : /REASON/.test(code) ? 'soc_reason_needed' : /ELEMENT_MISSING/.test(code) ? 'soc_element_missing' : 'soc_failed'));
       return false;
     }
     if (okKey) socialNote(t(okKey));

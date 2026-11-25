@@ -7121,6 +7121,21 @@ def client_social_design_critique(item_id: str, req: SocialCritiqueRequest, requ
         raise
     return {"success": True, "data": {"id": item.get("id", item_id), "state": (item.get("design") or {}).get("state")}}
 
+@app.post("/api/client/social/{item_id}/design/without-character")
+def client_social_design_without_character(item_id: str, request: Request):
+    # A design that FAILED because a declared character was not drawn: the
+    # client decides to go on without it. The declaration changes (recorded on
+    # the item) and the card can be approved. Nothing is generated.
+    client_id = _require_session(request)
+    _social_read_only(request)
+    from core import slide_design, social_queue
+    try:
+        item = slide_design.without_character(client_id, item_id, by="client")
+    except social_queue.QueueError as e:
+        raise _social_error(e)
+    log_activity(client_id, "social_queue", "design_without_character", {"item_id": item_id}, {})
+    return {"success": True, "data": {"id": item.get("id", item_id), "state": (item.get("design") or {}).get("state")}}
+
 @app.get("/api/client/social/{item_id}/slide/{n}")
 def client_social_slide_preview(item_id: str, n: int, request: Request):
     # One slide of a design under review, DRAWN now from its spec (milliseconds,

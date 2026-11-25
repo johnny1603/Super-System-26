@@ -246,7 +246,7 @@ def next_weekday(day_index: int, after: date = None) -> str:
 def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", planned_date: str = "",
         producer: str = "media", source: str = "chat", title: str = "", replaces: str = "",
         plan_ref: dict = None, flags: list = None, post_ref: dict = None, real_asset: dict = None,
-        characters: list = None) -> dict:
+        characters: list = None, manifest: dict = None) -> dict:
     """One item waiting for the owner. The same Drive file already waiting or
     approved is NOT queued twice (that item is returned)."""
     file_id = str(file_id or "").strip()
@@ -283,6 +283,11 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         # A REAL file from the client's connected Drive folder (core/drive_assets):
         # the card shows its folder + role
         item["real_asset"] = {k: str(real_asset.get(k) or "")[:300] for k in REAL_ASSET_KEYS}
+    if isinstance(manifest, dict) and manifest.get("layers") is not None:
+        # What was ACTUALLY drawn into this file (core/render_manifest) — the only
+        # source for what the card, the agents and the AI notice say about it
+        item["manifest"] = {"canvas": list(manifest.get("canvas") or []), "encoded": bool(manifest.get("encoded")),
+                            "layers": [l for l in manifest["layers"] if isinstance(l, dict)][:24]}
     queue.append(item)
     _save(client_id, queue)
     return item
@@ -306,11 +311,28 @@ FLAG_TEXT = {
                                 "Diapositive texte : dessinée avec une vraie police selon le design de marque (soumis à votre accord) — jamais envoyée à un modèle d'image",
                                 "شريحة نصية: تُكتب بخط حقيقي حسب تصميم العلامة (يصلكم التصميم للموافقة) — لا تُرسل إلى نموذج صور",
                                 "Текстовый слайд: набирается настоящим шрифтом по дизайну бренда (дизайн придёт на одобрение) — не отправляется в модель изображений"),
-    "ai_person_forbidden": _five("שימו לב: תקציר המותג שלכם אומר בלי אנשים שנוצרו ב-AI — והפוסט הזה כולל דמות של סוכן שנוצרה ב-AI. ההחלטה שלכם.",
-                                 "Note: your brand brief says no AI-generated people — this post includes an AI-generated agent character. Your call.",
-                                 "Attention : votre brief de marque exclut les personnes générées par IA — ce post contient un personnage d'agent généré par IA. À vous de décider.",
-                                 "انتبهوا: موجز العلامة يقول بلا أشخاص مولَّدين بالذكاء الاصطناعي — وهذا المنشور فيه شخصية وكيل مولَّدة. القرار لكم.",
-                                 "Внимание: в брифе бренда сказано «без людей, созданных ИИ» — в этом посте есть персонаж-агент, созданный ИИ. Решать вам."),
+    # true before anything is drawn and after: a statement about the brief and about agent characters
+    "ai_person_forbidden": _five("שימו לב: תקציר המותג שלכם אומר בלי אנשים שנוצרו ב-AI, ודמות של סוכן היא דמות שנוצרה ב-AI. ההחלטה שלכם.",
+                                 "Note: your brand brief says no AI-generated people, and an agent's character is AI-generated. Your call.",
+                                 "Attention : votre brief de marque exclut les personnes générées par IA, et le personnage d'un agent est généré par IA. À vous de décider.",
+                                 "انتبهوا: موجز العلامة يقول بلا أشخاص مولَّدين بالذكاء الاصطناعي، وشخصية الوكيل مولَّدة بالذكاء الاصطناعي. القرار لكم.",
+                                 "Внимание: в брифе бренда сказано «без людей, созданных ИИ», а персонаж агента создан ИИ. Решать вам."),
+    # the AI notices below are NEVER stored from a brief: they are rebuilt from the render manifest (_true_flags)
+    "ai_content": _five("התמונה נוצרה ב-AI: ברוב הרשתות צריך לסמן את הפוסט כתוכן AI כשמפרסמים",
+                        "This picture is AI-generated: most platforms need the post marked as AI content when you publish",
+                        "Cette image est générée par IA : la plupart des réseaux demandent de marquer le post comme contenu IA",
+                        "هذه الصورة مولَّدة بالذكاء الاصطناعي: معظم المنصات تطلب وسم المنشور كمحتوى AI عند النشر",
+                        "Изображение создано ИИ: большинство платформ требуют пометить пост как ИИ-контент при публикации"),
+    "character_planned": _five("מתוכננת כאן דמות שנוצרה ב-AI. עוד לא צויר כלום — אם היא תצויר, נכתוב על הפוסט המוכן שצריך לסמן אותו כתוכן AI.",
+                               "An AI-generated character is planned here. Nothing is drawn yet — if it is drawn, the finished post will say it needs an AI-content label.",
+                               "Un personnage généré par IA est prévu ici. Rien n'est encore dessiné — s'il l'est, le post fini indiquera qu'il faut le marquer comme contenu IA.",
+                               "مخطَّط هنا لشخصية مولَّدة بالذكاء الاصطناعي. لم يُرسم شيء بعد — إن رُسمت، سيُذكر على المنشور الجاهز أنه يحتاج وسم محتوى AI.",
+                               "Здесь запланирован персонаж, созданный ИИ. Пока ничего не нарисовано — если он появится, на готовом посте будет указано, что нужна пометка ИИ-контента."),
+    "character_not_drawn": _five("הדמות שתוכננה כאן לא צוירה — בשקופית הזו אין דמות.",
+                                 "The character planned here was not drawn — this slide has no character.",
+                                 "Le personnage prévu ici n'a pas été dessiné — cette diapositive n'a pas de personnage.",
+                                 "الشخصية المخطَّطة هنا لم تُرسم — لا شخصية في هذه الشريحة.",
+                                 "Запланированный здесь персонаж не нарисован — на этом слайде персонажа нет."),
     "ai_label": _five("כולל דמות שנוצרה ב-AI: ברוב הרשתות צריך לסמן את הפוסט כתוכן AI כשמפרסמים",
                       "Includes an AI-generated character: most platforms need the post marked as AI content when you publish",
                       "Contient un personnage généré par IA : la plupart des réseaux demandent de marquer le post comme contenu IA",
@@ -326,21 +348,21 @@ FLAG_TEXT = {
                                     "Le personnage touche le texte — vérifiez la lisibilité, ou demandez à le déplacer.",
                                     "الشخصية تلامس النص — تأكدوا أن كل شيء مقروء، أو اطلبوا تحريكها.",
                                     "Персонаж задевает текст — проверьте читаемость или попросите его сдвинуть."),
-    "character_unavailable": _five("הדמות של הסוכן לא צוירה בחלק מהשקופיות (הדמות לא זמינה כרגע) — הצוות קיבל הודעה",
-                                   "The agent's character was not drawn on some slides (not available right now) — the team was told",
-                                   "Le personnage de l'agent n'a pas été dessiné sur certaines diapositives (indisponible pour l'instant) — l'équipe est prévenue",
-                                   "لم تُرسم شخصية الوكيل في بعض الشرائح (غير متاحة حاليًا) — أُبلغ الفريق",
-                                   "Персонаж агента не нарисован на некоторых слайдах (сейчас недоступен) — команда в курсе"),
+    "character_unavailable": _five("העיצוב נעצר: הדמות של הסוכן לא צוירה (היא לא זמינה כרגע) והצוות קיבל הודעה. אפשר להמשיך בלי הדמות.",
+                                   "This design is on hold: the agent's character was not drawn (not available right now) and the team was told. You can continue without the character.",
+                                   "Ce design est en attente : le personnage de l'agent n'a pas été dessiné (indisponible pour l'instant), l'équipe est prévenue. Vous pouvez continuer sans le personnage.",
+                                   "هذا التصميم متوقف: لم تُرسم شخصية الوكيل (غير متاحة حاليًا) وأُبلغ الفريق. يمكنكم المتابعة بلا الشخصية.",
+                                   "Дизайн приостановлен: персонаж агента не нарисован (сейчас недоступен), команда в курсе. Можно продолжить без персонажа."),
     "low_resolution": _five("התמונה הזו קטנה מהגודל שהרשתות מפרסמות בו — היא תיראה מטושטשת. הצוות קיבל הודעה.",
                             "This image is smaller than the size the platforms publish at — it will look soft. The team was told.",
                             "Cette image est plus petite que la taille de publication des réseaux — elle paraîtra floue. L'équipe est prévenue.",
                             "هذه الصورة أصغر من الحجم الذي تنشر به المنصات — ستبدو غير واضحة. أُبلغ الفريق.",
                             "Это изображение меньше размера, в котором публикуют платформы — оно будет нечётким. Команда в курсе."),
-    "character_needs_approval": _five("הדמות לא צוירה: אין עדיין פוזה שאישרתם. מאשרים פוזות בעמוד אווטרים, ואז מפיקים שוב.",
-                                      "The character was not drawn: there is no pose you approved yet. Approve poses on the Avatars page, then produce again.",
-                                      "Le personnage n'a pas été dessiné : aucune pose approuvée pour l'instant. Approuvez des poses dans la page Avatars, puis relancez.",
-                                      "لم تُرسم الشخصية: لا توجد وضعية وافقتم عليها بعد. وافقوا على وضعيات في صفحة الأفاتارات ثم أعيدوا الإنتاج.",
-                                      "Персонаж не нарисован: пока нет одобренной вами позы. Одобрите позы на странице «Аватары» и запустите снова."),
+    "character_needs_approval": _five("העיצוב נעצר: הדמות לא צוירה כי אין עדיין תנוחה שאישרתם. מאשרים תנוחה בעמוד אווטרים והעיצוב מתעדכן לבד, או ממשיכים בלי הדמות.",
+                                      "This design is on hold: the character was not drawn because you have not approved a pose yet. Approve one on the Avatars page and the design updates by itself, or continue without the character.",
+                                      "Ce design est en attente : le personnage n'a pas été dessiné, faute de pose approuvée. Approuvez-en une dans la page Avatars et le design se met à jour, ou continuez sans le personnage.",
+                                      "هذا التصميم متوقف: لم تُرسم الشخصية لأنكم لم تعتمدوا وضعية بعد. اعتمدوا وضعية في صفحة الأفاتارات فيتحدّث التصميم تلقائيًا، أو تابعوا بلا الشخصية.",
+                                      "Дизайн приостановлен: персонаж не нарисован, потому что вы ещё не одобрили позу. Одобрите позу на странице «Аватары» — дизайн обновится сам, или продолжайте без персонажа."),
     "needs_real_asset": _five("צריך כאן תמונה אמיתית של עבודה שלכם — היא לא נוצרת במחשב",
                               "This needs a real photo of your work — it is not generated",
                               "Il faut ici une vraie photo de votre travail — elle n'est pas générée",
@@ -536,6 +558,63 @@ def add_design(client_id: int, design: dict, title: str = "", channels=None, cap
     return item
 
 
+def add_flags(client_id: int, item_id: str, flags: list) -> dict:
+    """Notices that became true join the card (never twice). {} when the item is gone."""
+    queue = _load(client_id)
+    item = next((i for i in queue if i["id"] == str(item_id)), None)
+    if not item:
+        return {}
+    item["flags"] = list(dict.fromkeys((item.get("flags") or []) + [f for f in flags or [] if f in FLAG_TEXT]))[:6]
+    _save(client_id, queue)
+    return item
+
+
+def design_blocked(item: dict) -> bool:
+    """A design whose render lacks something the brief declared (core/slide_design):
+    it cannot be approved as it is — a post never goes out claiming what it lacks."""
+    d = (item or {}).get("design") or {}
+    return (item or {}).get("kind") == DESIGN_KIND and (
+        bool(d.get("missing")) or any(s.get("wants_character") for s in d.get("slides") or []))
+
+
+AI_CODES = ("ai_label", "ai_content")
+
+
+def true_flags(item: dict) -> list:
+    """An item's notices with the AI disclosure REBUILT from what was drawn
+    (its render manifest; before manifests existed: the pose its own render
+    carried) — if and only if a generated element is in it. Never the brief."""
+    from core import render_manifest
+    kept = [f for f in item.get("flags") or [] if f not in AI_CODES and f in FLAG_TEXT]
+    if item.get("kind") == DESIGN_KIND:
+        d = item.get("design") or {}
+        ai = render_manifest.disclosure(list(d["manifests"])) if d.get("manifests") is not None else (
+            ["ai_label"] if any((s.get("character") or {}).get("pose_id") for s in d.get("slides") or []) else [])
+    elif item.get("manifest") is not None:
+        ai = render_manifest.disclosure(item["manifest"])
+    else:
+        ai = ["ai_label"] if item.get("characters") else []
+    if "ai_label" not in ai:
+        kept = [f for f in kept if f != "ai_person_forbidden"]
+    return kept + ai
+
+
+def drawn_by_post(queue: list) -> dict:
+    """{post_id: {asset_id: manifest}} — what was drawn for each asset of each
+    post: its waiting design's manifests, then (winning) its finished files'."""
+    out = {}
+    for i in queue:
+        d = i.get("design") or {}
+        if i.get("kind") == DESIGN_KIND and d.get("post_id") and i.get("status") in ("waiting", "approved"):
+            for m in d.get("manifests") or []:
+                out.setdefault(d["post_id"], {})[m.get("asset_id", "")] = m
+    for i in queue:
+        ref = i.get("post_ref") or {}
+        if ref.get("post_id") and i.get("manifest") is not None and i.get("status") != "rejected":
+            out.setdefault(ref["post_id"], {})[ref.get("asset_id", "")] = i["manifest"]
+    return out
+
+
 def drop_flag(client_id: int, item_id: str, flag: str) -> dict:
     """A notice that no longer holds leaves the card. {} when the item is gone."""
     queue = _load(client_id)
@@ -589,12 +668,31 @@ def copy_fit(client_id: int, item: dict, lang: str) -> dict:
         return {}
 
 
-def _post_view(item: dict, lang: str, client_id: int = None) -> dict:
+def _slide_flags(s: dict, drawn) -> list:
+    """One slide's notices on the post card. Before a render exists: the PLAN
+    ("a character is planned"). Once it does: only what the manifest holds —
+    the AI notice iff a generated element was drawn, and "not drawn" when the
+    planned character is absent."""
+    from core import render_manifest
+    kept = [f for f in s.get("flags") or [] if f not in AI_CODES + ("character_planned", "character_not_drawn")]
+    wanted = [str(c) for c in s.get("characters") or []]
+    if drawn is None:
+        return kept + (["character_planned"] if wanted else [])
+    shown = render_manifest.characters(drawn)
+    if not shown:
+        kept = [f for f in kept if f != "ai_person_forbidden"]
+    return kept + render_manifest.disclosure(drawn) + (["character_not_drawn"] if set(wanted) - set(shown) else [])
+
+
+def _post_view(item: dict, lang: str, client_id: int = None, drawn: dict = None) -> dict:
+    from core import render_manifest
     post = item.get("post") or {}
     fit = copy_fit(client_id, item, lang)
     slides = []
     for n, s in enumerate(post.get("slides") or [], 1):
-        slides.append({"asset_id": s["asset_id"], "n": n, "role": s["role"],
+        manifest = (drawn or {}).get(s["asset_id"])
+        s = {**s, "flags": _slide_flags(s, manifest)}
+        slides.append({"asset_id": s["asset_id"], "n": n, "role": s["role"], "drawn": render_manifest.facts(manifest),
                        "role_text": pick(COPY_TEXT["role"].get(s["role"], {"en": s["role"]}), lang),
                        "copy_headline": s.get("copy_headline", ""), "copy_body": s.get("copy_body", ""),
                        "asset_type": s["asset_type"],
@@ -665,9 +763,12 @@ def approve(client_id: int, ids, by: str = "client") -> list:
     if not ids or len(ids) > BATCH_MAX:
         raise QueueError("bad_ids")
     queue = _load(client_id)
-    done = []
+    done, blocked = [], []
     for item in queue:
         if item["id"] in ids and item["status"] == "waiting":
+            if design_blocked(item):
+                blocked.append(item["id"])      # declared in the brief, not in the render: never approved as it is
+                continue
             item["status"], item["approved_at"], item["approved_by"] = "approved", _now().isoformat(), by
             _log(item, "approved", by)
             done.append(item)
@@ -687,6 +788,8 @@ def approve(client_id: int, ids, by: str = "client") -> list:
             drive_backup.enqueue(client_id, done)
         except Exception as e:
             print(f"[{SERVICE_NAME}] client {client_id}: backup not queued ({type(e).__name__})")
+    if blocked and not done:
+        raise QueueError("element_missing")
     return done
 
 
@@ -969,6 +1072,7 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
     modes = _modes(client_id)
     rows = sorted((i for i in queue if not status or i["status"] == status), key=_order_key)
     today = _today().isoformat()
+    drawn = drawn_by_post(queue)                   # what was actually drawn, per post asset (core/render_manifest)
     out = []
     for item in rows:
         is_post = item.get("kind") == POST_KIND
@@ -976,12 +1080,13 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
         dl = delivery(item, modes) if item["status"] in ("approved", "published") and not no_file else {}
         needs_tap = item["status"] == "approved" and any(v in ("one_tap", "not_connected", "drafts", "private")
                                                          for v in dl.values())
-        extra = {"post": _post_view(item, lang, client_id)} if is_post else {}
+        extra = {"post": _post_view(item, lang, client_id, drawn.get(item["id"]))} if is_post else {}
         if item.get("kind") == DESIGN_KIND:
             from core import slide_design
             extra["design"] = slide_design.view(item, lang)
-        if item.get("flags"):
-            extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in item["flags"] if f in FLAG_TEXT]
+        shown_flags = true_flags(item)             # the AI notice from the manifest, never from the brief
+        if shown_flags:
+            extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in shown_flags]
         if item.get("post_ref"):
             extra["post_ref"] = item["post_ref"]
         if item.get("real_asset"):
@@ -1035,18 +1140,40 @@ def all_pending() -> list:
 
 def prompt_block(client_id: int) -> dict:
     """`social_queue` in the agents' payload: counts only, and the rule."""
+    from core import render_manifest
     queue = items(client_id)
     waiting = [i for i in queue if i["status"] == "waiting"]
+    by_post = drawn_by_post(queue)
+
+    def drawn(i) -> dict:
+        # the render manifest as facts — the ONLY thing an agent may say an item contains
+        d = i.get("design") or {}
+        if i.get("kind") == DESIGN_KIND:
+            many, lacking = list(d.get("manifests") or []), d.get("missing") or []
+        elif i.get("kind") == POST_KIND:
+            many, lacking = list((by_post.get(i["id"]) or {}).values()), (i.get("production") or {}).get("missing") or []
+        else:
+            many, lacking = ([i["manifest"]] if i.get("manifest") is not None else []), []
+        out = {}
+        if many:
+            out["drawn"] = {"characters": sorted({c for m in many for c in render_manifest.characters(m)}),
+                            "generated_picture": any(render_manifest.facts(m).get("generated_picture") for m in many),
+                            "files": len(many)}
+        if lacking:
+            out["not_drawn"] = [f"slide {m.get('slide')}: {m.get('type')} {m.get('id')} ({m.get('reason', '')})" for m in lacking][:8]
+        return out
+
     return {"waiting": len(waiting), "approved": sum(1 for i in queue if i["status"] == "approved"),
+            "facts_rule": render_manifest.FACTS_RULE,
             "waiting_items": [{"id": i["id"], "title": i.get("title", ""), "channels": i["channels"],
-                               "planned_date": i.get("planned_date", ""),
+                               "planned_date": i.get("planned_date", ""), **drawn(i),
                                **({"stage": "copy", "set_id": (i.get("post") or {}).get("set_id", "")}
                                   if i.get("kind") == POST_KIND else {}),
                                **({"stage": "design", "template": (i.get("design") or {}).get("template_name", "")}
                                   if i.get("kind") == DESIGN_KIND else {})} for i in waiting[:10]],
             # The rest of the queue, so the manager can name (and delete) them too
             "other_items": [{"id": i["id"], "title": i.get("title", ""), "status": i["status"],
-                             "planned_date": i.get("planned_date", "")}
+                             "planned_date": i.get("planned_date", ""), **drawn(i)}
                             for i in queue if i["status"] != "waiting"][:20],
             "counts": {s: sum(1 for i in queue if i["status"] == s) for s in STATUSES},
             # Approved posts whose production failed / partly failed / is stuck, with

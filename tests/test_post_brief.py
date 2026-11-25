@@ -450,7 +450,8 @@ class Pipeline(unittest.TestCase):
         self.assertEqual((post_item["production"]["made"], post_item["production"]["not_made"]), (1, 0))
         self.assertEqual(post_item["production"]["design"]["item_id"], "design0001")
         asset_item = next(i for i in self.store.items if i.get("post_ref"))
-        self.assertEqual((asset_item["status"], asset_item["flags"]), ("waiting", ["concept"]))
+        # + the AI notice, from the asset's manifest: the picture itself is generated (2026-11-26)
+        self.assertEqual((asset_item["status"], asset_item["flags"]), ("waiting", ["concept", "ai_content"]))
         self.assertEqual(asset_item["post_ref"]["asset_id"], "s2")
 
 

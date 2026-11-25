@@ -370,25 +370,34 @@ def shadow_intensity(value) -> float:
         return DEFAULT_SHADOW
 
 
-def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: list, frame: dict = None) -> dict:
+def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: list, frame: dict = None,
+               n: int = 0) -> dict:
     """Composites the figure onto img. Returns {"rect", "alpha", "origin"}
-    (its placed box and alpha, for the text-collision check) or {}."""
+    (its placed box and alpha, for the text-collision check) or {}. Every
+    stage is logged (core/render_manifest.trace): fetched, background, composited."""
     from PIL import ImageFilter, ImageOps
+    from core.render_manifest import trace
     pose_id = str(ch.get("pose_id") or "")
+    who = str(ch.get("agent") or "")
     if loader is None:
         problems.append({"code": "asset", "detail": f"character pose {pose_id}: no loader"})
+        trace("pose_fetched", who, "failed: no loader", n, f"pose {pose_id}")
         return {}
     try:
         fig = Image.open(io.BytesIO(loader(f"pose:{pose_id}"))).convert("RGBA")
     except Exception as e:
         problems.append({"code": "asset", "detail": f"character pose {pose_id} unusable ({type(e).__name__})"})
+        trace("pose_fetched", who, f"failed: {type(e).__name__}", n, f"pose {pose_id}: {str(e)[:100]}")
         return {}
+    trace("pose_fetched", who, "ok", n, f"pose {pose_id}, {fig.width}x{fig.height}")
     alpha = fig.getchannel("A")
     box = alpha.getbbox()
     if alpha.getextrema()[0] > 0 or not box:
         problems.append({"code": "character_not_transparent",
                          "detail": f"character pose {pose_id} has no transparent background"})
+        trace("background_removed", who, "failed: the pose has no transparent background", n, f"pose {pose_id}")
         return {}
+    trace("background_removed", who, "ok", n, "transparent background verified")
     fig = fig.crop(box)                                   # the figure itself, not its empty margin
     W, H = size
     frame = frame or {"x": 0, "y": 0, "w": W, "h": H}      # a vertical canvas: its safe box
@@ -416,6 +425,7 @@ def _character(img, ch: dict, size: tuple, loader, problems: list, warnings: lis
         sx, sy = round(cx - sw / 2) - pad, round(min(bottom, H) - sh * 0.6) - pad
         img.paste((0, 0, 0), (sx, sy, sx + mask.width, sy + mask.height), mask)
     img.paste(fig, (x0, y0), fig)
+    trace("composited", who, "ok", n, f"pose {pose_id} at ({x0},{y0})-({x0 + w},{y0 + h}) on {W}x{H}")
     return {"rect": rect, "alpha": fig.getchannel("A"), "origin": (x0, y0)}
 
 
@@ -551,11 +561,14 @@ def _intersects(a: list, b: list) -> bool:
 
 def render_slide(spec: dict, roles: dict, copy_headline: str = "", copy_body: str = "", n: int = 1,
                  total: int = 1, role: str = "", image_loader=None, encode: bool = True,
-                 character: dict = None, warnings: list = None):
+                 character: dict = None, warnings: list = None, manifest: dict = None):
     """PNG bytes of ONE slide (None when encode=False — a guard-only pass),
     or RenderError with every problem found. `character` = this slide's own
     agent/pose (merged over the spec's placement); `warnings` (a list) gets
-    the character's overflow / text-collision warnings."""
+    the character's overflow / text-collision warnings. `manifest` (a dict)
+    is FILLED with what was actually drawn — every layer committed to the
+    output (core/render_manifest): the only source for any statement about
+    the slide."""
     require_raqm()
     spec = slide_spec.for_slide(slide_spec.validate(spec), role)
     ch = merge_character(spec.get("character"), character)
@@ -563,19 +576,30 @@ def render_slide(spec: dict, roles: dict, copy_headline: str = "", copy_body: st
         slide_spec.validate_character(ch)
     with _LOCK:
         return _render(spec, roles, copy_headline, copy_body, n, total, image_loader, encode, ch,
-                       warnings if warnings is not None else [])
+                       warnings if warnings is not None else [], manifest)
 
 
-def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=None, warnings=None):
+def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=None, warnings=None, manifest=None):
+    from core import render_manifest
     problems = []
     warnings = warnings if warnings is not None else []
     size = (spec["canvas"]["width"], spec["canvas"]["height"])
     m = slide_spec.margins(spec)
     frame = layout_frame(spec)
+    drawn = render_manifest.new(*size)
     img = _background(spec["background"], size, roles, loader, problems)
+    render_manifest.layer(drawn, "background", kind=spec["background"].get("type"),
+                          asset=spec["background"].get("image_asset_id") if spec["background"].get("type") == "image" else "")
     accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems)
-    char = _character(img, ch, size, loader, problems, warnings, frame) if ch else {}
-    _logo(img, spec.get("logo") or {}, size, m, loader, problems)
+    if accent.get("rect"):
+        render_manifest.layer(drawn, "accent", kind=(spec.get("accent") or {}).get("type"), box=accent["rect"])
+    char = _character(img, ch, size, loader, problems, warnings, frame, n) if ch else {}
+    if char:
+        render_manifest.layer(drawn, "character", id=str(ch.get("agent") or ""), pose_id=str(ch.get("pose_id") or ""),
+                              box=char["rect"])
+    logo_box = _logo(img, spec.get("logo") or {}, size, m, loader, problems)
+    if logo_box:
+        render_manifest.layer(drawn, "logo", asset=(spec.get("logo") or {}).get("asset_ref"), box=logo_box)
     limit = int((spec.get("guards") or {}).get("headline_max_words") or HEADLINE_MAX_WORDS)
     layouts = []
     for i, block in enumerate(spec["text_blocks"]):
@@ -631,10 +655,19 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
         else:
             x1 = head["left"] + width
         draw.rectangle([x1 - width, y0, x1, y0 + underline["size"]], fill=underline["colour"])
+        render_manifest.layer(drawn, "accent", kind="underline", box=[x1 - width, y0, x1, y0 + underline["size"]])
     for lay in layouts:
         _draw_text(draw, lay)
+        render_manifest.layer(drawn, "text", role=lay["block"]["role"], text="\n".join(lay["lines"]), box=lay["rect"])
     if counter:
         _draw_counter(draw, counter)
+        render_manifest.layer(drawn, "counter", text=counter.get("text") or f"{counter['n']}/{counter['total']}",
+                              box=counter["rect"])
+    drawn["encoded"] = bool(encode)
+    if manifest is not None:
+        # only now: every layer above is committed to the image
+        manifest.clear()
+        manifest.update(drawn)
     if not encode:
         return None
     out = io.BytesIO()
@@ -698,7 +731,7 @@ def slide_roles(roles: dict, colors: dict = None) -> dict:
 
 
 def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True,
-               warnings: list = None, on_slide=None) -> list:
+               warnings: list = None, on_slide=None, manifests: list = None) -> list:
     """Every slide of ONE set from ONE spec and ONE palette (the caller passes
     one of each — a set is never mixed). slides = [{"copy_headline",
     "copy_body", "role", "n"?, "total"?}] — n / total = the slide's place in
@@ -712,11 +745,14 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
             on_slide(n, None)
         before = len(problems)
         try:
-            got = []
+            got, drawn = [], {}
             out.append(render_slide(spec, slide_roles(roles, s.get("colors")), s.get("copy_headline", ""),
                                     s.get("copy_body", ""), n, total,
                                     s.get("role", ""), image_loader, encode, character=s.get("character"),
-                                    warnings=got))
+                                    warnings=got, manifest=drawn))
+            if manifests is not None:
+                # what THIS slide's render committed (core/render_manifest), in slide order
+                manifests.append({"n": n, "asset_id": s.get("asset_id", ""), **drawn})
             if warnings is not None:
                 warnings += [{**w, "slide": n, "detail": f"slide {n}: {w['detail']}"} for w in got]
         except RenderError as e:

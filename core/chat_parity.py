@@ -66,6 +66,8 @@ PARITY = {
     "POST /api/client/avatars/business/{avatar_id}/delete": (NOT_CHAT, "removing a character is done where it is shown"),
     "GET /api/client/avatars/business/{avatar_id}/face": (NOT_CHAT, _PLUMBING),
     "GET /api/client/avatars/business/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
+    "POST /api/client/social/{item_id}/design/without-character": (
+        NOT_CHAT, "a decision made on the failed design card itself, beside what is missing"),
     "POST /api/client/avatars/poses/decide": (NOT_CHAT, "approving a pose is a decision made on the picture itself, in "
                                                          "the gallery; the chat points there when a post is waiting on it"),
     # ── Package, upgrade, billing ────────────────────────────────────────────

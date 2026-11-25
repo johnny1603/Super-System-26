@@ -14,3 +14,5 @@ store-purchase-events-for-supabase.txt
 anthropic-credits-for-supabase.txt
 chat-timing-frustration-for-supabase.txt
 Claude outputs/
+# one instance's runtime files (alert history, monitor memory) — never in git, never in the image
+data/

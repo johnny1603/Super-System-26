@@ -124,7 +124,8 @@ class Production(Base):
         self.assertIn("entries, missing = attach_characters(text_slides, lang, client_id=client_id)", src)
         self.assertIn("flags += missing_flags(missing)", src)
         self.assertIn('_alert([f"client {client_id}: post {post_item.get(\'id\')} — agent character not drawn on "', src)
-        self.assertIn("problems += [f\"• {m}\" for m in drawn_without]", _src("core", "post_pipeline.py"))
+        self.assertIn("problems += [f\"• {m['line']}\" for m in absent] if absent else [f\"• {m}\" for m in drawn_without]",
+                      _src("core", "post_pipeline.py"))
 
     def test_approval_draws_the_pose_into_the_waiting_design(self):
         entries, missing = sd.attach_characters(self.entries(), "he", stopped=lambda: False, client_id=A)

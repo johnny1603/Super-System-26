@@ -139,6 +139,22 @@ TEXT = {
         "La production du post « {title} » n'a pas entièrement abouti. Ce qui a échoué :\n{problems}{ready}\nJe peux relancer la production — dites-le simplement.",
         "إنتاج المنشور \"{title}\" لم ينجح بالكامل. ما فشل:\n{problems}{ready}\nيمكنني تشغيل الإنتاج مجددًا — فقط قولوا.",
         "Производство поста «{title}» удалось не полностью. Что не получилось:\n{problems}{ready}\nМогу запустить производство снова — просто скажите."),
+    # declared in the brief and absent from the render (core/render_manifest): the post FAILED
+    "missing": _five(
+        "הפוסט \"{title}\" נעצר ואי אפשר לאשר אותו כמו שהוא: משהו שהוגדר לו לא צויר.\n{problems}\nמה אפשר לעשות מופיע על הכרטיס שלו בלשונית סושיאל.",
+        "The post \"{title}\" is on hold and cannot be approved as it is: something it was meant to have was not drawn.\n{problems}\nWhat you can do is on its card in the Social tab.",
+        "Le post \"{title}\" est en attente et ne peut pas être validé tel quel : un élément prévu n'a pas été dessiné.\n{problems}\nCe que vous pouvez faire figure sur sa carte dans l'onglet Social.",
+        "المنشور \"{title}\" متوقف ولا يمكن اعتماده كما هو: عنصر مطلوب له لم يُرسم.\n{problems}\nما يمكنكم فعله مذكور على بطاقته في تبويب السوشيال.",
+        "Пост \"{title}\" приостановлен, и одобрить его в таком виде нельзя: заявленный элемент не нарисован.\n{problems}\nЧто можно сделать — на его карточке во вкладке «Соцсети»."),
+    "not_drawn": _five("הדמות של {names} הוגדרה לתמונה ולא נמצאת בה", "{names}'s character was asked for and is not in the picture",
+                       "le personnage de {names} était prévu et n'est pas dans l'image",
+                       "شخصية {names} كانت مطلوبة وليست في الصورة", "персонаж {names} был заявлен, но его нет на изображении"),
+    "unverified": _five(
+        "הפקת הפוסט \"{title}\" הסתיימה, אבל לא הצלחתי לאמת מה בדיוק צויר בקבצים — ולכן אני לא מתאר אותם. הצוות קיבל הודעה.",
+        "Producing the post \"{title}\" ended, but I could not verify what exactly was drawn in the files — so I am not describing them. The team was told.",
+        "La production du post \"{title}\" est terminée, mais je n'ai pas pu vérifier ce qui a été dessiné — je ne le décris donc pas. L'équipe est prévenue.",
+        "انتهى إنتاج المنشور \"{title}\"، لكن لم أستطع التحقق مما رُسم في الملفات — لذلك لا أصفها. أُبلغ الفريق.",
+        "Производство поста \"{title}\" завершено, но проверить, что именно нарисовано, не удалось — поэтому я его не описываю. Команда в курсе."),
     "failed": _five(
         "הפקת הפוסט \"{title}\" נכשלה, ושום דבר ממנה לא מחכה לאישור. מה נכשל:\n{problems}\nאפשר להריץ את ההפקה שוב — רק תגידו.",
         "Producing the post \"{title}\" failed, and nothing from it is waiting for approval. What failed:\n{problems}\nI can run the production again — just say so.",
@@ -188,6 +204,12 @@ REASONS["storage"] = _five("לא הצלחתי לשמור את מצב ההפקה 
                            "je n'ai pas pu enregistrer l'état de la production (panne de stockage temporaire)",
                            "تعذّر حفظ حالة الإنتاج (عطل مؤقت في التخزين)",
                            "не удалось сохранить состояние производства (временный сбой хранилища)")
+# The file exists but never reached the approval queue (social_queue.add_safely returned nothing)
+REASONS["not_queued"] = _five("הקובץ נוצר אבל לא נכנס לתור האישור (תקלה בשמירה) — הצוות קיבל הודעה",
+                              "the file was made but did not reach the approval queue (a storage fault) — the team was told",
+                              "le fichier a été créé mais n'est pas entré dans la file de validation (panne de stockage) — l'équipe est prévenue",
+                              "أُنشئ الملف لكنه لم يدخل قائمة الاعتماد (عطل في الحفظ) — أُبلغ الفريق",
+                              "файл создан, но не попал в очередь на одобрение (сбой хранилища) — команда в курсе")
 REASONS["not_started"] = _five("משהו נכשל ברגע ההתחלה", "something failed at the moment it was starting",
                                "quelque chose a échoué au démarrage", "فشل شيء عند البدء", "что-то сломалось при запуске")
 
@@ -268,7 +290,9 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
         if brief.characters:
             # An agent appears as its own character: the AI notices, shown only
             from core import agent_characters
-            flags[brief.asset_id] += agent_characters.approval_flags(client_id, True)
+            # (only the brief's own conflict: the AI-content notice is never stored from a
+            # brief — the card rebuilds it from the render manifest, core/social_queue)
+            flags[brief.asset_id] += [f for f in agent_characters.approval_flags(client_id, True) if f != "ai_label"]
         if brief.asset_type == "text_slide":
             flags[brief.asset_id].append("text_slide_pending")
         elif brief.asset_type == "real_photo" and not review.get("real_asset"):
@@ -598,8 +622,9 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
     slides = body.get("slides") or []
     palette = body.get("palette") or {}
     budget = sum(int(s.get("budget_credits") or 0) for s in slides)
+    from core import render_manifest
     spent, made, not_made, failed, results = 0.0, 0, 0, 0, []
-    text_slides, character_errors, problems = [], [], []
+    text_slides, character_errors, problems, lacking = [], [], [], []
     lang = _lang(client_id)
     colors = (body.get("colors") or {}).get("slides") or []
     clock = time.monotonic()
@@ -662,9 +687,28 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
                     blocked = True      # the next assets fail the same way
             continue
         spent += float(out.get("credits") or 0)
+        # The MANIFEST of what was made (core/render_manifest) — everything said
+        # about this asset from here on is built from it, never from the brief
+        drawn = out.get("manifest") or render_manifest.for_asset(out.get("kind") or "image", out)
+        shown = render_manifest.characters(drawn)
+        absent = [c for c in brief.characters if c not in shown]
+        if absent:
+            # declared and not in the result: this asset FAILED — it is not queued, not "made"
+            from core import agent_characters
+            line = _problem(n, pick(TEXT["not_drawn"], lang).replace(
+                "{names}", ", ".join(agent_characters.display_name(c, lang) for c in absent)), lang)
+            for c in absent:
+                render_manifest.trace("composited", c, "NOT DRAWN: declared in the brief, absent from the result", n, brief.asset_id)
+            lacking += [{"type": "character", "id": c, "slide": n, "asset_id": brief.asset_id, "reason": "not_drawn",
+                         "line": line[2:]} for c in absent]
+            results.append({"asset_id": brief.asset_id, "status": "element_missing"})
+            problems.append(line)
+            failed += 1
+            continue
         # A real asset from the client's folder is not a concept image
         flags = ["concept"] if "concept" in (slide.get("flags") or []) and not out.get("real_asset") else []
-        flags += [f for f in slide.get("flags") or [] if f in ("ai_person_forbidden", "ai_label") and out.get("characters")]
+        flags += [f for f in slide.get("flags") or [] if f == "ai_person_forbidden" and shown]
+        flags += render_manifest.disclosure(drawn)          # iff a generated element is in it
         if out.get("low_resolution"):
             flags.append("low_resolution")         # shown on the card; the alert was raised where it was measured
         added = social_queue.add_safely(
@@ -677,9 +721,17 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
                       "n": n, "of": len(slides),
                       "format": social_formats.for_post(body["post_format"], body.get("placement", "")).name,
                       "placement": body.get("placement", "")},
-            real_asset=out.get("real_asset") or None, characters=out.get("characters") or None)
+            real_asset=out.get("real_asset") or None, characters=out.get("characters") or None, manifest=drawn)
+        if not added.get("id"):
+            # It never reached the approval queue (add_safely alerted why): NOT "made" —
+            # an item nobody can approve must never be counted as produced
+            results.append({"asset_id": brief.asset_id, "status": "not_queued"})
+            problems.append(_problem(n, reason_text("not_queued", lang), lang))
+            failed += 1
+            continue
         results.append({"asset_id": brief.asset_id, "status": "made", "queue_id": added.get("id", ""),
-                        "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated"})
+                        "link": out.get("link", ""), "source": "real_asset" if out.get("real_asset") else "generated",
+                        "drawn": render_manifest.facts(drawn)})
         made += 1
     design = {}
     if text_slides and (stopped or _stopped()):
@@ -695,10 +747,17 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
         timing["design_s"] = round(time.monotonic() - design_clock, 1)    # poses + layout + render
         drawn_without = list(dict.fromkeys(opened.get("character_errors") or []))
         character_errors += drawn_without
-        problems += [f"• {m}" for m in drawn_without]       # e.g. Maya missing from the slides, and why
+        absent = opened.get("missing") or []            # declared in the brief, absent from the render
+        lacking += absent
+        # each missing element by name, with its reason (the line already carries the why)
+        problems += [f"• {m['line']}" for m in absent] if absent else [f"• {m}" for m in drawn_without]
         design = {"item_id": (opened.get("item") or {}).get("id", ""), "slides": len(text_slides),
-                  "ok": bool(opened.get("item")) and not opened.get("problems")}
-        results += [{"asset_id": s["asset_id"], "status": "design_waiting" if design["item_id"] else "failed"}
+                  "ok": bool(opened.get("item")) and not opened.get("problems") and not absent}
+        by_asset = {m.get("asset_id"): m for m in opened.get("manifests") or []}
+        gone = {m.get("asset_id") for m in absent}
+        results += [{"asset_id": s["asset_id"],
+                     "status": "element_missing" if s["asset_id"] in gone else "design_waiting" if design["item_id"] else "failed",
+                     **({"drawn": render_manifest.facts(by_asset[s["asset_id"]])} if s["asset_id"] in by_asset else {})}
                     for s in text_slides]
         # WHICH slide, WHICH field, by HOW MUCH — never only "design failed"
         from core import copy_budget
@@ -707,19 +766,23 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
         if not design["item_id"]:
             failed += len(text_slides)
             problems += said or [f"• {reason_text('design', lang)}"]
-        elif not design["ok"]:
+        elif not design["ok"] and not absent:      # (a missing element is already named above)
             problems += said or [f"• {reason_text('design', lang)}"]
     production_progress.begin("assemble")
     state = ("done" if (made or design.get("item_id")) and not failed else "partial" if made or design.get("item_id")
              else "failed" if failed else "done")
     if state == "done" and problems:
-        state = "partial"             # e.g. the slides were drawn, but without the character asked for
+        state = "partial"
+    if lacking:
+        # The brief declared something the render lacks: FAILED, by name — never a
+        # "partial" that reads like completion (knowledge/client-governance.md §8)
+        state = "failed"
     if stopped or _stopped():
         state = "stopped"             # never left "running"; what was made stays a draft (recorded above)
     production = {"state": state, "made": made, "not_made": not_made, "failed": failed,
                   "credits": round(spent, 2), "assets": results, "finished_at": _now(), "design": design,
                   "character_errors": list(dict.fromkeys(character_errors)),
-                  "problems": list(dict.fromkeys(problems)),
+                  "problems": list(dict.fromkeys(problems)), "missing": lacking,
                   # measured on every run (2026-11-25): where the time went
                   "timing": {**timing, "total_s": round(time.monotonic() - clock, 1), "parallel": GEN_PARALLEL}}
     social_queue.set_production(client_id, item_id, production)
@@ -750,6 +813,8 @@ def summary(item: dict, production: dict, lang: str) -> str:
     title = item.get("title") or ""
     problems = production.get("problems") or []
     state = production.get("state")
+    if production.get("missing"):
+        return pick(TEXT["missing"], lang).replace("{title}", title).replace("{problems}", "\n".join(problems) or "•")
     if state in ("partial", "failed") or problems:
         ready = ""
         design = production.get("design") or {}
@@ -776,10 +841,29 @@ def _say(client_id: int, item: dict, line: str):
         print(f"[{SERVICE_NAME}] client {client_id}: production line not posted ({type(e).__name__})")
 
 
+def unbacked(production: dict) -> list:
+    """Assets the record calls made / designed WITHOUT a manifest behind them."""
+    return [a.get("asset_id", "") for a in production.get("assets") or []
+            if a.get("status") in ("made", "design_waiting") and "drawn" not in a]
+
+
+def announce(client_id: int, item: dict, production: dict, lang: str) -> str:
+    """The line about a finished production — written ONLY with the manifest
+    in hand: when an asset is called made and nothing records what was drawn
+    in it, the line says exactly that (and the team is alerted) instead of
+    describing the post."""
+    loose = unbacked(production)
+    if loose:
+        _alert([f"client {client_id}: post {(item.get('post') or {}).get('set_id') or item.get('id')} — no render "
+                f"manifest for {', '.join(loose)}; the production line does not describe the post"])
+        return pick(TEXT["unverified"], lang).replace("{title}", item.get("title") or "")
+    return summary(item, production, lang)
+
+
 def _tell(client_id: int, item: dict, production: dict):
     """How production ended, in the producer's chat. Never raises."""
     try:
-        _say(client_id, item, summary(item, production, _lang(client_id)))
+        _say(client_id, item, announce(client_id, item, production, _lang(client_id)))
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: production line not posted ({type(e).__name__})")
 
@@ -830,4 +914,4 @@ def rerun(client_id: int, item_id: str) -> dict:
     item = social_queue.get(client_id, item_id) or {}
     social_queue.set_production(client_id, item_id, {"state": "running", "started_at": _now()})
     production = produce(client_id, item_id, tell=False)
-    return {**production, "text": summary(item, production, _lang(client_id))}
+    return {**production, "text": announce(client_id, item, production, _lang(client_id))}

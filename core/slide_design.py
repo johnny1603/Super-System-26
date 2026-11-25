@@ -95,6 +95,24 @@ TEXT = {
         "Этап дизайна: одобрение сохраняет его как шаблон вашего бизнеса; замечание отправляет на переделку. Без кредитов."),
 }
 
+MISSING_TEXT = {
+    "character": _five("שקופית {n}: הדמות של {name} הוגדרה לפוסט ולא צוירה.",
+                       "Slide {n}: {name}'s character was asked for and was not drawn.",
+                       "Diapositive {n} : le personnage de {name} était prévu et n'a pas été dessiné.",
+                       "الشريحة {n}: شخصية {name} كانت مطلوبة ولم تُرسم.",
+                       "Слайд {n}: персонаж {name} был заявлен и не нарисован."),
+    "text": _five("שקופית {n}: חלק מהטקסט שאישרתם ({field}) לא נכנס לשקופית בתבנית הזו.",
+                  "Slide {n}: part of the copy you approved ({field}) is not on the slide in this template.",
+                  "Diapositive {n} : une partie du texte validé ({field}) n'apparaît pas dans ce modèle.",
+                  "الشريحة {n}: جزء من النص الذي وافقتم عليه ({field}) لا يظهر في هذا القالب.",
+                  "Слайд {n}: часть одобренного текста ({field}) не попала на слайд в этом шаблоне."),
+    "blocked": _five("העיצוב הזה לא יכול להתאשר כמו שהוא: משהו שהוגדר לפוסט לא צויר.",
+                     "This design cannot be approved as it is: something the post asked for was not drawn.",
+                     "Ce design ne peut pas être validé tel quel : un élément prévu n'a pas été dessiné.",
+                     "لا يمكن اعتماد هذا التصميم كما هو: عنصر مطلوب للمنشور لم يُرسم.",
+                     "Этот дизайн нельзя одобрить как есть: заявленный элемент не нарисован."),
+}
+
 STATE_TEXT = {
     "ready": _five("מוכן לבדיקה", "Ready for review", "Prêt à vérifier", "جاهز للمراجعة", "Готов к проверке"),
     "revising": _five("מעצב מחדש לפי ההערה…", "Redesigning per your note…", "Refonte selon votre remarque…",
@@ -218,10 +236,11 @@ def base_spec(client_id: int, palette: dict, aspect: str = "", template_name: st
 
 
 def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, warnings: list = None,
-          on_slide=None) -> list:
+          on_slide=None, manifests: list = None) -> list:
     """Every guard on every slide of the set, nothing encoded. [] = renders.
     `warnings` (a list) gets the character warnings (overflow / text);
-    `on_slide` = slide_renderer.render_set's per-slide hook."""
+    `on_slide` = slide_renderer.render_set's per-slide hook; `manifests` (a
+    list) gets what each slide's render drew (core/render_manifest)."""
     label = slide_spec.variant_for(palette)
     if spec.get("palette_variant") != label:
         return [{"code": "palette", "detail": f"spec palette_variant {spec.get('palette_variant')!r} is not this "
@@ -229,7 +248,7 @@ def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, 
     try:
         roles = slide_spec.palette_roles(client_id, label)
         slide_renderer.render_set(spec, roles, slides, loader or loader_for(client_id), encode=False,
-                                  warnings=warnings, on_slide=on_slide)
+                                  warnings=warnings, on_slide=on_slide, manifests=manifests)
     except slide_spec.SpecInvalid as e:
         return [{"code": "bad_spec", "detail": d} for d in e.errors]
     except slide_renderer.RenderError as e:
@@ -278,6 +297,10 @@ def _slides_of(entries: list) -> list:
                "copy_body": s.get("copy_body", ""), "n": s.get("n"), "total": s.get("total")}
         if s.get("character"):
             row["character"] = dict(s["character"])         # {"agent", "pose_id"} — the system's, per slide
+        names = [str(c) for c in s.get("characters") or []] if (s.get("character_mode") or "composite") == "composite" else []
+        names = names or list((s.get("declared") or {}).get("characters") or [])
+        if names:
+            row["declared"] = {"characters": names[:1]}     # what the BRIEF asked for — checked against the manifest
         if s.get("wants_character"):
             row["wants_character"] = dict(s["wants_character"])   # asked for, waiting for the client's pose approval
         if s.get("colors"):
@@ -309,9 +332,17 @@ def attach_characters(entries: list, lang: str = "he", stopped=None, client_id: 
         if names and (s.get("character_mode") or "composite") == "composite":
             pose = (s.get("visual_direction") or "").strip() or POSE_BY_ROLE.get(s.get("role"), POSE_BY_ROLE["point"])
             wanted.append((i, names[0], pose))
+    from core.render_manifest import trace
+    for i, agent, pose in wanted:
+        trace("brief_declared", agent, "ok", entries[i].get("n") or i + 1, f"{entries[i].get('asset_id', '')}: {pose[:80]}")
     results = agent_characters.poses_for([(agent, pose) for _, agent, pose in wanted], stopped=stopped,
                                          steps=[entries[i].get("n") or i + 1 for i, _a, _p in wanted],
                                          client_id=client_id) if wanted else []
+    for (i, agent, _pose), got in zip(wanted, results):
+        trace("pose_selected", agent,
+              "ok" if isinstance(got, dict) and got.get("pose_id") else
+              f"failed: {getattr(got, 'reason', '') or type(got).__name__}", entries[i].get("n") or i + 1,
+              f"pose {got['pose_id']}" if isinstance(got, dict) and got.get("pose_id") else str(got)[:120])
     by_index = {i: (agent, got) for (i, agent, _), got in zip(wanted, results)}
     pose_of = {i: pose for i, _a, pose in wanted}
     failures, out = [], []
@@ -368,25 +399,111 @@ def apply_approved_poses(client_id: int) -> list:
                     drawn += 1
             if not drawn:
                 continue
-            social_queue.update_design(client_id, item["id"], {"slides": slides, "rev": int(d.get("rev") or 1) + 1})
+            from core import render_manifest
+            with render_manifest.tracing(client_id, d.get("post_id") or item["id"], "pose_approved"):
+                again = _reaudit(client_id, item, slides, _lang(client_id))
+            social_queue.update_design(client_id, item["id"], {"slides": slides, "rev": int(d.get("rev") or 1) + 1, **again})
             if not any(s.get("wants_character") for s in slides):
                 social_queue.drop_flag(client_id, item["id"], "character_needs_approval")
+            if again and "ai_label" in render_manifest.disclosure(again["manifests"]):
+                social_queue.add_flags(client_id, item["id"], agent_characters.approval_flags(client_id, True))
+            gone = [m for m in d.get("missing") or [] if m not in (again.get("missing") or [])] if again else []
+            if gone:
+                _resolve_post(client_id, d.get("post_id", ""), gone)
             changed.append(item["id"])
     except Exception as e:
         _alert([f"client {client_id}: approved poses not drawn into the waiting designs ({type(e).__name__}: {str(e)[:150]})"])
     return changed
 
 
-def character_flags(client_id: int, spec: dict, palette: dict, slides: list, loader=None) -> list:
-    """The design card's notices: AI-character labels + the renderer's
-    character warnings (shown, never blocking)."""
-    from core import agent_characters
-    if not any(s.get("character") for s in slides):
+def audit(client_id: int, spec: dict, palette: dict, slides: list, loader=None, on_slide=None) -> dict:
+    """ONE guard pass over the set → {"problems", "warnings", "manifests",
+    "missing"}: what the render DREW on each slide (core/render_manifest),
+    and what the brief declared that it lacks ([{"type", "id", "slide",
+    "asset_id"}]). Every statement about the design is built from this."""
+    from core import render_manifest
+    warnings, manifests = [], []
+    problems = check(client_id, spec, palette, slides, loader, warnings=warnings, on_slide=on_slide, manifests=manifests)
+    missing = []
+    if not problems:
+        for i, (s, drawn) in enumerate(zip(slides, manifests), 1):
+            for w in render_manifest.missing(render_manifest.declared(s), drawn):
+                missing.append({"type": w["type"], "id": w["id"], "slide": s.get("n") or i, "asset_id": s.get("asset_id", "")})
+    return {"problems": problems, "warnings": warnings, "manifests": manifests, "missing": missing}
+
+
+def character_flags(client_id: int, spec: dict, palette: dict, slides: list, loader=None, seen: dict = None) -> list:
+    """The design card's notices, from what was DRAWN (the manifests): the
+    AI disclosure if and only if a generated element is in the render, + the
+    renderer's character warnings (shown, never blocking)."""
+    from core import agent_characters, render_manifest
+    seen = seen or audit(client_id, spec, palette, slides, loader)
+    codes = render_manifest.disclosure(seen["manifests"])
+    if not codes:
         return []
-    warnings = []
-    check(client_id, spec, palette, slides, loader, warnings=warnings)
-    codes = list(dict.fromkeys(w["code"] for w in warnings))
-    return agent_characters.approval_flags(client_id, True) + codes
+    flags = agent_characters.approval_flags(client_id, True) if "ai_label" in codes else list(codes)
+    return flags + list(dict.fromkeys(w["code"] for w in seen["warnings"]))
+
+
+def missing_rows(missing: list, failures: list, lang: str) -> list:
+    """Each declared-but-not-drawn element with its named reason and the line
+    the card shows: [{"type", "id", "slide", "asset_id", "reason", "line"}]."""
+    from core import agent_characters
+    out = []
+    for m in missing or []:
+        row = dict(m)
+        if m["type"] == "character":
+            why = next((f for f in failures or [] if f.get("agent") == m["id"]
+                        and f.get("asset_id", "") == m.get("asset_id", "")), {})
+            row["reason"] = why.get("reason") or "not_drawn"
+            line = pick(MISSING_TEXT["character"], lang).replace("{n}", str(m.get("slide") or "")) \
+                .replace("{name}", agent_characters.display_name(m["id"], lang))
+            row["line"] = f"{line} {why['message']}" if why.get("message") else line
+        else:
+            row["reason"] = "no_text_block"
+            row["line"] = pick(MISSING_TEXT["text"], lang).replace("{n}", str(m.get("slide") or "")) \
+                .replace("{field}", pick(SPEC_LABELS.get(m["id"], SPEC_LABELS["body"]), lang))
+        out.append(row)
+    return out
+
+
+def _resolve_post(client_id: int, post_id: str, gone: list):
+    """A design that was failed for a missing element is whole again: the
+    post's production record stops saying it failed for that. Never raises."""
+    try:
+        post = social_queue.get(client_id, post_id) if post_id else None
+        prod = dict((post or {}).get("production") or {})
+        if not prod.get("missing"):
+            return
+        lines = {f"• {m.get('line')}" for m in gone}
+        prod["problems"] = [p for p in prod.get("problems") or [] if p not in lines]
+        prod["missing"] = [m for m in prod["missing"] if f"• {m.get('line')}" not in lines]
+        if not prod["missing"]:
+            prod["state"] = "partial" if prod.get("failed") or prod["problems"] else "done"
+            if isinstance(prod.get("design"), dict):
+                prod["design"] = {**prod["design"], "ok": True}
+        social_queue.set_production(client_id, post_id, prod)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: post {post_id} production not updated ({type(e).__name__})")
+
+
+def _reaudit(client_id: int, item: dict, slides: list, lang: str) -> dict:
+    """After a design's slides changed: the changes that keep its manifests,
+    its missing list and its state true. {} when it can't be rendered here."""
+    d = item.get("design") or {}
+    try:
+        seen = audit(client_id, d["spec"], d["palette"], slides)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: design {item.get('id')} not re-checked ({type(e).__name__})")
+        return {}
+    if seen["problems"]:
+        return {}
+    before = {(m.get("type"), m.get("id"), m.get("slide")): m for m in d.get("missing") or []}
+    still = [before.get((m["type"], m["id"], m["slide"])) or m for m in missing_rows(seen["missing"], [], lang)]
+    changes = {"manifests": seen["manifests"], "missing": still}
+    if not still and d.get("missing") and not d.get("problems"):
+        changes["state"] = "ready"
+    return changes
 
 
 def _design_record(spec, palette, slides, template_name, based_on, result, set_id="", post_id="") -> dict:
@@ -407,7 +524,9 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
     from core import production_progress as progress
     body = post_item.get("post") or {}
     palette = body.get("palette") or {}
+    from core import render_manifest
     try:
+      with render_manifest.tracing(client_id, post_item.get("id"), "design") as rows:
         entries, missing = attach_characters(text_slides, lang, client_id=client_id)
         if missing:
             _alert([f"client {client_id}: post {post_item.get('id')} — agent character not drawn on "
@@ -418,23 +537,33 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
         progress.begin("layout")
         result = design(client_id, spec, palette, slides, lang=lang, template_name=name)
         progress.done("layout")         # a slide that can't be drawn fails at its own render step
+
         # The chosen layout rendered slide by slide — the bar's render steps,
-        # each one when it really runs (milliseconds; nothing encoded)
-        if progress.current() is not None:
-            def on_slide(n, problems):
-                if problems is None:
-                    progress.begin(f"render:{n}")
-                else:
-                    progress.done(f"render:{n}", not problems,
-                                  "; ".join(problem_text(problems, lang).splitlines())[:300] if problems else "")
-            check(client_id, placement_only(result["spec"]), palette, slides, on_slide=on_slide)
+        # each one when it really runs (milliseconds; nothing encoded) — and
+        # the MANIFEST of each slide: what was drawn, against what was declared
+        def on_slide(n, problems):
+            if problems is None:
+                progress.begin(f"render:{n}")
+            else:
+                progress.done(f"render:{n}", not problems,
+                              "; ".join(problem_text(problems, lang).splitlines())[:300] if problems else "")
+        seen = audit(client_id, placement_only(result["spec"]), palette, slides,
+                     on_slide=on_slide if progress.current() is not None else None)
         record = _design_record(spec, palette, slides, name, based, result, body.get("set_id", ""), post_item["id"])
-        flags = character_flags(client_id, result["spec"], palette, slides) if not result["problems"] else []
+        lacking = missing_rows(seen["missing"], missing, lang) if not result["problems"] else []
+        record.update(manifests=seen["manifests"], trace=rows[-render_manifest.MAX_TRACE:])
+        if lacking:
+            # Declared in the brief, absent from the render: the card FAILS, by name
+            # (knowledge/client-governance.md §8) — it cannot be approved as it is
+            record.update(state="failed", missing=lacking)
+            _alert([f"client {client_id}: post {post_item.get('id')} — design FAILED, declared and not drawn: "
+                    + "; ".join(f"slide {m['slide']} {m['type']} {m['id']} ({m['reason']})" for m in lacking)])
+        flags = character_flags(client_id, result["spec"], palette, slides, seen=seen) if not result["problems"] else []
         flags += missing_flags(missing)
         item = social_queue.add_design(client_id, record, title=post_item.get("title") or body.get("set_id", ""),
                                        channels=post_item.get("channels"), caption=post_item.get("caption", ""),
                                        planned_date=post_item.get("planned_date", ""), flags=flags)
-        return {"item": item, "problems": result["problems"],
+        return {"item": item, "problems": result["problems"], "missing": lacking, "manifests": seen["manifests"],
                 "character_errors": list(dict.fromkeys(m["message"] for m in missing if m.get("message")))}
     except Exception as e:
         _alert([f"client {client_id}: text-slide design for post {post_item.get('id')} failed "
@@ -510,11 +639,49 @@ def revise(client_id: int, item_id: str, text: str) -> dict:
     rev = int(d.get("rev") or 1) + 1
     revisions = (d.get("revisions") or [])[-(KEEP_SPECS - 1):] + [
         {"rev": rev, "at": _now(), "by": "media", "rationale": result.get("rationale", ""), "spec": result["spec"]}]
-    social_queue.update_design(client_id, item_id, {"spec": result["spec"], "rev": rev, "state": "ready",
-                                                    "problems": [], "last_failure": [], "revisions": revisions,
-                                                    "rationale": result.get("rationale", "")})
+    changes = {"spec": result["spec"], "rev": rev, "state": "ready", "problems": [], "last_failure": [],
+               "revisions": revisions, "rationale": result.get("rationale", "")}
+    again = _reaudit(client_id, {**item, "design": {**d, "spec": result["spec"], "problems": []}}, d["slides"], lang)
+    changes.update(again)
+    if changes.get("missing"):
+        changes["state"] = "failed"            # still lacks something the brief declared
+    social_queue.update_design(client_id, item_id, changes)
     _tell(client_id, item, pick(TEXT["revised"], lang).replace("{rev}", str(rev)))
     return {"ok": True, "rev": rev}
+
+
+def without_character(client_id: int, item_id: str, by: str = "client") -> dict:
+    """The client decides to go on WITHOUT the character a failed design is
+    missing: the declaration itself changes (recorded on the item), the set
+    is checked again, and the card is whole. QueueError when it isn't such a card."""
+    item = social_queue.get(client_id, item_id)
+    if not item or item.get("kind") != social_queue.DESIGN_KIND:
+        raise social_queue.QueueError("not_a_design")
+    d = item["design"]
+    gone = [m for m in d.get("missing") or [] if m.get("type") == "character"] or [
+        {"type": "character", "id": s["wants_character"].get("agent", ""), "slide": s.get("n")}
+        for s in d.get("slides") or [] if s.get("wants_character")]       # a design stored before `missing` existed
+    if item["status"] != "waiting" or not gone:
+        raise social_queue.QueueError("not_editable")
+    slides = [dict(s) for s in d.get("slides") or []]
+    lost = {m.get("slide") for m in gone}
+    for i, s in enumerate(slides, 1):
+        if (s.get("n") or i) in lost or s.get("wants_character"):
+            for key in ("character", "wants_character", "declared"):
+                s.pop(key, None)                 # this slide no longer asks for a character
+    again = _reaudit(client_id, item, slides, _lang(client_id))
+    kept = [m for m in d.get("missing") or [] if m.get("type") != "character"]
+    changes = {"slides": slides, "rev": int(d.get("rev") or 1) + 1,
+               "missing": again.get("missing", kept), "manifests": again.get("manifests", d.get("manifests") or []),
+               "dropped": (d.get("dropped") or []) + [{"type": "character", "id": m["id"], "slide": m.get("slide"),
+                                                       "by": by, "at": _now()} for m in gone]}
+    if not changes["missing"] and not d.get("problems"):
+        changes["state"] = "ready"
+    out = social_queue.update_design(client_id, item_id, changes)
+    for flag in ("character_needs_approval", "character_unavailable"):
+        social_queue.drop_flag(client_id, item_id, flag)
+    _resolve_post(client_id, d.get("post_id", ""), gone)
+    return out or item
 
 
 def approved(client_id: int, item_id: str) -> dict:
@@ -553,24 +720,37 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
     spec = saved["spec"]
     if spec.get("palette_variant") != label:
         raise RuntimeError(f"template palette {spec.get('palette_variant')!r} ≠ set palette {label!r}")
+    from core import render_manifest
     roles = slide_spec.palette_roles(client_id, label)
-    pngs = slide_renderer.render_set(spec, roles, d["slides"], loader_for(client_id))
-    made = []
-    for slide, png in zip(d["slides"], pngs):
-        name = f"{d.get('set_id') or 'slides'}-{slide['asset_id']}-v{saved['version']}.png"
-        uploaded = upload_png(client_id, name, png)
-        ch = slide.get("character") or {}
-        added = social_queue.add(
-            client_id, uploaded["id"], "image", item.get("channels") or ["instagram"], caption=item.get("caption", ""),
-            planned_date=item.get("planned_date", ""), producer="media", source="slide",
-            title=f"{item.get('title') or d.get('set_id')} · {slide.get('n') or ''}/{slide.get('total') or ''}",
-            post_ref={"post_id": d.get("post_id", ""), "set_id": d.get("set_id", ""), "asset_id": slide["asset_id"],
-                      "n": slide.get("n"), "of": slide.get("total"),
-                      "template": saved["name"], "template_version": saved["version"], "palette": label},
-            characters=[ch] if ch.get("pose_id") else None,
-            flags=[f for f in item.get("flags") or [] if f in ("ai_person_forbidden", "ai_label")] or None)
-        social_queue.approve(client_id, [added["id"]], by="client:design")
-        made.append({"asset_id": slide["asset_id"], "queue_id": added["id"], "file_id": uploaded["id"]})
+    manifests, made = [], []
+    with render_manifest.tracing(client_id, d.get("post_id") or item.get("id"), "final"):
+        pngs = slide_renderer.render_set(spec, roles, d["slides"], loader_for(client_id), manifests=manifests)
+        # The files are written ONLY when each one holds everything its slide declared
+        lacking = [f"slide {s.get('n') or i} {w['type']} {w['id']}" for i, (s, drawn) in enumerate(zip(d["slides"], manifests), 1)
+                   for w in render_manifest.missing(render_manifest.declared(s), drawn)]
+        if lacking:
+            raise RuntimeError("element_missing: " + "; ".join(lacking))
+        for slide, png, drawn in zip(d["slides"], pngs, manifests):
+            name = f"{d.get('set_id') or 'slides'}-{slide['asset_id']}-v{saved['version']}.png"
+            uploaded = upload_png(client_id, name, png)
+            ch = slide.get("character") or {}
+            shown = render_manifest.characters(drawn)                    # who is IN this file
+            for agent in shown:
+                render_manifest.trace("file_written", agent, "ok", slide.get("n"), f"file {uploaded['id']}")
+            # this slide's own notices, from its own manifest — never the set's
+            flags = [f for f in item.get("flags") or [] if f == "ai_person_forbidden" and shown] \
+                + render_manifest.disclosure(drawn)
+            added = social_queue.add(
+                client_id, uploaded["id"], "image", item.get("channels") or ["instagram"], caption=item.get("caption", ""),
+                planned_date=item.get("planned_date", ""), producer="media", source="slide",
+                title=f"{item.get('title') or d.get('set_id')} · {slide.get('n') or ''}/{slide.get('total') or ''}",
+                post_ref={"post_id": d.get("post_id", ""), "set_id": d.get("set_id", ""), "asset_id": slide["asset_id"],
+                          "n": slide.get("n"), "of": slide.get("total"),
+                          "template": saved["name"], "template_version": saved["version"], "palette": label},
+                characters=[ch] if ch.get("pose_id") and shown else None,
+                flags=flags or None, manifest=drawn)
+            social_queue.approve(client_id, [added["id"]], by="client:design")
+            made.append({"asset_id": slide["asset_id"], "queue_id": added["id"], "file_id": uploaded["id"]})
     return made
 
 
@@ -597,22 +777,36 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     if missing:
         _alert([f"client {client_id}: slide {brief.asset_id} — agent character not drawn "
                 f"({', '.join(m['agent'] + ': ' + m['reason'] for m in missing)})"])
-    warnings = []
+    from core import render_manifest
+    warnings, drawn = [], {}
     png = slide_renderer.render_slide(spec, roles, brief.copy_headline, brief.copy_body, 1, 1, brief.role,
-                                      loader_for(client_id), character=entry.get("character"), warnings=warnings)
+                                      loader_for(client_id), character=entry.get("character"), warnings=warnings,
+                                      manifest=drawn)
+    wanted = render_manifest.declared({**_slides_of([entry])[0], "copy_headline": brief.copy_headline,
+                                       "copy_body": brief.copy_body})
+    lacking = render_manifest.missing(wanted, drawn)
+    if lacking:
+        # declared and not drawn: this asset FAILED — nothing is uploaded, nothing is called made
+        why = next((m.get("message") for m in missing if m.get("message")), "")
+        return {"success": False, "status": "character_missing" if lacking[0]["type"] == "character" else "element_missing",
+                "message": why, "missing": lacking, "manifest": drawn}
     uploaded = upload_png(client_id, f"{brief.set_id}-{brief.asset_id}.png", png)
+    for agent in render_manifest.characters(drawn):
+        render_manifest.trace("file_written", agent, "ok", 1, f"file {uploaded.get('id')}")
     out = {"success": True, "kind": "image", "file_id": uploaded.get("id"), "link": uploaded.get("webViewLink", ""),
-           "credits": 0, "template": based}
-    if entry.get("character"):
+           "credits": 0, "template": based, "manifest": drawn}
+    if render_manifest.characters(drawn):
         out["characters"] = [entry["character"]]
-    if warnings or missing:
-        out["warnings"] = [w["code"] for w in warnings] + missing_flags(missing)
+    if warnings:
+        out["warnings"] = [w["code"] for w in warnings]
     return out
 
 
-def preview_png(client_id: int, item_id: str, n: int) -> bytes:
+def preview_png(client_id: int, item_id: str, n: int, manifest: dict = None) -> bytes:
     """Slide n (1-based) of a design item, rendered now. RenderError /
-    QueueError on failure."""
+    QueueError on failure. `manifest` (a dict) is filled with what THIS
+    render drew (core/render_manifest)."""
+    from core import render_manifest
     item = social_queue.get(client_id, item_id)
     if not item or item.get("kind") != social_queue.DESIGN_KIND:
         raise social_queue.QueueError("not_found")
@@ -622,9 +816,15 @@ def preview_png(client_id: int, item_id: str, n: int) -> bytes:
         raise social_queue.QueueError("not_found")
     s = slides[int(n) - 1]
     roles = slide_renderer.slide_roles(slide_spec.palette_roles(client_id, d["palette"]["label"]), s.get("colors"))
-    return slide_renderer.render_slide(d["spec"], roles, s.get("copy_headline", ""), s.get("copy_body", ""),
-                                       int(s.get("n") or n), int(s.get("total") or len(slides)), s.get("role", ""),
-                                       loader_for(client_id))
+    drawn = manifest if manifest is not None else {}
+    with render_manifest.tracing(client_id, d.get("post_id") or item_id, "preview"):
+        png = slide_renderer.render_slide(d["spec"], roles, s.get("copy_headline", ""), s.get("copy_body", ""),
+                                          int(s.get("n") or n), int(s.get("total") or len(slides)), s.get("role", ""),
+                                          loader_for(client_id), character=s.get("character"), manifest=drawn)
+        for agent in [w["id"] for w in render_manifest.missing(render_manifest.declared(s), drawn) if w["type"] == "character"]:
+            render_manifest.trace("composited", agent, "NOT DRAWN: the slide carries this character, the render has no character layer",
+                                  s.get("n") or n, f"pose {(s.get('character') or {}).get('pose_id', '-')}")
+    return png
 
 
 # ─── The spec in words (the card) ────────────────────────────────────────────
@@ -686,6 +886,12 @@ def view(item: dict, lang: str) -> dict:
             # which slide, which field, by how much (core/copy_budget)
             "problem_lines": _problem_lines(problems, lang),
             "last_failure": problem_text(d["last_failure"], lang) if d.get("last_failure") else "",
+            # declared in the brief and NOT in the render: the card fails, by name
+            "missing_lines": [m.get("line", "") for m in d.get("missing") or [] if m.get("line")],
+            "blocked": social_queue.design_blocked(item),
+            "blocked_text": pick(MISSING_TEXT["blocked"], lang) if social_queue.design_blocked(item) else "",
+            "can_drop_character": any(m.get("type") == "character" for m in d.get("missing") or [])
+            or any(s.get("wants_character") for s in slides),
             "based_on": d.get("based_on") or {}, "saved": d.get("saved") or {},
             "production": d.get("production") or {}, "stage_text": pick(TEXT["stage"], lang)}
 

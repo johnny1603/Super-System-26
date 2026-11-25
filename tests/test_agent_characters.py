@@ -502,8 +502,14 @@ class CarriedThroughProduction(unittest.TestCase):
         s1, s2, s3 = item["post"]["slides"]
         self.assertEqual((s1["characters"], s1["character_mode"]), (["maya"], "composite"))
         self.assertEqual((s2["characters"], s2["character_mode"]), (["lior"], "in_scene"))
-        self.assertIn("ai_label", s1["flags"])
-        self.assertNotIn("ai_label", s3["flags"])
+        # The brief is a PLAN: the AI notice is never stored from it (2026-11-26) —
+        # the card says "planned" until a render manifest says what was drawn
+        for s in (s1, s2, s3):
+            self.assertNotIn("ai_label", s["flags"])
+        shown = {s["asset_id"]: [f["code"] for f in s["flags"]] for s in sq.view(27, "he")["items"][0]["post"]["slides"]}
+        self.assertIn("character_planned", shown["s1"])
+        self.assertIn("character_planned", shown["s2"])
+        self.assertNotIn("character_planned", shown["s3"])
         seen, designed = [], []
 
         def fake(client_id, brief, palette, platform="instagram"):
@@ -513,7 +519,8 @@ class CarriedThroughProduction(unittest.TestCase):
         saved = (media_agent.generate_from_brief, slide_design.open_for_post)
         media_agent.generate_from_brief = fake
         slide_design.open_for_post = lambda cid, it, slides, lang="he": designed.append(slides) or {
-            "item": {"id": "design0001"}, "problems": []}
+            "item": {"id": "design0001"}, "problems": [],
+            "manifests": [{"asset_id": s["asset_id"], "layers": []} for s in slides]}
         try:
             with _approve_hook_off():
                 pp.start(27, sq.approve(27, [item["id"]]))
@@ -761,7 +768,8 @@ class MissingReferenceInChat(unittest.TestCase):
             {"success": False, "status": "character_missing_reference", "errors": [msg], "message": msg}
             if brief.characters else {"success": True, "kind": "image", "file_id": "FILE_ok_0123456789", "credits": 0})
         slide_design.open_for_post = lambda cid, it, slides, lang="he": {
-            "item": {"id": "design0001"}, "problems": [], "character_errors": []}
+            "item": {"id": "design0001"}, "problems": [], "character_errors": [],
+            "manifests": [{"asset_id": s["asset_id"], "layers": []} for s in slides]}
         client_agent.log_communication = lambda cid, direction, channel, text: lines.append(text)
         try:
             with _approve_hook_off():
@@ -1029,7 +1037,7 @@ class Notices(unittest.TestCase):
     def test_shown_never_blocking(self):
         item = {"id": "x"}
         src = tsq._src("core", "post_pipeline.py")
-        self.assertIn("flags[brief.asset_id] += agent_characters.approval_flags(client_id, True)", src)
+        self.assertIn("flags[brief.asset_id] += [f for f in agent_characters.approval_flags(client_id, True) if f != \"ai_label\"]", src)
         objections = src[src.index("if not review[\"objection\"]"):src.index("draft[\"updated_at\"] = _now()")]
         self.assertNotIn("ai_", objections)                               # a notice is never an objection
         self.assertIn("(g.flags || []).map(f => `<div class=\"soc-flag${f.code === 'low_resolution' || f.code === 'character_needs_approval' ? ' warn' : ''}\">${esc(f.text)}</div>`).join('')",

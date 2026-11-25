@@ -2,8 +2,12 @@ from datetime import datetime
 import json
 import os
 
+from core import local_data
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALERT_HISTORY_PATH = os.path.join(BASE_DIR, "data", "alert_history.json")
+# core/local_data: <repo>/data in a running instance, a temp folder under a test —
+# a test run never writes into the real alert history
+ALERT_HISTORY_PATH = local_data.path("alert_history.json")
 
 # Created lazily - no DB client at import time
 _db_instance = None

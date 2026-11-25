@@ -1007,7 +1007,13 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   admin's Keep only seeds. `tests/test_pose_approval.py`. The same page: "request new poses" of an agent (our key, ≤4 per
   request, arrive pending) and the BUSINESS's own characters (`core/business_avatars`, app_settings `business_avatars:<id>`: one
   generated face stored by us = the reference of every later pose, on the CLIENT's key; not cast in posts yet).
-  `tests/test_business_avatars.py`. Pose library `agent_poses`: offered before generating,
+  `tests/test_business_avatars.py`.
+- **Render manifest (2026-11-26, docs/RENDER-MANIFEST.md, knowledge/client-governance.md §8)**: every statement about a post is built
+  from what the renderer DREW (`core/render_manifest`), never from the brief — the AI notice (`social_queue.true_flags`), the post
+  card, what agents may say (`prompt_block` `drawn`), the production line (`post_pipeline.announce`). Declared in the brief and
+  absent from the manifest = the card FAILS by name (design `missing`, production state `failed`, no approve, no files). Stage log
+  `[character_trace]`. Tests never write under `data/` (`core/local_data`; the runner fails if they do). `tests/test_render_manifest.py`,
+  `tests/test_local_data.py`. Pose library `agent_poses`: offered before generating,
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
   live. `tests/test_agent_characters.py`.

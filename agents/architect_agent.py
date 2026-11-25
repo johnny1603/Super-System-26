@@ -30,7 +30,8 @@ def _create(**kwargs):
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENTS_DIR = os.path.join(BASE_DIR, "agents")
-DATA_DIR = os.path.join(BASE_DIR, "data")
+from core import local_data                      # a test never writes under <repo>/data
+DATA_DIR = local_data.data_dir()
 AGENTS_STATUS_PATH = os.path.join(DATA_DIR, "agents_status.json")
 AGENT_PROPOSALS_PATH = os.path.join(DATA_DIR, "agent_proposals.json")
 

@@ -19,8 +19,9 @@ def _get_db():
     return _db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALERT_HISTORY_PATH = os.path.join(BASE_DIR, "data", "alert_history.json")
-MONITOR_MEMORY_PATH = os.path.join(BASE_DIR, "data", "monitor_memory.json")
+from core import local_data                      # a test never writes under <repo>/data
+ALERT_HISTORY_PATH = local_data.path("alert_history.json")
+MONITOR_MEMORY_PATH = local_data.path("monitor_memory.json")
 SUBSCRIPTION_ID = "alerts-sub"
 
 CRITICAL_KEYWORDS = ["crash", "exception", "500", "failed", "error", "approved=false", "api error"]
