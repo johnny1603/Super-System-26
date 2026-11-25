@@ -1114,7 +1114,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   between mousedown and mouseup gets no `click` event at all. This silently killed every
   button inside the client dashboard's agent chat windows (close / minimize / new chat /
   download / send) — see `focusWindow` in `dashboard/client/index.html`, which now raises a
-  window with CSS `order` + `z-index` instead. Reorder with CSS, not with the DOM. The
+  window with `z-index` only. Reorder with CSS, not with the DOM.
+  **Windows never move on their own (2026-11-25):** the row's flex `order` is written ONLY by
+  `applyChatRow` from `CHAT_ROW` — a new window joins the end; click/focus/message/minimise/
+  restore never reorder; a manual drag of the header or figure past a neighbour
+  (`wireWindowReorder`) is the one way; one click puts the caret in the input
+  (`wireWindowClickFocus`); the row + minimised state is kept per client
+  (`uallak_cw_row_<id>`) and rebuilt on load (`restoreChatRow`, no focus taken).
+  `tests/test_chat_window_order.py`. The
   resize and file-drop handlers follow the same rule (only `--cw-w`/`--cw-h` and classes
   change); `tests/test_chat_uploads.py` fails if a DOM move appears in them.
   Minimise/restore follow it too: a minimised window shows its agent's standing figure

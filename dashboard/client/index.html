@@ -519,6 +519,10 @@ body {
    .cw-figure (built with the window) shows. No node is added, moved or
    removed on minimise/restore — the CLAUDE.md re-parenting trap. */
 .cw-figure { display: none; }
+/* Dragging a window to reorder the row (header or figure; desktop only) */
+@media (min-width: 641px) { .cw-head { cursor: grab; } .cw-head .cw-btn { cursor: pointer; } }
+.chat-window.reordering { opacity: 0.85; cursor: grabbing; }
+.chat-window.reordering .cw-head { cursor: grabbing; }
 .chat-window.minimized { width: auto; height: auto; background: transparent; border: none;
   box-shadow: none; overflow: visible; animation: none; }
 .chat-window.minimized > :not(.cw-figure) { display: none !important; }
@@ -4445,6 +4449,7 @@ async function loadDashboard() {
     const tzNow = (d.client && d.client.timezone) || '';
     if (tzNow !== CHAT_TZ_SETTING) { CHAT_TZ_SETTING = tzNow; restampChatWindows(); }
     Object.keys(CHAT_WINDOWS).forEach(id => applyWindowSize(id, CHAT_WINDOWS[id].root));
+    if (!ADMIN_VIEW) restoreChatRow();   // the row as the manager left it, once per page load
     chatData.gender = (d.client && d.client.owner_gender) || null;
     chatData.firstVisit = !d.tour_completed;
     chatData.conns = conns;
@@ -6400,7 +6405,11 @@ function toggleLauncher() {
 
 // Open (or re-focus) an agent's own window. Multiple windows can be open at
 // once; each keeps its own messages, input, and history.
-function openAgentWindow(id) {
+// An already-open window is restored and focused IN ITS PLACE; a new one joins
+// the END of the row (CHAT_ROW) and never shifts the others. {quiet: true} =
+// the row coming back after a refresh: no focus is taken.
+function openAgentWindow(id, opts) {
+  const quiet = Boolean(opts && opts.quiet);
   document.getElementById('chatLauncher').classList.remove('open');
   if (CHAT_WINDOWS[id]) {
     restoreWindow(id); focusWindow(id); markThreadSeen(id);
@@ -6410,10 +6419,14 @@ function openAgentWindow(id) {
   const w = buildWindow(id);
   CHAT_WINDOWS[id] = w;
   document.getElementById('chatWindows').appendChild(w.root);
+  CHAT_ROW.push(id);
+  applyChatRow();
+  saveChatRow();
   markThreadSeen(id);
   renderLauncher();
   w.historyLoaded = loadWindowHistory(id);   // awaited by connectViaChat
   if (id === 'general') renderChips();
+  if (quiet) return w;
   focusWindow(id);
   w.inputEl.focus();
   return w;
@@ -6522,6 +6535,8 @@ function buildWindow(id) {
   fig.querySelector('[data-act="figclose"]').onclick = (e) => { e.stopPropagation(); closeAgentWindow(id); };
   root.appendChild(fig);
   root.addEventListener('mousedown', () => focusWindow(id));
+  wireWindowClickFocus(id, root);
+  wireWindowReorder(id, root);
   applyWindowSize(id, root);
   wireWindowResize(id, root);
   if (!ADMIN_VIEW) wireWindowDrop(id, root);
@@ -6880,34 +6895,152 @@ function setChatInput(el, text) {
 // close, and the send button. (Enter still sent, which is why only the header
 // controls looked broken.) Verified in Chrome before and after this change.
 //
-// CSS ordering gives the same visual result with no DOM mutation: flex `order`
-// puts the window rightmost in the desktop row, and `z-index` puts it on top in
-// the mobile stack. Both apply to flex items, so one counter drives both.
+// Raising is `z-index` ONLY (the phone stack, where open windows overlap).
+// It NEVER touches the row's order (2026-11-25): it used to bump flex `order`
+// too, so every click jumped the window to the end of the row and the click
+// was spent on the move. A window keeps its place; see CHAT_ROW below.
 let chatWindowTop = 0;
 function focusWindow(id) {
   const w = CHAT_WINDOWS[id];
   if (!w) return;
   chatWindowTop += 1;
-  w.root.style.order = chatWindowTop;
   w.root.style.zIndex = chatWindowTop;
 }
+
+// ─── The row: windows never move on their own (2026-11-25) ───────────────────
+// CHAT_ROW is the order of the open windows, left to right as the manager set
+// it. A new window joins at the END; nothing else (click, focus, a message,
+// minimise, restore) changes it. Only a manual drag of a window's header (or
+// a minimised figure) past its neighbour reorders it. Applied as flex `order`
+// = position, never a DOM move. Kept per client in localStorage with each
+// window's minimised state, so the row comes back the same after a refresh.
+let CHAT_ROW = [];
+function chatRowKey() {
+  return chatData.clientId ? `uallak_cw_row_${chatData.clientId}` : '';
+}
+function applyChatRow() {
+  CHAT_ROW = CHAT_ROW.filter(id => CHAT_WINDOWS[id]);
+  CHAT_ROW.forEach((id, i) => { CHAT_WINDOWS[id].root.style.order = i; });
+}
+function saveChatRow() {
+  const key = chatRowKey();
+  if (!key || ADMIN_VIEW) return;
+  const row = CHAT_ROW.filter(id => CHAT_WINDOWS[id]).map(id => ({ id: id, min: Boolean(CHAT_WINDOWS[id].minimized) }));
+  try { localStorage.setItem(key, JSON.stringify(row)); } catch (e) {}
+}
+function readChatRow() {
+  const key = chatRowKey();
+  if (!key) return [];
+  try {
+    const row = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(row) ? row.filter(r => r && typeof r.id === 'string' && (r.id === 'general' || Object.prototype.hasOwnProperty.call(TEAM_PERSONAS, r.id))) : [];
+  } catch (e) { return []; }
+}
+// After a refresh: the saved row comes back in the saved order and state,
+// without stealing the focus. Windows already open (a flow opened one first)
+// keep their place; the saved ones that aren't open join after them in order.
+function restoreChatRow() {
+  if (window._chatRowRestored) return;
+  window._chatRowRestored = true;
+  readChatRow().forEach(r => {
+    if (CHAT_WINDOWS[r.id]) return;
+    const w = openAgentWindow(r.id, { quiet: true });
+    if (w && r.min) minimizeWindow(r.id);
+  });
+  saveChatRow();
+}
+// Move one place left or right in the row — the drag's only effect
+function swapInChatRow(id, toIndex) {
+  const from = CHAT_ROW.indexOf(id);
+  if (from < 0 || toIndex < 0 || toIndex >= CHAT_ROW.length || toIndex === from) return;
+  CHAT_ROW.splice(from, 1);
+  CHAT_ROW.splice(toIndex, 0, id);
+  applyChatRow();
+  saveChatRow();
+}
+// Drag to reorder: the header of an open window, or a minimised figure. A
+// press that doesn't travel REORDER_SLOP px stays an ordinary click (focus,
+// restore, the buttons). Once moving, the window swaps with its neighbour as
+// the pointer passes that neighbour's middle. Styles and classes only.
+const REORDER_SLOP = 6;
+function wireWindowReorder(id, root) {
+  const grips = [root.querySelector('.cw-head'), root.querySelector('.cw-figure-stage')].filter(Boolean);
+  grips.forEach(grip => {
+    grip.addEventListener('pointerdown', e => {
+      if (isPhoneChatLayout() || e.button > 0) return;
+      if (grip.classList.contains('cw-head') && e.target.closest('button, a, input, textarea, select')) return;
+      const startX = e.clientX, startY = e.clientY;
+      let dragging = false;
+      const move = ev => {
+        if (!dragging) {
+          if (Math.abs(ev.clientX - startX) < REORDER_SLOP && Math.abs(ev.clientY - startY) < REORDER_SLOP) return;
+          dragging = true;
+          root.classList.add('reordering');
+          try { grip.setPointerCapture(ev.pointerId); } catch (err) {}
+        }
+        const i = CHAT_ROW.indexOf(id);
+        const mine = root.getBoundingClientRect();
+        const myMid = mine.left + mine.width / 2;
+        for (const j of [i - 1, i + 1]) {
+          const other = CHAT_WINDOWS[CHAT_ROW[j]];
+          if (!other) continue;
+          const r = other.root.getBoundingClientRect();
+          const mid = r.left + r.width / 2;
+          if (mid < myMid ? ev.clientX < mid : ev.clientX > mid) { swapInChatRow(id, j); break; }
+        }
+      };
+      const up = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        grip.removeEventListener('pointercancel', up);
+        if (!dragging) return;
+        root.classList.remove('reordering');
+        // the click that ends a drag is not a click on what was under it
+        const eat = ev => { ev.stopPropagation(); ev.preventDefault(); };
+        grip.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => grip.removeEventListener('click', eat, { capture: true }), 0);
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+      grip.addEventListener('pointercancel', up);
+    });
+  });
+}
+// ONE click enters the conversation: a click anywhere on the window that isn't
+// a control (or a text selection) puts the caret in its input.
+function wireWindowClickFocus(id, root) {
+  root.addEventListener('click', e => {
+    const w = CHAT_WINDOWS[id];
+    if (!w || w.minimized) return;
+    if (e.target.closest('button, a, input, textarea, select, label, [contenteditable], .cw-resize, .cw-figure')) return;
+    const sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length) return;
+    try { w.inputEl.focus({ preventScroll: true }); } catch (err) { w.inputEl.focus(); }
+  });
+}
+
 // Minimise / restore are ONE class toggle on the window itself: the window's
 // insides hide and its standing figure shows, in place (CSS). Nothing is
-// built, moved or removed here.
+// built, moved or removed here, and the row's order is untouched.
 function minimizeWindow(id) {
   voiceStop();
   const w = CHAT_WINDOWS[id]; if (!w) return;
   w.minimized = true; w.root.classList.add('minimized');
+  saveChatRow();
 }
 function restoreWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
   w.minimized = false; w.root.classList.remove('minimized'); focusWindow(id);
   autoGrowChatInput(w.inputEl);   // size any text it held while hidden
+  saveChatRow();
 }
 function closeAgentWindow(id) {
   const w = CHAT_WINDOWS[id]; if (!w) return;
   voiceStop(); delete VOICE_HANDLES[id];
   w.root.remove(); delete CHAT_WINDOWS[id]; renderLauncher();
+  CHAT_ROW = CHAT_ROW.filter(x => x !== id);
+  applyChatRow();
+  saveChatRow();
 }
 // Repaint every open window's name, role and faces (the manager was chosen,
 // or the language changed). Text and image swaps only — no node moves.
